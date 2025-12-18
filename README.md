@@ -1,6 +1,16 @@
 # DynamicRounding
 
-Dynamic rounding for readable data sets.
+Dynamic rounding to make data sets more readable.
+
+##tl;dr
+I built this to speed up the moment when a dataset's story clicks into focus. 
+
+It fills gaps that are surprisingly hard to address with existing tools.  
+
+Starting with Google Sheets, eventually expanding to dataframes.
+
+Sharing it for anyone who might find it useful.
+
 
 ## What It Does
 
