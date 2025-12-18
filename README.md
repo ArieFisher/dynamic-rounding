@@ -1,8 +1,8 @@
 # DynamicRounding
 
-Dynamic rounding to make data sets more readable.
+_Dynamic rounding to make data sets more readable._
 
-##tl;dr
+## tl;dr
 I built this to speed up the moment when a dataset's story clicks into focus. 
 
 It fills gaps that are surprisingly hard to address with existing tools.  
