@@ -5,9 +5,9 @@ _Dynamic rounding to make data sets more readable._
 ## tl;dr
 I built this to speed up the moment when a dataset's story clicks into focus. 
 
-It fills gaps that are surprisingly hard to address with existing tools.  
+It fills gaps that require too much fiddling (time and complexity) when using existing tools.  
 
-Starting with Google Sheets, eventually expanding to dataframes.
+Starting with Google Sheets, then will implement in Python for dataframes.
 
 Sharing it for anyone who might find it useful.
 
