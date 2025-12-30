@@ -92,6 +92,8 @@ Grain is an order-of-magnitude offset. Negative = finer precision, positive = co
 
 Note: Values between -1 and 1 with the same absolute value produce the same result (e.g., 0.5 and -0.5, or 0.3 and -0.3).
 
+**Limits:** Grain must be between -20 and 20. Values outside this range will throw an error.
+
 ## Input Handling
 
 **Numeric casting:** Formatted strings are parsed automatically:
