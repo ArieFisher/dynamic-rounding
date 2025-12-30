@@ -1,6 +1,6 @@
 /**
  * DynamicRounding - Dynamic rounding for readable data sets
- * Version: 0.2.1
+ * Version: 0.2.2
  * https://github.com/ArieFisher/dynamicrounding
  * MIT License
  */
@@ -9,11 +9,11 @@
  * Rounds numbers dynamically based on magnitude.
  * 
  * Three modes:
- * - Single-value: =ROUND_DYNAMIC(value, [grain])
- * - Array: =ROUND_DYNAMIC(range, [grain_top], [grain_other], [num_top])
- * - Sort-safe: =ROUND_DYNAMIC(value, range, [grain_top], [grain_other], [num_top])
+ * (1) Single-value: =ROUND_DYNAMIC(value)
+ * (2) Array: =ROUND_DYNAMIC(range)
+ * (3) Sort-safe: =ROUND_DYNAMIC(value, range)
  *
- * Grain is an order-of-magnitude offset:
+ Magnitude is the 'order-of-magnitude' or 'significant digit' to round to
  *   0 = current OoM, -1 = one OoM finer, 1 = one OoM coarser
  *   0.5 or -0.5 = half of current OoM
  *   -1.5 = half of one OoM finer
@@ -47,13 +47,14 @@ function ROUND_DYNAMIC(value_or_range, grain_or_range, grain_top, grain_other, n
  */
 function singleValueMode(value, grain) {
   grain = (grain === undefined || grain === "") ? 0 : grain;
-  
+  validateGrain(grain, "grain");
+
   if (value === "" || value === null) return "";
-  
+
   const num = toNumber(value);
   if (num === null) return value; // pass through non-numeric
   if (num === 0) return 0;
-  
+
   return roundWithGrain(num, grain);
 }
 
@@ -64,6 +65,8 @@ function arrayMode(range, grain_top, grain_other, num_top) {
   grain_top = (grain_top === undefined || grain_top === "") ? -0.5 : grain_top;
   grain_other = (grain_other === undefined || grain_other === "") ? 0 : grain_other;
   num_top = (num_top === undefined || num_top === "") ? 1 : num_top;
+  validateGrain(grain_top, "grain_top");
+  validateGrain(grain_other, "grain_other");
 
   // Normalize to 2D array
   if (!Array.isArray(range[0])) {
@@ -86,6 +89,8 @@ function sortSafeMode(value, ref_range, grain_top, grain_other, num_top) {
   grain_top = (grain_top === undefined || grain_top === "") ? -0.5 : grain_top;
   grain_other = (grain_other === undefined || grain_other === "") ? 0 : grain_other;
   num_top = (num_top === undefined || num_top === "") ? 1 : num_top;
+  validateGrain(grain_top, "grain_top");
+  validateGrain(grain_other, "grain_other");
 
   // Normalize ref_range to 2D array
   if (!Array.isArray(ref_range)) {
@@ -125,13 +130,13 @@ function findMaxMagnitude(range) {
  */
 function roundCellSetAware(value, max_mag, grain_top, grain_other, num_top) {
   if (value === "" || value === null) return "";
-  
+
   const num = toNumber(value);
   if (num === null) return value; // pass through non-numeric
   if (num === 0) return 0;
 
   const current_mag = Math.floor(Math.log10(Math.abs(num)));
-  
+
   // Select grain based on proximity to max magnitude
   let grain = grain_other;
   if (max_mag !== null && (max_mag - current_mag) < num_top) {
@@ -153,14 +158,14 @@ function roundCellSetAware(value, max_mag, grain_top, grain_other, num_top) {
  */
 function roundWithGrain(num, grain) {
   const current_mag = Math.floor(Math.log10(Math.abs(num)));
-  
+
   // Decompose grain into offset and fraction
   const oom_offset = Math.trunc(grain);
   const fraction = Math.abs(grain - oom_offset) || 1;
-  
+
   const target_mag = current_mag + oom_offset;
   const rounding_base = Math.pow(10, target_mag) * fraction;
-  
+
   return Math.round(num / rounding_base + 1e-9) * rounding_base;
 }
 
@@ -182,4 +187,14 @@ function toNumber(value) {
     return isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+/**
+ * Validates that grain is within acceptable range.
+ * Throws an error if grain is outside -20 to 20.
+ */
+function validateGrain(grain, paramName) {
+  if (grain < -20 || grain > 20) {
+    throw new Error(paramName + " must be between -20 and 20, got " + grain);
+  }
 }
