@@ -1,109 +1,119 @@
 # Test Cases
 
-Test cases for `ROUND_DYNAMIC`. All tests assume default parameters unless noted.
+Test cases for `ROUND_DYNAMIC` v0.2.x.
 
-**Important:** Each dataset section must be tested as a single range (e.g., `=ROUND_DYNAMIC(A1:A10)`), not as individual cells. The function detects max magnitude from the entire range.
+## Single-Value Mode
 
-## Basic Rounding
+Formula: `=ROUND_DYNAMIC(value, [grain])`
 
-Dataset: GCP invoice (max magnitude = 6)
+### Grain Variations
 
-| Input | Expected | Notes |
-|-------|----------|-------|
-| 4,428,910.41 | 4,500,000 | Top magnitude, grain=0.25 |
-| 3,892,105.59 | 4,000,000 | Top magnitude, grain=0.25 |
-| 824,479.02 | 800,000 | Magnitude 5, grain=0.5 |
-| 1,011,204.89 | 1,000,000 | Magnitude 6, grain=0.25 |
-| 84,211.00 | 85,000 | Magnitude 4, grain=0.5 |
-| 42,109.45 | 40,000 | Magnitude 4, grain=0.5 |
-| 1,210.44 | 1,000 | Magnitude 3, grain=0.5 |
-| 412.10 | 400 | Magnitude 2, grain=0.5 |
-| 67.44 | 65 | Magnitude 1, grain=0.5 |
-| 42.66 | 45 | Magnitude 1, grain=0.5 |
+Test value: 87,654,321
 
-## Decimals
+| Value | [grain] | Expected | Notes |
+|-------|---------|----------|-------|
+| 87,654,321 | | 90,000,000 | Default grain=0, current OoM |
+| 87,654,321 | 0 | 90,000,000 | Current OoM (nearest 10M) |
+| 87,654,321 | 1 | 100,000,000 | One OoM up (nearest 100M) |
+| 87,654,321 | -1 | 88,000,000 | One OoM down (nearest 1M) |
+| 87,654,321 | -2 | 87,700,000 | Two OoM down (nearest 100K) |
+| 87,654,321 | 0.5 | 90,000,000 | Half of current OoM (nearest 5M) |
+| 87,654,321 | -0.5 | 90,000,000 | Same as 0.5 |
+| 87,654,321 | -1.5 | 87,500,000 | Half of one OoM down (nearest 500K) |
+| 87,654,321 | -2.5 | 87,650,000 | Half of two OoM down (nearest 50K) |
 
-Dataset: small decimals (max magnitude = -1)
+### Various Magnitudes
 
-| Input | Expected | Notes |
-|-------|----------|-------|
-| 0.35 | 0.35 | Top magnitude, grain=0.25 |
-| 0.12 | 0.125 | Top magnitude, grain=0.25 |
-| 0.047 | 0.045 | Magnitude -2, grain=0.5 |
-| 0.0083 | 0.0085 | Magnitude -3, grain=0.5 (may display as 0.009) |
+| Value | [grain] | Expected | Notes |
+|-------|---------|----------|-------|
+| 4,308,910 | 0 | 4,000,000 | Millions |
+| 4,308,910 | -0.5 | 4,500,000 | Nearest 500K |
+| 42,109 | 0 | 40,000 | Ten thousands |
+| 42,109 | -0.5 | 42,500 | Nearest 5K |
+| 1,234 | 0 | 1,000 | Thousands |
+| 0.35 | 0 | 0.4 | Decimals |
+| 0.35 | -0.5 | 0.35 | Nearest 0.05 |
 
-## Percentages
+### Edge Cases
 
-Dataset: percentage values (max magnitude = 2)
+| Value | [grain] | Expected | Notes |
+|-------|---------|----------|-------|
+| 0 | | 0 | Zero unchanged |
+| | | | Empty returns empty |
+| Cloud CDN | | Cloud CDN | Non-numeric passed through |
+| -4,308,910 | 0 | -4,000,000 | Negative, sign preserved |
+| -42.66 | 0 | -40 | Negative decimal |
 
-| Input | Expected | Notes |
-|-------|----------|-------|
-| 132% | 125% | Top magnitude, grain=0.25 |
-| 102% | 100% | Top magnitude, grain=0.25 |
-| 76% | 75% | Magnitude 1, grain=0.5 |
-| 43% | 45% | Magnitude 1, grain=0.5 |
-| 7% | 7% | Magnitude 0, grain=0.5 |
+### String Parsing
 
-## Negative Numbers
+| Value | [grain] | Expected | Notes |
+|-------|---------|----------|-------|
+| $1,234.56 | 0 | 1,000 | Currency parsed |
+| 1,234,567 | 0 | 1,000,000 | Commas parsed |
+| (500) | 0 | -500 | Accounting format parsed |
+| €1.234 | 0 | 1,000 | Euro parsed |
 
-Test within GCP invoice dataset (max magnitude = 6):
+## Array Mode
 
-| Input | Expected | Notes |
-|-------|----------|-------|
-| -4,428,910 | -4,500,000 | Sign preserved, top magnitude |
-| -42.66 | -45 | Sign preserved, magnitude 1 |
+Formula: `=ROUND_DYNAMIC(range, [grain_top], [grain_other], [num_top])`
 
-Test parsing of accounting format (standalone):
+### GCP Invoice Dataset (defaults)
 
-| Input | Expected | Notes |
-|-------|----------|-------|
-| (500) | -500 | Accounting format parsed, rounds to itself |
+Dataset max magnitude = 6
 
-## Edge Cases
+| Value | [grain_top] | [grain_other] | [num_top] | Expected | Notes |
+|-------|-------------|---------------|-----------|----------|-------|
+| $4,308,910.41 | | | | 4,500,000 | Mag 6, grain_top=-0.5 |
+| 3,892,105.59 | | | | 4,000,000 | Mag 6, grain_top=-0.5 |
+| $1,011,204.89 | | | | 1,000,000 | Mag 6, grain_top=-0.5 |
+| $983,321.11 | | | | 1,000,000 | Mag 5, grain_other=0 |
+| $824,479.02 | | | | 800,000 | Mag 5, grain_other=0 |
+| $84,211 | | | | 80,000 | Mag 4, grain_other=0 |
+| $42,109.45 | | | | 40,000 | Mag 4, grain_other=0 |
+| $21,550.20 | | | | 20,000 | Mag 4, grain_other=0 |
+| $1,510.44 | | | | 2,000 | Mag 3, grain_other=0 |
+| 1,127.10 | | | | 1,000 | Mag 3, grain_other=0 |
+| $67.44 | | | | 70 | Mag 1, grain_other=0 |
+| $42.66 | | | | 40 | Mag 1, grain_other=0 |
 
-| Input | Expected | Notes |
-|-------|----------|-------|
-| 0 | 0 | Zero unchanged |
-| "" | "" | Empty string unchanged |
-| "Cloud CDN" | "Cloud CDN" | Non-numeric passed through |
+### Custom Parameters
 
-Test string parsing within GCP invoice dataset (max magnitude = 6):
+Using value 4,256,910 in dataset where max magnitude = 6
 
-| Input | Expected | Notes |
-|-------|----------|-------|
-| "$1,234.56" | 1,000 | Currency parsed, magnitude 3, grain=0.5 |
-| "1,234,567" | 1,250,000 | Commas parsed, magnitude 6, grain=0.25 |
+| Value | [grain_top] | [grain_other] | [num_top] | Expected | Notes |
+|-------|-------------|---------------|-----------|----------|-------|
+| 4,256,910 | -0.5 | 0 | 1 | 4,500,000 | Default |
+| 4,256,910 | 0 | 0 | 1 | 4,000,000 | Coarser top |
+| 4,256,910 | -1 | 0 | 1 | 4,300,000 | Finer top |
+| 4,256,910 | -1.5 | 0 | 1 | 4,250,000 | Half of finer |
+| 4,256,910 | -0.5 | -1 | 1 | 4,500,000 | Finer other (no effect on top) |
+| 4,256,910 | -0.5 | 0 | 2 | 4,500,000 | Extend top to 2 orders |
 
-## Parameter Variations
+### Decimals Dataset
 
-Using value 4,256,910 in a dataset where max magnitude = 6:
+Dataset max magnitude = -1
 
-| grain_top | grain_other | Expected | Notes |
-|-----------|-------------|----------|-------|
-| 0.25 | 0.5 | 4,250,000 | Default |
-| 0.5 | 0.5 | 4,500,000 | Coarser top |
-| 0.1 | 0.5 | 4,300,000 | Finer top |
-| 1 | 1 | 4,000,000 | Whole magnitude |
+| Value | [grain_top] | [grain_other] | [num_top] | Expected | Notes |
+|-------|-------------|---------------|-----------|----------|-------|
+| 0.35 | | | | 0.35 | Mag -1, grain_top=-0.5 |
+| 0.12 | | | | 0.10 | Mag -1, grain_top=-0.5 |
+| 0.047 | | | | 0.05 | Mag -2, grain_other=0 |
+| 0.0083 | | | | 0.008 | Mag -3, grain_other=0 |
 
 ## Sort-Safe Mode
 
-Formula: `=ROUND_DYNAMIC(A2, $A$2:$A$12)`
+Formula: `=ROUND_DYNAMIC(value, range, [grain_top], [grain_other], [num_top])`
 
-- Verify returns single value (not array)
-- Verify sorting data doesn't break formulas
-- Verify all rows use same max magnitude reference
+### Basic Verification
 
-## Parameter Validation
+Using GCP invoice dataset as range:
 
-| Input | Expected | Notes |
-|-------|----------|-------|
-| `grain_top = 2` | #ERROR: grain_top must be between 0 and 1 | Rejected |
-| `grain_top = 0` | #ERROR: grain_top must be greater than 0 | Rejected |
-| `grain_top = -0.5` | #ERROR: grain_top must be greater than 0 | Rejected |
-| `grain_top = "0.5"` | #ERROR: grain_top must be a number | Rejected (strings not accepted) |
-| `grain_top = "abc"` | #ERROR: grain_top must be a number | Rejected |
-| `grain_other = 0` | #ERROR: grain_other must be greater than 0 | Rejected |
-| `grain_other = "0.5"` | #ERROR: grain_other must be a number | Rejected (strings not accepted) |
-| `num_top_orders = 0` | #ERROR: num_top_orders must be a positive integer | Rejected |
-| `num_top_orders = 1.5` | #ERROR: num_top_orders must be a positive integer | Rejected |
-| `num_top_orders = "2"` | #ERROR: num_top_orders must be a number | Rejected (strings not accepted) |
+| Value | [range] | [grain_top] | [grain_other] | [num_top] | Expected | Notes |
+|-------|---------|-------------|---------------|-----------|----------|-------|
+| $4,308,910.41 | $A$1:$A$12 | | | | 4,500,000 | Same as array mode |
+| $42.66 | $A$1:$A$12 | | | | 40 | Same as array mode |
+
+Verify:
+- Returns single value (not array)
+- Sorting data doesn't break formulas
+- All rows use same max magnitude reference
