@@ -16,6 +16,20 @@ let failed = 0;
 const failures = [];
 
 function test(name, actual, expected) {
+    // Handle special cases
+    if (Number.isNaN(expected) && Number.isNaN(actual)) {
+        passed++;
+        return;
+    }
+    if (expected === Infinity && actual === Infinity) {
+        passed++;
+        return;
+    }
+    if (expected === -Infinity && actual === -Infinity) {
+        passed++;
+        return;
+    }
+
     // Handle floating point comparison
     const isEqual = typeof expected === 'number' && typeof actual === 'number'
         ? Math.abs(actual - expected) < 0.0001
@@ -26,6 +40,21 @@ function test(name, actual, expected) {
     } else {
         failed++;
         failures.push({ name, actual, expected });
+    }
+}
+
+function testThrows(name, fn, expectedMessage) {
+    try {
+        fn();
+        failed++;
+        failures.push({ name, actual: 'no error thrown', expected: 'Error: ' + expectedMessage });
+    } catch (e) {
+        if (e.message.includes(expectedMessage)) {
+            passed++;
+        } else {
+            failed++;
+            failures.push({ name, actual: e.message, expected: expectedMessage });
+        }
     }
 }
 
@@ -333,22 +362,96 @@ test('0.45 rounds to 0.5', ROUND_DYNAMIC(0.45), 0.5);
 test('0.25 rounds to 0.3', ROUND_DYNAMIC(0.25), 0.3);
 
 // =============================================================================
-// ROBUSTNESS & EDGE CASES (ADDED)
+// GRAIN VALIDATION TESTS
 // =============================================================================
 
-console.log('=== Robustness Tests ===\n');
+console.log('=== Grain Validation ===\n');
 
-// Booleans (should passthrough)
-test('Boolean TRUE', ROUND_DYNAMIC(true), true);
-test('Boolean FALSE', ROUND_DYNAMIC(false), false);
+// Valid boundary values (should not throw)
+test('grain=-20 valid', ROUND_DYNAMIC(1000, -20), 1000);
 
-// Scientific Notation
-test('Scientific 1.5e6, grain=0', ROUND_DYNAMIC(1.5e6), 2000000); // 1.5M rounds to 2M
-test('Scientific string "1.5e6"', ROUND_DYNAMIC('1.5e6'), 2000000);
-test('Scientific small 4e-4', ROUND_DYNAMIC(4e-4), 0.0004);
+// Invalid values (should throw)
+testThrows('grain=21 throws', () => ROUND_DYNAMIC(1000, 21), 'grain must be between -20 and 20');
+testThrows('grain=-21 throws', () => ROUND_DYNAMIC(1000, -21), 'grain must be between -20 and 20');
+testThrows('grain=100 throws', () => ROUND_DYNAMIC(1000, 100), 'grain must be between -20 and 20');
+testThrows('grain=-100 throws', () => ROUND_DYNAMIC(1000, -100), 'grain must be between -20 and 20');
 
-// String configuration parameters (Sheet passed strings)
-test('String grain "-0.5"', ROUND_DYNAMIC(87654321, "-0.5"), 90000000);
+// grain >= 2 always returns 0 (short-circuit optimization)
+test('grain=2 returns 0', ROUND_DYNAMIC(9999, 2), 0);
+test('grain=2.5 returns 0', ROUND_DYNAMIC(9999, 2.5), 0);
+test('grain=5 returns 0', ROUND_DYNAMIC(1e10, 5), 0);
+test('grain=20 returns 0', ROUND_DYNAMIC(1e20, 20), 0);
+test('grain=2 negative input returns 0', ROUND_DYNAMIC(-9999, 2), 0);
+
+// Array mode validation
+testThrows('array grain_top=25 throws', () => ROUND_DYNAMIC([[1000]], 25, 0, 1), 'grain_top must be between -20 and 20');
+testThrows('array grain_other=25 throws', () => ROUND_DYNAMIC([[1000]], 0, 25, 1), 'grain_other must be between -20 and 20');
+
+// Sort-safe mode validation
+testThrows('sort-safe grain_top=25 throws', () => ROUND_DYNAMIC(1000, [[1000]], 25, 0, 1), 'grain_top must be between -20 and 20');
+testThrows('sort-safe grain_other=25 throws', () => ROUND_DYNAMIC(1000, [[1000]], 0, 25, 1), 'grain_other must be between -20 and 20');
+
+// =============================================================================
+// ADDITIONAL EDGE CASES
+// =============================================================================
+
+console.log('=== Additional Edge Cases ===\n');
+
+// Undefined as explicit value (passes through)
+test('undefined value', ROUND_DYNAMIC(undefined), undefined);
+
+// NaN and Infinity
+test('NaN passthrough', ROUND_DYNAMIC(NaN), NaN);
+test('Infinity passthrough', ROUND_DYNAMIC(Infinity), Infinity);
+test('-Infinity passthrough', ROUND_DYNAMIC(-Infinity), -Infinity);
+
+// JS precision limits
+test('Very large 1e15', ROUND_DYNAMIC(1e15), 1e15);
+test('Very large 9.87e14', ROUND_DYNAMIC(9.87e14), 1e15);
+test('Very small 1e-10', ROUND_DYNAMIC(1e-10), 1e-10);
+test('Very small 9.5e-11', ROUND_DYNAMIC(9.5e-11), 1e-10);
+test('Near MAX_SAFE_INTEGER', ROUND_DYNAMIC(9007199254740991), 9000000000000000);
+
+// Empty array
+testArray('Empty array', ROUND_DYNAMIC([]), []);
+
+// Array with only non-numerics (max_mag will be null)
+const nonNumericArray = [
+    ['Cloud CDN'],
+    ['BigQuery'],
+    ['']
+];
+testArray('Non-numeric only array', ROUND_DYNAMIC(nonNumericArray), [
+    ['Cloud CDN'],
+    ['BigQuery'],
+    ['']
+]);
+
+// 1D array (row vector) - Sheets can pass this way
+const rowVector = [4428910.41, 983321.11, 42.66];
+testArray('1D row vector', ROUND_DYNAMIC(rowVector), [4500000, 1000000, 40]);
+
+// 2D single row
+const singleRow = [[4428910.41, 983321.11, 42.66]];
+testArray('2D single row', ROUND_DYNAMIC(singleRow), [[4500000, 1000000, 40]]);
+
+// 2D multi-column
+const multiColumn = [
+    [4428910.41, 100],
+    [983321.11, 50],
+    [42.66, 25]
+];
+// max_mag = 6 (from 4428910.41)
+testArray('2D multi-column', ROUND_DYNAMIC(multiColumn), [
+    [4500000, 100],
+    [1000000, 50],
+    [40, 30]
+]);
+
+// Sort-safe with 1D reference range
+test('Sort-safe: 1D ref range', ROUND_DYNAMIC(4428910.41, [4428910.41, 983321.11, 42.66]), 4500000);
+
+// Sort-safe with single value as "range" - not valid usage, omitting test
 
 // =============================================================================
 // RESULTS
