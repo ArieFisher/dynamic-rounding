@@ -1,5 +1,7 @@
 # Contributing
 
+Thanks for your interest in contributing to DynamicRounding.
+
 ## Reporting Issues
 
 Open a GitHub issue with:
