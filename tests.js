@@ -248,6 +248,109 @@ test('Sort-safe: zero', ROUND_DYNAMIC(0, gcpData), 0);
 test('Sort-safe: empty', ROUND_DYNAMIC('', gcpData), '');
 
 // =============================================================================
+// DATE/TIME HANDLING TESTS
+// =============================================================================
+
+console.log('=== Date/Time Handling ===\n');
+
+// Dates - Google Sheets passes these as Date objects
+const date1 = new Date('2024-01-15');
+const date2 = new Date('2024-12-30');
+const time1 = new Date('1970-01-01T09:30:00');  // Time only (Sheets uses epoch date)
+const time2 = new Date('1970-01-01T14:45:30');
+const datetime1 = new Date('2024-06-15T10:30:00');
+
+// Single-value mode with dates
+test('Date passthrough (single)', ROUND_DYNAMIC(date1), date1);
+test('Time passthrough (single)', ROUND_DYNAMIC(time1), time1);
+test('DateTime passthrough (single)', ROUND_DYNAMIC(datetime1), datetime1);
+
+// Array mode with dates mixed in
+const mixedWithDates = [
+    [4428910.41],
+    [date1],
+    [1000],
+    [time1],
+    [42.66]
+];
+
+const mixedWithDatesResult = ROUND_DYNAMIC(mixedWithDates);
+test('Array: number rounds', mixedWithDatesResult[0][0], 4500000);
+test('Array: date passthrough', mixedWithDatesResult[1][0], date1);
+test('Array: number rounds 2', mixedWithDatesResult[2][0], 1000);
+test('Array: time passthrough', mixedWithDatesResult[3][0], time1);
+test('Array: number rounds 3', mixedWithDatesResult[4][0], 40);
+
+// Sort-safe mode with dates
+test('Sort-safe: date passthrough', ROUND_DYNAMIC(date1, gcpData), date1);
+test('Sort-safe: time passthrough', ROUND_DYNAMIC(time1, gcpData), time1);
+
+// Date in reference range (should be ignored for max magnitude calc)
+const rangeWithDate = [
+    [4428910.41],
+    [date1],
+    [1000]
+];
+test('Sort-safe: date in ref range ignored', ROUND_DYNAMIC(4428910.41, rangeWithDate), 4500000);
+
+// =============================================================================
+// BOUNDARY TESTS
+// =============================================================================
+
+console.log('=== Boundary Cases ===\n');
+
+// Numbers at exact powers of 10
+test('Exact 1000, grain=0', ROUND_DYNAMIC(1000), 1000);
+test('Exact 1000, grain=-1', ROUND_DYNAMIC(1000, -1), 1000);
+test('Exact 10000000, grain=0', ROUND_DYNAMIC(10000000), 10000000);
+
+// Just above/below magnitude boundaries
+test('999 (mag 2), grain=0', ROUND_DYNAMIC(999), 1000);
+test('1001 (mag 3), grain=0', ROUND_DYNAMIC(1001), 1000);
+test('9999 (mag 3), grain=0', ROUND_DYNAMIC(9999), 10000);
+test('10001 (mag 4), grain=0', ROUND_DYNAMIC(10001), 10000);
+
+// Very small numbers
+test('0.001, grain=0', ROUND_DYNAMIC(0.001), 0.001);
+test('0.0015, grain=0', ROUND_DYNAMIC(0.0015), 0.002);
+test('0.00099, grain=0', ROUND_DYNAMIC(0.00099), 0.001);
+
+// Very large numbers
+test('999999999, grain=0', ROUND_DYNAMIC(999999999), 1000000000);
+test('1000000001, grain=0', ROUND_DYNAMIC(1000000001), 1000000000);
+
+// Grain boundary: 0.5 vs -0.5 equivalence
+test('87654321 grain=0.5', ROUND_DYNAMIC(87654321, 0.5), ROUND_DYNAMIC(87654321, -0.5));
+test('87654321 grain=0.3', ROUND_DYNAMIC(87654321, 0.3), ROUND_DYNAMIC(87654321, -0.3));
+
+// Negative numbers at boundaries
+test('-999, grain=0', ROUND_DYNAMIC(-999), -1000);
+test('-1001, grain=0', ROUND_DYNAMIC(-1001), -1000);
+
+// Floating point edge case (the epsilon fix)
+test('0.35 rounds to 0.4 not 0.3', ROUND_DYNAMIC(0.35), 0.4);
+test('0.45 rounds to 0.5', ROUND_DYNAMIC(0.45), 0.5);
+test('0.25 rounds to 0.3', ROUND_DYNAMIC(0.25), 0.3);
+
+// =============================================================================
+// ROBUSTNESS & EDGE CASES (ADDED)
+// =============================================================================
+
+console.log('=== Robustness Tests ===\n');
+
+// Booleans (should passthrough)
+test('Boolean TRUE', ROUND_DYNAMIC(true), true);
+test('Boolean FALSE', ROUND_DYNAMIC(false), false);
+
+// Scientific Notation
+test('Scientific 1.5e6, grain=0', ROUND_DYNAMIC(1.5e6), 2000000); // 1.5M rounds to 2M
+test('Scientific string "1.5e6"', ROUND_DYNAMIC('1.5e6'), 2000000);
+test('Scientific small 4e-4', ROUND_DYNAMIC(4e-4), 0.0004);
+
+// String configuration parameters (Sheet passed strings)
+test('String grain "-0.5"', ROUND_DYNAMIC(87654321, "-0.5"), 90000000);
+
+// =============================================================================
 // RESULTS
 // =============================================================================
 
