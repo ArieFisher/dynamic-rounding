@@ -1,80 +1,167 @@
 /**
  * DynamicRounding - Dynamic rounding for readable data sets
+ * Version: 0.2.1
  * https://github.com/ArieFisher/dynamicrounding
  * MIT License
  */
 
 /**
- * Rounds numbers dynamically based on magnitude, with finer grain for top-tier values.
- * Numeric strings are parsed and rounded. Non-numeric values pass through unchanged.
+ * Rounds numbers dynamically based on magnitude.
+ * 
+ * Three modes:
+ * - Single-value: =ROUND_DYNAMIC(value, [grain])
+ * - Array: =ROUND_DYNAMIC(range, [grain_top], [grain_other], [num_top])
+ * - Sort-safe: =ROUND_DYNAMIC(value, range, [grain_top], [grain_other], [num_top])
  *
- * @param {A1:A12} value Values to round. Can be a single cell or range.
- * @param {A1:A12} ref_range Optional. Reference range for max magnitude detection. Use absolute refs ($A$1:$A$12) for sort-safe per-cell formulas. If omitted, uses value range.
- * @param {.25} grain_top The biggest numbers will round to this fraction of the top magnitude. Default 0.25 (quarter-magnitude) for accuracy.
- * @param {.5} grain_other All other numbers will round to this fraction of their magnitude. Default 0.5 (half-magnitude for readability).
- * @param {1} num_top_orders How many of the top orders of magnitude get grain_top. Default 1.
- * @return {number[]} Rounded values (numbers rounded, non-numeric passed through).
+ * Grain is an order-of-magnitude offset:
+ *   0 = current OoM, -1 = one OoM finer, 1 = one OoM coarser
+ *   0.5 or -0.5 = half of current OoM
+ *   -1.5 = half of one OoM finer
+ *
+ * @param {A1|A1:A12} value_or_range Values to round.
+ * @param {number|A1:A12} [grain_or_range] Single-value: grain (default 0). Sort-safe: reference range.
+ * @param {number} [grain_top] Array/sort-safe: grain for top orders (default -0.5).
+ * @param {number} [grain_other] Array/sort-safe: grain for other orders (default 0).
+ * @param {number} [num_top] Array/sort-safe: how many top orders get grain_top (default 1).
+ * @return Rounded values.
  * @customfunction
  */
-function ROUND_DYNAMIC(value, ref_range, grain_top, grain_other, num_top_orders) {
-  // Detect if ref_range is actually grain_top (backward compatibility)
-  // If second param is a number, shift parameters
-  if (typeof ref_range === "number") {
-    num_top_orders = grain_other;
-    grain_other = grain_top;
-    grain_top = ref_range;
-    ref_range = null;
+function ROUND_DYNAMIC(value_or_range, grain_or_range, grain_top, grain_other, num_top) {
+  const firstIsArray = Array.isArray(value_or_range);
+  const secondIsArray = Array.isArray(grain_or_range);
+
+  if (firstIsArray) {
+    // Array mode: ROUND_DYNAMIC(range, [grain_top], [grain_other], [num_top])
+    return arrayMode(value_or_range, grain_or_range, grain_top, grain_other);
+  } else if (secondIsArray) {
+    // Sort-safe mode: ROUND_DYNAMIC(value, range, [grain_top], [grain_other], [num_top])
+    return sortSafeMode(value_or_range, grain_or_range, grain_top, grain_other, num_top);
+  } else {
+    // Single-value mode: ROUND_DYNAMIC(value, [grain])
+    return singleValueMode(value_or_range, grain_or_range);
+  }
+}
+
+/**
+ * Single-value mode: rounds one value based on its own magnitude.
+ */
+function singleValueMode(value, grain) {
+  grain = (grain === undefined || grain === "") ? 0 : grain;
+  
+  if (value === "" || value === null) return "";
+  
+  const num = toNumber(value);
+  if (num === null) return value; // pass through non-numeric
+  if (num === 0) return 0;
+  
+  return roundWithGrain(num, grain);
+}
+
+/**
+ * Array mode: rounds a range with set-aware heuristic.
+ */
+function arrayMode(range, grain_top, grain_other, num_top) {
+  grain_top = (grain_top === undefined || grain_top === "") ? -0.5 : grain_top;
+  grain_other = (grain_other === undefined || grain_other === "") ? 0 : grain_other;
+  num_top = (num_top === undefined || num_top === "") ? 1 : num_top;
+
+  // Normalize to 2D array
+  if (!Array.isArray(range[0])) {
+    range = [range];
   }
 
-  // Defaults
-  grain_top = (grain_top === undefined || grain_top === "") ? 0.25 : grain_top;
-  grain_other = (grain_other === undefined || grain_other === "") ? 0.5 : grain_other;
-  num_top_orders = (num_top_orders === undefined || num_top_orders === "") ? 1 : num_top_orders;
+  // Find max magnitude
+  const max_mag = findMaxMagnitude(range);
 
-  // Validate parameters
-  const validation = validateParams(grain_top, grain_other, num_top_orders);
-  if (validation.error) {
-    return validation.error;
-  }
-  grain_top = validation.grain_top;
-  grain_other = validation.grain_other;
-  num_top_orders = validation.num_top_orders;
+  // Round each cell
+  return range.map(row =>
+    row.map(cell => roundCellSetAware(cell, max_mag, grain_top, grain_other, num_top))
+  );
+}
 
-  // Normalize value to 2D array
-  if (!Array.isArray(value)) {
-    value = [[value]];
-  } else if (!Array.isArray(value[0])) {
-    value = [value];
-  }
+/**
+ * Sort-safe mode: rounds one value with set-aware heuristic based on reference range.
+ */
+function sortSafeMode(value, ref_range, grain_top, grain_other, num_top) {
+  grain_top = (grain_top === undefined || grain_top === "") ? -0.5 : grain_top;
+  grain_other = (grain_other === undefined || grain_other === "") ? 0 : grain_other;
+  num_top = (num_top === undefined || num_top === "") ? 1 : num_top;
 
-  // Use ref_range for magnitude detection if provided, otherwise use value
-  let mag_source = ref_range || value;
-  if (!Array.isArray(mag_source)) {
-    mag_source = [[mag_source]];
-  } else if (!Array.isArray(mag_source[0])) {
-    mag_source = [mag_source];
+  // Normalize ref_range to 2D array
+  if (!Array.isArray(ref_range)) {
+    ref_range = [[ref_range]];
+  } else if (!Array.isArray(ref_range[0])) {
+    ref_range = [ref_range];
   }
 
-  // Find max magnitude across reference range
-  let max_magnitude = null;
-  for (let row of mag_source) {
+  // Find max magnitude from reference range
+  const max_mag = findMaxMagnitude(ref_range);
+
+  // Round the single value
+  return roundCellSetAware(value, max_mag, grain_top, grain_other, num_top);
+}
+
+/**
+ * Finds the maximum magnitude (order of magnitude) in a 2D array.
+ */
+function findMaxMagnitude(range) {
+  let max_mag = null;
+  for (let row of range) {
     for (let cell of row) {
       const num = toNumber(cell);
       if (num !== null && num !== 0 && isFinite(num)) {
-        const exp = Math.floor(Math.log10(Math.abs(num)));
-        if (max_magnitude === null || exp > max_magnitude) {
-          max_magnitude = exp;
+        const mag = Math.floor(Math.log10(Math.abs(num)));
+        if (max_mag === null || mag > max_mag) {
+          max_mag = mag;
         }
       }
     }
   }
+  return max_mag;
+}
 
-  // Round each cell
-  const result = value.map(row =>
-    row.map(cell => roundCell(cell, grain_top, grain_other, num_top_orders, max_magnitude))
-  );
+/**
+ * Rounds a cell with set-aware heuristic.
+ */
+function roundCellSetAware(value, max_mag, grain_top, grain_other, num_top) {
+  if (value === "" || value === null) return "";
+  
+  const num = toNumber(value);
+  if (num === null) return value; // pass through non-numeric
+  if (num === 0) return 0;
 
-  return result;
+  const current_mag = Math.floor(Math.log10(Math.abs(num)));
+  
+  // Select grain based on proximity to max magnitude
+  let grain = grain_other;
+  if (max_mag !== null && (max_mag - current_mag) < num_top) {
+    grain = grain_top;
+  }
+
+  return roundWithGrain(num, grain);
+}
+
+/**
+ * Rounds a number using the grain-as-offset model.
+ * 
+ * grain = OoM offset + optional fraction
+ *   0 = current OoM
+ *   -1 = one OoM finer
+ *   1 = one OoM coarser
+ *   0.5 = half of current OoM (same as -0.5)
+ *   -1.5 = half of one OoM finer
+ */
+function roundWithGrain(num, grain) {
+  const current_mag = Math.floor(Math.log10(Math.abs(num)));
+  
+  // Decompose grain into offset and fraction
+  const oom_offset = Math.trunc(grain);
+  const fraction = Math.abs(grain - oom_offset) || 1;
+  
+  const target_mag = current_mag + oom_offset;
+  const rounding_base = Math.pow(10, target_mag) * fraction;
+  
+  return Math.round(num / rounding_base + 1e-9) * rounding_base;
 }
 
 /**
@@ -95,75 +182,4 @@ function toNumber(value) {
     return isFinite(parsed) ? parsed : null;
   }
   return null;
-}
-
-/**
- * Validates and parses parameters.
- * Returns object with parsed values or error message.
- */
-function validateParams(grain_top, grain_other, num_top_orders) {
-  // Validate grain_top
-  if (typeof grain_top !== "number") {
-    return { error: "#ERROR: grain_top must be a number, got: " + grain_top };
-  }
-  if (grain_top <= 0) {
-    return { error: "#ERROR: grain_top must be greater than 0, got: " + grain_top };
-  }
-  if (grain_top > 1) {
-    return { error: "#ERROR: grain_top must be between 0 and 1, got: " + grain_top };
-  }
-
-  // Validate grain_other
-  if (typeof grain_other !== "number") {
-    return { error: "#ERROR: grain_other must be a number, got: " + grain_other };
-  }
-  if (grain_other <= 0) {
-    return { error: "#ERROR: grain_other must be greater than 0, got: " + grain_other };
-  }
-  if (grain_other > 1) {
-    return { error: "#ERROR: grain_other must be between 0 and 1, got: " + grain_other };
-  }
-
-  // Validate num_top_orders
-  if (typeof num_top_orders !== "number") {
-    return { error: "#ERROR: num_top_orders must be a number, got: " + num_top_orders };
-  }
-  if (num_top_orders < 1 || !Number.isInteger(num_top_orders)) {
-    return { error: "#ERROR: num_top_orders must be a positive integer, got: " + num_top_orders };
-  }
-
-  return { grain_top: grain_top, grain_other: grain_other, num_top_orders: num_top_orders };
-}
-
-/**
- * Rounds a single value using magnitude-aware logic.
- */
-function roundCell(value, grain_top, grain_other, num_top_orders, max_magnitude) {
-  // Handle empty
-  if (value === "" || value === null) {
-    return "";
-  }
-  
-  // Attempt to parse as number
-  const num = toNumber(value);
-  if (num === null) {
-    return value; // Pass through non-numeric unchanged
-  }
-  if (num === 0) {
-    return 0;
-  }
-
-  const abs_val = Math.abs(num);
-  const current_exponent = Math.floor(Math.log10(abs_val));
-
-  // Select grain based on proximity to max magnitude
-  let grain = grain_other;
-  if (max_magnitude !== null && (max_magnitude - current_exponent) < num_top_orders) {
-    grain = grain_top;
-  }
-
-  const magnitude = Math.pow(10, current_exponent);
-  const rounding_base = grain * magnitude;
-  
-  return Math.sign(num) * Math.round(abs_val / rounding_base) * rounding_base;
 }
