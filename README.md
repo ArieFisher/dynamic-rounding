@@ -34,54 +34,59 @@ In contrast, this approach is 'declarative'. You just ask the custom function to
 
 ## Usage
 
-DynamicRounding has three modes:
+This function has three modes depending on which arguments are provided.
 
-### Single-value mode
+### Single mode
 
 **`=ROUND_DYNAMIC(value)`**
 
-In its simplest form, this function rounds to the nearest order of magnitude.    
-In traditional (imperative) rounding, the function parameters have to be customized for every cell depending on its size.
+In its simplest form, this function takes a single value and returns a single value rounded to the nearest half order of magnitude.
 
 | Formula | how to read the instruction | simplified result |
 | :---- | :---- | :---- |
-| `=ROUND_DYNAMIC(4321)` | declarative: round to nearest order of magnitude<br>imperative equivalent: round to nearest thousand | 4,000 |
-| `=ROUND_DYNAMIC(87654321)` | round to nearest order of magnitude (i.e. ten million) | 90,000,000 |
+| `=ROUND_DYNAMIC(4321)` | declarative: round to nearest half order of magnitude<br>imperative equivalent: round to nearest 500 | 4,500 |
+| `=ROUND_DYNAMIC(87654321)` | round to nearest half order of magnitude (i.e. five million) | 90,000,000 |
+| `=ROUND_DYNAMIC(87654321, 0)` | round to the nearest order of magnitude (i.e. ten million) | 90,000,000 |
 | `=ROUND_DYNAMIC(87654321, -1)` | round to the next (lower) order of magnitude (i.e. nearest million) | 88,000,000 |
-| `=ROUND_DYNAMIC(87654321, 0.5)` | round to the nearest half order of magnitude (i.e. five million) | 90,000,000 |
 | `=ROUND_DYNAMIC(87654321, -1.5)` | round to the nearest half of the next lower order of magnitude (i.e. nearest 500k) | 87,500,000 |
 
-### Array mode
+### Dataset mode
 
 **`=ROUND_DYNAMIC(range)`**
 
-Rounds a range with set-aware heuristic. Largest values get finer precision. Don't sort data with this mode.
+This mode takes and returns an entire range of data in a single call (i.e. an array function). 
+In addition, this mode enables *dataset-aware* behaviour: different treatment of different-sized numbers (e.g. to promote readability and minimize information loss).
 
-Defaults: grain_top = -0.5, grain_other = 0, num_top = 1
+Defaults: offset_top = -0.5, offset_other = 0, num_top = 1
 
-| A | `=ROUND_DYNAMIC(A1:A3)` |
-| :---- | :---- |
-| 76,543,210 | 75,000,000 |
-| 654,321 | 700,000 |
-| 1,234 | 1,000 |
+| A | `=ROUND_DYNAMIC(A1:A4)` |
+| :---: | :---: |
+| 66,543,210 | 65,000,000 |
+| 37,021,373 | 35,000,000 |
+| 459,321 | 500,000 |
+| 6,543 | 7,000 |
 
-### Sort-safe mode
+### Dataset-aware single mode
 
 **`=ROUND_DYNAMIC(value, range)`**
 
-Same as array mode, but per-row. Use absolute references. Safe to sort.
+A combination of the two modes: rounds an individual number within the *context* of a set. Returns a single value (and is therefore safe to sort). Can be used on some or all of the range. Can be sorted.
 
-| A | B (formula) |
-| :---- | :---- |
-| 76,543,210 | `=ROUND_DYNAMIC(A1, $A$1:$A$3)` → 75,000,000 |
-| 654,321 | `=ROUND_DYNAMIC(A2, $A$1:$A$3)` → 700,000 |
-| 1,234 | `=ROUND_DYNAMIC(A3, $A$1:$A$3)` → 1,000 |
+| A | formula → output |
+| ----- | ----- |
+| 66,543,210 | `=ROUND_DYNAMIC(A1, A$1:A$4) →` 65,000,000 |
+| 37,021,373 | `=ROUND_DYNAMIC(A2, A$1:A$4) →` 35,000,000 |
+| 459,321 | `=ROUND_DYNAMIC(A3, A$1:A$4) →` 500,000 |
+| 6,543 | `=ROUND_DYNAMIC(A4, A$1:A$4) →` 7,000 |
 
-## Grain Reference
 
-Grain is an order-of-magnitude offset. Negative = finer precision, positive = coarser.
 
-| grain | meaning | 87,654,321 rounds to |
+
+## Offset Reference
+
+Offset is an order-of-magnitude adjustment. Negative = finer precision, positive = coarser.
+
+| offset | meaning | 87,654,321 rounds to |
 | :---- | :---- | :---- |
 | 1 | one OoM coarser | 100,000,000 |
 | 0 | current OoM | 90,000,000 |
@@ -92,7 +97,7 @@ Grain is an order-of-magnitude offset. Negative = finer precision, positive = co
 
 Note: Values between -1 and 1 with the same absolute value produce the same result (e.g., 0.5 and -0.5, or 0.3 and -0.3).
 
-**Limits:** Grain must be between -20 and 20. Values outside this range will throw an error.
+**Limits:** Offset must be between -20 and 20. Values outside this range will throw an error.
 
 ## Input Handling
 
@@ -107,27 +112,27 @@ Note: Values between -1 and 1 with the same absolute value produce the same resu
 
 ## Parameters
 
-### Single-value mode
+### Single mode
 
-**`=ROUND_DYNAMIC(value, [grain])`**
+**`=ROUND_DYNAMIC(value, [offset])`**
 
 | Parameter | Default | Description |
 | :---- | :---- | :---- |
 | value | required | Value to round |
-| [grain] | 0 | OoM offset (see Grain Reference) |
+| [offset] | -0.5 | OoM offset (see Offset Reference) |
 
-### Array and sort-safe modes
+### Dataset and dataset-aware single modes
 
-**`=ROUND_DYNAMIC(range, [grain_top], [grain_other], [num_top])`**
+**`=ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])`**
 
-**`=ROUND_DYNAMIC(value, range, [grain_top], [grain_other], [num_top])`**
+**`=ROUND_DYNAMIC(value, range, [offset_top], [offset_other], [num_top])`**
 
 | Parameter | Default | Description |
 | :---- | :---- | :---- |
 | range | required | Range for rounding and/or magnitude detection |
-| [grain_top] | -0.5 | Grain for top magnitude(s) |
-| [grain_other] | 0 | Grain for other magnitudes |
-| [num_top] | 1 | How many top orders get grain_top |
+| [offset_top] | -0.5 | Offset for top magnitude(s) |
+| [offset_other] | 0 | Offset for other magnitudes |
+| [num_top] | 1 | How many top orders get offset_top |
 
 ## License
 
