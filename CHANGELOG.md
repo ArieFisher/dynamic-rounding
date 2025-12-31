@@ -12,11 +12,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Simplified JSDoc tooltip with link to full documentation
 - Renamed modes: single-value → single, array → dataset, sort-safe → dataset-aware single
 - Renamed parameter: grain → offset (and grain_top → offset_top, grain_other → offset_other)
+- README substantially rewritten with improved examples
 
 ### Added
 
 - Parameter validation: offset values must be between -20 and 20
 - `tests.js`: Node.js test suite with 110 tests (run with `node tests.js`)
+- `design.md`: technical design doc (replaces spec)
+
+### Removed
+
+- `DynamicRounding_Spec_v2_0.md`: replaced by `design.md`
 
 ### Verified
 
