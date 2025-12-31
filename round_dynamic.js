@@ -1,53 +1,40 @@
 /**
  * DynamicRounding - Dynamic rounding for readable data sets
- * Version: 0.2.2
+ * Version: 0.2.3
  * https://github.com/ArieFisher/dynamicrounding
  * MIT License
  */
 
 /**
- * Rounds numbers dynamically based on magnitude.
+ * Declarative rounding by order of magnitude.
+ * [MODE 1]: single [MODE 2] dataset [MODE 3] dataset-aware single
+ * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamicrounding
  * 
- * Three modes:
- * (1) Single-value: =ROUND_DYNAMIC(value)
- * (2) Array: =ROUND_DYNAMIC(range)
- * (3) Sort-safe: =ROUND_DYNAMIC(value, range)
- *
- Magnitude is the 'order-of-magnitude' or 'significant digit' to round to
- *   0 = current OoM, -1 = one OoM finer, 1 = one OoM coarser
- *   0.5 or -0.5 = half of current OoM
- *   -1.5 = half of one OoM finer
- *
- * @param {A1|A1:A12} value_or_range Values to round.
- * @param {number|A1:A12} [grain_or_range] Single-value: grain (default 0). Sort-safe: reference range.
- * @param {number} [grain_top] Array/sort-safe: grain for top orders (default -0.5).
- * @param {number} [grain_other] Array/sort-safe: grain for other orders (default 0).
- * @param {number} [num_top] Array/sort-safe: how many top orders get grain_top (default 1).
  * @return Rounded values.
  * @customfunction
  */
-function ROUND_DYNAMIC(value_or_range, grain_or_range, grain_top, grain_other, num_top) {
+function ROUND_DYNAMIC(value_or_range, offset_or_range, offset_top, offset_other, num_top) {
   const firstIsArray = Array.isArray(value_or_range);
-  const secondIsArray = Array.isArray(grain_or_range);
+  const secondIsArray = Array.isArray(offset_or_range);
 
   if (firstIsArray) {
-    // Array mode: ROUND_DYNAMIC(range, [grain_top], [grain_other], [num_top])
-    return arrayMode(value_or_range, grain_or_range, grain_top, grain_other);
+    // Dataset mode: ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
+    return arrayMode(value_or_range, offset_or_range, offset_top, offset_other);
   } else if (secondIsArray) {
-    // Sort-safe mode: ROUND_DYNAMIC(value, range, [grain_top], [grain_other], [num_top])
-    return sortSafeMode(value_or_range, grain_or_range, grain_top, grain_other, num_top);
+    // Dataset-aware single mode: ROUND_DYNAMIC(value, range, [offset_top], [offset_other], [num_top])
+    return sortSafeMode(value_or_range, offset_or_range, offset_top, offset_other, num_top);
   } else {
-    // Single-value mode: ROUND_DYNAMIC(value, [grain])
-    return singleValueMode(value_or_range, grain_or_range);
+    // Single mode: ROUND_DYNAMIC(value, [offset])
+    return singleValueMode(value_or_range, offset_or_range);
   }
 }
 
 /**
- * Single-value mode: rounds one value based on its own magnitude.
+ * Single mode: rounds one value based on its own magnitude.
  */
-function singleValueMode(value, grain) {
-  grain = (grain === undefined || grain === "") ? 0 : grain;
-  validateGrain(grain, "grain");
+function singleValueMode(value, offset) {
+  offset = (offset === undefined || offset === "") ? -0.5 : offset;
+  validateOffset(offset, "offset");
 
   if (value === "" || value === null) return "";
 
@@ -55,18 +42,18 @@ function singleValueMode(value, grain) {
   if (num === null) return value; // pass through non-numeric
   if (num === 0) return 0;
 
-  return roundWithGrain(num, grain);
+  return roundWithOffset(num, offset);
 }
 
 /**
- * Array mode: rounds a range with set-aware heuristic.
+ * Dataset mode: rounds a range with dataset-aware heuristic.
  */
-function arrayMode(range, grain_top, grain_other, num_top) {
-  grain_top = (grain_top === undefined || grain_top === "") ? -0.5 : grain_top;
-  grain_other = (grain_other === undefined || grain_other === "") ? 0 : grain_other;
+function arrayMode(range, offset_top, offset_other, num_top) {
+  offset_top = (offset_top === undefined || offset_top === "") ? -0.5 : offset_top;
+  offset_other = (offset_other === undefined || offset_other === "") ? 0 : offset_other;
   num_top = (num_top === undefined || num_top === "") ? 1 : num_top;
-  validateGrain(grain_top, "grain_top");
-  validateGrain(grain_other, "grain_other");
+  validateOffset(offset_top, "offset_top");
+  validateOffset(offset_other, "offset_other");
 
   // Normalize to 2D array
   if (!Array.isArray(range[0])) {
@@ -78,19 +65,19 @@ function arrayMode(range, grain_top, grain_other, num_top) {
 
   // Round each cell
   return range.map(row =>
-    row.map(cell => roundCellSetAware(cell, max_mag, grain_top, grain_other, num_top))
+    row.map(cell => roundCellSetAware(cell, max_mag, offset_top, offset_other, num_top))
   );
 }
 
 /**
- * Sort-safe mode: rounds one value with set-aware heuristic based on reference range.
+ * Dataset-aware single mode: rounds one value with dataset-aware heuristic based on reference range.
  */
-function sortSafeMode(value, ref_range, grain_top, grain_other, num_top) {
-  grain_top = (grain_top === undefined || grain_top === "") ? -0.5 : grain_top;
-  grain_other = (grain_other === undefined || grain_other === "") ? 0 : grain_other;
+function sortSafeMode(value, ref_range, offset_top, offset_other, num_top) {
+  offset_top = (offset_top === undefined || offset_top === "") ? -0.5 : offset_top;
+  offset_other = (offset_other === undefined || offset_other === "") ? 0 : offset_other;
   num_top = (num_top === undefined || num_top === "") ? 1 : num_top;
-  validateGrain(grain_top, "grain_top");
-  validateGrain(grain_other, "grain_other");
+  validateOffset(offset_top, "offset_top");
+  validateOffset(offset_other, "offset_other");
 
   // Normalize ref_range to 2D array
   if (!Array.isArray(ref_range)) {
@@ -103,7 +90,7 @@ function sortSafeMode(value, ref_range, grain_top, grain_other, num_top) {
   const max_mag = findMaxMagnitude(ref_range);
 
   // Round the single value
-  return roundCellSetAware(value, max_mag, grain_top, grain_other, num_top);
+  return roundCellSetAware(value, max_mag, offset_top, offset_other, num_top);
 }
 
 /**
@@ -128,7 +115,7 @@ function findMaxMagnitude(range) {
 /**
  * Rounds a cell with set-aware heuristic.
  */
-function roundCellSetAware(value, max_mag, grain_top, grain_other, num_top) {
+function roundCellSetAware(value, max_mag, offset_top, offset_other, num_top) {
   if (value === "" || value === null) return "";
 
   const num = toNumber(value);
@@ -137,31 +124,31 @@ function roundCellSetAware(value, max_mag, grain_top, grain_other, num_top) {
 
   const current_mag = Math.floor(Math.log10(Math.abs(num)));
 
-  // Select grain based on proximity to max magnitude
-  let grain = grain_other;
+  // Select offset based on proximity to max magnitude
+  let offset = offset_other;
   if (max_mag !== null && (max_mag - current_mag) < num_top) {
-    grain = grain_top;
+    offset = offset_top;
   }
 
-  return roundWithGrain(num, grain);
+  return roundWithOffset(num, offset);
 }
 
 /**
- * Rounds a number using the grain-as-offset model.
+ * Rounds a number using the offset model.
  * 
- * grain = OoM offset + optional fraction
+ * offset = OoM offset + optional fraction
  *   0 = current OoM
  *   -1 = one OoM finer
  *   1 = one OoM coarser
  *   0.5 = half of current OoM (same as -0.5)
  *   -1.5 = half of one OoM finer
  */
-function roundWithGrain(num, grain) {
+function roundWithOffset(num, offset) {
   const current_mag = Math.floor(Math.log10(Math.abs(num)));
 
-  // Decompose grain into offset and fraction
-  const oom_offset = Math.trunc(grain);
-  const fraction = Math.abs(grain - oom_offset) || 1;
+  // Decompose offset into integer part and fraction
+  const oom_offset = Math.trunc(offset);
+  const fraction = Math.abs(offset - oom_offset) || 1;
 
   const target_mag = current_mag + oom_offset;
   const rounding_base = Math.pow(10, target_mag) * fraction;
@@ -190,11 +177,11 @@ function toNumber(value) {
 }
 
 /**
- * Validates that grain is within acceptable range.
- * Throws an error if grain is outside -20 to 20.
+ * Validates that offset is within acceptable range.
+ * Throws an error if offset is outside -20 to 20.
  */
-function validateGrain(grain, paramName) {
-  if (grain < -20 || grain > 20) {
-    throw new Error(paramName + " must be between -20 and 20, got " + grain);
+function validateOffset(offset, paramName) {
+  if (offset < -20 || offset > 20) {
+    throw new Error(paramName + " must be between -20 and 20, got " + offset);
   }
 }

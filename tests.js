@@ -84,54 +84,60 @@ function testArray(name, actual, expected) {
 }
 
 // =============================================================================
-// SINGLE-VALUE MODE TESTS
+// SINGLE MODE TESTS
 // =============================================================================
 
-console.log('\n=== Single-Value Mode ===\n');
+console.log('\n=== Single Mode ===\n');
 
-// Grain variations with 87,654,321
-test('87654321, grain=default', ROUND_DYNAMIC(87654321), 90000000);
-test('87654321, grain=0', ROUND_DYNAMIC(87654321, 0), 90000000);
-test('87654321, grain=1', ROUND_DYNAMIC(87654321, 1), 100000000);
-test('87654321, grain=-1', ROUND_DYNAMIC(87654321, -1), 88000000);
-test('87654321, grain=-2', ROUND_DYNAMIC(87654321, -2), 87700000);
-test('87654321, grain=0.5', ROUND_DYNAMIC(87654321, 0.5), 90000000);
-test('87654321, grain=-0.5', ROUND_DYNAMIC(87654321, -0.5), 90000000);
-test('87654321, grain=-1.5', ROUND_DYNAMIC(87654321, -1.5), 87500000);
-test('87654321, grain=-2.5', ROUND_DYNAMIC(87654321, -2.5), 87650000);
+// Offset variations with 87,654,321
+test('87654321, offset=default', ROUND_DYNAMIC(87654321), 90000000);
+test('87654321, offset=0', ROUND_DYNAMIC(87654321, 0), 90000000);
+test('87654321, offset=1', ROUND_DYNAMIC(87654321, 1), 100000000);
+test('87654321, offset=-1', ROUND_DYNAMIC(87654321, -1), 88000000);
+test('87654321, offset=-2', ROUND_DYNAMIC(87654321, -2), 87700000);
+test('87654321, offset=0.5', ROUND_DYNAMIC(87654321, 0.5), 90000000);
+test('87654321, offset=-0.5', ROUND_DYNAMIC(87654321, -0.5), 90000000);
+test('87654321, offset=-1.5', ROUND_DYNAMIC(87654321, -1.5), 87500000);
+test('87654321, offset=-2.5', ROUND_DYNAMIC(87654321, -2.5), 87650000);
 
-// Various magnitudes
-test('4308910, grain=0', ROUND_DYNAMIC(4308910), 4000000);
-test('4308910, grain=-0.5', ROUND_DYNAMIC(4308910, -0.5), 4500000);
-test('42109, grain=0', ROUND_DYNAMIC(42109), 40000);
-test('42109, grain=-0.5', ROUND_DYNAMIC(42109, -0.5), 40000);
-test('1234, grain=0', ROUND_DYNAMIC(1234), 1000);
-test('1234, grain=-1', ROUND_DYNAMIC(1234, -1), 1200);
-test('0.35, grain=0', ROUND_DYNAMIC(0.35), 0.4);
-test('0.35, grain=-0.5', ROUND_DYNAMIC(0.35, -0.5), 0.35);
-test('0.35, grain=-1', ROUND_DYNAMIC(0.35, -1), 0.35);
-test('0.047, grain=0', ROUND_DYNAMIC(0.047), 0.05);
-test('0.0083, grain=0', ROUND_DYNAMIC(0.0083), 0.008);
+// Various magnitudes - explicit offset=0
+test('4308910, offset=0', ROUND_DYNAMIC(4308910, 0), 4000000);
+test('4308910, offset=-0.5', ROUND_DYNAMIC(4308910, -0.5), 4500000);
+test('42109, offset=0', ROUND_DYNAMIC(42109, 0), 40000);
+test('42109, offset=-0.5', ROUND_DYNAMIC(42109, -0.5), 40000);
+test('1234, offset=0', ROUND_DYNAMIC(1234, 0), 1000);
+test('1234, offset=-1', ROUND_DYNAMIC(1234, -1), 1200);
+test('0.35, offset=0', ROUND_DYNAMIC(0.35, 0), 0.4);
+test('0.35, offset=-0.5', ROUND_DYNAMIC(0.35, -0.5), 0.35);
+test('0.35, offset=-1', ROUND_DYNAMIC(0.35, -1), 0.35);
+test('0.047, offset=0', ROUND_DYNAMIC(0.047, 0), 0.05);
+test('0.0083, offset=0', ROUND_DYNAMIC(0.0083, 0), 0.008);
+
+// Default offset (now -0.5)
+test('4308910, default', ROUND_DYNAMIC(4308910), 4500000);
+test('0.35, default', ROUND_DYNAMIC(0.35), 0.35);
+test('0.047, default', ROUND_DYNAMIC(0.047), 0.045);
+test('0.0083, default', ROUND_DYNAMIC(0.0083), 0.0085);
 
 // Edge cases
 test('zero', ROUND_DYNAMIC(0), 0);
 test('empty string', ROUND_DYNAMIC(''), '');
 test('null', ROUND_DYNAMIC(null), '');
 test('non-numeric string', ROUND_DYNAMIC('Cloud CDN'), 'Cloud CDN');
-test('negative -4308910', ROUND_DYNAMIC(-4308910), -4000000);
-test('negative -42.66', ROUND_DYNAMIC(-42.66), -40);
+test('negative -4308910', ROUND_DYNAMIC(-4308910), -4500000);
+test('negative -42.66', ROUND_DYNAMIC(-42.66), -45);
 
-// String parsing
+// String parsing (uses default offset=-0.5)
 test('currency $1234.56', ROUND_DYNAMIC('$1,234.56'), 1000);
 test('commas 1,234,567', ROUND_DYNAMIC('1,234,567'), 1000000);
 test('accounting (500)', ROUND_DYNAMIC('(500)'), -500);
 test('euro €1234', ROUND_DYNAMIC('€1,234'), 1000);
 
 // =============================================================================
-// ARRAY MODE TESTS
+// DATASET MODE TESTS
 // =============================================================================
 
-console.log('=== Array Mode ===\n');
+console.log('=== Dataset Mode ===\n');
 
 // GCP dataset (max magnitude = 6)
 const gcpData = [
@@ -149,30 +155,30 @@ const gcpData = [
     [42.66]
 ];
 
-// Defaults: grain_top=-0.5, grain_other=0, num_top=1
-// Mag 6 gets grain=-0.5, others get grain=0
+// Defaults: offset_top=-0.5, offset_other=0, num_top=1
+// Mag 6 gets offset=-0.5, others get offset=0
 testArray('GCP defaults', ROUND_DYNAMIC(gcpData), [
-    [4500000],   // mag 6, grain=-0.5, base=500k
-    [4000000],   // mag 6, grain=-0.5
-    [1000000],   // mag 6, grain=-0.5
-    [1000000],   // mag 5, grain=0, base=100k
-    [800000],    // mag 5, grain=0
-    [80000],     // mag 4, grain=0
-    [40000],     // mag 4, grain=0
-    [20000],     // mag 4, grain=0
-    [2000],      // mag 3, grain=0
-    [1000],      // mag 3, grain=0
-    [70],        // mag 1, grain=0
-    [40]         // mag 1, grain=0
+    [4500000],   // mag 6, offset=-0.5, base=500k
+    [4000000],   // mag 6, offset=-0.5
+    [1000000],   // mag 6, offset=-0.5
+    [1000000],   // mag 5, offset=0, base=100k
+    [800000],    // mag 5, offset=0
+    [80000],     // mag 4, offset=0
+    [40000],     // mag 4, offset=0
+    [20000],     // mag 4, offset=0
+    [2000],      // mag 3, offset=0
+    [1000],      // mag 3, offset=0
+    [70],        // mag 1, offset=0
+    [40]         // mag 1, offset=0
 ]);
 
-// grain_top=-1, grain_other=0, num_top=1
-// Mag 6 gets grain=-1 (base=100k), others get grain=0
-testArray('GCP grain_top=-1', ROUND_DYNAMIC(gcpData, -1, 0, 1), [
-    [4400000],   // mag 6, grain=-1, base=100k
+// offset_top=-1, offset_other=0, num_top=1
+// Mag 6 gets offset=-1 (base=100k), others get offset=0
+testArray('GCP offset_top=-1', ROUND_DYNAMIC(gcpData, -1, 0, 1), [
+    [4400000],   // mag 6, offset=-1, base=100k
     [3900000],
     [1000000],
-    [1000000],   // mag 5, grain=0
+    [1000000],   // mag 5, offset=0
     [800000],
     [80000],
     [40000],
@@ -183,32 +189,32 @@ testArray('GCP grain_top=-1', ROUND_DYNAMIC(gcpData, -1, 0, 1), [
     [40]
 ]);
 
-// grain_top=-0.5, grain_other=-1, num_top=1
-// Mag 6 gets grain=-0.5, others get grain=-1 (one OoM finer)
-testArray('GCP grain_other=-1', ROUND_DYNAMIC(gcpData, -0.5, -1, 1), [
-    [4500000],   // mag 6, grain=-0.5
+// offset_top=-0.5, offset_other=-1, num_top=1
+// Mag 6 gets offset=-0.5, others get offset=-1 (one OoM finer)
+testArray('GCP offset_other=-1', ROUND_DYNAMIC(gcpData, -0.5, -1, 1), [
+    [4500000],   // mag 6, offset=-0.5
     [4000000],
     [1000000],
-    [980000],    // mag 5, grain=-1, base=10k
+    [980000],    // mag 5, offset=-1, base=10k
     [820000],
-    [84000],     // mag 4, grain=-1, base=1k
+    [84000],     // mag 4, offset=-1, base=1k
     [42000],
     [22000],
-    [1500],      // mag 3, grain=-1, base=100
+    [1500],      // mag 3, offset=-1, base=100
     [1100],
-    [67],        // mag 1, grain=-1, base=1
+    [67],        // mag 1, offset=-1, base=1
     [43]
 ]);
 
-// grain_top=-0.5, grain_other=0, num_top=2
-// Mag 6 AND mag 5 get grain=-0.5, others get grain=0
+// offset_top=-0.5, offset_other=0, num_top=2
+// Mag 6 AND mag 5 get offset=-0.5, others get offset=0
 testArray('GCP num_top=2', ROUND_DYNAMIC(gcpData, -0.5, 0, 2), [
-    [4500000],   // mag 6, grain=-0.5
+    [4500000],   // mag 6, offset=-0.5
     [4000000],
     [1000000],
-    [1000000],   // mag 5, grain=-0.5, base=50k
-    [800000],    // mag 5, grain=-0.5
-    [80000],     // mag 4, grain=0
+    [1000000],   // mag 5, offset=-0.5, base=50k
+    [800000],    // mag 5, offset=-0.5
+    [80000],     // mag 4, offset=0
     [40000],
     [20000],
     [2000],
@@ -225,13 +231,13 @@ const decimalsData = [
     [0.0083]
 ];
 
-// Defaults: grain_top=-0.5, grain_other=0, num_top=1
-// Mag -1 gets grain=-0.5, others get grain=0
+// Defaults: offset_top=-0.5, offset_other=0, num_top=1
+// Mag -1 gets offset=-0.5, others get offset=0
 testArray('Decimals defaults', ROUND_DYNAMIC(decimalsData), [
-    [0.35],      // mag -1, grain=-0.5, base=0.05
-    [0.10],      // mag -1, grain=-0.5
-    [0.05],      // mag -2, grain=0, base=0.01
-    [0.008]      // mag -3, grain=0, base=0.001
+    [0.35],      // mag -1, offset=-0.5, base=0.05
+    [0.10],      // mag -1, offset=-0.5
+    [0.05],      // mag -2, offset=0, base=0.01
+    [0.008]      // mag -3, offset=0, base=0.001
 ]);
 
 // Mixed data with non-numeric values
@@ -252,29 +258,29 @@ testArray('Mixed data passthrough', ROUND_DYNAMIC(mixedData), [
 ]);
 
 // =============================================================================
-// SORT-SAFE MODE TESTS
+// DATASET-AWARE SINGLE MODE TESTS
 // =============================================================================
 
-console.log('=== Sort-Safe Mode ===\n');
+console.log('=== Dataset-Aware Single Mode ===\n');
 
-// Same as array mode but per-value
-test('Sort-safe: 4428910.41 in GCP', ROUND_DYNAMIC(4428910.41, gcpData), 4500000);
-test('Sort-safe: 983321.11 in GCP', ROUND_DYNAMIC(983321.11, gcpData), 1000000);
-test('Sort-safe: 42.66 in GCP', ROUND_DYNAMIC(42.66, gcpData), 40);
+// Same as dataset mode but per-value
+test('Dataset-aware single: 4428910.41 in GCP', ROUND_DYNAMIC(4428910.41, gcpData), 4500000);
+test('Dataset-aware single: 983321.11 in GCP', ROUND_DYNAMIC(983321.11, gcpData), 1000000);
+test('Dataset-aware single: 42.66 in GCP', ROUND_DYNAMIC(42.66, gcpData), 40);
 
 // With custom params
-test('Sort-safe: 4428910.41 grain_top=-1', ROUND_DYNAMIC(4428910.41, gcpData, -1, 0, 1), 4400000);
-test('Sort-safe: 983321.11 grain_other=-1', ROUND_DYNAMIC(983321.11, gcpData, -0.5, -1, 1), 980000);
-test('Sort-safe: 983321.11 num_top=2', ROUND_DYNAMIC(983321.11, gcpData, -0.5, 0, 2), 1000000);
+test('Dataset-aware single: 4428910.41 offset_top=-1', ROUND_DYNAMIC(4428910.41, gcpData, -1, 0, 1), 4400000);
+test('Dataset-aware single: 983321.11 offset_other=-1', ROUND_DYNAMIC(983321.11, gcpData, -0.5, -1, 1), 980000);
+test('Dataset-aware single: 983321.11 num_top=2', ROUND_DYNAMIC(983321.11, gcpData, -0.5, 0, 2), 1000000);
 
 // Decimals
-test('Sort-safe: 0.35 in decimals', ROUND_DYNAMIC(0.35, decimalsData), 0.35);
-test('Sort-safe: 0.047 in decimals', ROUND_DYNAMIC(0.047, decimalsData), 0.05);
+test('Dataset-aware single: 0.35 in decimals', ROUND_DYNAMIC(0.35, decimalsData), 0.35);
+test('Dataset-aware single: 0.047 in decimals', ROUND_DYNAMIC(0.047, decimalsData), 0.05);
 
 // Edge cases
-test('Sort-safe: non-numeric', ROUND_DYNAMIC('Cloud CDN', gcpData), 'Cloud CDN');
-test('Sort-safe: zero', ROUND_DYNAMIC(0, gcpData), 0);
-test('Sort-safe: empty', ROUND_DYNAMIC('', gcpData), '');
+test('Dataset-aware single: non-numeric', ROUND_DYNAMIC('Cloud CDN', gcpData), 'Cloud CDN');
+test('Dataset-aware single: zero', ROUND_DYNAMIC(0, gcpData), 0);
+test('Dataset-aware single: empty', ROUND_DYNAMIC('', gcpData), '');
 
 // =============================================================================
 // DATE/TIME HANDLING TESTS
@@ -329,67 +335,67 @@ test('Sort-safe: date in ref range ignored', ROUND_DYNAMIC(4428910.41, rangeWith
 console.log('=== Boundary Cases ===\n');
 
 // Numbers at exact powers of 10
-test('Exact 1000, grain=0', ROUND_DYNAMIC(1000), 1000);
-test('Exact 1000, grain=-1', ROUND_DYNAMIC(1000, -1), 1000);
-test('Exact 10000000, grain=0', ROUND_DYNAMIC(10000000), 10000000);
+test('Exact 1000, offset=0', ROUND_DYNAMIC(1000, 0), 1000);
+test('Exact 1000, offset=-1', ROUND_DYNAMIC(1000, -1), 1000);
+test('Exact 10000000, offset=0', ROUND_DYNAMIC(10000000, 0), 10000000);
 
 // Just above/below magnitude boundaries
-test('999 (mag 2), grain=0', ROUND_DYNAMIC(999), 1000);
-test('1001 (mag 3), grain=0', ROUND_DYNAMIC(1001), 1000);
-test('9999 (mag 3), grain=0', ROUND_DYNAMIC(9999), 10000);
-test('10001 (mag 4), grain=0', ROUND_DYNAMIC(10001), 10000);
+test('999 (mag 2), offset=0', ROUND_DYNAMIC(999, 0), 1000);
+test('1001 (mag 3), offset=0', ROUND_DYNAMIC(1001, 0), 1000);
+test('9999 (mag 3), offset=0', ROUND_DYNAMIC(9999, 0), 10000);
+test('10001 (mag 4), offset=0', ROUND_DYNAMIC(10001, 0), 10000);
 
 // Very small numbers
-test('0.001, grain=0', ROUND_DYNAMIC(0.001), 0.001);
-test('0.0015, grain=0', ROUND_DYNAMIC(0.0015), 0.002);
-test('0.00099, grain=0', ROUND_DYNAMIC(0.00099), 0.001);
+test('0.001, offset=0', ROUND_DYNAMIC(0.001, 0), 0.001);
+test('0.0015, offset=0', ROUND_DYNAMIC(0.0015, 0), 0.002);
+test('0.00099, offset=0', ROUND_DYNAMIC(0.00099, 0), 0.001);
 
 // Very large numbers
-test('999999999, grain=0', ROUND_DYNAMIC(999999999), 1000000000);
-test('1000000001, grain=0', ROUND_DYNAMIC(1000000001), 1000000000);
+test('999999999, offset=0', ROUND_DYNAMIC(999999999, 0), 1000000000);
+test('1000000001, offset=0', ROUND_DYNAMIC(1000000001, 0), 1000000000);
 
-// Grain boundary: 0.5 vs -0.5 equivalence
-test('87654321 grain=0.5', ROUND_DYNAMIC(87654321, 0.5), ROUND_DYNAMIC(87654321, -0.5));
-test('87654321 grain=0.3', ROUND_DYNAMIC(87654321, 0.3), ROUND_DYNAMIC(87654321, -0.3));
+// Offset boundary: 0.5 vs -0.5 equivalence
+test('87654321 offset=0.5', ROUND_DYNAMIC(87654321, 0.5), ROUND_DYNAMIC(87654321, -0.5));
+test('87654321 offset=0.3', ROUND_DYNAMIC(87654321, 0.3), ROUND_DYNAMIC(87654321, -0.3));
 
 // Negative numbers at boundaries
-test('-999, grain=0', ROUND_DYNAMIC(-999), -1000);
-test('-1001, grain=0', ROUND_DYNAMIC(-1001), -1000);
+test('-999, offset=0', ROUND_DYNAMIC(-999, 0), -1000);
+test('-1001, offset=0', ROUND_DYNAMIC(-1001, 0), -1000);
 
-// Floating point edge case (the epsilon fix)
-test('0.35 rounds to 0.4 not 0.3', ROUND_DYNAMIC(0.35), 0.4);
-test('0.45 rounds to 0.5', ROUND_DYNAMIC(0.45), 0.5);
-test('0.25 rounds to 0.3', ROUND_DYNAMIC(0.25), 0.3);
+// Floating point edge case (the epsilon fix) - tests offset=0 specifically
+test('0.35 rounds to 0.4 not 0.3', ROUND_DYNAMIC(0.35, 0), 0.4);
+test('0.45 rounds to 0.5', ROUND_DYNAMIC(0.45, 0), 0.5);
+test('0.25 rounds to 0.3', ROUND_DYNAMIC(0.25, 0), 0.3);
 
 // =============================================================================
 // GRAIN VALIDATION TESTS
 // =============================================================================
 
-console.log('=== Grain Validation ===\n');
+console.log('=== Offset Validation ===\n');
 
 // Valid boundary values (should not throw)
-test('grain=-20 valid', ROUND_DYNAMIC(1000, -20), 1000);
+test('offset=-20 valid', ROUND_DYNAMIC(1000, -20), 1000);
 
 // Invalid values (should throw)
-testThrows('grain=21 throws', () => ROUND_DYNAMIC(1000, 21), 'grain must be between -20 and 20');
-testThrows('grain=-21 throws', () => ROUND_DYNAMIC(1000, -21), 'grain must be between -20 and 20');
-testThrows('grain=100 throws', () => ROUND_DYNAMIC(1000, 100), 'grain must be between -20 and 20');
-testThrows('grain=-100 throws', () => ROUND_DYNAMIC(1000, -100), 'grain must be between -20 and 20');
+testThrows('offset=21 throws', () => ROUND_DYNAMIC(1000, 21), 'offset must be between -20 and 20');
+testThrows('offset=-21 throws', () => ROUND_DYNAMIC(1000, -21), 'offset must be between -20 and 20');
+testThrows('offset=100 throws', () => ROUND_DYNAMIC(1000, 100), 'offset must be between -20 and 20');
+testThrows('offset=-100 throws', () => ROUND_DYNAMIC(1000, -100), 'offset must be between -20 and 20');
 
-// grain >= 2 always returns 0 (short-circuit optimization)
-test('grain=2 returns 0', ROUND_DYNAMIC(9999, 2), 0);
-test('grain=2.5 returns 0', ROUND_DYNAMIC(9999, 2.5), 0);
-test('grain=5 returns 0', ROUND_DYNAMIC(1e10, 5), 0);
-test('grain=20 returns 0', ROUND_DYNAMIC(1e20, 20), 0);
-test('grain=2 negative input returns 0', ROUND_DYNAMIC(-9999, 2), 0);
+// offset >= 2 always returns 0 (short-circuit optimization)
+test('offset=2 returns 0', ROUND_DYNAMIC(9999, 2), 0);
+test('offset=2.5 returns 0', ROUND_DYNAMIC(9999, 2.5), 0);
+test('offset=5 returns 0', ROUND_DYNAMIC(1e10, 5), 0);
+test('offset=20 returns 0', ROUND_DYNAMIC(1e20, 20), 0);
+test('offset=2 negative input returns 0', ROUND_DYNAMIC(-9999, 2), 0);
 
 // Array mode validation
-testThrows('array grain_top=25 throws', () => ROUND_DYNAMIC([[1000]], 25, 0, 1), 'grain_top must be between -20 and 20');
-testThrows('array grain_other=25 throws', () => ROUND_DYNAMIC([[1000]], 0, 25, 1), 'grain_other must be between -20 and 20');
+testThrows('array offset_top=25 throws', () => ROUND_DYNAMIC([[1000]], 25, 0, 1), 'offset_top must be between -20 and 20');
+testThrows('array offset_other=25 throws', () => ROUND_DYNAMIC([[1000]], 0, 25, 1), 'offset_other must be between -20 and 20');
 
 // Sort-safe mode validation
-testThrows('sort-safe grain_top=25 throws', () => ROUND_DYNAMIC(1000, [[1000]], 25, 0, 1), 'grain_top must be between -20 and 20');
-testThrows('sort-safe grain_other=25 throws', () => ROUND_DYNAMIC(1000, [[1000]], 0, 25, 1), 'grain_other must be between -20 and 20');
+testThrows('sort-safe offset_top=25 throws', () => ROUND_DYNAMIC(1000, [[1000]], 25, 0, 1), 'offset_top must be between -20 and 20');
+testThrows('sort-safe offset_other=25 throws', () => ROUND_DYNAMIC(1000, [[1000]], 0, 25, 1), 'offset_other must be between -20 and 20');
 
 // =============================================================================
 // ADDITIONAL EDGE CASES
