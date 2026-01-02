@@ -1,0 +1,37 @@
+name: Deploy to GAS
+
+on:
+  push:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Clasp
+        run: npm install -g @google/cloud/clasp
+
+      - name: Write CLASPRC
+        run: echo "$CLASPRC_SECRET" > ~/.clasprc.json
+        env:
+          CLASPRC_SECRET: ${{ secrets.CLASPRC_SECRET }}
+
+      - name: Push (Development)
+        if: github.event_name == 'push'
+        run: clasp push -f
+
+      - name: Version and Deploy (Production)
+        if: github.event_name == 'release'
+        run: |
+          clasp push -f
+          clasp version "${{ github.event.release.tag_name }}"
+          clasp deploy -d "${{ github.event.release.tag_name }}"
