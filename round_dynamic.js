@@ -14,6 +14,10 @@ const DEFAULT_OFFSET_TOP = -0.5;
 const DEFAULT_OFFSET_OTHER = 0;
 const DEFAULT_NUM_TOP = 1;
 
+// Internal constants
+const VALIDATION_LIMIT = 20;
+const EPSILON = 1e-9;
+
 /**
  * Declarative rounding by order of magnitude.
  * [MODE 1]: single [MODE 2] dataset [MODE 3] dataset-aware single
@@ -28,10 +32,10 @@ function ROUND_DYNAMIC(value_or_range, offset_or_range, offset_top, offset_other
 
   if (firstIsArray) {
     // Dataset mode: ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
-    return arrayMode(value_or_range, offset_or_range, offset_top, offset_other);
+    return datasetMode(value_or_range, offset_or_range, offset_top, offset_other);
   } else if (secondIsArray) {
     // Dataset-aware single mode: ROUND_DYNAMIC(value, range, [offset_top], [offset_other], [num_top])
-    return sortSafeMode(value_or_range, offset_or_range, offset_top, offset_other, num_top);
+    return datasetAwareSingleMode(value_or_range, offset_or_range, offset_top, offset_other, num_top);
   } else {
     // Single mode: ROUND_DYNAMIC(value, [offset])
     return singleValueMode(value_or_range, offset_or_range);
@@ -57,7 +61,7 @@ function singleValueMode(value, offset) {
 /**
  * Dataset mode: rounds a range with dataset-aware heuristic.
  */
-function arrayMode(range, offset_top, offset_other, num_top) {
+function datasetMode(range, offset_top, offset_other, num_top) {
   offset_top = (offset_top === undefined || offset_top === "") ? DEFAULT_OFFSET_TOP : offset_top;
   offset_other = (offset_other === undefined || offset_other === "") ? DEFAULT_OFFSET_OTHER : offset_other;
   num_top = (num_top === undefined || num_top === "") ? DEFAULT_NUM_TOP : num_top;
@@ -71,7 +75,6 @@ function arrayMode(range, offset_top, offset_other, num_top) {
 
   //Parse range to numbers one time...
   const numericRange = range.map(row => row.map(cell => toNumber(cell)));
-
   // ... then use to:
   //  a. find max magnitude
   const max_mag = findMaxMagnitude(numericRange);
@@ -84,7 +87,7 @@ function arrayMode(range, offset_top, offset_other, num_top) {
 /**
  * Dataset-aware single mode: rounds one value with dataset-aware heuristic based on reference range.
  */
-function sortSafeMode(value, ref_range, offset_top, offset_other, num_top) {
+function datasetAwareSingleMode(value, ref_range, offset_top, offset_other, num_top) {
   offset_top = (offset_top === undefined || offset_top === "") ? DEFAULT_OFFSET_TOP : offset_top;
   offset_other = (offset_other === undefined || offset_other === "") ? DEFAULT_OFFSET_OTHER : offset_other;
   num_top = (num_top === undefined || num_top === "") ? DEFAULT_NUM_TOP : num_top;
@@ -98,13 +101,13 @@ function sortSafeMode(value, ref_range, offset_top, offset_other, num_top) {
     ref_range = [ref_range];
   }
 
-  // OPTIMIZATION: Parse reference range to numbers once
+
+  //Parse range to numbers one time...
   const numericRefRange = ref_range.map(row => row.map(cell => toNumber(cell)));
-
-  // Find max magnitude from reference range using pre-parsed numbers
+  // ... then use to:
+  //  a. find max magnitude
   const max_mag = findMaxMagnitude(numericRefRange);
-
-  // Round the single value
+  //  b. Round the single value
   const num = toNumber(value);
   return roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_top);
 }
@@ -170,8 +173,8 @@ function roundWithOffset(num, offset) {
   const target_mag = current_mag + oom_offset;
   const rounding_base = Math.pow(10, target_mag) * fraction;
 
-  // Add epsilon (1e-9) to handle floating point inaccuracies
-  return Math.round(num / rounding_base + 1e-9) * rounding_base;
+  // Add epsilon to handle floating point inaccuracies
+  return Math.round(num / rounding_base + EPSILON) * rounding_base;
 }
 
 /**
@@ -199,7 +202,7 @@ function toNumber(value) {
  * Throws an error if offset is outside -20 to 20.
  */
 function validateOffset(offset, paramName) {
-  if (offset < -20 || offset > 20) {
-    throw new Error(paramName + " must be between -20 and 20, got " + offset);
+  if (offset < -VALIDATION_LIMIT || offset > VALIDATION_LIMIT) {
+    throw new Error(paramName + " must be between -" + VALIDATION_LIMIT + " and " + VALIDATION_LIMIT + ", got " + offset);
   }
 }
