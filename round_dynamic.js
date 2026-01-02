@@ -1,7 +1,7 @@
 /**
  * DynamicRounding - Dynamic rounding for readable data sets
  * Version: 0.2.4
- * https://github.com/ArieFisher/dynamicrounding
+ * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  */
 
@@ -23,7 +23,7 @@ const EPSILON = 1e-9; // used to handle floating point inaccuracies
  * [MODE 1] single value 
  * [MODE 2] dataset 
  * [MODE 3] dataset-aware single value 
- * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamicrounding
+ * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
  * 
  * @return Rounded values.
  * @customfunction
