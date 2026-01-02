@@ -10,17 +10,19 @@ const CLEAN_REGEX = /[$€£¥,\s]/g;
 const PARENS_REGEX = /^\((.+)\)$/;
 
 // parameters' default values
-const DEFAULT_OFFSET_TOP = -0.5;
-const DEFAULT_OFFSET_OTHER = 0;
-const DEFAULT_NUM_TOP = 1;
+const DEFAULT_OFFSET_TOP = -0.5; // in all modes, by default, round to the nearest half order of magnitude
+const DEFAULT_OFFSET_OTHER = 0; // in dataset-aware modes, by default round numbers that are not in the top orders of magnitude to their nearest full order of magnitude
+const DEFAULT_NUM_TOP = 1; // in dataset-aware modes, by default, round numbers that are in the top 1 order of magnitude to DEFAULT_OFFSET_TOP
 
 // Internal constants
-const VALIDATION_LIMIT = 20;
-const EPSILON = 1e-9;
+const VALIDATION_LIMIT = 20; // arbitrarily chosen as a 'sane' limit for the order of magnitude offset (i.e. +-20 orders of magnitude)
+const EPSILON = 1e-9; // used to handle floating point inaccuracies
 
 /**
  * Declarative rounding by order of magnitude.
- * [MODE 1]: single [MODE 2] dataset [MODE 3] dataset-aware single
+ * [MODE 1] single value 
+ * [MODE 2] dataset 
+ * [MODE 3] dataset-aware single value 
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamicrounding
  * 
  * @return Rounded values.
