@@ -1,9 +1,18 @@
 /**
  * DynamicRounding - Dynamic rounding for readable data sets
- * Version: 0.2.3
+ * Version: 0.2.4
  * https://github.com/ArieFisher/dynamicrounding
  * MIT License
  */
+
+// Constants
+const CLEAN_REGEX = /[$€£¥,\s]/g;
+const PARENS_REGEX = /^\((.+)\)$/;
+
+// parameters' default values
+const DEFAULT_OFFSET_TOP = -0.5;
+const DEFAULT_OFFSET_OTHER = 0;
+const DEFAULT_NUM_TOP = 1;
 
 /**
  * Declarative rounding by order of magnitude.
@@ -33,7 +42,7 @@ function ROUND_DYNAMIC(value_or_range, offset_or_range, offset_top, offset_other
  * Single mode: rounds one value based on its own magnitude.
  */
 function singleValueMode(value, offset) {
-  offset = (offset === undefined || offset === "") ? -0.5 : offset;
+  offset = (offset === undefined || offset === "") ? DEFAULT_OFFSET_TOP : offset;
   validateOffset(offset, "offset");
 
   if (value === "" || value === null) return "";
@@ -49,9 +58,9 @@ function singleValueMode(value, offset) {
  * Dataset mode: rounds a range with dataset-aware heuristic.
  */
 function arrayMode(range, offset_top, offset_other, num_top) {
-  offset_top = (offset_top === undefined || offset_top === "") ? -0.5 : offset_top;
-  offset_other = (offset_other === undefined || offset_other === "") ? 0 : offset_other;
-  num_top = (num_top === undefined || num_top === "") ? 1 : num_top;
+  offset_top = (offset_top === undefined || offset_top === "") ? DEFAULT_OFFSET_TOP : offset_top;
+  offset_other = (offset_other === undefined || offset_other === "") ? DEFAULT_OFFSET_OTHER : offset_other;
+  num_top = (num_top === undefined || num_top === "") ? DEFAULT_NUM_TOP : num_top;
   validateOffset(offset_top, "offset_top");
   validateOffset(offset_other, "offset_other");
 
@@ -60,12 +69,15 @@ function arrayMode(range, offset_top, offset_other, num_top) {
     range = [range];
   }
 
-  // Find max magnitude
-  const max_mag = findMaxMagnitude(range);
+  //Parse range to numbers one time...
+  const numericRange = range.map(row => row.map(cell => toNumber(cell)));
 
-  // Round each cell
-  return range.map(row =>
-    row.map(cell => roundCellSetAware(cell, max_mag, offset_top, offset_other, num_top))
+  // ... then use to:
+  //  a. find max magnitude
+  const max_mag = findMaxMagnitude(numericRange);
+  //  b. round each cell
+  return range.map((row, r) =>
+    row.map((cell, c) => roundCellSetAware(cell, numericRange[r][c], max_mag, offset_top, offset_other, num_top))
   );
 }
 
@@ -73,9 +85,9 @@ function arrayMode(range, offset_top, offset_other, num_top) {
  * Dataset-aware single mode: rounds one value with dataset-aware heuristic based on reference range.
  */
 function sortSafeMode(value, ref_range, offset_top, offset_other, num_top) {
-  offset_top = (offset_top === undefined || offset_top === "") ? -0.5 : offset_top;
-  offset_other = (offset_other === undefined || offset_other === "") ? 0 : offset_other;
-  num_top = (num_top === undefined || num_top === "") ? 1 : num_top;
+  offset_top = (offset_top === undefined || offset_top === "") ? DEFAULT_OFFSET_TOP : offset_top;
+  offset_other = (offset_other === undefined || offset_other === "") ? DEFAULT_OFFSET_OTHER : offset_other;
+  num_top = (num_top === undefined || num_top === "") ? DEFAULT_NUM_TOP : num_top;
   validateOffset(offset_top, "offset_top");
   validateOffset(offset_other, "offset_other");
 
@@ -86,21 +98,25 @@ function sortSafeMode(value, ref_range, offset_top, offset_other, num_top) {
     ref_range = [ref_range];
   }
 
-  // Find max magnitude from reference range
-  const max_mag = findMaxMagnitude(ref_range);
+  // OPTIMIZATION: Parse reference range to numbers once
+  const numericRefRange = ref_range.map(row => row.map(cell => toNumber(cell)));
+
+  // Find max magnitude from reference range using pre-parsed numbers
+  const max_mag = findMaxMagnitude(numericRefRange);
 
   // Round the single value
-  return roundCellSetAware(value, max_mag, offset_top, offset_other, num_top);
+  const num = toNumber(value);
+  return roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_top);
 }
 
 /**
- * Finds the maximum magnitude (order of magnitude) in a 2D array.
+ * Finds the maximum magnitude (order of magnitude) in a 2D array of numbers.
+ * Assumes input is already parsed via toNumber().
  */
-function findMaxMagnitude(range) {
+function findMaxMagnitude(numericRange) {
   let max_mag = null;
-  for (let row of range) {
-    for (let cell of row) {
-      const num = toNumber(cell);
+  for (let row of numericRange) {
+    for (let num of row) {
       if (num !== null && num !== 0 && isFinite(num)) {
         const mag = Math.floor(Math.log10(Math.abs(num)));
         if (max_mag === null || mag > max_mag) {
@@ -114,11 +130,11 @@ function findMaxMagnitude(range) {
 
 /**
  * Rounds a cell with set-aware heuristic.
+ * Uses pre-parsed number to avoid redundant parsing.
  */
-function roundCellSetAware(value, max_mag, offset_top, offset_other, num_top) {
+function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_top) {
   if (value === "" || value === null) return "";
 
-  const num = toNumber(value);
   if (num === null) return value; // pass through non-numeric
   if (num === 0) return 0;
 
@@ -148,11 +164,13 @@ function roundWithOffset(num, offset) {
 
   // Decompose offset into integer part and fraction
   const oom_offset = Math.trunc(offset);
+  // If offset is integer, fraction becomes 0 || 1 (default multiplier)
   const fraction = Math.abs(offset - oom_offset) || 1;
 
   const target_mag = current_mag + oom_offset;
   const rounding_base = Math.pow(10, target_mag) * fraction;
 
+  // Add epsilon (1e-9) to handle floating point inaccuracies
   return Math.round(num / rounding_base + 1e-9) * rounding_base;
 }
 
@@ -168,8 +186,8 @@ function toNumber(value) {
   if (typeof value === "string" && value.trim() !== "") {
     // Remove common formatting: currency symbols, commas, spaces, parentheses for negatives
     let cleaned = value.trim()
-      .replace(/[$€£¥,\s]/g, "")
-      .replace(/^\((.+)\)$/, "-$1"); // (100) -> -100
+      .replace(CLEAN_REGEX, "")
+      .replace(PARENS_REGEX, "-$1"); // (100) -> -100
     const parsed = Number(cleaned);
     return isFinite(parsed) ? parsed : null;
   }
