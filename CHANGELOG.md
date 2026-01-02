@@ -12,10 +12,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Refactoring:** Extracted regex literals to file-scope constants (`CLEAN_REGEX`, `PARENS_REGEX`).
 - **Refactoring:** Extracted default values and internal limits to named constants (`DEFAULT_OFFSET_TOP`, `VALIDATION_LIMIT`, etc.).
 
-### Fixed
-
-- **Regression:** Fixed potentially erroneous variable reference in `datasetAwareSingleMode` introduced during copy-paste.
-- **Floating Point:** Added epsilon (`1e-9`) to rounding calculation to improve stability at boundaries.
 
 ## [0.2.3] - 2024-12-31
 
