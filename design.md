@@ -133,9 +133,14 @@ Example: `10^6 × 0.5 = 500,000`
 
 **Step 5: Round**
 ```
-result = round(value / base) × base
+result = round(value / base + epsilon) × base
 ```
-Example: `round(87654321 / 500000) × 500000 = 175 × 500000 = 87,500,000`
+Example: `round(87654321 / 500000 + 1e-9) × 500000 = 175 × 500000 = 87,500,000`
+
+## Implementation Details
+
+**Performance Optimization (Double Parsing)**
+For dataset operations, the code pre-parses the entire range into a numeric array (or `null`) *before* calculating magnitude or rounding. This avoids running the expensive `toNumber()` regex logic twice for every cell.
 
 ## Vocabulary
 
