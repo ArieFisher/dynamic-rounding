@@ -4,7 +4,7 @@
 
 **Platforms:**
 - Google Sheets (JavaScript) — v0.2.4
-- Python — v0.1.1
+- Python — v0.1.2
 
 ## Features
 
@@ -12,9 +12,11 @@
 2. **Set-Aware Rounding:** When given a dataset, dynamically applies different precision to different orders of magnitude. Larger numbers can retain more detail while smaller numbers are simplified.
 3. **Sign-Aware:** Handles negative numbers natively without mathematical errors.
 4. **Robust:** Handles empty strings, zeros, and dates without crashing.
-   - *Google Sheets:* Non-numeric values pass through unchanged.
-   - *Python:* Raises `ValueError` for non-numeric input.
-5. **Multiple Modes:** Supports single and dataset usage patterns via auto-detection. Google Sheets also supports dataset-aware single mode.
+   - *Google Sheets:* Non-numeric values pass through unchanged. Empty/null returns `""`.
+   - *Python:* Non-numeric values pass through unchanged by default. `None` returns `None`. Use `enforce_numeric=True` to raise `ValueError` for non-numeric input.
+5. **Type Preservation (Python):** Returns `int` if input was `int` and result is a whole number; otherwise returns `float`.
+6. **String Parsing (pandas):** Parses formatted strings like `"$1,200"`, `"(500)"` (accounting negative), and `"4,428,910.41"` before rounding.
+7. **Multiple Modes:** Supports single and dataset usage patterns via auto-detection. Google Sheets also supports dataset-aware single mode.
 
 ## Modes
 

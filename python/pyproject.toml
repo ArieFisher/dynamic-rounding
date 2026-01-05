@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dynamic-rounding"
-version = "0.1.1"
+version = "0.1.2"
 description = "Dynamic rounding for readable data - rounds based on order of magnitude"
 readme = "README.md"
 license = {text = "MIT"}
