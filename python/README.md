@@ -21,7 +21,7 @@ pip install dynamic-rounding[pandas]
 from dynamic_rounding import round_dynamic
 
 # Single value - rounds to nearest half order of magnitude
-round_dynamic(87654321)        # → 90,000,000
+round_dynamic(86543210)        # → 85,000,000
 round_dynamic(4321)            # → 4,500
 
 # Custom offset
@@ -84,5 +84,5 @@ MIT
 
 ## See Also
 
-- [Google Sheets version](../js/) - Use `=ROUND_DYNAMIC()` in spreadsheets
-- [Design doc](../design.md) - Algorithm details
+- [Google Sheets version](https://github.com/ArieFisher/dynamic-rounding/tree/main/js) - Use `=ROUND_DYNAMIC()` in spreadsheets
+- [Design doc](https://github.com/ArieFisher/dynamic-rounding/blob/main/design.md) - Algorithm details

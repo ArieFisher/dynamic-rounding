@@ -1,6 +1,6 @@
 """
 DynamicRounding - Dynamic rounding for readable data
-Version: 0.3.0
+Version: 0.1.1
 https://github.com/ArieFisher/dynamic-rounding
 MIT License
 """
@@ -8,7 +8,7 @@ MIT License
 import math
 from typing import Union, List, Optional
 
-__version__ = "0.3.0"
+__version__ = "0.1.1"
 
 # Constants
 DEFAULT_OFFSET = -0.5
