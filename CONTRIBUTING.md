@@ -19,10 +19,19 @@ Open a GitHub issue describing:
 - How you'd expect it to work
 - Example input/output if applicable
 
+## Development Workflow
+
+We follow a [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow) approach:
+
+1.  **Main is always deployable**: The `main` branch contains the latest stable code.
+2.  **No direct commits to main**: ALl changes must come through a Pull Request.
+3.  **Short-lived feature branches**: Create a branch for each feature or fix. Sync with `main` frequently.
+4.  **Pull Requests**: Open a PR as soon as you have a small, working set of changes.
+
 ## Pull Requests
 
-1. Fork the repo
-2. Create a branch for your change
+1. Fork the repo (if you are an external contributor)
+2. Create a branch for your change (`git checkout -b feature/my-feature`)
 3. Test your changes in a Google Sheet
 4. Submit a PR with a clear description
 
