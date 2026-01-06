@@ -1,14 +1,22 @@
 # DynamicRounding Design Doc
 
-**Version:** 2.1
+**Version:** 2.2
+
+**Platforms:**
+- Google Sheets (JavaScript) — v0.2.4
+- Python — v0.1.2
 
 ## Features
 
 1. **Declarative Rounding:** Rounds based on an offset from each number's order of magnitude. No need to specify decimal places or rounding units - the function adapts to the input.
 2. **Set-Aware Rounding:** When given a dataset, dynamically applies different precision to different orders of magnitude. Larger numbers can retain more detail while smaller numbers are simplified.
 3. **Sign-Aware:** Handles negative numbers natively without mathematical errors.
-4. **Robust:** Handles non-numeric cells, empty strings, zeros, and dates without crashing. Non-numeric values pass through unchanged.
-5. **Multiple Modes:** Supports single, dataset, and dataset-aware single usage patterns via auto-detection.
+4. **Robust:** Handles empty strings, zeros, and dates without crashing.
+   - *Google Sheets:* Non-numeric values pass through unchanged. Empty/null returns `""`.
+   - *Python:* Non-numeric values pass through unchanged by default. `None` returns `None`. Use `enforce_numeric=True` to raise `ValueError` for non-numeric input.
+5. **Type Preservation (Python):** Returns `int` if input was `int` and result is a whole number; otherwise returns `float`.
+6. **String Parsing (pandas):** Parses formatted strings like `"$1,200"`, `"(500)"` (accounting negative), and `"4,428,910.41"` before rounding.
+7. **Multiple Modes:** Supports single and dataset usage patterns via auto-detection. Google Sheets also supports dataset-aware single mode.
 
 ## Modes
 
@@ -36,11 +44,11 @@ Rounds a range. Applies different offsets to top magnitude(s) vs others.
 | offset_other | 0 |
 | num_top | 1 |
 
-### 3. Dataset-aware single
+### 3. Dataset-aware single (Google Sheets only)
 
 **`=ROUND_DYNAMIC(value, range, [offset_top], [offset_other], [num_top])`**
 
-Same logic as dataset mode, but for one value within context of a range. Safe to sort.
+Same logic as dataset mode, but for one value within context of a range.
 
 | Parameter | Default |
 |-----------|---------|
@@ -139,8 +147,16 @@ Example: `round(87654321 / 500000 + 1e-9) × 500000 = 175 × 500000 = 87,500,000
 
 ## Implementation Details
 
-**Performance Optimization (Double Parsing)**
+**Constants:**
+- `EPSILON = 1e-9` — Added to rounding to handle floating-point precision edge cases
+- `VALIDATION_LIMIT = 20` — Offset must be between -20 and 20
+- `DEFAULT_OFFSET = -0.5` — Default offset for all modes
+
+**Performance Optimization (Double Parsing):**
 For dataset operations, the code pre-parses the entire range into a numeric array (or `null`) *before* calculating magnitude or rounding. This avoids running the expensive `toNumber()` regex logic twice for every cell.
+
+**String Parsing (Google Sheets only):**
+Formatted strings are parsed via regex: currency symbols (`$€£¥`), commas, spaces, and accounting parentheses (e.g., `(500)` → `-500`).
 
 ## Vocabulary
 
