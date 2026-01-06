@@ -85,4 +85,4 @@ MIT
 ## See Also
 
 - [Google Sheets version](https://github.com/ArieFisher/dynamic-rounding/tree/main/js) - Use `=ROUND_DYNAMIC()` in spreadsheets
-- [Design doc](https://github.com/ArieFisher/dynamic-rounding/blob/main/design.md) - Algorithm details
+- [Design doc](https://github.com/ArieFisher/dynamic-rounding/blob/main/docs/design.md) - Algorithm details

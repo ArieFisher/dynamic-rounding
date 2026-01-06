@@ -40,7 +40,7 @@ round_dynamic([4428910, 983321, 42109])    # → [4,500,000, 1,000,000, 40,000]
 
 ## Documentation
 
-- [Design Doc](./design.md) - Algorithm and concepts
+- [Design Doc](./docs/design.md) - Algorithm and concepts
 - [Google Sheets README](./js/README.md) - Full Sheets documentation
 - [Python README](./python/README.md) - Full Python documentation
 
