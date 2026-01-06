@@ -1,8 +1,10 @@
 # Dynamic Rounding for Google Sheets
 
+**Version 0.2.4**
+
 *Quickly make data more readable.*
 
-This is a custom function for Google Sheets that rounds numbers *declaratively* - you describe the precision you want, and the function adapts to each value's magnitude.
+This is a custom function for Google Sheets that rounds numbers *declaratively* — you describe the precision you want, and the function adapts to each value's magnitude.
 
 ## Installation
 
@@ -97,6 +99,8 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 **Non-numeric values:** Pass through unchanged.
 
+**Empty/null values:** Return empty string.
+
 ---
 
 ## Parameters
@@ -139,8 +143,8 @@ The test suite covers:
 
 ## See Also
 
-- [Design Doc](../docs/design.md) - Algorithm and concepts
-- [Python version](../python/) - `pip install dynamic-rounding`
+- [Design Doc](../docs/design.md) — Algorithm and concepts
+- [Python version](../python/) — `pip install dynamic-rounding`
 - [Changelog](./CHANGELOG.md)
 
 ## License

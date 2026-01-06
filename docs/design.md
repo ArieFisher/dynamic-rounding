@@ -1,6 +1,6 @@
 # DynamicRounding Design Doc
 
-**Version:** 2.2
+**Version:** 2.3
 
 **Platforms:**
 - Google Sheets (JavaScript) — v0.2.4
@@ -8,15 +8,27 @@
 
 ## Features
 
-1. **Declarative Rounding:** Rounds based on an offset from each number's order of magnitude. No need to specify decimal places or rounding units - the function adapts to the input.
+1. **Declarative Rounding:** Rounds based on an offset from each number's order of magnitude. No need to specify decimal places or rounding units — the function adapts to the input.
+
 2. **Set-Aware Rounding:** When given a dataset, dynamically applies different precision to different orders of magnitude. Larger numbers can retain more detail while smaller numbers are simplified.
+
 3. **Sign-Aware:** Handles negative numbers natively without mathematical errors.
-4. **Robust:** Handles empty strings, zeros, and dates without crashing.
+
+4. **Robust:** Handles empty strings, zeros, nulls, and dates without crashing.
    - *Google Sheets:* Non-numeric values pass through unchanged. Empty/null returns `""`.
-   - *Python:* Non-numeric values pass through unchanged by default. `None` returns `None`. Use `enforce_numeric=True` to raise `ValueError` for non-numeric input.
-5. **Type Preservation (Python):** Returns `int` if input was `int` and result is a whole number; otherwise returns `float`.
-6. **String Parsing (pandas):** Parses formatted strings like `"$1,200"`, `"(500)"` (accounting negative), and `"4,428,910.41"` before rounding.
-7. **Multiple Modes:** Supports single and dataset usage patterns via auto-detection. Google Sheets also supports dataset-aware single mode.
+   - *Python:* Non-numeric values pass through unchanged by default. `None` returns `None`.
+
+5. **String Parsing:** Formatted strings are parsed automatically:
+   - Currency symbols: `$`, `€`, `£`, `¥`
+   - Thousands separators: commas, spaces
+   - Accounting negatives: `(500)` → `-500`
+   - *Supported in:* Google Sheets (all modes) and Python (pandas module)
+
+6. **Type Preservation (Python):** Returns `int` if input was `int` and result is a whole number; otherwise returns `float`.
+
+7. **Strict Mode (Python):** Use `enforce_numeric=True` to raise `ValueError` for non-numeric input instead of passing through.
+
+8. **Multiple Modes:** Supports single and dataset usage patterns via auto-detection. Google Sheets also supports dataset-aware single mode.
 
 ## Modes
 
@@ -24,7 +36,8 @@ The user invokes one of three modes by their choice of parameters:
 
 ### 1. Single
 
-**`=ROUND_DYNAMIC(value, [offset])`**
+**`=ROUND_DYNAMIC(value, [offset])`** (Sheets)  
+**`round_dynamic(value, offset=...)`** (Python)
 
 Rounds one value based on its own magnitude.
 
@@ -34,9 +47,10 @@ Rounds one value based on its own magnitude.
 
 ### 2. Dataset
 
-**`=ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])`**
+**`=ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])`** (Sheets)  
+**`round_dynamic([values], offset_top=..., offset_other=..., num_top=...)`** (Python)
 
-Rounds a range. Applies different offsets to top magnitude(s) vs others.
+Rounds a range/list. Applies different offsets to top magnitude(s) vs others.
 
 | Parameter | Default |
 |-----------|---------|
@@ -64,11 +78,11 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 | offset | meaning | 87,654,321 rounds to |
 |--------|---------|----------------------|
-| 1 | one OoM coarser | nearest hundred million |
-| 0 | current OoM | nearest ten million |
-| -0.5 | half of current OoM | nearest 5 million |
-| -1 | one OoM finer | nearest million |
-| -1.5 | half of one OoM finer | nearest half-million |
+| 1 | one OoM coarser | 100,000,000 |
+| 0 | current OoM | 90,000,000 |
+| -0.5 | half of current OoM | 90,000,000 |
+| -1 | one OoM finer | 88,000,000 |
+| -1.5 | half of one OoM finer | 87,500,000 |
 
 Notes:
 - Values between -1 and 1 with the same absolute value produce the same result (e.g., 0.5 and -0.5).
@@ -147,16 +161,26 @@ Example: `round(87654321 / 500000 + 1e-9) × 500000 = 175 × 500000 = 87,500,000
 
 ## Implementation Details
 
-**Constants:**
-- `EPSILON = 1e-9` — Added to rounding to handle floating-point precision edge cases
-- `VALIDATION_LIMIT = 20` — Offset must be between -20 and 20
-- `DEFAULT_OFFSET = -0.5` — Default offset for all modes
+### Constants
 
-**Performance Optimization (Double Parsing):**
-For dataset operations, the code pre-parses the entire range into a numeric array (or `null`) *before* calculating magnitude or rounding. This avoids running the expensive `toNumber()` regex logic twice for every cell.
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `EPSILON` | 1e-9 | Added to rounding to handle floating-point precision edge cases |
+| `VALIDATION_LIMIT` | 20 | Offset must be between -20 and 20 |
+| `DEFAULT_OFFSET` | -0.5 | Default offset for all modes |
 
-**String Parsing (Google Sheets only):**
-Formatted strings are parsed via regex: currency symbols (`$€£¥`), commas, spaces, and accounting parentheses (e.g., `(500)` → `-500`).
+### Platform Differences
+
+| Behavior | Google Sheets | Python |
+|----------|---------------|--------|
+| Non-numeric input | Pass through | Pass through (or error if `enforce_numeric=True`) |
+| Null/empty input | Returns `""` | Returns `None` |
+| String parsing | Built-in | Pandas module only |
+| Type preservation | N/A (Sheets handles types) | int → int when result is whole |
+
+### Performance Optimization
+
+For dataset operations, the code pre-parses the entire range into a numeric array (or `null`) *before* calculating magnitude or rounding. This avoids running the expensive parsing/regex logic twice for every cell.
 
 ## Vocabulary
 
@@ -178,3 +202,4 @@ Formatted strings are parsed via regex: currency symbols (`$€£¥`), commas, s
 | offset_top | OoM adjustment for top magnitude(s). |
 | offset_other | OoM adjustment for other magnitudes. |
 | num_top | How many top orders of magnitude get `offset_top`. |
+| enforce_numeric | Python only. If `True`, raises `ValueError` for non-numeric input. |
