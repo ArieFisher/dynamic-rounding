@@ -23,13 +23,13 @@ pip install dynamic-rounding[pandas]
 from dynamic_rounding import round_dynamic
 
 # Single value — rounds to nearest half order of magnitude
-round_dynamic(87654321)          # → 90000000
+round_dynamic(87054321)          # → 85000000
 round_dynamic(4321)              # → 4500
 
 # Custom offset
-round_dynamic(87654321, offset=0)     # → 90000000 (nearest 10M)
-round_dynamic(87654321, offset=-1)    # → 88000000 (nearest 1M)
-round_dynamic(87654321, offset=-1.5)  # → 87500000 (nearest 500K)
+round_dynamic(87054321, offset=0)     # → 90000000 (nearest 10M)
+round_dynamic(87054321, offset=-1)    # → 87000000 (nearest 1M)
+round_dynamic(87054321, offset=-1.5)  # → 87000000 (nearest 500K)
 
 # Dataset — larger values get finer precision
 round_dynamic([4428910, 983321, 42109])
@@ -85,13 +85,13 @@ Same parameters as `round_dynamic`, but operates on a pandas Series.
 
 ### Offset values
 
-| Offset | Meaning | 87,654,321 rounds to |
+| Offset | Meaning | 87,054,321 rounds to |
 |--------|---------|----------------------|
 | 1 | one OoM coarser | 100,000,000 |
 | 0 | current OoM | 90,000,000 |
-| -0.5 | half of current OoM (default) | 90,000,000 |
-| -1 | one OoM finer | 88,000,000 |
-| -1.5 | half of one OoM finer | 87,500,000 |
+| -0.5 | half of current OoM (default) | 85,000,000 |
+| -1 | one OoM finer | 87,000,000 |
+| -1.5 | half of one OoM finer | 87,000,000 |
 
 ## Development
 

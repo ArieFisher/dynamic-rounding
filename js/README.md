@@ -36,10 +36,10 @@ Rounds a single value to the nearest half order of magnitude (default).
 | Formula | Result |
 |---------|--------|
 | `=ROUND_DYNAMIC(4321)` | 4,500 |
-| `=ROUND_DYNAMIC(87654321)` | 90,000,000 |
-| `=ROUND_DYNAMIC(87654321, 0)` | 90,000,000 |
-| `=ROUND_DYNAMIC(87654321, -1)` | 88,000,000 |
-| `=ROUND_DYNAMIC(87654321, -1.5)` | 87,500,000 |
+| `=ROUND_DYNAMIC(87054321)` | 85,000,000 |
+| `=ROUND_DYNAMIC(87054321, 0)` | 90,000,000 |
+| `=ROUND_DYNAMIC(87054321, -1)` | 87,000,000 |
+| `=ROUND_DYNAMIC(87054321, -1.5)` | 87,000,000 |
 
 ### Dataset mode
 
@@ -75,13 +75,13 @@ Rounds one value within the context of a range.
 
 Offset is an order-of-magnitude adjustment. Negative = finer precision, positive = coarser.
 
-| Offset | Meaning | 87,654,321 rounds to |
+| Offset | Meaning | 87,054,321 rounds to |
 |--------|---------|----------------------|
 | 1 | one OoM coarser | 100,000,000 |
 | 0 | current OoM | 90,000,000 |
-| -0.5 | half of current OoM | 90,000,000 |
-| -1 | one OoM finer | 88,000,000 |
-| -1.5 | half of one OoM finer | 87,500,000 |
+| -0.5 | half of current OoM | 85,000,000 |
+| -1 | one OoM finer | 87,000,000 |
+| -1.5 | half of one OoM finer | 87,000,000 |
 
 **Note:** Values between -1 and 1 with the same absolute value produce the same result (e.g., 0.5 and -0.5).
 
