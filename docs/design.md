@@ -76,13 +76,13 @@ The "declarative" nature of this approach works based on offsets from each value
 
 Offset is an order-of-magnitude adjustment. Negative = finer precision, positive = coarser.
 
-| offset | meaning | 87,654,321 rounds to |
+| offset | meaning | 87,054,321 rounds to |
 |--------|---------|----------------------|
 | 1 | one OoM coarser | 100,000,000 |
 | 0 | current OoM | 90,000,000 |
-| -0.5 | half of current OoM | 90,000,000 |
-| -1 | one OoM finer | 88,000,000 |
-| -1.5 | half of one OoM finer | 87,500,000 |
+| -0.5 | half of current OoM | 85,000,000 |
+| -1 | one OoM finer | 87,000,000 |
+| -1.5 | half of one OoM finer | 87,000,000 |
 
 Notes:
 - Values between -1 and 1 with the same absolute value produce the same result (e.g., 0.5 and -0.5).
@@ -130,7 +130,7 @@ Given a `value` and an `offset`:
 ```
 current_mag = floor(log10(abs(value)))
 ```
-Example: For 87,654,321 → `floor(7.94) = 7`
+Example: For 87,054,321 → `floor(7.94) = 7`
 
 **Step 2: Decompose offset**
 ```
@@ -157,7 +157,7 @@ Example: `10^6 × 0.5 = 500,000`
 ```
 result = round(value / base + epsilon) × base
 ```
-Example: `round(87654321 / 500000 + 1e-9) × 500000 = 175 × 500000 = 87,500,000`
+Example: `round(87054321 / 500000 + 1e-9) × 500000 = 175 × 500000 = 87,000,000`
 
 ## Implementation Details
 
@@ -188,7 +188,7 @@ For dataset operations, the code pre-parses the entire range into a numeric arra
 
 | Term | Definition |
 |------|------------|
-| Order of magnitude (OoM) | The power of 10 of a number. E.g., 87,654,321 has OoM 7 (10^7 = 10,000,000). |
+| Order of magnitude (OoM) | The power of 10 of a number. E.g., 87,054,321 has OoM 7 (10^7 = 10,000,000). |
 | Magnitude | Shorthand for order of magnitude. Calculated as `floor(log10(abs(value)))`. |
 | Offset | How many orders of magnitude to shift when rounding. Negative = finer, positive = coarser. |
 

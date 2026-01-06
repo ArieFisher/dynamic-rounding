@@ -21,7 +21,7 @@ This tool rounds numbers *declaratively* — you describe the precision you want
 ### Google Sheets
 
 ```
-=ROUND_DYNAMIC(87654321)        → 90,000,000
+=ROUND_DYNAMIC(87054321)        → 85,000,000
 =ROUND_DYNAMIC(A1:A10)          → rounds entire range with set-aware precision
 ```
 
@@ -31,7 +31,7 @@ This tool rounds numbers *declaratively* — you describe the precision you want
 from dynamic_rounding import round_dynamic
 
 # Single value
-round_dynamic(87654321)                    # → 90,000,000
+round_dynamic(87054321)                    # → 85,000,000
 
 # Dataset - larger values get finer precision
 round_dynamic([4428910, 983321, 42109])    # → [4,500,000, 1,000,000, 40,000]
@@ -60,13 +60,13 @@ round_dynamic_series(df['revenue'])
 
 ## Offset Reference
 
-| Offset | Meaning | 87,654,321 rounds to |
+| Offset | Meaning | 87,054,321 rounds to |
 |--------|---------|----------------------|
 | 1 | one OoM coarser | 100,000,000 |
 | 0 | current OoM | 90,000,000 |
-| -0.5 | half of current OoM (default) | 90,000,000 |
-| -1 | one OoM finer | 88,000,000 |
-| -1.5 | half of one OoM finer | 87,500,000 |
+| -0.5 | half of current OoM (default) | 85,000,000 |
+| -1 | one OoM finer | 87,000,000 |
+| -1.5 | half of one OoM finer | 87,000,000 |
 
 ## Documentation
 
