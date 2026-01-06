@@ -9,7 +9,7 @@ Open a GitHub issue with:
 - What you expected to happen
 - What actually happened
 - Example input values and parameters that reproduce the problem
-- Whether you're using array mode or sort-safe mode
+- Which implementation (JS or Python) and which mode you're using
 
 ## Suggesting Features
 
@@ -19,35 +19,41 @@ Open a GitHub issue describing:
 - How you'd expect it to work
 - Example input/output if applicable
 
-## Pull Requests
+## Development Workflow
 
-1. Fork the repo
-2. Create a branch for your change
-3. Test your changes in a Google Sheet
-4. Submit a PR with a clear description
+Follow [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow). All changes come through Pull Requests.
+
+1. Create a feature branch (`git checkout -b feature/my-description`)
+    - *External contributors: fork the repo first.*
+2. Make and test your changes (see below)
+3. Submit a PR with a clear description
 
 ### Code Style
 
 - Keep it simple and readable
-- Add JSDoc comments for any new parameters
+- Add comments for any new parameters (JSDoc for JS, docstrings for Python)
 - Maintain backward compatibility with existing signatures
-- Test edge cases
 
-### Testing Checklist
+## Testing
 
-Before submitting, verify your changes work with:
+### JavaScript (Google Sheets)
 
-- Positive and negative numbers
-- Decimals (0.035, 0.0001)
-- Percentages (132%, 7%)
-- Zeros and empty cells
-- Single cells and ranges
-- Numbers across multiple orders of magnitude
-- Formatted strings (commas, currency symbols)
-- Non-numeric values (should pass through unchanged)
-- Array mode: `=ROUND_DYNAMIC(A1:A12)`
-- Sort-safe mode: `=ROUND_DYNAMIC(A1, $A$1:$A$12)`
-- Invalid parameters (grain > 1, grain <= 0, non-numeric grain)
+Run the test suite:
+```bash
+cd js
+node tests.js
+```
+
+Also verify in the [template spreadsheet](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) "Tests" tab.
+
+### Python
+
+Run the test suite:
+```bash
+cd python
+pip install -e ".[dev]"
+pytest
+```
 
 ## Questions
 
