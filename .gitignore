@@ -11,3 +11,7 @@ build/
 
 # Local private docs (not committed)
 docs/private/
+
+# Antigravity Agent
+.agent/*
+!.agent/rules/
