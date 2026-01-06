@@ -9,3 +9,5 @@ __pycache__/
 dist/
 build/
 
+# Local private docs (not committed)
+docs/private/

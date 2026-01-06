@@ -119,9 +119,27 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 ---
 
+## Testing
+
+Run the test suite:
+
+```bash
+node tests.js
+```
+
+The test suite covers:
+- Single mode: offset variations, magnitudes, string parsing
+- Dataset mode: default/custom parameters, mixed data types
+- Dataset-aware single mode: per-value context
+- Date/time handling: dates pass through unchanged
+- Parameter validation: offset must be between -20 and 20
+- Edge cases: undefined, NaN, Infinity, booleans, empty arrays
+
+---
+
 ## See Also
 
-- [Design Doc](../design.md) - Algorithm and concepts
+- [Design Doc](../docs/design.md) - Algorithm and concepts
 - [Python version](../python/) - `pip install dynamic-rounding`
 - [Changelog](./CHANGELOG.md)
 
