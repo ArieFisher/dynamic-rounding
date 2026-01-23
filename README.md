@@ -9,6 +9,8 @@ Numbers can really get in the way of understanding data. One of the easiest ways
 
 This tool rounds numbers *declaratively* — you describe the precision you want, and the function adapts to each value's magnitude.
 
+Spreadsheets have few declarative features (e.g. conditional formatting's color scales, pivot tables, array formulas). There's room for more — that's what this experiment is for.
+
 ## Implementations
 
 | Platform | Location | Install |
