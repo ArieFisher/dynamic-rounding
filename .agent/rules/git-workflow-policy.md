@@ -13,11 +13,10 @@ trigger: always_on
    git pull origin main
    git fetch --prune
    ```
-   
 
-
-4\. After a feature branch is merged, delete it locally to avoid confusion:
-
+4\. Before starting a new feature branch, delete any local branches that no longer exist on remote:
    ```bash
-   git branch -d feature/your-branch-name
+git fetch --prune
+git branch -vv | grep ': gone]' | awk '{print $1}' | xargs git branch -d
    ```
+
