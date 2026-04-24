@@ -1,6 +1,6 @@
 /**
  * DynamicRounding - Dynamic rounding for readable data sets
- * Version: 0.2.6
+ * Version: 0.2.7
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  */
@@ -11,7 +11,6 @@ const PARENS_REGEX = /^\((.+)\)$/;
 
 // parameters' default values
 const DEFAULT_OFFSET_TOP = -0.5; // in all modes, by default, round to the nearest half order of magnitude
-const DEFAULT_OFFSET_OTHER = -0.5; // in dataset-aware modes, by default round numbers that are not in the top orders of magnitude to their nearest half order of magnitude
 const DEFAULT_NUM_TOP = 1; // in dataset-aware modes, by default, round numbers that are in the top 1 order of magnitude to DEFAULT_OFFSET_TOP
 
 // Internal constants
@@ -26,7 +25,7 @@ const EPSILON = 1e-9; // used to handle floating point inaccuracies
  *
  * @param {number|Array} values The value or range of values to round.
  * @param {number} offset_top The OoM offset for the single value, or, the numbers in the largest order of magnitude of a dataset (default -0.5).
- * @param {number} offset_other The OoM offset for other magnitudes in a dataset (default -0.5).
+ * @param {number} offset_other The OoM offset for other magnitudes in a dataset (defaults to matching offset_top).
  * @param {number} num_top How many top orders of magnitude get offset_top (default 1).
  * @return Simplified data.
  * @customfunction
@@ -66,7 +65,7 @@ function singleValueMode(value, offset) {
  */
 function datasetMode(range, offset_top, offset_other, num_top) {
   offset_top = (offset_top === undefined || offset_top === "") ? DEFAULT_OFFSET_TOP : offset_top;
-  offset_other = (offset_other === undefined || offset_other === "") ? DEFAULT_OFFSET_OTHER : offset_other;
+  offset_other = (offset_other === undefined || offset_other === "") ? offset_top : offset_other;
   num_top = (num_top === undefined || num_top === "") ? DEFAULT_NUM_TOP : num_top;
   validateOffset(offset_top, "offset_top");
   validateOffset(offset_other, "offset_other");
