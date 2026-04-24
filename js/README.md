@@ -1,6 +1,6 @@
 # Dynamic Rounding for Google Sheets
 
-**Version 0.2.4**
+**Version 0.2.5**
 
 *Quickly make data more readable.*
 
