@@ -126,11 +126,13 @@ class TestDatasetModeSeries:
         s = pd.Series([4428910, 983321])
         result = round_dynamic_series(s, offset_top=-1)
         assert result[0] == 4400000
+        assert result[1] == 980000
     
     def test_triggers_on_offset_other(self):
         # Just providing offset_other should trigger dataset mode
         s = pd.Series([4428910, 983321])
         result = round_dynamic_series(s, offset_other=-1)
+        assert result[0] == 4500000
         assert result[1] == 980000
     
     def test_num_top(self):

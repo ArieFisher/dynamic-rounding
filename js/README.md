@@ -54,7 +54,7 @@ Rounds an entire range with dataset-aware behavior: larger numbers retain more d
 | 459,321 | 450,000 |
 | 6,543 | 6,500 |
 
-Defaults: `offset_top = -0.5`, `offset_other = -0.5`, `num_top = 1`
+Defaults: `offset_top = -0.5`, `offset_other = matches offset_top`, `num_top = 1`
 
 ---
 
@@ -105,7 +105,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 |-----------|---------|-------------|
 | range | required | Range for rounding and/or magnitude detection |
 | offset_top | -0.5 | Offset for top magnitude(s) |
-| offset_other | -0.5 | Offset for other magnitudes |
+| offset_other | matches offset_top | Offset for other magnitudes |
 | num_top | 1 | How many top orders get offset_top |
 
 ---

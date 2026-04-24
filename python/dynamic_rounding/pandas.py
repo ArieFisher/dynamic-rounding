@@ -161,7 +161,7 @@ def _dataset_mode_series(
     if offset_top is None:
         offset_top = DEFAULT_OFFSET
     if offset_other is None:
-        offset_other = -0.5
+        offset_other = offset_top
     
     _validate_offset(offset_top, "offset_top")
     _validate_offset(offset_other, "offset_other")

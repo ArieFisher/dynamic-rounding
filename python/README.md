@@ -72,7 +72,7 @@ round_dynamic_series(s)  # → [1000.0, -500.0, 4500000.0]
 **Dataset mode** (when `data` is a list):
 - `data`: List of numbers to round
 - `offset_top`: OoM adjustment for top magnitude(s) (default: -0.5)
-- `offset_other`: OoM adjustment for other magnitudes (default: -0.5)
+- `offset_other`: OoM adjustment for other magnitudes (defaults to matching `offset_top`)
 - `num_top`: How many top orders get `offset_top` (default: 1)
 - `enforce_numeric`: If `True`, raises `ValueError` for non-numeric values in list
 

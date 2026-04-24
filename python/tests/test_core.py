@@ -112,12 +112,13 @@ class TestDatasetMode:
     def test_default_offsets(self):
         result = round_dynamic([4428910, 983321, 42109])
         assert result[0] == 4500000  # top magnitude: offset_top=-0.5
-        assert result[1] == 1000000  # other: offset_other=0
-        assert result[2] == 40000    # other: offset_other=0
+        assert result[1] == 1000000  # other: offset_other=-0.5
+        assert result[2] == 40000    # other: offset_other=-0.5
     
     def test_custom_offset_top(self):
         result = round_dynamic([4428910, 983321], offset_top=-1)
-        assert result[0] == 4400000  # finer precision
+        assert result[0] == 4400000  # top: offset_top=-1
+        assert result[1] == 980000   # other: falls back to offset_top=-1
     
     def test_custom_offset_other(self):
         result = round_dynamic([4428910, 983321], offset_top=-0.5, offset_other=-1)
