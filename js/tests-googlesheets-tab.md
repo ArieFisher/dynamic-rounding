@@ -33,14 +33,7 @@
 | \=IF(D31=E31, "✓", "✗") | 44109 | *(spills)* | `40,000` | 40,000 |  |  |  |
 | \=IF(D32=E32, "✓", "✗") | 1234 | *(spills)* | `1,000` | 1,000 |  |  |  |
 |  |  |  |  |  |  |  |  |
-| Section 3: Dataset-Aware Single Mode |  |  |  |  |  |  |  |
-|  | **Dataset-Aware Single** |  |  |  |  |  |  |
-|  | **Input** | **Formula** | **Result** | **Expected** |  |  |  |
-| \=IF(D37=E37, "✓", "✗") | 4428910 | `=FORMULATEXT(D37)` | `=ROUND_DYNAMIC(B37, $B$37:$B$40)` | 4,500,000 |  |  |  |
-| \=IF(D38=E38, "✓", "✗") | 983321 | `=FORMULATEXT(D38)` | `=ROUND_DYNAMIC(B38, $B$37:$B$40)` | 1,000,000 |  |  |  |
-| \=IF(D39=E39, "✓", "✗") | 42109 | `=FORMULATEXT(D39)` | `=ROUND_DYNAMIC(B39, $B$37:$B$40)` | 40,000 |  |  |  |
-| \=IF(D40=E40, "✓", "✗") | 1234 | `=FORMULATEXT(D40)` | `=ROUND_DYNAMIC(B40, $B$37:$B$40)` | 1,000 |  |  |  |
-|  |  |  |  |  |  |  |  |
+
 | Section 4: Input Handling |  |  |  |  |  |  |  |
 |  | **Input Handling** |  |  |  |  |  |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |

@@ -1,6 +1,6 @@
 # Dynamic Rounding for Google Sheets
 
-**Version 0.2.5**
+**Version 0.2.6**
 
 *Quickly make data more readable.*
 
@@ -51,23 +51,10 @@ Rounds an entire range with dataset-aware behavior: larger numbers retain more d
 |---|-------------------------|
 | 66,543,210 | 65,000,000 |
 | 37,021,373 | 35,000,000 |
-| 459,321 | 500,000 |
-| 6,543 | 7,000 |
+| 459,321 | 450,000 |
+| 6,543 | 6,500 |
 
-Defaults: `offset_top = -0.5`, `offset_other = 0`, `num_top = 1`
-
-### Dataset-aware single mode
-
-**`=ROUND_DYNAMIC(value, range, [offset_top], [offset_other], [num_top])`**
-
-Rounds one value within the context of a range.
-
-| A | Formula → Result |
-|---|------------------|
-| 66,543,210 | `=ROUND_DYNAMIC(A1, A$1:A$4)` → 65,000,000 |
-| 37,021,373 | `=ROUND_DYNAMIC(A2, A$1:A$4)` → 35,000,000 |
-| 459,321 | `=ROUND_DYNAMIC(A3, A$1:A$4)` → 500,000 |
-| 6,543 | `=ROUND_DYNAMIC(A4, A$1:A$4)` → 7,000 |
+Defaults: `offset_top = -0.5`, `offset_other = -0.5`, `num_top = 1`
 
 ---
 
@@ -112,13 +99,13 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 | value | required | Value to round |
 | offset | -0.5 | OoM offset |
 
-### Dataset modes
+### Dataset mode
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | range | required | Range for rounding and/or magnitude detection |
 | offset_top | -0.5 | Offset for top magnitude(s) |
-| offset_other | 0 | Offset for other magnitudes |
+| offset_other | -0.5 | Offset for other magnitudes |
 | num_top | 1 | How many top orders get offset_top |
 
 ---
@@ -134,7 +121,7 @@ node tests.js
 The test suite covers:
 - Single mode: offset variations, magnitudes, string parsing
 - Dataset mode: default/custom parameters, mixed data types
-- Dataset-aware single mode: per-value context
+
 - Date/time handling: dates pass through unchanged
 - Parameter validation: offset must be between -20 and 20
 - Edge cases: undefined, NaN, Infinity, booleans, empty arrays

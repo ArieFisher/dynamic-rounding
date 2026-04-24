@@ -1,6 +1,6 @@
 # Dynamic Rounding (Python)
 
-**Version 0.1.2**
+**Version 0.1.3**
 
 Dynamic rounding for readable data — rounds based on order of magnitude.
 
@@ -46,7 +46,7 @@ import pandas as pd
 round_dynamic_series(df['revenue'])
 
 # Dataset mode with custom offsets
-round_dynamic_series(df['revenue'], offset_top=-0.5, offset_other=0)
+round_dynamic_series(df['revenue'], offset_top=-0.5, offset_other=-0.5)
 
 # Parses formatted strings automatically
 s = pd.Series(["$1,200", "(500)", "4,428,910.41"])
@@ -72,7 +72,7 @@ round_dynamic_series(s)  # → [1000.0, -500.0, 4500000.0]
 **Dataset mode** (when `data` is a list):
 - `data`: List of numbers to round
 - `offset_top`: OoM adjustment for top magnitude(s) (default: -0.5)
-- `offset_other`: OoM adjustment for other magnitudes (default: 0)
+- `offset_other`: OoM adjustment for other magnitudes (default: -0.5)
 - `num_top`: How many top orders get `offset_top` (default: 1)
 - `enforce_numeric`: If `True`, raises `ValueError` for non-numeric values in list
 

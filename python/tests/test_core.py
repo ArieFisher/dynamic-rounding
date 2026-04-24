@@ -7,7 +7,7 @@ from dynamic_rounding import round_dynamic, __version__
 
 class TestVersion:
     def test_version_exists(self):
-        assert __version__ == "0.1.2"
+        assert __version__ == "0.1.3"
 
 
 class TestSingleMode:
