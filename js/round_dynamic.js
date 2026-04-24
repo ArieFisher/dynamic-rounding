@@ -3,6 +3,7 @@
  * Version: 0.2.7
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
+ * Copyright (c) 2026 Arie Fisher
  */
 
 // Constants
@@ -150,7 +151,13 @@ function roundWithOffset(num, offset) {
   const rounding_base = Math.pow(10, target_mag) * fraction;
 
   // Add epsilon to handle floating point inaccuracies
-  return Math.round(num / rounding_base + EPSILON) * rounding_base;
+  let rounded = Math.round(num / rounding_base + EPSILON) * rounding_base;
+  
+  if (Math.abs(rounded) >= 10) {
+    rounded = Math.round(rounded);
+  }
+  
+  return rounded;
 }
 
 /**
