@@ -1,6 +1,6 @@
 """
 DynamicRounding - Dynamic rounding for readable data
-Version: 0.1.3
+Version: 0.1.4
 https://github.com/ArieFisher/dynamic-rounding
 MIT License
 """
@@ -8,7 +8,7 @@ MIT License
 import math
 from typing import Union, List, Optional, Any
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 # Constants
 DEFAULT_OFFSET = -0.5
@@ -97,7 +97,7 @@ def _dataset_mode(
     if offset_top is None:
         offset_top = DEFAULT_OFFSET
     if offset_other is None:
-        offset_other = -0.5
+        offset_other = offset_top
     
     _validate_offset(offset_top, "offset_top")
     _validate_offset(offset_other, "offset_other")

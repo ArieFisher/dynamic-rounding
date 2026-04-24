@@ -172,6 +172,22 @@ testArray('GCP defaults', ROUND_DYNAMIC(gcpData), [
     [45]         // mag 1, offset=-0.5
 ]);
 
+// offset_top=-1, offset_other falls back to offset_top=-1
+testArray('GCP offset_other fallback', ROUND_DYNAMIC(gcpData, -1), [
+    [4400000],
+    [3900000],
+    [1000000],
+    [980000],
+    [820000],
+    [84000],
+    [42000],
+    [22000],
+    [1500],
+    [1100],
+    [67],
+    [43]
+]);
+
 // offset_top=-1, offset_other=0, num_top=1
 // Mag 6 gets offset=-1 (base=100k), others get offset=0
 testArray('GCP offset_top=-1', ROUND_DYNAMIC(gcpData, -1, 0, 1), [
