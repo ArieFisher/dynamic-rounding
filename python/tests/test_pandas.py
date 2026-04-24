@@ -116,7 +116,7 @@ class TestDatasetModeSeries:
     
     def test_default_offsets(self):
         s = pd.Series([4428910, 983321, 42109])
-        result = round_dynamic_series(s, offset_top=-0.5, offset_other=0)
+        result = round_dynamic_series(s, offset_top=-0.5)
         assert result[0] == 4500000
         assert result[1] == 1000000
         assert result[2] == 40000
@@ -142,7 +142,7 @@ class TestDatasetModeSeries:
     
     def test_string_parsing_in_dataset_mode(self):
         s = pd.Series(["$4,428,910", "$983,321", "$42,109"])
-        result = round_dynamic_series(s, offset_top=-0.5, offset_other=0)
+        result = round_dynamic_series(s, offset_top=-0.5)
         assert result[0] == 4500000.0
         assert result[1] == 1000000.0
         assert result[2] == 40000.0
@@ -164,7 +164,7 @@ class TestEdgeCases:
     
     def test_negative_values(self):
         s = pd.Series([-4428910, 983321])
-        result = round_dynamic_series(s, offset_top=-0.5, offset_other=0)
+        result = round_dynamic_series(s, offset_top=-0.5)
         assert result[0] == -4500000
         assert result[1] == 1000000
 

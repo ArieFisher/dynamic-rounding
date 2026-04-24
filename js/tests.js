@@ -155,21 +155,21 @@ const gcpData = [
     [42.66]
 ];
 
-// Defaults: offset_top=-0.5, offset_other=0, num_top=1
-// Mag 6 gets offset=-0.5, others get offset=0
+// Defaults: offset_top=-0.5, offset_other=-0.5, num_top=1
+// Mag 6 gets offset=-0.5, others get offset=-0.5
 testArray('GCP defaults', ROUND_DYNAMIC(gcpData), [
     [4500000],   // mag 6, offset=-0.5, base=500k
     [4000000],   // mag 6, offset=-0.5
     [1000000],   // mag 6, offset=-0.5
-    [1000000],   // mag 5, offset=0, base=100k
-    [800000],    // mag 5, offset=0
-    [80000],     // mag 4, offset=0
-    [40000],     // mag 4, offset=0
-    [20000],     // mag 4, offset=0
-    [2000],      // mag 3, offset=0
-    [1000],      // mag 3, offset=0
-    [70],        // mag 1, offset=0
-    [40]         // mag 1, offset=0
+    [1000000],   // mag 5, offset=-0.5
+    [800000],    // mag 5, offset=-0.5
+    [85000],     // mag 4, offset=-0.5
+    [40000],     // mag 4, offset=-0.5
+    [20000],     // mag 4, offset=-0.5
+    [1500],      // mag 3, offset=-0.5
+    [1000],      // mag 3, offset=-0.5
+    [65],        // mag 1, offset=-0.5
+    [45]         // mag 1, offset=-0.5
 ]);
 
 // offset_top=-1, offset_other=0, num_top=1
@@ -231,13 +231,13 @@ const decimalsData = [
     [0.0083]
 ];
 
-// Defaults: offset_top=-0.5, offset_other=0, num_top=1
-// Mag -1 gets offset=-0.5, others get offset=0
+// Defaults: offset_top=-0.5, offset_other=-0.5, num_top=1
+// Mag -1 gets offset=-0.5, others get offset=-0.5
 testArray('Decimals defaults', ROUND_DYNAMIC(decimalsData), [
     [0.35],      // mag -1, offset=-0.5, base=0.05
     [0.10],      // mag -1, offset=-0.5
-    [0.05],      // mag -2, offset=0, base=0.01
-    [0.008]      // mag -3, offset=0, base=0.001
+    [0.045],      // mag -2, offset=-0.5, base=0.005
+    [0.0085]      // mag -3, offset=-0.5, base=0.0005
 ]);
 
 // Mixed data with non-numeric values
@@ -254,33 +254,10 @@ testArray('Mixed data passthrough', ROUND_DYNAMIC(mixedData), [
     ['Cloud CDN'],
     [0],
     [''],
-    [40]
+    [45]
 ]);
 
-// =============================================================================
-// DATASET-AWARE SINGLE MODE TESTS
-// =============================================================================
 
-console.log('=== Dataset-Aware Single Mode ===\n');
-
-// Same as dataset mode but per-value
-test('Dataset-aware single: 4428910.41 in GCP', ROUND_DYNAMIC(4428910.41, gcpData), 4500000);
-test('Dataset-aware single: 983321.11 in GCP', ROUND_DYNAMIC(983321.11, gcpData), 1000000);
-test('Dataset-aware single: 42.66 in GCP', ROUND_DYNAMIC(42.66, gcpData), 40);
-
-// With custom params
-test('Dataset-aware single: 4428910.41 offset_top=-1', ROUND_DYNAMIC(4428910.41, gcpData, -1, 0, 1), 4400000);
-test('Dataset-aware single: 983321.11 offset_other=-1', ROUND_DYNAMIC(983321.11, gcpData, -0.5, -1, 1), 980000);
-test('Dataset-aware single: 983321.11 num_top=2', ROUND_DYNAMIC(983321.11, gcpData, -0.5, 0, 2), 1000000);
-
-// Decimals
-test('Dataset-aware single: 0.35 in decimals', ROUND_DYNAMIC(0.35, decimalsData), 0.35);
-test('Dataset-aware single: 0.047 in decimals', ROUND_DYNAMIC(0.047, decimalsData), 0.05);
-
-// Edge cases
-test('Dataset-aware single: non-numeric', ROUND_DYNAMIC('Cloud CDN', gcpData), 'Cloud CDN');
-test('Dataset-aware single: zero', ROUND_DYNAMIC(0, gcpData), 0);
-test('Dataset-aware single: empty', ROUND_DYNAMIC('', gcpData), '');
 
 // =============================================================================
 // DATE/TIME HANDLING TESTS
@@ -314,19 +291,9 @@ test('Array: number rounds', mixedWithDatesResult[0][0], 4500000);
 test('Array: date passthrough', mixedWithDatesResult[1][0], date1);
 test('Array: number rounds 2', mixedWithDatesResult[2][0], 1000);
 test('Array: time passthrough', mixedWithDatesResult[3][0], time1);
-test('Array: number rounds 3', mixedWithDatesResult[4][0], 40);
+test('Array: number rounds 3', mixedWithDatesResult[4][0], 45);
 
-// Sort-safe mode with dates
-test('Sort-safe: date passthrough', ROUND_DYNAMIC(date1, gcpData), date1);
-test('Sort-safe: time passthrough', ROUND_DYNAMIC(time1, gcpData), time1);
 
-// Date in reference range (should be ignored for max magnitude calc)
-const rangeWithDate = [
-    [4428910.41],
-    [date1],
-    [1000]
-];
-test('Sort-safe: date in ref range ignored', ROUND_DYNAMIC(4428910.41, rangeWithDate), 4500000);
 
 // =============================================================================
 // BOUNDARY TESTS
@@ -393,9 +360,7 @@ test('offset=2 negative input returns 0', ROUND_DYNAMIC(-9999, 2), 0);
 testThrows('array offset_top=25 throws', () => ROUND_DYNAMIC([[1000]], 25, 0, 1), 'offset_top must be between -20 and 20');
 testThrows('array offset_other=25 throws', () => ROUND_DYNAMIC([[1000]], 0, 25, 1), 'offset_other must be between -20 and 20');
 
-// Sort-safe mode validation
-testThrows('sort-safe offset_top=25 throws', () => ROUND_DYNAMIC(1000, [[1000]], 25, 0, 1), 'offset_top must be between -20 and 20');
-testThrows('sort-safe offset_other=25 throws', () => ROUND_DYNAMIC(1000, [[1000]], 0, 25, 1), 'offset_other must be between -20 and 20');
+
 
 // =============================================================================
 // ADDITIONAL EDGE CASES
@@ -435,11 +400,11 @@ testArray('Non-numeric only array', ROUND_DYNAMIC(nonNumericArray), [
 
 // 1D array (row vector) - Sheets can pass this way
 const rowVector = [4428910.41, 983321.11, 42.66];
-testArray('1D row vector', ROUND_DYNAMIC(rowVector), [4500000, 1000000, 40]);
+testArray('1D row vector', ROUND_DYNAMIC(rowVector), [4500000, 1000000, 45]);
 
 // 2D single row
 const singleRow = [[4428910.41, 983321.11, 42.66]];
-testArray('2D single row', ROUND_DYNAMIC(singleRow), [[4500000, 1000000, 40]]);
+testArray('2D single row', ROUND_DYNAMIC(singleRow), [[4500000, 1000000, 45]]);
 
 // 2D multi-column
 const multiColumn = [
@@ -451,11 +416,10 @@ const multiColumn = [
 testArray('2D multi-column', ROUND_DYNAMIC(multiColumn), [
     [4500000, 100],
     [1000000, 50],
-    [40, 30]
+    [45, 25]
 ]);
 
-// Sort-safe with 1D reference range
-test('Sort-safe: 1D ref range', ROUND_DYNAMIC(4428910.41, [4428910.41, 983321.11, 42.66]), 4500000);
+
 
 // Sort-safe with single value as "range" - not valid usage, omitting test
 

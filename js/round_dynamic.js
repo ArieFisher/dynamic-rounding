@@ -1,6 +1,6 @@
 /**
  * DynamicRounding - Dynamic rounding for readable data sets
- * Version: 0.2.5
+ * Version: 0.2.6
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  */
@@ -11,7 +11,7 @@ const PARENS_REGEX = /^\((.+)\)$/;
 
 // parameters' default values
 const DEFAULT_OFFSET_TOP = -0.5; // in all modes, by default, round to the nearest half order of magnitude
-const DEFAULT_OFFSET_OTHER = 0; // in dataset-aware modes, by default round numbers that are not in the top orders of magnitude to their nearest full order of magnitude
+const DEFAULT_OFFSET_OTHER = -0.5; // in dataset-aware modes, by default round numbers that are not in the top orders of magnitude to their nearest half order of magnitude
 const DEFAULT_NUM_TOP = 1; // in dataset-aware modes, by default, round numbers that are in the top 1 order of magnitude to DEFAULT_OFFSET_TOP
 
 // Internal constants
@@ -20,27 +20,26 @@ const EPSILON = 1e-9; // used to handle floating point inaccuracies
 
 /**
  * Declarative rounding by order of magnitude.
- * [MODE 1] single value 
- * [MODE 2] dataset 
- * [MODE 3] dataset-aware single value 
+ * [MODE 1] single value: =ROUND_DYNAMIC(value, [offset])
+ * [MODE 2] dataset: =ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
- * 
- * @return Rounded values.
+ *
+ * @param {number|Array} values The value or range of values to round.
+ * @param {number} offset_top The OoM offset for the single value, or, the numbers in the largest order of magnitude of a dataset (default -0.5).
+ * @param {number} offset_other The OoM offset for other magnitudes in a dataset (default -0.5).
+ * @param {number} num_top How many top orders of magnitude get offset_top (default 1).
+ * @return Simplified data.
  * @customfunction
  */
-function ROUND_DYNAMIC(value_or_range, offset_or_range, offset_top, offset_other, num_top) {
-  const firstIsArray = Array.isArray(value_or_range);
-  const secondIsArray = Array.isArray(offset_or_range);
+function ROUND_DYNAMIC(values, offset_top, offset_other, num_top) {
+  const firstIsArray = Array.isArray(values);
 
   if (firstIsArray) {
     // Dataset mode: ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
-    return datasetMode(value_or_range, offset_or_range, offset_top, offset_other);
-  } else if (secondIsArray) {
-    // Dataset-aware single mode: ROUND_DYNAMIC(value, range, [offset_top], [offset_other], [num_top])
-    return datasetAwareSingleMode(value_or_range, offset_or_range, offset_top, offset_other, num_top);
+    return datasetMode(values, offset_top, offset_other, num_top);
   } else {
     // Single mode: ROUND_DYNAMIC(value, [offset])
-    return singleValueMode(value_or_range, offset_or_range);
+    return singleValueMode(values, offset_top);
   }
 }
 
@@ -61,7 +60,9 @@ function singleValueMode(value, offset) {
 }
 
 /**
- * Dataset mode: rounds a range with dataset-aware heuristic.
+ * Dataset mode: rounds an array of values using a set-aware heuristic.
+ * Values near the dataset's maximum magnitude are rounded using offset_top,
+ * while smaller values are rounded using offset_other.
  */
 function datasetMode(range, offset_top, offset_other, num_top) {
   offset_top = (offset_top === undefined || offset_top === "") ? DEFAULT_OFFSET_TOP : offset_top;
@@ -86,33 +87,7 @@ function datasetMode(range, offset_top, offset_other, num_top) {
   );
 }
 
-/**
- * Dataset-aware single mode: rounds one value with dataset-aware heuristic based on reference range.
- */
-function datasetAwareSingleMode(value, ref_range, offset_top, offset_other, num_top) {
-  offset_top = (offset_top === undefined || offset_top === "") ? DEFAULT_OFFSET_TOP : offset_top;
-  offset_other = (offset_other === undefined || offset_other === "") ? DEFAULT_OFFSET_OTHER : offset_other;
-  num_top = (num_top === undefined || num_top === "") ? DEFAULT_NUM_TOP : num_top;
-  validateOffset(offset_top, "offset_top");
-  validateOffset(offset_other, "offset_other");
 
-  // Normalize ref_range to 2D array
-  if (!Array.isArray(ref_range)) {
-    ref_range = [[ref_range]];
-  } else if (!Array.isArray(ref_range[0])) {
-    ref_range = [ref_range];
-  }
-
-
-  //Parse range to numbers one time...
-  const numericRefRange = ref_range.map(row => row.map(cell => toNumber(cell)));
-  // ... then use to:
-  //  a. find max magnitude
-  const max_mag = findMaxMagnitude(numericRefRange);
-  //  b. Round the single value
-  const num = toNumber(value);
-  return roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_top);
-}
 
 /**
  * Finds the maximum magnitude (order of magnitude) in a 2D array of numbers.
