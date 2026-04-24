@@ -55,7 +55,7 @@ Rounds a range/list. Applies different offsets to top magnitude(s) vs others.
 | Parameter | Default |
 |-----------|---------|
 | offset_top | -0.5 |
-| offset_other | -0.5 |
+| offset_other | matches offset_top |
 | num_top | 1 |
 
 
