@@ -1,6 +1,6 @@
 /**
  * DynamicRounding - Dynamic rounding for readable data sets
- * Version: 0.2.4
+ * Version: 0.2.5
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  */
