@@ -3,8 +3,8 @@
 **Version:** 2.3
 
 **Platforms:**
-- Google Sheets (JavaScript) — v0.2.4
-- Python — v0.1.2
+- Google Sheets (JavaScript) — v0.2.6
+- Python — v0.1.3
 
 ## Features
 
@@ -28,7 +28,7 @@
 
 7. **Strict Mode (Python):** Use `enforce_numeric=True` to raise `ValueError` for non-numeric input instead of passing through.
 
-8. **Multiple Modes:** Supports single and dataset usage patterns via auto-detection. Google Sheets also supports dataset-aware single mode.
+8. **Multiple Modes:** Supports single and dataset usage patterns via auto-detection.
 
 ## Modes
 
@@ -55,20 +55,9 @@ Rounds a range/list. Applies different offsets to top magnitude(s) vs others.
 | Parameter | Default |
 |-----------|---------|
 | offset_top | -0.5 |
-| offset_other | 0 |
+| offset_other | -0.5 |
 | num_top | 1 |
 
-### 3. Dataset-aware single (Google Sheets only)
-
-**`=ROUND_DYNAMIC(value, range, [offset_top], [offset_other], [num_top])`**
-
-Same logic as dataset mode, but for one value within context of a range.
-
-| Parameter | Default |
-|-----------|---------|
-| offset_top | -0.5 |
-| offset_other | 0 |
-| num_top | 1 |
 
 ## Offsets
 
@@ -90,7 +79,7 @@ Notes:
 
 ## Set-Aware Selection
 
-In dataset and dataset-aware single modes, each value receives either `offset_top` or `offset_other` based on its magnitude relative to the dataset's maximum.
+In dataset mode, each value receives either `offset_top` or `offset_other` based on its magnitude relative to the dataset's maximum.
 
 **Step 1: Find maximum magnitude in dataset**
 ```
