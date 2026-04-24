@@ -78,7 +78,7 @@ def round_dynamic_series(
         series: A pandas Series of numbers to round.
         offset: OoM offset for simple mode (default: -0.5).
         offset_top: OoM offset for top magnitude(s) in dataset mode.
-        offset_other: OoM offset for other magnitudes in dataset mode.
+        offset_other: OoM offset for other magnitudes in dataset mode (default: -0.5).
         num_top: How many top orders of magnitude get offset_top (default: 1).
         enforce_numeric: If True, raise ValueError for unparseable non-numeric values.
             If False (default), unparseable values pass through unchanged.
@@ -161,7 +161,7 @@ def _dataset_mode_series(
     if offset_top is None:
         offset_top = DEFAULT_OFFSET
     if offset_other is None:
-        offset_other = 0.0
+        offset_other = -0.5
     
     _validate_offset(offset_top, "offset_top")
     _validate_offset(offset_other, "offset_other")

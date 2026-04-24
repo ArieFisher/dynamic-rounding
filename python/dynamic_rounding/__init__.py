@@ -1,6 +1,6 @@
 """
 DynamicRounding - Dynamic rounding for readable data
-Version: 0.1.2
+Version: 0.1.3
 https://github.com/ArieFisher/dynamic-rounding
 MIT License
 """
@@ -8,7 +8,7 @@ MIT License
 import math
 from typing import Union, List, Optional, Any
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 # Constants
 DEFAULT_OFFSET = -0.5
@@ -29,13 +29,13 @@ def round_dynamic(
     
     Modes:
         Single: round_dynamic(value) or round_dynamic(value, offset=-1)
-        Dataset: round_dynamic([list of values], offset_top=-0.5, offset_other=0)
+        Dataset: round_dynamic([list of values], offset_top=-0.5, offset_other=-0.5)
     
     Args:
         data: A single number or list of numbers to round.
         offset: OoM offset for single mode (default: -0.5).
         offset_top: OoM offset for top magnitude(s) in dataset mode (default: -0.5).
-        offset_other: OoM offset for other magnitudes in dataset mode (default: 0).
+        offset_other: OoM offset for other magnitudes in dataset mode (default: -0.5).
         num_top: How many top orders of magnitude get offset_top (default: 1).
         enforce_numeric: If True, raise ValueError for non-numeric values.
             If False (default), non-numeric values pass through unchanged.
@@ -97,7 +97,7 @@ def _dataset_mode(
     if offset_top is None:
         offset_top = DEFAULT_OFFSET
     if offset_other is None:
-        offset_other = 0.0
+        offset_other = -0.5
     
     _validate_offset(offset_top, "offset_top")
     _validate_offset(offset_other, "offset_other")
