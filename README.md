@@ -1,12 +1,14 @@
 # Dynamic Rounding
 
-Numbers can tell a story—but when they’re too numerous or too complex, they can obscure the structure that makes that story clear.
+Numbers can tell a story. But *too many* numbers make the story hard to see.
 
-This library introduces a new approach to making data interpretable: **declarative simplification**.
+This introduces a new approach to making data interpretable: **declarative simplification**.
 
 ## Simplifying data: declarative  vs. imperative
 
-Rounding is the traditional way to simplify data—but it’s a blunt tool that can obscure the story.
+A traditional way to simplify data is to round it.
+
+Rounding is sometimes helpful but it's a blunt tool that can obscure the story as easily as reveal it.  Consider this before-and-after - the after is more clear but the story has been destroyed.
 
 | original value | \=ROUND(A2, \-6) |
 | :---- | :---- |
@@ -15,75 +17,73 @@ Rounding is the traditional way to simplify data—but it’s a blunt tool that 
 | *difference* | *difference* |
 | **49,992** | **1,000,000** |
 
-This isn’t just a new rounding function—it’s a different way to make the story in data visible.
+*In the original table it was hard to read the story (that the comparison is nearly identical).  In the simplified table it's easy to read -- the wrong story (that the numbers are very far apart).* 
 
-| original value | `=round_dynamic(a2)` |
+This library is a way to reveal the story in data. e.g.
+
+| original value | `=round_dynamic(a2:a3)` |
 | :---- | :---- |
 | 7,514,321 | 7,500,000 |
 | 7,464,329 | 7,500,000 |
 | *difference* | *difference* |
 | **49,992** | **≈ 0** |
 
-These two numbers really are 'about the same' \- the simplified data tells the right story.
+*The simplified numbers tell the actual story: these two numbers really are 'about the same'.*
 
 ## Choosing a lens
 
-Different datasets require different levels of simplification. This is controlled with a single parameter: an offset from the nearest order of magnitude.
+Every dataset is different and a tool for simplifying it has to be flexible enough to look at it in different ways while hunting for the story in it.  The users of this library can dial the lens, ratcheting it up or down, by adjusting a single parameter.  This is the 'declarative' part of the library - the user declares a lens for the entire dataset, one parameter: an **offset** from the number's **order of magnitude**.
 
-| declarative intent: ‘against a number of tens of  millions, round to …’ | original value:  87,054,321 | interpretation | using the optional offset |
-| :---- | :---- | :---- | :---- |
-| … nearest hundred million | 100,000,000 | one order coarser | `=round_dynamic(A1, 1)` |
-| … nearest ten million | 90,000,000 | current order or magnitude | `=round_dynamic(A1, 0)` |
-| … nearest five million | 85,000,000 | half-step within order | `=round_dynamic(A1, -0.5)` |
-| … nearest million | 87,000,000 | one order finer | `=round_dynamic(A1, -1)` |
+### Declarating a lens
+
+Depending on the situation, a number like **87,054,321** may be interpreted differently: it could mean anything from 'unimportant' to 'unfathomably large'.  This library lets users step the lens up or down until the numbers say something meaningful.
+
+
+| lens (i.e. a simplified representation of the data) | Declarative lens: round this number to the… | Imperative command: round this number to the…  |
+| :---- | :---- | :---- |
+| 100,000,000 | … next larger order of magnitude <br> <br> `=round_dynamic(A1, 1)` | … nearest hundred million <br> <br> `=ROUND(87654321 / 100000000, 0) * 100000000` |
+| 90,000,000 | … current order or magnitude  <br> <br> `=round_dynamic(A1, 0)` | … nearest 10 million  <br> <br> `=round(A1, -7)` |
+| 85,000,000 | … half-step within order  <br> <br> `=round_dynamic(A1, -0.5)` | nearest 5 million  <br> <br> `=mround(A1, 5000000)` |
+| 87,000,000 | … one order finer  <br> <br> `=round_dynamic(A1, -1)` | … nearest million  <br> <br> `=round(A1, -6)` |
+
+
+Each setting emphasizes different relationships in the data.  The goal is not precision — it is interpretability.
+
 
 ## Simplifying ranges
 
-You can use this library to simplify entire ranges of data in one step.
+The declarative nature makes simplifying data less fiddly.  But it starts to shine when used to simplify entire ranges of data in one step.
 
-| original value | `=round_dynamic(A1:A7)` |
-| :---- | :---: |
-| 87,054,321 | 85,000,000 |
-| 84,654,321 | 85,000,000 |
-| 22,484.49 | 20,000 |
-| 2,484.49 | 2,500 |
-| \-22,484.72 | \-20,000 |
-| 36.1% | 35% |
-| \-2.8% | \-3% |
+| original matrix |  |      | \=ROUND\_DYNAMIC(A2:B9) |  |
+| --- | --- | --- | --- | --- |
+| col 1 | col2 |    --->    | col 1 | col2 |
+| 87,054,321 | 129,972,101 |  | 85,000,000 | 150,000,000 |
+| 84,654,321 | 126,388,901 |  | 85,000,000 | 150,000,000 |
+| 22,484.49 | 33,569.34 |  | 20,000 | 35,000 |
+| 2,484.49 | 3,709.34 |  | 2,500 | 3,500 |
+| \-22,484.72 | \-33,569.69 |  | \-20,000 | \-35,000 |
+| 36.10% | 53.90% |  | 35% | 55% |
+| \-2.80% | \-4.18% |  | \-3% | \-4% |
 
-#### Iterating
-
-Changing a single parameter applies a different lens to the same data, making it easy to explore multiple interpretations
-
-| original value | \+1 OoM (1) | Current OoM (0) | half (default) (-0.5) | quarter (-0.25) | 1 smaller OoM(-1) | (-1.5) |
-| :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| 87,054,321 | 100,000,000 | 90,000,000 | 85,000,000 | 87,500,000 | 87,000,000 | 87,000,000 |
-| 84,654,321 | 100,000,000 | 80,000,000 | 85,000,000 | 85,000,000 | 85,000,000 | 84,500,000 |
-| 22,484.49 | 0 | 20,000 | 20,000 | 22,500 | 22,000 | 22,500 |
-| 2,484.49 | 0 | 2,000 | 2,500 | 2,500 | 2,500 | 2,500 |
-| \-22,484.72 | 0 | \-20,000 | \-20,000 | \-22,500 | \-22,000 | \-22,500 |
-| 36.1% | 0% | 40% | 35% | 35% | 36% | 36% |
-| \-2.8% | 0% | \-3% | \-3% | \-2.75% | \-2.8% | \-2.8% |
-
-Each setting emphasizes different relationships in the data.  The goal is not precision—it is interpretability.
 
 ## Adaptive precision
 
 Smaller values can be simplified more aggressively without affecting the overall structure of the data.
 
-| original value | `=round_dynamic(A1:A7, -0.5, 0)` |
-| :---- | :---- |
-| 87,054,321 | 85,000,000 |
-| 84,654,321 | 85,000,000 |
-| 22,484.49 | 20,000 |
-| 2,484.49 | 2,000 |
-| \-22,484.72 | \-20,000 |
-| 36.1% | 40% |
-| \-2.8% | \-3% |
+In this example, the largest values are rounded to the nearest half order of magnitude `(0.5)`, while smaller values are rounded more.
 
-In this example, the largest values are rounded to the nearest half order of magnitude `(0.5)`, while smaller values are rounded more aggressively.
 
-This preserves structure in large numbers while improving overall readability, especially in larger and more complicated datasets.
+| original value | `=round_dynamic(A1:A7, -0.5, 0)` | notes |
+| :---- | :---- | :---- |
+| 87,054,321 | 85,000,000 | In this data, the largest numbers are ‘tens of millions’.  They get simplified by being rounded to the nearest ***half*** order of magnitude.  <br><br> This lighter touch preserves more fidelity to the original value. |
+| 84,654,321 | 85,000,000 |  |
+| 23,484.49 | 20,000 | Any number smaller than ‘tens of millions’ are simplified by being to the full order of magnitude. <br><br> In this case the number is ‘tens of thousands’ and it gets rounded to the nearest ten thousand. <br><br> More aggressive rounding of smaller numbers improves readability (signal) while minimizing impact on the fidelity of the dataset as a whole. |
+| \-23,484.72 | \-20,000 |  |
+| 2,484.49 | 2,000 | number in the thousands → nearest thousand |
+| 36% | 40% | a decimal (0.36) in ‘tenths’ → nearest ten percent |
+| \-2.8% | \-3% |  |
+
+This balance preserves structure in large numbers while improving overall readability, especially in larger and more complicated datasets.
 
 ## Features
 
@@ -101,6 +101,7 @@ This preserves structure in large numbers while improving overall readability, e
 | :---- | :---- | :---- |
 | Google Sheets | [js/](https://www.google.com/search?q=./js/) | [Copy template](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) |
 | Python | [python/](https://www.google.com/search?q=./python/) | pip install dynamic-rounding |
+| Chrome Extension | [chrome-extension/](https://www.google.com/search?q=./chrome-extension/) | [Load unpacked](https://developer.chrome.com/docs/extensions/mv3/getstarted/development-basics/#load-unpacked) |
 
 ## Quick Examples
 
@@ -121,24 +122,26 @@ This preserves structure in large numbers while improving overall readability, e
 * \# round entire series with set-aware precision:  
 * `round_dynamic_series(df['revenue'])`
 
-——————————————————————————————————————————————
+--- 
 
 ## Documentation
 
 * [Design Doc](https://www.google.com/search?q=./docs/design.md) — Algorithm and concepts  
 * [Google Sheets README](https://www.google.com/search?q=./js/README.md) — Full Sheets documentation  
 * [Python README](https://www.google.com/search?q=./python/README.md) — Full Python documentation
+* [Chrome Extension README](https://www.google.com/search?q=./chrome-extension/README.md) — Browser-based simplification
 
 ## License
 
 MIT
 
-——————————————————————————————————————————————
+
+<br><br><br><br>
+# Appendix
 
 ## An example of reading a story from data
 
-Data can unconsciously encode information it was not designed to reveal.  
-In this invoice, you can read a company's business model, underlying architectural beliefs and transformation goals.
+Data can encode information it was not designed to reveal. For example, this invoice reveals read a company's business model, underlying architectural beliefs and transformation goals.
 
 | Service Name | Cloud Bill |
 | :---- | :---- |
