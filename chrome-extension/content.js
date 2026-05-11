@@ -21,28 +21,17 @@ document.addEventListener('contextmenu', (event) => {
 }, true);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'GET_MENU_LABEL') {
-    const table = lastRightClickedElement && lastRightClickedElement.closest('table');
-    let title;
-    if (!table || !table.querySelector('.dr-ext-rounded')) {
-      title = 'Round table dynamically';
-    } else if (table.dataset.drShowingOriginal === 'true') {
-      title = 'Show rounded values';
-    } else {
-      title = 'Show original values';
-    }
-    sendResponse({ title });
-    return true;
-  }
-
   if (request.action === 'MENU_CLICKED') {
     if (lastRightClickedElement) {
       const table = lastRightClickedElement.closest('table');
       if (table) {
         if (!table.querySelector('.dr-ext-rounded')) {
           roundTable(table);
+          chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Show original values' });
         } else {
           toggleOriginalValues(table);
+          const label = table.dataset.drShowingOriginal === 'true' ? 'Show rounded values' : 'Show original values';
+          chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: label });
         }
       } else {
         console.warn("Dynamic Rounding: No table found at right-click location.");
