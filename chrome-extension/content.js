@@ -179,6 +179,7 @@ function toNumber(value) {
   }
   if (typeof value === "string" && value.trim() !== "") {
     let cleaned = value.trim()
+      .replace(/[‐-―−﹘﹣－]/g, "-")
       .replace(CLEAN_REGEX, "")
       .replace(PARENS_REGEX, "-$1");
     const parsed = Number(cleaned);
