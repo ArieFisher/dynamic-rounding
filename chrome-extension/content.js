@@ -15,35 +15,31 @@ const VALIDATION_LIMIT = 20;
 const EPSILON = 1e-9;
 
 let lastRightClickedElement = null;
-let pendingAction = 'ROUND_TABLE';
 
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
-
-  const table = event.target.closest('table');
-  let label, action;
-
-  if (!table || !table.querySelector('.dr-ext-rounded')) {
-    label = 'Round table dynamically';
-    action = 'ROUND_TABLE';
-  } else if (table.dataset.drShowingOriginal === 'true') {
-    label = 'Show rounded values';
-    action = 'TOGGLE_ORIGINAL';
-  } else {
-    label = 'Show original values';
-    action = 'TOGGLE_ORIGINAL';
-  }
-
-  pendingAction = action;
-  chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: label });
 }, true);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'GET_MENU_LABEL') {
+    const table = lastRightClickedElement && lastRightClickedElement.closest('table');
+    let title;
+    if (!table || !table.querySelector('.dr-ext-rounded')) {
+      title = 'Round table dynamically';
+    } else if (table.dataset.drShowingOriginal === 'true') {
+      title = 'Show rounded values';
+    } else {
+      title = 'Show original values';
+    }
+    sendResponse({ title });
+    return true;
+  }
+
   if (request.action === 'MENU_CLICKED') {
     if (lastRightClickedElement) {
       const table = lastRightClickedElement.closest('table');
       if (table) {
-        if (pendingAction === 'ROUND_TABLE') {
+        if (!table.querySelector('.dr-ext-rounded')) {
           roundTable(table);
         } else {
           toggleOriginalValues(table);
