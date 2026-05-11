@@ -14,18 +14,14 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-chrome.contextMenus.onShown.addListener((info, tab) => {
-  if (!info.menuIds.includes("dr-action")) return;
-  chrome.tabs.sendMessage(tab.id, { action: "GET_MENU_LABEL" }, (response) => {
-    if (response && response.title) {
-      chrome.contextMenus.update("dr-action", { title: response.title });
-      chrome.contextMenus.refresh();
-    }
-  });
-});
-
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "dr-action") {
     chrome.tabs.sendMessage(tab.id, { action: "MENU_CLICKED" });
+  }
+});
+
+chrome.runtime.onMessage.addListener((request, sender) => {
+  if (request.action === "UPDATE_MENU_LABEL") {
+    chrome.contextMenus.update("dr-action", { title: request.title });
   }
 });
