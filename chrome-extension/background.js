@@ -8,27 +8,20 @@
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: "round-table",
+    id: "dr-action",
     title: "Round table dynamically",
-    contexts: ["all"]
-  });
-  chrome.contextMenus.create({
-    id: "show-original",
-    title: "Show original values",
     contexts: ["all"]
   });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "round-table") {
-    chrome.tabs.sendMessage(tab.id, { action: "ROUND_TABLE" });
-  } else if (info.menuItemId === "show-original") {
-    chrome.tabs.sendMessage(tab.id, { action: "TOGGLE_ORIGINAL" });
+  if (info.menuItemId === "dr-action") {
+    chrome.tabs.sendMessage(tab.id, { action: "MENU_CLICKED" });
   }
 });
 
 chrome.runtime.onMessage.addListener((request, sender) => {
-  if (request.action === "UPDATE_TOGGLE_LABEL") {
-    chrome.contextMenus.update("show-original", { title: request.title });
+  if (request.action === "UPDATE_MENU_LABEL") {
+    chrome.contextMenus.update("dr-action", { title: request.title });
   }
 });
