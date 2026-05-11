@@ -16,3 +16,4 @@ docs/private/
 # Antigravity Agent
 .agent/*
 !.agent/rules/
+PR_MESSAGE.md
