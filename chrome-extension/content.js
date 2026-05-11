@@ -15,26 +15,41 @@ const VALIDATION_LIMIT = 20;
 const EPSILON = 1e-9;
 
 let lastRightClickedElement = null;
+let pendingAction = 'ROUND_TABLE';
 
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
+
+  const table = event.target.closest('table');
+  let label, action;
+
+  if (!table || !table.querySelector('.dr-ext-rounded')) {
+    label = 'Round table dynamically';
+    action = 'ROUND_TABLE';
+  } else if (table.dataset.drShowingOriginal === 'true') {
+    label = 'Show rounded values';
+    action = 'TOGGLE_ORIGINAL';
+  } else {
+    label = 'Show original values';
+    action = 'TOGGLE_ORIGINAL';
+  }
+
+  pendingAction = action;
+  chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: label });
 }, true);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'ROUND_TABLE') {
+  if (request.action === 'MENU_CLICKED') {
     if (lastRightClickedElement) {
       const table = lastRightClickedElement.closest('table');
       if (table) {
-        roundTable(table);
+        if (pendingAction === 'ROUND_TABLE') {
+          roundTable(table);
+        } else {
+          toggleOriginalValues(table);
+        }
       } else {
         console.warn("Dynamic Rounding: No table found at right-click location.");
-      }
-    }
-  } else if (request.action === 'TOGGLE_ORIGINAL') {
-    if (lastRightClickedElement) {
-      const table = lastRightClickedElement.closest('table');
-      if (table) {
-        toggleOriginalValues(table);
       }
     }
   }
@@ -109,11 +124,6 @@ function toggleOriginalValues(table) {
   }
 
   table.dataset.drShowingOriginal = showingOriginal ? 'false' : 'true';
-
-  chrome.runtime.sendMessage({
-    action: 'UPDATE_TOGGLE_LABEL',
-    title: showingOriginal ? 'Show original values' : 'Show rounded values'
-  });
 }
 
 // --- Core Algorithm Inlined ---
