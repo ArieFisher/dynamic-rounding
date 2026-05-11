@@ -30,6 +30,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.warn("Dynamic Rounding: No table found at right-click location.");
       }
     }
+  } else if (request.action === 'TOGGLE_ORIGINAL') {
+    if (lastRightClickedElement) {
+      const table = lastRightClickedElement.closest('table');
+      if (table) {
+        toggleOriginalValues(table);
+      }
+    }
   }
 });
 
@@ -68,16 +75,45 @@ function roundTable(table) {
         
         // Replace text while preserving HTML elements (for font, size, etc)
         replaceTextPreservingHTML(cell, originalValue, formattedValue);
-        
+
         // Tooltip for original value
         cell.title = `Original: ${originalValue}`;
-        
+
         // Prepare for future toggles
         cell.classList.add('dr-ext-rounded');
         cell.dataset.originalValue = originalValue;
+        cell.dataset.roundedValue = formattedValue;
       }
     }
   }
+}
+
+function toggleOriginalValues(table) {
+  const roundedCells = table.querySelectorAll('.dr-ext-rounded');
+  if (roundedCells.length === 0) return;
+
+  const showingOriginal = table.dataset.drShowingOriginal === 'true';
+
+  for (const cell of roundedCells) {
+    const original = cell.dataset.originalValue;
+    const rounded = cell.dataset.roundedValue;
+    if (!original || !rounded) continue;
+
+    if (showingOriginal) {
+      replaceTextPreservingHTML(cell, original, rounded);
+      cell.title = `Original: ${original}`;
+    } else {
+      replaceTextPreservingHTML(cell, rounded, original);
+      cell.title = `Rounded: ${rounded}`;
+    }
+  }
+
+  table.dataset.drShowingOriginal = showingOriginal ? 'false' : 'true';
+
+  chrome.runtime.sendMessage({
+    action: 'UPDATE_TOGGLE_LABEL',
+    title: showingOriginal ? 'Show original values' : 'Show rounded values'
+  });
 }
 
 // --- Core Algorithm Inlined ---
