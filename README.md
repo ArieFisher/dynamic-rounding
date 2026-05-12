@@ -105,6 +105,11 @@ This balance preserves structure in large numbers while improving overall readab
 
 ## Quick Examples
 
+### Chrome Extension
+![alt-text](docs//dynamic_rounding_Screen.gif)
+
+see [Chrome Extension README](chrome-extension/README.md)
+
 ### Google Sheets
 
 * \=ROUND\_DYNAMIC(87054321) \-\> 85,000,000  
