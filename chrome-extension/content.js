@@ -21,11 +21,18 @@ document.addEventListener('contextmenu', (event) => {
 }, true);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'ROUND_TABLE') {
+  if (request.action === 'MENU_CLICKED') {
     if (lastRightClickedElement) {
       const table = lastRightClickedElement.closest('table');
       if (table) {
-        roundTable(table);
+        if (!table.querySelector('.dr-ext-rounded')) {
+          roundTable(table);
+          chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Show original values' });
+        } else {
+          toggleOriginalValues(table);
+          const label = table.dataset.drShowingOriginal === 'true' ? 'Show rounded values' : 'Show original values';
+          chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: label });
+        }
       } else {
         console.warn("Dynamic Rounding: No table found at right-click location.");
       }
@@ -68,16 +75,40 @@ function roundTable(table) {
         
         // Replace text while preserving HTML elements (for font, size, etc)
         replaceTextPreservingHTML(cell, originalValue, formattedValue);
-        
+
         // Tooltip for original value
         cell.title = `Original: ${originalValue}`;
-        
+
         // Prepare for future toggles
         cell.classList.add('dr-ext-rounded');
         cell.dataset.originalValue = originalValue;
+        cell.dataset.roundedValue = formattedValue;
       }
     }
   }
+}
+
+function toggleOriginalValues(table) {
+  const roundedCells = table.querySelectorAll('.dr-ext-rounded');
+  if (roundedCells.length === 0) return;
+
+  const showingOriginal = table.dataset.drShowingOriginal === 'true';
+
+  for (const cell of roundedCells) {
+    const original = cell.dataset.originalValue;
+    const rounded = cell.dataset.roundedValue;
+    if (!original || !rounded) continue;
+
+    if (showingOriginal) {
+      replaceTextPreservingHTML(cell, original, rounded);
+      cell.title = `Original: ${original}`;
+    } else {
+      replaceTextPreservingHTML(cell, rounded, original);
+      cell.title = `Rounded: ${rounded}`;
+    }
+  }
+
+  table.dataset.drShowingOriginal = showingOriginal ? 'false' : 'true';
 }
 
 // --- Core Algorithm Inlined ---
