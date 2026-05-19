@@ -42,7 +42,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: label });
         }
       } else {
-        console.warn("Dynamic Rounding: No table found at right-click location.");
+        console.debug("Dynamic Rounding: No table found at right-click location.");
       }
     }
     return;
@@ -52,7 +52,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (lastRightClickedTable) {
       applySidebarRounding(lastRightClickedTable, DEFAULT_SIDEBAR_OPTIONS);
     } else {
-      console.warn("Dynamic Rounding: No table targeted. Right-click a table cell first.");
+      console.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
     }
     return;
   }
@@ -65,9 +65,43 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+window.addEventListener('pagehide', () => {
+  try {
+    chrome.runtime.sendMessage({ action: 'PAGE_UNLOADED' });
+  } catch (e) {
+    // extension context may already be gone
+  }
+});
+
 function applySidebarRounding(table, options) {
+  ensureHighlightStyleInjected();
   resetTable(table);
   roundTable(table, options);
+  flashTargetedTable(table);
+}
+
+let highlightStyleInjected = false;
+function ensureHighlightStyleInjected() {
+  if (highlightStyleInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes drExtTargetFlash {
+      0%   { outline: 2px solid rgba(66, 133, 244, 0.95); outline-offset: 2px; }
+      100% { outline: 2px solid rgba(66, 133, 244, 0);    outline-offset: 2px; }
+    }
+    .dr-ext-target-flash {
+      animation: drExtTargetFlash 1s ease-out;
+    }
+  `;
+  (document.head || document.documentElement).appendChild(style);
+  highlightStyleInjected = true;
+}
+
+function flashTargetedTable(table) {
+  table.classList.remove('dr-ext-target-flash');
+  // Force reflow so the animation restarts when re-added.
+  void table.offsetWidth;
+  table.classList.add('dr-ext-target-flash');
 }
 
 function resetTable(table) {

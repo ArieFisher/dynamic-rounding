@@ -17,6 +17,7 @@ global.chrome = {
   }
 };
 global.document = { addEventListener: () => {} };
+global.window = { addEventListener: () => {} };
 global.NodeFilter = { SHOW_TEXT: 4 };
 
 const code = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
