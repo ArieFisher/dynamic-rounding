@@ -33,3 +33,24 @@ function sendToActiveTab(message) {
 excludeWordsEl.addEventListener('change', () => {
   sendToActiveTab({ action: 'APPLY_SIDEBAR_SETTINGS', settings: currentSettings() });
 });
+
+// Also re-flash + re-apply when the user clicks anywhere in the sidebar body,
+// so they get a visual confirmation of which table is targeted.
+document.body.addEventListener('click', (e) => {
+  if (e.target === excludeWordsEl) return; // change handler already fires
+  sendToActiveTab({ action: 'APPLY_SIDEBAR_SETTINGS', settings: currentSettings() });
+});
+
+chrome.runtime.onMessage.addListener((request) => {
+  if (request.action === 'CLOSE_SIDEBAR') {
+    window.close();
+  }
+});
+
+window.addEventListener('unload', () => {
+  try {
+    chrome.runtime.sendMessage({ action: 'SIDEBAR_CLOSED' });
+  } catch (e) {
+    // extension context may already be gone
+  }
+});
