@@ -1,6 +1,6 @@
 /**
  * DynamicRounding Chrome Extension
- * Version: 1.1.0
+ * Version: 1.3.0
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  * Copyright (c) 2026 Arie Fisher
