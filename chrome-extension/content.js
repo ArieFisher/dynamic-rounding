@@ -1,6 +1,6 @@
 /**
  * DynamicRounding Chrome Extension
- * Version: 1.3.1
+ * Version: 1.3.2
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  * Copyright (c) 2026 Arie Fisher
@@ -78,6 +78,9 @@ function applySidebarRounding(table, options) {
   resetTable(table);
   roundTable(table, options);
   flashTargetedTable(table);
+  if (table.querySelector('.dr-ext-rounded')) {
+    chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Show original values' });
+  }
 }
 
 let highlightStyleInjected = false;
