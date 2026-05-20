@@ -361,6 +361,57 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     getExclusionReason('2018', 1, opts), 'dates');
 })();
 
+// --- Sprint B: per-type granularity ---
+
+// Date granularity
+eq('roundDateText: year granularity is a no-op (returns null)',
+  roundDateText('2018', 'year'), null);
+eq('roundDateText: decade rounds bare year',
+  roundDateText('2018', 'decade'), '2010');
+eq('roundDateText: century rounds bare year',
+  roundDateText('2018', 'century'), '2000');
+eq('roundDateText: decade in "March 14, 2024"',
+  roundDateText('March 14, 2024', 'decade'), 'March 14, 2020');
+eq('roundDateText: century in "March 14, 2024"',
+  roundDateText('March 14, 2024', 'century'), 'March 14, 2000');
+eq('roundDateText: decade in ISO date',
+  roundDateText('2024-03-14', 'decade'), '2020-03-14');
+eq('roundDateText: no year present -> null',
+  roundDateText('hello world', 'decade'), null);
+eq('roundDateText: 2020 at decade granularity unchanged',
+  roundDateText('2020', 'decade'), null);
+
+// Time granularity
+eq('roundTimeText: minute granularity is a no-op',
+  roundTimeText('14:30', 'minute'), null);
+eq('roundTimeText: hour rounds 14:30 up (round-half-up)',
+  roundTimeText('14:30', 'hour'), '15:00');
+eq('roundTimeText: hour rounds 14:31 up',
+  roundTimeText('14:31', 'hour'), '15:00');
+eq('roundTimeText: hour rounds 14:29 down',
+  roundTimeText('14:29', 'hour'), '14:00');
+eq('roundTimeText: hour with seconds',
+  roundTimeText('14:29:30', 'hour'), '15:00:00');
+eq('roundTimeText: hour with AM/PM preserved',
+  roundTimeText('2:45 PM', 'hour'), '3:00 PM');
+eq('roundTimeText: zero-pad preserved',
+  roundTimeText('02:30', 'hour'), '03:00');
+eq('roundTimeText: invalid input -> null',
+  roundTimeText('not a time', 'hour'), null);
+// Edge cases (12-hour and 24-hour wrap)
+eq('roundTimeText: 12:45 PM wraps to 1:00 PM',
+  roundTimeText('12:45 PM', 'hour'), '1:00 PM');
+eq('roundTimeText: 11:45 AM crosses noon to 12:00 PM',
+  roundTimeText('11:45 AM', 'hour'), '12:00 PM');
+eq('roundTimeText: 11:45 PM wraps past midnight to 12:00 AM',
+  roundTimeText('11:45 PM', 'hour'), '12:00 AM');
+eq('roundTimeText: 12:45 AM wraps to 1:00 AM',
+  roundTimeText('12:45 AM', 'hour'), '1:00 AM');
+eq('roundTimeText: 23:30 wraps to 00:00 (24-hour)',
+  roundTimeText('23:30', 'hour'), '00:00');
+eq('roundTimeText: lowercase pm suffix preserved',
+  roundTimeText('2:45pm', 'hour'), '3:00pm');
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
