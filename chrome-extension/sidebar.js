@@ -18,17 +18,30 @@ const CHECKBOX_TO_SETTING = {
   excludeCurrency: 'excludeCurrency'
 };
 
+const dateGranularityEl = document.getElementById('dateGranularity');
+const timeGranularityEl = document.getElementById('timeGranularity');
+
 function currentSettings() {
   const settings = { enabled: enabledEl.checked };
   for (const id in CHECKBOX_TO_SETTING) {
     const el = document.getElementById(id);
     if (el) settings[CHECKBOX_TO_SETTING[id]] = el.checked;
   }
+  if (dateGranularityEl) settings.dateGranularity = dateGranularityEl.value;
+  if (timeGranularityEl) settings.timeGranularity = timeGranularityEl.value;
   return settings;
 }
 
 function updateDisabledState() {
   optionsSection.classList.toggle('disabled', !enabledEl.checked);
+  // Granularity dropdown only matters when the corresponding exclusion is off
+  // (i.e. that type's cells will round).
+  if (dateGranularityEl) {
+    dateGranularityEl.disabled = document.getElementById('excludeDates').checked;
+  }
+  if (timeGranularityEl) {
+    timeGranularityEl.disabled = document.getElementById('excludeTimes').checked;
+  }
 }
 
 function sendToActiveTab(message) {
@@ -58,11 +71,17 @@ enabledEl.addEventListener('change', () => {
 
 for (const id in CHECKBOX_TO_SETTING) {
   const el = document.getElementById(id);
-  if (el) el.addEventListener('change', applyNow);
+  if (el) el.addEventListener('change', () => {
+    updateDisabledState();
+    applyNow();
+  });
 }
 
+if (dateGranularityEl) dateGranularityEl.addEventListener('change', applyNow);
+if (timeGranularityEl) timeGranularityEl.addEventListener('change', applyNow);
+
 document.body.addEventListener('click', (e) => {
-  if (e.target.matches('input[type="checkbox"]')) return;
+  if (e.target.matches('input[type="checkbox"], select, option')) return;
   applyNow();
 });
 

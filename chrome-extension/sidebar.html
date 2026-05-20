@@ -89,8 +89,27 @@
       padding: 6px 0;
       cursor: pointer;
     }
-    label.checkbox-row input {
+    label.checkbox-row input[type="checkbox"] {
       margin: 0;
+    }
+    label.checkbox-row .row-label {
+      flex-grow: 1;
+    }
+    label.checkbox-row select {
+      font-size: 12px;
+      padding: 2px 4px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      background: #fff;
+      color: #5f6368;
+    }
+    label.checkbox-row select:disabled {
+      opacity: 0.4;
+    }
+    .granularity-label {
+      font-size: 11px;
+      color: #5f6368;
+      margin-right: 4px;
     }
     .status {
       font-size: 12px;
@@ -119,11 +138,22 @@
     </label>
     <label class="checkbox-row">
       <input type="checkbox" id="excludeDates" checked>
-      <span>dates</span>
+      <span class="row-label">dates</span>
+      <span class="granularity-label">round to:</span>
+      <select id="dateGranularity" disabled>
+        <option value="year" selected>year</option>
+        <option value="decade">decade</option>
+        <option value="century">century</option>
+      </select>
     </label>
     <label class="checkbox-row">
       <input type="checkbox" id="excludeTimes" checked>
-      <span>times</span>
+      <span class="row-label">times</span>
+      <span class="granularity-label">round to:</span>
+      <select id="timeGranularity" disabled>
+        <option value="minute" selected>minute</option>
+        <option value="hour">hour</option>
+      </select>
     </label>
     <label class="checkbox-row">
       <input type="checkbox" id="excludeFirstColumn" checked>
