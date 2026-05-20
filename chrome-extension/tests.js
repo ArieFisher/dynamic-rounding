@@ -412,6 +412,31 @@ eq('roundTimeText: 23:30 wraps to 00:00 (24-hour)',
 eq('roundTimeText: lowercase pm suffix preserved',
   roundTimeText('2:45pm', 'hour'), '3:00pm');
 
+// --- Sprint C: advanced parameter resolvers ---
+
+eq('resolveOffset: null -> fallback', resolveOffset(null, -0.5), -0.5);
+eq('resolveOffset: undefined -> fallback', resolveOffset(undefined, -0.5), -0.5);
+eq('resolveOffset: "" -> fallback', resolveOffset('', -0.5), -0.5);
+eq('resolveOffset: numeric string', resolveOffset('-1.5', -0.5), -1.5);
+eq('resolveOffset: number passes through', resolveOffset(-2, -0.5), -2);
+eq('resolveOffset: NaN -> fallback', resolveOffset('abc', -0.5), -0.5);
+eq('resolveOffset: out-of-range -> fallback (too low)',
+  resolveOffset('-99', -0.5), -0.5);
+eq('resolveOffset: out-of-range -> fallback (too high)',
+  resolveOffset('99', -0.5), -0.5);
+eq('resolveOffset: boundary -20 ok', resolveOffset('-20', -0.5), -20);
+eq('resolveOffset: boundary +20 ok', resolveOffset('20', -0.5), 20);
+
+eq('resolveNumTop: null -> fallback', resolveNumTop(null, 1), 1);
+eq('resolveNumTop: "" -> fallback', resolveNumTop('', 1), 1);
+eq('resolveNumTop: "3" -> 3', resolveNumTop('3', 1), 3);
+eq('resolveNumTop: 0 -> fallback (must be >= 1)',
+  resolveNumTop(0, 1), 1);
+eq('resolveNumTop: negative -> fallback',
+  resolveNumTop('-2', 1), 1);
+eq('resolveNumTop: 2.7 floored to 2',
+  resolveNumTop('2.7', 1), 2);
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
