@@ -1,6 +1,6 @@
 /**
  * DynamicRounding Chrome Extension
- * Version: 1.3.4
+ * Version: 1.3.5
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  * Copyright (c) 2026 Arie Fisher
@@ -16,7 +16,7 @@ const DEFAULT_NUM_TOP = 1;
 const VALIDATION_LIMIT = 20;
 const EPSILON = 1e-9;
 
-const DEFAULT_SIDEBAR_OPTIONS = { excludeWords: true };
+const DEFAULT_SIDEBAR_OPTIONS = { enabled: true, excludeWords: true };
 
 let lastRightClickedElement = null;
 let lastRightClickedTable = null;
@@ -75,13 +75,18 @@ window.addEventListener('pagehide', () => {
 });
 
 function applySidebarRounding(table, options) {
+  const opts = Object.assign({}, DEFAULT_SIDEBAR_OPTIONS, options || {});
   ensureHighlightStyleInjected();
   resetTable(table);
-  roundTable(table, options);
-  flashTargetedTable(table);
-  if (table.querySelector('.dr-ext-rounded')) {
-    chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Show original values' });
+  if (opts.enabled !== false) {
+    roundTable(table, opts);
+    if (table.querySelector('.dr-ext-rounded')) {
+      chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Show original values' });
+    }
+  } else {
+    chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Round table dynamically' });
   }
+  flashTargetedTable(table);
 }
 
 let highlightStyleInjected = false;
