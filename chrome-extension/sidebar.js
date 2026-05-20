@@ -23,6 +23,7 @@ const timeGranularityEl = document.getElementById('timeGranularity');
 const offsetTopEl = document.getElementById('offsetTop');
 const offsetOtherEl = document.getElementById('offsetOther');
 const numTopEl = document.getElementById('numTop');
+const rangeExprEl = document.getElementById('rangeExpr');
 
 function parseOptionalNumber(el) {
   if (!el) return null;
@@ -43,6 +44,7 @@ function currentSettings() {
   settings.offsetTop = parseOptionalNumber(offsetTopEl);
   settings.offsetOther = parseOptionalNumber(offsetOtherEl);
   settings.numTop = parseOptionalNumber(numTopEl);
+  settings.rangeExpr = rangeExprEl ? rangeExprEl.value : '';
   return settings;
 }
 
@@ -95,7 +97,7 @@ if (dateGranularityEl) dateGranularityEl.addEventListener('change', applyNow);
 if (timeGranularityEl) timeGranularityEl.addEventListener('change', applyNow);
 
 // Advanced parameters: 'input' fires on every keystroke (live update); also debounce-light by relying on roundTable's reset-then-apply.
-[offsetTopEl, offsetOtherEl, numTopEl].forEach(el => {
+[offsetTopEl, offsetOtherEl, numTopEl, rangeExprEl].forEach(el => {
   if (el) el.addEventListener('input', applyNow);
 });
 
@@ -107,6 +109,16 @@ document.body.addEventListener('click', (e) => {
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === 'CLOSE_SIDEBAR') {
     window.close();
+  } else if (request.action === 'RANGE_ERROR') {
+    statusEl.textContent = request.error || 'Invalid range expression.';
+    statusEl.dataset.source = 'range';
+    if (rangeExprEl) rangeExprEl.classList.add('invalid');
+  } else if (request.action === 'RANGE_OK') {
+    if (rangeExprEl) rangeExprEl.classList.remove('invalid');
+    if (statusEl.dataset.source === 'range') {
+      statusEl.textContent = '';
+      delete statusEl.dataset.source;
+    }
   }
 });
 
