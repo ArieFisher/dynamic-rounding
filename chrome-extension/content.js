@@ -1,6 +1,6 @@
 /**
  * DynamicRounding Chrome Extension
- * Version: 1.3.6
+ * Version: 1.4.0
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  * Copyright (c) 2026 Arie Fisher
@@ -16,7 +16,15 @@ const DEFAULT_NUM_TOP = 1;
 const VALIDATION_LIMIT = 20;
 const EPSILON = 1e-9;
 
-const DEFAULT_SIDEBAR_OPTIONS = { enabled: true, excludeWords: true };
+const DEFAULT_SIDEBAR_OPTIONS = {
+  enabled: true,
+  excludeWords: true,
+  excludeDates: true,
+  excludeTimes: true,
+  excludeFirstColumn: true,
+  excludePercent: false,
+  excludeCurrency: false
+};
 
 let lastRightClickedElement = null;
 let lastRightClickedTable = null;
@@ -149,18 +157,22 @@ function roundTable(table, options) {
       rowData.push(text);
       rowCells.push(cell);
 
-      const num = toNumber(text);
-      if (num !== null) {
-        rowInfo.push({ mode: 'pure', num });
-      } else if (!opts.excludeWords) {
-        const matches = extractNumbersInText(text);
-        if (matches.length > 0) {
-          rowInfo.push({ mode: 'extracted', matches });
+      if (getExclusionReason(text, c, opts)) {
+        rowInfo.push({ mode: 'skip' });
+      } else {
+        const num = toNumber(text);
+        if (num !== null) {
+          rowInfo.push({ mode: 'pure', num });
+        } else if (!opts.excludeWords) {
+          const matches = extractNumbersInText(text);
+          if (matches.length > 0) {
+            rowInfo.push({ mode: 'extracted', matches });
+          } else {
+            rowInfo.push({ mode: 'skip' });
+          }
         } else {
           rowInfo.push({ mode: 'skip' });
         }
-      } else {
-        rowInfo.push({ mode: 'skip' });
       }
     }
     data.push(rowData);
@@ -214,6 +226,47 @@ function roundTable(table, options) {
       cell.dataset.roundedValue = formattedValue;
     }
   }
+}
+
+function getExclusionReason(text, columnIndex, options) {
+  if (options.excludeFirstColumn && columnIndex === 0) return 'firstColumn';
+  if (typeof text !== 'string') return null;
+  const t = text.trim();
+  if (options.excludeDates && isDateLike(t)) return 'dates';
+  if (options.excludeTimes && isTimeLike(t)) return 'times';
+  if (options.excludePercent && /%/.test(t)) return 'percent';
+  if (options.excludeCurrency && /[$€£¥₹]/.test(t)) return 'currency';
+  return null;
+}
+
+function isYearValue(text) {
+  if (!/^\d{4}$/.test(text)) return false;
+  const n = parseInt(text, 10);
+  return n >= 1900 && n <= 2099;
+}
+
+const MONTH_NAMES = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
+const DATE_REGEXES = [
+  /^\d{4}-\d{2}-\d{2}$/,                              // 2024-03-14
+  /^\d{1,2}\/\d{1,2}\/\d{2,4}$/,                      // 3/14/2024
+  /^\d{1,2}-\d{1,2}-\d{2,4}$/,                        // 3-14-2024
+  new RegExp(`^${MONTH_NAMES}\\s+\\d{1,2},?\\s+\\d{4}$`, 'i'),  // March 14, 2024
+  new RegExp(`^\\d{1,2}\\s+${MONTH_NAMES}\\s+\\d{4}$`, 'i'),    // 14 March 2024
+  new RegExp(`^${MONTH_NAMES}\\s+\\d{4}$`, 'i'),               // March 2024
+  new RegExp(`^\\d{1,2}\\s+${MONTH_NAMES}$`, 'i')              // 14 March
+];
+
+function isDateLike(text) {
+  if (isYearValue(text)) return true;
+  for (const re of DATE_REGEXES) {
+    if (re.test(text)) return true;
+  }
+  return false;
+}
+
+function isTimeLike(text) {
+  // HH:MM or HH:MM:SS, optional AM/PM
+  return /^\d{1,2}:\d{2}(:\d{2})?(\s*[ap]\.?m\.?)?$/i.test(text);
 }
 
 function extractNumberInText(text) {
