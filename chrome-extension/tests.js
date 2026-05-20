@@ -71,6 +71,30 @@ eq('extract: non-string input',
   extractNumberInText(null),
   null);
 
+// --- extractNumbersInText (multi-match) ---
+
+eq('extractAll: range with en-dash',
+  extractNumbersInText('₹615.71–623.33 crore'),
+  [
+    { numStr: '615.71', num: 615.71, index: 1 },
+    { numStr: '623.33', num: 623.33, index: 8 }
+  ]);
+
+eq('extractAll: two-number sentence',
+  extractNumbersInText('between 1,200 and 3,400 units'),
+  [
+    { numStr: '1,200', num: 1200, index: 8 },
+    { numStr: '3,400', num: 3400, index: 18 }
+  ]);
+
+eq('extractAll: single number still returns one-element array',
+  extractNumbersInText('286k'),
+  [{ numStr: '286', num: 286, index: 0 }]);
+
+eq('extractAll: no digits returns empty array',
+  extractNumbersInText('N/A'),
+  []);
+
 // --- formatExtractedNumber ---
 
 eq('format: large number gets commas matching original',
@@ -130,6 +154,26 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
 
   eq('e2e: full table output', out,
     ['8,500,000', '300', '8,500,000 USD', '300k']);
+})();
+
+// --- Range cell: every number in the cell must round ---
+(function rangeCell() {
+  const text = '₹615.71–623.33 crore';
+  const matches = extractNumbersInText(text);
+  const allNums = matches.map(m => m.num);
+  const maxMag = findMaxMagnitude([allNums]);
+
+  let out = text;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const m = matches[i];
+    const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
+    if (rounded === m.num) continue;
+    const newNum = formatExtractedNumber(rounded, m.numStr);
+    out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
+  }
+
+  eq('range cell: both numbers in "₹615.71–623.33 crore" round',
+    out, '₹600–600 crore');
 })();
 
 // --- excludeWords=true path: extracted cells skipped, pure cells still round ---

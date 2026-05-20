@@ -1,6 +1,6 @@
 /**
  * DynamicRounding Chrome Extension
- * Version: 1.3.3
+ * Version: 1.3.4
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  * Copyright (c) 2026 Arie Fisher
@@ -10,6 +10,7 @@
 const CLEAN_REGEX = /[$€£¥,\s%]/g;
 const PARENS_REGEX = /^\((.+)\)$/;
 const NUMBER_IN_TEXT_REGEX = /-?\d[\d,]*(?:\.\d+)?/;
+const NUMBER_IN_TEXT_REGEX_GLOBAL = /-?\d[\d,]*(?:\.\d+)?/g;
 const DEFAULT_OFFSET_TOP = -0.5;
 const DEFAULT_NUM_TOP = 1;
 const VALIDATION_LIMIT = 20;
@@ -147,14 +148,14 @@ function roundTable(table, options) {
       if (num !== null) {
         rowInfo.push({ mode: 'pure', num });
       } else if (!opts.excludeWords) {
-        const extracted = extractNumberInText(text);
-        if (extracted) {
-          rowInfo.push({ mode: 'extracted', num: extracted.num, numStr: extracted.numStr, index: extracted.index });
+        const matches = extractNumbersInText(text);
+        if (matches.length > 0) {
+          rowInfo.push({ mode: 'extracted', matches });
         } else {
-          rowInfo.push({ mode: 'skip', num: null });
+          rowInfo.push({ mode: 'skip' });
         }
       } else {
-        rowInfo.push({ mode: 'skip', num: null });
+        rowInfo.push({ mode: 'skip' });
       }
     }
     data.push(rowData);
@@ -162,26 +163,43 @@ function roundTable(table, options) {
     cellInfo.push(rowInfo);
   }
 
-  const numericRange = cellInfo.map(row => row.map(info => info.num));
-  const max_mag = findMaxMagnitude(numericRange);
+  const allNums = [];
+  for (const row of cellInfo) {
+    for (const info of row) {
+      if (info.mode === 'pure') allNums.push(info.num);
+      else if (info.mode === 'extracted') {
+        for (const m of info.matches) allNums.push(m.num);
+      }
+    }
+  }
+  const max_mag = findMaxMagnitude([allNums]);
 
   for (let r = 0; r < data.length; r++) {
     for (let c = 0; c < data[r].length; c++) {
       const info = cellInfo[r][c];
       if (info.mode === 'skip') continue;
 
-      const roundedValue = roundCellSetAware(info.num, info.num, max_mag, DEFAULT_OFFSET_TOP, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP);
-      if (roundedValue === info.num) continue;
-
       const originalValue = data[r][c];
       const cell = cellsMap[r][c];
       let formattedValue;
 
       if (info.mode === 'pure') {
+        const roundedValue = roundCellSetAware(info.num, info.num, max_mag, DEFAULT_OFFSET_TOP, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP);
+        if (roundedValue === info.num) continue;
         formattedValue = restoreFormatting(roundedValue, originalValue);
       } else {
-        const formattedNum = formatExtractedNumber(roundedValue, info.numStr);
-        formattedValue = originalValue.substring(0, info.index) + formattedNum + originalValue.substring(info.index + info.numStr.length);
+        // Round each match individually, splice back from right-to-left so earlier indices remain valid.
+        let changed = false;
+        formattedValue = originalValue;
+        for (let i = info.matches.length - 1; i >= 0; i--) {
+          const m = info.matches[i];
+          const rounded = roundCellSetAware(m.num, m.num, max_mag, DEFAULT_OFFSET_TOP, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP);
+          if (rounded === m.num) continue;
+          const newNum = formatExtractedNumber(rounded, m.numStr);
+          formattedValue = formattedValue.substring(0, m.index) + newNum + formattedValue.substring(m.index + m.numStr.length);
+          changed = true;
+        }
+        if (!changed) continue;
       }
 
       replaceTextPreservingHTML(cell, originalValue, formattedValue);
@@ -201,6 +219,20 @@ function extractNumberInText(text) {
   const num = toNumber(numStr);
   if (num === null || num === 0) return null;
   return { numStr, num, index: match.index };
+}
+
+function extractNumbersInText(text) {
+  if (typeof text !== 'string') return [];
+  const matches = [];
+  const re = new RegExp(NUMBER_IN_TEXT_REGEX_GLOBAL.source, 'g');
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const num = toNumber(m[0]);
+    if (num !== null && num !== 0) {
+      matches.push({ numStr: m[0], num, index: m.index });
+    }
+  }
+  return matches;
 }
 
 function formatExtractedNumber(rounded, originalNumStr) {
