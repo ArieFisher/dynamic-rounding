@@ -280,6 +280,87 @@ eq('restoreFormatting: percent suffix preserved',
 eq('restoreFormatting: parens-negative preserved',
   restoreFormatting(-500, '(523)'), '(500)');
 
+// --- Sprint A: exclusion checkboxes ---
+
+eq('isYearValue: 2018 -> true', isYearValue('2018'), true);
+eq('isYearValue: 1899 -> false', isYearValue('1899'), false);
+eq('isYearValue: 2100 -> false', isYearValue('2100'), false);
+eq('isYearValue: 12 -> false', isYearValue('12'), false);
+eq('isYearValue: 20181 -> false', isYearValue('20181'), false);
+
+eq('isDateLike: bare 4-digit year', isDateLike('2018'), true);
+eq('isDateLike: ISO date', isDateLike('2024-03-14'), true);
+eq('isDateLike: US slash date', isDateLike('3/14/2024'), true);
+eq('isDateLike: dash date', isDateLike('3-14-2024'), true);
+eq('isDateLike: "March 14, 2024"', isDateLike('March 14, 2024'), true);
+eq('isDateLike: "14 March 2024"', isDateLike('14 March 2024'), true);
+eq('isDateLike: "Mar 2024"', isDateLike('Mar 2024'), true);
+eq('isDateLike: "Sept 2024"', isDateLike('Sept 2024'), true);
+eq('isDateLike: plain number not a year -> false', isDateLike('1234'), false);
+eq('isDateLike: random text -> false', isDateLike('hello'), false);
+eq('isDateLike: empty -> false', isDateLike(''), false);
+
+eq('isTimeLike: 14:30 -> true', isTimeLike('14:30'), true);
+eq('isTimeLike: 14:30:45 -> true', isTimeLike('14:30:45'), true);
+eq('isTimeLike: 2:30 PM -> true', isTimeLike('2:30 PM'), true);
+eq('isTimeLike: 2:30pm -> true', isTimeLike('2:30pm'), true);
+eq('isTimeLike: 2:3 -> false (single-digit minutes)', isTimeLike('2:3'), false);
+eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
+
+(function exclusionFirstColumn() {
+  const opts = Object.assign({}, {
+    excludeWords: true, excludeDates: false, excludeTimes: false,
+    excludeFirstColumn: true, excludePercent: false, excludeCurrency: false
+  });
+  eq('exclude: first column with flag on', getExclusionReason('anything', 0, opts), 'firstColumn');
+  eq('exclude: non-first column ignores flag', getExclusionReason('anything', 1, opts), null);
+})();
+
+(function exclusionDates() {
+  const opts = { excludeDates: true };
+  eq('exclude: year cell when excludeDates=true',
+    getExclusionReason('2018', 1, opts), 'dates');
+  eq('exclude: non-date cell when excludeDates=true',
+    getExclusionReason('1,234', 1, opts), null);
+  eq('exclude: year cell when excludeDates=false',
+    getExclusionReason('2018', 1, { excludeDates: false }), null);
+})();
+
+(function exclusionTimes() {
+  eq('exclude: time cell when excludeTimes=true',
+    getExclusionReason('14:30', 1, { excludeTimes: true }), 'times');
+})();
+
+(function exclusionPercent() {
+  eq('exclude: percent off by default',
+    getExclusionReason('45%', 1, {}), null);
+  eq('exclude: percent on',
+    getExclusionReason('45%', 1, { excludePercent: true }), 'percent');
+})();
+
+(function exclusionCurrency() {
+  eq('exclude: currency off by default',
+    getExclusionReason('$1,234', 1, {}), null);
+  eq('exclude: currency on',
+    getExclusionReason('$1,234', 1, { excludeCurrency: true }), 'currency');
+  eq('exclude: euro on',
+    getExclusionReason('€1,234', 1, { excludeCurrency: true }), 'currency');
+  eq('exclude: rupee on',
+    getExclusionReason('₹615', 1, { excludeCurrency: true }), 'currency');
+})();
+
+// First-match-wins priority: firstColumn beats dates beats times beats percent beats currency
+(function exclusionPriority() {
+  const opts = {
+    excludeFirstColumn: true, excludeDates: true, excludeTimes: true,
+    excludePercent: true, excludeCurrency: true
+  };
+  eq('priority: first column wins even when value is a date',
+    getExclusionReason('2018', 0, opts), 'firstColumn');
+  eq('priority: dates beats percent for a year value',
+    getExclusionReason('2018', 1, opts), 'dates');
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
