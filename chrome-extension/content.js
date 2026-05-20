@@ -1,6 +1,6 @@
 /**
  * DynamicRounding Chrome Extension
- * Version: 1.4.0
+ * Version: 1.5.0
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  * Copyright (c) 2026 Arie Fisher
@@ -23,7 +23,9 @@ const DEFAULT_SIDEBAR_OPTIONS = {
   excludeTimes: true,
   excludeFirstColumn: true,
   excludePercent: false,
-  excludeCurrency: false
+  excludeCurrency: false,
+  dateGranularity: 'year',     // year | decade | century
+  timeGranularity: 'minute'    // minute | hour
 };
 
 let lastRightClickedElement = null;
@@ -157,8 +159,13 @@ function roundTable(table, options) {
       rowData.push(text);
       rowCells.push(cell);
 
+      const trimmed = typeof text === 'string' ? text.trim() : '';
       if (getExclusionReason(text, c, opts)) {
         rowInfo.push({ mode: 'skip' });
+      } else if (opts.excludeDates === false && isDateLike(trimmed)) {
+        rowInfo.push({ mode: 'date' });
+      } else if (opts.excludeTimes === false && isTimeLike(trimmed)) {
+        rowInfo.push({ mode: 'time' });
       } else {
         const num = toNumber(text);
         if (num !== null) {
@@ -200,7 +207,13 @@ function roundTable(table, options) {
       const cell = cellsMap[r][c];
       let formattedValue;
 
-      if (info.mode === 'pure') {
+      if (info.mode === 'date') {
+        formattedValue = roundDateText(originalValue, opts.dateGranularity);
+        if (formattedValue === null || formattedValue === originalValue) continue;
+      } else if (info.mode === 'time') {
+        formattedValue = roundTimeText(originalValue, opts.timeGranularity);
+        if (formattedValue === null || formattedValue === originalValue) continue;
+      } else if (info.mode === 'pure') {
         const roundedValue = roundCellSetAware(info.num, info.num, max_mag, DEFAULT_OFFSET_TOP, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP);
         if (roundedValue === info.num) continue;
         formattedValue = restoreFormatting(roundedValue, originalValue);
@@ -267,6 +280,71 @@ function isDateLike(text) {
 function isTimeLike(text) {
   // HH:MM or HH:MM:SS, optional AM/PM
   return /^\d{1,2}:\d{2}(:\d{2})?(\s*[ap]\.?m\.?)?$/i.test(text);
+}
+
+function roundDateText(text, granularity) {
+  if (typeof text !== 'string') return null;
+  if (granularity === 'year' || !granularity) return null; // no change at year granularity
+  const yearMatch = text.match(/\b(19\d{2}|20\d{2})\b/);
+  if (!yearMatch) return null;
+  const year = parseInt(yearMatch[1], 10);
+  let rounded;
+  if (granularity === 'decade') rounded = Math.floor(year / 10) * 10;
+  else if (granularity === 'century') rounded = Math.floor(year / 100) * 100;
+  else return null;
+  if (rounded === year) return null;
+  return text.substring(0, yearMatch.index) + String(rounded) + text.substring(yearMatch.index + yearMatch[1].length);
+}
+
+function roundTimeText(text, granularity) {
+  if (typeof text !== 'string') return null;
+  if (granularity === 'minute' || !granularity) return null;
+  if (granularity !== 'hour') return null;
+  const trimmed = text.trim();
+  const m = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(\s*[ap]\.?m\.?)?$/i);
+  if (!m) return null;
+  const origHourStr = m[1];
+  const origHour = parseInt(origHourStr, 10);
+  const minutes = parseInt(m[2], 10);
+  const seconds = m[3] ? parseInt(m[3], 10) : 0;
+  const ampmRaw = m[4] || '';
+  const has12HourSuffix = ampmRaw !== '';
+  const isPm = has12HourSuffix && /p/i.test(ampmRaw);
+
+  // Round up if at or past the half-hour mark.
+  const roundUp = minutes > 30 || (minutes === 30 && seconds >= 0) || (minutes === 29 && seconds >= 30);
+
+  let hour24;
+  if (has12HourSuffix) {
+    // 12-hour clock: 12 AM = 0, 1-11 AM = 1-11, 12 PM = 12, 1-11 PM = 13-23.
+    hour24 = (origHour % 12) + (isPm ? 12 : 0);
+  } else {
+    hour24 = origHour;
+  }
+  if (roundUp) hour24 = (hour24 + 1) % 24;
+  else hour24 = hour24 % 24;
+
+  let displayHour;
+  let displayAmpm = '';
+  if (has12HourSuffix) {
+    const newIsPm = hour24 >= 12;
+    let h12 = hour24 % 12;
+    if (h12 === 0) h12 = 12;
+    displayHour = String(h12);
+    // Preserve the original AM/PM token style ("AM", "am", "a.m.", " PM", etc.)
+    // by swapping the a/p letter but keeping the rest of the original suffix.
+    displayAmpm = newIsPm ? ampmRaw.replace(/a/i, c => c === 'A' ? 'P' : 'p')
+                          : ampmRaw.replace(/p/i, c => c === 'P' ? 'A' : 'a');
+  } else {
+    displayHour = origHourStr.length === 2
+      ? String(hour24).padStart(2, '0')
+      : String(hour24);
+  }
+
+  let result = `${displayHour}:00`;
+  if (m[3]) result += ':00';
+  result += displayAmpm;
+  return result === trimmed ? null : result;
 }
 
 function extractNumberInText(text) {
