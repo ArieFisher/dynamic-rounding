@@ -111,6 +111,50 @@
       color: #5f6368;
       margin-right: 4px;
     }
+    details.advanced {
+      margin-top: 4px;
+      transition: opacity 0.15s;
+    }
+    details.advanced summary {
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #5f6368;
+      padding: 6px 0;
+      user-select: none;
+    }
+    .param-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+    }
+    .param-row .param-label {
+      flex-grow: 1;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 12px;
+      color: #3c4043;
+    }
+    .param-row input[type="number"] {
+      width: 64px;
+      font-size: 12px;
+      padding: 3px 6px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      text-align: right;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .param-row input::placeholder {
+      color: #9aa0a6;
+    }
+    .param-help {
+      font-size: 11px;
+      color: #5f6368;
+      margin-top: 4px;
+      line-height: 1.4;
+    }
     .status {
       font-size: 12px;
       color: #5f6368;
@@ -168,6 +212,27 @@
       <span>currencies</span>
     </label>
   </div>
+
+  <details class="advanced section" id="advancedSection">
+    <summary>Advanced</summary>
+    <div class="param-row">
+      <span class="param-label">offset_top</span>
+      <input type="number" id="offsetTop" step="0.1" placeholder="-0.5">
+    </div>
+    <div class="param-row">
+      <span class="param-label">offset_other</span>
+      <input type="number" id="offsetOther" step="0.1" placeholder="-0.5">
+    </div>
+    <div class="param-row">
+      <span class="param-label">num_top</span>
+      <input type="number" id="numTop" step="1" min="1" placeholder="1">
+    </div>
+    <div class="param-help">
+      Maps to the <code>ROUND_DYNAMIC</code> Google Sheets function.
+      Leave blank for defaults. <code>offset_other</code> inherits from
+      <code>offset_top</code> when blank.
+    </div>
+  </details>
 
   <div class="status" id="status"></div>
 
