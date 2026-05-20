@@ -20,6 +20,17 @@ const CHECKBOX_TO_SETTING = {
 
 const dateGranularityEl = document.getElementById('dateGranularity');
 const timeGranularityEl = document.getElementById('timeGranularity');
+const offsetTopEl = document.getElementById('offsetTop');
+const offsetOtherEl = document.getElementById('offsetOther');
+const numTopEl = document.getElementById('numTop');
+
+function parseOptionalNumber(el) {
+  if (!el) return null;
+  const v = el.value.trim();
+  if (v === '') return null;
+  const n = parseFloat(v);
+  return isFinite(n) ? n : null;
+}
 
 function currentSettings() {
   const settings = { enabled: enabledEl.checked };
@@ -29,6 +40,9 @@ function currentSettings() {
   }
   if (dateGranularityEl) settings.dateGranularity = dateGranularityEl.value;
   if (timeGranularityEl) settings.timeGranularity = timeGranularityEl.value;
+  settings.offsetTop = parseOptionalNumber(offsetTopEl);
+  settings.offsetOther = parseOptionalNumber(offsetOtherEl);
+  settings.numTop = parseOptionalNumber(numTopEl);
   return settings;
 }
 
@@ -80,8 +94,13 @@ for (const id in CHECKBOX_TO_SETTING) {
 if (dateGranularityEl) dateGranularityEl.addEventListener('change', applyNow);
 if (timeGranularityEl) timeGranularityEl.addEventListener('change', applyNow);
 
+// Advanced parameters: 'input' fires on every keystroke (live update); also debounce-light by relying on roundTable's reset-then-apply.
+[offsetTopEl, offsetOtherEl, numTopEl].forEach(el => {
+  if (el) el.addEventListener('input', applyNow);
+});
+
 document.body.addEventListener('click', (e) => {
-  if (e.target.matches('input[type="checkbox"], select, option')) return;
+  if (e.target.matches('input, select, option, summary')) return;
   applyNow();
 });
 
