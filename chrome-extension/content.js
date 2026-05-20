@@ -1,6 +1,6 @@
 /**
  * DynamicRounding Chrome Extension
- * Version: 1.6.0
+ * Version: 1.7.0
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  * Copyright (c) 2026 Arie Fisher
@@ -28,7 +28,8 @@ const DEFAULT_SIDEBAR_OPTIONS = {
   timeGranularity: 'minute',   // minute | hour
   offsetTop: null,             // null = use DEFAULT_OFFSET_TOP
   offsetOther: null,           // null = inherit from offsetTop
-  numTop: null                 // null = use DEFAULT_NUM_TOP
+  numTop: null,                // null = use DEFAULT_NUM_TOP
+  rangeExpr: ''                // '' = whole table; otherwise A1-style range expression
 };
 
 let lastRightClickedElement = null;
@@ -149,6 +150,13 @@ function roundTable(table, options) {
   const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
   const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
   const numTop = resolveNumTop(opts.numTop, DEFAULT_NUM_TOP);
+  const rangeParse = parseRangeExpr(opts.rangeExpr);
+  if (rangeParse.error) {
+    chrome.runtime.sendMessage({ action: 'RANGE_ERROR', error: rangeParse.error });
+    return;
+  }
+  chrome.runtime.sendMessage({ action: 'RANGE_OK' });
+  const ranges = rangeParse.ranges;
   const rows = Array.from(table.rows);
   const data = [];
   const cellsMap = [];
@@ -166,7 +174,9 @@ function roundTable(table, options) {
       rowCells.push(cell);
 
       const trimmed = typeof text === 'string' ? text.trim() : '';
-      if (getExclusionReason(text, c, opts)) {
+      if (!isInRanges(r, c, ranges)) {
+        rowInfo.push({ mode: 'skip' });
+      } else if (getExclusionReason(text, c, opts)) {
         rowInfo.push({ mode: 'skip' });
       } else if (opts.excludeDates === false && isDateLike(trimmed)) {
         rowInfo.push({ mode: 'date' });
@@ -245,6 +255,85 @@ function roundTable(table, options) {
       cell.dataset.roundedValue = formattedValue;
     }
   }
+}
+
+function lettersToColIndex(letters) {
+  const up = letters.toUpperCase();
+  let n = 0;
+  for (let i = 0; i < up.length; i++) {
+    const code = up.charCodeAt(i);
+    if (code < 65 || code > 90) return null;
+    n = n * 26 + (code - 64);
+  }
+  return n - 1;
+}
+
+function parseRangeEndpoint(token) {
+  const m = token.trim().match(/^([A-Za-z]+)?(\d+)?$/);
+  if (!m || (!m[1] && !m[2])) return null;
+  const col = m[1] ? lettersToColIndex(m[1]) : null;
+  if (m[1] && col === null) return null;
+  const row = m[2] ? parseInt(m[2], 10) - 1 : null;
+  if (m[2] && (row < 0 || !isFinite(row))) return null;
+  return { col, row };
+}
+
+function parseRangeToken(token) {
+  const t = token.trim();
+  if (!t) return null;
+  if (t.includes(':')) {
+    const parts = t.split(':');
+    if (parts.length !== 2) return null;
+    const l = parseRangeEndpoint(parts[0]);
+    const r = parseRangeEndpoint(parts[1]);
+    if (!l || !r) return null;
+    // Open-ended semantics: left-null = unbounded below (0), right-null = unbounded above (Infinity).
+    const lcol = l.col === null ? 0 : l.col;
+    const rcol = r.col === null ? Infinity : r.col;
+    const lrow = l.row === null ? 0 : l.row;
+    const rrow = r.row === null ? Infinity : r.row;
+    return {
+      colMin: Math.min(lcol, rcol),
+      colMax: Math.max(lcol, rcol),
+      rowMin: Math.min(lrow, rrow),
+      rowMax: Math.max(lrow, rrow)
+    };
+  }
+  const e = parseRangeEndpoint(t);
+  if (!e) return null;
+  return {
+    colMin: e.col ?? 0,
+    colMax: e.col ?? Infinity,
+    rowMin: e.row ?? 0,
+    rowMax: e.row ?? Infinity
+  };
+}
+
+function parseRangeExpr(expr) {
+  if (typeof expr !== 'string') return { ranges: null };
+  const trimmed = expr.trim();
+  if (!trimmed) return { ranges: null }; // null = whole table
+  const stripped = trimmed.replace(/^\{/, '').replace(/\}$/, '');
+  const tokens = stripped.split(/[,;]/).map(t => t.trim()).filter(Boolean);
+  if (tokens.length === 0) return { ranges: null };
+  const ranges = [];
+  for (const tok of tokens) {
+    const r = parseRangeToken(tok);
+    if (!r) return { error: `Invalid range: "${tok}"` };
+    ranges.push(r);
+  }
+  return { ranges };
+}
+
+function isInRanges(r, c, ranges) {
+  if (!ranges) return true;
+  for (const range of ranges) {
+    if (r >= range.rowMin && r <= range.rowMax &&
+        c >= range.colMin && c <= range.colMax) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function resolveOffset(value, fallback) {

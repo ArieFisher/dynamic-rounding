@@ -437,6 +437,126 @@ eq('resolveNumTop: negative -> fallback',
 eq('resolveNumTop: 2.7 floored to 2',
   resolveNumTop('2.7', 1), 2);
 
+// --- Sprint G: range selector ---
+
+// lettersToColIndex
+eq('lettersToColIndex: A -> 0', lettersToColIndex('A'), 0);
+eq('lettersToColIndex: B -> 1', lettersToColIndex('B'), 1);
+eq('lettersToColIndex: Z -> 25', lettersToColIndex('Z'), 25);
+eq('lettersToColIndex: AA -> 26', lettersToColIndex('AA'), 26);
+eq('lettersToColIndex: AB -> 27', lettersToColIndex('AB'), 27);
+eq('lettersToColIndex: lowercase ok', lettersToColIndex('a'), 0);
+eq('lettersToColIndex: non-letter -> null', lettersToColIndex('A1'), null);
+
+// parseRangeExpr
+eq('parseRangeExpr: empty -> null ranges (whole table)',
+  parseRangeExpr(''), { ranges: null });
+eq('parseRangeExpr: whitespace -> null ranges',
+  parseRangeExpr('   '), { ranges: null });
+
+(function expr_singleColumn() {
+  const r = parseRangeExpr('A');
+  eq('parseRangeExpr: "A" -> whole column A',
+    r, { ranges: [{ colMin: 0, colMax: 0, rowMin: 0, rowMax: Infinity }] });
+})();
+
+(function expr_columnRange() {
+  const r = parseRangeExpr('A:D');
+  eq('parseRangeExpr: "A:D" -> columns 0-3 all rows',
+    r, { ranges: [{ colMin: 0, colMax: 3, rowMin: 0, rowMax: Infinity }] });
+})();
+
+(function expr_rowRange() {
+  const r = parseRangeExpr('1:10');
+  eq('parseRangeExpr: "1:10" -> rows 0-9 all cols',
+    r, { ranges: [{ colMin: 0, colMax: Infinity, rowMin: 0, rowMax: 9 }] });
+})();
+
+(function expr_rect() {
+  const r = parseRangeExpr('B2:E8');
+  eq('parseRangeExpr: "B2:E8" -> rect (1,1)-(7,4)',
+    r, { ranges: [{ colMin: 1, colMax: 4, rowMin: 1, rowMax: 7 }] });
+})();
+
+(function expr_openEnd() {
+  const r = parseRangeExpr('G3:G');
+  eq('parseRangeExpr: "G3:G" -> column G from row 2 down',
+    r, { ranges: [{ colMin: 6, colMax: 6, rowMin: 2, rowMax: Infinity }] });
+})();
+
+(function expr_singleCell() {
+  const r = parseRangeExpr('C5');
+  eq('parseRangeExpr: "C5" -> single cell (4,2)',
+    r, { ranges: [{ colMin: 2, colMax: 2, rowMin: 4, rowMax: 4 }] });
+})();
+
+(function expr_union() {
+  const r = parseRangeExpr('{A1:E8, G3:G, I4:K5}');
+  eq('parseRangeExpr: brace union of three ranges',
+    r.ranges.length, 3);
+})();
+
+(function expr_unionNoBraces() {
+  const r = parseRangeExpr('A1:B2, D:D');
+  eq('parseRangeExpr: comma-separated without braces',
+    r.ranges.length, 2);
+})();
+
+(function expr_semicolons() {
+  const r = parseRangeExpr('A; B; C');
+  eq('parseRangeExpr: semicolon separator',
+    r.ranges.length, 3);
+})();
+
+(function expr_invalid() {
+  const r = parseRangeExpr('A:B:C');
+  eq('parseRangeExpr: triple colon -> error',
+    typeof r.error, 'string');
+})();
+
+(function expr_invalidGarbage() {
+  const r = parseRangeExpr('1A');
+  eq('parseRangeExpr: digits-then-letters -> error',
+    typeof r.error, 'string');
+  const r2 = parseRangeExpr('@#$');
+  eq('parseRangeExpr: punctuation -> error',
+    typeof r2.error, 'string');
+})();
+
+// Open-ended in either direction
+eq('parseRangeExpr: "G:G3" -> column G up to row 3',
+  parseRangeExpr('G:G3'),
+  { ranges: [{ colMin: 6, colMax: 6, rowMin: 0, rowMax: 2 }] });
+
+// Swapped endpoints normalize
+eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
+  parseRangeExpr('A5:A2'),
+  { ranges: [{ colMin: 0, colMax: 0, rowMin: 1, rowMax: 4 }] });
+
+// isInRanges
+(function isIn_null() {
+  eq('isInRanges: null ranges -> always true (whole table)',
+    isInRanges(5, 5, null), true);
+})();
+
+(function isIn_inside() {
+  const ranges = [{ colMin: 1, colMax: 3, rowMin: 1, rowMax: 5 }];
+  eq('isInRanges: inside rect', isInRanges(2, 2, ranges), true);
+  eq('isInRanges: on boundary',  isInRanges(1, 1, ranges), true);
+  eq('isInRanges: outside col',  isInRanges(2, 0, ranges), false);
+  eq('isInRanges: outside row',  isInRanges(0, 2, ranges), false);
+})();
+
+(function isIn_unionMembership() {
+  const ranges = [
+    { colMin: 0, colMax: 1, rowMin: 0, rowMax: 1 },
+    { colMin: 5, colMax: 5, rowMin: 2, rowMax: Infinity }
+  ];
+  eq('isInRanges: in first rect', isInRanges(0, 0, ranges), true);
+  eq('isInRanges: in second open rect', isInRanges(100, 5, ranges), true);
+  eq('isInRanges: between rects', isInRanges(2, 2, ranges), false);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
