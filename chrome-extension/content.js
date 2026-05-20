@@ -1,6 +1,6 @@
 /**
  * DynamicRounding Chrome Extension
- * Version: 1.1.0
+ * Version: 1.3.5
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  * Copyright (c) 2026 Arie Fisher
@@ -9,15 +9,24 @@
 // Constants
 const CLEAN_REGEX = /[$€£¥,\s%]/g;
 const PARENS_REGEX = /^\((.+)\)$/;
+const NUMBER_IN_TEXT_REGEX = /-?\d[\d,]*(?:\.\d+)?/;
+const NUMBER_IN_TEXT_REGEX_GLOBAL = /-?\d[\d,]*(?:\.\d+)?/g;
 const DEFAULT_OFFSET_TOP = -0.5;
 const DEFAULT_NUM_TOP = 1;
 const VALIDATION_LIMIT = 20;
 const EPSILON = 1e-9;
 
+const DEFAULT_SIDEBAR_OPTIONS = { enabled: true, excludeWords: true };
+
 let lastRightClickedElement = null;
+let lastRightClickedTable = null;
 
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
+  const table = event.target.closest && event.target.closest('table');
+  if (table) {
+    lastRightClickedTable = table;
+  }
 }, true);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -34,58 +43,213 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: label });
         }
       } else {
-        console.warn("Dynamic Rounding: No table found at right-click location.");
+        console.debug("Dynamic Rounding: No table found at right-click location.");
       }
     }
+    return;
+  }
+
+  if (request.action === 'SIDEBAR_OPENED') {
+    if (lastRightClickedTable) {
+      applySidebarRounding(lastRightClickedTable, DEFAULT_SIDEBAR_OPTIONS);
+    } else {
+      console.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
+    }
+    return;
+  }
+
+  if (request.action === 'APPLY_SIDEBAR_SETTINGS') {
+    if (lastRightClickedTable) {
+      applySidebarRounding(lastRightClickedTable, request.settings || DEFAULT_SIDEBAR_OPTIONS);
+    }
+    return;
   }
 });
 
-function roundTable(table) {
+window.addEventListener('pagehide', () => {
+  try {
+    chrome.runtime.sendMessage({ action: 'PAGE_UNLOADED' });
+  } catch (e) {
+    // extension context may already be gone
+  }
+});
+
+function applySidebarRounding(table, options) {
+  const opts = Object.assign({}, DEFAULT_SIDEBAR_OPTIONS, options || {});
+  ensureHighlightStyleInjected();
+  resetTable(table);
+  if (opts.enabled !== false) {
+    roundTable(table, opts);
+    if (table.querySelector('.dr-ext-rounded')) {
+      chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Show original values' });
+    }
+  } else {
+    chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Round table dynamically' });
+  }
+  flashTargetedTable(table);
+}
+
+let highlightStyleInjected = false;
+function ensureHighlightStyleInjected() {
+  if (highlightStyleInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes drExtTargetFlash {
+      0%   { outline: 2px solid rgba(66, 133, 244, 0.95); outline-offset: 2px; }
+      100% { outline: 2px solid rgba(66, 133, 244, 0);    outline-offset: 2px; }
+    }
+    .dr-ext-target-flash {
+      animation: drExtTargetFlash 1s ease-out;
+    }
+  `;
+  (document.head || document.documentElement).appendChild(style);
+  highlightStyleInjected = true;
+}
+
+function flashTargetedTable(table) {
+  table.classList.remove('dr-ext-target-flash');
+  // Force reflow so the animation restarts when re-added.
+  void table.offsetWidth;
+  table.classList.add('dr-ext-target-flash');
+}
+
+function resetTable(table) {
+  const roundedCells = table.querySelectorAll('.dr-ext-rounded');
+  const showingOriginal = table.dataset.drShowingOriginal === 'true';
+  for (const cell of roundedCells) {
+    const original = cell.dataset.originalValue;
+    const rounded = cell.dataset.roundedValue;
+    if (original && rounded) {
+      const shown = showingOriginal ? original : rounded;
+      replaceTextPreservingHTML(cell, shown, original);
+    }
+    cell.classList.remove('dr-ext-rounded');
+    delete cell.dataset.originalValue;
+    delete cell.dataset.roundedValue;
+    cell.removeAttribute('title');
+  }
+  delete table.dataset.drShowingOriginal;
+}
+
+function roundTable(table, options) {
+  const opts = Object.assign({}, DEFAULT_SIDEBAR_OPTIONS, options || {});
   const rows = Array.from(table.rows);
   const data = [];
   const cellsMap = [];
+  const cellInfo = [];
 
   for (let r = 0; r < rows.length; r++) {
     const cells = Array.from(rows[r].cells);
     const rowData = [];
     const rowCells = [];
+    const rowInfo = [];
     for (let c = 0; c < cells.length; c++) {
       const cell = cells[c];
       const text = cell.innerText || cell.textContent;
       rowData.push(text);
       rowCells.push(cell);
+
+      const num = toNumber(text);
+      if (num !== null) {
+        rowInfo.push({ mode: 'pure', num });
+      } else if (!opts.excludeWords) {
+        const matches = extractNumbersInText(text);
+        if (matches.length > 0) {
+          rowInfo.push({ mode: 'extracted', matches });
+        } else {
+          rowInfo.push({ mode: 'skip' });
+        }
+      } else {
+        rowInfo.push({ mode: 'skip' });
+      }
     }
     data.push(rowData);
     cellsMap.push(rowCells);
+    cellInfo.push(rowInfo);
   }
 
-  // Use dataset mode for the whole table
-  const roundedData = datasetMode(data, DEFAULT_OFFSET_TOP, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP);
-
-  for (let r = 0; r < data.length; r++) {
-    for (let c = 0; c < data[r].length; c++) {
-      const originalValue = data[r][c];
-      const roundedValue = roundedData[r][c];
-      const cell = cellsMap[r][c];
-
-      const num = toNumber(originalValue);
-      if (num !== null && num !== roundedValue) {
-        // Format the rounded value back to the original format
-        const formattedValue = restoreFormatting(roundedValue, originalValue);
-        
-        // Replace text while preserving HTML elements (for font, size, etc)
-        replaceTextPreservingHTML(cell, originalValue, formattedValue);
-
-        // Tooltip for original value
-        cell.title = `Original: ${originalValue}`;
-
-        // Prepare for future toggles
-        cell.classList.add('dr-ext-rounded');
-        cell.dataset.originalValue = originalValue;
-        cell.dataset.roundedValue = formattedValue;
+  const allNums = [];
+  for (const row of cellInfo) {
+    for (const info of row) {
+      if (info.mode === 'pure') allNums.push(info.num);
+      else if (info.mode === 'extracted') {
+        for (const m of info.matches) allNums.push(m.num);
       }
     }
   }
+  const max_mag = findMaxMagnitude([allNums]);
+
+  for (let r = 0; r < data.length; r++) {
+    for (let c = 0; c < data[r].length; c++) {
+      const info = cellInfo[r][c];
+      if (info.mode === 'skip') continue;
+
+      const originalValue = data[r][c];
+      const cell = cellsMap[r][c];
+      let formattedValue;
+
+      if (info.mode === 'pure') {
+        const roundedValue = roundCellSetAware(info.num, info.num, max_mag, DEFAULT_OFFSET_TOP, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP);
+        if (roundedValue === info.num) continue;
+        formattedValue = restoreFormatting(roundedValue, originalValue);
+      } else {
+        // Round each match individually, splice back from right-to-left so earlier indices remain valid.
+        let changed = false;
+        formattedValue = originalValue;
+        for (let i = info.matches.length - 1; i >= 0; i--) {
+          const m = info.matches[i];
+          const rounded = roundCellSetAware(m.num, m.num, max_mag, DEFAULT_OFFSET_TOP, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP);
+          if (rounded === m.num) continue;
+          const newNum = formatExtractedNumber(rounded, m.numStr);
+          formattedValue = formattedValue.substring(0, m.index) + newNum + formattedValue.substring(m.index + m.numStr.length);
+          changed = true;
+        }
+        if (!changed) continue;
+      }
+
+      replaceTextPreservingHTML(cell, originalValue, formattedValue);
+      cell.title = `Original: ${originalValue}`;
+      cell.classList.add('dr-ext-rounded');
+      cell.dataset.originalValue = originalValue;
+      cell.dataset.roundedValue = formattedValue;
+    }
+  }
+}
+
+function extractNumberInText(text) {
+  if (typeof text !== 'string') return null;
+  const match = text.match(NUMBER_IN_TEXT_REGEX);
+  if (!match) return null;
+  const numStr = match[0];
+  const num = toNumber(numStr);
+  if (num === null || num === 0) return null;
+  return { numStr, num, index: match.index };
+}
+
+function extractNumbersInText(text) {
+  if (typeof text !== 'string') return [];
+  const matches = [];
+  const re = new RegExp(NUMBER_IN_TEXT_REGEX_GLOBAL.source, 'g');
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const num = toNumber(m[0]);
+    if (num !== null && num !== 0) {
+      matches.push({ numStr: m[0], num, index: m.index });
+    }
+  }
+  return matches;
+}
+
+function formatExtractedNumber(rounded, originalNumStr) {
+  const hasCommas = originalNumStr.includes(',');
+  const decMatch = originalNumStr.match(/\.(\d+)/);
+  let decimals = decMatch ? decMatch[1].length : 0;
+  if (Math.abs(rounded) >= 10) decimals = 0;
+  return rounded.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: Math.max(decimals, 10),
+    useGrouping: hasCommas
+  });
 }
 
 function toggleOriginalValues(table) {
