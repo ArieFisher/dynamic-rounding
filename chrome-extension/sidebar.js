@@ -6,15 +6,25 @@
  */
 
 const enabledEl = document.getElementById('enabled');
-const excludeWordsEl = document.getElementById('excludeWords');
 const optionsSection = document.getElementById('optionsSection');
 const statusEl = document.getElementById('status');
 
+const CHECKBOX_TO_SETTING = {
+  excludeWords: 'excludeWords',
+  excludeDates: 'excludeDates',
+  excludeTimes: 'excludeTimes',
+  excludeFirstColumn: 'excludeFirstColumn',
+  excludePercent: 'excludePercent',
+  excludeCurrency: 'excludeCurrency'
+};
+
 function currentSettings() {
-  return {
-    enabled: enabledEl.checked,
-    excludeWords: excludeWordsEl.checked
-  };
+  const settings = { enabled: enabledEl.checked };
+  for (const id in CHECKBOX_TO_SETTING) {
+    const el = document.getElementById(id);
+    if (el) settings[CHECKBOX_TO_SETTING[id]] = el.checked;
+  }
+  return settings;
 }
 
 function updateDisabledState() {
@@ -37,18 +47,23 @@ function sendToActiveTab(message) {
   });
 }
 
+function applyNow() {
+  sendToActiveTab({ action: 'APPLY_SIDEBAR_SETTINGS', settings: currentSettings() });
+}
+
 enabledEl.addEventListener('change', () => {
   updateDisabledState();
-  sendToActiveTab({ action: 'APPLY_SIDEBAR_SETTINGS', settings: currentSettings() });
+  applyNow();
 });
 
-excludeWordsEl.addEventListener('change', () => {
-  sendToActiveTab({ action: 'APPLY_SIDEBAR_SETTINGS', settings: currentSettings() });
-});
+for (const id in CHECKBOX_TO_SETTING) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', applyNow);
+}
 
 document.body.addEventListener('click', (e) => {
-  if (e.target === enabledEl || e.target === excludeWordsEl) return;
-  sendToActiveTab({ action: 'APPLY_SIDEBAR_SETTINGS', settings: currentSettings() });
+  if (e.target.matches('input[type="checkbox"]')) return;
+  applyNow();
 });
 
 chrome.runtime.onMessage.addListener((request) => {
