@@ -1,6 +1,6 @@
 /**
  * DynamicRounding Chrome Extension
- * Version: 1.5.0
+ * Version: 1.6.0
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  * Copyright (c) 2026 Arie Fisher
@@ -25,7 +25,10 @@ const DEFAULT_SIDEBAR_OPTIONS = {
   excludePercent: false,
   excludeCurrency: false,
   dateGranularity: 'year',     // year | decade | century
-  timeGranularity: 'minute'    // minute | hour
+  timeGranularity: 'minute',   // minute | hour
+  offsetTop: null,             // null = use DEFAULT_OFFSET_TOP
+  offsetOther: null,           // null = inherit from offsetTop
+  numTop: null                 // null = use DEFAULT_NUM_TOP
 };
 
 let lastRightClickedElement = null;
@@ -143,6 +146,9 @@ function resetTable(table) {
 
 function roundTable(table, options) {
   const opts = Object.assign({}, DEFAULT_SIDEBAR_OPTIONS, options || {});
+  const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
+  const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
+  const numTop = resolveNumTop(opts.numTop, DEFAULT_NUM_TOP);
   const rows = Array.from(table.rows);
   const data = [];
   const cellsMap = [];
@@ -214,7 +220,7 @@ function roundTable(table, options) {
         formattedValue = roundTimeText(originalValue, opts.timeGranularity);
         if (formattedValue === null || formattedValue === originalValue) continue;
       } else if (info.mode === 'pure') {
-        const roundedValue = roundCellSetAware(info.num, info.num, max_mag, DEFAULT_OFFSET_TOP, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP);
+        const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
         if (roundedValue === info.num) continue;
         formattedValue = restoreFormatting(roundedValue, originalValue);
       } else {
@@ -223,7 +229,7 @@ function roundTable(table, options) {
         formattedValue = originalValue;
         for (let i = info.matches.length - 1; i >= 0; i--) {
           const m = info.matches[i];
-          const rounded = roundCellSetAware(m.num, m.num, max_mag, DEFAULT_OFFSET_TOP, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP);
+          const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
           if (rounded === m.num) continue;
           const newNum = formatExtractedNumber(rounded, m.numStr);
           formattedValue = formattedValue.substring(0, m.index) + newNum + formattedValue.substring(m.index + m.numStr.length);
@@ -239,6 +245,21 @@ function roundTable(table, options) {
       cell.dataset.roundedValue = formattedValue;
     }
   }
+}
+
+function resolveOffset(value, fallback) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const num = typeof value === 'number' ? value : parseFloat(value);
+  if (!isFinite(num)) return fallback;
+  if (num < -VALIDATION_LIMIT || num > VALIDATION_LIMIT) return fallback;
+  return num;
+}
+
+function resolveNumTop(value, fallback) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const num = typeof value === 'number' ? value : parseInt(value, 10);
+  if (!isFinite(num) || num < 1) return fallback;
+  return Math.floor(num);
 }
 
 function getExclusionReason(text, columnIndex, options) {
