@@ -13,6 +13,10 @@ build/
 # Local private docs (not committed)
 docs/private/
 
+# Claude Code local config / instructions
+CLAUDE.md
+.claude/
+
 # Antigravity Agent
 .agent/*
 !.agent/rules/
