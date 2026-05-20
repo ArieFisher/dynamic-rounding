@@ -5,13 +5,20 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
+const enabledEl = document.getElementById('enabled');
 const excludeWordsEl = document.getElementById('excludeWords');
+const optionsSection = document.getElementById('optionsSection');
 const statusEl = document.getElementById('status');
 
 function currentSettings() {
   return {
+    enabled: enabledEl.checked,
     excludeWords: excludeWordsEl.checked
   };
+}
+
+function updateDisabledState() {
+  optionsSection.classList.toggle('disabled', !enabledEl.checked);
 }
 
 function sendToActiveTab(message) {
@@ -30,14 +37,17 @@ function sendToActiveTab(message) {
   });
 }
 
+enabledEl.addEventListener('change', () => {
+  updateDisabledState();
+  sendToActiveTab({ action: 'APPLY_SIDEBAR_SETTINGS', settings: currentSettings() });
+});
+
 excludeWordsEl.addEventListener('change', () => {
   sendToActiveTab({ action: 'APPLY_SIDEBAR_SETTINGS', settings: currentSettings() });
 });
 
-// Also re-flash + re-apply when the user clicks anywhere in the sidebar body,
-// so they get a visual confirmation of which table is targeted.
 document.body.addEventListener('click', (e) => {
-  if (e.target === excludeWordsEl) return; // change handler already fires
+  if (e.target === enabledEl || e.target === excludeWordsEl) return;
   sendToActiveTab({ action: 'APPLY_SIDEBAR_SETTINGS', settings: currentSettings() });
 });
 
@@ -54,3 +64,5 @@ window.addEventListener('unload', () => {
     // extension context may already be gone
   }
 });
+
+updateDisabledState();

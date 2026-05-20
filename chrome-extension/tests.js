@@ -198,6 +198,88 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
     out, ['8,500,000', '300', '8,584,629 USD', '286k']);
 })();
 
+// --- Additional extractNumbersInText cases ---
+
+eq('extractAll: three numbers in a sentence',
+  extractNumbersInText('grew from 10 to 200 in 3,000 days').map(m => m.num),
+  [10, 200, 3000]);
+
+eq('extractAll: decimal followed by integer',
+  extractNumbersInText('avg 4.5, peak 9'),
+  [
+    { numStr: '4.5', num: 4.5, index: 4 },
+    { numStr: '9', num: 9, index: 14 }
+  ]);
+
+eq('extractAll: indices are correct for splicing',
+  extractNumbersInText('a 100 b 200 c').map(m => ({ s: m.numStr, i: m.index })),
+  [{ s: '100', i: 2 }, { s: '200', i: 8 }]);
+
+eq('extractAll: zero is excluded',
+  extractNumbersInText('range 0 to 500').map(m => m.num),
+  [500]);
+
+// --- Range cell with mixed magnitudes ---
+(function rangeMixedMagnitudes() {
+  const text = '50–5,000 range';
+  const matches = extractNumbersInText(text);
+  const allNums = matches.map(m => m.num);
+  const maxMag = findMaxMagnitude([allNums]);
+
+  let out = text;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const m = matches[i];
+    const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
+    if (rounded === m.num) continue;
+    const newNum = formatExtractedNumber(rounded, m.numStr);
+    out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
+  }
+
+  // maxMag = 3 (from 5000). 50 is magnitude 1, far from top -> uses offset_other (=top, both -0.5),
+  // so 50 rounds toward base = 10^1 * 0.5 = 5 -> 50.
+  // 5000 stays as 5,000.
+  eq('range cell: low end keeps its precision when far below top magnitude',
+    out, '50–5,000 range');
+})();
+
+// --- Splice safety: rounding doesn't affect later match indices because we go right-to-left ---
+(function spliceSafety() {
+  // Numbers that change length when rounded: 8,584,629 (9 chars) -> 8,500,000 (9 chars, same).
+  // Pick one that changes length: 286 (3) -> 300 (3) same. Use 9,876 -> 10,000 (length grows).
+  const text = '9,876 then 1,234';
+  const matches = extractNumbersInText(text);
+  const allNums = matches.map(m => m.num);
+  const maxMag = findMaxMagnitude([allNums]);
+
+  let out = text;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const m = matches[i];
+    const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
+    if (rounded === m.num) continue;
+    const newNum = formatExtractedNumber(rounded, m.numStr);
+    out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
+  }
+
+  // Both magnitude 3. base = 500. 9876/500=19.75->20*500=10,000. 1234/500=2.47->2*500=1,000.
+  eq('splice safety: right-to-left replacement handles length-changing rounds',
+    out, '10,000 then 1,000');
+})();
+
+// --- Parens-negative survives toNumber ---
+eq('toNumber: parens with comma', toNumber('(1,234)'), -1234);
+eq('toNumber: empty string returns null', toNumber(''), null);
+eq('toNumber: whitespace only returns null', toNumber('   '), null);
+
+// --- restoreFormatting roundtrips for common shapes ---
+eq('restoreFormatting: pure integer keeps commas',
+  restoreFormatting(8500000, '8,584,629'), '8,500,000');
+eq('restoreFormatting: currency prefix preserved',
+  restoreFormatting(8500000, '$8,584,629'), '$8,500,000');
+eq('restoreFormatting: percent suffix preserved',
+  restoreFormatting(12, '12.34%'), '12%');
+eq('restoreFormatting: parens-negative preserved',
+  restoreFormatting(-500, '(523)'), '(500)');
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
