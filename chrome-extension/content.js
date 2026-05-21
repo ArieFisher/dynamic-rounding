@@ -167,16 +167,20 @@ function roundTable(table, options) {
     const rowData = [];
     const rowCells = [];
     const rowInfo = [];
+    let dataCol = 0;
     for (let c = 0; c < cells.length; c++) {
       const cell = cells[c];
+      // Skip <th> row-header cells entirely — they are not data columns.
+      if (cell.tagName !== 'TD') continue;
+      const col = dataCol++;
       const text = cell.innerText || cell.textContent;
       rowData.push(text);
       rowCells.push(cell);
 
       const trimmed = typeof text === 'string' ? text.trim() : '';
-      if (!isInRanges(r, c, ranges)) {
+      if (!isInRanges(r, col, ranges)) {
         rowInfo.push({ mode: 'skip' });
-      } else if (getExclusionReason(text, c, opts)) {
+      } else if (getExclusionReason(text, col, opts)) {
         rowInfo.push({ mode: 'skip' });
       } else if (opts.excludeDates === false && isDateLike(trimmed)) {
         rowInfo.push({ mode: 'date' });
