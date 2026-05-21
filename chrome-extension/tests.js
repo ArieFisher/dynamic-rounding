@@ -557,6 +557,14 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   eq('isInRanges: between rects', isInRanges(2, 2, ranges), false);
 })();
 
+// NOTE: End-to-end investigation (sprint partial-range-fix attempt 2) confirmed the parser
+// is correct — parseRangeExpr("D:E") correctly yields {colMin:3,colMax:4,...}. The actual
+// highlight-on-wrong-columns symptom reported by the user (D:E rounds the wrong data columns)
+// is caused by an off-by-one in the DOM cell-index mapping: rows[r].cells includes the
+// <th scope="row"> row-header at c=0, so the user's column letter D (index 3) resolves to the
+// 3rd DOM cell, which is the *3rd data column*, not the 4th. That bug is tracked and fixed by
+// the `first-col-is-a` sprint (column-letter → DOM-index mapping must skip row-header <th>s).
+
 // --- Sprint partial-range-fix: adversarial parser regression tests ---
 
 // Primary bug report: f4:g8 (lowercase partial-range)
