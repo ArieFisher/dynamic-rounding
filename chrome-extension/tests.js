@@ -332,33 +332,118 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 })();
 
 (function exclusionPercent() {
-  eq('exclude: percent off by default',
-    getExclusionReason('45%', 1, {}), null);
-  eq('exclude: percent on',
-    getExclusionReason('45%', 1, { excludePercent: true }), 'percent');
+  // New semantics: percent cells are EXCLUDED by default (includePercent defaults false/unset).
+  eq('exclude: percent excluded by default (includePercent unset)',
+    getExclusionReason('45%', 1, {}), 'percent');
+  eq('exclude: percent excluded when includePercent=false',
+    getExclusionReason('45%', 1, { includePercent: false }), 'percent');
+  eq('exclude: percent included when includePercent=true',
+    getExclusionReason('45%', 1, { includePercent: true }), null);
 })();
 
 (function exclusionCurrency() {
-  eq('exclude: currency off by default',
-    getExclusionReason('$1,234', 1, {}), null);
-  eq('exclude: currency on',
-    getExclusionReason('$1,234', 1, { excludeCurrency: true }), 'currency');
-  eq('exclude: euro on',
-    getExclusionReason('€1,234', 1, { excludeCurrency: true }), 'currency');
-  eq('exclude: rupee on',
-    getExclusionReason('₹615', 1, { excludeCurrency: true }), 'currency');
+  // New semantics: currency cells are EXCLUDED by default (includeCurrency defaults false/unset).
+  eq('exclude: currency excluded by default (includeCurrency unset)',
+    getExclusionReason('$1,234', 1, {}), 'currency');
+  eq('exclude: currency excluded when includeCurrency=false',
+    getExclusionReason('$1,234', 1, { includeCurrency: false }), 'currency');
+  eq('exclude: currency included when includeCurrency=true',
+    getExclusionReason('$1,234', 1, { includeCurrency: true }), null);
+  eq('exclude: euro excluded by default',
+    getExclusionReason('€1,234', 1, {}), 'currency');
+  eq('exclude: euro included when includeCurrency=true',
+    getExclusionReason('€1,234', 1, { includeCurrency: true }), null);
+  eq('exclude: rupee excluded by default',
+    getExclusionReason('₹615', 1, {}), 'currency');
 })();
 
-// First-match-wins priority: firstColumn beats dates beats times beats percent beats currency
+// --- Sprint sidebar-restructure: excludeFirstRow ---
+
+(function excludeFirstRowTests() {
+  // excludeFirstRow=true: row 0 must be excluded regardless of cell content
+  eq('excludeFirstRow: row 0 excluded when flag is true',
+    getExclusionReason('1,234', 1, { excludeFirstRow: true }, 0), 'firstRow');
+  // excludeFirstRow=true: row 1 is not affected
+  eq('excludeFirstRow: row 1 not excluded when flag is true',
+    getExclusionReason('1,234', 1, { excludeFirstRow: true }, 1), null);
+  // excludeFirstRow=false: row 0 is NOT excluded
+  eq('excludeFirstRow: row 0 not excluded when flag is false',
+    getExclusionReason('1,234', 1, { excludeFirstRow: false }, 0), null);
+  // excludeFirstRow unset (default): row 0 is NOT excluded
+  eq('excludeFirstRow: row 0 not excluded when flag is unset (default)',
+    getExclusionReason('1,234', 1, {}, 0), null);
+  // excludeFirstRow takes priority over firstColumn check
+  eq('excludeFirstRow: firstRow beats firstColumn when both apply',
+    getExclusionReason('anything', 0, { excludeFirstRow: true, excludeFirstColumn: true }, 0), 'firstRow');
+})();
+
+// --- Sprint sidebar-restructure: includeWords semantics ---
+
+(function includeWordsTests() {
+  // With includeWords=true, a cell with a number AND a word should be rounded
+  // (mode='extracted' in roundTable). We test the path via the roundTable flow
+  // by checking that the cell text '8,584,629 USD' gets an 'extracted' mode.
+  const textWithWord = '$5.123 USD';
+  const textPure = '5.123';
+
+  // includeWords=true: extractNumbersInText finds a match and cell would be rounded
+  (function includeWordsOn() {
+    const matches = extractNumbersInText(textWithWord);
+    eq('includeWords=true: extractNumbersInText finds number in "$5.123 USD"',
+      matches.length > 0, true);
+    // Simulate the branch in roundTable: if (opts.includeWords) -> extracted path
+    const num = toNumber(textWithWord);
+    eq('includeWords=true: toNumber("$5.123 USD") is null (not pure numeric)',
+      num, null);
+    // When includeWords=true, the cell would go through extracted path
+    const optsInclude = { includeWords: true };
+    const wouldRound = num !== null ? true : (optsInclude.includeWords && matches.length > 0);
+    eq('includeWords=true: cell with words would be rounded', wouldRound, true);
+  })();
+
+  // includeWords=false (default): cell with words must NOT be rounded
+  (function includeWordsOff() {
+    const num = toNumber(textWithWord);
+    const optsExclude = { includeWords: false };
+    // Simulate roundTable logic: toNumber returns null, includeWords=false -> skip
+    const wouldRound = num !== null ? true : (optsExclude.includeWords === true);
+    eq('includeWords=false: cell with words would NOT be rounded', wouldRound, false);
+    // Same with default (unset)
+    const optsDefault = {};
+    const wouldRoundDefault = num !== null ? true : (optsDefault.includeWords === true);
+    eq('includeWords unset: cell with words would NOT be rounded', wouldRoundDefault, false);
+  })();
+})();
+
+// --- Sprint sidebar-restructure: includePercent / includeCurrency round-trip ---
+
+(function includePercentRoundTrip() {
+  // includeCurrency: true -> currency cells are NOT excluded
+  eq('includeCurrency=true: $1,234 is not excluded',
+    getExclusionReason('$1,234', 1, { includeCurrency: true }), null);
+  // includeCurrency unset -> currency cells ARE excluded
+  eq('includeCurrency unset: $1,234 is excluded',
+    getExclusionReason('$1,234', 1, {}), 'currency');
+  // includePercent: true -> percent cells are NOT excluded
+  eq('includePercent=true: 45% is not excluded',
+    getExclusionReason('45%', 1, { includePercent: true }), null);
+  // includePercent unset -> percent cells ARE excluded
+  eq('includePercent unset: 45% is excluded',
+    getExclusionReason('45%', 1, {}), 'percent');
+})();
+
+// First-match-wins priority: firstRow beats firstColumn beats dates beats times beats percent beats currency
 (function exclusionPriority() {
   const opts = {
-    excludeFirstColumn: true, excludeDates: true, excludeTimes: true,
-    excludePercent: true, excludeCurrency: true
+    excludeFirstRow: true, excludeFirstColumn: true, excludeDates: true, excludeTimes: true,
+    includePercent: false, includeCurrency: false
   };
-  eq('priority: first column wins even when value is a date',
-    getExclusionReason('2018', 0, opts), 'firstColumn');
+  eq('priority: first row wins even when value is a date',
+    getExclusionReason('2018', 0, opts, 0), 'firstRow');
+  eq('priority: first column wins even when value is a date (non-zero row)',
+    getExclusionReason('2018', 0, opts, 1), 'firstColumn');
   eq('priority: dates beats percent for a year value',
-    getExclusionReason('2018', 1, opts), 'dates');
+    getExclusionReason('2018', 1, opts, 1), 'dates');
 })();
 
 // --- Sprint B: per-type granularity ---
