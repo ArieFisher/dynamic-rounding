@@ -557,6 +557,92 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   eq('isInRanges: between rects', isInRanges(2, 2, ranges), false);
 })();
 
+// --- Sprint partial-range-fix: adversarial parser regression tests ---
+
+// Primary bug report: f4:g8 (lowercase partial-range)
+(function sprint_f4g8_lowercase() {
+  const r = parseRangeExpr('f4:g8');
+  eq('sprint partial-range-fix: "f4:g8" -> no error',
+    typeof r.error, 'undefined');
+  eq('sprint partial-range-fix: "f4:g8" -> one range',
+    r.ranges && r.ranges.length, 1);
+  const rng = r.ranges && r.ranges[0];
+  eq('sprint partial-range-fix: "f4:g8" colMin=5', rng && rng.colMin, 5);
+  eq('sprint partial-range-fix: "f4:g8" colMax=6', rng && rng.colMax, 6);
+  eq('sprint partial-range-fix: "f4:g8" rowMin=3', rng && rng.rowMin, 3);
+  eq('sprint partial-range-fix: "f4:g8" rowMax=7', rng && rng.rowMax, 7);
+})();
+
+// Case-insensitive: uppercase F4:G8 must also work
+(function sprint_F4G8_uppercase() {
+  const r = parseRangeExpr('F4:G8');
+  eq('sprint partial-range-fix: "F4:G8" -> no error',
+    typeof r.error, 'undefined');
+  const rng = r.ranges && r.ranges[0];
+  eq('sprint partial-range-fix: "F4:G8" colMin=5', rng && rng.colMin, 5);
+  eq('sprint partial-range-fix: "F4:G8" colMax=6', rng && rng.colMax, 6);
+  eq('sprint partial-range-fix: "F4:G8" rowMin=3', rng && rng.rowMin, 3);
+  eq('sprint partial-range-fix: "F4:G8" rowMax=7', rng && rng.rowMax, 7);
+})();
+
+// Acceptance criterion: B2:D (col+row on left, col-only on right) -> open row end
+(function sprint_B2D_partial() {
+  const r = parseRangeExpr('B2:D');
+  eq('sprint partial-range-fix: "B2:D" -> no error',
+    typeof r.error, 'undefined');
+  eq('sprint partial-range-fix: "B2:D" -> one range',
+    r.ranges && r.ranges.length, 1);
+  const rng = r.ranges && r.ranges[0];
+  eq('sprint partial-range-fix: "B2:D" colMin=1', rng && rng.colMin, 1);
+  eq('sprint partial-range-fix: "B2:D" colMax=3', rng && rng.colMax, 3);
+  eq('sprint partial-range-fix: "B2:D" rowMin=1', rng && rng.rowMin, 1);
+  eq('sprint partial-range-fix: "B2:D" rowMax=Infinity', rng && rng.rowMax, Infinity);
+})();
+
+// Acceptance criterion: B:D5 (col-only on left, col+row on right) -> open row start
+(function sprint_BD5_partial() {
+  const r = parseRangeExpr('B:D5');
+  eq('sprint partial-range-fix: "B:D5" -> no error',
+    typeof r.error, 'undefined');
+  eq('sprint partial-range-fix: "B:D5" -> one range',
+    r.ranges && r.ranges.length, 1);
+  const rng = r.ranges && r.ranges[0];
+  eq('sprint partial-range-fix: "B:D5" colMin=1', rng && rng.colMin, 1);
+  eq('sprint partial-range-fix: "B:D5" colMax=3', rng && rng.colMax, 3);
+  eq('sprint partial-range-fix: "B:D5" rowMin=0', rng && rng.rowMin, 0);
+  eq('sprint partial-range-fix: "B:D5" rowMax=4', rng && rng.rowMax, 4);
+})();
+
+// Regression guard: previously-working shapes must still pass
+(function sprint_regression_A() {
+  const r = parseRangeExpr('A');
+  eq('sprint regression: "A" still works', r,
+    { ranges: [{ colMin: 0, colMax: 0, rowMin: 0, rowMax: Infinity }] });
+})();
+
+(function sprint_regression_AD() {
+  const r = parseRangeExpr('A:D');
+  eq('sprint regression: "A:D" still works', r,
+    { ranges: [{ colMin: 0, colMax: 3, rowMin: 0, rowMax: Infinity }] });
+})();
+
+(function sprint_regression_row_range() {
+  const r = parseRangeExpr('1:10');
+  eq('sprint regression: "1:10" still works', r,
+    { ranges: [{ colMin: 0, colMax: Infinity, rowMin: 0, rowMax: 9 }] });
+})();
+
+(function sprint_regression_B2E8() {
+  const r = parseRangeExpr('B2:E8');
+  eq('sprint regression: "B2:E8" still works', r,
+    { ranges: [{ colMin: 1, colMax: 4, rowMin: 1, rowMax: 7 }] });
+})();
+
+(function sprint_regression_union() {
+  const r = parseRangeExpr('{A1:E8, G3:G}');
+  eq('sprint regression: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
