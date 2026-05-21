@@ -834,6 +834,91 @@ function withCreateTreeWalker(fn) {
     bgSource.includes('sidePanel.open'), true);
 })();
 
+// --- Sprint range-pulse-border: animation parameters and dispatch ---
+
+// CSS string: capture style.textContent from ensureHighlightStyleInjected().
+// We patch document.createElement to intercept the style element before injection.
+(function rangePulseCssParams() {
+  // Reset the module-level guard so we can trigger injection fresh.
+  highlightStyleInjected = false;
+
+  let capturedCss = null;
+  const origCreate = document.createElement;
+  document.createElement = (tag) => {
+    const el = { textContent: null };
+    if (tag === 'style') {
+      Object.defineProperty(el, 'textContent', {
+        set(v) { capturedCss = v; },
+        get() { return capturedCss; }
+      });
+    }
+    return el;
+  };
+  // Stub appendChild so the injection doesn't throw (document.head is undefined in stub).
+  const origHead = document.head;
+  const origDocEl = document.documentElement;
+  document.documentElement = { appendChild: () => {} };
+
+  ensureHighlightStyleInjected();
+
+  // Restore stubs.
+  document.createElement = origCreate;
+  document.documentElement = origDocEl;
+  // Re-set guard so later paths don't re-inject against the real (absent) DOM.
+  highlightStyleInjected = true;
+
+  eq('rangePulse CSS: animation duration is 0.6s',
+    capturedCss !== null && capturedCss.includes('0.6s'), true);
+
+  // The animation shorthand for .dr-ext-range-pulse should end with iteration-count 2.
+  const animLine = capturedCss && (capturedCss.match(/animation:\s*drExtRangePulse[^;]+;/) || [])[0];
+  eq('rangePulse CSS: iteration count is 2 (two cycles = ~1.2s total)',
+    !!(animLine && /\s2\s*;$/.test(animLine.trim())), true);
+
+  eq('rangePulse CSS: .dr-ext-target-flash class still present (no regression)',
+    capturedCss !== null && capturedCss.includes('dr-ext-target-flash'), true);
+})();
+
+// Dispatch: flashRangePulse(table, null) must delegate to flashTargetedTable,
+// which adds 'dr-ext-target-flash' to table.classList.
+(function rangePulseNullRangesDispatch() {
+  const classes = new Set();
+  const mockTable = {
+    classList: {
+      remove(cls) { classes.delete(cls); },
+      add(cls) { classes.add(cls); }
+    },
+    offsetWidth: 0,   // accessed via void table.offsetWidth in flashTargetedTable
+    rows: []
+  };
+
+  flashRangePulse(mockTable, null);
+
+  eq('rangePulse dispatch: null ranges adds dr-ext-target-flash (whole-table path)',
+    classes.has('dr-ext-target-flash'), true);
+})();
+
+// Dispatch: flashRangePulse(table, ranges) with zero matching cells falls back
+// to flashTargetedTable (same class added).
+(function rangePulseEmptyCellsFallback() {
+  const classes = new Set();
+  const mockTable = {
+    classList: {
+      remove(cls) { classes.delete(cls); },
+      add(cls) { classes.add(cls); }
+    },
+    offsetWidth: 0,
+    rows: []  // no rows => no cells => matchedCells.length === 0 => fallback
+  };
+
+  // A valid non-null ranges array that can't match anything in an empty table.
+  const ranges = [{ colMin: 0, colMax: 2, rowMin: 0, rowMax: 5 }];
+  flashRangePulse(mockTable, ranges);
+
+  eq('rangePulse dispatch: non-null ranges with no matching cells falls back to whole-table flash',
+    classes.has('dr-ext-target-flash'), true);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
