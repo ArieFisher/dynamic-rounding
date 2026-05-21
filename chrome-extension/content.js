@@ -48,6 +48,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (lastRightClickedElement) {
       const table = lastRightClickedElement.closest('table');
       if (table) {
+        ensureHighlightStyleInjected();
         if (!table.querySelector('.dr-ext-rounded')) {
           roundTable(table);
           chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Show original values' });
@@ -56,6 +57,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const label = table.dataset.drShowingOriginal === 'true' ? 'Show rounded values' : 'Show original values';
           chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: label });
         }
+        // Context menu has no range expression → whole-table pulse (ranges null).
+        flashRangePulse(table, null);
       } else {
         console.debug("Dynamic Rounding: No table found at right-click location.");
       }
@@ -100,7 +103,8 @@ function applySidebarRounding(table, options) {
   } else {
     chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Round table dynamically' });
   }
-  flashTargetedTable(table);
+  const rangeParse = parseRangeExpr(opts.rangeExpr);
+  flashRangePulse(table, rangeParse.error ? null : rangeParse.ranges);
 }
 
 let highlightStyleInjected = false;
@@ -115,6 +119,22 @@ function ensureHighlightStyleInjected() {
     .dr-ext-target-flash {
       animation: drExtTargetFlash 1s ease-out;
     }
+    @keyframes drExtRangePulse {
+      0%   { border-color: rgba(255,255,255,0.0);  box-shadow: 0 0 0 2px rgba(66,133,244,0.0); }
+      25%  { border-color: rgba(255,255,255,0.55); box-shadow: 0 0 0 2px rgba(66,133,244,0.6); }
+      50%  { border-color: rgba(255,255,255,0.0);  box-shadow: 0 0 0 2px rgba(66,133,244,0.0); }
+      75%  { border-color: rgba(255,255,255,0.55); box-shadow: 0 0 0 2px rgba(66,133,244,0.6); }
+      100% { border-color: rgba(255,255,255,0.0);  box-shadow: 0 0 0 2px rgba(66,133,244,0.0); }
+    }
+    .dr-ext-range-pulse {
+      position: absolute;
+      pointer-events: none;
+      z-index: 2147483647;
+      border: 2px solid rgba(255,255,255,0.0);
+      border-radius: 2px;
+      box-sizing: border-box;
+      animation: drExtRangePulse 0.6s ease-in-out 2;
+    }
   `;
   (document.head || document.documentElement).appendChild(style);
   highlightStyleInjected = true;
@@ -125,6 +145,73 @@ function flashTargetedTable(table) {
   // Force reflow so the animation restarts when re-added.
   void table.offsetWidth;
   table.classList.add('dr-ext-target-flash');
+}
+
+/**
+ * Pulse a faint blue-and-white border around the operated-on region.
+ * - If ranges is null (whole-table mode), delegates to the existing table outline flash.
+ * - If ranges is an array, overlays an absolutely-positioned div sized to the bounding
+ *   rect of all targeted cells, then removes itself after the animation ends (~1.2s).
+ *   The div is appended to document.body so it never wraps or alters td elements.
+ */
+function flashRangePulse(table, ranges) {
+  if (!ranges) {
+    // Whole-table mode: reuse the existing outline flash.
+    flashTargetedTable(table);
+    return;
+  }
+
+  // Collect all cells that fall within any of the provided ranges.
+  const rows = Array.from(table.rows);
+  const matchedCells = [];
+  for (let r = 0; r < rows.length; r++) {
+    const cells = Array.from(rows[r].cells);
+    for (let c = 0; c < cells.length; c++) {
+      if (isInRanges(r, c, ranges)) {
+        matchedCells.push(cells[c]);
+      }
+    }
+  }
+
+  if (matchedCells.length === 0) {
+    // No cells matched (e.g. range outside table bounds) — fall back to whole-table flash.
+    flashTargetedTable(table);
+    return;
+  }
+
+  // Compute the union bounding rect of all matched cells relative to the viewport.
+  let top = Infinity, left = Infinity, bottom = -Infinity, right = -Infinity;
+  for (const cell of matchedCells) {
+    const rect = cell.getBoundingClientRect();
+    if (rect.top    < top)    top    = rect.top;
+    if (rect.left   < left)   left   = rect.left;
+    if (rect.bottom > bottom) bottom = rect.bottom;
+    if (rect.right  > right)  right  = rect.right;
+  }
+
+  // Convert to absolute page coordinates so the overlay stays put on scrollable pages.
+  const scrollX = window.scrollX || window.pageXOffset || 0;
+  const scrollY = window.scrollY || window.pageYOffset || 0;
+  const absTop    = top    + scrollY;
+  const absLeft   = left   + scrollX;
+  const absWidth  = right  - left;
+  const absHeight = bottom - top;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'dr-ext-range-pulse';
+  overlay.style.top    = absTop    + 'px';
+  overlay.style.left   = absLeft   + 'px';
+  overlay.style.width  = absWidth  + 'px';
+  overlay.style.height = absHeight + 'px';
+
+  // Self-cleanup: remove after animation ends or after max 1.5s safety timeout.
+  const cleanup = () => {
+    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  };
+  overlay.addEventListener('animationend', cleanup);
+  setTimeout(cleanup, 1500);
+
+  (document.body || document.documentElement).appendChild(overlay);
 }
 
 function resetTable(table) {
