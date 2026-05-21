@@ -11,7 +11,7 @@ let sidebarTabId = null;
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "dr-action",
-    title: "Round table dynamically",
+    title: "Toggle readable data",
     contexts: ["all"]
   });
   chrome.contextMenus.create({

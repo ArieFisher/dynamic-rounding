@@ -10,12 +10,13 @@ const optionsSection = document.getElementById('optionsSection');
 const statusEl = document.getElementById('status');
 
 const CHECKBOX_TO_SETTING = {
-  excludeWords: 'excludeWords',
-  excludeDates: 'excludeDates',
-  excludeTimes: 'excludeTimes',
+  includeWords: 'includeWords',
+  includeCurrency: 'includeCurrency',
+  includePercent: 'includePercent',
+  excludeFirstRow: 'excludeFirstRow',
   excludeFirstColumn: 'excludeFirstColumn',
-  excludePercent: 'excludePercent',
-  excludeCurrency: 'excludeCurrency'
+  excludeDates: 'excludeDates',
+  excludeTimes: 'excludeTimes'
 };
 
 const dateGranularityEl = document.getElementById('dateGranularity');

@@ -18,12 +18,13 @@ const EPSILON = 1e-9;
 
 const DEFAULT_SIDEBAR_OPTIONS = {
   enabled: true,
-  excludeWords: true,
+  includeWords: false,
+  includeCurrency: false,
+  includePercent: false,
+  excludeFirstRow: false,
+  excludeFirstColumn: true,
   excludeDates: true,
   excludeTimes: true,
-  excludeFirstColumn: true,
-  excludePercent: false,
-  excludeCurrency: false,
   dateGranularity: 'year',     // year | decade | century
   timeGranularity: 'minute',   // minute | hour
   offsetTop: null,             // null = use DEFAULT_OFFSET_TOP
@@ -51,11 +52,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         ensureHighlightStyleInjected();
         if (!table.querySelector('.dr-ext-rounded')) {
           roundTable(table);
-          chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Show original values' });
+          chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
         } else {
           toggleOriginalValues(table);
-          const label = table.dataset.drShowingOriginal === 'true' ? 'Show rounded values' : 'Show original values';
-          chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: label });
+          chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
         }
         // Context menu has no range expression → whole-table pulse (ranges null).
         flashRangePulse(table, null);
@@ -98,10 +98,10 @@ function applySidebarRounding(table, options) {
   if (opts.enabled !== false) {
     roundTable(table, opts);
     if (table.querySelector('.dr-ext-rounded')) {
-      chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Show original values' });
+      chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
     }
   } else {
-    chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Round table dynamically' });
+    chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   flashRangePulse(table, rangeParse.error ? null : rangeParse.ranges);
@@ -267,7 +267,7 @@ function roundTable(table, options) {
       const trimmed = typeof text === 'string' ? text.trim() : '';
       if (!isInRanges(r, col, ranges)) {
         rowInfo.push({ mode: 'skip' });
-      } else if (getExclusionReason(text, col, opts)) {
+      } else if (getExclusionReason(text, col, opts, r)) {
         rowInfo.push({ mode: 'skip' });
       } else if (opts.excludeDates === false && isDateLike(trimmed)) {
         rowInfo.push({ mode: 'date' });
@@ -277,7 +277,7 @@ function roundTable(table, options) {
         const num = toNumber(text);
         if (num !== null) {
           rowInfo.push({ mode: 'pure', num });
-        } else if (!opts.excludeWords) {
+        } else if (opts.includeWords) {
           const matches = extractNumbersInText(text);
           if (matches.length > 0) {
             rowInfo.push({ mode: 'extracted', matches });
@@ -442,14 +442,15 @@ function resolveNumTop(value, fallback) {
   return Math.floor(num);
 }
 
-function getExclusionReason(text, columnIndex, options) {
+function getExclusionReason(text, columnIndex, options, rowIndex) {
+  if (options.excludeFirstRow && rowIndex === 0) return 'firstRow';
   if (options.excludeFirstColumn && columnIndex === 0) return 'firstColumn';
   if (typeof text !== 'string') return null;
   const t = text.trim();
   if (options.excludeDates && isDateLike(t)) return 'dates';
   if (options.excludeTimes && isTimeLike(t)) return 'times';
-  if (options.excludePercent && /%/.test(t)) return 'percent';
-  if (options.excludeCurrency && /[$€£¥₹]/.test(t)) return 'currency';
+  if (!options.includePercent && /%/.test(t)) return 'percent';
+  if (!options.includeCurrency && /[$€£¥₹]/.test(t)) return 'currency';
   return null;
 }
 
