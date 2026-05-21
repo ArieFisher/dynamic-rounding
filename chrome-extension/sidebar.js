@@ -69,7 +69,7 @@ function sendToActiveTab(message) {
     chrome.tabs.sendMessage(tabs[0].id, message, () => {
       if (chrome.runtime.lastError) {
         statusEl.textContent = 'Right-click a table first, then reopen the sidebar.';
-      } else {
+      } else if (statusEl.dataset.source !== 'range') {
         statusEl.textContent = '';
       }
     });
