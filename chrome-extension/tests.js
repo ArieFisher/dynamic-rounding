@@ -798,6 +798,42 @@ function withCreateTreeWalker(fn) {
   });
 })();
 
+// --- Sprint icon-no-sidebar: manifest + background invariants ---
+// NOTE: These are static-analysis proxies only. Whether the toolbar icon
+// actually disappears in Chrome, and whether the context menu visually works,
+// cannot be verified in this Node harness — those require a live browser.
+
+(function sprintIconNoSidebar() {
+  const manifestPath = path.join(__dirname, 'manifest.json');
+  const bgPath = path.join(__dirname, 'background.js');
+
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const bgSource = fs.readFileSync(bgPath, 'utf8');
+
+  // 1. "action" key must be absent — its presence would register a toolbar icon.
+  eq('manifest: no "action" key (toolbar icon suppressed)',
+    Object.prototype.hasOwnProperty.call(manifest, 'action'), false);
+
+  // 2. "side_panel" must still be present — the panel itself must remain registered.
+  eq('manifest: "side_panel" key still present',
+    Object.prototype.hasOwnProperty.call(manifest, 'side_panel'), true);
+
+  // 3. "contextMenus" must still be in permissions — right-click menu requires it.
+  eq('manifest: "contextMenus" still in permissions',
+    Array.isArray(manifest.permissions) && manifest.permissions.includes('contextMenus'), true);
+
+  // 4. background.js must NOT reference chrome.action — no remnant action API usage.
+  eq('background.js: no chrome.action.* references',
+    /chrome\.action\b/.test(bgSource), false);
+
+  // 5. background.js must still wire up contextMenus.create and sidePanel.open.
+  eq('background.js: contextMenus.create still present',
+    bgSource.includes('contextMenus.create'), true);
+
+  eq('background.js: sidePanel.open still present',
+    bgSource.includes('sidePanel.open'), true);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
