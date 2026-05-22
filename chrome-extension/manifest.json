@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dynamic Rounding",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Applies dynamic rounding to tables on arbitrary websites.",
   "permissions": ["contextMenus", "activeTab", "scripting", "sidePanel"],
   "background": {
@@ -15,6 +15,5 @@
   ],
   "side_panel": {
     "default_path": "sidebar.html"
-  },
-  "action": {}
+  }
 }
