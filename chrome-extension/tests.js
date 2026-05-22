@@ -563,7 +563,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 // is caused by an off-by-one in the DOM cell-index mapping: rows[r].cells includes the
 // <th scope="row"> row-header at c=0, so the user's column letter D (index 3) resolves to the
 // 3rd DOM cell, which is the *3rd data column*, not the 4th. That bug is tracked and fixed by
-// the `first-col-is-a` sprint (column-letter → DOM-index mapping must skip row-header <th>s).
+// this sprint (`first-col-is-a`) — column-letter → DOM-index mapping skips row-header <th>s.
 
 // --- Sprint partial-range-fix: adversarial parser regression tests ---
 
@@ -649,6 +649,153 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 (function sprint_regression_union() {
   const r = parseRangeExpr('{A1:E8, G3:G}');
   eq('sprint regression: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint first-col-is-a: pin behavior of <th>-skipping dataCol counter
+//
+// The dev's fix (reading II / data-perspective):
+//   - <th> cells are skipped entirely; only <td> cells are counted.
+//   - rangeExpr "A" maps to the first <td> (dataCol 0), not the leftmost DOM cell.
+//   - excludeFirstColumn excludes the first <td>, not the leftmost DOM cell.
+//
+// Helper: build a minimal mock table that roundTable can traverse.
+// roundTable accesses: table.rows -> array of {cells: array of cell-like objects}
+// cell-like object needs: tagName, innerText, textContent, classList, dataset,
+//   title (writable), and a querySelector stub on the table.
+// ---------------------------------------------------------------------------
+
+function makeMockCell(tag, text) {
+  return {
+    tagName: tag.toUpperCase(),
+    innerText: text,
+    textContent: text,
+    classList: { add: function(cls) { this._classes = this._classes || []; this._classes.push(cls); },
+                 contains: function(cls) { return (this._classes||[]).includes(cls); } },
+    dataset: {},
+    title: '',
+    _classes: [],
+  };
+}
+
+function makeMockTable(rowsSpec, querySelectorResult) {
+  // rowsSpec: array of arrays of {tag, text}
+  const rows = rowsSpec.map(rowSpec => ({
+    cells: rowSpec.map(s => makeMockCell(s.tag, s.text))
+  }));
+  return {
+    rows,
+    querySelector: function() { return querySelectorResult || null; },
+    dataset: {},
+  };
+}
+
+// roundTable calls chrome.runtime.sendMessage; already stubbed globally.
+// It also calls document.createTreeWalker (via replaceTextPreservingHTML).
+// We need to stub that too so the "apply rounding" path doesn't crash.
+// Stub createTreeWalker to return a walker that finds the cell's single text node.
+
+function withCreateTreeWalker(fn) {
+  global.document.createTreeWalker = function(cell) {
+    let done = false;
+    return {
+      nextNode: function() {
+        if (done) return null;
+        done = true;
+        // Return a fake text node whose nodeValue matches the cell text.
+        return {
+          nodeValue: cell.innerText,
+          get nodeValue() { return this._val !== undefined ? this._val : cell.innerText; },
+          set nodeValue(v) { cell.innerText = v; cell.textContent = v; this._val = v; }
+        };
+      }
+    };
+  };
+  try { fn(); } finally { delete global.document.createTreeWalker; }
+}
+
+// --- Test 1: Table with row headers — range = "A" targets first <td>, not the <th> ---
+// Row: [<th>Name</th>, <td>100</td>, <td>200</td>]
+// With rangeExpr = "A" (col 0 in dataCol space) and no excludeFirstColumn,
+// "A" should hit <td>100</td> (the first <td>), NOT the <th>Name</th>.
+(function firstColIsA_withRowHeader() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'th', text: 'Name' },
+      { tag: 'td', text: '100'  },
+      { tag: 'td', text: '200'  },
+    ]]);
+    const opts = {
+      enabled: true, excludeWords: true, excludeDates: true, excludeTimes: true,
+      excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: 'A'
+    };
+    roundTable(table, opts);
+    const cells = table.rows[0].cells;
+    // <th> Name: must NOT be rounded (it's not a <td>, skipped by the loop entirely)
+    eq('first-col-is-A (row-header table): <th> Name is never rounded',
+      cells[0].classList.contains('dr-ext-rounded'), false);
+    // <td> 200: dataCol 1 = column B — out of range A, must NOT be rounded
+    eq('first-col-is-A (row-header table): <td>200 at dataCol 1 not rounded',
+      cells[2].classList.contains('dr-ext-rounded'), false);
+  });
+})();
+
+// --- Test 2: Table without row headers — non-targeted columns stay untouched ---
+// Note: directly asserting "first <td> gets the rounded class" depends on the
+// rounding algorithm producing a *changed* value, which for some inputs (e.g.
+// a single in-range cell) is a no-op. We pin only the negative behavior here:
+// cells outside the range never get the rounded class.
+(function firstColIsA_noRowHeader() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '50000' },
+      { tag: 'td', text: '100'   },
+      { tag: 'td', text: '200'   },
+    ]]);
+    const opts = {
+      enabled: true, excludeWords: true, excludeDates: true, excludeTimes: true,
+      excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: 'A'
+    };
+    roundTable(table, opts);
+    const cells = table.rows[0].cells;
+    eq('first-col-is-A (no row-header): second <td> is column B, not rounded',
+      cells[1].classList.contains('dr-ext-rounded'), false);
+    eq('first-col-is-A (no row-header): third <td> is column C, not rounded',
+      cells[2].classList.contains('dr-ext-rounded'), false);
+  });
+})();
+
+// --- Test 3: excludeFirstColumn + row headers ---
+// Row: [<th>Name</th>, <td>100</td>, <td>200</td>]
+// rangeExpr = '' (whole table), excludeFirstColumn = true.
+// Dev behavior: excludeFirstColumn checks dataCol === 0, so <td>100</td> is
+// excluded (not the <th>, which is skipped from the data loop entirely).
+(function excludeFirstColumn_withRowHeader() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'th', text: 'Name' },
+      { tag: 'td', text: '100'  },
+      { tag: 'td', text: '200'  },
+    ]]);
+    const opts = {
+      enabled: true, excludeWords: true, excludeDates: false, excludeTimes: false,
+      excludeFirstColumn: true, excludePercent: false, excludeCurrency: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    const cells = table.rows[0].cells;
+    // <th> Name: skipped (not a TD)
+    eq('excludeFirstColumn (row-header table): <th> Name never rounded',
+      cells[0].classList.contains('dr-ext-rounded'), false);
+    // <td>100 is dataCol 0 — excluded by excludeFirstColumn (dev reading II)
+    eq('excludeFirstColumn (row-header table): <td>100 at dataCol 0 is excluded',
+      cells[1].classList.contains('dr-ext-rounded'), false);
+  });
 })();
 
 // --- Report ---
