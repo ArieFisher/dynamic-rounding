@@ -11,22 +11,17 @@
       padding: 16px;
       color: #202124;
     }
-    h1 {
-      font-size: 16px;
-      font-weight: 600;
-      margin: 0 0 16px 0;
-    }
-    .master-row {
+    .title-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 8px 0 16px;
-      border-bottom: 1px solid #e8eaed;
-      margin-bottom: 16px;
+      margin: 0 0 16px 0;
     }
-    .master-row .label {
-      font-weight: 500;
+    .title-row h1 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
     }
     /* iOS-style toggle */
     .switch {
@@ -82,6 +77,12 @@
       color: #5f6368;
       margin-bottom: 8px;
     }
+    .section-heading {
+      font-size: 12px;
+      font-weight: 500;
+      color: #3c4043;
+      margin: 0 0 4px 0;
+    }
     label.checkbox-row {
       display: flex;
       align-items: center;
@@ -110,6 +111,9 @@
       font-size: 11px;
       color: #5f6368;
       margin-right: 4px;
+    }
+    .exclusion-group {
+      margin-bottom: 12px;
     }
     details.advanced {
       margin-top: 4px;
@@ -188,62 +192,70 @@
   </style>
 </head>
 <body>
-  <h1>Dynamic Rounding</h1>
-
-  <div class="master-row">
-    <span class="label">Apply dynamic rounding</span>
+  <div class="title-row">
+    <h1>Dynamic Rounding</h1>
     <label class="switch">
       <input type="checkbox" id="enabled" checked>
       <span class="slider"></span>
     </label>
   </div>
 
+  <div class="section" id="optionsSection">
+    <div class="exclusion-group">
+      <p class="section-heading">Simplify the data even when cells <em>also</em> have:</p>
+      <label class="checkbox-row">
+        <input type="checkbox" id="includeWords">
+        <span>words</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="includeCurrency">
+        <span>currencies</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="includePercent">
+        <span>percentages</span>
+      </label>
+    </div>
+
+    <div class="exclusion-group">
+      <p class="section-heading">Exclude:</p>
+      <label class="checkbox-row">
+        <input type="checkbox" id="excludeFirstRow">
+        <span>first row</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="excludeFirstColumn" checked>
+        <span>first column</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="excludeDates" checked>
+        <span class="row-label">dates</span>
+        <span class="granularity-label">round to:</span>
+        <select id="dateGranularity" disabled>
+          <option value="year" selected>year</option>
+          <option value="decade">decade</option>
+          <option value="century">century</option>
+        </select>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="excludeTimes" checked>
+        <span class="row-label">times</span>
+        <span class="granularity-label">round to:</span>
+        <select id="timeGranularity" disabled>
+          <option value="minute" selected>minute</option>
+          <option value="hour">hour</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
   <div class="section" id="rangeSection">
     <div class="section-title">Range</div>
-    <input type="text" id="rangeExpr" placeholder="A1:E8 (blank = whole table)" autocomplete="off">
+    <input type="text" id="rangeExpr" placeholder="(blank = whole table)" autocomplete="off">
     <div class="range-help">
       <code>A</code>, <code>A:D</code>, <code>1:10</code>, <code>B2:E8</code>,
       or <code>{A1:E8, G3:G}</code>
     </div>
-  </div>
-
-  <div class="section" id="optionsSection">
-    <div class="section-title">Exclude cells also containing:</div>
-    <label class="checkbox-row">
-      <input type="checkbox" id="excludeWords" checked>
-      <span>words</span>
-    </label>
-    <label class="checkbox-row">
-      <input type="checkbox" id="excludeDates" checked>
-      <span class="row-label">dates</span>
-      <span class="granularity-label">round to:</span>
-      <select id="dateGranularity" disabled>
-        <option value="year" selected>year</option>
-        <option value="decade">decade</option>
-        <option value="century">century</option>
-      </select>
-    </label>
-    <label class="checkbox-row">
-      <input type="checkbox" id="excludeTimes" checked>
-      <span class="row-label">times</span>
-      <span class="granularity-label">round to:</span>
-      <select id="timeGranularity" disabled>
-        <option value="minute" selected>minute</option>
-        <option value="hour">hour</option>
-      </select>
-    </label>
-    <label class="checkbox-row">
-      <input type="checkbox" id="excludeFirstColumn" checked>
-      <span>first column</span>
-    </label>
-    <label class="checkbox-row">
-      <input type="checkbox" id="excludePercent">
-      <span>percentages</span>
-    </label>
-    <label class="checkbox-row">
-      <input type="checkbox" id="excludeCurrency">
-      <span>currencies</span>
-    </label>
   </div>
 
   <details class="advanced section" id="advancedSection">
