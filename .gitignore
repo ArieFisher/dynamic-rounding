@@ -20,4 +20,5 @@ CLAUDE.md
 # Antigravity Agent
 .agent/*
 !.agent/rules/
+!.agent/skills/
 PR_MESSAGE.md
