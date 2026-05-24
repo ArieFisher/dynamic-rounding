@@ -128,6 +128,23 @@ The test suite covers:
 
 ---
 
+## Note: decimal precision in Sheets
+
+`ROUND_DYNAMIC` returns numeric values. Google Sheets custom functions cannot set a cell's number format from within the function itself — that capability is reserved for bound scripts and installable triggers, not for custom functions called from a cell formula.
+
+As a result, if your offset parameter implies a specific number of decimal places, you may need to manually set the cell's number format to display the intended precision.
+
+**How to set the format:** select the output cells, then go to Format → Number → Custom number format and enter the desired pattern.
+
+| Formula | Recommended format |
+|---|---|
+| `=ROUND_DYNAMIC(A1:A10, 0.5)` | `0.0` or `0.0%` to show the one decimal place implied by offset 0.5 |
+| `=ROUND_DYNAMIC(A1:A10, 0.25)` | `0.00` or `0.00%` to show the two decimal places implied by offset 0.25 |
+
+The Chrome extension handles this automatically — it reads the offset's own decimal count and applies it as a minimum decimal floor when formatting small values (in the `0 ≤ |x| < 10` band).
+
+---
+
 ## See Also
 
 - [Design Doc](../docs/design.md) — Algorithm and concepts

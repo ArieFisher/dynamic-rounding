@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Docs:** Added `## Note: decimal precision in Sheets` section to README explaining that `ROUND_DYNAMIC` (as a custom function) cannot set cell number formats directly. Includes guidance on manually applying a custom number format to match the offset's decimal count, with examples for offsets 0.5 and 0.25.
+
 ## [0.2.5] - 2026-04-24
 
 ### Changed
