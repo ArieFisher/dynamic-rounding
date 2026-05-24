@@ -1224,12 +1224,12 @@ function withLinkCreateTreeWalker(fn) {
   });
 })();
 
-// --- AC5: Version bumped in manifest.json (post-stack: 1.9.2) ---
+// --- AC5: Version bumped in manifest.json (post-stack: 1.9.3) ---
 (function ac5_manifestVersion() {
   const manifest = JSON.parse(
     require('fs').readFileSync(require('path').join(__dirname, 'manifest.json'), 'utf8'));
-  eq('AC5: manifest.json version is 1.9.2',
-    manifest.version, '1.9.2');
+  eq('AC5: manifest.json version is 1.9.3',
+    manifest.version, '1.9.3');
 })();
 
 // --- AC6: Regression guard — sidebar.html / sidebar.js / js/ / python/ not modified ---
@@ -1419,10 +1419,10 @@ function withLinkCreateTreeWalker(fn) {
   eq('regression: read source is cell.innerText || cell.textContent',
     contentSrc.includes('cell.innerText || cell.textContent'), true);
 
-  // 5b. Manifest version is 1.9.2
+  // 5b. Manifest version is 1.9.3 (sprint 4 stacked on sprint 3 bumps further)
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('regression: manifest.version === "1.9.2"',
-    manifest.version, '1.9.2');
+  eq('regression: manifest.version === "1.9.3"',
+    manifest.version, '1.9.3');
 
   // 5c. Out-of-scope files not modified: sidebar.html, sidebar.js, js/, python/
   // We verify their content by checking they exist but do NOT contain getQuoteMaskedRanges.
