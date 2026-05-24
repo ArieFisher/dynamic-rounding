@@ -202,17 +202,17 @@
 
   <div class="section" id="optionsSection">
     <div class="exclusion-group">
-      <p class="section-heading">Simplify the data even when cells <em>also</em> have:</p>
+      <p class="section-heading"><em>Include</em> numbers in cells containing:</p>
       <label class="checkbox-row">
-        <input type="checkbox" id="includeWords">
+        <input type="checkbox" id="includeWords" checked>
         <span>words</span>
       </label>
       <label class="checkbox-row">
-        <input type="checkbox" id="includeCurrency">
+        <input type="checkbox" id="includeCurrency" checked>
         <span>currencies</span>
       </label>
       <label class="checkbox-row">
-        <input type="checkbox" id="includePercent">
+        <input type="checkbox" id="includePercent" checked>
         <span>percentages</span>
       </label>
     </div>
@@ -232,8 +232,8 @@
         <span class="row-label">dates</span>
         <span class="granularity-label">round to:</span>
         <select id="dateGranularity" disabled>
-          <option value="year" selected>year</option>
-          <option value="decade">decade</option>
+          <option value="year">year</option>
+          <option value="decade" selected>decade</option>
           <option value="century">century</option>
         </select>
       </label>
@@ -249,7 +249,7 @@
     </div>
   </div>
 
-  <div class="section" id="rangeSection">
+  <div class="section" id="rangeSection" hidden>
     <div class="section-title">Range</div>
     <input type="text" id="rangeExpr" placeholder="(blank = whole table)" autocomplete="off">
     <div class="range-help">

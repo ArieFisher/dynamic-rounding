@@ -131,4 +131,8 @@ window.addEventListener('unload', () => {
   }
 });
 
+// Defensively clear rangeExpr so browser autofill can never leak a stale value
+// into a hidden field and silently constrain content.js output.
+if (rangeExprEl) rangeExprEl.value = '';
+
 updateDisabledState();
