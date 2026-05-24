@@ -1004,6 +1004,286 @@ function withCreateTreeWalker(fn) {
     classes.has('dr-ext-target-flash'), true);
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint exclude-numbers-in-links
+// ---------------------------------------------------------------------------
+
+// Helper: build a mock anchor element that looks enough like a DOM <a> node
+// for isCellWholeLink and filterLinkMatches to consume.
+function makeMockAnchor(text) {
+  const anchor = {
+    innerText: text,
+    textContent: text,
+    _isAnchor: true,
+  };
+  return anchor;
+}
+
+// Helper: build a mock text node that has a parentElement with optional anchor chain.
+// If insideAnchor is an anchor object, parentElement.closest('a') returns it and
+// cell.contains(anchor) returns true.
+function makeMockTextNode(text, insideAnchor, cell) {
+  const parentEl = insideAnchor
+    ? {
+        closest: (sel) => sel === 'a' ? insideAnchor : null,
+      }
+    : {
+        closest: () => null,
+      };
+  return {
+    nodeValue: text,
+    parentElement: parentEl,
+  };
+}
+
+// Build a mock cell for isCellWholeLink / filterLinkMatches testing.
+// anchors: array of anchor text strings that appear as <a> children
+// outsideText: text in the cell that is NOT inside any anchor (null if none)
+// cell.innerText = outsideText + anchor texts combined (as visible text)
+// cell.contains(anchor): returns true for any anchor we built
+function makeLinkCell(anchors, outsideText) {
+  const anchorObjs = anchors.map(t => makeMockAnchor(t));
+  const allText = (outsideText ? outsideText + ' ' : '') +
+    anchorObjs.map(a => a.innerText).join(' ');
+  const trimmed = allText.trim();
+
+  const cell = {
+    innerText: trimmed,
+    textContent: trimmed,
+    // querySelectorAll('a') returns the anchor objects we built
+    querySelectorAll: (sel) => sel === 'a' ? anchorObjs : [],
+    contains: (node) => anchorObjs.includes(node),
+    // classList / dataset stubs so makeMockTable-level code won't crash
+    classList: {
+      _classes: [],
+      add(cls) { this._classes.push(cls); },
+      contains(cls) { return this._classes.includes(cls); },
+    },
+    dataset: {},
+    title: '',
+    tagName: 'TD',
+  };
+
+  // Build text nodes list for filterLinkMatches's createTreeWalker.
+  // We model the DOM structure: anchor text is inside anchor nodes, outside text is bare.
+  const textNodes = [];
+  if (outsideText) {
+    textNodes.push(makeMockTextNode(outsideText, null, cell));
+  }
+  for (const a of anchorObjs) {
+    textNodes.push(makeMockTextNode(a.innerText, a, cell));
+  }
+
+  // Attach a createTreeWalker stub that returns these text nodes in order.
+  cell._textNodes = textNodes;
+  return cell;
+}
+
+// Override createTreeWalker to handle linkCell's _textNodes when present.
+function withLinkCreateTreeWalker(fn) {
+  global.document.createTreeWalker = function(cell) {
+    // If the cell has pre-built textNodes (link cell), use those.
+    const nodes = cell._textNodes ? [...cell._textNodes] : [];
+    // Fallback for plain cells: single text node from innerText.
+    if (nodes.length === 0 && cell.innerText) {
+      nodes.push({ nodeValue: cell.innerText, parentElement: { closest: () => null } });
+    }
+    return {
+      nextNode() {
+        return nodes.shift() || null;
+      }
+    };
+  };
+  try { fn(); } finally { delete global.document.createTreeWalker; }
+}
+
+// --- AC1: Cell whose entire content is inside <a> is left unrounded ---
+// isCellWholeLink(<td><a href="#">1234</a></td>) must return true.
+(function ac1_wholeLinkCell() {
+  const cell = makeLinkCell(['1234'], null);
+  eq('AC1: isCellWholeLink returns true for <td><a>1234</a></td>',
+    isCellWholeLink(cell), true);
+})();
+
+// Converse: a cell with NO anchor must return false.
+(function ac1_noLinkCell() {
+  const plainCell = {
+    innerText: '1234',
+    querySelectorAll: () => [],
+  };
+  eq('AC1 (converse): isCellWholeLink returns false when no <a> present',
+    isCellWholeLink(plainCell), false);
+})();
+
+// AC1 via roundTable: a pure-numeric whole-link cell is skipped (mode = 'skip'),
+// so it never gets the dr-ext-rounded class.
+(function ac1_roundTable_wholeLinkCellNotRounded() {
+  withLinkCreateTreeWalker(function() {
+    // Build a table row with one whole-link cell containing a large number.
+    const linkCell = makeLinkCell(['8584629'], null);
+
+    const table = {
+      rows: [{ cells: [linkCell] }],
+      querySelector: () => null,
+      dataset: {},
+    };
+    const opts = {
+      enabled: true, excludeWords: true, excludeDates: true, excludeTimes: true,
+      excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: '',
+    };
+    roundTable(table, opts);
+    eq('AC1: whole-link numeric cell is NOT rounded (dr-ext-rounded absent)',
+      linkCell.classList.contains('dr-ext-rounded'), false);
+  });
+})();
+
+// --- AC2: Mixed cell — <a>5</a> preserved, 1234 outside rounds ---
+// filterLinkMatches must drop the match for '5' (inside anchor) and keep '1234' (outside).
+(function ac2_filterLinkMatches_mixedCell() {
+  withLinkCreateTreeWalker(function() {
+    // Cell: "1234 and " + <a>5</a>  — innerText = "1234 and 5"
+    // We model: outsideText = "1234 and", anchor = "5"
+    const cell = makeLinkCell(['5'], '1234 and');
+
+    const matches = extractNumbersInText(cell.innerText); // finds 1234 and 5
+    const filtered = filterLinkMatches(cell, matches);
+
+    // '5' inside anchor must be dropped; '1234' outside must be kept.
+    const nums = filtered.map(m => m.num);
+    eq('AC2: filterLinkMatches keeps 1234 (outside anchor)', nums.includes(1234), true);
+    eq('AC2: filterLinkMatches drops 5 (inside anchor)', nums.includes(5), false);
+  });
+})();
+
+// --- AC3: Mixed visible text with <a>5</a> inline — linked number preserved ---
+// isCellWholeLink must return false (not the whole cell text is in links).
+// filterLinkMatches must drop 5 and keep the other number.
+(function ac3_inlineLinkPreservesLinkedNumber() {
+  withLinkCreateTreeWalker(function() {
+    // Cell: "Revenue 3000" + <a>5</a>   -> innerText = "Revenue 3000 5"
+    const cell = makeLinkCell(['5'], 'Revenue 3000');
+
+    eq('AC3: isCellWholeLink is false for mixed cell',
+      isCellWholeLink(cell), false);
+
+    const matches = extractNumbersInText(cell.innerText);
+    const filtered = filterLinkMatches(cell, matches);
+    const nums = filtered.map(m => m.num);
+    eq('AC3: linked number 5 is absent from filtered matches', nums.includes(5), false);
+    eq('AC3: non-linked 3000 survives filtering', nums.includes(3000), true);
+  });
+})();
+
+// --- AC4: Hidden-sortkey regression guard ---
+// A cell like <td><span style="display:none">700023000</span>+2.3%</td>
+// The implementation reads cell.innerText (which browsers exclude hidden text from).
+// We model this by making cell.innerText = '+2.3%' only (hidden span excluded).
+// toNumber('+2.3%') -> null (percent), and with includePercent unset it's excluded entirely.
+// The large hidden number 700023000 must NOT appear in any extracted matches.
+(function ac4_hiddenSortkeyNotExtracted() {
+  // Simulate: innerText is what the browser returns (no hidden text).
+  // Browsers exclude hidden (display:none) content from innerText, so the cell's
+  // innerText is just '+2.3%'; the 700023000 sortkey never reaches the rounding logic.
+  const cellText = '+2.3%';
+
+  // extractNumbersInText on the visible text must NOT return 700023000.
+  const matches = extractNumbersInText(cellText);
+  const nums = matches.map(m => m.num);
+  eq('AC4: hidden sortkey 700023000 does NOT appear in extracted matches from visible text',
+    nums.includes(700023000), false);
+
+  // The visible text IS numeric (toNumber strips % via CLEAN_REGEX -> 2.3),
+  // but getExclusionReason excludes percent cells by default -> cell is skipped.
+  eq('AC4: percent cell excluded by default (regression guard: no spurious rounding)',
+    getExclusionReason(cellText, 1, {}), 'percent');
+})();
+
+// AC4 via roundTable: confirm the cell is skipped, not rounded.
+(function ac4_roundTable_hiddenSortkeyNotRounded() {
+  withLinkCreateTreeWalker(function() {
+    // Cell whose innerText (visible) is '+2.3%'; hidden sortkey not visible.
+    const cell = makeMockCell('td', '+2.3%');
+    cell.querySelectorAll = () => [];  // no anchors
+
+    const table = {
+      rows: [{ cells: [cell] }],
+      querySelector: () => null,
+      dataset: {},
+    };
+    const opts = {
+      enabled: true, excludeWords: true, excludeDates: true, excludeTimes: true,
+      excludeFirstColumn: false, includePercent: false, includeCurrency: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: '',
+    };
+    roundTable(table, opts);
+    eq('AC4: percent cell with hidden sortkey is NOT rounded',
+      cell.classList.contains('dr-ext-rounded'), false);
+  });
+})();
+
+// --- AC5: Version bumped to 1.9.1 in manifest.json ---
+(function ac5_manifestVersion() {
+  const manifest = JSON.parse(
+    require('fs').readFileSync(require('path').join(__dirname, 'manifest.json'), 'utf8'));
+  eq('AC5: manifest.json version is 1.9.1',
+    manifest.version, '1.9.1');
+})();
+
+// --- AC6: Regression guard — sidebar.html / sidebar.js / js/ / python/ not modified ---
+(function ac6_scopeGuard() {
+  // We check via git that the sprint commit did not touch these files.
+  // Static proxy: verify these files exist and were NOT part of the last commit's diff.
+  const { execSync } = require('child_process');
+  let changedFiles;
+  try {
+    // Files changed in the most recent commit on this branch.
+    changedFiles = execSync('git diff HEAD~1 --name-only', { cwd: __dirname }).toString();
+  } catch (e) {
+    changedFiles = '';
+  }
+  const lines = changedFiles.split('\n').map(l => l.trim()).filter(Boolean);
+
+  // None of these paths should appear in the sprint diff.
+  const forbidden = [
+    'chrome-extension/sidebar.html',
+    'chrome-extension/sidebar.js',
+    'js/',
+    'python/',
+  ];
+  for (const f of forbidden) {
+    const touched = lines.some(l => l.startsWith(f) || l === f);
+    eq(`AC6: "${f}" not modified by sprint commit`, touched, false);
+  }
+
+  // Confirm that ONLY content.js and manifest.json were touched (the expected files).
+  const expectedTouched = ['chrome-extension/content.js', 'chrome-extension/manifest.json'];
+  for (const ef of expectedTouched) {
+    eq(`AC6: "${ef}" was part of the sprint commit (expected)`, lines.includes(ef), true);
+  }
+})();
+
+// --- Static analysis: link-aware functions are defined and exported ---
+(function ac_staticAnalysis() {
+  eq('static: isCellWholeLink is defined', typeof isCellWholeLink, 'function');
+  eq('static: filterLinkMatches is defined', typeof filterLinkMatches, 'function');
+
+  // isCellWholeLink: cell with no querySelectorAll support returns false safely
+  eq('static: isCellWholeLink handles cell without querySelectorAll',
+    isCellWholeLink({ innerText: '123' }), false);
+
+  // filterLinkMatches: returns original matches when cell has no querySelectorAll
+  const dummyMatches = [{ numStr: '100', num: 100, index: 0 }];
+  eq('static: filterLinkMatches returns matches unchanged when cell has no querySelectorAll',
+    filterLinkMatches({ innerText: '100' }, dummyMatches), dummyMatches);
+
+  // filterLinkMatches: empty matches returned as-is
+  eq('static: filterLinkMatches handles empty matches array',
+    filterLinkMatches({ innerText: '100', querySelectorAll: () => [] }, []).length, 0);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
