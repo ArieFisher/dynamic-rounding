@@ -276,11 +276,17 @@ function roundTable(table, options) {
       } else {
         const num = toNumber(text);
         if (num !== null) {
-          rowInfo.push({ mode: 'pure', num });
+          // Whole-cell link check: if the entire visible text is inside <a> tags, skip.
+          if (isCellWholeLink(cell)) {
+            rowInfo.push({ mode: 'skip' });
+          } else {
+            rowInfo.push({ mode: 'pure', num });
+          }
         } else if (opts.includeWords) {
           const matches = extractNumbersInText(text);
-          if (matches.length > 0) {
-            rowInfo.push({ mode: 'extracted', matches });
+          const filteredMatches = filterLinkMatches(cell, matches);
+          if (filteredMatches.length > 0) {
+            rowInfo.push({ mode: 'extracted', matches: filteredMatches });
           } else {
             rowInfo.push({ mode: 'skip' });
           }
@@ -770,6 +776,60 @@ function restoreFormatting(roundedValue, originalString) {
   }
   
   return result;
+}
+
+/**
+ * Returns true if the cell's entire visible text is contained within <a> elements.
+ * Used to skip pure-numeric cells whose value is a hyperlink (e.g. a linked page number).
+ */
+function isCellWholeLink(cell) {
+  if (typeof cell.querySelectorAll !== 'function') return false;
+  const anchors = cell.querySelectorAll('a');
+  if (!anchors || anchors.length === 0) return false;
+  const cellText = (cell.innerText || '').trim();
+  if (!cellText) return false;
+  const anchorText = [...anchors].map(a => (a.innerText || '').trim()).join('').trim();
+  return anchorText === cellText;
+}
+
+/**
+ * Filters out matches from extractNumbersInText that fall inside an <a> descendant of cell.
+ * For each match, walks the cell's text nodes via TreeWalker and checks whether the node
+ * containing match.numStr has an <a> ancestor within the cell. If no single node contains
+ * numStr, falls back to checking whether any <a> descendant's text includes numStr.
+ */
+function filterLinkMatches(cell, matches) {
+  if (!matches || matches.length === 0) return matches;
+  if (typeof cell.querySelectorAll !== 'function') return matches;
+  const anchors = cell.querySelectorAll('a');
+  if (!anchors || anchors.length === 0) return matches;
+
+  // Collect text nodes via TreeWalker (same pattern as replaceTextPreservingHTML).
+  const treeWalker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
+  const textNodes = [];
+  let currentNode;
+  while ((currentNode = treeWalker.nextNode())) {
+    textNodes.push(currentNode);
+  }
+  const nonEmptyNodes = textNodes.filter(n => n.nodeValue.trim() !== '');
+
+  return matches.filter(match => {
+    const numStr = match.numStr;
+    // Find the first text node that contains numStr.
+    const containingNode = nonEmptyNodes.find(n => n.nodeValue.includes(numStr));
+    if (containingNode) {
+      // Check whether this node has an <a> ancestor that is a descendant of cell.
+      const anchor = containingNode.parentElement && containingNode.parentElement.closest('a');
+      if (anchor && cell.contains(anchor)) {
+        return false; // drop: number is inside a link
+      }
+      return true;
+    }
+    // numStr not found in any single node (rare cross-node match).
+    // Conservative fallback: if any <a> descendant's text contains numStr, drop it.
+    const inAnchor = [...anchors].some(a => (a.innerText || a.textContent || '').includes(numStr));
+    return !inAnchor;
+  });
 }
 
 function replaceTextPreservingHTML(cell, originalText, newText) {
