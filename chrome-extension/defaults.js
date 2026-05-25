@@ -10,7 +10,7 @@ const DR_DEFAULTS = {
   includeWords: true,
   includeCurrency: true,
   includePercent: true,
-  excludeFirstRow: false,
+  excludeFirstRow: true,
   excludeFirstColumn: true,
   excludeDates: true,
   excludeTimes: true,
