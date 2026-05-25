@@ -1,6 +1,7 @@
 ---
 name: sprint-stack
-description: Execute a pre-planned stack of sprints unattended, one at a time. Reads the markdown plan from a `plan/<slug>` branch produced by `/sprint-plan`. Per sprint, runs developer → test-writer → reviewer subagents, opens a PR on APPROVE (never merges or auto-merges it — the user owns all merge decisions), or pushes the branch without a PR on BLOCK (after two retries). DAG-aware: a blocked sprint defers its dependents but the orchestrator continues with independent sprints. The skill never commits to the base branch — the run log lives on the planning branch alongside the plan. Use this skill whenever the user wants to implement a sequenced set of features as stacked PRs without supervision, or hands you a sprint plan slug and says "execute".
+version: 1
+description: Execute a pre-planned stack of sprints unattended, one at a time. Reads the markdown plan from a `plan/<slug>` branch produced by `/sprint-plan`. Per sprint, runs developer → test-writer → reviewer subagents, opens a PR on APPROVE (never merges or auto-merges it — the user owns all merge decisions), or pushes the branch without a PR on BLOCK (after two retries). DAG-aware: a blocked sprint defers its dependents but the orchestrator continues with independent sprints. The skill never commits to the base branch and never modifies version files — versioning happens at merge time via a GitHub Action. The run log lives on the planning branch alongside the plan. Use this skill whenever the user wants to implement a sequenced set of features as stacked PRs without supervision, or hands you a sprint plan slug and says "execute".
 ---
 
 You are an orchestrator running a sprint stack unattended. The user is not watching. Sprints execute one at a time, in topological order. Make decisions deterministically. Do not prompt. If a sprint fails, defer its dependents and continue with independents. Never lose work. Produce a clear log at the end.
@@ -27,7 +28,7 @@ No other flags. Resume behavior is automatic: re-invoking with the same slug rea
    - Section 2 (Repo Conventions) is populated, with at least version files and test command.
    - Section 5 (Sprint Definitions) contains parseable sprint blocks per the structure defined in sprint-plan Phase 5.
 
-3. **Parse sprint definitions.** Each `### <label>` subsection under "Sprint Definitions" yields one sprint with its goal, scope, out_of_scope, acceptance criteria, depends_on, version_bump, complexity, and dev_notes. Keep the rest of the plan (Design section especially) in context for subagents.
+3. **Parse sprint definitions.** Each `### <label>` subsection under "Sprint Definitions" yields one sprint with its goal, scope, out_of_scope, acceptance criteria, depends_on, complexity, and dev_notes. Keep the rest of the plan (Design section especially) in context for subagents.
 
 4. **Working tree check.** The session's active repo must be on the base_branch declared in the plan, and clean. If not → abort.
 
@@ -48,6 +49,8 @@ For each sprint in topological order:
 
 ## Per-sprint execution
 
+**Note on versioning.** Sprint commits contain feature code and tests only. They do not modify version files (`package.json`, `manifest.json`, etc.). Versioning is handled at merge time by the GitHub Action probed for in sprint-plan's Phase 2. This is intentional: because sprints can merge in any order, version assignment must happen with knowledge of base's current state, which is only known at merge time. The developer and test-writer subagents are explicitly told not to touch version files; the reviewer checks that they didn't.
+
 ### 1. Branch
 
 Checkout the parent branch, create `feature/<label>` (or per the conventions' branch_naming) off it. All subsequent steps operate in the session's active repo on this branch.
@@ -60,7 +63,7 @@ Inputs:
 - `git diff <parent>..HEAD`
 - The Design section from the plan
 
-Instruction: implement per scope, stay out of `out_of_scope`, bump version across all version files in lockstep per the conventions, run lint/format if specified, commit per the commit convention. **Do not write tests** — that's the next subagent's job, deliberately. Just feature code and the version bump.
+Instruction: implement per scope, stay out of `out_of_scope`, run lint/format if specified, commit per the commit convention. **Do not write tests** — that's the next subagent's job, deliberately. **Do not modify version files** — those are handled at merge time by a GitHub Action.
 
 ### 3. Test-writer subagent (Sonnet) — adversarial
 
@@ -84,7 +87,7 @@ Inputs:
 
 Prompt:
 
-> Evaluate the diff against the spec. Are all acceptance criteria met? Did the developer stay out of `out_of_scope`? Are all version files updated consistently per the conventions? Do the tests pass, and do they actually verify the criteria (or do they trivially pass)? Any bugs, missed edge cases, or convention drift?
+> Evaluate the diff against the spec. Are all acceptance criteria met? Did the developer stay out of `out_of_scope`? Did the developer correctly avoid modifying any version files listed in the conventions (versioning is handled at merge time, not on feature branches)? Do the tests pass, and do they actually verify the criteria (or do they trivially pass)? Any bugs, missed edge cases, or convention drift?
 >
 > Return one of:
 > - `APPROVE` — ready to ship
