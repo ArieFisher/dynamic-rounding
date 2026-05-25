@@ -1973,11 +1973,11 @@ function injectToggleEntry(table) {
 // --- AC1: positionToggle places the label within ~5px of the table's top-right corner ---
 //
 // positionToggle uses:
-//   left = rect.right + scrollX - 36 - 4    (36px toggle width, 4px inset)
-//   top  = rect.top  + scrollY + 4
+//   left = rect.right + scrollX - 36 + 2    (36px toggle width, 2px outside right edge)
+//   top  = rect.top  + scrollY - 2          (2px above the top edge)
 // With rect={top:100,right:500} and scroll=0:
-//   expected left = 500 - 40 = 460
-//   expected top  = 100 + 4  = 104
+//   expected left = 500 - 34 = 466
+//   expected top  = 100 - 2  = 98
 //
 // The "within ~5px" spec means:
 //   |left - (rect.right - toggleWidth)| <= 5  AND  |top - rect.top| <= 5
@@ -2004,12 +2004,12 @@ function injectToggleEntry(table) {
   const top  = parseFloat(labelEl.style.top);
 
   // left should be within 5px of (rect.right - toggleWidth = 500 - 36 = 464).
-  // The implementation uses 36+4 = 40px from right, so left = 460. |460 - 464| = 4 <= 5.
+  // The implementation uses 36-2 = 34px from right, so left = 466. |466 - 464| = 2 <= 5.
   const leftOk = Math.abs(left - (tableRect.right - 36)) <= 5;
   eq('auto-table-toggle: positionToggle left is within 5px of table right edge minus toggle width',
     leftOk, true);
 
-  // top should be within 5px of rect.top (104 vs 100 → 4 <= 5).
+  // top should be within 5px of rect.top (98 vs 100 → 2 <= 5).
   const topOk = Math.abs(top - tableRect.top) <= 5;
   eq('auto-table-toggle: positionToggle top is within 5px of table top edge',
     topOk, true);
@@ -2035,11 +2035,11 @@ function injectToggleEntry(table) {
   const left = parseFloat(labelEl.style.left);
   const top  = parseFloat(labelEl.style.top);
 
-  // Expected: left = 500 + 200 - 36 - 4 = 660; top = 100 + 300 + 4 = 404
+  // Expected: left = 500 + 200 - 36 + 2 = 666; top = 100 + 300 - 2 = 398
   eq('auto-table-toggle: positionToggle left includes scrollX offset',
-    Math.abs(left - (tableRect.right + 200 - 36 - 4)) <= 5, true);
+    Math.abs(left - (tableRect.right + 200 - 36 + 2)) <= 5, true);
   eq('auto-table-toggle: positionToggle top includes scrollY offset',
-    Math.abs(top - (tableRect.top + 300 + 4)) <= 5, true);
+    Math.abs(top - (tableRect.top + 300 - 2)) <= 5, true);
 })();
 
 // --- AC3 / AC4: runToggleAction semantics ---
