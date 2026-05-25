@@ -322,6 +322,10 @@ function roundTable(table, options) {
   }
   const max_mag = findMaxMagnitude([allNums]);
 
+  // Compute the decimal floor from the offset parameters once for the whole table.
+  // This reflects the precision implied by the user's offset choice (e.g. offset 0.25 → 2 decimals).
+  const floorDecimals = Math.max(decimalCount(offsetTop), decimalCount(offsetOther));
+
   for (let r = 0; r < data.length; r++) {
     for (let c = 0; c < data[r].length; c++) {
       const info = cellInfo[r][c];
@@ -340,7 +344,7 @@ function roundTable(table, options) {
       } else if (info.mode === 'pure') {
         const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
         if (roundedValue === info.num) continue;
-        formattedValue = restoreFormatting(roundedValue, originalValue);
+        formattedValue = restoreFormatting(roundedValue, originalValue, floorDecimals);
       } else {
         // Round each match individually, splice back from right-to-left so earlier indices remain valid.
         let changed = false;
@@ -349,7 +353,7 @@ function roundTable(table, options) {
           const m = info.matches[i];
           const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
           if (rounded === m.num) continue;
-          const newNum = formatExtractedNumber(rounded, m.numStr);
+          const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
           formattedValue = formattedValue.substring(0, m.index) + newNum + formattedValue.substring(m.index + m.numStr.length);
           changed = true;
         }
@@ -621,11 +625,44 @@ function extractNumbersInText(text) {
   return matches;
 }
 
-function formatExtractedNumber(rounded, originalNumStr) {
+/**
+ * Returns the number of fractional digits in n's string representation.
+ * Sign is stripped before counting. null/undefined/NaN all return 0.
+ * Examples: decimalCount(0.5) → 1, decimalCount(-0.25) → 2, decimalCount(1) → 0.
+ */
+function decimalCount(n) {
+  if (n === null || n === undefined || (typeof n === 'number' && isNaN(n))) return 0;
+  const s = String(Math.abs(n));
+  const dot = s.indexOf('.');
+  if (dot === -1) return 0;
+  return s.length - dot - 1;
+}
+
+/**
+ * Format a rounded number extracted from inline text for display.
+ *
+ * Band rule for minimumFractionDigits:
+ *   |rounded| < 10  → use Math.max(decimals, floorDecimals)
+ *     The <10 band covers small values such as percentages/fractions where
+ *     the offset's own decimal precision is meaningful to the reader.
+ *   |rounded| >= 10 → zero decimals (existing short-circuit unchanged).
+ *     Large magnitudes are already rounded to integer multiples of a coarse
+ *     base, so decimal places would be spurious.
+ *
+ * @param {number} rounded       - The rounded numeric value.
+ * @param {string} originalNumStr - The original number string (for comma/decimal detection).
+ * @param {number} [floorDecimals=0] - Minimum decimal places from the offset's own precision.
+ */
+function formatExtractedNumber(rounded, originalNumStr, floorDecimals = 0) {
   const hasCommas = originalNumStr.includes(',');
   const decMatch = originalNumStr.match(/\.(\d+)/);
   let decimals = decMatch ? decMatch[1].length : 0;
-  if (Math.abs(rounded) >= 10) decimals = 0;
+  if (Math.abs(rounded) >= 10) {
+    decimals = 0;
+  } else {
+    // Apply the offset-derived floor only in the 0 ≤ |x| < 10 band.
+    decimals = Math.max(decimals, floorDecimals);
+  }
   return rounded.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: Math.max(decimals, 10),
@@ -770,25 +807,39 @@ function validateOffset(offset, paramName) {
   }
 }
 
-function restoreFormatting(roundedValue, originalString) {
+/**
+ * Restore the formatting of a pure-numeric cell after rounding.
+ *
+ * Band rule for minimumFractionDigits (mirrors formatExtractedNumber):
+ *   |roundedValue| < 10  → use Math.max(decimals, floorDecimals)
+ *   |roundedValue| >= 10 → zero decimals (short-circuit, unchanged)
+ *
+ * @param {number} roundedValue   - The rounded numeric value.
+ * @param {string} originalString - Original cell text (for symbol/format detection).
+ * @param {number} [floorDecimals=0] - Minimum decimal places from the offset's precision.
+ */
+function restoreFormatting(roundedValue, originalString, floorDecimals = 0) {
   let result;
   const originalTrimmed = originalString.trim();
-  
+
   // Check if original had decimals (ignoring commas)
   const match = originalTrimmed.match(/\.(\d+)[^\d]*$/);
   let decimals = 0;
   if (match) {
     decimals = match[1].length;
   }
-  
+
   if (Math.abs(roundedValue) >= 10) {
     decimals = 0;
+  } else {
+    // Apply the offset-derived floor only in the 0 ≤ |x| < 10 band.
+    decimals = Math.max(decimals, floorDecimals);
   }
 
   // Always use thousands separators (commas) and match original decimal padding
-  result = roundedValue.toLocaleString('en-US', { 
+  result = roundedValue.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
-    maximumFractionDigits: Math.max(decimals, 10) 
+    maximumFractionDigits: Math.max(decimals, 10)
   });
 
   // Handle percent
