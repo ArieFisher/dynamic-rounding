@@ -265,9 +265,16 @@ function roundTable(table, options) {
       rowCells.push(cell);
 
       const trimmed = typeof text === 'string' ? text.trim() : '';
+      // Whole-cell quote short-circuit: if the entire cell content is a single
+      // balanced ASCII double-quoted span, skip it entirely (no numbers to round).
+      const isWholeCellQuoted = trimmed.startsWith('"') && trimmed.endsWith('"') &&
+        (trimmed.match(/"/g) || []).length === 2;
+
       if (!isInRanges(r, col, ranges)) {
         rowInfo.push({ mode: 'skip' });
       } else if (getExclusionReason(text, col, opts, r)) {
+        rowInfo.push({ mode: 'skip' });
+      } else if (isWholeCellQuoted) {
         rowInfo.push({ mode: 'skip' });
       } else if (opts.excludeDates === false && isDateLike(trimmed)) {
         rowInfo.push({ mode: 'date' });
@@ -276,9 +283,19 @@ function roundTable(table, options) {
       } else {
         const num = toNumber(text);
         if (num !== null) {
-          rowInfo.push({ mode: 'pure', num });
+          // Whole-cell link check: if the entire visible text is inside <a> tags, skip.
+          if (isCellWholeLink(cell)) {
+            rowInfo.push({ mode: 'skip' });
+          } else {
+            rowInfo.push({ mode: 'pure', num });
+          }
         } else if (opts.includeWords) {
-          const matches = extractNumbersInText(text);
+          let matches = extractNumbersInText(text);
+          matches = filterLinkMatches(cell, matches);
+          const quoteRanges = getQuoteMaskedRanges(text);
+          if (quoteRanges.length > 0) {
+            matches = matches.filter(m => !overlapsQuoteRange(quoteRanges, m.index, m.index + m.numStr.length));
+          }
           if (matches.length > 0) {
             rowInfo.push({ mode: 'extracted', matches });
           } else {
@@ -305,6 +322,10 @@ function roundTable(table, options) {
   }
   const max_mag = findMaxMagnitude([allNums]);
 
+  // Compute the decimal floor from the offset parameters once for the whole table.
+  // This reflects the precision implied by the user's offset choice (e.g. offset 0.25 → 2 decimals).
+  const floorDecimals = Math.max(decimalCount(offsetTop), decimalCount(offsetOther));
+
   for (let r = 0; r < data.length; r++) {
     for (let c = 0; c < data[r].length; c++) {
       const info = cellInfo[r][c];
@@ -323,7 +344,7 @@ function roundTable(table, options) {
       } else if (info.mode === 'pure') {
         const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
         if (roundedValue === info.num) continue;
-        formattedValue = restoreFormatting(roundedValue, originalValue);
+        formattedValue = restoreFormatting(roundedValue, originalValue, floorDecimals);
       } else {
         // Round each match individually, splice back from right-to-left so earlier indices remain valid.
         let changed = false;
@@ -332,7 +353,7 @@ function roundTable(table, options) {
           const m = info.matches[i];
           const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
           if (rounded === m.num) continue;
-          const newNum = formatExtractedNumber(rounded, m.numStr);
+          const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
           formattedValue = formattedValue.substring(0, m.index) + newNum + formattedValue.substring(m.index + m.numStr.length);
           changed = true;
         }
@@ -549,6 +570,37 @@ function roundTimeText(text, granularity) {
   return result === trimmed ? null : result;
 }
 
+/**
+ * Returns an array of {start, end} ranges for all balanced ASCII double-quoted spans
+ * in the given string. Unbalanced quotes produce no range for the unpaired quote.
+ * @param {string} text
+ * @returns {{start: number, end: number}[]}
+ */
+function getQuoteMaskedRanges(text) {
+  if (typeof text !== 'string') return [];
+  const ranges = [];
+  const re = /"([^"]*)"/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    ranges.push({ start: m.index, end: m.index + m[0].length });
+  }
+  return ranges;
+}
+
+/**
+ * Returns true if [matchStart, matchEnd) overlaps any range in maskedRanges.
+ * @param {{start: number, end: number}[]} maskedRanges
+ * @param {number} matchStart
+ * @param {number} matchEnd
+ * @returns {boolean}
+ */
+function overlapsQuoteRange(maskedRanges, matchStart, matchEnd) {
+  for (const range of maskedRanges) {
+    if (matchStart < range.end && matchEnd > range.start) return true;
+  }
+  return false;
+}
+
 function extractNumberInText(text) {
   if (typeof text !== 'string') return null;
   const match = text.match(NUMBER_IN_TEXT_REGEX);
@@ -573,11 +625,44 @@ function extractNumbersInText(text) {
   return matches;
 }
 
-function formatExtractedNumber(rounded, originalNumStr) {
+/**
+ * Returns the number of fractional digits in n's string representation.
+ * Sign is stripped before counting. null/undefined/NaN all return 0.
+ * Examples: decimalCount(0.5) → 1, decimalCount(-0.25) → 2, decimalCount(1) → 0.
+ */
+function decimalCount(n) {
+  if (n === null || n === undefined || (typeof n === 'number' && isNaN(n))) return 0;
+  const s = String(Math.abs(n));
+  const dot = s.indexOf('.');
+  if (dot === -1) return 0;
+  return s.length - dot - 1;
+}
+
+/**
+ * Format a rounded number extracted from inline text for display.
+ *
+ * Band rule for minimumFractionDigits:
+ *   |rounded| < 10  → use Math.max(decimals, floorDecimals)
+ *     The <10 band covers small values such as percentages/fractions where
+ *     the offset's own decimal precision is meaningful to the reader.
+ *   |rounded| >= 10 → zero decimals (existing short-circuit unchanged).
+ *     Large magnitudes are already rounded to integer multiples of a coarse
+ *     base, so decimal places would be spurious.
+ *
+ * @param {number} rounded       - The rounded numeric value.
+ * @param {string} originalNumStr - The original number string (for comma/decimal detection).
+ * @param {number} [floorDecimals=0] - Minimum decimal places from the offset's own precision.
+ */
+function formatExtractedNumber(rounded, originalNumStr, floorDecimals = 0) {
   const hasCommas = originalNumStr.includes(',');
   const decMatch = originalNumStr.match(/\.(\d+)/);
   let decimals = decMatch ? decMatch[1].length : 0;
-  if (Math.abs(rounded) >= 10) decimals = 0;
+  if (Math.abs(rounded) >= 10) {
+    decimals = 0;
+  } else {
+    // Apply the offset-derived floor only in the 0 ≤ |x| < 10 band.
+    decimals = Math.max(decimals, floorDecimals);
+  }
   return rounded.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: Math.max(decimals, 10),
@@ -722,25 +807,39 @@ function validateOffset(offset, paramName) {
   }
 }
 
-function restoreFormatting(roundedValue, originalString) {
+/**
+ * Restore the formatting of a pure-numeric cell after rounding.
+ *
+ * Band rule for minimumFractionDigits (mirrors formatExtractedNumber):
+ *   |roundedValue| < 10  → use Math.max(decimals, floorDecimals)
+ *   |roundedValue| >= 10 → zero decimals (short-circuit, unchanged)
+ *
+ * @param {number} roundedValue   - The rounded numeric value.
+ * @param {string} originalString - Original cell text (for symbol/format detection).
+ * @param {number} [floorDecimals=0] - Minimum decimal places from the offset's precision.
+ */
+function restoreFormatting(roundedValue, originalString, floorDecimals = 0) {
   let result;
   const originalTrimmed = originalString.trim();
-  
+
   // Check if original had decimals (ignoring commas)
   const match = originalTrimmed.match(/\.(\d+)[^\d]*$/);
   let decimals = 0;
   if (match) {
     decimals = match[1].length;
   }
-  
+
   if (Math.abs(roundedValue) >= 10) {
     decimals = 0;
+  } else {
+    // Apply the offset-derived floor only in the 0 ≤ |x| < 10 band.
+    decimals = Math.max(decimals, floorDecimals);
   }
 
   // Always use thousands separators (commas) and match original decimal padding
-  result = roundedValue.toLocaleString('en-US', { 
+  result = roundedValue.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
-    maximumFractionDigits: Math.max(decimals, 10) 
+    maximumFractionDigits: Math.max(decimals, 10)
   });
 
   // Handle percent
@@ -770,6 +869,60 @@ function restoreFormatting(roundedValue, originalString) {
   }
   
   return result;
+}
+
+/**
+ * Returns true if the cell's entire visible text is contained within <a> elements.
+ * Used to skip pure-numeric cells whose value is a hyperlink (e.g. a linked page number).
+ */
+function isCellWholeLink(cell) {
+  if (typeof cell.querySelectorAll !== 'function') return false;
+  const anchors = cell.querySelectorAll('a');
+  if (!anchors || anchors.length === 0) return false;
+  const cellText = (cell.innerText || '').trim();
+  if (!cellText) return false;
+  const anchorText = [...anchors].map(a => (a.innerText || '').trim()).join('').trim();
+  return anchorText === cellText;
+}
+
+/**
+ * Filters out matches from extractNumbersInText that fall inside an <a> descendant of cell.
+ * For each match, walks the cell's text nodes via TreeWalker and checks whether the node
+ * containing match.numStr has an <a> ancestor within the cell. If no single node contains
+ * numStr, falls back to checking whether any <a> descendant's text includes numStr.
+ */
+function filterLinkMatches(cell, matches) {
+  if (!matches || matches.length === 0) return matches;
+  if (typeof cell.querySelectorAll !== 'function') return matches;
+  const anchors = cell.querySelectorAll('a');
+  if (!anchors || anchors.length === 0) return matches;
+
+  // Collect text nodes via TreeWalker (same pattern as replaceTextPreservingHTML).
+  const treeWalker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
+  const textNodes = [];
+  let currentNode;
+  while ((currentNode = treeWalker.nextNode())) {
+    textNodes.push(currentNode);
+  }
+  const nonEmptyNodes = textNodes.filter(n => n.nodeValue.trim() !== '');
+
+  return matches.filter(match => {
+    const numStr = match.numStr;
+    // Find the first text node that contains numStr.
+    const containingNode = nonEmptyNodes.find(n => n.nodeValue.includes(numStr));
+    if (containingNode) {
+      // Check whether this node has an <a> ancestor that is a descendant of cell.
+      const anchor = containingNode.parentElement && containingNode.parentElement.closest('a');
+      if (anchor && cell.contains(anchor)) {
+        return false; // drop: number is inside a link
+      }
+      return true;
+    }
+    // numStr not found in any single node (rare cross-node match).
+    // Conservative fallback: if any <a> descendant's text contains numStr, drop it.
+    const inAnchor = [...anchors].some(a => (a.innerText || a.textContent || '').includes(numStr));
+    return !inAnchor;
+  });
 }
 
 function replaceTextPreservingHTML(cell, originalText, newText) {
