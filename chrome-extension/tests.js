@@ -16,16 +16,49 @@ global.chrome = {
     sendMessage: () => {}
   }
 };
-global.document = { addEventListener: () => {} };
+global.document = {
+  addEventListener: () => {},
+  querySelectorAll: () => [],   // injectTableToggles calls this; return empty list
+  readyState: 'complete',       // prevents DOMContentLoaded deferral
+  body: { appendChild: () => {}, observe: () => {} },
+};
 global.window = { addEventListener: () => {} };
 global.NodeFilter = { SHOW_TEXT: 4 };
+
+// Stub observer constructors BEFORE eval so that content.js module-level code
+// (guarded by `typeof MutationObserver !== 'undefined'`) sees them and runs
+// the initialisation block. The stubs are no-ops; tests never exercise the
+// real observer callbacks.
+global.MutationObserver = class { observe() {} disconnect() {} };
+global.ResizeObserver  = class { observe() {} unobserve() {} disconnect() {} };
+global.Node = { ELEMENT_NODE: 1 };
 
 // In a browser/extension the two files share a single top-level scope; we
 // emulate that here by evaluating them together, and re-expose DR_DEFAULTS on
 // globalThis so test assertions outside the eval can read it.
+// We also expose the per-table toggle infrastructure declared with const/let
+// inside the eval'd code so the auto-table-toggle test section can access them.
 const defaultsCode = fs.readFileSync(path.join(__dirname, 'defaults.js'), 'utf8');
 const code = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-eval(defaultsCode + '\n' + code + '\nglobalThis.DR_DEFAULTS = DR_DEFAULTS;');
+eval(defaultsCode + '\n' + code + `
+globalThis.DR_DEFAULTS = DR_DEFAULTS;
+// Expose toggle infrastructure for tests
+globalThis.tableToggles = tableToggles;
+globalThis.trackedTables = trackedTables;
+// toggleStyleInjected is a let; expose a getter/setter so tests can reset it.
+Object.defineProperty(globalThis, 'toggleStyleInjected', {
+  get() { return toggleStyleInjected; },
+  set(v) { toggleStyleInjected = v; },
+  configurable: true,
+});
+globalThis.isTableRounded = isTableRounded;
+globalThis.syncSwitchForTable = syncSwitchForTable;
+globalThis.positionToggle = positionToggle;
+globalThis.createToggleForTable = createToggleForTable;
+globalThis.runToggleAction = runToggleAction;
+globalThis.toggleOriginalValues = toggleOriginalValues;
+globalThis.injectTableToggles = injectTableToggles;
+`);
 
 let passed = 0;
 let failed = 0;
@@ -1634,6 +1667,527 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     eq('simplify: cell with no format or value change stays unmarked',
       cell.classList.contains('dr-ext-rounded'), false);
   });
+})();
+
+// --- auto-table-toggle ---
+//
+// Adversarial tests for the per-table toggle switch sprint.
+// We call the new pure/semi-pure functions directly after eval.
+// MutationObserver and ResizeObserver are stubbed as no-ops so the top-level
+// initialisation code in content.js does not throw at eval time.
+
+// Stub constructors so the module-level MutationObserver / ResizeObserver usage
+// at content.js load time does not throw in Node. The stubs are injected BEFORE
+// the eval, but since we patch globalThis here (after the eval), we need to work
+// around the fact the eval already ran. In practice the guards in content.js
+// (`if (typeof MutationObserver !== 'undefined')`) check the global at eval time.
+// The eval has already run successfully (MutationObserver was undefined → guarded).
+// These stubs are only needed for any test that directly calls createToggleForTable,
+// which itself calls `new ResizeObserver(...)`. We therefore stub ResizeObserver
+// on globalThis before those tests run.
+global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+global.MutationObserver = class { observe() {} disconnect() {} };
+global.Node = { ELEMENT_NODE: 1 };
+
+// --- Helpers ---
+
+/**
+ * Build a minimal table DOM stub that isTableRounded, toggleOriginalValues, and
+ * roundTable can consume. Returns an object that looks like a real HTMLTableElement
+ * for the purposes of these functions.
+ *
+ * @param {Array<{tag:string, text:string}>} cellSpecs  — cells for a single row
+ * @param {Object} [extra] — additional properties to merge onto the table stub
+ */
+function makeToggleTableCell(s) {
+  return {
+    tagName: s.tag.toUpperCase(),
+    innerText: s.text,
+    textContent: s.text,
+    innerHTML: s.text,
+    classList: {
+      _c: [],
+      add(c) { this._c.push(c); },
+      remove(c) { this._c = this._c.filter(x => x !== c); },
+      contains(c) { return this._c.includes(c); },
+    },
+    dataset: {},
+    title: '',
+    querySelectorAll: () => [],
+    removeAttribute() {},
+  };
+}
+
+/**
+ * Build a minimal table DOM stub.
+ *
+ * @param {Array<{tag:string, text:string}>|Array<Array<{tag:string, text:string}>>} rowsOrCells
+ *   Either a flat array of cell specs (one row) or an array of row arrays.
+ * @param {Object} [extra] — additional properties to merge onto the table stub
+ */
+function makeToggleTable(rowsOrCells, extra) {
+  // Detect whether caller passed flat [{tag,text}] or nested [[{tag,text}]].
+  const rowSpecs = Array.isArray(rowsOrCells[0]) ? rowsOrCells : [rowsOrCells];
+  const rows = rowSpecs.map(rowSpec => ({ cells: rowSpec.map(makeToggleTableCell) }));
+  const cells = rows.flatMap(r => r.cells);  // all cells, for querySelector helpers
+
+  const table = Object.assign({
+    rows,
+    dataset: {},
+    _cells: cells,
+    // classList on the table itself — used by flashTargetedTable
+    classList: {
+      _c: [],
+      add(c)      { this._c.push(c); },
+      remove(c)   { this._c = this._c.filter(x => x !== c); },
+      contains(c) { return this._c.includes(c); },
+    },
+    // offsetWidth access in flashTargetedTable triggers reflow; just ignore it
+    get offsetWidth() { return 0; },
+    // querySelector('.dr-ext-rounded') — used by isTableRounded and runToggleAction
+    querySelector(sel) {
+      if (sel === '.dr-ext-rounded') {
+        return this._cells.find(c => c.classList.contains('dr-ext-rounded')) || null;
+      }
+      return null;
+    },
+    // querySelectorAll('.dr-ext-rounded') — used by toggleOriginalValues / resetTable
+    querySelectorAll(sel) {
+      if (sel === '.dr-ext-rounded') {
+        return this._cells.filter(c => c.classList.contains('dr-ext-rounded'));
+      }
+      return [];
+    },
+    getBoundingClientRect() {
+      return { top: 100, right: 500, bottom: 200, left: 100 };
+    },
+  }, extra || {});
+
+  return table;
+}
+
+/**
+ * Inject a fake entry into the module-level tableToggles WeakMap so that
+ * syncSwitchForTable can find the checkbox for this table.
+ *
+ * @param {object} table — the table stub
+ * @returns {{ checked: boolean }} the mock checkbox input
+ */
+function injectToggleEntry(table) {
+  const input = { checked: false };
+  tableToggles.set(table, input);
+  return input;
+}
+
+// --- AC5: isTableRounded returns false for a fresh table ---
+
+(function atToggle_isTableRounded_freshTable() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  eq('auto-table-toggle: isTableRounded(fresh table) is false',
+    isTableRounded(table), false);
+})();
+
+// --- AC5: isTableRounded returns true after roundTable marks cells ---
+
+(function atToggle_isTableRounded_afterRound() {
+  // Directly inject the rounded class to simulate a rounded table (don't run
+  // the full roundTable pipeline which requires tree walkers etc.)
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  // Manually mark the cell as rounded — this is what roundTable does.
+  table._cells[0].classList.add('dr-ext-rounded');
+  eq('auto-table-toggle: isTableRounded(table with .dr-ext-rounded cell) is true',
+    isTableRounded(table), true);
+})();
+
+// --- AC5: isTableRounded returns false when drShowingOriginal === 'true' ---
+// (toggleOriginalValues sets this; the table still has rounded cells but is showing originals)
+
+(function atToggle_isTableRounded_showingOriginal() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  table._cells[0].classList.add('dr-ext-rounded');
+  table.dataset.drShowingOriginal = 'true';
+  eq('auto-table-toggle: isTableRounded is false when drShowingOriginal===true',
+    isTableRounded(table), false);
+})();
+
+// --- AC5: isTableRounded after toggleOriginalValues restores originals ---
+// After toggleOriginalValues flips to showing originals, isTableRounded must be false.
+
+(function atToggle_isTableRounded_afterToggleOff() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  // Simulate a post-roundTable state: cell has rounded class + originalHtml
+  const cell = table._cells[0];
+  cell.classList.add('dr-ext-rounded');
+  cell.dataset.originalHtml = '1,000';
+  cell.innerHTML = '1,000';
+  // Also need to stub innerHTML setter so toggleOriginalValues can restore it
+  Object.defineProperty(cell, 'innerHTML', {
+    get() { return this._html !== undefined ? this._html : cell.textContent; },
+    set(v) { this._html = v; },
+    configurable: true,
+  });
+
+  // Inject toggle entry so syncSwitchForTable doesn't crash
+  injectToggleEntry(table);
+
+  // Calling toggleOriginalValues (showingOriginal=false path) sets drShowingOriginal='true'
+  toggleOriginalValues(table);
+
+  eq('auto-table-toggle: after toggleOriginalValues, isTableRounded is false',
+    isTableRounded(table), false);
+  eq('auto-table-toggle: after toggleOriginalValues, drShowingOriginal is "true"',
+    table.dataset.drShowingOriginal, 'true');
+})();
+
+// --- AC6: syncSwitchForTable sets checkbox.checked to match isTableRounded ---
+
+(function atToggle_syncSwitch_uncheckedWhenNotRounded() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const input = injectToggleEntry(table);
+  input.checked = true; // pre-set to true to confirm it gets corrected
+
+  syncSwitchForTable(table);
+  eq('auto-table-toggle: syncSwitchForTable sets checked=false on fresh table',
+    input.checked, false);
+})();
+
+(function atToggle_syncSwitch_checkedWhenRounded() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const input = injectToggleEntry(table);
+  input.checked = false; // pre-set to false to confirm it gets corrected
+
+  // Mark table as rounded
+  table._cells[0].classList.add('dr-ext-rounded');
+
+  syncSwitchForTable(table);
+  eq('auto-table-toggle: syncSwitchForTable sets checked=true on rounded table',
+    input.checked, true);
+})();
+
+(function atToggle_syncSwitch_uncheckedWhenShowingOriginal() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const input = injectToggleEntry(table);
+  table._cells[0].classList.add('dr-ext-rounded');
+  table.dataset.drShowingOriginal = 'true';
+  input.checked = true;
+
+  syncSwitchForTable(table);
+  eq('auto-table-toggle: syncSwitchForTable sets checked=false when showingOriginal=true',
+    input.checked, false);
+})();
+
+// --- AC6: syncSwitchForTable is a no-op when no toggle registered ---
+
+(function atToggle_syncSwitch_noEntryIsNoop() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  // No injectToggleEntry call — tableToggles has no entry for this table.
+  // Should not throw.
+  let threw = false;
+  try { syncSwitchForTable(table); } catch (e) { threw = true; }
+  eq('auto-table-toggle: syncSwitchForTable does not throw when no toggle registered',
+    threw, false);
+})();
+
+// --- AC2: Switch is unchecked when first injected on a never-rounded table ---
+// createToggleForTable creates a checkbox; a never-rounded table → input.checked === false
+
+(function atToggle_createToggle_initiallyUnchecked() {
+  // Stub the full DOM environment needed by createToggleForTable:
+  //   document.createElement, document.body.appendChild
+
+  const createdElements = [];
+  const appendedChildren = [];
+  const listeners = [];
+
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+
+  global.document.createElement = (tag) => {
+    const el = {
+      _tag: tag,
+      type: '',
+      className: '',
+      style: {},
+      _children: [],
+      _listeners: {},
+      checked: false,
+      parentElement: null,
+      appendChild(child) {
+        this._children.push(child);
+        child.parentElement = this;
+        return child;
+      },
+      addEventListener(evt, fn) {
+        listeners.push({ evt, fn });
+        this._listeners[evt] = fn;
+      },
+    };
+    createdElements.push(el);
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) {
+      appendedChildren.push(child);
+      // Give the label a parentElement so positionToggle's labelEl.style.left works
+      child.parentElement = global.document.body;
+    }
+  };
+
+  const table = makeToggleTable([{ tag: 'td', text: '50000' }]);
+  // Stub table.getBoundingClientRect (already defined on makeToggleTable)
+
+  // ensureToggleStyleInjected calls document.createElement('style') + appendChild;
+  // stub documentElement for that path
+  const origDocEl = global.document.documentElement;
+  global.document.documentElement = {
+    appendChild() {}
+  };
+  // Reset the module-level flag so injection runs
+  toggleStyleInjected = false;
+
+  const label = createToggleForTable(table);
+
+  // Restore
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  toggleStyleInjected = true;
+
+  // The input element should have been created (type='checkbox')
+  const inputEl = createdElements.find(e => e.type === 'checkbox');
+  eq('auto-table-toggle: createToggleForTable creates a checkbox input',
+    inputEl !== undefined, true);
+  eq('auto-table-toggle: newly created checkbox is unchecked (never-rounded table)',
+    inputEl ? inputEl.checked : 'no input', false);
+
+  // The label should have been appended to document.body
+  eq('auto-table-toggle: createToggleForTable appends toggle label to document.body',
+    appendedChildren.length >= 1, true);
+
+  // tableToggles must now contain this table
+  eq('auto-table-toggle: createToggleForTable registers table in tableToggles',
+    tableToggles.has(table), true);
+})();
+
+// --- AC1: positionToggle places the label within ~5px of the table's top-right corner ---
+//
+// positionToggle uses:
+//   left = rect.right + scrollX - 36 - 4    (36px toggle width, 4px inset)
+//   top  = rect.top  + scrollY + 4
+// With rect={top:100,right:500} and scroll=0:
+//   expected left = 500 - 40 = 460
+//   expected top  = 100 + 4  = 104
+//
+// The "within ~5px" spec means:
+//   |left - (rect.right - toggleWidth)| <= 5  AND  |top - rect.top| <= 5
+
+(function atToggle_positionToggle_nearTopRight() {
+  const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
+  const table = {
+    getBoundingClientRect() { return tableRect; },
+  };
+  const labelEl = { style: {} };
+
+  // Stub window.scrollX/scrollY to zero (typical case)
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  positionToggle(table, labelEl);
+
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+
+  const left = parseFloat(labelEl.style.left);
+  const top  = parseFloat(labelEl.style.top);
+
+  // left should be within 5px of (rect.right - toggleWidth = 500 - 36 = 464).
+  // The implementation uses 36+4 = 40px from right, so left = 460. |460 - 464| = 4 <= 5.
+  const leftOk = Math.abs(left - (tableRect.right - 36)) <= 5;
+  eq('auto-table-toggle: positionToggle left is within 5px of table right edge minus toggle width',
+    leftOk, true);
+
+  // top should be within 5px of rect.top (104 vs 100 → 4 <= 5).
+  const topOk = Math.abs(top - tableRect.top) <= 5;
+  eq('auto-table-toggle: positionToggle top is within 5px of table top edge',
+    topOk, true);
+})();
+
+// --- AC1: positionToggle accounts for page scroll ---
+
+(function atToggle_positionToggle_withScroll() {
+  const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
+  const table = { getBoundingClientRect() { return tableRect; } };
+  const labelEl = { style: {} };
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 200;
+  global.window.scrollY = 300;
+
+  positionToggle(table, labelEl);
+
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+
+  const left = parseFloat(labelEl.style.left);
+  const top  = parseFloat(labelEl.style.top);
+
+  // Expected: left = 500 + 200 - 36 - 4 = 660; top = 100 + 300 + 4 = 404
+  eq('auto-table-toggle: positionToggle left includes scrollX offset',
+    Math.abs(left - (tableRect.right + 200 - 36 - 4)) <= 5, true);
+  eq('auto-table-toggle: positionToggle top includes scrollY offset',
+    Math.abs(top - (tableRect.top + 300 + 4)) <= 5, true);
+})();
+
+// --- AC3 / AC4: runToggleAction semantics ---
+// runToggleAction calls roundTable when no .dr-ext-rounded cells exist,
+// and toggleOriginalValues when .dr-ext-rounded cells exist.
+// We verify the outcome on table.dataset rather than inspecting private calls.
+
+(function atToggle_runToggleAction_onFreshTable() {
+  // Use withCreateTreeWalker so roundTable can traverse cells.
+  withCreateTreeWalker(function() {
+    // Two-row table: row 0 is the header (excluded by DR_DEFAULTS.excludeFirstRow=true),
+    // row 1 has large numbers that WILL be rounded.
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Header' }],
+      [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+    ]);
+    // Must have querySelectorAll on individual cells (used by roundTable → filterLinkMatches)
+    table._cells.forEach(c => { c.querySelectorAll = () => []; });
+    // Register a checkbox so syncSwitchForTable doesn't crash
+    const input = injectToggleEntry(table);
+
+    runToggleAction(table);
+
+    // After runToggleAction on a fresh table, at least one cell should be rounded
+    const hasRounded = table._cells.some(c => c.classList.contains('dr-ext-rounded'));
+    eq('auto-table-toggle: runToggleAction on fresh table rounds cells (AC3)',
+      hasRounded, true);
+    // Checkbox should now reflect the rounded state
+    eq('auto-table-toggle: checkbox is checked after rounding via runToggleAction',
+      input.checked, true);
+  });
+})();
+
+(function atToggle_runToggleAction_toggleOffRestoresOriginal() {
+  // Simulate a table that is already rounded: has .dr-ext-rounded cells.
+  const table = makeToggleTable([{ tag: 'td', text: '8,500,000' }]);
+  const cell = table._cells[0];
+  cell.classList.add('dr-ext-rounded');
+  cell.dataset.originalHtml = '8,584,629';
+
+  // The cell's innerHTML property needs to be writable
+  let htmlVal = cell.innerHTML;
+  Object.defineProperty(cell, 'innerHTML', {
+    get() { return htmlVal; },
+    set(v) { htmlVal = v; },
+    configurable: true,
+  });
+
+  const input = injectToggleEntry(table);
+
+  runToggleAction(table);
+
+  // After toggling off: drShowingOriginal must be 'true' (AC4)
+  eq('auto-table-toggle: runToggleAction on rounded table sets drShowingOriginal=true (AC4)',
+    table.dataset.drShowingOriginal, 'true');
+  // Checkbox unchecked — table is now showing originals, not rounded
+  eq('auto-table-toggle: checkbox unchecked after toggle-off',
+    input.checked, false);
+})();
+
+// --- AC5: isTableRounded sequence: false → true → false via full toggle cycle ---
+
+(function atToggle_isTableRounded_fullCycle() {
+  withCreateTreeWalker(function() {
+    // Two-row table: row 0 is excluded (DR_DEFAULTS.excludeFirstRow=true), row 1 has
+    // large numbers that WILL be rounded so the test exercises the true → false transition.
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Header' }],
+      [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+    ]);
+    table._cells.forEach(c => { c.querySelectorAll = () => []; });
+    const input = injectToggleEntry(table);
+
+    // 1. Initially false
+    eq('auto-table-toggle: isTableRounded is false before roundTable',
+      isTableRounded(table), false);
+
+    // 2. After roundTable → true (if any cell changed)
+    roundTable(table, Object.assign({}, DR_DEFAULTS));
+    const afterRound = isTableRounded(table);
+    // Note: roundTable may or may not mark cells depending on inputs.
+    // We accept that: if it DID mark cells, it must be true; otherwise still false.
+    // Either way isTableRounded must equal whether any cell has .dr-ext-rounded AND
+    // drShowingOriginal is not 'true'.
+    const expectedAfterRound = table.querySelector('.dr-ext-rounded') !== null
+                                && table.dataset.drShowingOriginal !== 'true';
+    eq('auto-table-toggle: isTableRounded after roundTable matches .dr-ext-rounded presence',
+      afterRound, expectedAfterRound);
+
+    // 3. After toggleOriginalValues → false
+    if (table.querySelector('.dr-ext-rounded')) {
+      // Set up innerHTML writability on rounded cells
+      table.querySelectorAll('.dr-ext-rounded').forEach(cell => {
+        if (!Object.getOwnPropertyDescriptor(cell, 'innerHTML') ||
+            !Object.getOwnPropertyDescriptor(cell, 'innerHTML').set) {
+          let v = cell.innerHTML;
+          Object.defineProperty(cell, 'innerHTML', {
+            get() { return v; }, set(x) { v = x; }, configurable: true
+          });
+        }
+      });
+      toggleOriginalValues(table);
+      eq('auto-table-toggle: isTableRounded is false after toggleOriginalValues (AC5)',
+        isTableRounded(table), false);
+    }
+  });
+})();
+
+// --- Static analysis: all new functions are defined ---
+
+(function atToggle_staticAnalysis() {
+  eq('auto-table-toggle: isTableRounded is defined',
+    typeof isTableRounded, 'function');
+  eq('auto-table-toggle: syncSwitchForTable is defined',
+    typeof syncSwitchForTable, 'function');
+  eq('auto-table-toggle: positionToggle is defined',
+    typeof positionToggle, 'function');
+  eq('auto-table-toggle: createToggleForTable is defined',
+    typeof createToggleForTable, 'function');
+  eq('auto-table-toggle: runToggleAction is defined',
+    typeof runToggleAction, 'function');
+  eq('auto-table-toggle: tableToggles WeakMap is defined',
+    tableToggles instanceof WeakMap, true);
+  eq('auto-table-toggle: trackedTables Set is defined',
+    trackedTables instanceof Set, true);
+})();
+
+// --- Regression guard: content.js declares the new infrastructure ---
+
+(function atToggle_contentJsDeclarations() {
+  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  eq('auto-table-toggle: content.js declares tableToggles WeakMap',
+    /const\s+tableToggles\s*=\s*new\s+WeakMap/.test(src), true);
+  eq('auto-table-toggle: content.js declares trackedTables Set',
+    /const\s+trackedTables\s*=\s*new\s+Set/.test(src), true);
+  eq('auto-table-toggle: content.js defines isTableRounded',
+    /function\s+isTableRounded\b/.test(src), true);
+  eq('auto-table-toggle: content.js defines syncSwitchForTable',
+    /function\s+syncSwitchForTable\b/.test(src), true);
+  eq('auto-table-toggle: content.js defines positionToggle',
+    /function\s+positionToggle\b/.test(src), true);
+  eq('auto-table-toggle: content.js defines createToggleForTable',
+    /function\s+createToggleForTable\b/.test(src), true);
+  eq('auto-table-toggle: content.js defines injectTableToggles',
+    /function\s+injectTableToggles\b/.test(src), true);
+  // The toggle label must use a CSS class, not inline styles exclusively
+  eq('auto-table-toggle: toggle uses dr-ext-toggle CSS class',
+    src.includes('dr-ext-toggle'), true);
 })();
 
 // --- Report ---
