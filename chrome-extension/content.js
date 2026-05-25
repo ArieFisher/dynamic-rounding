@@ -36,21 +36,25 @@ document.addEventListener('contextmenu', (event) => {
   }
 }, true);
 
+function runToggleAction(table) {
+  ensureHighlightStyleInjected();
+  if (!table.querySelector('.dr-ext-rounded')) {
+    roundTable(table);
+    chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
+  } else {
+    toggleOriginalValues(table);
+    chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
+  }
+  // Context menu has no range expression → whole-table pulse (ranges null).
+  flashRangePulse(table, null);
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'MENU_CLICKED') {
     if (lastRightClickedElement) {
       const table = lastRightClickedElement.closest('table');
       if (table) {
-        ensureHighlightStyleInjected();
-        if (!table.querySelector('.dr-ext-rounded')) {
-          roundTable(table);
-          chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
-        } else {
-          toggleOriginalValues(table);
-          chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
-        }
-        // Context menu has no range expression → whole-table pulse (ranges null).
-        flashRangePulse(table, null);
+        runToggleAction(table);
       } else {
         console.debug("Dynamic Rounding: No table found at right-click location.");
       }
@@ -114,7 +118,230 @@ function applySidebarRounding(table, options) {
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   flashRangePulse(table, rangeParse.error ? null : rangeParse.ranges);
+  syncSwitchForTable(table);
 }
+
+// --- Per-table toggle switch infrastructure ---
+
+/** WeakMap from HTMLTableElement → HTMLInputElement (the checkbox input) */
+const tableToggles = new WeakMap();
+
+/** Parallel Set of tracked tables so we can iterate for repositioning */
+const trackedTables = new Set();
+
+/** WeakMap from HTMLTableElement → ResizeObserver for the toggle */
+const tableResizeObservers = new WeakMap();
+
+function isTableRounded(table) {
+  return table.querySelector('.dr-ext-rounded') !== null && table.dataset.drShowingOriginal !== 'true';
+}
+
+function syncSwitchForTable(table) {
+  const input = tableToggles.get(table);
+  if (input) {
+    input.checked = isTableRounded(table);
+  }
+}
+
+let toggleStyleInjected = false;
+function ensureToggleStyleInjected() {
+  if (toggleStyleInjected) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    .dr-ext-toggle {
+      position: absolute;
+      z-index: 2147483646;
+      display: inline-block;
+      width: 36px;
+      height: 20px;
+      cursor: pointer;
+    }
+    .dr-ext-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+    .dr-ext-toggle-slider {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      border-radius: 20px;
+      transition: background-color 0.2s;
+    }
+    .dr-ext-toggle-slider::before {
+      content: "";
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 3px;
+      top: 3px;
+      background-color: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .dr-ext-toggle input:checked + .dr-ext-toggle-slider {
+      background-color: rgba(66, 133, 244, 1);
+    }
+    .dr-ext-toggle input:checked + .dr-ext-toggle-slider::before {
+      transform: translateX(16px);
+    }
+  `;
+  (document.head || document.documentElement).appendChild(style);
+  toggleStyleInjected = true;
+}
+
+function positionToggle(table, labelEl) {
+  const rect = table.getBoundingClientRect();
+  const scrollX = window.scrollX || window.pageXOffset || 0;
+  const scrollY = window.scrollY || window.pageYOffset || 0;
+  // 2px outside the right edge, 2px above the top edge
+  const left = rect.right + scrollX - 36 + 2;
+  const top = rect.top + scrollY - 2;
+  labelEl.style.left = left + 'px';
+  labelEl.style.top = top + 'px';
+}
+
+function createToggleForTable(table) {
+  ensureToggleStyleInjected();
+
+  const label = document.createElement('label');
+  label.className = 'dr-ext-toggle';
+
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+
+  const slider = document.createElement('span');
+  slider.className = 'dr-ext-toggle-slider';
+
+  label.appendChild(input);
+  label.appendChild(slider);
+
+  (document.body || document.documentElement).appendChild(label);
+
+  positionToggle(table, label);
+
+  // Wire change event: run toggle then sync
+  input.addEventListener('change', () => {
+    runToggleAction(table);
+    syncSwitchForTable(table);
+  });
+
+  // Stop propagation of click and mousedown to avoid triggering host-page handlers
+  label.addEventListener('click', (e) => e.stopPropagation());
+  label.addEventListener('mousedown', (e) => e.stopPropagation());
+
+  // Store input in WeakMap and table in tracked set
+  tableToggles.set(table, input);
+  trackedTables.add(table);
+
+  // Set up ResizeObserver for repositioning
+  const ro = new ResizeObserver(() => {
+    positionToggle(table, label);
+  });
+  ro.observe(table);
+  tableResizeObservers.set(table, ro);
+
+  return label;
+}
+
+function injectTableToggles() {
+  document.querySelectorAll('table').forEach(table => {
+    if (!tableToggles.has(table)) {
+      createToggleForTable(table);
+    }
+  });
+}
+
+// Reposition all tracked toggles on scroll/resize
+let _scrollResizeListenersAdded = false;
+function ensureScrollResizeListeners() {
+  if (_scrollResizeListenersAdded) return;
+  _scrollResizeListenersAdded = true;
+  window.addEventListener('scroll', () => {
+    for (const table of trackedTables) {
+      const input = tableToggles.get(table);
+      if (input && input.parentElement) {
+        positionToggle(table, input.parentElement);
+      }
+    }
+  }, { passive: true });
+  window.addEventListener('resize', () => {
+    for (const table of trackedTables) {
+      const input = tableToggles.get(table);
+      if (input && input.parentElement) {
+        positionToggle(table, input.parentElement);
+      }
+    }
+  }, { passive: true });
+}
+
+if (typeof MutationObserver !== 'undefined') {
+  ensureScrollResizeListeners();
+
+  // MutationObserver to watch for dynamically added/removed tables
+  const _tableObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        // Check if the added node itself is a table
+        if (node.tagName === 'TABLE' && !tableToggles.has(node)) {
+          createToggleForTable(node);
+        }
+        // Check for table descendants
+        if (typeof node.querySelectorAll === 'function') {
+          node.querySelectorAll('table').forEach(table => {
+            if (!tableToggles.has(table)) {
+              createToggleForTable(table);
+            }
+          });
+        }
+      }
+      for (const node of mutation.removedNodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        // Handle removed table nodes
+        const tablesToRemove = [];
+        if (node.tagName === 'TABLE') {
+          tablesToRemove.push(node);
+        }
+        if (typeof node.querySelectorAll === 'function') {
+          node.querySelectorAll('table').forEach(t => tablesToRemove.push(t));
+        }
+        for (const table of tablesToRemove) {
+          const input = tableToggles.get(table);
+          if (input && input.parentElement) {
+            input.parentElement.remove();
+          }
+          const ro = tableResizeObservers.get(table);
+          if (ro) {
+            ro.disconnect();
+          }
+          trackedTables.delete(table);
+        }
+      }
+    }
+  });
+
+  // Start injecting toggles
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      injectTableToggles();
+      if (document.body) {
+        _tableObserver.observe(document.body, { childList: true, subtree: true });
+      }
+    });
+  } else {
+    injectTableToggles();
+    if (document.body) {
+      _tableObserver.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+}
+
+// --- End per-table toggle switch infrastructure ---
 
 let highlightStyleInjected = false;
 function ensureHighlightStyleInjected() {
@@ -235,6 +462,7 @@ function resetTable(table) {
     cell.removeAttribute('title');
   }
   delete table.dataset.drShowingOriginal;
+  syncSwitchForTable(table);
 }
 
 function roundTable(table, options) {
@@ -378,6 +606,7 @@ function roundTable(table, options) {
       cell.dataset.originalValue = originalValue;
     }
   }
+  syncSwitchForTable(table);
 }
 
 function lettersToColIndex(letters) {
@@ -704,6 +933,7 @@ function toggleOriginalValues(table) {
     }
     table.dataset.drShowingOriginal = 'true';
   }
+  syncSwitchForTable(table);
 }
 
 // --- Core Algorithm Inlined ---
