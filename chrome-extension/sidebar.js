@@ -107,9 +107,11 @@ document.body.addEventListener('click', (e) => {
   applyNow();
 });
 
-chrome.runtime.onMessage.addListener((request) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'CLOSE_SIDEBAR') {
     window.close();
+  } else if (request.action === 'GET_SIDEBAR_SETTINGS') {
+    sendResponse({ settings: currentSettings() });
   } else if (request.action === 'RANGE_ERROR') {
     statusEl.textContent = request.error || 'Invalid range expression.';
     statusEl.dataset.source = 'range';
