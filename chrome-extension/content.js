@@ -16,22 +16,9 @@ const DEFAULT_NUM_TOP = 1;
 const VALIDATION_LIMIT = 20;
 const EPSILON = 1e-9;
 
-const DEFAULT_SIDEBAR_OPTIONS = {
-  enabled: true,
-  includeWords: false,
-  includeCurrency: false,
-  includePercent: false,
-  excludeFirstRow: false,
-  excludeFirstColumn: true,
-  excludeDates: true,
-  excludeTimes: true,
-  dateGranularity: 'year',     // year | decade | century
-  timeGranularity: 'minute',   // minute | hour
-  offsetTop: null,             // null = use DEFAULT_OFFSET_TOP
-  offsetOther: null,           // null = inherit from offsetTop
-  numTop: null,                // null = use DEFAULT_NUM_TOP
-  rangeExpr: ''                // '' = whole table; otherwise A1-style range expression
-};
+// DR_DEFAULTS is loaded from defaults.js (declared first in manifest content_scripts).
+// It is shared with sidebar.js so the sidebar UI's initial state and the
+// right-click toggle's fallback options come from a single source.
 
 let lastRightClickedElement = null;
 let lastRightClickedTable = null;
@@ -82,7 +69,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'APPLY_SIDEBAR_SETTINGS') {
     if (lastRightClickedTable) {
-      applySidebarRounding(lastRightClickedTable, request.settings || DEFAULT_SIDEBAR_OPTIONS);
+      applySidebarRounding(lastRightClickedTable, request.settings || DR_DEFAULTS);
     }
     return;
   }
@@ -105,7 +92,7 @@ function requestSidebarSettingsAndApply(table, attempt = 0) {
       if (attempt < 10) {
         setTimeout(() => requestSidebarSettingsAndApply(table, attempt + 1), 50);
       } else {
-        applySidebarRounding(table, DEFAULT_SIDEBAR_OPTIONS);
+        applySidebarRounding(table, DR_DEFAULTS);
       }
       return;
     }
@@ -114,7 +101,7 @@ function requestSidebarSettingsAndApply(table, attempt = 0) {
 }
 
 function applySidebarRounding(table, options) {
-  const opts = Object.assign({}, DEFAULT_SIDEBAR_OPTIONS, options || {});
+  const opts = Object.assign({}, DR_DEFAULTS, options || {});
   ensureHighlightStyleInjected();
   resetTable(table);
   if (opts.enabled !== false) {
@@ -251,7 +238,7 @@ function resetTable(table) {
 }
 
 function roundTable(table, options) {
-  const opts = Object.assign({}, DEFAULT_SIDEBAR_OPTIONS, options || {});
+  const opts = Object.assign({}, DR_DEFAULTS, options || {});
   tableOptions.set(table, opts);
   const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
   const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
@@ -703,7 +690,7 @@ function toggleOriginalValues(table) {
   if (showingOriginal) {
     // Re-run the pipeline with the last-used options so the rounded view
     // reflects current parameters rather than a stale cached value.
-    const opts = tableOptions.get(table) || DEFAULT_SIDEBAR_OPTIONS;
+    const opts = tableOptions.get(table) || DR_DEFAULTS;
     resetTable(table);
     roundTable(table, opts);
   } else {
