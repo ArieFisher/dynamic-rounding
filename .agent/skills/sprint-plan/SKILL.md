@@ -1,5 +1,6 @@
 ---
 name: sprint-plan
+version: 1
 description: Plan multi-sprint feature work by surveying the current repo, applying architectural design principles to a feature list, breaking the work into sprints that maximize independence, and producing a markdown plan committed to a `plan/<slug>` branch. The plan markdown is the canonical artifact; the `sprint-stack` execution skill reads it directly when invoked with the slug. Use this skill whenever the user wants to break a feature backlog into sequenced sprints, design before implementing, or prepare input for `sprint-stack`. Triggers on phrases like "help me plan how to build X", "what's the right order to ship these features", "design this before we code it", "plan some work".
 ---
 
@@ -36,19 +37,27 @@ Summarize in a Repo Survey section.
 
 The execution skill needs these to do mechanical work correctly. Get them right once here so they're not re-guessed per sprint.
 
-- **Version files** — every file with a version string that must move in lockstep (`package.json`, `pyproject.toml`, `Cargo.toml`, `setup.py`, `VERSION`, `__init__.py`, etc.). Record path + format.
+- **Version files** — every file with a version string that must move in lockstep (`package.json`, `pyproject.toml`, `Cargo.toml`, `setup.py`, `VERSION`, `__init__.py`, `manifest.json`, etc.). Record path + format. For Chrome extensions, note that `manifest.json` accepts only 1-4 dot-separated integers; pre-release suffixes are invalid.
 - **Test command**
 - **Lint/format commands**
 - **Build command** (if applicable)
 - **Branch naming** — default `feature/<label>`, override if repo uses something else
 - **Commit convention** — Conventional Commits? Plain? Prefix?
 - **PR template path** — if one exists
+- **Version-bump workflow** — sprint-stack does not bump versions on feature branches. Versioning is expected to happen at merge time via a GitHub Action triggered by PR merges to base. Probe for one:
+  1. List `.github/workflows/*.yml`.
+  2. Filter to workflows with a `pull_request` trigger that filters on `github.event.pull_request.merged == true` (or equivalent `if:` condition checking the merged state).
+  3. Within those, check whether any references one of the version files identified above (literal filename match is sufficient).
+  4. If all three signals are present → record "Version-bump workflow: detected at `<path>`".
+  5. If any are missing → record "Version-bump workflow: **not detected**" and surface this as an item in the Open Questions section with a concrete recommendation (see template below).
 
 Ask the user if anything is ambiguous. Better one question now than wrong guesses per sprint.
 
 ## Phase 3: Design
 
-Apply these architectural principles when proposing or defending design choices. Cite the specific principle each time so reasoning is auditable.
+Apply these principles when proposing or defending design and process choices. Cite the specific principle each time so reasoning is auditable.
+
+**Architectural principles** (from microservices.io):
 
 - **Simple components** — small subdomains, easier to understand and maintain
 - **Team autonomy** — components independently developable, testable, deployable
@@ -59,6 +68,12 @@ Apply these architectural principles when proposing or defending design choices.
 - **Prefer ACID over BASE** — when feasible
 - **Minimize runtime coupling** — for availability and latency
 - **Minimize design-time coupling** — reduce lockstep changes
+
+**Delivery principles:**
+
+- **Trunk-Based Development** — small, incremental commits to `main` or short-lived feature branches merged frequently. The sprint-stack model is built around this: every sprint is a small short-lived feature branch, merged on its own merits, with no long-running parallel branches accumulating drift.
+- **Pre-merge Testing** — all validation (tests, linters, security scans) must pass before a commit is merged. Sprint-stack's reviewer subagent and the repo's CI together enforce this for every sprint PR.
+- **Squash and Merge** — squash branch commits so each merge brings in exactly one functional, test-passing set of changes. Aligns with the sprint-stack pattern where each sprint contributes one logical unit to main.
 
 If the repo has detectable patterns, align with them. If not, propose, with reasoning.
 
@@ -114,10 +129,11 @@ Per sprint, in the markdown structure shown below. The execution skill parses th
   - <verifiable bullet 1>
   - <verifiable bullet 2>
 - **Depends on:** none | <other-label>[, <other-label>]
-- **Version bump:** patch | minor | major
 - **Complexity:** S | M | L
 - **Dev notes:** <pitfalls, patterns to follow, libraries to use>
 ```
+
+Sprint commits do not touch version files. Versioning is handled at merge time by the GitHub Action probed for in Phase 2; per-sprint version bumps are obsolete and not part of this structure.
 
 ## Phase 6: Document and commit
 
@@ -145,6 +161,7 @@ Write the plan to `docs/sprint-plans/<slug>.md` using the structure below. Creat
 - **Branch naming:** `feature/<label>` (or repo's convention)
 - **Commit convention:** <e.g. Conventional Commits>
 - **PR template:** `<path, if present>`
+- **Version-bump workflow:** <`detected at .github/workflows/<name>.yml` | **not detected — see Open Questions**>
 
 ## 3. Design
 <one subsection per major design decision: what, why, alternatives considered, implications. Cite microservices principles where applied.>
@@ -168,6 +185,22 @@ flowchart TD
 
 ## 6. Open Questions
 <anything underspecified or needing user input before execution>
+
+<!-- If the version-bump workflow probe came back negative, include this block: -->
+
+### Version-bump workflow missing
+
+No GitHub Action was detected that bumps version files on PR merge. Sprint-stack does not bump versions on feature branches, on the principle that:
+
+- Sprints can merge in any order (the DAG allows independent sprints)
+- Version numbers on the base branch must be monotonically increasing (Chrome extension manifests strictly require this; other tooling generally expects it)
+- Therefore, the version cannot be assigned in advance on the feature branch — it must be assigned at merge time, with knowledge of base's current state.
+
+**Recommended workflow:** add `.github/workflows/bump-version.yml` that triggers on `pull_request: types: [closed]`, filters with `if: github.event.pull_request.merged == true`, and bumps the patch (or last-component, for Chrome's N.N.N.N format) of each file under "Version files" above. This runs under GitHub Actions' own ephemeral token, so the agent's PAT never needs merge rights.
+
+For the formal release (going from `1.6.x` to `1.7.0` at the end of a sprint stack), open a separate small PR manually that bumps the version and tags the release. This stays a deliberate human action.
+
+Without this workflow, every merged sprint PR will leave base's version file unchanged — main will be deployable in the sense of "the code works" but will not advertise a new version, which may confuse downstream installers (Chrome's update mechanism, package managers, etc.).
 
 ## 7. Out of Scope (Separate Sprint-Stack)
 <features recommended for a different sprint-stack run>
