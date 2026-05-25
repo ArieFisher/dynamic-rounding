@@ -36,6 +36,11 @@ const DEFAULT_SIDEBAR_OPTIONS = {
 let lastRightClickedElement = null;
 let lastRightClickedTable = null;
 
+// Per-table memory of the options used for the most recent roundTable() run.
+// Consulted by toggleOriginalValues() when re-running the pipeline so that the
+// "toggle back to rounded" path uses the same parameters as the original render.
+const tableOptions = new WeakMap();
+
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
   const table = event.target.closest && event.target.closest('table');
@@ -68,7 +73,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'SIDEBAR_OPENED') {
     if (lastRightClickedTable) {
-      applySidebarRounding(lastRightClickedTable, DEFAULT_SIDEBAR_OPTIONS);
+      requestSidebarSettingsAndApply(lastRightClickedTable);
     } else {
       console.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
     }
@@ -90,6 +95,23 @@ window.addEventListener('pagehide', () => {
     // extension context may already be gone
   }
 });
+
+// Ask the sidebar for its current UI state, then apply. The sidebar may not
+// have finished loading when SIDEBAR_OPENED fires from the background, so we
+// retry a few times before falling back to defaults.
+function requestSidebarSettingsAndApply(table, attempt = 0) {
+  chrome.runtime.sendMessage({ action: 'GET_SIDEBAR_SETTINGS' }, (response) => {
+    if (chrome.runtime.lastError || !response || !response.settings) {
+      if (attempt < 10) {
+        setTimeout(() => requestSidebarSettingsAndApply(table, attempt + 1), 50);
+      } else {
+        applySidebarRounding(table, DEFAULT_SIDEBAR_OPTIONS);
+      }
+      return;
+    }
+    applySidebarRounding(table, response.settings);
+  });
+}
 
 function applySidebarRounding(table, options) {
   const opts = Object.assign({}, DEFAULT_SIDEBAR_OPTIONS, options || {});
@@ -216,17 +238,13 @@ function flashRangePulse(table, ranges) {
 
 function resetTable(table) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
-  const showingOriginal = table.dataset.drShowingOriginal === 'true';
   for (const cell of roundedCells) {
-    const original = cell.dataset.originalValue;
-    const rounded = cell.dataset.roundedValue;
-    if (original && rounded) {
-      const shown = showingOriginal ? original : rounded;
-      replaceTextPreservingHTML(cell, shown, original);
+    if (cell.dataset.originalHtml !== undefined) {
+      cell.innerHTML = cell.dataset.originalHtml;
     }
     cell.classList.remove('dr-ext-rounded');
     delete cell.dataset.originalValue;
-    delete cell.dataset.roundedValue;
+    delete cell.dataset.originalHtml;
     cell.removeAttribute('title');
   }
   delete table.dataset.drShowingOriginal;
@@ -234,6 +252,7 @@ function resetTable(table) {
 
 function roundTable(table, options) {
   const opts = Object.assign({}, DEFAULT_SIDEBAR_OPTIONS, options || {});
+  tableOptions.set(table, opts);
   const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
   const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
   const numTop = resolveNumTop(opts.numTop, DEFAULT_NUM_TOP);
@@ -360,11 +379,13 @@ function roundTable(table, options) {
         if (!changed) continue;
       }
 
+      // Cache pristine HTML before mutation so toggle/reset can restore it
+      // without needing to keep the rounded value around.
+      cell.dataset.originalHtml = cell.innerHTML;
       replaceTextPreservingHTML(cell, originalValue, formattedValue);
       cell.title = `Original: ${originalValue}`;
       cell.classList.add('dr-ext-rounded');
       cell.dataset.originalValue = originalValue;
-      cell.dataset.roundedValue = formattedValue;
     }
   }
 }
@@ -676,21 +697,23 @@ function toggleOriginalValues(table) {
 
   const showingOriginal = table.dataset.drShowingOriginal === 'true';
 
-  for (const cell of roundedCells) {
-    const original = cell.dataset.originalValue;
-    const rounded = cell.dataset.roundedValue;
-    if (!original || !rounded) continue;
-
-    if (showingOriginal) {
-      replaceTextPreservingHTML(cell, original, rounded);
-      cell.title = `Original: ${original}`;
-    } else {
-      replaceTextPreservingHTML(cell, rounded, original);
-      cell.title = `Rounded: ${rounded}`;
+  if (showingOriginal) {
+    // Re-run the pipeline with the last-used options so the rounded view
+    // reflects current parameters rather than a stale cached value.
+    const opts = tableOptions.get(table) || DEFAULT_SIDEBAR_OPTIONS;
+    resetTable(table);
+    roundTable(table, opts);
+  } else {
+    // Restore each cell to its pristine HTML; keep the class and dataset so
+    // a subsequent toggle knows to re-round.
+    for (const cell of roundedCells) {
+      if (cell.dataset.originalHtml !== undefined) {
+        cell.innerHTML = cell.dataset.originalHtml;
+      }
+      cell.removeAttribute('title');
     }
+    table.dataset.drShowingOriginal = 'true';
   }
-
-  table.dataset.drShowingOriginal = showingOriginal ? 'false' : 'true';
 }
 
 // --- Core Algorithm Inlined ---
