@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   bump:
@@ -15,6 +16,8 @@ jobs:
     steps:
       - name: Check out main
         uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
           ref: main
           fetch-depth: 0
@@ -22,20 +25,22 @@ jobs:
 
       - name: Detect which packages changed
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
-          base: main
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
           filters: |
             python:
               - 'python/**'
             chrome:
               - 'chrome-extension/**'
 
-      - name: Configure git identity
+      - name: Configure git identity and credentials
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config credential.helper store
+          echo "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com" >> ~/.git-credentials
 
       - name: Bump Python version (python/pyproject.toml)
         if: steps.changes.outputs.python == 'true'
@@ -73,12 +78,24 @@ jobs:
           print(f"chrome-extension/manifest.json: bumped to {mf['version']}")
           PY
 
-      - name: Commit and push if anything changed
+      - name: Open version-bump PR if anything changed
         run: |
           git add -A
           if git diff --cached --quiet; then
             echo "No version files changed; nothing to commit."
             exit 0
           fi
+          BUMP_BRANCH="chore/version-bump-pr-${{ github.event.pull_request.number }}"
+          git checkout -b "$BUMP_BRANCH"
           git commit -m "chore(version): bump after #${{ github.event.pull_request.number }}"
-          git push origin main
+          git push origin "$BUMP_BRANCH"
+          curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/pulls \
+            -d "{
+              \"title\": \"chore(version): bump after #${{ github.event.pull_request.number }}\",
+              \"head\": \"$BUMP_BRANCH\",
+              \"base\": \"main\",
+              \"body\": \"Automated version bump triggered by merge of PR #${{ github.event.pull_request.number }}.\"
+            }"
