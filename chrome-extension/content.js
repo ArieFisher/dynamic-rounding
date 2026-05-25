@@ -362,8 +362,11 @@ function roundTable(table, options) {
         if (formattedValue === null || formattedValue === originalValue) continue;
       } else if (info.mode === 'pure') {
         const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
-        if (roundedValue === info.num) continue;
         formattedValue = restoreFormatting(roundedValue, originalValue, floorDecimals);
+        // Compare formatted output to the trimmed original: catches cases
+        // where the number is numerically unchanged but the display format
+        // simplifies (e.g. "35.0" → "35").
+        if (formattedValue === originalValue.trim()) continue;
       } else {
         // Round each match individually, splice back from right-to-left so earlier indices remain valid.
         let changed = false;
@@ -371,8 +374,8 @@ function roundTable(table, options) {
         for (let i = info.matches.length - 1; i >= 0; i--) {
           const m = info.matches[i];
           const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
-          if (rounded === m.num) continue;
           const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
+          if (newNum === m.numStr) continue;
           formattedValue = formattedValue.substring(0, m.index) + newNum + formattedValue.substring(m.index + m.numStr.length);
           changed = true;
         }

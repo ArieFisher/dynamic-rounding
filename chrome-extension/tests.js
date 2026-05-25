@@ -1224,12 +1224,12 @@ function withLinkCreateTreeWalker(fn) {
   });
 })();
 
-// --- AC5: Version bumped in manifest.json (post-stack: 1.10.0) ---
+// --- AC5: Version bumped in manifest.json (post-stack: 1.11.0) ---
 (function ac5_manifestVersion() {
   const manifest = JSON.parse(
     require('fs').readFileSync(require('path').join(__dirname, 'manifest.json'), 'utf8'));
-  eq('AC5: manifest.json version is 1.10.0',
-    manifest.version, '1.10.0');
+  eq('AC5: manifest.json version is 1.11.0',
+    manifest.version, '1.11.0');
 })();
 
 // --- AC6: scope guard removed — was a git-diff-based assertion that
@@ -1392,10 +1392,10 @@ function withLinkCreateTreeWalker(fn) {
   eq('regression: read source is cell.innerText || cell.textContent',
     contentSrc.includes('cell.innerText || cell.textContent'), true);
 
-  // 5b. Manifest version is 1.10.0 (sprint 4 stacked on sprint 3 bumps further)
+  // 5b. Manifest version is 1.11.0 (sprint 4 stacked on sprint 3 bumps further)
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('regression: manifest.version === "1.10.0"',
-    manifest.version, '1.10.0');
+  eq('regression: manifest.version === "1.11.0"',
+    manifest.version, '1.11.0');
 
   // 5c. Out-of-scope files not modified: sidebar.html, sidebar.js, js/, python/
   // We verify their content by checking they exist but do NOT contain getQuoteMaskedRanges.
@@ -1462,8 +1462,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   const changelogPath = path.join(__dirname, '..', 'js', 'CHANGELOG.md');
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  eq('sprint regression: manifest version is 1.10.0',
-    manifest.version, '1.10.0');
+  eq('sprint regression: manifest version is 1.11.0',
+    manifest.version, '1.11.0');
 
   const readme = fs.readFileSync(readmePath, 'utf8');
   eq('sprint regression: js/README.md contains Sheets decimal precision section header',
@@ -1532,9 +1532,9 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   eq('sidebar-defaults: content.js still defines parseRangeExpr',
     /function parseRangeExpr\b/.test(contentJsSource), true);
 
-  // AC6: manifest.json version is 1.10.0.
-  eq('sidebar-defaults: manifest version is 1.10.0',
-    manifest.version, '1.10.0');
+  // AC6: manifest.json version is 1.11.0.
+  eq('sidebar-defaults: manifest version is 1.11.0',
+    manifest.version, '1.11.0');
 
   // AC7: manifest permissions do NOT include "storage".
   eq('sidebar-defaults: manifest permissions does not include "storage"',
@@ -1545,6 +1545,85 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /chrome\.storage\.sync/.test(sidebarJsSource), false);
   eq('sidebar-defaults: sidebar.js does not import chrome.storage',
     /chrome\.storage/.test(sidebarJsSource), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint sidebar-settings-pull-and-unified-toggle (v1.11.0)
+// ---------------------------------------------------------------------------
+
+(function sprintSidebarPullAndUnifiedToggle() {
+  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  // --- Sidebar pull: content.js requests, sidebar.js responds ---
+
+  eq('pull: content.js sends GET_SIDEBAR_SETTINGS',
+    /chrome\.runtime\.sendMessage\(\s*\{\s*action:\s*['"]GET_SIDEBAR_SETTINGS['"]/.test(contentSrc), true);
+
+  eq('pull: content.js no longer applies DEFAULT_SIDEBAR_OPTIONS on SIDEBAR_OPENED',
+    /SIDEBAR_OPENED[\s\S]{0,200}applySidebarRounding\([^)]*DEFAULT_SIDEBAR_OPTIONS/.test(contentSrc), false);
+
+  eq('pull: sidebar.js handles GET_SIDEBAR_SETTINGS and responds with currentSettings()',
+    /GET_SIDEBAR_SETTINGS[\s\S]{0,120}sendResponse\([^)]*currentSettings\(\)/.test(sidebarSrc), true);
+
+  // --- Unified rounding path: drop data-rounded-value, cache innerHTML ---
+
+  eq('unified: data-rounded-value attribute no longer written',
+    /data-rounded-value|dataset\.roundedValue/.test(contentSrc), false);
+
+  eq('unified: data-original-html attribute is written',
+    /dataset\.originalHtml\s*=/.test(contentSrc), true);
+
+  eq('unified: per-table options WeakMap declared',
+    /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), true);
+
+  eq('unified: toggleOriginalValues calls roundTable for original→rounded path',
+    /function toggleOriginalValues[\s\S]{0,500}roundTable\(/.test(contentSrc), true);
+
+  // --- Display simplification: "35.0" → "35" when value unchanged but format would ---
+
+  withCreateTreeWalker(function() {
+    // Row contains a large number to anchor max_mag=3 so 35 doesn't get rounded
+    // away from itself (35 with offset -0.5 → 35), AND a "35.0" cell that should
+    // be re-formatted to "35".
+    const table = makeMockTable([[
+      { tag: 'td', text: '7984' },
+      { tag: 'td', text: '35.0' },
+    ]]);
+    const opts = {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      excludeDates: true, excludeTimes: true,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    const cell = table.rows[0].cells[1];
+    eq('simplify: "35.0" cell marked as rounded',
+      cell.classList.contains('dr-ext-rounded'), true);
+    eq('simplify: "35.0" cell text rewritten to "35"',
+      cell.innerText, '35');
+  });
+
+  // Negative: a cell whose format already matches (e.g. "35" with same opts)
+  // should NOT be marked as rounded.
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '7984' },
+      { tag: 'td', text: '35' },
+    ]]);
+    const opts = {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      excludeDates: true, excludeTimes: true,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    const cell = table.rows[0].cells[1];
+    eq('simplify: cell with no format or value change stays unmarked',
+      cell.classList.contains('dr-ext-rounded'), false);
+  });
 })();
 
 // --- Report ---
