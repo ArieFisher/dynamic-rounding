@@ -1224,12 +1224,12 @@ function withLinkCreateTreeWalker(fn) {
   });
 })();
 
-// --- AC5: Version bumped to 1.9.1 in manifest.json ---
+// --- AC5: Version bumped in manifest.json (post-stack: 1.9.2) ---
 (function ac5_manifestVersion() {
   const manifest = JSON.parse(
     require('fs').readFileSync(require('path').join(__dirname, 'manifest.json'), 'utf8'));
-  eq('AC5: manifest.json version is 1.9.1',
-    manifest.version, '1.9.1');
+  eq('AC5: manifest.json version is 1.9.2',
+    manifest.version, '1.9.2');
 })();
 
 // --- AC6: Regression guard — sidebar.html / sidebar.js / js/ / python/ not modified ---
@@ -1282,6 +1282,170 @@ function withLinkCreateTreeWalker(fn) {
   // filterLinkMatches: empty matches returned as-is
   eq('static: filterLinkMatches handles empty matches array',
     filterLinkMatches({ innerText: '100', querySelectorAll: () => [] }, []).length, 0);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint exclude-numbers-in-quotes
+// ---------------------------------------------------------------------------
+
+// --- 1. getQuoteMaskedRanges unit tests ---
+
+(function quoteMaskedRangesUnit() {
+  // Single quoted span at position 0
+  const r1 = getQuoteMaskedRanges('"3 musketeers"');
+  eq('quoteMasked: "3 musketeers" -> one range',
+    r1.length, 1);
+  eq('quoteMasked: "3 musketeers" start=0',
+    r1[0].start, 0);
+  eq('quoteMasked: "3 musketeers" end=14',
+    r1[0].end, 14);
+
+  // Quoted span mid-string
+  const text2 = 'He said "the answer is 42", but 7 disagreed.';
+  const r2 = getQuoteMaskedRanges(text2);
+  eq('quoteMasked: mid-string span -> one range',
+    r2.length, 1);
+  eq('quoteMasked: mid-string span start=8',
+    r2[0].start, 8);
+  // "the answer is 42" = 18 chars, starts at 8 -> ends at 26
+  eq('quoteMasked: mid-string span end=26',
+    r2[0].end, 26);
+
+  // Two separate quoted spans — must NOT be merged
+  const text3 = 'a "1" and "2" b';
+  const r3 = getQuoteMaskedRanges(text3);
+  eq('quoteMasked: two spans -> two ranges (not merged)',
+    r3.length, 2);
+  eq('quoteMasked: first span start=2', r3[0].start, 2);
+  eq('quoteMasked: first span end=5',   r3[0].end, 5);
+  eq('quoteMasked: second span start=10', r3[1].start, 10);
+  eq('quoteMasked: second span end=13',   r3[1].end, 13);
+
+  // Unbalanced quote -> zero ranges
+  eq('quoteMasked: unbalanced "hi -> zero ranges',
+    getQuoteMaskedRanges('He said "hi').length, 0);
+
+  // Empty string -> zero ranges
+  eq('quoteMasked: empty string -> zero ranges',
+    getQuoteMaskedRanges('').length, 0);
+})();
+
+// --- 2. Inline filtering: only 7 remains after quoting "the answer is 42" ---
+
+(function quoteInlineFilter() {
+  const text = 'He said "the answer is 42", but 7 disagreed.';
+  const matches = extractNumbersInText(text);
+  const quoteRanges = getQuoteMaskedRanges(text);
+  const filtered = matches.filter(m =>
+    !overlapsQuoteRange(quoteRanges, m.index, m.index + m.numStr.length)
+  );
+  eq('quoteFilter: before filter match count includes 42',
+    matches.some(m => m.num === 42), true);
+  eq('quoteFilter: after filter 42 is dropped',
+    filtered.some(m => m.num === 42), false);
+  eq('quoteFilter: after filter 7 remains',
+    filtered.some(m => m.num === 7), true);
+  eq('quoteFilter: after filter only one match remains',
+    filtered.length, 1);
+})();
+
+// --- 3. Whole-cell short-circuit via roundTable mock ---
+
+(function wholeCellQuoteShortCircuit() {
+  withCreateTreeWalker(function() {
+    // A cell whose entire trimmed content is a single balanced quoted span.
+    // The cell has a number inside quotes — it must NOT get dr-ext-rounded.
+    const table = makeMockTable([[
+      { tag: 'td', text: '"3 musketeers"' },
+      { tag: 'td', text: '42' },  // this one should round (control)
+    ]]);
+    const opts = {
+      enabled: true, includeWords: true, excludeDates: false, excludeTimes: false,
+      excludeFirstColumn: false, includePercent: true, includeCurrency: true,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    const cells = table.rows[0].cells;
+    eq('wholeCellQuote: "3 musketeers" cell not rounded (short-circuit)',
+      cells[0].classList.contains('dr-ext-rounded'), false);
+    // Note: 42 is a single cell with a large magnitude; whether it rounds depends on
+    // the set. The key invariant is the quoted cell is skipped.
+  });
+})();
+
+// --- 4. Spec-scope guards ---
+
+(function quoteScopeGuards() {
+  // Single quotes: numbers inside '...' are NOT excluded (out of scope)
+  const singleQuote = "He said '42' and 7.";
+  const sqMatches = extractNumbersInText(singleQuote);
+  // getQuoteMaskedRanges only handles ASCII double-quotes — single quotes ignored
+  const sqRanges = getQuoteMaskedRanges(singleQuote);
+  eq('scope guard: single quotes not masked (zero quote ranges)',
+    sqRanges.length, 0);
+  eq('scope guard: 42 inside single quotes NOT excluded by filter',
+    sqMatches.filter(m => !overlapsQuoteRange(sqRanges, m.index, m.index + m.numStr.length))
+      .some(m => m.num === 42), true);
+
+  // Typographic quotes: “...” are NOT masked
+  const typoQuote = '“the answer is 42” but 7.';
+  const tqRanges = getQuoteMaskedRanges(typoQuote);
+  eq('scope guard: typographic “...” not masked (zero quote ranges)',
+    tqRanges.length, 0);
+  // Both 42 and 7 survive unfiltered
+  const tqMatches = extractNumbersInText(typoQuote);
+  const tqFiltered = tqMatches.filter(m => !overlapsQuoteRange(tqRanges, m.index, m.index + m.numStr.length));
+  eq('scope guard: 42 inside typographic quotes NOT excluded',
+    tqFiltered.some(m => m.num === 42), true);
+
+  // Mixed: one balanced ASCII pair and a bare number
+  // 'he said "foo 5" and 10' -> 5 is masked, 10 is not
+  const mixed = 'he said "foo 5" and 10';
+  const mxRanges = getQuoteMaskedRanges(mixed);
+  const mxMatches = extractNumbersInText(mixed);
+  const mxFiltered = mxMatches.filter(m => !overlapsQuoteRange(mxRanges, m.index, m.index + m.numStr.length));
+  eq('scope guard: 5 inside ASCII quotes IS excluded',
+    mxFiltered.some(m => m.num === 5), false);
+  eq('scope guard: 10 outside ASCII quotes NOT excluded',
+    mxFiltered.some(m => m.num === 10), true);
+})();
+
+// --- 5. Regression guards ---
+
+(function quoteRegressionGuards() {
+  // 5a. cell.innerText || cell.textContent is the read source (static analysis)
+  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  eq('regression: read source is cell.innerText || cell.textContent',
+    contentSrc.includes('cell.innerText || cell.textContent'), true);
+
+  // 5b. Manifest version is 1.9.2
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
+  eq('regression: manifest.version === "1.9.2"',
+    manifest.version, '1.9.2');
+
+  // 5c. Out-of-scope files not modified: sidebar.html, sidebar.js, js/, python/
+  // We verify their content by checking they exist but do NOT contain getQuoteMaskedRanges.
+  const sidebarHtmlPath = path.join(__dirname, 'sidebar.html');
+  const sidebarJsPath = path.join(__dirname, 'sidebar.js');
+  if (fs.existsSync(sidebarHtmlPath)) {
+    eq('regression: sidebar.html not modified (no getQuoteMaskedRanges)',
+      fs.readFileSync(sidebarHtmlPath, 'utf8').includes('getQuoteMaskedRanges'), false);
+  } else {
+    passed++; // file absent — trivially passes (was never in scope)
+  }
+  if (fs.existsSync(sidebarJsPath)) {
+    eq('regression: sidebar.js not modified (no getQuoteMaskedRanges)',
+      fs.readFileSync(sidebarJsPath, 'utf8').includes('getQuoteMaskedRanges'), false);
+  } else {
+    passed++;
+  }
+  // content.js MUST define getQuoteMaskedRanges (existence check)
+  eq('regression: content.js defines getQuoteMaskedRanges',
+    contentSrc.includes('function getQuoteMaskedRanges('), true);
+  // content.js MUST define overlapsQuoteRange
+  eq('regression: content.js defines overlapsQuoteRange',
+    contentSrc.includes('function overlapsQuoteRange('), true);
 })();
 
 // --- Report ---
