@@ -1,0 +1,84 @@
+name: Bump package versions on merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Detect which packages changed
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          base: main
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          filters: |
+            python:
+              - 'python/**'
+            chrome:
+              - 'chrome-extension/**'
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump Python version (python/pyproject.toml)
+        if: steps.changes.outputs.python == 'true'
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          p = pathlib.Path("python/pyproject.toml")
+          s = p.read_text()
+          m = re.search(r'^version\s*=\s*"(\d+)\.(\d+)\.(\d+)"', s, re.MULTILINE)
+          if not m:
+              raise SystemExit("Could not find version line in python/pyproject.toml")
+          maj, minor, patch = map(int, m.groups())
+          new = f"{maj}.{minor}.{patch + 1}"
+          s2 = re.sub(r'^version\s*=\s*"[\d.]+"',
+                      f'version = "{new}"', s, count=1, flags=re.MULTILINE)
+          p.write_text(s2)
+          print(f"python/pyproject.toml: bumped to {new}")
+          PY
+
+      - name: Bump Chrome extension version (chrome-extension/manifest.json)
+        if: steps.changes.outputs.chrome == 'true'
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("chrome-extension/manifest.json")
+          mf = json.loads(p.read_text())
+          parts = [int(x) for x in mf["version"].split(".")]
+          # Bump the patch (3rd component). Pad to 3 if shorter.
+          while len(parts) < 3:
+              parts.append(0)
+          parts[2] += 1
+          # If there's a 4th component from earlier runs, drop it on patch bump.
+          mf["version"] = ".".join(str(x) for x in parts[:3])
+          p.write_text(json.dumps(mf, indent=2) + "\n")
+          print(f"chrome-extension/manifest.json: bumped to {mf['version']}")
+          PY
+
+      - name: Commit and push if anything changed
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No version files changed; nothing to commit."
+            exit 0
+          fi
+          git commit -m "chore(version): bump after #${{ github.event.pull_request.number }}"
+          git push origin main
