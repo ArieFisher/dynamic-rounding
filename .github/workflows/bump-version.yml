@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Check out main
         uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
           ref: main
           fetch-depth: 0
@@ -22,20 +24,22 @@ jobs:
 
       - name: Detect which packages changed
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
-          base: main
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
           filters: |
             python:
               - 'python/**'
             chrome:
               - 'chrome-extension/**'
 
-      - name: Configure git identity
+      - name: Configure git identity and credentials
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config credential.helper store
+          echo "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com" >> ~/.git-credentials
 
       - name: Bump Python version (python/pyproject.toml)
         if: steps.changes.outputs.python == 'true'
