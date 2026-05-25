@@ -265,9 +265,16 @@ function roundTable(table, options) {
       rowCells.push(cell);
 
       const trimmed = typeof text === 'string' ? text.trim() : '';
+      // Whole-cell quote short-circuit: if the entire cell content is a single
+      // balanced ASCII double-quoted span, skip it entirely (no numbers to round).
+      const isWholeCellQuoted = trimmed.startsWith('"') && trimmed.endsWith('"') &&
+        (trimmed.match(/"/g) || []).length === 2;
+
       if (!isInRanges(r, col, ranges)) {
         rowInfo.push({ mode: 'skip' });
       } else if (getExclusionReason(text, col, opts, r)) {
+        rowInfo.push({ mode: 'skip' });
+      } else if (isWholeCellQuoted) {
         rowInfo.push({ mode: 'skip' });
       } else if (opts.excludeDates === false && isDateLike(trimmed)) {
         rowInfo.push({ mode: 'date' });
@@ -283,10 +290,14 @@ function roundTable(table, options) {
             rowInfo.push({ mode: 'pure', num });
           }
         } else if (opts.includeWords) {
-          const matches = extractNumbersInText(text);
-          const filteredMatches = filterLinkMatches(cell, matches);
-          if (filteredMatches.length > 0) {
-            rowInfo.push({ mode: 'extracted', matches: filteredMatches });
+          let matches = extractNumbersInText(text);
+          matches = filterLinkMatches(cell, matches);
+          const quoteRanges = getQuoteMaskedRanges(text);
+          if (quoteRanges.length > 0) {
+            matches = matches.filter(m => !overlapsQuoteRange(quoteRanges, m.index, m.index + m.numStr.length));
+          }
+          if (matches.length > 0) {
+            rowInfo.push({ mode: 'extracted', matches });
           } else {
             rowInfo.push({ mode: 'skip' });
           }
@@ -553,6 +564,37 @@ function roundTimeText(text, granularity) {
   if (m[3]) result += ':00';
   result += displayAmpm;
   return result === trimmed ? null : result;
+}
+
+/**
+ * Returns an array of {start, end} ranges for all balanced ASCII double-quoted spans
+ * in the given string. Unbalanced quotes produce no range for the unpaired quote.
+ * @param {string} text
+ * @returns {{start: number, end: number}[]}
+ */
+function getQuoteMaskedRanges(text) {
+  if (typeof text !== 'string') return [];
+  const ranges = [];
+  const re = /"([^"]*)"/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    ranges.push({ start: m.index, end: m.index + m[0].length });
+  }
+  return ranges;
+}
+
+/**
+ * Returns true if [matchStart, matchEnd) overlaps any range in maskedRanges.
+ * @param {{start: number, end: number}[]} maskedRanges
+ * @param {number} matchStart
+ * @param {number} matchEnd
+ * @returns {boolean}
+ */
+function overlapsQuoteRange(maskedRanges, matchStart, matchEnd) {
+  for (const range of maskedRanges) {
+    if (matchStart < range.end && matchEnd > range.start) return true;
+  }
+  return false;
 }
 
 function extractNumberInText(text) {
