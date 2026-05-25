@@ -1224,12 +1224,12 @@ function withLinkCreateTreeWalker(fn) {
   });
 })();
 
-// --- AC5: Version bumped in manifest.json (post-stack: 1.9.3) ---
+// --- AC5: Version bumped in manifest.json (post-stack: 1.10.0) ---
 (function ac5_manifestVersion() {
   const manifest = JSON.parse(
     require('fs').readFileSync(require('path').join(__dirname, 'manifest.json'), 'utf8'));
-  eq('AC5: manifest.json version is 1.9.3',
-    manifest.version, '1.9.3');
+  eq('AC5: manifest.json version is 1.10.0',
+    manifest.version, '1.10.0');
 })();
 
 // --- AC6: scope guard removed — was a git-diff-based assertion that
@@ -1392,10 +1392,10 @@ function withLinkCreateTreeWalker(fn) {
   eq('regression: read source is cell.innerText || cell.textContent',
     contentSrc.includes('cell.innerText || cell.textContent'), true);
 
-  // 5b. Manifest version is 1.9.3 (sprint 4 stacked on sprint 3 bumps further)
+  // 5b. Manifest version is 1.10.0 (sprint 4 stacked on sprint 3 bumps further)
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('regression: manifest.version === "1.9.3"',
-    manifest.version, '1.9.3');
+  eq('regression: manifest.version === "1.10.0"',
+    manifest.version, '1.10.0');
 
   // 5c. Out-of-scope files not modified: sidebar.html, sidebar.js, js/, python/
   // We verify their content by checking they exist but do NOT contain getQuoteMaskedRanges.
@@ -1462,8 +1462,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   const changelogPath = path.join(__dirname, '..', 'js', 'CHANGELOG.md');
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  eq('sprint regression: manifest version is 1.9.3',
-    manifest.version, '1.9.3');
+  eq('sprint regression: manifest version is 1.10.0',
+    manifest.version, '1.10.0');
 
   const readme = fs.readFileSync(readmePath, 'utf8');
   eq('sprint regression: js/README.md contains Sheets decimal precision section header',
@@ -1480,6 +1480,71 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   const fsStat = require('fs');
   eq('sprint regression: python/ directory exists (not deleted)',
     fsStat.existsSync(pythonDir), true);
+})();
+// --- Sprint sidebar-defaults-and-layout ---
+
+(function sprintSidebarDefaultsAndLayout() {
+  const sidebarPath = path.join(__dirname, 'sidebar.html');
+  const sidebarHtml = fs.readFileSync(sidebarPath, 'utf8');
+
+  const manifestPath = path.join(__dirname, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+
+  const sidebarJsPath = path.join(__dirname, 'sidebar.js');
+  const sidebarJsSource = fs.readFileSync(sidebarJsPath, 'utf8');
+
+  const contentJsPath = path.join(__dirname, 'content.js');
+  const contentJsSource = fs.readFileSync(contentJsPath, 'utf8');
+
+  // AC1: includeWords, includeCurrency, includePercent checkboxes must be pre-checked.
+  eq('sidebar-defaults: includeWords checkbox has "checked" attribute',
+    /id="includeWords"[^>]*checked/.test(sidebarHtml) ||
+    /<input[^>]*checked[^>]*id="includeWords"/.test(sidebarHtml), true);
+  eq('sidebar-defaults: includeCurrency checkbox has "checked" attribute',
+    /id="includeCurrency"[^>]*checked/.test(sidebarHtml) ||
+    /<input[^>]*checked[^>]*id="includeCurrency"/.test(sidebarHtml), true);
+  eq('sidebar-defaults: includePercent checkbox has "checked" attribute',
+    /id="includePercent"[^>]*checked/.test(sidebarHtml) ||
+    /<input[^>]*checked[^>]*id="includePercent"/.test(sidebarHtml), true);
+
+  // AC2: Date dropdown has decade as selected, and year option does NOT have selected.
+  eq('sidebar-defaults: date dropdown has decade selected',
+    /<option value="decade"[^>]*selected/.test(sidebarHtml) ||
+    /selected[^>]*value="decade"/.test(sidebarHtml), true);
+  eq('sidebar-defaults: date dropdown year option is NOT selected',
+    /<option value="year"[^>]*selected/.test(sidebarHtml) ||
+    /selected[^>]*value="year"/.test(sidebarHtml), false);
+
+  // AC3: Section heading contains <em>Include</em> followed by " numbers in cells containing:"
+  eq('sidebar-defaults: section-heading has <em>Include</em> with correct text',
+    /class="section-heading"[^>]*>[\s\S]*?<em>Include<\/em> numbers in cells containing:/.test(sidebarHtml), true);
+
+  // AC4a: rangeSection div has "hidden" attribute.
+  eq('sidebar-defaults: rangeSection has hidden attribute',
+    /<div[^>]*id="rangeSection"[^>]*hidden/.test(sidebarHtml) ||
+    /<div[^>]*hidden[^>]*id="rangeSection"/.test(sidebarHtml), true);
+
+  // AC4b: rangeSection markup is still present (not deleted).
+  eq('sidebar-defaults: rangeSection markup still present in HTML',
+    sidebarHtml.includes('id="rangeSection"'), true);
+
+  // AC5: content.js still defines parseRangeExpr (no regression).
+  eq('sidebar-defaults: content.js still defines parseRangeExpr',
+    /function parseRangeExpr\b/.test(contentJsSource), true);
+
+  // AC6: manifest.json version is 1.10.0.
+  eq('sidebar-defaults: manifest version is 1.10.0',
+    manifest.version, '1.10.0');
+
+  // AC7: manifest permissions do NOT include "storage".
+  eq('sidebar-defaults: manifest permissions does not include "storage"',
+    Array.isArray(manifest.permissions) && manifest.permissions.includes('storage'), false);
+
+  // AC8: sidebar.js does not reference chrome.storage.sync.
+  eq('sidebar-defaults: sidebar.js does not call chrome.storage.sync',
+    /chrome\.storage\.sync/.test(sidebarJsSource), false);
+  eq('sidebar-defaults: sidebar.js does not import chrome.storage',
+    /chrome\.storage/.test(sidebarJsSource), false);
 })();
 
 // --- Report ---
