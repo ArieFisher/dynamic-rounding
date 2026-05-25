@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   bump:
@@ -77,12 +78,24 @@ jobs:
           print(f"chrome-extension/manifest.json: bumped to {mf['version']}")
           PY
 
-      - name: Commit and push if anything changed
+      - name: Open version-bump PR if anything changed
         run: |
           git add -A
           if git diff --cached --quiet; then
             echo "No version files changed; nothing to commit."
             exit 0
           fi
+          BUMP_BRANCH="chore/version-bump-pr-${{ github.event.pull_request.number }}"
+          git checkout -b "$BUMP_BRANCH"
           git commit -m "chore(version): bump after #${{ github.event.pull_request.number }}"
-          git push origin main
+          git push origin "$BUMP_BRANCH"
+          curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/pulls \
+            -d "{
+              \"title\": \"chore(version): bump after #${{ github.event.pull_request.number }}\",
+              \"head\": \"$BUMP_BRANCH\",
+              \"base\": \"main\",
+              \"body\": \"Automated version bump triggered by merge of PR #${{ github.event.pull_request.number }}.\"
+            }"
