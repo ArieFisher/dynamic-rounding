@@ -198,9 +198,9 @@ function positionToggle(table, labelEl) {
   const rect = table.getBoundingClientRect();
   const scrollX = window.scrollX || window.pageXOffset || 0;
   const scrollY = window.scrollY || window.pageYOffset || 0;
-  // 4px inside from the right edge, 4px down from the top edge
-  const left = rect.right + scrollX - 36 - 4;
-  const top = rect.top + scrollY + 4;
+  // 2px outside the right edge, 2px above the top edge
+  const left = rect.right + scrollX - 36 + 2;
+  const top = rect.top + scrollY - 2;
   labelEl.style.left = left + 'px';
   labelEl.style.top = top + 'px';
 }
