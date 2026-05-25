@@ -133,6 +133,23 @@ window.addEventListener('unload', () => {
   }
 });
 
+// Seed the UI from the shared defaults so the sidebar and content.js never
+// drift apart. Editing defaults.js updates both at once.
+function applyDefaultsToUI() {
+  enabledEl.checked = DR_DEFAULTS.enabled !== false;
+  for (const id in CHECKBOX_TO_SETTING) {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!DR_DEFAULTS[CHECKBOX_TO_SETTING[id]];
+  }
+  if (dateGranularityEl && DR_DEFAULTS.dateGranularity) {
+    dateGranularityEl.value = DR_DEFAULTS.dateGranularity;
+  }
+  if (timeGranularityEl && DR_DEFAULTS.timeGranularity) {
+    timeGranularityEl.value = DR_DEFAULTS.timeGranularity;
+  }
+}
+applyDefaultsToUI();
+
 // Defensively clear rangeExpr so browser autofill can never leak a stale value
 // into a hidden field and silently constrain content.js output.
 if (rangeExprEl) rangeExprEl.value = '';

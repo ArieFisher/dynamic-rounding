@@ -20,8 +20,12 @@ global.document = { addEventListener: () => {} };
 global.window = { addEventListener: () => {} };
 global.NodeFilter = { SHOW_TEXT: 4 };
 
+// In a browser/extension the two files share a single top-level scope; we
+// emulate that here by evaluating them together, and re-expose DR_DEFAULTS on
+// globalThis so test assertions outside the eval can read it.
+const defaultsCode = fs.readFileSync(path.join(__dirname, 'defaults.js'), 'utf8');
 const code = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-eval(code);
+eval(defaultsCode + '\n' + code + '\nglobalThis.DR_DEFAULTS = DR_DEFAULTS;');
 
 let passed = 0;
 let failed = 0;
@@ -1224,12 +1228,12 @@ function withLinkCreateTreeWalker(fn) {
   });
 })();
 
-// --- AC5: Version bumped in manifest.json (post-stack: 1.11.0) ---
+// --- AC5: Version bumped in manifest.json (post-stack: 1.12.0) ---
 (function ac5_manifestVersion() {
   const manifest = JSON.parse(
     require('fs').readFileSync(require('path').join(__dirname, 'manifest.json'), 'utf8'));
-  eq('AC5: manifest.json version is 1.11.0',
-    manifest.version, '1.11.0');
+  eq('AC5: manifest.json version is 1.12.0',
+    manifest.version, '1.12.0');
 })();
 
 // --- AC6: scope guard removed — was a git-diff-based assertion that
@@ -1392,10 +1396,10 @@ function withLinkCreateTreeWalker(fn) {
   eq('regression: read source is cell.innerText || cell.textContent',
     contentSrc.includes('cell.innerText || cell.textContent'), true);
 
-  // 5b. Manifest version is 1.11.0 (sprint 4 stacked on sprint 3 bumps further)
+  // 5b. Manifest version is 1.12.0 (sprint 4 stacked on sprint 3 bumps further)
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('regression: manifest.version === "1.11.0"',
-    manifest.version, '1.11.0');
+  eq('regression: manifest.version === "1.12.0"',
+    manifest.version, '1.12.0');
 
   // 5c. Out-of-scope files not modified: sidebar.html, sidebar.js, js/, python/
   // We verify their content by checking they exist but do NOT contain getQuoteMaskedRanges.
@@ -1462,8 +1466,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   const changelogPath = path.join(__dirname, '..', 'js', 'CHANGELOG.md');
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  eq('sprint regression: manifest version is 1.11.0',
-    manifest.version, '1.11.0');
+  eq('sprint regression: manifest version is 1.12.0',
+    manifest.version, '1.12.0');
 
   const readme = fs.readFileSync(readmePath, 'utf8');
   eq('sprint regression: js/README.md contains Sheets decimal precision section header',
@@ -1496,24 +1500,30 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   const contentJsPath = path.join(__dirname, 'content.js');
   const contentJsSource = fs.readFileSync(contentJsPath, 'utf8');
 
-  // AC1: includeWords, includeCurrency, includePercent checkboxes must be pre-checked.
-  eq('sidebar-defaults: includeWords checkbox has "checked" attribute',
-    /id="includeWords"[^>]*checked/.test(sidebarHtml) ||
-    /<input[^>]*checked[^>]*id="includeWords"/.test(sidebarHtml), true);
-  eq('sidebar-defaults: includeCurrency checkbox has "checked" attribute',
-    /id="includeCurrency"[^>]*checked/.test(sidebarHtml) ||
-    /<input[^>]*checked[^>]*id="includeCurrency"/.test(sidebarHtml), true);
-  eq('sidebar-defaults: includePercent checkbox has "checked" attribute',
-    /id="includePercent"[^>]*checked/.test(sidebarHtml) ||
-    /<input[^>]*checked[^>]*id="includePercent"/.test(sidebarHtml), true);
-
-  // AC2: Date dropdown has decade as selected, and year option does NOT have selected.
-  eq('sidebar-defaults: date dropdown has decade selected',
-    /<option value="decade"[^>]*selected/.test(sidebarHtml) ||
-    /selected[^>]*value="decade"/.test(sidebarHtml), true);
-  eq('sidebar-defaults: date dropdown year option is NOT selected',
-    /<option value="year"[^>]*selected/.test(sidebarHtml) ||
-    /selected[^>]*value="year"/.test(sidebarHtml), false);
+  // AC1/AC2: Sidebar UI defaults now live in defaults.js (single source of
+  // truth shared with content.js). The HTML must NOT hard-code checked /
+  // selected attributes — they would shadow the JS-applied defaults.
+  eq('sidebar-defaults: includeWords default is true in DR_DEFAULTS',
+    DR_DEFAULTS.includeWords, true);
+  eq('sidebar-defaults: includeCurrency default is true in DR_DEFAULTS',
+    DR_DEFAULTS.includeCurrency, true);
+  eq('sidebar-defaults: includePercent default is true in DR_DEFAULTS',
+    DR_DEFAULTS.includePercent, true);
+  eq('sidebar-defaults: dateGranularity default is "decade" in DR_DEFAULTS',
+    DR_DEFAULTS.dateGranularity, 'decade');
+  eq('sidebar-defaults: timeGranularity default is "minute" in DR_DEFAULTS',
+    DR_DEFAULTS.timeGranularity, 'minute');
+  eq('sidebar-defaults: sidebar.html does not hard-code "checked" attributes',
+    /<input[^>]*checked/i.test(sidebarHtml), false);
+  eq('sidebar-defaults: sidebar.html does not hard-code "selected" options',
+    /<option[^>]*selected/i.test(sidebarHtml), false);
+  eq('sidebar-defaults: sidebar.html loads defaults.js before sidebar.js',
+    /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+  eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
+    /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
+  eq('sidebar-defaults: manifest content_scripts loads defaults.js before content.js',
+    manifest.content_scripts[0].js[0] === 'defaults.js' &&
+    manifest.content_scripts[0].js[1] === 'content.js', true);
 
   // AC3: Section heading contains <em>Include</em> followed by " numbers in cells containing:"
   eq('sidebar-defaults: section-heading has <em>Include</em> with correct text',
@@ -1532,9 +1542,9 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   eq('sidebar-defaults: content.js still defines parseRangeExpr',
     /function parseRangeExpr\b/.test(contentJsSource), true);
 
-  // AC6: manifest.json version is 1.11.0.
-  eq('sidebar-defaults: manifest version is 1.11.0',
-    manifest.version, '1.11.0');
+  // AC6: manifest.json version is 1.12.0.
+  eq('sidebar-defaults: manifest version is 1.12.0',
+    manifest.version, '1.12.0');
 
   // AC7: manifest permissions do NOT include "storage".
   eq('sidebar-defaults: manifest permissions does not include "storage"',
@@ -1548,7 +1558,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint sidebar-settings-pull-and-unified-toggle (v1.11.0)
+// Sprint sidebar-settings-pull-and-unified-toggle (v1.12.0)
 // ---------------------------------------------------------------------------
 
 (function sprintSidebarPullAndUnifiedToggle() {
@@ -1560,8 +1570,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   eq('pull: content.js sends GET_SIDEBAR_SETTINGS',
     /chrome\.runtime\.sendMessage\(\s*\{\s*action:\s*['"]GET_SIDEBAR_SETTINGS['"]/.test(contentSrc), true);
 
-  eq('pull: content.js no longer applies DEFAULT_SIDEBAR_OPTIONS on SIDEBAR_OPENED',
-    /SIDEBAR_OPENED[\s\S]{0,200}applySidebarRounding\([^)]*DEFAULT_SIDEBAR_OPTIONS/.test(contentSrc), false);
+  eq('pull: content.js no longer applies defaults on SIDEBAR_OPENED',
+    /SIDEBAR_OPENED[\s\S]{0,200}applySidebarRounding\([^)]*DR_DEFAULTS/.test(contentSrc), false);
 
   eq('pull: sidebar.js handles GET_SIDEBAR_SETTINGS and responds with currentSettings()',
     /GET_SIDEBAR_SETTINGS[\s\S]{0,120}sendResponse\([^)]*currentSettings\(\)/.test(sidebarSrc), true);
