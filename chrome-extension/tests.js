@@ -1910,8 +1910,10 @@ function injectToggleEntry(table) {
       style: {},
       _children: [],
       _listeners: {},
+      _attrs: {},
       checked: false,
       parentElement: null,
+      textContent: '',
       appendChild(child) {
         this._children.push(child);
         child.parentElement = this;
@@ -1920,6 +1922,12 @@ function injectToggleEntry(table) {
       addEventListener(evt, fn) {
         listeners.push({ evt, fn });
         this._listeners[evt] = fn;
+      },
+      setAttribute(name, value) {
+        this._attrs[name] = value;
+      },
+      getAttribute(name) {
+        return Object.prototype.hasOwnProperty.call(this._attrs, name) ? this._attrs[name] : null;
       },
     };
     createdElements.push(el);
@@ -2188,6 +2196,195 @@ function injectToggleEntry(table) {
   // The toggle label must use a CSS class, not inline styles exclusively
   eq('auto-table-toggle: toggle uses dr-ext-toggle CSS class',
     src.includes('dr-ext-toggle'), true);
+})();
+
+// =============================================================================
+// Sprint accessibility-pass tests
+// =============================================================================
+
+// --- accessibility AC1: aria-label on toggle input ---
+// Spec: each toggle switch's <input> has a non-empty aria-label attribute.
+
+(function accessibilityAC1_ariaLabel() {
+  const createdElements = [];
+  const listeners = [];
+
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+
+  global.document.createElement = (tag) => {
+    const el = {
+      _tag: tag,
+      type: '',
+      className: '',
+      style: {},
+      _children: [],
+      _listeners: {},
+      _attrs: {},
+      checked: false,
+      parentElement: null,
+      textContent: '',
+      appendChild(child) {
+        this._children.push(child);
+        child.parentElement = this;
+        return child;
+      },
+      addEventListener(evt, fn) {
+        listeners.push({ evt, fn });
+        this._listeners[evt] = fn;
+      },
+      setAttribute(name, value) {
+        this._attrs[name] = value;
+      },
+      getAttribute(name) {
+        return Object.prototype.hasOwnProperty.call(this._attrs, name) ? this._attrs[name] : null;
+      },
+    };
+    createdElements.push(el);
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { child.parentElement = global.document.body; }
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const table = makeToggleTable([{ tag: 'td', text: '50000' }]);
+  createToggleForTable(table);
+
+  // Restore
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  toggleStyleInjected = true;
+
+  const inputEl = createdElements.find(e => e.type === 'checkbox');
+  const ariaLabel = inputEl ? inputEl.getAttribute('aria-label') : null;
+
+  eq('accessibility AC1: toggle input has an aria-label attribute',
+    typeof ariaLabel === 'string' && ariaLabel.length > 0, true);
+})();
+
+// --- accessibility AC2: CSS contains :focus-visible with outline and !important ---
+// Spec: the CSS string injected by ensureToggleStyleInjected contains a
+//       :focus-visible rule with `outline` and `!important`.
+
+(function accessibilityAC2_focusVisibleCSS() {
+  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+
+  eq('accessibility AC2: content.js CSS contains :focus-visible selector',
+    src.includes(':focus-visible'), true);
+
+  // Verify the :focus-visible rule also includes outline and !important
+  // Extract the portion from :focus-visible to the next `}` to scope the check.
+  const focusIdx = src.indexOf(':focus-visible');
+  const closeBrace = src.indexOf('}', focusIdx);
+  const focusBlock = focusIdx !== -1 && closeBrace !== -1
+    ? src.slice(focusIdx, closeBrace + 1)
+    : '';
+
+  eq('accessibility AC2: :focus-visible rule contains outline property',
+    focusBlock.includes('outline'), true);
+
+  eq('accessibility AC2: :focus-visible rule uses !important',
+    focusBlock.includes('!important'), true);
+})();
+
+// --- accessibility AC3: Enter keydown on focused switch calls input.click() ---
+// Spec: pressing Enter while the switch is focused triggers runToggleAction via
+//       input.click() being called from the keydown handler.
+
+(function accessibilityAC3_enterKeyCallsClick() {
+  const createdElements = [];
+  const listeners = [];
+
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+
+  global.document.createElement = (tag) => {
+    const el = {
+      _tag: tag,
+      type: '',
+      className: '',
+      style: {},
+      _children: [],
+      _listeners: {},
+      _attrs: {},
+      checked: false,
+      parentElement: null,
+      textContent: '',
+      _clickCount: 0,
+      appendChild(child) {
+        this._children.push(child);
+        child.parentElement = this;
+        return child;
+      },
+      addEventListener(evt, fn) {
+        listeners.push({ evt, fn });
+        if (!this._listeners[evt]) this._listeners[evt] = [];
+        this._listeners[evt].push(fn);
+      },
+      setAttribute(name, value) { this._attrs[name] = value; },
+      getAttribute(name) {
+        return Object.prototype.hasOwnProperty.call(this._attrs, name) ? this._attrs[name] : null;
+      },
+      click() { this._clickCount++; },
+    };
+    createdElements.push(el);
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { child.parentElement = global.document.body; }
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const table = makeToggleTable([{ tag: 'td', text: '50000' }]);
+  createToggleForTable(table);
+
+  // Restore
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  toggleStyleInjected = true;
+
+  const inputEl = createdElements.find(e => e.type === 'checkbox');
+
+  // Verify a keydown listener exists
+  const keydownHandlers = inputEl ? inputEl._listeners['keydown'] : null;
+  eq('accessibility AC3: toggle input has a keydown listener',
+    Array.isArray(keydownHandlers) && keydownHandlers.length > 0, true);
+
+  // Fire Enter key via the handler — click() must be called exactly once
+  if (Array.isArray(keydownHandlers)) {
+    const propagations = [];
+    const fakeEvent = {
+      key: 'Enter',
+      stopPropagation() { propagations.push(true); },
+    };
+    keydownHandlers.forEach(fn => fn(fakeEvent));
+  }
+
+  eq('accessibility AC3: Enter keydown triggers input.click() once',
+    inputEl ? inputEl._clickCount : -1, 1);
+
+  // A non-Enter key must NOT call click()
+  const inputEl2 = createdElements.find(e => e.type === 'checkbox');
+  // Use a fresh element count check: fire Space key and count stays same
+  const clicksBefore = inputEl ? inputEl._clickCount : 0;
+  if (Array.isArray(keydownHandlers)) {
+    const fakeSpaceEvent = {
+      key: ' ',
+      stopPropagation() {},
+    };
+    keydownHandlers.forEach(fn => fn(fakeSpaceEvent));
+  }
+  eq('accessibility AC3: non-Enter keydown does NOT call input.click()',
+    inputEl ? inputEl._clickCount : -1, clicksBefore);
 })();
 
 // --- Report ---
