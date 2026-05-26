@@ -185,9 +185,61 @@ class TestEdgeCases:
 
 class TestOffsetSymmetry:
     """Test that 0.5 and -0.5 produce same results (as documented)."""
-    
+
     def test_half_offset_symmetry(self):
         assert round_dynamic(87654321, offset=0.5) == round_dynamic(87654321, offset=-0.5)
-    
+
     def test_point_three_symmetry(self):
         assert round_dynamic(87654321, offset=0.3) == round_dynamic(87654321, offset=-0.3)
+
+
+class TestTrailingZeros:
+    """Whole-number results with |value| < 10 should return int, not float."""
+
+    def test_whole_number_result_is_int(self):
+        result = round_dynamic(1.13, offset=0.5)
+        assert result == 1
+        assert isinstance(result, int)
+
+    def test_whole_number_negative_is_int(self):
+        result = round_dynamic(-1.13, offset=0.5)
+        assert result == -1
+        assert isinstance(result, int)
+
+    def test_whole_number_two_is_int(self):
+        result = round_dynamic(1.76, offset=0.5)
+        assert result == 2
+        assert isinstance(result, int)
+
+    def test_whole_number_from_exact_input_is_int(self):
+        result = round_dynamic(1.0, offset=0.5)
+        assert result == 1
+        assert isinstance(result, int)
+
+    def test_fractional_result_stays_float(self):
+        result = round_dynamic(1.42, offset=0.5)
+        assert result == 1.5
+        assert isinstance(result, float)
+
+    def test_two_decimal_result_stays_float(self):
+        result = round_dynamic(1.13, offset=0.25)
+        assert result == 1.25
+        assert isinstance(result, float)
+
+    def test_one_decimal_result_stays_float(self):
+        result = round_dynamic(1.42, offset=0.25)
+        assert result == 1.5
+        assert isinstance(result, float)
+
+    def test_large_float_input_unaffected(self):
+        # float input > 10 that rounds to whole number should remain float
+        result = round_dynamic(87654321.0)
+        assert result == 90000000
+        assert isinstance(result, float)
+
+    def test_whole_number_in_list(self):
+        result = round_dynamic([1.13, 1.42], offset_top=0.5)
+        assert result[0] == 1
+        assert isinstance(result[0], int)
+        assert result[1] == 1.5
+        assert isinstance(result[1], float)

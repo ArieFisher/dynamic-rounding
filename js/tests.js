@@ -402,6 +402,25 @@ test('Near MAX_SAFE_INTEGER', ROUND_DYNAMIC(9007199254740991), 9000000000000000)
 // Empty array
 testArray('Empty array', ROUND_DYNAMIC([]), []);
 
+// =============================================================================
+// TRAILING ZEROS TESTS
+// =============================================================================
+
+console.log('=== Trailing Zeros (|result| < 10) ===\n');
+
+// Whole-number results between -10 and 10 must be integers (no trailing zeros)
+test('1.13 offset=0.5 → integer 1', ROUND_DYNAMIC(1.13, 0.5) === 1, true);
+test('1.76 offset=0.5 → integer 2', ROUND_DYNAMIC(1.76, 0.5) === 2, true);
+test('1.0 offset=0.5 → integer 1', ROUND_DYNAMIC(1.0, 0.5) === 1, true);
+test('1.0 offset=0.25 → integer 1', ROUND_DYNAMIC(1.0, 0.25) === 1, true);
+test('negative -1.13 offset=0.5 → integer -1', ROUND_DYNAMIC(-1.13, 0.5) === -1, true);
+
+// Non-integer results must stay as floats (not rounded further)
+test('1.42 offset=0.5 → 1.5 (float)', ROUND_DYNAMIC(1.42, 0.5), 1.5);
+test('1.32 offset=0.5 → 1.5 (float)', ROUND_DYNAMIC(1.32, 0.5), 1.5);
+test('1.13 offset=0.25 → 1.25 (float)', ROUND_DYNAMIC(1.13, 0.25), 1.25);
+test('1.42 offset=0.25 → 1.5 (float)', ROUND_DYNAMIC(1.42, 0.25), 1.5);
+
 // Array with only non-numerics (max_mag will be null)
 const nonNumericArray = [
     ['Cloud CDN'],
