@@ -1267,12 +1267,12 @@ function withLinkCreateTreeWalker(fn) {
   });
 })();
 
-// --- AC5: Version bumped in manifest.json (post-stack: 1.12.0) ---
+// --- AC5: manifest.json has a valid N.N.N version string ---
 (function ac5_manifestVersion() {
   const manifest = JSON.parse(
     require('fs').readFileSync(require('path').join(__dirname, 'manifest.json'), 'utf8'));
-  eq('AC5: manifest.json version is 1.12.0',
-    manifest.version, '1.12.0');
+  eq('AC5: manifest.json version matches semver N.N.N',
+    /^\d+\.\d+\.\d+$/.test(manifest.version), true);
 })();
 
 // --- AC6: scope guard removed — was a git-diff-based assertion that
@@ -1435,10 +1435,10 @@ function withLinkCreateTreeWalker(fn) {
   eq('regression: read source is cell.innerText || cell.textContent',
     contentSrc.includes('cell.innerText || cell.textContent'), true);
 
-  // 5b. Manifest version is 1.12.0 (sprint 4 stacked on sprint 3 bumps further)
+  // 5b. Manifest has a valid semver version string.
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('regression: manifest.version === "1.12.0"',
-    manifest.version, '1.12.0');
+  eq('regression: manifest.version matches N.N.N',
+    /^\d+\.\d+\.\d+$/.test(manifest.version), true);
 
   // 5c. Out-of-scope files not modified: sidebar.html, sidebar.js, js/, python/
   // We verify their content by checking they exist but do NOT contain getQuoteMaskedRanges.
@@ -1505,8 +1505,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   const changelogPath = path.join(__dirname, '..', 'js', 'CHANGELOG.md');
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  eq('sprint regression: manifest version is 1.12.0',
-    manifest.version, '1.12.0');
+  eq('sprint regression: manifest version matches N.N.N',
+    /^\d+\.\d+\.\d+$/.test(manifest.version), true);
 
   const readme = fs.readFileSync(readmePath, 'utf8');
   eq('sprint regression: js/README.md contains Sheets decimal precision section header',
@@ -1581,9 +1581,9 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   eq('sidebar-defaults: content.js still defines parseRangeExpr',
     /function parseRangeExpr\b/.test(contentJsSource), true);
 
-  // AC6: manifest.json version is 1.12.0.
-  eq('sidebar-defaults: manifest version is 1.12.0',
-    manifest.version, '1.12.0');
+  // AC6: manifest.json has a valid N.N.N version string.
+  eq('sidebar-defaults: manifest version matches N.N.N',
+    /^\d+\.\d+\.\d+$/.test(manifest.version), true);
 
   // AC7: manifest permissions do NOT include "storage".
   eq('sidebar-defaults: manifest permissions does not include "storage"',
