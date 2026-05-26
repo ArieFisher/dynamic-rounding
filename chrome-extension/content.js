@@ -197,6 +197,16 @@ function ensureToggleStyleInjected() {
 
 function positionToggle(table, labelEl) {
   const rect = table.getBoundingClientRect();
+  const computedStyle = window.getComputedStyle(table);
+  if (
+    (rect.width === 0 && rect.height === 0) ||
+    computedStyle.display === 'none' ||
+    computedStyle.visibility === 'hidden'
+  ) {
+    labelEl.style.display = 'none';
+    return;
+  }
+  labelEl.style.display = '';
   const scrollX = window.scrollX || window.pageXOffset || 0;
   const scrollY = window.scrollY || window.pageYOffset || 0;
   // 2px outside the right edge, 2px above the top edge
