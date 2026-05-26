@@ -1943,7 +1943,10 @@ function injectToggleEntry(table) {
     }
   };
 
-  const table = makeToggleTable([{ tag: 'td', text: '50000' }]);
+  const table = makeToggleTable([
+    [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' }, { tag: 'td', text: '300' }],
+  ]);
   // Stub table.getBoundingClientRect (already defined on makeToggleTable)
 
   // ensureToggleStyleInjected calls document.createElement('style') + appendChild;
