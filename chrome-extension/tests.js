@@ -22,7 +22,12 @@ global.document = {
   readyState: 'complete',       // prevents DOMContentLoaded deferral
   body: { appendChild: () => {}, observe: () => {} },
 };
-global.window = { addEventListener: () => {} };
+global.window = {
+  addEventListener: () => {},
+  // Default: table is visible (display=block, visibility=visible).
+  // Tests that exercise the visibility gate override this temporarily.
+  getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+};
 global.NodeFilter = { SHOW_TEXT: 4 };
 
 // Stub observer constructors BEFORE eval so that content.js module-level code
@@ -2385,6 +2390,89 @@ function injectToggleEntry(table) {
   }
   eq('accessibility AC3: non-Enter keydown does NOT call input.click()',
     inputEl ? inputEl._clickCount : -1, clicksBefore);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint offscreen-hidden-table-suppression: visibility gate in positionToggle
+// ---------------------------------------------------------------------------
+//
+// positionToggle now hides the toggle label (labelEl.style.display = 'none')
+// when the table is offscreen or invisible, and shows it (labelEl.style.display = '')
+// when the table is normally visible.
+//
+// All four tests stub window.getComputedStyle (and/or the rect) then restore
+// the original before returning, so surrounding tests are unaffected.
+
+// AC1: display:none (computed style) → labelEl.style.display === 'none'
+(function visGate_displayNone() {
+  const origGetComputedStyle = global.window.getComputedStyle;
+  global.window.getComputedStyle = () => ({ display: 'none', visibility: 'visible' });
+
+  const table = {
+    getBoundingClientRect() { return { width: 400, height: 200, top: 100, right: 500, bottom: 300, left: 100 }; },
+  };
+  const labelEl = { style: {} };
+
+  positionToggle(table, labelEl);
+
+  global.window.getComputedStyle = origGetComputedStyle;
+
+  eq('visGate: display:none table → labelEl.style.display is "none"',
+    labelEl.style.display, 'none');
+})();
+
+// AC2: visibility:hidden (computed style) → labelEl.style.display === 'none'
+(function visGate_visibilityHidden() {
+  const origGetComputedStyle = global.window.getComputedStyle;
+  global.window.getComputedStyle = () => ({ display: 'block', visibility: 'hidden' });
+
+  const table = {
+    getBoundingClientRect() { return { width: 400, height: 200, top: 100, right: 500, bottom: 300, left: 100 }; },
+  };
+  const labelEl = { style: {} };
+
+  positionToggle(table, labelEl);
+
+  global.window.getComputedStyle = origGetComputedStyle;
+
+  eq('visGate: visibility:hidden table → labelEl.style.display is "none"',
+    labelEl.style.display, 'none');
+})();
+
+// AC3: zero-area bounding rect → labelEl.style.display === 'none'
+(function visGate_zeroAreaRect() {
+  // No need to override getComputedStyle — default stub returns visible style.
+  const table = {
+    getBoundingClientRect() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
+  };
+  const labelEl = { style: {} };
+
+  positionToggle(table, labelEl);
+
+  eq('visGate: zero-area rect table → labelEl.style.display is "none"',
+    labelEl.style.display, 'none');
+})();
+
+// AC4: normal rect + no hiding → labelEl.style.display === '' (visible)
+(function visGate_normalVisible() {
+  // Default getComputedStyle stub returns display:block / visibility:visible.
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  const table = {
+    getBoundingClientRect() { return { width: 400, height: 200, top: 100, right: 500, bottom: 300, left: 100 }; },
+  };
+  const labelEl = { style: {} };
+
+  positionToggle(table, labelEl);
+
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+
+  eq('visGate: normal visible table → labelEl.style.display is "" (shown)',
+    labelEl.style.display, '');
 })();
 
 // --- Report ---
