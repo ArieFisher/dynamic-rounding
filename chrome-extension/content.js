@@ -189,6 +189,7 @@ function ensureToggleStyleInjected() {
     .dr-ext-toggle input:checked + .dr-ext-toggle-slider::before {
       transform: translateX(16px);
     }
+    .dr-ext-toggle input:focus-visible{outline:2px solid rgba(66,133,244,1)!important;outline-offset:2px;}
   `;
   (document.head || document.documentElement).appendChild(style);
   toggleStyleInjected = true;
@@ -213,6 +214,7 @@ function createToggleForTable(table) {
 
   const input = document.createElement('input');
   input.type = 'checkbox';
+  input.setAttribute('aria-label', 'Toggle rounding for table');
 
   const slider = document.createElement('span');
   slider.className = 'dr-ext-toggle-slider';
@@ -228,6 +230,10 @@ function createToggleForTable(table) {
   input.addEventListener('change', () => {
     runToggleAction(table);
     syncSwitchForTable(table);
+  });
+
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.stopPropagation(); input.click(); }
   });
 
   // Stop propagation of click and mousedown to avoid triggering host-page handlers
