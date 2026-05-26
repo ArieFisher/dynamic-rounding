@@ -2483,6 +2483,9 @@ function injectToggleEntry(table) {
 
   eq('visGate: normal visible table → labelEl.style.display is "" (shown)',
     labelEl.style.display, '');
+})();
+
+// ---------------------------------------------------------------------------
 // Sprint layout-table-exclusion: isDataTable heuristic
 // ---------------------------------------------------------------------------
 //
