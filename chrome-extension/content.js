@@ -216,7 +216,28 @@ function positionToggle(table, labelEl) {
   labelEl.style.top = top + 'px';
 }
 
+function isDataTable(table) {
+  if (table.rows.length < 2) return false;
+  let hasMultipleColumns = false;
+  for (let i = 0; i < table.rows.length; i++) {
+    if (table.rows[i].cells.length >= 2) {
+      hasMultipleColumns = true;
+      break;
+    }
+  }
+  if (!hasMultipleColumns) return false;
+  for (let i = 0; i < table.rows.length; i++) {
+    const row = table.rows[i];
+    for (let j = 0; j < row.cells.length; j++) {
+      const text = row.cells[j].textContent.trim().replace(CLEAN_REGEX, '');
+      if (text !== '' && isFinite(parseFloat(text))) return true;
+    }
+  }
+  return false;
+}
+
 function createToggleForTable(table) {
+  if (!isDataTable(table)) return;
   ensureToggleStyleInjected();
 
   const label = document.createElement('label');
