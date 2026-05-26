@@ -63,6 +63,7 @@ globalThis.createToggleForTable = createToggleForTable;
 globalThis.runToggleAction = runToggleAction;
 globalThis.toggleOriginalValues = toggleOriginalValues;
 globalThis.injectTableToggles = injectTableToggles;
+globalThis.isDataTable = isDataTable;
 `);
 
 let passed = 0;
@@ -1947,7 +1948,10 @@ function injectToggleEntry(table) {
     }
   };
 
-  const table = makeToggleTable([{ tag: 'td', text: '50000' }]);
+  const table = makeToggleTable([
+    [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' }, { tag: 'td', text: '300' }],
+  ]);
   // Stub table.getBoundingClientRect (already defined on makeToggleTable)
 
   // ensureToggleStyleInjected calls document.createElement('style') + appendChild;
@@ -2256,7 +2260,10 @@ function injectToggleEntry(table) {
   global.document.documentElement = { appendChild() {} };
   toggleStyleInjected = false;
 
-  const table = makeToggleTable([{ tag: 'td', text: '50000' }]);
+  const table = makeToggleTable([
+    [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
+  ]);
   createToggleForTable(table);
 
   // Restore
@@ -2348,7 +2355,10 @@ function injectToggleEntry(table) {
   global.document.documentElement = { appendChild() {} };
   toggleStyleInjected = false;
 
-  const table = makeToggleTable([{ tag: 'td', text: '50000' }]);
+  const table = makeToggleTable([
+    [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
+  ]);
   createToggleForTable(table);
 
   // Restore
@@ -2473,6 +2483,77 @@ function injectToggleEntry(table) {
 
   eq('visGate: normal visible table → labelEl.style.display is "" (shown)',
     labelEl.style.display, '');
+// Sprint layout-table-exclusion: isDataTable heuristic
+// ---------------------------------------------------------------------------
+//
+// isDataTable(table) returns true iff:
+//   - table.rows.length >= 2
+//   - at least one row has cells.length >= 2
+//   - at least one cell has numeric textContent (CLEAN_REGEX stripped + parseFloat + isFinite)
+//
+// Helper: build a minimal table stub for isDataTable.
+// rowsSpec: array of arrays of textContent strings.
+function makeIsDataTable(rowsSpec) {
+  return {
+    rows: rowsSpec.map(rowTexts => ({
+      cells: rowTexts.map(text => ({ textContent: text }))
+    }))
+  };
+}
+
+// AC1: 1×1 table with a numeric cell → false (< 2 rows AND < 2 columns)
+(function isDataTable_1x1_numeric() {
+  const table = makeIsDataTable([['42']]);
+  eq('isDataTable: 1×1 table with numeric cell -> false (too few rows)',
+    isDataTable(table), false);
+})();
+
+// AC2: 2×2 table with no numeric cells → false
+(function isDataTable_2x2_noNumeric() {
+  const table = makeIsDataTable([
+    ['foo', 'bar'],
+    ['baz', 'qux'],
+  ]);
+  eq('isDataTable: 2×2 table with no numeric cells -> false',
+    isDataTable(table), false);
+})();
+
+// AC3: 2×2 table with one numeric cell → true
+(function isDataTable_2x2_oneNumeric() {
+  const table = makeIsDataTable([
+    ['label', 'other'],
+    ['row2',  '1,234'],
+  ]);
+  eq('isDataTable: 2×2 table with one numeric cell -> true',
+    isDataTable(table), true);
+})();
+
+// AC4: 3×3 table with all-text cells → false
+(function isDataTable_3x3_allText() {
+  const table = makeIsDataTable([
+    ['Name',  'Role',   'Dept'],
+    ['Alice', 'Eng',    'R&D'],
+    ['Bob',   'Design', 'UX'],
+  ]);
+  eq('isDataTable: 3×3 table with all-text cells -> false',
+    isDataTable(table), false);
+})();
+
+// AC5: 1-row table with numeric cells → false (< 2 rows)
+(function isDataTable_1row_numeric() {
+  const table = makeIsDataTable([['100', '200', '300']]);
+  eq('isDataTable: 1-row table with numeric cells -> false (< 2 rows)',
+    isDataTable(table), false);
+})();
+
+// AC6: 2-row, 1-column table with numeric cells → false (< 2 columns in every row)
+(function isDataTable_2row_1col_numeric() {
+  const table = makeIsDataTable([
+    ['1000'],
+    ['2000'],
+  ]);
+  eq('isDataTable: 2-row 1-column table with numeric cells -> false (< 2 columns)',
+    isDataTable(table), false);
 })();
 
 // --- Report ---
