@@ -113,34 +113,40 @@ The parser is implemented as an ordered list of `(regex, extractor)` pairs. The 
 
 All-numeric `N1/N2/Y` (or `N1-N2-Y`) shapes are ambiguous between US `M/D/Y` and EU `D/M/Y`. Per user direction, resolve the ambiguity at the *column* level using the other dates in that column as evidence, and pass the input through unchanged when no resolution is possible.
 
+**Where the resolution lives:** the existing mode-classification pass (`content.js:520-583`) already tags each cell with a `mode` (`skip`, `date`, `time`, `pure`, `extracted`). We extend that pass with a column-level post-step rather than smuggling ambiguity into `roundDateText`'s return type. By the time the rendering loop calls `roundDateText`, every `mode: 'date'` cell is guaranteed parseable with a known month/day order — so `roundDateText` always returns a year string and never needs a "don't touch" sentinel (see §3.6).
+
 **Algorithm:**
 
-1. After `cellInfo` is built (`content.js:583`) and before the rendering loop (`content.js:600`), add a pre-pass over each column `c`:
-   - Collect every `mode: 'date'` cell in that column.
-   - For each cell, attempt to parse with both `MDY` and `DMY` interpretations using the helper `parseAmbiguousNumericDate(text)` → `{mdyValid, dmyValid, n1, n2, year}`. A shape is "valid" if its month component is in `[1,12]` and its day component is in `[1, 31]`.
-   - Determine the column's `formatHint`:
-     - If every ambiguous cell admits MDY but at least one rejects DMY (i.e. some `n1 > 12`) → `MDY`.
-     - If every ambiguous cell admits DMY but at least one rejects MDY (`n2 > 12`) → `DMY`.
-     - Otherwise (every cell admits both, or the column has conflicting evidence) → `AMBIGUOUS`.
-   - Default for a column with zero ambiguous cells → `MDY` (US bias, matches existing behavior).
-2. Store the hint per column (`columnDateHints[c]`) and pass it into `roundDateText(text, granularity, columnDateHints[c])`.
-3. Inside `roundDateText`/`parseDateLike`, when the matched shape is the all-numeric `N1/N2/Y` form:
-   - If hint is `MDY` → month = `n1`, day = `n2`.
-   - If hint is `DMY` → month = `n2`, day = `n1`.
-   - If hint is `AMBIGUOUS` → return `null` (cell passes through unchanged).
+1. During the existing row loop (`content.js:523-583`), classify cells the same as today, but for any `mode: 'date'` cell whose text matches the all-numeric `N1/N2/Y` (or `N1-N2-Y`) shape, capture `{n1, n2, year}` on the info record (e.g. `{ mode: 'date', ambiguous: { n1, n2, year } }`). Unambiguous date shapes (ISO, named-month) get `mode: 'date'` with no `ambiguous` payload.
+2. After the row loop, before the rendering loop (between `content.js:583` and `content.js:600`), add a column pre-pass:
+   - For each column `c`, scan its `mode: 'date'` cells. Determine the column's `formatHint`:
+     - If at least one ambiguous cell has `n1 > 12` (rejects MDY) and none have `n2 > 12` → `DMY`.
+     - If at least one ambiguous cell has `n2 > 12` (rejects DMY) and none have `n1 > 12` → `MDY`.
+     - If at least one rejects each → `MIXED` (treat as ambiguous; conservative).
+     - Otherwise (every ambiguous cell admits both, or there are zero ambiguous cells) → `AMBIGUOUS`.
+   - Default for a column with zero date cells of any kind → irrelevant; not consulted.
+3. Walk the column's cells once more:
+   - For `{ mode: 'date', ambiguous: payload }` cells where `formatHint` is `MDY` or `DMY` → rewrite to `{ mode: 'date', month, day, year }` with the resolved order, dropping `ambiguous`.
+   - For ambiguous cells in `AMBIGUOUS`/`MIXED` columns → downgrade to `{ mode: 'skip' }`.
+   - For unambiguous-shape date cells → no change; the parser handles them.
+4. The rendering loop at `content.js:609-611` calls `roundDateText(text, granularity, prefilledMonthDay?)`. If the info record already carries a resolved `{month, day, year}` from step 3, pass them in to skip re-parsing; otherwise parse from text.
 
 Non-numeric shapes (`2020-07-21` ISO, named-month shapes) are unambiguous and never need the hint.
 
-*Principle: simple interactions — the hint is a single scalar per column, computed once, threaded through one extra parameter; no shared mutable state.*
+*Principle: simple interactions — ambiguity is resolved once, where mode is already being decided; the rendering loop sees only well-formed `date` cells. The hint never crosses an API boundary as an out-of-band sentinel.*
 
-*Alternative considered:* attempting per-cell heuristic without column context (e.g. "if `n1 > 12`, must be DMY"). Rejected — the user explicitly asked for column-level reasoning, and a column where every date happens to have both components ≤ 12 (e.g. all January dates) would be silently misinterpreted under a per-cell rule.
+*Alternative considered:* threading an `AMBIGUOUS` hint into `roundDateText` and using `null` to mean "leave the cell alone". Rejected — it overloads `roundDateText`'s return type with two distinct meanings (parse failure vs. policy-declined), and the convention is fragile when future callers reuse the function. Moving the decision into mode-classification keeps `roundDateText`'s contract tight: input is a known-good date, output is a year string.
 
-### 3.6 Return value: always the year string for parsed dates
+### 3.6 Return value: always the year string
 
-`roundDateText` returns:
+`roundDateText`'s contract becomes: *given a cell tagged `mode: 'date'` by the classification pass, return the 4-digit year string for the requested granularity.* No `null`, no overloaded sentinel.
 
-- **a 4-digit year string** when the parser succeeds — even when the rounded year equals the input year. The dispatch site at `content.js:611` already short-circuits on `formattedValue === originalValue`, so a `Jan 1, 2020 → "2020"` "no-op" still gets rewritten (the display changes from "Jan 1, 2020" to "2020") while a bare-year `"2020" → "2020"` no-op skips the DOM write.
-- **`null`** only when there is no parseable date (non-date string, or ambiguous all-numeric `M/D/Y` with no column-level resolution per §3.5). `null` is still required as a sentinel because the dispatch site treats `null` as "leave the cell alone" and any string return would overwrite the cell.
+Two follow-on cleanups in `content.js:609-611`:
+
+- The `formattedValue === null` branch in the dispatch site for dates is removed.
+- The `formattedValue === originalValue` short-circuit stays — it still correctly skips the DOM write when a bare-year cell rounds to itself (e.g. `"2020"` at decade → `"2020"`).
+
+The neighboring `roundTimeText` keeps its existing `null`-on-no-change convention; that's outside this sprint's scope. (If we want to harmonize, do it in a separate refactor sprint.)
 
 ### 3.7 One sprint, not two
 
@@ -170,12 +176,13 @@ flowchart TD
 - **Goal:** Round date cells to a whole year and display only the year, matching the user-described semantics for year / decade / century granularities.
 - **Scope:**
   - `chrome-extension/content.js` —
-    - Add `parseDateLike(text, formatHint) → {year, month, day} | null` covering every shape listed in §3.4. `formatHint` is `'MDY' | 'DMY' | 'AMBIGUOUS'` and only affects the all-numeric `N1/N2/Y` and `N1-N2-Y` shapes; defaults to `'MDY'` so existing call sites that don't pass a hint behave like today.
-    - Add `parseAmbiguousNumericDate(text) → {n1, n2, year} | null` used by the column pre-pass to test MDY/DMY validity without committing to either.
-    - Add a column-level pre-pass (per §3.5) between `content.js:583` and `content.js:600` that computes `columnDateHints[c]` and pass `columnDateHints[c]` into `roundDateText` at `content.js:610`.
-    - Reimplement `isDateLike` as `parseDateLike(text) !== null` (no hint needed for the exclusion check — the existing US-first default suffices for "is this date-shaped at all?"). The `DATE_REGEXES` array and the standalone `isYearValue` may be deleted, inlined into the parser, or retained as helpers — whichever leaves the smallest diff while keeping the call sites at `content.js:550` and `content.js:773` working.
-    - Rewrite `roundDateText(text, granularity, formatHint)` per §3.1 (parse → fractional year → `Math.round` to base 1/10/100 → `new Date(rounded, 0, 1)` → return 4-digit year string). Always return the year string on successful parse; return `null` only when `parseDateLike` returns `null` (per §3.6).
-    - The dispatch site at `content.js:609-611` keeps its existing `formattedValue === originalValue` short-circuit; the only edit there is threading the column hint into the call.
+    - Add `parseDateLike(text) → {year, month, day} | null` covering every unambiguous shape in §3.4 (ISO, named-month forms, bare year, month-name year). For the all-numeric `N1/N2/Y` and `N1-N2-Y` shapes, `parseDateLike` returns `null` (these are resolved by the column pre-pass — see §3.5).
+    - Add `parseAmbiguousNumericDate(text) → {n1, n2, year} | null` used by mode-classification to capture raw components when the shape is all-numeric.
+    - Extend the mode-classification pass (`content.js:520-583`) to tag ambiguous-numeric date cells with their raw `{n1, n2, year}` payload (per §3.5 step 1).
+    - Add a column post-pass (per §3.5 steps 2-3) between `content.js:583` and `content.js:600` that computes each column's MDY/DMY/AMBIGUOUS hint, rewrites resolved cells with `{month, day, year}`, and downgrades ambiguous-column cells to `{ mode: 'skip' }`.
+    - Reimplement `isDateLike` as `parseDateLike(text) !== null || parseAmbiguousNumericDate(text) !== null`, so the existing exclusion check at `content.js:550` and `content.js:773` still recognizes every shape that was previously recognized.
+    - Rewrite `roundDateText(text, granularity, prefilled?) → string` per §3.1 (parse → fractional year → `Math.round` to base 1/10/100 → `new Date(rounded, 0, 1)` → return 4-digit year string). Always returns a string; never `null`. When the info record carries a prefilled `{month, day, year}` from the column pre-pass, skip re-parsing.
+    - Dispatch site at `content.js:609-611`: drop the `formattedValue === null` half of the guard; keep `formattedValue === originalValue` (per §3.6).
   - `chrome-extension/tests.js` —
     - Add a parameterized table of `(input, granularity, expected)` rows covering the §3.1 worked-examples table, plus at least one input per shape in §3.4 (including two-digit-year and `2020 June 21`).
     - Add tests for the column-level format detector covering: (a) column with a `13/04/2022` cell → DMY hint applied to sibling `03-04-2022` so it parses as Apr 3; (b) column with a `04/13/2022` cell → MDY; (c) all-ambiguous column → `03-04-2022` passes through unchanged.
@@ -191,9 +198,9 @@ flowchart TD
   - All rows in the §3.1 worked-examples table produce the listed result.
   - The same logical date in different shapes produces the same output, e.g. all of `Jun 21, 2020`, `2020/06/21`, `2020-06-21`, `2020 June 21`, `06-21-2020`, `21 June 2020` → `2020` at year and decade granularities, `2000` at century.
   - Two-digit-year `3/14/24` parses to `2024-03-14` and rounds accordingly. Pivot at 50: `25` → 2025, `75` → 1975.
-  - Column-level auto-detect: in a column where some cell disambiguates (`n > 12` on one side), all sibling all-numeric dates use the resolved MDY/DMY interpretation. In a fully ambiguous column, all-numeric dates pass through unchanged.
-  - Non-date strings (`"hello"`, `"14 March"` without year) return `null` and remain unchanged in the cell.
-  - On successful parse, `roundDateText` always returns the 4-digit year string (no `null` for "no change"). The dispatch site's existing `formattedValue === originalValue` short-circuit handles the bare-year no-op.
+  - Column-level auto-detect: in a column where some cell disambiguates (`n > 12` on one side), all sibling all-numeric dates use the resolved MDY/DMY interpretation. In a fully ambiguous column, all-numeric dates are downgraded to `mode: 'skip'` during classification and pass through unchanged.
+  - Non-date strings (`"hello"`, `"14 March"` without year) are classified `mode: 'skip'` by the existing pass and remain unchanged in the cell.
+  - `roundDateText` always returns a 4-digit year string and never returns `null`. The dispatch site's existing `formattedValue === originalValue` short-circuit handles the bare-year no-op.
   - `node chrome-extension/tests.js` passes; `node js/tests.js` passes.
 - **Depends on:** none
 - **Complexity:** M
@@ -220,4 +227,5 @@ _All open questions resolved 2026-05-27 — pivot at 50 (user confirmed), column
 
 - 2026-05-27: Initial draft generated by sprint-plan skill.
 - 2026-05-27: Switched year-boundary phrasing to "Jul 1", changed decade/century from floor to nearest-rounding, expanded accepted date shapes (YYYY/MM/DD, 2-digit-year US, `YYYY Month DD`).
-- 2026-05-27: Added column-level MDY/DMY auto-detect with passthrough on ambiguous columns (§3.5); pinned return semantics to "always year string on parse, null only on parse failure" (§3.6).
+- 2026-05-27: Added column-level MDY/DMY auto-detect with passthrough on ambiguous columns (§3.5).
+- 2026-05-27: Moved ambiguity resolution into mode-classification so `roundDateText` no longer overloads `null` as a "leave-cell-alone" sentinel; ambiguous-column cells are downgraded to `mode: 'skip'` upstream, and `roundDateText` now always returns a string (§3.5, §3.6).
