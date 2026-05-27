@@ -934,7 +934,7 @@ function formatExtractedNumber(rounded, originalNumStr, floorDecimals = 0) {
   const hasCommas = originalNumStr.includes(',');
   const decMatch = originalNumStr.match(/\.(\d+)/);
   let decimals = decMatch ? decMatch[1].length : 0;
-  if (Math.abs(rounded) >= 10) {
+  if (Math.abs(rounded) >= 10 || rounded % 1 === 0) {
     decimals = 0;
   } else {
     // Apply the offset-derived floor only in the 0 ≤ |x| < 10 band.
@@ -1109,7 +1109,7 @@ function restoreFormatting(roundedValue, originalString, floorDecimals = 0) {
     decimals = match[1].length;
   }
 
-  if (Math.abs(roundedValue) >= 10) {
+  if (Math.abs(roundedValue) >= 10 || roundedValue % 1 === 0) {
     decimals = 0;
   } else {
     // Apply the offset-derived floor only in the 0 ≤ |x| < 10 band.
