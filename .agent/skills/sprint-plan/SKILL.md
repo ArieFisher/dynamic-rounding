@@ -163,12 +163,11 @@ If the dry-run push succeeds, proceed normally — no token needed.
 
 Write the plan to `docs/sprint-plans/<slug>.md` using the structure below. Create branch `plan/<slug>` off `main`, commit with `plan: <slug>`, push, and open a PR to merge `plan/<slug>` into `main`.
 
-The plan has two statuses: `DRAFT` (pre-merge) and the merged state (read-only in main forever). Do not add a "COMPLETED" or execution-tracking status — that belongs in per-sprint logs, not here.
+The plan has no status field. Merging the PR is the approval; the merged file in `main` is read-only forever. Do not add `DRAFT`, `APPROVED`, `COMPLETED`, or any execution-tracking status — none of them carry information that the git state doesn't already convey, and execution state belongs in per-sprint logs, not here.
 
 ```markdown
 # Sprint Plan: <Title>
 
-**Status:** DRAFT
 **Created:** <date>
 **Base branch:** main
 **Slug:** <slug>
