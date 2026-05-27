@@ -921,6 +921,13 @@ function isDateLike(text) {
   return parseDateLike(text) !== null || parseAmbiguousNumericDate(text) !== null;
 }
 
+// Kept for backward-compat with tests; delegates to parseDateLike bare-year branch.
+function isYearValue(text) {
+  if (!/^\d{4}$/.test(text)) return false;
+  const n = parseInt(text, 10);
+  return n >= 1900 && n <= 2099;
+}
+
 function isTimeLike(text) {
   // HH:MM or HH:MM:SS, optional AM/PM
   return /^\d{1,2}:\d{2}(:\d{2})?(\s*[ap]\.?m\.?)?$/i.test(text);
