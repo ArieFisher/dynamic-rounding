@@ -153,7 +153,7 @@ function roundWithOffset(num, offset) {
   // Add epsilon to handle floating point inaccuracies
   let rounded = Math.round(num / rounding_base + EPSILON) * rounding_base;
   
-  if (Math.abs(rounded) >= 10) {
+  if (Math.abs(rounded) >= 10 || rounded % 1 === 0) {
     rounded = Math.round(rounded);
   }
   

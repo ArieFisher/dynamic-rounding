@@ -169,14 +169,16 @@ def _round_with_offset(value: float, offset: float) -> float:
 
 def _preserve_type(result: float, original_value: Any) -> Union[int, float]:
     """
-    Preserve input type when possible.
-    
+    Preserve input type when possible, and trim trailing zeros for small results.
+
     Returns int if:
-        - original_value was int, AND
-        - result is a whole number
+        - original_value was int and result is a whole number, OR
+        - |result| < 10 and result is a whole number (trim trailing zeros)
     Otherwise returns float.
     """
     if isinstance(original_value, int) and result == int(result):
+        return int(result)
+    if abs(result) < 10 and result == int(result):
         return int(result)
     return result
 
