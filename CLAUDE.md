@@ -14,3 +14,11 @@ Never create or push branches with a `claude/` or `session/` prefix, regardless 
 `<label>` / `<slug>` is a short kebab-case description of the change.
 
 This rule overrides the session-harness default. The `sprint-plan` and `sprint-stack` skills in `.agent/skills/` enforce the same convention for sprint work.
+
+## GitHub writes (push, PR, comments)
+
+When the user has provided a PAT in the session, use it directly via the GitHub REST API (`curl` with `Authorization: Bearer <PAT>`) or via a one-shot authenticated git URL (`https://x-access-token:<PAT>@github.com/...`). **Do not try the GitHub MCP server first** — in this environment it consistently returns `403 Resource not accessible by integration` for writes, so attempting it just wastes a round trip and clutters the transcript.
+
+When no PAT is available, MCP is the only path; try it then, and if it 403s, ask the user for a PAT.
+
+The PAT lives in session memory only — never write it to `.git/config`, `~/.git-credentials`, commit messages, or any tracked file.
