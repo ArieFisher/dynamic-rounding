@@ -548,7 +548,14 @@ function roundTable(table, options) {
       } else if (isWholeCellQuoted) {
         rowInfo.push({ mode: 'skip' });
       } else if (opts.excludeDates === false && isDateLike(trimmed)) {
-        rowInfo.push({ mode: 'date' });
+        const ambig = parseAmbiguousNumericDate(trimmed);
+        if (ambig !== null) {
+          rowInfo.push({ mode: 'date', ambiguous: ambig });
+        } else {
+          // Unambiguous: parse now and store the resolved fields
+          const parsed = parseDateLike(trimmed);
+          rowInfo.push({ mode: 'date', month: parsed.month, day: parsed.day, year: parsed.year });
+        }
       } else if (opts.excludeTimes === false && isTimeLike(trimmed)) {
         rowInfo.push({ mode: 'time' });
       } else {
@@ -582,6 +589,53 @@ function roundTable(table, options) {
     cellInfo.push(rowInfo);
   }
 
+  // --- Column post-pass: resolve ambiguous numeric date cells per column ---
+  // Determine the maximum number of data columns across all rows.
+  const numCols = cellInfo.reduce((max, row) => Math.max(max, row.length), 0);
+  for (let c = 0; c < numCols; c++) {
+    // Collect all ambiguous date cells in this column.
+    const ambigCells = [];
+    for (let r = 0; r < cellInfo.length; r++) {
+      const info = cellInfo[r][c];
+      if (info && info.mode === 'date' && info.ambiguous) {
+        ambigCells.push({ r, info });
+      }
+    }
+    if (ambigCells.length === 0) continue;
+
+    // Compute format hint from the ambiguous cells.
+    let hasN1gt12 = false; // n1 > 12 → rejects MDY interpretation (n1 must be day)
+    let hasN2gt12 = false; // n2 > 12 → rejects DMY interpretation (n2 must be day)
+    for (const { info } of ambigCells) {
+      if (info.ambiguous.n1 > 12) hasN1gt12 = true;
+      if (info.ambiguous.n2 > 12) hasN2gt12 = true;
+    }
+
+    let formatHint;
+    if (hasN1gt12 && !hasN2gt12) {
+      formatHint = 'DMY'; // n1 is day, n2 is month
+    } else if (hasN2gt12 && !hasN1gt12) {
+      formatHint = 'MDY'; // n1 is month, n2 is day
+    } else if (hasN1gt12 && hasN2gt12) {
+      formatHint = 'MIXED';
+    } else {
+      formatHint = 'AMBIGUOUS';
+    }
+
+    // Resolve or downgrade each ambiguous cell based on the hint.
+    for (const { r, info } of ambigCells) {
+      if (formatHint === 'MDY') {
+        cellInfo[r][c] = { mode: 'date', month: info.ambiguous.n1, day: info.ambiguous.n2, year: info.ambiguous.year };
+      } else if (formatHint === 'DMY') {
+        cellInfo[r][c] = { mode: 'date', month: info.ambiguous.n2, day: info.ambiguous.n1, year: info.ambiguous.year };
+      } else {
+        // AMBIGUOUS or MIXED — cannot resolve safely
+        cellInfo[r][c] = { mode: 'skip' };
+      }
+    }
+  }
+  // --- End column post-pass ---
+
   const allNums = [];
   for (const row of cellInfo) {
     for (const info of row) {
@@ -607,8 +661,9 @@ function roundTable(table, options) {
       let formattedValue;
 
       if (info.mode === 'date') {
-        formattedValue = roundDateText(originalValue, opts.dateGranularity);
-        if (formattedValue === null || formattedValue === originalValue) continue;
+        const prefilled = (info.month !== undefined) ? { month: info.month, day: info.day, year: info.year } : undefined;
+        formattedValue = roundDateText(originalValue, opts.dateGranularity, prefilled);
+        if (formattedValue === originalValue) continue;
       } else if (info.mode === 'time') {
         formattedValue = roundTimeText(originalValue, opts.timeGranularity);
         if (formattedValue === null || formattedValue === originalValue) continue;
@@ -752,29 +807,118 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
   return null;
 }
 
-function isYearValue(text) {
-  if (!/^\d{4}$/.test(text)) return false;
-  const n = parseInt(text, 10);
-  return n >= 1900 && n <= 2099;
+const MONTH_NAMES = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
+
+// Map lowercase month abbreviation/name prefix → 1-based month number
+const MONTH_NAME_MAP = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12
+};
+
+/**
+ * Resolve a matched month-name token (e.g. "June", "jun.", "Jul") to a 1-based month number.
+ * Returns null if not recognised.
+ */
+function resolveMonthName(token) {
+  const t = token.toLowerCase().replace(/[.\s]/g, '');
+  // Try exact key first, then 3-letter prefix
+  if (MONTH_NAME_MAP[t] !== undefined) return MONTH_NAME_MAP[t];
+  const prefix3 = t.slice(0, 4); // "sept" is 4 chars
+  if (MONTH_NAME_MAP[prefix3] !== undefined) return MONTH_NAME_MAP[prefix3];
+  const prefix3s = t.slice(0, 3);
+  if (MONTH_NAME_MAP[prefix3s] !== undefined) return MONTH_NAME_MAP[prefix3s];
+  return null;
 }
 
-const MONTH_NAMES = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
-const DATE_REGEXES = [
-  /^\d{4}-\d{2}-\d{2}$/,                              // 2024-03-14
-  /^\d{1,2}\/\d{1,2}\/\d{2,4}$/,                      // 3/14/2024
-  /^\d{1,2}-\d{1,2}-\d{2,4}$/,                        // 3-14-2024
-  new RegExp(`^${MONTH_NAMES}\\s+\\d{1,2},?\\s+\\d{4}$`, 'i'),  // March 14, 2024
-  new RegExp(`^\\d{1,2}\\s+${MONTH_NAMES}\\s+\\d{4}$`, 'i'),    // 14 March 2024
-  new RegExp(`^${MONTH_NAMES}\\s+\\d{4}$`, 'i'),               // March 2024
-  new RegExp(`^\\d{1,2}\\s+${MONTH_NAMES}$`, 'i')              // 14 March
-];
+/**
+ * Parse an unambiguous date-like string into {year, month, day}.
+ * Returns null for all-numeric N1/N2/Y or N1-N2-Y shapes (handled by parseAmbiguousNumericDate).
+ * Supported shapes:
+ *   ISO dash:      2020-07-21
+ *   ISO slash:     2020/07/21
+ *   Named-month:   June 21, 2020 / Jun 21, 2020 / 21 June 2020 / 2020 June 21 / Jun 2020
+ *   Bare year:     2020
+ */
+function parseDateLike(text) {
+  if (typeof text !== 'string') return null;
+  const t = text.trim();
+
+  // ISO dash: YYYY-MM-DD (must be 4-digit year first to avoid ambiguous N1-N2-Y)
+  const isoDash = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDash) {
+    return { year: parseInt(isoDash[1], 10), month: parseInt(isoDash[2], 10), day: parseInt(isoDash[3], 10) };
+  }
+
+  // ISO slash: YYYY/MM/DD
+  const isoSlash = t.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (isoSlash) {
+    return { year: parseInt(isoSlash[1], 10), month: parseInt(isoSlash[2], 10), day: parseInt(isoSlash[3], 10) };
+  }
+
+  // Named-month forms (case-insensitive)
+  const mnRe = new RegExp(`^(${MONTH_NAMES})\\s+(\\d{1,2}),?\\s+(\\d{4})$`, 'i');
+  const mnMatch = t.match(mnRe);
+  if (mnMatch) {
+    const month = resolveMonthName(mnMatch[1]);
+    if (month !== null) return { year: parseInt(mnMatch[3], 10), month, day: parseInt(mnMatch[2], 10) };
+  }
+
+  // Day Month Year: 21 June 2020
+  const dmyRe = new RegExp(`^(\\d{1,2})\\s+(${MONTH_NAMES})\\s+(\\d{4})$`, 'i');
+  const dmyMatch = t.match(dmyRe);
+  if (dmyMatch) {
+    const month = resolveMonthName(dmyMatch[2]);
+    if (month !== null) return { year: parseInt(dmyMatch[3], 10), month, day: parseInt(dmyMatch[1], 10) };
+  }
+
+  // Year Month Day: 2020 June 21
+  const ymdRe = new RegExp(`^(\\d{4})\\s+(${MONTH_NAMES})\\s+(\\d{1,2})$`, 'i');
+  const ymdMatch = t.match(ymdRe);
+  if (ymdMatch) {
+    const month = resolveMonthName(ymdMatch[2]);
+    if (month !== null) return { year: parseInt(ymdMatch[1], 10), month, day: parseInt(ymdMatch[3], 10) };
+  }
+
+  // Month Year: Jun 2020
+  const myRe = new RegExp(`^(${MONTH_NAMES})\\s+(\\d{4})$`, 'i');
+  const myMatch = t.match(myRe);
+  if (myMatch) {
+    const month = resolveMonthName(myMatch[1]);
+    if (month !== null) return { year: parseInt(myMatch[2], 10), month, day: 1 };
+  }
+
+  // Bare year: 2020 (1900–2099)
+  const bareYear = t.match(/^(\d{4})$/);
+  if (bareYear) {
+    const y = parseInt(bareYear[1], 10);
+    if (y >= 1900 && y <= 2099) return { year: y, month: 1, day: 1 };
+  }
+
+  return null;
+}
+
+/**
+ * Parse an all-numeric ambiguous date: N1/N2/Y or N1-N2-Y.
+ * Supports 4-digit and 2-digit years. 2-digit-year pivot: yy < 50 → 2000+yy, else 1900+yy.
+ * Returns {n1, n2, year} or null.
+ */
+function parseAmbiguousNumericDate(text) {
+  if (typeof text !== 'string') return null;
+  const t = text.trim();
+  // N1/N2/Y or N1-N2-Y (but not YYYY-MM-DD or YYYY/MM/DD which are unambiguous)
+  const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (!m) return null;
+  const n1 = parseInt(m[1], 10);
+  const n2 = parseInt(m[2], 10);
+  let year = parseInt(m[3], 10);
+  if (m[3].length === 2) {
+    year = year < 50 ? 2000 + year : 1900 + year;
+  }
+  return { n1, n2, year };
+}
 
 function isDateLike(text) {
-  if (isYearValue(text)) return true;
-  for (const re of DATE_REGEXES) {
-    if (re.test(text)) return true;
-  }
-  return false;
+  return parseDateLike(text) !== null || parseAmbiguousNumericDate(text) !== null;
 }
 
 function isTimeLike(text) {
@@ -782,18 +926,36 @@ function isTimeLike(text) {
   return /^\d{1,2}:\d{2}(:\d{2})?(\s*[ap]\.?m\.?)?$/i.test(text);
 }
 
-function roundDateText(text, granularity) {
-  if (typeof text !== 'string') return null;
-  if (granularity === 'year' || !granularity) return null; // no change at year granularity
-  const yearMatch = text.match(/\b(19\d{2}|20\d{2})\b/);
-  if (!yearMatch) return null;
-  const year = parseInt(yearMatch[1], 10);
-  let rounded;
-  if (granularity === 'decade') rounded = Math.floor(year / 10) * 10;
-  else if (granularity === 'century') rounded = Math.floor(year / 100) * 100;
-  else return null;
-  if (rounded === year) return null;
-  return text.substring(0, yearMatch.index) + String(rounded) + text.substring(yearMatch.index + yearMatch[1].length);
+/**
+ * Round a date cell to the requested granularity and return a year-only string.
+ *
+ * @param {string} text          - Original cell text.
+ * @param {string} granularity   - 'year' | 'decade' | 'century'.
+ * @param {{month: number, day: number, year: number}} [prefilled]
+ *   Pre-resolved date from the classification pass. If omitted, parseDateLike is called.
+ * @returns {string} Always returns a string (the rounded year as digits).
+ */
+function roundDateText(text, granularity, prefilled) {
+  const parsed = prefilled || parseDateLike(text);
+  if (!parsed) return text; // fallback: shouldn't happen for mode:'date' cells
+
+  const { year, month } = parsed;
+
+  // fractional = year + 0.5 if month >= 7, else year + 0
+  const fractional = year + (month >= 7 ? 0.5 : 0);
+
+  let roundedYear;
+  if (granularity === 'decade') {
+    roundedYear = Math.round(fractional / 10) * 10;
+  } else if (granularity === 'century') {
+    roundedYear = Math.round(fractional / 100) * 100;
+  } else {
+    // 'year' or default
+    roundedYear = Math.round(fractional);
+  }
+
+  const d = new Date(roundedYear, 0, 1);
+  return String(d.getFullYear());
 }
 
 function roundTimeText(text, granularity) {
