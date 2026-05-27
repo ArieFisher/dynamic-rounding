@@ -1,6 +1,5 @@
 # Sprint Plan: Round Dates to a Bare Year (strip month/day) in the Chrome Extension
 
-**Status:** DRAFT
 **Created:** 2026-05-27
 **Base branch:** main
 **Slug:** date-round-to-year-display
