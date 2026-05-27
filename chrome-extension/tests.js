@@ -325,13 +325,9 @@ eq('restoreFormatting: parens-negative preserved',
 
 // --- Sprint A: exclusion checkboxes ---
 
-eq('isYearValue: 2018 -> true', isYearValue('2018'), true);
-eq('isYearValue: 1899 -> false', isYearValue('1899'), false);
-eq('isYearValue: 2100 -> false', isYearValue('2100'), false);
-eq('isYearValue: 12 -> false', isYearValue('12'), false);
-eq('isYearValue: 20181 -> false', isYearValue('20181'), false);
-
 eq('isDateLike: bare 4-digit year', isDateLike('2018'), true);
+eq('isDateLike: bare year out of range', isDateLike('1899'), false);
+eq('isDateLike: bare year out of range', isDateLike('2100'), false);
 eq('isDateLike: ISO date', isDateLike('2024-03-14'), true);
 eq('isDateLike: US slash date', isDateLike('3/14/2024'), true);
 eq('isDateLike: dash date', isDateLike('3-14-2024'), true);
@@ -2650,13 +2646,34 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   ];
   // Note: '06-21-2020' is an ambiguous numeric date (handled by column auto-detect,
   // not directly by roundDateText which only handles unambiguous shapes via parseDateLike).
-  // We test it separately via roundTable in AC5.
+  // It is tested end-to-end via roundTable below — a single-row column with n2=21>12
+  // forces MDY → June 21 → identical rounding to the other shapes.
 
   for (const shape of shapes) {
     eq(`shape-equiv: "${shape}" year -> "2020"`,   roundDateText(shape, 'year'),    '2020');
     eq(`shape-equiv: "${shape}" decade -> "2020"`, roundDateText(shape, 'decade'),  '2020');
     eq(`shape-equiv: "${shape}" century -> "2000"`,roundDateText(shape, 'century'), '2000');
   }
+
+  // End-to-end check for the ambiguous-numeric form: '06-21-2020' via roundTable.
+  withCreateTreeWalker(function() {
+    function runDateCell(text, gran) {
+      const tbl = makeMockTable([[{ tag: 'td', text }]]);
+      tbl.rows[0].cells[0].querySelectorAll = () => [];
+      roundTable(tbl, {
+        enabled: true, excludeDates: false, excludeTimes: true,
+        excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+        includeWords: false, excludeFirstRow: false,
+        offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+        rangeExpr: '',
+        dateGranularity: gran,
+      });
+      return tbl.rows[0].cells[0].innerText;
+    }
+    eq('shape-equiv (via roundTable): "06-21-2020" year -> "2020"',    runDateCell('06-21-2020', 'year'),    '2020');
+    eq('shape-equiv (via roundTable): "06-21-2020" decade -> "2020"',  runDateCell('06-21-2020', 'decade'),  '2020');
+    eq('shape-equiv (via roundTable): "06-21-2020" century -> "2000"', runDateCell('06-21-2020', 'century'), '2000');
+  });
 })();
 
 // ---------------------------------------------------------------------------
@@ -2741,16 +2758,18 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       return tbl.rows.map(row => row.cells.map(c => c.innerText));
     }
 
-    // --- MDY column ---
-    // Column contains '04/13/2022' (n2=13 forces MDY) and '03-04-2022'.
-    // Under MDY, '03-04-2022' is March 4 → year 2022 → roundDateText returns '2022'.
-    // Both cells should become '2022' at year granularity.
+    // --- MDY column (discriminating) ---
+    // '04/13/2022' forces MDY (n2=13 > 12). The sibling '12-03-2022' is discriminating:
+    //   under MDY → Dec 3, fractional=2022.5, year rounds to 2023.
+    //   under DMY → Mar 12, fractional=2022.0, year rounds to 2022.
+    // If the column resolver picks MDY (as it should), the sibling rounds to 2023.
     const mdyResult = runDateTable([
       [{ tag: 'td', text: '04/13/2022' }],
-      [{ tag: 'td', text: '03-04-2022' }],
+      [{ tag: 'td', text: '12-03-2022' }],
     ], 'year');
     eq('MDY column: 04/13/2022 rounds to 2022', mdyResult[0][0], '2022');
-    eq('MDY column: 03-04-2022 resolved as MDY (March 4 → year 2022)', mdyResult[1][0], '2022');
+    eq('MDY column: 12-03-2022 resolved as MDY (Dec 3 → year 2023, not DMY Mar 12 → 2022)',
+      mdyResult[1][0], '2023');
 
     // --- DMY column ---
     // '13/04/2022' forces DMY (n1=13 > 12). '12-08-2022' under DMY = Aug 12 = 2022.
