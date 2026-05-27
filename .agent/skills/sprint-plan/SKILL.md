@@ -1,12 +1,10 @@
 ---
 name: sprint-plan
-version: 1
-description: Plan multi-sprint feature work by surveying the current repo, applying architectural design principles to a feature list, breaking the work into sprints that maximize independence, and producing a markdown plan committed to a `plan/<slug>` branch. The plan markdown is the canonical artifact; the `sprint-stack` execution skill reads it directly when invoked with the slug. Use this skill whenever the user wants to break a feature backlog into sequenced sprints, design before implementing, or prepare input for `sprint-stack`. Triggers on phrases like "help me plan how to build X", "what's the right order to ship these features", "design this before we code it", "plan some work".
+version: 2
+description: Plan multi-sprint feature work by surveying the current repo, applying architectural design principles to a feature list, breaking the work into sprints that maximize independence, and producing a markdown plan committed to a `plan/<slug>` branch with a PR opened to merge it into main. The plan is a static artifact — once merged it is never edited. The `sprint-stack` execution skill reads the plan from main. Use this skill whenever the user wants to break a feature backlog into sequenced sprints, design before implementing, or prepare input for `sprint-stack`. Triggers on phrases like "help me plan how to build X", "what's the right order to ship these features", "design this before we code it", "plan some work".
 ---
 
-You are a senior architect helping the user plan a stack of sprints. The output is a markdown plan the user co-edits and then runs through `sprint-stack` by slug — no separate translation step.
-
-The plan lives inside the repo on a `plan/<slug>` branch. It is never committed to base by this skill; the user may merge it via PR at their discretion, or leave it as a long-lived planning branch. The branch is the message-passing location between the two skills.
+You are a senior architect helping the user plan a stack of sprints. The output is a markdown plan the user reviews and merges to main — after which it is read-only forever. No status field tracks execution; that belongs in per-sprint logs, not the plan.
 
 ## Inputs
 
@@ -28,7 +26,7 @@ Don't design in a vacuum.
 - Shallow directory tree
 - Read `README.md`, `CONTRIBUTING.md`, `docs/architecture.md` if present
 - Identify languages, frameworks
-- Note existing `CLAUDE.md`, `.claude/` content
+- Note existing `CLAUDE.md`, `.agent/` content
 - Note visible design patterns (layered, hexagonal, service-oriented, etc.)
 
 Summarize in a Repo Survey section.
@@ -41,7 +39,7 @@ The execution skill needs these to do mechanical work correctly. Get them right 
 - **Test command**
 - **Lint/format commands**
 - **Build command** (if applicable)
-- **Branch naming** — default `feature/<label>`, override if repo uses something else
+- **Branch naming** — default `feature/<label>`. Never use `claude/` as a prefix.
 - **Commit convention** — Conventional Commits? Plain? Prefix?
 - **PR template path** — if one exists
 - **Version-bump workflow** — sprint-stack does not bump versions on feature branches. Versioning is expected to happen at merge time via a GitHub Action triggered by PR merges to base. Probe for one:
@@ -95,7 +93,7 @@ Output a "Sprint List & Dependency Graph" section with two parts:
 
 1. An ordered list with label, one-line goal, dependencies (most should say "none"), and brief decoupling rationale where applicable.
 
-2. A Mermaid `flowchart TD` diagram visualizing the DAG. GitHub renders Mermaid natively in markdown. Each sprint is a node labeled with its `<label>` and one-line goal. Sprints with no `depends_on` connect from a single `base` node. Edges go from each `depends_on` parent to the sprint. The diagram should make it visually obvious which sprints are independent (connected directly to `base`) and which are downstream of others (a failure in those upstream sprints will defer them).
+2. A Mermaid `flowchart TD` diagram visualizing the DAG. GitHub renders Mermaid natively in markdown. Each sprint is a node labeled with its `<label>` and one-line goal. Sprints with no `depends_on` connect from a single `base` node. Edges go from each `depends_on` parent to the sprint. The diagram should make it visually obvious which sprints are independent (connected directly to `base`) and which are downstream of others.
 
 Example structure:
 
@@ -113,7 +111,7 @@ flowchart TD
     s2 --> s4
 ```
 
-This same DAG governs both development ordering (sprint-stack executes topologically) and merge ordering (each sprint's PR is based on its parent's branch, so parents must merge first). They are the same concern in this skill's model.
+This DAG governs development ordering (sprint-stack executes topologically) and merge ordering (each sprint's PR is based on its parent's branch, so parents must merge first).
 
 ## Phase 5: Define each sprint
 
@@ -133,18 +131,20 @@ Per sprint, in the markdown structure shown below. The execution skill parses th
 - **Dev notes:** <pitfalls, patterns to follow, libraries to use>
 ```
 
-Sprint commits do not touch version files. Versioning is handled at merge time by the GitHub Action probed for in Phase 2; per-sprint version bumps are obsolete and not part of this structure.
+Sprint commits do not touch version files. Versioning is handled at merge time by the GitHub Action probed for in Phase 2.
 
-## Phase 6: Document and commit
+## Phase 6: Document, commit, and open PR
 
-Write the plan to `docs/sprint-plans/<slug>.md` using the structure below. Create branch `plan/<slug>` off the current base, commit with `plan: draft sprint plan for <slug>`, push.
+Write the plan to `docs/sprint-plans/<slug>.md` using the structure below. Create branch `plan/<slug>` off `main`, commit with `plan: <slug>`, push, and open a PR to merge `plan/<slug>` into `main`.
+
+The plan has two statuses: `DRAFT` (pre-merge) and the merged state (read-only in main forever). Do not add a "COMPLETED" or execution-tracking status — that belongs in per-sprint logs, not here.
 
 ```markdown
 # Sprint Plan: <Title>
 
-**Status:** DRAFT — awaiting human review
+**Status:** DRAFT
 **Created:** <date>
-**Base branch:** <branch>
+**Base branch:** main
 **Slug:** <slug>
 
 ## 1. Repo Survey
@@ -158,7 +158,7 @@ Write the plan to `docs/sprint-plans/<slug>.md` using the structure below. Creat
 - **Lint:** `<command>`
 - **Format:** `<command>`
 - **Build:** `<command, if applicable>`
-- **Branch naming:** `feature/<label>` (or repo's convention)
+- **Branch naming:** `feature/<label>` (never `claude/`)
 - **Commit convention:** <e.g. Conventional Commits>
 - **PR template:** `<path, if present>`
 - **Version-bump workflow:** <`detected at .github/workflows/<name>.yml` | **not detected — see Open Questions**>
@@ -174,9 +174,9 @@ Write the plan to `docs/sprint-plans/<slug>.md` using the structure below. Creat
 ### Dependency Graph
 ```mermaid
 flowchart TD
-    base[base branch]
-    <one node per sprint, labeled with `<label>` and goal>
-    <edges from `base` to sprints with no depends_on>
+    base[main]
+    <one node per sprint, labeled with label and goal>
+    <edges from base to sprints with no depends_on>
     <edges from each depends_on parent to its child>
 ```
 
@@ -193,14 +193,10 @@ flowchart TD
 No GitHub Action was detected that bumps version files on PR merge. Sprint-stack does not bump versions on feature branches, on the principle that:
 
 - Sprints can merge in any order (the DAG allows independent sprints)
-- Version numbers on the base branch must be monotonically increasing (Chrome extension manifests strictly require this; other tooling generally expects it)
+- Version numbers on the base branch must be monotonically increasing
 - Therefore, the version cannot be assigned in advance on the feature branch — it must be assigned at merge time, with knowledge of base's current state.
 
-**Recommended workflow:** add `.github/workflows/bump-version.yml` that triggers on `pull_request: types: [closed]`, filters with `if: github.event.pull_request.merged == true`, and bumps the patch (or last-component, for Chrome's N.N.N.N format) of each file under "Version files" above. This runs under GitHub Actions' own ephemeral token, so the agent's PAT never needs merge rights.
-
-For the formal release (going from `1.6.x` to `1.7.0` at the end of a sprint stack), open a separate small PR manually that bumps the version and tags the release. This stays a deliberate human action.
-
-Without this workflow, every merged sprint PR will leave base's version file unchanged — main will be deployable in the sense of "the code works" but will not advertise a new version, which may confuse downstream installers (Chrome's update mechanism, package managers, etc.).
+**Recommended workflow:** add `.github/workflows/bump-version.yml` that triggers on `pull_request: types: [closed]`, filters with `if: github.event.pull_request.merged == true`, and bumps the patch of each version file above.
 
 ## 7. Out of Scope (Separate Sprint-Stack)
 <features recommended for a different sprint-stack run>
@@ -211,13 +207,11 @@ Without this workflow, every merged sprint PR will leave base's version file unc
 
 Tell the user:
 
-> Draft plan at `docs/sprint-plans/<slug>.md` on branch `plan/<slug>`.
+> Draft plan at `docs/sprint-plans/<slug>.md` — PR opened to merge `plan/<slug>` into `main`.
 >
 > Next:
-> 1. Review and edit the markdown. Commit your edits to `plan/<slug>` (locally or via GitHub).
-> 2. When satisfied, change `**Status:**` to `APPROVED` and add an entry to the Decisions Log.
-> 3. Run `/sprint-stack <slug>` to execute. The execution skill reads the plan directly from this branch.
->
-> The planning branch is yours to merge into base whenever you want, via your normal review process — the execution skill doesn't require it.
+> 1. Review the plan in the PR. Edit on the `plan/<slug>` branch if needed.
+> 2. Merge the PR when satisfied. The plan is then permanent in `main` and `plan/<slug>` can be deleted.
+> 3. Run `/sprint-stack <slug>` to execute. The skill reads the plan from `main`.
 
-Stop. There is no finalize step. The markdown is the handoff.
+Stop. There is no finalize step. The merged plan is the handoff.
