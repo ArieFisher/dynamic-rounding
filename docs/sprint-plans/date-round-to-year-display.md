@@ -41,19 +41,35 @@ Sidebar (`chrome-extension/sidebar.html:231-238`, `sidebar.js`) exposes the gran
 
 Today, `roundDateText` does a substring splice: it finds the 4-digit year in the original cell, replaces it, and leaves the month/day characters in place. That is the bug shown in the issue screenshots — "Jun 21, 2025" becomes "Jun 21, 2020" instead of just `2020`.
 
-**Decision:** rework `roundDateText` into a two-stage function:
+**Decision:** rework `roundDateText` into a three-stage function:
 
-1. **Parse** the cell text into a `{year, month, day}` triple. Reuse the existing `DATE_REGEXES` shapes but in capturing form (one parser per shape, returning a normalized triple). `month` and `day` default to `1` when absent (e.g. "Mar 2024", bare year). Month names are mapped via the same `MONTH_NAMES` token list used today.
-2. **Round** the triple to a year:
-   - `year` granularity → round to the nearest whole year using a month/day-of-year test (`month >= 7` rounds up; `Jun 21` rounds down, `Dec 21` rounds up — matches the issue's stated examples).
-   - `decade` granularity → `Math.floor(year / 10) * 10`.
-   - `century` granularity → `Math.floor(year / 100) * 100`.
-3. **Materialize** the result as Jan 1 of the rounded year internally (a `Date(year, 0, 1)`), per the user's invariant that the internal representation is `<year>/01/01` in all three cases.
-4. **Return** only the 4-digit year string for display.
+1. **Parse** the cell text into a `{year, month, day}` triple via a `parseDateLike` helper, which also replaces the regex-only `isDateLike` (now `isDateLike(t)` becomes `parseDateLike(t) !== null`). `month` and `day` default to `1` when absent (e.g. "Mar 2024", bare year). Month names are mapped via the existing `MONTH_NAMES` token list. See §3.4 for the shapes the parser must accept.
+2. **Compute a fractional year** = `year + (month >= 7 ? 0.5 : 0)`. Jul 1 is the round-up boundary per user direction; Jun 30 rounds down, Jul 1 rounds up.
+3. **Round to the appropriate base** using `Math.round` (half-up nearest), not floor:
+   - `year` → `Math.round(fractional)`
+   - `decade` → `Math.round(fractional / 10) * 10`
+   - `century` → `Math.round(fractional / 100) * 100`
+4. **Materialize** the result as Jan 1 of the rounded year internally (a `new Date(rounded, 0, 1)`), per the user's invariant that the internal representation is `<year>/01/01` in all three cases.
+5. **Return** only the 4-digit year string for display.
 
 Returning `null` (current sentinel for "no change") still applies if parsing fails, so non-date strings flow through untouched.
 
 *Principle: simple components — one parser, one rounder, one formatter; no string-splicing.*
+
+**Worked examples** (Jul 1 boundary, nearest rounding to base 1/10/100):
+
+| input | fractional | year | decade | century |
+| :-- | :-- | :-- | :-- | :-- |
+| Jun 21, 2020 | 2020.0 | 2020 | 2020 | 2000 |
+| Dec 21, 2020 | 2020.5 | 2021 | 2020 | 2000 |
+| Jun 21, 2025 | 2025.0 | 2025 | 2030 | 2000 |
+| Apr 11, 2026 | 2026.0 | 2026 | 2030 | 2000 |
+| May 9, 2026  | 2026.0 | 2026 | 2030 | 2000 |
+| Jun 30, 2024 | 2024.0 | 2024 | 2020 | 2000 |
+| Jul 1, 2024  | 2024.5 | 2025 | 2020 | 2000 |
+| 1975 (bare)  | 1975.0 | 1975 | 1980 | 2000 |
+
+Note: with nearest-rounding instead of floor, the screenshots in the issue (which showed Jun 21, 2025 → 2020 at decade granularity) will *not* be reproduced — that was the buggy floor behavior. The new behavior sends Jun 21, 2025 to 2030 at decade granularity.
 
 ### 3.2 Internal-date object is local to the function
 
@@ -68,13 +84,34 @@ The user asked that the "internal representation" be Jan 1 of the rounded year. 
 The dispatch site (`content.js:609-611`) writes the returned string directly into `cell.textContent`. Returning a bare 4-digit year therefore satisfies the display requirement without any change to the dispatch code.
 
 Edge cases:
-- Bare-year input (e.g. `"2018"`) with `decade` granularity already produces a 4-digit string; the new behavior keeps it 4-digit (`"2010"`).
+- Bare-year input (e.g. `"2018"`) — `parseDateLike` returns `{year: 2018, month: 1, day: 1}`; the result is whatever the granularity rounds it to.
 - Inputs without an extractable year (e.g. `"14 March"`) return `null`, unchanged behavior.
-- Two-digit-year slash/dash dates (e.g. `"3/14/24"`): current `DATE_REGEXES` accepts them, but `roundDateText`'s year matcher only handles 19xx/20xx. We preserve current behavior (return `null`) and flag this as an open question rather than expanding scope.
 
-### 3.4 One sprint, not two
+### 3.4 Date shapes the parser must accept
 
-Parsing, rounding, and display formatting are one tightly-coupled refactor of a ~10-line function plus its tests. Splitting parse-vs-format into separate sprints would create a dependency edge with no independent value at either end. Keep it as a single sprint.
+Per user direction, the same logical date (e.g. "Jun 21, 2020") must round identically regardless of which textual form it appears in. The parser must therefore accept at least these shapes (extending today's `DATE_REGEXES`):
+
+| shape | example | notes |
+| :-- | :-- | :-- |
+| ISO dash | `2020-07-21` | already supported |
+| ISO slash | `2020/07/21` | **new** — YYYY/MM/DD |
+| US slash | `7/21/2020`, `3/14/24` | 4-digit already supported; **2-digit year is new** |
+| US dash | `7-21-2020`, `3-14-24` | 4-digit already supported; **2-digit year is new** |
+| Month-name, comma-year | `June 21, 2020`, `Jun 21, 2020` | already supported |
+| Day-month-name-year | `21 June 2020` | already supported |
+| Year month-name day | `2020 June 21` | **new** |
+| Month-name year | `Jun 2020` | already supported; day defaults to 1 |
+| Bare year | `2020` | already supported via `isYearValue` |
+
+**Two-digit-year pivot:** map `00–49` → `20xx`, `50–99` → `19xx` (a 50-year pivot is the conventional Y2K compromise). Flag this as a confirmable assumption in Open Questions.
+
+The parser is implemented as an ordered list of `(regex, extractor)` pairs. The first match wins. `isDateLike` is reimplemented as a thin wrapper (`parseDateLike(t) !== null`), preserving its existing call sites at `content.js:550` and `content.js:773`.
+
+*Principle: minimize design-time coupling — replacing two parallel sources of truth (`DATE_REGEXES` for detection, the year-matcher inside `roundDateText` for extraction) with one parser used by both call sites.*
+
+### 3.5 One sprint, not two
+
+Parsing, rounding, and display formatting are one tightly-coupled refactor of a small region of `content.js` plus its tests. Splitting parse-vs-format into separate sprints would create a dependency edge with no independent value at either end. Keep it as a single sprint.
 
 *Principle: simple components / fast deployment pipeline — small atomic change, single PR, single review.*
 
@@ -99,35 +136,44 @@ flowchart TD
 
 - **Goal:** Round date cells to a whole year and display only the year, matching the user-described semantics for year / decade / century granularities.
 - **Scope:**
-  - `chrome-extension/content.js` — rewrite `roundDateText` (and add a small `parseDateLike` helper if it keeps the rewrite readable). Do not change the dispatch site at `content.js:609-611`; do not change `isDateLike` / `isYearValue` / `DATE_REGEXES`.
-  - `chrome-extension/tests.js` — add cases for each granularity covering the user's examples (`Jun 21, 2020`, `Dec 21, 2020`), each `DATE_REGEXES` shape, and the bare-year case. Update any existing `roundDateText` assertions that previously expected the year-substituted-in-place format.
+  - `chrome-extension/content.js` —
+    - Add `parseDateLike(text) → {year, month, day} | null` covering every shape listed in §3.4.
+    - Reimplement `isDateLike` as `parseDateLike(text) !== null`. The `DATE_REGEXES` array and the standalone `isYearValue` may be deleted, inlined into the parser, or retained as helpers — whichever leaves the smallest diff while keeping the call sites at `content.js:550` and `content.js:773` working.
+    - Rewrite `roundDateText` per the algorithm in §3.1 (parse → fractional year → `Math.round` to base 1/10/100 → `new Date(rounded, 0, 1)` → return 4-digit year string). Return `null` when `parseDateLike` returns `null` or when the result equals the input (so unchanged cells skip the DOM write).
+    - Do not change the dispatch site at `content.js:609-611`.
+  - `chrome-extension/tests.js` —
+    - Add a parameterized table of `(input, granularity, expected)` rows covering the §3.1 worked-examples table, plus at least one input per shape in §3.4 (including two-digit-year and `2020 June 21`).
+    - Update existing `roundDateText` assertions that expected year-substituted-in-place output.
+    - Extend `isDateLike` tests to cover the newly accepted shapes.
 - **Out of scope:**
   - JS / Python implementations (no date logic there).
   - Changing the granularity selector UI or its defaults.
-  - Supporting new date shapes (e.g. two-digit-year `3/14/24`, quarter-style `Q1 2024`).
+  - Quarter-style (`Q1 2024`), fiscal-year, week-number, or ordinal (`21st June 2020`) shapes.
   - Persisting a date object beyond `roundDateText`'s local scope.
   - Any bump of `chrome-extension/manifest.json` (the merge-time workflow handles it).
 - **Acceptance criteria:**
-  - At `year` granularity, `Jun 21, 2020` → `2020`; `Dec 21, 2020` → `2021`.
-  - At `decade` granularity, `Jun 21, 2020` → `2020`; `Dec 21, 2020` → `2020`; `Jun 21, 2025` → `2020`; `Apr 11, 2026` → `2020`; `May 9, 2026` → `2020`.
-  - At `century` granularity, `Jun 21, 2020` → `2000`; `Dec 21, 2020` → `2000`; any `19xx` → `1900`.
-  - Bare year `2018` at `decade` → `2010`; at `century` → `2000`; at `year` → `2018` (no-op, may return `null`).
+  - All rows in the §3.1 worked-examples table produce the listed result.
+  - The same logical date in different shapes produces the same output, e.g. all of `Jun 21, 2020`, `2020/06/21`, `2020-06-21`, `2020 June 21`, `06-21-2020`, `21 June 2020` → `2020` at year and decade granularities, `2000` at century.
+  - Two-digit-year `3/14/24` parses to `2024-03-14` and rounds accordingly.
   - Non-date strings (`"hello"`, `"14 March"` without year) return `null` and remain unchanged in the cell.
+  - When the rounded year equals the input year (e.g. `Jun 21, 2020` at `year` granularity), `roundDateText` may either return `"2020"` or `null` — implementer's choice. Document the choice in tests.
   - `node chrome-extension/tests.js` passes; `node js/tests.js` passes.
 - **Depends on:** none
-- **Complexity:** S
+- **Complexity:** M
 - **Dev notes:**
   - Internally construct `new Date(roundedYear, 0, 1)` to make the "Jan 1 of rounded year" semantic explicit, then return `String(d.getFullYear())`. Do not use `toLocaleDateString` (locale-variable) or `toISOString` (timezone-shifted).
-  - Reuse the `MONTH_NAMES` token list when building the parser; lowercase the matched month and look it up in a 12-entry map (`jan`→1, `feb`→2, `sep`/`sept`→9, etc.).
-  - For the year-granularity "round up" rule, use `month >= 7` as the boundary so `Jun 21` rounds down and `Dec 21` rounds up — both stated by the user. If the user clarifies a finer rule (see Open Questions), adjust before merge.
+  - Reuse the `MONTH_NAMES` token list; lowercase the matched month and look it up in a 12-entry map (`jan`→1, `feb`→2, `sep`/`sept`→9, etc.).
+  - For two-digit years, normalize with the 50-year pivot: `yy < 50 ? 2000 + yy : 1900 + yy`. Constant lives next to the parser.
+  - When the parser encounters an all-numeric `M/D/YY` (or `M-D-YY`) shape, parse as US order (month-first); this matches existing `^\d{1,2}/\d{1,2}/\d{2,4}$` behavior. Do *not* attempt EU `D/M/Y` disambiguation.
+  - `Math.round` in JS rounds half-away-from-zero for positives, which is what we want (e.g. 2025.0 → 2030 at decade is *not* a tie, but Dec 31 of year 2024 → fractional 2024.5 → year 2025; both sides consistent).
   - Keep `roundDateText`'s `null` return as the "no change" sentinel; the dispatch site already treats `null` as "leave the cell alone".
-  - When rewriting tests, prefer parameterized rows (input, granularity, expected) over many one-off `eq` calls to keep diff readable.
+  - When rewriting tests, prefer parameterized rows (input, granularity, expected) over many one-off `eq` calls to keep the diff readable.
 
 ## 6. Open Questions
 
-1. **Year-granularity boundary** — the user gave only Jun 21 (down) and Dec 21 (up). Plan uses `month >= 7` as the round-up boundary (so Jul 1 rounds up, Jun 30 rounds down). Acceptable, or do you want day-of-year ≥ 183, or some other rule?
-2. **Decade / century rule** — plan uses `floor` (matches the existing code and all the screenshots' implied behavior). Confirm you don't want "nearest decade" (which would send `2026` → `2030`, not `2020`).
-3. **Two-digit-year dates** (`3/14/24`) — current `roundDateText` ignores them (year matcher is 19xx/20xx). Plan preserves that. Worth a follow-up sprint, or out of scope forever?
+1. **Two-digit-year pivot** — plan uses a 50-year pivot (`00–49` → 2000s, `50–99` → 1900s). If you'd rather have a different cutoff (e.g. always 2000s, or pivot at 30), say so before the sprint runs.
+2. **All-numeric `M/D/Y` order** — plan parses month-first (US). EU `D/M/Y` shapes like `21/06/2020` will parse as "month 21, day 6" → invalid → `null`. Acceptable, or do you want auto-detect (`day > 12` ⇒ DMY)?
+3. **No-op return** — when granularity is `year` and the input is already a Jan-1 date (or a bare year that rounds to itself), plan permits `roundDateText` to return either the year string or `null`. Both leave the DOM unchanged. Confirm the implementer's-choice latitude is OK.
 
 ## 7. Out of Scope (Separate Sprint-Stack)
 
