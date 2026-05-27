@@ -148,9 +148,9 @@ eq('format: small int no commas',
   formatExtractedNumber(300, '286'),
   '300');
 
-eq('format: decimal padding preserved when |x|<10',
+eq('format: trailing zeros stripped when |x|<10',
   formatExtractedNumber(1.5, '1.234'),
-  '1.500');
+  '1.5');
 
 eq('format: |x|>=10 drops decimals even if original had them',
   formatExtractedNumber(1500, '1.234'),
@@ -1476,22 +1476,20 @@ eq('decimalCount: NaN -> 0', decimalCount(NaN), 0);
 
 // --- Sprint decimal-precision-display: formatExtractedNumber with floorDecimals ---
 
-// floorDecimals=1, |rounded|<10: minimumFractionDigits = max(0, 1) = 1
-eq('formatExtractedNumber: floorDecimals=1 on whole number -> 1 decimal',
-  formatExtractedNumber(1, '1', 1), '1.0');
+// trailing zeros always stripped regardless of floorDecimals or original decimal count
+eq('formatExtractedNumber: trailing zeros stripped on whole number (floorDecimals=1)',
+  formatExtractedNumber(1, '1', 1), '1');
 
-// original has 2 decimals, floorDecimals=1: max(2,1)=2 wins
-eq('formatExtractedNumber: floorDecimals=1, original 2-decimal string -> keeps 2 decimals',
-  formatExtractedNumber(1.5, '1.40', 1), '1.50');
+eq('formatExtractedNumber: trailing zeros stripped on one-decimal result (floorDecimals=1)',
+  formatExtractedNumber(1.5, '1.40', 1), '1.5');
 
-// original has 2 decimals, floorDecimals=2: max(2,2)=2
-eq('formatExtractedNumber: floorDecimals=2, original 2-decimal string -> 2 decimals',
+// original has 2 decimals, floorDecimals=2: result has 2 meaningful decimals, no stripping needed
+eq('formatExtractedNumber: two meaningful decimals preserved (floorDecimals=2)',
   formatExtractedNumber(1.75, '1.72', 2), '1.75');
 
-// floorDecimals=0, original has 2 decimals: max(2,0)=2 -> preserves original decimal count
-// (offset contributes no floor; original string drives the padding)
-eq('formatExtractedNumber: floorDecimals=0, original 2-decimal string -> preserves 2 decimals',
-  formatExtractedNumber(1, '1.00', 0), '1.00');
+// trailing zeros stripped even when original had 2 decimals and result is whole
+eq('formatExtractedNumber: trailing zeros stripped on whole number (floorDecimals=0)',
+  formatExtractedNumber(1, '1.00', 0), '1');
 
 // |rounded| >= 10 short-circuit: decimals forced to 0, floorDecimals ignored
 eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
