@@ -1476,22 +1476,20 @@ eq('decimalCount: NaN -> 0', decimalCount(NaN), 0);
 
 // --- Sprint decimal-precision-display: formatExtractedNumber with floorDecimals ---
 
-// floorDecimals=1, |rounded|<10: minimumFractionDigits = max(0, 1) = 1
-eq('formatExtractedNumber: floorDecimals=1 on whole number -> 1 decimal',
-  formatExtractedNumber(1, '1', 1), '1.0');
+// Whole-number short-circuit: trim trailing zeros regardless of floorDecimals
+eq('formatExtractedNumber: whole number with floorDecimals=1 -> trimmed',
+  formatExtractedNumber(1, '1', 1), '1');
 
-// original has 2 decimals, floorDecimals=1: max(2,1)=2 wins
+// Fractional results still respect floorDecimals
 eq('formatExtractedNumber: floorDecimals=1, original 2-decimal string -> keeps 2 decimals',
   formatExtractedNumber(1.5, '1.40', 1), '1.50');
 
-// original has 2 decimals, floorDecimals=2: max(2,2)=2
 eq('formatExtractedNumber: floorDecimals=2, original 2-decimal string -> 2 decimals',
   formatExtractedNumber(1.75, '1.72', 2), '1.75');
 
-// floorDecimals=0, original has 2 decimals: max(2,0)=2 -> preserves original decimal count
-// (offset contributes no floor; original string drives the padding)
-eq('formatExtractedNumber: floorDecimals=0, original 2-decimal string -> preserves 2 decimals',
-  formatExtractedNumber(1, '1.00', 0), '1.00');
+// Whole-number short-circuit: original padding is also trimmed
+eq('formatExtractedNumber: whole number with padded original -> trimmed',
+  formatExtractedNumber(1, '1.00', 0), '1');
 
 // |rounded| >= 10 short-circuit: decimals forced to 0, floorDecimals ignored
 eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
@@ -2558,6 +2556,38 @@ function makeIsDataTable(rowsSpec) {
   eq('isDataTable: 2-row 1-column table with numeric cells -> false (< 2 columns)',
     isDataTable(table), false);
 })();
+
+// --- Sprint trim-trailing-zeros (chrome-extension): whole-number short-circuit ---
+
+// restoreFormatting drops trailing zeros for whole-number results under 10
+eq('restoreFormatting: whole number 1 from "1.04" -> "1"',
+  restoreFormatting(1, '1.04'), '1');
+eq('restoreFormatting: whole number 2 from "1.5" -> "2"',
+  restoreFormatting(2, '1.5'), '2');
+eq('restoreFormatting: 0 from "0.04" -> "0"',
+  restoreFormatting(0, '0.04'), '0');
+eq('restoreFormatting: negative whole number -5 from "-5.2" -> "-5"',
+  restoreFormatting(-5, '-5.2'), '-5');
+
+// Fractional results in the <10 band still keep their decimals
+eq('restoreFormatting: 1.5 from "1.4" -> "1.5"',
+  restoreFormatting(1.5, '1.4'), '1.5');
+eq('restoreFormatting: 1.25 from "1.234" -> "1.250"',
+  restoreFormatting(1.25, '1.234'), '1.250');
+
+// Trim plays nicely with format affixes
+eq('restoreFormatting: whole number with percent -> "1%"',
+  restoreFormatting(1, '1.04%'), '1%');
+eq('restoreFormatting: whole number with currency -> "$2"',
+  restoreFormatting(2, '$1.99'), '$2');
+eq('restoreFormatting: whole negative in parens -> "(3)"',
+  restoreFormatting(-3, '(2.85)'), '(3)');
+
+// formatExtractedNumber trims trailing zeros for whole-number rounded results
+eq('formatExtractedNumber: whole number 1 from "1.04" -> "1"',
+  formatExtractedNumber(1, '1.04'), '1');
+eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
+  formatExtractedNumber(1, '1.04', 2), '1');
 
 // --- Report ---
 console.log(`Passed: ${passed}`);
