@@ -1094,17 +1094,9 @@ function decimalCount(n) {
  */
 function formatExtractedNumber(rounded, originalNumStr, floorDecimals = 0) {
   const hasCommas = originalNumStr.includes(',');
-  const decMatch = originalNumStr.match(/\.(\d+)/);
-  let decimals = decMatch ? decMatch[1].length : 0;
-  if (Math.abs(rounded) >= 10 || rounded % 1 === 0) {
-    decimals = 0;
-  } else {
-    // Apply the offset-derived floor only in the 0 ≤ |x| < 10 band.
-    decimals = Math.max(decimals, floorDecimals);
-  }
   return rounded.toLocaleString('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: Math.max(decimals, 10),
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 10,
     useGrouping: hasCommas
   });
 }
@@ -1264,24 +1256,9 @@ function restoreFormatting(roundedValue, originalString, floorDecimals = 0) {
   let result;
   const originalTrimmed = originalString.trim();
 
-  // Check if original had decimals (ignoring commas)
-  const match = originalTrimmed.match(/\.(\d+)[^\d]*$/);
-  let decimals = 0;
-  if (match) {
-    decimals = match[1].length;
-  }
-
-  if (Math.abs(roundedValue) >= 10 || roundedValue % 1 === 0) {
-    decimals = 0;
-  } else {
-    // Apply the offset-derived floor only in the 0 ≤ |x| < 10 band.
-    decimals = Math.max(decimals, floorDecimals);
-  }
-
-  // Always use thousands separators (commas) and match original decimal padding
   result = roundedValue.toLocaleString('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: Math.max(decimals, 10)
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 10
   });
 
   // Handle percent
