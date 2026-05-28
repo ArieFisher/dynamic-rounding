@@ -2913,6 +2913,109 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     /function roundDateText[\s\S]{0,800}return String\(/.test(src), true);
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint half-step-floor-chrome: Features 1 (sign-aware half-step),
+// 2 (value-OoM floor), 3 (X_FLOOR_THRESHOLD-gated x-floor)
+// ---------------------------------------------------------------------------
+(function halfStepFloorGrid() {
+  // 27-cell grid: {87M, 47M, 17M} x {+2, +1.5, +1, +0.5, 0, -0.5, -1, -1.5, -2}
+  const grid = [
+    { v: 87054321, expected: { '2': 10000000, '1.5': 100000000, '1': 100000000,
+      '0.5': 100000000, '0': 90000000, '-0.5': 85000000, '-1': 87000000,
+      '-1.5': 87000000, '-2': 87100000 } },
+    { v: 47054321, expected: { '2': 10000000, '1.5': 10000000, '1': 10000000,
+      '0.5': 50000000, '0': 50000000, '-0.5': 45000000, '-1': 47000000,
+      '-1.5': 47000000, '-2': 47100000 } },
+    { v: 17054321, expected: { '2': 10000000, '1.5': 10000000, '1': 10000000,
+      '0.5': 10000000, '0': 20000000, '-0.5': 15000000, '-1': 17000000,
+      '-1.5': 17000000, '-2': 17100000 } },
+  ];
+  const offsets = [2, 1.5, 1, 0.5, 0, -0.5, -1, -1.5, -2];
+  for (const row of grid) {
+    for (const off of offsets) {
+      const key = String(off);
+      eq(`half-step grid: roundWithOffset(${row.v}, ${off})`,
+        roundWithOffset(row.v, off), row.expected[key]);
+    }
+  }
+
+  // Negative-value sign preservation (spot check)
+  eq('half-step grid: sign preserved for negative input',
+    roundWithOffset(-87054321, -0.5), -85000000);
+  eq('half-step grid: zero short-circuits',
+    roundWithOffset(0, 1.5), 0);
+})();
+
+(function quarterStepGrid() {
+  // Generalized fractional formula: any non-integer offset uses
+  // step = f * 10^(current_mag + ceil(offset)) where f = |offset - trunc(offset)|.
+  // Quarter-step (f = 0.25) spot checks across 87M / 47M / 17M.
+  const cases = [
+    [87054321,  0.25,  75000000],
+    [87054321, -0.25,  87500000],
+    [47054321,  0.25,  50000000],
+    [47054321, -0.25,  47500000],
+    [17054321,  0.25,  25000000],
+    [17054321, -0.25,  17500000],
+    // |trunc(offset)| >= X_FLOOR_THRESHOLD triggers the x-floor too.
+    [87054321,  1.25, 100000000],  // x-floor at rd(87M, 1) = 100M
+    [87054321, -1.25,  87000000],  // very fine step, x-floor at rd(87M, -1) = 87M
+  ];
+  for (const [v, off, expected] of cases) {
+    eq(`quarter-step grid: roundWithOffset(${v}, ${off})`,
+      roundWithOffset(v, off), expected);
+  }
+})();
+
+(function halfStepMonotonicity() {
+  // Monotonicity at offsets 1 and 0.5 across [73, 4591, 63538, 162583, 400000]
+  const values = [73, 4591, 63538, 162583, 400000];
+  for (const off of [1, 0.5]) {
+    const out = values.map(v => roundWithOffset(v, off));
+    let monotonic = true;
+    for (let i = 1; i < out.length; i++) {
+      if (out[i] < out[i - 1]) { monotonic = false; break; }
+    }
+    eq(`monotonicity: non-decreasing at offset=${off} (got ${JSON.stringify(out)})`,
+      monotonic, true);
+  }
+})();
+
+(function xFloorThresholdFlip() {
+  // Re-eval content.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor
+  // gates on the constant. We sandbox the patched source so the eq()
+  // assertions below don't disturb the live extension globals.
+  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const patched = src.replace(
+    /const X_FLOOR_THRESHOLD = 1;/,
+    'const X_FLOOR_THRESHOLD = 0;'
+  );
+  eq('x-floor flip: source contains X_FLOOR_THRESHOLD declaration',
+    patched.includes('const X_FLOOR_THRESHOLD = 0;'), true);
+
+  const sandbox = {
+    chrome: global.chrome,
+    document: global.document,
+    window: global.window,
+    NodeFilter: global.NodeFilter,
+    MutationObserver: global.MutationObserver,
+    ResizeObserver: global.ResizeObserver,
+    Node: global.Node,
+    DR_DEFAULTS: globalThis.DR_DEFAULTS,
+  };
+  const vm = require('vm');
+  const ctx = vm.createContext(sandbox);
+  vm.runInContext(patched + '\nthis.__roundWithOffset = roundWithOffset;', ctx);
+  const patchedRound = sandbox.__roundWithOffset;
+
+  eq('x-floor flip: rd(17054321, 0.5) === 20000000 with X_FLOOR_THRESHOLD=0',
+    patchedRound(17054321, 0.5), 20000000);
+  // And confirm the live (X_FLOOR_THRESHOLD=1) implementation does NOT
+  // apply the x-floor for the same call.
+  eq('x-floor flip: rd(17054321, 0.5) === 10000000 with X_FLOOR_THRESHOLD=1 (default)',
+    roundWithOffset(17054321, 0.5), 10000000);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
