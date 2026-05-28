@@ -7,7 +7,7 @@ from dynamic_rounding import round_dynamic, __version__
 
 class TestVersion:
     def test_version_exists(self):
-        assert __version__ == "0.1.3"
+        assert __version__ == "0.1.4"
 
 
 class TestSingleMode:
@@ -31,8 +31,11 @@ class TestSingleMode:
         assert round_dynamic(87654321, offset=1) == 100000000
     
     def test_offset_negative_one_point_five(self):
-        # Offset -1.5 = half of one OoM finer
-        assert round_dynamic(87654321, offset=-1.5) == 87500000
+        # Offset -1.5 under new sign-aware semantics with the x-floor (Feature 3):
+        # the half-step result (87_500_000) is floored by the integer-offset
+        # result at trunc(-1.5) = -1, which yields 88_000_000. So the x-floor
+        # raises -1.5 up to match -1.
+        assert round_dynamic(87654321, offset=-1.5) == 88000000
     
     def test_zero_value(self):
         # Zero returns 0, preserving int type
@@ -183,51 +186,53 @@ class TestEdgeCases:
         assert result[0] == 4500000
 
 
-class TestOffsetSymmetry:
-    """Test that 0.5 and -0.5 produce same results (as documented)."""
+class TestOffsetSignDirection:
+    """Under sign-aware semantics, +0.5 and -0.5 step in opposite directions."""
 
-    def test_half_offset_symmetry(self):
-        assert round_dynamic(87654321, offset=0.5) == round_dynamic(87654321, offset=-0.5)
+    def test_positive_half_steps_coarser(self):
+        # +0.5: target_mag = current_mag + ceil(0.5) = 8, step = 5e7,
+        # round(87654321 / 5e7) = 2 -> 1e8.
+        assert round_dynamic(87654321, offset=0.5) == 100000000
 
-    def test_point_three_symmetry(self):
-        assert round_dynamic(87654321, offset=0.3) == round_dynamic(87654321, offset=-0.3)
+    def test_negative_half_keeps_legacy_behavior(self):
+        # -0.5 preserves the default behavior used historically.
+        assert round_dynamic(87654321, offset=-0.5) == 90000000
+
+    def test_positive_and_negative_half_differ(self):
+        assert round_dynamic(87654321, offset=0.5) != round_dynamic(87654321, offset=-0.5)
 
 
 class TestTrailingZeros:
     """Whole-number results with |value| < 10 should return int, not float."""
 
     def test_whole_number_result_is_int(self):
-        result = round_dynamic(1.13, offset=0.5)
+        result = round_dynamic(1.13, offset=-0.5)
         assert result == 1
         assert isinstance(result, int)
 
     def test_whole_number_negative_is_int(self):
-        result = round_dynamic(-1.13, offset=0.5)
+        result = round_dynamic(-1.13, offset=-0.5)
         assert result == -1
         assert isinstance(result, int)
 
     def test_whole_number_two_is_int(self):
-        result = round_dynamic(1.76, offset=0.5)
+        result = round_dynamic(1.76, offset=-0.5)
         assert result == 2
         assert isinstance(result, int)
 
     def test_whole_number_from_exact_input_is_int(self):
-        result = round_dynamic(1.0, offset=0.5)
+        result = round_dynamic(1.0, offset=-0.5)
         assert result == 1
         assert isinstance(result, int)
 
     def test_fractional_result_stays_float(self):
-        result = round_dynamic(1.42, offset=0.5)
+        result = round_dynamic(1.42, offset=-0.5)
         assert result == 1.5
         assert isinstance(result, float)
 
-    def test_two_decimal_result_stays_float(self):
-        result = round_dynamic(1.13, offset=0.25)
-        assert result == 1.25
-        assert isinstance(result, float)
-
-    def test_one_decimal_result_stays_float(self):
-        result = round_dynamic(1.42, offset=0.25)
+    def test_half_step_decimal_input_returns_float(self):
+        # Half-step on a value with mag=0: step=0.5*10^0=0.5; 1.42/0.5=2.84 → 3 → 1.5
+        result = round_dynamic(1.42, offset=-0.25)
         assert result == 1.5
         assert isinstance(result, float)
 
@@ -238,8 +243,126 @@ class TestTrailingZeros:
         assert isinstance(result, float)
 
     def test_whole_number_in_list(self):
-        result = round_dynamic([1.13, 1.42], offset_top=0.5)
+        result = round_dynamic([1.13, 1.42], offset_top=-0.5)
         assert result[0] == 1
         assert isinstance(result[0], int)
         assert result[1] == 1.5
         assert isinstance(result[1], float)
+
+
+# ---------------------------------------------------------------------------
+# Sprint half-step-floor-python: Features 1 (sign-aware half-step),
+# 2 (value-OoM floor), and 3 (X_FLOOR_THRESHOLD-gated x-floor).
+# ---------------------------------------------------------------------------
+
+
+class TestOffsetGrid:
+    """27-cell verification grid covering the new sign-aware semantics."""
+
+    @pytest.mark.parametrize("value,offset,expected", [
+        (87054321, 2, 10000000),
+        (87054321, 1.5, 100000000),
+        (87054321, 1, 100000000),
+        (87054321, 0.5, 100000000),
+        (87054321, 0, 90000000),
+        (87054321, -0.5, 85000000),
+        (87054321, -1, 87000000),
+        (87054321, -1.5, 87000000),
+        (87054321, -2, 87100000),
+        (47054321, 2, 10000000),
+        (47054321, 1.5, 10000000),
+        (47054321, 1, 10000000),
+        (47054321, 0.5, 50000000),
+        (47054321, 0, 50000000),
+        (47054321, -0.5, 45000000),
+        (47054321, -1, 47000000),
+        (47054321, -1.5, 47000000),
+        (47054321, -2, 47100000),
+        (17054321, 2, 10000000),
+        (17054321, 1.5, 10000000),
+        (17054321, 1, 10000000),
+        (17054321, 0.5, 10000000),
+        (17054321, 0, 20000000),
+        (17054321, -0.5, 15000000),
+        (17054321, -1, 17000000),
+        (17054321, -1.5, 17000000),
+        (17054321, -2, 17100000),
+    ])
+    def test_grid(self, value, offset, expected):
+        assert round_dynamic(value, offset=offset) == expected
+
+
+class TestMonotonicity:
+    """Sorted inputs must round to a non-decreasing sequence."""
+
+    SORTED = [73, 4591, 63538, 162583, 400000]
+
+    def test_offset_one_preserves_order(self):
+        out = [round_dynamic(v, offset=1) for v in self.SORTED]
+        assert out == sorted(out)
+
+    def test_offset_half_preserves_order(self):
+        out = [round_dynamic(v, offset=0.5) for v in self.SORTED]
+        assert out == sorted(out)
+
+    def test_offset_negative_half_preserves_order(self):
+        out = [round_dynamic(v, offset=-0.5) for v in self.SORTED]
+        assert out == sorted(out)
+
+
+class TestXFloorThreshold:
+    """The module-level X_FLOOR_THRESHOLD constant gates Feature 3."""
+
+    def test_threshold_default_is_one(self):
+        import dynamic_rounding
+        assert dynamic_rounding.X_FLOOR_THRESHOLD == 1
+
+    def test_x_floor_threshold_can_be_relaxed(self, monkeypatch):
+        import dynamic_rounding
+        monkeypatch.setattr(dynamic_rounding, "X_FLOOR_THRESHOLD", 0)
+        # Relaxing the threshold to 0 makes the x-floor apply even for
+        # ±0.5; offset=0.5 then must not round below the offset=0 result.
+        assert dynamic_rounding.round_dynamic(17054321, offset=0.5) == 20000000
+
+
+class TestQuarterStep:
+    """Quarter-step (and other non-half fractional) offsets use the general formula.
+
+    Under the general fraction formula:
+        if offset is non-integer:
+            target_mag = current_mag + ceil(offset)
+            f          = abs(offset - trunc(offset))
+            step       = f * 10**target_mag
+    """
+
+    @pytest.mark.parametrize("value,offset,expected", [
+        (87054321,  0.25,  75000000),
+        (87054321, -0.25,  87500000),
+        (47054321,  0.25,  50000000),
+        (47054321, -0.25,  47500000),
+        (17054321,  0.25,  25000000),
+        (17054321, -0.25,  17500000),
+        (87054321,  1.25, 100000000),   # x-floor at rd(87M, 1) = 100M
+        (87054321, -1.25,  87000000),   # step 250K; x-floor at rd(87M, -1) = 87M
+        # Previously-dropped small-value quarter-step, recomputed under formula B:
+        # OoM=0, target_mag=1, f=0.25, step=2.5; round(1.13/2.5)=0 -> floored to 10^0 = 1.
+        (1.13, 0.25, 1),
+    ])
+    def test_quarter_step_grid(self, value, offset, expected):
+        assert round_dynamic(value, offset=offset) == expected
+
+
+class TestNegativeHalfRegression:
+    """offset=-0.5 must remain unchanged for existing fixtures."""
+
+    @pytest.mark.parametrize("value,expected", [
+        (87654321, 90000000),
+        (4321, 4500),
+        (4428910, 4500000),
+        (983321, 1000000),
+        (42109, 40000),
+        (-87654321, -90000000),
+        (-4321, -4500),
+    ])
+    def test_default_offset_regression(self, value, expected):
+        assert round_dynamic(value, offset=-0.5) == expected
