@@ -99,26 +99,27 @@ Verification (user's 9-cell grid):
 
 The 47M and 17M columns of the user's grid resolve identically. The originating bug rows (`162,583`, `400,000`, `63,538`, `4,591`, `73`) also pass — e.g. for `offset=1`: `rd(73, 1) = max(round(73, 100), 10^1) = max(100, 10) = 100`, `rd(63538, 1) = max(round(63538, 100000), 10^4) = max(100000, 10000) = 100000`; ordering is preserved across magnitudes, no inversion.
 
-### 3.2 Public API: where does `floor_threshold` live?
+### 3.2 Where does the floor threshold live?
 
-Three viable surfaces — pick one for monorepo consistency:
+**Decision: module-level constant in each implementation; not exposed via the public function signature.** Rationale:
 
-- **(A) New optional kwarg on the public function**, e.g. `round_dynamic(values, offset, *, floor_threshold=1)` (and matching `ROUND_DYNAMIC(values, offset_top, offset_other, num_top, floor_threshold)` in JS).
-- **(B) Module-level config** (`set_default_floor_threshold(...)`).
-- **(C) Both** — kwarg overrides module-level.
+- The user explicitly does not want `floor_threshold` on the public API right now — it should be a hidden knob.
+- *Minimize design-time coupling*: keeping it out of the signature means the day the team decides to drop the threshold to `0`, it's a one-line constant change in each impl, not an API revision.
+- *Backward-compatible at the call site*: no caller has to know it exists.
 
-**Decision: (A) — new optional final positional/kwarg argument with default `1`**, applied to all three public entry points. Rationale:
-- *Simple interactions* (microservices.io): a single per-call argument keeps state out of the module and avoids order-of-import surprises in Google Sheets (Apps Script reloads per cell calc).
-- *Minimize runtime coupling*: callers that don't pass it get default behavior; no global mutation.
-- *Backward-compatible at the call site*; the **behavior** change for existing half-step calls is breaking and gated by the version bump.
+Implementation:
 
-Signatures after change:
+- JS (`js/round_dynamic.js`): file-scope `const X_FLOOR_THRESHOLD = 1;` alongside the existing `DEFAULT_OFFSET_TOP`, `VALIDATION_LIMIT`. `roundWithOffset` reads it directly.
+- Python (`python/dynamic_rounding/__init__.py`): module-level `X_FLOOR_THRESHOLD: float = 1` alongside `DEFAULT_OFFSET`. `_round_with_offset` reads it directly.
+- Chrome (`chrome-extension/content.js`): file-scope `const X_FLOOR_THRESHOLD = 1;` alongside other constants near `roundWithOffset`.
 
-- JS: `function ROUND_DYNAMIC(values, offset_top, offset_other, num_top, floor_threshold)` and `function roundWithOffset(num, offset, floor_threshold)`.
-- Python: `round_dynamic(data, offset=None, offset_top=None, offset_other=None, num_top=1, *, floor_threshold=1, enforce_numeric=True)`.
-- Chrome `content.js`: same as JS shape, mirrored.
+Public signatures are **unchanged** beyond the behavioral semantics:
 
-The dataset-mode path threads `floor_threshold` through `roundCellSetAware` → `roundWithOffset`. Sidebar UI for the Chrome extension does **not** expose `floor_threshold` in this plan (out of scope; surface it later if the team decides to flip the default).
+- JS: `function ROUND_DYNAMIC(values, offset_top, offset_other, num_top)` — same as today.
+- Python: `round_dynamic(data, offset=None, offset_top=None, offset_other=None, num_top=1, enforce_numeric=True)` — same as today.
+- Chrome `content.js`: same as today.
+
+Tests can still exercise the alternate threshold by temporarily mutating the constant in-test (or, in JS, by re-evaluating the file with the constant patched — match whatever the existing test harness does).
 
 ### 3.3 Default-offset implications
 
@@ -171,53 +172,55 @@ flowchart TD
 - **Goal:** Replace `roundWithOffset` semantics in `js/round_dynamic.js` to implement Features 1 (sign-aware half-step), 2 (value-OoM floor), and 3 (configurable x-floor with `floor_threshold` default 1), and add coverage in `js/tests.js`.
 - **Scope:**
   - `js/round_dynamic.js`:
-    - `roundWithOffset(num, offset)` → `roundWithOffset(num, offset, floor_threshold = 1)`: replace `Math.trunc`/`fraction` decomposition with the integer-vs-half-step branch (`target_mag = current_mag + ceil(offset)` for halves), apply Feature 2 floor, apply Feature 3 floor when `Math.abs(Math.trunc(offset)) >= floor_threshold`.
-    - `ROUND_DYNAMIC(values, offset_top, offset_other, num_top)` → add trailing `floor_threshold` parameter, thread through.
-    - `singleValueMode`, `datasetMode`, `roundCellSetAware` → thread `floor_threshold`.
+    - Add file-scope `const X_FLOOR_THRESHOLD = 1;` near existing constants.
+    - `roundWithOffset(num, offset)` — public signature **unchanged**. Replace `Math.trunc`/`fraction` decomposition with the integer-vs-half-step branch (`target_mag = current_mag + ceil(offset)` for halves), apply Feature 2 floor, apply Feature 3 floor when `Math.abs(Math.trunc(offset)) >= X_FLOOR_THRESHOLD`.
+    - `ROUND_DYNAMIC`, `singleValueMode`, `datasetMode`, `roundCellSetAware` — **no signature changes**.
     - Keep `DEFAULT_OFFSET_TOP = -0.5` unchanged.
     - Update JSDoc on `roundWithOffset` to reflect the new step formula (remove the `-1.5 = half of one OoM finer`-style comments that describe today's behavior and replace with the new table).
-  - `js/tests.js`: add the 9-cell `{87M, 47M, 17M} × {+2, +1.5, +1, +0.5, 0, −0.5, −1, −1.5, −2}` matrix; add the originating-bug rows (`162583 / 400000 / 63538 / 4591 / 73` at offsets `1` and `0.5`); add `floor_threshold = 0` cases that re-enable the x-floor for `±0.5` (e.g. `rd(17M, 0.5, floor_threshold=0) → rd(17M, 0) = 20M`).
-- **Out of scope:** Changing the default offset, changing the JS public-API shape beyond a new trailing optional argument, touching `js/CHANGELOG.md` (docs sprint), touching `js/README.md` or `tests-googlesheets-tab.md` (docs sprint).
+  - `js/tests.js`: add the 9-cell `{87M, 47M, 17M} × {+2, +1.5, +1, +0.5, 0, −0.5, −1, −1.5, −2}` matrix; add the originating-bug rows (`162583 / 400000 / 63538 / 4591 / 73` at offsets `1` and `0.5`); add a small test group that temporarily patches `X_FLOOR_THRESHOLD = 0` and verifies the x-floor now triggers for `±0.5` (e.g. `rd(17M, 0.5) → 20M`).
+- **Out of scope:** Changing the default offset, any public-API signature change, touching `js/CHANGELOG.md` (docs sprint), touching `js/README.md` or `tests-googlesheets-tab.md` (docs sprint).
 - **Acceptance criteria:**
   - `node js/tests.js` exits 0.
   - All 9 grid cells return the expected values from the user's table.
   - All originating-bug rows produce monotonic results (no smaller original > larger original after rounding).
-  - `floor_threshold = 0` flips the x-floor on for `±0.5` and the test for `rd(17M, 0.5, 0) → 20M` passes.
+  - Patching `X_FLOOR_THRESHOLD = 0` in the test harness flips the x-floor on for `±0.5` and the test for `rd(17M, 0.5) → 20M` passes.
   - `rd(v, -0.5)` returns the same value it did before this sprint for every existing test case (regression check on the default-path users).
 - **Depends on:** none.
 - **Complexity:** M.
-- **Dev notes:** Watch for the existing `EPSILON` adjustment inside `Math.round(num / rounding_base + EPSILON)` — preserve it. The recursive call inside the x-floor branch must pass `floor_threshold` unchanged (the inner call is on the integer `x_int`, which won't re-trigger the branch, but still propagate for safety). For negative `value`, do the work on `Math.abs(value)` and reapply the sign at the end. Do not modify `validateOffset` bounds.
+- **Dev notes:** Watch for the existing `EPSILON` adjustment inside `Math.round(num / rounding_base + EPSILON)` — preserve it. The recursive call inside the x-floor branch is on the integer `x_int`, which won't re-trigger the branch. For negative `value`, do the work on `Math.abs(value)` and reapply the sign at the end. Do not modify `validateOffset` bounds. `X_FLOOR_THRESHOLD` is a module-level constant — not exposed via any public function signature.
 
 ### half-step-floor-python
 
 - **Goal:** Mirror Features 1+2+3 in `python/dynamic_rounding/__init__.py` and lock in coverage in `python/tests/`.
 - **Scope:**
   - `python/dynamic_rounding/__init__.py`:
-    - `_round_with_offset(value, offset)` → `_round_with_offset(value, offset, floor_threshold=1)`: new integer-vs-half-step branch; Feature 2 floor; Feature 3 conditional floor.
-    - `round_dynamic(...)` public signature gains keyword-only `floor_threshold: float = 1`. Thread through `_single_mode`, `_dataset_mode`, `_round_with_offset`.
+    - Add module-level `X_FLOOR_THRESHOLD: float = 1` alongside `DEFAULT_OFFSET`.
+    - `_round_with_offset(value, offset)` — signature **unchanged**. Implement integer-vs-half-step branch, Feature 2 floor, Feature 3 conditional floor reading `X_FLOOR_THRESHOLD`.
+    - `round_dynamic(...)` and `_single_mode` / `_dataset_mode` — **no signature changes**.
     - Docstrings updated; keep `DEFAULT_OFFSET = -0.5`.
-  - `python/tests/test_core.py`: add the same 9-cell grid; add originating-bug rows; add `floor_threshold=0` cases; add a regression group asserting `rd(v, -0.5)` is unchanged for the existing fixtures.
-  - `python/tests/test_pandas.py`: add a small smoke test that `floor_threshold` is honored when passed through `apply`-style usage (no shape change to existing tests).
-- **Out of scope:** `python/README.md` (docs sprint); `pyproject.toml` version bump (CI handles patch; manual minor/major in docs sprint or post-merge).
+  - `python/tests/test_core.py`: add the same 9-cell grid; add originating-bug rows; add a small group that monkeypatches `dynamic_rounding.X_FLOOR_THRESHOLD = 0` (via `monkeypatch.setattr`) and verifies the x-floor triggers for `±0.5`; add a regression group asserting `rd(v, -0.5)` is unchanged for existing fixtures.
+  - `python/tests/test_pandas.py`: no signature change, no new tests required — existing pandas pathway tests cover the threaded constant indirectly.
+- **Out of scope:** `python/README.md` (docs sprint); `pyproject.toml` version bump (CI handles patch; manual minor/major post-merge).
 - **Acceptance criteria:**
   - `python -m pytest python/tests` exits 0.
   - 9-cell grid matches the user's table.
   - Default-path (`-0.5`) behavior unchanged on existing fixtures.
-  - `floor_threshold=0` reproduces the parallel JS behavior on the same inputs.
+  - Monkeypatched `X_FLOOR_THRESHOLD = 0` reproduces the parallel JS behavior on the same inputs.
 - **Depends on:** none.
 - **Complexity:** M.
-- **Dev notes:** Use `math.ceil` for the half-step `target_mag` calculation. `_preserve_type` must run after the floor logic, not before. Recursive call inside the x-floor branch must respect `enforce_numeric`.
+- **Dev notes:** Use `math.ceil` for the half-step `target_mag` calculation. `_preserve_type` must run after the floor logic, not before. The recursive call inside the x-floor branch reads `X_FLOOR_THRESHOLD` from module scope — keep that read inside `_round_with_offset` so monkeypatching in tests works.
 
 ### half-step-floor-chrome
 
 - **Goal:** Mirror Features 1+2+3 in `chrome-extension/content.js`'s embedded `roundWithOffset` and dataset-mode dispatch, plus tests.
 - **Scope:**
   - `chrome-extension/content.js`:
-    - `roundWithOffset` (`content.js:1205`) → same change as JS sprint, plus the new `floor_threshold` parameter (default 1).
-    - `ROUND_DYNAMIC` (`content.js:1132`), `singleValueMode` (`:1142`), `datasetMode` (`:1155`), `roundCellSetAware` (`:1189`) → thread `floor_threshold`.
-    - `roundTable` (`content.js:505`) call site: pass `floor_threshold` from `options` if present, else default 1. No change to `defaults.js` or `sidebar.html` (sidebar UI for the threshold is out of scope).
-  - `chrome-extension/tests.js`: add the 9-cell grid, originating-bug rows, `floor_threshold=0` cases.
-- **Out of scope:** `chrome-extension/README.md` (docs sprint); `manifest.json` version (CI handles patch; manual minor/major post-merge); sidebar UI surface for `floor_threshold`.
+    - Add file-scope `const X_FLOOR_THRESHOLD = 1;` near the other constants in the `ROUND_DYNAMIC` region.
+    - `roundWithOffset` (`content.js:1205`) — signature **unchanged**. Same logic change as JS sprint, reading `X_FLOOR_THRESHOLD` from file scope.
+    - `ROUND_DYNAMIC` (`content.js:1132`), `singleValueMode` (`:1142`), `datasetMode` (`:1155`), `roundCellSetAware` (`:1189`), `roundTable` (`content.js:505`) — **no signature changes**.
+    - No change to `defaults.js` or `sidebar.html`.
+  - `chrome-extension/tests.js`: add the 9-cell grid, originating-bug rows, and a small group that patches `X_FLOOR_THRESHOLD = 0` to verify the x-floor triggers for `±0.5`.
+- **Out of scope:** `chrome-extension/README.md` (docs sprint); `manifest.json` version (CI handles patch; manual minor/major post-merge); sidebar UI surface for the threshold.
 - **Acceptance criteria:**
   - `node chrome-extension/tests.js` exits 0.
   - 9-cell grid matches.
@@ -244,21 +247,23 @@ flowchart TD
   - All code examples in updated docs evaluate to the documented output when run against the new implementations.
 - **Depends on:** half-step-floor-js, half-step-floor-python, half-step-floor-chrome (so the documented values are guaranteed to match implementation).
 - **Complexity:** S.
-- **Dev notes:** Sanity-check every parameter-table cell against `node js/tests.js` output. Don't introduce a `floor_threshold` example in the root README — keep it as an "advanced" note in `js/README.md` so the main story stays simple.
+- **Dev notes:** Sanity-check every parameter-table cell against `node js/tests.js` output. Do **not** document `X_FLOOR_THRESHOLD` in user-facing docs — it is an internal constant, not part of the public API. A brief mention in `js/CHANGELOG.md` under "Internal" is sufficient.
 
 ## 6. Open Questions
 
-1. **Major-version bump vs. CI patch bump.** The existing `bump-version.yml` only increments patch. Three options: (a) accept patch bumps inside each impl sprint and have a maintainer manually retag a coordinated `0.2.0` / `2.0.0` / `0.3.0` release post-merge; (b) extend `bump-version.yml` with a `breaking:` label that triggers a minor/major bump (out-of-scope code change); (c) accept a breaking change inside a patch and document it loudly. Recommend (a) for this plan, noted explicitly in the docs sprint changelog.
-2. **Sidebar surfacing of `floor_threshold` in the Chrome extension.** Currently kept internal. Should a future sprint expose it as a sidebar toggle ("preserve granularity at high offsets")? Recommend a follow-up sprint after live usage shows whether anyone needs to flip it.
-3. **Docs-sprint dependency.** Mechanically, the docs sprint can run in parallel with the three impl sprints (no file overlap). I modeled it as dependent because the documented numbers must match the merged implementations; if the user prefers true parallel execution, drop the edges and accept that the docs PR may need a fixup commit after the three impl PRs land.
-4. **Negative-x-floor symmetry.** The plan applies the x-floor symmetrically (`|trunc(offset)| ≥ floor_threshold`), so `-1.5` is also floored at `round_dynamic(v, -1)`. In practice this is a no-op because `-1.5`'s step is strictly finer than `-1`'s step. Leave the symmetric implementation in place for cleanliness; flag here only because the user-facing motivation was framed around positive offsets.
+All resolved during planning — recorded here for traceability:
+
+1. **Major-version bump vs. CI patch bump.** Resolved: option (a). Accept the CI patch bumps inside each impl sprint and have a maintainer manually retag a coordinated `python 0.2.0` / `chrome 2.0.0` / `js 0.3.0` release post-merge. The docs sprint's CHANGELOG entry calls out the break.
+2. **Sidebar surfacing of the threshold in the Chrome extension.** Resolved: no. Keep it as an internal constant only; no sidebar control in this stack or a follow-up.
+3. **Docs-sprint dependency on the three impl sprints.** Resolved: keep the dependency. The docs sprint waits for all three impl sprints to merge before running.
 
 ## 7. Out of Scope (Separate Sprint-Stack)
 
-- Sidebar UI control for `floor_threshold` in the Chrome extension.
 - A shared core JS module to eliminate the duplication between `js/round_dynamic.js` and `chrome-extension/content.js` — worthwhile refactor, but orthogonal and would couple all three impl sprints.
 - Revisiting the `num_top` semantics or `offset_other` defaults.
 
 ## Decisions Log
 
 - 2026-05-28: Initial draft generated by sprint-plan skill.
+- 2026-05-28: Threshold knob moved out of public signature into a module-level constant per user direction.
+- 2026-05-28: Open Questions resolved — (1) option (a) post-merge manual major retag; (2) no sidebar surfacing of the threshold; (3) docs sprint stays dependent on the three impl sprints.
