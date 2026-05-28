@@ -9,7 +9,7 @@
 | \=IF(E7=F7, "✓", "✗") | 86543210 | (default) | `=FORMULATEXT(E7)` | `=ROUND_DYNAMIC(B7)` | 85,000,000 |  |  |
 | \=IF(E8=F8, "✓", "✗") | 87654321 | 0 | `=FORMULATEXT(E8)` | `=ROUND_DYNAMIC(B8, C8)` | 90,000,000 |  |  |
 | \=IF(E9=F9, "✓", "✗") | 87654321 | \-1 | `=FORMULATEXT(E9)` | `=ROUND_DYNAMIC(B9, C9)` | 88,000,000 |  |  |
-| \=IF(E10=F10, "✓", "✗") | 87654321 | \-1.5 | `=FORMULATEXT(E10)` | `=ROUND_DYNAMIC(B10, C10)` | 87,500,000 |  |  |
+| \=IF(E10=F10, "✓", "✗") | 87654321 | \-1.5 | `=FORMULATEXT(E10)` | `=ROUND_DYNAMIC(B10, C10)` | 88,000,000 |  |  |
 | \=IF(E11=F11, "✓", "✗") | 87654321 | 1 | `=FORMULATEXT(E11)` | `=ROUND_DYNAMIC(B11, C11)` | 100,000,000 |  |  |
 | \=IF(E12=F12, "✓", "✗") | \-4321 | (default) | `=FORMULATEXT(E12)` | `=ROUND_DYNAMIC(B12)` | \-4,500 |  |  |
 | \=IF(E13=F13, "✓", "✗") | 0.033 | (default) | `=FORMULATEXT(E13)` | `=ROUND_DYNAMIC(B13)` | 0.035 |  |  |
