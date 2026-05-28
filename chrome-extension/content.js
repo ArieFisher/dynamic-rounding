@@ -15,6 +15,12 @@ const DEFAULT_OFFSET_TOP = -0.5;
 const DEFAULT_NUM_TOP = 1;
 const VALIDATION_LIMIT = 20;
 const EPSILON = 1e-9;
+// Threshold for the "no-coarser-than-x" floor in half-step rounding. When the
+// integer part of a half-step offset has |trunc(offset)| >= X_FLOOR_THRESHOLD,
+// the result is also floored at roundWithOffset(|num|, trunc(offset)). Module-
+// level constant (not exposed via any public function signature) so the team
+// can later loosen it without an API change.
+const X_FLOOR_THRESHOLD = 1;
 
 // DR_DEFAULTS is loaded from defaults.js (declared first in manifest content_scripts).
 // It is shared with sidebar.js so the sidebar UI's initial state and the
@@ -1202,22 +1208,61 @@ function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_to
   return roundWithOffset(num, offset);
 }
 
+/**
+ * Rounds a number using the offset model.
+ *
+ * Step formula:
+ *   integer offset:    step = 10^(current_mag + offset)
+ *   half-step offset:  step = 0.5 * 10^(current_mag + ceil(offset))
+ *
+ * Examples for v=87,054,321 (current_mag = 7):
+ *   offset = +2   -> step = 1e9       -> raw = 0
+ *   offset = +1.5 -> step = 5e8       -> raw = 0
+ *   offset = +1   -> step = 1e8       -> raw = 100,000,000
+ *   offset = +0.5 -> step = 5e7       -> raw = 100,000,000
+ *   offset =  0   -> step = 1e7       -> raw = 90,000,000
+ *   offset = -0.5 -> step = 5e6       -> raw = 85,000,000
+ *   offset = -1   -> step = 1e6       -> raw = 87,000,000
+ *   offset = -1.5 -> step = 5e5       -> raw = 87,000,000
+ *   offset = -2   -> step = 1e5       -> raw = 87,100,000
+ *
+ * Floors applied after raw rounding:
+ *   Feature 2: result >= 10^current_mag (value-OoM floor, always on)
+ *   Feature 3: when offset is half-step and |trunc(offset)| >= X_FLOOR_THRESHOLD,
+ *              also floor at roundWithOffset(|num|, trunc(offset)).
+ */
 function roundWithOffset(num, offset) {
-  const current_mag = Math.floor(Math.log10(Math.abs(num)));
+  if (num === 0) return 0;
 
-  const oom_offset = Math.trunc(offset);
-  const fraction = Math.abs(offset - oom_offset) || 1;
+  const sign = num < 0 ? -1 : 1;
+  const absnum = Math.abs(num);
+  const current_mag = Math.floor(Math.log10(absnum));
 
-  const target_mag = current_mag + oom_offset;
-  const rounding_base = Math.pow(10, target_mag) * fraction;
-
-  let rounded = Math.round(num / rounding_base + EPSILON) * rounding_base;
-
-  if (Math.abs(rounded) >= 10) {
-    rounded = Math.round(rounded);
+  let target_mag;
+  let step;
+  if (Number.isInteger(offset)) {
+    target_mag = current_mag + offset;
+    step = Math.pow(10, target_mag);
+  } else {
+    target_mag = current_mag + Math.ceil(offset);
+    step = 0.5 * Math.pow(10, target_mag);
   }
 
-  return rounded;
+  const raw = Math.round(absnum / step + EPSILON) * step;
+  const floor_oom = Math.pow(10, current_mag);
+  let result = Math.max(raw, floor_oom);
+
+  if (!Number.isInteger(offset) && Math.abs(Math.trunc(offset)) >= X_FLOOR_THRESHOLD) {
+    const x_int = Math.trunc(offset);
+    const floor_x = roundWithOffset(absnum, x_int);
+    result = Math.max(result, floor_x);
+  }
+
+  if (result >= 10 || result % 1 === 0) {
+    result = Math.round(result);
+  }
+
+  return sign * result;
 }
 
 function toNumber(value) {
