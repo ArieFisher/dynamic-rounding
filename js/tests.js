@@ -432,9 +432,11 @@ test('negative -1.13 offset=0.5 → integer -1', ROUND_DYNAMIC(-1.13, 0.5) === -
 // -0.5 (and other negative half-steps) preserves prior trailing-zero / float behavior.
 test('1.42 offset=-0.5 → 1.5 (float)', ROUND_DYNAMIC(1.42, -0.5), 1.5);
 test('1.32 offset=-0.5 → 1.5 (float)', ROUND_DYNAMIC(1.32, -0.5), 1.5);
-// +0.25/+0.5 on small values now collapse to floor_oom=1 (integer).
-test('1.13 offset=0.25 → integer 1', ROUND_DYNAMIC(1.13, 0.25) === 1, true);
-test('1.42 offset=0.25 → integer 1', ROUND_DYNAMIC(1.42, 0.25) === 1, true);
+// +0.25 with the generalized fractional formula: step = 0.25 * 10^(cm+1).
+// For 1.13 (cm=0): step=2.5, raw=round(1.13/2.5)*2.5 = 0, floor_oom=1 → 1.
+// For 1.42 (cm=0): step=2.5, raw=round(1.42/2.5)*2.5 = 1*2.5 = 2.5 → 2.5 (above floor_oom).
+test('1.13 offset=0.25 → integer 1 (floor_oom)', ROUND_DYNAMIC(1.13, 0.25) === 1, true);
+test('1.42 offset=0.25 → 2.5 (float)', ROUND_DYNAMIC(1.42, 0.25), 2.5);
 
 // Array with only non-numerics (max_mag will be null)
 const nonNumericArray = [
@@ -583,6 +585,47 @@ console.log('=== X_FLOOR_THRESHOLD flip ===\n');
     // Sanity: default-threshold (1) behavior of rd(17054321, 0.5) is 10M (no x-floor).
     test('threshold=1 (default): rd(17054321, 0.5) → 10M', ROUND_DYNAMIC(17054321, 0.5), 10000000);
 })();
+
+// =============================================================================
+// QUARTER-STEP SEMANTICS (Feature 1 generalized)
+// =============================================================================
+
+console.log('=== Quarter-step semantics (Feature 1 generalized) ===\n');
+
+// Generalized fractional formula:
+//   target_mag = current_mag + ceil(offset)
+//   f          = |offset - trunc(offset)|
+//   step       = f * 10^target_mag
+// Then floor at floor_oom = 10^current_mag (Feature 2) and at
+// rd(value, trunc(offset)) when |trunc(offset)| >= X_FLOOR_THRESHOLD (Feature 3).
+const quarterCases = [
+    // [value, offset, expected]
+    [87054321,  0.25,  75000000],   // step 2.5e7, round(87M/25M)=3 → 75M, floor_oom=1e7
+    [87054321, -0.25,  87500000],   // step 2.5e6, round(87M/2.5M)=35 → 87.5M
+    [87054321,  0.75,  75000000],   // step 7.5e7, round(87M/75M)=1 → 75M, floor_oom=1e7
+    [87054321, -0.75,  90000000],   // step 7.5e6, round(87M/7.5M)=12 → 90M
+    [47054321,  0.25,  50000000],   // step 2.5e7, round(47M/25M)=2 → 50M
+    [47054321, -0.25,  47500000],   // step 2.5e6, round(47M/2.5M)=19 → 47.5M
+    [17054321,  0.25,  25000000],   // step 2.5e7, round(17M/25M)=1 → 25M
+    [17054321, -0.25,  17500000],   // step 2.5e6, round(17M/2.5M)=7 → 17.5M
+    [87054321,  1.25, 100000000],   // step 2.5e8, raw=0, x-floor=rd(87M,1)=100M
+    [87054321, -1.25,  87000000],   // step 2.5e5, round(87M/250K)=348 → 87M
+];
+
+for (const [v, off, expected] of quarterCases) {
+    test(`quarter ${v}, offset=${off}`, ROUND_DYNAMIC(v, off), expected);
+}
+
+// Negative-value mirror.
+test('quarter -87054321, offset=0.25', ROUND_DYNAMIC(-87054321, 0.25), -75000000);
+test('quarter -47054321, offset=-0.25', ROUND_DYNAMIC(-47054321, -0.25), -47500000);
+
+// Sanity: +0.25 and -0.25 produce different steps (sign-aware).
+test('87054321 offset=+0.25 distinct from -0.25',
+    ROUND_DYNAMIC(87054321, 0.25) !== ROUND_DYNAMIC(87054321, -0.25), true);
+// +0.25 (coarser step) ≥ -0.25 (finer step) for this value.
+test('87054321 offset=+0.25 < offset=-0.25 (this value)',
+    ROUND_DYNAMIC(87054321, 0.25) < ROUND_DYNAMIC(87054321, -0.25), true);
 
 // =============================================================================
 // RESULTS

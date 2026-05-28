@@ -62,6 +62,33 @@ node js/tests.js
 ✗ 0 failed
 ```
 
+## Fixup: generalize fraction formula to all non-integer offsets
+
+Replaced the half-step-only branch in `roundWithOffset` with a generalized
+fractional formula so any non-integer offset (e.g. `0.25`, `0.75`, `-0.25`,
+`1.25`) gets a consistent sign-aware step:
+
+```
+target_mag = current_mag + ceil(offset)
+f          = |offset - trunc(offset)|        // fractional magnitude in (0,1)
+step       = f * 10^target_mag
+```
+
+The half-step case `f = 0.5` is a special instance of this rule, so all
+existing `+/-0.5` regression tests, the 27-cell verification grid, and the
+threshold-flip block continue to pass unchanged. `isInteger` now uses
+`Number.isInteger` for clarity. `X_FLOOR_THRESHOLD = 1` and all public
+signatures are unchanged.
+
+Tests (`js/tests.js`) gained a new `=== Quarter-step semantics (Feature 1
+generalized) ===` block covering `+/-0.25`, `+/-0.75`, and `+/-1.25` across
+`{87M, 47M, 17M}`, plus a negative-value mirror and sign-aware sanity
+checks. Two pre-existing `0.25` trailing-zero cases were re-anchored to the
+new generalized expected values (`1.13, 0.25 → 1` via `floor_oom`;
+`1.42, 0.25 → 2.5`) rather than the previous half-step-collapsed behavior.
+
+Total: 158 passed, 0 failed.
+
 ## Out of scope (per plan)
 
 - `js/CHANGELOG.md`, `js/README.md`, `js/tests-googlesheets-tab.md`
