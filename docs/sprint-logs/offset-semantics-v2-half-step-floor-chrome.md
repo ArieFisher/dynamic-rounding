@@ -54,6 +54,29 @@ New coverage in `chrome-extension/tests.js`:
 All pre-existing `-0.5` regression tests pass unchanged — the default-path
 behavior is identical to v0.2.x.
 
+## Fixup: generalize fractional formula
+
+The original `roundWithOffset` non-integer branch hard-coded `step = 0.5 * 10^(...)`,
+so any non-half fractional offset (e.g. `0.25`, `1.25`) collapsed to a half-step.
+Replaced the branch with the general formula
+
+```
+target_mag = current_mag + Math.ceil(offset)
+f          = |offset - trunc(offset)|         // in (0, 1)
+step       = f * 10^target_mag
+```
+
+`Math.ceil` gives uniform handling of negative non-integers (`ceil(-0.25)=0`,
+`ceil(-1.25)=-1`). The Feature-3 x-floor gate now keys on `!Number.isInteger(offset)`
+instead of the implicit half-step assumption. This mirrors the parallel fix in
+`js/round_dynamic.js`.
+
+New `quarterStepGrid` test in `chrome-extension/tests.js` locks in 8 quarter-step
+cases across `{87M, 47M, 17M}` at `±0.25` plus `87M @ ±1.25` (x-floor exercised).
+All 488 tests pass; the prior 27-cell half-step grid, monotonicity, and
+threshold-flip tests are unaffected because the new formula yields `f = 0.5` for
+half-step offsets — bit-identical to the prior `0.5 *` constant.
+
 ## Out of scope (per plan)
 
 - `chrome-extension/manifest.json` (CI bump handles)
