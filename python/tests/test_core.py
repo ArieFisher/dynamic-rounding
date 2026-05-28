@@ -325,6 +325,33 @@ class TestXFloorThreshold:
         assert dynamic_rounding.round_dynamic(17054321, offset=0.5) == 20000000
 
 
+class TestQuarterStep:
+    """Quarter-step (and other non-half fractional) offsets use the general formula.
+
+    Under the general fraction formula:
+        if offset is non-integer:
+            target_mag = current_mag + ceil(offset)
+            f          = abs(offset - trunc(offset))
+            step       = f * 10**target_mag
+    """
+
+    @pytest.mark.parametrize("value,offset,expected", [
+        (87054321,  0.25,  75000000),
+        (87054321, -0.25,  87500000),
+        (47054321,  0.25,  50000000),
+        (47054321, -0.25,  47500000),
+        (17054321,  0.25,  25000000),
+        (17054321, -0.25,  17500000),
+        (87054321,  1.25, 100000000),   # x-floor at rd(87M, 1) = 100M
+        (87054321, -1.25,  87000000),   # step 250K; x-floor at rd(87M, -1) = 87M
+        # Previously-dropped small-value quarter-step, recomputed under formula B:
+        # OoM=0, target_mag=1, f=0.25, step=2.5; round(1.13/2.5)=0 -> floored to 10^0 = 1.
+        (1.13, 0.25, 1),
+    ])
+    def test_quarter_step_grid(self, value, offset, expected):
+        assert round_dynamic(value, offset=offset) == expected
+
+
 class TestNegativeHalfRegression:
     """offset=-0.5 must remain unchanged for existing fixtures."""
 
