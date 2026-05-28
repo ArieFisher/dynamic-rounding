@@ -1,16 +1,26 @@
 {
   "manifest_version": 3,
   "name": "Dynamic Rounding",
-  "version": "1.12.4",
+  "version": "1.12.6",
   "description": "Applies dynamic rounding to tables on arbitrary websites.",
-  "permissions": ["contextMenus", "activeTab", "scripting", "sidePanel"],
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "sidePanel"
+  ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["defaults.js", "content.js"]
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "defaults.js",
+        "content.js"
+      ]
     }
   ],
   "side_panel": {

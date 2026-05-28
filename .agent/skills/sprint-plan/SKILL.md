@@ -135,14 +135,39 @@ Sprint commits do not touch version files. Versioning is handled at merge time b
 
 ## Phase 6: Document, commit, and open PR
 
+### Push-auth precheck
+
+Before doing the work, confirm this session can push to the remote. Some environments route git through a read-only proxy or use a GitHub App integration that lacks write access; in those cases push will fail with `403` (`Permission to <repo> denied` or `Resource not accessible by integration`).
+
+Run a cheap check:
+
+```
+git push --dry-run origin HEAD:refs/heads/__sprint_plan_auth_check 2>&1
+```
+
+If the output contains `403` or `denied`, ask the user for a fine-grained GitHub PAT with `contents: write` on this repo:
+
+> I can't push to this repo from the current session (got 403 from the remote). Paste a GitHub PAT with `contents: write` on `<owner>/<repo>` and I'll use it for the plan PR. The token stays in this session only.
+
+When the user provides a token, push using a one-shot authenticated URL rather than rewriting `remote.origin.url` (so the token doesn't get stored in `.git/config`):
+
+```
+git push "https://x-access-token:<TOKEN>@github.com/<owner>/<repo>.git" <branch>
+```
+
+Use the same authenticated URL for `gh pr create` via `GH_TOKEN=<TOKEN> gh pr create ...` if the `gh` CLI is being used.
+
+If the dry-run push succeeds, proceed normally — no token needed.
+
+### Write the plan
+
 Write the plan to `docs/sprint-plans/<slug>.md` using the structure below. Create branch `plan/<slug>` off `main`, commit with `plan: <slug>`, push, and open a PR to merge `plan/<slug>` into `main`.
 
-The plan has two statuses: `DRAFT` (pre-merge) and the merged state (read-only in main forever). Do not add a "COMPLETED" or execution-tracking status — that belongs in per-sprint logs, not here.
+The plan has no status field. Merging the PR is the approval; the merged file in `main` is read-only forever. Do not add `DRAFT`, `APPROVED`, `COMPLETED`, or any execution-tracking status — none of them carry information that the git state doesn't already convey, and execution state belongs in per-sprint logs, not here.
 
 ```markdown
 # Sprint Plan: <Title>
 
-**Status:** DRAFT
 **Created:** <date>
 **Base branch:** main
 **Slug:** <slug>

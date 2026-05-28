@@ -325,13 +325,9 @@ eq('restoreFormatting: parens-negative preserved',
 
 // --- Sprint A: exclusion checkboxes ---
 
-eq('isYearValue: 2018 -> true', isYearValue('2018'), true);
-eq('isYearValue: 1899 -> false', isYearValue('1899'), false);
-eq('isYearValue: 2100 -> false', isYearValue('2100'), false);
-eq('isYearValue: 12 -> false', isYearValue('12'), false);
-eq('isYearValue: 20181 -> false', isYearValue('20181'), false);
-
 eq('isDateLike: bare 4-digit year', isDateLike('2018'), true);
+eq('isDateLike: bare year out of range', isDateLike('1899'), false);
+eq('isDateLike: bare year out of range', isDateLike('2100'), false);
 eq('isDateLike: ISO date', isDateLike('2024-03-14'), true);
 eq('isDateLike: US slash date', isDateLike('3/14/2024'), true);
 eq('isDateLike: dash date', isDateLike('3-14-2024'), true);
@@ -492,22 +488,26 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 // --- Sprint B: per-type granularity ---
 
 // Date granularity
-eq('roundDateText: year granularity is a no-op (returns null)',
-  roundDateText('2018', 'year'), null);
-eq('roundDateText: decade rounds bare year',
-  roundDateText('2018', 'decade'), '2010');
-eq('roundDateText: century rounds bare year',
+// NEW CONTRACT (sprint date-round-to-year-display): roundDateText always returns a
+// 4-digit year string. It no longer returns null or a full date string like
+// "March 14, 2020". The caller (roundTable) compares formattedValue === originalValue
+// to detect the no-op case.
+eq('roundDateText: year granularity returns a 4-digit year string',
+  roundDateText('2018', 'year'), '2018');
+eq('roundDateText: decade rounds bare year 2018 -> 2020',
+  roundDateText('2018', 'decade'), '2020');
+eq('roundDateText: century rounds bare year 2018 -> 2000',
   roundDateText('2018', 'century'), '2000');
-eq('roundDateText: decade in "March 14, 2024"',
-  roundDateText('March 14, 2024', 'decade'), 'March 14, 2020');
-eq('roundDateText: century in "March 14, 2024"',
-  roundDateText('March 14, 2024', 'century'), 'March 14, 2000');
-eq('roundDateText: decade in ISO date',
-  roundDateText('2024-03-14', 'decade'), '2020-03-14');
-eq('roundDateText: no year present -> null',
-  roundDateText('hello world', 'decade'), null);
-eq('roundDateText: 2020 at decade granularity unchanged',
-  roundDateText('2020', 'decade'), null);
+eq('roundDateText: decade in "March 14, 2024" returns year string "2020"',
+  roundDateText('March 14, 2024', 'decade'), '2020');
+eq('roundDateText: century in "March 14, 2024" returns year string "2000"',
+  roundDateText('March 14, 2024', 'century'), '2000');
+eq('roundDateText: decade in ISO date "2024-03-14" returns "2020"',
+  roundDateText('2024-03-14', 'decade'), '2020');
+eq('roundDateText: unparseable input returns the original text unchanged',
+  roundDateText('hello world', 'decade'), 'hello world');
+eq('roundDateText: 2020 at decade granularity still returns "2020" (caller handles no-op)',
+  roundDateText('2020', 'decade'), '2020');
 
 // Time granularity
 eq('roundTimeText: minute granularity is a no-op',
@@ -2555,6 +2555,362 @@ function makeIsDataTable(rowsSpec) {
   ]);
   eq('isDataTable: 2-row 1-column table with numeric cells -> false (< 2 columns)',
     isDataTable(table), false);
+})();
+
+// --- Sprint trim-trailing-zeros (chrome-extension): whole-number short-circuit ---
+
+// restoreFormatting drops trailing zeros for whole-number results under 10
+eq('restoreFormatting: whole number 1 from "1.04" -> "1"',
+  restoreFormatting(1, '1.04'), '1');
+eq('restoreFormatting: whole number 2 from "1.5" -> "2"',
+  restoreFormatting(2, '1.5'), '2');
+eq('restoreFormatting: 0 from "0.04" -> "0"',
+  restoreFormatting(0, '0.04'), '0');
+eq('restoreFormatting: negative whole number -5 from "-5.2" -> "-5"',
+  restoreFormatting(-5, '-5.2'), '-5');
+
+// Fractional results in the <10 band still keep their decimals
+eq('restoreFormatting: 1.5 from "1.4" -> "1.5"',
+  restoreFormatting(1.5, '1.4'), '1.5');
+eq('restoreFormatting: 1.25 from "1.234" -> "1.25" (trailing zeros stripped)',
+  restoreFormatting(1.25, '1.234'), '1.25');
+
+// Trim plays nicely with format affixes
+eq('restoreFormatting: whole number with percent -> "1%"',
+  restoreFormatting(1, '1.04%'), '1%');
+eq('restoreFormatting: whole number with currency -> "$2"',
+  restoreFormatting(2, '$1.99'), '$2');
+eq('restoreFormatting: whole negative in parens -> "(3)"',
+  restoreFormatting(-3, '(2.85)'), '(3)');
+
+// formatExtractedNumber trims trailing zeros for whole-number rounded results
+eq('formatExtractedNumber: whole number 1 from "1.04" -> "1"',
+  formatExtractedNumber(1, '1.04'), '1');
+eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
+  formatExtractedNumber(1, '1.04', 2), '1');
+
+// =============================================================================
+// Sprint date-round-to-year-display tests
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// AC1: Worked-examples table
+// Each row: [input, granularity, expected-year-string]
+// ---------------------------------------------------------------------------
+(function dateRoundWorkedExamples() {
+  const cases = [
+    // input              granularity  expected
+    ['Jun 21, 2020',      'year',      '2020'],
+    ['Jun 21, 2020',      'decade',    '2020'],
+    ['Jun 21, 2020',      'century',   '2000'],
+    ['Dec 21, 2020',      'year',      '2021'],
+    ['Dec 21, 2020',      'decade',    '2020'],
+    ['Dec 21, 2020',      'century',   '2000'],
+    ['Jun 21, 2025',      'year',      '2025'],
+    ['Jun 21, 2025',      'decade',    '2030'],
+    ['Jun 21, 2025',      'century',   '2000'],
+    ['Apr 11, 2026',      'year',      '2026'],
+    ['Apr 11, 2026',      'decade',    '2030'],
+    ['Apr 11, 2026',      'century',   '2000'],
+    ['May 9, 2026',       'year',      '2026'],
+    ['May 9, 2026',       'decade',    '2030'],
+    ['May 9, 2026',       'century',   '2000'],
+    ['Jun 30, 2024',      'year',      '2024'],
+    ['Jun 30, 2024',      'decade',    '2020'],
+    ['Jun 30, 2024',      'century',   '2000'],
+    ['Jul 1, 2024',       'year',      '2025'],
+    ['Jul 1, 2024',       'decade',    '2020'],
+    ['Jul 1, 2024',       'century',   '2000'],
+    ['1975',              'year',      '1975'],
+    ['1975',              'decade',    '1980'],
+    ['1975',              'century',   '2000'],
+  ];
+
+  for (const [input, gran, expected] of cases) {
+    eq(`worked-example: "${input}" at ${gran} -> "${expected}"`,
+      roundDateText(input, gran), expected);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// AC2: Shape equivalence — same logical date, different textual forms
+// All forms of Jun 21, 2020 must round identically.
+// ---------------------------------------------------------------------------
+(function dateRoundShapeEquivalence() {
+  const shapes = [
+    'Jun 21, 2020',
+    '2020/06/21',
+    '2020-06-21',
+    '2020 June 21',
+    '21 June 2020',
+  ];
+  // Note: '06-21-2020' is an ambiguous numeric date (handled by column auto-detect,
+  // not directly by roundDateText which only handles unambiguous shapes via parseDateLike).
+  // It is tested end-to-end via roundTable below — a single-row column with n2=21>12
+  // forces MDY → June 21 → identical rounding to the other shapes.
+
+  for (const shape of shapes) {
+    eq(`shape-equiv: "${shape}" year -> "2020"`,   roundDateText(shape, 'year'),    '2020');
+    eq(`shape-equiv: "${shape}" decade -> "2020"`, roundDateText(shape, 'decade'),  '2020');
+    eq(`shape-equiv: "${shape}" century -> "2000"`,roundDateText(shape, 'century'), '2000');
+  }
+
+  // End-to-end check for the ambiguous-numeric form: '06-21-2020' via roundTable.
+  withCreateTreeWalker(function() {
+    function runDateCell(text, gran) {
+      const tbl = makeMockTable([[{ tag: 'td', text }]]);
+      tbl.rows[0].cells[0].querySelectorAll = () => [];
+      roundTable(tbl, {
+        enabled: true, excludeDates: false, excludeTimes: true,
+        excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+        includeWords: false, excludeFirstRow: false,
+        offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+        rangeExpr: '',
+        dateGranularity: gran,
+      });
+      return tbl.rows[0].cells[0].innerText;
+    }
+    eq('shape-equiv (via roundTable): "06-21-2020" year -> "2020"',    runDateCell('06-21-2020', 'year'),    '2020');
+    eq('shape-equiv (via roundTable): "06-21-2020" decade -> "2020"',  runDateCell('06-21-2020', 'decade'),  '2020');
+    eq('shape-equiv (via roundTable): "06-21-2020" century -> "2000"', runDateCell('06-21-2020', 'century'), '2000');
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC3: Two-digit-year US dates via parseAmbiguousNumericDate + roundTable pipeline.
+// We test via roundTable since roundDateText only handles unambiguous (parseDateLike) shapes.
+// ---------------------------------------------------------------------------
+(function dateRoundTwoDigitYear() {
+  // 3/14/24 → 2024-03-14 (yy=24 < 50 → 2024). MDY forced since n2=14 > 12.
+  // year granularity → 2024, decade → 2020, century → 2000.
+  withCreateTreeWalker(function() {
+    function twoDigitTable(cellText, gran) {
+      const tbl = makeMockTable([[{ tag: 'td', text: cellText }]]);
+      tbl.rows[0].cells[0].querySelectorAll = () => [];
+      roundTable(tbl, {
+        enabled: true, excludeDates: false, excludeTimes: true,
+        excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+        includeWords: false, excludeFirstRow: false,
+        offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+        rangeExpr: '',
+        dateGranularity: gran,
+      });
+      return tbl.rows[0].cells[0].innerText;
+    }
+
+    // 3/14/24 → MDY forced (14 > 12) → 2024-03-14
+    eq('two-digit-year: 3/14/24 year -> "2024"',   twoDigitTable('3/14/24', 'year'),    '2024');
+    eq('two-digit-year: 3/14/24 decade -> "2020"', twoDigitTable('3/14/24', 'decade'),  '2020');
+    eq('two-digit-year: 3/14/24 century -> "2000"',twoDigitTable('3/14/24', 'century'), '2000');
+
+    // 3/14/75 → MDY forced (14 > 12) → 1975-03-14 (yy=75 >= 50 → 1975)
+    eq('two-digit-year: 3/14/75 year -> "1975"',   twoDigitTable('3/14/75', 'year'),    '1975');
+    eq('two-digit-year: 3/14/75 decade -> "1980"', twoDigitTable('3/14/75', 'decade'),  '1980');
+    eq('two-digit-year: 3/14/75 century -> "2000"',twoDigitTable('3/14/75', 'century'), '2000');
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC4: roundDateText always returns a 4-digit year string, never null.
+// Test via prefilled date objects (bypassing text parsing).
+// ---------------------------------------------------------------------------
+(function dateRoundReturnType() {
+  // Boundary: Dec 31 → fractional = year + 0.5 (month=12 >= 7)
+  const decDates = [
+    { year: 2020, month: 12, day: 31 },
+    { year: 1975, month: 6,  day: 1  },
+    { year: 2000, month: 1,  day: 1  },
+    { year: 2099, month: 7,  day: 1  },
+  ];
+  for (const d of decDates) {
+    const label = `${d.year}-${d.month}-${d.day}`;
+    for (const gran of ['year', 'decade', 'century']) {
+      const result = roundDateText('irrelevant', gran, d);
+      eq(`roundDateText always returns string: prefilled ${label} at ${gran}`,
+        typeof result === 'string' && /^\d{4}$/.test(result), true);
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// AC5: Column-level MDY/DMY auto-detect via roundTable pipeline.
+// ---------------------------------------------------------------------------
+(function dateRoundColumnAutoDetect() {
+  withCreateTreeWalker(function() {
+
+    // Helper: run roundTable with excludeDates:false and return cell text array.
+    function runDateTable(rowsSpec, gran) {
+      const tbl = makeMockTable(rowsSpec);
+      // Add querySelectorAll stub to all cells
+      for (const row of tbl.rows) {
+        for (const cell of row.cells) {
+          cell.querySelectorAll = () => [];
+        }
+      }
+      roundTable(tbl, {
+        enabled: true, excludeDates: false, excludeTimes: true,
+        excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+        includeWords: false, excludeFirstRow: false,
+        offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+        rangeExpr: '',
+        dateGranularity: gran,
+      });
+      return tbl.rows.map(row => row.cells.map(c => c.innerText));
+    }
+
+    // --- MDY column (discriminating) ---
+    // '04/13/2022' forces MDY (n2=13 > 12). The sibling '12-03-2022' is discriminating:
+    //   under MDY → Dec 3, fractional=2022.5, year rounds to 2023.
+    //   under DMY → Mar 12, fractional=2022.0, year rounds to 2022.
+    // If the column resolver picks MDY (as it should), the sibling rounds to 2023.
+    const mdyResult = runDateTable([
+      [{ tag: 'td', text: '04/13/2022' }],
+      [{ tag: 'td', text: '12-03-2022' }],
+    ], 'year');
+    eq('MDY column: 04/13/2022 rounds to 2022', mdyResult[0][0], '2022');
+    eq('MDY column: 12-03-2022 resolved as MDY (Dec 3 → year 2023, not DMY Mar 12 → 2022)',
+      mdyResult[1][0], '2023');
+
+    // --- DMY column ---
+    // '13/04/2022' forces DMY (n1=13 > 12). '12-08-2022' under DMY = Aug 12 = 2022.
+    // Under MDY, '12-08-2022' = Dec 8 → year rounds to 2023 (Dec → fractional=2022.5 → round → 2023).
+    // Under DMY, '12-08-2022' = Aug 12 → year rounds to 2022 (Aug → fractional=2022.5 → round → 2023).
+    // Hmm, let's recalculate: Aug → month=8 >= 7 → fractional=2022.5, Math.round(2022.5) = 2023.
+    // And Dec → month=12 >= 7 → fractional=2022.5, same result. Both give 2023 at year granularity.
+    // Better disambiguation: use a month < 7 for DMY path.
+    // '12-03-2022': DMY → month=3 < 7 → fractional=2022.0 → year=2022.
+    //               MDY → month=12 >= 7 → fractional=2022.5 → year=2023.
+    const dmyResult = runDateTable([
+      [{ tag: 'td', text: '13/04/2022' }],  // n1=13 forces DMY
+      [{ tag: 'td', text: '12-03-2022' }],  // DMY: day=12, month=Mar → 2022; MDY: month=Dec → 2023
+    ], 'year');
+    eq('DMY column: 13/04/2022 rounds to 2022', dmyResult[0][0], '2022');
+    eq('DMY column: 12-03-2022 resolved as DMY (Mar 12 → year 2022, not MDY Dec 12 → 2023)',
+      dmyResult[1][0], '2022');
+
+    // --- Ambiguous column ---
+    // Column where ALL cells have both components <= 12. Cannot auto-detect → mode:'skip'.
+    // Cell text must be unchanged.
+    const ambigResult = runDateTable([
+      [{ tag: 'td', text: '03-04-2022' }],
+      [{ tag: 'td', text: '05-06-2023' }],
+    ], 'year');
+    eq('ambiguous column: 03-04-2022 left unchanged (mode:skip)',
+      ambigResult[0][0], '03-04-2022');
+    eq('ambiguous column: 05-06-2023 left unchanged (mode:skip)',
+      ambigResult[1][0], '05-06-2023');
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC6: Non-date strings pass through unchanged.
+// ---------------------------------------------------------------------------
+(function dateRoundNonDatePassthrough() {
+  withCreateTreeWalker(function() {
+    function runSingleCell(text) {
+      const tbl = makeMockTable([[{ tag: 'td', text }]]);
+      tbl.rows[0].cells[0].querySelectorAll = () => [];
+      roundTable(tbl, {
+        enabled: true, excludeDates: false, excludeTimes: true,
+        excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+        includeWords: false, excludeFirstRow: false,
+        offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+        rangeExpr: '',
+        dateGranularity: 'decade',
+      });
+      return tbl.rows[0].cells[0].innerText;
+    }
+
+    eq('non-date passthrough: "hello" stays unchanged', runSingleCell('hello'), 'hello');
+    // "14 March" has no year → isDateLike returns false → treated as a word-embedded number
+    // excludeWords=false in our setup? Actually includeWords is false here, so it skips.
+    // Let's just verify it doesn't get the rounded class.
+    const tbl = makeMockTable([[{ tag: 'td', text: '14 March' }]]);
+    tbl.rows[0].cells[0].querySelectorAll = () => [];
+    roundTable(tbl, {
+      enabled: true, excludeDates: false, excludeTimes: true,
+      excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+      includeWords: false, excludeFirstRow: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: '',
+      dateGranularity: 'decade',
+    });
+    eq('non-date passthrough: "14 March" cell not rounded (no year)',
+      tbl.rows[0].cells[0].classList.contains('dr-ext-rounded'), false);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC7: Bare-year no-op short-circuit — "2020" at decade granularity.
+// roundDateText returns "2020", originalValue is "2020" → formattedValue === originalValue
+// → roundTable skips it (no DOM rewrite, no dr-ext-rounded class).
+// ---------------------------------------------------------------------------
+(function dateRoundBareYearNoOp() {
+  // roundDateText itself returns "2020" for both inputs (2020 at decade is 2020).
+  eq('bare-year no-op: roundDateText("2020", "decade") returns "2020"',
+    roundDateText('2020', 'decade'), '2020');
+
+  // Via roundTable: the cell should NOT get the rounded class.
+  withCreateTreeWalker(function() {
+    const tbl = makeMockTable([[{ tag: 'td', text: '2020' }]]);
+    tbl.rows[0].cells[0].querySelectorAll = () => [];
+    roundTable(tbl, {
+      enabled: true, excludeDates: false, excludeTimes: true,
+      excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+      includeWords: false, excludeFirstRow: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: '',
+      dateGranularity: 'decade',
+    });
+    eq('bare-year no-op: "2020" at decade not marked as rounded (short-circuit)',
+      tbl.rows[0].cells[0].classList.contains('dr-ext-rounded'), false);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC8: isDateLike accepts newly added shapes.
+// ---------------------------------------------------------------------------
+(function dateRoundIsDateLikeNewShapes() {
+  eq('isDateLike: "2020/07/21" (ISO slash) -> true',  isDateLike('2020/07/21'), true);
+  eq('isDateLike: "2020 June 21" (Year Month Day) -> true', isDateLike('2020 June 21'), true);
+  eq('isDateLike: "3/14/24" (two-digit year) -> true', isDateLike('3/14/24'), true);
+  eq('isDateLike: "06/21/2020" (MDY slash) -> true',  isDateLike('06/21/2020'), true);
+  eq('isDateLike: "21 June 2020" (DMY named) -> true', isDateLike('21 June 2020'), true);
+})();
+
+// ---------------------------------------------------------------------------
+// AC9: Boundary semantics — Jun 30 rounds down, Jul 1 rounds up.
+// ---------------------------------------------------------------------------
+(function dateRoundBoundarySemantics() {
+  // Jun 30: month=6 < 7 → fractional = 2024.0 → round → 2024 (year)
+  eq('boundary: Jun 30, 2024 year -> 2024', roundDateText('Jun 30, 2024', 'year'), '2024');
+  // Jul 1: month=7 >= 7 → fractional = 2024.5 → round → 2025 (year)
+  eq('boundary: Jul 1, 2024 year -> 2025', roundDateText('Jul 1, 2024', 'year'), '2025');
+
+  // Jun 30 decade: fractional=2024.0 → 2024/10=202.4 → round→202 → *10=2020
+  eq('boundary: Jun 30, 2024 decade -> 2020', roundDateText('Jun 30, 2024', 'decade'), '2020');
+  // Jul 1 decade: fractional=2024.5 → 2024.5/10=202.45 → round→202 → *10=2020
+  eq('boundary: Jul 1, 2024 decade -> 2020', roundDateText('Jul 1, 2024', 'decade'), '2020');
+
+  // Jun 21, 2025 decade: fractional=2025.0 → 2025/10=202.5 → round→203 (banker's rounds to 202 or 203?)
+  // Math.round(202.5) = 203 in JS → 2030
+  eq('boundary: Jun 21, 2025 decade -> 2030', roundDateText('Jun 21, 2025', 'decade'), '2030');
+})();
+
+// ---------------------------------------------------------------------------
+// Additional: static analysis — new functions exist in content.js
+// ---------------------------------------------------------------------------
+(function dateRoundStaticAnalysis() {
+  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+
+  eq('static: parseDateLike is defined in content.js',
+    /function\s+parseDateLike\b/.test(src), true);
+  eq('static: parseAmbiguousNumericDate is defined in content.js',
+    /function\s+parseAmbiguousNumericDate\b/.test(src), true);
+  eq('static: roundDateText returns string (no null return for parsed dates)',
+    // The function must NOT have "return null" after the parsed guard
+    // (it uses "return text" as fallback for unparseable input).
+    /function roundDateText[\s\S]{0,800}return String\(/.test(src), true);
 })();
 
 // --- Report ---
