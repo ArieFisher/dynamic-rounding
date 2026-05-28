@@ -12,6 +12,7 @@ __version__ = "0.1.4"
 
 # Constants
 DEFAULT_OFFSET = -0.5
+X_FLOOR_THRESHOLD: float = 1
 VALIDATION_LIMIT = 20
 EPSILON = 1e-9
 
@@ -146,25 +147,49 @@ def _find_max_magnitude(values: List[Any]) -> Optional[int]:
 def _round_with_offset(value: float, offset: float) -> float:
     """
     Round a number using the offset model.
-    
+
     offset = OoM offset + optional fraction
         0 = current OoM
         -1 = one OoM finer
         1 = one OoM coarser
         0.5 = half of current OoM (same as -0.5)
         -1.5 = half of one OoM finer
+
+    Sign-aware: rounding is performed on the absolute value, then the sign is
+    re-applied. A value-OoM floor prevents results from dropping below the
+    current order of magnitude, so a positive input never rounds toward zero
+    past its own OoM. For half-steps with a large integer offset component
+    (|trunc(offset)| >= X_FLOOR_THRESHOLD), an additional x-floor is applied
+    so that a half-step never rounds finer than the corresponding integer
+    offset would.
     """
-    current_mag = math.floor(math.log10(abs(value)))
-    
-    # Decompose offset into integer part and fraction
-    oom_offset = math.trunc(offset)
-    fraction = abs(offset - oom_offset) or 1.0
-    
-    target_mag = current_mag + oom_offset
-    rounding_base = (10 ** target_mag) * fraction
-    
-    # Add epsilon to handle floating point inaccuracies
-    return round(value / rounding_base + EPSILON) * rounding_base
+    if value == 0:
+        return 0
+
+    sign = -1 if value < 0 else 1
+    absval = abs(value)
+    current_mag = math.floor(math.log10(absval))
+
+    if float(offset).is_integer():
+        target_mag = current_mag + int(offset)
+        step = 10 ** target_mag
+    else:  # half-step
+        target_mag = current_mag + math.ceil(offset)
+        step = 0.5 * (10 ** target_mag)
+
+    raw = round(absval / step + EPSILON) * step
+    floor_oom = 10 ** current_mag  # Feature 2: value-OoM floor
+
+    result = max(raw, floor_oom)
+
+    # Feature 3: x-floor for half-steps with large integer part
+    if not float(offset).is_integer():
+        x_int = math.trunc(offset)
+        if abs(x_int) >= X_FLOOR_THRESHOLD:
+            floor_x = _round_with_offset(absval, x_int)
+            result = max(result, abs(floor_x))
+
+    return sign * result
 
 
 def _preserve_type(result: float, original_value: Any) -> Union[int, float]:
