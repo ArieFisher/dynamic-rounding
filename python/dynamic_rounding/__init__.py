@@ -148,20 +148,25 @@ def _round_with_offset(value: float, offset: float) -> float:
     """
     Round a number using the offset model.
 
-    offset = OoM offset + optional fraction
-        0 = current OoM
-        -1 = one OoM finer
-        1 = one OoM coarser
-        0.5 = half of current OoM (same as -0.5)
-        -1.5 = half of one OoM finer
+    Integer offsets:
+        0  -> current OoM
+        -1 -> one OoM finer
+        1  -> one OoM coarser
+
+    Fractional offsets are sign-aware. The step is
+    ``|frac(offset)| * 10 ** (current_mag + ceil(offset))``, so:
+        -0.5 -> half-step within the current OoM    (e.g. 87M -> 85M)
+        +0.5 -> half-step toward the next-larger OoM (e.g. 87M -> 100M)
+        -1.5 -> half-step within one OoM finer       (e.g. 87M -> 87M)
+        +1.5 -> half-step toward two OoMs larger     (e.g. 87M -> 100M after floor)
 
     Sign-aware: rounding is performed on the absolute value, then the sign is
     re-applied. A value-OoM floor prevents results from dropping below the
     current order of magnitude, so a positive input never rounds toward zero
-    past its own OoM. For half-steps with a large integer offset component
-    (|trunc(offset)| >= X_FLOOR_THRESHOLD), an additional x-floor is applied
-    so that a half-step never rounds finer than the corresponding integer
-    offset would.
+    past its own OoM. For fractional offsets with a large integer component
+    (``|trunc(offset)| >= X_FLOOR_THRESHOLD``), an additional x-floor is
+    applied so that a fractional offset never rounds finer than the
+    corresponding integer offset would.
     """
     if value == 0:
         return 0

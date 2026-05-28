@@ -41,13 +41,29 @@ Depending on the situation, a number like **87,054,321** may be interpreted diff
 
 | lens (i.e. a simplified representation of the data) | Declarative lens: round this number to the… | Imperative command: round this number to the…  |
 | :---- | :---- | :---- |
-| 100,000,000 | … next larger order of magnitude <br> <br> `=round_dynamic(A1, 1)` | … nearest hundred million <br> <br> `=ROUND(87654321 / 100000000, 0) * 100000000` |
-| 90,000,000 | … current order or magnitude  <br> <br> `=round_dynamic(A1, 0)` | … nearest 10 million  <br> <br> `=round(A1, -7)` |
-| 85,000,000 | … half-step within order  <br> <br> `=round_dynamic(A1, -0.5)` | nearest 5 million  <br> <br> `=mround(A1, 5000000)` |
+| 100,000,000 | … next larger order of magnitude <br> <br> `=round_dynamic(A1, 1)` | … nearest hundred million <br> <br> `=ROUND(A1 / 100000000, 0) * 100000000` |
+| 100,000,000 | … halfway between the next-larger and two-larger orders[^safety] <br> <br> `=round_dynamic(A1, 1.5)` | … nearest 500 million, with a 100-million safety net <br> <br> `=MAX(MROUND(A1, 500000000), MROUND(A1, 100000000))` |
+| 100,000,000 | … half-step toward the next-larger order <br> <br> `=round_dynamic(A1, 0.5)` | … nearest 50 million <br> <br> `=mround(A1, 50000000)` |
+| 90,000,000 | … current order of magnitude  <br> <br> `=round_dynamic(A1, 0)` | … nearest 10 million  <br> <br> `=round(A1, -7)` |
+| 85,000,000 | … half-step within the current order  <br> <br> `=round_dynamic(A1, -0.5)` | … nearest 5 million  <br> <br> `=mround(A1, 5000000)` |
 | 87,000,000 | … one order finer  <br> <br> `=round_dynamic(A1, -1)` | … nearest million  <br> <br> `=round(A1, -6)` |
+
+[^safety]: With offset `1.5`, the requested step is 500 million. Applied to 87,054,321 alone, that step would round all the way down to zero — which would hide the fact that the number is in the tens of millions. To prevent that, the result is never smaller than what `=round_dynamic(A1, 1)` produces, which is 100,000,000. The same safety net applies to any offset whose whole-number part is 1 or larger.
 
 
 Each setting emphasizes different relationships in the data.  The goal is not precision — it is interpretability.
+
+The sign of a fractional offset tells the function which way to step. A positive `+0.5` rounds to half of the **next-larger** order of magnitude; a negative `-0.5` rounds to half of the **current** order. This generalizes to any non-integer offset: the step size is `|frac(offset)| × 10^(OoM + ceil(offset))`.
+
+### Floor at the value's order of magnitude
+
+Rounding can never collapse a number below its own order of magnitude. For any value, the simplified result is guaranteed to have a magnitude of at least `10^floor(log10(|value|))`, with sign preserved.
+
+For example, `=round_dynamic(87054321, 2)` (asking to round to the nearest hundred million) returns **10,000,000**, not `0`. A tens-of-millions value never simplifies to zero, regardless of how aggressive the requested offset is. This keeps ordering intuitive when a dataset spans many magnitudes.
+
+### Backward compatibility
+
+The default offset (`-0.5`) is unchanged: every call that relies on the default — single mode or dataset mode — produces the exact same value it did before. Callers that explicitly pass a *positive* non-integer offset (`+0.5`, `+0.25`, `+1.5`, etc.) will see different values than in earlier versions: positive fractional offsets previously produced the same result as their negative counterparts (a latent bug), and now correctly step toward the next-larger order of magnitude.
 
 
 ## Simplifying ranges

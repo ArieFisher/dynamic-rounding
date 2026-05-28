@@ -2,6 +2,10 @@
 
 This extension allows users to apply the `ROUND_DYNAMIC` algorithm to arbitrary HTML tables on any website via a right-click context menu.
 
+## Offset semantics
+
+The extension uses the same offset model as the rest of the project. As of the `2026-05-28` release, the meaning of fractional offsets is sign-aware: `+0.5` rounds toward half of the next-larger order of magnitude, and `-0.5` rounds toward half of the current order. The result is also floored at the value's own order of magnitude so a large number can never collapse to zero. See the [root README](../README.md#declarating-a-lens) for the full parameter table and a worked example.
+
 ## Architecture Notes
 
 ### Safe DOM Text Replacement (The "Wikipedia Problem")
