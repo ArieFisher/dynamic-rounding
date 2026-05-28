@@ -32,9 +32,27 @@ No other flags. Resume behavior is automatic: re-invoking with the same slug che
 
 4. **Working tree check.** The session's active repo must be on `main` and clean. If not → abort.
 
-5. **Check prior progress** by listing branches and open/merged PRs matching `feature/<label>` for each sprint in this stack. Any sprint whose PR is already merged → skip. Any with an open PR → skip (already submitted for review).
+5. **Push-auth precheck.** Sprint-stack pushes many branches and opens many PRs; confirm write access up front so a mid-run failure doesn't strand work on local branches. Run:
 
-6. **Topologically sort** the sprints by `depends_on`. This is the execution order.
+   ```
+   git push --dry-run origin HEAD:refs/heads/__sprint_stack_auth_check 2>&1
+   ```
+
+   If the output contains `403` or `denied` (e.g. `Permission to <repo> denied`, `Resource not accessible by integration`), ask the user for a fine-grained GitHub PAT with `contents: write` and `pull-requests: write` on this repo:
+
+   > I can't push to this repo from the current session (got 403 from the remote). Paste a GitHub PAT with `contents: write` and `pull-requests: write` on `<owner>/<repo>` and I'll use it for every push and PR in this run. The token stays in this session only.
+
+   When the user provides a token, hold it in session memory only — do **not** write it to `.git/config`, `~/.git-credentials`, or any committed file. For each push, use a one-shot authenticated URL:
+
+   ```
+   git push "https://x-access-token:<TOKEN>@github.com/<owner>/<repo>.git" <branch>
+   ```
+
+   For PR creation, pass it via `GH_TOKEN=<TOKEN> gh pr create ...` (or the equivalent for whatever GitHub client is in use). If the dry-run push succeeds, proceed normally — no token needed.
+
+6. **Check prior progress** by listing branches and open/merged PRs matching `feature/<label>` for each sprint in this stack. Any sprint whose PR is already merged → skip. Any with an open PR → skip (already submitted for review).
+
+7. **Topologically sort** the sprints by `depends_on`. This is the execution order.
 
 ## Execution loop
 

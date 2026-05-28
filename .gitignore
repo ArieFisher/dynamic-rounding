@@ -14,7 +14,7 @@ build/
 docs/private/
 
 # Claude Code local config / instructions
-CLAUDE.md
+# CLAUDE.md is tracked (shared repo conventions for Claude sessions).
 .claude/
 
 # Antigravity Agent
