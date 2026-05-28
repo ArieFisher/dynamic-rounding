@@ -1,14 +1,17 @@
 """
 DynamicRounding - Dynamic rounding for readable data
-Version: 0.1.4
 https://github.com/ArieFisher/dynamic-rounding
 MIT License
 """
 
 import math
+from importlib.metadata import version, PackageNotFoundError
 from typing import Union, List, Optional, Any
 
-__version__ = "0.1.4"
+try:
+    __version__ = version("dynamic-rounding")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"
 
 # Constants
 DEFAULT_OFFSET = -0.5

@@ -3,8 +3,9 @@
 **Version:** 2.3
 
 **Platforms:**
-- Google Sheets (JavaScript) — v0.2.6
-- Python — v0.1.3
+- Google Sheets (JavaScript) — see [js/CHANGELOG.md](../js/CHANGELOG.md)
+- Python — see [python/pyproject.toml](../python/pyproject.toml)
+- Chrome extension — see [chrome-extension/manifest.json](../chrome-extension/manifest.json)
 
 ## Features
 
