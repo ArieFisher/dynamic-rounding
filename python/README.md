@@ -1,7 +1,5 @@
 # Dynamic Rounding (Python)
 
-**Version 0.1.3**
-
 Dynamic rounding for readable data — rounds based on order of magnitude.
 
 ## Installation
