@@ -1,7 +1,5 @@
 # Dynamic Rounding for Google Sheets
 
-**Version 0.2.6**
-
 *Quickly make data more readable.*
 
 This is a custom function for Google Sheets that rounds numbers *declaratively* — you describe the precision you want, and the function adapts to each value's magnitude.
