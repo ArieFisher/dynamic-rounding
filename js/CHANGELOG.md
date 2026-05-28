@@ -10,6 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Docs:** Added `## Note: decimal precision in Sheets` section to README explaining that `ROUND_DYNAMIC` (as a custom function) cannot set cell number formats directly. Includes guidance on manually applying a custom number format to match the offset's decimal count, with examples for offsets 0.5 and 0.25.
 
+## [0.3.0] - 2026-05-28
+
+### Changed
+
+- **Breaking:** Redefined the meaning of fractional offsets (`+0.5`, `+0.25`, `+1.5`, etc.) so that the sign of the offset determines whether the half/quarter step sits above or below the current order of magnitude. Previously `+0.5` and `-0.5` produced identical results (a latent bug); now `+0.5` rounds toward one-OoM-larger steps and `-0.5` rounds toward current-OoM steps. The default offset (`-0.5`) is bytewise-unchanged, so callers on the default path are unaffected.
+
+### Added
+
+- **Feature 2:** Value-OoM floor. After rounding, the magnitude of the result is at least `10^floor(log10(|value|))` — i.e. a tens-of-millions value can never collapse to 0. Prevents the "small number simplifies to a bigger value than a bigger number" inversion that motivated this release.
+- **Feature 3:** "No-coarser-than-x" floor for fractional offsets with `|trunc(offset)| >= 1`. The floor is gated by an internal `X_FLOOR_THRESHOLD` constant (default `1`), not exposed on the public signature.
+
+### Internal
+
+- `X_FLOOR_THRESHOLD` is a module-level constant in `js/round_dynamic.js`. Tests exercise the alternate value by re-evaluating the source in a sandbox.
+
 ## [0.2.5] - 2026-04-24
 
 ### Changed

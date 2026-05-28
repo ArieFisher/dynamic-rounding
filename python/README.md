@@ -88,10 +88,15 @@ Same parameters as `round_dynamic`, but operates on a pandas Series.
 | Offset | Meaning | 87,054,321 rounds to |
 |--------|---------|----------------------|
 | 1 | one OoM coarser | 100,000,000 |
+| 0.5 | half-step toward the next-larger OoM | 100,000,000 |
 | 0 | current OoM | 90,000,000 |
-| -0.5 | half of current OoM (default) | 85,000,000 |
+| -0.5 | half-step within the current OoM (default) | 85,000,000 |
 | -1 | one OoM finer | 87,000,000 |
-| -1.5 | half of one OoM finer | 87,000,000 |
+| -1.5 | half-step within one OoM finer | 87,000,000 |
+
+**Sign convention for fractional offsets:** The sign of the offset chooses the direction of the half-step. `+0.5` rounds to half of the *next-larger* OoM, `-0.5` to half of the *current* OoM. More generally, the step is `|frac(offset)| * 10 ** (OoM + ceil(offset))`.
+
+**Floor at the value's OoM:** After rounding, the magnitude of the result is at least `10 ** floor(log10(abs(value)))` — so a tens-of-millions value can never collapse to `0`.
 
 ## Development
 
