@@ -2946,6 +2946,27 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     roundWithOffset(0, 1.5), 0);
 })();
 
+(function quarterStepGrid() {
+  // Generalized fractional formula: any non-integer offset uses
+  // step = f * 10^(current_mag + ceil(offset)) where f = |offset - trunc(offset)|.
+  // Quarter-step (f = 0.25) spot checks across 87M / 47M / 17M.
+  const cases = [
+    [87054321,  0.25,  75000000],
+    [87054321, -0.25,  87500000],
+    [47054321,  0.25,  50000000],
+    [47054321, -0.25,  47500000],
+    [17054321,  0.25,  25000000],
+    [17054321, -0.25,  17500000],
+    // |trunc(offset)| >= X_FLOOR_THRESHOLD triggers the x-floor too.
+    [87054321,  1.25, 100000000],  // x-floor at rd(87M, 1) = 100M
+    [87054321, -1.25,  87000000],  // very fine step, x-floor at rd(87M, -1) = 87M
+  ];
+  for (const [v, off, expected] of cases) {
+    eq(`quarter-step grid: roundWithOffset(${v}, ${off})`,
+      roundWithOffset(v, off), expected);
+  }
+})();
+
 (function halfStepMonotonicity() {
   // Monotonicity at offsets 1 and 0.5 across [73, 4591, 63538, 162583, 400000]
   const values = [73, 4591, 63538, 162583, 400000];

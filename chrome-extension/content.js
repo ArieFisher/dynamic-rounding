@@ -1212,8 +1212,9 @@ function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_to
  * Rounds a number using the offset model.
  *
  * Step formula:
- *   integer offset:    step = 10^(current_mag + offset)
- *   half-step offset:  step = 0.5 * 10^(current_mag + ceil(offset))
+ *   integer offset:      step = 10^(current_mag + offset)
+ *   fractional offset:   step = f * 10^(current_mag + ceil(offset))
+ *                        where f = |offset - trunc(offset)| in (0, 1)
  *
  * Examples for v=87,054,321 (current_mag = 7):
  *   offset = +2   -> step = 1e9       -> raw = 0
@@ -1228,7 +1229,7 @@ function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_to
  *
  * Floors applied after raw rounding:
  *   Feature 2: result >= 10^current_mag (value-OoM floor, always on)
- *   Feature 3: when offset is half-step and |trunc(offset)| >= X_FLOOR_THRESHOLD,
+ *   Feature 3: when offset is non-integer and |trunc(offset)| >= X_FLOOR_THRESHOLD,
  *              also floor at roundWithOffset(|num|, trunc(offset)).
  */
 function roundWithOffset(num, offset) {
@@ -1245,7 +1246,8 @@ function roundWithOffset(num, offset) {
     step = Math.pow(10, target_mag);
   } else {
     target_mag = current_mag + Math.ceil(offset);
-    step = 0.5 * Math.pow(10, target_mag);
+    const f = Math.abs(offset - Math.trunc(offset));
+    step = f * Math.pow(10, target_mag);
   }
 
   const raw = Math.round(absnum / step + EPSILON) * step;
