@@ -173,16 +173,17 @@ def _round_with_offset(value: float, offset: float) -> float:
     if float(offset).is_integer():
         target_mag = current_mag + int(offset)
         step = 10 ** target_mag
-    else:  # half-step
+    else:  # general fractional offset
         target_mag = current_mag + math.ceil(offset)
-        step = 0.5 * (10 ** target_mag)
+        f = abs(offset - math.trunc(offset))  # fractional magnitude in (0, 1)
+        step = f * (10 ** target_mag)
 
     raw = round(absval / step + EPSILON) * step
     floor_oom = 10 ** current_mag  # Feature 2: value-OoM floor
 
     result = max(raw, floor_oom)
 
-    # Feature 3: x-floor for half-steps with large integer part
+    # Feature 3: x-floor for fractional offsets with large integer part
     if not float(offset).is_integer():
         x_int = math.trunc(offset)
         if abs(x_int) >= X_FLOOR_THRESHOLD:
