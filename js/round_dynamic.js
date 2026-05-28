@@ -17,6 +17,7 @@ const DEFAULT_NUM_TOP = 1; // in dataset-aware modes, by default, round numbers 
 // Internal constants
 const VALIDATION_LIMIT = 20; // arbitrarily chosen as a 'sane' limit for the order of magnitude offset (i.e. +-20 orders of magnitude)
 const EPSILON = 1e-9; // used to handle floating point inaccuracies
+const X_FLOOR_THRESHOLD = 1; // for half-step offsets x.5, also floor at roundWithOffset(value, trunc(offset)) when |trunc(offset)| >= this threshold
 
 /**
  * Declarative rounding by order of magnitude.
@@ -131,33 +132,65 @@ function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_to
 
 /**
  * Rounds a number using the offset model.
- * 
- * offset = OoM offset + optional fraction
- *   0 = current OoM
- *   -1 = one OoM finer
- *   1 = one OoM coarser
- *   0.5 = half of current OoM (same as -0.5)
- *   -1.5 = half of one OoM finer
+ *
+ * Integer offsets:
+ *   step = 10^(current_mag + offset)
+ *     0  = current OoM
+ *    -1  = one OoM finer
+ *     1  = one OoM coarser
+ *
+ * Half-step (x.5) offsets:
+ *   step = 0.5 * 10^(current_mag + ceil(offset))
+ *    -0.5 = 0.5 * 10^current_mag       (half of current OoM step)
+ *    +0.5 = 0.5 * 10^(current_mag+1)   (half of next-coarser OoM step)
+ *    +1.5 = 0.5 * 10^(current_mag+2)
+ *    -1.5 = 0.5 * 10^(current_mag-1)
+ *
+ * After rounding, the result magnitude is floored at 10^current_mag so a
+ * value never collapses to zero (Feature 2). For half-step offsets whose
+ * integer part is large enough (|trunc(offset)| >= X_FLOOR_THRESHOLD), the
+ * result is also floored at roundWithOffset(value, trunc(offset)) to
+ * preserve ordering across magnitudes (Feature 3).
  */
 function roundWithOffset(num, offset) {
-  const current_mag = Math.floor(Math.log10(Math.abs(num)));
+  if (num === 0) return 0;
 
-  // Decompose offset into integer part and fraction
-  const oom_offset = Math.trunc(offset);
-  // If offset is integer, fraction becomes 0 || 1 (default multiplier)
-  const fraction = Math.abs(offset - oom_offset) || 1;
+  const sign = num < 0 ? -1 : 1;
+  const absnum = Math.abs(num);
+  const current_mag = Math.floor(Math.log10(absnum));
 
-  const target_mag = current_mag + oom_offset;
-  const rounding_base = Math.pow(10, target_mag) * fraction;
+  const isInteger = (offset === Math.trunc(offset));
+
+  let target_mag, step;
+  if (isInteger) {
+    target_mag = current_mag + offset;
+    step = Math.pow(10, target_mag);
+  } else {
+    target_mag = current_mag + Math.ceil(offset);
+    step = 0.5 * Math.pow(10, target_mag);
+  }
 
   // Add epsilon to handle floating point inaccuracies
-  let rounded = Math.round(num / rounding_base + EPSILON) * rounding_base;
-  
-  if (Math.abs(rounded) >= 10 || rounded % 1 === 0) {
-    rounded = Math.round(rounded);
+  const raw = Math.round(absnum / step + EPSILON) * step;
+
+  // Feature 2: floor result at the value's own order of magnitude.
+  const floor_oom = Math.pow(10, current_mag);
+  let result = Math.max(raw, floor_oom);
+
+  // Feature 3: for half-step offsets, also floor at the integer-offset result
+  // when the integer part is large enough.
+  if (!isInteger && Math.abs(Math.trunc(offset)) >= X_FLOOR_THRESHOLD) {
+    const x_int = Math.trunc(offset);
+    const floor_x = Math.abs(roundWithOffset(absnum, x_int));
+    result = Math.max(result, floor_x);
   }
-  
-  return rounded;
+
+  // Re-apply the float-cleanup the previous implementation did.
+  if (result >= 10 || result % 1 === 0) {
+    result = Math.round(result);
+  }
+
+  return sign * result;
 }
 
 /**
