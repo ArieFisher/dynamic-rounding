@@ -2,21 +2,30 @@
 trigger: always_on
 ---
 
-1\. Only make changes to feature branches. 
+# Git Workflow
 
-2\. If no feature branch exists, create one before editing any files.
+## **1\. Branching & Staging**
 
-3\. Before creating a feature branch, always run the following to (a) resync from the remote main before starting work, and, (b) remove references to remote branches that have been merged and deleted.
+* **Feature branches only.** Never edit main.  
+* **Trigger:** If on main or no branch exists, create one.  
+* **Safety:** Before switching, if the tree is "dirty," **stash** changes first.  
+* **Commit Command:** When told to "commit all," use git add \-A && git commit \-m "...".
 
-   ```bash
-   git checkout main
-   git pull origin main
-   git fetch --prune
-   ```
+## **2\. Sync & Cleanup**
 
-4\. Before starting a new feature branch, delete any local branches that no longer exist on remote:
-   ```bash
-git fetch --prune
-git branch -vv | grep ': gone]' | awk '{print $1}' | xargs git branch -d
-   ```
+Run this to refresh main and force-delete local branches already merged/gone on origin:
 
+Bash  
+git checkout main && git pull \--prune \--ff-only origin main  
+git for-each-ref \--format='%(refname:short) %(upstream:track)' refs/heads/ \\  
+  | awk '$2 \== "\[gone\]" {print $1}' \\  
+  | xargs \-r git branch \-D
+
+## **3\. Quick Reference**
+
+| Phase | Command |
+| :---- | :---- |
+| **Start** | git checkout main && git pull origin main && git checkout \-b \<name\> |
+| **Work** | git add \-A && git commit \-m "..." && git push \-u origin \<name\> |
+| **Ship** | gh pr create \--fill && gh pr merge \--auto \--squash \--delete-branch |
+| **Reset** | Run the **Cleanup** script in Section 2\. |
