@@ -2,7 +2,93 @@
 
 Numbers can tell a story. But *too many* numbers make the story hard to see.
 
-This introduces a new approach to making data interpretable: **declarative simplification**.
+For example, this monthly revenue tells a clear pattern:
+
+> Jan-Dec:  $31,311.28, $38,080.94, $45,291.38, $45,090.27, $47,709.54, $41,400.09, $24,923.26, $25,303.28, $41,200.80, $43,098.42, $42,210.11, $32,892.62
+
+But the pattern is buried inside the numbers.  Somewhat paradoxically, getting rid of the numbers makes the story leap out: this is a cyclical business tied to the academic calendar, with revenue dropping during summer and winter breaks.
+
+<p align="center">
+ <img src="docs/media/revenue_chart1.png" alt="chart showing revenue" width="400">
+</p>
+
+We are curious creatures. Our minds constantly look for connections, and seek meaning in patterns.  We do this unconsciously — no graphing tools or BI tools required. But when data gets too detailed, our brains start simplifying it, searching for the structure; and through the structure, the message.
+
+For example, this population table is structured around ranked size,: 'Dallas/Fort Worth is roughly the size of Chicago or Houston ... should probably rank #5.'
+
+
+<p align="center">
+ <img src="docs/media/wikipedia_population.png" alt="chart showing revenue" width = "600">
+ <br>
+  <sup> Which presentation makes the story easier to see?</sup>
+</p>
+
+Our *eyes* get the image on the left but our *brains* see the one on the right; this library works accelerates that natural process.
+
+Computers are great at giving us hyper-accurate data - but that works against us; this library works with us.
+
+There are many ways to making data interpretable, and they sometimes require time and  technical skill. This introduces a more natural approach: **declarative simplification**.  
+
+## Implementations
+
+| Platform | Location | Install |
+| :---- | :---- | :---- |
+| Chrome Extension | [chrome-extension/](https://www.google.com/search?q=./chrome-extension/) | [Load unpacked](https://developer.chrome.com/docs/extensions/mv3/getstarted/development-basics/#load-unpacked) |
+| Google Sheets | [js/](https://www.google.com/search?q=./js/) | [Copy template](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) |
+| Python | [python/](https://www.google.com/search?q=./python/) | pip install dynamic-rounding |
+
+## Examples
+
+### Chrome Extension and Google Sheets plugin
+
+<video src="docs/media/dynamic_rounding_demo6.mov" width="100%" controls></video>
+
+see [Chrome Extension README](chrome-extension/README.md)
+
+### Google Sheets
+
+* \=ROUND\_DYNAMIC(87054321) \-\> 85,000,000  
+* \=ROUND\_DYNAMIC(A1:A10)   \-\> rounds entire range with set-aware precision
+
+### Python
+
+* `from dynamic_rounding import round_dynamic`  
+* \# Single value: `round_dynamic(87054321)` \-\> 85,000,000  
+* \# Dataset: (larger values get finer precision):  `round_dynamic([4428910, 983321, 42109])` \-\> \[4,500,000, 1,000,000, 40,000\]
+
+### Python with pandas
+
+* `from dynamic_rounding.pandas import round_dynamic_series`  
+* \# round entire series with set-aware precision:  
+* `round_dynamic_series(df['revenue'])`
+
+--- 
+
+## Features
+
+1. **Declarative rounding**:  relative to magnitude  
+2. **Range operations**: preserves structures of arrays, lists, or grids  
+3. **Iteration**: use the relative rounding approach that is best for your data  
+4. **Adaptive precision**: Simplify smaller numbers more aggressively while preserving precision in larger ones.  
+5. **Robust**: passes through non-numerics, handles negatives and decimals, ignores non-numerics, tolerates different number formats
+
+---
+
+## Documentation
+
+* [Design Doc](https://www.google.com/search?q=./docs/design.md) — Algorithm and concepts  
+* [Google Sheets README](https://www.google.com/search?q=./js/README.md) — Full Sheets documentation  
+* [Python README](https://www.google.com/search?q=./python/README.md) — Full Python documentation
+* [Chrome Extension README](https://www.google.com/search?q=./chrome-extension/README.md) — Browser-based simplification
+
+## License
+
+MIT
+
+
+<br><br><br><br>
+
+# Discussion 
 
 ## Simplifying data: declarative  vs. imperative
 
@@ -101,60 +187,6 @@ In this example, the largest values are rounded to the nearest half order of mag
 
 This balance preserves structure in large numbers while improving overall readability, especially in larger and more complicated datasets.
 
-## Features
-
-1. **Declarative rounding**:  relative to magnitude  
-2. **Range operations**: preserves structures of arrays, lists, or grids  
-3. **Iteration**: use the relative rounding approach that is best for your data  
-4. **Adaptive precision**: Simplify smaller numbers more aggressively while preserving precision in larger ones.  
-5. **Robust**: passes through non-numerics, handles negatives and decimals, ignores non-numerics, tolerates different number formats
-
----
-
-## Implementations
-
-| Platform | Location | Install |
-| :---- | :---- | :---- |
-| Google Sheets | [js/](https://www.google.com/search?q=./js/) | [Copy template](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) |
-| Python | [python/](https://www.google.com/search?q=./python/) | pip install dynamic-rounding |
-| Chrome Extension | [chrome-extension/](https://www.google.com/search?q=./chrome-extension/) | [Load unpacked](https://developer.chrome.com/docs/extensions/mv3/getstarted/development-basics/#load-unpacked) |
-
-## Quick Examples
-
-### Chrome Extension
-![alt-text](docs//dynamic_rounding_Screen.gif)
-
-see [Chrome Extension README](chrome-extension/README.md)
-
-### Google Sheets
-
-* \=ROUND\_DYNAMIC(87054321) \-\> 85,000,000  
-* \=ROUND\_DYNAMIC(A1:A10)   \-\> rounds entire range with set-aware precision
-
-### Python
-
-* `from dynamic_rounding import round_dynamic`  
-* \# Single value: `round_dynamic(87054321)` \-\> 85,000,000  
-* \# Dataset: (larger values get finer precision):  `round_dynamic([4428910, 983321, 42109])` \-\> \[4,500,000, 1,000,000, 40,000\]
-
-### Python with pandas
-
-* `from dynamic_rounding.pandas import round_dynamic_series`  
-* \# round entire series with set-aware precision:  
-* `round_dynamic_series(df['revenue'])`
-
---- 
-
-## Documentation
-
-* [Design Doc](https://www.google.com/search?q=./docs/design.md) — Algorithm and concepts  
-* [Google Sheets README](https://www.google.com/search?q=./js/README.md) — Full Sheets documentation  
-* [Python README](https://www.google.com/search?q=./python/README.md) — Full Python documentation
-* [Chrome Extension README](https://www.google.com/search?q=./chrome-extension/README.md) — Browser-based simplification
-
-## License
-
-MIT
 
 
 <br><br><br><br>
