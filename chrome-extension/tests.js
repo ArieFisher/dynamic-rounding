@@ -66,6 +66,12 @@ globalThis.TOGGLE_KNOB_PX = TOGGLE_KNOB_PX;
 globalThis.TOGGLE_KNOB_INSET_PX = TOGGLE_KNOB_INSET_PX;
 globalThis.TOGGLE_EDGE_GAP_PX = TOGGLE_EDGE_GAP_PX;
 globalThis.TOGGLE_KNOB_TRAVEL_PX = TOGGLE_KNOB_TRAVEL_PX;
+// LIFT_FALLBACK_ENABLED is a let; expose a getter/setter so tests can flip it.
+Object.defineProperty(globalThis, 'LIFT_FALLBACK_ENABLED', {
+  get() { return LIFT_FALLBACK_ENABLED; },
+  set(v) { LIFT_FALLBACK_ENABLED = v; },
+  configurable: true,
+});
 globalThis.createToggleForTable = createToggleForTable;
 globalThis.runToggleAction = runToggleAction;
 globalThis.toggleOriginalValues = toggleOriginalValues;
@@ -1992,53 +1998,139 @@ function injectToggleEntry(table) {
     tableToggles.has(table), true);
 })();
 
-// --- fix-toggle-overlap: positionToggle lifts the toggle above the table ONLY when
-// the strip above is verifiably clear; otherwise it keeps the original in-corner
-// placement, so the change is a strict improvement (never worse than before).
+// --- fix-toggle-overlap: positionToggle placement ---
 //
 //   left = rect.right + scrollX - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX  (anchored, unchanged)
 //   lifted top    = rect.top + scrollY - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX
 //   in-corner top = rect.top + scrollY - TOGGLE_EDGE_GAP_PX            (original behavior)
 //
-// The strip is "clear" when document.elementsFromPoint under the lifted toggle's
-// footprint returns only the document root, body, or ancestors of the table.
+// Default mode (LIFT_FALLBACK_ENABLED = false): always use the lifted top. Simpler
+// fix, accepts known risks (content above, off-viewport).
+// Flag-enabled mode (LIFT_FALLBACK_ENABLED = true): probe the strip above with
+// document.elementsFromPoint; fall back to the in-corner top if not verifiably
+// clear. Strict-improvement mode — kept in code for opt-in if real-world usage
+// surfaces regressions.
 
-(function atToggle_liftsAboveWhenStripIsClear() {
+// --- Default mode (flag off): unconditionally lifts above the table ---
+// Sanity-check the default state up front so the assertions below are meaningful.
+eq('fix-toggle-overlap: LIFT_FALLBACK_ENABLED defaults to false',
+  LIFT_FALLBACK_ENABLED, false);
+
+(function atToggle_default_liftsAboveTopRight() {
   const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
   const table = { getBoundingClientRect() { return tableRect; } };
   const labelEl = { style: {} };
-  // The empty strip above the table hit-tests to the table's own container.
-  const container = { contains(n) { return n === table; } };
 
   const origScrollX = global.window.scrollX;
   const origScrollY = global.window.scrollY;
-  const origEFP = global.document.elementsFromPoint;
   global.window.scrollX = 0;
   global.window.scrollY = 0;
-  global.document.elementsFromPoint = () => [container];
 
   positionToggle(table, labelEl);
 
   global.window.scrollX = origScrollX;
   global.window.scrollY = origScrollY;
-  global.document.elementsFromPoint = origEFP;
 
   const left = parseFloat(labelEl.style.left);
   const top  = parseFloat(labelEl.style.top);
 
-  // left: anchored to the right edge with a TOGGLE_EDGE_GAP_PX overhang (unchanged by this fix).
   eq('fix-toggle-overlap: left anchors to table right edge minus toggle width plus edge gap',
     left, tableRect.right - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX);
-  // top: lifted fully above the table; bottom edge sits TOGGLE_EDGE_GAP_PX above row 1.
-  eq('fix-toggle-overlap: lifts the toggle above the table when the strip is clear',
+  eq('fix-toggle-overlap: default mode lifts the toggle above the table',
     top, tableRect.top - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX);
   eq('fix-toggle-overlap: lifted toggle bottom sits TOGGLE_EDGE_GAP_PX above table top (no row-1 overlap)',
     top + TOGGLE_HEIGHT_PX, tableRect.top - TOGGLE_EDGE_GAP_PX);
 })();
 
-(function atToggle_clearStripIgnoresOwnLabel() {
-  // The toggle's own label is hit-tested at its current position; it must not be
-  // mistaken for blocking content above the table.
+(function atToggle_default_includesScrollOffsets() {
+  const tableRect = { top: 400, right: 500, bottom: 600, left: 100 };
+  const table = { getBoundingClientRect() { return tableRect; } };
+  const labelEl = { style: {} };
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 200;
+  global.window.scrollY = 300;
+
+  positionToggle(table, labelEl);
+
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+
+  eq('fix-toggle-overlap: default mode lifted left includes scrollX offset',
+    parseFloat(labelEl.style.left), tableRect.right + 200 - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX);
+  eq('fix-toggle-overlap: default mode lifted top includes scrollY offset',
+    parseFloat(labelEl.style.top), tableRect.top + 300 - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX);
+})();
+
+(function atToggle_default_ignoresContentAboveAndProbeAvailability() {
+  // Default mode must lift even when isStripAboveTableClear would say "not clear":
+  // it does not consult the probe at all, so neither blocking content nor a missing
+  // elementsFromPoint changes the placement. Guards that the flag actually gates.
+  const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
+  const table = { getBoundingClientRect() { return tableRect; } };
+  const labelEl = { style: {} };
+  const blocking = { contains() { return false; } };
+
+  const origScrollY = global.window.scrollY;
+  const origEFP = global.document.elementsFromPoint;
+  global.window.scrollY = 0;
+
+  global.document.elementsFromPoint = () => [blocking];
+  positionToggle(table, labelEl);
+  const topWithBlocking = parseFloat(labelEl.style.top);
+
+  global.document.elementsFromPoint = undefined;
+  positionToggle(table, labelEl);
+  const topWithoutProbe = parseFloat(labelEl.style.top);
+
+  global.window.scrollY = origScrollY;
+  global.document.elementsFromPoint = origEFP;
+
+  const lifted = tableRect.top - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX;
+  eq('fix-toggle-overlap: default mode lifts even when content occupies the strip above',
+    topWithBlocking, lifted);
+  eq('fix-toggle-overlap: default mode lifts even when elementsFromPoint is unavailable',
+    topWithoutProbe, lifted);
+})();
+
+// --- Flag-enabled mode: conditional lift with in-corner fallback ---
+// Tests below temporarily flip LIFT_FALLBACK_ENABLED = true and restore it in a
+// try/finally so a failing assertion never leaks the flipped state into the rest
+// of the suite. The strict-improvement guarantee is "every fallback path
+// reproduces today's in-corner placement (rect.top - TOGGLE_EDGE_GAP_PX)".
+
+function withLiftFallback(name, fn) {
+  const orig = LIFT_FALLBACK_ENABLED;
+  LIFT_FALLBACK_ENABLED = true;
+  try {
+    fn();
+  } finally {
+    LIFT_FALLBACK_ENABLED = orig;
+  }
+}
+
+withLiftFallback('flag on', function() {
+  const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
+  const table = { getBoundingClientRect() { return tableRect; } };
+  const labelEl = { style: {} };
+  const container = { contains(n) { return n === table; } }; // ancestor of the table
+
+  const origScrollY = global.window.scrollY;
+  const origEFP = global.document.elementsFromPoint;
+  global.window.scrollY = 0;
+  global.document.elementsFromPoint = () => [container];
+
+  positionToggle(table, labelEl);
+
+  global.window.scrollY = origScrollY;
+  global.document.elementsFromPoint = origEFP;
+
+  eq('fix-toggle-overlap: flag on, strip clear → lifts above the table',
+    parseFloat(labelEl.style.top), tableRect.top - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX);
+});
+
+withLiftFallback('flag on, own label ignored', function() {
   const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
   const table = { getBoundingClientRect() { return tableRect; } };
   const labelEl = { style: {}, contains(n) { return n === labelEl; } };
@@ -2054,47 +2146,14 @@ function injectToggleEntry(table) {
   global.window.scrollY = origScrollY;
   global.document.elementsFromPoint = origEFP;
 
-  eq('fix-toggle-overlap: the toggle does not treat its own label as blocking content',
+  eq('fix-toggle-overlap: flag on, the toggle does not treat its own label as blocking',
     parseFloat(labelEl.style.top), tableRect.top - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX);
-})();
+});
 
-// --- fix-toggle-overlap: lift carries the scroll offsets when the strip is clear ---
-
-(function atToggle_liftIncludesScrollOffsets() {
-  const tableRect = { top: 400, right: 500, bottom: 600, left: 100 };
-  const table = { getBoundingClientRect() { return tableRect; } };
-  const labelEl = { style: {} };
-  const container = { contains(n) { return n === table; } };
-
-  const origScrollX = global.window.scrollX;
-  const origScrollY = global.window.scrollY;
-  const origEFP = global.document.elementsFromPoint;
-  global.window.scrollX = 200;
-  global.window.scrollY = 300;
-  global.document.elementsFromPoint = () => [container];
-
-  positionToggle(table, labelEl);
-
-  global.window.scrollX = origScrollX;
-  global.window.scrollY = origScrollY;
-  global.document.elementsFromPoint = origEFP;
-
-  // left = 500 + 200 - 36 + 2 = 666; top = 400 + 300 - 20 - 2 = 678
-  eq('fix-toggle-overlap: lifted left includes scrollX offset',
-    parseFloat(labelEl.style.left), tableRect.right + 200 - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX);
-  eq('fix-toggle-overlap: lifted top includes scrollY offset',
-    parseFloat(labelEl.style.top), tableRect.top + 300 - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX);
-})();
-
-// --- fix-toggle-overlap: strict-improvement fallbacks — stay in the original corner ---
-// In every "cannot verify the strip is clear" case the toggle keeps its original
-// placement (rect.top - TOGGLE_EDGE_GAP_PX), i.e. exactly today's behavior. No regression.
-
-(function atToggle_staysInCornerWhenContentAbove() {
+withLiftFallback('flag on, content above → corner', function() {
   const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
   const table = { getBoundingClientRect() { return tableRect; } };
   const labelEl = { style: {} };
-  // A heading occupies the strip above the table: not an ancestor of the table.
   const heading = { contains() { return false; } };
 
   const origScrollY = global.window.scrollY;
@@ -2107,13 +2166,11 @@ function injectToggleEntry(table) {
   global.window.scrollY = origScrollY;
   global.document.elementsFromPoint = origEFP;
 
-  eq('fix-toggle-overlap: stays in corner when content occupies the strip above the table',
+  eq('fix-toggle-overlap: flag on, falls back to corner when content occupies the strip above',
     parseFloat(labelEl.style.top), tableRect.top - TOGGLE_EDGE_GAP_PX);
-})();
+});
 
-(function atToggle_staysInCornerWhenLiftWouldGoOffViewportTop() {
-  // Even with a "clear" strip, the lift is refused when it would land off the top
-  // of the viewport (aboveTopVp < 0). rect.top=10 → 10-20-2 = -12 < 0.
+withLiftFallback('flag on, lift would go off viewport top → corner', function() {
   const tableRect = { top: 10, right: 500, bottom: 200, left: 100 };
   const table = { getBoundingClientRect() { return tableRect; } };
   const labelEl = { style: {} };
@@ -2129,11 +2186,11 @@ function injectToggleEntry(table) {
   global.window.scrollY = origScrollY;
   global.document.elementsFromPoint = origEFP;
 
-  eq('fix-toggle-overlap: does not lift when the lifted position would be off the top of the viewport',
+  eq('fix-toggle-overlap: flag on, falls back to corner when lift would land off the viewport top',
     parseFloat(labelEl.style.top), tableRect.top - TOGGLE_EDGE_GAP_PX);
-})();
+});
 
-(function atToggle_staysInCornerWhenCannotProbe() {
+withLiftFallback('flag on, cannot probe → corner', function() {
   const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
   const table = { getBoundingClientRect() { return tableRect; } };
   const labelEl = { style: {} };
@@ -2141,19 +2198,18 @@ function injectToggleEntry(table) {
   const origScrollY = global.window.scrollY;
   const origEFP = global.document.elementsFromPoint;
   global.window.scrollY = 0;
-  global.document.elementsFromPoint = undefined; // environment cannot hit-test
+  global.document.elementsFromPoint = undefined;
 
   positionToggle(table, labelEl);
 
   global.window.scrollY = origScrollY;
   global.document.elementsFromPoint = origEFP;
 
-  eq('fix-toggle-overlap: stays in corner when elementsFromPoint is unavailable',
+  eq('fix-toggle-overlap: flag on, falls back to corner when elementsFromPoint is unavailable',
     parseFloat(labelEl.style.top), tableRect.top - TOGGLE_EDGE_GAP_PX);
-})();
+});
 
-(function atToggle_staysInCornerWhenProbePointOffViewport() {
-  // An off-screen probe point yields an empty hit-test; treated as not verifiable.
+withLiftFallback('flag on, probe point off viewport → corner', function() {
   const tableRect = { top: 100, right: 5000, bottom: 200, left: 100 };
   const table = { getBoundingClientRect() { return tableRect; } };
   const labelEl = { style: {} };
@@ -2168,9 +2224,13 @@ function injectToggleEntry(table) {
   global.window.scrollY = origScrollY;
   global.document.elementsFromPoint = origEFP;
 
-  eq('fix-toggle-overlap: stays in corner when the probe point is off-screen (empty hit-test)',
+  eq('fix-toggle-overlap: flag on, falls back to corner when the probe point is off-screen',
     parseFloat(labelEl.style.top), tableRect.top - TOGGLE_EDGE_GAP_PX);
-})();
+});
+
+// Sanity: the flag is restored after the flipped block.
+eq('fix-toggle-overlap: LIFT_FALLBACK_ENABLED is restored to false after flipped tests',
+  LIFT_FALLBACK_ENABLED, false);
 
 // --- fix-toggle-overlap: knob travel is derived from the geometry constants ---
 // Guards the CSS interpolation: the checked-state translateX must equal
