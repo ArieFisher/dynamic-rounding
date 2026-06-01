@@ -21,7 +21,22 @@
     background: #fafafa;
   }
   h1 { font-size: 22px; margin: 0 0 4px; }
-  .sub { color: var(--muted); margin: 0 0 28px; max-width: 720px; }
+  .sub { color: var(--muted); margin: 0 0 18px; max-width: 760px; }
+
+  /* live controls panel */
+  .panel {
+    position: sticky; top: 0; z-index: 10;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px; margin: 0 0 24px;
+    display: flex; flex-wrap: wrap; gap: 28px; align-items: center;
+  }
+  .panel .field { display: flex; flex-direction: column; gap: 4px; min-width: 240px; }
+  .panel label { font-size: 12px; color: var(--muted); }
+  .panel .row { display: flex; align-items: center; gap: 10px; }
+  .panel input[type=range] { flex: 1; }
+  .panel output { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 46px; text-align: right; }
+  .panel .hint { font-size: 12px; color: var(--muted); max-width: 360px; }
+
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -44,8 +59,7 @@
     width: 150px; height: 64px;
     border: 1px solid #bbb;
     border-radius: 2px;
-    background:
-      linear-gradient(#fff, #fff) padding-box;
+    background: #fff;
     overflow: visible;
   }
   .corner .cell {
@@ -54,7 +68,8 @@
   }
   .corner .row2 { top: 28px; }
   .corner .lbl { left: 8px; color: var(--muted); }
-  .mount { position: absolute; }          /* control mounts at table top-right corner */
+  /* every control mounts here; top/right are set live by JS, identically for all */
+  .mount { position: absolute; }
   .swatch { display: flex; align-items: center; justify-content: center; min-width: 56px; }
 
   /* ---- 1. current pill switch 36x20 ---- */
@@ -125,7 +140,6 @@
     background: var(--off);
     transition: width .18s ease, height .18s ease, background .2s ease;
   }
-  /* expand on hover OR keyboard focus (accessibility) */
   .morph:hover .track,
   .morph:focus-within .track { width: 36px; height: 20px; }
   .morph input:checked + .track { background: var(--on); }
@@ -137,19 +151,36 @@
   }
   .morph:hover .knob,
   .morph:focus-within .knob { opacity: 1; width: 14px; height: 14px; left: 3px; }
-  .morph input:checked ~ .knob { left: 19px; }   /* slid right when on + expanded */
+  .morph input:checked ~ .knob { left: 19px; }
 
   .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:999px; background:#eef; color:#334; margin-left:6px; }
   .tag.new { background:#e6f4ea; color:#137333; }
   .warn { color:#b3261e; }
-  .ok { color:#137333; }
-  footer { color: var(--muted); font-size:12px; margin-top:28px; max-width:720px; }
+  footer { color: var(--muted); font-size:12px; margin-top:28px; max-width:760px; }
   code { background:#f1f3f4; padding:1px 4px; border-radius:4px; }
 </style>
 </head>
 <body>
   <h1>Toggle control choices</h1>
-  <p class="sub">Each control is rendered at its <strong>true pixel size</strong>, shown in the off and on states, and mounted on a mock table's top-right corner so you can judge how much of row&nbsp;1 it covers. Click any control to flip it. The mock table's first row reads <code>Words 205</code>; watch how much of the “205” each control hides when placed in-corner (no lift).</p>
+  <p class="sub">Each control is rendered at its <strong>true pixel size</strong>, shown off (left) and on (middle), and mounted on a mock table's top-right corner (right). All seven use the <strong>same anchor</strong>, driven live by the sliders below, so the overlap comparison is apples-to-apples regardless of each control's size.</p>
+
+  <div class="panel">
+    <div class="field">
+      <label for="overlap">Vertical overlap — px of the control sitting below the table's top edge</label>
+      <div class="row">
+        <input type="range" id="overlap" min="-14" max="30" step="1" value="8">
+        <output id="overlapVal">8 px</output>
+      </div>
+    </div>
+    <div class="field">
+      <label for="overhang">Right overhang — px the control extends past the table's right edge</label>
+      <div class="row">
+        <input type="range" id="overhang" min="-6" max="14" step="1" value="2">
+        <output id="overhangVal">2 px</output>
+      </div>
+    </div>
+    <p class="hint">Overlap is measured per control: at <strong>0</strong> the control's bottom edge is flush with the table top; <strong>negative</strong> lifts it fully above (a gap); <strong>positive</strong> pushes it down over row&nbsp;1 by the same number of px for every control.</p>
+  </div>
 
   <div class="grid">
 
@@ -167,12 +198,12 @@
         <div class="corner">
           <span class="cell lbl">Words</span><span class="cell">205</span>
           <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
-          <span class="mount" style="right:-2px; top:-2px;">
+          <span class="mount">
             <label class="sw sw-36"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
           </span>
         </div>
       </div>
-      <p class="note">Tallest option → covers the most of row&nbsp;1, which is the overlap you saw. Clear on/off metaphor; comfortable hit area.</p>
+      <p class="note">Tallest option → at a given overlap it covers the most of row&nbsp;1. Clear on/off metaphor; comfortable hit area.</p>
     </div>
 
     <!-- COMPACT SWITCH -->
@@ -189,12 +220,12 @@
         <div class="corner">
           <span class="cell lbl">Words</span><span class="cell">205</span>
           <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
-          <span class="mount" style="right:-2px; top:-2px;">
+          <span class="mount">
             <label class="sw sw-28"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
           </span>
         </div>
       </div>
-      <p class="note">Same metaphor, 4px shorter → 4px less overlap and a 4px smaller lift. Hit area dips under the ~24px guideline unless padded back up.</p>
+      <p class="note">Same metaphor, 4px shorter. Hit area dips under the ~24px guideline unless padded back up.</p>
     </div>
 
     <!-- CHECKBOX -->
@@ -211,7 +242,7 @@
         <div class="corner">
           <span class="cell lbl">Words</span><span class="cell">205</span>
           <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
-          <span class="mount" style="right:-2px; top:2px;">
+          <span class="mount">
             <label class="cb"><input type="checkbox" checked><span class="box"></span></label>
           </span>
         </div>
@@ -237,7 +268,7 @@
         <div class="corner">
           <span class="cell lbl">Words</span><span class="cell">205</span>
           <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
-          <span class="mount" style="right:-2px; top:2px;">
+          <span class="mount">
             <button class="ib" aria-pressed="true" title="round/unround">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 7h16M4 12h10M4 17h7"/></svg>
             </button>
@@ -257,7 +288,7 @@
         <div class="corner">
           <span class="cell lbl">Words</span><span class="cell">205</span>
           <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
-          <span class="mount" style="right:-2px; top:2px;">
+          <span class="mount">
             <button class="knobonly" aria-pressed="true" title="toggle"></button>
           </span>
         </div>
@@ -275,7 +306,7 @@
         <div class="corner">
           <span class="cell lbl">Words</span><span class="cell">205</span>
           <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
-          <span class="mount" style="right:0; top:2px;">
+          <span class="mount">
             <button class="dot" aria-pressed="true" title="toggle"></button>
           </span>
         </div>
@@ -297,27 +328,56 @@
         <div class="corner">
           <span class="cell lbl">Words</span><span class="cell">205</span>
           <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
-          <span class="mount" style="right:0; top:2px;">
+          <span class="mount">
             <label class="morph"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
           </span>
         </div>
       </div>
-      <p class="note"><strong>Hover the dot</strong> (or Tab to it) and it expands into the full pill switch. Collapsed it’s a 14px dot covering almost none of row&nbsp;1 — and it stays colored to show on/off; expanded it’s the familiar switch. Expansion is absolutely positioned, so it grows over the page without shifting layout.</p>
+      <p class="note"><strong>Hover the dot</strong> (or Tab to it) and it expands into the full pill switch. Collapsed it’s a 14px dot; the overlap slider positions it by its collapsed size. Expansion is absolutely positioned, so it grows over the page without shifting layout.</p>
     </div>
 
   </div>
 
   <footer>
-    Off (left) · On (middle) · in-corner on a mock table (right). The current extension lifts the control above the table; with a shorter control the lift distance shrinks too. Note the practical floor: accessibility guidance puts the minimum tap target around 24&nbsp;px, so visuals smaller than that need invisible padding — which adds the footprint back. Click any control to try it. <strong>#7 expands on hover/focus</strong>; on touch devices there is no hover, so it would need a tap-to-expand fallback.
+    The current extension anchors the control's right edge to the table's right edge and lifts it above the table top. Drag the sliders to see every control move together. Note the practical floor: accessibility guidance puts the minimum tap target around 24&nbsp;px, so visuals smaller than that need invisible padding — which adds the footprint back. <strong>#7 expands on hover/focus</strong>; on touch there is no hover, so it would need a tap-to-expand fallback.
   </footer>
 
   <script>
-    // make the icon/knob/dot buttons actually toggle aria-pressed
+    // The icon/knob/dot buttons toggle their own state on click.
     document.querySelectorAll('.ib, .knobonly, .dot').forEach(function (b) {
       b.addEventListener('click', function () {
         b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
       });
     });
+
+    // Live anchor: position every mounted control identically from the sliders.
+    // overlap = px of the control below the table top edge (measured per control
+    // height, so all controls intrude by the same amount). The mount is positioned
+    // relative to the .corner, whose top-left is the table's top edge.
+    var overlapEl  = document.getElementById('overlap');
+    var overhangEl = document.getElementById('overhang');
+    var overlapOut = document.getElementById('overlapVal');
+    var overhangOut = document.getElementById('overhangVal');
+
+    function apply() {
+      var overlap  = parseFloat(overlapEl.value);
+      var overhang = parseFloat(overhangEl.value);
+      overlapOut.textContent  = overlap + ' px';
+      overhangOut.textContent = overhang + ' px';
+      document.querySelectorAll('.corner .mount').forEach(function (m) {
+        var ctrl = m.firstElementChild;
+        var rect = ctrl.getBoundingClientRect();
+        // bottom edge sits at (table top + overlap) → top = overlap - height
+        m.style.top = (overlap - rect.height) + 'px';
+        // right edge sits `overhang` px past the table's right edge
+        m.style.right = (-overhang) + 'px';
+      });
+    }
+
+    overlapEl.addEventListener('input', apply);
+    overhangEl.addEventListener('input', apply);
+    window.addEventListener('load', apply);
+    apply();
   </script>
 </body>
 </html>
