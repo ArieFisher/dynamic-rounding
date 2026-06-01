@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamic Rounding — toggle control choices</title>
+<style>
+  :root {
+    --on: rgb(66, 133, 244);
+    --off: #ccc;
+    --ink: #202124;
+    --muted: #5f6368;
+    --line: #e0e0e0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    color: var(--ink);
+    background: #fafafa;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 28px; max-width: 720px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 2px; }
+  .dims { color: var(--muted); font-size: 12px; margin: 0 0 14px; font-variant-numeric: tabular-nums; }
+  .note { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+  .demos { display: flex; align-items: center; gap: 22px; }
+
+  /* mock table corner so overlap is visible at true scale */
+  .corner {
+    position: relative;
+    width: 150px; height: 64px;
+    border: 1px solid #bbb;
+    border-radius: 2px;
+    background:
+      linear-gradient(#fff, #fff) padding-box;
+    overflow: visible;
+  }
+  .corner .cell {
+    position: absolute; right: 8px; top: 6px;
+    font-variant-numeric: tabular-nums; color: var(--ink);
+  }
+  .corner .row2 { top: 28px; }
+  .corner .lbl { left: 8px; color: var(--muted); }
+  .mount { position: absolute; }          /* control mounts at table top-right corner */
+  .swatch { display: flex; align-items: center; justify-content: center; min-width: 56px; }
+
+  /* ---- 1. current pill switch 36x20 ---- */
+  .sw { position: relative; display: inline-block; cursor: pointer; }
+  .sw input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .sw .track {
+    display: block; background: var(--off); border-radius: 999px;
+    transition: background .2s;
+  }
+  .sw .knob {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,.35);
+    transition: left .2s;
+  }
+  .sw input:checked + .track { background: var(--on); }
+
+  .sw-36 .track { width: 36px; height: 20px; }
+  .sw-36 .knob { width: 14px; height: 14px; left: 3px; }
+  .sw-36 input:checked ~ .knob { left: 19px; }
+
+  .sw-28 .track { width: 28px; height: 16px; }
+  .sw-28 .knob { width: 11px; height: 11px; left: 2.5px; }
+  .sw-28 input:checked ~ .knob { left: 14.5px; }
+
+  /* ---- styled checkbox 16x16 ---- */
+  .cb { position: relative; width: 16px; height: 16px; cursor: pointer; display: inline-block; }
+  .cb input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .cb .box {
+    display: block; width: 16px; height: 16px; border: 2px solid var(--off);
+    border-radius: 3px; background: #fff; transition: all .15s;
+  }
+  .cb input:checked + .box { background: var(--on); border-color: var(--on); }
+  .cb .box::after {
+    content: ""; position: absolute; left: 5px; top: 1.5px;
+    width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0;
+    transform: rotate(45deg) scale(0); transition: transform .15s;
+  }
+  .cb input:checked + .box::after { transform: rotate(45deg) scale(1); }
+
+  /* ---- icon button 16x16 (and 24 hit area) ---- */
+  .ib {
+    width: 16px; height: 16px; border-radius: 50%; border: none; padding: 0;
+    background: var(--off); color: #fff; cursor: pointer; display: inline-flex;
+    align-items: center; justify-content: center; transition: background .15s;
+  }
+  .ib[aria-pressed="true"] { background: var(--on); }
+  .ib svg { width: 10px; height: 10px; display: block; }
+
+  /* ---- knob only 14 ---- */
+  .knobonly {
+    width: 14px; height: 14px; border-radius: 50%; border: 1px solid #999;
+    background: #fff; cursor: pointer; padding: 0; transition: background .15s, border-color .15s;
+  }
+  .knobonly[aria-pressed="true"] { background: var(--on); border-color: var(--on); }
+
+  /* ---- corner dot 10 ---- */
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%; border: none; padding: 0;
+    background: var(--off); cursor: pointer; transition: background .15s;
+  }
+  .dot[aria-pressed="true"] { background: var(--on); }
+
+  /* ---- 7. hover-grow: dot that expands into a pill switch ---- */
+  .morph { position: relative; display: inline-block; cursor: pointer; }
+  .morph input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .morph .track {
+    display: block; width: 14px; height: 14px; border-radius: 999px;
+    background: var(--off);
+    transition: width .18s ease, height .18s ease, background .2s ease;
+  }
+  /* expand on hover OR keyboard focus (accessibility) */
+  .morph:hover .track,
+  .morph:focus-within .track { width: 36px; height: 20px; }
+  .morph input:checked + .track { background: var(--on); }
+  .morph .knob {
+    position: absolute; top: 50%; left: 2px; transform: translateY(-50%);
+    width: 10px; height: 10px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,.35); opacity: 0;
+    transition: opacity .12s ease, left .2s ease, width .18s ease, height .18s ease;
+  }
+  .morph:hover .knob,
+  .morph:focus-within .knob { opacity: 1; width: 14px; height: 14px; left: 3px; }
+  .morph input:checked ~ .knob { left: 19px; }   /* slid right when on + expanded */
+
+  .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:999px; background:#eef; color:#334; margin-left:6px; }
+  .tag.new { background:#e6f4ea; color:#137333; }
+  .warn { color:#b3261e; }
+  .ok { color:#137333; }
+  footer { color: var(--muted); font-size:12px; margin-top:28px; max-width:720px; }
+  code { background:#f1f3f4; padding:1px 4px; border-radius:4px; }
+</style>
+</head>
+<body>
+  <h1>Toggle control choices</h1>
+  <p class="sub">Each control is rendered at its <strong>true pixel size</strong>, shown in the off and on states, and mounted on a mock table's top-right corner so you can judge how much of row&nbsp;1 it covers. Click any control to flip it. The mock table's first row reads <code>Words 205</code>; watch how much of the “205” each control hides when placed in-corner (no lift).</p>
+
+  <div class="grid">
+
+    <!-- CURRENT -->
+    <div class="card">
+      <h2>1. Pill switch — current <span class="tag">in use</span></h2>
+      <p class="dims">36 × 20 px · tap target 36×20</p>
+      <div class="demos">
+        <div class="swatch">
+          <label class="sw sw-36"><input type="checkbox"><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="swatch">
+          <label class="sw sw-36"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount" style="right:-2px; top:-2px;">
+            <label class="sw sw-36"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+          </span>
+        </div>
+      </div>
+      <p class="note">Tallest option → covers the most of row&nbsp;1, which is the overlap you saw. Clear on/off metaphor; comfortable hit area.</p>
+    </div>
+
+    <!-- COMPACT SWITCH -->
+    <div class="card">
+      <h2>2. Compact switch</h2>
+      <p class="dims">28 × 16 px · <span class="warn">tap target below 24px min</span></p>
+      <div class="demos">
+        <div class="swatch">
+          <label class="sw sw-28"><input type="checkbox"><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="swatch">
+          <label class="sw sw-28"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount" style="right:-2px; top:-2px;">
+            <label class="sw sw-28"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+          </span>
+        </div>
+      </div>
+      <p class="note">Same metaphor, 4px shorter → 4px less overlap and a 4px smaller lift. Hit area dips under the ~24px guideline unless padded back up.</p>
+    </div>
+
+    <!-- CHECKBOX -->
+    <div class="card">
+      <h2>3. Styled checkbox</h2>
+      <p class="dims">16 × 16 px · tap target 16 (pad to 24)</p>
+      <div class="demos">
+        <div class="swatch">
+          <label class="cb"><input type="checkbox"><span class="box"></span></label>
+        </div>
+        <div class="swatch">
+          <label class="cb"><input type="checkbox" checked><span class="box"></span></label>
+        </div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount" style="right:-2px; top:2px;">
+            <label class="cb"><input type="checkbox" checked><span class="box"></span></label>
+          </span>
+        </div>
+      </div>
+      <p class="note">Compact and square. Reads as “select / include” more than “on / off”, which may be fine for “round this table”.</p>
+    </div>
+
+    <!-- ICON BUTTON -->
+    <div class="card">
+      <h2>4. Icon button</h2>
+      <p class="dims">16 × 16 px visual · tap target padded to 24</p>
+      <div class="demos">
+        <div class="swatch">
+          <button class="ib" aria-pressed="false" title="round/unround">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+          </button>
+        </div>
+        <div class="swatch">
+          <button class="ib" aria-pressed="true" title="round/unround">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+          </button>
+        </div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount" style="right:-2px; top:2px;">
+            <button class="ib" aria-pressed="true" title="round/unround">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+            </button>
+          </span>
+        </div>
+      </div>
+      <p class="note">Smallest control that still says what it does (an icon hints “numbers / rounding”). Color carries the on/off state.</p>
+    </div>
+
+    <!-- KNOB ONLY -->
+    <div class="card">
+      <h2>5. Knob only</h2>
+      <p class="dims">14 × 14 px · <span class="warn">ambiguous state</span></p>
+      <div class="demos">
+        <div class="swatch"><button class="knobonly" aria-pressed="false" title="toggle"></button></div>
+        <div class="swatch"><button class="knobonly" aria-pressed="true" title="toggle"></button></div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount" style="right:-2px; top:2px;">
+            <button class="knobonly" aria-pressed="true" title="toggle"></button>
+          </span>
+        </div>
+      </div>
+      <p class="note">The slider’s circle with no track. Tiny footprint, but on/off is only conveyed by fill color — easy to miss.</p>
+    </div>
+
+    <!-- DOT -->
+    <div class="card">
+      <h2>6. Corner dot</h2>
+      <p class="dims">10 × 10 px · <span class="warn">tiny target, ambiguous</span></p>
+      <div class="demos">
+        <div class="swatch"><button class="dot" aria-pressed="false" title="toggle"></button></div>
+        <div class="swatch"><button class="dot" aria-pressed="true" title="toggle"></button></div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount" style="right:0; top:2px;">
+            <button class="dot" aria-pressed="true" title="toggle"></button>
+          </span>
+        </div>
+      </div>
+      <p class="note">Minimal indicator. Barely covers row&nbsp;1, but hard to hit and unclear that it’s interactive.</p>
+    </div>
+
+    <!-- HOVER-GROW -->
+    <div class="card">
+      <h2>7. Hover-grow: dot → pill <span class="tag new">try hovering</span></h2>
+      <p class="dims">14 px collapsed → 36 × 20 px on hover / focus · pure CSS</p>
+      <div class="demos">
+        <div class="swatch">
+          <label class="morph"><input type="checkbox"><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="swatch">
+          <label class="morph"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount" style="right:0; top:2px;">
+            <label class="morph"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+          </span>
+        </div>
+      </div>
+      <p class="note"><strong>Hover the dot</strong> (or Tab to it) and it expands into the full pill switch. Collapsed it’s a 14px dot covering almost none of row&nbsp;1 — and it stays colored to show on/off; expanded it’s the familiar switch. Expansion is absolutely positioned, so it grows over the page without shifting layout.</p>
+    </div>
+
+  </div>
+
+  <footer>
+    Off (left) · On (middle) · in-corner on a mock table (right). The current extension lifts the control above the table; with a shorter control the lift distance shrinks too. Note the practical floor: accessibility guidance puts the minimum tap target around 24&nbsp;px, so visuals smaller than that need invisible padding — which adds the footprint back. Click any control to try it. <strong>#7 expands on hover/focus</strong>; on touch devices there is no hover, so it would need a tap-to-expand fallback.
+  </footer>
+
+  <script>
+    // make the icon/knob/dot buttons actually toggle aria-pressed
+    document.querySelectorAll('.ib, .knobonly, .dot').forEach(function (b) {
+      b.addEventListener('click', function () {
+        b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+      });
+    });
+  </script>
+</body>
+</html>
