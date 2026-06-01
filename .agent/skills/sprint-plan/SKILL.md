@@ -72,6 +72,7 @@ Apply these principles when proposing or defending design and process choices. C
 - **Trunk-Based Development** — small, incremental commits to `main` or short-lived feature branches merged frequently. The sprint-stack model is built around this: every sprint is a small short-lived feature branch, merged on its own merits, with no long-running parallel branches accumulating drift.
 - **Pre-merge Testing** — all validation (tests, linters, security scans) must pass before a commit is merged. Sprint-stack's reviewer subagent and the repo's CI together enforce this for every sprint PR.
 - **Squash and Merge** — squash branch commits so each merge brings in exactly one functional, test-passing set of changes. Aligns with the sprint-stack pattern where each sprint contributes one logical unit to main.
+- **Named constants over magic numbers** — when a sprint introduces a numeric or string literal that has a meaning beyond its raw value, define it once as a named constant and reuse the name everywhere it applies. Before adding a new literal, check whether an existing constant in the touched files already means the same thing and reuse it. A literal that appears in only one place can stay literal; the rule kicks in when the same value carries meaning across multiple call sites, or when a future sprint is likely to need it.
 
 If the repo has detectable patterns, align with them. If not, propose, with reasoning.
 
@@ -130,6 +131,8 @@ Per sprint, in the markdown structure shown below. The execution skill parses th
 - **Complexity:** S | M | L
 - **Dev notes:** <pitfalls, patterns to follow, libraries to use>
 ```
+
+When a sprint introduces a new named constant or consolidates an existing literal, list the constant(s) and their home file in **Dev notes**. No need to inventory every call site — the executing sprint will find them. Example: `TOGGLE_WIDTH_PX`, `TOGGLE_HEIGHT_PX`, `TOGGLE_EDGE_GAP_PX` in `chrome-extension/content.js`.
 
 Sprint commits do not touch version files. Versioning is handled at merge time by the GitHub Action probed for in Phase 2.
 
