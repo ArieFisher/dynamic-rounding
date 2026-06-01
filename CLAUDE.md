@@ -22,3 +22,5 @@ When the user has provided a PAT in the session, use it directly via the GitHub 
 When no PAT is available, MCP is the only path; try it then, and if it 403s, ask the user for a PAT.
 
 The PAT lives in session memory only — never write it to `.git/config`, `~/.git-credentials`, commit messages, or any tracked file.
+
+**Common leak path:** `git push -u <PAT-URL> <branch>` sets the PAT-bearing URL as the branch's upstream and stores it in `.git/config`. Never use `-u` with an authenticated URL. If pushing for the first time on a branch, either: (a) push without `-u`, or (b) run `git remote set-url origin <https-url-without-PAT>` first and then `git push -u origin <branch>`. After any push using an authenticated URL, run `grep -c x-access-token .git/config` — it must return `0`. If non-zero, `git branch --unset-upstream <branch>` and re-check.
