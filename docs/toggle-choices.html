@@ -6,7 +6,7 @@
 <title>Dynamic Rounding — toggle control choices</title>
 <style>
   :root {
-    --on: rgb(66, 133, 244);
+    --on: #4a86e8;
     --off: #ccc;
     --ink: #202124;
     --muted: #5f6368;
@@ -132,26 +132,52 @@
   }
   .dot[aria-pressed="true"] { background: var(--on); }
 
-  /* ---- 7. hover-grow: dot that expands into a pill switch ---- */
-  .morph { position: relative; display: inline-block; cursor: pointer; }
-  .morph input { position: absolute; opacity: 0; width: 0; height: 0; }
-  .morph .track {
-    display: block; width: 14px; height: 14px; border-radius: 999px;
+  /* ---- 7. touch-aware morph: 10px dot → 28×16 compact switch ----
+     Visible part is anchored to the top-right of the .morph2 wrapper. The
+     wrapper itself adds 14px of transparent padding on the left and bottom,
+     so the hit target is ≥24×24 collapsed, even though the visible dot is
+     only 10×10. When expanded the visible grows to 28×16 and the wrapper
+     grows with it (~42×30 hit area), still anchored at the top-right. */
+  .morph2 {
+    display: inline-block;
+    padding: 0 0 14px 14px;          /* transparent extension into the table */
+    background: transparent; border: 0; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .morph2 .visible {
+    position: relative; display: block;
+    width: 10px; height: 10px; border-radius: 50%;
     background: var(--off);
-    transition: width .18s ease, height .18s ease, background .2s ease;
+    margin-left: auto;               /* push visible to the right edge of the wrapper */
+    transition: width .18s ease, height .18s ease, border-radius .18s ease, background .2s ease;
   }
-  .morph:hover .track,
-  .morph:focus-within .track { width: 36px; height: 20px; }
-  .morph input:checked + .track { background: var(--on); }
-  .morph .knob {
+  .morph2[aria-pressed="true"] .visible { background: var(--on); }
+  .morph2 .knob2 {
     position: absolute; top: 50%; left: 2px; transform: translateY(-50%);
-    width: 10px; height: 10px; border-radius: 50%; background: #fff;
-    box-shadow: 0 1px 2px rgba(0,0,0,.35); opacity: 0;
-    transition: opacity .12s ease, left .2s ease, width .18s ease, height .18s ease;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.35);
+    opacity: 0;
+    transition: opacity .12s ease, left .2s ease;
   }
-  .morph:hover .knob,
-  .morph:focus-within .knob { opacity: 1; width: 14px; height: 14px; left: 3px; }
-  .morph input:checked ~ .knob { left: 19px; }
+  /* Expanded state: shared rule. Triggered by :hover/:focus-visible on hover
+     devices, by the .expanded class on touch devices. */
+  .morph2.expanded .visible,
+  .morph2:focus-visible .visible {
+    width: 28px; height: 16px; border-radius: 999px;
+  }
+  .morph2.expanded .knob2,
+  .morph2:focus-visible .knob2 { opacity: 1; }
+  .morph2.expanded[aria-pressed="true"] .knob2,
+  .morph2:focus-visible[aria-pressed="true"] .knob2 { left: 14px; }
+  /* Only enable hover-grow on devices that actually have hover (mouse, trackpad)
+     — touch devices fall through to the .expanded class set by JS on tap. */
+  @media (hover: hover) and (pointer: fine) {
+    .morph2:hover .visible {
+      width: 28px; height: 16px; border-radius: 999px;
+    }
+    .morph2:hover .knob2 { opacity: 1; }
+    .morph2:hover[aria-pressed="true"] .knob2 { left: 14px; }
+  }
 
   .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:999px; background:#eef; color:#334; margin-left:6px; }
   .tag.new { background:#e6f4ea; color:#137333; }
@@ -314,26 +340,35 @@
       <p class="note">Minimal indicator. Barely covers row&nbsp;1, but hard to hit and unclear that it’s interactive.</p>
     </div>
 
-    <!-- HOVER-GROW -->
+    <!-- HOVER-GROW (touch-aware) -->
     <div class="card">
-      <h2>7. Hover-grow: dot → pill <span class="tag new">try hovering</span></h2>
-      <p class="dims">14 px collapsed → 36 × 20 px on hover / focus · pure CSS</p>
+      <h2>7. Touch-aware morph: dot → compact switch <span class="tag new">try it</span></h2>
+      <p class="dims">10 × 10 px visible (24 × 24 hit area) → 28 × 16 px on hover / tap (≥24 × 24 hit area)</p>
       <div class="demos">
         <div class="swatch">
-          <label class="morph"><input type="checkbox"><span class="track"></span><span class="knob"></span></label>
+          <button class="morph2" aria-pressed="false" title="toggle"><span class="visible"><span class="knob2"></span></span></button>
         </div>
         <div class="swatch">
-          <label class="morph"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+          <button class="morph2" aria-pressed="true" title="toggle"><span class="visible"><span class="knob2"></span></span></button>
         </div>
         <div class="corner">
           <span class="cell lbl">Words</span><span class="cell">205</span>
           <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
           <span class="mount">
-            <label class="morph"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+            <button class="morph2" aria-pressed="true" title="toggle"><span class="visible"><span class="knob2"></span></span></button>
           </span>
         </div>
       </div>
-      <p class="note"><strong>Hover the dot</strong> (or Tab to it) and it expands into the full pill switch. Collapsed it’s a 14px dot; the overlap slider positions it by its collapsed size. Expansion is absolutely positioned, so it grows over the page without shifting layout.</p>
+      <p class="note">
+        Visible part is the <strong>10 × 10 dot</strong>, anchored to the table's upper-right corner.
+        Transparent padding extends the hit target into the table to make it ≥ 24 × 24 even when collapsed.
+        <br>
+        <strong>Mouse:</strong> hover-grow into a 28 × 16 compact switch; mouse-out shrinks it back. Pure CSS via <code>@media (hover: hover) and (pointer: fine)</code>.
+        <br>
+        <strong>Touch:</strong> first tap expands; second tap toggles state; auto-collapses after 3&nbsp;s of no interaction, or when you tap outside. Detected via <code>e.pointerType</code> at <code>pointerdown</code>.
+        <br>
+        Keyboard: Tab to focus expands it (<code>:focus-visible</code>); Space/Enter toggles.
+      </p>
     </div>
 
   </div>
@@ -347,6 +382,49 @@
     document.querySelectorAll('.ib, .knobonly, .dot').forEach(function (b) {
       b.addEventListener('click', function () {
         b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+      });
+    });
+
+    // ---- Card #7: touch-aware morph ----
+    // Mouse: CSS handles hover-grow. Click toggles state.
+    // Touch/pen: first tap expands (no state change); subsequent taps toggle.
+    // Auto-collapse after AUTO_COLLAPSE_MS of no interaction; tap-outside collapses.
+    var AUTO_COLLAPSE_MS = 3000;
+
+    function flipPressed(btn) {
+      btn.setAttribute('aria-pressed', btn.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+    }
+    function scheduleCollapse(btn) {
+      clearTimeout(btn._collapseTimer);
+      btn._collapseTimer = setTimeout(function () { btn.classList.remove('expanded'); }, AUTO_COLLAPSE_MS);
+    }
+
+    document.querySelectorAll('.morph2').forEach(function (btn) {
+      // Capture pointer type at pointerdown so we know what triggered the click.
+      btn.addEventListener('pointerdown', function (e) { btn.dataset.pointerType = e.pointerType; });
+
+      btn.addEventListener('click', function () {
+        var isTouch = btn.dataset.pointerType === 'touch' || btn.dataset.pointerType === 'pen';
+        if (isTouch) {
+          if (!btn.classList.contains('expanded')) {
+            // First tap: just expand, don't toggle state yet.
+            btn.classList.add('expanded');
+          } else {
+            // Subsequent tap on the expanded pill: toggle state.
+            flipPressed(btn);
+          }
+          scheduleCollapse(btn);
+        } else {
+          // Mouse / keyboard: click toggles state directly.
+          flipPressed(btn);
+        }
+      });
+    });
+
+    // Tap outside any expanded touch-mode control collapses it immediately.
+    document.addEventListener('pointerdown', function (e) {
+      document.querySelectorAll('.morph2.expanded').forEach(function (btn) {
+        if (!btn.contains(e.target)) btn.classList.remove('expanded');
       });
     });
 
@@ -366,10 +444,12 @@
       overhangOut.textContent = overhang + ' px';
       document.querySelectorAll('.corner .mount').forEach(function (m) {
         var ctrl = m.firstElementChild;
-        var rect = ctrl.getBoundingClientRect();
-        // bottom edge sits at (table top + overlap) → top = overlap - height
+        // For controls with a visible inner element (e.g. card #7's morph2 whose
+        // wrapper extends invisibly into the table), anchor by the visible part —
+        // not the padded wrapper — so every card compares apples-to-apples.
+        var visible = ctrl.querySelector('.visible') || ctrl;
+        var rect = visible.getBoundingClientRect();
         m.style.top = (overlap - rect.height) + 'px';
-        // right edge sits `overhang` px past the table's right edge
         m.style.right = (-overhang) + 'px';
       });
     }
