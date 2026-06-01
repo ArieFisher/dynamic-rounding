@@ -214,6 +214,44 @@ function ensureToggleStyleInjected() {
   toggleStyleInjected = true;
 }
 
+// Returns true only if the strip directly above the table — where the lifted
+// toggle would sit — is verifiably empty: every element hit-tested under the
+// toggle's would-be footprint is the document root, the body, or an ancestor of
+// the table (i.e. container background or empty margin). Anything else — a
+// heading or caption above the table, a sticky page header, content that lies
+// outside a clipping container, a point that falls off the viewport, or the
+// absence of elementsFromPoint — counts as "not clear".
+//
+// The caller lifts the toggle above the table only when this returns true, and
+// otherwise leaves it in its original in-corner position. This makes the lift a
+// strict improvement: a page is never rendered worse than today's behavior — at
+// worst the toggle stays where it already is.
+function isStripAboveTableClear(table, labelEl, rect, shiftedTopVp) {
+  // Off the top of the viewport, or no way to probe → cannot verify → not clear.
+  if (shiftedTopVp < 0) return false;
+  if (typeof document.elementsFromPoint !== 'function') return false;
+
+  const leftVp = rect.right - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX;
+  const midY = shiftedTopVp + TOGGLE_HEIGHT_PX / 2;
+  const sampleXs = [leftVp + 1, leftVp + TOGGLE_WIDTH_PX / 2, leftVp + TOGGLE_WIDTH_PX - 1];
+
+  for (let i = 0; i < sampleXs.length; i++) {
+    const hits = document.elementsFromPoint(sampleXs[i], midY);
+    // A point inside the viewport always hits at least the document element;
+    // an empty result means the point is off-screen and cannot be verified.
+    if (!hits || hits.length === 0) return false;
+    for (let j = 0; j < hits.length; j++) {
+      const el = hits[j];
+      if (el === document.documentElement || el === document.body) continue;
+      if (el === table) continue;
+      if (el === labelEl || (labelEl.contains && labelEl.contains(el))) continue; // the toggle itself
+      if (el.contains && el.contains(table)) continue; // an ancestor of the table
+      return false; // some other element occupies the strip
+    }
+  }
+  return true;
+}
+
 function positionToggle(table, labelEl) {
   const rect = table.getBoundingClientRect();
   const computedStyle = window.getComputedStyle(table);
@@ -228,13 +266,16 @@ function positionToggle(table, labelEl) {
   labelEl.style.display = '';
   const scrollX = window.scrollX || window.pageXOffset || 0;
   const scrollY = window.scrollY || window.pageYOffset || 0;
-  // Anchor to the table's top-right corner: TOGGLE_EDGE_GAP_PX outside the right
-  // edge, and fully above the top edge so the toggle's bottom sits TOGGLE_EDGE_GAP_PX
-  // above the first row (previously it overlapped row 1). Clamp the top to the
-  // current scroll position so the toggle is never pushed off the top of the
-  // viewport when the table starts at the very top of the page.
+  // Horizontal anchoring is unchanged: TOGGLE_EDGE_GAP_PX overhang past the right edge.
   const left = rect.right + scrollX - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX;
-  const top = Math.max(scrollY, rect.top + scrollY - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX);
+  // Prefer lifting the toggle into the strip above the table (bottom edge
+  // TOGGLE_EDGE_GAP_PX above row 1, so it stops overlapping the first row) — but
+  // only when that strip is verifiably clear. Otherwise fall back to the original
+  // in-corner placement so the change never regresses a page.
+  const inCornerTopVp = rect.top - TOGGLE_EDGE_GAP_PX;
+  const aboveTopVp = rect.top - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX;
+  const topVp = isStripAboveTableClear(table, labelEl, rect, aboveTopVp) ? aboveTopVp : inCornerTopVp;
+  const top = topVp + scrollY;
   labelEl.style.left = left + 'px';
   labelEl.style.top = top + 'px';
 }
