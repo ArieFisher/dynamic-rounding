@@ -21,6 +21,20 @@ const EPSILON = 1e-9;
 // can later loosen it without an API change.
 const X_FLOOR_THRESHOLD = 1;
 
+// --- Per-table toggle geometry (px) ---
+// Single source of truth shared by the injected CSS (ensureToggleStyleInjected)
+// and the positioning math (positionToggle). These must stay in lockstep:
+// positionToggle subtracts the toggle's width and height to anchor it to the
+// table's top-right corner, so a change here must not require touching two places.
+const TOGGLE_WIDTH_PX = 36;
+const TOGGLE_HEIGHT_PX = 20;
+const TOGGLE_KNOB_PX = 14;
+const TOGGLE_KNOB_INSET_PX = 3;
+const TOGGLE_EDGE_GAP_PX = 2;
+// Distance the knob travels when checked: track width minus knob diameter minus
+// the inset on both sides. Derived so resizing the toggle keeps the knob aligned.
+const TOGGLE_KNOB_TRAVEL_PX = TOGGLE_WIDTH_PX - TOGGLE_KNOB_PX - 2 * TOGGLE_KNOB_INSET_PX;
+
 // DR_DEFAULTS is loaded from defaults.js (declared first in manifest content_scripts).
 // It is shared with sidebar.js so the sidebar UI's initial state and the
 // right-click toggle's fallback options come from a single source.
@@ -157,8 +171,8 @@ function ensureToggleStyleInjected() {
       position: absolute;
       z-index: 2147483646;
       display: inline-block;
-      width: 36px;
-      height: 20px;
+      width: ${TOGGLE_WIDTH_PX}px;
+      height: ${TOGGLE_HEIGHT_PX}px;
       cursor: pointer;
     }
     .dr-ext-toggle input {
@@ -174,16 +188,16 @@ function ensureToggleStyleInjected() {
       right: 0;
       bottom: 0;
       background-color: #ccc;
-      border-radius: 20px;
+      border-radius: ${TOGGLE_HEIGHT_PX}px;
       transition: background-color 0.2s;
     }
     .dr-ext-toggle-slider::before {
       content: "";
       position: absolute;
-      width: 14px;
-      height: 14px;
-      left: 3px;
-      top: 3px;
+      width: ${TOGGLE_KNOB_PX}px;
+      height: ${TOGGLE_KNOB_PX}px;
+      left: ${TOGGLE_KNOB_INSET_PX}px;
+      top: ${TOGGLE_KNOB_INSET_PX}px;
       background-color: white;
       border-radius: 50%;
       transition: transform 0.2s;
@@ -192,7 +206,7 @@ function ensureToggleStyleInjected() {
       background-color: rgba(66, 133, 244, 1);
     }
     .dr-ext-toggle input:checked + .dr-ext-toggle-slider::before {
-      transform: translateX(16px);
+      transform: translateX(${TOGGLE_KNOB_TRAVEL_PX}px);
     }
     .dr-ext-toggle input:focus-visible{outline:2px solid rgba(66,133,244,1)!important;outline-offset:2px;}
   `;
@@ -214,9 +228,13 @@ function positionToggle(table, labelEl) {
   labelEl.style.display = '';
   const scrollX = window.scrollX || window.pageXOffset || 0;
   const scrollY = window.scrollY || window.pageYOffset || 0;
-  // 2px outside the right edge, 2px above the top edge
-  const left = rect.right + scrollX - 36 + 2;
-  const top = rect.top + scrollY - 2;
+  // Anchor to the table's top-right corner: TOGGLE_EDGE_GAP_PX outside the right
+  // edge, and fully above the top edge so the toggle's bottom sits TOGGLE_EDGE_GAP_PX
+  // above the first row (previously it overlapped row 1). Clamp the top to the
+  // current scroll position so the toggle is never pushed off the top of the
+  // viewport when the table starts at the very top of the page.
+  const left = rect.right + scrollX - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX;
+  const top = Math.max(scrollY, rect.top + scrollY - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX);
   labelEl.style.left = left + 'px';
   labelEl.style.top = top + 'px';
 }
