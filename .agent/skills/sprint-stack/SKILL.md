@@ -80,7 +80,7 @@ Inputs:
 - `git diff <parent>..HEAD`
 - The Design section from the plan
 
-Instruction: implement per scope, stay out of `out_of_scope`, run lint/format if specified, commit per the commit convention. **Do not write tests** — that's the next subagent's job. **Do not modify version files.**
+Instruction: implement per scope, stay out of `out_of_scope`, run lint/format if specified, commit per the commit convention. **Do not write tests** — that's the next subagent's job. **Do not modify version files.** Prefer named constants over inline literals for any value carrying semantic meaning, consistent with the sprint-plan "Named constants over magic numbers" principle, even when the plan's Dev notes do not call this out explicitly.
 
 ### 3. Test-writer subagent (Sonnet) — adversarial
 
