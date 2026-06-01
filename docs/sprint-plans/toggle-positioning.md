@@ -53,7 +53,23 @@ const top = rect.top + scrollY - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX;
 
 *Principle: simple components — one-line geometric correction in the existing helper, no new abstractions, no new DOM.*
 
-### 3.3 Named constants over magic numbers
+### 3.3 Tradeoff: best-efforts, not a guarantee
+
+Shifting the toggle up trades one failure mode (overlapping row 1) for several others — overlapping content immediately above the table, floating outside a containing card or dialog, disappearing under a sticky page header, or rendering off-screen if the table's top is at the viewport edge. None of these can be fully avoided by a fixed upward shift, since the extension has no model of the host page's layout.
+
+**Decision (per user direction):** accept this as a best-efforts fix. Some overlap is preferable to introducing host-page DOM mutations (e.g. right-padding row 1) or runtime heuristics (e.g. conditional shifting based on detected whitespace), both of which would create ongoing technical debt without eliminating the underlying risk.
+
+Apply one minimal defensive guard: clamp `top` so the toggle is never rendered above the current scroll position. This is a single `Math.max` with no new branches, no DOM changes, and no heuristics — it only kicks in at the viewport edge:
+
+```js
+const top = Math.max(scrollY, rect.top + scrollY - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX);
+```
+
+Other risks (collisions with content above the table, container clipping, sticky-header coverage) are accepted as-is.
+
+*Principle: minimize design-time coupling — the fix touches only the extension's own positioning math; host-page DOM and CSS are not modified.*
+
+### 3.4 Named constants over magic numbers
 
 The current code embeds `36`, `20`, `14`, `3`, and `2` as bare literals across both `positionToggle` (JS) and `ensureToggleStyleInjected` (CSS template string). These values carry semantic meaning (toggle width, toggle height, knob diameter, knob inset, edge gap) and are used in multiple call sites — the CSS template and the JS positioning math must stay in lockstep, since the JS subtracts the toggle's width and height to align it with the table edge.
 
@@ -90,11 +106,12 @@ flowchart TD
 
 ### fix-toggle-overlap
 
-- **Goal:** Stop the per-table toggle from overlapping the first row of its table by positioning it fully above the table edge, and consolidate the toggle's geometry into named constants.
-- **Scope:** `chrome-extension/content.js` only. Update `positionToggle` to subtract `TOGGLE_HEIGHT_PX + TOGGLE_EDGE_GAP_PX` when computing `top`. Define the constants listed in §3.3 at module scope. Replace the literal occurrences of `36`, `20`, `14`, `3`, and `2` in `positionToggle` and the CSS template in `ensureToggleStyleInjected` with the named constants (using template-string interpolation for the CSS).
-- **Out of scope:** Any visual restyling beyond the vertical shift. Toggle behavior, accessibility wiring, host-page click suppression, the `MutationObserver` / `ResizeObserver` plumbing — all unchanged. `manifest.json` version bump (handled at merge by the workflow).
+- **Goal:** Stop the per-table toggle from overlapping the first row of its table by positioning it above the table edge (best-efforts, with a clamp to keep it on-screen), and consolidate the toggle's geometry into named constants.
+- **Scope:** `chrome-extension/content.js` only. Update `positionToggle` to compute `top` as `Math.max(scrollY, rect.top + scrollY - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX)`. Define the constants listed in §3.4 at module scope. Replace the literal occurrences of `36`, `20`, `14`, `3`, and `2` in `positionToggle` and the CSS template in `ensureToggleStyleInjected` with the named constants (using template-string interpolation for the CSS).
+- **Out of scope:** Any visual restyling beyond the vertical shift. Mitigations for the residual risks listed in §3.3 (overlap with content above the table, container clipping, sticky-header coverage) — explicitly accepted as best-efforts. Toggle behavior, accessibility wiring, host-page click suppression, the `MutationObserver` / `ResizeObserver` plumbing — all unchanged. `manifest.json` version bump (handled at merge by the workflow).
 - **Acceptance criteria:**
-  - The toggle's bottom edge sits `TOGGLE_EDGE_GAP_PX` above the table's top edge. No part of the toggle overlaps row 1.
+  - When the table's top is below the current scroll position, the toggle's bottom edge sits `TOGGLE_EDGE_GAP_PX` above the table's top edge and no part of the toggle overlaps row 1.
+  - When the table's top is at or above the current scroll position, the toggle is clamped to the top of the viewport rather than rendered off-screen.
   - The toggle's horizontal position is unchanged (still anchored to the table's right edge with the existing 2px overhang).
   - `node chrome-extension/tests.js` passes.
   - Manual: load the unpacked extension, open the Word Count dialog in Google Docs, confirm the numbers in column 2 are no longer obscured.
