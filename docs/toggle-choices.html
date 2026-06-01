@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamic Rounding — toggle control choices</title>
+<style>
+  :root {
+    --on: #3d85c6;
+    --off: #ccc;
+    --ink: #202124;
+    --muted: #5f6368;
+    --line: #e0e0e0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    color: var(--ink);
+    background: #fafafa;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 18px; max-width: 760px; }
+
+  /* live controls panel */
+  .panel {
+    position: sticky; top: 0; z-index: 10;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px; margin: 0 0 24px;
+    display: flex; flex-wrap: wrap; gap: 28px; align-items: center;
+  }
+  .panel .field { display: flex; flex-direction: column; gap: 4px; min-width: 240px; }
+  .panel label { font-size: 12px; color: var(--muted); }
+  .panel .row { display: flex; align-items: center; gap: 10px; }
+  .panel input[type=range] { flex: 1; }
+  .panel output { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 46px; text-align: right; }
+  .panel .hint { font-size: 12px; color: var(--muted); max-width: 360px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 2px; }
+  .dims { color: var(--muted); font-size: 12px; margin: 0 0 14px; font-variant-numeric: tabular-nums; }
+  .note { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+  .demos { display: flex; align-items: center; gap: 22px; }
+
+  /* mock table corner so overlap is visible at true scale */
+  .corner {
+    position: relative;
+    width: 150px; height: 64px;
+    border: 1px solid #bbb;
+    border-radius: 2px;
+    background: #fff;
+    overflow: visible;
+  }
+  .corner .cell {
+    position: absolute; right: 8px; top: 6px;
+    font-variant-numeric: tabular-nums; color: var(--ink);
+  }
+  .corner .row2 { top: 28px; }
+  .corner .lbl { left: 8px; color: var(--muted); }
+  /* every control mounts here; top/right are set live by JS, identically for all */
+  .mount { position: absolute; }
+  .swatch { display: flex; align-items: center; justify-content: center; min-width: 56px; }
+
+  /* ---- 1. current pill switch 36x20 ---- */
+  .sw { position: relative; display: inline-block; cursor: pointer; }
+  .sw input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .sw .track {
+    display: block; background: var(--off); border-radius: 999px;
+    transition: background .2s;
+  }
+  .sw .knob {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,.35);
+    transition: left .2s;
+  }
+  .sw input:checked + .track { background: var(--on); }
+
+  .sw-36 .track { width: 36px; height: 20px; }
+  .sw-36 .knob { width: 14px; height: 14px; left: 3px; }
+  .sw-36 input:checked ~ .knob { left: 19px; }
+
+  .sw-28 .track { width: 28px; height: 16px; }
+  .sw-28 .knob { width: 11px; height: 11px; left: 2.5px; }
+  .sw-28 input:checked ~ .knob { left: 14.5px; }
+
+  /* ---- styled checkbox 16x16 ---- */
+  .cb { position: relative; width: 16px; height: 16px; cursor: pointer; display: inline-block; }
+  .cb input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .cb .box {
+    display: block; width: 16px; height: 16px; border: 2px solid var(--off);
+    border-radius: 3px; background: #fff; transition: all .15s;
+  }
+  .cb input:checked + .box { background: var(--on); border-color: var(--on); }
+  .cb .box::after {
+    content: ""; position: absolute; left: 5px; top: 1.5px;
+    width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0;
+    transform: rotate(45deg) scale(0); transition: transform .15s;
+  }
+  .cb input:checked + .box::after { transform: rotate(45deg) scale(1); }
+
+  /* ---- icon button 16x16 (and 24 hit area) ---- */
+  .ib {
+    width: 16px; height: 16px; border-radius: 50%; border: none; padding: 0;
+    background: var(--off); color: #fff; cursor: pointer; display: inline-flex;
+    align-items: center; justify-content: center; transition: background .15s;
+  }
+  .ib[aria-pressed="true"] { background: var(--on); }
+  .ib svg { width: 10px; height: 10px; display: block; }
+
+  /* ---- knob only 14 ---- */
+  .knobonly {
+    width: 14px; height: 14px; border-radius: 50%; border: 1px solid #999;
+    background: #fff; cursor: pointer; padding: 0; transition: background .15s, border-color .15s;
+  }
+  .knobonly[aria-pressed="true"] { background: var(--on); border-color: var(--on); }
+
+  /* ---- corner dot 10 ---- */
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%; border: none; padding: 0;
+    background: var(--off); cursor: pointer; transition: background .15s;
+  }
+  .dot[aria-pressed="true"] { background: var(--on); }
+
+  /* ---- 7. touch-aware morph: 10px dot → 28×16 compact switch ----
+     Hit area is centered on the visible dot: 7px of transparent padding on
+     every side gives a 24×24 hit target around a 10×10 dot. inline-flex with
+     flex-end + flex-start keeps the visible anchored to the wrapper's top-
+     right corner, so when it expands to 28×16 the right edge stays put (the
+     wrapper grows leftward and downward). The 7px buffer on every side means
+     the cursor crosses transparent padding before hitting the visible — no
+     pointer-shudder when approaching from any direction during the expand
+     animation, since the visible's right edge never moves. */
+  .morph2 {
+    display: inline-flex;
+    justify-content: flex-end;       /* visible at right of content area */
+    align-items: flex-start;         /* visible at top of content area */
+    padding: 7px;                    /* transparent buffer in every direction */
+    background: transparent; border: 0; cursor: pointer;
+    vertical-align: top;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .morph2 .visible {
+    position: relative; display: block;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--off);
+    transition: width .18s ease, height .18s ease, border-radius .18s ease, background .2s ease;
+  }
+  .morph2[aria-pressed="true"] .visible { background: var(--on); }
+  .morph2 .knob2 {
+    position: absolute; top: 50%; left: 2px; transform: translateY(-50%);
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.35);
+    opacity: 0;
+    transition: opacity .12s ease, left .2s ease;
+  }
+  /* Expanded state: shared rule. Triggered by :hover/:focus-visible on hover
+     devices, by the .expanded class on touch devices. */
+  .morph2.expanded .visible,
+  .morph2:focus-visible .visible {
+    width: 28px; height: 16px; border-radius: 999px;
+  }
+  .morph2.expanded .knob2,
+  .morph2:focus-visible .knob2 { opacity: 1; }
+  .morph2.expanded[aria-pressed="true"] .knob2,
+  .morph2:focus-visible[aria-pressed="true"] .knob2 { left: 14px; }
+  /* Only enable hover-grow on devices that actually have hover (mouse, trackpad)
+     — touch devices fall through to the .expanded class set by JS on tap. */
+  @media (hover: hover) and (pointer: fine) {
+    .morph2:hover .visible {
+      width: 28px; height: 16px; border-radius: 999px;
+    }
+    .morph2:hover .knob2 { opacity: 1; }
+    .morph2:hover[aria-pressed="true"] .knob2 { left: 14px; }
+  }
+
+  .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:999px; background:#eef; color:#334; margin-left:6px; }
+  .tag.new { background:#e6f4ea; color:#137333; }
+  .warn { color:#b3261e; }
+  footer { color: var(--muted); font-size:12px; margin-top:28px; max-width:760px; }
+  code { background:#f1f3f4; padding:1px 4px; border-radius:4px; }
+</style>
+</head>
+<body>
+  <h1>Toggle control choices</h1>
+  <p class="sub">Each control is rendered at its <strong>true pixel size</strong>, shown off (left) and on (middle), and mounted on a mock table's top-right corner (right). All seven use the <strong>same anchor</strong>, driven live by the sliders below, so the overlap comparison is apples-to-apples regardless of each control's size.</p>
+
+  <div class="panel">
+    <div class="field">
+      <label for="overlap">Vertical overlap — px of the control sitting below the table's top edge</label>
+      <div class="row">
+        <input type="range" id="overlap" min="-14" max="30" step="1" value="8">
+        <output id="overlapVal">8 px</output>
+      </div>
+    </div>
+    <div class="field">
+      <label for="overhang">Right overhang — px the control extends past the table's right edge</label>
+      <div class="row">
+        <input type="range" id="overhang" min="-6" max="14" step="1" value="2">
+        <output id="overhangVal">2 px</output>
+      </div>
+    </div>
+    <p class="hint">Overlap is measured per control: at <strong>0</strong> the control's bottom edge is flush with the table top; <strong>negative</strong> lifts it fully above (a gap); <strong>positive</strong> pushes it down over row&nbsp;1 by the same number of px for every control.</p>
+  </div>
+
+  <div class="grid">
+
+    <!-- CURRENT -->
+    <div class="card">
+      <h2>1. Pill switch — current <span class="tag">in use</span></h2>
+      <p class="dims">36 × 20 px · tap target 36×20</p>
+      <div class="demos">
+        <div class="swatch">
+          <label class="sw sw-36"><input type="checkbox"><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="swatch">
+          <label class="sw sw-36"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount">
+            <label class="sw sw-36"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+          </span>
+        </div>
+      </div>
+      <p class="note">Tallest option → at a given overlap it covers the most of row&nbsp;1. Clear on/off metaphor; comfortable hit area.</p>
+    </div>
+
+    <!-- COMPACT SWITCH -->
+    <div class="card">
+      <h2>2. Compact switch</h2>
+      <p class="dims">28 × 16 px · <span class="warn">tap target below 24px min</span></p>
+      <div class="demos">
+        <div class="swatch">
+          <label class="sw sw-28"><input type="checkbox"><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="swatch">
+          <label class="sw sw-28"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount">
+            <label class="sw sw-28"><input type="checkbox" checked><span class="track"></span><span class="knob"></span></label>
+          </span>
+        </div>
+      </div>
+      <p class="note">Same metaphor, 4px shorter. Hit area dips under the ~24px guideline unless padded back up.</p>
+    </div>
+
+    <!-- CHECKBOX -->
+    <div class="card">
+      <h2>3. Styled checkbox</h2>
+      <p class="dims">16 × 16 px · tap target 16 (pad to 24)</p>
+      <div class="demos">
+        <div class="swatch">
+          <label class="cb"><input type="checkbox"><span class="box"></span></label>
+        </div>
+        <div class="swatch">
+          <label class="cb"><input type="checkbox" checked><span class="box"></span></label>
+        </div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount">
+            <label class="cb"><input type="checkbox" checked><span class="box"></span></label>
+          </span>
+        </div>
+      </div>
+      <p class="note">Compact and square. Reads as “select / include” more than “on / off”, which may be fine for “round this table”.</p>
+    </div>
+
+    <!-- ICON BUTTON -->
+    <div class="card">
+      <h2>4. Icon button</h2>
+      <p class="dims">16 × 16 px visual · tap target padded to 24</p>
+      <div class="demos">
+        <div class="swatch">
+          <button class="ib" aria-pressed="false" title="round/unround">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+          </button>
+        </div>
+        <div class="swatch">
+          <button class="ib" aria-pressed="true" title="round/unround">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+          </button>
+        </div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount">
+            <button class="ib" aria-pressed="true" title="round/unround">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+            </button>
+          </span>
+        </div>
+      </div>
+      <p class="note">Smallest control that still says what it does (an icon hints “numbers / rounding”). Color carries the on/off state.</p>
+    </div>
+
+    <!-- KNOB ONLY -->
+    <div class="card">
+      <h2>5. Knob only</h2>
+      <p class="dims">14 × 14 px · <span class="warn">ambiguous state</span></p>
+      <div class="demos">
+        <div class="swatch"><button class="knobonly" aria-pressed="false" title="toggle"></button></div>
+        <div class="swatch"><button class="knobonly" aria-pressed="true" title="toggle"></button></div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount">
+            <button class="knobonly" aria-pressed="true" title="toggle"></button>
+          </span>
+        </div>
+      </div>
+      <p class="note">The slider’s circle with no track. Tiny footprint, but on/off is only conveyed by fill color — easy to miss.</p>
+    </div>
+
+    <!-- DOT -->
+    <div class="card">
+      <h2>6. Corner dot</h2>
+      <p class="dims">10 × 10 px · <span class="warn">tiny target, ambiguous</span></p>
+      <div class="demos">
+        <div class="swatch"><button class="dot" aria-pressed="false" title="toggle"></button></div>
+        <div class="swatch"><button class="dot" aria-pressed="true" title="toggle"></button></div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount">
+            <button class="dot" aria-pressed="true" title="toggle"></button>
+          </span>
+        </div>
+      </div>
+      <p class="note">Minimal indicator. Barely covers row&nbsp;1, but hard to hit and unclear that it’s interactive.</p>
+    </div>
+
+    <!-- HOVER-GROW (touch-aware) -->
+    <div class="card">
+      <h2>7. Touch-aware morph: dot → compact switch <span class="tag new">try it</span></h2>
+      <p class="dims">10 × 10 px visible (24 × 24 hit area) → 28 × 16 px on hover / tap (≥24 × 24 hit area)</p>
+      <div class="demos">
+        <div class="swatch">
+          <button class="morph2" aria-pressed="false" title="toggle"><span class="visible"><span class="knob2"></span></span></button>
+        </div>
+        <div class="swatch">
+          <button class="morph2" aria-pressed="true" title="toggle"><span class="visible"><span class="knob2"></span></span></button>
+        </div>
+        <div class="corner">
+          <span class="cell lbl">Words</span><span class="cell">205</span>
+          <span class="cell lbl row2">Characters</span><span class="cell row2">1497</span>
+          <span class="mount">
+            <button class="morph2" aria-pressed="true" title="toggle"><span class="visible"><span class="knob2"></span></span></button>
+          </span>
+        </div>
+      </div>
+      <p class="note">
+        Visible part is the <strong>10 × 10 dot</strong>, anchored to the table's upper-right corner.
+        Transparent padding extends the hit target into the table to make it ≥ 24 × 24 even when collapsed.
+        <br>
+        <strong>Mouse:</strong> hover-grow into a 28 × 16 compact switch; mouse-out shrinks it back. Pure CSS via <code>@media (hover: hover) and (pointer: fine)</code>.
+        <br>
+        <strong>Touch:</strong> first tap expands; second tap toggles state; auto-collapses after 3&nbsp;s of no interaction, or when you tap outside. Detected via <code>e.pointerType</code> at <code>pointerdown</code>.
+        <br>
+        Keyboard: Tab to focus expands it (<code>:focus-visible</code>); Space/Enter toggles.
+      </p>
+    </div>
+
+  </div>
+
+  <footer>
+    The current extension anchors the control's right edge to the table's right edge and lifts it above the table top. Drag the sliders to see every control move together. Note the practical floor: accessibility guidance puts the minimum tap target around 24&nbsp;px, so visuals smaller than that need invisible padding — which adds the footprint back. <strong>#7 expands on hover/focus</strong>; on touch there is no hover, so it would need a tap-to-expand fallback.
+  </footer>
+
+  <script>
+    // The icon/knob/dot buttons toggle their own state on click.
+    document.querySelectorAll('.ib, .knobonly, .dot').forEach(function (b) {
+      b.addEventListener('click', function () {
+        b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+      });
+    });
+
+    // ---- Card #7: touch-aware morph ----
+    // Mouse: CSS handles hover-grow. Click toggles state.
+    // Touch/pen: first tap expands (no state change); subsequent taps toggle.
+    // Auto-collapse after AUTO_COLLAPSE_MS of no interaction; tap-outside collapses.
+    var AUTO_COLLAPSE_MS = 3000;
+
+    function flipPressed(btn) {
+      btn.setAttribute('aria-pressed', btn.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+    }
+    function scheduleCollapse(btn) {
+      clearTimeout(btn._collapseTimer);
+      btn._collapseTimer = setTimeout(function () { btn.classList.remove('expanded'); }, AUTO_COLLAPSE_MS);
+    }
+
+    document.querySelectorAll('.morph2').forEach(function (btn) {
+      // Capture pointer type at pointerdown so we know what triggered the click.
+      btn.addEventListener('pointerdown', function (e) { btn.dataset.pointerType = e.pointerType; });
+
+      btn.addEventListener('click', function () {
+        var isTouch = btn.dataset.pointerType === 'touch' || btn.dataset.pointerType === 'pen';
+        if (isTouch) {
+          if (!btn.classList.contains('expanded')) {
+            // First tap: just expand, don't toggle state yet.
+            btn.classList.add('expanded');
+          } else {
+            // Subsequent tap on the expanded pill: toggle state.
+            flipPressed(btn);
+          }
+          scheduleCollapse(btn);
+        } else {
+          // Mouse / keyboard: click toggles state directly.
+          flipPressed(btn);
+        }
+      });
+    });
+
+    // Tap outside any expanded touch-mode control collapses it immediately.
+    document.addEventListener('pointerdown', function (e) {
+      document.querySelectorAll('.morph2.expanded').forEach(function (btn) {
+        if (!btn.contains(e.target)) btn.classList.remove('expanded');
+      });
+    });
+
+    // Live anchor: position every mounted control identically from the sliders.
+    // overlap = px of the control below the table top edge (measured per control
+    // height, so all controls intrude by the same amount). The mount is positioned
+    // relative to the .corner, whose top-left is the table's top edge.
+    var overlapEl  = document.getElementById('overlap');
+    var overhangEl = document.getElementById('overhang');
+    var overlapOut = document.getElementById('overlapVal');
+    var overhangOut = document.getElementById('overhangVal');
+
+    function apply() {
+      var overlap  = parseFloat(overlapEl.value);
+      var overhang = parseFloat(overhangEl.value);
+      overlapOut.textContent  = overlap + ' px';
+      overhangOut.textContent = overhang + ' px';
+      document.querySelectorAll('.corner .mount').forEach(function (m) {
+        var ctrl = m.firstElementChild;
+        // For controls with a visible inner element (e.g. card #7's morph2 whose
+        // wrapper extends invisibly into the table), anchor by the visible part —
+        // not the padded wrapper — so every card compares apples-to-apples.
+        var visible = ctrl.querySelector('.visible') || ctrl;
+        var rect = visible.getBoundingClientRect();
+        // If the wrapper has transparent padding around the visible (e.g. the
+        // morph2 hit target), measure it so the visible — not the wrapper — lands
+        // at the slider coordinates. For controls 1-6, both paddings are 0.
+        var cs = window.getComputedStyle(ctrl);
+        var padTop = parseFloat(cs.paddingTop) || 0;
+        var padRight = parseFloat(cs.paddingRight) || 0;
+        m.style.top = (overlap - rect.height - padTop) + 'px';
+        m.style.right = (-overhang - padRight) + 'px';
+      });
+    }
+
+    overlapEl.addEventListener('input', apply);
+    overhangEl.addEventListener('input', apply);
+    window.addEventListener('load', apply);
+    apply();
+  </script>
+</body>
+</html>
