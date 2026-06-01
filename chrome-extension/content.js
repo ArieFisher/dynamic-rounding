@@ -214,6 +214,21 @@ function ensureToggleStyleInjected() {
   toggleStyleInjected = true;
 }
 
+// --- Feature flag: in-corner fallback for the lift ---
+// When LIFT_FALLBACK_ENABLED is true, positionToggle probes the strip above the
+// table with isStripAboveTableClear() and falls back to the original in-corner
+// placement when the strip is not verifiably clear — a strict-improvement mode
+// that guarantees no page is rendered worse than today's behavior.
+//
+// When false (default), the toggle is unconditionally lifted above the table.
+// This is simpler and fixes more cases but can regress a page where the strip
+// above is occupied (a heading, a sticky header, a clipping container) or where
+// the lift would land off the top of the viewport. Flip to true if real-world
+// usage surfaces regressions worth blocking on.
+//
+// `let` (not `const`) so the test harness can toggle it.
+let LIFT_FALLBACK_ENABLED = false;
+
 // Returns true only if the strip directly above the table — where the lifted
 // toggle would sit — is verifiably empty: every element hit-tested under the
 // toggle's would-be footprint is the document root, the body, or an ancestor of
@@ -222,10 +237,7 @@ function ensureToggleStyleInjected() {
 // outside a clipping container, a point that falls off the viewport, or the
 // absence of elementsFromPoint — counts as "not clear".
 //
-// The caller lifts the toggle above the table only when this returns true, and
-// otherwise leaves it in its original in-corner position. This makes the lift a
-// strict improvement: a page is never rendered worse than today's behavior — at
-// worst the toggle stays where it already is.
+// Used by positionToggle only when LIFT_FALLBACK_ENABLED is true.
 function isStripAboveTableClear(table, labelEl, rect, shiftedTopVp) {
   // Off the top of the viewport, or no way to probe → cannot verify → not clear.
   if (shiftedTopVp < 0) return false;
@@ -268,13 +280,14 @@ function positionToggle(table, labelEl) {
   const scrollY = window.scrollY || window.pageYOffset || 0;
   // Horizontal anchoring is unchanged: TOGGLE_EDGE_GAP_PX overhang past the right edge.
   const left = rect.right + scrollX - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX;
-  // Prefer lifting the toggle into the strip above the table (bottom edge
-  // TOGGLE_EDGE_GAP_PX above row 1, so it stops overlapping the first row) — but
-  // only when that strip is verifiably clear. Otherwise fall back to the original
-  // in-corner placement so the change never regresses a page.
-  const inCornerTopVp = rect.top - TOGGLE_EDGE_GAP_PX;
+  // Lift the toggle above the table (bottom edge TOGGLE_EDGE_GAP_PX above row 1)
+  // so it stops overlapping the first row. The in-corner fallback is gated by
+  // LIFT_FALLBACK_ENABLED — see the flag's comment for the trade-off.
   const aboveTopVp = rect.top - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX;
-  const topVp = isStripAboveTableClear(table, labelEl, rect, aboveTopVp) ? aboveTopVp : inCornerTopVp;
+  const inCornerTopVp = rect.top - TOGGLE_EDGE_GAP_PX;
+  const topVp = (LIFT_FALLBACK_ENABLED && !isStripAboveTableClear(table, labelEl, rect, aboveTopVp))
+    ? inCornerTopVp
+    : aboveTopVp;
   const top = topVp + scrollY;
   labelEl.style.left = left + 'px';
   labelEl.style.top = top + 'px';
