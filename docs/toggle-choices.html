@@ -6,7 +6,7 @@
 <title>Dynamic Rounding — toggle control choices</title>
 <style>
   :root {
-    --on: #4a86e8;
+    --on: #3d85c6;
     --off: #ccc;
     --ink: #202124;
     --muted: #5f6368;
@@ -133,22 +133,27 @@
   .dot[aria-pressed="true"] { background: var(--on); }
 
   /* ---- 7. touch-aware morph: 10px dot → 28×16 compact switch ----
-     Visible part is anchored to the top-right of the .morph2 wrapper. The
-     wrapper itself adds 14px of transparent padding on the left and bottom,
-     so the hit target is ≥24×24 collapsed, even though the visible dot is
-     only 10×10. When expanded the visible grows to 28×16 and the wrapper
-     grows with it (~42×30 hit area), still anchored at the top-right. */
+     Hit area is centered on the visible dot: 7px of transparent padding on
+     every side gives a 24×24 hit target around a 10×10 dot. inline-flex with
+     flex-end + flex-start keeps the visible anchored to the wrapper's top-
+     right corner, so when it expands to 28×16 the right edge stays put (the
+     wrapper grows leftward and downward). The 7px buffer on every side means
+     the cursor crosses transparent padding before hitting the visible — no
+     pointer-shudder when approaching from any direction during the expand
+     animation, since the visible's right edge never moves. */
   .morph2 {
-    display: inline-block;
-    padding: 0 0 14px 14px;          /* transparent extension into the table */
+    display: inline-flex;
+    justify-content: flex-end;       /* visible at right of content area */
+    align-items: flex-start;         /* visible at top of content area */
+    padding: 7px;                    /* transparent buffer in every direction */
     background: transparent; border: 0; cursor: pointer;
+    vertical-align: top;
     -webkit-tap-highlight-color: transparent;
   }
   .morph2 .visible {
     position: relative; display: block;
     width: 10px; height: 10px; border-radius: 50%;
     background: var(--off);
-    margin-left: auto;               /* push visible to the right edge of the wrapper */
     transition: width .18s ease, height .18s ease, border-radius .18s ease, background .2s ease;
   }
   .morph2[aria-pressed="true"] .visible { background: var(--on); }
@@ -194,8 +199,8 @@
     <div class="field">
       <label for="overlap">Vertical overlap — px of the control sitting below the table's top edge</label>
       <div class="row">
-        <input type="range" id="overlap" min="-14" max="30" step="1" value="8">
-        <output id="overlapVal">8 px</output>
+        <input type="range" id="overlap" min="-14" max="30" step="1" value="2">
+        <output id="overlapVal">2 px</output>
       </div>
     </div>
     <div class="field">
@@ -449,8 +454,14 @@
         // not the padded wrapper — so every card compares apples-to-apples.
         var visible = ctrl.querySelector('.visible') || ctrl;
         var rect = visible.getBoundingClientRect();
-        m.style.top = (overlap - rect.height) + 'px';
-        m.style.right = (-overhang) + 'px';
+        // If the wrapper has transparent padding around the visible (e.g. the
+        // morph2 hit target), measure it so the visible — not the wrapper — lands
+        // at the slider coordinates. For controls 1-6, both paddings are 0.
+        var cs = window.getComputedStyle(ctrl);
+        var padTop = parseFloat(cs.paddingTop) || 0;
+        var padRight = parseFloat(cs.paddingRight) || 0;
+        m.style.top = (overlap - rect.height - padTop) + 'px';
+        m.style.right = (-overhang - padRight) + 'px';
       });
     }
 
