@@ -59,6 +59,13 @@ Object.defineProperty(globalThis, 'toggleStyleInjected', {
 globalThis.isTableRounded = isTableRounded;
 globalThis.syncSwitchForTable = syncSwitchForTable;
 globalThis.positionToggle = positionToggle;
+// Toggle geometry constants, for spec-derived positioning assertions.
+globalThis.TOGGLE_WIDTH_PX = TOGGLE_WIDTH_PX;
+globalThis.TOGGLE_HEIGHT_PX = TOGGLE_HEIGHT_PX;
+globalThis.TOGGLE_KNOB_PX = TOGGLE_KNOB_PX;
+globalThis.TOGGLE_KNOB_INSET_PX = TOGGLE_KNOB_INSET_PX;
+globalThis.TOGGLE_EDGE_GAP_PX = TOGGLE_EDGE_GAP_PX;
+globalThis.TOGGLE_KNOB_TRAVEL_PX = TOGGLE_KNOB_TRAVEL_PX;
 globalThis.createToggleForTable = createToggleForTable;
 globalThis.runToggleAction = runToggleAction;
 globalThis.toggleOriginalValues = toggleOriginalValues;
@@ -1985,19 +1992,18 @@ function injectToggleEntry(table) {
     tableToggles.has(table), true);
 })();
 
-// --- AC1: positionToggle places the label within ~5px of the table's top-right corner ---
+// --- fix-toggle-overlap: positionToggle anchors to the top-right corner, ABOVE the table ---
 //
 // positionToggle uses:
-//   left = rect.right + scrollX - 36 + 2    (36px toggle width, 2px outside right edge)
-//   top  = rect.top  + scrollY - 2          (2px above the top edge)
-// With rect={top:100,right:500} and scroll=0:
-//   expected left = 500 - 34 = 466
-//   expected top  = 100 - 2  = 98
-//
-// The "within ~5px" spec means:
-//   |left - (rect.right - toggleWidth)| <= 5  AND  |top - rect.top| <= 5
+//   left = rect.right + scrollX - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX  (anchored to right edge)
+//   top  = max(scrollY, rect.top + scrollY - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX)
+// The toggle now sits fully above the table (its bottom edge TOGGLE_EDGE_GAP_PX above
+// the table top) instead of overlapping row 1. With rect={top:100,right:500}, scroll=0,
+// TOGGLE_WIDTH_PX=36, TOGGLE_HEIGHT_PX=20, TOGGLE_EDGE_GAP_PX=2:
+//   expected left = 500 - 36 + 2 = 466
+//   expected top  = max(0, 100 - 20 - 2) = 78
 
-(function atToggle_positionToggle_nearTopRight() {
+(function atToggle_positionToggle_aboveTopRight() {
   const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
   const table = {
     getBoundingClientRect() { return tableRect; },
@@ -2018,22 +2024,21 @@ function injectToggleEntry(table) {
   const left = parseFloat(labelEl.style.left);
   const top  = parseFloat(labelEl.style.top);
 
-  // left should be within 5px of (rect.right - toggleWidth = 500 - 36 = 464).
-  // The implementation uses 36-2 = 34px from right, so left = 466. |466 - 464| = 2 <= 5.
-  const leftOk = Math.abs(left - (tableRect.right - 36)) <= 5;
-  eq('auto-table-toggle: positionToggle left is within 5px of table right edge minus toggle width',
-    leftOk, true);
+  // left: anchored to the right edge with a TOGGLE_EDGE_GAP_PX overhang (unchanged by this fix).
+  eq('fix-toggle-overlap: positionToggle left anchors to table right edge minus toggle width plus edge gap',
+    left, tableRect.right - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX);
 
-  // top should be within 5px of rect.top (98 vs 100 → 2 <= 5).
-  const topOk = Math.abs(top - tableRect.top) <= 5;
-  eq('auto-table-toggle: positionToggle top is within 5px of table top edge',
-    topOk, true);
+  // top: toggle bottom edge sits TOGGLE_EDGE_GAP_PX above the table top, i.e. no overlap with row 1.
+  eq('fix-toggle-overlap: positionToggle top places toggle fully above the table',
+    top, tableRect.top - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX);
+  eq('fix-toggle-overlap: toggle bottom edge sits TOGGLE_EDGE_GAP_PX above table top (no row-1 overlap)',
+    top + TOGGLE_HEIGHT_PX, tableRect.top - TOGGLE_EDGE_GAP_PX);
 })();
 
-// --- AC1: positionToggle accounts for page scroll ---
+// --- fix-toggle-overlap: positionToggle accounts for page scroll ---
 
 (function atToggle_positionToggle_withScroll() {
-  const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
+  const tableRect = { top: 400, right: 500, bottom: 600, left: 100 };
   const table = { getBoundingClientRect() { return tableRect; } };
   const labelEl = { style: {} };
 
@@ -2050,11 +2055,74 @@ function injectToggleEntry(table) {
   const left = parseFloat(labelEl.style.left);
   const top  = parseFloat(labelEl.style.top);
 
-  // Expected: left = 500 + 200 - 36 + 2 = 666; top = 100 + 300 - 2 = 398
-  eq('auto-table-toggle: positionToggle left includes scrollX offset',
-    Math.abs(left - (tableRect.right + 200 - 36 + 2)) <= 5, true);
-  eq('auto-table-toggle: positionToggle top includes scrollY offset',
-    Math.abs(top - (tableRect.top + 300 - 2)) <= 5, true);
+  // Expected: left = 500 + 200 - 36 + 2 = 666;
+  // top = max(300, 400 + 300 - 20 - 2) = 678 (table top well below the scroll line, so no clamp)
+  eq('fix-toggle-overlap: positionToggle left includes scrollX offset',
+    left, tableRect.right + 200 - TOGGLE_WIDTH_PX + TOGGLE_EDGE_GAP_PX);
+  eq('fix-toggle-overlap: positionToggle top includes scrollY offset',
+    top, tableRect.top + 300 - TOGGLE_HEIGHT_PX - TOGGLE_EDGE_GAP_PX);
+})();
+
+// --- fix-toggle-overlap: top is clamped to the scroll line so the toggle never goes off-screen ---
+// When the table's top is at (or above) the current scroll position, the unclamped
+// top would be negative relative to the viewport. The Math.max clamp pins it to scrollY.
+
+(function atToggle_positionToggle_clampsAtViewportTop() {
+  // Table top coincides with the scroll line: rect.top=0, scrollY=0.
+  const tableRect = { top: 0, right: 500, bottom: 200, left: 100 };
+  const table = { getBoundingClientRect() { return tableRect; } };
+  const labelEl = { style: {} };
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  positionToggle(table, labelEl);
+
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+
+  const top = parseFloat(labelEl.style.top);
+
+  // Unclamped top would be 0 - 20 - 2 = -22 (off-screen). Clamp pins it to scrollY = 0.
+  eq('fix-toggle-overlap: top is clamped to scrollY rather than rendered off-screen',
+    top, 0);
+})();
+
+(function atToggle_positionToggle_clampUsesScrollYNotZero() {
+  // Scrolled down 500px; table top is at the very top of the viewport (rect.top=0).
+  // Unclamped top = 0 + 500 - 20 - 2 = 478; clamp floor = scrollY = 500, so top = 500.
+  const tableRect = { top: 0, right: 500, bottom: 200, left: 100 };
+  const table = { getBoundingClientRect() { return tableRect; } };
+  const labelEl = { style: {} };
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 500;
+
+  positionToggle(table, labelEl);
+
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+
+  const top = parseFloat(labelEl.style.top);
+
+  eq('fix-toggle-overlap: clamp floor is the live scrollY, keeping the toggle at the viewport top',
+    top, 500);
+})();
+
+// --- fix-toggle-overlap: knob travel is derived from the geometry constants ---
+// Guards the CSS interpolation: the checked-state translateX must equal
+// TOGGLE_WIDTH_PX - TOGGLE_KNOB_PX - 2*TOGGLE_KNOB_INSET_PX (16px for the defaults),
+// so resizing the toggle does not desync the knob travel.
+
+(function atToggle_knobTravelDerivation() {
+  eq('fix-toggle-overlap: TOGGLE_KNOB_TRAVEL_PX is derived from width/knob/inset',
+    TOGGLE_KNOB_TRAVEL_PX, TOGGLE_WIDTH_PX - TOGGLE_KNOB_PX - 2 * TOGGLE_KNOB_INSET_PX);
+  eq('fix-toggle-overlap: knob travel equals the historical 16px for the default geometry',
+    TOGGLE_KNOB_TRAVEL_PX, 16);
 })();
 
 // --- AC3 / AC4: runToggleAction semantics ---
