@@ -64,6 +64,25 @@ globalThis.runToggleAction = runToggleAction;
 globalThis.toggleOriginalValues = toggleOriginalValues;
 globalThis.injectTableToggles = injectTableToggles;
 globalThis.isDataTable = isDataTable;
+// Expose new toggle geometry constants (all are const, so direct assignment works)
+globalThis.TOGGLE_DOT_PX = TOGGLE_DOT_PX;
+globalThis.TOGGLE_PILL_WIDTH_PX = TOGGLE_PILL_WIDTH_PX;
+globalThis.TOGGLE_PILL_HEIGHT_PX = TOGGLE_PILL_HEIGHT_PX;
+globalThis.TOGGLE_KNOB_PX = TOGGLE_KNOB_PX;
+globalThis.TOGGLE_KNOB_INSET_PX = TOGGLE_KNOB_INSET_PX;
+globalThis.TOGGLE_KNOB_TRAVEL_PX = TOGGLE_KNOB_TRAVEL_PX;
+globalThis.TOGGLE_HIT_PAD_PX = TOGGLE_HIT_PAD_PX;
+globalThis.TOGGLE_DOT_OVERLAP_PX = TOGGLE_DOT_OVERLAP_PX;
+globalThis.TOGGLE_DOT_OVERHANG_PX = TOGGLE_DOT_OVERHANG_PX;
+globalThis.TOGGLE_COLOR_ON = TOGGLE_COLOR_ON;
+globalThis.TOGGLE_COLOR_OFF = TOGGLE_COLOR_OFF;
+globalThis.TOUCH_AUTOCOLLAPSE_MS = TOUCH_AUTOCOLLAPSE_MS;
+// _globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
+Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
+  get() { return _globalTapCollapseAdded; },
+  set(v) { _globalTapCollapseAdded = v; },
+  configurable: true,
+});
 `);
 
 let passed = 0;
@@ -1772,15 +1791,72 @@ function makeToggleTable(rowsOrCells, extra) {
 
 /**
  * Inject a fake entry into the module-level tableToggles WeakMap so that
- * syncSwitchForTable can find the checkbox for this table.
+ * syncSwitchForTable can find the button for this table.
+ *
+ * Returns a minimal button stub that supports setAttribute/getAttribute/classList
+ * and addEventListener, matching the new dr-ext-morph button shape.
  *
  * @param {object} table — the table stub
- * @returns {{ checked: boolean }} the mock checkbox input
+ * @returns {object} the mock button element
  */
 function injectToggleEntry(table) {
-  const input = { checked: false };
-  tableToggles.set(table, input);
-  return input;
+  const button = makeMockButton();
+  tableToggles.set(table, button);
+  return button;
+}
+
+/**
+ * Build a minimal button stub that supports the interface used by
+ * syncSwitchForTable, createToggleForTable, and test event dispatch.
+ */
+function makeMockButton() {
+  const attrs = {};
+  const classList = {
+    _c: [],
+    add(c)      { if (!this._c.includes(c)) this._c.push(c); },
+    remove(c)   { this._c = this._c.filter(x => x !== c); },
+    contains(c) { return this._c.includes(c); },
+    toggle(c, force) {
+      if (force === undefined) force = !this.contains(c);
+      if (force) this.add(c); else this.remove(c);
+      return force;
+    },
+  };
+  const listeners = {};
+  const button = {
+    _tag: 'button',
+    type: 'button',
+    className: 'dr-ext-morph',
+    style: {},
+    _children: [],
+    dataset: {},
+    classList,
+    setAttribute(name, value) { attrs[name] = value; },
+    getAttribute(name) { return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null; },
+    addEventListener(evt, fn) {
+      if (!listeners[evt]) listeners[evt] = [];
+      listeners[evt].push(fn);
+    },
+    _listeners: listeners,
+    appendChild(child) {
+      this._children.push(child);
+      child.parentElement = this;
+      return child;
+    },
+    contains(node) { return false; },
+    click() {
+      const handlers = listeners['click'] || [];
+      handlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
+    },
+    dispatchEvent(evt) {
+      const handlers = listeners[evt.type] || [];
+      handlers.forEach(fn => fn(evt));
+    },
+    parentElement: null,
+    textContent: '',
+    _clickCount: 0,
+  };
+  return button;
 }
 
 // --- AC5: isTableRounded returns false for a fresh table ---
@@ -1831,7 +1907,7 @@ function injectToggleEntry(table) {
     configurable: true,
   });
 
-  // Inject toggle entry so syncSwitchForTable doesn't crash
+  // Inject toggle entry (proper button stub) so syncSwitchForTable doesn't crash
   injectToggleEntry(table);
 
   // Calling toggleOriginalValues (showingOriginal=false path) sets drShowingOriginal='true'
@@ -1843,41 +1919,41 @@ function injectToggleEntry(table) {
     table.dataset.drShowingOriginal, 'true');
 })();
 
-// --- AC6: syncSwitchForTable sets checkbox.checked to match isTableRounded ---
+// --- AC6: syncSwitchForTable sets aria-pressed on the button to match isTableRounded ---
 
-(function atToggle_syncSwitch_uncheckedWhenNotRounded() {
+(function atToggle_syncSwitch_ariaFalseWhenNotRounded() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  const input = injectToggleEntry(table);
-  input.checked = true; // pre-set to true to confirm it gets corrected
+  const button = injectToggleEntry(table);
+  button.setAttribute('aria-pressed', 'true'); // pre-set to true to confirm it gets corrected
 
   syncSwitchForTable(table);
-  eq('auto-table-toggle: syncSwitchForTable sets checked=false on fresh table',
-    input.checked, false);
+  eq('auto-table-toggle: syncSwitchForTable sets aria-pressed="false" on fresh table',
+    button.getAttribute('aria-pressed'), 'false');
 })();
 
-(function atToggle_syncSwitch_checkedWhenRounded() {
+(function atToggle_syncSwitch_ariaTrueWhenRounded() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  const input = injectToggleEntry(table);
-  input.checked = false; // pre-set to false to confirm it gets corrected
+  const button = injectToggleEntry(table);
+  button.setAttribute('aria-pressed', 'false'); // pre-set to false to confirm it gets corrected
 
   // Mark table as rounded
   table._cells[0].classList.add('dr-ext-rounded');
 
   syncSwitchForTable(table);
-  eq('auto-table-toggle: syncSwitchForTable sets checked=true on rounded table',
-    input.checked, true);
+  eq('auto-table-toggle: syncSwitchForTable sets aria-pressed="true" on rounded table',
+    button.getAttribute('aria-pressed'), 'true');
 })();
 
-(function atToggle_syncSwitch_uncheckedWhenShowingOriginal() {
+(function atToggle_syncSwitch_ariaFalseWhenShowingOriginal() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  const input = injectToggleEntry(table);
+  const button = injectToggleEntry(table);
   table._cells[0].classList.add('dr-ext-rounded');
   table.dataset.drShowingOriginal = 'true';
-  input.checked = true;
+  button.setAttribute('aria-pressed', 'true');
 
   syncSwitchForTable(table);
-  eq('auto-table-toggle: syncSwitchForTable sets checked=false when showingOriginal=true',
-    input.checked, false);
+  eq('auto-table-toggle: syncSwitchForTable sets aria-pressed="false" when showingOriginal=true',
+    button.getAttribute('aria-pressed'), 'false');
 })();
 
 // --- AC6: syncSwitchForTable is a no-op when no toggle registered ---
@@ -1892,30 +1968,29 @@ function injectToggleEntry(table) {
     threw, false);
 })();
 
-// --- AC2: Switch is unchecked when first injected on a never-rounded table ---
-// createToggleForTable creates a checkbox; a never-rounded table → input.checked === false
+// --- DOM shape: createToggleForTable creates the new morph button structure ---
+// Spec (§3.6 + AC): button.dr-ext-morph > span.dr-ext-morph-visible > span.dr-ext-morph-knob
+// The button must have type="button", aria-pressed="false", and an aria-label.
 
-(function atToggle_createToggle_initiallyUnchecked() {
-  // Stub the full DOM environment needed by createToggleForTable:
-  //   document.createElement, document.body.appendChild
-
+(function atToggle_createToggle_domShape() {
   const createdElements = [];
   const appendedChildren = [];
-  const listeners = [];
 
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
 
   global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
     const el = {
       _tag: tag,
       type: '',
       className: '',
       style: {},
       _children: [],
-      _listeners: {},
-      _attrs: {},
-      checked: false,
+      _listeners: listeners,
+      dataset: {},
       parentElement: null,
       textContent: '',
       appendChild(child) {
@@ -1924,15 +1999,30 @@ function injectToggleEntry(table) {
         return child;
       },
       addEventListener(evt, fn) {
-        listeners.push({ evt, fn });
-        this._listeners[evt] = fn;
+        if (!listeners[evt]) listeners[evt] = [];
+        listeners[evt].push(fn);
       },
-      setAttribute(name, value) {
-        this._attrs[name] = value;
-      },
+      setAttribute(name, value) { attrs[name] = value; },
       getAttribute(name) {
-        return Object.prototype.hasOwnProperty.call(this._attrs, name) ? this._attrs[name] : null;
+        return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
       },
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c,
+          add(x)     { if (!c.includes(x)) c.push(x); },
+          remove(x)  { const i = c.indexOf(x); if (i >= 0) c.splice(i, 1); },
+          contains(x){ return c.includes(x); },
+          toggle(x, f) {
+            const has = c.includes(x);
+            const want = f === undefined ? !has : f;
+            if (want && !has) c.push(x);
+            else if (!want && has) c.splice(c.indexOf(x), 1);
+            return want;
+          },
+        };
+      })(),
+      contains() { return false; },
     };
     createdElements.push(el);
     return el;
@@ -1941,120 +2031,138 @@ function injectToggleEntry(table) {
   global.document.body = {
     appendChild(child) {
       appendedChildren.push(child);
-      // Give the label a parentElement so positionToggle's labelEl.style.left works
       child.parentElement = global.document.body;
     }
   };
+  global.document.documentElement = { appendChild() {} };
+
+  // Reset the module-level flag so injection runs
+  toggleStyleInjected = false;
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
 
   const table = makeToggleTable([
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
-    [{ tag: 'td', text: '200' }, { tag: 'td', text: '300' }],
+    [{ tag: 'td', text: '200' },  { tag: 'td', text: '300' }],
   ]);
-  // Stub table.getBoundingClientRect (already defined on makeToggleTable)
 
-  // ensureToggleStyleInjected calls document.createElement('style') + appendChild;
-  // stub documentElement for that path
-  const origDocEl = global.document.documentElement;
-  global.document.documentElement = {
-    appendChild() {}
-  };
-  // Reset the module-level flag so injection runs
-  toggleStyleInjected = false;
-
-  const label = createToggleForTable(table);
+  createToggleForTable(table);
 
   // Restore
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
   global.document.documentElement = origDocEl;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
   toggleStyleInjected = true;
 
-  // The input element should have been created (type='checkbox')
-  const inputEl = createdElements.find(e => e.type === 'checkbox');
-  eq('auto-table-toggle: createToggleForTable creates a checkbox input',
-    inputEl !== undefined, true);
-  eq('auto-table-toggle: newly created checkbox is unchecked (never-rounded table)',
-    inputEl ? inputEl.checked : 'no input', false);
+  // The button element should have been created and appended to body
+  const buttonEl = appendedChildren.find(e => e._tag === 'button');
+  eq('auto-table-toggle: createToggleForTable appends a <button> to document.body',
+    buttonEl !== undefined, true);
 
-  // The label should have been appended to document.body
-  eq('auto-table-toggle: createToggleForTable appends toggle label to document.body',
-    appendedChildren.length >= 1, true);
+  // Must have class dr-ext-morph
+  eq('auto-table-toggle: createToggleForTable creates a <button class="dr-ext-morph">',
+    buttonEl ? buttonEl.className === 'dr-ext-morph' : false, true);
+
+  // Must have type="button"
+  eq('auto-table-toggle: createToggleForTable button has type="button"',
+    buttonEl ? buttonEl.type === 'button' : false, true);
+
+  // aria-pressed initially "false"
+  eq('auto-table-toggle: createToggleForTable button has aria-pressed="false" initially',
+    buttonEl ? buttonEl.getAttribute('aria-pressed') : null, 'false');
+
+  // Must have aria-label (accessible name)
+  const ariaLabel = buttonEl ? buttonEl.getAttribute('aria-label') : null;
+  eq('auto-table-toggle: createToggleForTable button has non-empty aria-label',
+    typeof ariaLabel === 'string' && ariaLabel.length > 0, true);
+
+  // aria-label must mention rounding (case-insensitive)
+  eq('auto-table-toggle: createToggleForTable aria-label mentions rounding',
+    ariaLabel ? ariaLabel.toLowerCase().includes('round') : false, true);
+
+  // First child of button must be span.dr-ext-morph-visible
+  const visibleEl = buttonEl ? buttonEl._children[0] : null;
+  eq('auto-table-toggle: button first child is <span class="dr-ext-morph-visible">',
+    visibleEl ? (visibleEl._tag === 'span' && visibleEl.className === 'dr-ext-morph-visible') : false, true);
+
+  // First child of visible must be span.dr-ext-morph-knob
+  const knobEl = visibleEl ? visibleEl._children[0] : null;
+  eq('auto-table-toggle: visible first child is <span class="dr-ext-morph-knob">',
+    knobEl ? (knobEl._tag === 'span' && knobEl.className === 'dr-ext-morph-knob') : false, true);
 
   // tableToggles must now contain this table
   eq('auto-table-toggle: createToggleForTable registers table in tableToggles',
     tableToggles.has(table), true);
 })();
 
-// --- AC1: positionToggle places the label within ~5px of the table's top-right corner ---
-//
-// positionToggle uses:
-//   left = rect.right + scrollX - 36 + 2    (36px toggle width, 2px outside right edge)
-//   top  = rect.top  + scrollY - 2          (2px above the top edge)
-// With rect={top:100,right:500} and scroll=0:
-//   expected left = 500 - 34 = 466
-//   expected top  = 100 - 2  = 98
-//
-// The "within ~5px" spec means:
-//   |left - (rect.right - toggleWidth)| <= 5  AND  |top - rect.top| <= 5
+// --- Anchor geometry (rest state, scroll=0) ---
+// Spec (§3.2 + §3.6): wrapper left/top place the visible's bottom-right at
+//   visible.bottom = rect.top  + scrollY + TOGGLE_DOT_OVERLAP_PX
+//   visible.right  = rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX
+// Which means:
+//   wrapperLeft = (rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX) - (TOGGLE_DOT_PX + 2*TOGGLE_HIT_PAD_PX)
+//   wrapperTop  = (rect.top   + scrollY + TOGGLE_DOT_OVERLAP_PX)  -  TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX
+// All arithmetic is done in terms of the exposed globalThis constants.
 
-(function atToggle_positionToggle_nearTopRight() {
-  const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
-  const table = {
-    getBoundingClientRect() { return tableRect; },
-  };
-  const labelEl = { style: {} };
+(function atToggle_positionToggle_anchorGeometry_noScroll() {
+  const tableRect = { top: 100, right: 500, bottom: 200, left: 100, width: 400, height: 100 };
+  const table = { getBoundingClientRect() { return tableRect; } };
+  const buttonEl = { style: {} };
 
-  // Stub window.scrollX/scrollY to zero (typical case)
   const origScrollX = global.window.scrollX;
   const origScrollY = global.window.scrollY;
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  positionToggle(table, labelEl);
+  positionToggle(table, buttonEl);
 
   global.window.scrollX = origScrollX;
   global.window.scrollY = origScrollY;
 
-  const left = parseFloat(labelEl.style.left);
-  const top  = parseFloat(labelEl.style.top);
+  const left = parseFloat(buttonEl.style.left);
+  const top  = parseFloat(buttonEl.style.top);
 
-  // left should be within 5px of (rect.right - toggleWidth = 500 - 36 = 464).
-  // The implementation uses 36-2 = 34px from right, so left = 466. |466 - 464| = 2 <= 5.
-  const leftOk = Math.abs(left - (tableRect.right - 36)) <= 5;
-  eq('auto-table-toggle: positionToggle left is within 5px of table right edge minus toggle width',
-    leftOk, true);
+  const expectedLeft = (tableRect.right + 0 + TOGGLE_DOT_OVERHANG_PX) - (TOGGLE_DOT_PX + 2 * TOGGLE_HIT_PAD_PX);
+  const expectedTop  = (tableRect.top   + 0 + TOGGLE_DOT_OVERLAP_PX)  -  TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
 
-  // top should be within 5px of rect.top (98 vs 100 → 2 <= 5).
-  const topOk = Math.abs(top - tableRect.top) <= 5;
-  eq('auto-table-toggle: positionToggle top is within 5px of table top edge',
-    topOk, true);
+  eq('positionToggle: wrapper left matches anchor formula (scroll=0)',
+    left, expectedLeft);
+  eq('positionToggle: wrapper top matches anchor formula (scroll=0)',
+    top, expectedTop);
 })();
 
-// --- AC1: positionToggle accounts for page scroll ---
+// --- Anchor geometry with non-zero scroll ---
+// scrollX=200, scrollY=300 should shift both axes accordingly.
 
-(function atToggle_positionToggle_withScroll() {
-  const tableRect = { top: 100, right: 500, bottom: 200, left: 100 };
+(function atToggle_positionToggle_anchorGeometry_withScroll() {
+  const tableRect = { top: 100, right: 500, bottom: 200, left: 100, width: 400, height: 100 };
   const table = { getBoundingClientRect() { return tableRect; } };
-  const labelEl = { style: {} };
+  const buttonEl = { style: {} };
 
   const origScrollX = global.window.scrollX;
   const origScrollY = global.window.scrollY;
   global.window.scrollX = 200;
   global.window.scrollY = 300;
 
-  positionToggle(table, labelEl);
+  positionToggle(table, buttonEl);
 
   global.window.scrollX = origScrollX;
   global.window.scrollY = origScrollY;
 
-  const left = parseFloat(labelEl.style.left);
-  const top  = parseFloat(labelEl.style.top);
+  const left = parseFloat(buttonEl.style.left);
+  const top  = parseFloat(buttonEl.style.top);
 
-  // Expected: left = 500 + 200 - 36 + 2 = 666; top = 100 + 300 - 2 = 398
-  eq('auto-table-toggle: positionToggle left includes scrollX offset',
-    Math.abs(left - (tableRect.right + 200 - 36 + 2)) <= 5, true);
-  eq('auto-table-toggle: positionToggle top includes scrollY offset',
-    Math.abs(top - (tableRect.top + 300 - 2)) <= 5, true);
+  const expectedLeft = (tableRect.right + 200 + TOGGLE_DOT_OVERHANG_PX) - (TOGGLE_DOT_PX + 2 * TOGGLE_HIT_PAD_PX);
+  const expectedTop  = (tableRect.top   + 300 + TOGGLE_DOT_OVERLAP_PX)  -  TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
+
+  eq('positionToggle: wrapper left includes scrollX offset',
+    left, expectedLeft);
+  eq('positionToggle: wrapper top includes scrollY offset',
+    top, expectedTop);
 })();
 
 // --- AC3 / AC4: runToggleAction semantics ---
@@ -2082,9 +2190,9 @@ function injectToggleEntry(table) {
     const hasRounded = table._cells.some(c => c.classList.contains('dr-ext-rounded'));
     eq('auto-table-toggle: runToggleAction on fresh table rounds cells (AC3)',
       hasRounded, true);
-    // Checkbox should now reflect the rounded state
-    eq('auto-table-toggle: checkbox is checked after rounding via runToggleAction',
-      input.checked, true);
+    // aria-pressed should now reflect the rounded state
+    eq('auto-table-toggle: aria-pressed="true" after rounding via runToggleAction',
+      input.getAttribute('aria-pressed'), 'true');
   });
 })();
 
@@ -2110,9 +2218,9 @@ function injectToggleEntry(table) {
   // After toggling off: drShowingOriginal must be 'true' (AC4)
   eq('auto-table-toggle: runToggleAction on rounded table sets drShowingOriginal=true (AC4)',
     table.dataset.drShowingOriginal, 'true');
-  // Checkbox unchecked — table is now showing originals, not rounded
-  eq('auto-table-toggle: checkbox unchecked after toggle-off',
-    input.checked, false);
+  // aria-pressed should be "false" — table is now showing originals, not rounded
+  eq('auto-table-toggle: aria-pressed="false" after toggle-off via runToggleAction',
+    input.getAttribute('aria-pressed'), 'false');
 })();
 
 // --- AC5: isTableRounded sequence: false → true → false via full toggle cycle ---
@@ -2200,27 +2308,29 @@ function injectToggleEntry(table) {
     /function\s+createToggleForTable\b/.test(src), true);
   eq('auto-table-toggle: content.js defines injectTableToggles',
     /function\s+injectTableToggles\b/.test(src), true);
-  // The toggle label must use a CSS class, not inline styles exclusively
-  eq('auto-table-toggle: toggle uses dr-ext-toggle CSS class',
-    src.includes('dr-ext-toggle'), true);
+  // The toggle button must use the new dr-ext-morph CSS class
+  eq('auto-table-toggle: toggle uses dr-ext-morph CSS class',
+    src.includes('dr-ext-morph'), true);
 })();
 
 // =============================================================================
 // Sprint accessibility-pass tests
 // =============================================================================
 
-// --- accessibility AC1: aria-label on toggle input ---
-// Spec: each toggle switch's <input> has a non-empty aria-label attribute.
+// --- accessibility AC1: aria-label on toggle button ---
+// Spec (AC): the <button class="dr-ext-morph"> has an aria-label (or accessible name)
+// describing its purpose (mentioning rounding).
 
 (function accessibilityAC1_ariaLabel() {
   const createdElements = [];
-  const listeners = [];
+  const appendedToBody = [];
 
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
   const origDocEl = global.document.documentElement;
 
   global.document.createElement = (tag) => {
+    const attrs = {};
     const el = {
       _tag: tag,
       type: '',
@@ -2228,35 +2338,53 @@ function injectToggleEntry(table) {
       style: {},
       _children: [],
       _listeners: {},
-      _attrs: {},
-      checked: false,
+      dataset: {},
       parentElement: null,
       textContent: '',
+      classList: {
+        _c: [], add(c){ if(!this._c.includes(c)) this._c.push(c); },
+        remove(c){ this._c = this._c.filter(x=>x!==c); },
+        contains(c){ return this._c.includes(c); },
+        toggle(c, f) {
+          const has = this._c.includes(c);
+          const want = f === undefined ? !has : f;
+          if (want && !has) this._c.push(c);
+          else if (!want && has) this._c = this._c.filter(x=>x!==c);
+          return want;
+        },
+      },
       appendChild(child) {
         this._children.push(child);
         child.parentElement = this;
         return child;
       },
       addEventListener(evt, fn) {
-        listeners.push({ evt, fn });
-        this._listeners[evt] = fn;
+        if (!this._listeners[evt]) this._listeners[evt] = [];
+        this._listeners[evt].push(fn);
       },
-      setAttribute(name, value) {
-        this._attrs[name] = value;
-      },
+      setAttribute(name, value) { attrs[name] = value; },
       getAttribute(name) {
-        return Object.prototype.hasOwnProperty.call(this._attrs, name) ? this._attrs[name] : null;
+        return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
       },
+      contains() { return false; },
     };
     createdElements.push(el);
     return el;
   };
 
   global.document.body = {
-    appendChild(child) { child.parentElement = global.document.body; }
+    appendChild(child) {
+      appendedToBody.push(child);
+      child.parentElement = global.document.body;
+    }
   };
   global.document.documentElement = { appendChild() {} };
   toggleStyleInjected = false;
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
 
   const table = makeToggleTable([
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
@@ -2268,13 +2396,19 @@ function injectToggleEntry(table) {
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
   global.document.documentElement = origDocEl;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
   toggleStyleInjected = true;
 
-  const inputEl = createdElements.find(e => e.type === 'checkbox');
-  const ariaLabel = inputEl ? inputEl.getAttribute('aria-label') : null;
+  // The button should have been appended to body
+  const buttonEl = appendedToBody.find(e => e._tag === 'button');
+  const ariaLabel = buttonEl ? buttonEl.getAttribute('aria-label') : null;
 
-  eq('accessibility AC1: toggle input has an aria-label attribute',
+  eq('accessibility AC1: toggle button has an aria-label attribute',
     typeof ariaLabel === 'string' && ariaLabel.length > 0, true);
+
+  eq('accessibility AC1: toggle button aria-label mentions rounding',
+    ariaLabel ? ariaLabel.toLowerCase().includes('round') : false, true);
 })();
 
 // --- accessibility AC2: CSS contains :focus-visible with outline and !important ---
@@ -2287,117 +2421,110 @@ function injectToggleEntry(table) {
   eq('accessibility AC2: content.js CSS contains :focus-visible selector',
     src.includes(':focus-visible'), true);
 
-  // Verify the :focus-visible rule also includes outline and !important
-  // Extract the portion from :focus-visible to the next `}` to scope the check.
-  const focusIdx = src.indexOf(':focus-visible');
-  const closeBrace = src.indexOf('}', focusIdx);
-  const focusBlock = focusIdx !== -1 && closeBrace !== -1
-    ? src.slice(focusIdx, closeBrace + 1)
-    : '';
+  // Verify that some :focus-visible rule contains outline and !important.
+  // The CSS template in content.js uses ${…} interpolation, so we search
+  // for a line that contains both ':focus-visible' and 'outline' and '!important'
+  // (they may be on the same line in the source, possibly spanning a template expression).
+  const lines = src.split('\n');
+  const focusOutlineLine = lines.find(l =>
+    l.includes(':focus-visible') && l.includes('outline'));
+  const focusImportantLine = lines.find(l =>
+    l.includes(':focus-visible') && l.includes('!important'));
 
   eq('accessibility AC2: :focus-visible rule contains outline property',
-    focusBlock.includes('outline'), true);
+    focusOutlineLine !== undefined, true);
 
   eq('accessibility AC2: :focus-visible rule uses !important',
-    focusBlock.includes('!important'), true);
+    focusImportantLine !== undefined, true);
 })();
 
-// --- accessibility AC3: Enter keydown on focused switch calls input.click() ---
-// Spec: pressing Enter while the switch is focused triggers runToggleAction via
-//       input.click() being called from the keydown handler.
+// --- accessibility AC3: button click handler updates aria-pressed (mouse path) ---
+// Spec (§3.4): for a <button>, Space/Enter are native. The click handler must
+// update aria-pressed when pointerType is 'mouse' or ''.
+// We use createToggleForTable (with DOM stubs) to get real event listeners,
+// then simulate pointerdown→click on a table that has rounded cells.
 
-(function accessibilityAC3_enterKeyCallsClick() {
-  const createdElements = [];
-  const listeners = [];
-
+(function accessibilityAC3_buttonClickTogglesState() {
+  const appendedToBody = [];
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
   const origDocEl = global.document.documentElement;
 
   global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
     const el = {
-      _tag: tag,
-      type: '',
-      className: '',
-      style: {},
-      _children: [],
-      _listeners: {},
-      _attrs: {},
-      checked: false,
-      parentElement: null,
-      textContent: '',
-      _clickCount: 0,
-      appendChild(child) {
-        this._children.push(child);
-        child.parentElement = this;
-        return child;
-      },
-      addEventListener(evt, fn) {
-        listeners.push({ evt, fn });
-        if (!this._listeners[evt]) this._listeners[evt] = [];
-        this._listeners[evt].push(fn);
-      },
-      setAttribute(name, value) { this._attrs[name] = value; },
-      getAttribute(name) {
-        return Object.prototype.hasOwnProperty.call(this._attrs, name) ? this._attrs[name] : null;
-      },
-      click() { this._clickCount++; },
+      _tag: tag, type: '', className: '', style: {}, _children: [], _listeners: listeners,
+      dataset: {}, parentElement: null, textContent: '',
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c, add(x){if(!c.includes(x))c.push(x);}, remove(x){const i=c.indexOf(x);if(i>=0)c.splice(i,1);},
+          contains(x){return c.includes(x);},
+          toggle(x,f){const has=c.includes(x);const want=f===undefined?!has:f;if(want&&!has)c.push(x);else if(!want&&has)c.splice(c.indexOf(x),1);return want;},
+        };
+      })(),
+      appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
+      addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      contains(){return false;},
+      dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
     };
-    createdElements.push(el);
     return el;
   };
 
   global.document.body = {
-    appendChild(child) { child.parentElement = global.document.body; }
+    appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
   };
   global.document.documentElement = { appendChild() {} };
   toggleStyleInjected = false;
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
 
   const table = makeToggleTable([
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
+  table._cells.forEach(c => { c.querySelectorAll = () => []; });
+
   createToggleForTable(table);
 
   // Restore
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
   global.document.documentElement = origDocEl;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
   toggleStyleInjected = true;
 
-  const inputEl = createdElements.find(e => e.type === 'checkbox');
+  const buttonEl = appendedToBody.find(e => e._tag === 'button');
 
-  // Verify a keydown listener exists
-  const keydownHandlers = inputEl ? inputEl._listeners['keydown'] : null;
-  eq('accessibility AC3: toggle input has a keydown listener',
-    Array.isArray(keydownHandlers) && keydownHandlers.length > 0, true);
+  // Simulate pointerdown with mouse type
+  buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', stopPropagation() {} });
 
-  // Fire Enter key via the handler — click() must be called exactly once
-  if (Array.isArray(keydownHandlers)) {
-    const propagations = [];
-    const fakeEvent = {
-      key: 'Enter',
-      stopPropagation() { propagations.push(true); },
-    };
-    keydownHandlers.forEach(fn => fn(fakeEvent));
-  }
+  // Mark a cell as rounded so runToggleAction will call syncSwitchForTable → aria-pressed="true"
+  // Since runToggleAction internally checks querySelector('.dr-ext-rounded'), we pre-mark the cell.
+  // But runToggleAction first resets (calls toggleOriginalValues or roundTable).
+  // Simplest approach: verify aria-pressed transitions by actually calling via click.
+  // Pre-condition: table has rounded cells → click should toggleOriginalValues.
+  table._cells[0].classList.add('dr-ext-rounded');
+  const cell = table._cells[0];
+  let htmlVal = cell.innerHTML || '50000';
+  Object.defineProperty(cell, 'innerHTML', {
+    get(){return htmlVal;}, set(v){htmlVal=v;}, configurable: true
+  });
+  cell.dataset.originalHtml = '50000';
 
-  eq('accessibility AC3: Enter keydown triggers input.click() once',
-    inputEl ? inputEl._clickCount : -1, 1);
+  // Fire click via handlers
+  const clickHandlers = buttonEl._listeners['click'] || [];
+  clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
 
-  // A non-Enter key must NOT call click()
-  const inputEl2 = createdElements.find(e => e.type === 'checkbox');
-  // Use a fresh element count check: fire Space key and count stays same
-  const clicksBefore = inputEl ? inputEl._clickCount : 0;
-  if (Array.isArray(keydownHandlers)) {
-    const fakeSpaceEvent = {
-      key: ' ',
-      stopPropagation() {},
-    };
-    keydownHandlers.forEach(fn => fn(fakeSpaceEvent));
-  }
-  eq('accessibility AC3: non-Enter keydown does NOT call input.click()',
-    inputEl ? inputEl._clickCount : -1, clicksBefore);
+  // After click: table shows originals (drShowingOriginal='true'), aria-pressed='false'
+  eq('accessibility AC3: button click (mouse, was-rounded) sets aria-pressed="false"',
+    buttonEl.getAttribute('aria-pressed'), 'false');
 })();
 
 // ---------------------------------------------------------------------------
@@ -3014,6 +3141,716 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // apply the x-floor for the same call.
   eq('x-floor flip: rd(17054321, 0.5) === 10000000 with X_FLOOR_THRESHOLD=1 (default)',
     roundWithOffset(17054321, 0.5), 10000000);
+})();
+
+// =============================================================================
+// Sprint expanding-toggle: new AC tests
+// =============================================================================
+
+// --- Knob travel derivation ---
+// Spec (§3.5): TOGGLE_KNOB_TRAVEL_PX === TOGGLE_PILL_WIDTH_PX - TOGGLE_KNOB_PX - 2*TOGGLE_KNOB_INSET_PX === 12
+
+(function morphAC_knobTravelDerivation() {
+  eq('expanding-toggle: TOGGLE_KNOB_TRAVEL_PX equals derived formula',
+    TOGGLE_KNOB_TRAVEL_PX, TOGGLE_PILL_WIDTH_PX - TOGGLE_KNOB_PX - 2 * TOGGLE_KNOB_INSET_PX);
+  eq('expanding-toggle: TOGGLE_KNOB_TRAVEL_PX equals 12 (default geometry)',
+    TOGGLE_KNOB_TRAVEL_PX, 12);
+})();
+
+// --- syncSwitchForTable → aria-pressed ---
+// Fresh table (no .dr-ext-rounded) → aria-pressed="false"
+// After marking cells → aria-pressed="true"
+// With drShowingOriginal='true' → aria-pressed="false" even if cells are rounded
+
+(function morphAC_syncSwitch_freshTable() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const button = injectToggleEntry(table);
+  syncSwitchForTable(table);
+  eq('expanding-toggle: syncSwitchForTable fresh table → aria-pressed="false"',
+    button.getAttribute('aria-pressed'), 'false');
+})();
+
+(function morphAC_syncSwitch_roundedTable() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  table._cells[0].classList.add('dr-ext-rounded');
+  const button = injectToggleEntry(table);
+  syncSwitchForTable(table);
+  eq('expanding-toggle: syncSwitchForTable rounded table → aria-pressed="true"',
+    button.getAttribute('aria-pressed'), 'true');
+})();
+
+(function morphAC_syncSwitch_showingOriginal() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  table._cells[0].classList.add('dr-ext-rounded');
+  table.dataset.drShowingOriginal = 'true';
+  const button = injectToggleEntry(table);
+  syncSwitchForTable(table);
+  eq('expanding-toggle: syncSwitchForTable drShowingOriginal=true → aria-pressed="false"',
+    button.getAttribute('aria-pressed'), 'false');
+})();
+
+// --- Mouse click toggles state ---
+// Spec (§3.4 + AC): pointerType 'mouse'/'': runToggleAction called, aria-pressed updates.
+// We create a real button via createToggleForTable (with DOM stubs).
+
+(function morphAC_mouseClick_togglesState() {
+  const appendedToBody = [];
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+
+  global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
+    const el = {
+      _tag: tag, type: '', className: '', style: {}, _children: [], _listeners: listeners,
+      dataset: {}, parentElement: null, textContent: '',
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c, add(x){if(!c.includes(x))c.push(x);}, remove(x){const i=c.indexOf(x);if(i>=0)c.splice(i,1);},
+          contains(x){return c.includes(x);},
+          toggle(x,f){const has=c.includes(x);const want=f===undefined?!has:f;if(want&&!has)c.push(x);else if(!want&&has)c.splice(c.indexOf(x),1);return want;},
+        };
+      })(),
+      appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
+      addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      contains(){return false;},
+      dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
+    };
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  // Fresh (not rounded) table — click via mouse should call runToggleAction → round it
+  const table = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'H2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  table._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  createToggleForTable(table);
+
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+  toggleStyleInjected = true;
+
+  const buttonEl = appendedToBody.find(e => e._tag === 'button');
+
+  // Initial state: aria-pressed='false'
+  eq('expanding-toggle: mouse click (before): aria-pressed is "false"',
+    buttonEl.getAttribute('aria-pressed'), 'false');
+
+  // Simulate pointerdown (mouse) → click
+  buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', stopPropagation() {} });
+  const clickHandlers = buttonEl._listeners['click'] || [];
+  withCreateTreeWalker(function() {
+    clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
+  });
+
+  // After click: should have rounded cells and aria-pressed='true'
+  const hasRounded = table._cells.some(c => c.classList.contains('dr-ext-rounded'));
+  eq('expanding-toggle: mouse click rounds table cells',
+    hasRounded, true);
+  eq('expanding-toggle: mouse click updates aria-pressed to "true"',
+    buttonEl.getAttribute('aria-pressed'), 'true');
+})();
+
+// --- Touch first tap expands, does NOT toggle ---
+// Spec (AC): pointerType 'touch' first tap → adds .expanded, aria-pressed unchanged
+
+(function morphAC_touchFirstTap_expandsOnly() {
+  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const appendedToBody = [];
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+
+  global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
+    const el = {
+      _tag: tag, type: '', className: '', style: {}, _children: [], _listeners: listeners,
+      dataset: {}, parentElement: null, textContent: '',
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c, add(x){if(!c.includes(x))c.push(x);}, remove(x){const i=c.indexOf(x);if(i>=0)c.splice(i,1);},
+          contains(x){return c.includes(x);},
+          toggle(x,f){const has=c.includes(x);const want=f===undefined?!has:f;if(want&&!has)c.push(x);else if(!want&&has)c.splice(c.indexOf(x),1);return want;},
+        };
+      })(),
+      appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
+      addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      contains(){return false;},
+      dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
+    };
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  const t = makeToggleTable([
+    [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
+  ]);
+  createToggleForTable(t);
+
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+  toggleStyleInjected = true;
+
+  const buttonEl = appendedToBody.find(e => e._tag === 'button');
+
+  // Pre-condition: not expanded, aria-pressed='false'
+  eq('expanding-toggle: touch first tap (before): aria-pressed is "false"',
+    buttonEl.getAttribute('aria-pressed'), 'false');
+  eq('expanding-toggle: touch first tap (before): not expanded',
+    buttonEl.classList.contains('expanded'), false);
+
+  // Replace setTimeout to prevent actual timer from running
+  const origSetTimeout = global.setTimeout;
+  global.setTimeout = (fn, ms) => 99; // no-op, return fake id
+  global.clearTimeout = () => {};
+
+  // Simulate pointerdown(touch) + click
+  buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', stopPropagation() {} });
+  const clickHandlers = buttonEl._listeners['click'] || [];
+  clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
+
+  global.setTimeout = origSetTimeout;
+  global.clearTimeout = clearTimeout;
+
+  // After first tap: expanded class added, aria-pressed unchanged
+  eq('expanding-toggle: touch first tap adds .expanded class',
+    buttonEl.classList.contains('expanded'), true);
+  eq('expanding-toggle: touch first tap does NOT change aria-pressed',
+    buttonEl.getAttribute('aria-pressed'), 'false');
+})();
+
+// --- Touch second tap toggles and refreshes expansion ---
+// Spec (AC): second tap on already-expanded → calls runToggleAction, updates aria-pressed
+
+(function morphAC_touchSecondTap_togglesState() {
+  const appendedToBody = [];
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+
+  global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
+    const el = {
+      _tag: tag, type: '', className: '', style: {}, _children: [], _listeners: listeners,
+      dataset: {}, parentElement: null, textContent: '',
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c, add(x){if(!c.includes(x))c.push(x);}, remove(x){const i=c.indexOf(x);if(i>=0)c.splice(i,1);},
+          contains(x){return c.includes(x);},
+          toggle(x,f){const has=c.includes(x);const want=f===undefined?!has:f;if(want&&!has)c.push(x);else if(!want&&has)c.splice(c.indexOf(x),1);return want;},
+        };
+      })(),
+      appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
+      addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      contains(){return false;},
+      dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
+    };
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  const t = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'H2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  t._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  createToggleForTable(t);
+
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+  toggleStyleInjected = true;
+
+  const buttonEl = appendedToBody.find(e => e._tag === 'button');
+
+  // Suppress timers
+  const origSetTimeout = global.setTimeout;
+  global.setTimeout = () => 99;
+  global.clearTimeout = () => {};
+
+  // First tap: expand
+  buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', stopPropagation() {} });
+  const clickHandlers = buttonEl._listeners['click'] || [];
+  clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
+
+  eq('expanding-toggle: touch second tap (setup): .expanded after first tap',
+    buttonEl.classList.contains('expanded'), true);
+
+  // Second tap: should toggle state
+  buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', stopPropagation() {} });
+  withCreateTreeWalker(function() {
+    clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
+  });
+
+  global.setTimeout = origSetTimeout;
+  global.clearTimeout = clearTimeout;
+
+  const hasRounded = t._cells.some(c => c.classList.contains('dr-ext-rounded'));
+  eq('expanding-toggle: touch second tap rounds table cells',
+    hasRounded, true);
+  eq('expanding-toggle: touch second tap updates aria-pressed to "true"',
+    buttonEl.getAttribute('aria-pressed'), 'true');
+})();
+
+// --- Pen pointer behaves like touch (two-tap flow) ---
+// Spec (AC): pointerType 'pen' uses same expand-then-toggle path as 'touch'
+
+(function morphAC_penPointer_behavesLikeTouch() {
+  const appendedToBody = [];
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+
+  global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
+    const el = {
+      _tag: tag, type: '', className: '', style: {}, _children: [], _listeners: listeners,
+      dataset: {}, parentElement: null, textContent: '',
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c, add(x){if(!c.includes(x))c.push(x);}, remove(x){const i=c.indexOf(x);if(i>=0)c.splice(i,1);},
+          contains(x){return c.includes(x);},
+          toggle(x,f){const has=c.includes(x);const want=f===undefined?!has:f;if(want&&!has)c.push(x);else if(!want&&has)c.splice(c.indexOf(x),1);return want;},
+        };
+      })(),
+      appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
+      addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      contains(){return false;},
+      dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
+    };
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  const t = makeToggleTable([
+    [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
+  ]);
+
+  createToggleForTable(t);
+
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+  toggleStyleInjected = true;
+
+  const buttonEl = appendedToBody.find(e => e._tag === 'button');
+
+  const origSetTimeout = global.setTimeout;
+  global.setTimeout = () => 99;
+  global.clearTimeout = () => {};
+
+  // First tap with pen → should expand
+  buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'pen', stopPropagation() {} });
+  const clickHandlers = buttonEl._listeners['click'] || [];
+  clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
+
+  global.setTimeout = origSetTimeout;
+  global.clearTimeout = clearTimeout;
+
+  eq('expanding-toggle: pen first tap adds .expanded class',
+    buttonEl.classList.contains('expanded'), true);
+  eq('expanding-toggle: pen first tap does NOT change aria-pressed',
+    buttonEl.getAttribute('aria-pressed'), 'false');
+})();
+
+// --- Auto-collapse timer ---
+// Spec (AC): after .expanded is added, TOUCH_AUTOCOLLAPSE_MS ms later .expanded is removed.
+// We fake setTimeout to capture and drain the queued callback synchronously.
+
+(function morphAC_autoCollapse_timer() {
+  const appendedToBody = [];
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+
+  global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
+    const el = {
+      _tag: tag, type: '', className: '', style: {}, _children: [], _listeners: listeners,
+      dataset: {}, parentElement: null, textContent: '',
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c, add(x){if(!c.includes(x))c.push(x);}, remove(x){const i=c.indexOf(x);if(i>=0)c.splice(i,1);},
+          contains(x){return c.includes(x);},
+          toggle(x,f){const has=c.includes(x);const want=f===undefined?!has:f;if(want&&!has)c.push(x);else if(!want&&has)c.splice(c.indexOf(x),1);return want;},
+        };
+      })(),
+      appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
+      addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      contains(){return false;},
+      dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
+    };
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  const t = makeToggleTable([
+    [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
+  ]);
+
+  createToggleForTable(t);
+
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+  toggleStyleInjected = true;
+
+  const buttonEl = appendedToBody.find(e => e._tag === 'button');
+
+  // Capture the scheduled timeout callback
+  const pendingTimers = [];
+  const origSetTimeout = global.setTimeout;
+  const origClearTimeout = global.clearTimeout;
+  global.setTimeout = (fn, ms) => { pendingTimers.push({ fn, ms }); return pendingTimers.length - 1; };
+  global.clearTimeout = (id) => { if (pendingTimers[id]) pendingTimers[id].fn = null; };
+
+  // Touch tap → expand
+  buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', stopPropagation() {} });
+  const clickHandlers = buttonEl._listeners['click'] || [];
+  clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
+
+  // Should be expanded now
+  eq('expanding-toggle: auto-collapse: .expanded after first touch tap',
+    buttonEl.classList.contains('expanded'), true);
+
+  // Drain the captured timer (simulating TOUCH_AUTOCOLLAPSE_MS passing)
+  const timer = pendingTimers[pendingTimers.length - 1];
+  const capturedMs = timer ? timer.ms : -1;
+  eq('expanding-toggle: auto-collapse: timer duration equals TOUCH_AUTOCOLLAPSE_MS',
+    capturedMs, TOUCH_AUTOCOLLAPSE_MS);
+
+  if (timer && timer.fn) timer.fn();  // fire the callback
+
+  global.setTimeout = origSetTimeout;
+  global.clearTimeout = origClearTimeout;
+
+  eq('expanding-toggle: auto-collapse: .expanded removed after timer fires',
+    buttonEl.classList.contains('expanded'), false);
+})();
+
+// --- Tap-outside collapse ---
+// Spec (AC): pointerdown outside an .expanded button removes .expanded;
+//            pointerdown inside preserves .expanded.
+// We test via the global document pointerdown listener that createToggleForTable registers.
+
+(function morphAC_tapOutside_collapses() {
+  // We need to capture the global 'pointerdown' listener added to document.
+  // Reset _globalTapCollapseAdded so createToggleForTable re-registers it on our stub.
+  const origTapCollapseAdded = _globalTapCollapseAdded;
+  _globalTapCollapseAdded = false;
+
+  const docListeners = {};
+  const origDocAddListener = global.document.addEventListener;
+  global.document.addEventListener = (evt, fn) => {
+    if (!docListeners[evt]) docListeners[evt] = [];
+    docListeners[evt].push(fn);
+  };
+
+  const appendedToBody = [];
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+
+  global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
+    const el = {
+      _tag: tag, type: '', className: '', style: {}, _children: [], _listeners: listeners,
+      dataset: {}, parentElement: null, textContent: '',
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c, add(x){if(!c.includes(x))c.push(x);}, remove(x){const i=c.indexOf(x);if(i>=0)c.splice(i,1);},
+          contains(x){return c.includes(x);},
+          toggle(x,f){const has=c.includes(x);const want=f===undefined?!has:f;if(want&&!has)c.push(x);else if(!want&&has)c.splice(c.indexOf(x),1);return want;},
+        };
+      })(),
+      appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
+      addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      contains(node){return false;},
+      dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
+    };
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  const t = makeToggleTable([
+    [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
+  ]);
+
+  createToggleForTable(t);
+
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  global.document.addEventListener = origDocAddListener;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+  toggleStyleInjected = true;
+
+  const buttonEl = appendedToBody.find(e => e._tag === 'button');
+
+  // Manually mark as expanded
+  buttonEl.classList.add('expanded');
+
+  // The global listener relies on document.querySelectorAll('.dr-ext-morph.expanded').
+  // We need to stub that for this test.
+  const origQSA = global.document.querySelectorAll;
+  global.document.querySelectorAll = (sel) => {
+    if (sel === '.dr-ext-morph.expanded' && buttonEl.classList.contains('expanded')) {
+      return [buttonEl];
+    }
+    return [];
+  };
+
+  // Suppress setTimeout
+  const origSetTimeout = global.setTimeout;
+  global.setTimeout = () => 99;
+  global.clearTimeout = () => {};
+
+  // Fire a pointerdown on an outside target (contains() returns false → should collapse)
+  const outsideTarget = { nodeType: 1 };
+  const pdHandlers = docListeners['pointerdown'] || [];
+  pdHandlers.forEach(fn => fn({ target: outsideTarget }));
+
+  global.document.querySelectorAll = origQSA;
+  global.setTimeout = origSetTimeout;
+  global.clearTimeout = clearTimeout;
+  _globalTapCollapseAdded = origTapCollapseAdded;
+
+  eq('expanding-toggle: tap-outside collapses .expanded button',
+    buttonEl.classList.contains('expanded'), false);
+})();
+
+(function morphAC_tapInside_preservesExpanded() {
+  // Reset so the listener gets re-registered on our stubbed document.addEventListener
+  const origTapCollapseAdded2 = _globalTapCollapseAdded;
+  _globalTapCollapseAdded = false;
+
+  const docListeners = {};
+  const origDocAddListener = global.document.addEventListener;
+  global.document.addEventListener = (evt, fn) => {
+    if (!docListeners[evt]) docListeners[evt] = [];
+    docListeners[evt].push(fn);
+  };
+
+  const appendedToBody = [];
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+
+  global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
+    const el = {
+      _tag: tag, type: '', className: '', style: {}, _children: [], _listeners: listeners,
+      dataset: {}, parentElement: null, textContent: '',
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c, add(x){if(!c.includes(x))c.push(x);}, remove(x){const i=c.indexOf(x);if(i>=0)c.splice(i,1);},
+          contains(x){return c.includes(x);},
+          toggle(x,f){const has=c.includes(x);const want=f===undefined?!has:f;if(want&&!has)c.push(x);else if(!want&&has)c.splice(c.indexOf(x),1);return want;},
+        };
+      })(),
+      appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
+      addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      contains(node){return node === this || (this._children && this._children.includes(node));},
+      dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
+    };
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  const t = makeToggleTable([
+    [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
+    [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
+  ]);
+
+  createToggleForTable(t);
+
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  global.document.addEventListener = origDocAddListener;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+  toggleStyleInjected = true;
+
+  const buttonEl = appendedToBody.find(e => e._tag === 'button');
+  buttonEl.classList.add('expanded');
+
+  const origQSA = global.document.querySelectorAll;
+  global.document.querySelectorAll = (sel) => {
+    if (sel === '.dr-ext-morph.expanded' && buttonEl.classList.contains('expanded')) {
+      return [buttonEl];
+    }
+    return [];
+  };
+
+  const origSetTimeout = global.setTimeout;
+  global.setTimeout = () => 99;
+  global.clearTimeout = () => {};
+
+  // Fire a pointerdown with target = the button itself (contains returns true)
+  const pdHandlers = docListeners['pointerdown'] || [];
+  pdHandlers.forEach(fn => fn({ target: buttonEl }));
+
+  global.document.querySelectorAll = origQSA;
+  global.setTimeout = origSetTimeout;
+  global.clearTimeout = clearTimeout;
+  _globalTapCollapseAdded = origTapCollapseAdded2;
+
+  eq('expanding-toggle: tap-inside preserves .expanded on button',
+    buttonEl.classList.contains('expanded'), true);
+})();
+
+// --- Constants vs literals check ---
+// Spec (AC §3.5 + last AC bullet): geometry literals must only appear as constant declarations.
+// Soft check: the constant names TOGGLE_DOT_PX etc. appear in the CSS template block.
+
+(function morphAC_constantsUsedInCSS() {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'content.js'), 'utf8');
+
+  // The CSS function body should contain interpolations of the constants, not bare literals.
+  // We extract the ensureToggleStyleInjected function body as a rough string.
+  const fnStart = src.indexOf('function ensureToggleStyleInjected');
+  const fnEnd = src.indexOf('\nfunction ', fnStart + 1);
+  const fnBody = fnStart !== -1 ? src.slice(fnStart, fnEnd !== -1 ? fnEnd : fnStart + 3000) : '';
+
+  eq('expanding-toggle: TOGGLE_HIT_PAD_PX referenced in ensureToggleStyleInjected',
+    fnBody.includes('TOGGLE_HIT_PAD_PX'), true);
+  eq('expanding-toggle: TOGGLE_DOT_PX referenced in ensureToggleStyleInjected',
+    fnBody.includes('TOGGLE_DOT_PX'), true);
+  eq('expanding-toggle: TOGGLE_PILL_WIDTH_PX referenced in ensureToggleStyleInjected',
+    fnBody.includes('TOGGLE_PILL_WIDTH_PX'), true);
+  eq('expanding-toggle: TOGGLE_PILL_HEIGHT_PX referenced in ensureToggleStyleInjected',
+    fnBody.includes('TOGGLE_PILL_HEIGHT_PX'), true);
+  eq('expanding-toggle: TOGGLE_KNOB_PX referenced in ensureToggleStyleInjected',
+    fnBody.includes('TOGGLE_KNOB_PX'), true);
+  eq('expanding-toggle: TOGGLE_COLOR_ON referenced in ensureToggleStyleInjected',
+    fnBody.includes('TOGGLE_COLOR_ON'), true);
+
+  // positionToggle body should reference the geometry constants
+  const ptStart = src.indexOf('function positionToggle');
+  const ptEnd = src.indexOf('\nfunction ', ptStart + 1);
+  const ptBody = ptStart !== -1 ? src.slice(ptStart, ptEnd !== -1 ? ptEnd : ptStart + 1000) : '';
+
+  eq('expanding-toggle: TOGGLE_HIT_PAD_PX referenced in positionToggle',
+    ptBody.includes('TOGGLE_HIT_PAD_PX'), true);
+  eq('expanding-toggle: TOGGLE_DOT_PX referenced in positionToggle',
+    ptBody.includes('TOGGLE_DOT_PX'), true);
+  eq('expanding-toggle: TOGGLE_DOT_OVERLAP_PX referenced in positionToggle',
+    ptBody.includes('TOGGLE_DOT_OVERLAP_PX'), true);
+  eq('expanding-toggle: TOGGLE_DOT_OVERHANG_PX referenced in positionToggle',
+    ptBody.includes('TOGGLE_DOT_OVERHANG_PX'), true);
 })();
 
 // --- Report ---
