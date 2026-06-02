@@ -254,10 +254,12 @@ function positionToggle(table, buttonEl) {
   const scrollY = window.scrollY || window.pageYOffset || 0;
   // Position so the visible's bottom = rect.top + scrollY + TOGGLE_DOT_OVERLAP_PX
   // and the visible's right = rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX.
-  // The wrapper has TOGGLE_HIT_PAD_PX padding on every side, and uses
-  // flex-end / flex-start to anchor the visible to the wrapper's top-right corner.
+  // The wrapper has TOGGLE_HIT_PAD_PX padding on every side; with flex-end /
+  // flex-start the visible sits inside the wrapper's content box, so its right
+  // edge is wrapper.right - padding (not wrapper.right). One padding subtracts
+  // from each axis — there is no double-padding term.
   const padding = TOGGLE_HIT_PAD_PX;
-  const wrapperLeft = (rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX) - (TOGGLE_DOT_PX + 2 * padding);
+  const wrapperLeft = (rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX) - TOGGLE_DOT_PX - padding;
   const wrapperTop  = (rect.top   + scrollY + TOGGLE_DOT_OVERLAP_PX)  - TOGGLE_DOT_PX - padding;
   buttonEl.style.left = wrapperLeft + 'px';
   buttonEl.style.top  = wrapperTop  + 'px';

@@ -2100,12 +2100,16 @@ function makeMockButton() {
 })();
 
 // --- Anchor geometry (rest state, scroll=0) ---
-// Spec (§3.2 + §3.6): wrapper left/top place the visible's bottom-right at
+// Spec (§3.2): wrapper left/top place the visible's bottom-right at
 //   visible.bottom = rect.top  + scrollY + TOGGLE_DOT_OVERLAP_PX
 //   visible.right  = rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX
-// Which means:
-//   wrapperLeft = (rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX) - (TOGGLE_DOT_PX + 2*TOGGLE_HIT_PAD_PX)
-//   wrapperTop  = (rect.top   + scrollY + TOGGLE_DOT_OVERLAP_PX)  -  TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX
+// With justify-content: flex-end + padding: TOGGLE_HIT_PAD_PX, the visible sits
+// inside the wrapper's content box on both axes, so its right edge is
+// wrapper.right - padding (not wrapper.right). The wrapper offsets are therefore:
+//   wrapperLeft = (rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX) - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX
+//   wrapperTop  = (rect.top   + scrollY + TOGGLE_DOT_OVERLAP_PX)  - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX
+// (Note: this corrects a math error in the merged plan §3.6, which double-counted
+// padding on the horizontal axis. See sprint log for the deviation.)
 // All arithmetic is done in terms of the exposed globalThis constants.
 
 (function atToggle_positionToggle_anchorGeometry_noScroll() {
@@ -2126,13 +2130,24 @@ function makeMockButton() {
   const left = parseFloat(buttonEl.style.left);
   const top  = parseFloat(buttonEl.style.top);
 
-  const expectedLeft = (tableRect.right + 0 + TOGGLE_DOT_OVERHANG_PX) - (TOGGLE_DOT_PX + 2 * TOGGLE_HIT_PAD_PX);
-  const expectedTop  = (tableRect.top   + 0 + TOGGLE_DOT_OVERLAP_PX)  -  TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
+  const expectedLeft = (tableRect.right + 0 + TOGGLE_DOT_OVERHANG_PX) - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
+  const expectedTop  = (tableRect.top   + 0 + TOGGLE_DOT_OVERLAP_PX)  - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
 
   eq('positionToggle: wrapper left matches anchor formula (scroll=0)',
     left, expectedLeft);
   eq('positionToggle: wrapper top matches anchor formula (scroll=0)',
     top, expectedTop);
+
+  // Cross-check: derive the visible's bottom-right edges from the wrapper offset
+  // and assert they sit at the spec-defined anchor. visible.right (document) =
+  // wrapper.left + (wrapper width) - padding-right = wrapper.left + DOT + PAD.
+  // visible.bottom (document) = wrapper.top + padding-top + DOT.
+  const visibleRight  = left + TOGGLE_DOT_PX + TOGGLE_HIT_PAD_PX;
+  const visibleBottom = top  + TOGGLE_HIT_PAD_PX + TOGGLE_DOT_PX;
+  eq('positionToggle: visible.right sits TOGGLE_DOT_OVERHANG_PX past table right edge',
+    visibleRight, tableRect.right + TOGGLE_DOT_OVERHANG_PX);
+  eq('positionToggle: visible.bottom sits TOGGLE_DOT_OVERLAP_PX below table top edge',
+    visibleBottom, tableRect.top + TOGGLE_DOT_OVERLAP_PX);
 })();
 
 // --- Anchor geometry with non-zero scroll ---
@@ -2156,8 +2171,8 @@ function makeMockButton() {
   const left = parseFloat(buttonEl.style.left);
   const top  = parseFloat(buttonEl.style.top);
 
-  const expectedLeft = (tableRect.right + 200 + TOGGLE_DOT_OVERHANG_PX) - (TOGGLE_DOT_PX + 2 * TOGGLE_HIT_PAD_PX);
-  const expectedTop  = (tableRect.top   + 300 + TOGGLE_DOT_OVERLAP_PX)  -  TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
+  const expectedLeft = (tableRect.right + 200 + TOGGLE_DOT_OVERHANG_PX) - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
+  const expectedTop  = (tableRect.top   + 300 + TOGGLE_DOT_OVERLAP_PX)  - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
 
   eq('positionToggle: wrapper left includes scrollX offset',
     left, expectedLeft);
