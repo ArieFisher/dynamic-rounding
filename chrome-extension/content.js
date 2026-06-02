@@ -21,6 +21,20 @@ const EPSILON = 1e-9;
 // can later loosen it without an API change.
 const X_FLOOR_THRESHOLD = 1;
 
+// Toggle geometry constants
+const TOGGLE_DOT_PX = 10;
+const TOGGLE_PILL_WIDTH_PX = 28;
+const TOGGLE_PILL_HEIGHT_PX = 16;
+const TOGGLE_KNOB_PX = 12;
+const TOGGLE_KNOB_INSET_PX = 2;
+const TOGGLE_KNOB_TRAVEL_PX = TOGGLE_PILL_WIDTH_PX - TOGGLE_KNOB_PX - 2 * TOGGLE_KNOB_INSET_PX;
+const TOGGLE_HIT_PAD_PX = 7;
+const TOGGLE_DOT_OVERLAP_PX = 8;
+const TOGGLE_DOT_OVERHANG_PX = 2;
+const TOGGLE_COLOR_ON = '#3d85c6';
+const TOGGLE_COLOR_OFF = '#cccccc';
+const TOUCH_AUTOCOLLAPSE_MS = 3000;
+
 // DR_DEFAULTS is loaded from defaults.js (declared first in manifest content_scripts).
 // It is shared with sidebar.js so the sidebar UI's initial state and the
 // right-click toggle's fallback options come from a single source.
@@ -128,7 +142,7 @@ function applySidebarRounding(table, options) {
 
 // --- Per-table toggle switch infrastructure ---
 
-/** WeakMap from HTMLTableElement → HTMLInputElement (the checkbox input) */
+/** WeakMap from HTMLTableElement → HTMLButtonElement (the morph button) */
 const tableToggles = new WeakMap();
 
 /** Parallel Set of tracked tables so we can iterate for repositioning */
@@ -142,9 +156,9 @@ function isTableRounded(table) {
 }
 
 function syncSwitchForTable(table) {
-  const input = tableToggles.get(table);
-  if (input) {
-    input.checked = isTableRounded(table);
+  const button = tableToggles.get(table);
+  if (button) {
+    button.setAttribute('aria-pressed', isTableRounded(table) ? 'true' : 'false');
   }
 }
 
@@ -153,54 +167,78 @@ function ensureToggleStyleInjected() {
   if (toggleStyleInjected) return;
   const style = document.createElement('style');
   style.textContent = `
-    .dr-ext-toggle {
+    .dr-ext-morph {
       position: absolute;
       z-index: 2147483646;
-      display: inline-block;
-      width: 36px;
-      height: 20px;
+      display: inline-flex;
+      justify-content: flex-end;
+      align-items: flex-start;
+      padding: ${TOGGLE_HIT_PAD_PX}px;
+      background: transparent;
+      border: 0;
       cursor: pointer;
+      vertical-align: top;
+      -webkit-tap-highlight-color: transparent;
     }
-    .dr-ext-toggle input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-      position: absolute;
-    }
-    .dr-ext-toggle-slider {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #ccc;
-      border-radius: 20px;
-      transition: background-color 0.2s;
-    }
-    .dr-ext-toggle-slider::before {
-      content: "";
-      position: absolute;
-      width: 14px;
-      height: 14px;
-      left: 3px;
-      top: 3px;
-      background-color: white;
+    .dr-ext-morph-visible {
+      position: relative;
+      display: block;
+      width: ${TOGGLE_DOT_PX}px;
+      height: ${TOGGLE_DOT_PX}px;
       border-radius: 50%;
-      transition: transform 0.2s;
+      background: ${TOGGLE_COLOR_OFF};
+      transition: width .18s ease, height .18s ease, border-radius .18s ease, background .2s ease;
     }
-    .dr-ext-toggle input:checked + .dr-ext-toggle-slider {
-      background-color: rgba(66, 133, 244, 1);
+    .dr-ext-morph[aria-pressed="true"] .dr-ext-morph-visible {
+      background: ${TOGGLE_COLOR_ON};
     }
-    .dr-ext-toggle input:checked + .dr-ext-toggle-slider::before {
-      transform: translateX(16px);
+    .dr-ext-morph-knob {
+      position: absolute;
+      top: 50%;
+      left: ${TOGGLE_KNOB_INSET_PX}px;
+      transform: translateY(-50%);
+      width: ${TOGGLE_KNOB_PX}px;
+      height: ${TOGGLE_KNOB_PX}px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,.35);
+      opacity: 0;
+      transition: opacity .12s ease, left .2s ease;
     }
-    .dr-ext-toggle input:focus-visible{outline:2px solid rgba(66,133,244,1)!important;outline-offset:2px;}
+    .dr-ext-morph.expanded .dr-ext-morph-visible,
+    .dr-ext-morph:focus-visible .dr-ext-morph-visible {
+      width: ${TOGGLE_PILL_WIDTH_PX}px;
+      height: ${TOGGLE_PILL_HEIGHT_PX}px;
+      border-radius: 999px;
+    }
+    .dr-ext-morph.expanded .dr-ext-morph-knob,
+    .dr-ext-morph:focus-visible .dr-ext-morph-knob {
+      opacity: 1;
+    }
+    .dr-ext-morph.expanded[aria-pressed="true"] .dr-ext-morph-knob,
+    .dr-ext-morph:focus-visible[aria-pressed="true"] .dr-ext-morph-knob {
+      left: ${TOGGLE_KNOB_INSET_PX + TOGGLE_KNOB_TRAVEL_PX}px;
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .dr-ext-morph:hover .dr-ext-morph-visible {
+        width: ${TOGGLE_PILL_WIDTH_PX}px;
+        height: ${TOGGLE_PILL_HEIGHT_PX}px;
+        border-radius: 999px;
+      }
+      .dr-ext-morph:hover .dr-ext-morph-knob {
+        opacity: 1;
+      }
+      .dr-ext-morph:hover[aria-pressed="true"] .dr-ext-morph-knob {
+        left: ${TOGGLE_KNOB_INSET_PX + TOGGLE_KNOB_TRAVEL_PX}px;
+      }
+    }
+    .dr-ext-morph:focus-visible { outline: 2px solid ${TOGGLE_COLOR_ON}!important; outline-offset: 2px; }
   `;
   (document.head || document.documentElement).appendChild(style);
   toggleStyleInjected = true;
 }
 
-function positionToggle(table, labelEl) {
+function positionToggle(table, buttonEl) {
   const rect = table.getBoundingClientRect();
   const computedStyle = window.getComputedStyle(table);
   if (
@@ -208,17 +246,23 @@ function positionToggle(table, labelEl) {
     computedStyle.display === 'none' ||
     computedStyle.visibility === 'hidden'
   ) {
-    labelEl.style.display = 'none';
+    buttonEl.style.display = 'none';
     return;
   }
-  labelEl.style.display = '';
+  buttonEl.style.display = '';
   const scrollX = window.scrollX || window.pageXOffset || 0;
   const scrollY = window.scrollY || window.pageYOffset || 0;
-  // 2px outside the right edge, 2px above the top edge
-  const left = rect.right + scrollX - 36 + 2;
-  const top = rect.top + scrollY - 2;
-  labelEl.style.left = left + 'px';
-  labelEl.style.top = top + 'px';
+  // Position so the visible's bottom = rect.top + scrollY + TOGGLE_DOT_OVERLAP_PX
+  // and the visible's right = rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX.
+  // The wrapper has TOGGLE_HIT_PAD_PX padding on every side; with flex-end /
+  // flex-start the visible sits inside the wrapper's content box, so its right
+  // edge is wrapper.right - padding (not wrapper.right). One padding subtracts
+  // from each axis — there is no double-padding term.
+  const padding = TOGGLE_HIT_PAD_PX;
+  const wrapperLeft = (rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX) - TOGGLE_DOT_PX - padding;
+  const wrapperTop  = (rect.top   + scrollY + TOGGLE_DOT_OVERLAP_PX)  - TOGGLE_DOT_PX - padding;
+  buttonEl.style.left = wrapperLeft + 'px';
+  buttonEl.style.top  = wrapperTop  + 'px';
 }
 
 function isDataTable(table) {
@@ -241,53 +285,102 @@ function isDataTable(table) {
   return false;
 }
 
+/** Guard so the global tap-outside collapse listener is added only once */
+let _globalTapCollapseAdded = false;
+
 function createToggleForTable(table) {
   if (!isDataTable(table)) return;
   ensureToggleStyleInjected();
 
-  const label = document.createElement('label');
-  label.className = 'dr-ext-toggle';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'dr-ext-morph';
+  button.setAttribute('aria-pressed', 'false');
+  button.setAttribute('aria-label', 'Toggle rounding for table');
 
-  const input = document.createElement('input');
-  input.type = 'checkbox';
-  input.setAttribute('aria-label', 'Toggle rounding for table');
+  const visible = document.createElement('span');
+  visible.className = 'dr-ext-morph-visible';
 
-  const slider = document.createElement('span');
-  slider.className = 'dr-ext-toggle-slider';
+  const knob = document.createElement('span');
+  knob.className = 'dr-ext-morph-knob';
 
-  label.appendChild(input);
-  label.appendChild(slider);
+  visible.appendChild(knob);
+  button.appendChild(visible);
 
-  (document.body || document.documentElement).appendChild(label);
+  (document.body || document.documentElement).appendChild(button);
 
-  positionToggle(table, label);
+  positionToggle(table, button);
 
-  // Wire change event: run toggle then sync
-  input.addEventListener('change', () => {
-    runToggleAction(table);
-    syncSwitchForTable(table);
+  // Capture pointer type at pointerdown for use in click handler
+  button.addEventListener('pointerdown', (e) => {
+    button.dataset.pointerType = e.pointerType || '';
   });
 
-  input.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { e.stopPropagation(); input.click(); }
+  // Touch auto-collapse timer handle
+  let _touchCollapseTimer = null;
+
+  function scheduleAutoCollapse() {
+    if (_touchCollapseTimer !== null) clearTimeout(_touchCollapseTimer);
+    _touchCollapseTimer = setTimeout(() => {
+      button.classList.remove('expanded');
+      _touchCollapseTimer = null;
+    }, TOUCH_AUTOCOLLAPSE_MS);
+  }
+
+  // Click handler: mouse/keyboard → immediate toggle; touch/pen → two-tap expand-then-toggle
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const pType = button.dataset.pointerType;
+    if (pType === 'touch' || pType === 'pen') {
+      if (!button.classList.contains('expanded')) {
+        // First tap: expand without toggling
+        button.classList.add('expanded');
+        scheduleAutoCollapse();
+      } else {
+        // Second tap: toggle state, refresh collapse timer
+        runToggleAction(table);
+        syncSwitchForTable(table);
+        scheduleAutoCollapse();
+      }
+    } else {
+      // Mouse / keyboard (Space is handled natively by <button>; Enter via keydown below)
+      runToggleAction(table);
+      syncSwitchForTable(table);
+    }
   });
 
-  // Stop propagation of click and mousedown to avoid triggering host-page handlers
-  label.addEventListener('click', (e) => e.stopPropagation());
-  label.addEventListener('mousedown', (e) => e.stopPropagation());
+  // Enter keydown bridge (Space is already handled natively by <button>)
+  button.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.stopPropagation(); button.click(); }
+  });
 
-  // Store input in WeakMap and table in tracked set
-  tableToggles.set(table, input);
+  // Stop mousedown propagation to avoid triggering host-page handlers
+  button.addEventListener('mousedown', (e) => e.stopPropagation());
+
+  // Store button in WeakMap and table in tracked set
+  tableToggles.set(table, button);
   trackedTables.add(table);
 
   // Set up ResizeObserver for repositioning
   const ro = new ResizeObserver(() => {
-    positionToggle(table, label);
+    positionToggle(table, button);
   });
   ro.observe(table);
   tableResizeObservers.set(table, ro);
 
-  return label;
+  // Global tap-outside collapse (added once for all toggles)
+  if (!_globalTapCollapseAdded) {
+    _globalTapCollapseAdded = true;
+    document.addEventListener('pointerdown', (e) => {
+      document.querySelectorAll('.dr-ext-morph.expanded').forEach((btn) => {
+        if (!btn.contains(e.target)) {
+          btn.classList.remove('expanded');
+        }
+      });
+    });
+  }
+
+  return button;
 }
 
 function injectTableToggles() {
@@ -305,17 +398,17 @@ function ensureScrollResizeListeners() {
   _scrollResizeListenersAdded = true;
   window.addEventListener('scroll', () => {
     for (const table of trackedTables) {
-      const input = tableToggles.get(table);
-      if (input && input.parentElement) {
-        positionToggle(table, input.parentElement);
+      const button = tableToggles.get(table);
+      if (button) {
+        positionToggle(table, button);
       }
     }
   }, { passive: true });
   window.addEventListener('resize', () => {
     for (const table of trackedTables) {
-      const input = tableToggles.get(table);
-      if (input && input.parentElement) {
-        positionToggle(table, input.parentElement);
+      const button = tableToggles.get(table);
+      if (button) {
+        positionToggle(table, button);
       }
     }
   }, { passive: true });
@@ -353,9 +446,9 @@ if (typeof MutationObserver !== 'undefined') {
           node.querySelectorAll('table').forEach(t => tablesToRemove.push(t));
         }
         for (const table of tablesToRemove) {
-          const input = tableToggles.get(table);
-          if (input && input.parentElement) {
-            input.parentElement.remove();
+          const button = tableToggles.get(table);
+          if (button && button.parentElement) {
+            button.parentElement.removeChild(button);
           }
           const ro = tableResizeObservers.get(table);
           if (ro) {
