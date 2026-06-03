@@ -309,7 +309,9 @@ function createToggleForTable(table) {
 
   (document.body || document.documentElement).appendChild(button);
 
-  positionToggle(table, button);
+  setTimeout(() => {
+    positionToggle(table, button);
+  }, 150);
 
   // Capture pointer type at pointerdown for use in click handler
   button.addEventListener('pointerdown', (e) => {
