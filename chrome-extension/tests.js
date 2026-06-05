@@ -44,8 +44,9 @@ global.Node = { ELEMENT_NODE: 1 };
 // We also expose the per-table toggle infrastructure declared with const/let
 // inside the eval'd code so the auto-table-toggle test section can access them.
 const defaultsCode = fs.readFileSync(path.join(__dirname, 'defaults.js'), 'utf8');
+const roundingCode = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
 const code = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-eval(defaultsCode + '\n' + code + `
+eval(defaultsCode + '\n' + roundingCode + '\n' + code + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
@@ -64,6 +65,10 @@ globalThis.runToggleAction = runToggleAction;
 globalThis.toggleOriginalValues = toggleOriginalValues;
 globalThis.injectTableToggles = injectTableToggles;
 globalThis.isDataTable = isDataTable;
+globalThis.collectNumericCells = collectNumericCells;
+globalThis.extractPreviewSamples = extractPreviewSamples;
+globalThis.formatStep = formatStep;
+globalThis.stepForOffset = stepForOffset;
 // Expose new toggle geometry constants (all are const, so direct assignment works)
 globalThis.TOGGLE_DOT_PX = TOGGLE_DOT_PX;
 globalThis.TOGGLE_PILL_WIDTH_PX = TOGGLE_PILL_WIDTH_PX;
@@ -1577,9 +1582,10 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts loads defaults.js before content.js',
+  eq('sidebar-defaults: manifest content_scripts loads defaults.js, rounding.js, content.js in order',
     manifest.content_scripts[0].js[0] === 'defaults.js' &&
-    manifest.content_scripts[0].js[1] === 'content.js', true);
+    manifest.content_scripts[0].js[1] === 'rounding.js' &&
+    manifest.content_scripts[0].js[2] === 'content.js', true);
 
   // AC3: Section heading contains <em>Include</em> followed by " numbers in cells containing:"
   eq('sidebar-defaults: section-heading has <em>Include</em> with correct text',
@@ -3127,13 +3133,14 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // Re-eval content.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor
   // gates on the constant. We sandbox the patched source so the eq()
   // assertions below don't disturb the live extension globals.
-  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-  const patched = src.replace(
+  const roundingSrc = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
+  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const patchedRounding = roundingSrc.replace(
     /const X_FLOOR_THRESHOLD = 1;/,
     'const X_FLOOR_THRESHOLD = 0;'
   );
   eq('x-floor flip: source contains X_FLOOR_THRESHOLD declaration',
-    patched.includes('const X_FLOOR_THRESHOLD = 0;'), true);
+    patchedRounding.includes('const X_FLOOR_THRESHOLD = 0;'), true);
 
   const sandbox = {
     chrome: global.chrome,
@@ -3147,7 +3154,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   };
   const vm = require('vm');
   const ctx = vm.createContext(sandbox);
-  vm.runInContext(patched + '\nthis.__roundWithOffset = roundWithOffset;', ctx);
+  vm.runInContext(patchedRounding + '\n' + contentSrc + '\nthis.__roundWithOffset = roundWithOffset;', ctx);
   const patchedRound = sandbox.__roundWithOffset;
 
   eq('x-floor flip: rd(17054321, 0.5) === 20000000 with X_FLOOR_THRESHOLD=0',
@@ -3866,6 +3873,122 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     ptBody.includes('TOGGLE_DOT_OVERLAP_PX'), true);
   eq('expanding-toggle: TOGGLE_DOT_OVERHANG_PX referenced in positionToggle',
     ptBody.includes('TOGGLE_DOT_OVERHANG_PX'), true);
+})();
+
+// =============================================================================
+// Sprint sidebar-preview-band: formatStep, collectNumericCells, extractPreviewSamples
+// =============================================================================
+
+(function previewBand_formatStep() {
+  eq('formatStep: 5000 -> "5k"', formatStep(5000), '5k');
+  eq('formatStep: 500 -> "500"', formatStep(500), '500');
+  eq('formatStep: 2_500_000 -> "2.5M"', formatStep(2500000), '2.5M');
+  eq('formatStep: 1e9 -> "1B"', formatStep(1e9), '1B');
+  eq('formatStep: 2.5 -> "2.5"', formatStep(2.5), '2.5');
+  eq('formatStep: 0.25 -> "0.25"', formatStep(0.25), '0.25');
+  eq('formatStep: 1 -> "1"', formatStep(1), '1');
+  eq('formatStep: 0 -> "0"', formatStep(0), '0');
+})();
+
+(function previewBand_stepForOffset() {
+  // offset = 0 on a 5-digit number -> step = 10^4 = 10000
+  eq('stepForOffset(27136, 0) = 10000', stepForOffset(27136, 0), 10000);
+  // offset = -0.5 on a 5-digit number -> f=0.5, target_mag=4, step = 0.5*1e4
+  eq('stepForOffset(27136, -0.5) = 5000', stepForOffset(27136, -0.5), 5000);
+  // offset = -1 -> step = 10^(4-1) = 1000
+  eq('stepForOffset(27136, -1) = 1000', stepForOffset(27136, -1), 1000);
+  // num=0 -> 0
+  eq('stepForOffset(0, -0.5) = 0', stepForOffset(0, -0.5), 0);
+})();
+
+(function previewBand_collectNumericCells() {
+  // Build a small stub table; only the pure-number cells should appear.
+  function tdCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+  function thCell(text) {
+    return { tagName: 'TH', innerText: text, textContent: text };
+  }
+  const table = {
+    rows: [
+      { cells: [thCell('Header'), thCell('Year')] },
+      { cells: [tdCell('Apples'), tdCell('27,136')] },
+      { cells: [tdCell('Pears'),  tdCell('4,080')] },
+      { cells: [tdCell('Empty'),  tdCell('')] },
+      { cells: [tdCell('Word'),   tdCell('hello')] },
+    ],
+  };
+  const cells = collectNumericCells(table);
+  eq('collectNumericCells: returns 2 numeric cells', cells.length, 2);
+  eq('collectNumericCells: first cell text', cells[0].text, '27,136');
+  eq('collectNumericCells: first cell num', cells[0].num, 27136);
+  eq('collectNumericCells: second cell num', cells[1].num, 4080);
+})();
+
+(function previewBand_extractPreviewSamples_buckets() {
+  // 5 cells across 5 distinct magnitudes: 1e7, 1e6, 1e4, 1e2, 1e1.
+  // num_top = 1 (DR_DEFAULTS) -> top band picks the highest magnitude only
+  // (others differ from max_mag by >= 1). To exercise the 2-row top band,
+  // give it two cells at the same top magnitude.
+  function tdCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+  const table = {
+    rows: [
+      { cells: [tdCell('27,000,000'), tdCell('18,000,000')] }, // both mag 7
+      { cells: [tdCell('4,080'),  tdCell('312')] },             // mag 3, 2
+      { cells: [tdCell('56')] },                                // mag 1
+    ],
+  };
+  const result = extractPreviewSamples(table);
+  eq('extractPreviewSamples: maxMag is 7', result.maxMag, 7);
+  eq('extractPreviewSamples: top band has 2 rows', result.samples.top.length, 2);
+  eq('extractPreviewSamples: top[0] is 27M', result.samples.top[0].num, 27000000);
+  eq('extractPreviewSamples: top[1] is 18M', result.samples.top[1].num, 18000000);
+  eq('extractPreviewSamples: bottom band has 3 rows', result.samples.bottom.length, 3);
+  eq('extractPreviewSamples: bottom[0] is 4080', result.samples.bottom[0].num, 4080);
+  eq('extractPreviewSamples: bottom[1] is 312', result.samples.bottom[1].num, 312);
+  eq('extractPreviewSamples: bottom[2] is 56', result.samples.bottom[2].num, 56);
+})();
+
+(function previewBand_extractPreviewSamples_largeMagOnly() {
+  // All cells in the top magnitude bucket -> bottom band ends up empty.
+  function tdCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+  const table = {
+    rows: [{ cells: [tdCell('27,000,000'), tdCell('18,000,000'), tdCell('45,000,000')] }],
+  };
+  const result = extractPreviewSamples(table);
+  eq('extractPreviewSamples (all-top): top has 2 rows', result.samples.top.length, 2);
+  eq('extractPreviewSamples (all-top): bottom is empty', result.samples.bottom.length, 0);
+})();
+
+(function previewBand_extractPreviewSamples_emptyTable() {
+  function tdCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+  const table = {
+    rows: [{ cells: [tdCell('hello'), tdCell('world')] }],
+  };
+  const result = extractPreviewSamples(table);
+  eq('extractPreviewSamples (empty): maxMag null', result.maxMag, null);
+  eq('extractPreviewSamples (empty): top length 0', result.samples.top.length, 0);
+  eq('extractPreviewSamples (empty): bottom length 0', result.samples.bottom.length, 0);
+})();
+
+(function previewBand_manifestLoadsRoundingJs() {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
+  eq('manifest content_scripts loads rounding.js between defaults.js and content.js',
+    manifest.content_scripts[0].js[1], 'rounding.js');
+})();
+
+(function previewBand_sidebarHtmlHasBands() {
+  const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  eq('sidebar.html has #topBand', /<div[^>]*id="topBand"/.test(sidebarHtml), true);
+  eq('sidebar.html has #botBand', /<div[^>]*id="botBand"/.test(sidebarHtml), true);
+  eq('sidebar.html loads rounding.js before sidebar.js',
+    /rounding\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
 })();
 
 // --- Report ---

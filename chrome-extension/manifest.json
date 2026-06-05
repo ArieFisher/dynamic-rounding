@@ -19,6 +19,7 @@
       ],
       "js": [
         "defaults.js",
+        "rounding.js",
         "content.js"
       ]
     }
