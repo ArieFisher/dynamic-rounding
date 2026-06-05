@@ -1012,8 +1012,11 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
 const MONTH_NAMES = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
 
 // Regex constants for date candidate normalization
-const SUPERSCRIPT_DIGITS_RE = /[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g;
-const FOOTNOTE_MARKERS_RE = /[*†‡]/g;
+const SUPERSCRIPT_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+const FOOTNOTE_MARKERS = '*†‡';
+const DATE_NOISE_CLASS = `[\\s${SUPERSCRIPT_DIGITS}${FOOTNOTE_MARKERS}]`;
+const LEADING_DATE_NOISE_RE = new RegExp(`^${DATE_NOISE_CLASS}+`);
+const TRAILING_DATE_NOISE_RE = new RegExp(`${DATE_NOISE_CLASS}+$`);
 const ORDINAL_SUFFIX_RE = /(\d+)(st|nd|rd|th)/gi;
 
 // Map lowercase month abbreviation/name prefix → 1-based month number
@@ -1045,7 +1048,7 @@ function resolveMonthName(token) {
 function normalizeDateCandidate(text) {
   let s = text;
   // Strip leading/trailing superscript digits and footnote markers
-  s = s.replace(/^[\s⁰¹²³⁴⁵⁶⁷⁸⁹*†‡]+/, '').replace(/[\s⁰¹²³⁴⁵⁶⁷⁸⁹*†‡]+$/, '');
+  s = s.replace(LEADING_DATE_NOISE_RE, '').replace(TRAILING_DATE_NOISE_RE, '');
   // Replace ordinal suffixes: "1st" → "1", "21st" → "21", etc.
   s = s.replace(ORDINAL_SUFFIX_RE, '$1');
   // Collapse internal whitespace
