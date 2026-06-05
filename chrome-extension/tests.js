@@ -372,7 +372,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 
 (function exclusionFirstColumn() {
   const opts = Object.assign({}, {
-    excludeWords: true, excludeDates: false, excludeTimes: false,
+    excludeWords: true, simplifyDates: false, simplifyTimes: false,
     excludeFirstColumn: true, excludePercent: false, excludeCurrency: false
   });
   eq('exclude: first column with flag on', getExclusionReason('anything', 0, opts), 'firstColumn');
@@ -380,18 +380,22 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 })();
 
 (function exclusionDates() {
-  const opts = { excludeDates: true };
-  eq('exclude: year cell when excludeDates=true',
-    getExclusionReason('2018', 1, opts), 'dates');
-  eq('exclude: non-date cell when excludeDates=true',
+  // Dates/times are no longer exclusion reasons — getExclusionReason never returns
+  // 'dates' or 'times' regardless of simplifyDates/simplifyTimes setting.
+  const opts = { simplifyDates: true };
+  eq('exclude: year cell with simplifyDates=true is NOT excluded (returns null)',
+    getExclusionReason('2018', 1, opts), null);
+  eq('exclude: non-date cell with simplifyDates=true returns null',
     getExclusionReason('1,234', 1, opts), null);
-  eq('exclude: year cell when excludeDates=false',
-    getExclusionReason('2018', 1, { excludeDates: false }), null);
+  eq('exclude: year cell with simplifyDates=false is NOT excluded (returns null)',
+    getExclusionReason('2018', 1, { simplifyDates: false }), null);
 })();
 
 (function exclusionTimes() {
-  eq('exclude: time cell when excludeTimes=true',
-    getExclusionReason('14:30', 1, { excludeTimes: true }), 'times');
+  // Times are no longer an exclusion reason — simplifyTimes only controls the
+  // classification pass, not getExclusionReason.
+  eq('exclude: time cell with simplifyTimes=true is NOT excluded (returns null)',
+    getExclusionReason('14:30', 1, { simplifyTimes: true }), null);
 })();
 
 (function exclusionPercent() {
@@ -495,18 +499,19 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     getExclusionReason('45%', 1, {}), 'percent');
 })();
 
-// First-match-wins priority: firstRow beats firstColumn beats dates beats times beats percent beats currency
+// First-match-wins priority: firstRow beats firstColumn beats percent beats currency
+// (dates/times are no longer exclusion reasons)
 (function exclusionPriority() {
   const opts = {
-    excludeFirstRow: true, excludeFirstColumn: true, excludeDates: true, excludeTimes: true,
+    excludeFirstRow: true, excludeFirstColumn: true, simplifyDates: true, simplifyTimes: true,
     includePercent: false, includeCurrency: false
   };
   eq('priority: first row wins even when value is a date',
     getExclusionReason('2018', 0, opts, 0), 'firstRow');
   eq('priority: first column wins even when value is a date (non-zero row)',
     getExclusionReason('2018', 0, opts, 1), 'firstColumn');
-  eq('priority: dates beats percent for a year value',
-    getExclusionReason('2018', 1, opts, 1), 'dates');
+  eq('priority: year value not excluded when only first-row/col flags set (dates no longer excluded)',
+    getExclusionReason('2018', 1, opts, 1), null);
 })();
 
 // --- Sprint B: per-type granularity ---
@@ -878,7 +883,7 @@ function withCreateTreeWalker(fn) {
       { tag: 'td', text: '200'  },
     ]]);
     const opts = {
-      enabled: true, excludeWords: true, excludeDates: true, excludeTimes: true,
+      enabled: true, excludeWords: true, simplifyDates: false, simplifyTimes: false,
       excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: 'A'
@@ -907,7 +912,7 @@ function withCreateTreeWalker(fn) {
       { tag: 'td', text: '200'   },
     ]]);
     const opts = {
-      enabled: true, excludeWords: true, excludeDates: true, excludeTimes: true,
+      enabled: true, excludeWords: true, simplifyDates: false, simplifyTimes: false,
       excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: 'A'
@@ -934,7 +939,7 @@ function withCreateTreeWalker(fn) {
       { tag: 'td', text: '200'  },
     ]]);
     const opts = {
-      enabled: true, excludeWords: true, excludeDates: false, excludeTimes: false,
+      enabled: true, excludeWords: true, simplifyDates: true, simplifyTimes: true,
       excludeFirstColumn: true, excludePercent: false, excludeCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
@@ -1195,7 +1200,7 @@ function withLinkCreateTreeWalker(fn) {
       dataset: {},
     };
     const opts = {
-      enabled: true, excludeWords: true, excludeDates: true, excludeTimes: true,
+      enabled: true, excludeWords: true, simplifyDates: false, simplifyTimes: false,
       excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: '',
@@ -1280,7 +1285,7 @@ function withLinkCreateTreeWalker(fn) {
       dataset: {},
     };
     const opts = {
-      enabled: true, excludeWords: true, excludeDates: true, excludeTimes: true,
+      enabled: true, excludeWords: true, simplifyDates: false, simplifyTimes: false,
       excludeFirstColumn: false, includePercent: false, includeCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: '',
@@ -1400,7 +1405,7 @@ function withLinkCreateTreeWalker(fn) {
       { tag: 'td', text: '42' },  // this one should round (control)
     ]]);
     const opts = {
-      enabled: true, includeWords: true, excludeDates: false, excludeTimes: false,
+      enabled: true, includeWords: true, simplifyDates: false, simplifyTimes: false,
       excludeFirstColumn: false, includePercent: true, includeCurrency: true,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
@@ -1664,7 +1669,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     const opts = {
       enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
       excludeFirstRow: false, excludeFirstColumn: false,
-      excludeDates: true, excludeTimes: true,
+      simplifyDates: false, simplifyTimes: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
     };
@@ -1686,7 +1691,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     const opts = {
       enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
       excludeFirstRow: false, excludeFirstColumn: false,
-      excludeDates: true, excludeTimes: true,
+      simplifyDates: false, simplifyTimes: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
     };
@@ -2808,7 +2813,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       const tbl = makeMockTable([[{ tag: 'td', text }]]);
       tbl.rows[0].cells[0].querySelectorAll = () => [];
       roundTable(tbl, {
-        enabled: true, excludeDates: false, excludeTimes: true,
+        enabled: true, simplifyDates: true, simplifyTimes: false,
         excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
         includeWords: false, excludeFirstRow: false,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -2835,7 +2840,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       const tbl = makeMockTable([[{ tag: 'td', text: cellText }]]);
       tbl.rows[0].cells[0].querySelectorAll = () => [];
       roundTable(tbl, {
-        enabled: true, excludeDates: false, excludeTimes: true,
+        enabled: true, simplifyDates: true, simplifyTimes: false,
         excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
         includeWords: false, excludeFirstRow: false,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -2885,7 +2890,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 (function dateRoundColumnAutoDetect() {
   withCreateTreeWalker(function() {
 
-    // Helper: run roundTable with excludeDates:false and return cell text array.
+    // Helper: run roundTable with simplifyDates:true and return cell text array.
     function runDateTable(rowsSpec, gran) {
       const tbl = makeMockTable(rowsSpec);
       // Add querySelectorAll stub to all cells
@@ -2895,7 +2900,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
         }
       }
       roundTable(tbl, {
-        enabled: true, excludeDates: false, excludeTimes: true,
+        enabled: true, simplifyDates: true, simplifyTimes: false,
         excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
         includeWords: false, excludeFirstRow: false,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -2958,7 +2963,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       const tbl = makeMockTable([[{ tag: 'td', text }]]);
       tbl.rows[0].cells[0].querySelectorAll = () => [];
       roundTable(tbl, {
-        enabled: true, excludeDates: false, excludeTimes: true,
+        enabled: true, simplifyDates: true, simplifyTimes: false,
         excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
         includeWords: false, excludeFirstRow: false,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -2975,7 +2980,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     const tbl = makeMockTable([[{ tag: 'td', text: '14 March' }]]);
     tbl.rows[0].cells[0].querySelectorAll = () => [];
     roundTable(tbl, {
-      enabled: true, excludeDates: false, excludeTimes: true,
+      enabled: true, simplifyDates: true, simplifyTimes: false,
       excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
       includeWords: false, excludeFirstRow: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -3002,7 +3007,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     const tbl = makeMockTable([[{ tag: 'td', text: '2020' }]]);
     tbl.rows[0].cells[0].querySelectorAll = () => [];
     roundTable(tbl, {
-      enabled: true, excludeDates: false, excludeTimes: true,
+      enabled: true, simplifyDates: true, simplifyTimes: false,
       excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
       includeWords: false, excludeFirstRow: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -4062,10 +4067,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     DR_DEFAULTS.includeCurrency, true);
   eq('sidebar-tidyup AC3: DR_DEFAULTS.includePercent is true',
     DR_DEFAULTS.includePercent, true);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.excludeDates is true',
-    DR_DEFAULTS.excludeDates, true);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.excludeTimes is false',
-    DR_DEFAULTS.excludeTimes, false);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyDates is true',
+    DR_DEFAULTS.simplifyDates, true);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyTimes is false',
+    DR_DEFAULTS.simplifyTimes, false);
   eq('sidebar-tidyup AC3: DR_DEFAULTS.excludeFirstRow is false',
     DR_DEFAULTS.excludeFirstRow, false);
   eq('sidebar-tidyup AC3: DR_DEFAULTS.excludeFirstColumn is false',
@@ -4080,7 +4085,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // element with class "switch" enclosing the input.
   const optionInputIds = [
     'includeWords', 'includeCurrency', 'includePercent',
-    'excludeDates', 'excludeTimes', 'excludeFirstRow', 'excludeFirstColumn'
+    'simplifyDates', 'simplifyTimes', 'excludeFirstRow', 'excludeFirstColumn'
   ];
   for (const id of optionInputIds) {
     // Match <label class="switch"> ... <input ... id="<id>"> ... </label>
