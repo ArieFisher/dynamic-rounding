@@ -77,43 +77,29 @@
       color: #5f6368;
       margin-bottom: 8px;
     }
-    .section-heading {
-      font-size: 12px;
-      font-weight: 500;
-      color: #3c4043;
-      margin: 0 0 4px 0;
-    }
-    label.checkbox-row {
+    .toggle-row {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 8px;
-      padding: 6px 0;
-      cursor: pointer;
+      padding: 5px 0;
     }
-    label.checkbox-row input[type="checkbox"] {
-      margin: 0;
-    }
-    label.checkbox-row .row-label {
+    .toggle-row .toggle-label {
       flex-grow: 1;
+      font-size: 13px;
+      color: #202124;
     }
-    label.checkbox-row select {
+    .toggle-row select {
       font-size: 12px;
       padding: 2px 4px;
       border: 1px solid #dadce0;
       border-radius: 4px;
       background: #fff;
       color: #5f6368;
+      flex-shrink: 0;
     }
-    label.checkbox-row select:disabled {
+    .toggle-row select:disabled {
       opacity: 0.4;
-    }
-    .granularity-label {
-      font-size: 11px;
-      color: #5f6368;
-      margin-right: 4px;
-    }
-    .exclusion-group {
-      margin-bottom: 12px;
     }
     details.advanced {
       margin-top: 4px;
@@ -262,50 +248,62 @@
   </div>
 
   <div class="section" id="optionsSection">
-    <div class="exclusion-group">
-      <p class="section-heading"><em>Include</em> numbers in cells containing:</p>
-      <label class="checkbox-row">
+    <div class="toggle-row">
+      <span class="toggle-label">words</span>
+      <label class="switch">
         <input type="checkbox" id="includeWords">
-        <span>words</span>
-      </label>
-      <label class="checkbox-row">
-        <input type="checkbox" id="includeCurrency">
-        <span>currencies</span>
-      </label>
-      <label class="checkbox-row">
-        <input type="checkbox" id="includePercent">
-        <span>percentages</span>
+        <span class="slider"></span>
       </label>
     </div>
-
-    <div class="exclusion-group">
-      <p class="section-heading"><em>Exclude</em>:</p>
-      <label class="checkbox-row">
-        <input type="checkbox" id="excludeFirstRow">
-        <span>first row</span>
+    <div class="toggle-row">
+      <span class="toggle-label">currencies</span>
+      <label class="switch">
+        <input type="checkbox" id="includeCurrency">
+        <span class="slider"></span>
       </label>
-      <label class="checkbox-row">
-        <input type="checkbox" id="excludeFirstColumn">
-        <span>first column</span>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">percentages</span>
+      <label class="switch">
+        <input type="checkbox" id="includePercent">
+        <span class="slider"></span>
       </label>
-      <label class="checkbox-row">
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">dates</span>
+      <select id="dateGranularity" disabled>
+        <option value="year">year</option>
+        <option value="decade">decade</option>
+        <option value="century">century</option>
+      </select>
+      <label class="switch">
         <input type="checkbox" id="excludeDates">
-        <span class="row-label">dates</span>
-        <span class="granularity-label">round to:</span>
-        <select id="dateGranularity" disabled>
-          <option value="year">year</option>
-          <option value="decade">decade</option>
-          <option value="century">century</option>
-        </select>
+        <span class="slider"></span>
       </label>
-      <label class="checkbox-row">
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">times</span>
+      <select id="timeGranularity" disabled>
+        <option value="hour">hour</option>
+        <option value="minute">minute</option>
+      </select>
+      <label class="switch">
         <input type="checkbox" id="excludeTimes">
-        <span class="row-label">times</span>
-        <span class="granularity-label">round to:</span>
-        <select id="timeGranularity" disabled>
-          <option value="minute">minute</option>
-          <option value="hour">hour</option>
-        </select>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">first row</span>
+      <label class="switch">
+        <input type="checkbox" id="excludeFirstRow">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">first column</span>
+      <label class="switch">
+        <input type="checkbox" id="excludeFirstColumn">
+        <span class="slider"></span>
       </label>
     </div>
   </div>

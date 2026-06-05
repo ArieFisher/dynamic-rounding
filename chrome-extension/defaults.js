@@ -10,12 +10,12 @@ const DR_DEFAULTS = {
   includeWords: true,
   includeCurrency: true,
   includePercent: true,
-  excludeFirstRow: true,
-  excludeFirstColumn: true,
+  excludeFirstRow: false,
+  excludeFirstColumn: false,
   excludeDates: true,
-  excludeTimes: true,
+  excludeTimes: false,
   dateGranularity: 'decade',
-  timeGranularity: 'minute',
+  timeGranularity: 'hour',
   // Concrete numeric defaults (Variant F UI always sends concrete numbers, never
   // null/blank). num_top is no longer surfaced in the UI but stays here as the
   // contract with content.js / the right-click toggle.
