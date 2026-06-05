@@ -1011,6 +1011,14 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
 
 const MONTH_NAMES = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
 
+// Regex constants for date candidate normalization
+const SUPERSCRIPT_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+const FOOTNOTE_MARKERS = '*†‡';
+const DATE_NOISE_CLASS = `[\\s${SUPERSCRIPT_DIGITS}${FOOTNOTE_MARKERS}]`;
+const LEADING_DATE_NOISE_RE = new RegExp(`^${DATE_NOISE_CLASS}+`);
+const TRAILING_DATE_NOISE_RE = new RegExp(`${DATE_NOISE_CLASS}+$`);
+const ORDINAL_SUFFIX_RE = /(\d+)(st|nd|rd|th)/gi;
+
 // Map lowercase month abbreviation/name prefix → 1-based month number
 const MONTH_NAME_MAP = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
@@ -1033,6 +1041,22 @@ function resolveMonthName(token) {
 }
 
 /**
+ * Normalize a trimmed date candidate by stripping leading/trailing superscript digits,
+ * footnote markers, and reducing ordinal suffixes (1st→1, 2nd→2, etc.) to bare numbers.
+ * Collapses and trims whitespace at the end.
+ */
+function normalizeDateCandidate(text) {
+  let s = text;
+  // Strip leading/trailing superscript digits and footnote markers
+  s = s.replace(LEADING_DATE_NOISE_RE, '').replace(TRAILING_DATE_NOISE_RE, '');
+  // Replace ordinal suffixes: "1st" → "1", "21st" → "21", etc.
+  s = s.replace(ORDINAL_SUFFIX_RE, '$1');
+  // Collapse internal whitespace
+  s = s.replace(/\s+/g, ' ').trim();
+  return s;
+}
+
+/**
  * Parse an unambiguous date-like string into {year, month, day}.
  * Returns null for all-numeric N1/N2/Y or N1-N2-Y shapes (handled by parseAmbiguousNumericDate).
  * Supported shapes:
@@ -1040,25 +1064,28 @@ function resolveMonthName(token) {
  *   ISO slash:     2020/07/21
  *   Named-month:   June 21, 2020 / Jun 21, 2020 / 21 June 2020 / 2020 June 21 / Jun 2020
  *   Bare year:     2020
+ * Adjacent non-date characters (trailing words, leading labels, footnote superscripts,
+ * ordinal suffixes) are tolerated via normalizeDateCandidate + relaxed anchors.
  */
 function parseDateLike(text) {
   if (typeof text !== 'string') return null;
-  const t = text.trim();
+  const t = normalizeDateCandidate(text.trim());
 
   // ISO dash: YYYY-MM-DD (must be 4-digit year first to avoid ambiguous N1-N2-Y)
-  const isoDash = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  // Boundary-aware: allow surrounding non-word chars but not word chars
+  const isoDash = t.match(/(?:^|(?<=[^\w]))(\d{4})-(\d{2})-(\d{2})(?=$|[^\w])/);
   if (isoDash) {
     return { year: parseInt(isoDash[1], 10), month: parseInt(isoDash[2], 10), day: parseInt(isoDash[3], 10) };
   }
 
   // ISO slash: YYYY/MM/DD
-  const isoSlash = t.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  const isoSlash = t.match(/(?:^|(?<=[^\w]))(\d{4})\/(\d{2})\/(\d{2})(?=$|[^\w])/);
   if (isoSlash) {
     return { year: parseInt(isoSlash[1], 10), month: parseInt(isoSlash[2], 10), day: parseInt(isoSlash[3], 10) };
   }
 
-  // Named-month forms (case-insensitive)
-  const mnRe = new RegExp(`^(${MONTH_NAMES})\\s+(\\d{1,2}),?\\s+(\\d{4})$`, 'i');
+  // Named-month forms (case-insensitive): Month DD, YYYY
+  const mnRe = new RegExp(`(?:^|(?<=[^\\w]))(${MONTH_NAMES})\\s+(\\d{1,2}),?\\s+(\\d{4})(?=$|[^\\w])`, 'i');
   const mnMatch = t.match(mnRe);
   if (mnMatch) {
     const month = resolveMonthName(mnMatch[1]);
@@ -1066,7 +1093,7 @@ function parseDateLike(text) {
   }
 
   // Day Month Year: 21 June 2020
-  const dmyRe = new RegExp(`^(\\d{1,2})\\s+(${MONTH_NAMES})\\s+(\\d{4})$`, 'i');
+  const dmyRe = new RegExp(`(?:^|(?<=[^\\w]))(\\d{1,2})\\s+(${MONTH_NAMES})\\s+(\\d{4})(?=$|[^\\w])`, 'i');
   const dmyMatch = t.match(dmyRe);
   if (dmyMatch) {
     const month = resolveMonthName(dmyMatch[2]);
@@ -1074,7 +1101,7 @@ function parseDateLike(text) {
   }
 
   // Year Month Day: 2020 June 21
-  const ymdRe = new RegExp(`^(\\d{4})\\s+(${MONTH_NAMES})\\s+(\\d{1,2})$`, 'i');
+  const ymdRe = new RegExp(`(?:^|(?<=[^\\w]))(\\d{4})\\s+(${MONTH_NAMES})\\s+(\\d{1,2})(?=$|[^\\w])`, 'i');
   const ymdMatch = t.match(ymdRe);
   if (ymdMatch) {
     const month = resolveMonthName(ymdMatch[2]);
@@ -1082,14 +1109,15 @@ function parseDateLike(text) {
   }
 
   // Month Year: Jun 2020
-  const myRe = new RegExp(`^(${MONTH_NAMES})\\s+(\\d{4})$`, 'i');
+  const myRe = new RegExp(`(?:^|(?<=[^\\w]))(${MONTH_NAMES})\\s+(\\d{4})(?=$|[^\\w])`, 'i');
   const myMatch = t.match(myRe);
   if (myMatch) {
     const month = resolveMonthName(myMatch[1]);
     if (month !== null) return { year: parseInt(myMatch[2], 10), month, day: 1 };
   }
 
-  // Bare year: 2020 (1900–2099)
+  // Bare year: 2020 (1900–2099) — STRICT anchors preserved to avoid false positives
+  // "Sales: 2020", "$2,020.00", "version 2020.1.3" must all return false
   const bareYear = t.match(/^(\d{4})$/);
   if (bareYear) {
     const y = parseInt(bareYear[1], 10);
@@ -1102,13 +1130,15 @@ function parseDateLike(text) {
 /**
  * Parse an all-numeric ambiguous date: N1/N2/Y or N1-N2-Y.
  * Supports 4-digit and 2-digit years. 2-digit-year pivot: yy < 50 → 2000+yy, else 1900+yy.
+ * Adjacent non-date characters are tolerated via normalizeDateCandidate + relaxed anchors.
  * Returns {n1, n2, year} or null.
  */
 function parseAmbiguousNumericDate(text) {
   if (typeof text !== 'string') return null;
-  const t = text.trim();
+  const t = normalizeDateCandidate(text.trim());
   // N1/N2/Y or N1-N2-Y (but not YYYY-MM-DD or YYYY/MM/DD which are unambiguous)
-  const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  // Boundary-aware: allow surrounding non-word chars but not word chars
+  const m = t.match(/(?:^|(?<=[^\w]))(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?=$|[^\w])/);
   if (!m) return null;
   const n1 = parseInt(m[1], 10);
   const n2 = parseInt(m[2], 10);
