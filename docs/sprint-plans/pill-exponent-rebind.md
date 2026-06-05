@@ -50,7 +50,7 @@ The fix inverts the meaning so that **toggle on = simplify this type, and its gr
 
 **Decision — rename the keys, don't just flip the boolean.** Leaving a key named `excludeDates` whose `true` value means "simplify" is a landmine for every future reader. Rename the settings to `simplifyDates` / `simplifyTimes` everywhere: `defaults.js`, `sidebar.js` (`CHECKBOX_TO_SETTING` + the `excludeDates`/`excludeTimes` reads), `sidebar.html` (checkbox `id`s), `content.js` (the three read sites above), and `tests.js`. These keys are passed live via messages and seeded from `DR_DEFAULTS` on each sidebar open — there is **no** persisted `chrome.storage` of the old key names — so the rename is safe with no migration shim.
 
-**Default behaviour.** Preserve today's *observable* defaults under the new names: dates are not simplified by default, times are. Current `DR_DEFAULTS` is `excludeDates: true, excludeTimes: false`, which under current semantics means dates excluded (not simplified) and times simplified. The equivalent under the new names is `simplifyDates: false, simplifyTimes: true`. (Whether the product actually wants times-on-by-default is raised in Open Questions — but this sprint's job is the semantic flip, not a default-behaviour change.)
+**Default behaviour.** Per user direction (2026-06-05): **dates simplified by default, times not.** New `DR_DEFAULTS`: `simplifyDates: true, simplifyTimes: false`. This is an intentional behaviour change from today (today's defaults leave dates alone and simplify times) — keep it bundled with the rename so users see one coherent flip rather than two.
 
 **Alternatives considered.** (a) Flip the boolean meaning while keeping the `exclude*` names — rejected: permanently confusing. (b) Flip the `updateDisabledState` direction instead of the cell logic — rejected: that would make the dropdown editable when *excluding*, doubling down on the wrong model.
 
@@ -70,29 +70,28 @@ The fix inverts the meaning so that **toggle on = simplify this type, and its gr
 
 ### 3.3 Exclude exponent numbers from simplification (Sprint `exclude-exponents`)
 
-**What.** Numbers that are exponents must pass through untouched. From the Chronology-of-the-universe examples:
+**What.** Numbers that are exponents must pass through untouched. From the Chronology-of-the-universe table the user is targeting, exponents are rendered as HTML `<sup>` elements — e.g. `20 × 10<sup>−12</sup> s`, `20 × 10<sup>15</sup>`, `10<sup>12</sup>`, `6 × 10<sup>9</sup>`. The "raw" caret notation in the original task description was shorthand; the live pages do not contain `^` characters.
 
-| raw | current (buggy) | should be |
-| --- | --- | --- |
-| `20×10^−12 s` | `20×10^−10 s` | `20×10^−12 s` |
-| `20×10^15` | `20×10^00` | `20×10^15` |
-| `10^12` | `1,^000` | `10^12` |
-| `6×10^9` | `6×10^0` | `6×10^9` |
-| `~ 10^−32 sec` | `~ 10^−30 sec` | `~ 10^−32 sec` |
+This matters for detection: the cell's `innerText` flattens `10<sup>15</sup>` to `1015` with no character-level boundary, so a text-only look-behind (caret/sign) cannot see the exponent. **Detection has to consult the DOM** — specifically, which text spans inside the cell are inside a `<sup>` element.
 
-The simplification happens in `extractNumbersInText` (`content.js:1285-1297`) via `NUMBER_IN_TEXT_REGEX_GLOBAL = /-?\d[\d,]*(?:\.\d+)?/g` (`content.js:12`). The exponent digits (e.g. `12`, `15`, `9`, `−32`) are being matched and rounded like ordinary inline numbers. Note the mantissa base (`10`, `20`, `6`) is correctly left alone in the "should be" column — only the exponent must be excluded.
+The simplification happens in `extractNumbersInText` (`content.js:1285-1297`) via `NUMBER_IN_TEXT_REGEX_GLOBAL = /-?\d[\d,]*(?:\.\d+)?/g` (`content.js:12`). The exponent digits (e.g. `12`, `15`, `9`, `−32`) are being matched and rounded like ordinary inline numbers. The mantissa base (`10`, `20`, `6`) must still be eligible — only digits sitting inside a `<sup>` get excluded.
 
 **Why.** Exponents are positional notation, not magnitudes to coarsen; rounding them corrupts the value's meaning (and produces nonsense like `1,^000`). *Robustness* — the extension already guards dates/quotes/links; exponents are the same class of "don't touch."
 
-**Decision.** Detect-and-skip in the extraction step. After the regex finds a candidate match, drop it if it is an exponent:
-1. **Caret form** — the matched run is immediately preceded by `^` (optionally with a sign `+`/`-`/unicode-minus `−` between the caret and the digits). Look back from `m.index` past an optional sign character to a `^`.
-2. **Unicode-superscript form** — the candidate is a run of superscript digits (reuse the existing `SUPERSCRIPT_DIGITS` constant), which the ASCII-digit regex won't match anyway but is documented here for completeness; the real work is the caret look-behind.
+**Decision — DOM-aware exclusion via a per-cell "exponent text-index mask."** Before the inline pass extracts numbers, walk the cell's descendants and compute the set of `innerText` index ranges that originate from inside a `<sup>` element (or any ancestor with `vertical-align: super`, to catch CSS-styled cases). Pass that mask alongside the text to `extractNumbersInText`; drop any match whose `[index, index+numStr.length)` overlaps the mask.
 
-A new named constant `EXPONENT_LOOKBEHIND_RE` (home: `content.js`, near `NUMBER_IN_TEXT_REGEX_GLOBAL`) expresses "optional sign then caret immediately before this index." Skip the match when the text ending at `m.index` matches it.
+Implementation outline in `content.js`:
 
-**Alternatives considered.** (a) Bake a negative-look-behind into `NUMBER_IN_TEXT_REGEX_GLOBAL` — rejected: JS look-behind support is fine in MV3 Chrome, but folding it into the shared global regex risks affecting the pure-number and date paths that also reference magnitude logic; a post-match filter is surgical and easy to unit-test. (b) Strip exponent spans before extraction — rejected: index bookkeeping for the right-to-left splice in `roundTable` becomes fragile.
+1. New helper `getSuperscriptRanges(cell)` — walks the cell's text nodes in document order, accumulating offsets into the same string that `innerText`/`textContent` yields, and records `[start, end)` for every text node whose ancestor chain includes a `<sup>` (or `getComputedStyle(...).verticalAlign === 'super'`). Returns an array of `{start, end}` ranges, mirroring the shape of the existing `getQuoteMaskedRanges` plumbing (`content.js` ~line 776) so the call-site pattern is familiar.
+2. In the cell-classification pass (`content.js:772-783`), call `getSuperscriptRanges(cell)` once per cell and pass the result to `extractNumbersInText`.
+3. `extractNumbersInText` gains an optional `superRanges` parameter and filters matches with the existing `overlapsQuoteRange` helper (or a sibling `overlapsRange`) — reuse the pattern rather than duplicating range-overlap logic.
+4. New named constant `SUPERSCRIPT_TAG = 'SUP'` near the existing `SUPERSCRIPT_DIGITS` constant, so the tag check is auditable.
 
-**Implications.** Touches `content.js` (extraction + one constant) and `tests.js` (add the five rows above as fixtures). Independent of the other three sprints.
+Also keep a cheap text-level fallback for pages that pre-render unicode superscripts directly into the cell text (e.g. `10⁻³²`): the regex won't match unicode-superscript digits anyway, so no extra work is needed there.
+
+**Alternatives considered.** (a) Caret-only text look-behind — rejected: the real pages don't contain `^`, so this would miss every example in the screenshot. (b) Bake a negative-look-behind into `NUMBER_IN_TEXT_REGEX_GLOBAL` — rejected: still text-only, and folding it into the shared regex risks affecting the pure-number and date paths. (c) Strip `<sup>` spans from the cell's HTML before extraction — rejected: it would mutate the cell, and the existing right-to-left splice in `roundTable` relies on indices into the original text.
+
+**Implications.** Touches `content.js` (one new helper, one new constant, one extra arg to `extractNumbersInText`) and `tests.js` (add `<sup>`-bearing cell fixtures: `10<sup>12</sup>`, `20 × 10<sup>−12</sup> s`, `6 × 10<sup>9</sup>`, plus a control cell where a non-superscript number on the same row still simplifies — e.g. the `45 ka` from the row mixing prose and exponents). Independent of the other three sprints.
 
 ### 3.4 Rebind the open sidebar when a different table is toggled (Sprint `sidebar-table-rebind`)
 
@@ -113,7 +112,7 @@ A new named constant `EXPONENT_LOOKBEHIND_RE` (home: `content.js`, near `NUMBER_
 
 Per the delivery principle, new literals that carry cross-call-site meaning get names:
 
-- `EXPONENT_LOOKBEHIND_RE` — `content.js` (Sprint `exclude-exponents`).
+- `SUPERSCRIPT_TAG = 'SUP'` — `content.js` (Sprint `exclude-exponents`), near `SUPERSCRIPT_DIGITS`.
 - `RESET_SIDEBAR_TO_DEFAULTS` — message-action string used in both `content.js` and `sidebar.js` (Sprint `sidebar-table-rebind`); define once and reuse. (Existing action strings are inline literals shared by convention; follow that same convention but keep the name consistent across both files.)
 
 ## 4. Sprint List & Dependency Graph
@@ -148,7 +147,7 @@ flowchart TD
 
 - **Goal:** Make the `dates`/`times` sidebar toggles mean "simplify this type (dropdown editable)" instead of "exclude it."
 - **Scope:**
-  - `defaults.js` — rename `excludeDates`→`simplifyDates`, `excludeTimes`→`simplifyTimes`; set values to preserve current behaviour (`simplifyDates: false`, `simplifyTimes: true`).
+  - `defaults.js` — rename `excludeDates`→`simplifyDates`, `excludeTimes`→`simplifyTimes`; new defaults `simplifyDates: true`, `simplifyTimes: false`.
   - `sidebar.html` — rename checkbox `id`s `excludeDates`→`simplifyDates`, `excludeTimes`→`simplifyTimes`.
   - `sidebar.js` — update `CHECKBOX_TO_SETTING` and the two `getElementById('excludeDates'/'excludeTimes')` reads in `updateDisabledState`; verify the dropdown-enable direction now reads correctly (enabled when toggle on).
   - `content.js` — `getExclusionReason` drops the date/time branches (lines 1005-1006); the classification pass (lines 752, 761) switches to `opts.simplifyDates && isDateLike(...)` / `opts.simplifyTimes && isTimeLike(...)`.
@@ -180,16 +179,17 @@ flowchart TD
 
 - **Goal:** Leave exponent numbers untouched during inline-number simplification.
 - **Scope:**
-  - `content.js` — in `extractNumbersInText` (1285-1297), after each regex match, skip it when it is an exponent. Add `EXPONENT_LOOKBEHIND_RE` near `NUMBER_IN_TEXT_REGEX_GLOBAL` matching an optional sign (`+`/`-`/`−`) preceded by `^` immediately before the match start. Reuse `SUPERSCRIPT_DIGITS` for the superscript-run case.
-  - `tests.js` — add the five Chronology-of-the-universe rows as fixtures asserting "should be" outputs; include a control row proving an ordinary inline number on the same page is still simplified.
-- **Out of scope:** Rewriting `NUMBER_IN_TEXT_REGEX_GLOBAL`; changing pure-number-cell or date handling; rendering superscripts (display untouched).
+  - `content.js` — add helper `getSuperscriptRanges(cell)` that walks the cell's text nodes and returns `[start, end)` index ranges (against the same string `extractNumbersInText` sees) for runs whose ancestor chain includes a `<sup>` or `getComputedStyle(...).verticalAlign === 'super'`. Extend `extractNumbersInText` with an optional `superRanges` arg and filter matches using the existing `overlapsQuoteRange`-style pattern. In the cell-classification pass (`content.js:772-783`), compute the ranges once per cell and pass them in. Add `SUPERSCRIPT_TAG = 'SUP'` near `SUPERSCRIPT_DIGITS`.
+  - `tests.js` — add `<sup>`-bearing cell fixtures (`10<sup>12</sup>`, `20 × 10<sup>−12</sup> s`, `6 × 10<sup>9</sup>`, `~ 10<sup>−32</sup> sec`) asserting unchanged output; include a control row proving an inline non-superscript number on the same page (e.g. `45 ka`) is still simplified. The stubbed `document` in `tests.js` already creates real DOM nodes via the existing harness — verify the test-side `getComputedStyle`/ancestor walk works against it; if not, gate the CSS check behind `typeof getComputedStyle === 'function'` and rely on the tag check in tests.
+- **Out of scope:** Rewriting `NUMBER_IN_TEXT_REGEX_GLOBAL`; changing pure-number-cell or date handling; rendering superscripts (display untouched); the caret-text `10^15` syntax — confirmed not present in target pages.
 - **Acceptance criteria:**
-  - `20×10^−12 s`, `20×10^15`, `10^12`, `6×10^9`, and `~ 10^−32 sec` all pass through unchanged.
-  - A normal inline number (e.g. `45 ka` in the same cell as an exponent) is still simplified.
+  - On the Chronology-of-the-universe table, `10<sup>12</sup>`, `20 × 10<sup>15</sup>`, `20 × 10<sup>−12</sup> s`, `6 × 10<sup>9</sup>`, and `~ 10<sup>−32</sup> sec` are unchanged after simplification.
+  - The base (`10`, `20`, `6`) remains eligible — i.e. nothing widens the skip to the whole `N × 10^M` group.
+  - A normal inline number on the same row (e.g. `45 ka`) is still simplified.
   - `node chrome-extension/tests.js` passes.
 - **Depends on:** none
 - **Complexity:** M
-- **Dev notes:** Look-behind from `m.index`: inspect the substring ending at `m.index` (skip one optional sign char, then require `^`). Cover both ASCII `-` and unicode `−` signs. The base (`10`, `20`, `6`) must remain eligible for rounding — don't over-broaden the skip to the whole `N×10^M` group.
+- **Dev notes:** The text-index walk must mirror however `extractNumbersInText` reads cell text — at the call site that's the cell's `text` (from `innerText || textContent`, `content.js:736`). Walk text nodes in document order, advancing a cursor, and check `node.parentElement.closest('sup')` for membership. Don't over-broaden the skip to the whole `N × 10^M` group.
 
 ### sidebar-table-rebind
 
@@ -209,9 +209,11 @@ flowchart TD
 
 ## 6. Open Questions
 
-- **Default for `simplifyTimes`.** Preserving today's behaviour makes times simplified by default (`simplifyTimes: true`) while dates are not (`simplifyDates: false`). Is times-on-by-default actually desired, or should both default to off now that the control is positive-framed? The plan preserves current behaviour; confirm if a default change is wanted (trivial follow-up in `defaults.js`).
-- **Exponent notation coverage.** The examples use caret (`^`) notation. Do real target pages also present exponents as HTML `<sup>` elements or pre-rendered unicode superscripts (`10⁻³²`)? The plan handles caret + unicode-superscript runs; if `<sup>` DOM is in scope, the extraction step may need to consult cell structure, which would enlarge `exclude-exponents`.
-- **Master switch position.** `sidebar-pill-left` moves the per-option switches; should the top-level `enabled` switch in the title row also move, or stay right-aligned next to the `<h1>`? Plan leaves it as-is.
+None outstanding. Decisions confirmed 2026-06-05:
+
+- **Defaults:** `simplifyDates: true`, `simplifyTimes: false`. Folded into the `invert-datetime-pills` sprint above.
+- **Exponent notation:** real pages render exponents as HTML `<sup>` elements; caret (`^`) text is not in scope. The `exclude-exponents` sprint above uses DOM-aware detection.
+- **Master switch:** the top-level `enabled` switch in the title row stays right-aligned. `sidebar-pill-left` touches the per-option rows only.
 
 ## 7. Out of Scope (Separate Sprint-Stack)
 
@@ -221,3 +223,4 @@ flowchart TD
 ## Decisions Log
 
 - 2026-06-05: Initial draft generated by sprint-plan skill.
+- 2026-06-05: Per user — `simplifyDates`/`simplifyTimes` defaults set to `true`/`false`; exponent detection moved from caret-text to DOM `<sup>` walk; master switch position unchanged.
