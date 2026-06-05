@@ -1572,8 +1572,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     DR_DEFAULTS.includePercent, true);
   eq('sidebar-defaults: dateGranularity default is "decade" in DR_DEFAULTS',
     DR_DEFAULTS.dateGranularity, 'decade');
-  eq('sidebar-defaults: timeGranularity default is "minute" in DR_DEFAULTS',
-    DR_DEFAULTS.timeGranularity, 'minute');
+  eq('sidebar-defaults: timeGranularity default is "hour" in DR_DEFAULTS',
+    DR_DEFAULTS.timeGranularity, 'hour');
   eq('sidebar-defaults: sidebar.html does not hard-code "checked" attributes',
     /<input[^>]*checked/i.test(sidebarHtml), false);
   eq('sidebar-defaults: sidebar.html does not hard-code "selected" options',
@@ -1587,9 +1587,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     manifest.content_scripts[0].js[1] === 'rounding.js' &&
     manifest.content_scripts[0].js[2] === 'content.js', true);
 
-  // AC3: Section heading contains <em>Include</em> followed by " numbers in cells containing:"
-  eq('sidebar-defaults: section-heading has <em>Include</em> with correct text',
-    /class="section-heading"[^>]*>[\s\S]*?<em>Include<\/em> numbers in cells containing:/.test(sidebarHtml), true);
+  // AC3: (sidebar-tidyup) the old "section-heading" with "Include numbers in cells containing:"
+  // was removed in the sidebar-tidyup sprint — no replacement test needed here.
 
   // AC4a: rangeSection div has "hidden" attribute.
   eq('sidebar-defaults: rangeSection has hidden attribute',
@@ -3989,6 +3988,130 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   eq('sidebar.html has #botBand', /<div[^>]*id="botBand"/.test(sidebarHtml), true);
   eq('sidebar.html loads rounding.js before sidebar.js',
     /rounding\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint sidebar-tidyup: flat toggle list, new defaults, switch wrappers
+// ---------------------------------------------------------------------------
+
+(function sprintSidebarTidyup() {
+  const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+
+  // ── AC1: options section has exactly seven toggle rows in the canonical order ──
+  // Parse all toggle-label texts inside #optionsSection.
+  // Strategy: extract the optionsSection fragment, then collect every
+  // class="toggle-label" span's text content via a simple regex.
+  const optionsSectionMatch = sidebarHtml.match(/<div[^>]*id="optionsSection"[^>]*>([\s\S]*?)<\/div>\s*\n\s*<div/);
+  // Fallback: grab everything between id="optionsSection"> and the next sibling div
+  const optsSectionRaw = (() => {
+    const start = sidebarHtml.indexOf('id="optionsSection"');
+    if (start === -1) return '';
+    const tagEnd = sidebarHtml.indexOf('>', start);
+    // Walk forward tracking open/close divs to extract the full container
+    let depth = 1;
+    let i = tagEnd + 1;
+    while (i < sidebarHtml.length && depth > 0) {
+      const nextOpen  = sidebarHtml.indexOf('<div', i);
+      const nextClose = sidebarHtml.indexOf('</div>', i);
+      if (nextClose === -1) break;
+      if (nextOpen !== -1 && nextOpen < nextClose) { depth++; i = nextOpen + 4; }
+      else { depth--; if (depth === 0) { return sidebarHtml.slice(tagEnd + 1, nextClose); } i = nextClose + 6; }
+    }
+    return '';
+  })();
+
+  // Collect label texts in document order
+  const labelRe = /class="toggle-label"[^>]*>([\s\S]*?)<\/span>/g;
+  const labelTexts = [];
+  let lm;
+  while ((lm = labelRe.exec(optsSectionRaw)) !== null) {
+    labelTexts.push(lm[1].trim());
+  }
+
+  const expectedOrder = ['words', 'currencies', 'percentages', 'dates', 'times', 'first row', 'first column'];
+
+  eq('sidebar-tidyup AC1: options section has exactly 7 toggle rows',
+    labelTexts.length, 7);
+
+  eq('sidebar-tidyup AC1: toggle rows are in canonical order',
+    labelTexts, expectedOrder);
+
+  // ── AC2: forbidden phrases do not appear anywhere in the options section ──
+
+  const forbidden = [
+    'Include numbers in cells containing',
+    'Exclude:',
+    'round to:'
+  ];
+  for (const phrase of forbidden) {
+    eq(`sidebar-tidyup AC2: "${phrase}" absent from options section`,
+      optsSectionRaw.includes(phrase), false);
+  }
+
+  // Also check the full HTML for the same forbidden phrases (belt-and-braces)
+  for (const phrase of forbidden) {
+    eq(`sidebar-tidyup AC2 (full HTML): "${phrase}" absent`,
+      sidebarHtml.includes(phrase), false);
+  }
+
+  // ── AC3: DR_DEFAULTS has the seven expected values ──
+
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.includeWords is true',
+    DR_DEFAULTS.includeWords, true);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.includeCurrency is true',
+    DR_DEFAULTS.includeCurrency, true);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.includePercent is true',
+    DR_DEFAULTS.includePercent, true);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.excludeDates is true',
+    DR_DEFAULTS.excludeDates, true);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.excludeTimes is false',
+    DR_DEFAULTS.excludeTimes, false);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.excludeFirstRow is false',
+    DR_DEFAULTS.excludeFirstRow, false);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.excludeFirstColumn is false',
+    DR_DEFAULTS.excludeFirstColumn, false);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.dateGranularity is "decade"',
+    DR_DEFAULTS.dateGranularity, 'decade');
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.timeGranularity is "hour"',
+    DR_DEFAULTS.timeGranularity, 'hour');
+
+  // ── AC4: every option-row checkbox is wrapped in a .switch element ──
+  // For each of the seven option inputs by id, verify there is a parent
+  // element with class "switch" enclosing the input.
+  const optionInputIds = [
+    'includeWords', 'includeCurrency', 'includePercent',
+    'excludeDates', 'excludeTimes', 'excludeFirstRow', 'excludeFirstColumn'
+  ];
+  for (const id of optionInputIds) {
+    // Match <label class="switch"> ... <input ... id="<id>"> ... </label>
+    // OR <span class="switch"> ... <input ... id="<id>"> ... </span>
+    const switchWrapRe = new RegExp(
+      '<(?:label|span)[^>]*class="[^"]*\\bswitch\\b[^"]*"[^>]*>[\\s\\S]{0,300}' +
+      '<input[^>]*id="' + id + '"',
+      'm'
+    );
+    eq(`sidebar-tidyup AC4: #${id} is wrapped in a .switch element`,
+      switchWrapRe.test(sidebarHtml), true);
+  }
+
+  // ── AC5: #timeGranularity <select> lists hour first, minute second ──
+  // Extract the <select id="timeGranularity"> element and check option order.
+  const timeSelectMatch = sidebarHtml.match(/<select[^>]*id="timeGranularity"[^>]*>([\s\S]*?)<\/select>/);
+  const timeSelectHtml = timeSelectMatch ? timeSelectMatch[1] : '';
+
+  const timeOptionRe = /value="([^"]+)"/g;
+  const timeOptionValues = [];
+  let tom;
+  while ((tom = timeOptionRe.exec(timeSelectHtml)) !== null) {
+    timeOptionValues.push(tom[1]);
+  }
+
+  eq('sidebar-tidyup AC5: #timeGranularity has exactly 2 options',
+    timeOptionValues.length, 2);
+  eq('sidebar-tidyup AC5: first option is "hour"',
+    timeOptionValues[0], 'hour');
+  eq('sidebar-tidyup AC5: second option is "minute"',
+    timeOptionValues[1], 'minute');
 })();
 
 // --- Report ---
