@@ -749,17 +749,25 @@ function roundTable(table, options) {
         rowInfo.push({ mode: 'skip' });
       } else if (isWholeCellQuoted) {
         rowInfo.push({ mode: 'skip' });
-      } else if (opts.simplifyDates && isDateLike(trimmed)) {
-        const ambig = parseAmbiguousNumericDate(trimmed);
-        if (ambig !== null) {
-          rowInfo.push({ mode: 'date', ambiguous: ambig });
+      } else if (isDateLike(trimmed)) {
+        // Date-like cells must never fall through to numeric rounding (a bare
+        // year like "2018" parses as a number). Simplify when the toggle is on,
+        // otherwise leave the cell untouched.
+        if (!opts.simplifyDates) {
+          rowInfo.push({ mode: 'skip' });
         } else {
-          // Unambiguous: parse now and store the resolved fields
-          const parsed = parseDateLike(trimmed);
-          rowInfo.push({ mode: 'date', month: parsed.month, day: parsed.day, year: parsed.year });
+          const ambig = parseAmbiguousNumericDate(trimmed);
+          if (ambig !== null) {
+            rowInfo.push({ mode: 'date', ambiguous: ambig });
+          } else {
+            // Unambiguous: parse now and store the resolved fields
+            const parsed = parseDateLike(trimmed);
+            rowInfo.push({ mode: 'date', month: parsed.month, day: parsed.day, year: parsed.year });
+          }
         }
-      } else if (opts.simplifyTimes && isTimeLike(trimmed)) {
-        rowInfo.push({ mode: 'time' });
+      } else if (isTimeLike(trimmed)) {
+        // Same guard for time-like cells.
+        rowInfo.push(opts.simplifyTimes ? { mode: 'time' } : { mode: 'skip' });
       } else {
         const num = toNumber(text);
         if (num !== null) {
