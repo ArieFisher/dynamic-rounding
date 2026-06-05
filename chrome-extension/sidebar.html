@@ -145,6 +145,9 @@
       font-variant-numeric: tabular-nums;
     }
     .label-row .lbl { color: #5f6368; }
+    .label-row .lbl.top { color: #1a73e8; }
+    .label-row .lbl.bot { color: #b3623d; }
+    #sliderBlock.linked .label-row .lbl.bot { color: #9aa0a6; }
     .label-row .val { color: #202124; font-variant-numeric: tabular-nums; }
     .dual-wrap {
       position: relative;
@@ -188,6 +191,35 @@
     .dual-thumb.bot.linked { background: #9aa0a6; }
     .dual-thumb:focus-visible { outline: 2px solid #1a73e8; outline-offset: 2px; }
     .section.disabled .dual-thumb { cursor: not-allowed; }
+    /* Preview band: 2 samples above slider, 3 below (variant F).
+       Grid + display:contents pairs so the "→" column aligns vertically
+       and the whole band is centered horizontally under the slider. */
+    .results-band {
+      display: grid;
+      grid-template-columns: auto auto auto auto;
+      justify-content: center;
+      column-gap: 6px;
+      row-gap: 2px;
+      align-items: baseline;
+      font-size: 12px;
+      color: #3c4043;
+      font-variant-numeric: tabular-nums;
+      padding: 2px 0;
+    }
+    .results-band .pair { display: contents; }
+    .results-band .from {
+      color: #5f6368;
+      text-align: right;
+      white-space: normal;
+    }
+    .results-band .arrow { color: #5f6368; text-align: center; }
+    .results-band .num { color: #202124; text-align: right; }
+    .results-band .step { color: #5f6368; text-align: left; }
+    .results-band .empty {
+      color: #80868b;
+      font-style: italic;
+      text-align: center;
+    }
     #rangeExpr {
       width: 100%;
       box-sizing: border-box;
@@ -291,9 +323,9 @@
     <summary>Advanced</summary>
     <div class="slider-block" id="sliderBlock">
       <div class="label-row">
-        <span class="lbl">largest numbers</span>
-        <span class="val" id="topReadout">−0.5</span>
+        <span class="lbl top" id="topLabel">largest numbers: −0.5</span>
       </div>
+      <div class="results-band" id="topBand"></div>
       <div class="dual-wrap" id="dualWrap">
         <div class="dual-track"></div>
         <div class="dual-ticks" aria-hidden="true">
@@ -307,15 +339,16 @@
              aria-label="largest numbers offset" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="-0.5"></div>
       </div>
       <div class="label-row">
-        <span class="lbl">all other numbers</span>
-        <span class="val" id="botReadout">−0.5</span>
+        <span class="lbl bot" id="botLabel">all other numbers: −0.5</span>
       </div>
+      <div class="results-band" id="botBand"></div>
     </div>
   </details>
 
   <div class="status" id="status"></div>
 
   <script src="defaults.js"></script>
+  <script src="rounding.js"></script>
   <script src="sidebar.js"></script>
 </body>
 </html>
