@@ -766,6 +766,29 @@ function roundTable(table, options) {
           // Whole-cell link check: if the entire visible text is inside <a> tags, skip.
           if (isCellWholeLink(cell)) {
             rowInfo.push({ mode: 'skip' });
+          } else if (cell.querySelector && cell.querySelector('sup')) {
+            // The cell contains a <sup> element: the flattened text mixes base and exponent
+            // digits (e.g. "10<sup>12</sup>" -> innerText "1012").  Route through the
+            // inline-extraction path so superscript masking can protect the exponent.
+            if (opts.includeWords) {
+              let matches = extractNumbersInText(text);
+              matches = filterLinkMatches(cell, matches);
+              const quoteRanges = getQuoteMaskedRanges(text);
+              if (quoteRanges.length > 0) {
+                matches = matches.filter(m => !overlapsQuoteRange(quoteRanges, m.index, m.index + m.numStr.length));
+              }
+              const superRanges = getSuperscriptRanges(cell);
+              if (superRanges.length > 0) {
+                matches = matches.filter(m => !overlapsQuoteRange(superRanges, m.index, m.index + m.numStr.length));
+              }
+              if (matches.length > 0) {
+                rowInfo.push({ mode: 'extracted', matches });
+              } else {
+                rowInfo.push({ mode: 'skip' });
+              }
+            } else {
+              rowInfo.push({ mode: 'skip' });
+            }
           } else {
             rowInfo.push({ mode: 'pure', num });
           }
@@ -775,6 +798,10 @@ function roundTable(table, options) {
           const quoteRanges = getQuoteMaskedRanges(text);
           if (quoteRanges.length > 0) {
             matches = matches.filter(m => !overlapsQuoteRange(quoteRanges, m.index, m.index + m.numStr.length));
+          }
+          const superRanges = getSuperscriptRanges(cell);
+          if (superRanges.length > 0) {
+            matches = matches.filter(m => !overlapsQuoteRange(superRanges, m.index, m.index + m.numStr.length));
           }
           if (matches.length > 0) {
             rowInfo.push({ mode: 'extracted', matches });
@@ -1013,6 +1040,7 @@ const MONTH_NAMES = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-
 
 // Regex constants for date candidate normalization
 const SUPERSCRIPT_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+const SUPERSCRIPT_TAG = 'SUP';
 const FOOTNOTE_MARKERS = '*†‡';
 const DATE_NOISE_CLASS = `[\\s${SUPERSCRIPT_DIGITS}${FOOTNOTE_MARKERS}]`;
 const LEADING_DATE_NOISE_RE = new RegExp(`^${DATE_NOISE_CLASS}+`);
@@ -1239,6 +1267,65 @@ function roundTimeText(text, granularity) {
   if (m[3]) result += ':00';
   result += displayAmpm;
   return result === trimmed ? null : result;
+}
+
+/**
+ * Returns an array of {start, end} half-open index ranges corresponding to text that is
+ * physically inside a <sup> element (or an element whose computed vertical-align is 'super')
+ * within the given cell.  The indices are into the same string the number extractor sees —
+ * the concatenation of all text nodes in document order, which matches cell.textContent
+ * (and cell.innerText for ordinary in-flow content).
+ *
+ * Approach: walk the cell's text nodes via document.createTreeWalker, keeping a running
+ * cursor.  For each text node, if any ancestor up to (but not including) the cell is a
+ * <sup> element (or has verticalAlign 'super'), record {start: cursor, end: cursor + len}.
+ *
+ * Guards:
+ * - If document.createTreeWalker is unavailable, returns [].
+ * - getComputedStyle is only called when typeof getComputedStyle === 'function', so the
+ *   helper never throws in the Node test harness.
+ * @param {Element} cell
+ * @returns {{start: number, end: number}[]}
+ */
+function getSuperscriptRanges(cell) {
+  if (!cell || typeof document === 'undefined' || typeof document.createTreeWalker !== 'function') {
+    return [];
+  }
+  const ranges = [];
+  const treeWalker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
+  let cursor = 0;
+  let node;
+  while ((node = treeWalker.nextNode())) {
+    const len = node.nodeValue ? node.nodeValue.length : 0;
+    if (len > 0) {
+      // Check if any ancestor up to (not including) cell is a <sup> element.
+      let isSup = false;
+      let ancestor = node.parentNode || node.parentElement;
+      while (ancestor && ancestor !== cell) {
+        if (ancestor.tagName === SUPERSCRIPT_TAG) {
+          isSup = true;
+          break;
+        }
+        // Also check computed verticalAlign, but only when getComputedStyle is available
+        // (it may be absent in the Node test harness).
+        if (!isSup && typeof getComputedStyle === 'function') {
+          try {
+            const style = getComputedStyle(ancestor);
+            if (style && style.verticalAlign === 'super') {
+              isSup = true;
+              break;
+            }
+          } catch (e) { /* ignore */ }
+        }
+        ancestor = ancestor.parentNode || ancestor.parentElement;
+      }
+      if (isSup) {
+        ranges.push({ start: cursor, end: cursor + len });
+      }
+    }
+    cursor += len;
+  }
+  return ranges;
 }
 
 /**
