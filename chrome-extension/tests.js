@@ -4205,6 +4205,490 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint invert-datetime-pills: simplifyDates / simplifyTimes boolean wiring
+//
+// Acceptance criteria verified here:
+//   AC1: simplifyDates=true  → date cell IS rounded (dr-ext-rounded added, text changed)
+//   AC2: simplifyDates=false → date cell is left UNCHANGED (no class, same text)
+//   AC3: simplifyTimes=true  → time cell IS simplified (dr-ext-rounded added, text changed)
+//   AC4: simplifyTimes=false → time cell is left UNCHANGED
+//   AC5: sidebar.js updateDisabledState wires dateGranularity.disabled to !simplifyDates
+//        and timeGranularity.disabled to !simplifyTimes (static source analysis only —
+//        the test harness has no sidebar DOM path so live execution is not possible).
+// ---------------------------------------------------------------------------
+
+// --- AC1: simplifyDates=true → date cell is rounded ---
+// Use a bare year "2018" with decade granularity: roundDateText("2018","decade")="2020",
+// so the cell text must change and dr-ext-rounded must be added.
+(function invertPills_AC1_simplifyDatesTrue() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '2018' },
+    ]]);
+    const opts = {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: true, simplifyTimes: false,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    const cell = table.rows[0].cells[0];
+    eq('invert-pills AC1: simplifyDates=true — date cell gets dr-ext-rounded class',
+      cell.classList.contains('dr-ext-rounded'), true);
+    eq('invert-pills AC1: simplifyDates=true — date cell text is changed (2018→2020)',
+      cell.innerText, '2020');
+  });
+})();
+
+// --- AC2: simplifyDates=false → date cell is left unchanged ---
+// Same "2018" cell, same decade granularity, but simplifyDates=false.
+// The cell must NOT be rounded — text stays "2018", no class added.
+(function invertPills_AC2_simplifyDatesFalse() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '2018' },
+    ]]);
+    const opts = {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: false,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    const cell = table.rows[0].cells[0];
+    eq('invert-pills AC2: simplifyDates=false — date cell does NOT get dr-ext-rounded',
+      cell.classList.contains('dr-ext-rounded'), false);
+    eq('invert-pills AC2: simplifyDates=false — date cell text is unchanged',
+      cell.innerText, '2018');
+  });
+})();
+
+// AC1/AC2 parity check with ISO date "2024-03-14" (decade granularity → "2020")
+(function invertPills_AC1_AC2_isoDate() {
+  withCreateTreeWalker(function() {
+    // simplifyDates=true branch
+    const tableOn = makeMockTable([[{ tag: 'td', text: '2024-03-14' }]]);
+    roundTable(tableOn, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: true, simplifyTimes: false,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const cellOn = tableOn.rows[0].cells[0];
+    eq('invert-pills AC1 (ISO date): simplifyDates=true — ISO date rounded',
+      cellOn.classList.contains('dr-ext-rounded'), true);
+  });
+
+  withCreateTreeWalker(function() {
+    // simplifyDates=false branch — same input
+    const tableOff = makeMockTable([[{ tag: 'td', text: '2024-03-14' }]]);
+    roundTable(tableOff, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: false,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const cellOff = tableOff.rows[0].cells[0];
+    eq('invert-pills AC2 (ISO date): simplifyDates=false — ISO date NOT rounded',
+      cellOff.classList.contains('dr-ext-rounded'), false);
+    eq('invert-pills AC2 (ISO date): simplifyDates=false — ISO date text unchanged',
+      cellOff.innerText, '2024-03-14');
+  });
+})();
+
+// --- AC3: simplifyTimes=true → time cell IS simplified ---
+// "14:30" with hour granularity → roundTimeText returns "15:00" (half-hour rounds up).
+(function invertPills_AC3_simplifyTimesTrue() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '14:30' },
+    ]]);
+    const opts = {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: true,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    const cell = table.rows[0].cells[0];
+    eq('invert-pills AC3: simplifyTimes=true — time cell gets dr-ext-rounded class',
+      cell.classList.contains('dr-ext-rounded'), true);
+    eq('invert-pills AC3: simplifyTimes=true — time cell text is changed (14:30→15:00)',
+      cell.innerText, '15:00');
+  });
+})();
+
+// --- AC4: simplifyTimes=false → time cell is left UNCHANGED ---
+// Same "14:30" cell; with simplifyTimes=false the cell must stay as-is.
+(function invertPills_AC4_simplifyTimesFalse() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '14:30' },
+    ]]);
+    const opts = {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: false,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    const cell = table.rows[0].cells[0];
+    eq('invert-pills AC4: simplifyTimes=false — time cell does NOT get dr-ext-rounded',
+      cell.classList.contains('dr-ext-rounded'), false);
+    eq('invert-pills AC4: simplifyTimes=false — time cell text is unchanged',
+      cell.innerText, '14:30');
+  });
+})();
+
+// AC3/AC4 parity check with "3:45 PM" (hour granularity → "4:00 PM")
+(function invertPills_AC3_AC4_twelveHour() {
+  withCreateTreeWalker(function() {
+    // simplifyTimes=true
+    const tableOn = makeMockTable([[{ tag: 'td', text: '3:45 PM' }]]);
+    roundTable(tableOn, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: true,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const cellOn = tableOn.rows[0].cells[0];
+    eq('invert-pills AC3 (12-hr): simplifyTimes=true — "3:45 PM" rounded',
+      cellOn.classList.contains('dr-ext-rounded'), true);
+    eq('invert-pills AC3 (12-hr): simplifyTimes=true — text changed to "4:00 PM"',
+      cellOn.innerText, '4:00 PM');
+  });
+
+  withCreateTreeWalker(function() {
+    // simplifyTimes=false — same input must be untouched
+    const tableOff = makeMockTable([[{ tag: 'td', text: '3:45 PM' }]]);
+    roundTable(tableOff, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: false,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const cellOff = tableOff.rows[0].cells[0];
+    eq('invert-pills AC4 (12-hr): simplifyTimes=false — "3:45 PM" NOT rounded',
+      cellOff.classList.contains('dr-ext-rounded'), false);
+    eq('invert-pills AC4 (12-hr): simplifyTimes=false — text unchanged',
+      cellOff.innerText, '3:45 PM');
+  });
+})();
+
+// --- AC5: sidebar.js updateDisabledState wires granularity dropdowns to toggles ---
+// The harness has no live sidebar DOM, so we verify via static source analysis.
+// We assert:
+//   (a) updateDisabledState references dateGranularity.disabled and !simplifyDates
+//   (b) updateDisabledState references timeGranularity.disabled and !simplifyTimes
+// This proves the boolean is wired the correct way round in the sidebar source.
+(function invertPills_AC5_sidebarDisabledStateStaticAnalysis() {
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  // dateGranularity.disabled must be set to !simplifyDates (true when OFF, false when ON)
+  eq('invert-pills AC5: sidebar.js sets dateGranularity.disabled = !simplifyDates',
+    /dateGranularityEl\.disabled\s*=\s*!document\.getElementById\(['"]simplifyDates['"]\)\.checked/.test(sidebarSrc),
+    true);
+
+  // timeGranularity.disabled must be set to !simplifyTimes
+  eq('invert-pills AC5: sidebar.js sets timeGranularity.disabled = !simplifyTimes',
+    /timeGranularityEl\.disabled\s*=\s*!document\.getElementById\(['"]simplifyTimes['"]\)\.checked/.test(sidebarSrc),
+    true);
+
+  // updateDisabledState function must still exist (not deleted or renamed)
+  eq('invert-pills AC5: sidebar.js defines updateDisabledState',
+    /function updateDisabledState\b/.test(sidebarSrc), true);
+})();
+
+// --- Old keys (excludeDates / excludeTimes) must be absent from content.js and defaults.js ---
+// These were renamed to simplifyDates/simplifyTimes in this sprint.
+// If the old names are still present as property assignments or conditions, the
+// inversion is incomplete and rounding behaviour would be controlled by the wrong key.
+(function invertPills_oldKeysAbsent() {
+  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const defaultsSrc = fs.readFileSync(path.join(__dirname, 'defaults.js'), 'utf8');
+  const sidebarSrc  = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  // "excludeDates" and "excludeTimes" must not appear as identifiers in any of these files.
+  eq('invert-pills regression: content.js does not reference excludeDates',
+    /\bexcludeDates\b/.test(contentSrc), false);
+  eq('invert-pills regression: content.js does not reference excludeTimes',
+    /\bexcludeTimes\b/.test(contentSrc), false);
+  eq('invert-pills regression: defaults.js does not reference excludeDates',
+    /\bexcludeDates\b/.test(defaultsSrc), false);
+  eq('invert-pills regression: defaults.js does not reference excludeTimes',
+    /\bexcludeTimes\b/.test(defaultsSrc), false);
+  eq('invert-pills regression: sidebar.js does not reference excludeDates',
+    /\bexcludeDates\b/.test(sidebarSrc), false);
+  eq('invert-pills regression: sidebar.js does not reference excludeTimes',
+    /\bexcludeTimes\b/.test(sidebarSrc), false);
+
+  // Conversely, simplifyDates and simplifyTimes MUST appear in each file.
+  eq('invert-pills regression: content.js references simplifyDates',
+    /\bsimplifyDates\b/.test(contentSrc), true);
+  eq('invert-pills regression: content.js references simplifyTimes',
+    /\bsimplifyTimes\b/.test(contentSrc), true);
+  eq('invert-pills regression: defaults.js references simplifyDates',
+    /\bsimplifyDates\b/.test(defaultsSrc), true);
+  eq('invert-pills regression: defaults.js references simplifyTimes',
+    /\bsimplifyTimes\b/.test(defaultsSrc), true);
+  eq('invert-pills regression: sidebar.js references simplifyDates',
+    /\bsimplifyDates\b/.test(sidebarSrc), true);
+  eq('invert-pills regression: sidebar.js references simplifyTimes',
+    /\bsimplifyTimes\b/.test(sidebarSrc), true);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint invert-datetime-pills: adversarial tests
+//
+// These tests are written from the SPEC, not the implementation.
+// Adversarial focus: prove the boolean polarity is correct (true=simplify,
+// false=leave alone) across a wider set of inputs and combinations that the
+// developer's own tests did not exercise.
+// ---------------------------------------------------------------------------
+
+// --- ADV-AC1: century granularity also works when simplifyDates=true ---
+// A different granularity than the developer tested (decade) to ensure the
+// boolean wiring is not granularity-specific.
+(function invertPills_adv_AC1_century() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '2018' },
+    ]]);
+    roundTable(table, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: true, simplifyTimes: false,
+      dateGranularity: 'century', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const cell = table.rows[0].cells[0];
+    eq('ADV AC1 (century): simplifyDates=true — 2018 rounded to 2000',
+      cell.innerText, '2000');
+    eq('ADV AC1 (century): simplifyDates=true — cell gets dr-ext-rounded',
+      cell.classList.contains('dr-ext-rounded'), true);
+  });
+})();
+
+// --- ADV-AC2: century granularity, simplifyDates=false — year must NOT be rounded ---
+// Adversarial: if the implementation only guards the decade path, century would leak.
+(function invertPills_adv_AC2_century() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '2018' },
+    ]]);
+    roundTable(table, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: false,
+      dateGranularity: 'century', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const cell = table.rows[0].cells[0];
+    eq('ADV AC2 (century): simplifyDates=false — cell does NOT get dr-ext-rounded',
+      cell.classList.contains('dr-ext-rounded'), false);
+    eq('ADV AC2 (century): simplifyDates=false — text unchanged (2018)',
+      cell.innerText, '2018');
+  });
+})();
+
+// --- ADV-AC2: mixed table — date cell left alone while numeric cell rounds ---
+// A date-like year appears alongside a large number.
+// simplifyDates=false: the year must not be rounded even though max_mag is
+// computed from the real number in the same table.
+(function invertPills_adv_AC2_mixedTable() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '2018' },
+      { tag: 'td', text: '8,584,629' },
+    ]]);
+    roundTable(table, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: false,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const dateCell = table.rows[0].cells[0];
+    eq('ADV AC2 (mixed): simplifyDates=false — date cell NOT rounded even with large sibling',
+      dateCell.classList.contains('dr-ext-rounded'), false);
+    eq('ADV AC2 (mixed): simplifyDates=false — date cell text unchanged (2018)',
+      dateCell.innerText, '2018');
+    // Numeric cell SHOULD still be rounded (control: proves roundTable ran)
+    const numCell = table.rows[0].cells[1];
+    eq('ADV AC2 (mixed): numeric sibling 8,584,629 IS rounded (control)',
+      numCell.classList.contains('dr-ext-rounded'), true);
+  });
+})();
+
+// --- ADV-AC3/AC4: isolation — simplifyTimes=true with simplifyDates=false ---
+// Time cell must be simplified; a date cell in the same row must be left alone.
+// This catches any incorrect coupling between the two boolean flags.
+(function invertPills_adv_AC3_timesOnDatesOff() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '14:30' },
+      { tag: 'td', text: '2018' },
+    ]]);
+    roundTable(table, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: true,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const timeCell = table.rows[0].cells[0];
+    const dateCell = table.rows[0].cells[1];
+    eq('ADV AC3/AC4 isolation: simplifyTimes=true — time cell IS rounded',
+      timeCell.classList.contains('dr-ext-rounded'), true);
+    eq('ADV AC3/AC4 isolation: simplifyTimes=true — time cell text changed (14:30→15:00)',
+      timeCell.innerText, '15:00');
+    eq('ADV AC3/AC4 isolation: simplifyDates=false — date cell NOT rounded',
+      dateCell.classList.contains('dr-ext-rounded'), false);
+    eq('ADV AC3/AC4 isolation: simplifyDates=false — date cell text unchanged (2018)',
+      dateCell.innerText, '2018');
+  });
+})();
+
+// --- ADV-AC1/AC4: isolation — simplifyDates=true with simplifyTimes=false ---
+// Date cell must be simplified; a time cell in the same row must be left alone.
+(function invertPills_adv_AC1_datesOnTimesOff() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '2018' },
+      { tag: 'td', text: '14:30' },
+    ]]);
+    roundTable(table, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: true, simplifyTimes: false,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const dateCell = table.rows[0].cells[0];
+    const timeCell = table.rows[0].cells[1];
+    eq('ADV AC1/AC4 isolation: simplifyDates=true — date cell IS rounded',
+      dateCell.classList.contains('dr-ext-rounded'), true);
+    eq('ADV AC1/AC4 isolation: simplifyDates=true — date cell text changed (2018→2020)',
+      dateCell.innerText, '2020');
+    eq('ADV AC4/AC1 isolation: simplifyTimes=false — time cell NOT rounded',
+      timeCell.classList.contains('dr-ext-rounded'), false);
+    eq('ADV AC4/AC1 isolation: simplifyTimes=false — time cell text unchanged (14:30)',
+      timeCell.innerText, '14:30');
+  });
+})();
+
+// --- ADV-AC4: time cell with simplifyTimes=false is not treated as a pure number ---
+// "14:30" is not parseable by toNumber (returns null), so with simplifyTimes=false
+// AND includeWords=false, the cell must be fully skipped.
+// Adversarial: confirm there is no fallthrough that rounds the time as a numeric value.
+// (Note: includeWords=true would extract 14 and 30 independently — that is a separate
+// feature path. Here we test the pure numeric exclusion path only.)
+(function invertPills_adv_AC4_timeNotTreatedAsNumber() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '14:30' },
+    ]]);
+    roundTable(table, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: false,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const cell = table.rows[0].cells[0];
+    eq('ADV AC4: 14:30 with simplifyTimes=false and includeWords=false — not rounded',
+      cell.classList.contains('dr-ext-rounded'), false);
+    eq('ADV AC4: 14:30 with simplifyTimes=false and includeWords=false — text unchanged',
+      cell.innerText, '14:30');
+  });
+})();
+
+// --- ADV: DR_DEFAULTS has correct polarity ---
+// simplifyDates must default to true (simplify by default).
+// simplifyTimes must default to false (do not simplify by default).
+// This is the direct spec requirement for the "inverted" rename: the default
+// behavior (dates simplified, times not) must be encoded correctly.
+(function invertPills_adv_defaults() {
+  eq('ADV defaults: DR_DEFAULTS.simplifyDates is true (dates simplified by default)',
+    DR_DEFAULTS.simplifyDates, true);
+  eq('ADV defaults: DR_DEFAULTS.simplifyTimes is false (times not simplified by default)',
+    DR_DEFAULTS.simplifyTimes, false);
+  // Old keys must be absent from DR_DEFAULTS
+  eq('ADV defaults: DR_DEFAULTS has no excludeDates key',
+    Object.prototype.hasOwnProperty.call(DR_DEFAULTS, 'excludeDates'), false);
+  eq('ADV defaults: DR_DEFAULTS has no excludeTimes key',
+    Object.prototype.hasOwnProperty.call(DR_DEFAULTS, 'excludeTimes'), false);
+})();
+
+// --- ADV-AC1/AC3: both simplifyDates=true and simplifyTimes=true — both simplified ---
+// Confirm both flags can be active simultaneously without one suppressing the other.
+(function invertPills_adv_bothTrue() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '2018' },
+      { tag: 'td', text: '14:30' },
+    ]]);
+    roundTable(table, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: true, simplifyTimes: true,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const dateCell = table.rows[0].cells[0];
+    const timeCell = table.rows[0].cells[1];
+    eq('ADV both=true: date cell IS rounded (2018→2020)',
+      dateCell.classList.contains('dr-ext-rounded'), true);
+    eq('ADV both=true: date cell text changed to 2020',
+      dateCell.innerText, '2020');
+    eq('ADV both=true: time cell IS rounded (14:30→15:00)',
+      timeCell.classList.contains('dr-ext-rounded'), true);
+    eq('ADV both=true: time cell text changed to 15:00',
+      timeCell.innerText, '15:00');
+  });
+})();
+
+// --- ADV-AC2/AC4: both simplifyDates=false and simplifyTimes=false — neither simplified ---
+// The fully-off state: no date or time cell gets rounded.
+(function invertPills_adv_bothFalse() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[
+      { tag: 'td', text: '2018' },
+      { tag: 'td', text: '14:30' },
+    ]]);
+    roundTable(table, {
+      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
+      excludeFirstRow: false, excludeFirstColumn: false,
+      simplifyDates: false, simplifyTimes: false,
+      dateGranularity: 'decade', timeGranularity: 'hour',
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const dateCell = table.rows[0].cells[0];
+    const timeCell = table.rows[0].cells[1];
+    eq('ADV both=false: date cell NOT rounded',
+      dateCell.classList.contains('dr-ext-rounded'), false);
+    eq('ADV both=false: date cell text unchanged (2018)',
+      dateCell.innerText, '2018');
+    eq('ADV both=false: time cell NOT rounded',
+      timeCell.classList.contains('dr-ext-rounded'), false);
+    eq('ADV both=false: time cell text unchanged (14:30)',
+      timeCell.innerText, '14:30');
+  });
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
