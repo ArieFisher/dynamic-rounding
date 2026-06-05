@@ -16,8 +16,11 @@ const DR_DEFAULTS = {
   excludeTimes: true,
   dateGranularity: 'decade',
   timeGranularity: 'minute',
-  offsetTop: null,
-  offsetOther: null,
-  numTop: null,
+  // Concrete numeric defaults (Variant F UI always sends concrete numbers, never
+  // null/blank). num_top is no longer surfaced in the UI but stays here as the
+  // contract with content.js / the right-click toggle.
+  offsetTop: -0.5,
+  offsetOther: -0.5,
+  numTop: 1,
   rangeExpr: ''
 };
