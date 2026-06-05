@@ -261,13 +261,13 @@ function currentSettings() {
 
 function updateDisabledState() {
   optionsSection.classList.toggle('disabled', !enabledEl.checked);
-  // Granularity dropdown only matters when the corresponding exclusion is off
-  // (i.e. that type's cells will round).
+  // Granularity dropdown only matters when the row's toggle is on
+  // (i.e. that type's cells are bucketed by the selected granularity).
   if (dateGranularityEl) {
-    dateGranularityEl.disabled = document.getElementById('excludeDates').checked;
+    dateGranularityEl.disabled = !document.getElementById('excludeDates').checked;
   }
   if (timeGranularityEl) {
-    timeGranularityEl.disabled = document.getElementById('excludeTimes').checked;
+    timeGranularityEl.disabled = !document.getElementById('excludeTimes').checked;
   }
 }
 
