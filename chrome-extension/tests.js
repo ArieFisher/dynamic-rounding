@@ -4114,6 +4114,92 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     timeOptionValues[1], 'minute');
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint date-tolerant-detection: isDateLike with adjacent text and markers
+// ---------------------------------------------------------------------------
+
+(function sprintDateTolerance() {
+
+  // --- Acceptance criteria: positive cases ---
+
+  // AC1: ISO date with trailing word
+  eq('dateTolerance AC1: isDateLike("2020-03-14 sales") -> true',
+    isDateLike('2020-03-14 sales'), true);
+
+  // AC2: Named-month date with trailing superscript digit (footnote ref)
+  eq('dateTolerance AC2: isDateLike("March 14, 2024¹") -> true',
+    isDateLike('March 14, 2024¹'), true);
+
+  // AC3: Ordinal day in standard month-day-year form
+  eq('dateTolerance AC3: isDateLike("Jun 1st, 2020") -> true',
+    isDateLike('Jun 1st, 2020'), true);
+
+  // AC4: Day-month-year with ordinal day
+  eq('dateTolerance AC4: isDateLike("21st June 2020") -> true',
+    isDateLike('21st June 2020'), true);
+
+  // --- Acceptance criteria: negative (false-positive guards) ---
+
+  // AC5: "Sales: 2020" — label before bare year must NOT be a date
+  eq('dateTolerance AC5: isDateLike("Sales: 2020") -> false',
+    isDateLike('Sales: 2020'), false);
+
+  // AC6: "$2,020.00" — currency amount containing a year-like number
+  eq('dateTolerance AC6: isDateLike("$2,020.00") -> false',
+    isDateLike('$2,020.00'), false);
+
+  // AC7: "version 2020.1.3" — version string with year-like first component
+  eq('dateTolerance AC7: isDateLike("version 2020.1.3") -> false',
+    isDateLike('version 2020.1.3'), false);
+
+  // --- Adversarial: multiple superscripts ---
+  eq('dateTolerance: multiple superscripts "March 14, 2024¹²" -> true',
+    isDateLike('March 14, 2024¹²'), true);
+
+  // --- Adversarial: footnote markers ---
+  eq('dateTolerance: footnote asterisk "March 14, 2024*" -> true',
+    isDateLike('March 14, 2024*'), true);
+
+  eq('dateTolerance: footnote dagger "March 14, 2024†" -> true',
+    isDateLike('March 14, 2024†'), true);
+
+  // --- Adversarial: leading label before full date ---
+  eq('dateTolerance: leading label "Date: 2020-03-14" -> true',
+    isDateLike('Date: 2020-03-14'), true);
+
+  // --- Adversarial: ordinal in the middle (no comma) ---
+  eq('dateTolerance: "June 1st 2020" -> true',
+    isDateLike('June 1st 2020'), true);
+
+  // --- Adversarial: bare year remains strict ---
+
+  // "Q4 2020" — adjacent non-date word; bare-year strict anchors must block this
+  eq('dateTolerance: bare-year strict "Q4 2020" -> false',
+    isDateLike('Q4 2020'), false);
+
+  // "2020 revenue" — trailing word on bare year must also be blocked
+  eq('dateTolerance: bare-year strict "2020 revenue" -> false',
+    isDateLike('2020 revenue'), false);
+
+  // --- Adversarial: empty / whitespace ---
+  eq('dateTolerance: empty string -> false',
+    isDateLike(''), false);
+
+  eq('dateTolerance: whitespace only "   " -> false',
+    isDateLike('   '), false);
+
+  // --- Regression: plain dates still work after the relaxation ---
+  eq('dateTolerance regression: isDateLike("2020-03-14") -> true',
+    isDateLike('2020-03-14'), true);
+
+  eq('dateTolerance regression: isDateLike("March 14, 2024") -> true',
+    isDateLike('March 14, 2024'), true);
+
+  eq('dateTolerance regression: isDateLike("2020") -> true',
+    isDateLike('2020'), true);
+
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
