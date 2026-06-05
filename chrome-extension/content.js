@@ -13,13 +13,9 @@ const NUMBER_IN_TEXT_REGEX_GLOBAL = /-?\d[\d,]*(?:\.\d+)?/g;
 const DEFAULT_OFFSET_TOP = -0.5;
 const DEFAULT_NUM_TOP = 1;
 const VALIDATION_LIMIT = 20;
-const EPSILON = 1e-9;
-// Threshold for the "no-coarser-than-x" floor in half-step rounding. When the
-// integer part of a half-step offset has |trunc(offset)| >= X_FLOOR_THRESHOLD,
-// the result is also floored at roundWithOffset(|num|, trunc(offset)). Module-
-// level constant (not exposed via any public function signature) so the team
-// can later loosen it without an API change.
-const X_FLOOR_THRESHOLD = 1;
+// EPSILON, X_FLOOR_THRESHOLD, roundWithOffset, and roundCellSetAware live in
+// rounding.js (loaded by manifest content_scripts ahead of this file) so the
+// sidebar can call the same arithmetic for its preview band.
 
 // Toggle geometry constants
 const TOGGLE_DOT_PX = 10;
@@ -84,6 +80,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'SIDEBAR_OPENED') {
     if (lastRightClickedTable) {
       requestSidebarSettingsAndApply(lastRightClickedTable);
+      // Tell the sidebar its cached preview samples are stale; it will re-pull
+      // GET_PREVIEW_SAMPLES against the now-current targeted table.
+      try {
+        chrome.runtime.sendMessage({ action: 'PREVIEW_SAMPLES_CHANGED' });
+      } catch (e) {
+        // sidebar may not be open yet; harmless
+      }
     } else {
       console.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
     }
@@ -93,6 +96,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'APPLY_SIDEBAR_SETTINGS') {
     if (lastRightClickedTable) {
       applySidebarRounding(lastRightClickedTable, request.settings || DR_DEFAULTS);
+    }
+    return;
+  }
+
+  if (request.action === 'GET_PREVIEW_SAMPLES') {
+    if (lastRightClickedTable) {
+      const payload = extractPreviewSamples(lastRightClickedTable);
+      sendResponse(payload);
+    } else {
+      sendResponse({ samples: null, maxMag: null });
     }
     return;
   }
@@ -600,6 +613,95 @@ function resetTable(table) {
   }
   delete table.dataset.drShowingOriginal;
   syncSwitchForTable(table);
+}
+
+// --- Preview-band sample extraction (consumed by sidebar via IPC) ---
+
+// Walk every <td> in the table and return its trimmed text + parsed number, but
+// only for cells whose entire content parses as a single number (mode 'pure'
+// in roundTable's classifier). Cells matched only via includeWords / dates /
+// times are intentionally skipped here — they're deferred to a future sprint.
+function collectNumericCells(table) {
+  const out = [];
+  const rows = table.rows ? Array.from(table.rows) : [];
+  for (const row of rows) {
+    const cells = row.cells ? Array.from(row.cells) : [];
+    for (const cell of cells) {
+      if (cell.tagName !== 'TD') continue;
+      const text = cell.innerText || cell.textContent || '';
+      const trimmed = typeof text === 'string' ? text.trim() : '';
+      if (!trimmed) continue;
+      if (isDateLike(trimmed) || isTimeLike(trimmed)) continue;
+      if (/^(19|20)\d{2}$/.test(trimmed)) continue;
+      const num = toNumber(trimmed);
+      if (num === null || num === 0 || !isFinite(num)) continue;
+      out.push({ text: trimmed, num });
+    }
+  }
+  return out;
+}
+
+// Pick up to 2 large-magnitude + 3 smaller-magnitude representative samples
+// for the sidebar preview band. Bucketed by magnitude (floor(log10|num|)) so
+// the band shows the actual offset_top vs offset_other split that
+// roundCellSetAware will apply to the table.
+function extractPreviewSamples(table) {
+  const cells = collectNumericCells(table);
+  if (cells.length === 0) {
+    return { samples: { top: [], bottom: [] }, maxMag: null };
+  }
+  const numTop = DR_DEFAULTS.numTop || 1;
+
+  const byMag = new Map();
+  let maxMag = null;
+  for (const c of cells) {
+    const mag = Math.floor(Math.log10(Math.abs(c.num)));
+    if (maxMag === null || mag > maxMag) maxMag = mag;
+    if (!byMag.has(mag)) byMag.set(mag, []);
+    byMag.get(mag).push(c);
+  }
+
+  // Top band: cells whose magnitude is within numTop of maxMag (i.e. cells
+  // that roundCellSetAware will route to offset_top). Pick up to 2; prefer
+  // distinct magnitudes.
+  const topMags = Array.from(byMag.keys())
+    .filter(m => (maxMag - m) < numTop)
+    .sort((a, b) => b - a);
+  const top = [];
+  for (const m of topMags) {
+    if (top.length >= 2) break;
+    top.push(byMag.get(m)[0]);
+  }
+  if (top.length < 2 && topMags.length > 0) {
+    // Same magnitude has multiple cells — fill from the top bucket.
+    const bucket = byMag.get(topMags[0]);
+    for (let i = 1; i < bucket.length && top.length < 2; i++) {
+      top.push(bucket[i]);
+    }
+  }
+
+  // Bottom band: remaining magnitudes, one per bucket, descending. If <3
+  // distinct buckets remain, fill from the largest remaining bucket.
+  const bottomMags = Array.from(byMag.keys())
+    .filter(m => (maxMag - m) >= numTop)
+    .sort((a, b) => b - a);
+  const bottom = [];
+  for (const m of bottomMags) {
+    if (bottom.length >= 3) break;
+    bottom.push(byMag.get(m)[0]);
+  }
+  if (bottom.length < 3 && bottomMags.length > 0) {
+    const bucket = byMag.get(bottomMags[0]);
+    for (let i = 1; i < bucket.length && bottom.length < 3; i++) {
+      bottom.push(bucket[i]);
+    }
+  }
+
+  const toRow = c => ({ original: c.text, num: c.num });
+  return {
+    samples: { top: top.map(toRow), bottom: bottom.map(toRow) },
+    maxMag,
+  };
 }
 
 function roundTable(table, options) {
@@ -1286,80 +1388,7 @@ function findMaxMagnitude(numericRange) {
   return max_mag;
 }
 
-function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_top) {
-  if (value === "" || value === null) return "";
-
-  if (num === null) return value;
-  if (num === 0) return 0;
-
-  const current_mag = Math.floor(Math.log10(Math.abs(num)));
-
-  let offset = offset_other;
-  if (max_mag !== null && (max_mag - current_mag) < num_top) {
-    offset = offset_top;
-  }
-
-  return roundWithOffset(num, offset);
-}
-
-/**
- * Rounds a number using the offset model.
- *
- * Step formula:
- *   integer offset:      step = 10^(current_mag + offset)
- *   fractional offset:   step = f * 10^(current_mag + ceil(offset))
- *                        where f = |offset - trunc(offset)| in (0, 1)
- *
- * Examples for v=87,054,321 (current_mag = 7):
- *   offset = +2   -> step = 1e9       -> raw = 0
- *   offset = +1.5 -> step = 5e8       -> raw = 0
- *   offset = +1   -> step = 1e8       -> raw = 100,000,000
- *   offset = +0.5 -> step = 5e7       -> raw = 100,000,000
- *   offset =  0   -> step = 1e7       -> raw = 90,000,000
- *   offset = -0.5 -> step = 5e6       -> raw = 85,000,000
- *   offset = -1   -> step = 1e6       -> raw = 87,000,000
- *   offset = -1.5 -> step = 5e5       -> raw = 87,000,000
- *   offset = -2   -> step = 1e5       -> raw = 87,100,000
- *
- * Floors applied after raw rounding:
- *   Feature 2: result >= 10^current_mag (value-OoM floor, always on)
- *   Feature 3: when offset is non-integer and |trunc(offset)| >= X_FLOOR_THRESHOLD,
- *              also floor at roundWithOffset(|num|, trunc(offset)).
- */
-function roundWithOffset(num, offset) {
-  if (num === 0) return 0;
-
-  const sign = num < 0 ? -1 : 1;
-  const absnum = Math.abs(num);
-  const current_mag = Math.floor(Math.log10(absnum));
-
-  let target_mag;
-  let step;
-  if (Number.isInteger(offset)) {
-    target_mag = current_mag + offset;
-    step = Math.pow(10, target_mag);
-  } else {
-    target_mag = current_mag + Math.ceil(offset);
-    const f = Math.abs(offset - Math.trunc(offset));
-    step = f * Math.pow(10, target_mag);
-  }
-
-  const raw = Math.round(absnum / step + EPSILON) * step;
-  const floor_oom = Math.pow(10, current_mag);
-  let result = Math.max(raw, floor_oom);
-
-  if (!Number.isInteger(offset) && Math.abs(Math.trunc(offset)) >= X_FLOOR_THRESHOLD) {
-    const x_int = Math.trunc(offset);
-    const floor_x = roundWithOffset(absnum, x_int);
-    result = Math.max(result, floor_x);
-  }
-
-  if (result >= 10 || result % 1 === 0) {
-    result = Math.round(result);
-  }
-
-  return sign * result;
-}
+// roundCellSetAware and roundWithOffset live in rounding.js.
 
 function toNumber(value) {
   if (typeof value === "number") {

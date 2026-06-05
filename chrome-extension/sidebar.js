@@ -27,12 +27,13 @@ const rangeExprEl = document.getElementById('rangeExpr');
 const STOPS = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
 const DEFAULT_OFFSET = -0.5;
 
+const sliderBlockEl = document.getElementById('sliderBlock');
 const dualWrap = document.getElementById('dualWrap');
 const topThumb = document.getElementById('topThumb');
 const botThumb = document.getElementById('botThumb');
 const trackEl = dualWrap ? dualWrap.querySelector('.dual-track') : null;
-const topReadout = document.getElementById('topReadout');
-const botReadout = document.getElementById('botReadout');
+const topLabelEl = document.getElementById('topLabel');
+const botLabelEl = document.getElementById('botLabel');
 
 let topVal = DEFAULT_OFFSET;
 let botVal = DEFAULT_OFFSET;
@@ -61,10 +62,94 @@ function renderSliders() {
   topThumb.style.left = pct(topVal) + '%';
   botThumb.style.left = pct(botVal) + '%';
   botThumb.classList.toggle('linked', linked);
-  if (topReadout) topReadout.textContent = fmtOffset(topVal);
-  if (botReadout) botReadout.textContent = fmtOffset(botVal);
+  if (sliderBlockEl) sliderBlockEl.classList.toggle('linked', linked);
+  if (topLabelEl) topLabelEl.textContent = 'largest numbers: ' + fmtOffset(topVal);
+  if (botLabelEl) botLabelEl.textContent = 'all other numbers: ' + fmtOffset(botVal);
   if (topThumb) topThumb.setAttribute('aria-valuenow', String(topVal));
   if (botThumb) botThumb.setAttribute('aria-valuenow', String(botVal));
+  renderPreviewBands();
+}
+
+// ----- Preview band -----
+const topBandEl = document.getElementById('topBand');
+const botBandEl = document.getElementById('botBand');
+const PREVIEW_NUM_TOP = 1;
+let cachedSamples = null;
+let cachedMaxMag = null;
+
+function formatNumberWithCommas(n) {
+  if (typeof n !== 'number' || !isFinite(n)) return String(n);
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  const intPart = Math.floor(abs);
+  const frac = abs - intPart;
+  const intStr = String(intPart).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  if (frac === 0) return sign + intStr;
+  const fracStr = String(frac).slice(1).replace(/0+$/, '');
+  return sign + intStr + (fracStr === '.' ? '' : fracStr);
+}
+
+function renderBand(el, rows, offset) {
+  if (!el) return;
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = '';
+  for (const row of rows) {
+    const pair = document.createElement('div');
+    pair.className = 'pair';
+
+    const from = document.createElement('span');
+    from.className = 'from';
+    from.textContent = row.original;
+    pair.appendChild(from);
+
+    const arrow = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = '→';
+    pair.appendChild(arrow);
+
+    const numEl = document.createElement('span');
+    numEl.className = 'num';
+    const rounded = roundWithOffset(row.num, offset);
+    numEl.textContent = formatNumberWithCommas(rounded);
+    pair.appendChild(numEl);
+
+    const stepEl = document.createElement('span');
+    stepEl.className = 'step';
+    stepEl.textContent = '(' + formatStep(stepForOffset(row.num, offset)) + ')';
+    pair.appendChild(stepEl);
+
+    el.appendChild(pair);
+  }
+}
+
+function renderPreviewBands() {
+  if (!topBandEl || !botBandEl) return;
+  if (!cachedSamples) {
+    renderBand(topBandEl, null);
+    renderBand(botBandEl, null);
+    return;
+  }
+  renderBand(topBandEl, cachedSamples.top, topVal);
+  renderBand(botBandEl, cachedSamples.bottom, botVal);
+}
+
+function fetchPreviewSamples() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs[0]) return;
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'GET_PREVIEW_SAMPLES' }, (response) => {
+      if (chrome.runtime.lastError || !response) {
+        cachedSamples = null;
+        cachedMaxMag = null;
+      } else {
+        cachedSamples = response.samples;
+        cachedMaxMag = response.maxMag;
+      }
+      renderPreviewBands();
+    });
+  });
 }
 
 function decouple() {
@@ -246,6 +331,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       statusEl.textContent = '';
       delete statusEl.dataset.source;
     }
+  } else if (request.action === 'PREVIEW_SAMPLES_CHANGED') {
+    fetchPreviewSamples();
   }
 });
 
@@ -277,6 +364,10 @@ function applyDefaultsToUI() {
   renderSliders();
 }
 applyDefaultsToUI();
+
+// Pull samples from whichever table the user has right-clicked. If no table
+// was targeted, content.js returns nulls and the bands render the prompt.
+fetchPreviewSamples();
 
 // Defensively clear rangeExpr so browser autofill can never leak a stale value
 // into a hidden field and silently constrain content.js output.
