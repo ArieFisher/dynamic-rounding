@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamic Rounding — linked slider choices</title>
+<style>
+  :root {
+    --on: #3d85c6;
+    --off: #ccc;
+    --ink: #202124;
+    --muted: #5f6368;
+    --line: #e0e0e0;
+    --track: #d6d9de;
+    --tick: #b5b9c0;
+    --disabled-bg: #f1f3f4;
+    --disabled-ink: #9aa0a6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    color: var(--ink);
+    background: #fafafa;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 18px; max-width: 760px; }
+  code { background:#f1f3f4; padding:1px 4px; border-radius:4px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 2px; }
+  .dims { color: var(--muted); font-size: 12px; margin: 0 0 14px; font-variant-numeric: tabular-nums; }
+  .note { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+
+  /* simulated sidebar panel */
+  .sidebar {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .row-label {
+    font-size: 13px;
+    color: var(--ink);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin: 0 0 6px;
+  }
+  .row-label .val {
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .row + .row { margin-top: 14px; }
+
+  /* output row that shows what the slider would produce */
+  .results {
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: #fafafa;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .results .pair { display: flex; justify-content: space-between; }
+  .results .pair + .pair { margin-top: 2px; }
+  .results .from { color: var(--muted); }
+
+  /* ---------- Variant A: native range with tickmarks ---------- */
+  .nrange {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 28px;
+    background: transparent;
+  }
+  .nrange:focus { outline: none; }
+  .nrange::-webkit-slider-runnable-track {
+    height: 4px; background: var(--track); border-radius: 999px;
+  }
+  .nrange::-moz-range-track {
+    height: 4px; background: var(--track); border-radius: 999px;
+  }
+  .nrange::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--on); border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    margin-top: -6px;
+    cursor: pointer;
+  }
+  .nrange::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--on); border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    cursor: pointer;
+  }
+  .nrange:disabled::-webkit-slider-thumb { background: var(--disabled-ink); cursor: not-allowed; }
+  .nrange:disabled::-moz-range-thumb { background: var(--disabled-ink); cursor: not-allowed; }
+  .nrange:disabled { opacity: .65; }
+  .tick-row {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    margin: -2px 7px 0;
+    pointer-events: none;
+  }
+  .tick {
+    height: 6px;
+    width: 1px;
+    background: var(--tick);
+    justify-self: center;
+  }
+
+  /* ---------- Variant B: custom segmented track ---------- */
+  .seg-wrap { position: relative; height: 32px; }
+  .seg-track {
+    position: absolute;
+    top: 50%; left: 0; right: 0;
+    height: 4px; transform: translateY(-50%);
+    background: var(--track); border-radius: 999px;
+  }
+  .seg-ticks {
+    position: absolute; left: 0; right: 0; top: 50%;
+    transform: translateY(-50%);
+    display: grid; grid-template-columns: repeat(9, 1fr);
+    pointer-events: none;
+  }
+  .seg-ticks .t {
+    height: 10px; width: 2px; background: var(--tick);
+    justify-self: center; border-radius: 1px;
+  }
+  .seg-stops {
+    position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+    display: grid; grid-template-columns: repeat(9, 1fr);
+  }
+  .seg-stops button {
+    background: transparent; border: 0; padding: 0; cursor: pointer;
+    height: 100%;
+  }
+  .seg-thumb {
+    position: absolute; top: 50%; transform: translate(-50%, -50%);
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--on); border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    transition: left .12s ease, background .15s;
+    pointer-events: none;
+  }
+  .seg-wrap.disabled .seg-thumb { background: var(--disabled-ink); }
+  .seg-wrap.disabled .seg-stops button { cursor: not-allowed; }
+  .seg-wrap.disabled { opacity: .65; }
+
+  /* ---------- Variant C/D shared: dual on single shared track ---------- */
+  .dual-wrap {
+    position: relative;
+    height: 56px;
+  }
+  .dual-track {
+    position: absolute;
+    left: 0; right: 0; top: 26px;
+    height: 4px; background: var(--track); border-radius: 999px;
+  }
+  .dual-ticks {
+    position: absolute; left: 0; right: 0; top: 22px;
+    display: grid; grid-template-columns: repeat(9, 1fr);
+    pointer-events: none;
+  }
+  .dual-ticks .t {
+    height: 12px; width: 2px; background: var(--tick);
+    justify-self: center; border-radius: 1px;
+  }
+  .dual-thumb {
+    position: absolute; top: 26px; transform: translate(-50%, -50%);
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    cursor: pointer;
+    transition: left .12s ease, background .15s, opacity .15s, top .15s ease;
+  }
+  .dual-thumb.top { background: var(--on); z-index: 2; }
+  .dual-thumb.bot { background: #b3623d; z-index: 1; }
+  /* Variant C: linked bottom hides behind top, non-interactive */
+  .dual-wrap.unlink-chip .dual-thumb.bot.linked {
+    background: var(--disabled-ink); opacity: 0; pointer-events: none;
+  }
+  /* Variant D: linked bottom pokes down as a tab so it stays grabbable */
+  .dual-wrap.tab-poke .dual-thumb.bot {
+    border-radius: 0 0 12px 12px;
+    width: 18px; height: 14px;
+    top: 42px;
+  }
+  .dual-wrap.tab-poke .dual-thumb.bot.linked {
+    background: var(--disabled-ink);
+  }
+  .dual-label {
+    position: absolute;
+    left: 0; right: 0;
+    font-size: 11px; color: var(--muted);
+    text-align: center;
+  }
+  .dual-label.top { top: 0; }
+  .dual-label.bot { bottom: 0; }
+  .unlink-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #e8f0fe;
+    color: #1967d2;
+    border: 1px solid #c6dafc;
+    cursor: pointer;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .unlink-btn:hover { background: #d2e3fc; }
+  .unlink-btn.broken {
+    background: #fce8e6; color: #b3261e; border-color: #f5c4be; cursor: default;
+  }
+
+  /* ---------- Variant D: split layout with labels + results bands ---------- */
+  .slider-block { display: flex; flex-direction: column; gap: 6px; }
+  .label-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .label-row .lbl { color: var(--muted); }
+  .label-row .val { color: var(--ink); }
+  .results-band {
+    padding: 8px 12px;
+    background: #fafafa;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .results-band .pair { display: flex; justify-content: space-between; }
+  .results-band .pair + .pair { margin-top: 2px; }
+  .results-band .from { color: var(--muted); white-space: pre; }
+  /* Distinguish the centre tick (offset = 0). Slightly darker + taller. */
+  .dual-ticks .t:nth-child(5),
+  .seg-ticks .t:nth-child(5) {
+    background: #7a8089;
+    height: 14px;
+  }
+
+  /* Variant F: align the "(step)" column across all preview rows.
+     The band becomes a 3-col grid (label · rounded value · step) and each
+     .pair uses display:contents so its three children participate directly
+     in the band's grid. Result: rounded values right-align in column 2,
+     and the opening "(" of every step lines up at the start of column 3. */
+  .show-steps .results-band {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    justify-content: center;
+    column-gap: 6px;
+    row-gap: 2px;
+  }
+  .show-steps .results-band .pair { display: contents; }
+  /* Right-align the originals so the "→" arrow lines up regardless of digit
+     count, decimal places, or trailing symbols like %. tabular-nums on the
+     parent keeps digit widths consistent. */
+  .show-steps .results-band .from { text-align: right; white-space: normal; }
+  .show-steps .results-band .num { text-align: right; }
+  .show-steps .results-band .step { color: var(--muted); text-align: left; }
+
+  /* ---------- Shared: link chip ---------- */
+  .link-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #e8f0fe;
+    color: #1967d2;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .link-chip.broken {
+    background: #fce8e6;
+    color: #b3261e;
+  }
+
+  footer { color: var(--muted); font-size:12px; margin-top:28px; max-width:760px; }
+</style>
+</head>
+<body>
+  <h1>Linked slider choices</h1>
+  <p class="sub">
+    Each card shows a live, working sidebar simulation for the new
+    <strong>largest numbers</strong> / <strong>all other numbers</strong> sliders.
+    Discrete stops are <code>1, 0.75, 0.5, 0.25, 0, -0.25, -0.5, -0.75, -1</code> — no labels.
+    Bottom slider starts <strong>greyed and linked</strong>; the moment you
+    touch it, it decouples and stays independent. The results panel under each
+    card shows what two top-band values (<code>27,136</code>, <code>18,750</code>)
+    and smaller-magnitude values (<code>4,080</code>, <code>312</code>, <code>56</code>)
+    would round to with the current slider positions.
+  </p>
+
+  <div class="grid">
+
+    <!-- Variant A: native range -->
+    <div class="card">
+      <h2>A. Native <code>&lt;input type="range"&gt;</code> with tick marks</h2>
+      <p class="dims">9 stops · step 0.25 · ticks via <code>&lt;datalist&gt;</code> + CSS row</p>
+      <div class="sidebar">
+        <div class="row" data-variant="A">
+          <div class="row-label">
+            <span>largest numbers <span class="link-chip">linked</span></span>
+            <span class="val" data-out="top">−0.5</span>
+          </div>
+          <input class="nrange js-top" type="range" min="-1" max="1" step="0.25" value="-0.5" list="ticksA">
+          <div class="tick-row" aria-hidden="true">
+            <span class="tick"></span><span class="tick"></span><span class="tick"></span>
+            <span class="tick"></span><span class="tick"></span><span class="tick"></span>
+            <span class="tick"></span><span class="tick"></span><span class="tick"></span>
+          </div>
+        </div>
+        <div class="row" data-variant="A">
+          <div class="row-label">
+            <span>all other numbers</span>
+            <span class="val" data-out="bot">−0.5</span>
+          </div>
+          <input class="nrange js-bot" type="range" min="-1" max="1" step="0.25" value="-0.5" disabled>
+          <div class="tick-row" aria-hidden="true">
+            <span class="tick"></span><span class="tick"></span><span class="tick"></span>
+            <span class="tick"></span><span class="tick"></span><span class="tick"></span>
+            <span class="tick"></span><span class="tick"></span><span class="tick"></span>
+          </div>
+        </div>
+        <div class="results" data-results>
+          <div class="pair"><span class="from">27,136 →</span><span data-r1>25,000</span></div>
+          <div class="pair"><span class="from">18,750 →</span><span data-r2>20,000</span></div>
+          <div class="pair"><span class="from"> 4,080 →</span><span data-r3>4,000</span></div>
+          <div class="pair"><span class="from">   312 →</span><span data-r4>300</span></div>
+        </div>
+      </div>
+      <p class="note">
+        Cheapest implementation: browser handles snapping, keyboard, and focus
+        out of the box. Ticks are a separate row that visually aligns to the
+        track. Thumb sizes vary slightly across browsers.
+      </p>
+    </div>
+
+    <!-- Variant B: custom segmented -->
+    <div class="card">
+      <h2>B. Custom segmented track (click-on-stop)</h2>
+      <p class="dims">9 click targets · animated thumb · pixel-identical across browsers</p>
+      <div class="sidebar">
+        <div class="row" data-variant="B">
+          <div class="row-label">
+            <span>largest numbers <span class="link-chip">linked</span></span>
+            <span class="val" data-out="top">−0.5</span>
+          </div>
+          <div class="seg-wrap js-top-wrap">
+            <div class="seg-track"></div>
+            <div class="seg-ticks">
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+            </div>
+            <div class="seg-stops">
+              <button data-v="1"></button><button data-v="0.75"></button>
+              <button data-v="0.5"></button><button data-v="0.25"></button>
+              <button data-v="0"></button><button data-v="-0.25"></button>
+              <button data-v="-0.5"></button><button data-v="-0.75"></button>
+              <button data-v="-1"></button>
+            </div>
+            <div class="seg-thumb js-top-thumb" style="left:25%"></div>
+          </div>
+        </div>
+        <div class="row" data-variant="B">
+          <div class="row-label">
+            <span>all other numbers</span>
+            <span class="val" data-out="bot">−0.5</span>
+          </div>
+          <div class="seg-wrap js-bot-wrap disabled">
+            <div class="seg-track"></div>
+            <div class="seg-ticks">
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+            </div>
+            <div class="seg-stops">
+              <button data-v="1"></button><button data-v="0.75"></button>
+              <button data-v="0.5"></button><button data-v="0.25"></button>
+              <button data-v="0"></button><button data-v="-0.25"></button>
+              <button data-v="-0.5"></button><button data-v="-0.75"></button>
+              <button data-v="-1"></button>
+            </div>
+            <div class="seg-thumb js-bot-thumb" style="left:25%"></div>
+          </div>
+        </div>
+        <div class="results" data-results>
+          <div class="pair"><span class="from">27,136 →</span><span data-r1>25,000</span></div>
+          <div class="pair"><span class="from">18,750 →</span><span data-r2>20,000</span></div>
+          <div class="pair"><span class="from"> 4,080 →</span><span data-r3>4,000</span></div>
+          <div class="pair"><span class="from">   312 →</span><span data-r4>300</span></div>
+        </div>
+      </div>
+      <p class="note">
+        Each tick is its own clickable column — explicit affordance that there
+        are 9 stops and no in-between. Thumb glides with a 120 ms ease. More
+        code than A, but consistent across Chrome/Firefox/Safari and easy to
+        restyle (e.g., colour the active half of the track).
+      </p>
+    </div>
+
+    <!-- Variant C: dual + unlink chip -->
+    <div class="card">
+      <h2>C. Two thumbs on one track, explicit unlink chip</h2>
+      <p class="dims">single track · bottom thumb hidden while linked · click chip to decouple</p>
+      <div class="sidebar">
+        <div class="dual-wrap unlink-chip" data-variant="C">
+          <div class="dual-label top">
+            largest numbers / all other numbers
+            <button class="unlink-btn js-unlink" type="button">unlink</button>
+          </div>
+          <div class="dual-track"></div>
+          <div class="dual-ticks">
+            <span class="t"></span><span class="t"></span><span class="t"></span>
+            <span class="t"></span><span class="t"></span><span class="t"></span>
+            <span class="t"></span><span class="t"></span><span class="t"></span>
+          </div>
+          <div class="dual-thumb bot linked js-bot-thumb" style="left:25%" tabindex="0"></div>
+          <div class="dual-thumb top js-top-thumb" style="left:25%" tabindex="0"></div>
+        </div>
+        <div class="row" style="margin-top:8px; display:flex; justify-content:space-between; font-size:12px; color:var(--muted)">
+          <span>largest numbers: <span class="val" data-out="top">−0.5</span></span>
+          <span>all other numbers: <span class="val" data-out="bot">−0.5</span></span>
+        </div>
+        <div class="results" data-results>
+          <div class="pair"><span class="from">27,136 →</span><span data-r1>25,000</span></div>
+          <div class="pair"><span class="from">18,750 →</span><span data-r2>20,000</span></div>
+          <div class="pair"><span class="from"> 4,080 →</span><span data-r3>4,000</span></div>
+          <div class="pair"><span class="from">   312 →</span><span data-r4>300</span></div>
+        </div>
+      </div>
+      <p class="note">
+        Tightest vertical footprint. While linked, only the blue thumb is
+        visible and it drives both values. Click <strong>unlink</strong> to
+        expose the rust thumb so you can move it independently. The chip is
+        the explicit decouple affordance — no hidden gestures.
+      </p>
+    </div>
+
+    <!-- Variant D: dual + tab poke (original layout) -->
+    <div class="card">
+      <h2>D. Two thumbs, bottom pokes down as a tab</h2>
+      <p class="dims">single track · bottom thumb always visible as a small tab below</p>
+      <div class="sidebar">
+        <div class="dual-wrap tab-poke" data-variant="D">
+          <div class="dual-label top">largest numbers</div>
+          <div class="dual-track"></div>
+          <div class="dual-ticks">
+            <span class="t"></span><span class="t"></span><span class="t"></span>
+            <span class="t"></span><span class="t"></span><span class="t"></span>
+            <span class="t"></span><span class="t"></span><span class="t"></span>
+          </div>
+          <div class="dual-thumb bot linked js-bot-thumb" style="left:25%" tabindex="0"></div>
+          <div class="dual-thumb top js-top-thumb" style="left:25%" tabindex="0"></div>
+          <div class="dual-label bot" style="bottom: -2px">all other numbers</div>
+        </div>
+        <div class="row" style="margin-top:8px; display:flex; justify-content:space-between; font-size:12px; color:var(--muted)">
+          <span>largest numbers: <span class="val" data-out="top">−0.5</span></span>
+          <span>all other numbers: <span class="val" data-out="bot">−0.5</span></span>
+        </div>
+        <div class="results" data-results>
+          <div class="pair"><span class="from">27,136 →</span><span data-r1>25,000</span></div>
+          <div class="pair"><span class="from">18,750 →</span><span data-r2>20,000</span></div>
+          <div class="pair"><span class="from"> 4,080 →</span><span data-r3>4,000</span></div>
+          <div class="pair"><span class="from">   312 →</span><span data-r4>300</span></div>
+        </div>
+      </div>
+      <p class="note">
+        Bottom thumb renders as a small tab below the track (rounded only on
+        the bottom corners) so it's always grabbable. While linked it is
+        <strong>grey</strong>; once you grab it, it turns <strong>rust</strong>
+        and stays independent. If you later release either thumb on the same
+        stop as the other, they re-link automatically (tab turns grey again). No
+        chip, no hidden affordance — the colour and position carry the state.
+      </p>
+    </div>
+
+    <!-- Variant E: split layout — examples above + below the slider -->
+    <div class="card">
+      <h2>E. Split preview: examples above &amp; below the slider</h2>
+      <p class="dims">D's slider mechanics · labels relocated · 2 top-band examples above, 3 below</p>
+      <div class="sidebar">
+        <div class="slider-block" data-results>
+          <div class="results-band">
+            <div class="pair"><span class="from">27,136 →</span><span data-r1>25,000</span></div>
+            <div class="pair"><span class="from">18,750 →</span><span data-r2>20,000</span></div>
+          </div>
+          <div class="label-row">
+            <span class="lbl">largest numbers</span>
+            <span class="val" data-out="top">−0.5 (5k)</span>
+          </div>
+          <div class="dual-wrap tab-poke" data-variant="E">
+            <div class="dual-track"></div>
+            <div class="dual-ticks">
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+            </div>
+            <div class="dual-thumb bot linked js-bot-thumb" style="left:25%" tabindex="0"></div>
+            <div class="dual-thumb top js-top-thumb" style="left:25%" tabindex="0"></div>
+          </div>
+          <div class="label-row">
+            <span class="lbl">all other numbers</span>
+            <span class="val" data-out="bot">−0.5</span>
+          </div>
+          <div class="results-band">
+            <div class="pair"><span class="from"> 4,080 →</span><span data-r3>4,000</span></div>
+            <div class="pair"><span class="from">   312 →</span><span data-r4>300</span></div>
+            <div class="pair"><span class="from">    56 →</span><span data-r5>55</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="note">
+        Same slider mechanics as D (linked tab, rust on decouple, auto re-link
+        when both thumbs rest on the same stop). Labels move to the left and
+        readouts to the right (<code>−0.5 (5k)</code> on top, just the offset
+        below). The centre tick (offset = 0) is rendered darker. Preview is
+        split: top-band examples sit above the slider, smaller-magnitude
+        examples below — making it obvious which slider drives which.
+      </p>
+    </div>
+
+    <!-- Variant F: step shown per example, not per slider -->
+    <div class="card">
+      <h2>F. Step lives with each example, not with the slider</h2>
+      <p class="dims">E's layout · slider readouts show just the offset · each row shows its own step in <code>(…)</code> · arrows centred</p>
+      <div class="sidebar">
+        <div class="slider-block show-steps" data-results>
+          <div class="results-band">
+            <div class="pair">
+              <span class="from">27,136 →</span>
+              <span class="num" data-r1>25,000</span>
+              <span class="step" data-r1-step>(5k)</span>
+            </div>
+            <div class="pair">
+              <span class="from">18,750 →</span>
+              <span class="num" data-r2>20,000</span>
+              <span class="step" data-r2-step>(5k)</span>
+            </div>
+          </div>
+          <div class="label-row">
+            <span class="lbl">largest numbers</span>
+            <span class="val" data-out="top">−0.5</span>
+          </div>
+          <div class="dual-wrap tab-poke" data-variant="F">
+            <div class="dual-track"></div>
+            <div class="dual-ticks">
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+              <span class="t"></span><span class="t"></span><span class="t"></span>
+            </div>
+            <div class="dual-thumb bot linked js-bot-thumb" style="left:25%" tabindex="0"></div>
+            <div class="dual-thumb top js-top-thumb" style="left:25%" tabindex="0"></div>
+          </div>
+          <div class="label-row">
+            <span class="lbl">all other numbers</span>
+            <span class="val" data-out="bot">−0.5</span>
+          </div>
+          <div class="results-band">
+            <div class="pair">
+              <span class="from"> 4,080 →</span>
+              <span class="num" data-r3>4,000</span>
+              <span class="step" data-r3-step>(500)</span>
+            </div>
+            <div class="pair">
+              <span class="from">   312 →</span>
+              <span class="num" data-r4>300</span>
+              <span class="step" data-r4-step>(50)</span>
+            </div>
+            <div class="pair">
+              <span class="from">    56 →</span>
+              <span class="num" data-r5>55</span>
+              <span class="step" data-r5-step>(5)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="note">
+        Same mechanics and layout as E, but the bracketed step moves from the
+        slider readout to each example. With <code>largest numbers = 0</code>
+        the top band reads <code>30,000 (10k)</code> and <code>20,000 (10k)</code>;
+        with <code>all other numbers = −0.25</code> the bottom reads
+        <code>4,000 (250)</code>, <code>300 (25)</code>, <code>55 (2.5)</code> —
+        each value annotated with the step that produced it. Arrows and brackets
+        are aligned via a shared grid so the eye reads down each column.
+      </p>
+    </div>
+
+  </div>
+
+  <footer>
+    Math: same engine for all three. <code>current_mag = floor(log10(|n|))</code>;
+    for fractional offset <code>x</code>, <code>step = |x − trunc(x)| · 10^(current_mag + ceil(x))</code>,
+    then Feature-2 floors at <code>10^current_mag</code> so a value never collapses to zero.
+    Result rows update live as you drag.
+  </footer>
+
+  <script>
+    // ---------- shared rounding engine (mirror of round_dynamic.js) ----------
+    var EPSILON = 1e-9;
+    var X_FLOOR_THRESHOLD = 1;
+    function roundWithOffset(num, offset) {
+      if (num === 0) return 0;
+      var sign = num < 0 ? -1 : 1;
+      var absnum = Math.abs(num);
+      var current_mag = Math.floor(Math.log10(absnum));
+      var isInteger = Number.isInteger(offset);
+      var target_mag, step;
+      if (isInteger) {
+        target_mag = current_mag + offset;
+        step = Math.pow(10, target_mag);
+      } else {
+        target_mag = current_mag + Math.ceil(offset);
+        var f = Math.abs(offset - Math.trunc(offset));
+        step = f * Math.pow(10, target_mag);
+      }
+      var raw = Math.round(absnum / step + EPSILON) * step;
+      var floor_oom = Math.pow(10, current_mag);
+      var result = Math.max(raw, floor_oom);
+      if (!isInteger && Math.abs(Math.trunc(offset)) >= X_FLOOR_THRESHOLD) {
+        var x_int = Math.trunc(offset);
+        var floor_x = Math.abs(roundWithOffset(absnum, x_int));
+        result = Math.max(result, floor_x);
+      }
+      if (result >= 10 || result % 1 === 0) result = Math.round(result);
+      return sign * result;
+    }
+    function pickOffset(num, max_mag, top, other, num_top) {
+      var cur = Math.floor(Math.log10(Math.abs(num)));
+      return (max_mag - cur) < num_top ? top : other;
+    }
+    function fmt(n) { return n.toLocaleString(); }
+    function fmtOffset(o) {
+      var s = o.toFixed(2).replace(/\.?0+$/, '');
+      if (s === '-0') s = '0';
+      return s.replace('-', '−');
+    }
+    var TEST_VALUES = [27136, 18750, 4080, 312, 56];
+    var TEST_MAX_MAG = 4; // largest magnitude in the test set
+    var TEST_OTHER_MAX_MAG = 3; // largest non-top magnitude in the test set
+
+    function stepFor(mag, offset) {
+      if (Number.isInteger(offset)) return Math.pow(10, mag + offset);
+      var target = mag + Math.ceil(offset);
+      var f = Math.abs(offset - Math.trunc(offset));
+      return f * Math.pow(10, target);
+    }
+    function fmtCompact(n) {
+      if (n >= 1000) {
+        var k = n / 1000;
+        return (k === Math.floor(k) ? k.toString() : k.toFixed(1)) + 'k';
+      }
+      // Avoid trailing zeros for sub-1 step values (e.g. 0.5)
+      return n % 1 === 0 ? String(n) : n.toString();
+    }
+    function fmtTopReadout(offset) {
+      return fmtOffset(offset) + ' (' + fmtCompact(stepFor(TEST_MAX_MAG, offset)) + ')';
+    }
+    function fmtBotReadout(offset) {
+      return fmtOffset(offset);
+    }
+
+    function updateResults(card, top, other) {
+      var r = card.querySelector('[data-results]');
+      if (!r) return;
+      var showStepsPerRow = r.classList && r.classList.contains('show-steps');
+      var outs = [
+        r.querySelector('[data-r1]'),
+        r.querySelector('[data-r2]'),
+        r.querySelector('[data-r3]'),
+        r.querySelector('[data-r4]'),
+        r.querySelector('[data-r5]')
+      ];
+      for (var i = 0; i < TEST_VALUES.length; i++) {
+        var off = pickOffset(TEST_VALUES[i], TEST_MAX_MAG, top, other, 1);
+        if (!outs[i]) continue;
+        var rounded = roundWithOffset(TEST_VALUES[i], off);
+        outs[i].textContent = fmt(rounded);
+        if (showStepsPerRow) {
+          var cur = Math.floor(Math.log10(Math.abs(TEST_VALUES[i])));
+          var stepEl = r.querySelector('[data-r' + (i + 1) + '-step]');
+          var stepText = '(' + fmtCompact(stepFor(cur, off)) + ')';
+          if (stepEl) {
+            stepEl.textContent = stepText;
+          } else {
+            // Fallback for any row that uses the combined format.
+            outs[i].textContent = fmt(rounded) + ' ' + stepText;
+          }
+        }
+      }
+      card.querySelectorAll('[data-out="top"]').forEach(function (el) {
+        el.textContent = showStepsPerRow ? fmtBotReadout(top) : fmtTopReadout(top);
+      });
+      card.querySelectorAll('[data-out="bot"]').forEach(function (el) {
+        el.textContent = fmtBotReadout(other);
+      });
+    }
+
+    // ---------- Variant A: native range ----------
+    document.querySelectorAll('[data-variant="A"]').forEach(function () {});
+    (function () {
+      var cards = document.querySelectorAll('.card');
+      cards.forEach(function (card) {
+        var top = card.querySelector('.js-top');
+        var bot = card.querySelector('.js-bot');
+        if (!top || !bot || top.tagName !== 'INPUT') return;
+        var linked = true;
+        function chip(state) {
+          var c = card.querySelector('.link-chip');
+          if (!c) return;
+          c.textContent = state ? 'linked' : 'decoupled';
+          c.classList.toggle('broken', !state);
+        }
+        function update() {
+          updateResults(card, parseFloat(top.value), parseFloat(bot.value));
+        }
+        top.addEventListener('input', function () {
+          if (linked) bot.value = top.value;
+          update();
+        });
+        function unlink() {
+          if (!linked) return;
+          linked = false;
+          bot.disabled = false;
+          chip(false);
+        }
+        bot.addEventListener('pointerdown', unlink);
+        bot.addEventListener('keydown', unlink);
+        bot.addEventListener('input', update);
+        update();
+      });
+    })();
+
+    // ---------- Variant B: segmented ----------
+    (function () {
+      document.querySelectorAll('[data-variant="B"]').forEach(function () {});
+      var cards = document.querySelectorAll('.card');
+      cards.forEach(function (card) {
+        var topWrap = card.querySelector('.js-top-wrap');
+        var botWrap = card.querySelector('.js-bot-wrap');
+        if (!topWrap || !botWrap || !topWrap.classList.contains('seg-wrap')) return;
+        var topThumb = card.querySelector('.js-top-thumb');
+        var botThumb = card.querySelector('.js-bot-thumb');
+        var topVal = -0.5, botVal = -0.5, linked = true;
+
+        var STOPS = [1, 0.75, 0.5, 0.25, 0, -0.25, -0.5, -0.75, -1];
+        function indexOf(v) {
+          var best = 0, bestDist = Infinity;
+          for (var i = 0; i < STOPS.length; i++) {
+            var d = Math.abs(STOPS[i] - v);
+            if (d < bestDist) { bestDist = d; best = i; }
+          }
+          return best;
+        }
+        function pct(v) {
+          var i = indexOf(v);
+          // center of each segment
+          return ((i + 0.5) / STOPS.length) * 100;
+        }
+        function chip(state) {
+          var c = card.querySelector('.link-chip');
+          if (!c) return;
+          c.textContent = state ? 'linked' : 'decoupled';
+          c.classList.toggle('broken', !state);
+        }
+        function render() {
+          topThumb.style.left = pct(topVal) + '%';
+          botThumb.style.left = pct(botVal) + '%';
+          updateResults(card, topVal, botVal);
+        }
+
+        topWrap.querySelectorAll('.seg-stops button').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            topVal = parseFloat(btn.dataset.v);
+            if (linked) botVal = topVal;
+            render();
+          });
+        });
+        botWrap.querySelectorAll('.seg-stops button').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            if (linked) {
+              linked = false;
+              botWrap.classList.remove('disabled');
+              chip(false);
+            }
+            botVal = parseFloat(btn.dataset.v);
+            render();
+          });
+        });
+        render();
+      });
+    })();
+
+    // ---------- Variants C & D: dual thumbs on shared track ----------
+    (function () {
+      var cards = document.querySelectorAll('.card');
+      cards.forEach(function (card) {
+        var wrap = card.querySelector('.dual-wrap');
+        if (!wrap) return;
+        var topThumb = wrap.querySelector('.js-top-thumb');
+        var botThumb = wrap.querySelector('.js-bot-thumb');
+        var unlinkBtn = card.querySelector('.js-unlink');
+        var hasChip = !!card.querySelector('.link-chip');
+        var topVal = -0.5, botVal = -0.5, linked = true;
+        var STOPS = [1, 0.75, 0.5, 0.25, 0, -0.25, -0.5, -0.75, -1];
+        function pct(v) {
+          return ((v + 1) / 2) * 100;
+        }
+        function snap(v) {
+          var best = STOPS[0], bestDist = Infinity;
+          for (var i = 0; i < STOPS.length; i++) {
+            var d = Math.abs(STOPS[i] - v);
+            if (d < bestDist) { bestDist = d; best = STOPS[i]; }
+          }
+          return best;
+        }
+        function reflectLinkUi() {
+          if (hasChip) {
+            var c = card.querySelector('.link-chip');
+            c.textContent = linked ? 'linked' : 'decoupled';
+            c.classList.toggle('broken', !linked);
+          }
+          if (unlinkBtn) {
+            unlinkBtn.textContent = linked ? 'unlink' : 'decoupled';
+            unlinkBtn.classList.toggle('broken', !linked);
+            unlinkBtn.disabled = !linked;
+          }
+        }
+        function decouple() {
+          if (!linked) return;
+          linked = false;
+          reflectLinkUi();
+          render();
+        }
+        function render() {
+          topThumb.style.left = pct(topVal) + '%';
+          botThumb.style.left = pct(botVal) + '%';
+          botThumb.classList.toggle('linked', linked);
+          updateResults(card, topVal, botVal);
+        }
+
+        function relink() {
+          if (linked) return;
+          linked = true;
+          reflectLinkUi();
+          render();
+        }
+        function startDrag(which) {
+          return function (e) {
+            e.preventDefault();
+            if (which === 'bot' && linked) decouple();
+            var rect = wrap.querySelector('.dual-track').getBoundingClientRect();
+            function move(ev) {
+              var x = (ev.clientX !== undefined ? ev.clientX : (ev.touches && ev.touches[0].clientX)) - rect.left;
+              var ratio = Math.max(0, Math.min(1, x / rect.width));
+              var raw = ratio * 2 - 1;
+              var snapped = snap(raw);
+              if (which === 'top') {
+                topVal = snapped;
+                if (linked) botVal = snapped;
+              } else {
+                botVal = snapped;
+              }
+              render();
+            }
+            function up() {
+              document.removeEventListener('pointermove', move);
+              document.removeEventListener('pointerup', up);
+              // After releasing either thumb, if both have come to rest on
+              // the same stop, re-link them.
+              if (!linked && botVal === topVal) relink();
+            }
+            document.addEventListener('pointermove', move);
+            document.addEventListener('pointerup', up);
+            move(e);
+          };
+        }
+        topThumb.addEventListener('pointerdown', startDrag('top'));
+        botThumb.addEventListener('pointerdown', startDrag('bot'));
+        if (unlinkBtn) unlinkBtn.addEventListener('click', decouple);
+        reflectLinkUi();
+        render();
+      });
+    })();
+  </script>
+</body>
+</html>
