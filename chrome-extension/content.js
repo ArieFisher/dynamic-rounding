@@ -749,7 +749,7 @@ function roundTable(table, options) {
         rowInfo.push({ mode: 'skip' });
       } else if (isWholeCellQuoted) {
         rowInfo.push({ mode: 'skip' });
-      } else if (opts.excludeDates === false && isDateLike(trimmed)) {
+      } else if (opts.simplifyDates && isDateLike(trimmed)) {
         const ambig = parseAmbiguousNumericDate(trimmed);
         if (ambig !== null) {
           rowInfo.push({ mode: 'date', ambiguous: ambig });
@@ -758,7 +758,7 @@ function roundTable(table, options) {
           const parsed = parseDateLike(trimmed);
           rowInfo.push({ mode: 'date', month: parsed.month, day: parsed.day, year: parsed.year });
         }
-      } else if (opts.excludeTimes === false && isTimeLike(trimmed)) {
+      } else if (opts.simplifyTimes && isTimeLike(trimmed)) {
         rowInfo.push({ mode: 'time' });
       } else {
         const num = toNumber(text);
@@ -1002,8 +1002,6 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
   if (options.excludeFirstColumn && columnIndex === 0) return 'firstColumn';
   if (typeof text !== 'string') return null;
   const t = text.trim();
-  if (options.excludeDates && isDateLike(t)) return 'dates';
-  if (options.excludeTimes && isTimeLike(t)) return 'times';
   if (!options.includePercent && /%/.test(t)) return 'percent';
   if (!options.includeCurrency && /[$€£¥₹]/.test(t)) return 'currency';
   return null;
