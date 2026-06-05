@@ -129,36 +129,65 @@
       padding: 6px 0;
       user-select: none;
     }
-    .param-row {
+    /* ----- Variant F: linked dual sliders ----- */
+    .slider-block {
       display: flex;
-      align-items: center;
+      flex-direction: column;
       gap: 8px;
-      padding: 4px 0;
+      padding-top: 4px;
     }
-    .param-row .param-label {
-      flex-grow: 1;
-      font-family: ui-monospace, SFMono-Regular, monospace;
+    .label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
       font-size: 12px;
-      color: #3c4043;
-    }
-    .param-row input[type="number"] {
-      width: 64px;
-      font-size: 12px;
-      padding: 3px 6px;
-      border: 1px solid #dadce0;
-      border-radius: 4px;
-      text-align: right;
-      font-family: ui-monospace, SFMono-Regular, monospace;
-    }
-    .param-row input::placeholder {
-      color: #9aa0a6;
-    }
-    .param-help {
-      font-size: 11px;
       color: #5f6368;
-      margin-top: 4px;
-      line-height: 1.4;
+      font-variant-numeric: tabular-nums;
     }
+    .label-row .lbl { color: #5f6368; }
+    .label-row .val { color: #202124; font-variant-numeric: tabular-nums; }
+    .dual-wrap {
+      position: relative;
+      height: 56px;
+    }
+    .dual-track {
+      position: absolute;
+      left: 0; right: 0; top: 26px;
+      height: 4px; background: #d6d9de; border-radius: 999px;
+    }
+    .dual-ticks {
+      position: absolute; left: 0; right: 0; top: 22px;
+      display: grid; grid-template-columns: repeat(9, 1fr);
+      pointer-events: none;
+    }
+    .dual-ticks .t {
+      height: 12px; width: 2px; background: #b5b9c0;
+      justify-self: center; border-radius: 1px;
+    }
+    /* Distinguish the centre tick (offset = 0). */
+    .dual-ticks .t:nth-child(5) {
+      background: #7a8089;
+      height: 14px;
+    }
+    .dual-thumb {
+      position: absolute; top: 26px; transform: translate(-50%, -50%);
+      width: 18px; height: 18px; border-radius: 50%;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,.25);
+      cursor: pointer;
+      transition: left .12s ease, background .15s, opacity .15s, top .15s ease;
+      touch-action: none;
+    }
+    .dual-thumb.top { background: #1a73e8; z-index: 2; }
+    .dual-thumb.bot {
+      background: #b3623d; z-index: 1;
+      border-radius: 0 0 12px 12px;
+      width: 18px; height: 14px;
+      top: 42px;
+    }
+    .dual-thumb.bot.linked { background: #9aa0a6; }
+    .dual-thumb:focus-visible { outline: 2px solid #1a73e8; outline-offset: 2px; }
+    .section.disabled .dual-thumb { cursor: not-allowed; }
     #rangeExpr {
       width: 100%;
       box-sizing: border-box;
@@ -260,22 +289,27 @@
 
   <details class="advanced section" id="advancedSection">
     <summary>Advanced</summary>
-    <div class="param-row">
-      <span class="param-label">offset_top</span>
-      <input type="number" id="offsetTop" step="0.1" placeholder="-0.5">
-    </div>
-    <div class="param-row">
-      <span class="param-label">offset_other</span>
-      <input type="number" id="offsetOther" step="0.1" placeholder="-0.5">
-    </div>
-    <div class="param-row">
-      <span class="param-label">num_top</span>
-      <input type="number" id="numTop" step="1" min="1" placeholder="1">
-    </div>
-    <div class="param-help">
-      Maps to the <code>ROUND_DYNAMIC</code> Google Sheets function.
-      Leave blank for defaults. <code>offset_other</code> inherits from
-      <code>offset_top</code> when blank.
+    <div class="slider-block" id="sliderBlock">
+      <div class="label-row">
+        <span class="lbl">largest numbers</span>
+        <span class="val" id="topReadout">−0.5</span>
+      </div>
+      <div class="dual-wrap" id="dualWrap">
+        <div class="dual-track"></div>
+        <div class="dual-ticks" aria-hidden="true">
+          <span class="t"></span><span class="t"></span><span class="t"></span>
+          <span class="t"></span><span class="t"></span><span class="t"></span>
+          <span class="t"></span><span class="t"></span><span class="t"></span>
+        </div>
+        <div class="dual-thumb bot linked" id="botThumb" tabindex="0" role="slider"
+             aria-label="all other numbers offset" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="-0.5"></div>
+        <div class="dual-thumb top" id="topThumb" tabindex="0" role="slider"
+             aria-label="largest numbers offset" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="-0.5"></div>
+      </div>
+      <div class="label-row">
+        <span class="lbl">all other numbers</span>
+        <span class="val" id="botReadout">−0.5</span>
+      </div>
     </div>
   </details>
 
