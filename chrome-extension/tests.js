@@ -384,8 +384,8 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 
 (function exclusionFirstColumn() {
   const opts = Object.assign({}, {
-    excludeWords: true, simplifyDates: false, simplifyTimes: false,
-    excludeFirstColumn: true, excludePercent: false, excludeCurrency: false
+    simplifyDates: false, simplifyTimes: false,
+    simplifyFirstColumn: false
   });
   eq('exclude: first column with flag on', getExclusionReason('anything', 0, opts), 'firstColumn');
   eq('exclude: non-first column ignores flag', getExclusionReason('anything', 1, opts), null);
@@ -411,103 +411,103 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 })();
 
 (function exclusionPercent() {
-  // New semantics: percent cells are EXCLUDED by default (includePercent defaults false/unset).
-  eq('exclude: percent excluded by default (includePercent unset)',
+  // New semantics: percent cells are EXCLUDED by default (simplifyMixedPercent defaults false/unset).
+  eq('exclude: percent excluded by default (simplifyMixedPercent unset)',
     getExclusionReason('45%', 1, {}), 'percent');
-  eq('exclude: percent excluded when includePercent=false',
-    getExclusionReason('45%', 1, { includePercent: false }), 'percent');
-  eq('exclude: percent included when includePercent=true',
-    getExclusionReason('45%', 1, { includePercent: true }), null);
+  eq('exclude: percent excluded when simplifyMixedPercent=false',
+    getExclusionReason('45%', 1, { simplifyMixedPercent: false }), 'percent');
+  eq('exclude: percent included when simplifyMixedPercent=true',
+    getExclusionReason('45%', 1, { simplifyMixedPercent: true }), null);
 })();
 
 (function exclusionCurrency() {
-  // New semantics: currency cells are EXCLUDED by default (includeCurrency defaults false/unset).
-  eq('exclude: currency excluded by default (includeCurrency unset)',
+  // New semantics: currency cells are EXCLUDED by default (simplifyMixedCurrency defaults false/unset).
+  eq('exclude: currency excluded by default (simplifyMixedCurrency unset)',
     getExclusionReason('$1,234', 1, {}), 'currency');
-  eq('exclude: currency excluded when includeCurrency=false',
-    getExclusionReason('$1,234', 1, { includeCurrency: false }), 'currency');
-  eq('exclude: currency included when includeCurrency=true',
-    getExclusionReason('$1,234', 1, { includeCurrency: true }), null);
+  eq('exclude: currency excluded when simplifyMixedCurrency=false',
+    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: false }), 'currency');
+  eq('exclude: currency included when simplifyMixedCurrency=true',
+    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: true }), null);
   eq('exclude: euro excluded by default',
     getExclusionReason('€1,234', 1, {}), 'currency');
-  eq('exclude: euro included when includeCurrency=true',
-    getExclusionReason('€1,234', 1, { includeCurrency: true }), null);
+  eq('exclude: euro included when simplifyMixedCurrency=true',
+    getExclusionReason('€1,234', 1, { simplifyMixedCurrency: true }), null);
   eq('exclude: rupee excluded by default',
     getExclusionReason('₹615', 1, {}), 'currency');
 })();
 
-// --- Sprint sidebar-restructure: excludeFirstRow ---
+// --- Sprint sidebar-restructure: simplifyFirstRow ---
 
-(function excludeFirstRowTests() {
-  // excludeFirstRow=true: row 0 must be excluded regardless of cell content
-  eq('excludeFirstRow: row 0 excluded when flag is true',
-    getExclusionReason('1,234', 1, { excludeFirstRow: true }, 0), 'firstRow');
-  // excludeFirstRow=true: row 1 is not affected
-  eq('excludeFirstRow: row 1 not excluded when flag is true',
-    getExclusionReason('1,234', 1, { excludeFirstRow: true }, 1), null);
-  // excludeFirstRow=false: row 0 is NOT excluded
-  eq('excludeFirstRow: row 0 not excluded when flag is false',
-    getExclusionReason('1,234', 1, { excludeFirstRow: false }, 0), null);
-  // excludeFirstRow unset (default): row 0 is NOT excluded
-  eq('excludeFirstRow: row 0 not excluded when flag is unset (default)',
-    getExclusionReason('1,234', 1, {}, 0), null);
-  // excludeFirstRow takes priority over firstColumn check
-  eq('excludeFirstRow: firstRow beats firstColumn when both apply',
-    getExclusionReason('anything', 0, { excludeFirstRow: true, excludeFirstColumn: true }, 0), 'firstRow');
+(function simplifyFirstRowTests() {
+  // simplifyFirstRow=false: row 0 must be excluded regardless of cell content
+  eq('simplifyFirstRow: row 0 excluded when flag is false',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'firstRow');
+  // simplifyFirstRow=false: row 1 is not affected
+  eq('simplifyFirstRow: row 1 not excluded when flag is false',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 1), null);
+  // simplifyFirstRow=true: row 0 is NOT excluded
+  eq('simplifyFirstRow: row 0 not excluded when flag is true',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: true }, 0), null);
+  // simplifyFirstRow unset (default): row 0 IS excluded (!undefined = true, same as simplifyFirstRow=false)
+  eq('simplifyFirstRow: row 0 excluded when flag is unset (default)',
+    getExclusionReason('1,234', 1, {}, 0), 'firstRow');
+  // simplifyFirstRow takes priority over firstColumn check
+  eq('simplifyFirstRow: firstRow beats firstColumn when both apply',
+    getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'firstRow');
 })();
 
-// --- Sprint sidebar-restructure: includeWords semantics ---
+// --- Sprint sidebar-restructure: simplifyMixedCells semantics ---
 
-(function includeWordsTests() {
-  // With includeWords=true, a cell with a number AND a word should be rounded
+(function simplifyMixedCellsTests() {
+  // With simplifyMixedCells=true, a cell with a number AND a word should be rounded
   // (mode='extracted' in roundTable). We test the path via the roundTable flow
   // by checking that the cell text '8,584,629 USD' gets an 'extracted' mode.
   const textWithWord = '$5.123 USD';
   const textPure = '5.123';
 
-  // includeWords=true: extractNumbersInText finds a match and cell would be rounded
-  (function includeWordsOn() {
+  // simplifyMixedCells=true: extractNumbersInText finds a match and cell would be rounded
+  (function simplifyMixedCellsOn() {
     const matches = extractNumbersInText(textWithWord);
-    eq('includeWords=true: extractNumbersInText finds number in "$5.123 USD"',
+    eq('simplifyMixedCells=true: extractNumbersInText finds number in "$5.123 USD"',
       matches.length > 0, true);
-    // Simulate the branch in roundTable: if (opts.includeWords) -> extracted path
+    // Simulate the branch in roundTable: if (opts.simplifyMixedCells) -> extracted path
     const num = toNumber(textWithWord);
-    eq('includeWords=true: toNumber("$5.123 USD") is null (not pure numeric)',
+    eq('simplifyMixedCells=true: toNumber("$5.123 USD") is null (not pure numeric)',
       num, null);
-    // When includeWords=true, the cell would go through extracted path
-    const optsInclude = { includeWords: true };
-    const wouldRound = num !== null ? true : (optsInclude.includeWords && matches.length > 0);
-    eq('includeWords=true: cell with words would be rounded', wouldRound, true);
+    // When simplifyMixedCells=true, the cell would go through extracted path
+    const optsInclude = { simplifyMixedCells: true };
+    const wouldRound = num !== null ? true : (optsInclude.simplifyMixedCells && matches.length > 0);
+    eq('simplifyMixedCells=true: cell with words would be rounded', wouldRound, true);
   })();
 
-  // includeWords=false (default): cell with words must NOT be rounded
-  (function includeWordsOff() {
+  // simplifyMixedCells=false (default): cell with words must NOT be rounded
+  (function simplifyMixedCellsOff() {
     const num = toNumber(textWithWord);
-    const optsExclude = { includeWords: false };
-    // Simulate roundTable logic: toNumber returns null, includeWords=false -> skip
-    const wouldRound = num !== null ? true : (optsExclude.includeWords === true);
-    eq('includeWords=false: cell with words would NOT be rounded', wouldRound, false);
+    const optsExclude = { simplifyMixedCells: false };
+    // Simulate roundTable logic: toNumber returns null, simplifyMixedCells=false -> skip
+    const wouldRound = num !== null ? true : (optsExclude.simplifyMixedCells === true);
+    eq('simplifyMixedCells=false: cell with words would NOT be rounded', wouldRound, false);
     // Same with default (unset)
     const optsDefault = {};
-    const wouldRoundDefault = num !== null ? true : (optsDefault.includeWords === true);
-    eq('includeWords unset: cell with words would NOT be rounded', wouldRoundDefault, false);
+    const wouldRoundDefault = num !== null ? true : (optsDefault.simplifyMixedCells === true);
+    eq('simplifyMixedCells unset: cell with words would NOT be rounded', wouldRoundDefault, false);
   })();
 })();
 
-// --- Sprint sidebar-restructure: includePercent / includeCurrency round-trip ---
+// --- Sprint sidebar-restructure: simplifyMixedPercent / simplifyMixedCurrency round-trip ---
 
-(function includePercentRoundTrip() {
-  // includeCurrency: true -> currency cells are NOT excluded
-  eq('includeCurrency=true: $1,234 is not excluded',
-    getExclusionReason('$1,234', 1, { includeCurrency: true }), null);
-  // includeCurrency unset -> currency cells ARE excluded
-  eq('includeCurrency unset: $1,234 is excluded',
+(function simplifyMixedPercentRoundTrip() {
+  // simplifyMixedCurrency: true -> currency cells are NOT excluded
+  eq('simplifyMixedCurrency=true: $1,234 is not excluded',
+    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: true }), null);
+  // simplifyMixedCurrency unset -> currency cells ARE excluded
+  eq('simplifyMixedCurrency unset: $1,234 is excluded',
     getExclusionReason('$1,234', 1, {}), 'currency');
-  // includePercent: true -> percent cells are NOT excluded
-  eq('includePercent=true: 45% is not excluded',
-    getExclusionReason('45%', 1, { includePercent: true }), null);
-  // includePercent unset -> percent cells ARE excluded
-  eq('includePercent unset: 45% is excluded',
+  // simplifyMixedPercent: true -> percent cells are NOT excluded
+  eq('simplifyMixedPercent=true: 45% is not excluded',
+    getExclusionReason('45%', 1, { simplifyMixedPercent: true }), null);
+  // simplifyMixedPercent unset -> percent cells ARE excluded
+  eq('simplifyMixedPercent unset: 45% is excluded',
     getExclusionReason('45%', 1, {}), 'percent');
 })();
 
@@ -515,8 +515,8 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 // (dates/times are no longer exclusion reasons)
 (function exclusionPriority() {
   const opts = {
-    excludeFirstRow: true, excludeFirstColumn: true, simplifyDates: true, simplifyTimes: true,
-    includePercent: false, includeCurrency: false
+    simplifyFirstRow: false, simplifyFirstColumn: false, simplifyDates: true, simplifyTimes: true,
+    simplifyMixedPercent: false, simplifyMixedCurrency: false
   };
   eq('priority: first row wins even when value is a date',
     getExclusionReason('2018', 0, opts, 0), 'firstRow');
@@ -826,7 +826,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 // The dev's fix (reading II / data-perspective):
 //   - <th> cells are skipped entirely; only <td> cells are counted.
 //   - rangeExpr "A" maps to the first <td> (dataCol 0), not the leftmost DOM cell.
-//   - excludeFirstColumn excludes the first <td>, not the leftmost DOM cell.
+//   - simplifyFirstColumn=false excludes the first <td>, not the leftmost DOM cell.
 //
 // Helper: build a minimal mock table that roundTable can traverse.
 // roundTable accesses: table.rows -> array of {cells: array of cell-like objects}
@@ -885,7 +885,7 @@ function withCreateTreeWalker(fn) {
 
 // --- Test 1: Table with row headers — range = "A" targets first <td>, not the <th> ---
 // Row: [<th>Name</th>, <td>100</td>, <td>200</td>]
-// With rangeExpr = "A" (col 0 in dataCol space) and no excludeFirstColumn,
+// With rangeExpr = "A" (col 0 in dataCol space) and simplifyFirstColumn=true (not excluded),
 // "A" should hit <td>100</td> (the first <td>), NOT the <th>Name</th>.
 (function firstColIsA_withRowHeader() {
   withCreateTreeWalker(function() {
@@ -895,8 +895,8 @@ function withCreateTreeWalker(fn) {
       { tag: 'td', text: '200'  },
     ]]);
     const opts = {
-      enabled: true, excludeWords: true, simplifyDates: false, simplifyTimes: false,
-      excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: 'A'
     };
@@ -924,8 +924,8 @@ function withCreateTreeWalker(fn) {
       { tag: 'td', text: '200'   },
     ]]);
     const opts = {
-      enabled: true, excludeWords: true, simplifyDates: false, simplifyTimes: false,
-      excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: 'A'
     };
@@ -938,12 +938,12 @@ function withCreateTreeWalker(fn) {
   });
 })();
 
-// --- Test 3: excludeFirstColumn + row headers ---
+// --- Test 3: simplifyFirstColumn=false + row headers ---
 // Row: [<th>Name</th>, <td>100</td>, <td>200</td>]
-// rangeExpr = '' (whole table), excludeFirstColumn = true.
-// Dev behavior: excludeFirstColumn checks dataCol === 0, so <td>100</td> is
+// rangeExpr = '' (whole table), simplifyFirstColumn = false.
+// Dev behavior: simplifyFirstColumn=false checks dataCol === 0, so <td>100</td> is
 // excluded (not the <th>, which is skipped from the data loop entirely).
-(function excludeFirstColumn_withRowHeader() {
+(function simplifyFirstColumn_withRowHeader() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
       { tag: 'th', text: 'Name' },
@@ -951,18 +951,18 @@ function withCreateTreeWalker(fn) {
       { tag: 'td', text: '200'  },
     ]]);
     const opts = {
-      enabled: true, excludeWords: true, simplifyDates: true, simplifyTimes: true,
-      excludeFirstColumn: true, excludePercent: false, excludeCurrency: false,
+      enabled: true, simplifyMixedCells: false, simplifyDates: true, simplifyTimes: true,
+      simplifyFirstColumn: false, simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
     };
     roundTable(table, opts);
     const cells = table.rows[0].cells;
     // <th> Name: skipped (not a TD)
-    eq('excludeFirstColumn (row-header table): <th> Name never rounded',
+    eq('simplifyFirstColumn=false (row-header table): <th> Name never rounded',
       cells[0].classList.contains('dr-ext-rounded'), false);
-    // <td>100 is dataCol 0 — excluded by excludeFirstColumn (dev reading II)
-    eq('excludeFirstColumn (row-header table): <td>100 at dataCol 0 is excluded',
+    // <td>100 is dataCol 0 — excluded by simplifyFirstColumn=false (dev reading II)
+    eq('simplifyFirstColumn=false (row-header table): <td>100 at dataCol 0 is excluded',
       cells[1].classList.contains('dr-ext-rounded'), false);
   });
 })();
@@ -1212,8 +1212,8 @@ function withLinkCreateTreeWalker(fn) {
       dataset: {},
     };
     const opts = {
-      enabled: true, excludeWords: true, simplifyDates: false, simplifyTimes: false,
-      excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
+      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: '',
     };
@@ -1264,7 +1264,7 @@ function withLinkCreateTreeWalker(fn) {
 // A cell like <td><span style="display:none">700023000</span>+2.3%</td>
 // The implementation reads cell.innerText (which browsers exclude hidden text from).
 // We model this by making cell.innerText = '+2.3%' only (hidden span excluded).
-// toNumber('+2.3%') -> null (percent), and with includePercent unset it's excluded entirely.
+// toNumber('+2.3%') -> null (percent), and with simplifyMixedPercent unset it's excluded entirely.
 // The large hidden number 700023000 must NOT appear in any extracted matches.
 (function ac4_hiddenSortkeyNotExtracted() {
   // Simulate: innerText is what the browser returns (no hidden text).
@@ -1297,8 +1297,8 @@ function withLinkCreateTreeWalker(fn) {
       dataset: {},
     };
     const opts = {
-      enabled: true, excludeWords: true, simplifyDates: false, simplifyTimes: false,
-      excludeFirstColumn: false, includePercent: false, includeCurrency: false,
+      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: '',
     };
@@ -1417,8 +1417,8 @@ function withLinkCreateTreeWalker(fn) {
       { tag: 'td', text: '42' },  // this one should round (control)
     ]]);
     const opts = {
-      enabled: true, includeWords: true, simplifyDates: false, simplifyTimes: false,
-      excludeFirstColumn: false, includePercent: true, includeCurrency: true,
+      enabled: true, simplifyMixedCells: true, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstColumn: true, simplifyMixedPercent: true, simplifyMixedCurrency: true,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
     };
@@ -1581,12 +1581,12 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   // AC1/AC2: Sidebar UI defaults now live in defaults.js (single source of
   // truth shared with content.js). The HTML must NOT hard-code checked /
   // selected attributes — they would shadow the JS-applied defaults.
-  eq('sidebar-defaults: includeWords default is true in DR_DEFAULTS',
-    DR_DEFAULTS.includeWords, true);
-  eq('sidebar-defaults: includeCurrency default is true in DR_DEFAULTS',
-    DR_DEFAULTS.includeCurrency, true);
-  eq('sidebar-defaults: includePercent default is true in DR_DEFAULTS',
-    DR_DEFAULTS.includePercent, true);
+  eq('sidebar-defaults: simplifyMixedCells default is true in DR_DEFAULTS',
+    DR_DEFAULTS.simplifyMixedCells, true);
+  eq('sidebar-defaults: simplifyMixedCurrency default is true in DR_DEFAULTS',
+    DR_DEFAULTS.simplifyMixedCurrency, true);
+  eq('sidebar-defaults: simplifyMixedPercent default is true in DR_DEFAULTS',
+    DR_DEFAULTS.simplifyMixedPercent, true);
   eq('sidebar-defaults: dateGranularity default is "decade" in DR_DEFAULTS',
     DR_DEFAULTS.dateGranularity, 'decade');
   eq('sidebar-defaults: timeGranularity default is "hour" in DR_DEFAULTS',
@@ -1679,8 +1679,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
       { tag: 'td', text: '35.0' },
     ]]);
     const opts = {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
@@ -1701,8 +1701,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
       { tag: 'td', text: '35' },
     ]]);
     const opts = {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
@@ -2210,7 +2210,7 @@ function makeMockButton() {
 (function atToggle_runToggleAction_onFreshTable() {
   // Use withCreateTreeWalker so roundTable can traverse cells.
   withCreateTreeWalker(function() {
-    // Two-row table: row 0 is the header (excluded by DR_DEFAULTS.excludeFirstRow=true),
+    // Two-row table: row 0 is the header (excluded by default: DR_DEFAULTS.simplifyFirstRow=false),
     // row 1 has large numbers that WILL be rounded.
     const table = makeToggleTable([
       [{ tag: 'td', text: 'Header' }],
@@ -2264,7 +2264,7 @@ function makeMockButton() {
 
 (function atToggle_isTableRounded_fullCycle() {
   withCreateTreeWalker(function() {
-    // Two-row table: row 0 is excluded (DR_DEFAULTS.excludeFirstRow=true), row 1 has
+    // Two-row table: row 0 is excluded by default (DR_DEFAULTS.simplifyFirstRow=false), row 1 has
     // large numbers that WILL be rounded so the test exercises the true → false transition.
     const table = makeToggleTable([
       [{ tag: 'td', text: 'Header' }],
@@ -2826,8 +2826,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       tbl.rows[0].cells[0].querySelectorAll = () => [];
       roundTable(tbl, {
         enabled: true, simplifyDates: true, simplifyTimes: false,
-        excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
-        includeWords: false, excludeFirstRow: false,
+        simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
+        simplifyMixedCells: false, simplifyFirstRow: true,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
         rangeExpr: '',
         dateGranularity: gran,
@@ -2853,8 +2853,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       tbl.rows[0].cells[0].querySelectorAll = () => [];
       roundTable(tbl, {
         enabled: true, simplifyDates: true, simplifyTimes: false,
-        excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
-        includeWords: false, excludeFirstRow: false,
+        simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
+        simplifyMixedCells: false, simplifyFirstRow: true,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
         rangeExpr: '',
         dateGranularity: gran,
@@ -2913,8 +2913,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       }
       roundTable(tbl, {
         enabled: true, simplifyDates: true, simplifyTimes: false,
-        excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
-        includeWords: false, excludeFirstRow: false,
+        simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
+        simplifyMixedCells: false, simplifyFirstRow: true,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
         rangeExpr: '',
         dateGranularity: gran,
@@ -2976,8 +2976,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       tbl.rows[0].cells[0].querySelectorAll = () => [];
       roundTable(tbl, {
         enabled: true, simplifyDates: true, simplifyTimes: false,
-        excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
-        includeWords: false, excludeFirstRow: false,
+        simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
+        simplifyMixedCells: false, simplifyFirstRow: true,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
         rangeExpr: '',
         dateGranularity: 'decade',
@@ -2987,14 +2987,14 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 
     eq('non-date passthrough: "hello" stays unchanged', runSingleCell('hello'), 'hello');
     // "14 March" has no year → isDateLike returns false → treated as a word-embedded number
-    // excludeWords=false in our setup? Actually includeWords is false here, so it skips.
+    // simplifyMixedCells=false in our setup, so it skips non-numeric text.
     // Let's just verify it doesn't get the rounded class.
     const tbl = makeMockTable([[{ tag: 'td', text: '14 March' }]]);
     tbl.rows[0].cells[0].querySelectorAll = () => [];
     roundTable(tbl, {
       enabled: true, simplifyDates: true, simplifyTimes: false,
-      excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
-      includeWords: false, excludeFirstRow: false,
+      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
+      simplifyMixedCells: false, simplifyFirstRow: true,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: '',
       dateGranularity: 'decade',
@@ -3020,8 +3020,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     tbl.rows[0].cells[0].querySelectorAll = () => [];
     roundTable(tbl, {
       enabled: true, simplifyDates: true, simplifyTimes: false,
-      excludeFirstColumn: false, excludePercent: false, excludeCurrency: false,
-      includeWords: false, excludeFirstRow: false,
+      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
+      simplifyMixedCells: false, simplifyFirstRow: true,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: '',
       dateGranularity: 'decade',
@@ -4073,20 +4073,20 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 
   // ── AC3: DR_DEFAULTS has the seven expected values ──
 
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.includeWords is true',
-    DR_DEFAULTS.includeWords, true);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.includeCurrency is true',
-    DR_DEFAULTS.includeCurrency, true);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.includePercent is true',
-    DR_DEFAULTS.includePercent, true);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyMixedCells is true',
+    DR_DEFAULTS.simplifyMixedCells, true);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyMixedCurrency is true',
+    DR_DEFAULTS.simplifyMixedCurrency, true);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyMixedPercent is true',
+    DR_DEFAULTS.simplifyMixedPercent, true);
   eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyDates is true',
     DR_DEFAULTS.simplifyDates, true);
   eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyTimes is false',
     DR_DEFAULTS.simplifyTimes, false);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.excludeFirstRow is false',
-    DR_DEFAULTS.excludeFirstRow, false);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.excludeFirstColumn is false',
-    DR_DEFAULTS.excludeFirstColumn, false);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyFirstRow is false',
+    DR_DEFAULTS.simplifyFirstRow, false);
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyFirstColumn is false',
+    DR_DEFAULTS.simplifyFirstColumn, false);
   eq('sidebar-tidyup AC3: DR_DEFAULTS.dateGranularity is "decade"',
     DR_DEFAULTS.dateGranularity, 'decade');
   eq('sidebar-tidyup AC3: DR_DEFAULTS.timeGranularity is "hour"',
@@ -4096,8 +4096,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // For each of the seven option inputs by id, verify there is a parent
   // element with class "switch" enclosing the input.
   const optionInputIds = [
-    'includeWords', 'includeCurrency', 'includePercent',
-    'simplifyDates', 'simplifyTimes', 'excludeFirstRow', 'excludeFirstColumn'
+    'simplifyMixedCells', 'simplifyMixedCurrency', 'simplifyMixedPercent',
+    'simplifyDates', 'simplifyTimes', 'simplifyFirstRow', 'simplifyFirstColumn'
   ];
   for (const id of optionInputIds) {
     // Match <label class="switch"> ... <input ... id="<id>"> ... </label>
@@ -4701,8 +4701,8 @@ function fireTouchSecondTap(buttonEl) {
   }
 
   // --- AC1: switch appears before .toggle-label in each option row ---
-  // Rows to check: includeWords, excludeFirstColumn (simple), simplifyDates, simplifyTimes.
-  const simpleRows = ['includeWords', 'excludeFirstColumn'];
+  // Rows to check: simplifyMixedCells, simplifyFirstColumn (simple), simplifyDates, simplifyTimes.
+  const simpleRows = ['simplifyMixedCells', 'simplifyFirstColumn'];
   for (const id of simpleRows) {
     const row = getRowSubstring(id);
     eq(`sidebar-pill-left AC1: row "${id}" exists in sidebar.html`,
@@ -4848,15 +4848,15 @@ function withSupCreateTreeWalker(fn) {
   try { fn(); } finally { delete global.document.createTreeWalker; }
 }
 
-// Standard opts for the exponent tests.  includeWords: true is required to
+// Standard opts for the exponent tests.  simplifyMixedCells: true is required to
 // engage the <sup> extraction path (the guard at line ~773 of content.js).
 const supTestOpts = {
   enabled: true,
-  includeWords: true,
-  includeCurrency: true,
-  includePercent: true,
-  excludeFirstRow: false,
-  excludeFirstColumn: false,
+  simplifyMixedCells: true,
+  simplifyMixedCurrency: true,
+  simplifyMixedPercent: true,
+  simplifyFirstRow: true,
+  simplifyFirstColumn: true,
   excludeDates: true,
   excludeTimes: false,
   offsetTop: -0.5,
@@ -5116,8 +5116,8 @@ const supTestOpts = {
       { tag: 'td', text: '2018' },
     ]]);
     const opts = {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: true, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -5141,8 +5141,8 @@ const supTestOpts = {
       { tag: 'td', text: '2018' },
     ]]);
     const opts = {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -5163,8 +5163,8 @@ const supTestOpts = {
     // simplifyDates=true branch
     const tableOn = makeMockTable([[{ tag: 'td', text: '2024-03-14' }]]);
     roundTable(tableOn, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: true, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5178,8 +5178,8 @@ const supTestOpts = {
     // simplifyDates=false branch — same input
     const tableOff = makeMockTable([[{ tag: 'td', text: '2024-03-14' }]]);
     roundTable(tableOff, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5200,8 +5200,8 @@ const supTestOpts = {
       { tag: 'td', text: '14:30' },
     ]]);
     const opts = {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: true,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -5224,8 +5224,8 @@ const supTestOpts = {
       { tag: 'td', text: '14:30' },
     ]]);
     const opts = {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -5246,8 +5246,8 @@ const supTestOpts = {
     // simplifyTimes=true
     const tableOn = makeMockTable([[{ tag: 'td', text: '3:45 PM' }]]);
     roundTable(tableOn, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: true,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5263,8 +5263,8 @@ const supTestOpts = {
     // simplifyTimes=false — same input must be untouched
     const tableOff = makeMockTable([[{ tag: 'td', text: '3:45 PM' }]]);
     roundTable(tableOff, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5357,8 +5357,8 @@ const supTestOpts = {
       { tag: 'td', text: '2018' },
     ]]);
     roundTable(table, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: true, simplifyTimes: false,
       dateGranularity: 'century', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5404,8 +5404,8 @@ const supTestOpts = {
       { tag: 'td', text: '2018' },
     ]]);
     roundTable(table, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'century', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5429,8 +5429,8 @@ const supTestOpts = {
       { tag: 'td', text: '8,584,629' },
     ]]);
     roundTable(table, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5457,8 +5457,8 @@ const supTestOpts = {
       { tag: 'td', text: '2018' },
     ]]);
     roundTable(table, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: true,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5485,8 +5485,8 @@ const supTestOpts = {
       { tag: 'td', text: '14:30' },
     ]]);
     roundTable(table, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: true, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5506,9 +5506,9 @@ const supTestOpts = {
 
 // --- ADV-AC4: time cell with simplifyTimes=false is not treated as a pure number ---
 // "14:30" is not parseable by toNumber (returns null), so with simplifyTimes=false
-// AND includeWords=false, the cell must be fully skipped.
+// AND simplifyMixedCells=false, the cell must be fully skipped.
 // Adversarial: confirm there is no fallthrough that rounds the time as a numeric value.
-// (Note: includeWords=true would extract 14 and 30 independently — that is a separate
+// (Note: simplifyMixedCells=true would extract 14 and 30 independently — that is a separate
 // feature path. Here we test the pure numeric exclusion path only.)
 (function invertPills_adv_AC4_timeNotTreatedAsNumber() {
   withCreateTreeWalker(function() {
@@ -5516,16 +5516,16 @@ const supTestOpts = {
       { tag: 'td', text: '14:30' },
     ]]);
     roundTable(table, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
     });
     const cell = table.rows[0].cells[0];
-    eq('ADV AC4: 14:30 with simplifyTimes=false and includeWords=false — not rounded',
+    eq('ADV AC4: 14:30 with simplifyTimes=false and simplifyMixedCells=false — not rounded',
       cell.classList.contains('dr-ext-rounded'), false);
-    eq('ADV AC4: 14:30 with simplifyTimes=false and includeWords=false — text unchanged',
+    eq('ADV AC4: 14:30 with simplifyTimes=false and simplifyMixedCells=false — text unchanged',
       cell.innerText, '14:30');
   });
 })();
@@ -5556,8 +5556,8 @@ const supTestOpts = {
       { tag: 'td', text: '14:30' },
     ]]);
     roundTable(table, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: true, simplifyTimes: true,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5584,8 +5584,8 @@ const supTestOpts = {
       { tag: 'td', text: '14:30' },
     ]]);
     roundTable(table, {
-      enabled: true, includeWords: false, includeCurrency: false, includePercent: false,
-      excludeFirstRow: false, excludeFirstColumn: false,
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
@@ -5601,6 +5601,158 @@ const supTestOpts = {
     eq('ADV both=false: time cell text unchanged (14:30)',
       timeCell.innerText, '14:30');
   });
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint refactor/simplify-naming-unification — Adversarial contract lock-in
+// ---------------------------------------------------------------------------
+
+(function simplifyNamingUnification() {
+
+  // -------------------------------------------------------------------------
+  // AC1: Renames are total — no old key names survive in any source file.
+  // Pattern strings are split across concatenation to prevent self-matching.
+  // -------------------------------------------------------------------------
+  const sourceFiles = [
+    'defaults.js', 'sidebar.html', 'sidebar.js', 'content.js', 'tests.js'
+  ];
+  const oldKeys = [
+    'include' + 'Words',
+    'include' + 'Currency',
+    'include' + 'Percent',
+    'exclude' + 'FirstRow',
+    'exclude' + 'FirstColumn',
+  ];
+  for (const file of sourceFiles) {
+    const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
+    for (const key of oldKeys) {
+      eq(`AC1: old key "${key}" absent from ${file}`,
+        src.includes(key), false);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // AC2: simplifyFirstRow polarity — four cases.
+  // -------------------------------------------------------------------------
+
+  // Case 1: flag true → row 0 IS simplified (not excluded)
+  eq('AC2 simplifyFirstRow: true + row 0 → null (row IS simplified)',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: true }, 0), null);
+
+  // Case 2: flag false → row 0 excluded
+  eq('AC2 simplifyFirstRow: false + row 0 → "firstRow"',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'firstRow');
+
+  // Case 3: flag unset (undefined) → row 0 excluded (intentional default change)
+  eq('AC2 simplifyFirstRow: unset + row 0 → "firstRow" (new default semantics)',
+    getExclusionReason('1,234', 1, {}, 0), 'firstRow');
+
+  // Case 4: flag false but row 1 → null (only row 0 is affected)
+  eq('AC2 simplifyFirstRow: false + row 1 → null (non-first row unaffected)',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 1), null);
+
+  // -------------------------------------------------------------------------
+  // AC3: simplifyFirstColumn polarity — mirror of AC2.
+  // -------------------------------------------------------------------------
+
+  // Case 1: flag true → col 0 IS simplified (not excluded)
+  eq('AC3 simplifyFirstColumn: true + col 0 → null (col IS simplified)',
+    getExclusionReason('1,234', 0, { simplifyFirstColumn: true, simplifyFirstRow: true }, 1), null);
+
+  // Case 2: flag false → col 0 excluded
+  eq('AC3 simplifyFirstColumn: false + col 0 → "firstColumn"',
+    getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'firstColumn');
+
+  // Case 3: flag unset → col 0 excluded (intentional default change)
+  eq('AC3 simplifyFirstColumn: unset + col 0 → "firstColumn" (new default semantics)',
+    getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'firstColumn');
+
+  // Case 4: flag false but col 1 → null (only col 0 is affected)
+  eq('AC3 simplifyFirstColumn: false + col 1 → null (non-first column unaffected)',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), null);
+
+  // -------------------------------------------------------------------------
+  // AC4a: simplifyMixedCurrency polarity.
+  // -------------------------------------------------------------------------
+
+  eq('AC4a simplifyMixedCurrency: true + "$1,234" → null (NOT excluded)',
+    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: true }, 1), null);
+
+  eq('AC4a simplifyMixedCurrency: false + "$1,234" → "currency"',
+    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: false }, 1), 'currency');
+
+  // -------------------------------------------------------------------------
+  // AC4b: simplifyMixedPercent polarity.
+  // -------------------------------------------------------------------------
+
+  eq('AC4b simplifyMixedPercent: true + "45%" → null (NOT excluded)',
+    getExclusionReason('45%', 1, { simplifyMixedPercent: true }, 1), null);
+
+  eq('AC4b simplifyMixedPercent: false + "45%" → "percent"',
+    getExclusionReason('45%', 1, { simplifyMixedPercent: false }, 1), 'percent');
+
+  // -------------------------------------------------------------------------
+  // AC5: simplifyMixedCells=false → prose cell with embedded number not touched.
+  // Use roundTable with a real mock table.
+  // -------------------------------------------------------------------------
+  withCreateTreeWalker(function() {
+    // Two cells: a large anchor so max_mag is set, and a prose cell.
+    const table = makeMockTable([[
+      { tag: 'td', text: '8,000,000' },
+      { tag: 'td', text: 'about 1,234 widgets' },
+    ]]);
+    roundTable(table, {
+      enabled: true,
+      simplifyMixedCells: false,
+      simplifyMixedCurrency: false,
+      simplifyMixedPercent: false,
+      simplifyFirstRow: true,
+      simplifyFirstColumn: true,
+      simplifyDates: false,
+      simplifyTimes: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const proseCell = table.rows[0].cells[1];
+    eq('AC5 simplifyMixedCells=false: prose cell NOT marked as rounded',
+      proseCell.classList.contains('dr-ext-rounded'), false);
+    eq('AC5 simplifyMixedCells=false: prose cell text unchanged',
+      proseCell.innerText, 'about 1,234 widgets');
+  });
+
+  // -------------------------------------------------------------------------
+  // AC6: DR_DEFAULTS snapshot — all seven new keys with exact default values.
+  // -------------------------------------------------------------------------
+  eq('AC6 DR_DEFAULTS: simplifyMixedCells = true',
+    DR_DEFAULTS.simplifyMixedCells, true);
+  eq('AC6 DR_DEFAULTS: simplifyMixedCurrency = true',
+    DR_DEFAULTS.simplifyMixedCurrency, true);
+  eq('AC6 DR_DEFAULTS: simplifyMixedPercent = true',
+    DR_DEFAULTS.simplifyMixedPercent, true);
+  eq('AC6 DR_DEFAULTS: simplifyDates = true',
+    DR_DEFAULTS.simplifyDates, true);
+  eq('AC6 DR_DEFAULTS: simplifyTimes = false',
+    DR_DEFAULTS.simplifyTimes, false);
+  eq('AC6 DR_DEFAULTS: simplifyFirstRow = false',
+    DR_DEFAULTS.simplifyFirstRow, false);
+  eq('AC6 DR_DEFAULTS: simplifyFirstColumn = false',
+    DR_DEFAULTS.simplifyFirstColumn, false);
+
+  // -------------------------------------------------------------------------
+  // AC7: sidebar.html id ↔ setting key parity — each of the seven keys must
+  // appear as id="<key>" on a checkbox <input>.
+  // -------------------------------------------------------------------------
+  const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const sevenKeys = [
+    'simplifyMixedCells', 'simplifyMixedCurrency', 'simplifyMixedPercent',
+    'simplifyDates', 'simplifyTimes', 'simplifyFirstRow', 'simplifyFirstColumn'
+  ];
+  for (const key of sevenKeys) {
+    // Match <input ... type="checkbox" ... id="<key>"> (or id before type)
+    eq(`AC7 sidebar.html: checkbox with id="${key}" present`,
+      new RegExp(`<input[^>]*type="checkbox"[^>]*id="${key}"|<input[^>]*id="${key}"[^>]*type="checkbox"`).test(sidebarHtml),
+      true);
+  }
+
 })();
 
 // --- Report ---
