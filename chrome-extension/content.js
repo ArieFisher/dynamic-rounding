@@ -945,18 +945,23 @@ function roundTable(table, options) {
         // simplifies (e.g. "35.0" → "35").
         if (formattedValue === originalValue.trim()) continue;
       } else {
-        // Round each match individually, splice back from right-to-left so earlier indices remain valid.
-        let changed = false;
-        formattedValue = originalValue;
-        for (let i = info.matches.length - 1; i >= 0; i--) {
-          const m = info.matches[i];
+        // Round each match and patch its text node directly. This avoids the
+        // whole-cell character-distribution approach, which mis-allocates
+        // characters when newText length differs from original (corrupting
+        // adjacent <sup> content, punctuation, and <a> text nodes).
+        const patches = [];
+        for (const m of info.matches) {
           const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
           const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
-          if (newNum === m.numStr) continue;
-          formattedValue = formattedValue.substring(0, m.index) + newNum + formattedValue.substring(m.index + m.numStr.length);
-          changed = true;
+          if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
         }
-        if (!changed) continue;
+        if (patches.length === 0) continue;
+        cell.dataset.originalHtml = cell.innerHTML;
+        applyExtractedPatches(cell, patches);
+        cell.title = `Original: ${originalValue}`;
+        cell.classList.add('dr-ext-rounded');
+        cell.dataset.originalValue = originalValue;
+        continue;
       }
 
       // Cache pristine HTML before mutation so toggle/reset can restore it
@@ -1754,4 +1759,40 @@ function replaceTextPreservingHTML(cell, originalText, newText) {
   
   // Removed absolute innerText fallback to completely eliminate risk of breaking column widths or DOM structures
   console.debug("Dynamic Rounding: Skipped complex multi-node cell replacement to preserve layout.");
+}
+
+/**
+ * Applies targeted per-number patches to the text nodes of a cell.
+ * Each patch {index, numStr, newNum} identifies a position in the cell's flat
+ * text (TreeWalker/textContent order — same coordinate space as getSuperscriptRanges
+ * and extractNumbersInText), the original string, and its replacement.
+ *
+ * Patches are applied right-to-left so earlier flat-text positions are unaffected
+ * by changes at higher positions. Only the specific text node containing each
+ * number is touched; <sup>, <a>, and all other surrounding nodes are left intact.
+ *
+ * Fails silently (skips the patch) if the node cannot be found or if numStr is
+ * not present at the expected position — same behaviour as the old fallback.
+ */
+function applyExtractedPatches(cell, patches) {
+  if (!patches || patches.length === 0) return;
+  const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
+  const nodePositions = [];
+  let flatLen = 0;
+  let node;
+  while ((node = walker.nextNode())) {
+    nodePositions.push({ node, start: flatLen });
+    flatLen += node.nodeValue.length;
+  }
+  const sorted = [...patches].sort((a, b) => b.index - a.index);
+  for (const { index, numStr, newNum } of sorted) {
+    const pos = nodePositions.find(
+      p => p.start <= index && index < p.start + p.node.nodeValue.length
+    );
+    if (!pos) continue;
+    const i = index - pos.start;
+    const v = pos.node.nodeValue;
+    if (v.substring(i, i + numStr.length) !== numStr) continue;
+    pos.node.nodeValue = v.substring(0, i) + newNum + v.substring(i + numStr.length);
+  }
 }

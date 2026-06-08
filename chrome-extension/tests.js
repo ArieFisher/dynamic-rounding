@@ -5755,6 +5755,205 @@ const supTestOpts = {
 
 })();
 
+// =============================================================================
+// applyExtractedPatches — unit tests and integration regression tests
+// =============================================================================
+
+// Helper: build a multi-node cell for applyExtractedPatches tests.
+// segments: [{text, inSup?, inAnchor?}]
+// Returns a cell mock whose _textNodes drive withSupCreateTreeWalker.
+function makeExtractedCell(segments) {
+  const fullText = segments.map(s => s.text).join('');
+  const cell = {
+    innerText: fullText,
+    textContent: fullText,
+    innerHTML: fullText,
+    classList: {
+      _classes: [],
+      add(cls) { this._classes.push(cls); },
+      contains(cls) { return this._classes.includes(cls); },
+    },
+    dataset: {},
+    title: '',
+    tagName: 'TD',
+    querySelectorAll: (sel) => sel === 'a' ? [] : [],
+    querySelector: (sel) => sel === 'sup' && segments.some(s => s.inSup) ? { tagName: 'SUP' } : null,
+  };
+  const textNodes = segments.map(seg => {
+    let parentNode;
+    if (seg.inSup) {
+      parentNode = { tagName: 'SUP', parentNode: cell, parentElement: cell };
+    } else {
+      parentNode = cell;
+    }
+    return { nodeValue: seg.text, parentNode, parentElement: parentNode };
+  });
+  cell._textNodes = textNodes;
+  return cell;
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests for applyExtractedPatches
+// ---------------------------------------------------------------------------
+(function applyExtractedPatches_unitTests() {
+
+  // AP1: single text node, single patch
+  withSupCreateTreeWalker(function() {
+    const cell = makeExtractedCell([{ text: 'Revenue 1500 USD' }]);
+    applyExtractedPatches(cell, [{ index: 8, numStr: '1500', newNum: '2k' }]);
+    eq('AP1: single node patch replaces number', cell._textNodes[0].nodeValue, 'Revenue 2k USD');
+  });
+
+  // AP2: two patches in the same node, right-to-left order preserved
+  withSupCreateTreeWalker(function() {
+    const cell = makeExtractedCell([{ text: '1500 and 2500' }]);
+    applyExtractedPatches(cell, [
+      { index: 0,  numStr: '1500', newNum: '2k' },
+      { index: 9,  numStr: '2500', newNum: '3k' },
+    ]);
+    eq('AP2: two patches in same node', cell._textNodes[0].nodeValue, '2k and 3k');
+  });
+
+  // AP3: patch targets a plain node; sup node is untouched
+  // cell: "1.5×10"(plain) + "31"(sup) + " m"(plain) + "3"(sup)
+  // flat: "1.5×1031 m3", patch "1.5" at index 0 → "2"
+  withSupCreateTreeWalker(function() {
+    const cell = makeExtractedCell([
+      { text: '1.5×10' },
+      { text: '31', inSup: true },
+      { text: ' m' },
+      { text: '3', inSup: true },
+    ]);
+    applyExtractedPatches(cell, [{ index: 0, numStr: '1.5', newNum: '2' }]);
+    eq('AP3: base node updated', cell._textNodes[0].nodeValue, '2×10');
+    eq('AP3: sup "31" node untouched', cell._textNodes[1].nodeValue, '31');
+    eq('AP3: " m" node untouched',     cell._textNodes[2].nodeValue, ' m');
+    eq('AP3: sup "3" node untouched',  cell._textNodes[3].nodeValue, '3');
+  });
+
+  // AP4: patch in a later plain node; earlier node untouched
+  // cell: "text, "(plain) + "1500"(plain)
+  // patch "1500" at index 6
+  withSupCreateTreeWalker(function() {
+    const cell = makeExtractedCell([
+      { text: 'text, ' },
+      { text: '1500' },
+    ]);
+    applyExtractedPatches(cell, [{ index: 6, numStr: '1500', newNum: '2k' }]);
+    eq('AP4: first node untouched', cell._textNodes[0].nodeValue, 'text, ');
+    eq('AP4: second node patched',  cell._textNodes[1].nodeValue, '2k');
+  });
+
+  // AP5: defensive — wrong numStr at index → node unchanged
+  withSupCreateTreeWalker(function() {
+    const cell = makeExtractedCell([{ text: 'abc 1500 def' }]);
+    applyExtractedPatches(cell, [{ index: 4, numStr: '9999', newNum: '10k' }]);
+    eq('AP5: wrong numStr → no change', cell._textNodes[0].nodeValue, 'abc 1500 def');
+  });
+
+  // AP6: empty patches array → no-op
+  withSupCreateTreeWalker(function() {
+    const cell = makeExtractedCell([{ text: 'abc 1500 def' }]);
+    applyExtractedPatches(cell, []);
+    eq('AP6: empty patches → unchanged', cell._textNodes[0].nodeValue, 'abc 1500 def');
+  });
+
+})();
+
+// ---------------------------------------------------------------------------
+// Integration regression tests via roundTable
+// These reproduce the three Wikipedia bugs.
+// ---------------------------------------------------------------------------
+(function applyExtractedPatches_regressionTests() {
+
+  const makeSupTable = (cell) => ({
+    rows: [{ cells: [cell] }],
+    querySelector: () => null,
+    dataset: {},
+  });
+
+  // RG1: Comma preservation
+  // Cell: "1.5×10<sup>31</sup>, more text"
+  // flat: "1.5×1031, more text"
+  // "1.5" is in the base node; after rounding it shortens.
+  // The comma and "more text" node must be untouched.
+  withSupCreateTreeWalker(function() {
+    const cell = makeExtractedCell([
+      { text: '1.5×10' },
+      { text: '31', inSup: true },
+      { text: ', more text' },
+    ]);
+    cell.querySelector = (sel) => sel === 'sup' ? { tagName: 'SUP' } : null;
+    roundTable(makeSupTable(cell), supTestOpts);
+    eq('RG1: comma and trailing text preserved',
+      cell._textNodes[2].nodeValue, ', more text');
+    eq('RG1: sup exponent node untouched',
+      cell._textNodes[1].nodeValue, '31');
+  });
+
+  // RG2: Superscript digit preserved after rounding
+  // Cell: "1.5×10<sup>31</sup> m<sup>3</sup>"
+  // flat: "1.5×1031 m3"
+  // Rounding "1.5" → shorter string must not corrupt the <sup>3</sup> node.
+  withSupCreateTreeWalker(function() {
+    const cell = makeExtractedCell([
+      { text: '1.5×10' },
+      { text: '31', inSup: true },
+      { text: ' m' },
+      { text: '3', inSup: true },
+    ]);
+    cell.querySelector = (sel) => sel === 'sup' ? { tagName: 'SUP' } : null;
+    roundTable(makeSupTable(cell), supTestOpts);
+    eq('RG2: sup "3" node still contains "3" after rounding',
+      cell._textNodes[3].nodeValue, '3');
+    eq('RG2: " m" node still contains " m"',
+      cell._textNodes[2].nodeValue, ' m');
+  });
+
+  // RG3: Anchor text node intact after rounding an adjacent number
+  // Cell structure (flat): "1234 lithium-7"
+  // "1234" is in a plain node; "lithium-7" is inside an anchor node.
+  // filterLinkMatches excludes "7" (inside anchor), so only "1234" is rounded.
+  // 1234 with offsetTop=-0.5 rounds to 1000 (confirmed: step=500, round(1234/500)=2, 2×500=1000).
+  // The anchor text node must be exactly "lithium-7" after rounding.
+  withSupCreateTreeWalker(function() {
+    const anchor = {
+      innerText: 'lithium-7',
+      textContent: 'lithium-7',
+      _isAnchor: true,
+    };
+    const plainNode = {
+      nodeValue: '1234 ',
+      parentNode: {},
+      parentElement: { closest: () => null },
+    };
+    const anchorNode = {
+      nodeValue: 'lithium-7',
+      parentNode: anchor,
+      parentElement: { closest: (sel) => sel === 'a' ? anchor : null },
+    };
+    const cell = {
+      innerText: '1234 lithium-7',
+      textContent: '1234 lithium-7',
+      innerHTML: '1234 lithium-7',
+      classList: { _classes: [], add(c) { this._classes.push(c); }, contains(c) { return this._classes.includes(c); } },
+      dataset: {},
+      title: '',
+      tagName: 'TD',
+      querySelectorAll: (sel) => sel === 'a' ? [anchor] : [],
+      querySelector: () => null,
+      contains: (node) => node === anchor,
+      _textNodes: [plainNode, anchorNode],
+    };
+    roundTable(makeSupTable(cell), supTestOpts);
+    eq('RG3: anchor text node is intact after rounding adjacent number',
+      anchorNode.nodeValue, 'lithium-7');
+    eq('RG3: plain node was rounded (1234 → 1000)',
+      plainNode.nodeValue, '1000 ');
+  });
+
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
