@@ -37,6 +37,7 @@ const TOUCH_AUTOCOLLAPSE_MS = 3000;
 
 let lastRightClickedElement = null;
 let lastRightClickedTable = null;
+let sidebarOpen = false;
 
 // Per-table memory of the options used for the most recent roundTable() run.
 // Consulted by toggleOriginalValues() when re-running the pipeline so that the
@@ -78,6 +79,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'SIDEBAR_OPENED') {
+    sidebarOpen = true;
     if (lastRightClickedTable) {
       requestSidebarSettingsAndApply(lastRightClickedTable);
       // Tell the sidebar its cached preview samples are stale; it will re-pull
@@ -90,6 +92,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else {
       console.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
     }
+    return;
+  }
+
+  if (request.action === 'CLOSE_SIDEBAR') {
+    sidebarOpen = false;
     return;
   }
 
@@ -353,12 +360,38 @@ function createToggleForTable(table) {
         scheduleAutoCollapse();
       } else {
         // Second tap: toggle state, refresh collapse timer
+        if (sidebarOpen && lastRightClickedTable && table !== lastRightClickedTable) {
+          lastRightClickedTable = table;
+          try {
+            chrome.runtime.sendMessage({ action: 'RESET_SIDEBAR_TO_DEFAULTS' });
+          } catch (e) {
+            // sidebar may be torn down; harmless
+          }
+          try {
+            chrome.runtime.sendMessage({ action: 'PREVIEW_SAMPLES_CHANGED' });
+          } catch (e) {
+            // sidebar may be torn down; harmless
+          }
+        }
         runToggleAction(table);
         syncSwitchForTable(table);
         scheduleAutoCollapse();
       }
     } else {
       // Mouse / keyboard (Space is handled natively by <button>; Enter via keydown below)
+      if (sidebarOpen && lastRightClickedTable && table !== lastRightClickedTable) {
+        lastRightClickedTable = table;
+        try {
+          chrome.runtime.sendMessage({ action: 'RESET_SIDEBAR_TO_DEFAULTS' });
+        } catch (e) {
+          // sidebar may be torn down; harmless
+        }
+        try {
+          chrome.runtime.sendMessage({ action: 'PREVIEW_SAMPLES_CHANGED' });
+        } catch (e) {
+          // sidebar may be torn down; harmless
+        }
+      }
       runToggleAction(table);
       syncSwitchForTable(table);
     }
