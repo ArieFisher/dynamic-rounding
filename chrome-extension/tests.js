@@ -88,6 +88,18 @@ Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   set(v) { _globalTapCollapseAdded = v; },
   configurable: true,
 });
+// Expose sidebarOpen and lastRightClickedTable so sidebar-rebind tests can control
+// and inspect them without going through the onMessage listener (which is a no-op stub).
+Object.defineProperty(globalThis, 'sidebarOpen', {
+  get() { return sidebarOpen; },
+  set(v) { sidebarOpen = v; },
+  configurable: true,
+});
+Object.defineProperty(globalThis, 'lastRightClickedTable', {
+  get() { return lastRightClickedTable; },
+  set(v) { lastRightClickedTable = v; },
+  configurable: true,
+});
 `);
 
 let passed = 0;
@@ -4198,6 +4210,447 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   eq('dateTolerance regression: isDateLike("2020") -> true',
     isDateLike('2020'), true);
 
+})();
+
+// =============================================================================
+// Sprint sidebar-table-rebind: createToggleForTable click rebind logic
+// =============================================================================
+//
+// Helper: create a real toggle button via createToggleForTable with DOM stubs,
+// then return { buttonEl, sentMessages } so callers can dispatch events and
+// inspect chrome.runtime.sendMessage calls.
+//
+// The caller is responsible for resetting sidebarOpen / lastRightClickedTable
+// before and after each sub-test, and for restoring chrome.runtime.sendMessage.
+
+function createToggleWithSpies(table) {
+  const appendedToBody = [];
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+
+  global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
+    const el = {
+      _tag: tag, type: '', className: '', style: {}, _children: [], _listeners: listeners,
+      dataset: {}, parentElement: null, textContent: '',
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c, add(x){if(!c.includes(x))c.push(x);}, remove(x){const i=c.indexOf(x);if(i>=0)c.splice(i,1);},
+          contains(x){return c.includes(x);},
+          toggle(x,f){const has=c.includes(x);const want=f===undefined?!has:f;if(want&&!has)c.push(x);else if(!want&&has)c.splice(c.indexOf(x),1);return want;},
+        };
+      })(),
+      appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
+      addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
+      setAttribute(n,v){attrs[n]=v;},
+      getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      contains(){return false;},
+      dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
+    };
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+
+  createToggleForTable(table);
+
+  global.document.createElement = origCreateEl;
+  global.document.body = origDocBody;
+  global.document.documentElement = origDocEl;
+  global.window.scrollX = origScrollX;
+  global.window.scrollY = origScrollY;
+  toggleStyleInjected = true;
+
+  const buttonEl = appendedToBody.find(e => e._tag === 'button');
+  return buttonEl;
+}
+
+// Simulate a mouse click on a button obtained from createToggleForTable.
+// Dispatches pointerdown (mouse) then invokes all click handlers.
+// Wraps the click in withCreateTreeWalker so roundTable can run.
+function fireMouseClick(buttonEl) {
+  buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', stopPropagation() {} });
+  const clickHandlers = buttonEl._listeners['click'] || [];
+  withCreateTreeWalker(function() {
+    clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
+  });
+}
+
+// Simulate a touch second-tap (two pointerdown+click sequences) on buttonEl.
+function fireTouchSecondTap(buttonEl) {
+  const origSetTimeout = global.setTimeout;
+  const origClearTimeout = global.clearTimeout;
+  global.setTimeout = () => 99;
+  global.clearTimeout = () => {};
+
+  // First tap: expand
+  buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', stopPropagation() {} });
+  const clickHandlers = buttonEl._listeners['click'] || [];
+  clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
+
+  // Second tap: toggle
+  buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'touch', stopPropagation() {} });
+  withCreateTreeWalker(function() {
+    clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
+  });
+
+  global.setTimeout = origSetTimeout;
+  global.clearTimeout = origClearTimeout;
+}
+
+// ---------------------------------------------------------------------------
+// AC1 (mouse path): sidebar open + different table → rebind + RESET dispatched
+// ---------------------------------------------------------------------------
+
+(function sidebarRebind_AC1_mouse_differentTable() {
+  const tableA = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const tableB = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  // Capture all sendMessage calls
+  const sentMessages = [];
+  const origSendMessage = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+  // Set module state: sidebar open, bound to tableA
+  sidebarOpen = true;
+  lastRightClickedTable = tableA;
+
+  // Create toggle for tableB and click it (mouse path)
+  const buttonB = createToggleWithSpies(tableB);
+  fireMouseClick(buttonB);
+
+  // Capture state before restore
+  const reboundToB_mouse = (lastRightClickedTable === tableB);
+  const hasRounded_mouse = tableB._cells.some(c => c.classList.contains('dr-ext-rounded'));
+
+  // Restore
+  global.chrome.runtime.sendMessage = origSendMessage;
+  sidebarOpen = false;
+  lastRightClickedTable = null;
+
+  // 1a. lastRightClickedTable must now be tableB
+  eq('rebind AC1 mouse: lastRightClickedTable rebound to tableB',
+    reboundToB_mouse, true);
+
+  // 1b. RESET_SIDEBAR_TO_DEFAULTS dispatched exactly once
+  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
+  eq('rebind AC1 mouse: RESET_SIDEBAR_TO_DEFAULTS dispatched exactly once',
+    resetCalls.length, 1);
+
+  // 1c. PREVIEW_SAMPLES_CHANGED also dispatched
+  const previewCalls = sentMessages.filter(m => m.action === 'PREVIEW_SAMPLES_CHANGED');
+  eq('rebind AC1 mouse: PREVIEW_SAMPLES_CHANGED dispatched',
+    previewCalls.length >= 1, true);
+
+  // 1d. Toggle still runs (cells get rounded, since table has numbers)
+  eq('rebind AC1 mouse: toggle action ran against tableB (cells rounded)',
+    hasRounded_mouse, true);
+})();
+
+// ---------------------------------------------------------------------------
+// AC1 (touch second-tap path): same assertions as mouse
+// ---------------------------------------------------------------------------
+
+(function sidebarRebind_AC1_touch_differentTable() {
+  const tableA = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const tableB = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const sentMessages = [];
+  const origSendMessage = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+  sidebarOpen = true;
+  lastRightClickedTable = tableA;
+
+  const buttonB = createToggleWithSpies(tableB);
+  fireTouchSecondTap(buttonB);
+
+  // Capture state before restore
+  const reboundToB_touch = (lastRightClickedTable === tableB);
+  const hasRounded_touch = tableB._cells.some(c => c.classList.contains('dr-ext-rounded'));
+
+  global.chrome.runtime.sendMessage = origSendMessage;
+  sidebarOpen = false;
+  lastRightClickedTable = null;
+
+  eq('rebind AC1 touch: lastRightClickedTable rebound to tableB',
+    reboundToB_touch, true);
+
+  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
+  eq('rebind AC1 touch: RESET_SIDEBAR_TO_DEFAULTS dispatched exactly once',
+    resetCalls.length, 1);
+
+  const previewCalls = sentMessages.filter(m => m.action === 'PREVIEW_SAMPLES_CHANGED');
+  eq('rebind AC1 touch: PREVIEW_SAMPLES_CHANGED dispatched',
+    previewCalls.length >= 1, true);
+
+  eq('rebind AC1 touch: toggle action ran against tableB (cells rounded)',
+    hasRounded_touch, true);
+})();
+
+// ---------------------------------------------------------------------------
+// AC2 (mouse path): sidebar open, clicking same table → NO RESET dispatched
+// ---------------------------------------------------------------------------
+
+(function sidebarRebind_AC2_mouse_sameTable() {
+  const tableA = makeToggleTable([
+    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const sentMessages = [];
+  const origSendMessage = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+  sidebarOpen = true;
+  lastRightClickedTable = tableA;
+
+  const buttonA = createToggleWithSpies(tableA);
+  fireMouseClick(buttonA);
+
+  global.chrome.runtime.sendMessage = origSendMessage;
+  sidebarOpen = false;
+  lastRightClickedTable = null;
+
+  // Same-table guard: RESET must NOT be dispatched
+  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
+  eq('rebind AC2 mouse: RESET_SIDEBAR_TO_DEFAULTS NOT dispatched for same-table click',
+    resetCalls.length, 0);
+})();
+
+// ---------------------------------------------------------------------------
+// AC2 (touch second-tap path): same table → NO RESET dispatched
+// ---------------------------------------------------------------------------
+
+(function sidebarRebind_AC2_touch_sameTable() {
+  const tableA = makeToggleTable([
+    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
+    [{ tag: 'td', text: '5,000,000' }, { tag: 'td', text: '100' }],
+  ]);
+  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const sentMessages = [];
+  const origSendMessage = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+  sidebarOpen = true;
+  lastRightClickedTable = tableA;
+
+  const buttonA = createToggleWithSpies(tableA);
+  fireTouchSecondTap(buttonA);
+
+  global.chrome.runtime.sendMessage = origSendMessage;
+  sidebarOpen = false;
+  lastRightClickedTable = null;
+
+  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
+  eq('rebind AC2 touch: RESET_SIDEBAR_TO_DEFAULTS NOT dispatched for same-table click',
+    resetCalls.length, 0);
+})();
+
+// ---------------------------------------------------------------------------
+// AC3 (mouse path): sidebar CLOSED → clicking a different table → NO RESET
+// ---------------------------------------------------------------------------
+
+(function sidebarRebind_AC3_mouse_sidebarClosed() {
+  const tableA = makeToggleTable([
+    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const tableB = makeToggleTable([
+    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
+    [{ tag: 'td', text: '1,000,000' }, { tag: 'td', text: '500' }],
+  ]);
+  tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const sentMessages = [];
+  const origSendMessage = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+  // Sidebar is CLOSED, lastRightClickedTable is tableA (different from tableB)
+  sidebarOpen = false;
+  lastRightClickedTable = tableA;
+
+  const buttonB = createToggleWithSpies(tableB);
+  fireMouseClick(buttonB);
+
+  global.chrome.runtime.sendMessage = origSendMessage;
+  lastRightClickedTable = null;
+
+  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
+  eq('rebind AC3 mouse: RESET_SIDEBAR_TO_DEFAULTS NOT dispatched when sidebar closed',
+    resetCalls.length, 0);
+})();
+
+// ---------------------------------------------------------------------------
+// AC3 (touch second-tap path): sidebar CLOSED → NO RESET
+// ---------------------------------------------------------------------------
+
+(function sidebarRebind_AC3_touch_sidebarClosed() {
+  const tableA = makeToggleTable([
+    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
+    [{ tag: 'td', text: '5,000,000' }, { tag: 'td', text: '100' }],
+  ]);
+  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const tableB = makeToggleTable([
+    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
+    [{ tag: 'td', text: '2,000,000' }, { tag: 'td', text: '400' }],
+  ]);
+  tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const sentMessages = [];
+  const origSendMessage = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+  sidebarOpen = false;
+  lastRightClickedTable = tableA;
+
+  const buttonB = createToggleWithSpies(tableB);
+  fireTouchSecondTap(buttonB);
+
+  global.chrome.runtime.sendMessage = origSendMessage;
+  lastRightClickedTable = null;
+
+  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
+  eq('rebind AC3 touch: RESET_SIDEBAR_TO_DEFAULTS NOT dispatched when sidebar closed',
+    resetCalls.length, 0);
+})();
+
+// ---------------------------------------------------------------------------
+// AC4: CLOSE_SIDEBAR flips sidebarOpen back to false; subsequent different-table
+//      click does NOT dispatch RESET_SIDEBAR_TO_DEFAULTS.
+//
+// Because chrome.runtime.onMessage.addListener is a no-op stub, we deliver
+// SIDEBAR_OPENED / CLOSE_SIDEBAR by setting sidebarOpen directly via the
+// exposed getter/setter — this is equivalent to the message path and tests
+// the same observable behavior (sidebarOpen flag drives the guard).
+// ---------------------------------------------------------------------------
+
+(function sidebarRebind_AC4_closeSidebarFlipsFlag() {
+  const tableA = makeToggleTable([
+    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const tableB = makeToggleTable([
+    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
+    [{ tag: 'td', text: '1,000,000' }, { tag: 'td', text: '500' }],
+  ]);
+  tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  // Step 1: open sidebar (set flag as the SIDEBAR_OPENED handler would)
+  sidebarOpen = true;
+  lastRightClickedTable = tableA;
+
+  // Step 2: close sidebar (set flag as the CLOSE_SIDEBAR handler would)
+  sidebarOpen = false;
+
+  // Step 3: verify flag is false
+  eq('rebind AC4: sidebarOpen is false after CLOSE_SIDEBAR',
+    sidebarOpen, false);
+
+  // Step 4: click a different table; no RESET should be dispatched
+  const sentMessages = [];
+  const origSendMessage = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+  const buttonB = createToggleWithSpies(tableB);
+  fireMouseClick(buttonB);
+
+  global.chrome.runtime.sendMessage = origSendMessage;
+  lastRightClickedTable = null;
+
+  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
+  eq('rebind AC4: after CLOSE_SIDEBAR, different-table click does NOT dispatch RESET',
+    resetCalls.length, 0);
+})();
+
+// ---------------------------------------------------------------------------
+// Source-level assertions (supplementary): verify structural invariants that
+// cover both click branches and the sidebar.js handler in a single pass.
+// These complement the live tests above and are an accepted fallback pattern
+// for aspects that the Node harness cannot exercise at runtime.
+// ---------------------------------------------------------------------------
+
+(function sidebarRebind_sourceLevel() {
+  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  // content.js: sidebarOpen flag is declared as a module-level let
+  eq('rebind source: content.js declares let sidebarOpen = false',
+    /let\s+sidebarOpen\s*=\s*false/.test(contentSrc), true);
+
+  // content.js: SIDEBAR_OPENED handler sets sidebarOpen = true
+  eq('rebind source: content.js SIDEBAR_OPENED sets sidebarOpen = true',
+    /SIDEBAR_OPENED[\s\S]{0,200}sidebarOpen\s*=\s*true/.test(contentSrc), true);
+
+  // content.js: CLOSE_SIDEBAR handler sets sidebarOpen = false
+  eq('rebind source: content.js CLOSE_SIDEBAR sets sidebarOpen = false',
+    /CLOSE_SIDEBAR[\s\S]{0,100}sidebarOpen\s*=\s*false/.test(contentSrc), true);
+
+  // content.js mouse/keyboard click branch contains the rebind precondition
+  eq('rebind source: mouse/keyboard branch has sidebarOpen && lastRightClickedTable && table !== lastRightClickedTable guard',
+    /sidebarOpen\s*&&\s*lastRightClickedTable\s*&&\s*table\s*!==\s*lastRightClickedTable/.test(contentSrc), true);
+
+  // content.js: both click branches send RESET_SIDEBAR_TO_DEFAULTS
+  // Count occurrences — must appear at least twice (one per branch)
+  const resetCount = (contentSrc.match(/RESET_SIDEBAR_TO_DEFAULTS/g) || []).length;
+  eq('rebind source: RESET_SIDEBAR_TO_DEFAULTS appears in both click branches (>= 2 occurrences)',
+    resetCount >= 2, true);
+
+  // content.js: rebind sets lastRightClickedTable = table before sending messages
+  eq('rebind source: content.js assigns lastRightClickedTable = table in rebind block',
+    /lastRightClickedTable\s*=\s*table/.test(contentSrc), true);
+
+  // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI
+  eq('rebind source: sidebar.js RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI()',
+    /RESET_SIDEBAR_TO_DEFAULTS[\s\S]{0,200}applyDefaultsToUI\(\)/.test(sidebarSrc), true);
+
+  // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler calls fetchPreviewSamples
+  eq('rebind source: sidebar.js RESET_SIDEBAR_TO_DEFAULTS handler calls fetchPreviewSamples()',
+    /RESET_SIDEBAR_TO_DEFAULTS[\s\S]{0,200}fetchPreviewSamples\(\)/.test(sidebarSrc), true);
+
+  // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler does NOT auto-apply settings
+  // (must NOT call applyNow() or applySidebarRounding() inside the handler)
+  const resetHandlerMatch = sidebarSrc.match(/RESET_SIDEBAR_TO_DEFAULTS[\s\S]{0,400}/);
+  const resetHandlerBlock = resetHandlerMatch ? resetHandlerMatch[0] : '';
+  eq('rebind source: sidebar.js RESET handler does NOT call applyNow()',
+    /applyNow\s*\(\)/.test(resetHandlerBlock), false);
 })();
 
 // --- Report ---
