@@ -5603,6 +5603,158 @@ const supTestOpts = {
   });
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint refactor/simplify-naming-unification — Adversarial contract lock-in
+// ---------------------------------------------------------------------------
+
+(function simplifyNamingUnification() {
+
+  // -------------------------------------------------------------------------
+  // AC1: Renames are total — no old key names survive in any source file.
+  // Pattern strings are split across concatenation to prevent self-matching.
+  // -------------------------------------------------------------------------
+  const sourceFiles = [
+    'defaults.js', 'sidebar.html', 'sidebar.js', 'content.js', 'tests.js'
+  ];
+  const oldKeys = [
+    'include' + 'Words',
+    'include' + 'Currency',
+    'include' + 'Percent',
+    'exclude' + 'FirstRow',
+    'exclude' + 'FirstColumn',
+  ];
+  for (const file of sourceFiles) {
+    const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
+    for (const key of oldKeys) {
+      eq(`AC1: old key "${key}" absent from ${file}`,
+        src.includes(key), false);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // AC2: simplifyFirstRow polarity — four cases.
+  // -------------------------------------------------------------------------
+
+  // Case 1: flag true → row 0 IS simplified (not excluded)
+  eq('AC2 simplifyFirstRow: true + row 0 → null (row IS simplified)',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: true }, 0), null);
+
+  // Case 2: flag false → row 0 excluded
+  eq('AC2 simplifyFirstRow: false + row 0 → "firstRow"',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'firstRow');
+
+  // Case 3: flag unset (undefined) → row 0 excluded (intentional default change)
+  eq('AC2 simplifyFirstRow: unset + row 0 → "firstRow" (new default semantics)',
+    getExclusionReason('1,234', 1, {}, 0), 'firstRow');
+
+  // Case 4: flag false but row 1 → null (only row 0 is affected)
+  eq('AC2 simplifyFirstRow: false + row 1 → null (non-first row unaffected)',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 1), null);
+
+  // -------------------------------------------------------------------------
+  // AC3: simplifyFirstColumn polarity — mirror of AC2.
+  // -------------------------------------------------------------------------
+
+  // Case 1: flag true → col 0 IS simplified (not excluded)
+  eq('AC3 simplifyFirstColumn: true + col 0 → null (col IS simplified)',
+    getExclusionReason('1,234', 0, { simplifyFirstColumn: true, simplifyFirstRow: true }, 1), null);
+
+  // Case 2: flag false → col 0 excluded
+  eq('AC3 simplifyFirstColumn: false + col 0 → "firstColumn"',
+    getExclusionReason('1,234', 0, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), 'firstColumn');
+
+  // Case 3: flag unset → col 0 excluded (intentional default change)
+  eq('AC3 simplifyFirstColumn: unset + col 0 → "firstColumn" (new default semantics)',
+    getExclusionReason('1,234', 0, { simplifyFirstRow: true }, 1), 'firstColumn');
+
+  // Case 4: flag false but col 1 → null (only col 0 is affected)
+  eq('AC3 simplifyFirstColumn: false + col 1 → null (non-first column unaffected)',
+    getExclusionReason('1,234', 1, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), null);
+
+  // -------------------------------------------------------------------------
+  // AC4a: simplifyMixedCurrency polarity.
+  // -------------------------------------------------------------------------
+
+  eq('AC4a simplifyMixedCurrency: true + "$1,234" → null (NOT excluded)',
+    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: true }, 1), null);
+
+  eq('AC4a simplifyMixedCurrency: false + "$1,234" → "currency"',
+    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: false }, 1), 'currency');
+
+  // -------------------------------------------------------------------------
+  // AC4b: simplifyMixedPercent polarity.
+  // -------------------------------------------------------------------------
+
+  eq('AC4b simplifyMixedPercent: true + "45%" → null (NOT excluded)',
+    getExclusionReason('45%', 1, { simplifyMixedPercent: true }, 1), null);
+
+  eq('AC4b simplifyMixedPercent: false + "45%" → "percent"',
+    getExclusionReason('45%', 1, { simplifyMixedPercent: false }, 1), 'percent');
+
+  // -------------------------------------------------------------------------
+  // AC5: simplifyMixedCells=false → prose cell with embedded number not touched.
+  // Use roundTable with a real mock table.
+  // -------------------------------------------------------------------------
+  withCreateTreeWalker(function() {
+    // Two cells: a large anchor so max_mag is set, and a prose cell.
+    const table = makeMockTable([[
+      { tag: 'td', text: '8,000,000' },
+      { tag: 'td', text: 'about 1,234 widgets' },
+    ]]);
+    roundTable(table, {
+      enabled: true,
+      simplifyMixedCells: false,
+      simplifyMixedCurrency: false,
+      simplifyMixedPercent: false,
+      simplifyFirstRow: true,
+      simplifyFirstColumn: true,
+      simplifyDates: false,
+      simplifyTimes: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
+    });
+    const proseCell = table.rows[0].cells[1];
+    eq('AC5 simplifyMixedCells=false: prose cell NOT marked as rounded',
+      proseCell.classList.contains('dr-ext-rounded'), false);
+    eq('AC5 simplifyMixedCells=false: prose cell text unchanged',
+      proseCell.innerText, 'about 1,234 widgets');
+  });
+
+  // -------------------------------------------------------------------------
+  // AC6: DR_DEFAULTS snapshot — all seven new keys with exact default values.
+  // -------------------------------------------------------------------------
+  eq('AC6 DR_DEFAULTS: simplifyMixedCells = true',
+    DR_DEFAULTS.simplifyMixedCells, true);
+  eq('AC6 DR_DEFAULTS: simplifyMixedCurrency = true',
+    DR_DEFAULTS.simplifyMixedCurrency, true);
+  eq('AC6 DR_DEFAULTS: simplifyMixedPercent = true',
+    DR_DEFAULTS.simplifyMixedPercent, true);
+  eq('AC6 DR_DEFAULTS: simplifyDates = true',
+    DR_DEFAULTS.simplifyDates, true);
+  eq('AC6 DR_DEFAULTS: simplifyTimes = false',
+    DR_DEFAULTS.simplifyTimes, false);
+  eq('AC6 DR_DEFAULTS: simplifyFirstRow = false',
+    DR_DEFAULTS.simplifyFirstRow, false);
+  eq('AC6 DR_DEFAULTS: simplifyFirstColumn = false',
+    DR_DEFAULTS.simplifyFirstColumn, false);
+
+  // -------------------------------------------------------------------------
+  // AC7: sidebar.html id ↔ setting key parity — each of the seven keys must
+  // appear as id="<key>" on a checkbox <input>.
+  // -------------------------------------------------------------------------
+  const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const sevenKeys = [
+    'simplifyMixedCells', 'simplifyMixedCurrency', 'simplifyMixedPercent',
+    'simplifyDates', 'simplifyTimes', 'simplifyFirstRow', 'simplifyFirstColumn'
+  ];
+  for (const key of sevenKeys) {
+    // Match <input ... type="checkbox" ... id="<key>"> (or id before type)
+    eq(`AC7 sidebar.html: checkbox with id="${key}" present`,
+      new RegExp(`<input[^>]*type="checkbox"[^>]*id="${key}"|<input[^>]*id="${key}"[^>]*type="checkbox"`).test(sidebarHtml),
+      true);
+  }
+
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
