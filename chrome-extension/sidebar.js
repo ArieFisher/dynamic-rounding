@@ -333,6 +333,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   } else if (request.action === 'PREVIEW_SAMPLES_CHANGED') {
     fetchPreviewSamples();
+  } else if (request.action === 'RESET_SIDEBAR_TO_DEFAULTS') {
+    try {
+      applyDefaultsToUI();
+      fetchPreviewSamples();
+    } catch (e) {
+      // sidebar may be in teardown; harmless
+    }
   }
 });
 
