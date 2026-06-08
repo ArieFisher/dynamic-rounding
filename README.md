@@ -1,29 +1,36 @@
 # Make data readable
 
-Data can tell rich stories, but too much detail can make it hard to see the patterns.   
+Data can tell rich stories, but only if you can find the patterns. 
 
-For example:
+For example: can you see the story in this:
 > Jan-Dec:  $31,311.28, $38,080.94, $45,291.38, $45,090.27, $47,709.54, $41,400.09, $24,923.26, $25,303.28, $41,200.80, $43,098.42, $42,210.11, $32,892.62
 
-Removing the precise values helps the pattern jump out:
+How about now:
 
 <p align="center">
- <img src="docs/media/revenue_chart1.png" alt="chart showing revenue" width="400">
+ <img src="docs/media/revenue_chart_2.png" alt="chart showing revenue" width="400">
  <br>
-  <sup> Revenue drops during summer and winter breaks (pattern) - a business cycle tied to the academic calendar (meaning). </sup>
+  <sup><i>pattern</i>: revenue drops during summer and winter breaks 
+  <br> <i>meaning</i>: a business cycle tied to the academic calendar </sup>
 </p>
 
-Our brains unconsciously look for structure and trends, then interpret them for meaning.
+The data is *exactly* the same.  But the numbers hide the pattern.
+
+The human brain is wired to seek meaning, continually searching for patterns and unconsciously interpreting them.
 
 Consider these presentations:
 
 <p align="center">
  <img src="docs/media/wikipedia_population.png" alt="chart showing revenue" width = "600">
- <br>
-  <sup> A message: Dallas/Fort Worth is about the size of Chicago or Houston ... visually, it belongs with the largest metropolitan areas in the top-5.</sup>
+  <br>
+  <sup> <i>pattern</i>: Dallas-Fort Worth is about the size of Chicago or Houston; 
+  <br> <i>meaning</i>: Dallas-Fort Worth is top-5 (vs. 9th and 10th).</sup>
+
 </p>
 
-Our eyes receive the image on the left, but our brains see the one on the right. This library makes data more readable by accelerating the way people naturally recognize patterns and extract meaning.
+Our eyes receive the image on the left, but our brains see the one on the right. This library simply accelerates that process.
+
+Detail can detract from understanding. This library makes data more readable, helping us find the patterns, relationships, and the stories hidden within.
 
 
 ## Implementations
@@ -37,9 +44,9 @@ Our eyes receive the image on the left, but our brains see the one on the right.
 ## Quick Examples
 
 ### Chrome Extension
-![alt-text](docs//dynamic_rounding_Screen.gif)
+[(]1 minute video demo](https://share.descript.com/view/Y76MAoqM06p)
 
-see [Chrome Extension README](chrome-extension/README.md)
+[Chrome Extension README](chrome-extension/README.md)
 
 ### Google Sheets
 
@@ -77,7 +84,7 @@ MIT
 
 ## An example of reading a story from data
 
-Data can encode information it was not designed to reveal. For example, this invoice reveals read a company's business model, underlying architectural beliefs and transformation goals.
+Data holds information it was not designed to reveal. For example, this cloud invoice reveals read a company's business model, underlying architectural beliefs and transformation goals.
 
 | Service Name | Cloud Bill |
 | :---- | :---- |
@@ -95,13 +102,13 @@ Let's hunt for signal:
 
 | Service Name | Simplified | Observations |
 | :---- | :---- | :---- |
-| Cloud CDN | 4,250,000 | This company 'serves': Web or media platform? |
+| Cloud CDN | 4,250,000 | This company 'serves': Web, possibly media platform |
 | Cloud Load Balancing | 3,750,000 | High traffic volume:  globally-popular? |
-| Cloud Storage | 1,000,000 | Significant storage footprint: serving media (e.g. streaming video)?  Gaming unlikely (too compute-intensive) |
+| Cloud Storage | 1,000,000 | Significant storage footprint: serving media (e.g. streaming video)?  Gaming unlikely (too compute-intensive for this bill) |
 | BigQuery | 800,000 | Data platform: logs (a streaming company) and business intelligence? |
-| Cloud Dataflow | 65,000 | Real-time processing pipeline: streaming telemetry?   Spend relative to BigQuery is low: an experiment? |
+| Cloud Dataflow | 65,000 | - Real-time processing pipeline: streaming telemetry?   <br> - Spend relative to BigQuery is low: an experiment? |
 | Cloud Pub/Sub | 45,000 | Streaming ingestion layer? |
-| Cloud Dataproc | 10,000 | Batch: analytics?   Lower spend than Dataflow: company prioritizes streaming: log processing? |
+| Cloud Dataproc | 10,000 | - Batch: analytics?  <br> - Lower spend than Dataflow -> streaming (log processing?) a higher priority |
 | Compute Engine | 15 | Minimal usage of raw infrastructure:  prefer managed/serverless? |
 | *If this interpretation feels obvious, try re-reading the raw invoice first and check if these observations jump out at you.* |  |  |
 
@@ -112,6 +119,6 @@ This invoice suggests a large-scale content platform undergoing a **transition f
 
 - **Business model**: A global-scale content or media-serving platform with heavy delivery and storage demand.  
 - ***Architectural beliefs***: \- Near-zero Compute Engine spend suggests a strong preference for managed/serverless infrastructure.  
-- ***BigQuery Decomposition*****:** BigQuery is still the system of record (nearly 10:1 cost vs. other data solutions) as the team experiments with streaming log ingestion and lower-cost batch processing (while respecting its preference for managed services).  
-- ***Streaming over Batch***: The 10:1 ratio between streaming ($110,000) and batch ($10,000) shows a company that prioritizes immediacy, processing CDN telemetry in real-time to detect errors, fraud, or performance dips.  
+- ***BigQuery Decomposition***: BigQuery is still the system of record (nearly 10:1 cost vs. other data solutions) as the team experiments with streaming log ingestion and lower-cost batch processing (while respecting its preference for managed services).  
+- ***Streaming over Batch***: The 10:1 ratio between streaming ($110k) and batch ($10k) shows a company that prioritizes immediacy, processing CDN telemetry in real-time to detect errors, fraud, or performance dips.  
 - ***Logs over Analytics***: The combined cost of the data pipeline suggests that the logs themselves are the "nerve system" of the business, enabling real-time tuning of the $4.25M CDN spend.
