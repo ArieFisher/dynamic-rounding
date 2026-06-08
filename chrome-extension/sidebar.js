@@ -15,8 +15,8 @@ const CHECKBOX_TO_SETTING = {
   includePercent: 'includePercent',
   excludeFirstRow: 'excludeFirstRow',
   excludeFirstColumn: 'excludeFirstColumn',
-  excludeDates: 'excludeDates',
-  excludeTimes: 'excludeTimes'
+  simplifyDates: 'simplifyDates',
+  simplifyTimes: 'simplifyTimes'
 };
 
 const dateGranularityEl = document.getElementById('dateGranularity');
@@ -264,10 +264,10 @@ function updateDisabledState() {
   // Granularity dropdown only matters when the row's toggle is on
   // (i.e. that type's cells are bucketed by the selected granularity).
   if (dateGranularityEl) {
-    dateGranularityEl.disabled = !document.getElementById('excludeDates').checked;
+    dateGranularityEl.disabled = !document.getElementById('simplifyDates').checked;
   }
   if (timeGranularityEl) {
-    timeGranularityEl.disabled = !document.getElementById('excludeTimes').checked;
+    timeGranularityEl.disabled = !document.getElementById('simplifyTimes').checked;
   }
 }
 
