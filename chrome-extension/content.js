@@ -652,7 +652,7 @@ function resetTable(table) {
 
 // Walk every <td> in the table and return its trimmed text + parsed number, but
 // only for cells whose entire content parses as a single number (mode 'pure'
-// in roundTable's classifier). Cells matched only via includeWords / dates /
+// in roundTable's classifier). Cells matched only via simplifyMixedCells / dates /
 // times are intentionally skipped here — they're deferred to a future sprint.
 function collectNumericCells(table) {
   const out = [];
@@ -811,7 +811,7 @@ function roundTable(table, options) {
             // The cell contains a <sup> element: the flattened text mixes base and exponent
             // digits (e.g. "10<sup>12</sup>" -> innerText "1012").  Route through the
             // inline-extraction path so superscript masking can protect the exponent.
-            if (opts.includeWords) {
+            if (opts.simplifyMixedCells) {
               let matches = extractNumbersInText(text);
               matches = filterLinkMatches(cell, matches);
               const quoteRanges = getQuoteMaskedRanges(text);
@@ -833,7 +833,7 @@ function roundTable(table, options) {
           } else {
             rowInfo.push({ mode: 'pure', num });
           }
-        } else if (opts.includeWords) {
+        } else if (opts.simplifyMixedCells) {
           let matches = extractNumbersInText(text);
           matches = filterLinkMatches(cell, matches);
           const quoteRanges = getQuoteMaskedRanges(text);
@@ -1066,12 +1066,12 @@ function resolveNumTop(value, fallback) {
 }
 
 function getExclusionReason(text, columnIndex, options, rowIndex) {
-  if (options.excludeFirstRow && rowIndex === 0) return 'firstRow';
-  if (options.excludeFirstColumn && columnIndex === 0) return 'firstColumn';
+  if (!options.simplifyFirstRow && rowIndex === 0) return 'firstRow';
+  if (!options.simplifyFirstColumn && columnIndex === 0) return 'firstColumn';
   if (typeof text !== 'string') return null;
   const t = text.trim();
-  if (!options.includePercent && /%/.test(t)) return 'percent';
-  if (!options.includeCurrency && /[$€£¥₹]/.test(t)) return 'currency';
+  if (!options.simplifyMixedPercent && /%/.test(t)) return 'percent';
+  if (!options.simplifyMixedCurrency && /[$€£¥₹]/.test(t)) return 'currency';
   return null;
 }
 
