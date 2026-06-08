@@ -80,7 +80,6 @@
     .toggle-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 8px;
       padding: 5px 0;
     }
@@ -249,62 +248,62 @@
 
   <div class="section" id="optionsSection">
     <div class="toggle-row">
-      <span class="toggle-label">words</span>
       <label class="switch">
         <input type="checkbox" id="includeWords">
         <span class="slider"></span>
       </label>
+      <span class="toggle-label">words</span>
     </div>
     <div class="toggle-row">
-      <span class="toggle-label">currencies</span>
       <label class="switch">
         <input type="checkbox" id="includeCurrency">
         <span class="slider"></span>
       </label>
+      <span class="toggle-label">currencies</span>
     </div>
     <div class="toggle-row">
-      <span class="toggle-label">percentages</span>
       <label class="switch">
         <input type="checkbox" id="includePercent">
         <span class="slider"></span>
       </label>
+      <span class="toggle-label">percentages</span>
     </div>
     <div class="toggle-row">
+      <label class="switch">
+        <input type="checkbox" id="simplifyDates">
+        <span class="slider"></span>
+      </label>
       <span class="toggle-label">dates</span>
       <select id="dateGranularity" disabled>
         <option value="year">year</option>
         <option value="decade">decade</option>
         <option value="century">century</option>
       </select>
-      <label class="switch">
-        <input type="checkbox" id="simplifyDates">
-        <span class="slider"></span>
-      </label>
     </div>
     <div class="toggle-row">
+      <label class="switch">
+        <input type="checkbox" id="simplifyTimes">
+        <span class="slider"></span>
+      </label>
       <span class="toggle-label">times</span>
       <select id="timeGranularity" disabled>
         <option value="hour">hour</option>
         <option value="minute">minute</option>
       </select>
-      <label class="switch">
-        <input type="checkbox" id="simplifyTimes">
-        <span class="slider"></span>
-      </label>
     </div>
     <div class="toggle-row">
-      <span class="toggle-label">first row</span>
       <label class="switch">
         <input type="checkbox" id="excludeFirstRow">
         <span class="slider"></span>
       </label>
+      <span class="toggle-label">first row</span>
     </div>
     <div class="toggle-row">
-      <span class="toggle-label">first column</span>
       <label class="switch">
         <input type="checkbox" id="excludeFirstColumn">
         <span class="slider"></span>
       </label>
+      <span class="toggle-label">first column</span>
     </div>
   </div>
 
