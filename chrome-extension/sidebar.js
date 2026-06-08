@@ -10,11 +10,11 @@ const optionsSection = document.getElementById('optionsSection');
 const statusEl = document.getElementById('status');
 
 const CHECKBOX_TO_SETTING = {
-  includeWords: 'includeWords',
-  includeCurrency: 'includeCurrency',
-  includePercent: 'includePercent',
-  excludeFirstRow: 'excludeFirstRow',
-  excludeFirstColumn: 'excludeFirstColumn',
+  simplifyMixedCells: 'simplifyMixedCells',
+  simplifyMixedCurrency: 'simplifyMixedCurrency',
+  simplifyMixedPercent: 'simplifyMixedPercent',
+  simplifyFirstRow: 'simplifyFirstRow',
+  simplifyFirstColumn: 'simplifyFirstColumn',
   simplifyDates: 'simplifyDates',
   simplifyTimes: 'simplifyTimes'
 };

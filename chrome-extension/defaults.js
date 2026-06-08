@@ -7,11 +7,11 @@
  */
 const DR_DEFAULTS = {
   enabled: true,
-  includeWords: true,
-  includeCurrency: true,
-  includePercent: true,
-  excludeFirstRow: false,
-  excludeFirstColumn: false,
+  simplifyMixedCells: true,
+  simplifyMixedCurrency: true,
+  simplifyMixedPercent: true,
+  simplifyFirstRow: false,
+  simplifyFirstColumn: false,
   simplifyDates: true,
   simplifyTimes: false,
   dateGranularity: 'decade',
