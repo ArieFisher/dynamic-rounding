@@ -4205,6 +4205,110 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 
 })();
 
+// =============================================================================
+// Sprint sidebar-pill-left: toggle switch appears left of label in every row
+// =============================================================================
+//
+// Acceptance criteria:
+//   AC1. In every option row the switch (<label class="switch">) comes before
+//        the .toggle-label text node — verified by comparing indexOf positions
+//        of the checkbox <input> vs <span class="toggle-label"> within each row.
+//   AC2. On the dates/times rows the <select id="dateGranularity"> /
+//        <select id="timeGranularity"> is the last element — its index appears
+//        AFTER the .toggle-label in the row substring.
+//   AC3. sidebar.html does NOT contain "row-reverse" anywhere.
+//   AC4. The .toggle-row CSS block does NOT contain "justify-content: space-between".
+
+(function sidebarPillLeft() {
+  const sidebarPath = path.join(__dirname, 'sidebar.html');
+  const sidebarHtml = fs.readFileSync(sidebarPath, 'utf8');
+
+  // Helper: extract the substring of sidebarHtml that covers the .toggle-row
+  // whose checkbox has the given id. We find the opening <div class="toggle-row">
+  // that contains id="<rowId>" and slice up to the matching </div>.
+  function getRowSubstring(rowId) {
+    // Find the checkbox input for this id within the full source.
+    const inputPattern = new RegExp('id=["\']' + rowId + '["\']');
+    const inputIdx = sidebarHtml.search(inputPattern);
+    if (inputIdx === -1) return null;
+
+    // Walk backwards to the nearest <div class="toggle-row"> opening tag.
+    const beforeInput = sidebarHtml.slice(0, inputIdx);
+    const divStart = beforeInput.lastIndexOf('<div class="toggle-row">');
+    if (divStart === -1) return null;
+
+    // Walk forwards to find the matching closing </div>.
+    // We look for the first </div> that closes the outermost .toggle-row div.
+    const fromDiv = sidebarHtml.slice(divStart);
+    // Scan for the first </div> after the opening tag (these rows have no nested divs).
+    const closeIdx = fromDiv.indexOf('</div>');
+    if (closeIdx === -1) return null;
+
+    return fromDiv.slice(0, closeIdx + '</div>'.length);
+  }
+
+  // --- AC1: switch appears before .toggle-label in each option row ---
+  // Rows to check: includeWords, excludeFirstColumn (simple), simplifyDates, simplifyTimes.
+  const simpleRows = ['includeWords', 'excludeFirstColumn'];
+  for (const id of simpleRows) {
+    const row = getRowSubstring(id);
+    eq(`sidebar-pill-left AC1: row "${id}" exists in sidebar.html`,
+      row !== null, true);
+    if (row !== null) {
+      const inputIdx = row.search(new RegExp('id=["\']' + id + '["\']'));
+      const labelIdx = row.indexOf('<span class="toggle-label">');
+      eq(`sidebar-pill-left AC1: switch input comes before .toggle-label in row "${id}"`,
+        inputIdx < labelIdx, true);
+    }
+  }
+
+  // Also check the date and time rows (they have a <select> too).
+  const complexRows = ['simplifyDates', 'simplifyTimes'];
+  for (const id of complexRows) {
+    const row = getRowSubstring(id);
+    eq(`sidebar-pill-left AC1: row "${id}" exists in sidebar.html`,
+      row !== null, true);
+    if (row !== null) {
+      const inputIdx = row.search(new RegExp('id=["\']' + id + '["\']'));
+      const labelIdx = row.indexOf('<span class="toggle-label">');
+      eq(`sidebar-pill-left AC1: switch input comes before .toggle-label in row "${id}"`,
+        inputIdx < labelIdx, true);
+    }
+  }
+
+  // --- AC2: <select> is the last element (after .toggle-label) in dates/times rows ---
+  const selectPairs = [
+    { rowId: 'simplifyDates',  selectId: 'dateGranularity' },
+    { rowId: 'simplifyTimes',  selectId: 'timeGranularity' },
+  ];
+  for (const { rowId, selectId } of selectPairs) {
+    const row = getRowSubstring(rowId);
+    if (row !== null) {
+      const labelIdx  = row.indexOf('<span class="toggle-label">');
+      const selectIdx = row.search(new RegExp('<select[^>]*id=["\']' + selectId + '["\']'));
+      eq(`sidebar-pill-left AC2: <select id="${selectId}"> appears after .toggle-label in row`,
+        selectIdx > labelIdx, true);
+    }
+  }
+
+  // --- AC3: sidebar.html does not use row-reverse ---
+  eq('sidebar-pill-left AC3: sidebar.html does not contain "row-reverse"',
+    sidebarHtml.includes('row-reverse'), false);
+
+  // --- AC4: .toggle-row CSS block does not use justify-content: space-between ---
+  // Find the .toggle-row block by locating ".toggle-row {" and scanning to the closing "}".
+  const toggleRowBlockStart = sidebarHtml.indexOf('.toggle-row {');
+  eq('sidebar-pill-left AC4: .toggle-row CSS block is present in sidebar.html',
+    toggleRowBlockStart !== -1, true);
+  if (toggleRowBlockStart !== -1) {
+    const fromBlock = sidebarHtml.slice(toggleRowBlockStart);
+    const blockClose = fromBlock.indexOf('}');
+    const toggleRowBlock = blockClose !== -1 ? fromBlock.slice(0, blockClose + 1) : fromBlock.slice(0, 200);
+    eq('sidebar-pill-left AC4: .toggle-row CSS block does not contain "justify-content: space-between"',
+      toggleRowBlock.includes('justify-content: space-between'), false);
+  }
+})();
+
 // ---------------------------------------------------------------------------
 // Sprint invert-datetime-pills: simplifyDates / simplifyTimes boolean wiring
 //
