@@ -12,8 +12,8 @@ const DR_DEFAULTS = {
   includePercent: true,
   excludeFirstRow: false,
   excludeFirstColumn: false,
-  excludeDates: true,
-  excludeTimes: false,
+  simplifyDates: true,
+  simplifyTimes: false,
   dateGranularity: 'decade',
   timeGranularity: 'hour',
   // Concrete numeric defaults (Variant F UI always sends concrete numbers, never
