@@ -4310,6 +4310,338 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 })();
 
 // ---------------------------------------------------------------------------
+// Sprint exclude-exponents: <sup>-aware number masking
+// ---------------------------------------------------------------------------
+//
+// Helpers for building mock cells that contain <sup> children.
+//
+// The developer's getSuperscriptRanges(cell) walks document.createTreeWalker
+// text nodes and checks parentNode/parentElement upward for tagName === 'SUP'.
+// The roundTable branch guard uses cell.querySelector('sup') to decide whether
+// a cell needs <sup>-aware handling.
+//
+// makeSuperscriptCell(segments) builds a mock cell where each segment is
+//   { text: string, inSup: boolean }.
+// The resulting cell:
+//   - cell.innerText / cell.textContent: concatenation of all segment texts
+//   - cell._textNodes: list of mock text nodes; nodes with inSup:true have
+//     parentNode.tagName === 'SUP'; others have parentNode === cell
+//   - cell.querySelector('sup'): returns a truthy object when any inSup:true
+//     segment exists; null otherwise
+//   - cell.querySelectorAll('a'): returns [] (no anchors, so filterLinkMatches
+//     keeps all matches)
+// ---------------------------------------------------------------------------
+
+function makeSuperscriptCell(segments) {
+  const hasSup = segments.some(s => s.inSup);
+  const fullText = segments.map(s => s.text).join('');
+
+  const cell = {
+    innerText: fullText,
+    textContent: fullText,
+    innerHTML: fullText,   // good-enough stub; replaceTextPreservingHTML may use it
+    classList: {
+      _classes: [],
+      add(cls) { this._classes.push(cls); },
+      contains(cls) { return this._classes.includes(cls); },
+    },
+    dataset: {},
+    title: '',
+    tagName: 'TD',
+    // querySelectorAll('a') → no anchors so filterLinkMatches is a no-op
+    querySelectorAll: (sel) => sel === 'a' ? [] : [],
+    // querySelector('sup') → truthy iff any segment is inside <sup>
+    querySelector: (sel) => sel === 'sup' && hasSup ? { tagName: 'SUP' } : null,
+  };
+
+  // Build mock text nodes in document order.
+  // Each node has parentNode whose ancestor chain reaches 'cell'.
+  // For inSup nodes: parentNode is a fake <sup> element whose parentNode is cell.
+  // For plain nodes: parentNode is cell itself (so the while-loop terminates).
+  const textNodes = segments.map(seg => {
+    let parentNode;
+    if (seg.inSup) {
+      // A fake <sup> element: tagName matches SUPERSCRIPT_TAG ('SUP'), parent is cell
+      const supEl = { tagName: 'SUP', parentNode: cell, parentElement: cell };
+      parentNode = supEl;
+    } else {
+      // Direct child of the cell — the ancestor walk hits cell immediately and stops
+      parentNode = cell;
+    }
+    return {
+      nodeValue: seg.text,
+      parentNode,
+      parentElement: parentNode,
+    };
+  });
+
+  cell._textNodes = textNodes;
+  return cell;
+}
+
+// Override createTreeWalker to dispatch on _textNodes when present (same
+// contract as withLinkCreateTreeWalker but aware of superscript nodes).
+function withSupCreateTreeWalker(fn) {
+  global.document.createTreeWalker = function(cell) {
+    const nodes = cell._textNodes ? [...cell._textNodes] : [];
+    if (nodes.length === 0 && cell.innerText) {
+      // Fallback: single text node, parent is cell (no <sup> ancestor)
+      nodes.push({ nodeValue: cell.innerText, parentNode: cell, parentElement: cell });
+    }
+    return {
+      nextNode() { return nodes.shift() || null; }
+    };
+  };
+  try { fn(); } finally { delete global.document.createTreeWalker; }
+}
+
+// Standard opts for the exponent tests.  includeWords: true is required to
+// engage the <sup> extraction path (the guard at line ~773 of content.js).
+const supTestOpts = {
+  enabled: true,
+  includeWords: true,
+  includeCurrency: true,
+  includePercent: true,
+  excludeFirstRow: false,
+  excludeFirstColumn: false,
+  excludeDates: true,
+  excludeTimes: false,
+  offsetTop: -0.5,
+  offsetOther: -0.5,
+  numTop: 1,
+  rangeExpr: '',
+};
+
+// ---------------------------------------------------------------------------
+// AC4 (getSuperscriptRanges direct unit tests)
+// ---------------------------------------------------------------------------
+(function supAC4_directUnitTests() {
+  // AC4a: cell with NO <sup> — getSuperscriptRanges must return []
+  withSupCreateTreeWalker(function() {
+    const plainCell = makeSuperscriptCell([{ text: '1012', inSup: false }]);
+    const ranges = getSuperscriptRanges(plainCell);
+    eq('sup AC4a: getSuperscriptRanges returns [] for cell with no <sup>',
+      ranges, []);
+  });
+
+  // AC4b: cell built as "10" + <sup>"12"</sup> → range covers indices 2..4
+  // (cursor starts at 0; "10" is 2 chars, so "12" runs from 2 to 4)
+  withSupCreateTreeWalker(function() {
+    const cell = makeSuperscriptCell([
+      { text: '10', inSup: false },
+      { text: '12', inSup: true },
+    ]);
+    const ranges = getSuperscriptRanges(cell);
+    eq('sup AC4b: getSuperscriptRanges returns one range for <sup>12</sup>',
+      ranges.length, 1);
+    eq('sup AC4b: range start is 2 (after "10")',
+      ranges[0].start, 2);
+    eq('sup AC4b: range end is 4 (covers "12")',
+      ranges[0].end, 4);
+  });
+
+  // AC4c: cell "20 × 10" + <sup>"15"</sup> → range covers indices 7..9
+  withSupCreateTreeWalker(function() {
+    const cell = makeSuperscriptCell([
+      { text: '20 × 10', inSup: false },  // "20 × 10" = 7 chars
+      { text: '15', inSup: true },
+    ]);
+    const ranges = getSuperscriptRanges(cell);
+    eq('sup AC4c: getSuperscriptRanges on "20 × 10<sup>15</sup>" returns one range',
+      ranges.length, 1);
+    eq('sup AC4c: range start is 7',
+      ranges[0].start, 7);
+    eq('sup AC4c: range end is 9',
+      ranges[0].end, 9);
+  });
+
+  // AC4d: cell with unicode-minus negative exponent "~ 10" + <sup>"−32"</sup> + " sec"
+  // "~ 10" = 4 chars, "−32" (unicode minus U+2212 is 1 char) = 3 chars → range [4, 7)
+  withSupCreateTreeWalker(function() {
+    const cell = makeSuperscriptCell([
+      { text: '~ 10', inSup: false },
+      { text: '−32', inSup: true },   // "−32"
+      { text: ' sec', inSup: false },
+    ]);
+    const ranges = getSuperscriptRanges(cell);
+    eq('sup AC4d: getSuperscriptRanges on "~ 10<sup>−32</sup> sec" returns one range',
+      ranges.length, 1);
+    eq('sup AC4d: range start is 4',
+      ranges[0].start, 4);
+    eq('sup AC4d: range end is 7',
+      ranges[0].end, 7);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC1: Whole-cell exponent cell — 10<sup>12</sup> → innerText "1012"
+// The exponent digits "12" must NOT be altered after roundTable runs.
+// ---------------------------------------------------------------------------
+(function supAC1_wholeCellExponent() {
+  withSupCreateTreeWalker(function() {
+    // "10<sup>12</sup>" → flattened innerText "1012"
+    // segments: "10" (plain) + "12" (in <sup>)
+    const cell = makeSuperscriptCell([
+      { text: '10', inSup: false },
+      { text: '12', inSup: true },
+    ]);
+
+    const table = {
+      rows: [{ cells: [cell] }],
+      querySelector: () => null,
+      dataset: {},
+    };
+
+    roundTable(table, supTestOpts);
+
+    // The exponent "12" must not have been touched — cell.innerText must still
+    // contain "12" at the sup position (indices 2..4 of the flattened text).
+    const supNode = cell._textNodes[1];
+    eq('sup AC1: exponent text node "12" is unchanged after roundTable',
+      supNode.nodeValue, '12');
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC2a: "20 × 10<sup>15</sup>" — the "15" exponent must not be rounded.
+// ---------------------------------------------------------------------------
+(function supAC2a_positiveExponent() {
+  withSupCreateTreeWalker(function() {
+    // innerText: "20 × 1015" (7 + 2 chars)
+    const cell = makeSuperscriptCell([
+      { text: '20 × 10', inSup: false },
+      { text: '15', inSup: true },
+    ]);
+
+    const table = {
+      rows: [{ cells: [cell] }],
+      querySelector: () => null,
+      dataset: {},
+    };
+
+    roundTable(table, supTestOpts);
+
+    const supNode = cell._textNodes[1];
+    eq('sup AC2a: exponent "15" in "20 × 10<sup>15</sup>" is unchanged',
+      supNode.nodeValue, '15');
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC2b: "20 × 10<sup>−12</sup> s" — unicode-minus negative exponent preserved.
+// ---------------------------------------------------------------------------
+(function supAC2b_negativeExponentWithUnit() {
+  withSupCreateTreeWalker(function() {
+    const cell = makeSuperscriptCell([
+      { text: '20 × 10', inSup: false },
+      { text: '−12', inSup: true },   // "−12"
+      { text: ' s', inSup: false },
+    ]);
+
+    const table = {
+      rows: [{ cells: [cell] }],
+      querySelector: () => null,
+      dataset: {},
+    };
+
+    roundTable(table, supTestOpts);
+
+    const supNode = cell._textNodes[1];
+    eq('sup AC2b: exponent "−12" in "20 × 10<sup>−12</sup> s" is unchanged',
+      supNode.nodeValue, '−12');
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC2c: "~ 10<sup>−32</sup> sec" — the "−32" exponent must not be rounded.
+// ---------------------------------------------------------------------------
+(function supAC2c_negativeExponentTildeForm() {
+  withSupCreateTreeWalker(function() {
+    const cell = makeSuperscriptCell([
+      { text: '~ 10', inSup: false },
+      { text: '−32', inSup: true },   // "−32"
+      { text: ' sec', inSup: false },
+    ]);
+
+    const table = {
+      rows: [{ cells: [cell] }],
+      querySelector: () => null,
+      dataset: {},
+    };
+
+    roundTable(table, supTestOpts);
+
+    const supNode = cell._textNodes[1];
+    eq('sup AC2c: exponent "−32" in "~ 10<sup>−32</sup> sec" is unchanged',
+      supNode.nodeValue, '−32');
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC2d: "6 × 10<sup>9</sup>" — the "9" exponent must not be rounded.
+// ---------------------------------------------------------------------------
+(function supAC2d_singleDigitExponent() {
+  withSupCreateTreeWalker(function() {
+    const cell = makeSuperscriptCell([
+      { text: '6 × 10', inSup: false },
+      { text: '9', inSup: true },
+    ]);
+
+    const table = {
+      rows: [{ cells: [cell] }],
+      querySelector: () => null,
+      dataset: {},
+    };
+
+    roundTable(table, supTestOpts);
+
+    const supNode = cell._textNodes[1];
+    eq('sup AC2d: exponent "9" in "6 × 10<sup>9</sup>" is unchanged',
+      supNode.nodeValue, '9');
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// AC3: Mixed cell — exponent protected, non-exponent number still eligible.
+//
+// Cell: "From inflation (~ 10<sup>−32</sup> sec) – 1234 ka"
+// The "1234" is not inside <sup> so it goes through the normal extraction path.
+// We use 1234 (magnitude 3) with default offsetTop=-0.5 which at max_mag=3
+// should round 1234 → ~1000 (or similar). The key assertion is:
+//   (a) the "−32" exponent node is unchanged, AND
+//   (b) the "1234" text node IS modified (i.e. rounded/simplified).
+// ---------------------------------------------------------------------------
+(function supAC3_mixedCellExponentProtectedNonExponentRounded() {
+  withSupCreateTreeWalker(function() {
+    // segments: prefix, exponent (sup), suffix with large number
+    const cell = makeSuperscriptCell([
+      { text: 'From inflation (~ 10', inSup: false },
+      { text: '−32', inSup: true },             // "−32"
+      { text: ' sec) – 1234 ka', inSup: false }, // "– 1234 ka"
+    ]);
+
+    const table = {
+      rows: [{ cells: [cell] }],
+      querySelector: () => null,
+      dataset: {},
+    };
+
+    roundTable(table, supTestOpts);
+
+    // The exponent node must be untouched
+    const supNode = cell._textNodes[1];
+    eq('sup AC3: exponent "−32" in mixed cell is unchanged',
+      supNode.nodeValue, '−32');
+
+    // The non-exponent part must have been processed — assert the cell was
+    // marked as rounded (dr-ext-rounded), which only happens when formattedValue
+    // differs from originalValue (i.e. "1234" was simplified).
+    eq('sup AC3: mixed cell is marked dr-ext-rounded (non-exponent 1234 was simplified)',
+      cell.classList.contains('dr-ext-rounded'), true);
+  });
+})();
+
+// ---------------------------------------------------------------------------
 // Sprint invert-datetime-pills: simplifyDates / simplifyTimes boolean wiring
 //
 // Acceptance criteria verified here:
@@ -4583,6 +4915,31 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       cell.innerText, '2000');
     eq('ADV AC1 (century): simplifyDates=true — cell gets dr-ext-rounded',
       cell.classList.contains('dr-ext-rounded'), true);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// Extra: getSuperscriptRanges returns [] when document.createTreeWalker is absent
+// ---------------------------------------------------------------------------
+(function supExtra_noTreeWalker() {
+  const savedWalker = global.document.createTreeWalker;
+  delete global.document.createTreeWalker;
+  const cell = makeSuperscriptCell([{ text: '10', inSup: false }, { text: '12', inSup: true }]);
+  const ranges = getSuperscriptRanges(cell);
+  eq('sup extra: getSuperscriptRanges returns [] when createTreeWalker is unavailable',
+    ranges, []);
+  if (savedWalker !== undefined) global.document.createTreeWalker = savedWalker;
+})();
+
+// ---------------------------------------------------------------------------
+// Extra: getSuperscriptRanges returns [] for a null/undefined cell argument
+// ---------------------------------------------------------------------------
+(function supExtra_nullCell() {
+  withSupCreateTreeWalker(function() {
+    eq('sup extra: getSuperscriptRanges(null) returns []',
+      getSuperscriptRanges(null), []);
+    eq('sup extra: getSuperscriptRanges(undefined) returns []',
+      getSuperscriptRanges(undefined), []);
   });
 })();
 
