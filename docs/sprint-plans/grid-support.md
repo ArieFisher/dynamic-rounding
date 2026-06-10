@@ -55,18 +55,41 @@ abstraction, rounding, and virtualization — in dependency order.
 
 ### D1 — Grid discovery (sprint 1 only)
 
-Extend `injectTableToggles`, the MutationObserver, and the right-click handler
-to find ARIA grids alongside native tables.
+The target is **unlabelled** data grids — `<div>`-based tables that use neither
+the `<table>` tag nor ARIA roles. These are the grids the extension misses and
+that no selector can find. Detection is therefore **structural/heuristic
+first**; ARIA roles and library-specific class prefixes (`dg--`, `ag-`) are
+treated as optional accelerators that boost confidence and provide precise
+selectors *when present*, never as a requirement.
 
-**Primary selector:** `[role="grid"], [role="table"]`
+**Primary mechanism — `findDataGrids()` (research doc §2, §4):** scan
+`div`/`section` containers and score each against structural signals:
 
-**Heuristic fallback** (for grids that omit ARIA — see research doc §2):
-- Container has ≥ 5 direct children with uniform `offsetHeight > 0`.
-- Container or children use `display: grid` or `display: flex`.
+1. **Repetitive siblings** — ≥ ~5 direct children with near-identical class
+   names / child structure (candidate rows).
+2. **Uniform geometry** — those children share a uniform `offsetHeight > 0`;
+   their children (candidate cells) share uniform widths across rows.
+3. **Tabular layout** — container uses `display: grid` (multi-column
+   `grid-template-columns`) or `display: flex` column with flex-row children.
+4. **Numeric content** — at least one candidate cell contains a finite parseable
+   number (this is the strongest guard against matching nav menus / card lists).
 
-**False-positive filter (co-occurrence rule):** only promote a heuristic-
-matched container if it has both a "pinned" sibling and a "scrollable" sibling
-under the same parent. ARIA-matched grids bypass this filter.
+A container passing the structural test is treated as a data grid. **No ARIA and
+no `<table>` is required.**
+
+**Optional confidence boosters (used when present, never required):**
+- `role="grid"` / `role="row"` / `role="gridcell"` attributes.
+- Library class prefixes (`dg--`, `ag-`, `awsui-`).
+- Virtualization markers — rows positioned via `transform: translateY(...)` /
+  `position: absolute`, large `scrollHeight` vs small `offsetHeight`.
+- A pinned + scrollable container pair under one parent (the Databricks/AG-Grid
+  split). This raises confidence but is **not** a precondition — single-pane
+  unlabelled grids must still be detected.
+
+**False-positive mitigation:** the gate is *uniform geometry + repetitive
+siblings + numeric cell content*, optionally scoped to a results/scroll context.
+A plain CSS layout grid (no repeating numeric rows) fails the numeric-content
+guard and is rejected. Library hints, when present, further raise confidence.
 
 In sprint 1, a discovered grid gets a toggle button and toggle positioning; no
 rounding is attempted yet. A sentinel class `dr-ext-grid` is added to the root
@@ -88,10 +111,23 @@ GridAdapter(wrapperElement)
   .isVirtualized()  → true
 ```
 
-`getRows()` for `GridAdapter`: collect `[role="row"]` children from the
-scrollable pane; for each, also collect the same-index row from the pinned pane
-(if present); merge cells in DOM order (pinned columns first). This stitching is
-the interface contract — callers never know they are reading two DOM trees.
+`getRows()` for `GridAdapter` identifies rows and cells **structurally**, the
+same way `findDataGrids()` detected the grid — it does not depend on ARIA:
+
+- **Rows** = the repetitive, uniform-height direct children of the grid's
+  scrollable content container.
+- **Cells** = the repetitive children of each row.
+- **ARIA shortcut (when present):** if the grid exposes `[role="row"]` /
+  `[role="gridcell"]`, use those selectors directly — they are faster and more
+  precise than positional enumeration. Fall back to structural child
+  enumeration when roles are absent.
+- **Pinned pane (when present):** for each scrollable row, also collect the
+  same-index row from the pinned pane and merge cells in DOM order (pinned
+  columns first). When there is no pinned pane (single-pane grid), rows come
+  from the one container.
+
+This stitching and structural extraction is the interface contract — callers
+never know whether they are reading one DOM tree or two, labelled or unlabelled.
 
 `NativeTableAdapter.getRows()` wraps `table.rows` / `row.cells` exactly as
 today. All existing behavior is preserved verbatim.
@@ -105,8 +141,8 @@ changed; the adapter is constructed at the call site based on element type.
 Implement `GridAdapter` fully (sprint 2 defines the interface; sprint 3 fills
 in the body). Key concerns:
 
-- `getText()` reads `cell.textContent` (grids use no `<td>`; cells are
-  `[role="gridcell"]` divs).
+- `getText()` reads `cell.textContent` (grids use no `<td>`; cells are plain
+  divs, with or without a `role="gridcell"` attribute).
 - `setText(s)` writes `cell.textContent` and applies `.dr-ext-rounded` just as
   `roundTable` does today — but only to visible (currently-rendered) cells.
 - `resetTable` via the adapter clears `.dr-ext-rounded` only from nodes
@@ -160,51 +196,73 @@ before sprint 2 — the toggle will appear on grids but do nothing until sprint 
 
 ### grid-detection
 
-- **Goal:** Make the extension discover and badge ARIA data grids with the
-  existing toggle button. No rounding happens yet; this sprint validates that
-  discovery and toggle positioning work on real pages (Databricks, AG Grid).
+- **Goal:** Make the extension discover and badge **unlabelled** data grids
+  (div-based tables with no `<table>` tag and no ARIA roles) with the existing
+  toggle button, using a structural/heuristic detector. ARIA roles and library
+  class prefixes are used as optional accelerators when present. No rounding
+  happens yet; this sprint validates that heuristic discovery and toggle
+  positioning work on real pages (Databricks, AG Grid, and at least one
+  unlabelled grid).
 - **Scope — `chrome-extension/content.js`:**
-  - `injectTableToggles` (L434): after the `querySelectorAll('table')` pass,
-    add a second pass: `querySelectorAll('[role="grid"], [role="table"]')`,
-    deduplicating any native `<table>` that also carries the role. For each
-    result, call `createToggleForTable` with a guard that skips elements already
-    carrying `dr-ext-grid` (idempotency).
-  - Heuristic fallback: extract `findNonStandardTables()` (from research doc §4)
-    as a module-level function; call it after the ARIA pass; apply the
-    co-occurrence filter (skip if no pinned+scrollable sibling pair detected).
-  - MutationObserver (L469–494): mirror both passes in the added-node and
-    removed-node branches.
-  - Right-click handler (L49, L71): change `closest('table')` to
-    `closest('table, [role="grid"], [role="table"], .dg--table-wrapper')`.
-  - `createToggleForTable`: add an early guard — if the element is not a
-    `<table>`, skip `isDataTable()` (it will fail on `.rows`) and instead use a
-    lighter check: does the element contain at least one `[role="gridcell"]` or
-    a direct child with `display: flex/grid`? If yes, attach the toggle.
+  - Add a module-level `findDataGrids(root = document)` (based on research doc
+    §4) that returns candidate grid root elements. It scores each `div`/`section`
+    container on: repetitive uniform-height children (rows), uniform-width
+    grandchildren (cells), `display: grid`/`flex` layout, and **at least one
+    cell containing a finite number** (the primary false-positive guard). A
+    container passing the structural test qualifies with no ARIA required.
+  - Confidence boosters (raise score, never required): `role="grid"/"row"/"gridcell"`
+    attributes, library prefixes (`dg--`, `ag-`, `awsui-`), virtualization
+    markers (`transform: translateY`, `position: absolute`, large `scrollHeight`
+    vs small `offsetHeight`), and a pinned + scrollable sibling pair. Define a
+    score threshold; document it inline so it can be tuned against real pages.
+  - `injectTableToggles` (L434): after the `querySelectorAll('table')` pass, run
+    `findDataGrids()`; for each result call `createToggleForTable` with a guard
+    that skips elements already carrying `dr-ext-grid` (idempotency). Also skip
+    any element that *is* or *contains* a native `<table>` already handled.
+  - MutationObserver (L469–494): re-run `findDataGrids(node)` for added nodes;
+    mirror removal handling for grids.
+  - Right-click handler (L49, L71): replace `closest('table')` with a helper
+    `findTargetTable(el)` that returns the nearest `<table>` OR the nearest
+    ancestor carrying `dr-ext-grid` (set during discovery). This avoids relying
+    on a role/class selector that unlabelled grids won't have.
+  - `createToggleForTable`: add an early branch — if the element is not a
+    `<table>`, skip `isDataTable()` (it reads `.rows`) and instead confirm via a
+    lightweight structural check (`findDataGrids` already validated it; re-use
+    the same numeric-content probe). If it passes, attach the toggle.
   - Mark discovered grids with `el.classList.add('dr-ext-grid')`.
   - `positionToggle`: already uses `getBoundingClientRect()`, which works for
     any element — no change needed.
 - **Scope — `chrome-extension/tests.js`:**
-  - Add unit tests for `findNonStandardTables()` against synthetic DOM fixtures:
-    a passing case (ARIA grid), a passing heuristic case (pinned+scrollable),
-    a rejected heuristic case (no co-occurrence), and a layout-grid false
-    positive (single-pane CSS grid, no sibling pair).
+  - Unit tests for `findDataGrids()` against synthetic DOM fixtures:
+    - **Pass — unlabelled grid:** plain `<div>` rows, no roles, uniform height,
+      numeric cells. (This is the headline case.)
+    - **Pass — ARIA grid:** same structure plus `role="grid"`.
+    - **Pass — pinned+scrollable:** Databricks-shaped split.
+    - **Reject — layout grid:** CSS `display: grid` cards with no numeric rows
+      (fails the numeric-content guard).
+    - **Reject — nav menu:** repetitive uniform children but no numbers.
 - **Out of scope:** Any actual rounding of grid contents. The toggle's click
   handler will fire but `roundTable` will no-op (`.rows` is undefined on a
   div) — that is acceptable for this sprint.
 - **Acceptance criteria:**
-  - On a page with `<div role="grid">`, the extension injects a toggle button
-    correctly positioned at the grid's top-right corner.
-  - Right-clicking a cell inside a `[role="grid"]` sets `lastRightClickedTable`
-    to the grid wrapper.
-  - No toggle appears on a plain CSS layout grid lacking the co-occurrence of
-    pinned + scrollable containers.
+  - On a page with an **unlabelled** div-grid (no `<table>`, no `role`), the
+    extension detects it via `findDataGrids()` and injects a correctly
+    positioned toggle button.
+  - The same works for ARIA grids and the Databricks pinned+scrollable shape.
+  - Right-clicking a cell inside a detected grid sets `lastRightClickedTable`
+    to the grid root (via the `dr-ext-grid` ancestor walk).
+  - No toggle appears on a plain CSS layout grid with no numeric data rows.
   - `node chrome-extension/tests.js` passes.
 - **Depends on:** none
-- **Complexity:** S
+- **Complexity:** M _(raised from S — the heuristic scorer and its
+  false-positive tuning are the real work, not a selector query.)_
 - **Dev notes:**
-  - Do not rename `lastRightClickedTable` — the variable's type widens to
-    "table or grid wrapper" but the name change is cosmetic and would touch too
-    many call sites. Document the widened contract in a brief comment.
+  - The numeric-content guard is the single most important false-positive
+    filter — without it the structural heuristic lights up on nav bars, card
+    grids, and toolbars. Keep it mandatory.
+  - Do not rename `lastRightClickedTable` — its type widens to "table or grid
+    root" but renaming would touch too many call sites. Document the widened
+    contract in a comment.
   - Do not bump `manifest.json` version.
 
 ---
@@ -272,12 +330,24 @@ before sprint 2 — the toggle will appear on grids but do nothing until sprint 
 - **Goal:** Implement `GridAdapter.getRows()` so that rounding, reset, and
   preview-sample extraction work on the currently-visible rows of a data grid.
 - **Scope — `chrome-extension/content.js`:**
-  - Implement `GridAdapter.getRows()`:
-    1. Find the scrollable pane: `this.el.querySelector('[role="grid"]:not(.dg--pinned-grid), .dg--grid-scroll-container, .ag-center-cols-viewport')` — fall back to `this.el` if no match.
-    2. Find the pinned pane: `this.el.querySelector('.dg--pinned-grid, .ag-pinned-left-cols-container')` — may be `null`.
-    3. Collect scrollable rows: `Array.from(scrollPane.querySelectorAll(':scope > [role="row"], :scope > * > [role="row"]'))` (one level of indirection for some grid libraries).
-    4. For each scrollable row at index `i`, collect pinned row at the same index (if pinned pane exists): match by `data-row-index` attribute if present, otherwise by DOM index.
-    5. Return row objects: `{ getCells: () => [...pinnedCells, ...scrollableCells].map(cell => ({ getText: () => cell.textContent, setText: (s) => { cell.textContent = s; cell.classList.add('dr-ext-rounded'); cell.dataset.drOriginal = cell.dataset.drOriginal || cell.textContent; }, el: cell, tagName: 'TD' /* normalized */ })) }`.
+  - Implement `GridAdapter.getRows()` — **structural first, ARIA as shortcut:**
+    1. Find the scrollable content container. Prefer known library selectors
+       when present (`.dg--grid-scroll-container`, `.ag-center-cols-viewport`,
+       `[role="grid"]:not(.dg--pinned-grid)`); otherwise pick the descendant
+       holding the repetitive uniform-height children that `findDataGrids`
+       identified. Fall back to `this.el`.
+    2. Find the pinned pane if one exists (`.dg--pinned-grid`,
+       `.ag-pinned-left-cols-container`, or a sibling container with matching
+       row count) — may be `null` for single-pane / unlabelled grids.
+    3. Collect rows. **ARIA shortcut:** if `[role="row"]` elements exist, use
+       them. **Structural fallback (unlabelled grids):** take the repetitive
+       uniform-height direct children of the scroll container as rows.
+    4. For each scrollable row at index `i`, collect the pinned row at the same
+       index (if a pinned pane exists): match by `data-row-index` when present,
+       otherwise by DOM index.
+    5. Cells per row: prefer `[role="gridcell"]` when present; otherwise the
+       row's repetitive child elements (structural). Merge pinned cells first.
+    6. Return row objects: `{ getCells: () => [...pinnedCells, ...scrollableCells].map(cell => ({ getText: () => cell.textContent, setText: (s) => { cell.textContent = s; cell.classList.add('dr-ext-rounded'); cell.dataset.drOriginal = cell.dataset.drOriginal || cell.textContent; }, el: cell, tagName: 'TD' /* normalized */ })) }`.
   - `setText` in `GridAdapter` must store the original value in
     `cell.dataset.drOriginal` before overwriting (for reset), mirroring how
     `NativeTableAdapter` stores it.
@@ -289,9 +359,10 @@ before sprint 2 — the toggle will appear on grids but do nothing until sprint 
   - Update `createToggleForTable` grid path (from sprint 1): now that
     `getRows()` works, replace the stub check with `isDataTable(makeAdapter(el))`.
 - **Scope — `chrome-extension/tests.js`:**
-  - Add tests with synthetic ARIA grid DOM fixtures:
-    - A simple `role="grid"` with two visible `role="row"` children and
-      `role="gridcell"` cells containing numbers: rounding applies.
+  - Add tests with synthetic grid DOM fixtures — both labelled and unlabelled:
+    - **Unlabelled grid** (no roles): plain `<div>` rows/cells with numbers —
+      structural extraction finds rows/cells and rounding applies. (Headline.)
+    - **ARIA grid:** `role="grid"`/`row`/`gridcell` — shortcut path used.
     - A grid with a pinned pane: cell stitching produces correct column order.
     - `resetTable` on a rounded grid restores original values.
     - `extractPreviewSamples` on a grid returns the expected sample structure.
@@ -395,3 +466,10 @@ before sprint 2 — the toggle will appear on grids but do nothing until sprint 
 
 - 2026-06-10: Initial draft. Sprints 1 and 2 are independent; 3 depends on 2;
   4 depends on 3.
+- 2026-06-10: Reoriented detection and extraction around **structural
+  heuristics** for unlabelled grids (the research doc's actual focus). ARIA
+  roles and library class prefixes demoted from required selectors to optional
+  accelerators used when present. Dropped the pinned+scrollable co-occurrence as
+  a hard requirement (single-pane unlabelled grids must still be detected);
+  numeric-content + uniform-geometry is now the primary false-positive guard.
+  Sprint 1 complexity raised S → M.
