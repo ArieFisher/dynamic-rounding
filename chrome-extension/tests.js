@@ -1777,6 +1777,7 @@ function makeToggleTable(rowsOrCells, extra) {
   const cells = rows.flatMap(r => r.cells);  // all cells, for querySelector helpers
 
   const table = Object.assign({
+    tagName: 'TABLE',
     rows,
     dataset: {},
     _cells: cells,
