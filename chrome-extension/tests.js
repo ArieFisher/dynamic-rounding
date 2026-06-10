@@ -100,6 +100,9 @@ Object.defineProperty(globalThis, 'lastRightClickedTable', {
   set(v) { lastRightClickedTable = v; },
   configurable: true,
 });
+// Expose grid-detection helpers for the grid-detection test suite.
+globalThis.looksLikeGrid = looksLikeGrid;
+globalThis.findTargetTable = findTargetTable;
 `);
 
 let passed = 0;
@@ -5953,6 +5956,598 @@ function makeExtractedCell(segments) {
       plainNode.nodeValue, '1000 ');
   });
 
+})();
+
+// =============================================================================
+// Grid Detection — looksLikeGrid() and findTargetTable() unit tests
+// Sprint: grid-detection  Spec: docs/sprint-plans/grid-support.md §6
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// Mock-element helpers for grid detection tests
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a minimal mock cell element.
+ * @param {string} text   — textContent of the cell
+ * @param {number} [width=100] — offsetWidth of the cell (for column-0 width probe)
+ */
+function makeGridCell(text, width) {
+  return {
+    textContent: text,
+    offsetWidth: (width === undefined ? 100 : width),
+    children: [],
+    nodeType: 1,
+  };
+}
+
+/**
+ * Build a minimal mock row element.
+ * @param {Array<{text:string, width?:number}>} cellSpecs
+ * @param {string} [className='row']  — className of the row
+ * @param {number} [height=20]        — offsetHeight (not tested by looksLikeGrid; present only to prove it is ignored)
+ */
+function makeGridRow(cellSpecs, className, height) {
+  const cls = (className === undefined ? 'row' : className);
+  const cells = cellSpecs.map(s => makeGridCell(s.text, s.width));
+  return {
+    className: cls,
+    children: cells,
+    // children.length is accessed directly; Array.from is NOT called on row.children
+    // so a plain array works fine.
+    nodeType: 1,
+    offsetHeight: (height === undefined ? 20 : height),
+  };
+}
+
+/**
+ * Build a minimal mock container element that can be passed to looksLikeGrid.
+ *
+ * @param {Array} rows       — array of row mocks (from makeGridRow)
+ * @param {string} [display='flex']
+ * @param {string} [role=null]
+ * @param {string} [className='']
+ */
+function makeGridContainer(rows, display, role, className) {
+  const disp = (display === undefined ? 'flex' : display);
+  const cls  = (className === undefined ? '' : className);
+  const container = {
+    children: rows,
+    tagName: 'DIV',
+    className: cls,
+    getAttribute: function(attr) {
+      if (attr === 'role') return role || null;
+      return null;
+    },
+    classList: {
+      _c: [],
+      add(c)      { this._c.push(c); },
+      remove(c)   { this._c = this._c.filter(x => x !== c); },
+      contains(c) { return this._c.includes(c); },
+    },
+    nodeType: 1,
+    // parentElement / parentNode used by findTargetTable walk-up, not looksLikeGrid
+    parentElement: null,
+    parentNode: null,
+  };
+  // Install a per-element getComputedStyle stub so we can control display per element.
+  // looksLikeGrid calls getComputedStyle(el) where el is the container.
+  // We install it on the global window stub contextually within the test via a
+  // wrapper — see withGridComputedStyle helper below.
+  container._display = disp;
+  return container;
+}
+
+/**
+ * Temporarily override the global getComputedStyle (bare, not window.getComputedStyle)
+ * to return a given display value for a specific element, then restore it after fn().
+ *
+ * looksLikeGrid calls bare `getComputedStyle(el)` — in the Node eval environment
+ * this resolves to `globalThis.getComputedStyle`, so we must patch that, not
+ * `window.getComputedStyle`.
+ *
+ * If the queried element is `targetEl`, returns {display: displayVal}.
+ * Otherwise returns {display:'block', visibility:'visible'}.
+ */
+function withGridComputedStyle(targetEl, displayVal, fn) {
+  const origGlobal = global.getComputedStyle;
+  global.getComputedStyle = function(el) {
+    if (el === targetEl) return { display: displayVal };
+    return { display: 'block', visibility: 'visible' };
+  };
+  try { fn(); } finally { global.getComputedStyle = origGlobal; }
+}
+
+// ---------------------------------------------------------------------------
+// looksLikeGrid() — PASS cases
+// ---------------------------------------------------------------------------
+
+// LG1: Pass — unlabelled div-grid, VARIABLE ROW HEIGHTS (AC2, S2 headline)
+// S2 mandates row height is NOT tested. Rows must have differing heights yet
+// the function must still return true. Column-0 offsetWidths are uniform (80px)
+// so step 6 passes.
+(function looksLikeGrid_pass_variableRowHeights() {
+  const rows = [
+    makeGridRow([{text:'Name',width:80},{text:'1234'}], 'row', 20),
+    makeGridRow([{text:'Foo',width:80},{text:'5678'}], 'row', 35),  // taller
+    makeGridRow([{text:'Bar baz',width:80},{text:'9012'}], 'row', 50), // even taller
+    makeGridRow([{text:'Qux',width:80},{text:'3456'}], 'row', 20),
+    makeGridRow([{text:'Etc',width:80},{text:'7890'}], 'row', 80),  // very tall
+  ];
+  const container = makeGridContainer(rows, 'flex', null, '');
+  withGridComputedStyle(container, 'flex', function() {
+    eq('looksLikeGrid: pass — unlabelled, variable row heights',
+      looksLikeGrid(container), true);
+  });
+})();
+
+// LG2: Pass — ARIA short-circuit (role="grid") skips geometry probe
+// The geometry probe (step 6) is skipped when role="grid". We prove this by
+// making column-0 offsetWidths NON-uniform (all different) — if step 6 ran,
+// the 80% alignment check would fail and return false. With the ARIA
+// short-circuit the function must still return true.
+(function looksLikeGrid_pass_ariaShortCircuit() {
+  const rows = [
+    makeGridRow([{text:'Col',width:10},{text:'1234'}], 'row', 20),  // width 10
+    makeGridRow([{text:'Foo',width:20},{text:'5678'}], 'row', 20),  // width 20
+    makeGridRow([{text:'Bar',width:30},{text:'9012'}], 'row', 20),  // width 30
+    makeGridRow([{text:'Qux',width:40},{text:'3456'}], 'row', 20),  // width 40
+    makeGridRow([{text:'Etc',width:50},{text:'7890'}], 'row', 20),  // width 50
+  ];
+  // All column-0 widths differ → step 6 would reject; ARIA role must short-circuit before it.
+  const container = makeGridContainer(rows, 'flex', 'grid', '');
+  withGridComputedStyle(container, 'flex', function() {
+    eq('looksLikeGrid: pass — ARIA role="grid" short-circuits geometry probe (non-uniform widths still accepted)',
+      looksLikeGrid(container), true);
+  });
+})();
+
+// LG3: Pass — Databricks shape (library class "dg--" short-circuits geometry probe)
+// The wrapper contains a pinned pane and a scroll pane as children, but for
+// looksLikeGrid we test the wrapper itself: it has ≥5 row-like children,
+// repetitive structure, numeric content, and the "dg--" class which short-circuits
+// before the geometry probe. Column-0 widths are deliberately non-uniform so that
+// if the geometry probe ran it would fail — proving the short-circuit works.
+(function looksLikeGrid_pass_databricksClass() {
+  const rows = [
+    makeGridRow([{text:'Header',width:10},{text:'0'}], 'dg--row', 20),
+    makeGridRow([{text:'Foo',width:20},{text:'1234.56'}], 'dg--row', 20),
+    makeGridRow([{text:'Bar',width:30},{text:'7890.12'}], 'dg--row', 20),
+    makeGridRow([{text:'Baz',width:40},{text:'3456.78'}], 'dg--row', 20),
+    makeGridRow([{text:'Qux',width:50},{text:'9012.34'}], 'dg--row', 20),
+  ];
+  const container = makeGridContainer(rows, 'flex', null, 'dg--table-wrapper');
+  withGridComputedStyle(container, 'flex', function() {
+    eq('looksLikeGrid: pass — Databricks "dg--" class short-circuits geometry probe',
+      looksLikeGrid(container), true);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// looksLikeGrid() — REJECT cases (AC4 false-positive guard)
+// ---------------------------------------------------------------------------
+
+// LG4: Reject — CSS layout/card grid with NO numeric content (AC4)
+// Repetitive card-style divs with text-only content must be rejected.
+// This proves step 5 (numeric-content guard) works as the mandatory false-positive guard.
+(function looksLikeGrid_reject_cssCardGrid() {
+  const rows = [
+    makeGridRow([{text:'Card A',width:100},{text:'Buy now'}], 'card', 20),
+    makeGridRow([{text:'Card B',width:100},{text:'Learn more'}], 'card', 20),
+    makeGridRow([{text:'Card C',width:100},{text:'Details'}], 'card', 20),
+    makeGridRow([{text:'Card D',width:100},{text:'Visit site'}], 'card', 20),
+    makeGridRow([{text:'Card E',width:100},{text:'Sign up'}], 'card', 20),
+  ];
+  const container = makeGridContainer(rows, 'grid', null, 'card-grid');
+  withGridComputedStyle(container, 'grid', function() {
+    eq('looksLikeGrid: reject — CSS card grid with no numeric content',
+      looksLikeGrid(container), false);
+  });
+})();
+
+// LG5: Reject — nav menu (repetitive rows, no numbers) (AC4)
+// A navigation menu with text-only items must be rejected.
+// This is the second false-positive guard test per the spec.
+(function looksLikeGrid_reject_navMenu() {
+  const rows = [
+    makeGridRow([{text:'Home',width:100},{text:''}], 'nav-item', 20),
+    makeGridRow([{text:'About',width:100},{text:''}], 'nav-item', 20),
+    makeGridRow([{text:'Products',width:100},{text:''}], 'nav-item', 20),
+    makeGridRow([{text:'Contact',width:100},{text:''}], 'nav-item', 20),
+    makeGridRow([{text:'Blog',width:100},{text:''}], 'nav-item', 20),
+  ];
+  const container = makeGridContainer(rows, 'flex', null, 'nav-menu');
+  withGridComputedStyle(container, 'flex', function() {
+    eq('looksLikeGrid: reject — nav menu with no numeric content',
+      looksLikeGrid(container), false);
+  });
+})();
+
+// LG6: Reject — too few children (< GRID_MIN_CHILDREN = 5)
+(function looksLikeGrid_reject_tooFewChildren() {
+  const rows = [
+    makeGridRow([{text:'Foo',width:100},{text:'1234'}], 'row', 20),
+    makeGridRow([{text:'Bar',width:100},{text:'5678'}], 'row', 20),
+    makeGridRow([{text:'Baz',width:100},{text:'9012'}], 'row', 20),
+    // only 3 rows — fewer than GRID_MIN_CHILDREN (5)
+  ];
+  const container = makeGridContainer(rows, 'flex', null, '');
+  withGridComputedStyle(container, 'flex', function() {
+    eq('looksLikeGrid: reject — fewer than 5 children',
+      looksLikeGrid(container), false);
+  });
+})();
+
+// LG7: Reject — display is not grid/flex (step 4)
+(function looksLikeGrid_reject_blockDisplay() {
+  const rows = [
+    makeGridRow([{text:'Name',width:100},{text:'1234'}], 'row', 20),
+    makeGridRow([{text:'Foo',width:100},{text:'5678'}], 'row', 20),
+    makeGridRow([{text:'Bar',width:100},{text:'9012'}], 'row', 20),
+    makeGridRow([{text:'Qux',width:100},{text:'3456'}], 'row', 20),
+    makeGridRow([{text:'Etc',width:100},{text:'7890'}], 'row', 20),
+  ];
+  const container = makeGridContainer(rows, 'block', null, '');
+  withGridComputedStyle(container, 'block', function() {
+    eq('looksLikeGrid: reject — display:block (not grid/flex)',
+      looksLikeGrid(container), false);
+  });
+})();
+
+// LG8: Reject — non-uniform column-0 widths (step 6) when no short-circuit
+// Proves the geometry probe rejects grids where column widths are misaligned.
+// All widths differ so < 80% match → rejected.
+(function looksLikeGrid_reject_nonUniformColumnWidths() {
+  const rows = [
+    makeGridRow([{text:'Name',width:10},{text:'1234'}], 'row', 20),
+    makeGridRow([{text:'Foo',width:20},{text:'5678'}], 'row', 20),
+    makeGridRow([{text:'Bar',width:30},{text:'9012'}], 'row', 20),
+    makeGridRow([{text:'Qux',width:40},{text:'3456'}], 'row', 20),
+    makeGridRow([{text:'Etc',width:50},{text:'7890'}], 'row', 20),
+  ];
+  // No role, no library class → step 6 runs and must reject.
+  const container = makeGridContainer(rows, 'flex', null, '');
+  withGridComputedStyle(container, 'flex', function() {
+    eq('looksLikeGrid: reject — non-uniform column-0 widths (step 6)',
+      looksLikeGrid(container), false);
+  });
+})();
+
+// LG9: Pass — column-0 widths are uniform (80% threshold satisfied)
+// Exactly matching widths → step 6 passes.
+(function looksLikeGrid_pass_uniformColumnWidths() {
+  const rows = [
+    makeGridRow([{text:'Name',width:100},{text:'1234'}], 'row', 20),
+    makeGridRow([{text:'Foo',width:100},{text:'5678'}], 'row', 20),
+    makeGridRow([{text:'Bar',width:100},{text:'9012'}], 'row', 20),
+    makeGridRow([{text:'Qux',width:100},{text:'3456'}], 'row', 20),
+    makeGridRow([{text:'Etc',width:100},{text:'7890'}], 'row', 20),
+  ];
+  const container = makeGridContainer(rows, 'flex', null, '');
+  withGridComputedStyle(container, 'flex', function() {
+    eq('looksLikeGrid: pass — uniform column-0 widths',
+      looksLikeGrid(container), true);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// findTargetTable() walk-up tests
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a mock element suitable for the findTargetTable walk-up.
+ * Provides: closest(), parentElement, classList, nodeType.
+ */
+function makeWalkEl(opts) {
+  // opts: { passesLooksLikeGrid, display, className, role, rows }
+  const disp = opts.display || 'flex';
+  const rows = opts.rows || (function() {
+    // Default: a grid with 5 rows, numeric content, uniform col-0 widths
+    return [
+      makeGridRow([{text:'Name',width:100},{text:'1234'}], 'row', 20),
+      makeGridRow([{text:'Foo',width:100},{text:'5678'}], 'row', 20),
+      makeGridRow([{text:'Bar',width:100},{text:'9012'}], 'row', 20),
+      makeGridRow([{text:'Qux',width:100},{text:'3456'}], 'row', 20),
+      makeGridRow([{text:'Etc',width:100},{text:'7890'}], 'row', 20),
+    ];
+  }());
+  const el = {
+    tagName: 'DIV',
+    className: opts.className || '',
+    getAttribute: function(attr) { return attr === 'role' ? (opts.role || null) : null; },
+    classList: {
+      _c: (opts.initialClasses || []).slice(),
+      add(c)      { if (!this._c.includes(c)) this._c.push(c); },
+      remove(c)   { this._c = this._c.filter(x => x !== c); },
+      contains(c) { return this._c.includes(c); },
+    },
+    children: rows,
+    nodeType: 1,
+    parentElement: null,
+    parentNode: null,
+    // getBoundingClientRect — needed by positionToggle when createToggleForTable
+    // fires its deferred setTimeout; return a zero-area rect so the toggle hides.
+    getBoundingClientRect: function() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
+    // closest() stub: only handles 'table' and '.dr-ext-grid'
+    closest: function(sel) {
+      if (sel === 'table') return null;  // not a <table> ancestor
+      if (sel === '.dr-ext-grid') {
+        // Walk up to see if any ancestor has dr-ext-grid
+        let p = this.parentElement || this.parentNode;
+        while (p && p !== document.body) {
+          if (p.classList && p.classList.contains('dr-ext-grid')) return p;
+          p = p.parentElement || p.parentNode;
+        }
+        return null;
+      }
+      return null;
+    },
+    _display: disp,
+  };
+  return el;
+}
+
+/**
+ * Run findTargetTable with a controlled getComputedStyle that returns the
+ * stored _display for each element in the `elements` array, and a patched
+ * document.createElement / document.body so createToggleForTable doesn't throw.
+ */
+function withFindTargetEnv(elements, fn) {
+  const origGetCS = global.window.getComputedStyle;
+  const origGetCSGlobal = global.getComputedStyle;
+  const origDocument = global.document;
+
+  // Patch the bare getComputedStyle global (used by looksLikeGrid) to use each
+  // element's _display property. Also patch window.getComputedStyle (used by
+  // positionToggle) as a courtesy, though it is not exercised in walk-up tests.
+  global.getComputedStyle = function(el) {
+    if (el && el._display !== undefined) return { display: el._display };
+    return { display: 'block', visibility: 'visible' };
+  };
+  global.window.getComputedStyle = global.getComputedStyle;
+
+  // Patch document to support createElement (needed by createToggleForTable)
+  const mockButtonEl = {
+    type: '',
+    className: '',
+    style: {},
+    dataset: {},
+    setAttribute: () => {},
+    getAttribute: () => null,
+    addEventListener: () => {},
+    classList: { _c: [], add(c){ this._c.push(c); }, remove(c){ this._c=this._c.filter(x=>x!==c); }, contains(c){ return this._c.includes(c); } },
+    appendChild: () => {},
+    parentElement: null,
+  };
+  const mockSpanEl = { className: '', appendChild: () => {} };
+  global.document = Object.assign({}, origDocument, {
+    createElement: (tag) => {
+      if (tag === 'button') return Object.assign({}, mockButtonEl, { style: {}, dataset: {}, classList: { _c: [], add(c){ this._c.push(c); }, remove(c){ this._c=this._c.filter(x=>x!==c); }, contains(c){ return this._c.includes(c); } } });
+      return Object.assign({}, mockSpanEl);
+    },
+    body: {
+      appendChild: () => {},
+      observe: () => {},
+      // Allow comparison: findTargetTable checks `current !== document.body`
+    },
+    addEventListener: () => {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    head: null,
+    documentElement: { appendChild: () => {} },
+  });
+
+  try { fn(); } finally {
+    global.window.getComputedStyle = origGetCS;
+    global.getComputedStyle = origGetCSGlobal;
+    global.document = origDocument;
+  }
+}
+
+// FT1: findTargetTable — returns OUTERMOST matching ancestor (S6), not inner pane
+// Build three nested containers: innermost → middle → outer.
+// Both innermost and outer pass looksLikeGrid (both have numeric content, flex,
+// uniform col-0 widths). Middle also passes. The walk-up must keep going as long
+// as the parent passes and return the OUTERMOST (outer), not innermost.
+(function findTargetTable_returnsOutermostAncestor() {
+  withFindTargetEnv([], function() {
+    // inner, middle, outer all pass looksLikeGrid
+    const makeRows5 = () => [
+      makeGridRow([{text:'A',width:100},{text:'100'}], 'row', 20),
+      makeGridRow([{text:'B',width:100},{text:'200'}], 'row', 20),
+      makeGridRow([{text:'C',width:100},{text:'300'}], 'row', 20),
+      makeGridRow([{text:'D',width:100},{text:'400'}], 'row', 20),
+      makeGridRow([{text:'E',width:100},{text:'500'}], 'row', 20),
+    ];
+
+    const inner  = makeWalkEl({ display: 'flex', rows: makeRows5() });
+    const middle = makeWalkEl({ display: 'flex', rows: makeRows5() });
+    const outer  = makeWalkEl({ display: 'flex', rows: makeRows5() });
+
+    // Wire up parent chain: inner → middle → outer → (body = stop)
+    inner.parentElement  = middle;
+    inner.parentNode     = middle;
+    middle.parentElement = outer;
+    middle.parentNode    = outer;
+    outer.parentElement  = document.body;
+    outer.parentNode     = document.body;
+
+    // The click target is inner itself (not in any <table>, no dr-ext-grid yet).
+    // Adjust closest() on inner to use the real chain.
+    inner.closest = function(sel) {
+      if (sel === 'table') return null;
+      if (sel === '.dr-ext-grid') return null;
+      return null;
+    };
+
+    const result = findTargetTable(inner);
+
+    eq('findTargetTable: returns outermost ancestor (S6), not inner pane',
+      result, outer);
+  });
+})();
+
+// FT2: findTargetTable — does NOT overshoot to <body> and respects depth cap
+// A chain of 3 containers where only the first two pass looksLikeGrid;
+// the third fails. The walk must stop at the second (outermost passing) container,
+// not continue to body.
+(function findTargetTable_stopsAtFailingParent() {
+  withFindTargetEnv([], function() {
+    const makeRows5 = () => [
+      makeGridRow([{text:'A',width:100},{text:'100'}], 'row', 20),
+      makeGridRow([{text:'B',width:100},{text:'200'}], 'row', 20),
+      makeGridRow([{text:'C',width:100},{text:'300'}], 'row', 20),
+      makeGridRow([{text:'D',width:100},{text:'400'}], 'row', 20),
+      makeGridRow([{text:'E',width:100},{text:'500'}], 'row', 20),
+    ];
+
+    // Text-only rows: will fail looksLikeGrid at step 5 (no numeric content)
+    const noNumericRows = [
+      makeGridRow([{text:'Alpha',width:100},{text:'Foo'}], 'row', 20),
+      makeGridRow([{text:'Beta',width:100},{text:'Bar'}], 'row', 20),
+      makeGridRow([{text:'Gamma',width:100},{text:'Baz'}], 'row', 20),
+      makeGridRow([{text:'Delta',width:100},{text:'Qux'}], 'row', 20),
+      makeGridRow([{text:'Epsilon',width:100},{text:'Quux'}], 'row', 20),
+    ];
+
+    const inner    = makeWalkEl({ display: 'flex', rows: makeRows5() });
+    const outerOk  = makeWalkEl({ display: 'flex', rows: makeRows5() });
+    const failsLLG = makeWalkEl({ display: 'flex', rows: noNumericRows });
+
+    inner.parentElement    = outerOk;
+    inner.parentNode       = outerOk;
+    outerOk.parentElement  = failsLLG;
+    outerOk.parentNode     = failsLLG;
+    failsLLG.parentElement = document.body;
+    failsLLG.parentNode    = document.body;
+
+    inner.closest = function(sel) { return null; };
+
+    const result = findTargetTable(inner);
+
+    // Must return outerOk, not failsLLG or body
+    eq('findTargetTable: stops at failing parent, returns outermost passing container',
+      result, outerOk);
+
+    // Must NOT return the body sentinel or the failing container
+    eq('findTargetTable: does not return failing container',
+      result === failsLLG, false);
+  });
+})();
+
+// FT3: findTargetTable — prefers native <table> ancestor over grid heuristic
+// When the element has a <table> ancestor, closest('table') must be returned
+// immediately without engaging the looksLikeGrid walk-up (AC1).
+(function findTargetTable_prefersNativeTable() {
+  withFindTargetEnv([], function() {
+    const tableEl = { tagName: 'TABLE', rows: [], dataset: {} };
+
+    // A click target that has a <table> ancestor.
+    const clickTarget = {
+      tagName: 'TD',
+      nodeType: 1,
+      parentElement: tableEl,
+      parentNode: tableEl,
+      closest: function(sel) {
+        if (sel === 'table') return tableEl;
+        return null;
+      },
+    };
+
+    const result = findTargetTable(clickTarget);
+
+    eq('findTargetTable: prefers native <table> ancestor over grid heuristic',
+      result, tableEl);
+  });
+})();
+
+// FT4: findTargetTable — returns null when nothing found
+// A click target with no grid ancestors and no <table> ancestor.
+(function findTargetTable_returnsNullWhenNothing() {
+  withFindTargetEnv([], function() {
+    // Text-only rows fail looksLikeGrid (step 5 — no numeric content)
+    const noNumericRows = [
+      makeGridRow([{text:'Alpha',width:100},{text:'Foo'}], 'row', 20),
+      makeGridRow([{text:'Beta',width:100},{text:'Bar'}], 'row', 20),
+      makeGridRow([{text:'Gamma',width:100},{text:'Baz'}], 'row', 20),
+      makeGridRow([{text:'Delta',width:100},{text:'Qux'}], 'row', 20),
+      makeGridRow([{text:'Epsilon',width:100},{text:'Quux'}], 'row', 20),
+    ];
+
+    const parent = makeWalkEl({ display: 'flex', rows: noNumericRows });
+    parent.parentElement = document.body;
+    parent.parentNode    = document.body;
+
+    const clickTarget = {
+      tagName: 'DIV',
+      nodeType: 1,
+      parentElement: parent,
+      parentNode: parent,
+      closest: function(sel) { return null; },
+    };
+
+    const result = findTargetTable(clickTarget);
+
+    eq('findTargetTable: returns null when no grid or table found',
+      result, null);
+  });
+})();
+
+// FT5: findTargetTable — returns already-tagged ancestor (.dr-ext-grid) without re-walking
+// If an ancestor already carries `dr-ext-grid`, it must be returned immediately
+// via closest('.dr-ext-grid') without calling looksLikeGrid again.
+(function findTargetTable_returnsAlreadyTaggedGrid() {
+  withFindTargetEnv([], function() {
+    const existingGrid = makeWalkEl({ display: 'flex' });
+    existingGrid.classList.add('dr-ext-grid');
+
+    const clickTarget = {
+      tagName: 'DIV',
+      nodeType: 1,
+      parentElement: existingGrid,
+      parentNode: existingGrid,
+      closest: function(sel) {
+        if (sel === 'table') return null;
+        if (sel === '.dr-ext-grid') return existingGrid;
+        return null;
+      },
+    };
+
+    const result = findTargetTable(clickTarget);
+
+    eq('findTargetTable: returns already-tagged .dr-ext-grid ancestor immediately',
+      result, existingGrid);
+  });
+})();
+
+// FT6: findTargetTable — marks the outermost grid with dr-ext-grid class (AC2)
+// After findTargetTable discovers a new grid via walk-up, it must add
+// 'dr-ext-grid' to the outermost element.
+(function findTargetTable_marksOutermostWithClass() {
+  withFindTargetEnv([], function() {
+    const makeRows5 = () => [
+      makeGridRow([{text:'A',width:100},{text:'100'}], 'row', 20),
+      makeGridRow([{text:'B',width:100},{text:'200'}], 'row', 20),
+      makeGridRow([{text:'C',width:100},{text:'300'}], 'row', 20),
+      makeGridRow([{text:'D',width:100},{text:'400'}], 'row', 20),
+      makeGridRow([{text:'E',width:100},{text:'500'}], 'row', 20),
+    ];
+
+    const inner = makeWalkEl({ display: 'flex', rows: makeRows5() });
+    const outer = makeWalkEl({ display: 'flex', rows: makeRows5() });
+
+    inner.parentElement = outer;
+    inner.parentNode    = outer;
+    outer.parentElement = document.body;
+    outer.parentNode    = document.body;
+
+    inner.closest = function(sel) { return null; };
+
+    findTargetTable(inner);
+
+    eq('findTargetTable: marks outermost grid with dr-ext-grid class',
+      outer.classList.contains('dr-ext-grid'), true);
+  });
 })();
 
 // --- Report ---
