@@ -225,44 +225,105 @@ toggle-off, and grid removal.
 ### Sprint List
 
 **Execute strictly sequentially — one branch at a time, each off the updated
-`main` after the prior sprint merges.** Although sprints 1 and 2 are *logically*
-independent, both edit `content.js` and both touch `createToggleForTable` and
-`isDataTable`, so developing them on parallel branches would create avoidable
-merge conflicts. Do them in order.
+`main` after the prior sprint merges.** Two reasons combine: (a) sprints 1 and 2
+both edit `content.js` `createToggleForTable` / `isDataTable`, so parallel
+branches would conflict; (b) the riskiest unknowns resolve only by *observing*
+early outcomes, so later sprints must stay open to amendment (see Sprint 0).
 
+**Sprints 2–4 are provisional pending Sprint 0.** The adapter interface
+(sprint 2) and the in-place write model (sprints 3–4) both assume things we
+have not yet verified on a live grid — chiefly whether overwriting
+`cell.textContent` survives the host framework's re-render (the
+"framework-clobbering" risk). Sprint 0 resolves that *before* committing code to
+the architecture those sprints build on.
+
+0. **feasibility-spike** — Throwaway DevTools/console investigation on live
+   grids (Databricks, AG Grid): confirm real DOM structure and whether in-place
+   text replacement survives framework re-render. **No production code.**
+   _Depends on:_ none. _Outcome:_ sprints 2–4 confirmed, or the plan amended.
 1. **grid-detection** — Proactive cheap pass (native + ARIA) and lazy
    right-click structural walk-up; toggle placement; no rounding.
    _Depends on:_ none. _Branch from:_ `main`.
-2. **grid-adapter** — `NativeTableAdapter` / `GridAdapter` stub interface;
-   refactor the four engine functions to use adapters. Existing tests stay green.
-   _Depends on:_ grid-detection merged to main (shared edits to
-   `createToggleForTable` / `isDataTable`). _Branch from:_ updated `main`.
-3. **grid-rounding** — Implement `GridAdapter.getRows()`; round currently-
-   visible grid rows. _Depends on:_ grid-adapter merged to main.
-4. **grid-virtualization** — 100 ms-debounced MutationObserver to re-apply
-   rounding on row recycle. _Depends on:_ grid-rounding merged to main.
+2. **grid-adapter** _(provisional)_ — `NativeTableAdapter` / `GridAdapter` stub
+   interface; refactor the four engine functions to use adapters. Existing tests
+   stay green. _Depends on:_ feasibility-spike (write model confirmed) +
+   grid-detection merged. _Branch from:_ updated `main`.
+3. **grid-rounding** _(provisional)_ — Implement `GridAdapter.getRows()`; round
+   currently-visible grid rows. _Depends on:_ grid-adapter merged to main.
+4. **grid-virtualization** _(provisional)_ — 100 ms-debounced MutationObserver
+   to re-apply rounding on row recycle. _Depends on:_ grid-rounding merged.
 
 ### Dependency Graph
 
 ```mermaid
 flowchart TD
     base[main]
+    s0["feasibility-spike<br/>Validate DOM + write model (no code)"]
     s1["grid-detection<br/>Proactive cheap + lazy walk-up, no rounding"]
-    s2["grid-adapter<br/>TableAdapter abstraction, tests green"]
-    s3["grid-rounding<br/>GridAdapter body + visible-row rounding"]
-    s4["grid-virtualization<br/>Re-apply on recycle, 100ms debounce"]
+    s2["grid-adapter (provisional)<br/>TableAdapter abstraction"]
+    s3["grid-rounding (provisional)<br/>GridAdapter body + visible-row rounding"]
+    s4["grid-virtualization (provisional)<br/>Re-apply on recycle, 100ms debounce"]
+    base --> s0
     base --> s1
+    s0 --> s2
     s1 --> s2
     s2 --> s3
     s3 --> s4
 ```
 
-The chain is linear: each sprint branches from `main` only after the previous
-one has merged. Sprints 1 and 2 have no *logical* dependency, but the file-level
-overlap in `content.js` (`createToggleForTable`, `isDataTable`) makes sequential
-execution the conflict-free path for a single developer/session.
+Sprint 0 and sprint 1 are both rooted at `main` and gather information; neither
+writes production code that the other depends on (sprint 1 ships detection;
+sprint 0 is throwaway). They can run in either order, but **sprint 0's findings
+gate sprint 2** — do not start the adapter refactor until the write model is
+confirmed. The rest of the chain is linear: each sprint branches from `main`
+only after the previous one has merged.
 
 ## 6. Sprint Definitions
+
+### feasibility-spike
+
+- **Goal:** Resolve the two unknowns that could force a re-architecture, *before*
+  any committed code assumes them away. This is a **spike**: a throwaway
+  investigation whose deliverable is knowledge, not a merge.
+- **Branch:** none — no production code. Findings recorded in
+  `docs/sprint-logs/grid-support-feasibility-spike.md` (or appended to the
+  research doc).
+- **Investigate (DevTools / console on live pages — Databricks SQL result, an
+  AG Grid demo, and one role-less div-grid):**
+  1. **Real DOM structure** — confirm the row/cell nesting, the pinned vs scroll
+     container split, presence of `data-row-index` (or equivalent stable row id),
+     and whether `role`/library classes are actually present. Validates the D1
+     `looksLikeGrid` signals and the D3 `GridAdapter.getRows()` selector list.
+  2. **Framework clobbering** — manually overwrite a grid cell's `textContent`
+     in the console; then scroll the cell out and back, trigger a re-sort or
+     re-render, and observe whether our text survives or is reverted. This is the
+     highest feasibility risk: if the host framework reclaims the cell faster
+     than a 100 ms re-apply can keep up, the in-place write model (sprints 3–4)
+     is not viable and must change (e.g., overlay rendering over the cell rather
+     than mutating its text).
+- **Out of scope:** Any production code, tests, or `content.js` changes.
+- **Acceptance criteria:**
+  - Findings for both questions written up.
+  - An explicit verdict: **sprints 2–4 confirmed as planned**, OR a list of
+    specific amendments needed (which selectors, which write model). See
+    "If the spike invalidates the plan" below.
+  - This sprint does **not** merge code — its done-state is the recorded verdict.
+- **Depends on:** none
+- **Complexity:** S
+- **Dev notes:**
+  - Keep it genuinely throwaway — console snippets, screenshots, notes. Resist
+    building anything reusable here; that's what the real sprints are for.
+  - The stable-row-id finding feeds the S7 reset model: if no grid exposes a
+    stable row id, note it as a confirmed limitation.
+
+**If the spike invalidates the plan:** this plan is read-only once merged. Do
+**not** edit sprints 2–4 in place after the fact. Instead, the spike's verdict
+becomes the input to a fresh `sprint-plan` revision that supersedes the
+provisional sprints — a new plan artifact, leaving the git history of the
+decision intact. If the spike *confirms* the plan, record that in the Decisions
+Log and proceed to sprint 2 unchanged.
+
+---
 
 ### grid-detection
 
@@ -351,8 +412,10 @@ execution the conflict-free path for a single developer/session.
   - `node chrome-extension/tests.js` passes with zero regressions.
   - Native `<table>` rounding byte-identical to pre-refactor build.
   - `roundTable` on a grid element returns without throwing.
-- **Depends on:** grid-detection merged to main (avoids `content.js` conflicts
-  in `createToggleForTable` / `isDataTable`)
+- **Depends on:** feasibility-spike (write model confirmed) + grid-detection
+  merged to main (avoids `content.js` conflicts in `createToggleForTable` /
+  `isDataTable`). **Provisional** — do not start until the spike confirms the
+  in-place write model, or until the plan is revised per the spike's verdict.
 - **Complexity:** M
 - **Dev notes:**
   - `NativeTableAdapter.getRows()` is a thin wrapper — zero behavior change.
@@ -496,3 +559,11 @@ execution the conflict-free path for a single developer/session.
   independent but both edit `content.js` `createToggleForTable` / `isDataTable`,
   so parallel branches would conflict. Linear chain is the conflict-free path for
   a single developer/session.
+- 2026-06-10: Added **Sprint 0 (feasibility-spike)** and marked sprints 2–4
+  **provisional**. The riskiest unknowns (real grid DOM; whether in-place
+  `textContent` survives framework re-render) resolve only by observing a live
+  grid, and they sit upstream of the architecture sprints 2–4 commit to. The
+  spike pulls that learning forward with a throwaway investigation (no code);
+  its acceptance is a verdict — "plan confirmed" or "plan needs amending" — not a
+  merge. If it invalidates the plan, the verdict feeds a fresh sprint-plan
+  revision rather than an in-place edit (the merged plan stays read-only).
