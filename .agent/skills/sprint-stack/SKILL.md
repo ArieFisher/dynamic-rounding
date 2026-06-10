@@ -1,7 +1,7 @@
 ---
 name: sprint-stack
 version: 2
-description: Execute a pre-planned stack of sprints unattended, one at a time. Reads the markdown plan from main (produced by `/sprint-plan` and merged). Per sprint, runs developer → test-writer → reviewer subagents, opens a PR to main on APPROVE (never merges — the user owns all merge decisions), or pushes the branch without a PR on BLOCK (after two retries). DAG-aware: a blocked sprint defers its dependents but the orchestrator continues with independent sprints. Each sprint's log is committed to its feature branch and merged to main with the sprint PR. Never creates session or `claude/` branches. Use this skill whenever the user wants to implement a sequenced set of features as independent PRs without supervision.
+description: Execute a pre-planned stack of sprints unattended, one at a time. Reads the markdown plan from main (produced by `/sprint-plan` and merged). Per sprint, runs developer → test-writer → reviewer subagents, opens a PR to main on APPROVE (never merges — the user owns all merge decisions), or pushes the branch without a PR on BLOCK (after two retries). DAG-aware: a blocked sprint defers its dependents but the orchestrator continues with independent sprints. Spike sprints (no-code feasibility investigations) are not executed — the orchestrator halts at them and hands control to the user, since a spike's verdict is a planning decision; sprints downstream of an unresolved spike are deferred. Each sprint's log is committed to its feature branch and merged to main with the sprint PR. Never creates session or `claude/` branches. Use this skill whenever the user wants to implement a sequenced set of features as independent PRs without supervision.
 ---
 
 You are an orchestrator running a sprint stack unattended. The user is not watching. Sprints execute one at a time, in topological order. Make decisions deterministically. Do not prompt. If a sprint fails, defer its dependents and continue with independents. Never lose work. Produce a clear log at the end.
@@ -29,6 +29,8 @@ No other flags. Resume behavior is automatic: re-invoking with the same slug che
    - Section 5 (Sprint Definitions) contains parseable sprint blocks.
 
 3. **Parse sprint definitions.** Each `### <label>` subsection under "Sprint Definitions" yields one sprint with its goal, scope, out_of_scope, acceptance criteria, depends_on, complexity, and dev_notes. Keep the Design section in context for subagents.
+
+   **Detect spike sprints.** A sprint is a **spike** if its heading carries a `(spike)` marker (`### <label>  (spike)`) or its block declares `Branch: none`. Spikes are not implemented by the subagent pipeline — they are handled by § Spike sprints below. Treat any sprint marked **provisional** in the plan (or whose `depends_on` includes a spike) as gated on that spike's resolution.
 
 4. **Working tree check.** The session's active repo must be on `main` and clean. If not → abort.
 
@@ -59,10 +61,23 @@ No other flags. Resume behavior is automatic: re-invoking with the same slug che
 For each sprint in topological order:
 
 1. **Skip if already merged or PR open** (checked at startup).
-2. **Check dependencies.** If any of this sprint's `depends_on` is Blocked or Deferred in this run, mark this sprint **Deferred** and continue.
-3. **Resolve parent branch.** If `depends_on` is empty or contains only out-of-stack labels → parent = `main`. Otherwise → parent = the most recently completed dependency's `feature/<label>` branch.
-4. **Execute the sprint** (§ Per-sprint execution). Yields Completed, Blocked, or Deferred.
-5. **Continue** to the next sprint regardless of outcome.
+2. **Spike?** If this sprint is a spike → handle per § Spike sprints (yields Confirmed, Pending, or Amend) and continue. Do not run the subagent pipeline on it.
+3. **Check dependencies.** If any of this sprint's `depends_on` is Blocked, Deferred, **Pending (unresolved spike)**, or **Amend** in this run, mark this sprint **Deferred** and continue.
+4. **Resolve parent branch.** If `depends_on` is empty or contains only out-of-stack labels (or resolved spikes, which produce no branch) → parent = `main`. Otherwise → parent = the most recently completed *code* dependency's `feature/<label>` branch.
+5. **Execute the sprint** (§ Per-sprint execution). Yields Completed, Blocked, or Deferred.
+6. **Continue** to the next sprint regardless of outcome.
+
+## Spike sprints
+
+A spike is a no-code feasibility investigation (see sprint-plan Phase 4b). Its deliverable is a **verdict** — "plan confirmed" or "plan needs amending" — not a branch or a PR. The orchestrator **does not execute spikes**, for two reasons: a spike typically requires inspecting a real, live environment the unattended orchestrator cannot reach, and its verdict is a *planning* decision, which (like merges) belongs to the user.
+
+When the loop reaches a spike, resolve its state from a **spike log on `main`** at `docs/sprint-logs/<slug>-<label>.md` — written by the user after they perform the investigation:
+
+- **Log absent → Pending.** Do not execute. Mark the spike **Pending** and halt progression into its downstream sprints (they Defer via step 3). Surface it in the end-of-run summary with explicit next steps (below). This is not a failure — it is a designed hand-off.
+- **Log present, `Result: Confirmed` → the plan stands.** Treat the spike as **resolved** for dependency purposes (it satisfies dependents like a Completed sprint, but produces no branch — dependents whose only unmet dependency was the spike root at `main`). Continue.
+- **Log present, `Result: Amend` → the plan is stale.** The spike found the provisional sprints need redesign. Mark the spike **Amend**, Defer all its downstream sprints, and surface in the summary that the user must run `/sprint-plan` to produce a revised plan before those sprints can execute. Do **not** build on an invalidated plan.
+
+The orchestrator never writes the spike log itself (that would be deciding the verdict). If a spike is Pending, the run simply completes the independent sprints it can and reports the spike as awaiting the user.
 
 ## Per-sprint execution
 
@@ -164,7 +179,8 @@ Re-running `/sprint-stack <slug>`:
 - Sprints with a merged PR → skipped.
 - Sprints with an open PR → skipped (already submitted).
 - Sprints marked Blocked (branch pushed, no PR) → re-attempted from scratch on a fresh branch. The old blocked branch can be deleted after the new one is pushed.
-- Sprints marked Deferred → re-evaluated; if upstream is now Completed they become eligible.
+- Sprints marked Deferred → re-evaluated; if upstream is now Completed (or an upstream spike is now Confirmed) they become eligible.
+- **Spikes** → re-evaluated from the spike log on `main`: absent → still Pending (halt downstream again); `Confirmed` → resolved, downstream proceeds; `Amend` → downstream stays Deferred and the user is reminded to run `/sprint-plan` for a revised plan. A spike is never "retried" by the orchestrator — its progress is entirely the user-written log.
 
 ## End-of-run summary
 
@@ -175,10 +191,19 @@ When the queue drains, post a single message:
 > **Completed:** <count> — <label> → PR #<n>, <label> → PR #<n>, ...
 > **Blocked:** <count> — <label> (branch: feature/<label>), ...
 > **Deferred:** <count> — <label> (waiting on <upstream>), ...
+> **Spikes awaiting you:** <count> — <label>, ...
 >
 > **Merge order:** Root sprints (based on main) can merge in any order. Dependent sprints re-target main automatically after their parent merges.
 >
 > **To resume blocked sprints:** fix on the branch, commit, push, re-run `/sprint-stack <slug>`.
+
+If any spike is **Pending**, include its hand-off block:
+
+> **Spike `<label>` needs you.** It's a no-code investigation I can't run unattended. Do the investigation in § Goal of the spike, then write `docs/sprint-logs/<slug>-<label>.md` on `main` with a `**Result:**` line of either:
+> - `Confirmed` — the plan stands; re-run `/sprint-stack <slug>` and the provisional sprints (<list>) will proceed.
+> - `Amend` — the plan needs changes; run `/sprint-plan` to produce a revised plan, then execute that.
+
+If any spike is **Amend**, state plainly that the downstream sprints (<list>) are on hold pending a revised plan, and do not attempt them.
 
 Then stop.
 
@@ -186,6 +211,7 @@ Then stop.
 
 - **Sprints run one at a time**, in topological order.
 - **A failed sprint never stops the orchestrator** — dependents are Deferred, independents continue.
+- **Spikes are never executed by the orchestrator.** Halt at them, resolve from the user-written spike log on `main`, and defer downstream sprints until the verdict is `Confirmed`. Never write the verdict yourself — it's the user's planning decision.
 - **The skill opens PRs and stops.** Merge decisions belong to the user.
 - **Never wait for PR merges.** Sprint B (depending on A) branches off A's feature branch immediately after A's PR opens — not after it merges.
 - **Never commit to main.** Feature branches are pushed; PRs are opened. Branch protection on main is fully respected.
