@@ -8,26 +8,92 @@
 
 The dynamic-rounding Chrome extension rounds numbers in native HTML `<table>`
 elements. Modern web apps — Databricks SQL, AG Grid dashboards, Azure Data
-Studio, AWS Cloudscape — render query results as virtualized data grids built
-from `<div role="grid">` containers split into **pinned** (frozen columns) and
-**scrollable** panes. These grids are completely invisible to the extension
-today.
+Studio, AWS Cloudscape — render results as **data grids** built from plain
+`<div>` containers, often virtualized (only visible rows exist in the DOM) and
+often split into pinned (frozen columns) and scrollable panes. Many such grids
+carry no `<table>` tag and no ARIA roles at all. These grids are invisible to
+the extension today.
 
-Research is in `docs/research/databricks-grid-detection.md`. The key structural
+Research is in `docs/research/databricks-grid-detection.md`. Key structural
 facts:
 
 - **Databricks SQL:** `.dg--table-wrapper` wraps `.dg--pinned-grid` +
-  `.dg--grid-scroll-container` (both `role="grid"`).
+  `.dg--grid-scroll-container` (both happen to carry `role="grid"`).
 - **AG Grid:** `.ag-pinned-left-cols-container` + `.ag-center-cols-viewport`.
-- Grids use `role="grid"` / `role="row"` / `role="gridcell"` ARIA attributes.
+- Many grids expose **no** roles or recognizable classes — they must be found
+  by structure alone.
 - **Virtualization:** only visible rows are in the DOM; nodes are recycled as
-  the user scrolls — so there is no single "full table" in the DOM at any time.
+  the user scrolls — there is no single "full table" in the DOM at any time.
 
 Every layer of `content.js` is hard-wired to the `<table>` DOM API, so adding
-detection alone is not sufficient. The four sprints below address: discovery,
-abstraction, rounding, and virtualization — in dependency order.
+detection alone is not sufficient. The four sprints below address discovery,
+abstraction, rounding, and virtualization in dependency order.
 
-## 1. Repo Survey
+## 2. Strategy (agreed before planning)
+
+These decisions were worked out up front and shape every sprint:
+
+### S1 — Two extraction paths, four detection signals
+
+There are only **two** ways to *read* a table once found: the native table API
+(`.rows`/`.cells`, handles `colspan`/`th`) and div-walking (everything else).
+Native `<table>` is therefore its own path. ARIA grids and unlabelled grids
+share the div-walk path; they differ only in how they're *detected*.
+
+Detection signals, in decreasing precision / increasing recall:
+`<table>` tag → library class (`dg--`, `ag-`) → ARIA `role` → raw structure.
+The cheap signals are also the precise ones, so they run first and the
+expensive structural heuristic runs last (and rarely).
+
+### S2 — Column structure, not row height, is the heuristic's spine
+
+Row-height uniformity is a **bad** signal: any table with a text column that
+wraps to a second line has variable row heights (most Wikipedia tables, most
+non-numeric Databricks results). The heuristic instead keys on:
+
+- **Consistent cell count** — every candidate row has the same number of
+  children. (Cheap, no geometry.)
+- **Column-width alignment** — cells in the same position share a width;
+  columns line up vertically. (Robust to text wrapping — a column's width is
+  independent of how many lines its text occupies.)
+- **Repetitive row structure** — near-identical class names / child shape.
+- **Numeric content** — at least one cell parses as a finite number. This is
+  the single most important false-positive guard.
+
+Row height is demoted to an optional weak hint, never a requirement.
+
+### S3 — Lazy discovery for unlabelled grids; proactive only where it's free
+
+The structural heuristic measures geometry (`offsetWidth` / `getComputedStyle`),
+which forces synchronous layout and is expensive on large, dynamic pages — which
+are exactly the pages that have these grids. So:
+
+- **Proactive (on page load + cheap MutationObserver passes):** only the cheap
+  signals — `querySelectorAll('table')` and `[role="grid"], [role="table"]`.
+  These badge the toggle dot immediately and cost almost nothing.
+- **Lazy (on right-click only):** the structural heuristic. It does **not**
+  scan the page. It walks **up** from the clicked element, testing a handful of
+  ancestors, and badges the grid the first time the user interacts with it.
+
+Net effect: free dots where the signal is free; on-demand dots for the
+expensive unlabelled case, scoped to the one element the user clicked.
+
+### S4 — Geometry measured last and narrowest
+
+Within the heuristic, cheap checks gate the expensive one: child count → class
+repetition → layout (`display`) → numeric content **first**; only the few
+candidates that survive get their column widths measured. Because lazy discovery
+already limits this to the right-clicked element's ancestors, the geometry probe
+touches a bounded handful of elements, never the page.
+
+### S5 — Debounce re-apply at 100 ms
+
+The sprint-4 re-apply observer batches the row-recycle mutations a virtualized
+grid fires during scroll and reacts at most once per **100 ms**. That is well
+under the ~100 ms "feels instant" threshold yet does ~6× less work than
+per-frame (16 ms) reaction.
+
+## 3. Repo Survey
 
 - Chrome extension (MV3) at `chrome-extension/`: `content.js` (~1800 lines,
   all table logic), `sidebar.js` / `sidebar.html` (options UI), `defaults.js`
@@ -51,49 +117,40 @@ abstraction, rounding, and virtualization — in dependency order.
 - Version bumps: handled by `.github/workflows/bump-version.yml` on merge to
   main; sprint branches must NOT bump versions.
 
-## 2. Design
+## 4. Design
 
-### D1 — Grid discovery (sprint 1 only)
+### D1 — Detection: proactive cheap pass + lazy structural walk-up (sprint 1)
 
-The target is **unlabelled** data grids — `<div>`-based tables that use neither
-the `<table>` tag nor ARIA roles. These are the grids the extension misses and
-that no selector can find. Detection is therefore **structural/heuristic
-first**; ARIA roles and library-specific class prefixes (`dg--`, `ag-`) are
-treated as optional accelerators that boost confidence and provide precise
-selectors *when present*, never as a requirement.
+Two entry points, per strategy S3:
 
-**Primary mechanism — `findDataGrids()` (research doc §2, §4):** scan
-`div`/`section` containers and score each against structural signals:
+**Proactive — `injectTableToggles` + MutationObserver:** keep the existing
+`querySelectorAll('table')` pass and add one cheap selector pass
+`querySelectorAll('[role="grid"], [role="table"]')`. Both badge the toggle dot
+on load. No structural scanning, no geometry. Native tables and ARIA grids are
+covered here.
 
-1. **Repetitive siblings** — ≥ ~5 direct children with near-identical class
-   names / child structure (candidate rows).
-2. **Uniform geometry** — those children share a uniform `offsetHeight > 0`;
-   their children (candidate cells) share uniform widths across rows.
-3. **Tabular layout** — container uses `display: grid` (multi-column
-   `grid-template-columns`) or `display: flex` column with flex-row children.
-4. **Numeric content** — at least one candidate cell contains a finite parseable
-   number (this is the strongest guard against matching nav menus / card lists).
+**Lazy — `looksLikeGrid(el)` on right-click:** the right-click handler walks up
+from the clicked element; at each ancestor it calls `looksLikeGrid`, stopping at
+the **first** ancestor that passes (the tightest grid root). A depth cap (~15
+ancestors / stop at `<body>`) bounds the walk.
 
-A container passing the structural test is treated as a data grid. **No ARIA and
-no `<table>` is required.**
+`looksLikeGrid(el)` applies the S2/S4 cheap-first ladder:
 
-**Optional confidence boosters (used when present, never required):**
-- `role="grid"` / `role="row"` / `role="gridcell"` attributes.
-- Library class prefixes (`dg--`, `ag-`, `awsui-`).
-- Virtualization markers — rows positioned via `transform: translateY(...)` /
-  `position: absolute`, large `scrollHeight` vs small `offsetHeight`.
-- A pinned + scrollable container pair under one parent (the Databricks/AG-Grid
-  split). This raises confidence but is **not** a precondition — single-pane
-  unlabelled grids must still be detected.
+1. **Child count** — ≥ ~5 children (candidate rows). Cheap.
+2. **Repetitive structure** — children share class / child shape. Cheap.
+3. **Consistent cell count** — candidate rows have equal child counts. Cheap.
+4. **Layout** — `getComputedStyle(el).display` is `grid` or `flex` (one read).
+5. **Numeric content** — ≥ 1 cell parses as a finite number. Cheap, mandatory.
+6. **Column-width alignment** — only for candidates surviving 1–5: measure
+   `offsetWidth` of column-0 cells across a few rows; expect uniform widths.
+   This is the only geometry probe, and it runs on a bounded set.
 
-**False-positive mitigation:** the gate is *uniform geometry + repetitive
-siblings + numeric cell content*, optionally scoped to a results/scroll context.
-A plain CSS layout grid (no repeating numeric rows) fails the numeric-content
-guard and is rejected. Library hints, when present, further raise confidence.
+Row height is **not** tested (S2). ARIA role / library class, when present on a
+walked ancestor, short-circuit to "accept" and skip the geometry probe.
 
-In sprint 1, a discovered grid gets a toggle button and toggle positioning; no
-rounding is attempted yet. A sentinel class `dr-ext-grid` is added to the root
-element so later sprints can locate it without re-running discovery.
+Discovered grids are marked `el.classList.add('dr-ext-grid')` so later sprints
+and the right-click handler locate them without re-running detection. In sprint
+1 a discovered grid gets the toggle dot and positioning only — no rounding.
 
 ### D2 — TableAdapter abstraction (sprint 2)
 
@@ -111,66 +168,49 @@ GridAdapter(wrapperElement)
   .isVirtualized()  → true
 ```
 
-`getRows()` for `GridAdapter` identifies rows and cells **structurally**, the
-same way `findDataGrids()` detected the grid — it does not depend on ARIA:
-
-- **Rows** = the repetitive, uniform-height direct children of the grid's
-  scrollable content container.
-- **Cells** = the repetitive children of each row.
-- **ARIA shortcut (when present):** if the grid exposes `[role="row"]` /
-  `[role="gridcell"]`, use those selectors directly — they are faster and more
-  precise than positional enumeration. Fall back to structural child
-  enumeration when roles are absent.
-- **Pinned pane (when present):** for each scrollable row, also collect the
-  same-index row from the pinned pane and merge cells in DOM order (pinned
-  columns first). When there is no pinned pane (single-pane grid), rows come
-  from the one container.
-
-This stitching and structural extraction is the interface contract — callers
-never know whether they are reading one DOM tree or two, labelled or unlabelled.
-
 `NativeTableAdapter.getRows()` wraps `table.rows` / `row.cells` exactly as
-today. All existing behavior is preserved verbatim.
-
-`roundTable`, `resetTable`, `extractPreviewSamples`, and `isDataTable` are
-rewritten to call `adapter.getRows()` instead of `table.rows`. No caller is
-changed; the adapter is constructed at the call site based on element type.
+today — zero behavior change. `GridAdapter.getRows()` is a stub returning `[]`
+in this sprint (sprint 3 fills it in). `roundTable`, `resetTable`,
+`extractPreviewSamples`, and `isDataTable` are rewritten to call
+`adapter.getRows()`; no caller signature changes. A `makeAdapter(el)` factory
+picks the class by `el.tagName === 'TABLE'`.
 
 ### D3 — GridAdapter read/write + visible-row rounding (sprint 3)
 
-Implement `GridAdapter` fully (sprint 2 defines the interface; sprint 3 fills
-in the body). Key concerns:
+`GridAdapter.getRows()` extracts rows/cells **structurally** (S2), with ARIA /
+library selectors as shortcuts when present:
 
-- `getText()` reads `cell.textContent` (grids use no `<td>`; cells are plain
-  divs, with or without a `role="gridcell"` attribute).
-- `setText(s)` writes `cell.textContent` and applies `.dr-ext-rounded` just as
-  `roundTable` does today — but only to visible (currently-rendered) cells.
-- `resetTable` via the adapter clears `.dr-ext-rounded` only from nodes
-  currently in the DOM; sprint 4 handles persistence across scroll.
+- **Rows** = repetitive children of the scrollable content container (or
+  `[role="row"]` when present).
+- **Cells** = repetitive children of each row (or `[role="gridcell"]`).
+- **Pinned pane**, when present, is stitched per row by `data-row-index` (or DOM
+  index) with pinned columns first. Single-pane grids skip this.
+
+`setText` writes `cell.textContent` and adds `.dr-ext-rounded`. **Original
+values are keyed by logical (rowIndex, colIndex)** in a per-grid Map (see Open
+Question on recycling), not stored solely on the cell node. Rounding applies
+only to currently-visible rows.
 
 ### D4 — Virtualization re-apply observer (sprint 4)
 
-When a grid is rounded, attach a `MutationObserver` to each scroll container
-that watches for `childList` changes (row recycling). On each mutation, re-run
-the rounding pass for newly-added rows, using the stored `tableOptions`
-WeakMap entry for the grid's wrapper element. Unrounded grids get no observer.
+When a virtualized grid is rounded, attach a `MutationObserver` to its scroll
+container watching `childList`. Mutations are **debounced to 100 ms** (S5); on
+fire, `reapplyGridRounding` rounds only rows lacking `.dr-ext-rounded`. The
+observer is torn down on reset / toggle-off and when the grid is removed.
 
-The observer is torn down when the toggle is switched off (same path that calls
-`resetTable`).
-
-## 3. Sprint List & Dependency Graph
+## 5. Sprint List & Dependency Graph
 
 ### Sprint List
 
-1. **grid-detection** — Discovery + toggle placement for ARIA grids; no
-   rounding. _Depends on:_ none.
-2. **grid-adapter** — `NativeTableAdapter` / `GridAdapter` interface;
-   refactor `roundTable`, `resetTable`, `extractPreviewSamples`, `isDataTable`
-   to use adapters. Existing tests must stay green. _Depends on:_ none (can
-   overlap with sprint 1 on a separate branch; merges to main independently).
-3. **grid-rounding** — Implement `GridAdapter` body; enable rounding for
-   currently-visible grid rows. _Depends on:_ grid-adapter merged to main.
-4. **grid-virtualization** — MutationObserver on scroll containers to re-apply
+1. **grid-detection** — Proactive cheap pass (native + ARIA) and lazy
+   right-click structural walk-up; toggle placement; no rounding.
+   _Depends on:_ none.
+2. **grid-adapter** — `NativeTableAdapter` / `GridAdapter` interface; refactor
+   the four engine functions to use adapters. Existing tests stay green.
+   _Depends on:_ none.
+3. **grid-rounding** — Implement `GridAdapter` body; round currently-visible
+   grid rows. _Depends on:_ grid-adapter merged to main.
+4. **grid-virtualization** — 100 ms-debounced MutationObserver to re-apply
    rounding on row recycle. _Depends on:_ grid-rounding merged to main.
 
 ### Dependency Graph
@@ -178,298 +218,255 @@ The observer is torn down when the toggle is switched off (same path that calls
 ```mermaid
 flowchart TD
     base[main]
-    s1["grid-detection<br/>Discovery + toggle, no rounding"]
+    s1["grid-detection<br/>Proactive cheap + lazy walk-up, no rounding"]
     s2["grid-adapter<br/>TableAdapter abstraction, tests green"]
     s3["grid-rounding<br/>GridAdapter body + visible-row rounding"]
-    s4["grid-virtualization<br/>Re-apply on scroll / row recycle"]
+    s4["grid-virtualization<br/>Re-apply on recycle, 100ms debounce"]
     base --> s1
     base --> s2
     s2 --> s3
     s3 --> s4
 ```
 
-Sprints 1 and 2 are independent of each other (different files, no shared
-interface) and can be developed in parallel. Sprint 1 can also merge to main
-before sprint 2 — the toggle will appear on grids but do nothing until sprint 3.
+Sprints 1 and 2 are independent (different concerns, no shared interface) and
+can be developed in parallel. Sprint 1 can merge before sprint 2 — the dot
+appears on grids but does nothing until sprint 3.
 
-## 4. Sprint Definitions
+## 6. Sprint Definitions
 
 ### grid-detection
 
-- **Goal:** Make the extension discover and badge **unlabelled** data grids
-  (div-based tables with no `<table>` tag and no ARIA roles) with the existing
-  toggle button, using a structural/heuristic detector. ARIA roles and library
-  class prefixes are used as optional accelerators when present. No rounding
-  happens yet; this sprint validates that heuristic discovery and toggle
-  positioning work on real pages (Databricks, AG Grid, and at least one
-  unlabelled grid).
+- **Goal:** Discover data grids and badge them with the existing toggle dot,
+  using a proactive cheap pass for native/ARIA grids and a lazy right-click
+  structural walk-up for unlabelled div-grids. No rounding yet; this validates
+  discovery and dot placement on real pages (Databricks, AG Grid, and a
+  role-less div-grid).
 - **Scope — `chrome-extension/content.js`:**
-  - Add a module-level `findDataGrids(root = document)` (based on research doc
-    §4) that returns candidate grid root elements. It scores each `div`/`section`
-    container on: repetitive uniform-height children (rows), uniform-width
-    grandchildren (cells), `display: grid`/`flex` layout, and **at least one
-    cell containing a finite number** (the primary false-positive guard). A
-    container passing the structural test qualifies with no ARIA required.
-  - Confidence boosters (raise score, never required): `role="grid"/"row"/"gridcell"`
-    attributes, library prefixes (`dg--`, `ag-`, `awsui-`), virtualization
-    markers (`transform: translateY`, `position: absolute`, large `scrollHeight`
-    vs small `offsetHeight`), and a pinned + scrollable sibling pair. Define a
-    score threshold; document it inline so it can be tuned against real pages.
-  - `injectTableToggles` (L434): after the `querySelectorAll('table')` pass, run
-    `findDataGrids()`; for each result call `createToggleForTable` with a guard
-    that skips elements already carrying `dr-ext-grid` (idempotency). Also skip
-    any element that *is* or *contains* a native `<table>` already handled.
-  - MutationObserver (L469–494): re-run `findDataGrids(node)` for added nodes;
-    mirror removal handling for grids.
-  - Right-click handler (L49, L71): replace `closest('table')` with a helper
-    `findTargetTable(el)` that returns the nearest `<table>` OR the nearest
-    ancestor carrying `dr-ext-grid` (set during discovery). This avoids relying
-    on a role/class selector that unlabelled grids won't have.
-  - `createToggleForTable`: add an early branch — if the element is not a
-    `<table>`, skip `isDataTable()` (it reads `.rows`) and instead confirm via a
-    lightweight structural check (`findDataGrids` already validated it; re-use
-    the same numeric-content probe). If it passes, attach the toggle.
-  - Mark discovered grids with `el.classList.add('dr-ext-grid')`.
-  - `positionToggle`: already uses `getBoundingClientRect()`, which works for
-    any element — no change needed.
+  - Add module-level `looksLikeGrid(el)` implementing the D1 cheap-first ladder:
+    child count → repetitive structure → consistent cell count → layout →
+    numeric content → (only then) column-width alignment. Returns a boolean.
+    **Do not test row height.** ARIA role / library class on `el` short-circuits
+    to accept and skips the geometry probe.
+  - **Proactive pass:** in `injectTableToggles` (L434), keep
+    `querySelectorAll('table')`; add a second cheap pass
+    `querySelectorAll('[role="grid"], [role="table"]')`. For each, call
+    `createToggleForTable`, skipping anything already carrying `dr-ext-grid` or
+    that is / contains an already-handled `<table>`. No structural scan here.
+  - MutationObserver (L469–494): mirror only the two cheap selector passes for
+    added nodes; mirror removal handling. **No structural scanning in the
+    observer** (that would re-introduce the cost lazy discovery avoids).
+  - **Lazy pass:** add `findTargetTable(el)` used by the right-click handler
+    (L49, L71): return the nearest `<table>`; else the nearest ancestor carrying
+    `dr-ext-grid`; else walk up calling `looksLikeGrid` (depth cap ~15, stop at
+    `<body>`), and on first match add `dr-ext-grid`, badge it, and return it.
+  - `createToggleForTable`: when the element is not a `<table>`, skip
+    `isDataTable()` (reads `.rows`) and gate on `looksLikeGrid` instead.
+  - Mark discovered grids `el.classList.add('dr-ext-grid')`.
+  - `positionToggle` already uses `getBoundingClientRect()` — no change.
 - **Scope — `chrome-extension/tests.js`:**
-  - Unit tests for `findDataGrids()` against synthetic DOM fixtures:
-    - **Pass — unlabelled grid:** plain `<div>` rows, no roles, uniform height,
-      numeric cells. (This is the headline case.)
-    - **Pass — ARIA grid:** same structure plus `role="grid"`.
+  - Unit tests for `looksLikeGrid()`:
+    - **Pass — unlabelled grid:** plain `<div>` rows/cells, no roles, **mixed
+      text+number with varying row heights**, aligned columns, numeric cells.
+      (Headline — proves the column-structure spine, S2.)
+    - **Pass — ARIA grid:** same plus `role="grid"` (short-circuit path).
     - **Pass — pinned+scrollable:** Databricks-shaped split.
-    - **Reject — layout grid:** CSS `display: grid` cards with no numeric rows
-      (fails the numeric-content guard).
-    - **Reject — nav menu:** repetitive uniform children but no numbers.
-- **Out of scope:** Any actual rounding of grid contents. The toggle's click
-  handler will fire but `roundTable` will no-op (`.rows` is undefined on a
-  div) — that is acceptable for this sprint.
+    - **Reject — layout grid:** CSS cards, no numeric rows (numeric guard).
+    - **Reject — nav menu:** repetitive rows, no numbers.
+  - Test `findTargetTable` walk-up: returns the tightest grid ancestor and stops
+    (does not overshoot to a page-level container).
+- **Out of scope:** Any rounding. The toggle click fires but `roundTable`
+  no-ops on a div (`.rows` undefined) — acceptable this sprint.
 - **Acceptance criteria:**
-  - On a page with an **unlabelled** div-grid (no `<table>`, no `role`), the
-    extension detects it via `findDataGrids()` and injects a correctly
-    positioned toggle button.
-  - The same works for ARIA grids and the Databricks pinned+scrollable shape.
-  - Right-clicking a cell inside a detected grid sets `lastRightClickedTable`
-    to the grid root (via the `dr-ext-grid` ancestor walk).
-  - No toggle appears on a plain CSS layout grid with no numeric data rows.
+  - A native `<table>` and an ARIA `[role="grid"]` both get a correctly placed
+    dot on page load (proactive).
+  - An **unlabelled** div-grid with **variable row heights** gets a dot after a
+    right-click on one of its cells (lazy), and the dot is placed on the tightest
+    grid root.
+  - No structural scanning runs on page load or in the MutationObserver
+    (verified by test/inspection — the heavy path is right-click-only).
+  - No dot on a CSS layout grid with no numeric rows.
   - `node chrome-extension/tests.js` passes.
 - **Depends on:** none
-- **Complexity:** M _(raised from S — the heuristic scorer and its
-  false-positive tuning are the real work, not a selector query.)_
+- **Complexity:** M
 - **Dev notes:**
-  - The numeric-content guard is the single most important false-positive
-    filter — without it the structural heuristic lights up on nav bars, card
-    grids, and toolbars. Keep it mandatory.
-  - Do not rename `lastRightClickedTable` — its type widens to "table or grid
-    root" but renaming would touch too many call sites. Document the widened
-    contract in a comment.
+  - Numeric-content guard is mandatory — it's what keeps the heuristic off nav
+    bars and card grids.
+  - Do not rename `lastRightClickedTable`; its type widens to "table or grid
+    root". Document the widened contract in a comment.
   - Do not bump `manifest.json` version.
 
 ---
 
 ### grid-adapter
 
-- **Goal:** Refactor the rounding engine to operate on a `TableAdapter`
-  interface rather than raw `<table>` DOM. `NativeTableAdapter` must be
-  behavior-identical to today — all existing tests stay green. `GridAdapter`
-  defines the interface contract but its body is a stub (sprint 3 fills it in).
+- **Goal:** Refactor the rounding engine onto a `TableAdapter` interface.
+  `NativeTableAdapter` is behavior-identical to today (all existing tests stay
+  green). `GridAdapter` defines the contract with a stubbed body (sprint 3 fills
+  it in).
 - **Scope — `chrome-extension/content.js`:**
-  - Define `NativeTableAdapter` class at module level (near `isDataTable`):
-    - `constructor(el)` — stores `this.el = el`.
-    - `getElement()` — returns `this.el`.
-    - `isVirtualized()` — returns `false`.
-    - `getRows()` — returns `Array.from(el.rows).map(row => ({ getCells: () =>
-      Array.from(row.cells).map(cell => ({ getText: () => cell.innerText ||
-      cell.textContent, setText: (s) => { /* existing write logic */ },
-      el: cell, tagName: cell.tagName })) }))`.
-  - Define `GridAdapter` class stub:
-    - `constructor(el)` — stores `this.el = el`.
-    - `getElement()` — returns `this.el`.
-    - `isVirtualized()` — returns `true`.
-    - `getRows()` — returns `[]` (stub; sprint 3 implements).
-  - Add `makeAdapter(el)` factory: returns `new NativeTableAdapter(el)` if
-    `el.tagName === 'TABLE'`, else `new GridAdapter(el)`.
-  - Rewrite `isDataTable(table)`: accept an adapter (or element — wrap in
-    `makeAdapter` if an element is passed). Replace `.rows` / `.cells` access
-    with `adapter.getRows()` / `row.getCells()`.
-  - Rewrite `roundTable(table, options)`: call `makeAdapter(table)` at the top;
-    replace all `table.rows` / `row.cells` / `cell.tagName` access with adapter
-    calls. Return early if `adapter.getRows().length === 0` (handles the stub).
-  - Rewrite `resetTable(table)`: replace `table.rows` access with
-    `makeAdapter(table).getRows()`.
-  - Rewrite `extractPreviewSamples(table)`: same.
-  - The `tableOptions` WeakMap key remains the raw element (not the adapter) —
-    adapters are ephemeral per-call, elements are stable.
-- **Scope — `chrome-extension/tests.js`:**
-  - All existing tests must pass unchanged. Add two adapter unit tests:
-    `NativeTableAdapter` round-trips `getText`/`setText` correctly;
-    `GridAdapter` stub `getRows()` returns `[]` without throwing.
-- **Out of scope:** `GridAdapter.getRows()` implementation (sprint 3). Any
-  changes to `sidebar.js`, `defaults.js`, or the toggle UI.
+  - `NativeTableAdapter` (near `isDataTable`): `getElement()`,
+    `isVirtualized() → false`, and `getRows()` wrapping `Array.from(el.rows)` /
+    `row.cells` with `getText`/`setText`/`el`/`tagName` per cell, reproducing the
+    current logic verbatim.
+  - `GridAdapter` stub: `getElement()`, `isVirtualized() → true`,
+    `getRows() → []`.
+  - `makeAdapter(el)` factory: `NativeTableAdapter` if `el.tagName === 'TABLE'`,
+    else `GridAdapter`.
+  - Rewrite `isDataTable`, `roundTable`, `resetTable`, `extractPreviewSamples`
+    to read via `adapter.getRows()` / `row.getCells()`. `roundTable` returns
+    early if `getRows()` is empty (handles the stub).
+  - `tableOptions` WeakMap stays keyed by the raw element; adapters are
+    constructed fresh per call (grids change row count on scroll — never cache).
+- **Scope — `chrome-extension/tests.js`:** all existing tests pass unchanged;
+  add `NativeTableAdapter` round-trip test and a `GridAdapter` stub test.
+- **Out of scope:** `GridAdapter.getRows()` body; UI / sidebar / defaults.
 - **Acceptance criteria:**
-  - `node chrome-extension/tests.js` passes with zero regressions.
-  - Rounding a native `<table>` produces byte-identical results to the
-    pre-refactor build (verified by the existing test suite).
-  - `roundTable` called on a `[role="grid"]` element returns without throwing
-    (stub path).
+  - `node chrome-extension/tests.js` passes, zero regressions.
+  - Native `<table>` rounding is byte-identical to the pre-refactor build.
+  - `roundTable` on a grid element returns without throwing (stub path).
 - **Depends on:** none
 - **Complexity:** M
 - **Dev notes:**
-  - The adapter is constructed fresh on each `roundTable` / `resetTable` call —
-    no caching. Grids change their row count on scroll; a cached adapter would
-    return stale rows.
-  - Keep `NativeTableAdapter.getRows()` implementation as a thin wrapper around
-    the existing logic — do not simplify or restructure the row/cell iteration.
-    The goal is zero behavior change, not cleanup.
+  - Keep `NativeTableAdapter.getRows()` a thin wrapper — zero behavior change,
+    not a cleanup.
   - Do not bump `manifest.json` version.
 
 ---
 
 ### grid-rounding
 
-- **Goal:** Implement `GridAdapter.getRows()` so that rounding, reset, and
-  preview-sample extraction work on the currently-visible rows of a data grid.
+- **Goal:** Implement `GridAdapter.getRows()` so rounding, reset, and preview
+  extraction work on the currently-visible rows of a data grid.
 - **Scope — `chrome-extension/content.js`:**
-  - Implement `GridAdapter.getRows()` — **structural first, ARIA as shortcut:**
-    1. Find the scrollable content container. Prefer known library selectors
-       when present (`.dg--grid-scroll-container`, `.ag-center-cols-viewport`,
-       `[role="grid"]:not(.dg--pinned-grid)`); otherwise pick the descendant
-       holding the repetitive uniform-height children that `findDataGrids`
-       identified. Fall back to `this.el`.
-    2. Find the pinned pane if one exists (`.dg--pinned-grid`,
-       `.ag-pinned-left-cols-container`, or a sibling container with matching
-       row count) — may be `null` for single-pane / unlabelled grids.
-    3. Collect rows. **ARIA shortcut:** if `[role="row"]` elements exist, use
-       them. **Structural fallback (unlabelled grids):** take the repetitive
-       uniform-height direct children of the scroll container as rows.
-    4. For each scrollable row at index `i`, collect the pinned row at the same
-       index (if a pinned pane exists): match by `data-row-index` when present,
-       otherwise by DOM index.
-    5. Cells per row: prefer `[role="gridcell"]` when present; otherwise the
-       row's repetitive child elements (structural). Merge pinned cells first.
-    6. Return row objects: `{ getCells: () => [...pinnedCells, ...scrollableCells].map(cell => ({ getText: () => cell.textContent, setText: (s) => { cell.textContent = s; cell.classList.add('dr-ext-rounded'); cell.dataset.drOriginal = cell.dataset.drOriginal || cell.textContent; }, el: cell, tagName: 'TD' /* normalized */ })) }`.
-  - `setText` in `GridAdapter` must store the original value in
-    `cell.dataset.drOriginal` before overwriting (for reset), mirroring how
-    `NativeTableAdapter` stores it.
-  - `resetTable` via `GridAdapter`: clear `.dr-ext-rounded`, restore
-    `cell.textContent` from `cell.dataset.drOriginal`, delete
-    `cell.dataset.drOriginal`.
-  - `isDataTable` via `GridAdapter`: sample up to 10 cells from `getRows()`;
-    return `true` if any contains a finite parseable number.
-  - Update `createToggleForTable` grid path (from sprint 1): now that
-    `getRows()` works, replace the stub check with `isDataTable(makeAdapter(el))`.
+  - Implement `GridAdapter.getRows()` — structural first, ARIA/library as
+    shortcut:
+    1. Scroll container: prefer library selectors
+       (`.dg--grid-scroll-container`, `.ag-center-cols-viewport`,
+       `[role="grid"]:not(.dg--pinned-grid)`); else the descendant holding the
+       repetitive aligned-column children `looksLikeGrid` keyed on; else `this.el`.
+    2. Pinned pane (`.dg--pinned-grid`, `.ag-pinned-left-cols-container`, or a
+       sibling with matching row count) — may be `null`.
+    3. Rows: `[role="row"]` when present, else the repetitive children of the
+       scroll container.
+    4. Stitch pinned row at matching `data-row-index` (or DOM index) per row.
+    5. Cells: `[role="gridcell"]` when present, else repetitive row children;
+       pinned cells first.
+    6. Per cell: `getText() → cell.textContent`; `setText(s)` writes
+       `textContent`, adds `.dr-ext-rounded`, and records the original keyed by
+       **logical (rowIndex, colIndex)** in a per-grid originals Map.
+  - `resetTable` via `GridAdapter`: restore visible cells from the originals Map
+    and clear `.dr-ext-rounded`; non-visible rows already show the framework's
+    original text.
+  - `isDataTable` via `GridAdapter`: sample ≤ 10 cells; true if any is a finite
+    number.
+  - `createToggleForTable` grid path: replace the sprint-1 `looksLikeGrid` gate
+    with `isDataTable(makeAdapter(el))` now that `getRows()` works.
 - **Scope — `chrome-extension/tests.js`:**
-  - Add tests with synthetic grid DOM fixtures — both labelled and unlabelled:
-    - **Unlabelled grid** (no roles): plain `<div>` rows/cells with numbers —
-      structural extraction finds rows/cells and rounding applies. (Headline.)
-    - **ARIA grid:** `role="grid"`/`row`/`gridcell` — shortcut path used.
-    - A grid with a pinned pane: cell stitching produces correct column order.
-    - `resetTable` on a rounded grid restores original values.
-    - `extractPreviewSamples` on a grid returns the expected sample structure.
-- **Out of scope:** Re-applying rounding on scroll / row recycle (sprint 4).
-  The rounding state is lost when rows leave the viewport — that is acceptable
-  and documented as a known limitation until sprint 4.
+  - Unlabelled grid (no roles, variable row heights): structural extraction +
+    rounding applies. (Headline.)
+  - ARIA grid: shortcut path.
+  - Pinned pane: correct stitched column order.
+  - Reset restores originals.
+  - `extractPreviewSamples` returns the expected structure.
+- **Out of scope:** Re-apply on scroll / recycle (sprint 4). Rounding state is
+  lost when rows leave the viewport — documented limitation until sprint 4.
 - **Acceptance criteria:**
-  - Right-clicking a cell in a Databricks SQL result grid and choosing "Apply
-    rounding" visibly rounds the numbers in all currently-visible cells.
-  - Toggling off restores original values.
+  - Right-clicking a cell in a Databricks result and applying rounding rounds
+    all currently-visible cells; toggling off restores originals.
   - `node chrome-extension/tests.js` passes.
 - **Depends on:** grid-adapter merged to main
 - **Complexity:** M
 - **Dev notes:**
-  - The pinned/scrollable stitching by DOM index is fragile if the two panes
-    have different row counts (e.g., header rows in one but not the other). Use
-    `data-row-index` matching when available; log a `console.debug` warning and
-    fall back to index matching otherwise.
-  - Do not attempt to scroll-trigger additional row rendering — only round what
-    is visible.
+  - Stitch by `data-row-index` when available; `console.debug` and fall back to
+    DOM index otherwise.
+  - Only round what is visible — never scroll-trigger extra rendering.
   - Do not bump `manifest.json` version.
 
 ---
 
 ### grid-virtualization
 
-- **Goal:** Keep a rounded grid rounded as the user scrolls: re-apply (or
-  un-apply) rounding to rows that are recycled into the viewport.
+- **Goal:** Keep a rounded grid rounded as the user scrolls — re-apply rounding
+  to rows recycled into the viewport.
 - **Scope — `chrome-extension/content.js`:**
-  - Add `gridObservers: WeakMap<Element, MutationObserver>` at module level
-    (parallel to `tableToggles`).
-  - In `roundTable`, after applying rounding, check `adapter.isVirtualized()`.
-    If `true`:
-    1. Find the scroll container element (same query as `GridAdapter.getRows()`,
-       step 1).
-    2. Create a `MutationObserver` that, on each `childList` mutation, calls a
-       helper `reapplyGridRounding(wrapperEl)`.
-    3. `reapplyGridRounding`: re-runs `roundTable(wrapperEl, tableOptions.get(wrapperEl))`
-       but only processes rows that do **not** already have `.dr-ext-rounded`
-       cells — avoids double-rounding already-visible rows.
-    4. `observe(scrollContainer, { childList: true, subtree: true })`.
-    5. Store in `gridObservers.set(wrapperEl, observer)`.
-  - In `resetTable`, if `adapter.isVirtualized()` and `gridObservers.has(el)`:
-    disconnect and delete the observer before clearing cells.
-  - In the MutationObserver that watches for removed tables (L493): also check
-    `gridObservers` for the removed element and disconnect.
+  - Add `gridObservers: WeakMap<Element, MutationObserver>`.
+  - In `roundTable`, when `adapter.isVirtualized()`: find the scroll container,
+    create a `MutationObserver` on `childList`, **debounced to 100 ms** (S5),
+    whose handler `reapplyGridRounding(wrapperEl)` re-rounds only rows lacking
+    `.dr-ext-rounded`, using `tableOptions.get(wrapperEl)` and the per-grid
+    originals Map. Store in `gridObservers`.
+  - In `resetTable`: if virtualized and observed, disconnect and delete the
+    observer before restoring cells.
+  - In the removed-node observer (L493): disconnect any `gridObservers` entry
+    for a removed grid.
 - **Scope — `chrome-extension/tests.js`:**
-  - Synthetic test: create a grid wrapper, round it, simulate row recycling via
-    `appendChild` of a new `role="row"` child, verify `reapplyGridRounding` is
-    called and the new row is rounded.
-  - Verify that after `resetTable`, appending a new row does NOT trigger
-    rounding (observer disconnected).
-- **Out of scope:** Handling horizontal scroll (new columns entering the
-  viewport) — column virtualization is rare and adds significant complexity;
-  defer to a follow-up sprint.
+  - Round a grid, append a new row (simulated recycle), advance past the 100 ms
+    debounce, assert the new row is rounded.
+  - After reset, appending a row does **not** trigger rounding (observer gone).
+  - Debounce: N rapid mutations cause a single `reapplyGridRounding`.
+- **Out of scope:** Horizontal/column virtualization — see Open Questions.
 - **Acceptance criteria:**
-  - In a Databricks SQL result, scrolling down after rounding causes newly-
-    visible rows to be rounded automatically.
-  - Turning off rounding stops re-application.
-  - No observable performance regression on pages with native `<table>` elements
-    (the observer is never attached to non-virtualized tables).
+  - Scrolling a rounded Databricks result rounds newly-visible rows
+    automatically, with no visible stutter (100 ms debounce).
+  - Toggling off stops re-application.
+  - No perf regression on native `<table>` pages (observer never attached to
+    non-virtualized tables).
   - `node chrome-extension/tests.js` passes.
 - **Depends on:** grid-rounding merged to main
 - **Complexity:** M
 - **Dev notes:**
-  - `reapplyGridRounding` must be debounced (e.g., 50 ms `requestAnimationFrame`
-    or `setTimeout`) — grids can fire dozens of DOM mutations in a single scroll
-    tick and we don't want to re-run rounding synchronously for each one.
-  - The `subtree: true` option is necessary because grids often wrap rows in an
-    intermediate container. Monitor observed mutation counts in practice; if the
-    observer is too noisy, narrow to `childList: true` without `subtree` and
-    instead watch only direct children of the scroll container.
+  - Debounce coalesces a scroll burst's mutations into one 100 ms-spaced
+    re-round; keep each pass cheap by touching only un-rounded rows.
+  - `subtree: true` is likely needed (grids wrap rows in intermediate
+    containers); narrow to direct children if mutation volume is high.
   - Do not bump `manifest.json` version.
 
-## 5. Open Questions
+## 7. Open Questions & Risks
 
-- **Synchronized-scroll verification:** The research doc flags this as
-  unresolved. Before sprint 3 ships, manually verify on a live Databricks page
-  that scrolling the scrollable pane does move the pinned pane in sync (it
-  almost certainly does, but the stitching logic in `GridAdapter.getRows()`
-  depends on row index alignment being maintained at all times).
-- **AG Grid and Cloudscape selectors:** The sprint 3 `GridAdapter` selector
-  list covers Databricks and AG Grid. AWS Cloudscape (`.awsui-table-wrapper`)
-  and Azure Data Studio have not been tested. Add their selectors before sprint
-  3 ships if a test environment is available.
-- **Column virtualization:** Some grids (especially wide ones) also virtualize
-  columns — cells outside the horizontal viewport are not rendered. Sprint 4
-  does not address this. If it becomes a user report, it warrants a sprint 5.
-- **Right-click targeting depth:** `closest('[role="grid"]')` walks up from the
-  clicked cell. If the grid library wraps cells in extra divs, the walk may
-  overshoot to a parent grid. Add a depth limit or prefer the closest match.
+- **Framework clobbering (highest feasibility risk).** A grid cell is owned by
+  React/Angular; writing `cell.textContent` can be overwritten on the
+  framework's next render — not only on scroll-recycle (which sprint 4 handles)
+  but on any same-position re-render. The 100 ms re-apply observer is the
+  mitigation, but this is a "fight the framework" pattern. Validate on a live
+  Databricks page during sprint 3 before committing to the approach; if same-
+  position re-renders wipe rounding faster than we can re-apply, reconsider
+  (e.g., overlay rendering instead of in-place text replacement).
+- **Original-value persistence across recycle.** Originals must be keyed by
+  logical (rowIndex, colIndex), not stored only on the cell node (recycled away
+  on scroll). This needs a stable logical row id — `data-row-index` when the
+  grid provides it. Grids without any stable row id can round visible rows but
+  cannot reliably reset after scrolling; document as a limitation and detect the
+  no-id case.
+- **Walk-up stopping rule.** Lazy discovery returns the first ancestor passing
+  `looksLikeGrid`. Confirm this picks the grid root and not an inner pane
+  (pinned/scroll) — prefer the innermost match but verify it's the element that
+  owns both panes. Depth cap prevents overshoot to page-level containers.
+- **Synchronized-scroll assumption.** Pinned+scroll stitching assumes the two
+  panes keep row-index alignment at all times. Verify on a live Databricks page
+  before sprint 3 ships.
+- **AG Grid / Cloudscape / Azure Data Studio selectors.** Sprint 3's selector
+  list covers Databricks and AG Grid; add others if a test environment exists.
+- **Column virtualization.** Wide grids may also virtualize columns
+  (off-screen cells absent). Not handled; warrants a follow-up sprint if
+  reported.
 
-## 6. Out of Scope (Separate Sprint-Stack)
+## 8. Out of Scope (Separate Sprint-Stack)
 
-- Column virtualization (horizontal scroll recycling).
-- Google Sheets / Excel Online (these use canvas rendering in some browsers, not
-  DOM nodes — a fundamentally different approach is needed).
+- Column (horizontal) virtualization.
+- Google Sheets / Excel Online (canvas-rendered in places, not DOM — a
+  different approach entirely).
 - Python / `js/` sibling implementations — grid support is browser-only.
 
 ## Decisions Log
 
-- 2026-06-10: Initial draft. Sprints 1 and 2 are independent; 3 depends on 2;
-  4 depends on 3.
-- 2026-06-10: Reoriented detection and extraction around **structural
-  heuristics** for unlabelled grids (the research doc's actual focus). ARIA
-  roles and library class prefixes demoted from required selectors to optional
-  accelerators used when present. Dropped the pinned+scrollable co-occurrence as
-  a hard requirement (single-pane unlabelled grids must still be detected);
-  numeric-content + uniform-geometry is now the primary false-positive guard.
-  Sprint 1 complexity raised S → M.
+- 2026-06-10: Initial draft. Sprints 1 and 2 independent; 3 depends on 2; 4 on 3.
+- 2026-06-10: Reoriented detection/extraction around structural heuristics for
+  unlabelled grids; ARIA/library classes demoted to optional accelerators;
+  numeric-content the primary false-positive guard.
+- 2026-06-10: Strategy finalized after design discussion —
+  (a) **column-structure**, not row-height, is the heuristic spine (variable row
+  heights are normal); (b) **lazy right-click discovery** for unlabelled grids,
+  proactive badging only for the cheap native/ARIA signals; (c) geometry probe
+  measured last and narrowest; (d) re-apply observer **debounced to 100 ms**.
+  Added framework-clobbering, original-value-persistence, and walk-up-stopping
+  as tracked risks.
