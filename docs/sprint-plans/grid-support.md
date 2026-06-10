@@ -224,12 +224,19 @@ toggle-off, and grid removal.
 
 ### Sprint List
 
+**Execute strictly sequentially — one branch at a time, each off the updated
+`main` after the prior sprint merges.** Although sprints 1 and 2 are *logically*
+independent, both edit `content.js` and both touch `createToggleForTable` and
+`isDataTable`, so developing them on parallel branches would create avoidable
+merge conflicts. Do them in order.
+
 1. **grid-detection** — Proactive cheap pass (native + ARIA) and lazy
    right-click structural walk-up; toggle placement; no rounding.
-   _Depends on:_ none.
+   _Depends on:_ none. _Branch from:_ `main`.
 2. **grid-adapter** — `NativeTableAdapter` / `GridAdapter` stub interface;
    refactor the four engine functions to use adapters. Existing tests stay green.
-   _Depends on:_ none.
+   _Depends on:_ grid-detection merged to main (shared edits to
+   `createToggleForTable` / `isDataTable`). _Branch from:_ updated `main`.
 3. **grid-rounding** — Implement `GridAdapter.getRows()`; round currently-
    visible grid rows. _Depends on:_ grid-adapter merged to main.
 4. **grid-virtualization** — 100 ms-debounced MutationObserver to re-apply
@@ -245,14 +252,15 @@ flowchart TD
     s3["grid-rounding<br/>GridAdapter body + visible-row rounding"]
     s4["grid-virtualization<br/>Re-apply on recycle, 100ms debounce"]
     base --> s1
-    base --> s2
+    s1 --> s2
     s2 --> s3
     s3 --> s4
 ```
 
-Sprints 1 and 2 are independent (different concerns, no shared interface) and
-can be developed in parallel. Sprint 1 can merge before sprint 2 — the dot
-appears on grids but does nothing until sprint 3.
+The chain is linear: each sprint branches from `main` only after the previous
+one has merged. Sprints 1 and 2 have no *logical* dependency, but the file-level
+overlap in `content.js` (`createToggleForTable`, `isDataTable`) makes sequential
+execution the conflict-free path for a single developer/session.
 
 ## 6. Sprint Definitions
 
@@ -318,7 +326,7 @@ appears on grids but does nothing until sprint 3.
   `NativeTableAdapter` must be behavior-identical to today (all existing tests
   stay green). `GridAdapter` defines the contract with a stubbed body (sprint 3
   fills it in).
-- **Branch:** `refactor/grid-adapter` off `main`
+- **Branch:** `refactor/grid-adapter` off `main` after grid-detection merges
 - **Scope — `chrome-extension/content.js`:**
   - `NativeTableAdapter` class (near `isDataTable`):
     - `constructor(el)` — `this.el = el`
@@ -343,7 +351,8 @@ appears on grids but does nothing until sprint 3.
   - `node chrome-extension/tests.js` passes with zero regressions.
   - Native `<table>` rounding byte-identical to pre-refactor build.
   - `roundTable` on a grid element returns without throwing.
-- **Depends on:** none
+- **Depends on:** grid-detection merged to main (avoids `content.js` conflicts
+  in `createToggleForTable` / `isDataTable`)
 - **Complexity:** M
 - **Dev notes:**
   - `NativeTableAdapter.getRows()` is a thin wrapper — zero behavior change.
@@ -482,3 +491,8 @@ appears on grids but does nothing until sprint 3.
   map needed; only currently-visible `.dr-ext-rounded` cells ever need resetting.
   (g) Framework-clobbering flagged as the highest feasibility risk; live
   validation required before sprint 4 commitment.
+- 2026-06-10: Switched to **strictly sequential execution** (1 → 2 → 3 → 4, each
+  branched from `main` after the prior merges). Sprints 1 and 2 are logically
+  independent but both edit `content.js` `createToggleForTable` / `isDataTable`,
+  so parallel branches would conflict. Linear chain is the conflict-free path for
+  a single developer/session.
