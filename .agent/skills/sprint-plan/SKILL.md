@@ -114,6 +114,27 @@ flowchart TD
 
 This DAG governs development ordering (sprint-stack executes topologically) and merge ordering (each sprint's PR is based on its parent's branch, so parents must merge first).
 
+## Phase 4b: Sequence for learning; spike when you can't
+
+Phase 4 optimizes for *failure isolation* — independent sprints so one failure doesn't block others. This phase adds a second lens: *learning order*. A plan is a set of bets, and some bets are riskier than others. Identify which sprints would **teach you something that could invalidate a later sprint's design**, and order the stack so that learning lands before the dependent commitment — not after.
+
+Ask, per sprint:
+
+- **What does executing this sprint reveal that we don't already know?** (Real DOM/API shapes, whether an external system behaves as assumed, whether a performance budget holds, whether a write actually persists.) High-information sprints are usually those that first touch the real environment.
+- **Does that revelation bear on a later sprint's architecture?** If a downstream sprint freezes an interface, data model, or write mechanism that an upstream sprint could prove unworkable, that's a *learning-order* dependency even when there's no code dependency.
+
+Two moves follow:
+
+1. **Sequence to pull the risky learning forward.** Where you can reorder so the informative sprint runs before the sprint that bets on its outcome, do so — even if it means a slightly longer dependency chain. A linear chain that surfaces a fatal assumption early beats a wide DAG that discovers it after three sprints are built on it. This trades some Phase-4 independence for de-risking; make the trade explicitly and note it.
+
+2. **If you can't reorder — insert a feasibility spike.** When the riskiest unknown can't be answered by an ordinary sprint (it's upstream of everything, or the real sprint is too expensive to throw away), add a **spike**: a throwaway investigation that answers the open question or validates the riskiest part of the plan, with **no production code**. A spike's acceptance criterion is *"the sprint plan is confirmed or needs amending,"* not a merge. Its deliverable is a recorded verdict — findings plus an explicit "proceed as planned" or "these specific sprints must change."
+
+Mark every sprint downstream of an unresolved spike as **provisional** in the plan, so the executor knows not to treat its design as settled until the spike reports.
+
+**Spikes and plan immutability.** The merged plan is read-only forever (see Phase 6). A spike therefore never edits the sprints it validates *in place*. If the spike confirms the plan, record that in the Decisions Log and proceed. If it invalidates the plan, its verdict becomes the input to a fresh `sprint-plan` revision — a new plan artifact that supersedes the provisional sprints — leaving the original plan and the decision trail intact. Frame the spike's outcome this way in the plan: confirm-in-place, or amend-via-revision.
+
+A spike is a real node in the DAG (rooted at `base`, like any independent sprint) but a special kind: it gates downstream sprints by *information* rather than by code. Show it in the dependency graph with its gated sprints marked provisional.
+
 ## Phase 5: Define each sprint
 
 Per sprint, in the markdown structure shown below. The execution skill parses this section; emit it consistently so parsing is reliable.
@@ -133,6 +154,24 @@ Per sprint, in the markdown structure shown below. The execution skill parses th
 ```
 
 When a sprint introduces a new named constant or consolidates an existing literal, list the constant(s) and their home file in **Dev notes**. No need to inventory every call site — the executing sprint will find them. Example: `TOGGLE_WIDTH_PX`, `TOGGLE_HEIGHT_PX`, `TOGGLE_EDGE_GAP_PX` in `chrome-extension/content.js`.
+
+**Spike sprints** (from Phase 4b) use a variant of this structure — their deliverable is a verdict, not code:
+
+```markdown
+### <label>  (spike)
+
+- **Goal:** <the unknown to resolve / the assumption to validate, and which downstream sprints depend on the answer>
+- **Branch:** none — no production code. Findings recorded in `docs/sprint-logs/<slug>-<label>.md`.
+- **Investigate:** <concrete things to inspect/measure, in the real environment>
+- **Out of scope:** any production code, tests, or source changes
+- **Acceptance criteria:**
+  - Findings recorded for each question.
+  - An explicit verdict: downstream sprints **confirmed as planned**, OR a list of specific amendments needed.
+  - Does not merge code — done-state is the recorded verdict.
+- **Depends on:** none (usually rooted at base)
+- **Complexity:** S (spikes should be cheap; if a spike is large, it's really a sprint)
+- **Dev notes:** keep it genuinely throwaway; note how a negative verdict feeds a plan revision rather than an in-place edit.
+```
 
 Sprint commits do not touch version files. Versioning is handled at merge time by the GitHub Action probed for in Phase 2.
 
