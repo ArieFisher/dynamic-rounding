@@ -13,6 +13,20 @@ const NUMBER_IN_TEXT_REGEX_GLOBAL = /-?\d[\d,]*(?:\.\d+)?/g;
 const DEFAULT_OFFSET_TOP = -0.5;
 const DEFAULT_NUM_TOP = 1;
 const VALIDATION_LIMIT = 20;
+
+// Grid detection constants
+/** Minimum number of direct children for an element to be a grid candidate. */
+const GRID_MIN_CHILDREN = 5;
+/** Maximum ancestor depth to walk up during lazy right-click discovery. */
+const GRID_WALK_DEPTH_CAP = 15;
+/** Number of column-0 cells sampled for column-width alignment check. */
+const GRID_COL_WIDTH_SAMPLE = 10;
+/** CSS display values that indicate a grid/flex layout. */
+const GRID_DISPLAY_VALUES = new Set(['grid', 'flex', 'inline-grid', 'inline-flex']);
+/** Library class substrings that short-circuit the geometry probe. */
+const GRID_LIBRARY_CLASS_TOKENS = ['dg--', 'ag-'];
+/** CSS selector for the cheap proactive ARIA pass. */
+const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
 // EPSILON, X_FLOOR_THRESHOLD, roundWithOffset, and roundCellSetAware live in
 // rounding.js (loaded by manifest content_scripts ahead of this file) so the
 // sidebar can call the same arithmetic for its preview band.
@@ -36,6 +50,9 @@ const TOUCH_AUTOCOLLAPSE_MS = 3000;
 // right-click toggle's fallback options come from a single source.
 
 let lastRightClickedElement = null;
+// Widened contract: may hold a <table> element OR a div-based grid root (any
+// element carrying class dr-ext-grid or returned by findTargetTable). All
+// callers that previously assumed HTMLTableElement must tolerate any Element.
 let lastRightClickedTable = null;
 let sidebarOpen = false;
 
@@ -46,7 +63,7 @@ const tableOptions = new WeakMap();
 
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
-  const table = event.target.closest && event.target.closest('table');
+  const table = findTargetTable(event.target);
   if (table) {
     lastRightClickedTable = table;
   }
@@ -68,7 +85,7 @@ function runToggleAction(table) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'MENU_CLICKED') {
     if (lastRightClickedElement) {
-      const table = lastRightClickedElement.closest('table');
+      const table = findTargetTable(lastRightClickedElement);
       if (table) {
         runToggleAction(table);
       } else {
@@ -285,6 +302,158 @@ function positionToggle(table, buttonEl) {
   buttonEl.style.top  = wrapperTop  + 'px';
 }
 
+/**
+ * Heuristic test: does `el` look like a data grid built from non-table elements?
+ *
+ * Applies a cheap-first ladder (S2/S4). Steps 1–5 are pure DOM/CSS reads with no
+ * geometry; step 6 (offsetWidth) is guarded by all prior steps and runs only on
+ * a bounded sample of column-0 cells.
+ *
+ * Short-circuit ACCEPT (skip step 6) when el carries:
+ *   - role="grid" or role="table"  (ARIA)
+ *   - a class containing "dg--" or "ag-"  (known library prefixes)
+ *
+ * @param {Element} el
+ * @returns {boolean}
+ */
+function looksLikeGrid(el) {
+  if (!el || typeof el.children === 'undefined') return false;
+
+  // --- Step 1: Child count ≥ GRID_MIN_CHILDREN ---
+  const children = Array.from(el.children);
+  if (children.length < GRID_MIN_CHILDREN) return false;
+
+  // --- Step 2: Repetitive structure — children share class or child shape ---
+  // "Share class" = majority of children have the same first className token.
+  // "Child shape" = most children have the same number of children.
+  const classFreq = new Map();
+  const childCountFreq = new Map();
+  for (const child of children) {
+    const cls = (child.className && typeof child.className === 'string')
+      ? child.className.trim().split(/\s+/)[0]
+      : '';
+    classFreq.set(cls, (classFreq.get(cls) || 0) + 1);
+    const cc = child.children.length;
+    childCountFreq.set(cc, (childCountFreq.get(cc) || 0) + 1);
+  }
+  const maxClassCount = Math.max(...classFreq.values());
+  const maxChildCount = Math.max(...childCountFreq.values());
+  // At least half of children must share a class token OR a child count.
+  const repetitive = (maxClassCount >= children.length / 2) || (maxChildCount >= children.length / 2);
+  if (!repetitive) return false;
+
+  // --- Step 3: Consistent cell count — candidate rows have equal child counts ---
+  // The modal child count must appear in at least half of the children.
+  let modalChildCount = 0;
+  let modalFreq = 0;
+  for (const [cc, freq] of childCountFreq) {
+    if (freq > modalFreq && cc > 0) { modalFreq = freq; modalChildCount = cc; }
+  }
+  if (modalFreq < children.length / 2) return false;
+
+  // Candidate rows: children whose child count equals the modal.
+  const candidateRows = children.filter(c => c.children.length === modalChildCount);
+
+  // --- Step 4: Layout — display is grid or flex ---
+  let display = '';
+  if (typeof getComputedStyle === 'function') {
+    try { display = getComputedStyle(el).display || ''; } catch (e) { /* ignore */ }
+  }
+  if (!GRID_DISPLAY_VALUES.has(display)) return false;
+
+  // --- Step 5: Numeric content — ≥ 1 cell parses as a finite number (mandatory) ---
+  let hasNumeric = false;
+  outer:
+  for (const row of candidateRows) {
+    for (const cell of Array.from(row.children)) {
+      const text = (cell.textContent || '').trim().replace(CLEAN_REGEX, '');
+      if (text !== '' && isFinite(parseFloat(text))) { hasNumeric = true; break outer; }
+    }
+  }
+  if (!hasNumeric) return false;
+
+  // --- Short-circuit ACCEPT before geometry probe ---
+  const role = el.getAttribute && el.getAttribute('role');
+  if (role === 'grid' || role === 'table') return true;
+  const elClass = (el.className && typeof el.className === 'string') ? el.className : '';
+  if (GRID_LIBRARY_CLASS_TOKENS.some(token => elClass.includes(token))) return true;
+
+  // --- Step 6: Column-width alignment — sample offsetWidth of column-0 cells ---
+  // Bounded to GRID_COL_WIDTH_SAMPLE rows; only runs when all prior steps passed.
+  const sample = candidateRows.slice(0, GRID_COL_WIDTH_SAMPLE);
+  const widths = sample.map(row => row.children[0] ? row.children[0].offsetWidth : -1)
+                       .filter(w => w > 0);
+  if (widths.length < 2) return true; // too few rows to measure — benefit of the doubt
+  const firstWidth = widths[0];
+  // Accept when ≥ 80 % of sampled widths match the first.
+  const matchCount = widths.filter(w => w === firstWidth).length;
+  return matchCount / widths.length >= 0.8;
+}
+
+/**
+ * Find the best grid/table root for the element `el` was right-clicked inside.
+ *
+ * Resolution order (per D1 / S6):
+ *   1. Nearest <table> ancestor (cheapest, most precise).
+ *   2. Nearest ancestor already carrying class dr-ext-grid.
+ *   3. Walk UP from el calling looksLikeGrid at each ancestor; return the
+ *      OUTERMOST match — keep walking while the parent also passes; stop when
+ *      the parent fails, is <body>, or depth exceeds GRID_WALK_DEPTH_CAP.
+ *      On a new match: add dr-ext-grid, call createToggleForTable, return it.
+ *
+ * Returns null if nothing found.
+ *
+ * @param {Element} el
+ * @returns {Element|null}
+ */
+function findTargetTable(el) {
+  if (!el) return null;
+
+  // 1. Nearest <table> ancestor.
+  if (typeof el.closest === 'function') {
+    const tableAncestor = el.closest('table');
+    if (tableAncestor) return tableAncestor;
+  }
+
+  // 2. Nearest ancestor already tagged as a grid root.
+  if (typeof el.closest === 'function') {
+    const existingGrid = el.closest('.dr-ext-grid');
+    if (existingGrid) return existingGrid;
+  }
+
+  // 3. Walk up, calling looksLikeGrid; return the outermost consecutive match.
+  let current = el.parentElement || el.parentNode;
+  let depth = 0;
+  let outermost = null;
+
+  while (current && current !== document.body && depth < GRID_WALK_DEPTH_CAP) {
+    if (current.nodeType !== Node.ELEMENT_NODE) {
+      current = current.parentElement || current.parentNode;
+      depth++;
+      continue;
+    }
+    if (looksLikeGrid(current)) {
+      outermost = current;
+      // Keep walking to find the outermost matching container.
+    } else if (outermost !== null) {
+      // Parent failed — stop; outermost is our answer.
+      break;
+    }
+    current = current.parentElement || current.parentNode;
+    depth++;
+  }
+
+  if (outermost !== null) {
+    if (!outermost.classList.contains('dr-ext-grid')) {
+      outermost.classList.add('dr-ext-grid');
+      createToggleForTable(outermost);
+    }
+    return outermost;
+  }
+
+  return null;
+}
+
 function isDataTable(table) {
   if (table.rows.length < 2) return false;
   let hasMultipleColumns = false;
@@ -309,7 +478,14 @@ function isDataTable(table) {
 let _globalTapCollapseAdded = false;
 
 function createToggleForTable(table) {
-  if (!isDataTable(table)) return;
+  // For native <table> elements use the existing isDataTable() gate which reads
+  // .rows/.cells. For div-based grid roots use the structural looksLikeGrid()
+  // heuristic, since .rows is not available on non-table elements.
+  if (table.tagName === 'TABLE') {
+    if (!isDataTable(table)) return;
+  } else {
+    if (!looksLikeGrid(table)) return;
+  }
   ensureToggleStyleInjected();
 
   const button = document.createElement('button');
@@ -432,10 +608,21 @@ function createToggleForTable(table) {
 }
 
 function injectTableToggles() {
+  // Pass 1: native <table> elements (unchanged).
   document.querySelectorAll('table').forEach(table => {
     if (!tableToggles.has(table)) {
       createToggleForTable(table);
     }
+  });
+  // Pass 2: cheap ARIA pass — [role="grid"] and [role="table"].
+  // Skip elements already carrying dr-ext-grid (already handled) or that
+  // contain / are a <table> already handled by pass 1.
+  document.querySelectorAll(GRID_ARIA_SELECTOR).forEach(el => {
+    if (el.classList.contains('dr-ext-grid')) return;
+    if (el.tagName === 'TABLE') return; // handled by pass 1
+    if (el.querySelector('table')) return; // contains a native table — let pass 1 own it
+    el.classList.add('dr-ext-grid');
+    createToggleForTable(el);
   });
 }
 
@@ -465,33 +652,54 @@ function ensureScrollResizeListeners() {
 if (typeof MutationObserver !== 'undefined') {
   ensureScrollResizeListeners();
 
-  // MutationObserver to watch for dynamically added/removed tables
+  // MutationObserver to watch for dynamically added/removed tables and grids
   const _tableObserver = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        // Check if the added node itself is a table
+        // Pass 1: native <table> elements (unchanged).
         if (node.tagName === 'TABLE' && !tableToggles.has(node)) {
           createToggleForTable(node);
         }
-        // Check for table descendants
         if (typeof node.querySelectorAll === 'function') {
           node.querySelectorAll('table').forEach(table => {
             if (!tableToggles.has(table)) {
               createToggleForTable(table);
             }
           });
+          // Pass 2: cheap ARIA pass for added nodes — mirror injectTableToggles Pass 2.
+          node.querySelectorAll(GRID_ARIA_SELECTOR).forEach(el => {
+            if (el.classList.contains('dr-ext-grid')) return;
+            if (el.tagName === 'TABLE') return;
+            if (el.querySelector('table')) return;
+            el.classList.add('dr-ext-grid');
+            createToggleForTable(el);
+          });
+        }
+        // The added node itself may be a [role="grid"/"table"] non-table element.
+        if (node.tagName !== 'TABLE' && typeof node.matches === 'function' &&
+            node.matches(GRID_ARIA_SELECTOR) && !node.classList.contains('dr-ext-grid')) {
+          if (!node.querySelector('table')) {
+            node.classList.add('dr-ext-grid');
+            createToggleForTable(node);
+          }
         }
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        // Handle removed table nodes
+        // Handle removed table nodes and grid roots.
         const tablesToRemove = [];
         if (node.tagName === 'TABLE') {
           tablesToRemove.push(node);
         }
         if (typeof node.querySelectorAll === 'function') {
           node.querySelectorAll('table').forEach(t => tablesToRemove.push(t));
+          // Also collect removed grid roots.
+          node.querySelectorAll('.dr-ext-grid').forEach(g => tablesToRemove.push(g));
+        }
+        // The removed node itself may be a grid root.
+        if (node.classList && node.classList.contains('dr-ext-grid')) {
+          tablesToRemove.push(node);
         }
         for (const table of tablesToRemove) {
           const button = tableToggles.get(table);
