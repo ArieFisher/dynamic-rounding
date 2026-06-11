@@ -31,6 +31,59 @@ const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
 // rounding.js (loaded by manifest content_scripts ahead of this file) so the
 // sidebar can call the same arithmetic for its preview band.
 
+// --- TableAdapter abstraction ---
+// Two adapter classes provide a uniform row/cell interface over both native
+// <table> elements and div-based virtual grids. The four engine functions
+// (isDataTable, roundTable, resetTable, extractPreviewSamples) consume only
+// the adapter API; they never touch .rows/.cells directly.
+
+class NativeTableAdapter {
+  constructor(el) {
+    this.el = el;
+  }
+  getElement() { return this.el; }
+  isVirtualized() { return false; }
+  getRows() {
+    return Array.from(this.el.rows).map(row => ({
+      getCells() {
+        return Array.from(row.cells).map(cell => ({
+          getText() { return cell.innerText || cell.textContent || ''; },
+          setText(s) {
+            cell.dataset.originalHtml = cell.innerHTML;
+            cell.textContent = s;
+          },
+          el: cell,
+          tagName: cell.tagName,
+        }));
+      },
+    }));
+  }
+}
+
+class GridAdapter {
+  constructor(el) {
+    this.el = el;
+  }
+  getElement() { return this.el; }
+  isVirtualized() { return true; }
+  /** Stub — returns empty until grid-rounding sprint implements this. */
+  getRows() { return []; }
+}
+
+/**
+ * Factory: returns a NativeTableAdapter for <table> elements, GridAdapter otherwise.
+ * Adapters are ephemeral (never cached) — grids change row count on scroll.
+ *
+ * Duck-typing fallback: plain objects with a `rows` property (e.g. test stubs)
+ * are treated as native tables since they expose the same row/cell interface.
+ */
+function makeAdapter(el) {
+  if (el.tagName === 'TABLE' || (el.tagName === undefined && el.rows)) {
+    return new NativeTableAdapter(el);
+  }
+  return new GridAdapter(el);
+}
+
 // Toggle geometry constants
 const TOGGLE_DOT_PX = 10;
 const TOGGLE_PILL_WIDTH_PX = 28;
@@ -455,19 +508,20 @@ function findTargetTable(el) {
 }
 
 function isDataTable(table) {
-  if (table.rows.length < 2) return false;
+  const rows = makeAdapter(table).getRows();
+  if (rows.length < 2) return false;
   let hasMultipleColumns = false;
-  for (let i = 0; i < table.rows.length; i++) {
-    if (table.rows[i].cells.length >= 2) {
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].getCells().length >= 2) {
       hasMultipleColumns = true;
       break;
     }
   }
   if (!hasMultipleColumns) return false;
-  for (let i = 0; i < table.rows.length; i++) {
-    const row = table.rows[i];
-    for (let j = 0; j < row.cells.length; j++) {
-      const text = row.cells[j].textContent.trim().replace(CLEAN_REGEX, '');
+  for (let i = 0; i < rows.length; i++) {
+    const cells = rows[i].getCells();
+    for (let j = 0; j < cells.length; j++) {
+      const text = cells[j].getText().trim().replace(CLEAN_REGEX, '');
       if (text !== '' && isFinite(parseFloat(text))) return true;
     }
   }
@@ -864,12 +918,12 @@ function resetTable(table) {
 // times are intentionally skipped here — they're deferred to a future sprint.
 function collectNumericCells(table) {
   const out = [];
-  const rows = table.rows ? Array.from(table.rows) : [];
+  const rows = makeAdapter(table).getRows();
   for (const row of rows) {
-    const cells = row.cells ? Array.from(row.cells) : [];
-    for (const cell of cells) {
-      if (cell.tagName !== 'TD') continue;
-      const text = cell.innerText || cell.textContent || '';
+    const cells = row.getCells();
+    for (const cellObj of cells) {
+      if (cellObj.tagName !== 'TD') continue;
+      const text = cellObj.getText();
       const trimmed = typeof text === 'string' ? text.trim() : '';
       if (!trimmed) continue;
       if (isDateLike(trimmed) || isTimeLike(trimmed)) continue;
@@ -958,23 +1012,27 @@ function roundTable(table, options) {
   }
   chrome.runtime.sendMessage({ action: 'RANGE_OK' });
   const ranges = rangeParse.ranges;
-  const rows = Array.from(table.rows);
+  const adapterRows = makeAdapter(table).getRows();
+  // Clean stub path: if the adapter returns no rows (e.g. GridAdapter stub),
+  // return early without throwing.
+  if (adapterRows.length === 0) return;
   const data = [];
   const cellsMap = [];
   const cellInfo = [];
 
-  for (let r = 0; r < rows.length; r++) {
-    const cells = Array.from(rows[r].cells);
+  for (let r = 0; r < adapterRows.length; r++) {
+    const adapterCells = adapterRows[r].getCells();
     const rowData = [];
     const rowCells = [];
     const rowInfo = [];
     let dataCol = 0;
-    for (let c = 0; c < cells.length; c++) {
-      const cell = cells[c];
+    for (let c = 0; c < adapterCells.length; c++) {
+      const cellObj = adapterCells[c];
+      const cell = cellObj.el;
       // Skip <th> row-header cells entirely — they are not data columns.
-      if (cell.tagName !== 'TD') continue;
+      if (cellObj.tagName !== 'TD') continue;
       const col = dataCol++;
-      const text = cell.innerText || cell.textContent;
+      const text = cellObj.getText();
       rowData.push(text);
       rowCells.push(cell);
 

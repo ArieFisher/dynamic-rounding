@@ -103,6 +103,10 @@ Object.defineProperty(globalThis, 'lastRightClickedTable', {
 // Expose grid-detection helpers for the grid-detection test suite.
 globalThis.looksLikeGrid = looksLikeGrid;
 globalThis.findTargetTable = findTargetTable;
+// Expose TableAdapter abstraction for the grid-adapter test suite.
+globalThis.makeAdapter = makeAdapter;
+globalThis.NativeTableAdapter = NativeTableAdapter;
+globalThis.GridAdapter = GridAdapter;
 `);
 
 let passed = 0;
@@ -6548,6 +6552,189 @@ function withFindTargetEnv(elements, fn) {
     eq('findTargetTable: marks outermost grid with dr-ext-grid class',
       outer.classList.contains('dr-ext-grid'), true);
   });
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint grid-adapter: TableAdapter abstraction
+// AC2 — NativeTableAdapter round-trip test
+// AC3 — GridAdapter stub no-throw test
+// AC4 — source scan: no role="gridcell" or data-row-index literals in content.js
+// ---------------------------------------------------------------------------
+
+// Helper: build a minimal native-table stub that NativeTableAdapter can wrap.
+// el.rows is an array of row objects with .cells arrays of cell objects.
+// Each cell has .innerText, .textContent, .tagName, .classList, .dataset,
+// .innerHTML, .querySelector (for compatibility with roundTable internals).
+function makeNativeTableEl(rowsSpec) {
+  // rowsSpec: array of arrays of { tag, text }
+  const el = {
+    tagName: 'TABLE',
+    rows: rowsSpec.map(rowSpec => ({
+      cells: rowSpec.map(s => ({
+        tagName: (s.tag || 'td').toUpperCase(),
+        innerText: s.text,
+        textContent: s.text,
+        innerHTML: s.text,
+        classList: {
+          _c: [],
+          add(c) { if (!this._c.includes(c)) this._c.push(c); },
+          remove(c) { this._c = this._c.filter(x => x !== c); },
+          contains(c) { return this._c.includes(c); },
+        },
+        dataset: {},
+        title: '',
+        querySelector: () => null,
+        querySelectorAll: () => [],
+      }))
+    })),
+    dataset: {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  return el;
+}
+
+// TA1: NativeTableAdapter round-trip
+// Build a native table element, wrap it with makeAdapter(), walk the adapter
+// API (getRows → getCells → getText) and assert values match what was put in.
+// Also assert isVirtualized() === false and getElement() returns the element.
+(function nativeTableAdapter_roundTrip() {
+  const tableEl = makeNativeTableEl([
+    [{ tag: 'td', text: '1,234' }, { tag: 'td', text: '5,678' }],
+    [{ tag: 'td', text: '9,012' }, { tag: 'td', text: '3,456' }],
+  ]);
+
+  const adapter = makeAdapter(tableEl);
+
+  eq('NativeTableAdapter: makeAdapter returns NativeTableAdapter for TABLE element',
+    adapter instanceof NativeTableAdapter, true);
+
+  eq('NativeTableAdapter: getElement() returns the original element',
+    adapter.getElement(), tableEl);
+
+  eq('NativeTableAdapter: isVirtualized() === false',
+    adapter.isVirtualized(), false);
+
+  const rows = adapter.getRows();
+  eq('NativeTableAdapter: getRows() returns 2 rows',
+    rows.length, 2);
+
+  const cells0 = rows[0].getCells();
+  eq('NativeTableAdapter: row 0 has 2 cells',
+    cells0.length, 2);
+
+  eq('NativeTableAdapter: row 0 cell 0 getText() returns "1,234"',
+    cells0[0].getText(), '1,234');
+
+  eq('NativeTableAdapter: row 0 cell 1 getText() returns "5,678"',
+    cells0[1].getText(), '5,678');
+
+  const cells1 = rows[1].getCells();
+  eq('NativeTableAdapter: row 1 cell 0 getText() returns "9,012"',
+    cells1[0].getText(), '9,012');
+
+  eq('NativeTableAdapter: row 1 cell 1 getText() returns "3,456"',
+    cells1[1].getText(), '3,456');
+
+  // Each cell object must expose .el pointing back to the DOM cell element
+  eq('NativeTableAdapter: cell .el is the underlying DOM cell',
+    cells0[0].el, tableEl.rows[0].cells[0]);
+})();
+
+// TA2: NativeTableAdapter — cell count matches table structure
+// A 3-row × 3-column table round-trips with correct row and cell counts.
+(function nativeTableAdapter_3x3() {
+  const tableEl = makeNativeTableEl([
+    [{ tag: 'td', text: 'a' }, { tag: 'td', text: 'b' }, { tag: 'td', text: 'c' }],
+    [{ tag: 'td', text: '1' }, { tag: 'td', text: '2' }, { tag: 'td', text: '3' }],
+    [{ tag: 'td', text: 'x' }, { tag: 'td', text: 'y' }, { tag: 'td', text: 'z' }],
+  ]);
+
+  const adapter = makeAdapter(tableEl);
+  const rows = adapter.getRows();
+
+  eq('NativeTableAdapter: 3×3 table — getRows() returns 3 rows',
+    rows.length, 3);
+
+  eq('NativeTableAdapter: 3×3 table — row 1 has 3 cells',
+    rows[1].getCells().length, 3);
+
+  eq('NativeTableAdapter: 3×3 table — row 2 cell 2 text is "z"',
+    rows[2].getCells()[2].getText(), 'z');
+})();
+
+// TA3: GridAdapter stub — makeAdapter on a non-TABLE element returns GridAdapter
+// isVirtualized() === true, getRows() === [], getElement() returns the element.
+(function gridAdapter_stub_properties() {
+  const divEl = {
+    tagName: 'DIV',
+    dataset: {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    classList: {
+      _c: [],
+      add(c) { if (!this._c.includes(c)) this._c.push(c); },
+      contains(c) { return this._c.includes(c); },
+    },
+  };
+
+  const adapter = makeAdapter(divEl);
+
+  eq('GridAdapter: makeAdapter on DIV returns GridAdapter',
+    adapter instanceof GridAdapter, true);
+
+  eq('GridAdapter: getElement() returns the div element',
+    adapter.getElement(), divEl);
+
+  eq('GridAdapter: isVirtualized() === true',
+    adapter.isVirtualized(), true);
+
+  eq('GridAdapter: getRows() returns empty array (stub)',
+    adapter.getRows().length, 0);
+})();
+
+// TA4: roundTable on a grid element (non-TABLE) — must not throw, must be a no-op
+// The stub path: GridAdapter.getRows() → [] causes roundTable to return early.
+// No .dr-ext-rounded cells should appear; no exception thrown.
+(function gridAdapter_stub_noThrow() {
+  const divEl = {
+    tagName: 'DIV',
+    dataset: {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    classList: {
+      _c: [],
+      add(c) { if (!this._c.includes(c)) this._c.push(c); },
+      contains(c) { return this._c.includes(c); },
+    },
+  };
+
+  let threw = false;
+  try {
+    roundTable(divEl, Object.assign({}, DR_DEFAULTS));
+  } catch (e) {
+    threw = true;
+  }
+
+  eq('GridAdapter stub: roundTable on grid element does not throw',
+    threw, false);
+
+  // The element should have no .dr-ext-rounded cells since it was a no-op
+  eq('GridAdapter stub: roundTable on grid element is a no-op (querySelector returns null)',
+    divEl.querySelector('.dr-ext-rounded'), null);
+})();
+
+// TA5: source-scan — no role="gridcell" or data-row-index literals in content.js
+// Per AC4 of the grid-adapter sprint, these stale Sprint 1 selectors must have
+// been replaced by role="cell" / data-row / data-index.
+(function sourceNoLegacySelectors() {
+  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+
+  eq('grid-adapter AC4: no role="gridcell" literal remains in content.js',
+    contentSrc.includes('role="gridcell"'), false);
+
+  eq('grid-adapter AC4: no data-row-index literal remains in content.js',
+    contentSrc.includes('data-row-index'), false);
 })();
 
 // --- Report ---
