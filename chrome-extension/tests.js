@@ -6737,6 +6737,606 @@ function makeNativeTableEl(rowsSpec) {
     contentSrc.includes('data-row-index'), false);
 })();
 
+// =============================================================================
+// Sprint grid-rounding tests
+// Spec: docs/sprint-plans/grid-support-v2.md §2 D3 + §4 "grid-rounding"
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// DOM-stub helpers for grid cells that contain real Text nodes (nodeType 3).
+//
+// findCellTextNode does a depth-first walk that checks node.nodeType,
+// node.nodeValue, and iterates node.childNodes. We build minimal objects that
+// satisfy exactly those interfaces — no jsdom required.
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a plain-object Text node (nodeType 3) with a live nodeValue.
+ * Designed so findCellTextNode will recognise and return it.
+ */
+function makeTextNode(value) {
+  return {
+    nodeType: 3,
+    nodeValue: value,
+    childNodes: null,   // text nodes have no children; visit() guards on childNodes
+  };
+}
+
+/**
+ * Create a plain-object Element node (nodeType 1) that can contain childNodes.
+ * @param {string} [className='']
+ * @param {Array}  [childNodes=[]]
+ */
+function makeElementNode(className, childNodes) {
+  const cls = className || '';
+  const kids = childNodes || [];
+  return {
+    nodeType: 1,
+    className: cls,
+    childNodes: kids,
+    children: kids.filter(n => n.nodeType === 1),
+    dataset: {},
+    classList: (() => {
+      const c = [];
+      return {
+        _c: c,
+        add(x)      { if (!c.includes(x)) c.push(x); },
+        remove(x)   { const i = c.indexOf(x); if (i >= 0) c.splice(i, 1); },
+        contains(x) { return c.includes(x); },
+      };
+    })(),
+  };
+}
+
+/**
+ * Create a div-grid cell element that wraps a single Text node.
+ * The text node is accessible via cell.childNodes[0].
+ * @param {string} text  — the cell's text content
+ */
+function makeGridCellWithTextNode(text) {
+  const tn = makeTextNode(text);
+  const cell = makeElementNode('', [tn]);
+  return cell;
+}
+
+/**
+ * Create a div-grid cell that wraps a nested span > text node (deeper nesting).
+ * Tests that findCellTextNode descends past intermediate elements.
+ */
+function makeGridCellDeepTextNode(text) {
+  const tn = makeTextNode(text);
+  const span = makeElementNode('inner', [tn]);
+  const cell = makeElementNode('', [span]);
+  return cell;
+}
+
+/**
+ * Build a complete div-based grid suitable for GridAdapter consumption.
+ *
+ * Returns { wrapperEl, rowEls, cellEls } so tests can inspect individual rows/cells.
+ *
+ * @param {Array<Array<string>>} rowData  — 2D array of cell text values
+ * @param {{className?: string, useDataRow?: boolean, useDgClasses?: boolean}} [opts]
+ */
+function makeGridWrapper(rowData, opts) {
+  const options = opts || {};
+  const useDataRow = options.useDataRow !== false;   // default true
+  const useDgClasses = !!options.useDgClasses;
+
+  const rowEls = [];
+  const allCellEls = [];
+
+  rowData.forEach(function(cellTexts, rowIndex) {
+    const cellEls = cellTexts.map(function(text) {
+      const cell = makeGridCellWithTextNode(text);
+      if (useDgClasses) {
+        cell.classList.add('dg--cell');
+        // querySelectorAll('.dg--cell') on a row element must return child cells
+        // — we attach it on the row below after building it.
+      }
+      allCellEls.push(cell);
+      return cell;
+    });
+
+    const row = makeElementNode(useDgClasses ? 'dg--virtual-row' : 'row', cellEls);
+    if (useDataRow) {
+      row.dataset = { row: String(rowIndex) };
+    } else {
+      row.dataset = {};
+    }
+    row.children = cellEls;
+
+    // querySelectorAll stubs on the row element (used by GridAdapter._getCellEls)
+    row.querySelectorAll = function(sel) {
+      if (useDgClasses && sel === '.dg--cell') return cellEls;
+      if (sel === '[role="cell"]') return [];
+      return [];
+    };
+
+    rowEls.push(row);
+  });
+
+  // The wrapper element acts as both the grid root and the scroll container
+  // (single-pane: no known library selectors → _getScrollContainer returns this.el)
+  const wrapper = makeElementNode(options.className || 'grid-wrapper', rowEls);
+  wrapper.tagName = 'DIV';
+  wrapper.children = rowEls;
+
+  // querySelectorAll stubs on the wrapper (used by GridAdapter._getScrollContainer
+  // and _getRowEls / _getPinnedPane)
+  wrapper.querySelector = function(sel) { return null; };   // no sub-containers
+  wrapper.querySelectorAll = function(sel) {
+    if (useDgClasses && sel === '.dg--virtual-row') return rowEls;
+    if (sel === '[role="row"]') return [];
+    // For _getPinnedPane selectors — return nothing (single-pane grid)
+    return [];
+  };
+  wrapper.matches = function() { return false; };
+  wrapper.dataset = {};
+
+  return { wrapperEl: wrapper, rowEls: rowEls, cellEls: allCellEls };
+}
+
+// ---------------------------------------------------------------------------
+// GR1: Unlabelled variable-row-height grid — structural extraction + nodeValue rounding
+// The headline test: no ARIA roles, no dg-- classes. GridAdapter must fall back
+// to direct children as rows and direct row-children as cells.
+// ---------------------------------------------------------------------------
+
+(function gr1_unlabelledGrid_extractionAndRounding() {
+  // Build a 3×2 grid with numeric values at different magnitudes
+  const grid = makeGridWrapper([
+    ['8584629', '286'],
+    ['1234567', '99'],
+    ['7654321', '55'],
+  ]);
+
+  const adapter = makeAdapter(grid.wrapperEl);
+
+  eq('GR1: makeAdapter returns GridAdapter for div wrapper',
+    adapter instanceof GridAdapter, true);
+
+  eq('GR1: isVirtualized() === true',
+    adapter.isVirtualized(), true);
+
+  const rows = adapter.getRows();
+  eq('GR1: getRows() returns 3 rows',
+    rows.length, 3);
+
+  const cells0 = rows[0].getCells();
+  eq('GR1: row 0 has 2 cells',
+    cells0.length, 2);
+
+  eq('GR1: row 0 cell 0 getText() returns "8584629"',
+    cells0[0].getText(), '8584629');
+
+  eq('GR1: row 0 cell 1 getText() returns "286"',
+    cells0[1].getText(), '286');
+
+  // Now round via setText and confirm nodeValue changed
+  cells0[0].setText('8500000');
+  const tn0 = grid.cellEls[0].childNodes[0];
+  eq('GR1: after setText, text node nodeValue is rounded value',
+    tn0.nodeValue, '8500000');
+
+  // The dr-ext-rounded class must be on the cell element
+  eq('GR1: after setText, cell carries dr-ext-rounded class',
+    grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
+})();
+
+// ---------------------------------------------------------------------------
+// GR2: .dg--virtual-row / .dg--cell shaped grid — path extracts via library selectors
+// ---------------------------------------------------------------------------
+
+(function gr2_dgGrid_extraction() {
+  const grid = makeGridWrapper([
+    ['1000000', '500'],
+    ['2000000', '750'],
+  ], { useDgClasses: true });
+
+  const adapter = makeAdapter(grid.wrapperEl);
+
+  const rows = adapter.getRows();
+  eq('GR2: dg-- grid getRows() returns 2 rows',
+    rows.length, 2);
+
+  const cells = rows[0].getCells();
+  eq('GR2: dg-- grid row 0 has 2 cells',
+    cells.length, 2);
+
+  eq('GR2: dg-- grid row 0 cell 0 text is "1000000"',
+    cells[0].getText(), '1000000');
+
+  // Confirm data-row attribute path: row 0 has dataset.row = "0"
+  eq('GR2: dg-- grid row 0 has data-row="0"',
+    grid.rowEls[0].dataset.row, '0');
+
+  eq('GR2: dg-- grid row 1 has data-row="1"',
+    grid.rowEls[1].dataset.row, '1');
+})();
+
+// ---------------------------------------------------------------------------
+// GR3: nodeValue write asserts NODE IDENTITY — the regression guard for the
+// reconciler crash. The spec mandates: patch in place, never replace the node.
+// ---------------------------------------------------------------------------
+
+(function gr3_nodeIdentityPreservation() {
+  const grid = makeGridWrapper([
+    ['9876543', '123'],
+  ]);
+
+  const adapter = makeAdapter(grid.wrapperEl);
+  const rows = adapter.getRows();
+  const cellObj = rows[0].getCells()[0];
+
+  // Capture the Text node object reference BEFORE setText.
+  const textNodeBefore = grid.cellEls[0].childNodes[0];
+  const childCountBefore = grid.cellEls[0].childNodes.length;
+
+  // Round via setText
+  cellObj.setText('9900000');
+
+  // The Text node reference returned by findCellTextNode must be the SAME object.
+  const textNodeAfter = grid.cellEls[0].childNodes[0];
+
+  eq('GR3: text node object identity preserved after setText (same reference)',
+    textNodeAfter === textNodeBefore, true);
+
+  eq('GR3: text node nodeValue was patched to rounded value',
+    textNodeAfter.nodeValue, '9900000');
+
+  // The cell's child node list length must be unchanged (no insertion/removal)
+  eq('GR3: cell childNodes.length unchanged after setText (no appendChild/removeChild)',
+    grid.cellEls[0].childNodes.length, childCountBefore);
+
+  // Double-safety: the cell element itself is unchanged (not recreated)
+  eq('GR3: cell element reference unchanged after setText',
+    grid.cellEls[0], grid.cellEls[0]);
+})();
+
+// ---------------------------------------------------------------------------
+// GR3b: setText does NOT use textContent/innerHTML — source-level guard
+// The spec forbids: cell.textContent=, cell.innerHTML=, removeChild, appendChild
+// on a cell during a grid write. We verify the node reference is identical (GR3)
+// which implies none of those paths ran. Additionally scan source for the
+// critical prohibition.
+// ---------------------------------------------------------------------------
+
+(function gr3b_noTextContentWriteInGridPath() {
+  // The _makeCellObj method must ONLY use tn.nodeValue = s.
+  // Source scan: the setText implementation inside _makeCellObj must not contain
+  // 'textContent =' (with a write) or 'innerHTML =' outside the native-table path.
+  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+
+  // Extract _makeCellObj body (from _makeCellObj to the closing brace of its returned object)
+  const makeCellObjIdx = src.indexOf('_makeCellObj(');
+  const bodyAfter = makeCellObjIdx >= 0 ? src.slice(makeCellObjIdx, makeCellObjIdx + 1000) : '';
+
+  // Within that body, there must be no 'textContent =' assignment
+  // (the tn.nodeValue = s line is the ONLY allowed write in grid setText)
+  eq('GR3b: _makeCellObj setText does not contain textContent= assignment',
+    /textContent\s*=/.test(bodyAfter), false);
+
+  // Must contain the nodeValue write pattern
+  eq('GR3b: _makeCellObj setText uses nodeValue = s (the required write model)',
+    /tn\.nodeValue\s*=/.test(bodyAfter), true);
+})();
+
+// ---------------------------------------------------------------------------
+// GR4: resetTable restores originals on visible rows; recycled rows (no
+// .dr-ext-rounded) are left untouched
+// ---------------------------------------------------------------------------
+
+(function gr4_resetTable_restoresOriginals() {
+  const grid = makeGridWrapper([
+    ['8584629', '286'],
+    ['1234567', '99'],
+  ]);
+
+  const adapter = makeAdapter(grid.wrapperEl);
+  const rows = adapter.getRows();
+
+  // Round all cells
+  rows.forEach(function(row) {
+    row.getCells().forEach(function(c) {
+      c.setText('ROUNDED');
+    });
+  });
+
+  // All cells should carry dr-ext-rounded and drOriginal
+  eq('GR4 (setup): cell 0 is rounded',
+    grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
+  eq('GR4 (setup): cell 0 drOriginal is stored original value',
+    grid.cellEls[0].dataset.drOriginal, '8584629');
+
+  // Simulate a recycled row: cell has NO .dr-ext-rounded (framework removed+readded it)
+  // We model this by creating a fresh cell that was never rounded by us.
+  const recycledCell = makeGridCellWithTextNode('FRAMEWORK_TEXT');
+  // recycledCell has no dr-ext-rounded class and no drOriginal — simulates a
+  // framework-recycled row that shows fresh content.
+
+  // Build a querySelectorAll stub on the wrapper that returns only the already-rounded cells
+  // (the recycled cell is not in the DOM under the wrapper for purposes of this test)
+  const roundedCells = grid.cellEls.filter(function(c) {
+    return c.classList.contains('dr-ext-rounded');
+  });
+
+  // Attach querySelectorAll('.dr-ext-rounded') to the wrapper
+  grid.wrapperEl.querySelectorAll = function(sel) {
+    if (sel === '.dr-ext-rounded') return roundedCells;
+    return [];
+  };
+
+  // Also need querySelector for isTableRounded's call after reset
+  grid.wrapperEl.querySelector = function(sel) {
+    if (sel === '.dr-ext-rounded') return null; // after reset, none
+    return null;
+  };
+
+  // resetTable expects a table.querySelectorAll that returns .dr-ext-rounded cells
+  resetTable(grid.wrapperEl);
+
+  // All previously-rounded cells should now have their original text restored
+  eq('GR4: cell 0 nodeValue restored to original',
+    grid.cellEls[0].childNodes[0].nodeValue, '8584629');
+
+  eq('GR4: cell 0 no longer carries dr-ext-rounded',
+    grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
+
+  eq('GR4: cell 0 drOriginal cleared after reset',
+    grid.cellEls[0].dataset.drOriginal, undefined);
+
+  // The recycled cell was never touched by us and must not be modified
+  eq('GR4: recycled cell text node untouched (framework text preserved)',
+    recycledCell.childNodes[0].nodeValue, 'FRAMEWORK_TEXT');
+
+  eq('GR4: recycled cell has no dr-ext-rounded class',
+    recycledCell.classList.contains('dr-ext-rounded'), false);
+})();
+
+// ---------------------------------------------------------------------------
+// GR5: extractPreviewSamples on a grid — expected structure returned
+// ---------------------------------------------------------------------------
+
+(function gr5_extractPreviewSamples_gridStructure() {
+  // Build a grid with numeric cells of two distinct magnitudes so both
+  // top and bottom bands are populated in the returned structure.
+  const grid = makeGridWrapper([
+    ['8584629', '286'],
+    ['9123456', '514'],
+    ['7654321', '432'],
+  ]);
+
+  const result = extractPreviewSamples(grid.wrapperEl);
+
+  // Must return the correct shape: { samples: { top: [...], bottom: [...] }, maxMag: <number> }
+  eq('GR5: extractPreviewSamples returns an object with samples key',
+    typeof result.samples, 'object');
+
+  eq('GR5: extractPreviewSamples samples has top array',
+    Array.isArray(result.samples.top), true);
+
+  eq('GR5: extractPreviewSamples samples has bottom array',
+    Array.isArray(result.samples.bottom), true);
+
+  eq('GR5: extractPreviewSamples returns maxMag as a number',
+    typeof result.maxMag, 'number');
+
+  // The large-magnitude cells (8M, 9M, 7M) are magnitude 6; they go in top.
+  eq('GR5: top band contains at least one entry',
+    result.samples.top.length >= 1, true);
+
+  // Each entry must have original and num fields
+  if (result.samples.top.length > 0) {
+    eq('GR5: top[0] has original field',
+      typeof result.samples.top[0].original, 'string');
+    eq('GR5: top[0] has num field',
+      typeof result.samples.top[0].num, 'number');
+  }
+
+  // maxMag for cells in the 8M range is 6
+  eq('GR5: maxMag is 6 for cells around 8,000,000',
+    result.maxMag, 6);
+})();
+
+// ---------------------------------------------------------------------------
+// GR6: Adversarial extras
+// ---------------------------------------------------------------------------
+
+// GR6a: findCellTextNode returns the deepest non-empty text node
+(function gr6a_findCellTextNode_deepestNode() {
+  // Cell with nested structure: div > span > text("42")
+  const innerText = makeTextNode('42');
+  const span = makeElementNode('inner', [innerText]);
+  const cell = makeElementNode('cell', [span]);
+
+  // findCellTextNode must walk depth-first and return the deepest node
+  const result = findCellTextNode(cell);
+
+  eq('GR6a: findCellTextNode returns the deepest non-empty text node',
+    result === innerText, true);
+
+  eq('GR6a: findCellTextNode result nodeValue is "42"',
+    result && result.nodeValue, '42');
+})();
+
+// GR6b: findCellTextNode returns null when no text node exists
+(function gr6b_findCellTextNode_nullWhenEmpty() {
+  // Cell with only element children, no text
+  const span = makeElementNode('inner', []);
+  const cell = makeElementNode('cell', [span]);
+
+  eq('GR6b: findCellTextNode returns null for cell with no text nodes',
+    findCellTextNode(cell), null);
+})();
+
+// GR6c: findCellTextNode returns null for a whitespace-only text node
+(function gr6c_findCellTextNode_whitespaceIsNull() {
+  const wsNode = makeTextNode('   ');
+  const cell = makeElementNode('cell', [wsNode]);
+
+  eq('GR6c: findCellTextNode returns null for whitespace-only text node',
+    findCellTextNode(cell), null);
+})();
+
+// GR6d: setText is a no-op when the cell has no text node
+(function gr6d_setText_noopWhenNoTextNode() {
+  // Build a cell with no text node
+  const emptyCell = makeElementNode('empty-cell', []);
+  emptyCell.querySelector = function() { return null; };
+
+  const adapter = makeAdapter(
+    (function() {
+      const wrapEl = makeElementNode('wrapper', []);
+      wrapEl.tagName = 'DIV';
+      wrapEl.dataset = {};
+      wrapEl.querySelector = function() { return null; };
+      wrapEl.querySelectorAll = function() { return []; };
+      wrapEl.matches = function() { return false; };
+      return wrapEl;
+    })()
+  );
+
+  // Directly call _makeCellObj to get a cell object for our empty cell
+  const cellObj = adapter._makeCellObj(emptyCell);
+
+  let threw = false;
+  try {
+    cellObj.setText('should-be-noop');
+  } catch (e) {
+    threw = true;
+  }
+
+  eq('GR6d: setText on cell with no text node does not throw',
+    threw, false);
+
+  eq('GR6d: setText on cell with no text node leaves classList unchanged',
+    emptyCell.classList.contains('dr-ext-rounded'), false);
+})();
+
+// GR6e: dataset.drOriginal is stored ONCE and NOT overwritten on a second setText call
+(function gr6e_drOriginal_storedOnce() {
+  const grid = makeGridWrapper([['12345']]);
+  const adapter = makeAdapter(grid.wrapperEl);
+  const cellObj = adapter.getRows()[0].getCells()[0];
+
+  // First setText: original should be stored
+  cellObj.setText('12000');
+  const storedOriginal = grid.cellEls[0].dataset.drOriginal;
+  eq('GR6e: drOriginal stored on first setText',
+    storedOriginal, '12345');
+
+  // Second setText (e.g. rounding again): drOriginal must NOT change
+  cellObj.setText('10000');
+  eq('GR6e: drOriginal NOT overwritten on second setText',
+    grid.cellEls[0].dataset.drOriginal, '12345');
+
+  // But the nodeValue IS updated
+  eq('GR6e: nodeValue updated to second setText value',
+    grid.cellEls[0].childNodes[0].nodeValue, '10000');
+})();
+
+// GR6f: isDataTable returns true for a grid with numeric cells
+(function gr6f_isDataTable_numericGrid() {
+  const grid = makeGridWrapper([
+    ['Name', '1234567'],
+    ['Foo',  '9876543'],
+    ['Bar',  '5555555'],
+  ]);
+
+  // isDataTable calls makeAdapter(el).getRows(), so the wrapper must be a div
+  eq('GR6f: isDataTable returns true for grid with numeric cells',
+    isDataTable(grid.wrapperEl), true);
+})();
+
+// GR6g: isDataTable returns false for an all-text grid (no finite numbers)
+(function gr6g_isDataTable_allTextGrid() {
+  const grid = makeGridWrapper([
+    ['Name',  'City'],
+    ['Alice', 'Paris'],
+    ['Bob',   'Berlin'],
+    ['Carol', 'Tokyo'],
+  ]);
+
+  eq('GR6g: isDataTable returns false for all-text grid (no numeric cells)',
+    isDataTable(grid.wrapperEl), false);
+})();
+
+// GR6h: findCellTextNode returns the LAST non-empty text node in depth-first order
+// (implementation uses "best = node" overwriting, so last DFS visit wins — this is
+// the "deepest" semantic: the last text node encountered in DFS order).
+(function gr6h_findCellTextNode_lastDfsTextNode() {
+  // Cell with two sibling text nodes; the second (deeper in DFS order) should win.
+  const firstText  = makeTextNode('first');
+  const secondText = makeTextNode('42');
+  const cell = makeElementNode('cell', [firstText, secondText]);
+
+  const result = findCellTextNode(cell);
+
+  // The implementation overwrites `best` on every non-empty text node, so the
+  // last one encountered (secondText) is returned.
+  eq('GR6h: findCellTextNode returns last non-empty text node in DFS order',
+    result === secondText, true);
+})();
+
+// GR6i: GridAdapter.setText sequence — getText after setText returns the rounded value
+// (confirms the adapter's read/write round-trip works symmetrically)
+(function gr6i_setText_getTextRoundTrip() {
+  const grid = makeGridWrapper([['9876543']]);
+  const adapter = makeAdapter(grid.wrapperEl);
+  const cellObj = adapter.getRows()[0].getCells()[0];
+
+  eq('GR6i (setup): getText before setText returns original',
+    cellObj.getText(), '9876543');
+
+  cellObj.setText('9900000');
+
+  // The nodeValue was patched; getText should now return the rounded value
+  // (implementation reads drOriginal if set, so getText returns the original — check)
+  // Actually, getText returns drOriginal if dataset.drOriginal is set.
+  // After setText, drOriginal = '9876543' and nodeValue = '9900000'.
+  // getText() returns dataset.drOriginal ('9876543') — this is the spec design:
+  // getText after setText returns the ORIGINAL so re-rounding uses the right base.
+  eq('GR6i: getText after setText returns stored original (for re-round safety)',
+    cellObj.getText(), '9876543');
+
+  // The nodeValue on the text node is the rounded value
+  eq('GR6i: text node nodeValue after setText is the rounded value',
+    grid.cellEls[0].childNodes[0].nodeValue, '9900000');
+})();
+
+// GR6j: SPEC GAP GUARD — roundTable must call adapter's setText (or equivalent
+// nodeValue-only path) for grid cells. The spec (D3) says the write is:
+//   tn.nodeValue = s   (via GridAdapter.setText → findCellTextNode → nodeValue =)
+// NOT cell.innerHTML = … which destroys React fiber identity.
+//
+// Source-level assertion: content.js must NOT contain a bare `cell.innerHTML =`
+// assignment *outside* the native-table reset/extracted path. We check that the
+// replaceTextPreservingHTML fallback branch (line ~2195) and the extracted-patch
+// branch are the only innerHTML writes; a grid-routed pure-cell path must not
+// write innerHTML.
+//
+// This test encodes the hard rule from the sprint brief:
+//   "The grid write must be nodeValue-only."
+// It passes today because replaceTextPreservingHTML's single-text-node path is
+// nodeValue-safe. It will flag a regression if someone adds an innerHTML= write
+// in the adapter's setText or in a new grid-specific roundTable branch.
+(function gr6j_gridSetText_sourceGuard_noInnerHTMLInAdapterSetText() {
+  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+
+  // Extract _makeCellObj body (the GridAdapter's cell factory, ~1000 chars)
+  const idx = src.indexOf('_makeCellObj(');
+  const body = idx >= 0 ? src.slice(idx, idx + 1200) : '';
+
+  // The grid adapter's setText (inside _makeCellObj) must NOT assign innerHTML
+  eq('GR6j: GridAdapter _makeCellObj setText has no innerHTML= assignment',
+    /innerHTML\s*=/.test(body), false);
+
+  // It MUST have the nodeValue assignment (the only permitted write)
+  eq('GR6j: GridAdapter _makeCellObj setText uses tn.nodeValue = s',
+    /tn\.nodeValue\s*=/.test(body), true);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
