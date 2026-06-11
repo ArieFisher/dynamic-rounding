@@ -1238,11 +1238,15 @@ function roundTable(table, options) {
   }
   chrome.runtime.sendMessage({ action: 'RANGE_OK' });
   const ranges = rangeParse.ranges;
-  const adapterRows = makeAdapter(table).getRows();
+  const adapter = makeAdapter(table);
+  const adapterRows = adapter.getRows();
   // Clean stub path: if the adapter returns no rows (e.g. GridAdapter stub),
   // return early without throwing.
   if (adapterRows.length === 0) return;
+  const isVirtualized = adapter.isVirtualized();
   const data = [];
+  // For native tables, cellsMap stores raw element. For grid tables, cellsMap
+  // stores the full cellObj so the write pass can call cellObj.setText().
   const cellsMap = [];
   const cellInfo = [];
 
@@ -1260,7 +1264,9 @@ function roundTable(table, options) {
       const col = dataCol++;
       const text = cellObj.getText();
       rowData.push(text);
-      rowCells.push(cell);
+      // Carry the full cellObj for grid adapters so the write pass can call
+      // cellObj.setText(); for native adapters carry the raw element (unchanged).
+      rowCells.push(isVirtualized ? cellObj : cell);
 
       const trimmed = typeof text === 'string' ? text.trim() : '';
       // Whole-cell quote short-circuit: if the entire cell content is a single
@@ -1419,7 +1425,6 @@ function roundTable(table, options) {
       if (info.mode === 'skip') continue;
 
       const originalValue = data[r][c];
-      const cell = cellsMap[r][c];
       let formattedValue;
 
       if (info.mode === 'date') {
@@ -1437,10 +1442,19 @@ function roundTable(table, options) {
         // simplifies (e.g. "35.0" → "35").
         if (formattedValue === originalValue.trim()) continue;
       } else {
+        // mode === 'extracted': multi-match HTML-preserving patches.
+        // Known limitation: mode:'extracted' cells (mixed text with embedded numbers,
+        // e.g. <sup>-containing cells) require applyExtractedPatches which writes innerHTML.
+        // This is incompatible with the nodeValue-only write model required for virtualized
+        // grids (innerHTML writes crash React's reconciler). Skip extracted cells on grids
+        // for this sprint — only pure-numeric and date/time cells are rounded on grids.
+        if (isVirtualized) continue;
+
         // Round each match and patch its text node directly. This avoids the
         // whole-cell character-distribution approach, which mis-allocates
         // characters when newText length differs from original (corrupting
         // adjacent <sup> content, punctuation, and <a> text nodes).
+        const cell = cellsMap[r][c];
         const patches = [];
         for (const m of info.matches) {
           const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
@@ -1456,13 +1470,24 @@ function roundTable(table, options) {
         continue;
       }
 
-      // Cache pristine HTML before mutation so toggle/reset can restore it
-      // without needing to keep the rounded value around.
-      cell.dataset.originalHtml = cell.innerHTML;
-      replaceTextPreservingHTML(cell, originalValue, formattedValue);
-      cell.title = `Original: ${originalValue}`;
-      cell.classList.add('dr-ext-rounded');
-      cell.dataset.originalValue = originalValue;
+      if (isVirtualized) {
+        // Grid path: write via nodeValue patching only — never innerHTML/textContent.
+        // cellsMap holds the full cellObj (GridAdapter._makeCellObj) for grid tables.
+        // cellObj.setText stores drOriginal, patches in place, adds dr-ext-rounded.
+        // Do NOT set dataset.originalHtml (would cause resetTable to fall into the
+        // native innerHTML restore branch — the crash mode on toggle-off).
+        const cellObj = cellsMap[r][c];
+        cellObj.setText(formattedValue);
+      } else {
+        // Native-table path: cache pristine HTML before mutation so toggle/reset can
+        // restore it without needing to keep the rounded value around.
+        const cell = cellsMap[r][c];
+        cell.dataset.originalHtml = cell.innerHTML;
+        replaceTextPreservingHTML(cell, originalValue, formattedValue);
+        cell.title = `Original: ${originalValue}`;
+        cell.classList.add('dr-ext-rounded');
+        cell.dataset.originalValue = originalValue;
+      }
     }
   }
   syncSwitchForTable(table);
