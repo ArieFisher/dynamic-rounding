@@ -62,24 +62,42 @@ revised plan (`/sprint-plan`) must:
 
 1. **Selectors:** use `role="cell"` / `.dg--cell` and `data-row` / `data-index`;
    do not rely on `role="gridcell"` / `data-row-index`.
-2. **Write model:** replace `cell.textContent = …`. The preferred, *framework-
-   agnostic* direction is to **patch the existing text node's `nodeValue`**
-   (`textNode.nodeValue = …`) rather than replace it, preserving the node
-   identity the framework tracks. An overlay-rendering approach was considered
-   and rejected as fragile and too host-specific. The `nodeValue` approach is
-   under active investigation (micro-spike — see below).
-3. **Virtualization:** keep the sprint-4 re-apply observer; it must drive
-   whichever write model survives (2).
+2. **Write model:** replace `cell.textContent = …` with **text-node `nodeValue`
+   patching** — locate the cell's existing (deepest non-empty) text node and set
+   its `.nodeValue`, never replacing the node. This is framework-agnostic and
+   **validated below**: it preserves the node identity the framework tracks, so
+   no reconciler crash. An overlay-rendering approach was considered and rejected
+   as fragile and too host-specific.
+3. **Virtualization:** keep the sprint-4 re-apply observer; it drives the
+   `nodeValue` write model. **Caveat (new):** an in-place **sort** reverts cell
+   text without adding/removing child nodes, so a `childList`-only observer
+   (sprint 4 as drafted) may miss it — the revised plan should also watch
+   `characterData` mutations, or accept sort as a known re-apply gap.
 
-## Micro-spike: text-node `nodeValue` patching
+## Micro-spike: text-node `nodeValue` patching — VALIDATED
 
-_Status: in progress — results to be appended._
+Patched a numeric cell's existing text node via `textNode.nodeValue = '…'`
+(node identity preserved) and repeated the Q2 actions:
 
-Hypothesis: writing to an existing text node's `nodeValue` (instead of replacing
-the node via `textContent`) preserves node identity, so the framework's
-reconciler stays in sync and does not crash on re-render. Open question is
-whether the framework then *reverts* our value on its next render (in which case
-it pairs with the sprint-4 re-apply observer) or leaves it (best case).
+| Action | Result |
+|---|---|
+| Leave untouched | **persists** |
+| Resize a *different* column | **persists** |
+| **Resize the patched cell's column** | **persists — no crash** (the action that crashed the `textContent` model) |
+| Scroll cell horizontally off and back | reverts (column virtualization — out of scope per plan §8) |
+| Sort the column | reverts (in-place re-render; see caveat above) |
+| Scroll all patched cells vertically off-screen (a few rows) and back | reverts (row recycle — sprint-4 territory) |
+
+Observed recycling detail: patched cells persist even when individually scrolled
+out, as long as ≥ 1 patched cell remains in the render buffer; only once every
+patched cell leaves the buffer does the framework recycle and revert them. This
+is ordinary virtualized-render-buffer behavior.
+
+**Conclusion:** `nodeValue` patching is React-safe (no crash on any re-render,
+including the previously-fatal column resize) and framework-agnostic. Reverts
+occur only on genuine node recycling — exactly the case the sprint-4 re-apply
+observer handles. This becomes the write model for the revised sprints 3–4,
+replacing in-place `textContent` replacement.
 
 ## Note on Sprint 1
 
