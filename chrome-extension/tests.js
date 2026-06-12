@@ -8055,6 +8055,218 @@ function flushTimers(pendingTimers) {
   }
 })();
 
+// ---------------------------------------------------------------------------
+// GV8: Exclusion-gate parity — re-apply HONORS firstRow / firstColumn gates.
+//
+// Regression guard for the BLOCK: before the fix, reapplyGridRounding recomputed
+// max_mag over an unfiltered cell set and wrote excluded cells.  After the fix
+// (computeGridRoundedValues shared path), excluded cells get targetValue:null and
+// are never written.
+//
+// Grid layout (2 rows × 2 cols):
+//   row 0:  'Header'     '999999'     ← row 0 excluded by simplifyFirstRow:false
+//   row 1:  '12345678'   '87654321'   ← row 1 data; col 0 excluded by simplifyFirstColumn:false
+//
+// Round with simplifyFirstRow:false, simplifyFirstColumn:false (the real defaults).
+// After initial roundTable:
+//   - cellEls[0] (row0,col0) = excluded (firstRow)   → NOT rounded
+//   - cellEls[1] (row0,col1) = excluded (firstRow)   → NOT rounded
+//   - cellEls[2] (row1,col0) = excluded (firstColumn)→ NOT rounded
+//   - cellEls[3] (row1,col1) = in-range numeric      → IS rounded
+//
+// Then simulate a sort-revert on cellEls[3] (revert text to original).
+// Trigger observer + flush.
+// Assert:
+//   - cellEls[0] still NOT rounded (text unchanged, no dr-ext-rounded)
+//   - cellEls[2] still NOT rounded (text unchanged, no dr-ext-rounded)
+//   - cellEls[3] IS re-rounded (text equals initial rounded value)
+// ---------------------------------------------------------------------------
+(function gv8_reapply_honorsExclusionGates_firstRowFirstColumn() {
+  let ctx;
+  try {
+    ctx = setupVirtGrid(
+      [
+        ['Header', '999999'],
+        ['12345678', '87654321'],
+      ],
+      // Override the setupVirtGrid defaults: exclusions must be ON (false = exclude).
+      { simplifyFirstRow: false, simplifyFirstColumn: false }
+    );
+    const { grid, pendingTimers } = ctx;
+
+    // cellEls layout (row-major): [row0col0, row0col1, row1col0, row1col1]
+    const cell_r0c0 = grid.cellEls[0];  // 'Header'    — excluded firstRow
+    const cell_r0c1 = grid.cellEls[1];  // '999999'    — excluded firstRow
+    const cell_r1c0 = grid.cellEls[2];  // '12345678'  — excluded firstColumn
+    const cell_r1c1 = grid.cellEls[3];  // '87654321'  — should be rounded
+
+    // --- Pre-conditions after initial roundTable ---
+    eq('GV8 (pre): row-0 col-0 is NOT rounded by initial pass (firstRow excluded)',
+      cell_r0c0.classList.contains('dr-ext-rounded'), false);
+
+    eq('GV8 (pre): row-0 col-1 is NOT rounded by initial pass (firstRow excluded)',
+      cell_r0c1.classList.contains('dr-ext-rounded'), false);
+
+    eq('GV8 (pre): row-1 col-0 is NOT rounded by initial pass (firstColumn excluded)',
+      cell_r1c0.classList.contains('dr-ext-rounded'), false);
+
+    eq('GV8 (pre): row-1 col-1 IS rounded by initial pass (in-range data cell)',
+      cell_r1c1.classList.contains('dr-ext-rounded'), true);
+
+    // Capture the rounded value so we can verify re-apply restores it.
+    const tn_r1c1 = cell_r1c1.childNodes[0];
+    const roundedValue_r1c1 = tn_r1c1.nodeValue;
+    const originalValue_r1c1 = cell_r1c1.dataset.drOriginal;  // '87654321'
+
+    eq('GV8 (pre): row-1 col-1 rounded value differs from original',
+      roundedValue_r1c1 !== originalValue_r1c1, true);
+
+    // Simulate a sort-revert on the in-range cell: framework rewrites the text
+    // node back to the original value (node identity preserved, class retained).
+    tn_r1c1.nodeValue = originalValue_r1c1;
+
+    eq('GV8 (pre): row-1 col-1 class still present after sort-revert',
+      cell_r1c1.classList.contains('dr-ext-rounded'), true);
+
+    // Trigger observer and flush debounce.
+    const obs = ctx.capturedObserver;
+    obs.trigger([{ type: 'characterData', target: tn_r1c1 }]);
+    flushTimers(pendingTimers);
+
+    // --- Post-conditions: excluded cells must NOT be rounded ---
+    eq('GV8: row-0 col-0 text unchanged after re-apply (firstRow exclusion honored)',
+      cell_r0c0.childNodes[0].nodeValue, 'Header');
+
+    eq('GV8: row-0 col-0 does NOT carry dr-ext-rounded after re-apply',
+      cell_r0c0.classList.contains('dr-ext-rounded'), false);
+
+    eq('GV8: row-1 col-0 text unchanged after re-apply (firstColumn exclusion honored)',
+      cell_r1c0.childNodes[0].nodeValue, '12345678');
+
+    eq('GV8: row-1 col-0 does NOT carry dr-ext-rounded after re-apply',
+      cell_r1c0.classList.contains('dr-ext-rounded'), false);
+
+    // --- Post-condition: the in-range data cell MUST be re-rounded ---
+    eq('GV8: row-1 col-1 re-rounded after sort-revert + re-apply',
+      cell_r1c1.childNodes[0].nodeValue, roundedValue_r1c1);
+
+    eq('GV8: row-1 col-1 still carries dr-ext-rounded after re-apply',
+      cell_r1c1.classList.contains('dr-ext-rounded'), true);
+
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// GV9: Exclusion-gate parity — re-apply HONORS percent / currency gates.
+//
+// Grid layout (2 rows × 2 cols):
+//   row 0:  '75%'        '50%'        ← % cells excluded by simplifyMixedPercent:false
+//   row 1:  '12345678'   '$9,999,999' ← col 1 currency excluded by simplifyMixedCurrency:false
+//
+// Round with simplifyFirstRow:true, simplifyFirstColumn:true (skip those gates),
+// simplifyMixedPercent:false, simplifyMixedCurrency:false.
+//
+// After initial roundTable:
+//   - cellEls[0] (row0,col0) = % excluded  → NOT rounded
+//   - cellEls[1] (row0,col1) = % excluded  → NOT rounded
+//   - cellEls[2] (row1,col0) = plain int   → IS rounded
+//   - cellEls[3] (row1,col1) = $ excluded  → NOT rounded
+//
+// Simulate sort-revert on cellEls[2]; trigger observer + flush.
+// Assert:
+//   - cellEls[0] and cellEls[1] still NOT rounded (percent exclusion honored)
+//   - cellEls[3] still NOT rounded (currency exclusion honored)
+//   - cellEls[2] IS re-rounded (plain numeric, in-range)
+// ---------------------------------------------------------------------------
+(function gv9_reapply_honorsExclusionGates_percentCurrency() {
+  let ctx;
+  try {
+    ctx = setupVirtGrid(
+      [
+        ['75%', '50%'],
+        ['12345678', '$9999999'],
+      ],
+      {
+        simplifyFirstRow: true,
+        simplifyFirstColumn: true,
+        simplifyMixedPercent: false,
+        simplifyMixedCurrency: false,
+      }
+    );
+    const { grid, pendingTimers } = ctx;
+
+    const cell_r0c0 = grid.cellEls[0];  // '75%'       — excluded percent
+    const cell_r0c1 = grid.cellEls[1];  // '50%'       — excluded percent
+    const cell_r1c0 = grid.cellEls[2];  // '12345678'  — should be rounded
+    const cell_r1c1 = grid.cellEls[3];  // '$9999999'  — excluded currency
+
+    // --- Pre-conditions after initial roundTable ---
+    eq('GV9 (pre): row-0 col-0 (75%) is NOT rounded by initial pass (percent excluded)',
+      cell_r0c0.classList.contains('dr-ext-rounded'), false);
+
+    eq('GV9 (pre): row-0 col-1 (50%) is NOT rounded by initial pass (percent excluded)',
+      cell_r0c1.classList.contains('dr-ext-rounded'), false);
+
+    eq('GV9 (pre): row-1 col-0 IS rounded by initial pass (plain numeric)',
+      cell_r1c0.classList.contains('dr-ext-rounded'), true);
+
+    eq('GV9 (pre): row-1 col-1 ($9999999) is NOT rounded by initial pass (currency excluded)',
+      cell_r1c1.classList.contains('dr-ext-rounded'), false);
+
+    // Capture the rounded value for re-apply verification.
+    const tn_r1c0 = cell_r1c0.childNodes[0];
+    const roundedValue_r1c0 = tn_r1c0.nodeValue;
+    const originalValue_r1c0 = cell_r1c0.dataset.drOriginal;
+
+    eq('GV9 (pre): row-1 col-0 rounded value differs from original',
+      roundedValue_r1c0 !== originalValue_r1c0, true);
+
+    // Simulate sort-revert on the plain numeric cell.
+    tn_r1c0.nodeValue = originalValue_r1c0;
+
+    // Trigger observer and flush debounce.
+    const obs = ctx.capturedObserver;
+    obs.trigger([{ type: 'characterData', target: tn_r1c0 }]);
+    flushTimers(pendingTimers);
+
+    // --- Post-conditions: excluded cells must NOT be rounded ---
+    eq('GV9: row-0 col-0 text unchanged after re-apply (percent exclusion honored)',
+      cell_r0c0.childNodes[0].nodeValue, '75%');
+
+    eq('GV9: row-0 col-0 does NOT carry dr-ext-rounded after re-apply',
+      cell_r0c0.classList.contains('dr-ext-rounded'), false);
+
+    eq('GV9: row-0 col-1 text unchanged after re-apply (percent exclusion honored)',
+      cell_r0c1.childNodes[0].nodeValue, '50%');
+
+    eq('GV9: row-1 col-1 text unchanged after re-apply (currency exclusion honored)',
+      cell_r1c1.childNodes[0].nodeValue, '$9999999');
+
+    eq('GV9: row-1 col-1 does NOT carry dr-ext-rounded after re-apply',
+      cell_r1c1.classList.contains('dr-ext-rounded'), false);
+
+    // --- Post-condition: the plain numeric cell MUST be re-rounded ---
+    eq('GV9: row-1 col-0 re-rounded after sort-revert + re-apply',
+      cell_r1c0.childNodes[0].nodeValue, roundedValue_r1c0);
+
+    eq('GV9: row-1 col-0 still carries dr-ext-rounded after re-apply',
+      cell_r1c0.classList.contains('dr-ext-rounded'), true);
+
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
