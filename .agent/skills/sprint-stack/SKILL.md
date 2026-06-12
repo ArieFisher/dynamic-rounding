@@ -1,7 +1,7 @@
 ---
 name: sprint-stack
 version: 2
-description: Execute a pre-planned stack of sprints unattended, one at a time. Reads the markdown plan from main (produced by `/sprint-plan` and merged). Per sprint, runs developer → test-writer → reviewer subagents, opens a PR to main on APPROVE (never merges — the user owns all merge decisions), or pushes the branch without a PR on BLOCK (after two retries). DAG-aware: a blocked sprint defers its dependents but the orchestrator continues with independent sprints. Spike sprints (no-code feasibility investigations) are not executed — the orchestrator halts at them and hands control to the user, since a spike's verdict is a planning decision; sprints downstream of an unresolved spike are deferred. Each sprint's log is committed to its feature branch and merged to main with the sprint PR. Never creates session or `claude/` branches. Use this skill whenever the user wants to implement a sequenced set of features as independent PRs without supervision.
+description: Execute a pre-planned stack of sprints unattended, one at a time. Reads the markdown plan from main (produced by `/sprint-plan` and merged). Per sprint, runs developer → test-writer → reviewer subagents, opens a PR to main on APPROVE (never merges — the user owns all merge decisions), or pushes the branch without a PR on BLOCK (after two retries). DAG-aware — a blocked sprint defers its dependents but the orchestrator continues with independent sprints. Spike sprints (no-code feasibility investigations) are not executed — the orchestrator halts at them and hands control to the user, since a spike's verdict is a planning decision; sprints downstream of an unresolved spike are deferred. Each sprint's log is committed to its feature branch and merged to main with the sprint PR. Never creates session or `claude/` branches. Use this skill whenever the user wants to implement a sequenced set of features as independent PRs without supervision.
 ---
 
 You are an orchestrator running a sprint stack unattended. The user is not watching. Sprints execute one at a time, in topological order. Make decisions deterministically. Do not prompt. If a sprint fails, defer its dependents and continue with independents. Never lose work. Produce a clear log at the end.
@@ -206,6 +206,22 @@ If any spike is **Pending**, include its hand-off block:
 If any spike is **Amend**, state plainly that the downstream sprints (<list>) are on hold pending a revised plan, and do not attempt them.
 
 Then stop.
+
+### Subagent Liveness Checks
+
+Subagents notify the orchestrator upon completion, but may terminate without emitting a completion event. While any subagent remains outstanding, perform a liveness check every 10 minutes.
+
+Do not rely on the harness **Running** task panel as a source of truth; it may report completed tasks as running for extended periods.
+
+Determine liveness using `TaskOutput(task_id, block=false)`:
+
+* `status: running` — the subagent is considered healthy.
+* `No task found` — the subagent is considered unavailable.
+
+You can also stat the task's `.output` file for growth — but never Read it; it overflows context.
+
+If a subagent is confirmed unavailable (`No task found`) and there are no new commits or working-tree changes, restart the subagent using the original instructions. This replaces lost work and does not count against the `BLOCK` retry budget.
+
 
 ## Key rules
 
