@@ -207,20 +207,21 @@ If any spike is **Amend**, state plainly that the downstream sprints (<list>) ar
 
 Then stop.
 
-## Subagent liveness
+### Subagent Liveness Checks
 
-Subagents wake the orchestrator with a completion notification, but they can die
-silently. **Check every 10 minutes** while one is outstanding.
+Subagents notify the orchestrator upon completion, but may terminate without emitting a completion event. While any subagent remains outstanding, perform a liveness check every 10 minutes.
 
-To check whether an agent is alive, use `TaskOutput(task_id, block=false)`:
-`status: running` = alive, `No task found` = gone. (You can also `stat` the
-task's `.output` file for growth — but never `Read` it; it overflows context.)
-The harness "Running" task panel is not authoritative — it can show a finished
-task as running for hours.
+Do not rely on the harness **Running** task panel as a source of truth; it may report completed tasks as running for extended periods.
 
-If an agent is confirmed dead (`No task found`, no new commits, no working-tree
-changes), re-spawn it with the same instructions — a re-spawn replaces lost work
-and does not count against the BLOCK-retry budget.
+Determine liveness using `TaskOutput(task_id, block=false)`:
+
+* `status: running` — the subagent is considered healthy.
+* `No task found` — the subagent is considered unavailable.
+
+You can also stat the task's `.output` file for growth — but never Read it; it overflows context.
+
+If a subagent is confirmed unavailable (`No task found`) and there are no new commits or working-tree changes, restart the subagent using the original instructions. This replaces lost work and does not count against the `BLOCK` retry budget.
+
 
 ## Key rules
 
