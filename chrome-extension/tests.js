@@ -7337,6 +7337,225 @@ function makeGridWrapper(rowData, opts) {
     /tn\.nodeValue\s*=/.test(body), true);
 })();
 
+// =============================================================================
+// E2E grid rounding tests — drive roundTable/resetTable on real div-grid stubs.
+// Spec: docs/sprint-plans/grid-support-v2.md §2 D3 + §4 "grid-rounding".
+// Regression guard for commit 3404e86: roundTable must write via nodeValue
+// (GridAdapter.setText → drOriginal), NOT via replaceTextPreservingHTML /
+// innerHTML (which crashes React's reconciler).
+// =============================================================================
+
+/**
+ * Build a self-contained div-grid wrapper whose querySelectorAll('.dr-ext-rounded')
+ * dynamically reflects which cells currently carry that class.
+ *
+ * Uses makeGridWrapper (existing helper, ~L6821) for the DOM stub, then
+ * overwrites the querySelectorAll stub on the wrapper so resetTable can find
+ * rounded cells after roundTable has run.
+ *
+ * @param {Array<Array<string>>} rowData  — 2D array of cell text values
+ * @returns {{ wrapperEl, rowEls, cellEls }}
+ */
+function makeE2EGridWrapper(rowData) {
+  const grid = makeGridWrapper(rowData);
+
+  // Collect all cells for dynamic querySelectorAll lookup.
+  const allCells = grid.cellEls.slice();
+
+  // Override wrapper querySelectorAll:
+  // - '.dr-ext-rounded': walk allCells and return those carrying the class.
+  // - other selectors: delegate to the original stub (returns []).
+  grid.wrapperEl.querySelectorAll = function(sel) {
+    if (sel === '.dr-ext-rounded') {
+      return allCells.filter(function(c) {
+        return c.classList.contains('dr-ext-rounded');
+      });
+    }
+    // _getRowEls fallback path in GridAdapter uses children, not querySelectorAll,
+    // so returning [] for other selectors is safe.
+    return [];
+  };
+
+  // Override wrapper querySelector so isTableRounded / syncSwitchForTable don't throw.
+  grid.wrapperEl.querySelector = function(sel) {
+    if (sel === '.dr-ext-rounded') {
+      return allCells.find(function(c) { return c.classList.contains('dr-ext-rounded'); }) || null;
+    }
+    return null;
+  };
+
+  // dataset is already set by makeGridWrapper; ensure drShowingOriginal can be deleted.
+  if (!grid.wrapperEl.dataset) grid.wrapperEl.dataset = {};
+
+  return grid;
+}
+
+// ---------------------------------------------------------------------------
+// E2E-GR1: roundTable on a numeric div-grid — nodeValue written, node identity
+// preserved, drOriginal set, originalHtml NOT set, dr-ext-rounded applied.
+// ---------------------------------------------------------------------------
+(function e2e_gr1_roundTable_numericGrid_nodeValuePath() {
+  // 3-row grid. Use simplifyFirstRow:true so all rows (including row 0) are processed.
+  const grid = makeE2EGridWrapper([
+    ['8584629', '286'],
+    ['1234567', '99'],
+    ['7654321', '55'],
+  ]);
+
+  // cellEls[0] is row-0, col-0.  With simplifyFirstRow:true it will be rounded.
+  const cell0 = grid.cellEls[0];
+  const textNodeBefore = cell0.childNodes[0];
+  const childCountBefore = cell0.childNodes.length;
+  const originalValue = textNodeBefore.nodeValue;  // '8584629'
+
+  // Drive the real engine entry point with simplifyFirstRow+Column:true so row/col 0
+  // are not excluded by the default "skip header" heuristic.
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+  roundTable(grid.wrapperEl, opts);
+
+  // The cell must now carry the rounded class.
+  eq('E2E-GR1: cell[0] has dr-ext-rounded after roundTable',
+    cell0.classList.contains('dr-ext-rounded'), true);
+
+  // The text was actually changed (8584629 → some abbreviated form; check it differs).
+  eq('E2E-GR1: cell[0] text node value changed from original',
+    cell0.childNodes[0].nodeValue !== originalValue, true);
+
+  // Node identity: the SAME Text node object must hold the new value.
+  eq('E2E-GR1: Text node object identity preserved (same reference)',
+    cell0.childNodes[0] === textNodeBefore, true);
+
+  // childNodes.length must be unchanged (no appendChild / removeChild).
+  eq('E2E-GR1: cell[0] childNodes.length unchanged after roundTable',
+    cell0.childNodes.length, childCountBefore);
+
+  // drOriginal must be set on the cell element (nodeValue path).
+  eq('E2E-GR1: cell[0] dataset.drOriginal is set to original text',
+    cell0.dataset.drOriginal, originalValue);
+
+  // originalHtml must NOT be set (that is the native-table / extracted path).
+  eq('E2E-GR1: cell[0] dataset.originalHtml is NOT set on a grid cell',
+    cell0.dataset.originalHtml, undefined);
+})();
+
+// ---------------------------------------------------------------------------
+// E2E-GR2: resetTable after roundTable — Text node restored in place, class
+// removed, drOriginal cleared, childNodes.length still unchanged.
+// ---------------------------------------------------------------------------
+(function e2e_gr2_resetTable_restoresNodeValue() {
+  const grid = makeE2EGridWrapper([
+    ['8584629', '286'],
+    ['1234567', '99'],
+  ]);
+
+  const cell0 = grid.cellEls[0];
+  const textNodeBefore = cell0.childNodes[0];
+  const childCountBefore = cell0.childNodes.length;
+  const originalValue = textNodeBefore.nodeValue;  // '8584629'
+
+  // Round first — use simplifyFirstRow+Column:true so row/col 0 are not excluded.
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+  roundTable(grid.wrapperEl, opts);
+
+  // Confirm the cell is rounded before we reset (pre-condition).
+  eq('E2E-GR2 (pre): cell[0] is rounded before resetTable',
+    cell0.classList.contains('dr-ext-rounded'), true);
+
+  // Now reset.
+  resetTable(grid.wrapperEl);
+
+  // nodeValue must be back to the original on the SAME Text node.
+  eq('E2E-GR2: Text node nodeValue restored to original value',
+    textNodeBefore.nodeValue, originalValue);
+
+  // The SAME node object must still be in childNodes[0].
+  eq('E2E-GR2: Text node identity preserved through reset (same reference)',
+    cell0.childNodes[0] === textNodeBefore, true);
+
+  // dr-ext-rounded class must be removed.
+  eq('E2E-GR2: dr-ext-rounded removed after resetTable',
+    cell0.classList.contains('dr-ext-rounded'), false);
+
+  // drOriginal must be cleared.
+  eq('E2E-GR2: dataset.drOriginal cleared after resetTable',
+    cell0.dataset.drOriginal, undefined);
+
+  // childNodes.length still unchanged (no innerHTML write at any point).
+  eq('E2E-GR2: childNodes.length unchanged throughout (no innerHTML write)',
+    cell0.childNodes.length, childCountBefore);
+})();
+
+// ---------------------------------------------------------------------------
+// E2E-GR3 (Negative guard): after roundTable on a grid, NO cell has
+// dataset.originalHtml set. Locks in that grids never take the native write path.
+// ---------------------------------------------------------------------------
+(function e2e_gr3_noOriginalHtmlOnGridCells() {
+  const grid = makeE2EGridWrapper([
+    ['8584629', '286'],
+    ['1234567', '99'],
+    ['7654321', '55'],
+  ]);
+
+  // simplifyFirstRow:true ensures all rows are processed (maximal coverage).
+  roundTable(grid.wrapperEl, Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true }));
+
+  const anyHasOriginalHtml = grid.cellEls.some(function(c) {
+    return c.dataset.originalHtml !== undefined;
+  });
+
+  eq('E2E-GR3: no grid cell has dataset.originalHtml after roundTable (native path locked out)',
+    anyHasOriginalHtml, false);
+})();
+
+// ---------------------------------------------------------------------------
+// E2E-GR4: mode:'extracted' skip on grids — mixed-text cell is left unrounded;
+// pure-numeric cell IS rounded. Known limitation: grids skip extracted cells
+// (innerHTML incompatible with nodeValue-only write model).
+// ---------------------------------------------------------------------------
+(function e2e_gr4_extractedModeSkippedOnGrid() {
+  // Two rows so simplifyFirstRow:false (default) doesn't exclude everything.
+  // Row 0: skipped (simplifyFirstRow:false).
+  // Row 1: mixed-text cell → extracted mode → skipped on grid;
+  //        pure-numeric cell → pure mode → rounded.
+  const grid = makeE2EGridWrapper([
+    ['placeholder', '0'],             // row 0: excluded by simplifyFirstRow:false
+    ['abc 1234567 def', '9876543'],   // row 1: exercised
+  ]);
+
+  // cellEls[2] = row1/col0 (mixed), cellEls[3] = row1/col1 (numeric)
+  const mixedCell   = grid.cellEls[2];
+  const numericCell = grid.cellEls[3];
+
+  const mixedTextBefore   = mixedCell.childNodes[0].nodeValue;
+  const numericTextBefore = numericCell.childNodes[0].nodeValue;
+
+  // Use opts with simplifyMixedCells:true so mixed cells are classified as extracted,
+  // and simplifyFirstRow:false (default) so row 0 is excluded (standard behaviour).
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyMixedCells: true });
+  roundTable(grid.wrapperEl, opts);
+
+  // Mixed cell must be UNROUNDED (extracted path skipped on virtualized grid).
+  eq('E2E-GR4: mixed-text cell NOT rounded on grid (extracted mode skipped)',
+    mixedCell.classList.contains('dr-ext-rounded'), false);
+
+  eq('E2E-GR4: mixed-text cell text node unchanged',
+    mixedCell.childNodes[0].nodeValue, mixedTextBefore);
+
+  // Pure-numeric cell must be rounded.
+  eq('E2E-GR4: pure-numeric cell IS rounded on grid',
+    numericCell.classList.contains('dr-ext-rounded'), true);
+
+  eq('E2E-GR4: pure-numeric cell text changed from original',
+    numericCell.childNodes[0].nodeValue !== numericTextBefore, true);
+
+  // drOriginal set on numeric, not on mixed.
+  eq('E2E-GR4: drOriginal set on pure-numeric cell',
+    numericCell.dataset.drOriginal, numericTextBefore);
+
+  eq('E2E-GR4: drOriginal NOT set on mixed-text cell',
+    mixedCell.dataset.drOriginal, undefined);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
