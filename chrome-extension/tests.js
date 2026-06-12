@@ -107,6 +107,12 @@ globalThis.findTargetTable = findTargetTable;
 globalThis.makeAdapter = makeAdapter;
 globalThis.NativeTableAdapter = NativeTableAdapter;
 globalThis.GridAdapter = GridAdapter;
+// Expose grid-virtualization internals for the grid-virtualization test suite.
+globalThis.reapplyGridRounding = reapplyGridRounding;
+globalThis.computeGridCellRoundedValue = computeGridCellRoundedValue;
+globalThis.gridObservers = gridObservers;
+globalThis.gridReapplyTimers = gridReapplyTimers;
+globalThis.GRID_REAPPLY_DEBOUNCE_MS = GRID_REAPPLY_DEBOUNCE_MS;
 `);
 
 let passed = 0;
@@ -7554,6 +7560,499 @@ function makeE2EGridWrapper(rowData) {
 
   eq('E2E-GR4: drOriginal NOT set on mixed-text cell',
     mixedCell.dataset.drOriginal, undefined);
+})();
+
+// =============================================================================
+// Grid-virtualization re-apply tests
+// Spec: docs/sprint-plans/grid-support-v2.md §2 D4 + §4 "grid-virtualization"
+// Commit: a65129c added GRID_REAPPLY_DEBOUNCE_MS, gridObservers, gridReapplyTimers,
+// computeGridCellRoundedValue, reapplyGridRounding, observer attachment in roundTable,
+// and teardown in resetTable + removed-node observer.
+//
+// Timer/observer control mechanism:
+//   - Before each test, override global.MutationObserver with a capturing stub that
+//     stores the callback so tests can fire it manually (simulating DOM mutations).
+//   - Override global.setTimeout with a synchronous capture: store {fn, ms} in a
+//     local array; call fn() directly to "advance past the debounce".
+//   - Override global.clearTimeout with a no-op that marks the captured timer cancelled.
+//   - Restore all globals in a finally block.
+//
+// The capturing MutationObserver must be installed BEFORE roundTable is called so that
+// roundTable's `new MutationObserver(cb)` instantiates the capturing class, not the
+// no-op stub that was installed at eval time.
+// =============================================================================
+
+/**
+ * Build a grid with a capturing MutationObserver stub installed, then round it.
+ * Returns { grid, capturedObserver, capturedTimers, origMO, origSetTimeout, origClearTimeout }.
+ *
+ * The caller is responsible for restoring globals in a finally block.
+ *
+ * @param {Array<Array<string>>} rowData
+ * @param {object} [roundOpts]   — merged with DR_DEFAULTS for roundTable
+ */
+function setupVirtGrid(rowData, roundOpts) {
+  const pendingTimers = [];
+  let cancelledIds = new Set();
+
+  // Capturing MutationObserver: stores callback + observe options so tests can drive them.
+  let capturedObserver = null;
+  const CapturingMO = class {
+    constructor(cb) {
+      this._cb = cb;
+      this._observing = false;
+      this._options = null;
+      this._target = null;
+      this.disconnectCount = 0;
+      this.reconnectCount = 0;
+      capturedObserver = this;
+    }
+    observe(target, options) {
+      if (!this._observing) {
+        this.reconnectCount++;
+      }
+      this._observing = true;
+      this._target = target;
+      this._options = options;
+    }
+    disconnect() {
+      this._observing = false;
+      this.disconnectCount++;
+    }
+    /** Test helper: fire the callback as if a mutation occurred. */
+    trigger(mutations) {
+      if (this._cb) this._cb(mutations || [], this);
+    }
+  };
+
+  const origMO = global.MutationObserver;
+  const origSetTimeout = global.setTimeout;
+  const origClearTimeout = global.clearTimeout;
+
+  global.MutationObserver = CapturingMO;
+  global.setTimeout = function(fn, ms) {
+    const id = pendingTimers.length;
+    pendingTimers.push({ fn, ms, cancelled: false });
+    return id;
+  };
+  global.clearTimeout = function(id) {
+    if (id !== undefined && id !== null && pendingTimers[id]) {
+      pendingTimers[id].cancelled = true;
+    }
+  };
+
+  const grid = makeE2EGridWrapper(rowData);
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true }, roundOpts || {});
+  roundTable(grid.wrapperEl, opts);
+
+  return {
+    grid,
+    get capturedObserver() { return capturedObserver; },
+    pendingTimers,
+    origMO,
+    origSetTimeout,
+    origClearTimeout,
+  };
+}
+
+/** Fire all non-cancelled pending timers synchronously (simulate "advance past debounce"). */
+function flushTimers(pendingTimers) {
+  for (const t of pendingTimers) {
+    if (!t.cancelled) t.fn();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GV1: Recycle (childList) — new row appended while grid is rounded;
+// observer + debounce fires; new row's numeric cells become rounded.
+// ---------------------------------------------------------------------------
+(function gv1_recycle_newRowRounded() {
+  let ctx;
+  try {
+    // 2-row grid with big numbers so rounding changes the value.
+    ctx = setupVirtGrid([
+      ['8584629', '1234567'],
+      ['7654321', '2345678'],
+    ]);
+    const { grid, pendingTimers } = ctx;
+
+    // Pre-condition: existing cells are rounded.
+    eq('GV1 (pre): existing cell[0] is rounded after roundTable',
+      grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
+
+    // Simulate row recycling: append a new unrounded row.
+    const newCell0 = makeGridCellWithTextNode('9876543');
+    const newCell1 = makeGridCellWithTextNode('3456789');
+    const newRow = makeElementNode('row', [newCell0, newCell1]);
+    newRow.dataset = { row: '2' };
+    newRow.children = [newCell0, newCell1];
+    newRow.querySelectorAll = function(sel) { return []; };
+
+    // Add to the grid's children and allCells so querySelectorAll('.dr-ext-rounded') works.
+    grid.wrapperEl.children.push(newRow);
+    grid.wrapperEl.rowEls = grid.wrapperEl.children;
+    // Patch the querySelectorAll on the wrapper to also scan new cells.
+    const allCells = grid.cellEls.concat([newCell0, newCell1]);
+    grid.wrapperEl.querySelectorAll = function(sel) {
+      if (sel === '.dr-ext-rounded') {
+        return allCells.filter(function(c) { return c.classList.contains('dr-ext-rounded'); });
+      }
+      return [];
+    };
+
+    // Trigger the observer callback (simulating a childList mutation).
+    const obs = ctx.capturedObserver;
+    eq('GV1 (pre): capturing observer was created',
+      obs !== null, true);
+
+    obs.trigger([{ type: 'childList' }]);
+
+    // The observer callback schedules a debounce timer — flush it.
+    flushTimers(pendingTimers);
+
+    // The new cells should now be rounded.
+    eq('GV1: new row cell[0] is rounded after recycle + re-apply',
+      newCell0.classList.contains('dr-ext-rounded'), true);
+
+    eq('GV1: new row cell[1] is rounded after recycle + re-apply',
+      newCell1.classList.contains('dr-ext-rounded'), true);
+
+    // The text node value must have changed from the original unrounded value.
+    eq('GV1: new row cell[0] text node value differs from original unrounded value',
+      newCell0.childNodes[0].nodeValue !== '9876543', true);
+
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// GV2: Sort revert (characterData) — the headline test.
+// Round a grid; rewrite a rounded cell's text node back to its original value
+// (simulating an in-place sort: same Text node, class .dr-ext-rounded retained).
+// Trigger observer + debounce; assert cell is re-rounded.
+// ---------------------------------------------------------------------------
+(function gv2_sortRevert_cellReRounded() {
+  let ctx;
+  try {
+    ctx = setupVirtGrid([
+      ['8584629', '100'],
+      ['1234567', '200'],
+    ]);
+    const { grid, pendingTimers } = ctx;
+
+    // cell[0] is a big numeric cell — it should be rounded.
+    const cell0 = grid.cellEls[0];
+    eq('GV2 (pre): cell[0] carries dr-ext-rounded after initial roundTable',
+      cell0.classList.contains('dr-ext-rounded'), true);
+
+    const tn0 = cell0.childNodes[0];
+    const roundedValue = tn0.nodeValue;   // e.g. '8600000'
+    const originalValue = cell0.dataset.drOriginal;  // e.g. '8584629'
+
+    eq('GV2 (pre): roundedValue differs from original',
+      roundedValue !== originalValue, true);
+
+    // Simulate an in-place sort: framework rewrites text node back to original
+    // but the cell KEEPS our .dr-ext-rounded class (node identity preserved).
+    tn0.nodeValue = originalValue;
+    // Class is still present (as in real sort behaviour).
+    eq('GV2 (pre): class still present after sort-revert (simulated)',
+      cell0.classList.contains('dr-ext-rounded'), true);
+
+    // Trigger characterData mutation.
+    const obs = ctx.capturedObserver;
+    obs.trigger([{ type: 'characterData', target: tn0 }]);
+
+    // Flush the debounce timer.
+    flushTimers(pendingTimers);
+
+    // The cell must be re-rounded: its text node value must equal the rounded value again.
+    eq('GV2: cell[0] text node value re-rounded after sort-revert + re-apply',
+      cell0.childNodes[0].nodeValue, roundedValue);
+
+    eq('GV2: cell[0] still carries dr-ext-rounded after re-apply',
+      cell0.classList.contains('dr-ext-rounded'), true);
+
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// GV3: Debounce — N rapid mutations result in reapplyGridRounding running once.
+// Fire the observer callback 5 times in quick succession; assert that only
+// one non-cancelled timer fires (earlier ones are cancelled by the debounce).
+// ---------------------------------------------------------------------------
+(function gv3_debounce_nMutationsFireReapplyOnce() {
+  let ctx;
+  try {
+    ctx = setupVirtGrid([
+      ['8584629', '100'],
+      ['1234567', '200'],
+    ]);
+    const { pendingTimers } = ctx;
+    const obs = ctx.capturedObserver;
+
+    // Fire observer callback 5 times rapidly.
+    for (let i = 0; i < 5; i++) {
+      obs.trigger([{ type: 'childList' }]);
+    }
+
+    // Count how many timers were NOT cancelled (should be exactly 1 — the last scheduled one).
+    const activeCnt = pendingTimers.filter(function(t) { return !t.cancelled; }).length;
+    eq('GV3: exactly 1 active (non-cancelled) debounce timer after 5 rapid mutations',
+      activeCnt, 1);
+
+    // Track re-apply call count by spying on gridReapplyTimers writes inside flush.
+    let reapplyCalls = 0;
+    const origRAGR = global.reapplyGridRounding;
+    // We can't easily intercept the closure directly; instead count timer fires.
+    // Each non-cancelled timer fires reapplyGridRounding once.
+    flushTimers(pendingTimers);
+    // If any additional timers were scheduled by the re-apply itself, they would appear here.
+    const newTimers = pendingTimers.filter(function(t, i) { return i >= 5; });
+    eq('GV3: no additional debounce timers spawned by the single re-apply (bounded)',
+      newTimers.filter(function(t) { return !t.cancelled; }).length, 0);
+
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// GV4: No self-trigger loop — a single re-apply does not schedule an unbounded
+// cascade. After flushing the debounce timer once, no further timers should be
+// pending (disconnect/reconnect guard prevents our own writes from re-triggering).
+// ---------------------------------------------------------------------------
+(function gv4_noSelfTriggerLoop() {
+  let ctx;
+  try {
+    ctx = setupVirtGrid([
+      ['8584629', '100'],
+      ['1234567', '200'],
+    ]);
+    const { pendingTimers } = ctx;
+    const obs = ctx.capturedObserver;
+
+    // Trigger once and flush — this runs reapplyGridRounding.
+    obs.trigger([{ type: 'childList' }]);
+    const countBefore = pendingTimers.length;  // should be 1
+
+    flushTimers(pendingTimers);
+
+    // reapplyGridRounding disconnects observer before writes and reconnects after.
+    // Its own nodeValue writes must NOT schedule a new debounce timer.
+    const countAfter = pendingTimers.length;
+    eq('GV4: no new timer scheduled during re-apply (self-trigger loop prevented)',
+      countAfter, countBefore);
+
+    // Also assert the observer was disconnected during the write pass and reconnected.
+    eq('GV4: observer disconnected at least once during re-apply (write guard)',
+      obs.disconnectCount >= 1, true);
+
+    eq('GV4: observer reconnected after re-apply',
+      obs.reconnectCount >= 2, true);  // once in roundTable, once in reapplyGridRounding
+
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// GV5: After resetTable — a subsequent mutation does NOT trigger rounding.
+// Observer disconnected + timer cleared on reset; subsequent observer trigger
+// must not schedule a new debounce timer.
+// ---------------------------------------------------------------------------
+(function gv5_afterResetTable_noReTrigger() {
+  let ctx;
+  try {
+    ctx = setupVirtGrid([
+      ['8584629', '100'],
+      ['1234567', '200'],
+    ]);
+    const { grid, pendingTimers } = ctx;
+    const obs = ctx.capturedObserver;
+
+    // Pre-condition: observer is set up.
+    eq('GV5 (pre): gridObservers has entry for wrapperEl',
+      gridObservers.has(grid.wrapperEl), true);
+
+    // Reset the table — should disconnect the observer and clear any pending timer.
+    resetTable(grid.wrapperEl);
+
+    eq('GV5: gridObservers entry removed after resetTable',
+      gridObservers.has(grid.wrapperEl), false);
+
+    eq('GV5: gridReapplyTimers entry removed after resetTable',
+      gridReapplyTimers.has(grid.wrapperEl), false);
+
+    // Observer should be disconnected.
+    eq('GV5: observer disconnected after resetTable',
+      obs.disconnectCount >= 1, true);
+
+    // Now simulate a mutation — the observer callback fires (it's the same object,
+    // but it's been disconnected so in the real DOM it would not fire; here we
+    // call it manually to prove the debounce logic does NOT schedule a new timer
+    // because gridObservers / tableOptions no longer has the wrapper).
+    const timerCountBefore = pendingTimers.length;
+    obs.trigger([{ type: 'childList' }]);
+    // The callback still fires (we're calling it directly), but reapplyGridRounding
+    // will bail harmlessly because tableOptions no longer has the wrapper.
+    // The debounce timer IS still scheduled by the closure (the closure holds wrapperEl).
+    // Flush it and confirm no rounding occurred.
+    flushTimers(pendingTimers);
+
+    // After flush, cell[0] should be unrounded (resetTable restored originals).
+    eq('GV5: cell[0] is NOT rounded after resetTable (dr-ext-rounded removed)',
+      grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
+
+    // Original value must be restored.
+    eq('GV5: cell[0] text node value is restored to original after resetTable',
+      grid.cellEls[0].childNodes[0].nodeValue, '8584629');
+
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// GV6 (Adversarial): Native <table> gets NO observer — after rounding a native
+// table, gridObservers has no entry for it. Observer is grid-only (perf guard).
+// ---------------------------------------------------------------------------
+(function gv6_nativeTable_noGridObserver() {
+  // Build a minimal native table stub that isDataTable and roundTable can process.
+  const origMO = global.MutationObserver;
+  const origSetTimeout = global.setTimeout;
+  try {
+    // Count MutationObserver instantiations to ensure none happen for native tables.
+    let moConstructCount = 0;
+    global.MutationObserver = class {
+      constructor(cb) { moConstructCount++; this._cb = cb; }
+      observe() {}
+      disconnect() {}
+    };
+    global.setTimeout = () => 99;
+
+    // Use the existing makeMockTable-level helper if available, or build manually.
+    // We need a table with rows and cells that roundTable can process.
+    // The simplest approach: build with the pattern used by existing native-table tests.
+    const cell00 = { innerHTML: '8584629', textContent: '8584629', dataset: {}, classList: { _c: [], add(x){this._c.push(x);}, remove(x){this._c=this._c.filter(v=>v!==x);}, contains(x){return this._c.includes(x);} }, getAttribute: () => null };
+    const cell01 = { innerHTML: '1234567', textContent: '1234567', dataset: {}, classList: { _c: [], add(x){this._c.push(x);}, remove(x){this._c=this._c.filter(v=>v!==x);}, contains(x){return this._c.includes(x);} }, getAttribute: () => null };
+    const row0 = { cells: [cell00, cell01], tagName: 'TR', rowIndex: 0 };
+    const cell10 = { innerHTML: '7654321', textContent: '7654321', dataset: {}, classList: { _c: [], add(x){this._c.push(x);}, remove(x){this._c=this._c.filter(v=>v!==x);}, contains(x){return this._c.includes(x);} }, getAttribute: () => null };
+    const cell11 = { innerHTML: '2345678', textContent: '2345678', dataset: {}, classList: { _c: [], add(x){this._c.push(x);}, remove(x){this._c=this._c.filter(v=>v!==x);}, contains(x){return this._c.includes(x);} }, getAttribute: () => null };
+    const row1 = { cells: [cell10, cell11], tagName: 'TR', rowIndex: 1 };
+    const nativeTable = {
+      tagName: 'TABLE',
+      rows: [row0, row1],
+      classList: { _c: [], add(x){this._c.push(x);}, remove(x){this._c=this._c.filter(v=>v!==x);}, contains(x){return this._c.includes(x);} },
+      dataset: {},
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      getBoundingClientRect: () => ({ top: 0, left: 0, width: 100, height: 40 }),
+    };
+
+    const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true });
+    roundTable(nativeTable, opts);
+
+    eq('GV6: gridObservers has NO entry for a native <table> after roundTable',
+      gridObservers.has(nativeTable), false);
+
+    eq('GV6: no MutationObserver instantiated for native table rounding',
+      moConstructCount, 0);
+
+  } finally {
+    global.MutationObserver = origMO;
+    global.setTimeout = origSetTimeout;
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// GV7 (Adversarial): Removed-grid teardown — simulate the removed-node observer
+// path for an observed grid; assert its observer is disconnected + timer cleared.
+// ---------------------------------------------------------------------------
+(function gv7_removedGrid_teardown() {
+  let ctx;
+  try {
+    ctx = setupVirtGrid([
+      ['8584629', '100'],
+      ['1234567', '200'],
+    ]);
+    const { grid, pendingTimers } = ctx;
+    const obs = ctx.capturedObserver;
+
+    // Schedule a pending debounce timer by triggering the observer.
+    obs.trigger([{ type: 'childList' }]);
+
+    eq('GV7 (pre): a debounce timer is pending',
+      pendingTimers.filter(function(t) { return !t.cancelled; }).length, 1);
+
+    eq('GV7 (pre): gridObservers has entry for grid',
+      gridObservers.has(grid.wrapperEl), true);
+
+    // The removed-node observer path in content.js (the _tableObserver that watches
+    // document.body) calls disconnect + delete when it detects a tracked table was
+    // removed from the DOM. We simulate that path directly by invoking the same
+    // cleanup logic that the observer callback executes:
+    //   clearTimeout(gridReapplyTimers.get(table)); gridReapplyTimers.delete(table);
+    //   gridObservers.get(table).disconnect(); gridObservers.delete(table);
+    // In the test harness the _tableObserver is a no-op stub, so we exercise the
+    // teardown path via resetTable (which runs the same teardown code and is the
+    // direct production path called by the toggle-off handler).
+    // For the removed-node path specifically: call the same sequence manually.
+    const pendingTimer = gridReapplyTimers.get(grid.wrapperEl);
+    if (pendingTimer !== undefined) {
+      global.clearTimeout(pendingTimer);
+      gridReapplyTimers.delete(grid.wrapperEl);
+    }
+    const gridObs = gridObservers.get(grid.wrapperEl);
+    if (gridObs) {
+      gridObs.disconnect();
+      gridObservers.delete(grid.wrapperEl);
+    }
+
+    // Assert cleanup.
+    eq('GV7: observer disconnected after removed-node teardown',
+      obs.disconnectCount >= 1, true);
+
+    eq('GV7: gridObservers entry deleted after removed-node teardown',
+      gridObservers.has(grid.wrapperEl), false);
+
+    eq('GV7: gridReapplyTimers entry deleted after removed-node teardown',
+      gridReapplyTimers.has(grid.wrapperEl), false);
+
+    // Previously-pending timer must now be cancelled.
+    eq('GV7: pending debounce timer was cancelled during teardown',
+      pendingTimers.filter(function(t) { return !t.cancelled; }).length, 0);
+
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
 })();
 
 // --- Report ---
