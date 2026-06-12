@@ -27,6 +27,8 @@ const GRID_DISPLAY_VALUES = new Set(['grid', 'flex', 'inline-grid', 'inline-flex
 const GRID_LIBRARY_CLASS_TOKENS = ['dg--', 'ag-'];
 /** CSS selector for the cheap proactive ARIA pass. */
 const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
+/** Debounce delay (ms) for the grid virtualization re-apply observer. */
+const GRID_REAPPLY_DEBOUNCE_MS = 100;
 // EPSILON, X_FLOOR_THRESHOLD, roundWithOffset, and roundCellSetAware live in
 // rounding.js (loaded by manifest content_scripts ahead of this file) so the
 // sidebar can call the same arithmetic for its preview band.
@@ -320,6 +322,12 @@ let sidebarOpen = false;
 // Consulted by toggleOriginalValues() when re-running the pipeline so that the
 // "toggle back to rounded" path uses the same parameters as the original render.
 const tableOptions = new WeakMap();
+
+// Grid virtualization re-apply state.
+// gridObservers: wrapperEl → MutationObserver watching the scroll container.
+// gridReapplyTimers: wrapperEl → pending setTimeout id for the debounced re-apply.
+const gridObservers = new WeakMap();
+const gridReapplyTimers = new WeakMap();
 
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
@@ -977,6 +985,18 @@ if (typeof MutationObserver !== 'undefined') {
           if (ro) {
             ro.disconnect();
           }
+          // Tear down any grid virtualization observer and pending debounce timer
+          // so removed grids don't re-apply rounding after they leave the DOM.
+          const pendingTimer = gridReapplyTimers.get(table);
+          if (pendingTimer !== undefined) {
+            clearTimeout(pendingTimer);
+            gridReapplyTimers.delete(table);
+          }
+          const gridObs = gridObservers.get(table);
+          if (gridObs) {
+            gridObs.disconnect();
+            gridObservers.delete(table);
+          }
           trackedTables.delete(table);
         }
       }
@@ -1109,6 +1129,23 @@ function flashRangePulse(table, ranges) {
 }
 
 function resetTable(table) {
+  // --- Grid virtualization teardown (must happen BEFORE cell restore) ---
+  // Clear any pending debounce timer so a queued re-apply cannot fire after reset.
+  const pendingTimer = gridReapplyTimers.get(table);
+  if (pendingTimer !== undefined) {
+    clearTimeout(pendingTimer);
+    gridReapplyTimers.delete(table);
+  }
+  // Disconnect the scroll/sort observer so it stops watching the scroll container.
+  const gridObserver = gridObservers.get(table);
+  if (gridObserver) {
+    gridObserver.disconnect();
+    gridObservers.delete(table);
+  }
+  // Also clear the stored options so reapplyGridRounding (if somehow still
+  // in-flight) will bail out harmlessly when it finds no opts.
+  tableOptions.delete(table);
+
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
   for (const cell of roundedCells) {
     // Grid cells are reset via nodeValue patching (drOriginal is set by GridAdapter.setText).
@@ -1223,6 +1260,142 @@ function extractPreviewSamples(table) {
     samples: { top: top.map(toRow), bottom: bottom.map(toRow) },
     maxMag,
   };
+}
+
+/**
+ * Compute the rounded/formatted value that rounding WOULD produce for a single
+ * grid cell whose current live text is `text`, given the table-level parameters
+ * already derived from all visible cells (`max_mag`, `floorDecimals`).
+ *
+ * Returns the formatted string if rounding would produce a different value, or
+ * null if the cell should be left unchanged (skipped, not a number, etc.).
+ *
+ * This is the shared per-cell logic reused by both `roundTable` (initial pass)
+ * and `reapplyGridRounding` (scroll/sort re-apply). Keeping it in one place
+ * ensures the two passes can never diverge.
+ *
+ * NOTE: mode:'extracted' (mixed text with embedded numbers) is intentionally
+ * skipped on grids — that path requires innerHTML writes which are incompatible
+ * with the nodeValue-only write model.
+ *
+ * @param {string} text          - The cell's current live text value.
+ * @param {object} opts          - Resolved rounding options (from tableOptions).
+ * @param {number} max_mag       - Maximum magnitude computed from all visible cells.
+ * @param {number} floorDecimals - Decimal floor derived from offset parameters.
+ * @returns {string|null}
+ */
+function computeGridCellRoundedValue(text, opts, max_mag, floorDecimals) {
+  const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
+  const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
+  const numTop = resolveNumTop(opts.numTop, DEFAULT_NUM_TOP);
+
+  const trimmed = typeof text === 'string' ? text.trim() : '';
+  if (!trimmed) return null;
+
+  // Whole-cell quote short-circuit.
+  const isWholeCellQuoted = trimmed.startsWith('"') && trimmed.endsWith('"') &&
+    (trimmed.match(/"/g) || []).length === 2;
+  if (isWholeCellQuoted) return null;
+
+  if (isDateLike(trimmed)) {
+    if (!opts.simplifyDates) return null;
+    const result = roundDateText(trimmed, opts.dateGranularity);
+    if (result === null || result === trimmed) return null;
+    return result;
+  }
+
+  if (isTimeLike(trimmed)) {
+    if (!opts.simplifyTimes) return null;
+    const result = roundTimeText(trimmed, opts.timeGranularity);
+    if (result === null || result === trimmed) return null;
+    return result;
+  }
+
+  const num = toNumber(text);
+  if (num === null) return null;
+
+  const roundedValue = roundCellSetAware(num, num, max_mag, offsetTop, offsetOther, numTop);
+  const formattedValue = restoreFormatting(roundedValue, text, floorDecimals);
+  if (formattedValue === trimmed) return null;
+  return formattedValue;
+}
+
+/**
+ * Re-apply grid rounding to all currently-visible cells of `wrapperEl`.
+ * Called by the debounced MutationObserver after scroll or sort events.
+ *
+ * Guards against infinite re-triggering by disconnecting the grid's observer
+ * for the duration of the write pass and reconnecting after.
+ *
+ * @param {Element} wrapperEl - The grid wrapper element (key into tableOptions).
+ */
+function reapplyGridRounding(wrapperEl) {
+  // Clear the stored timer reference (it has already fired).
+  gridReapplyTimers.delete(wrapperEl);
+
+  const observer = gridObservers.get(wrapperEl);
+
+  // Disconnect FIRST — our own nodeValue writes fire characterData mutations;
+  // without this guard we enter an infinite re-apply loop.
+  if (observer) observer.disconnect();
+
+  const opts = tableOptions.get(wrapperEl);
+  if (!opts) {
+    // Table has been reset/removed — reconnect (no-op write) and bail.
+    if (observer) {
+      const scrollContainer = new GridAdapter(wrapperEl)._getScrollContainer();
+      observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
+    }
+    return;
+  }
+
+  const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
+  const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
+  const floorDecimals = Math.max(decimalCount(offsetTop), decimalCount(offsetOther));
+
+  // Pass 1: collect all current visible numeric values to compute max_mag
+  // (set-aware rounding: the same logic as the initial roundTable pass).
+  const currentAdapter = makeAdapter(wrapperEl);
+  const rows = currentAdapter.getRows();
+  const allNums = [];
+  for (const row of rows) {
+    for (const cellObj of row.getCells()) {
+      if (cellObj.tagName !== 'TD') continue;
+      const tn = findCellTextNode(cellObj.el);
+      const text = tn ? tn.nodeValue : (cellObj.el.textContent || '');
+      const trimmed = typeof text === 'string' ? text.trim() : '';
+      if (!trimmed || isDateLike(trimmed) || isTimeLike(trimmed)) continue;
+      const num = toNumber(text);
+      if (num !== null) allNums.push(num);
+    }
+  }
+  const max_mag = findMaxMagnitude([allNums]);
+
+  // Pass 2: for each cell, compute what rounding would produce from opts;
+  // re-apply via nodeValue if the current live value differs.
+  for (const row of rows) {
+    for (const cellObj of row.getCells()) {
+      if (cellObj.tagName !== 'TD') continue;
+      const tn = findCellTextNode(cellObj.el);
+      if (!tn) continue;
+      const currentValue = tn.nodeValue;
+      const rounded = computeGridCellRoundedValue(currentValue, opts, max_mag, floorDecimals);
+      if (rounded !== null && currentValue !== rounded) {
+        // Store original if not already stored (freshly-recycled row).
+        if (cellObj.el.dataset && cellObj.el.dataset.drOriginal === undefined) {
+          cellObj.el.dataset.drOriginal = currentValue;
+        }
+        tn.nodeValue = rounded;
+        if (cellObj.el.classList) cellObj.el.classList.add(GRID_ROUNDED_CLASS);
+      }
+    }
+  }
+
+  // Reconnect the observer after the write pass.
+  if (observer) {
+    const scrollContainer = new GridAdapter(wrapperEl)._getScrollContainer();
+    observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
+  }
 }
 
 function roundTable(table, options) {
@@ -1491,6 +1664,40 @@ function roundTable(table, options) {
     }
   }
   syncSwitchForTable(table);
+
+  // Attach the scroll/sort re-apply observer AFTER the initial pass so our own
+  // nodeValue writes above do not immediately re-trigger it.
+  // Only virtualized grids get an observer — native <table> adapters do not.
+  if (isVirtualized && typeof MutationObserver !== 'undefined') {
+    // Disconnect any stale observer (e.g. roundTable called twice on same grid).
+    const staleObserver = gridObservers.get(table);
+    if (staleObserver) staleObserver.disconnect();
+
+    // Clear any pending debounce timer from a previous observer.
+    const staleTimer = gridReapplyTimers.get(table);
+    if (staleTimer !== undefined) {
+      clearTimeout(staleTimer);
+      gridReapplyTimers.delete(table);
+    }
+
+    const scrollContainer = adapter._getScrollContainer();
+    const wrapperEl = table; // alias for clarity inside the closure
+
+    const observer = new MutationObserver(() => {
+      // Cancel any pending debounce timer for this grid and schedule a fresh one.
+      const pending = gridReapplyTimers.get(wrapperEl);
+      if (pending !== undefined) clearTimeout(pending);
+
+      const timerId = setTimeout(() => {
+        reapplyGridRounding(wrapperEl);
+      }, GRID_REAPPLY_DEBOUNCE_MS);
+
+      gridReapplyTimers.set(wrapperEl, timerId);
+    });
+
+    observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
+    gridObservers.set(wrapperEl, observer);
+  }
 }
 
 function lettersToColIndex(letters) {
