@@ -60,14 +60,221 @@ class NativeTableAdapter {
   }
 }
 
+/**
+ * Depth-first search returning the deepest non-empty Text node
+ * (nodeType === 3, non-whitespace nodeValue) under cellEl.
+ * Returns null if no such node exists.
+ * @param {Element} cellEl
+ * @returns {Text|null}
+ */
+function findCellTextNode(cellEl) {
+  if (!cellEl) return null;
+  // Walk depth-first; track the deepest non-empty text node found.
+  let best = null;
+  function visit(node) {
+    if (node.nodeType === 3) {
+      // Text node
+      if (node.nodeValue && node.nodeValue.trim() !== '') {
+        best = node;
+      }
+      return;
+    }
+    if (node.childNodes) {
+      for (let i = 0; i < node.childNodes.length; i++) {
+        visit(node.childNodes[i]);
+      }
+    }
+  }
+  visit(cellEl);
+  return best;
+}
+
+/** CSS class applied to rounded grid cells (same class used by native-table path). */
+const GRID_ROUNDED_CLASS = 'dr-ext-rounded';
+
 class GridAdapter {
   constructor(el) {
     this.el = el;
   }
   getElement() { return this.el; }
   isVirtualized() { return true; }
-  /** Stub — returns empty until grid-rounding sprint implements this. */
-  getRows() { return []; }
+
+  /**
+   * Return the scroll container for this grid.
+   * Priority: known library selectors → else this.el.
+   */
+  _getScrollContainer() {
+    const el = this.el;
+    // Known library selectors (single-pane Databricks, AG Grid, etc.)
+    const knownSelectors = [
+      '.dg--grid-scroll-container',
+      '.dg--grid-container',
+      '.ag-center-cols-viewport',
+      '[role="grid"]',
+    ];
+    for (const sel of knownSelectors) {
+      const found = el.querySelector && el.querySelector(sel);
+      if (found) return found;
+    }
+    // Check if the element itself matches a known selector
+    if (el.matches) {
+      for (const sel of knownSelectors) {
+        try {
+          if (el.matches(sel)) return el;
+        } catch (e) { /* ignore */ }
+      }
+    }
+    return el;
+  }
+
+  /**
+   * Find the pinned pane sibling, if any.
+   * Returns null for single-pane grids (Databricks).
+   */
+  _getPinnedPane(scrollContainer) {
+    const pinnedSelectors = [
+      '.dg--pinned-grid',
+      '.ag-pinned-left-cols-container',
+    ];
+    const el = this.el;
+    for (const sel of pinnedSelectors) {
+      const found = el.querySelector && el.querySelector(sel);
+      if (found && found !== scrollContainer) return found;
+    }
+    return null;
+  }
+
+  /**
+   * Extract rows from a container element.
+   * Prefers [role="row"] / .dg--virtual-row; else repetitive children.
+   * @param {Element} container
+   * @returns {Element[]}
+   */
+  _getRowEls(container) {
+    if (!container) return [];
+    // Try ARIA/library rows first
+    let rows = container.querySelectorAll && container.querySelectorAll('[role="row"]');
+    if (rows && rows.length > 0) return Array.from(rows);
+    rows = container.querySelectorAll && container.querySelectorAll('.dg--virtual-row');
+    if (rows && rows.length > 0) return Array.from(rows);
+    // Fallback: repetitive children (direct children only)
+    if (container.children) return Array.from(container.children);
+    return [];
+  }
+
+  /**
+   * Extract cell elements from a row element.
+   * Prefers [role="cell"] / .dg--cell; else repetitive children.
+   * (The legacy role "gridcell" is NOT used — per spike amendment 2, only role="cell" is correct.)
+   * @param {Element} rowEl
+   * @returns {Element[]}
+   */
+  _getCellEls(rowEl) {
+    if (!rowEl) return [];
+    let cells = rowEl.querySelectorAll && rowEl.querySelectorAll('[role="cell"]');
+    if (cells && cells.length > 0) return Array.from(cells);
+    cells = rowEl.querySelectorAll && rowEl.querySelectorAll('.dg--cell');
+    if (cells && cells.length > 0) return Array.from(cells);
+    // Fallback: direct children
+    if (rowEl.children) return Array.from(rowEl.children);
+    return [];
+  }
+
+  /**
+   * Get the row key from a row element for pinned-pane stitching.
+   * Prefers data-row, then data-index.
+   * @param {Element} rowEl
+   * @param {number} domIndex
+   * @returns {string}
+   */
+  _getRowKey(rowEl, domIndex) {
+    if (rowEl.dataset) {
+      if (rowEl.dataset.row !== undefined) return rowEl.dataset.row;
+      if (rowEl.dataset.index !== undefined) return rowEl.dataset.index;
+    }
+    return String(domIndex);
+  }
+
+  /**
+   * Build a cell object compatible with the NativeTableAdapter cell shape.
+   * setText uses nodeValue patching — never textContent/innerHTML/appendChild/removeChild.
+   * @param {Element} cellEl
+   * @returns {{getText(): string, setText(s: string): void, el: Element, tagName: string}}
+   */
+  _makeCellObj(cellEl) {
+    return {
+      el: cellEl,
+      tagName: 'TD', // grid cells are treated as data cells (no <th> concept)
+      getText() {
+        // Prefer the stored original (if already rounded), else live text
+        if (cellEl.dataset && cellEl.dataset.drOriginal !== undefined) {
+          return cellEl.dataset.drOriginal;
+        }
+        const tn = findCellTextNode(cellEl);
+        return tn ? tn.nodeValue : (cellEl.textContent || '');
+      },
+      setText(s) {
+        const tn = findCellTextNode(cellEl);
+        if (tn === null) return; // no-op: cell has no text node to patch
+        // Store the original value on the cell element once.
+        if (cellEl.dataset && cellEl.dataset.drOriginal === undefined) {
+          cellEl.dataset.drOriginal = tn.nodeValue;
+        }
+        // Patch in place — NEVER replace the node (preserves React fiber identity).
+        tn.nodeValue = s;
+        if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
+      },
+    };
+  }
+
+  /**
+   * Return stitched rows from the grid: pinned cells first, then scroll cells.
+   * Each row exposes getCells() → array of cell objects.
+   */
+  getRows() {
+    const scrollContainer = this._getScrollContainer();
+    const pinnedPane = this._getPinnedPane(scrollContainer);
+
+    const scrollRows = this._getRowEls(scrollContainer);
+    if (scrollRows.length === 0) return [];
+
+    // Build a map from row-key → pinned row element for efficient stitching.
+    let pinnedRows = [];
+    const pinnedByKey = new Map();
+    if (pinnedPane) {
+      pinnedRows = this._getRowEls(pinnedPane);
+      pinnedRows.forEach((pr, idx) => {
+        const key = this._getRowKey(pr, idx);
+        pinnedByKey.set(key, pr);
+      });
+    }
+
+    const adapter = this;
+    return scrollRows.map((rowEl, idx) => {
+      const scrollKey = adapter._getRowKey(rowEl, idx);
+      // Find the matching pinned row (by data-row / data-index / DOM index).
+      let pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
+
+      return {
+        getCells() {
+          const cells = [];
+          // Pinned cells first (if any pinned pane exists).
+          if (pinnedRowEl) {
+            const pinnedCellEls = adapter._getCellEls(pinnedRowEl);
+            for (const cellEl of pinnedCellEls) {
+              cells.push(adapter._makeCellObj(cellEl));
+            }
+          }
+          // Scroll cells.
+          const scrollCellEls = adapter._getCellEls(rowEl);
+          for (const cellEl of scrollCellEls) {
+            cells.push(adapter._makeCellObj(cellEl));
+          }
+          return cells;
+        },
+      };
+    });
+  }
 }
 
 /**
@@ -507,8 +714,12 @@ function findTargetTable(el) {
   return null;
 }
 
+/** Maximum number of cells sampled across grid rows when probing isDataTable for virtual grids. */
+const GRID_IS_DATA_TABLE_CELL_SAMPLE = 10;
+
 function isDataTable(table) {
-  const rows = makeAdapter(table).getRows();
+  const adapter = makeAdapter(table);
+  const rows = adapter.getRows();
   if (rows.length < 2) return false;
   let hasMultipleColumns = false;
   for (let i = 0; i < rows.length; i++) {
@@ -518,9 +729,15 @@ function isDataTable(table) {
     }
   }
   if (!hasMultipleColumns) return false;
+  // For virtual grids, limit the cell scan to a small sample to avoid probing
+  // potentially hundreds of rows. For native tables the loop is cheap.
+  const maxCells = adapter.isVirtualized() ? GRID_IS_DATA_TABLE_CELL_SAMPLE : Infinity;
+  let cellCount = 0;
   for (let i = 0; i < rows.length; i++) {
     const cells = rows[i].getCells();
     for (let j = 0; j < cells.length; j++) {
+      if (cellCount >= maxCells) return false;
+      cellCount++;
       const text = cells[j].getText().trim().replace(CLEAN_REGEX, '');
       if (text !== '' && isFinite(parseFloat(text))) return true;
     }
@@ -532,14 +749,10 @@ function isDataTable(table) {
 let _globalTapCollapseAdded = false;
 
 function createToggleForTable(table) {
-  // For native <table> elements use the existing isDataTable() gate which reads
-  // .rows/.cells. For div-based grid roots use the structural looksLikeGrid()
-  // heuristic, since .rows is not available on non-table elements.
-  if (table.tagName === 'TABLE') {
-    if (!isDataTable(table)) return;
-  } else {
-    if (!looksLikeGrid(table)) return;
-  }
+  // For native <table> elements use isDataTable() (via NativeTableAdapter).
+  // For div-based grid roots use isDataTable() via GridAdapter now that getRows() is implemented.
+  // looksLikeGrid() is no longer used here — it remains available for findTargetTable walk-up.
+  if (!isDataTable(table)) return;
   ensureToggleStyleInjected();
 
   const button = document.createElement('button');
@@ -898,13 +1111,26 @@ function flashRangePulse(table, ranges) {
 function resetTable(table) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
   for (const cell of roundedCells) {
-    if (cell.dataset.originalHtml !== undefined) {
-      cell.innerHTML = cell.dataset.originalHtml;
+    // Grid cells are reset via nodeValue patching (drOriginal is set by GridAdapter.setText).
+    // Native-table cells are reset via innerHTML (originalHtml is set by NativeTableAdapter.setText).
+    if (cell.dataset.drOriginal !== undefined) {
+      // Grid path: restore the original text node value in place (preserves node identity).
+      const tn = findCellTextNode(cell);
+      if (tn !== null) {
+        tn.nodeValue = cell.dataset.drOriginal;
+      }
+      cell.classList.remove(GRID_ROUNDED_CLASS);
+      delete cell.dataset.drOriginal;
+    } else {
+      // Native-table path: restore full HTML (supports mixed/extracted cells).
+      if (cell.dataset.originalHtml !== undefined) {
+        cell.innerHTML = cell.dataset.originalHtml;
+      }
+      cell.classList.remove('dr-ext-rounded');
+      delete cell.dataset.originalValue;
+      delete cell.dataset.originalHtml;
+      cell.removeAttribute('title');
     }
-    cell.classList.remove('dr-ext-rounded');
-    delete cell.dataset.originalValue;
-    delete cell.dataset.originalHtml;
-    cell.removeAttribute('title');
   }
   delete table.dataset.drShowingOriginal;
   syncSwitchForTable(table);
@@ -1012,11 +1238,15 @@ function roundTable(table, options) {
   }
   chrome.runtime.sendMessage({ action: 'RANGE_OK' });
   const ranges = rangeParse.ranges;
-  const adapterRows = makeAdapter(table).getRows();
+  const adapter = makeAdapter(table);
+  const adapterRows = adapter.getRows();
   // Clean stub path: if the adapter returns no rows (e.g. GridAdapter stub),
   // return early without throwing.
   if (adapterRows.length === 0) return;
+  const isVirtualized = adapter.isVirtualized();
   const data = [];
+  // For native tables, cellsMap stores raw element. For grid tables, cellsMap
+  // stores the full cellObj so the write pass can call cellObj.setText().
   const cellsMap = [];
   const cellInfo = [];
 
@@ -1034,7 +1264,9 @@ function roundTable(table, options) {
       const col = dataCol++;
       const text = cellObj.getText();
       rowData.push(text);
-      rowCells.push(cell);
+      // Carry the full cellObj for grid adapters so the write pass can call
+      // cellObj.setText(); for native adapters carry the raw element (unchanged).
+      rowCells.push(isVirtualized ? cellObj : cell);
 
       const trimmed = typeof text === 'string' ? text.trim() : '';
       // Whole-cell quote short-circuit: if the entire cell content is a single
@@ -1193,7 +1425,6 @@ function roundTable(table, options) {
       if (info.mode === 'skip') continue;
 
       const originalValue = data[r][c];
-      const cell = cellsMap[r][c];
       let formattedValue;
 
       if (info.mode === 'date') {
@@ -1211,10 +1442,19 @@ function roundTable(table, options) {
         // simplifies (e.g. "35.0" → "35").
         if (formattedValue === originalValue.trim()) continue;
       } else {
+        // mode === 'extracted': multi-match HTML-preserving patches.
+        // Known limitation: mode:'extracted' cells (mixed text with embedded numbers,
+        // e.g. <sup>-containing cells) require applyExtractedPatches which writes innerHTML.
+        // This is incompatible with the nodeValue-only write model required for virtualized
+        // grids (innerHTML writes crash React's reconciler). Skip extracted cells on grids
+        // for this sprint — only pure-numeric and date/time cells are rounded on grids.
+        if (isVirtualized) continue;
+
         // Round each match and patch its text node directly. This avoids the
         // whole-cell character-distribution approach, which mis-allocates
         // characters when newText length differs from original (corrupting
         // adjacent <sup> content, punctuation, and <a> text nodes).
+        const cell = cellsMap[r][c];
         const patches = [];
         for (const m of info.matches) {
           const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
@@ -1230,13 +1470,24 @@ function roundTable(table, options) {
         continue;
       }
 
-      // Cache pristine HTML before mutation so toggle/reset can restore it
-      // without needing to keep the rounded value around.
-      cell.dataset.originalHtml = cell.innerHTML;
-      replaceTextPreservingHTML(cell, originalValue, formattedValue);
-      cell.title = `Original: ${originalValue}`;
-      cell.classList.add('dr-ext-rounded');
-      cell.dataset.originalValue = originalValue;
+      if (isVirtualized) {
+        // Grid path: write via nodeValue patching only — never innerHTML/textContent.
+        // cellsMap holds the full cellObj (GridAdapter._makeCellObj) for grid tables.
+        // cellObj.setText stores drOriginal, patches in place, adds dr-ext-rounded.
+        // Do NOT set dataset.originalHtml (would cause resetTable to fall into the
+        // native innerHTML restore branch — the crash mode on toggle-off).
+        const cellObj = cellsMap[r][c];
+        cellObj.setText(formattedValue);
+      } else {
+        // Native-table path: cache pristine HTML before mutation so toggle/reset can
+        // restore it without needing to keep the rounded value around.
+        const cell = cellsMap[r][c];
+        cell.dataset.originalHtml = cell.innerHTML;
+        replaceTextPreservingHTML(cell, originalValue, formattedValue);
+        cell.title = `Original: ${originalValue}`;
+        cell.classList.add('dr-ext-rounded');
+        cell.dataset.originalValue = originalValue;
+      }
     }
   }
   syncSwitchForTable(table);
