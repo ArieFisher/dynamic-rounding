@@ -1263,66 +1263,211 @@ function extractPreviewSamples(table) {
 }
 
 /**
- * Compute the rounded/formatted value that rounding WOULD produce for a single
- * grid cell whose current live text is `text`, given the table-level parameters
- * already derived from all visible cells (`max_mag`, `floorDecimals`).
+ * Classify and compute rounded target values for all visible cells of a
+ * virtualized grid, using the EXACT same gating logic as the initial
+ * `roundTable` pass: isInRanges, getExclusionReason (firstRow / firstColumn /
+ * percent / currency), whole-cell-quote, date/time, isCellWholeLink, <sup>
+ * handling, and mode:'extracted' skip-on-grid.
  *
- * Returns the formatted string if rounding would produce a different value, or
- * null if the cell should be left unchanged (skipped, not a number, etc.).
+ * max_mag is computed only over the surviving in-range, non-excluded pure
+ * (and extracted) numeric cells — the same filtered set the initial pass uses —
+ * so that values produced here are identical to those the initial pass would
+ * produce given the same visible DOM and opts.
  *
- * This is the shared per-cell logic reused by both `roundTable` (initial pass)
- * and `reapplyGridRounding` (scroll/sort re-apply). Keeping it in one place
- * ensures the two passes can never diverge.
+ * Returns a flat array of { cellObj, targetValue } for every TD cell in the
+ * grid's current visible rows.  targetValue is:
+ *   - null  → leave the cell unchanged (excluded, out-of-range, skip, or no
+ *             change needed)
+ *   - a string → the rounded/formatted value the cell should display
  *
- * NOTE: mode:'extracted' (mixed text with embedded numbers) is intentionally
- * skipped on grids — that path requires innerHTML writes which are incompatible
- * with the nodeValue-only write model.
+ * Both `roundTable` (initial grid write pass) and `reapplyGridRounding`
+ * (scroll/sort re-apply) call this single function so they cannot diverge.
  *
- * @param {string} text          - The cell's current live text value.
- * @param {object} opts          - Resolved rounding options (from tableOptions).
- * @param {number} max_mag       - Maximum magnitude computed from all visible cells.
- * @param {number} floorDecimals - Decimal floor derived from offset parameters.
- * @returns {string|null}
+ * NOTE: mode:'extracted' cells (mixed text with embedded numbers, e.g.
+ * <sup>-containing cells) are intentionally skipped on grids — that path
+ * requires innerHTML writes incompatible with the nodeValue-only write model.
+ * This is deferred work tracked in issue #120.
+ *
+ * @param {Element} wrapperEl - The grid wrapper element.
+ * @param {object}  opts      - Fully-resolved rounding options.
+ * @returns {Array<{cellObj: object, targetValue: string|null}>}
  */
-function computeGridCellRoundedValue(text, opts, max_mag, floorDecimals) {
+function computeGridRoundedValues(wrapperEl, opts) {
   const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
   const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
   const numTop = resolveNumTop(opts.numTop, DEFAULT_NUM_TOP);
+  const rangeParse = parseRangeExpr(opts.rangeExpr);
+  // If the range expression is invalid, no cells should be rounded.
+  if (rangeParse.error) return [];
+  const ranges = rangeParse.ranges;
+  const floorDecimals = Math.max(decimalCount(offsetTop), decimalCount(offsetOther));
 
-  const trimmed = typeof text === 'string' ? text.trim() : '';
-  if (!trimmed) return null;
+  const adapter = makeAdapter(wrapperEl);
+  const adapterRows = adapter.getRows();
+  if (adapterRows.length === 0) return [];
 
-  // Whole-cell quote short-circuit.
-  const isWholeCellQuoted = trimmed.startsWith('"') && trimmed.endsWith('"') &&
-    (trimmed.match(/"/g) || []).length === 2;
-  if (isWholeCellQuoted) return null;
+  // --- Pass 1: classify every visible TD cell (same logic as roundTable) ---
+  // cellEntries: flat array of { cellObj, text, trimmed, info }
+  // info is the classification result: { mode: 'skip'|'pure'|'date'|'time'|'extracted', ... }
+  // rowIndex and colIndex track position for isInRanges / getExclusionReason.
+  const cellEntries = [];
 
-  if (isDateLike(trimmed)) {
-    if (!opts.simplifyDates) return null;
-    const result = roundDateText(trimmed, opts.dateGranularity);
-    if (result === null || result === trimmed) return null;
-    return result;
+  // Also build a per-column list of entries with ambiguous date mode so we can
+  // run the column post-pass (same as roundTable).
+  // Map: colIndex → array of indices into cellEntries
+  const ambigByCol = new Map();
+
+  for (let r = 0; r < adapterRows.length; r++) {
+    const adapterCells = adapterRows[r].getCells();
+    let dataCol = 0;
+    for (let c = 0; c < adapterCells.length; c++) {
+      const cellObj = adapterCells[c];
+      if (cellObj.tagName !== 'TD') continue;
+      const col = dataCol++;
+      const cell = cellObj.el;
+      const text = cellObj.getText();
+      const trimmed = typeof text === 'string' ? text.trim() : '';
+
+      const isWholeCellQuoted = trimmed.startsWith('"') && trimmed.endsWith('"') &&
+        (trimmed.match(/"/g) || []).length === 2;
+
+      let info;
+      if (!isInRanges(r, col, ranges)) {
+        info = { mode: 'skip' };
+      } else if (getExclusionReason(text, col, opts, r)) {
+        info = { mode: 'skip' };
+      } else if (isWholeCellQuoted) {
+        info = { mode: 'skip' };
+      } else if (isDateLike(trimmed)) {
+        if (!opts.simplifyDates) {
+          info = { mode: 'skip' };
+        } else {
+          const ambig = parseAmbiguousNumericDate(trimmed);
+          if (ambig !== null) {
+            info = { mode: 'date', ambiguous: ambig };
+          } else {
+            const parsed = parseDateLike(trimmed);
+            info = { mode: 'date', month: parsed.month, day: parsed.day, year: parsed.year };
+          }
+        }
+      } else if (isTimeLike(trimmed)) {
+        info = opts.simplifyTimes ? { mode: 'time' } : { mode: 'skip' };
+      } else {
+        const num = toNumber(text);
+        if (num !== null) {
+          if (isCellWholeLink(cell)) {
+            info = { mode: 'skip' };
+          } else if (cell.querySelector && cell.querySelector('sup')) {
+            // mode:'extracted' is skipped on grids (nodeValue-only write model).
+            // Tracked in issue #120.
+            info = { mode: 'skip' };
+          } else {
+            info = { mode: 'pure', num };
+          }
+        } else if (opts.simplifyMixedCells) {
+          // mode:'extracted' is skipped on grids (nodeValue-only write model).
+          // Tracked in issue #120.
+          info = { mode: 'skip' };
+        } else {
+          info = { mode: 'skip' };
+        }
+      }
+
+      const entryIdx = cellEntries.length;
+      cellEntries.push({ cellObj, text, trimmed, info, col, rowIdx: r });
+
+      if (info.mode === 'date' && info.ambiguous) {
+        if (!ambigByCol.has(col)) ambigByCol.set(col, []);
+        ambigByCol.get(col).push(entryIdx);
+      }
+    }
   }
 
-  if (isTimeLike(trimmed)) {
-    if (!opts.simplifyTimes) return null;
-    const result = roundTimeText(trimmed, opts.timeGranularity);
-    if (result === null || result === trimmed) return null;
-    return result;
+  // --- Column post-pass: resolve ambiguous date cells per column ---
+  for (const [col, indices] of ambigByCol) {
+    let hasN1gt12 = false;
+    let hasN2gt12 = false;
+    for (const idx of indices) {
+      const { info } = cellEntries[idx];
+      if (info.ambiguous.n1 > 12) hasN1gt12 = true;
+      if (info.ambiguous.n2 > 12) hasN2gt12 = true;
+    }
+    let formatHint;
+    if (hasN1gt12 && !hasN2gt12) {
+      formatHint = 'DMY';
+    } else if (hasN2gt12 && !hasN1gt12) {
+      formatHint = 'MDY';
+    } else if (hasN1gt12 && hasN2gt12) {
+      formatHint = 'MIXED';
+    } else {
+      formatHint = 'AMBIGUOUS';
+    }
+    for (const idx of indices) {
+      const entry = cellEntries[idx];
+      const { info } = entry;
+      if (formatHint === 'MDY') {
+        entry.info = { mode: 'date', month: info.ambiguous.n1, day: info.ambiguous.n2, year: info.ambiguous.year };
+      } else if (formatHint === 'DMY') {
+        entry.info = { mode: 'date', month: info.ambiguous.n2, day: info.ambiguous.n1, year: info.ambiguous.year };
+      } else {
+        entry.info = { mode: 'skip' };
+      }
+    }
+  }
+  // --- End column post-pass ---
+
+  // --- Pass 2: compute max_mag over filtered (in-range, non-excluded) numeric cells ---
+  const allNums = [];
+  for (const { info } of cellEntries) {
+    if (info.mode === 'pure') allNums.push(info.num);
+    // mode:'extracted' is skipped on grids, so no extracted nums here
+  }
+  const max_mag = findMaxMagnitude([allNums]);
+
+  // --- Pass 3: compute target value for each cell ---
+  const results = [];
+  for (const { cellObj, text, trimmed, info } of cellEntries) {
+    if (info.mode === 'skip') {
+      results.push({ cellObj, targetValue: null });
+      continue;
+    }
+
+    let targetValue = null;
+
+    if (info.mode === 'date') {
+      const prefilled = (info.month !== undefined)
+        ? { month: info.month, day: info.day, year: info.year }
+        : undefined;
+      const rounded = roundDateText(text, opts.dateGranularity, prefilled);
+      if (rounded !== null && rounded !== text) targetValue = rounded;
+    } else if (info.mode === 'time') {
+      const rounded = roundTimeText(text, opts.timeGranularity);
+      if (rounded !== null && rounded !== text) targetValue = rounded;
+    } else if (info.mode === 'pure') {
+      const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
+      const formatted = restoreFormatting(roundedValue, text, floorDecimals);
+      if (formatted !== trimmed) targetValue = formatted;
+    }
+    // mode:'extracted' → targetValue stays null (skip on grid)
+
+    results.push({ cellObj, targetValue });
   }
 
-  const num = toNumber(text);
-  if (num === null) return null;
-
-  const roundedValue = roundCellSetAware(num, num, max_mag, offsetTop, offsetOther, numTop);
-  const formattedValue = restoreFormatting(roundedValue, text, floorDecimals);
-  if (formattedValue === trimmed) return null;
-  return formattedValue;
+  return results;
 }
 
 /**
  * Re-apply grid rounding to all currently-visible cells of `wrapperEl`.
  * Called by the debounced MutationObserver after scroll or sort events.
+ *
+ * Delegates ALL classification and value computation to `computeGridRoundedValues`
+ * — the same function used by the initial `roundTable` grid pass — so the two
+ * passes are guaranteed to produce identical results for any given visible DOM
+ * state and opts.  In particular, re-apply now honours:
+ *   - isInRanges (cells outside the user's range are left untouched)
+ *   - getExclusionReason (firstRow / firstColumn / percent / currency)
+ *   - whole-cell-quote, date/time, isCellWholeLink, <sup> handling
+ *   - max_mag computed over the same filtered in-range, non-excluded cell set
  *
  * Guards against infinite re-triggering by disconnecting the grid's observer
  * for the duration of the write pass and reconnecting after.
@@ -1349,46 +1494,27 @@ function reapplyGridRounding(wrapperEl) {
     return;
   }
 
-  const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
-  const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
-  const floorDecimals = Math.max(decimalCount(offsetTop), decimalCount(offsetOther));
+  // Delegate to the single shared classify+compute function.
+  // targetValue is null for excluded/out-of-range/skip cells (leave untouched).
+  const cellTargets = computeGridRoundedValues(wrapperEl, opts);
 
-  // Pass 1: collect all current visible numeric values to compute max_mag
-  // (set-aware rounding: the same logic as the initial roundTable pass).
-  const currentAdapter = makeAdapter(wrapperEl);
-  const rows = currentAdapter.getRows();
-  const allNums = [];
-  for (const row of rows) {
-    for (const cellObj of row.getCells()) {
-      if (cellObj.tagName !== 'TD') continue;
-      const tn = findCellTextNode(cellObj.el);
-      const text = tn ? tn.nodeValue : (cellObj.el.textContent || '');
-      const trimmed = typeof text === 'string' ? text.trim() : '';
-      if (!trimmed || isDateLike(trimmed) || isTimeLike(trimmed)) continue;
-      const num = toNumber(text);
-      if (num !== null) allNums.push(num);
-    }
-  }
-  const max_mag = findMaxMagnitude([allNums]);
+  for (const { cellObj, targetValue } of cellTargets) {
+    // null means "leave unchanged" — excluded, out-of-range, or no change needed.
+    if (targetValue === null) continue;
 
-  // Pass 2: for each cell, compute what rounding would produce from opts;
-  // re-apply via nodeValue if the current live value differs.
-  for (const row of rows) {
-    for (const cellObj of row.getCells()) {
-      if (cellObj.tagName !== 'TD') continue;
-      const tn = findCellTextNode(cellObj.el);
-      if (!tn) continue;
-      const currentValue = tn.nodeValue;
-      const rounded = computeGridCellRoundedValue(currentValue, opts, max_mag, floorDecimals);
-      if (rounded !== null && currentValue !== rounded) {
-        // Store original if not already stored (freshly-recycled row).
-        if (cellObj.el.dataset && cellObj.el.dataset.drOriginal === undefined) {
-          cellObj.el.dataset.drOriginal = currentValue;
-        }
-        tn.nodeValue = rounded;
-        if (cellObj.el.classList) cellObj.el.classList.add(GRID_ROUNDED_CLASS);
-      }
+    const tn = findCellTextNode(cellObj.el);
+    if (!tn) continue;
+    const currentValue = tn.nodeValue;
+
+    // Only write if the live text node differs from the computed target.
+    if (currentValue === targetValue) continue;
+
+    // Store the original value on freshly-recycled rows (not yet rounded by us).
+    if (cellObj.el.dataset && cellObj.el.dataset.drOriginal === undefined) {
+      cellObj.el.dataset.drOriginal = currentValue;
     }
+    tn.nodeValue = targetValue;
+    if (cellObj.el.classList) cellObj.el.classList.add(GRID_ROUNDED_CLASS);
   }
 
   // Reconnect the observer after the write pass.
@@ -1417,9 +1543,58 @@ function roundTable(table, options) {
   // return early without throwing.
   if (adapterRows.length === 0) return;
   const isVirtualized = adapter.isVirtualized();
+
+  // --- Virtualized grid path ---
+  // Delegate ALL classification and value computation to computeGridRoundedValues
+  // so the initial write pass and reapplyGridRounding share one gated path and
+  // cannot produce diverging results for the same visible DOM + opts.
+  if (isVirtualized) {
+    const cellTargets = computeGridRoundedValues(table, opts);
+    for (const { cellObj, targetValue } of cellTargets) {
+      // null means "leave unchanged" — excluded, out-of-range, or no change needed.
+      if (targetValue === null) continue;
+      cellObj.setText(targetValue);
+    }
+    syncSwitchForTable(table);
+
+    // Attach the scroll/sort re-apply observer AFTER the initial pass so our own
+    // nodeValue writes above do not immediately re-trigger it.
+    if (typeof MutationObserver !== 'undefined') {
+      // Disconnect any stale observer (e.g. roundTable called twice on same grid).
+      const staleObserver = gridObservers.get(table);
+      if (staleObserver) staleObserver.disconnect();
+
+      // Clear any pending debounce timer from a previous observer.
+      const staleTimer = gridReapplyTimers.get(table);
+      if (staleTimer !== undefined) {
+        clearTimeout(staleTimer);
+        gridReapplyTimers.delete(table);
+      }
+
+      const scrollContainer = adapter._getScrollContainer();
+      const wrapperEl = table; // alias for clarity inside the closure
+
+      const observer = new MutationObserver(() => {
+        // Cancel any pending debounce timer for this grid and schedule a fresh one.
+        const pending = gridReapplyTimers.get(wrapperEl);
+        if (pending !== undefined) clearTimeout(pending);
+
+        const timerId = setTimeout(() => {
+          reapplyGridRounding(wrapperEl);
+        }, GRID_REAPPLY_DEBOUNCE_MS);
+
+        gridReapplyTimers.set(wrapperEl, timerId);
+      });
+
+      observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
+      gridObservers.set(wrapperEl, observer);
+    }
+    return;
+  }
+
+  // --- Native <table> path (byte-identical to prior implementation) ---
   const data = [];
-  // For native tables, cellsMap stores raw element. For grid tables, cellsMap
-  // stores the full cellObj so the write pass can call cellObj.setText().
+  // For native tables, cellsMap stores raw element.
   const cellsMap = [];
   const cellInfo = [];
 
@@ -1437,9 +1612,8 @@ function roundTable(table, options) {
       const col = dataCol++;
       const text = cellObj.getText();
       rowData.push(text);
-      // Carry the full cellObj for grid adapters so the write pass can call
-      // cellObj.setText(); for native adapters carry the raw element (unchanged).
-      rowCells.push(isVirtualized ? cellObj : cell);
+      // For native adapters carry the raw element (unchanged).
+      rowCells.push(cell);
 
       const trimmed = typeof text === 'string' ? text.trim() : '';
       // Whole-cell quote short-circuit: if the entire cell content is a single
@@ -1616,13 +1790,6 @@ function roundTable(table, options) {
         if (formattedValue === originalValue.trim()) continue;
       } else {
         // mode === 'extracted': multi-match HTML-preserving patches.
-        // Known limitation: mode:'extracted' cells (mixed text with embedded numbers,
-        // e.g. <sup>-containing cells) require applyExtractedPatches which writes innerHTML.
-        // This is incompatible with the nodeValue-only write model required for virtualized
-        // grids (innerHTML writes crash React's reconciler). Skip extracted cells on grids
-        // for this sprint — only pure-numeric and date/time cells are rounded on grids.
-        if (isVirtualized) continue;
-
         // Round each match and patch its text node directly. This avoids the
         // whole-cell character-distribution approach, which mis-allocates
         // characters when newText length differs from original (corrupting
@@ -1643,61 +1810,17 @@ function roundTable(table, options) {
         continue;
       }
 
-      if (isVirtualized) {
-        // Grid path: write via nodeValue patching only — never innerHTML/textContent.
-        // cellsMap holds the full cellObj (GridAdapter._makeCellObj) for grid tables.
-        // cellObj.setText stores drOriginal, patches in place, adds dr-ext-rounded.
-        // Do NOT set dataset.originalHtml (would cause resetTable to fall into the
-        // native innerHTML restore branch — the crash mode on toggle-off).
-        const cellObj = cellsMap[r][c];
-        cellObj.setText(formattedValue);
-      } else {
-        // Native-table path: cache pristine HTML before mutation so toggle/reset can
-        // restore it without needing to keep the rounded value around.
-        const cell = cellsMap[r][c];
-        cell.dataset.originalHtml = cell.innerHTML;
-        replaceTextPreservingHTML(cell, originalValue, formattedValue);
-        cell.title = `Original: ${originalValue}`;
-        cell.classList.add('dr-ext-rounded');
-        cell.dataset.originalValue = originalValue;
-      }
+      // Native-table path: cache pristine HTML before mutation so toggle/reset can
+      // restore it without needing to keep the rounded value around.
+      const cell = cellsMap[r][c];
+      cell.dataset.originalHtml = cell.innerHTML;
+      replaceTextPreservingHTML(cell, originalValue, formattedValue);
+      cell.title = `Original: ${originalValue}`;
+      cell.classList.add('dr-ext-rounded');
+      cell.dataset.originalValue = originalValue;
     }
   }
   syncSwitchForTable(table);
-
-  // Attach the scroll/sort re-apply observer AFTER the initial pass so our own
-  // nodeValue writes above do not immediately re-trigger it.
-  // Only virtualized grids get an observer — native <table> adapters do not.
-  if (isVirtualized && typeof MutationObserver !== 'undefined') {
-    // Disconnect any stale observer (e.g. roundTable called twice on same grid).
-    const staleObserver = gridObservers.get(table);
-    if (staleObserver) staleObserver.disconnect();
-
-    // Clear any pending debounce timer from a previous observer.
-    const staleTimer = gridReapplyTimers.get(table);
-    if (staleTimer !== undefined) {
-      clearTimeout(staleTimer);
-      gridReapplyTimers.delete(table);
-    }
-
-    const scrollContainer = adapter._getScrollContainer();
-    const wrapperEl = table; // alias for clarity inside the closure
-
-    const observer = new MutationObserver(() => {
-      // Cancel any pending debounce timer for this grid and schedule a fresh one.
-      const pending = gridReapplyTimers.get(wrapperEl);
-      if (pending !== undefined) clearTimeout(pending);
-
-      const timerId = setTimeout(() => {
-        reapplyGridRounding(wrapperEl);
-      }, GRID_REAPPLY_DEBOUNCE_MS);
-
-      gridReapplyTimers.set(wrapperEl, timerId);
-    });
-
-    observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
-    gridObservers.set(wrapperEl, observer);
-  }
 }
 
 function lettersToColIndex(letters) {
