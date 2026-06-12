@@ -207,6 +207,21 @@ If any spike is **Amend**, state plainly that the downstream sprints (<list>) ar
 
 Then stop.
 
+## Subagent liveness
+
+Subagents wake the orchestrator with a completion notification, but they can die
+silently. **Check every 10 minutes** while one is outstanding.
+
+To check whether an agent is alive, use `TaskOutput(task_id, block=false)`:
+`status: running` = alive, `No task found` = gone. (You can also `stat` the
+task's `.output` file for growth — but never `Read` it; it overflows context.)
+The harness "Running" task panel is not authoritative — it can show a finished
+task as running for hours.
+
+If an agent is confirmed dead (`No task found`, no new commits, no working-tree
+changes), re-spawn it with the same instructions — a re-spawn replaces lost work
+and does not count against the BLOCK-retry budget.
+
 ## Key rules
 
 - **Sprints run one at a time**, in topological order.
