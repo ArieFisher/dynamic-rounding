@@ -109,7 +109,7 @@ globalThis.NativeTableAdapter = NativeTableAdapter;
 globalThis.GridAdapter = GridAdapter;
 // Expose grid-virtualization internals for the grid-virtualization test suite.
 globalThis.reapplyGridRounding = reapplyGridRounding;
-globalThis.computeGridCellRoundedValue = computeGridCellRoundedValue;
+globalThis.computeGridRoundedValues = computeGridRoundedValues;
 globalThis.gridObservers = gridObservers;
 globalThis.gridReapplyTimers = gridReapplyTimers;
 globalThis.GRID_REAPPLY_DEBOUNCE_MS = GRID_REAPPLY_DEBOUNCE_MS;
