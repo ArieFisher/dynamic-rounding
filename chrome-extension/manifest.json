@@ -21,6 +21,9 @@
         "defaults.js",
         "rounding.js",
         "core.js",
+        "parsing.js",
+        "dom-adapters.js",
+        "ui-toggle.js",
         "content.js"
       ]
     }

@@ -46,8 +46,15 @@ global.Node = { ELEMENT_NODE: 1 };
 const defaultsCode = fs.readFileSync(path.join(__dirname, 'defaults.js'), 'utf8');
 const roundingCode = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
 const coreCode = fs.readFileSync(path.join(__dirname, 'core.js'), 'utf8');
+const parsingCode = fs.readFileSync(path.join(__dirname, 'parsing.js'), 'utf8');
+const domAdaptersCode = fs.readFileSync(path.join(__dirname, 'dom-adapters.js'), 'utf8');
+const uiToggleCode = fs.readFileSync(path.join(__dirname, 'ui-toggle.js'), 'utf8');
 const code = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-eval(defaultsCode + '\n' + roundingCode + '\n' + coreCode + '\n' + code + `
+// Combined source for "source-includes" assertions that no longer care which
+// content-script file a symbol physically lives in after the Phase 2 split.
+const allContentSrc = parsingCode + '\n' + domAdaptersCode + '\n' + uiToggleCode + '\n' + code;
+eval(defaultsCode + '\n' + roundingCode + '\n' + coreCode + '\n' +
+     parsingCode + '\n' + domAdaptersCode + '\n' + uiToggleCode + '\n' + code + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
@@ -1485,8 +1492,9 @@ function withLinkCreateTreeWalker(fn) {
 // --- 5. Regression guards ---
 
 (function quoteRegressionGuards() {
-  // 5a. cell.innerText || cell.textContent is the read source (static analysis)
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  // 5a. cell.innerText || cell.textContent is the read source (static analysis).
+  // Lives in the NativeTableAdapter (dom-adapters.js) after the Phase 2 split.
+  const contentSrc = allContentSrc;
   eq('regression: read source is cell.innerText || cell.textContent',
     contentSrc.includes('cell.innerText || cell.textContent'), true);
 
@@ -1511,11 +1519,11 @@ function withLinkCreateTreeWalker(fn) {
   } else {
     passed++;
   }
-  // content.js MUST define getQuoteMaskedRanges (existence check)
-  eq('regression: content.js defines getQuoteMaskedRanges',
+  // The content scripts MUST define getQuoteMaskedRanges (now in parsing.js)
+  eq('regression: content scripts define getQuoteMaskedRanges',
     contentSrc.includes('function getQuoteMaskedRanges('), true);
-  // content.js MUST define overlapsQuoteRange
-  eq('regression: content.js defines overlapsQuoteRange',
+  // ...and overlapsQuoteRange (now in parsing.js)
+  eq('regression: content scripts define overlapsQuoteRange',
     contentSrc.includes('function overlapsQuoteRange('), true);
 })();
 // --- Sprint decimal-precision-display: decimalCount ---
@@ -1613,11 +1621,11 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts loads defaults.js, rounding.js, core.js, content.js in order',
-    manifest.content_scripts[0].js[0] === 'defaults.js' &&
-    manifest.content_scripts[0].js[1] === 'rounding.js' &&
-    manifest.content_scripts[0].js[2] === 'core.js' &&
-    manifest.content_scripts[0].js[3] === 'content.js', true);
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, rounding, core, parsing, dom-adapters, ui-toggle, content',
+    JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
+      'defaults.js', 'rounding.js', 'core.js',
+      'parsing.js', 'dom-adapters.js', 'ui-toggle.js', 'content.js',
+    ]), true);
 
   // AC3: (sidebar-tidyup) the old "section-heading" with "Include numbers in cells containing:"
   // was removed in the sidebar-tidyup sprint — no replacement test needed here.
@@ -1631,9 +1639,9 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   eq('sidebar-defaults: rangeSection markup still present in HTML',
     sidebarHtml.includes('id="rangeSection"'), true);
 
-  // AC5: content.js still defines parseRangeExpr (no regression).
-  eq('sidebar-defaults: content.js still defines parseRangeExpr',
-    /function parseRangeExpr\b/.test(contentJsSource), true);
+  // AC5: parseRangeExpr is still defined (now in parsing.js after Phase 2 split).
+  eq('sidebar-defaults: content scripts still define parseRangeExpr',
+    /function parseRangeExpr\b/.test(allContentSrc), true);
 
   // AC6: manifest.json has a valid N.N.N version string.
   eq('sidebar-defaults: manifest version matches N.N.N',
@@ -2346,20 +2354,22 @@ function makeMockButton() {
 // --- Regression guard: content.js declares the new infrastructure ---
 
 (function atToggle_contentJsDeclarations() {
-  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-  eq('auto-table-toggle: content.js declares tableToggles WeakMap',
+  // Toggle widget infrastructure lives in ui-toggle.js after the Phase 2 split;
+  // scan the combined content-script source so the contract is location-agnostic.
+  const src = allContentSrc;
+  eq('auto-table-toggle: declares tableToggles WeakMap',
     /const\s+tableToggles\s*=\s*new\s+WeakMap/.test(src), true);
-  eq('auto-table-toggle: content.js declares trackedTables Set',
+  eq('auto-table-toggle: declares trackedTables Set',
     /const\s+trackedTables\s*=\s*new\s+Set/.test(src), true);
-  eq('auto-table-toggle: content.js defines isTableRounded',
+  eq('auto-table-toggle: defines isTableRounded',
     /function\s+isTableRounded\b/.test(src), true);
-  eq('auto-table-toggle: content.js defines syncSwitchForTable',
+  eq('auto-table-toggle: defines syncSwitchForTable',
     /function\s+syncSwitchForTable\b/.test(src), true);
-  eq('auto-table-toggle: content.js defines positionToggle',
+  eq('auto-table-toggle: defines positionToggle',
     /function\s+positionToggle\b/.test(src), true);
-  eq('auto-table-toggle: content.js defines createToggleForTable',
+  eq('auto-table-toggle: defines createToggleForTable',
     /function\s+createToggleForTable\b/.test(src), true);
-  eq('auto-table-toggle: content.js defines injectTableToggles',
+  eq('auto-table-toggle: defines injectTableToggles',
     /function\s+injectTableToggles\b/.test(src), true);
   // The toggle button must use the new dr-ext-morph CSS class
   eq('auto-table-toggle: toggle uses dr-ext-morph CSS class',
@@ -2469,7 +2479,7 @@ function makeMockButton() {
 //       :focus-visible rule with `outline` and `!important`.
 
 (function accessibilityAC2_focusVisibleCSS() {
-  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const src = allContentSrc; // toggle CSS now in ui-toggle.js (Phase 2 split)
 
   eq('accessibility AC2: content.js CSS contains :focus-visible selector',
     src.includes(':focus-visible'), true);
@@ -3081,7 +3091,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 // Additional: static analysis — new functions exist in content.js
 // ---------------------------------------------------------------------------
 (function dateRoundStaticAnalysis() {
-  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const src = allContentSrc; // date parsing now in parsing.js (Phase 2 split)
 
   eq('static: parseDateLike is defined in content.js',
     /function\s+parseDateLike\b/.test(src), true);
@@ -3186,7 +3196,13 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   };
   const vm = require('vm');
   const ctx = vm.createContext(sandbox);
-  vm.runInContext(patchedRounding + '\n' + contentSrc + '\nthis.__roundWithOffset = roundWithOffset;', ctx);
+  // content.js runs its observer/listener wiring at load and depends on the
+  // extracted layers (core/parsing/dom-adapters/ui-toggle), so eval them in the
+  // same order the manifest loads them before content.js.
+  vm.runInContext(
+    patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
+    domAdaptersCode + '\n' + uiToggleCode + '\n' + contentSrc +
+    '\nthis.__roundWithOffset = roundWithOffset;', ctx);
   const patchedRound = sandbox.__roundWithOffset;
 
   eq('x-floor flip: rd(17054321, 0.5) === 20000000 with X_FLOOR_THRESHOLD=0',
@@ -3871,7 +3887,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 // Soft check: the constant names TOGGLE_DOT_PX etc. appear in the CSS template block.
 
 (function morphAC_constantsUsedInCSS() {
-  const src = require('fs').readFileSync(require('path').join(__dirname, 'content.js'), 'utf8');
+  const src = allContentSrc; // toggle geometry now in ui-toggle.js (Phase 2 split)
 
   // The CSS function body should contain interpolations of the constants, not bare literals.
   // We extract the ensureToggleStyleInjected function body as a rough string.
@@ -4015,24 +4031,34 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     manifest.content_scripts[0].js[1], 'rounding.js');
 })();
 
-// core.js (domain dispatch/coercion layer) must load AFTER rounding.js (whose
-// roundWithOffset it calls) and BEFORE content.js, in all three load points:
-// manifest content_scripts, sidebar.html <script> tags, and this test harness's
-// own eval concatenation. Keep them in lockstep.
-(function coreLoadOrderAcrossEntryPoints() {
+// The extracted layers (core.js + the Phase 2 split: parsing.js, dom-adapters.js,
+// ui-toggle.js) must all load AFTER rounding.js and BEFORE content.js — content.js
+// runs last because it holds the only load-time-executing code (listeners and the
+// MutationObserver wiring). This ordering is duplicated in three places (manifest
+// content_scripts, sidebar.html, and this harness's eval concatenation); they must
+// stay in lockstep.
+(function layerLoadOrderAcrossEntryPoints() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   const js = manifest.content_scripts[0].js;
-  eq('manifest content_scripts loads core.js between rounding.js and content.js',
-    js.indexOf('rounding.js') < js.indexOf('core.js') &&
-    js.indexOf('core.js') < js.indexOf('content.js'), true);
+  const after = (a, b) => js.indexOf(a) > -1 && js.indexOf(b) > -1 && js.indexOf(a) < js.indexOf(b);
+  eq('manifest: rounding.js < core.js < parsing.js < dom-adapters.js < ui-toggle.js < content.js',
+    after('rounding.js', 'core.js') && after('core.js', 'parsing.js') &&
+    after('parsing.js', 'dom-adapters.js') && after('dom-adapters.js', 'ui-toggle.js') &&
+    after('ui-toggle.js', 'content.js'), true);
+  eq('manifest: content.js loads last', js[js.length - 1], 'content.js');
 
+  // The sidebar deliberately does NOT load the content-only layers — it only
+  // needs the pure domain (defaults, rounding, core).
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('sidebar.html loads core.js after rounding.js and before sidebar.js',
     /rounding\.js[\s\S]*core\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+  eq('sidebar.html does not load content-only parsing.js', sidebarHtml.includes('parsing.js'), false);
+  eq('sidebar.html does not load content-only dom-adapters.js', sidebarHtml.includes('dom-adapters.js'), false);
+  eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
 
   const testsSource = fs.readFileSync(path.join(__dirname, 'tests.js'), 'utf8');
-  eq('tests.js eval concatenation includes core.js after rounding.js, before content.js',
-    /roundingCode[\s\S]*coreCode[\s\S]*code\b/.test(
+  eq('tests.js eval concatenation orders the layers core→parsing→dom-adapters→ui-toggle→content',
+    /coreCode[\s\S]*parsingCode[\s\S]*domAdaptersCode[\s\S]*uiToggleCode[\s\S]*code\b/.test(
       testsSource.slice(testsSource.indexOf('eval('))), true);
 })();
 
@@ -4650,7 +4676,9 @@ function fireTouchSecondTap(buttonEl) {
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_sourceLevel() {
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  // Click-handler rebind logic now spans content.js + ui-toggle.js (Phase 2);
+  // scan the combined content-script source.
+  const contentSrc = allContentSrc;
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // content.js: sidebarOpen flag is declared as a module-level let
@@ -7035,7 +7063,8 @@ function makeGridWrapper(rowData, opts) {
   // The _makeCellObj method must ONLY use tn.nodeValue = s.
   // Source scan: the setText implementation inside _makeCellObj must not contain
   // 'textContent =' (with a write) or 'innerHTML =' outside the native-table path.
-  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  // GridAdapter now lives in dom-adapters.js (Phase 2 split).
+  const src = allContentSrc;
 
   // Extract _makeCellObj body (from _makeCellObj to the closing brace of its returned object)
   const makeCellObjIdx = src.indexOf('_makeCellObj(');
@@ -7351,7 +7380,8 @@ function makeGridWrapper(rowData, opts) {
 // nodeValue-safe. It will flag a regression if someone adds an innerHTML= write
 // in the adapter's setText or in a new grid-specific roundTable branch.
 (function gr6j_gridSetText_sourceGuard_noInnerHTMLInAdapterSetText() {
-  const src = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  // GridAdapter now lives in dom-adapters.js (Phase 2 split).
+  const src = allContentSrc;
 
   // Extract _makeCellObj body (the GridAdapter's cell factory, ~1000 chars)
   const idx = src.indexOf('_makeCellObj(');
