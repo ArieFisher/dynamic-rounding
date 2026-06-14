@@ -6,13 +6,11 @@
  */
 
 // Constants
-const CLEAN_REGEX = /[$€£¥,\s%]/g;
-const PARENS_REGEX = /^\((.+)\)$/;
+// CLEAN_REGEX, PARENS_REGEX, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP, and
+// VALIDATION_LIMIT live in core.js (loaded ahead of this file); they are used
+// here too via shared global scope.
 const NUMBER_IN_TEXT_REGEX = /-?\d[\d,]*(?:\.\d+)?/;
 const NUMBER_IN_TEXT_REGEX_GLOBAL = /-?\d[\d,]*(?:\.\d+)?/g;
-const DEFAULT_OFFSET_TOP = -0.5;
-const DEFAULT_NUM_TOP = 1;
-const VALIDATION_LIMIT = 20;
 
 // Grid detection constants
 /** Minimum number of direct children for an element to be a grid candidate. */
@@ -2337,87 +2335,10 @@ function toggleOriginalValues(table) {
   syncSwitchForTable(table);
 }
 
-// --- Core Algorithm Inlined ---
-
-function ROUND_DYNAMIC(values, offset_top, offset_other, num_top) {
-  const firstIsArray = Array.isArray(values);
-
-  if (firstIsArray) {
-    return datasetMode(values, offset_top, offset_other, num_top);
-  } else {
-    return singleValueMode(values, offset_top);
-  }
-}
-
-function singleValueMode(value, offset) {
-  offset = (offset === undefined || offset === "") ? DEFAULT_OFFSET_TOP : offset;
-  validateOffset(offset, "offset");
-
-  if (value === "" || value === null) return "";
-
-  const num = toNumber(value);
-  if (num === null) return value;
-  if (num === 0) return 0;
-
-  return roundWithOffset(num, offset);
-}
-
-function datasetMode(range, offset_top, offset_other, num_top) {
-  offset_top = (offset_top === undefined || offset_top === "") ? DEFAULT_OFFSET_TOP : offset_top;
-  offset_other = (offset_other === undefined || offset_other === "") ? offset_top : offset_other;
-  num_top = (num_top === undefined || num_top === "") ? DEFAULT_NUM_TOP : num_top;
-  validateOffset(offset_top, "offset_top");
-  validateOffset(offset_other, "offset_other");
-
-  if (!Array.isArray(range[0])) {
-    range = [range];
-  }
-
-  const numericRange = range.map(row => row.map(cell => toNumber(cell)));
-  const max_mag = findMaxMagnitude(numericRange);
-
-  return range.map((row, r) =>
-    row.map((cell, c) => roundCellSetAware(cell, numericRange[r][c], max_mag, offset_top, offset_other, num_top))
-  );
-}
-
-function findMaxMagnitude(numericRange) {
-  let max_mag = null;
-  for (let row of numericRange) {
-    for (let num of row) {
-      if (num !== null && num !== 0 && isFinite(num)) {
-        const mag = Math.floor(Math.log10(Math.abs(num)));
-        if (max_mag === null || mag > max_mag) {
-          max_mag = mag;
-        }
-      }
-    }
-  }
-  return max_mag;
-}
-
-// roundCellSetAware and roundWithOffset live in rounding.js.
-
-function toNumber(value) {
-  if (typeof value === "number") {
-    return isFinite(value) ? value : null;
-  }
-  if (typeof value === "string" && value.trim() !== "") {
-    let cleaned = value.trim()
-      .replace(/[‐-―−﹘﹣－]/g, "-")
-      .replace(CLEAN_REGEX, "")
-      .replace(PARENS_REGEX, "-$1");
-    const parsed = Number(cleaned);
-    return isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function validateOffset(offset, paramName) {
-  if (offset < -VALIDATION_LIMIT || offset > VALIDATION_LIMIT) {
-    throw new Error(paramName + " must be between -" + VALIDATION_LIMIT + " and " + VALIDATION_LIMIT + ", got " + offset);
-  }
-}
+// ROUND_DYNAMIC, singleValueMode, datasetMode, findMaxMagnitude, toNumber, and
+// validateOffset (plus DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP, VALIDATION_LIMIT,
+// CLEAN_REGEX, PARENS_REGEX) live in core.js, loaded by manifest content_scripts
+// ahead of this file so the sidebar can call the same ROUND_DYNAMIC core.
 
 /**
  * Restore the formatting of a pure-numeric cell after rounding.
