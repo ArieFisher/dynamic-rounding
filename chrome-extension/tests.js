@@ -45,8 +45,9 @@ global.Node = { ELEMENT_NODE: 1 };
 // inside the eval'd code so the auto-table-toggle test section can access them.
 const defaultsCode = fs.readFileSync(path.join(__dirname, 'defaults.js'), 'utf8');
 const roundingCode = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
+const coreCode = fs.readFileSync(path.join(__dirname, 'core.js'), 'utf8');
 const code = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-eval(defaultsCode + '\n' + roundingCode + '\n' + code + `
+eval(defaultsCode + '\n' + roundingCode + '\n' + coreCode + '\n' + code + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
@@ -1612,10 +1613,11 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts loads defaults.js, rounding.js, content.js in order',
+  eq('sidebar-defaults: manifest content_scripts loads defaults.js, rounding.js, core.js, content.js in order',
     manifest.content_scripts[0].js[0] === 'defaults.js' &&
     manifest.content_scripts[0].js[1] === 'rounding.js' &&
-    manifest.content_scripts[0].js[2] === 'content.js', true);
+    manifest.content_scripts[0].js[2] === 'core.js' &&
+    manifest.content_scripts[0].js[3] === 'content.js', true);
 
   // AC3: (sidebar-tidyup) the old "section-heading" with "Include numbers in cells containing:"
   // was removed in the sidebar-tidyup sprint — no replacement test needed here.
@@ -4011,6 +4013,27 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   eq('manifest content_scripts loads rounding.js between defaults.js and content.js',
     manifest.content_scripts[0].js[1], 'rounding.js');
+})();
+
+// core.js (domain dispatch/coercion layer) must load AFTER rounding.js (whose
+// roundWithOffset it calls) and BEFORE content.js, in all three load points:
+// manifest content_scripts, sidebar.html <script> tags, and this test harness's
+// own eval concatenation. Keep them in lockstep.
+(function coreLoadOrderAcrossEntryPoints() {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
+  const js = manifest.content_scripts[0].js;
+  eq('manifest content_scripts loads core.js between rounding.js and content.js',
+    js.indexOf('rounding.js') < js.indexOf('core.js') &&
+    js.indexOf('core.js') < js.indexOf('content.js'), true);
+
+  const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  eq('sidebar.html loads core.js after rounding.js and before sidebar.js',
+    /rounding\.js[\s\S]*core\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+
+  const testsSource = fs.readFileSync(path.join(__dirname, 'tests.js'), 'utf8');
+  eq('tests.js eval concatenation includes core.js after rounding.js, before content.js',
+    /roundingCode[\s\S]*coreCode[\s\S]*code\b/.test(
+      testsSource.slice(testsSource.indexOf('eval('))), true);
 })();
 
 (function previewBand_sidebarHtmlHasBands() {
