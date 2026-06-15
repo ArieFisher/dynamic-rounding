@@ -8596,6 +8596,332 @@ function makeOnScreenTable() {
     isPhantomA11yTable({}), false);
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint loosen-pass2-aria: Pass 2 phantom-table gate in injectTableToggles
+// ---------------------------------------------------------------------------
+//
+// The spec change: Pass 2 now skips an ARIA grid ONLY when it contains at
+// least one REAL (non-phantom) <table>.  A grid that contains only phantom
+// a11y tables (aria-hidden, offscreen, or svg-chart-wrapped) must be picked up
+// by Pass 2 and get a toggle.
+//
+// Helper: build a minimal ARIA grid element (div with role="grid" or role="table")
+// with a proper classList and the querySelectorAll('table') that returns a given
+// list of embedded table stubs.  Also provides a real row/cell structure so that
+// isDataTable() → GridAdapter.getRows() returns numeric data rows, making
+// createToggleForTable() proceed past the isDataTable guard.
+//
+function makeAriaGrid(embeddedTables) {
+  const classes = new Set();
+
+  // Build two rows × two numeric cells so isDataTable returns true.
+  function makeGridCell(text) {
+    return {
+      tagName: 'DIV',
+      textContent: text,
+      dataset: {},
+      classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
+      querySelectorAll() { return []; },
+      childNodes: [],
+    };
+  }
+  function makeGridRow(texts) {
+    const cellEls = texts.map(makeGridCell);
+    return {
+      tagName: 'DIV',
+      dataset: {},
+      children: cellEls,
+      querySelectorAll() { return []; },
+    };
+  }
+  const rowEls = [
+    makeGridRow(['1,000,000', '2,000,000']),
+    makeGridRow(['3,000,000', '4,000,000']),
+  ];
+
+  return {
+    tagName: 'DIV',
+    classList: {
+      contains(c) { return classes.has(c); },
+      add(c)      { classes.add(c); },
+      remove(c)   { classes.delete(c); },
+      _classes:   classes,
+    },
+    // querySelectorAll: for 'table' return embeddedTables; for grid-detection selectors
+    // ([role="grid"], [role="row"], etc.) return nothing so GridAdapter falls back to children.
+    querySelectorAll(sel) {
+      if (sel === 'table') return embeddedTables || [];
+      return [];
+    },
+    // children: the two rows — used by GridAdapter._getRowEls as fallback
+    children: rowEls,
+    getBoundingClientRect() {
+      return { top: 50, right: 300, bottom: 100, left: 50 };
+    },
+  };
+}
+
+// Helper: build a minimal phantom embedded table (aria-hidden on self → isPhantomA11yTable true)
+function makePhantomEmbeddedTable() {
+  return makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
+}
+
+// Helper: build a minimal real on-screen embedded table (isPhantomA11yTable false)
+function makeRealEmbeddedTable() {
+  const tbl = makePhantomEl({ tagName: 'TABLE' });
+  const wrapper = makePhantomEl({ tagName: 'DIV' });
+  chainParents(tbl, wrapper);
+  return tbl;
+}
+
+// Shared mock factory for the document.createElement / document.body rig
+// that createToggleForTable requires.  Returns { restore } to undo.
+function withToggleDocumentMock(fn) {
+  const origCreateEl = global.document.createElement;
+  const origBody     = global.document.body;
+  const origDocEl    = global.document.documentElement;
+  const origQSA      = global.document.querySelectorAll;
+  const origScrollX  = global.window.scrollX;
+  const origScrollY  = global.window.scrollY;
+
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+  global.document.documentElement = { appendChild() {} };
+
+  global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
+    const el = {
+      _tag: tag,
+      type: '',
+      className: '',
+      style: {},
+      _children: [],
+      dataset: {},
+      parentElement: null,
+      textContent: '',
+      appendChild(child) {
+        this._children.push(child);
+        child.parentElement = this;
+        return child;
+      },
+      addEventListener(evt, fn2) {
+        if (!listeners[evt]) listeners[evt] = [];
+        listeners[evt].push(fn2);
+      },
+      setAttribute(name, value) { attrs[name] = value; },
+      getAttribute(name) {
+        return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+      },
+      classList: (() => {
+        const c = [];
+        return {
+          _c: c,
+          add(x)       { if (!c.includes(x)) c.push(x); },
+          remove(x)    { const i = c.indexOf(x); if (i >= 0) c.splice(i, 1); },
+          contains(x)  { return c.includes(x); },
+          toggle(x, f) {
+            const has = c.includes(x);
+            const want = f === undefined ? !has : f;
+            if (want && !has) c.push(x);
+            else if (!want && has) c.splice(c.indexOf(x), 1);
+            return want;
+          },
+        };
+      })(),
+      contains() { return false; },
+    };
+    return el;
+  };
+
+  global.document.body = {
+    appendChild(child) { child.parentElement = global.document.body; }
+  };
+
+  try {
+    fn();
+  } finally {
+    global.document.createElement   = origCreateEl;
+    global.document.body            = origBody;
+    global.document.documentElement = origDocEl;
+    global.document.querySelectorAll = origQSA;
+    global.window.scrollX            = origScrollX;
+    global.window.scrollY            = origScrollY;
+    toggleStyleInjected = true; // prevent style re-injection leaking across tests
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sanity: isPhantomA11yTable round-trip on the embedded-table fixtures
+// ---------------------------------------------------------------------------
+(function pass2aria_sanity_phantomEmbedded() {
+  const phantom = makePhantomEmbeddedTable();
+  eq('pass2-aria sanity: isPhantomA11yTable(phantom embedded table) === true',
+    isPhantomA11yTable(phantom), true);
+})();
+
+(function pass2aria_sanity_realEmbedded() {
+  const real = makeRealEmbeddedTable();
+  eq('pass2-aria sanity: isPhantomA11yTable(real embedded table) === false',
+    isPhantomA11yTable(real), false);
+})();
+
+// ---------------------------------------------------------------------------
+// AC1: ARIA grid with ONLY phantom tables → Pass 2 adds dr-ext-grid + toggle
+// ---------------------------------------------------------------------------
+(function pass2aria_AC1_onlyPhantomTables_getsToggle() {
+  const phantom1 = makePhantomEmbeddedTable();
+  const phantom2 = makePhantomEmbeddedTable();
+  const grid = makeAriaGrid([phantom1, phantom2]);
+
+  withToggleDocumentMock(function() {
+    // Pass 1 sees no tables; Pass 2 sees our grid.
+    global.document.querySelectorAll = function(sel) {
+      if (sel === 'table') return [];
+      if (sel === '[role="grid"], [role="table"]') return [grid];
+      return [];
+    };
+
+    injectTableToggles();
+  });
+
+  eq('pass2-aria: grid with only phantom tables gets dr-ext-grid class',
+    grid.classList.contains('dr-ext-grid'), true);
+  eq('pass2-aria: grid with only phantom tables gets a toggle registered',
+    tableToggles.has(grid), true);
+})();
+
+// ---------------------------------------------------------------------------
+// AC2: ARIA grid wrapping a REAL table → Pass 2 bows out (no toggle, no class)
+// ---------------------------------------------------------------------------
+(function pass2aria_AC2_realTable_pass2BowsOut() {
+  const realTbl = makeRealEmbeddedTable();
+  const grid    = makeAriaGrid([realTbl]);
+
+  withToggleDocumentMock(function() {
+    global.document.querySelectorAll = function(sel) {
+      if (sel === 'table') return [];
+      if (sel === '[role="grid"], [role="table"]') return [grid];
+      return [];
+    };
+
+    injectTableToggles();
+  });
+
+  eq('pass2-aria: grid wrapping a real table does NOT get dr-ext-grid class',
+    grid.classList.contains('dr-ext-grid'), false);
+  eq('pass2-aria: grid wrapping a real table does NOT get a toggle',
+    tableToggles.has(grid), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Adversarial AC2-mix: grid with phantom + one real → still bows out
+// ---------------------------------------------------------------------------
+(function pass2aria_adversarial_mixedPhantomAndReal_bowsOut() {
+  const phantom = makePhantomEmbeddedTable();
+  const real    = makeRealEmbeddedTable();
+  const grid    = makeAriaGrid([phantom, real]);
+
+  withToggleDocumentMock(function() {
+    global.document.querySelectorAll = function(sel) {
+      if (sel === 'table') return [];
+      if (sel === '[role="grid"], [role="table"]') return [grid];
+      return [];
+    };
+
+    injectTableToggles();
+  });
+
+  eq('pass2-aria: grid with phantom+real table does NOT get dr-ext-grid',
+    grid.classList.contains('dr-ext-grid'), false);
+  eq('pass2-aria: grid with phantom+real table does NOT get a toggle',
+    tableToggles.has(grid), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Adversarial: grid with NO embedded tables → Pass 2 adds class + toggle
+// (no embedded tables means .some(!phantom) is false — empty array)
+// ---------------------------------------------------------------------------
+(function pass2aria_adversarial_noEmbeddedTables_getsToggle() {
+  const grid = makeAriaGrid([]);
+
+  withToggleDocumentMock(function() {
+    global.document.querySelectorAll = function(sel) {
+      if (sel === 'table') return [];
+      if (sel === '[role="grid"], [role="table"]') return [grid];
+      return [];
+    };
+
+    injectTableToggles();
+  });
+
+  eq('pass2-aria: grid with no embedded tables gets dr-ext-grid class',
+    grid.classList.contains('dr-ext-grid'), true);
+  eq('pass2-aria: grid with no embedded tables gets a toggle',
+    tableToggles.has(grid), true);
+})();
+
+// ---------------------------------------------------------------------------
+// Adversarial: grid already carrying dr-ext-grid is skipped (preserved guard)
+// ---------------------------------------------------------------------------
+(function pass2aria_adversarial_alreadyTagged_skipped() {
+  const grid = makeAriaGrid([]);
+  grid.classList.add('dr-ext-grid'); // pre-tag it
+
+  withToggleDocumentMock(function() {
+    global.document.querySelectorAll = function(sel) {
+      if (sel === 'table') return [];
+      if (sel === '[role="grid"], [role="table"]') return [grid];
+      return [];
+    };
+
+    injectTableToggles();
+  });
+
+  // Already tagged → skipped → tableToggles should NOT have a new entry
+  // (we can't assert .has() false on a pre-existing toggle since none was injected,
+  // but we CAN verify the grid was not re-registered via trackedTables)
+  eq('pass2-aria: already-tagged grid is NOT added to trackedTables again',
+    tableToggles.has(grid), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Adversarial: element with tagName=TABLE is skipped by the tagName guard
+// (the preserved `if (el.tagName === 'TABLE') return;` fires before the new line)
+// ---------------------------------------------------------------------------
+(function pass2aria_adversarial_tableTagName_skipped() {
+  const phantom = makePhantomEmbeddedTable();
+  // Make an ARIA-grid-matching element that is itself a <TABLE>
+  const classes = new Set();
+  const gridTable = {
+    tagName: 'TABLE',    // triggers the early-return guard
+    classList: {
+      contains(c) { return classes.has(c); },
+      add(c)      { classes.add(c); },
+      remove(c)   { classes.delete(c); },
+    },
+    querySelectorAll(sel) {
+      return sel === 'table' ? [phantom] : [];
+    },
+    getBoundingClientRect() { return { top: 0, right: 0, bottom: 0, left: 0 }; },
+  };
+
+  withToggleDocumentMock(function() {
+    global.document.querySelectorAll = function(sel) {
+      if (sel === 'table') return [];
+      if (sel === '[role="grid"], [role="table"]') return [gridTable];
+      return [];
+    };
+
+    injectTableToggles();
+  });
+
+  eq('pass2-aria: element with tagName=TABLE is skipped by tagName guard',
+    gridTable.classList.contains('dr-ext-grid'), false);
+  eq('pass2-aria: element with tagName=TABLE does not get a toggle via Pass 2',
+    tableToggles.has(gridTable), false);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
