@@ -296,7 +296,7 @@ function injectTableToggles() {
   document.querySelectorAll(GRID_ARIA_SELECTOR).forEach(el => {
     if (el.classList.contains('dr-ext-grid')) return;
     if (el.tagName === 'TABLE') return; // handled by pass 1
-    if (el.querySelector('table')) return; // contains a native table — let pass 1 own it
+    if (Array.from(el.querySelectorAll('table')).some(t => !isPhantomA11yTable(t))) return; // contains a real native table — let pass 1 own it
     el.classList.add('dr-ext-grid');
     createToggleForTable(el);
   });
