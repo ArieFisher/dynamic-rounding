@@ -152,6 +152,44 @@ function applySidebarRounding(table, options) {
   syncSwitchForTable(table);
 }
 
+// Detect and attach toggles for tables/grids inside (or equal to) a node added
+// to the DOM. Mirrors injectTableToggles' two passes, including the phantom
+// a11y-table filtering required by issue #128 so dynamically-rendered SPA grids
+// (e.g. Kaggle's Data Explorer) are auto-detected and off-screen chart a11y
+// tables are not. Extracted as a named function so the detection is unit-testable
+// independently of the live MutationObserver wiring below.
+function injectTogglesForAddedNode(node) {
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+  // Pass 1: native <table> elements; phantom a11y tables are skipped.
+  if (node.tagName === 'TABLE' && !tableToggles.has(node) && !isPhantomA11yTable(node)) {
+    createToggleForTable(node);
+  }
+  if (typeof node.querySelectorAll === 'function') {
+    node.querySelectorAll('table').forEach(table => {
+      if (!tableToggles.has(table) && !isPhantomA11yTable(table)) {
+        createToggleForTable(table);
+      }
+    });
+    // Pass 2: cheap ARIA pass for added nodes — mirror injectTableToggles Pass 2.
+    // A grid that only embeds phantom a11y tables must still be detected.
+    node.querySelectorAll(GRID_ARIA_SELECTOR).forEach(el => {
+      if (el.classList.contains('dr-ext-grid')) return;
+      if (el.tagName === 'TABLE') return;
+      if (Array.from(el.querySelectorAll('table')).some(t => !isPhantomA11yTable(t))) return;
+      el.classList.add('dr-ext-grid');
+      createToggleForTable(el);
+    });
+  }
+  // The added node itself may be a [role="grid"/"table"] non-table element.
+  if (node.tagName !== 'TABLE' && typeof node.matches === 'function' &&
+      node.matches(GRID_ARIA_SELECTOR) && !node.classList.contains('dr-ext-grid')) {
+    if (!Array.from(node.querySelectorAll('table')).some(t => !isPhantomA11yTable(t))) {
+      node.classList.add('dr-ext-grid');
+      createToggleForTable(node);
+    }
+  }
+}
+
 if (typeof MutationObserver !== 'undefined') {
   ensureScrollResizeListeners();
 
@@ -160,33 +198,7 @@ if (typeof MutationObserver !== 'undefined') {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        // Pass 1: native <table> elements (unchanged).
-        if (node.tagName === 'TABLE' && !tableToggles.has(node)) {
-          createToggleForTable(node);
-        }
-        if (typeof node.querySelectorAll === 'function') {
-          node.querySelectorAll('table').forEach(table => {
-            if (!tableToggles.has(table)) {
-              createToggleForTable(table);
-            }
-          });
-          // Pass 2: cheap ARIA pass for added nodes — mirror injectTableToggles Pass 2.
-          node.querySelectorAll(GRID_ARIA_SELECTOR).forEach(el => {
-            if (el.classList.contains('dr-ext-grid')) return;
-            if (el.tagName === 'TABLE') return;
-            if (el.querySelector('table')) return;
-            el.classList.add('dr-ext-grid');
-            createToggleForTable(el);
-          });
-        }
-        // The added node itself may be a [role="grid"/"table"] non-table element.
-        if (node.tagName !== 'TABLE' && typeof node.matches === 'function' &&
-            node.matches(GRID_ARIA_SELECTOR) && !node.classList.contains('dr-ext-grid')) {
-          if (!node.querySelector('table')) {
-            node.classList.add('dr-ext-grid');
-            createToggleForTable(node);
-          }
-        }
+        injectTogglesForAddedNode(node);
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
