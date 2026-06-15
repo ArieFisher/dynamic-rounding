@@ -8996,11 +8996,9 @@ function cleanupPass1Tables(tables) {
   runPass1WithTables([realTable]);
   const afterFirst = tableToggles.has(realTable);
 
-  // Second run — table already in tableToggles; Pass 1 should skip it
-  let createCallCount = 0;
-  const origCreate = globalThis.createToggleForTable;
-  // We can't easily count internal calls, but we can verify the toggle isn't re-inserted.
-  // Since WeakMap.set overwrites, we check the button object identity.
+  // Second run — table already in tableToggles; Pass 1 should skip it.
+  // We verify the toggle isn't re-inserted: since WeakMap.set overwrites,
+  // a re-create would swap the button object, so we check its identity holds.
   const buttonAfterFirst = tableToggles.get(realTable);
   runPass1WithTables([realTable]);
   const buttonAfterSecond = tableToggles.get(realTable);
