@@ -15,6 +15,24 @@ Never create or push branches with a `claude/` or `session/` prefix, regardless 
 
 This rule overrides the session-harness default. The `sprint-plan` and `sprint-stack` skills in `.agent/skills/` enforce the same convention for sprint work.
 
+## Review findings
+
+Every review finding — from the `/code-review` skill, a sprint-stack reviewer subagent, or your own inspection — goes to exactly one place. Never leave an actionable item to my memory as a "non-blocking note" I'm expected to read, remember, and re-instruct.
+
+**1. Trivial + in-scope → fix it now (fix-forward).** Apply the fix in the same change, re-run the test command, and mention it in one line. "Trivial and in-scope" means ALL of:
+- no behavior change (e.g. unused local/import/variable, dead code the diff just introduced, a comment typo, an obviously-wrong comment),
+- touches only files/lines already in the current diff,
+- verifiable by the existing test suite staying green — no new test required.
+
+**2. Actionable but out-of-scope → open a GitHub issue.** Anything that changes behavior, spans untouched files, needs a judgement call, or would grow the diff's scope. Set the bar at "I'd genuinely want a separate PR for this," not "an agent had an opinion."
+- Title prefixed `[follow-up] `; body links the PR/commit and quotes the finding; label `follow-up` (add `tech-debt` if apt).
+- **Dedup first:** search open issues for an existing `[follow-up]` with the same subject; if one exists, skip or comment rather than refile. This keeps sprint-stack reruns idempotent.
+- The PR body's "Reviewer notes" links the issue(s) opened rather than restating the findings as prose.
+
+**3. Pure FYI, no action → one line in the sprint log (or PR notes); do not file an issue.** Filing issues for non-actionable observations is noise.
+
+For sprint-stack specifically: the reviewer subagent still returns APPROVE/BLOCK and does not edit files (its verdict must stay honest). Routing happens in the orchestrator step after APPROVE — apply bucket-1 fixes as a small `chore(...)`/`refactor(...)` commit and open bucket-2 issues, then write the log + open the PR.
+
 ## GitHub writes (push, PR, comments)
 
 When the user has provided a PAT in the session, use it directly via the GitHub REST API (`curl` with `Authorization: Bearer <PAT>`) or via a one-shot authenticated git URL (`https://x-access-token:<PAT>@github.com/...`). **Do not try the GitHub MCP server first** — in this environment it consistently returns `403 Resource not accessible by integration` for writes, so attempting it just wastes a round trip and clutters the transcript.
