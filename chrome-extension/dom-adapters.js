@@ -147,19 +147,43 @@ class GridAdapter {
 
   /**
    * Extract rows from a container element.
-   * Prefers [role="row"] / .dg--virtual-row; else repetitive children.
+   *
+   * Row source order: [role="row"] → .dg--virtual-row → <tr> → repetitive
+   * children. The <tr> source covers ARIA grids (role="grid"/"table") that
+   * render their rows as bare <tr> elements without role="row" — e.g. Kaggle's
+   * Data Explorer, whose movie rows are orphan <tr> inside the grid.
+   *
+   * Scoping: when the container groups rows in one or more [role="rowgroup"]
+   * elements (the ARIA analog of <tbody>), row discovery is restricted to those
+   * groups. This keeps header rows and per-column summary/stats rows — which
+   * sit OUTSIDE the rowgroup — from being treated as data rows. Both signals are
+   * standard ARIA, so this stays general (not site-specific).
+   *
    * @param {Element} container
    * @returns {Element[]}
    */
   _getRowEls(container) {
     if (!container) return [];
-    // Try ARIA/library rows first
-    let rows = container.querySelectorAll && container.querySelectorAll('[role="row"]');
-    if (rows && rows.length > 0) return Array.from(rows);
-    rows = container.querySelectorAll && container.querySelectorAll('.dg--virtual-row');
-    if (rows && rows.length > 0) return Array.from(rows);
-    // Fallback: repetitive children (direct children only)
-    if (container.children) return Array.from(container.children);
+    if (!container.querySelectorAll) {
+      return container.children ? Array.from(container.children) : [];
+    }
+    // Scope to ARIA rowgroup(s) when present so header/summary rows outside the
+    // group are excluded; otherwise search the whole container.
+    const rowgroups = container.querySelectorAll('[role="rowgroup"]');
+    const scopes = (rowgroups && rowgroups.length > 0)
+      ? Array.from(rowgroups)
+      : [container];
+
+    for (const sel of ['[role="row"]', '.dg--virtual-row', 'tr']) {
+      let rows = [];
+      for (const scope of scopes) {
+        if (scope.querySelectorAll) rows = rows.concat(Array.from(scope.querySelectorAll(sel)));
+      }
+      if (rows.length > 0) return rows;
+    }
+    // Fallback: repetitive children of the first scope.
+    const first = scopes[0];
+    if (first && first.children) return Array.from(first.children);
     return [];
   }
 
