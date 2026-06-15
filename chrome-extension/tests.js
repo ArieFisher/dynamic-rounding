@@ -72,6 +72,7 @@ globalThis.createToggleForTable = createToggleForTable;
 globalThis.runToggleAction = runToggleAction;
 globalThis.toggleOriginalValues = toggleOriginalValues;
 globalThis.injectTableToggles = injectTableToggles;
+globalThis.injectTogglesForAddedNode = injectTogglesForAddedNode;
 globalThis.isDataTable = isDataTable;
 globalThis.collectNumericCells = collectNumericCells;
 globalThis.extractPreviewSamples = extractPreviewSamples;
@@ -9335,6 +9336,102 @@ function withToggleDocumentMock(fn) {
     gridTable.classList.contains('dr-ext-grid'), false);
   eq('pass2-aria: element with tagName=TABLE does not get a toggle via Pass 2',
     tableToggles.has(gridTable), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint observer-phantom-filter (issue #128): MutationObserver added-node path
+// applies the SAME phantom filtering as injectTableToggles.
+//
+// The initial-load fix only touched injectTableToggles(). Kaggle is a React SPA
+// that renders its Data Explorer grid AFTER load, so detection runs through the
+// MutationObserver added-node handler — extracted here as injectTogglesForAddedNode().
+// These tests drive that function directly with element-node stubs.
+// ---------------------------------------------------------------------------
+
+// Helper: turn a makeAriaGrid() result into an added-node stub: it must look
+// like an element node and match GRID_ARIA_SELECTOR via node.matches().
+function asAddedGridNode(grid) {
+  grid.nodeType = global.Node.ELEMENT_NODE;
+  grid.tagName = 'DIV';
+  grid.matches = function(sel) { return sel === '[role="grid"], [role="table"]'; };
+  return grid;
+}
+
+// AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
+// <table>s are phantom chart a11y tables → gets dr-ext-grid + a toggle.
+(function observer_AC1_addedGridOnlyPhantomTables_getsToggle() {
+  const phantom1 = makePhantomEmbeddedTable();
+  const phantom2 = makePhantomEmbeddedTable();
+  const grid = asAddedGridNode(makeAriaGrid([phantom1, phantom2]));
+
+  withToggleDocumentMock(function() {
+    injectTogglesForAddedNode(grid);
+  });
+
+  eq('observer: added grid with only phantom tables gets dr-ext-grid class',
+    grid.classList.contains('dr-ext-grid'), true);
+  eq('observer: added grid with only phantom tables gets a toggle',
+    tableToggles.has(grid), true);
+})();
+
+// AC2: an added grid wrapping a REAL table → observer bows out (no class/toggle
+// on the grid itself; the real embedded table is owned by Pass 1).
+(function observer_AC2_addedGridRealTable_bowsOut() {
+  const realTbl = makePass1DataTable(); // non-phantom, has .rows for isDataTable
+  const grid = asAddedGridNode(makeAriaGrid([realTbl]));
+
+  withToggleDocumentMock(function() {
+    injectTogglesForAddedNode(grid);
+  });
+
+  eq('observer: added grid wrapping a real table does NOT get dr-ext-grid',
+    grid.classList.contains('dr-ext-grid'), false);
+  eq('observer: added grid wrapping a real table does NOT get a toggle',
+    tableToggles.has(grid), false);
+
+  cleanupPass1Tables([realTbl]);
+})();
+
+// AC3: a phantom native <table> reached via querySelectorAll on the added node
+// gets NO toggle (Pass 1 phantom skip in the observer path).
+(function observer_AC3_addedSubtreePhantomTable_noToggle() {
+  const phantom = makePhantomEmbeddedTable();
+  const container = {
+    nodeType: global.Node.ELEMENT_NODE,
+    tagName: 'DIV',
+    classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
+    matches() { return false; },
+    querySelectorAll(sel) { return sel === 'table' ? [phantom] : []; },
+  };
+
+  withToggleDocumentMock(function() {
+    injectTogglesForAddedNode(container);
+  });
+
+  eq('observer: phantom <table> in added subtree gets NO toggle',
+    tableToggles.has(phantom), false);
+})();
+
+// AC4: a real native <table> reached via querySelectorAll on the added node
+// DOES get a toggle (Pass 1 survivor in the observer path).
+(function observer_AC4_addedSubtreeRealTable_getsToggle() {
+  const realTbl = makePass1DataTable();
+  const container = {
+    nodeType: global.Node.ELEMENT_NODE,
+    tagName: 'DIV',
+    classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
+    matches() { return false; },
+    querySelectorAll(sel) { return sel === 'table' ? [realTbl] : []; },
+  };
+
+  withToggleDocumentMock(function() {
+    injectTogglesForAddedNode(container);
+  });
+
+  eq('observer: real <table> in added subtree gets a toggle',
+    tableToggles.has(realTbl), true);
+
+  cleanupPass1Tables([realTbl]);
 })();
 
 // --- Report ---
