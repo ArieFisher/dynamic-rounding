@@ -686,6 +686,123 @@ function findTargetTable(el) {
 
 /** Maximum number of cells sampled across grid rows when probing isDataTable for virtual grids. */
 const GRID_IS_DATA_TABLE_CELL_SAMPLE = 10;
+/** Left-offset threshold (px) below which an element is treated as deliberately off-screen hidden. */
+const OFFSCREEN_LEFT_PX_THRESHOLD = -9999;
+
+/**
+ * Return the nearest *positioned* ancestor of `el` (or `el` itself if it is
+ * positioned).  An element is "positioned" when its CSS position is one of
+ * relative | absolute | fixed | sticky.  We check inline style first (works in
+ * both real browser and Node test harness), then fall back to getComputedStyle
+ * when available.  Returns null when no positioned ancestor is found.
+ *
+ * @param {Element} el
+ * @returns {Element|null}
+ */
+function _nearestPositionedAncestor(el) {
+  const POSITIONED = new Set(['relative', 'absolute', 'fixed', 'sticky']);
+  let current = el;
+  while (current) {
+    if (typeof current.getAttribute !== 'function') {
+      // Not a real element node; step up
+      current = current.parentElement || current.parentNode || null;
+      continue;
+    }
+    let pos = '';
+    // Inline style is reliable in both browser and Node harness
+    if (current.style && typeof current.style.position === 'string') {
+      pos = current.style.position;
+    }
+    // Computed style when inline is absent and getComputedStyle is available
+    if (!pos && typeof getComputedStyle === 'function') {
+      try { pos = getComputedStyle(current).position || ''; } catch (e) { /* ignore */ }
+    }
+    if (POSITIONED.has(pos)) return current;
+    current = current.parentElement || current.parentNode || null;
+  }
+  return null;
+}
+
+/**
+ * Parse a CSS length string (e.g. "-10000px") to a float.  Returns NaN when
+ * the value is absent or non-numeric.
+ *
+ * @param {string} value
+ * @returns {number}
+ */
+function _parsePx(value) {
+  if (typeof value !== 'string' || value === '') return NaN;
+  return parseFloat(value);
+}
+
+/**
+ * Determine whether a <table> element is an off-screen / aria-hidden /
+ * SVG-chart-fallback accessibility artifact rather than real page content.
+ *
+ * Returns true when ANY ONE of the following signals holds:
+ *   1. The table (or any ancestor) carries aria-hidden="true".
+ *   2. The table's nearest positioned ancestor (or the table itself) has an
+ *      inline or computed `left` value ≤ OFFSCREEN_LEFT_PX_THRESHOLD px.
+ *      NOTE: In the Node test harness getComputedStyle does not report a
+ *      meaningful `left`; this check therefore relies primarily on inline style.
+ *   3. The table is inside a nearest positioned ancestor that also contains an
+ *      <svg> with a non-empty aria-label (a "chart-ish" SVG), indicating the
+ *      table is an a11y fallback for a chart rendered by that SVG.
+ *
+ * @param {Element} table
+ * @returns {boolean}
+ */
+function isPhantomA11yTable(table) {
+  if (!table || typeof table.getAttribute !== 'function') return false;
+
+  // --- Signal 1: aria-hidden on self or any ancestor ---
+  let node = table;
+  while (node) {
+    if (typeof node.getAttribute === 'function') {
+      if (node.getAttribute('aria-hidden') === 'true') return true;
+    }
+    node = node.parentElement || node.parentNode || null;
+    // Stop at document root (no parentElement means we've left the element tree)
+    if (node && typeof node.tagName === 'undefined') break;
+  }
+
+  // --- Signal 2: nearest positioned ancestor has left ≤ threshold ---
+  const posAncestor = _nearestPositionedAncestor(table);
+  const checkEl = posAncestor || table;
+
+  let leftVal = NaN;
+  // Prefer inline style (works in Node harness too)
+  if (checkEl.style && typeof checkEl.style.left === 'string') {
+    leftVal = _parsePx(checkEl.style.left);
+  }
+  // Fall back to computed style when inline is absent
+  if (isNaN(leftVal) && typeof getComputedStyle === 'function') {
+    try {
+      const computed = getComputedStyle(checkEl);
+      if (computed && computed.left) leftVal = _parsePx(computed.left);
+    } catch (e) { /* ignore */ }
+  }
+  if (!isNaN(leftVal) && leftVal <= OFFSCREEN_LEFT_PX_THRESHOLD) return true;
+
+  // --- Signal 3: nearest positioned ancestor contains a chart-ish <svg> ---
+  if (posAncestor) {
+    // Use querySelector when available (browser); fall back gracefully in harness
+    if (typeof posAncestor.querySelector === 'function') {
+      try {
+        const svgs = posAncestor.querySelectorAll('svg');
+        for (let i = 0; i < svgs.length; i++) {
+          const svg = svgs[i];
+          if (typeof svg.getAttribute === 'function') {
+            const label = svg.getAttribute('aria-label');
+            if (typeof label === 'string' && label.trim() !== '') return true;
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+  }
+
+  return false;
+}
 
 function isDataTable(table) {
   const adapter = makeAdapter(table);

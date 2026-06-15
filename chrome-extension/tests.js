@@ -121,6 +121,9 @@ globalThis.computeGridRoundedValues = computeGridRoundedValues;
 globalThis.gridObservers = gridObservers;
 globalThis.gridReapplyTimers = gridReapplyTimers;
 globalThis.GRID_REAPPLY_DEBOUNCE_MS = GRID_REAPPLY_DEBOUNCE_MS;
+// Expose phantom a11y predicate and its threshold constant for tests
+globalThis.isPhantomA11yTable = isPhantomA11yTable;
+globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = OFFSCREEN_LEFT_PX_THRESHOLD;
 `);
 
 let passed = 0;
@@ -8318,6 +8321,279 @@ function flushTimers(pendingTimers) {
       global.clearTimeout = ctx.origClearTimeout;
     }
   }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint add-phantom-a11y-predicate: isPhantomA11yTable
+// ---------------------------------------------------------------------------
+//
+// isPhantomA11yTable(table) returns true when ANY of three signals holds:
+//   Signal 1 – table or any ancestor has aria-hidden="true"
+//   Signal 2 – nearest positioned ancestor (or the table itself) has inline
+//               left <= OFFSCREEN_LEFT_PX_THRESHOLD (-9999)
+//   Signal 3 – nearest positioned ancestor contains an <svg> with a non-empty
+//               aria-label
+// Returns false for an ordinary on-screen 2-column numeric table.
+//
+// Mock-building helpers:
+//   makePhantomEl(attrs)  – minimal element node with getAttribute / parentElement / style
+//   chainParents(child, ...parents)  – link elements into a parentElement chain
+//   makePositionedAncestor(styleProps)  – element with style.position = 'absolute'
+
+function makePhantomEl(opts) {
+  opts = opts || {};
+  const attrs = opts.attrs || {};
+  const style  = opts.style  || {};
+  return {
+    tagName:      opts.tagName || 'DIV',
+    getAttribute: function(name) {
+      return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+    },
+    style:        Object.assign({}, style),
+    parentElement: null,
+    parentNode:   null,
+    // querySelector / querySelectorAll stubs (overridden per-fixture where needed)
+    querySelector:    function() { return null; },
+    querySelectorAll: function() { return []; },
+  };
+}
+
+// Link child -> parent -> grandparent -> … in parentElement chain.
+function chainParents(child /*, ...parents */) {
+  let current = child;
+  for (let i = 1; i < arguments.length; i++) {
+    current.parentElement = arguments[i];
+    arguments[i].parentNode = null; // ensure parentNode fallback not needed
+    current = arguments[i];
+  }
+  return child;
+}
+
+// An element that qualifies as "positioned" (inline style.position='absolute').
+function makePositionedAncestor(styleOverrides) {
+  return makePhantomEl({ style: Object.assign({ position: 'absolute' }, styleOverrides || {}) });
+}
+
+// A minimal 2-column numeric table stub (no aria-hidden, normal left, no svg).
+function makeOnScreenTable() {
+  const table = makePhantomEl({ tagName: 'TABLE' });
+  // parentElement: a plain non-positioned wrapper
+  const wrapper = makePhantomEl({ tagName: 'DIV' });
+  chainParents(table, wrapper);
+  return table;
+}
+
+// --- AC: OFFSCREEN_LEFT_PX_THRESHOLD is -9999 ---
+(function phantomA11y_threshold_value() {
+  eq('isPhantomA11yTable: OFFSCREEN_LEFT_PX_THRESHOLD === -9999',
+    OFFSCREEN_LEFT_PX_THRESHOLD, -9999);
+})();
+
+// ---------------------------------------------------------------------------
+// Signal 1: aria-hidden="true" on the table itself
+// ---------------------------------------------------------------------------
+(function phantomA11y_signal1_selfHidden() {
+  const table = makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
+  eq('isPhantomA11yTable: aria-hidden="true" on table itself -> true',
+    isPhantomA11yTable(table), true);
+})();
+
+// Signal 1: aria-hidden="true" on immediate parent
+(function phantomA11y_signal1_parentHidden() {
+  const table = makePhantomEl({ tagName: 'TABLE' });
+  const parent = makePhantomEl({ tagName: 'DIV', attrs: { 'aria-hidden': 'true' } });
+  chainParents(table, parent);
+  eq('isPhantomA11yTable: aria-hidden="true" on immediate parent -> true',
+    isPhantomA11yTable(table), true);
+})();
+
+// Signal 1: aria-hidden="true" several ancestors up (nested deeply)
+(function phantomA11y_signal1_deepAncestorHidden() {
+  const table      = makePhantomEl({ tagName: 'TABLE' });
+  const tbody      = makePhantomEl({ tagName: 'TBODY' });
+  const innerDiv   = makePhantomEl({ tagName: 'DIV' });
+  const middleDiv  = makePhantomEl({ tagName: 'DIV' });
+  const outerDiv   = makePhantomEl({ tagName: 'DIV', attrs: { 'aria-hidden': 'true' } });
+  chainParents(table, tbody, innerDiv, middleDiv, outerDiv);
+  eq('isPhantomA11yTable: aria-hidden="true" several levels up -> true',
+    isPhantomA11yTable(table), true);
+})();
+
+// Edge: aria-hidden="false" must NOT trigger signal 1
+(function phantomA11y_signal1_ariaHiddenFalse() {
+  const table  = makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'false' } });
+  const parent = makePhantomEl({ tagName: 'DIV',   attrs: { 'aria-hidden': 'false' } });
+  chainParents(table, parent);
+  eq('isPhantomA11yTable: aria-hidden="false" does NOT trigger -> false',
+    isPhantomA11yTable(table), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Signal 2: nearest positioned ancestor has inline left <= threshold
+// ---------------------------------------------------------------------------
+
+// Signal 2: positioned ancestor with left: -10000px (Kaggle evidence)
+(function phantomA11y_signal2_offscreenLeft_minus10000() {
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const posAnc = makePositionedAncestor({ left: '-10000px' });
+  chainParents(table, posAnc);
+  eq('isPhantomA11yTable: positioned ancestor left=-10000px -> true',
+    isPhantomA11yTable(table), true);
+})();
+
+// Signal 2: positioned ancestor at exactly the threshold value (-9999px)
+(function phantomA11y_signal2_offscreenLeft_exactThreshold() {
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const posAnc = makePositionedAncestor({ left: '-9999px' });
+  chainParents(table, posAnc);
+  eq('isPhantomA11yTable: positioned ancestor left=-9999px (at threshold) -> true',
+    isPhantomA11yTable(table), true);
+})();
+
+// Signal 2: table itself is positioned and off-screen (no separate ancestor)
+(function phantomA11y_signal2_tableSelfOffscreen() {
+  const table = makePhantomEl({ tagName: 'TABLE', style: { position: 'absolute', left: '-10000px' } });
+  eq('isPhantomA11yTable: table itself is positioned with left=-10000px -> true',
+    isPhantomA11yTable(table), true);
+})();
+
+// Edge: left value just ABOVE threshold (-9998px) must NOT trigger
+(function phantomA11y_signal2_leftJustAboveThreshold() {
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const posAnc = makePositionedAncestor({ left: '-9998px' });
+  chainParents(table, posAnc);
+  eq('isPhantomA11yTable: positioned ancestor left=-9998px (above threshold) -> false',
+    isPhantomA11yTable(table), false);
+})();
+
+// Edge: modest off-screen like -100px must NOT trigger signal 2
+(function phantomA11y_signal2_modestNegativeLeft() {
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const posAnc = makePositionedAncestor({ left: '-100px' });
+  chainParents(table, posAnc);
+  eq('isPhantomA11yTable: positioned ancestor left=-100px (not extreme) -> false',
+    isPhantomA11yTable(table), false);
+})();
+
+// Edge: non-positioned ancestor with extreme left — should NOT count because the
+// ancestor is not positioned; no positioned ancestor found so checkEl = table,
+// and table has no extreme left.
+(function phantomA11y_signal2_nonPositionedAncestorIgnored() {
+  const table   = makePhantomEl({ tagName: 'TABLE' });
+  // wrapper has no inline style.position and getComputedStyle returns '' for position
+  const wrapper = makePhantomEl({ tagName: 'DIV', style: { left: '-10000px' } });
+  chainParents(table, wrapper);
+  // No positioned ancestor found → checkEl = table (which has no extreme left)
+  eq('isPhantomA11yTable: non-positioned ancestor with extreme left -> false',
+    isPhantomA11yTable(table), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Signal 3: nearest positioned ancestor contains <svg> with non-empty aria-label
+// ---------------------------------------------------------------------------
+
+// Signal 3: positioned ancestor has querySelectorAll('svg') returning labelled svg
+(function phantomA11y_signal3_svgWithAriaLabel() {
+  const svg = makePhantomEl({ tagName: 'SVG', attrs: { 'aria-label': 'Monthly Revenue Chart' } });
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const posAnc = makePositionedAncestor();
+  posAnc.querySelector    = function() { return svg; };
+  posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
+  chainParents(table, posAnc);
+  eq('isPhantomA11yTable: positioned ancestor has svg[aria-label="..."] -> true',
+    isPhantomA11yTable(table), true);
+})();
+
+// Signal 3: multiple SVGs in ancestor, only one has a label — still triggers
+(function phantomA11y_signal3_multipleSvgsOneLabelledOne() {
+  const svgNoLabel  = makePhantomEl({ tagName: 'SVG' }); // no aria-label
+  const svgLabelled = makePhantomEl({ tagName: 'SVG', attrs: { 'aria-label': 'Pie Chart' } });
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const posAnc = makePositionedAncestor();
+  posAnc.querySelector    = function() { return svgNoLabel; };
+  posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svgNoLabel, svgLabelled] : []; };
+  chainParents(table, posAnc);
+  eq('isPhantomA11yTable: one of two svgs has aria-label -> true',
+    isPhantomA11yTable(table), true);
+})();
+
+// Edge: svg with EMPTY aria-label must NOT trigger signal 3
+(function phantomA11y_signal3_svgEmptyAriaLabel() {
+  const svg    = makePhantomEl({ tagName: 'SVG', attrs: { 'aria-label': '' } });
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const posAnc = makePositionedAncestor();
+  posAnc.querySelector    = function() { return svg; };
+  posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
+  chainParents(table, posAnc);
+  eq('isPhantomA11yTable: svg with empty aria-label does NOT trigger -> false',
+    isPhantomA11yTable(table), false);
+})();
+
+// Edge: svg with whitespace-only aria-label must NOT trigger signal 3
+(function phantomA11y_signal3_svgWhitespaceAriaLabel() {
+  const svg    = makePhantomEl({ tagName: 'SVG', attrs: { 'aria-label': '   ' } });
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const posAnc = makePositionedAncestor();
+  posAnc.querySelector    = function() { return svg; };
+  posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
+  chainParents(table, posAnc);
+  eq('isPhantomA11yTable: svg with whitespace-only aria-label does NOT trigger -> false',
+    isPhantomA11yTable(table), false);
+})();
+
+// Edge: svg with NO aria-label attribute at all must NOT trigger signal 3
+(function phantomA11y_signal3_svgNoAriaLabel() {
+  const svg    = makePhantomEl({ tagName: 'SVG' }); // getAttribute returns null
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const posAnc = makePositionedAncestor();
+  posAnc.querySelector    = function() { return svg; };
+  posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
+  chainParents(table, posAnc);
+  eq('isPhantomA11yTable: svg with no aria-label does NOT trigger -> false',
+    isPhantomA11yTable(table), false);
+})();
+
+// Edge: no positioned ancestor found at all — signal 3 is skipped entirely (no crash)
+(function phantomA11y_signal3_noPosAncestor() {
+  const table = makePhantomEl({ tagName: 'TABLE' });
+  // No parentElement — predicate must not throw and returns false
+  eq('isPhantomA11yTable: no positioned ancestor, no signals -> false',
+    isPhantomA11yTable(table), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Negative case: ordinary on-screen 2-column numeric table
+// ---------------------------------------------------------------------------
+(function phantomA11y_negative_ordinaryTable() {
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const parent = makePhantomEl({ tagName: 'DIV' });
+  chainParents(table, parent);
+  // No aria-hidden, no off-screen left, no positioned ancestor → false
+  eq('isPhantomA11yTable: ordinary on-screen numeric table -> false',
+    isPhantomA11yTable(table), false);
+})();
+
+// Negative: positioned ancestor but normal on-screen left (-50px), no svg, no aria-hidden
+(function phantomA11y_negative_onscreenPositionedAncestor() {
+  const table  = makePhantomEl({ tagName: 'TABLE' });
+  const posAnc = makePositionedAncestor({ left: '-50px' });
+  posAnc.querySelectorAll = function() { return []; };
+  chainParents(table, posAnc);
+  eq('isPhantomA11yTable: positioned ancestor with normal left (-50px), no svg -> false',
+    isPhantomA11yTable(table), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Guard: invalid / null input
+// ---------------------------------------------------------------------------
+(function phantomA11y_nullInput() {
+  eq('isPhantomA11yTable: null -> false',
+    isPhantomA11yTable(null), false);
+})();
+
+(function phantomA11y_noGetAttribute() {
+  eq('isPhantomA11yTable: plain object without getAttribute -> false',
+    isPhantomA11yTable({}), false);
 })();
 
 // --- Report ---
