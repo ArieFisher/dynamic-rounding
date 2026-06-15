@@ -284,8 +284,9 @@ function createToggleForTable(table) {
 }
 
 function injectTableToggles() {
-  // Pass 1: native <table> elements (unchanged).
+  // Pass 1: native <table> elements; phantom a11y tables are skipped.
   document.querySelectorAll('table').forEach(table => {
+    if (isPhantomA11yTable(table)) return;
     if (!tableToggles.has(table)) {
       createToggleForTable(table);
     }
