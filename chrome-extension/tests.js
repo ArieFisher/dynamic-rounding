@@ -9434,6 +9434,97 @@ function asAddedGridNode(grid) {
   cleanupPass1Tables([realTbl]);
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint grid-rowgroup-tr-extraction: GridAdapter._getRowEls handles ARIA grids
+// whose data rows are bare <tr> inside a [role="rowgroup"], with header/summary
+// rows OUTSIDE the rowgroup (e.g. Kaggle's Data Explorer). Standard ARIA only.
+// ---------------------------------------------------------------------------
+
+// Build a <tr>-style row element whose cells are its element children.
+function makeTrRow(cellTexts) {
+  const cellEls = cellTexts.map(makeGridCellWithTextNode);
+  const row = makeElementNode('', cellEls);
+  row.tagName = 'TR';
+  row.children = cellEls;
+  row.querySelectorAll = function(sel) {
+    if (sel === '[role="cell"]' || sel === '.dg--cell') return [];
+    return [];
+  };
+  return row;
+}
+
+// Build a Kaggle-shaped ARIA grid:
+//   grid[role=table]
+//     div[role=row]            ← lone description block (NOT a data row)
+//     div[role=none] > tr(th)  ← header row, OUTSIDE any rowgroup
+//     div[role=none] > tr(td)  ← per-column stats row, OUTSIDE any rowgroup
+//     div[role=rowgroup] > span > tr(td) ...  ← the real data rows
+function makeKaggleLikeGrid(dataRows) {
+  const descRow = makeElementNode('', [makeGridCellWithTextNode('About this file')]);
+  descRow.querySelectorAll = () => [];
+
+  const headerTr = makeTrRow(['Release_Date', 'Popularity', 'Vote_Count']);
+  const statsTr  = makeTrRow(['9515', '9824', '9827']);
+
+  const dataTrs = dataRows.map(makeTrRow);
+  const rowgroup = makeElementNode('', dataTrs);
+  rowgroup.querySelectorAll = function(sel) {
+    if (sel === 'tr') return dataTrs;
+    return []; // no [role="row"] / .dg--virtual-row inside
+  };
+
+  const allTrs = [headerTr, statsTr, ...dataTrs];
+  const wrapper = makeElementNode('grid', [descRow, headerTr, statsTr, rowgroup]);
+  wrapper.tagName = 'DIV';
+  wrapper.matches = () => false;
+  wrapper.querySelector = () => null;
+  wrapper.querySelectorAll = function(sel) {
+    if (sel === '[role="rowgroup"]') return [rowgroup];
+    if (sel === '[role="row"]') return [descRow];
+    if (sel === 'tr') return allTrs;
+    return [];
+  };
+  return wrapper;
+}
+
+(function gridRowgroup_dataRowsOnly() {
+  const grid = makeKaggleLikeGrid([
+    ['2021-12-15', '5083.954', '8940'],
+    ['2022-03-01', '3827.658', '1151'],
+    ['2022-02-25', '2618.087', '122'],
+  ]);
+  const adapter = makeAdapter(grid);
+  const rows = adapter.getRows();
+
+  eq('grid-rowgroup: getRows() returns ONLY the 3 data rows (header/stats/desc excluded)',
+    rows.length, 3);
+  eq('grid-rowgroup: first data row first cell is the date (not "About this file")',
+    rows[0].getCells()[0].getText(), '2021-12-15');
+  eq('grid-rowgroup: data row exposes its numeric cell',
+    rows[0].getCells()[1].getText(), '5083.954');
+  eq('grid-rowgroup: grid with bare-<tr> data rows is a data table',
+    isDataTable(grid), true);
+})();
+
+// Without a rowgroup, bare <tr> rows are still discovered (orphan-tr fallback).
+(function gridOrphanTr_noRowgroup() {
+  const dataTrs = [makeTrRow(['a', '10']), makeTrRow(['b', '20'])];
+  const wrapper = makeElementNode('grid', dataTrs);
+  wrapper.tagName = 'DIV';
+  wrapper.matches = () => false;
+  wrapper.querySelector = () => null;
+  wrapper.querySelectorAll = function(sel) {
+    if (sel === 'tr') return dataTrs;
+    return []; // no rowgroup, no role="row", no dg classes
+  };
+
+  const adapter = makeAdapter(wrapper);
+  eq('grid-orphan-tr: getRows() finds bare <tr> rows when no rowgroup present',
+    adapter.getRows().length, 2);
+  eq('grid-orphan-tr: numeric cell readable',
+    adapter.getRows()[0].getCells()[1].getText(), '10');
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
