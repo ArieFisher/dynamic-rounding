@@ -8596,6 +8596,423 @@ function makeOnScreenTable() {
     isPhantomA11yTable({}), false);
 })();
 
+// =============================================================================
+// Sprint filter-pass1-native: Pass 1 guard skips phantom a11y tables
+// =============================================================================
+//
+// injectTableToggles() Pass 1 calls document.querySelectorAll('table') and skips
+// any table for which isPhantomA11yTable(table) is true, then calls
+// createToggleForTable(table) only for the survivors.
+//
+// A toggle was created iff tableToggles.has(table) becomes true afterwards.
+//
+// For each test we:
+//   1. Temporarily replace global.document.querySelectorAll so Pass 1 sees our
+//      fixture tables and Pass 2 (GRID_ARIA_SELECTOR) sees an empty list.
+//   2. Temporarily stub document.createElement + document.body.appendChild so
+//      createToggleForTable can run without errors.
+//   3. Reset tableToggles / trackedTables for each run by deleting entries we
+//      added (WeakMap doesn't expose a clear(), so we track which table objects
+//      we inserted and delete them by re-using the objects).
+//
+// CRITICAL: phantom tables must pass isDataTable() so the only reason they
+// would be skipped is the isPhantomA11yTable guard, not the isDataTable gate.
+// Real on-screen tables must fail isPhantomA11yTable but pass isDataTable.
+//
+// Helper: build a 2-column 2-row numeric table stub (satisfies isDataTable).
+// Also provide getAttribute (for isPhantomA11yTable signal 1) and parentElement
+// chain + style (for signals 2/3).
+//
+function makePass1DataTable(opts) {
+  opts = opts || {};
+  const attrs = opts.attrs || {};
+  const style  = opts.style  || {};
+  const rows = [
+    { cells: [
+        { tagName: 'TD', innerText: '10000', textContent: '10000', innerHTML: '10000',
+          classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
+          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
+        { tagName: 'TD', innerText: '20000', textContent: '20000', innerHTML: '20000',
+          classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
+          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
+      ]
+    },
+    { cells: [
+        { tagName: 'TD', innerText: '30000', textContent: '30000', innerHTML: '30000',
+          classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
+          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
+        { tagName: 'TD', innerText: '40000', textContent: '40000', innerHTML: '40000',
+          classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
+          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
+      ]
+    },
+  ];
+  const table = {
+    tagName: 'TABLE',
+    rows: rows,
+    dataset: {},
+    getAttribute: function(name) {
+      return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+    },
+    style: Object.assign({}, style),
+    parentElement: null,
+    parentNode: null,
+    querySelector: function() { return null; },
+    querySelectorAll: function() { return []; },
+    getBoundingClientRect: function() { return { top: 10, right: 100, bottom: 50, left: 10, width: 90, height: 40 }; },
+    classList: {
+      _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);},
+      contains(c){return this._c.includes(c);}
+    },
+  };
+  return table;
+}
+
+// Run injectTableToggles() with a controlled list of tables returned by
+// document.querySelectorAll('table'). Stubs away document.createElement and
+// document.body.appendChild so createToggleForTable doesn't throw in Node.
+// Restores all globals afterwards. Returns { tables } (same array for inspection).
+function runPass1WithTables(tables) {
+  const origQSA      = global.document.querySelectorAll;
+  const origCreateEl = global.document.createElement;
+  const origBody     = global.document.body;
+  const origDocEl    = global.document.documentElement;
+
+  // Stub querySelectorAll: Pass 1 → our tables; Pass 2 (GRID_ARIA_SELECTOR) → []
+  global.document.querySelectorAll = function(sel) {
+    if (sel === 'table') return tables;
+    return [];
+  };
+
+  // Stub createElement so createToggleForTable can build its button tree
+  global.document.createElement = function(tag) {
+    const attrs = {};
+    const listeners = {};
+    return {
+      _tag: tag,
+      type: '',
+      className: '',
+      style: {},
+      _children: [],
+      dataset: {},
+      parentElement: null,
+      textContent: '',
+      classList: {
+        _c: [],
+        add(c)     { if (!this._c.includes(c)) this._c.push(c); },
+        remove(c)  { this._c = this._c.filter(x => x !== c); },
+        contains(c){ return this._c.includes(c); },
+        toggle(c, f) {
+          const has = this._c.includes(c);
+          const want = f === undefined ? !has : f;
+          if (want && !has) this._c.push(c);
+          else if (!want && has) this._c = this._c.filter(x => x !== c);
+          return want;
+        },
+      },
+      contains() { return false; },
+      appendChild(child) { this._children.push(child); child.parentElement = this; return child; },
+      addEventListener(evt, fn) { if (!listeners[evt]) listeners[evt]=[]; listeners[evt].push(fn); },
+      setAttribute(name, val) { attrs[name] = val; },
+      getAttribute(name) { return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null; },
+    };
+  };
+
+  // Stub body so button is appended without errors
+  global.document.body = { appendChild() {} };
+  global.document.documentElement = { appendChild() {} };
+
+  // Reset toggleStyleInjected so ensureToggleStyleInjected doesn't try document.head
+  const origToggleStyleInjected = toggleStyleInjected;
+  toggleStyleInjected = true; // skip style injection (would need document.head)
+
+  try {
+    injectTableToggles();
+  } finally {
+    global.document.querySelectorAll  = origQSA;
+    global.document.createElement     = origCreateEl;
+    global.document.body              = origBody;
+    global.document.documentElement   = origDocEl;
+    toggleStyleInjected               = origToggleStyleInjected;
+  }
+
+  return { tables };
+}
+
+// Helper: clean up tableToggles / trackedTables for a list of table objects so
+// they don't pollute subsequent tests.
+function cleanupPass1Tables(tables) {
+  for (const t of tables) {
+    if (tableToggles.has(t)) {
+      tableToggles.delete(t);
+      trackedTables.delete(t);
+    }
+  }
+}
+
+// --- pass1-filter AC1: phantom tables (aria-hidden ancestor) get NO toggle ---
+// Build N=3 phantom tables (aria-hidden parent), all valid data tables.
+// After Pass 1 none of them should be in tableToggles.
+
+(function pass1Filter_ariaHiddenPhantoms_zeroToggles() {
+  function makeAriaHiddenPhantom() {
+    const t = makePass1DataTable();
+    // aria-hidden="true" on the immediate parent (Signal 1)
+    const hiddenParent = {
+      tagName: 'DIV',
+      getAttribute: function(name) { return name === 'aria-hidden' ? 'true' : null; },
+      style: {},
+      parentElement: null,
+      parentNode: null,
+    };
+    t.parentElement = hiddenParent;
+    t.parentNode    = null;
+    return t;
+  }
+
+  const phantoms = [makeAriaHiddenPhantom(), makeAriaHiddenPhantom(), makeAriaHiddenPhantom()];
+
+  // Sanity: each phantom is a valid data table (isDataTable guard is NOT the cause of skip)
+  eq('pass1-filter: phantom aria-hidden table satisfies isDataTable (sanity)',
+    isDataTable(phantoms[0]), true);
+  // Sanity: each phantom is detected as phantom
+  eq('pass1-filter: phantom aria-hidden table isPhantomA11yTable is true (sanity)',
+    isPhantomA11yTable(phantoms[0]), true);
+
+  runPass1WithTables(phantoms);
+
+  const togglesCreated = phantoms.filter(t => tableToggles.has(t)).length;
+  eq('pass1-filter: 3 aria-hidden phantom tables → ZERO toggles created',
+    togglesCreated, 0);
+
+  cleanupPass1Tables(phantoms);
+})();
+
+// --- pass1-filter AC1: phantom tables (off-screen left) get NO toggle ---
+// Build N=2 phantom tables with positioned ancestor left=-10000px.
+
+(function pass1Filter_offscreenLeftPhantoms_zeroToggles() {
+  function makeOffscreenPhantom() {
+    const t = makePass1DataTable();
+    // Positioned ancestor with extreme left (Signal 2)
+    const posAnc = {
+      tagName: 'DIV',
+      getAttribute: function() { return null; },
+      style: { position: 'absolute', left: '-10000px' },
+      parentElement: null,
+      parentNode: null,
+      querySelector: function() { return null; },
+      querySelectorAll: function() { return []; },
+    };
+    t.parentElement = posAnc;
+    t.parentNode    = null;
+    return t;
+  }
+
+  const phantoms = [makeOffscreenPhantom(), makeOffscreenPhantom()];
+
+  // Sanity checks
+  eq('pass1-filter: off-screen phantom table satisfies isDataTable (sanity)',
+    isDataTable(phantoms[0]), true);
+  eq('pass1-filter: off-screen phantom table isPhantomA11yTable is true (sanity)',
+    isPhantomA11yTable(phantoms[0]), true);
+
+  runPass1WithTables(phantoms);
+
+  const togglesCreated = phantoms.filter(t => tableToggles.has(t)).length;
+  eq('pass1-filter: 2 off-screen phantom tables → ZERO toggles created',
+    togglesCreated, 0);
+
+  cleanupPass1Tables(phantoms);
+})();
+
+// --- pass1-filter AC2: a normal on-screen table still gets exactly ONE toggle ---
+
+(function pass1Filter_realTable_getsOneToggle() {
+  const realTable = makePass1DataTable();
+  // No aria-hidden, no positioned ancestor, no svg → isPhantomA11yTable returns false
+  const wrapper = {
+    tagName: 'DIV',
+    getAttribute: function() { return null; },
+    style: {},
+    parentElement: null,
+    parentNode: null,
+  };
+  realTable.parentElement = wrapper;
+  realTable.parentNode    = null;
+
+  // Sanity checks
+  eq('pass1-filter: real on-screen table satisfies isDataTable (sanity)',
+    isDataTable(realTable), true);
+  eq('pass1-filter: real on-screen table isPhantomA11yTable is false (sanity)',
+    isPhantomA11yTable(realTable), false);
+
+  runPass1WithTables([realTable]);
+
+  eq('pass1-filter: normal on-screen table → exactly ONE toggle created',
+    tableToggles.has(realTable), true);
+
+  cleanupPass1Tables([realTable]);
+})();
+
+// --- pass1-filter adversarial: mix of phantom + real tables in one Pass 1 run ---
+// Only the real tables should get toggles; count equals exactly the number of real tables.
+
+(function pass1Filter_mixedFixture_onlyRealTablesGetToggles() {
+  // Two phantom tables (aria-hidden ancestor)
+  function makeAriaHiddenPhantom() {
+    const t = makePass1DataTable();
+    const hiddenParent = {
+      tagName: 'DIV',
+      getAttribute: function(name) { return name === 'aria-hidden' ? 'true' : null; },
+      style: {},
+      parentElement: null,
+      parentNode: null,
+    };
+    t.parentElement = hiddenParent;
+    t.parentNode    = null;
+    return t;
+  }
+
+  // One phantom with off-screen left
+  function makeOffscreenPhantom() {
+    const t = makePass1DataTable();
+    const posAnc = {
+      tagName: 'DIV',
+      getAttribute: function() { return null; },
+      style: { position: 'absolute', left: '-10000px' },
+      parentElement: null,
+      parentNode: null,
+      querySelector: function() { return null; },
+      querySelectorAll: function() { return []; },
+    };
+    t.parentElement = posAnc;
+    t.parentNode    = null;
+    return t;
+  }
+
+  // Two real on-screen tables
+  function makeRealTable() {
+    const t = makePass1DataTable();
+    const wrapper = {
+      tagName: 'DIV',
+      getAttribute: function() { return null; },
+      style: {},
+      parentElement: null,
+      parentNode: null,
+    };
+    t.parentElement = wrapper;
+    t.parentNode    = null;
+    return t;
+  }
+
+  const phantom1 = makeAriaHiddenPhantom();
+  const phantom2 = makeAriaHiddenPhantom();
+  const phantom3 = makeOffscreenPhantom();
+  const real1    = makeRealTable();
+  const real2    = makeRealTable();
+
+  // Interleave so Pass 1 processes them in mixed order
+  const allTables = [phantom1, real1, phantom2, real2, phantom3];
+
+  runPass1WithTables(allTables);
+
+  const phantoms = [phantom1, phantom2, phantom3];
+  const reals    = [real1, real2];
+
+  const phantomToggles = phantoms.filter(t => tableToggles.has(t)).length;
+  const realToggles    = reals.filter(t => tableToggles.has(t)).length;
+
+  eq('pass1-filter (mix): phantom tables get ZERO toggles',
+    phantomToggles, 0);
+  eq('pass1-filter (mix): real tables each get a toggle — count equals 2',
+    realToggles, 2);
+  eq('pass1-filter (mix): total toggles created equals number of real tables',
+    tableToggles.has(real1) && tableToggles.has(real2) && !tableToggles.has(phantom1) &&
+    !tableToggles.has(phantom2) && !tableToggles.has(phantom3), true);
+
+  cleanupPass1Tables(allTables);
+})();
+
+// --- pass1-filter: Pass 1 skips phantom but does NOT skip a non-data real table ---
+// (edge: if a real table fails isDataTable, no toggle either — confirm the skip
+// here is from isDataTable, not from isPhantomA11yTable)
+(function pass1Filter_nonDataRealTable_noToggle() {
+  // 1-row table: fails isDataTable (< 2 rows)
+  const nonDataTable = {
+    tagName: 'TABLE',
+    rows: [
+      { cells: [
+          { tagName: 'TD', innerText: '100', textContent: '100', innerHTML: '100',
+            classList: { _c:[], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
+            dataset: {}, title: '', querySelectorAll:()=>[], removeAttribute(){} },
+          { tagName: 'TD', innerText: '200', textContent: '200', innerHTML: '200',
+            classList: { _c:[], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
+            dataset: {}, title: '', querySelectorAll:()=>[], removeAttribute(){} },
+        ]
+      },
+    ],
+    dataset: {},
+    getAttribute: function() { return null; },
+    style: {},
+    parentElement: null,
+    parentNode: null,
+    querySelector: function() { return null; },
+    querySelectorAll: function() { return []; },
+    getBoundingClientRect: function() { return { top: 10, right: 100, bottom: 50, left: 10 }; },
+    classList: { _c:[], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
+  };
+
+  // Confirm isPhantomA11yTable is false (skip is NOT from the phantom guard)
+  eq('pass1-filter: non-data real table isPhantomA11yTable is false (sanity)',
+    isPhantomA11yTable(nonDataTable), false);
+  // Confirm isDataTable is false
+  eq('pass1-filter: non-data real table isDataTable is false (sanity)',
+    isDataTable(nonDataTable), false);
+
+  runPass1WithTables([nonDataTable]);
+
+  eq('pass1-filter: non-data real table gets no toggle (isDataTable gate)',
+    tableToggles.has(nonDataTable), false);
+
+  cleanupPass1Tables([nonDataTable]);
+})();
+
+// --- pass1-filter: duplicate Pass 1 call does NOT create a second toggle for a real table ---
+// (regression guard: tableToggles.has check prevents double-insertion)
+(function pass1Filter_duplicateRun_noDoubleToggle() {
+  const realTable = makePass1DataTable();
+  const wrapper = {
+    tagName: 'DIV',
+    getAttribute: function() { return null; },
+    style: {},
+    parentElement: null,
+    parentNode: null,
+  };
+  realTable.parentElement = wrapper;
+  realTable.parentNode    = null;
+
+  // First run
+  runPass1WithTables([realTable]);
+  const afterFirst = tableToggles.has(realTable);
+
+  // Second run — table already in tableToggles; Pass 1 should skip it
+  let createCallCount = 0;
+  const origCreate = globalThis.createToggleForTable;
+  // We can't easily count internal calls, but we can verify the toggle isn't re-inserted.
+  // Since WeakMap.set overwrites, we check the button object identity.
+  const buttonAfterFirst = tableToggles.get(realTable);
+  runPass1WithTables([realTable]);
+  const buttonAfterSecond = tableToggles.get(realTable);
+
+  eq('pass1-filter: first Pass 1 run creates toggle for real table',
+    afterFirst, true);
+  eq('pass1-filter: second Pass 1 run does not replace the existing toggle (same object)',
+    buttonAfterFirst === buttonAfterSecond, true);
+
+  cleanupPass1Tables([realTable]);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
