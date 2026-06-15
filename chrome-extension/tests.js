@@ -121,6 +121,9 @@ globalThis.computeGridRoundedValues = computeGridRoundedValues;
 globalThis.gridObservers = gridObservers;
 globalThis.gridReapplyTimers = gridReapplyTimers;
 globalThis.GRID_REAPPLY_DEBOUNCE_MS = GRID_REAPPLY_DEBOUNCE_MS;
+// Expose phantom a11y predicate and its threshold constant for tests
+globalThis.isPhantomA11yTable = isPhantomA11yTable;
+globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = OFFSCREEN_LEFT_PX_THRESHOLD;
 `);
 
 let passed = 0;
