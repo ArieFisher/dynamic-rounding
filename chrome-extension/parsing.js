@@ -188,13 +188,13 @@ function parseDateLike(text) {
   // Boundary-aware: allow surrounding non-word chars but not word chars
   const isoDash = t.match(/(?:^|(?<=[^\w]))(\d{4})-(\d{2})-(\d{2})(?=$|[^\w])/);
   if (isoDash) {
-    return { year: parseInt(isoDash[1], 10), month: parseInt(isoDash[2], 10), day: parseInt(isoDash[3], 10) };
+    return { year: parseInt(isoDash[1], 10), month: parseInt(isoDash[2], 10), day: parseInt(isoDash[3], 10), raw: isoDash[0] };
   }
 
   // ISO slash: YYYY/MM/DD
   const isoSlash = t.match(/(?:^|(?<=[^\w]))(\d{4})\/(\d{2})\/(\d{2})(?=$|[^\w])/);
   if (isoSlash) {
-    return { year: parseInt(isoSlash[1], 10), month: parseInt(isoSlash[2], 10), day: parseInt(isoSlash[3], 10) };
+    return { year: parseInt(isoSlash[1], 10), month: parseInt(isoSlash[2], 10), day: parseInt(isoSlash[3], 10), raw: isoSlash[0] };
   }
 
   // Named-month forms (case-insensitive): Month DD, YYYY
@@ -202,7 +202,7 @@ function parseDateLike(text) {
   const mnMatch = t.match(mnRe);
   if (mnMatch) {
     const month = resolveMonthName(mnMatch[1]);
-    if (month !== null) return { year: parseInt(mnMatch[3], 10), month, day: parseInt(mnMatch[2], 10) };
+    if (month !== null) return { year: parseInt(mnMatch[3], 10), month, day: parseInt(mnMatch[2], 10), raw: mnMatch[0] };
   }
 
   // Day Month Year: 21 June 2020
@@ -210,7 +210,7 @@ function parseDateLike(text) {
   const dmyMatch = t.match(dmyRe);
   if (dmyMatch) {
     const month = resolveMonthName(dmyMatch[2]);
-    if (month !== null) return { year: parseInt(dmyMatch[3], 10), month, day: parseInt(dmyMatch[1], 10) };
+    if (month !== null) return { year: parseInt(dmyMatch[3], 10), month, day: parseInt(dmyMatch[1], 10), raw: dmyMatch[0] };
   }
 
   // Year Month Day: 2020 June 21
@@ -218,7 +218,7 @@ function parseDateLike(text) {
   const ymdMatch = t.match(ymdRe);
   if (ymdMatch) {
     const month = resolveMonthName(ymdMatch[2]);
-    if (month !== null) return { year: parseInt(ymdMatch[1], 10), month, day: parseInt(ymdMatch[3], 10) };
+    if (month !== null) return { year: parseInt(ymdMatch[1], 10), month, day: parseInt(ymdMatch[3], 10), raw: ymdMatch[0] };
   }
 
   // Month Year: Jun 2020
@@ -226,7 +226,7 @@ function parseDateLike(text) {
   const myMatch = t.match(myRe);
   if (myMatch) {
     const month = resolveMonthName(myMatch[1]);
-    if (month !== null) return { year: parseInt(myMatch[2], 10), month, day: 1 };
+    if (month !== null) return { year: parseInt(myMatch[2], 10), month, day: 1, raw: myMatch[0] };
   }
 
   // Bare year: 2020 (1900–2099) — STRICT anchors preserved to avoid false positives
@@ -234,7 +234,7 @@ function parseDateLike(text) {
   const bareYear = t.match(/^(\d{4})$/);
   if (bareYear) {
     const y = parseInt(bareYear[1], 10);
-    if (y >= 1900 && y <= 2099) return { year: y, month: 1, day: 1 };
+    if (y >= 1900 && y <= 2099) return { year: y, month: 1, day: 1, raw: bareYear[0] };
   }
 
   return null;
@@ -281,10 +281,11 @@ function isTimeLike(text) {
  * @returns {string} Always returns a string (the rounded year as digits).
  */
 function roundDateText(text, granularity, prefilled) {
-  const parsed = prefilled || parseDateLike(text);
-  if (!parsed) return text; // fallback: shouldn't happen for mode:'date' cells
+  const parsed = parseDateLike(text);
+  const date = parsed || prefilled;
+  if (!date) return text; // fallback: shouldn't happen for mode:'date' cells
 
-  const { year, month } = parsed;
+  const { year, month } = date;
 
   // fractional = year + 0.5 if month >= 7, else year + 0
   const fractional = year + (month >= 7 ? 0.5 : 0);
@@ -299,8 +300,17 @@ function roundDateText(text, granularity, prefilled) {
     roundedYear = Math.round(fractional);
   }
 
-  const d = new Date(roundedYear, 0, 1);
-  return String(d.getFullYear());
+  const roundedYearStr = String(new Date(roundedYear, 0, 1).getFullYear());
+
+  // When the cell has surrounding text (e.g. "Payment Disbursed on: 2025-04-02"),
+  // replace only the matched date portion rather than the entire cell value.
+  if (parsed && parsed.raw) {
+    const rawIdx = text.indexOf(parsed.raw);
+    if (rawIdx >= 0) {
+      return text.slice(0, rawIdx) + roundedYearStr + text.slice(rawIdx + parsed.raw.length);
+    }
+  }
+  return roundedYearStr;
 }
 
 function roundTimeText(text, granularity) {
