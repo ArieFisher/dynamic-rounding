@@ -4003,6 +4003,45 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   eq('extractPreviewSamples: bottom[2] is 56', result.samples.bottom[2].num, 56);
 })();
 
+(function previewBand_extractPreviewSamples_prefersDemonstrative() {
+  // Within a magnitude bucket, an already-round value (250,000,000) would make
+  // a useless "X -> X" preview row. extractPreviewSamples should surface a cell
+  // that visibly changes under the default offset instead, even when the
+  // already-round cell appears first in document order.
+  function tdCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+  const table = {
+    rows: [
+      // Top bucket (mag 8): round value first, then a value that changes.
+      { cells: [tdCell('250,000,000'), tdCell('269,690,569')] },
+      // Bottom bucket (mag 5): round value first, then a value that changes.
+      { cells: [tdCell('350,000'), tdCell('235,132')] },
+    ],
+  };
+  const result = extractPreviewSamples(table);
+  eq('extractPreviewSamples (demo): top[0] skips already-round 250M',
+    result.samples.top[0].num, 269690569);
+  eq('extractPreviewSamples (demo): bottom[0] skips already-round 350k',
+    result.samples.bottom[0].num, 235132);
+})();
+
+(function previewBand_extractPreviewSamples_allRoundFallback() {
+  // If every cell in a bucket is already round, fall back to document order
+  // rather than dropping the row.
+  function tdCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+  const table = {
+    rows: [
+      { cells: [tdCell('250,000,000'), tdCell('500,000')] },
+    ],
+  };
+  const result = extractPreviewSamples(table);
+  eq('extractPreviewSamples (all-round): top[0] is first cell',
+    result.samples.top[0].num, 250000000);
+})();
+
 (function previewBand_extractPreviewSamples_largeMagOnly() {
   // All cells in the top magnitude bucket -> bottom band ends up empty.
   function tdCell(text) {

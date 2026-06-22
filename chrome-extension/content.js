@@ -342,6 +342,19 @@ function extractPreviewSamples(table) {
     return { samples: { top: [], bottom: [] }, maxMag: null };
   }
   const numTop = DR_DEFAULTS.numTop || 1;
+  const topOffset = typeof DR_DEFAULTS.offsetTop === 'number' ? DR_DEFAULTS.offsetTop : -0.5;
+  const otherOffset = typeof DR_DEFAULTS.offsetOther === 'number' ? DR_DEFAULTS.offsetOther : -0.5;
+
+  // Reorder a magnitude bucket so cells that visibly *change* under the band's
+  // default offset come first. Picking the raw document-order cell can land on
+  // an already-round value (e.g. 250,000,000 → 250,000,000), making the preview
+  // row look like rounding does nothing. Array.prototype.sort is stable, so
+  // cells with the same "demonstrates rounding" verdict keep document order.
+  const demoFirst = (bucket, offset) => bucket.slice().sort((a, b) => {
+    const ca = roundWithOffset(a.num, offset) !== a.num ? 0 : 1;
+    const cb = roundWithOffset(b.num, offset) !== b.num ? 0 : 1;
+    return ca - cb;
+  });
 
   const byMag = new Map();
   let maxMag = null;
@@ -361,11 +374,11 @@ function extractPreviewSamples(table) {
   const top = [];
   for (const m of topMags) {
     if (top.length >= 2) break;
-    top.push(byMag.get(m)[0]);
+    top.push(demoFirst(byMag.get(m), topOffset)[0]);
   }
   if (top.length < 2 && topMags.length > 0) {
     // Same magnitude has multiple cells — fill from the top bucket.
-    const bucket = byMag.get(topMags[0]);
+    const bucket = demoFirst(byMag.get(topMags[0]), topOffset);
     for (let i = 1; i < bucket.length && top.length < 2; i++) {
       top.push(bucket[i]);
     }
@@ -379,10 +392,10 @@ function extractPreviewSamples(table) {
   const bottom = [];
   for (const m of bottomMags) {
     if (bottom.length >= 3) break;
-    bottom.push(byMag.get(m)[0]);
+    bottom.push(demoFirst(byMag.get(m), otherOffset)[0]);
   }
   if (bottom.length < 3 && bottomMags.length > 0) {
-    const bucket = byMag.get(bottomMags[0]);
+    const bucket = demoFirst(byMag.get(bottomMags[0]), otherOffset);
     for (let i = 1; i < bucket.length && bottom.length < 3; i++) {
       bottom.push(bucket[i]);
     }
