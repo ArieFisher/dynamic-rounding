@@ -87,6 +87,7 @@ function toNumber(value) {
       .replace(/[‐-―−﹘﹣－]/g, "-")
       .replace(CLEAN_REGEX, "")
       .replace(PARENS_REGEX, "-$1");
+    if (cleaned === "") return null;
     const parsed = Number(cleaned);
     return isFinite(parsed) ? parsed : null;
   }

@@ -373,6 +373,9 @@ eq('extractAll: zero is excluded',
 eq('toNumber: parens with comma', toNumber('(1,234)'), -1234);
 eq('toNumber: empty string returns null', toNumber(''), null);
 eq('toNumber: whitespace only returns null', toNumber('   '), null);
+eq('toNumber: dollar sign only returns null', toNumber('$'), null);
+eq('toNumber: euro sign only returns null', toNumber('€'), null);
+eq('toNumber: currency symbol with spaces returns null', toNumber(' $ '), null);
 
 // --- restoreFormatting roundtrips for common shapes ---
 eq('restoreFormatting: pure integer keeps commas',
