@@ -557,10 +557,10 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 // --- Sprint B: per-type granularity ---
 
 // Date granularity
-// NEW CONTRACT (sprint date-round-to-year-display): roundDateText always returns a
-// 4-digit year string. It no longer returns null or a full date string like
-// "March 14, 2020". The caller (roundTable) compares formattedValue === originalValue
-// to detect the no-op case.
+// CONTRACT: roundDateText replaces only the date portion of the cell text with the
+// rounded year. For pure date cells the result is a 4-digit year string. For mixed
+// cells (label + date) the surrounding text is preserved and only the date is replaced.
+// The caller (roundTable) compares formattedValue === originalValue to detect no-ops.
 eq('roundDateText: year granularity returns a 4-digit year string',
   roundDateText('2018', 'year'), '2018');
 eq('roundDateText: decade rounds bare year 2018 -> 2020',
@@ -577,6 +577,14 @@ eq('roundDateText: unparseable input returns the original text unchanged',
   roundDateText('hello world', 'decade'), 'hello world');
 eq('roundDateText: 2020 at decade granularity still returns "2020" (caller handles no-op)',
   roundDateText('2020', 'decade'), '2020');
+eq('roundDateText: mixed cell preserves label, replaces date (ISO dash, decade)',
+  roundDateText('Payment Disbursed on: 2025-04-02', 'decade'), 'Payment Disbursed on: 2030');
+eq('roundDateText: mixed cell preserves label, replaces date (ISO dash, year)',
+  roundDateText('Due date: 2024-11-15', 'year'), 'Due date: 2025');
+eq('roundDateText: mixed cell preserves label, replaces date (named month, decade)',
+  roundDateText('Filed: March 14, 2024', 'decade'), 'Filed: 2020');
+eq('roundDateText: mixed cell preserves trailing text after date',
+  roundDateText('2024-03-14 (estimated)', 'decade'), '2020 (estimated)');
 
 // Time granularity
 eq('roundTimeText: minute granularity is a no-op',
@@ -2908,8 +2916,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: roundDateText always returns a 4-digit year string, never null.
-// Test via prefilled date objects (bypassing text parsing).
+// AC4: roundDateText returns a 4-digit year string for pure date cells and
+// prefilled date objects. Test via prefilled date objects (bypassing text parsing).
 // ---------------------------------------------------------------------------
 (function dateRoundReturnType() {
   // Boundary: Dec 31 → fractional = year + 0.5 (month=12 >= 7)
@@ -3104,10 +3112,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     /function\s+parseDateLike\b/.test(src), true);
   eq('static: parseAmbiguousNumericDate is defined in content.js',
     /function\s+parseAmbiguousNumericDate\b/.test(src), true);
-  eq('static: roundDateText returns string (no null return for parsed dates)',
-    // The function must NOT have "return null" after the parsed guard
-    // (it uses "return text" as fallback for unparseable input).
-    /function roundDateText[\s\S]{0,800}return String\(/.test(src), true);
+  eq('static: roundDateText uses String() conversion for year (no null return for parsed dates)',
+    // The function must use String() to convert the rounded year.
+    // Uses "return text" as fallback for unparseable input.
+    /function roundDateText[\s\S]{0,900}String\(new Date\(/.test(src), true);
 })();
 
 // ---------------------------------------------------------------------------
