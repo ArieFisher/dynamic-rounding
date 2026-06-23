@@ -9575,6 +9575,78 @@ function makeKaggleLikeGrid(dataRows) {
     adapter.getRows()[0].getCells()[1].getText(), '10');
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint advanced-lower-dot-brown: linked-state bot thumb/label colour change
+// AC1. Linked-state bot thumb background is #c48a6a (brown), NOT grey #9aa0a6.
+// AC2. Decoupled-state bot thumb is still #b3623d (unchanged).
+// AC3. Linked-state bot LABEL color matches the linked thumb (same hex #c48a6a).
+// AC4. Old grey #9aa0a6 no longer appears for either of these two rules.
+// AC5. The linked brown (#c48a6a) is lighter than the decoupled brown (#b3623d).
+// ---------------------------------------------------------------------------
+
+(function advancedLowerDotBrown() {
+  const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+
+  // --- AC1: .dual-thumb.bot.linked background is #c48a6a ---
+  eq('lower-dot-brown AC1: .dual-thumb.bot.linked background is #c48a6a',
+    /\.dual-thumb\.bot\.linked\s*\{[^}]*background\s*:\s*#c48a6a/.test(sidebarHtml), true);
+
+  // --- AC1 (negative): .dual-thumb.bot.linked does NOT use grey #9aa0a6 ---
+  // Extract the specific rule so we don't false-positive on other rules.
+  const linkedThumbRuleMatch = sidebarHtml.match(/\.dual-thumb\.bot\.linked\s*\{[^}]*\}/);
+  const linkedThumbRule = linkedThumbRuleMatch ? linkedThumbRuleMatch[0] : '';
+  eq('lower-dot-brown AC1 neg: .dual-thumb.bot.linked rule does not contain #9aa0a6',
+    linkedThumbRule.includes('#9aa0a6'), false);
+
+  // --- AC2: .dual-thumb.bot (decoupled) background is still #b3623d ---
+  // The rule may be a multi-line block; match the .dual-thumb.bot { ... } block
+  // that is NOT the .linked variant, and confirm it contains #b3623d.
+  // Strategy: find the line/block for the rule selector without .linked.
+  const decoupledRuleMatch = sidebarHtml.match(/\.dual-thumb\.bot\s*\{[^}]*\}/);
+  const decoupledRule = decoupledRuleMatch ? decoupledRuleMatch[0] : '';
+  eq('lower-dot-brown AC2: .dual-thumb.bot (decoupled) block is present in sidebar.html',
+    decoupledRule.length > 0, true);
+  eq('lower-dot-brown AC2: .dual-thumb.bot (decoupled) contains background #b3623d',
+    decoupledRule.includes('#b3623d'), true);
+
+  // --- AC3: Linked-state bot LABEL color is #c48a6a (matches the thumb) ---
+  // Rule: #sliderBlock.linked .label-row .lbl.bot { color: #c48a6a; }
+  eq('lower-dot-brown AC3: #sliderBlock.linked .lbl.bot color is #c48a6a',
+    /#sliderBlock\.linked[^{]*\.lbl\.bot\s*\{[^}]*color\s*:\s*#c48a6a/.test(sidebarHtml), true);
+
+  // Verify thumb and label use the EXACT same hex (AC3 consistency check).
+  const linkedLabelMatch = sidebarHtml.match(/#sliderBlock\.linked[^{]*\.lbl\.bot\s*\{[^}]*color\s*:\s*(#[0-9a-fA-F]{6})/);
+  const linkedThumbBgMatch = sidebarHtml.match(/\.dual-thumb\.bot\.linked\s*\{[^}]*background\s*:\s*(#[0-9a-fA-F]{6})/);
+  const linkedLabelHex  = linkedLabelMatch  ? linkedLabelMatch[1].toLowerCase()  : 'MISSING';
+  const linkedThumbHex  = linkedThumbBgMatch ? linkedThumbBgMatch[1].toLowerCase() : 'MISSING';
+  eq('lower-dot-brown AC3 consistency: linked label hex === linked thumb hex',
+    linkedLabelHex, linkedThumbHex);
+
+  // --- AC4: Old grey #9aa0a6 no longer appears in either of these two rules ---
+  // (linked thumb rule checked above; now check the linked label rule)
+  const linkedLabelRuleMatch = sidebarHtml.match(/#sliderBlock\.linked[^{]*\.lbl\.bot\s*\{[^}]*\}/);
+  const linkedLabelRule = linkedLabelRuleMatch ? linkedLabelRuleMatch[0] : '';
+  eq('lower-dot-brown AC4: linked label rule does not contain #9aa0a6',
+    linkedLabelRule.includes('#9aa0a6'), false);
+
+  // --- AC5: The linked brown (#c48a6a) is lighter than the decoupled brown (#b3623d) ---
+  // Parse each hex to RGB, then compute perceived lightness (simple average of R,G,B).
+  function hexToRgb(hex) {
+    const h = hex.replace('#', '');
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16),
+    };
+  }
+  function lightness(rgb) { return (rgb.r + rgb.g + rgb.b) / 3; }
+
+  const linkedBrown    = hexToRgb('#c48a6a');   // the new colour
+  const decoupledBrown = hexToRgb('#b3623d');   // the existing decoupled colour
+  eq('lower-dot-brown AC5: linked brown (#c48a6a) is lighter than decoupled brown (#b3623d)',
+    lightness(linkedBrown) > lightness(decoupledBrown), true);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
