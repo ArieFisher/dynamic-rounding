@@ -9575,6 +9575,119 @@ function makeKaggleLikeGrid(dataRows) {
     adapter.getRows()[0].getCells()[1].getText(), '10');
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint dots-tick-alignment: pct() mapping and CSS vertical alignment
+// ---------------------------------------------------------------------------
+
+(function sprintDotsTickAlignment() {
+  const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+
+  // --- Extract pct() from sidebar.js and instantiate it for runtime testing ---
+  // We locate the function body with a regex (same pattern used elsewhere for
+  // source-level extraction) and wrap it in a new Function so we can call it.
+  const pctMatch = sidebarJsSrc.match(/function pct\(v\)\s*\{([\s\S]*?)\n\}/);
+  if (!pctMatch) {
+    failed++;
+    failures.push({ name: 'dots-tick: pct() function found in sidebar.js', actual: false, expected: true });
+  } else {
+    passed++;
+    const pct = new Function('v', pctMatch[1]);
+
+    // The 9 stops in order (k=0..8):
+    const stops = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+    const TOL = 1e-6;
+
+    // AC1a: Each stop maps to the centre of its grid cell in a 9-equal-column grid.
+    // Cell k centre = (k + 0.5) / 9 * 100.
+    stops.forEach((v, k) => {
+      const expected = (k + 0.5) / 9 * 100;
+      const actual = pct(v);
+      const ok = Math.abs(actual - expected) < TOL;
+      if (ok) {
+        passed++;
+      } else {
+        failed++;
+        failures.push({
+          name: `dots-tick: pct(${v}) === cell-${k}-centre (${expected.toFixed(6)}%)`,
+          actual: actual,
+          expected: expected,
+        });
+      }
+    });
+
+    // AC1b: Key exact values — extremes and centre.
+    const pctNeg1 = pct(-1);
+    const pctZero = pct(0);
+    const pctPos1 = pct(1);
+
+    eq('dots-tick: pct(-1) ≈ 5.5556% (1st cell centre)',
+      Math.abs(pctNeg1 - 100/18) < TOL, true);
+    eq('dots-tick: pct(0) === 50% (centre cell)',
+      pctZero, 50);
+    eq('dots-tick: pct(1) ≈ 94.4444% (9th cell centre)',
+      Math.abs(pctPos1 - 100*17/18) < TOL, true);
+
+    // AC1c: old formula (v+1)/2*100 must NOT produce these values at the extremes.
+    // If the old formula were still in use, pct(-1) would be 0 and pct(1) would be
+    // 100 — verify the new formula does NOT produce those.
+    eq('dots-tick: pct(-1) is NOT 0 (old formula would give 0)',
+      pct(-1) !== 0, true);
+    eq('dots-tick: pct(1) is NOT 100 (old formula would give 100)',
+      pct(1) !== 100, true);
+
+    // AC2: Monotonic — pct is strictly increasing across all 9 stops.
+    let monotonic = true;
+    for (let i = 1; i < stops.length; i++) {
+      if (pct(stops[i]) <= pct(stops[i - 1])) { monotonic = false; break; }
+    }
+    eq('dots-tick: pct() is strictly increasing across all 9 stops', monotonic, true);
+
+    // AC3: Symmetric — pct(-v) + pct(v) === 100 for all non-zero stops.
+    // Use tolerance for float arithmetic.
+    const symStops = [-0.75, -0.5, -0.25, 0.25, 0.5, 0.75, 1];
+    let symmetric = true;
+    for (const v of symStops) {
+      if (Math.abs(pct(-v) + pct(v) - 100) > TOL) { symmetric = false; break; }
+    }
+    eq('dots-tick: pct(-v) + pct(v) === 100 (symmetric about 50%)', symmetric, true);
+  }
+
+  // --- AC4: 9-column grid assumption — verify tick markup matches formula ---
+  // The pct formula assumes 9 equal columns. Adversarial check: count the actual
+  // tick spans and verify the CSS declares exactly repeat(9, 1fr).
+  const tickSpans = (sidebarHtmlSrc.match(/class="t"/g) || []).length;
+  eq('dots-tick: .dual-ticks contains exactly 9 tick spans (matches pct() formula)',
+    tickSpans, 9);
+
+  eq('dots-tick: .dual-ticks CSS uses repeat(9, 1fr) grid',
+    /\.dual-ticks\s*\{[^}]*grid-template-columns\s*:\s*repeat\(9,\s*1fr\)/.test(sidebarHtmlSrc), true);
+
+  // --- AC5: Vertical CSS — .dual-ticks uses top: 20px (not 22px) ---
+  eq('dots-tick: .dual-ticks CSS top is 20px',
+    /\.dual-ticks\s*\{[^}]*top:\s*20px/.test(sidebarHtmlSrc), true);
+
+  eq('dots-tick: .dual-ticks CSS top is NOT 22px (old value)',
+    /\.dual-ticks\s*\{[^}]*top:\s*22px/.test(sidebarHtmlSrc), false);
+
+  // --- AC6: pct() is only used for thumb positioning (not for fill/label/other) ---
+  // Adversarial: if pct() were wired to a range-fill width or label position, the
+  // non-0/100 extremes would produce a visually broken fill. Verify here that all
+  // pct() call sites in sidebar.js are limited to style.left on thumbs.
+  // Use a negative lookbehind to exclude the function definition itself.
+  const pctCallSites = sidebarJsSrc.match(/(?<!function )pct\([^)]+\)/g) || [];
+  // Every call site should appear only inside thumb left-position assignments.
+  // We check there are exactly 2 call sites (topThumb and botThumb style.left).
+  eq('dots-tick: pct() is called exactly twice in sidebar.js (both thumb style.left)',
+    pctCallSites.length, 2);
+
+  // Both call sites must be inside a style.left assignment.
+  const thumbLeftPattern = /\.style\.left\s*=\s*pct\(/g;
+  const thumbLeftMatches = (sidebarJsSrc.match(thumbLeftPattern) || []).length;
+  eq('dots-tick: both pct() calls are style.left assignments (not fill/label)',
+    thumbLeftMatches, 2);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
