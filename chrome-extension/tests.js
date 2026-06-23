@@ -9935,12 +9935,11 @@ function makeKaggleLikeGrid(dataRows) {
     eq('AC2-C: header contains "a quarter of"', header.includes('a quarter of'), true);
   })();
 
-  // Scenario D (adversarial): maxMag=6, offset=-0.75 → step=750k, ratio≈1.333
-  // Math.round(1.333)=1, ordinals[1] is undefined → emits "1/1 of" which is
-  // garbled/wrong. This scenario exposes a bug in the "(i.e.)" clause when the
-  // ratio is not a clean integer.  The test asserts the ACTUAL behaviour so
-  // CI notices if the bug is fixed (test will fail and should be updated) or
-  // if the garbled output persists.
+  // Scenario D: maxMag=6, offset=-0.75 → step=750k, ratio = step/oom = 0.75.
+  // The direct ratio→phrase lookup emits the correct "three quarters of 1M"
+  // clause. (This previously regressed to a garbled "1/1 of" when the clause
+  // was derived via Math.round of an inverted ratio — guarded here so it
+  // can't come back.)
   (function hdrScenarioD_adversarial() {
     const maxMag = 6; const offset = -0.75;
     const oomVal = Math.pow(10, maxMag);        // 1000000
