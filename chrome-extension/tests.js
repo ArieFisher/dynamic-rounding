@@ -9945,19 +9945,16 @@ function makeKaggleLikeGrid(dataRows) {
     const maxMag = 6; const offset = -0.75;
     const oomVal = Math.pow(10, maxMag);        // 1000000
     const step = stepForOffset(oomVal, offset); // 750000
-    const ratio = oomVal / step;                // ~1.333
-    const denom = Math.round(ratio);            // 1
+    // ratio = step/oomVal = 0.75 → "three quarters of 1M"
     const header = fmtHdr(maxMag, offset);
-    // The "(i.e.)" clause with ratio≈1.333 rounds denom to 1, which is NOT in
-    // ordinals; the fallback emits "1/1 of" which is mathematically wrong.
-    // We assert the actual emission so a regression or fix is caught.
-    eq('AC2-D-adversarial: ratio=1.333 → fallback "1/1 of" emitted (BUG MARKER)',
-      header.includes('1/1 of'), true);
+    // Fixed: direct ratio→phrase lookup emits the correct clause.
+    eq('AC2-D: ratio=0.75 → "three quarters of" emitted',
+      header.includes('three quarters of'), true);
     // Also confirm step label is present
     eq('AC2-D-adversarial: header contains "nearest 750k"', header.includes('nearest 750k'), true);
   })();
 
-  // Scenario E: offset=0 (integer) → step=oomVal, ratio=1 ≤ 1 → "1 of"
+  // Scenario E: offset=0 (integer) → step=oomVal, ratio=1 → clause omitted
   (function hdrScenarioE() {
     const maxMag = 2; const offset = 0;
     const oomVal = Math.pow(10, maxMag); // 100
@@ -9966,8 +9963,8 @@ function makeKaggleLikeGrid(dataRows) {
     const header = fmtHdr(maxMag, offset);
     eq('AC2-E: offset=0 header contains "nearest ' + stepLabel + '"',
       header.includes('nearest ' + stepLabel), true);
-    // ratio=1, ratio<=1 branch: trimNum(1)+' of' = '1 of'
-    eq('AC2-E: offset=0 ratio=1 → "1 of" clause', header.includes('1 of'), true);
+    // ratio=1: "(i.e. …)" clause is omitted entirely.
+    eq('AC2-E: offset=0 ratio=1 → no "(i.e." clause', header.includes('(i.e.'), false);
   })();
 
   // -------------------------------------------------------------------------
