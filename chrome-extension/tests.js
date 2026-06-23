@@ -9968,6 +9968,102 @@ function makeKaggleLikeGrid(dataRows) {
   })();
 
   // -------------------------------------------------------------------------
+  // AC2-ALL-STOPS: All 9 slider stops × 2 maxMag values.
+  // For each stop we independently derive step/stepLabel via the real
+  // stepForOffset/formatStep so the assertions are spec-arithmetic-derived,
+  // not copied from implementation output.  The human phrase fragments are
+  // hardcoded because those ARE the spec contract.
+  //
+  // Stops: offset ∈ {-1, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1}
+  //   offset -1   → ratio 0.1   → "a tenth of"
+  //   offset -0.75→ ratio 0.75  → "three quarters of"
+  //   offset -0.5 → ratio 0.5   → "a half of"
+  //   offset -0.25→ ratio 0.25  → "a quarter of"
+  //   offset  0   → ratio 1     → no "(i.e." clause
+  //   offset +0.25→ ratio 2.5   → "2.5×"
+  //   offset +0.5 → ratio 5     → "5×"
+  //   offset +0.75→ ratio 7.5   → "7.5×"
+  //   offset +1   → ratio 10    → "10×"
+  // -------------------------------------------------------------------------
+  (function hdrAllStops() {
+    const stops = [
+      { offset: -1,    phrase: 'a tenth of',       hasClause: true  },
+      { offset: -0.75, phrase: 'three quarters of', hasClause: true  },
+      { offset: -0.5,  phrase: 'a half of',         hasClause: true  },
+      { offset: -0.25, phrase: 'a quarter of',      hasClause: true  },
+      { offset:  0,    phrase: null,                hasClause: false },
+      { offset:  0.25, phrase: '2.5×',          hasClause: true  },
+      { offset:  0.5,  phrase: '5×',            hasClause: true  },
+      { offset:  0.75, phrase: '7.5×',          hasClause: true  },
+      { offset:  1,    phrase: '10×',           hasClause: true  },
+    ];
+
+    // Test against TWO different maxMag values to confirm maxMag-independence of phrases.
+    const testMags = [6, 5]; // 1M and 100k
+
+    for (const mag of testMags) {
+      const oomVal = Math.pow(10, mag);
+      const oomLabel = fmtOom(mag);                  // e.g. "1M+" or "100k+"
+      const oomBare  = oomLabel.replace(/\+$/, ''); // e.g. "1M"  or "100k"
+
+      for (const stop of stops) {
+        const tag = 'AC2-ALL mag=' + mag + ' offset=' + stop.offset;
+        const step      = stepForOffset(oomVal, stop.offset);
+        const stepLabel = formatStep(step);
+        const header    = fmtHdr(mag, stop.offset);
+
+        // 1. Header always starts with "<oomLabel> →" (with the "+").
+        eq(tag + ': header contains oomLabel "' + oomLabel + '"',
+          header.includes(oomLabel), true);
+
+        // 2. Header always contains "→".
+        eq(tag + ': header contains arrow "→"',
+          header.includes('→'), true);
+
+        // 3. Header always contains "nearest <stepLabel>" using REAL stepForOffset.
+        eq(tag + ': header contains "nearest ' + stepLabel + '"',
+          header.includes('nearest ' + stepLabel), true);
+
+        // 4a. Clause presence / absence.
+        if (stop.hasClause) {
+          eq(tag + ': header contains "(i.e."',
+            header.includes('(i.e.'), true);
+          // 4b. The specific human phrase must appear.
+          eq(tag + ': header contains phrase "' + stop.phrase + '"',
+            header.includes(stop.phrase), true);
+          // 4c. The phrase must reference the bare OoM label (no trailing "+").
+          eq(tag + ': phrase references oomBare "' + oomBare + '"',
+            header.includes(oomBare), true);
+        } else {
+          // offset=0 → ratio=1 → clause omitted entirely.
+          eq(tag + ': offset=0 → no "(i.e." clause',
+            header.includes('(i.e.'), false);
+        }
+      }
+    }
+  })();
+
+  // -------------------------------------------------------------------------
+  // AC2-NO-GARBLE: None of the 9 outputs for any of the two test mags should
+  // contain known garbled fragments from the old broken implementation.
+  // -------------------------------------------------------------------------
+  (function hdrNoGarble() {
+    const allOffsets = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+    const testMags   = [6, 5];
+    const badPatterns = ['1/1', '0.1 of', '0.133', 'NaN', 'undefined'];
+
+    for (const mag of testMags) {
+      for (const offset of allOffsets) {
+        const header = fmtHdr(mag, offset);
+        for (const bad of badPatterns) {
+          eq('AC2-NO-GARBLE mag=' + mag + ' offset=' + offset + ': no "' + bad + '"',
+            header.includes(bad), false);
+        }
+      }
+    }
+  })();
+
+  // -------------------------------------------------------------------------
   // AC3: renderBotBand DESCENDING sort by magnitude.
   // Extract renderBotBand from sidebar.js, provide DOM stubs, call with rows
   // in ASCENDING order, assert rendered order is DESCENDING.
