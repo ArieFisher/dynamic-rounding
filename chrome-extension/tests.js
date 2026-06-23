@@ -9575,6 +9575,189 @@ function makeKaggleLikeGrid(dataRows) {
     adapter.getRows()[0].getCells()[1].getText(), '10');
 })();
 
+// ---------------------------------------------------------------------------
+// --- sidebar.js: truncateDecimals / formatOriginal ---
+//
+// Strategy: extract the real implementations from sidebar.js source via regex
+// and eval them in this scope (where toNumber and formatNumberWithCommas are
+// already available from the evaled core.js / content.js block above).
+// This exercises the REAL implementation, not a reimplementation.
+// ---------------------------------------------------------------------------
+(function sidebarHelperTests() {
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  // Extract the two constants and three functions we need from sidebar.js.
+  // We pull them as a verbatim block so they reference each other correctly.
+  // toNumber and formatNumberWithCommas are already on globalThis from the
+  // content-script eval above.
+  const constBlock = sidebarSrc.match(
+    /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
+  );
+  const fmtCommasFn = sidebarSrc.match(
+    /function formatNumberWithCommas\([\s\S]*?\n\}/
+  );
+  const truncateFn = sidebarSrc.match(
+    /function truncateDecimals\([\s\S]*?\n\}/
+  );
+  const formatOriginalFn = sidebarSrc.match(
+    /function formatOriginal\([\s\S]*?\n\}/
+  );
+
+  if (!constBlock || !fmtCommasFn || !truncateFn || !formatOriginalFn) {
+    // Signal extraction failure clearly — treat as a failed test so CI notices.
+    eq('sidebar-extract: able to extract truncateDecimals + formatOriginal from sidebar.js',
+       false, true);
+    return;
+  }
+
+  // Eval into a local object using an IIFE so the const declarations bind in
+  // function scope (not global) and the new Function body can hold them.
+  // toNumber is passed in from the already-evaled content-script scope.
+  // Note: string concatenation is used (not a template literal) to avoid any
+  // back-tick/interpolation issues with the extracted source text.
+  const helperSrc = '(function() {\n' +
+    constBlock[0] + '\n' +
+    fmtCommasFn[0] + '\n' +
+    truncateFn[0] + '\n' +
+    formatOriginalFn[0] + '\n' +
+    'return { formatNumberWithCommas: formatNumberWithCommas, truncateDecimals: truncateDecimals, formatOriginal: formatOriginal };\n' +
+    '})()';
+  const helpers = (new Function(
+    'toNumber',
+    'return ' + helperSrc + ';'
+  ))(toNumber);
+
+  const trunc = helpers.truncateDecimals;
+  const fmtOrig = helpers.formatOriginal;
+
+  // Verify we got real functions, not undefined.
+  eq('sidebar-extract: truncateDecimals is a function',
+     typeof trunc, 'function');
+  eq('sidebar-extract: formatOriginal is a function',
+     typeof fmtOrig, 'function');
+
+  // -----------------------------------------------------------------
+  // Acceptance criterion 1: original numbers display with thousands commas.
+  // formatOriginal converts numeric strings to comma-formatted numbers.
+  // -----------------------------------------------------------------
+  eq('AC1: formatOriginal integer string gets commas (273233 -> "273,233")',
+     fmtOrig('273233'), '273,233');
+  eq('AC1: formatOriginal large integer number gets commas',
+     fmtOrig(1000000), '1,000,000');
+  eq('AC1: formatOriginal already-comma string parses and re-formats ("273,233")',
+     fmtOrig('273,233'), '273,233');
+  eq('AC1: formatOriginal negative large integer gets commas',
+     fmtOrig(-1234567), '-1,234,567');
+
+  // -----------------------------------------------------------------
+  // Acceptance criterion 2: rounded numbers magnitude >= 100 → NO decimals.
+  // truncateDecimals should strip all decimals for |n| >= 100.
+  // -----------------------------------------------------------------
+  eq('AC2: truncateDecimals(1234.56) -> 1234 (magnitude >= 100, no decimals)',
+     trunc(1234.56), 1234);
+  eq('AC2: truncateDecimals(100.9999) -> 100 (exactly at threshold, no decimals)',
+     trunc(100.9999), 100);
+  eq('AC2: truncateDecimals(-1234.56) -> -1234 (negative, magnitude >= 100)',
+     trunc(-1234.56), -1234);
+  eq('AC2: truncateDecimals(-100.9) -> -100 (negative at threshold)',
+     trunc(-100.9), -100);
+  eq('AC2: formatOriginal("1234.56") -> "1,234" (magnitude >= 100, commas, no decimals)',
+     fmtOrig('1234.56'), '1,234');
+  eq('AC2: formatOriginal(100) -> "100" (exactly at boundary, no decimals)',
+     fmtOrig(100), '100');
+
+  // -----------------------------------------------------------------
+  // Acceptance criterion 3: magnitude < 100 → at most 4 decimals, TRUNCATED.
+  // This is the adversarial core: must be truncation, NOT rounding.
+  // -----------------------------------------------------------------
+
+  // Key adversarial case: 1.99999 must NOT round up to 2.
+  eq('AC3-adversarial: truncateDecimals(1.99999) -> 1.9999 (truncated, not rounded to 2)',
+     trunc(1.99999), 1.9999);
+  eq('AC3-adversarial: truncateDecimals(1.7999999999) -> 1.7999 (truncated at 4 decimals)',
+     trunc(1.7999999999), 1.7999);
+  eq('AC3-adversarial: truncateDecimals(1.00005) -> 1 (truncates, not rounds to 1.0001)',
+     trunc(1.00005), 1);
+
+  // Boundary: 99.99999 must NOT round to 100, and must stay < threshold, giving 4 dec.
+  eq('AC3-boundary-99.99999: truncateDecimals(99.99999) -> 99.9999 (below threshold, truncated)',
+     trunc(99.99999), 99.9999);
+  eq('AC3-boundary-99.99999: formatOriginal("99.99999") -> "99.9999" (not rounded to 100)',
+     fmtOrig('99.99999'), '99.9999');
+
+  // Boundary: exactly 100 — at threshold, no decimals.
+  eq('AC3-boundary-100: truncateDecimals(100) -> 100 (integer, no change)',
+     trunc(100), 100);
+  eq('AC3-boundary-100: truncateDecimals(100.0001) -> 100 (at/above threshold, trunc)',
+     trunc(100.0001), 100);
+
+  // Negatives below threshold: trunc toward zero (not floor).
+  eq('AC3-negative: truncateDecimals(-1.7999) -> -1.7999 (toward zero, not -1.8)',
+     trunc(-1.7999), -1.7999);
+  eq('AC3-negative: truncateDecimals(-1.99999) -> -1.9999 (truncated, not -2)',
+     trunc(-1.99999), -1.9999);
+  eq('AC3-negative: truncateDecimals(-99.99999) -> -99.9999 (negative, below threshold)',
+     trunc(-99.99999), -99.9999);
+  eq('AC3-negative: formatOriginal("-99.99999") -> "-99.9999" (negative, truncated, not -100)',
+     fmtOrig('-99.99999'), '-99.9999');
+  eq('AC3-negative: formatOriginal("-1.7999") -> "-1.7999" (toward zero)',
+     fmtOrig('-1.7999'), '-1.7999');
+
+  // Negative boundary: -100 at threshold → no decimals.
+  eq('AC3-negative-100: truncateDecimals(-100) -> -100',
+     trunc(-100), -100);
+  eq('AC3-negative-100: formatOriginal("-100") -> "-100"',
+     fmtOrig('-100'), '-100');
+  eq('AC3-negative-100: truncateDecimals(-100.5) -> -100 (magnitude >= 100, no decimals)',
+     trunc(-100.5), -100);
+
+  // Numbers with fewer than 4 decimals are preserved as-is (no padding).
+  eq('AC3-fewer-decimals: truncateDecimals(1.5) -> 1.5',
+     trunc(1.5), 1.5);
+  eq('AC3-fewer-decimals: truncateDecimals(0.1234) -> 0.1234',
+     trunc(0.1234), 0.1234);
+  eq('AC3-fewer-decimals: formatOriginal("1.5") -> "1.5"',
+     fmtOrig('1.5'), '1.5');
+
+  // -----------------------------------------------------------------
+  // Comma parsing of original: string with commas should parse and reformat.
+  // -----------------------------------------------------------------
+  eq('comma-parse: formatOriginal("273,233") -> "273,233" (toNumber strips commas)',
+     fmtOrig('273,233'), '273,233');
+  eq('comma-parse: formatOriginal("1,234.5678999") -> "1,234" (magnitude >= 100, trunc)',
+     fmtOrig('1,234.5678999'), '1,234');
+  eq('comma-parse: formatOriginal("99,999") -> "99,999" (magnitude >= 100, no decimals)',
+     fmtOrig('99,999'), '99,999');
+
+  // -----------------------------------------------------------------
+  // NaN / unparseable fallback: should return the raw string, not "NaN".
+  // -----------------------------------------------------------------
+  eq('NaN-fallback: formatOriginal("abc") -> "abc" (raw string passthrough)',
+     fmtOrig('abc'), 'abc');
+  eq('NaN-fallback: formatOriginal("") -> "" (empty string passthrough)',
+     fmtOrig(''), '');
+  eq('NaN-fallback: formatOriginal(null) -> "null" (null stringified)',
+     fmtOrig(null), 'null');
+  eq('NaN-fallback: formatOriginal("12abc") -> "12abc" (non-numeric string raw)',
+     fmtOrig('12abc'), '12abc');
+
+  // -----------------------------------------------------------------
+  // Edge cases: zero, very small numbers, integers.
+  // -----------------------------------------------------------------
+  eq('edge: truncateDecimals(0) -> 0',
+     trunc(0), 0);
+  eq('edge: formatOriginal("0") -> "0"',
+     fmtOrig('0'), '0');
+  eq('edge: formatOriginal(0.00001) -> "0" (truncated to 4 places, last digit gone)',
+     fmtOrig(0.00001), '0');
+  eq('edge: formatOriginal(0.00009999) -> "0" (below 4th decimal place)',
+     fmtOrig(0.00009999), '0');
+  eq('edge: formatOriginal(0.1234) -> "0.1234" (exactly 4 decimals)',
+     fmtOrig(0.1234), '0.1234');
+  eq('edge: formatOriginal(0.12345) -> "0.1234" (5th decimal truncated)',
+     fmtOrig(0.12345), '0.1234');
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
