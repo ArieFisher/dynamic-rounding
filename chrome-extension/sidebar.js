@@ -152,7 +152,9 @@ function renderBand(el, rows, offset) {
     const numEl = document.createElement('span');
     numEl.className = 'num';
     const rounded = roundWithOffset(row.num, offset);
-    numEl.textContent = formatNumberWithCommas(truncateDecimals(rounded));
+    // Use the same noise-free formatting path as the `from` cell so both
+    // display values behave identically per the preview spec.
+    numEl.textContent = formatOriginal(rounded);
     pair.appendChild(numEl);
 
     const stepEl = document.createElement('span');
