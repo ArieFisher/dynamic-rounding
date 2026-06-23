@@ -9876,7 +9876,7 @@ function fireMouseClick(buttonEl, fn) {
 
 // AC3 corollary: when lastRightClickedTable is null (no table right-clicked),
 // clicking any morph pill also does NOT send TABLE_TOGGLE_STATE.
-(function pillbox_AC3_noLastRightClicked_noMessage() {
+(function pillbox_AC3_noLastRightClicked_noMessage_corollary() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
