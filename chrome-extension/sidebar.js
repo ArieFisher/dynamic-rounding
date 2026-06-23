@@ -77,6 +77,9 @@ const PREVIEW_NUM_TOP = 1;
 let cachedSamples = null;
 let cachedMaxMag = null;
 
+const PREVIEW_DECIMAL_THRESHOLD = 100;
+const PREVIEW_MAX_DECIMALS = 4;
+
 function formatNumberWithCommas(n) {
   if (typeof n !== 'number' || !isFinite(n)) return String(n);
   const sign = n < 0 ? '-' : '';
@@ -87,6 +90,20 @@ function formatNumberWithCommas(n) {
   if (frac === 0) return sign + intStr;
   const fracStr = String(frac).slice(1).replace(/0+$/, '');
   return sign + intStr + (fracStr === '.' ? '' : fracStr);
+}
+
+function truncateDecimals(n) {
+  if (Math.abs(n) >= PREVIEW_DECIMAL_THRESHOLD) {
+    return Math.trunc(n);
+  }
+  return Math.trunc(n * Math.pow(10, PREVIEW_MAX_DECIMALS)) / Math.pow(10, PREVIEW_MAX_DECIMALS);
+}
+
+function formatOriginal(numOrStr) {
+  const parsed = toNumber(numOrStr);
+  if (parsed === null || !isFinite(parsed)) return String(numOrStr);
+  const truncated = truncateDecimals(parsed);
+  return formatNumberWithCommas(truncated);
 }
 
 function renderBand(el, rows, offset) {
@@ -102,7 +119,7 @@ function renderBand(el, rows, offset) {
 
     const from = document.createElement('span');
     from.className = 'from';
-    from.textContent = row.original;
+    from.textContent = formatOriginal(row.original);
     pair.appendChild(from);
 
     const arrow = document.createElement('span');
@@ -113,7 +130,7 @@ function renderBand(el, rows, offset) {
     const numEl = document.createElement('span');
     numEl.className = 'num';
     const rounded = roundWithOffset(row.num, offset);
-    numEl.textContent = formatNumberWithCommas(rounded);
+    numEl.textContent = formatNumberWithCommas(truncateDecimals(rounded));
     pair.appendChild(numEl);
 
     const stepEl = document.createElement('span');
