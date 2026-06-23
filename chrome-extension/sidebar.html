@@ -235,6 +235,16 @@
       margin-top: 12px;
       min-height: 1em;
     }
+    body.no-table #optionsSection,
+    body.no-table #advancedSection {
+      opacity: 0.4;
+      pointer-events: none;
+    }
+    body.no-table #status {
+      font-size: 13px;
+      font-weight: 500;
+      color: #5f6368;
+    }
     .divider {
       border: none;
       border-top: 1px solid #e8eaed;
@@ -349,7 +359,7 @@
     </div>
   </details>
 
-  <div class="status" id="status"></div>
+  <div class="status" id="status">Right-click a table to connect it here.</div>
 
   <script src="defaults.js"></script>
   <script src="rounding.js"></script>
