@@ -144,9 +144,10 @@
       height: 4px; background: #d6d9de; border-radius: 999px;
     }
     .dual-ticks {
-      position: absolute; left: 0; right: 0; top: 22px;
+      position: absolute; left: 0; right: 0; top: 20px;
       display: grid; grid-template-columns: repeat(9, 1fr);
       pointer-events: none;
+      /* top: 20px centres each 12px tick (top + 6px) on the thumb centre at 26px */
     }
     .dual-ticks .t {
       height: 12px; width: 2px; background: #b5b9c0;
