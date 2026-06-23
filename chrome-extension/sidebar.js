@@ -102,8 +102,30 @@ function truncateDecimals(n) {
 function formatOriginal(numOrStr) {
   const parsed = toNumber(numOrStr);
   if (parsed === null || !isFinite(parsed)) return String(numOrStr);
-  const truncated = truncateDecimals(parsed);
-  return formatNumberWithCommas(truncated);
+  const sign = parsed < 0 ? '-' : '';
+  const abs = Math.abs(parsed);
+  if (abs >= PREVIEW_DECIMAL_THRESHOLD) {
+    // Integer-only display: reuse formatNumberWithCommas on the truncated integer.
+    return formatNumberWithCommas(Math.trunc(parsed));
+  }
+  // For |n| < 100: build decimal string with extra guard digits to avoid
+  // fp-noise from toFixed rounding into our window, then truncate the decimal
+  // substring to PREVIEW_MAX_DECIMALS digits (avoiding float subtraction which
+  // surfaces IEEE-754 noise like 99.9999 -> "99.9998999999999967").
+  const GUARD = PREVIEW_MAX_DECIMALS + 4;
+  const fixed = abs.toFixed(GUARD); // e.g. "99.999990000" for 99.99999
+  const dotIdx = fixed.indexOf('.');
+  const intStr = fixed.slice(0, dotIdx).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  // Truncate (not round) the decimal part to PREVIEW_MAX_DECIMALS digits.
+  let fracStr = fixed.slice(dotIdx + 1, dotIdx + 1 + PREVIEW_MAX_DECIMALS);
+  // Strip trailing zeros so "1.5000" -> "1.5", "1.0000" -> "" (no dot).
+  fracStr = fracStr.replace(/0+$/, '');
+  if (fracStr === '') {
+    // Guard against "-0": sign is only emitted when there is a non-zero result.
+    const result = sign + intStr;
+    return result === '-0' ? '0' : result;
+  }
+  return sign + intStr + '.' + fracStr;
 }
 
 function renderBand(el, rows, offset) {
