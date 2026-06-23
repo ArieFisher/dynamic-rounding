@@ -173,37 +173,48 @@ function formatOomLabel(mag) {
  * Build the strategy header string for the top band.
  * e.g. "100k+ → nearest 25k (i.e. a quarter of 100k)"
  *
- * The "i.e." clause is derived by computing step/oomVal as a fraction and
- * expressing it as a human-readable ratio of the OoM value.
+ * The "i.e." clause is derived by computing step/oomVal (the ratio of the step
+ * to the OoM magnitude) and looking it up in STRATEGY_RATIO_PHRASES.  The ratio
+ * is drawn from the fixed slider-stop set {0.1, 0.25, 0.5, 0.75, 1, 2.5, 5,
+ * 7.5, 10} regardless of maxMag, so a direct lookup is both correct and simple.
+ *
+ * When ratio == 1 (step equals the OoM) the clause is omitted entirely.
+ * When ratio is not in the table (fallback) the clause is also omitted.
  */
 function formatStrategyHeader(maxMag, offset) {
+  // Lookup table: step/oomVal ratio → "(i.e. …)" clause phrase builder.
+  // Matched with tolerance 1e-9 since these are clean binary floats.
+  const STRATEGY_RATIO_PHRASES = [
+    { ratio: 0.1,  phrase: (b) => 'a tenth of ' + b },
+    { ratio: 0.25, phrase: (b) => 'a quarter of ' + b },
+    { ratio: 0.5,  phrase: (b) => 'a half of ' + b },
+    { ratio: 0.75, phrase: (b) => 'three quarters of ' + b },
+    // ratio == 1: clause omitted — not listed here.
+    { ratio: 2.5,  phrase: (b) => '2.5× ' + b },
+    { ratio: 5,    phrase: (b) => '5× ' + b },
+    { ratio: 7.5,  phrase: (b) => '7.5× ' + b },
+    { ratio: 10,   phrase: (b) => '10× ' + b },
+  ];
   const oomLabel = formatOomLabel(maxMag);
   const oomVal = Math.pow(10, maxMag);
   // Use the representative top value (oomVal itself) to compute the step.
   const step = stepForOffset(oomVal, offset);
   const stepLabel = formatStep(step);
-  // Derive the "i.e. a <fraction> of <oom>" clause.
-  // ratio = oomVal / step: how many steps fit in one OoM.
-  const ratio = oomVal / step;
-  let fractionStr;
-  if (ratio <= 1) {
-    // step >= oomVal: e.g. ratio=0.5 → "twice" or use multiplier language
-    fractionStr = trimNum(ratio) + ' of';
-  } else {
-    // step < oomVal: e.g. ratio=4 → "a quarter of", ratio=2 → "a half of",
-    //               ratio=10 → "a tenth of", ratio=5 → "a fifth of".
-    const denom = Math.round(ratio);
-    const ordinals = {
-      2: 'half', 3: 'third', 4: 'quarter', 5: 'fifth',
-      6: 'sixth', 7: 'seventh', 8: 'eighth', 9: 'ninth', 10: 'tenth',
-    };
-    if (ordinals[denom]) {
-      fractionStr = 'a ' + ordinals[denom] + ' of';
-    } else {
-      fractionStr = '1/' + denom + ' of';
+  // ratio = step / oomVal: how large the step is relative to the OoM.
+  const ratio = step / oomVal;
+  // OoM label without the trailing "+" for use inside the clause.
+  const oomBare = oomLabel.replace(/\+$/, '');
+  // Look up the phrase for this ratio.
+  let clausePhrase = null;
+  for (const entry of STRATEGY_RATIO_PHRASES) {
+    if (Math.abs(ratio - entry.ratio) < 1e-9) {
+      clausePhrase = entry.phrase(oomBare);
+      break;
     }
   }
-  return oomLabel + ' → nearest ' + stepLabel + ' (i.e. ' + fractionStr + ' ' + formatStep(oomVal) + ')';
+  // ratio == 1 (or any unmatched ratio): omit the "(i.e. …)" clause entirely.
+  const base = oomLabel + ' → nearest ' + stepLabel;
+  return clausePhrase ? base + ' (i.e. ' + clausePhrase + ')' : base;
 }
 
 /**
