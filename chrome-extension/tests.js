@@ -9756,6 +9756,57 @@ function makeKaggleLikeGrid(dataRows) {
      fmtOrig(0.1234), '0.1234');
   eq('edge: formatOriginal(0.12345) -> "0.1234" (5th decimal truncated)',
      fmtOrig(0.12345), '0.1234');
+
+  // -----------------------------------------------------------------
+  // REGRESSION GUARD: formatOriginal must TRUNCATE, never ROUND.
+  // These assertions pin the production function against the bug where
+  // toFixed() was used (which rounds), causing e.g. 1.7999999999 -> '1.8'.
+  // All cases below would fail under a rounding implementation.
+  // -----------------------------------------------------------------
+
+  // Spec AC3 canonical example: deep-9s value, must truncate not round.
+  eq('regression-trunc: formatOriginal(1.7999999999) -> "1.7999" (not "1.8")',
+     fmtOrig(1.7999999999), '1.7999');
+
+  // Near-integer truncation: 1.999999999 must NOT round up to 2.
+  eq('regression-trunc: formatOriginal(1.999999999) -> "1.9999" (not "2", not "1")',
+     fmtOrig(1.999999999), '1.9999');
+
+  // 5th decimal truncated, not rounded: 5.12349999999 must NOT become '5.1235'.
+  eq('regression-trunc: formatOriginal(5.12349999999) -> "5.1234" (not "5.1235")',
+     fmtOrig(5.12349999999), '5.1234');
+
+  // Just below threshold: numeric (not string) 99.99999 must NOT round to 100.
+  eq('regression-trunc: formatOriginal(99.99999) -> "99.9999" (not "100")',
+     fmtOrig(99.99999), '99.9999');
+
+  // Negative near-integer: -1.999999999 must NOT round to -2.
+  eq('regression-trunc: formatOriginal(-1.999999999) -> "-1.9999" (not "-2")',
+     fmtOrig(-1.999999999), '-1.9999');
+
+  // Negative just below threshold: numeric -99.99999 must NOT round to -100.
+  eq('regression-trunc: formatOriginal(-99.99999) -> "-99.9999" (not "-100")',
+     fmtOrig(-99.99999), '-99.9999');
+
+  // Magnitude >= 100 with numeric (not string) input: 1234.56 -> "1,234".
+  eq('regression-trunc: formatOriginal(1234.56) -> "1,234" (numeric input, commas, no decimals)',
+     fmtOrig(1234.56), '1,234');
+
+  // Numeric 1.5 (not string): trailing zeros stripped, no padding.
+  eq('regression-trunc: formatOriginal(1.5) -> "1.5" (numeric, no padding)',
+     fmtOrig(1.5), '1.5');
+
+  // Integer 2: no decimals, no commas.
+  eq('regression-trunc: formatOriginal(2) -> "2" (integer, no decimals)',
+     fmtOrig(2), '2');
+
+  // Negative tiny value: -0.00001 truncates to 0, must NOT produce "-0".
+  eq('regression-trunc: formatOriginal(-0.00001) -> "0" (no negative zero)',
+     fmtOrig(-0.00001), '0');
+
+  // Adversarial fp-noise: 49.99995 must NOT round to '50'.
+  eq('regression-trunc: formatOriginal(49.99995) -> "49.9999" (fp-noise, not "50")',
+     fmtOrig(49.99995), '49.9999');
 })();
 
 // --- Report ---
