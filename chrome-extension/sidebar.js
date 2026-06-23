@@ -108,18 +108,31 @@ function formatOriginal(numOrStr) {
     // Integer-only display: reuse formatNumberWithCommas on the truncated integer.
     return formatNumberWithCommas(Math.trunc(parsed));
   }
-  // For |n| < 100: build decimal string with extra guard digits to avoid
-  // fp-noise from toFixed rounding into our window, then truncate the decimal
-  // substring to PREVIEW_MAX_DECIMALS digits (avoiding float subtraction which
-  // surfaces IEEE-754 noise like 99.9999 -> "99.9998999999999967").
-  const GUARD = PREVIEW_MAX_DECIMALS + 4;
-  const fixed = abs.toFixed(GUARD); // e.g. "99.999990000" for 99.99999
-  const dotIdx = fixed.indexOf('.');
-  const intStr = fixed.slice(0, dotIdx).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  // Truncate (not round) the decimal part to PREVIEW_MAX_DECIMALS digits.
-  let fracStr = fixed.slice(dotIdx + 1, dotIdx + 1 + PREVIEW_MAX_DECIMALS);
+  // For |n| < 100: use abs.toString() which gives the shortest faithful
+  // round-trip decimal representation without rounding. Then truncate (not
+  // round) the decimal string to PREVIEW_MAX_DECIMALS digits via string slice.
+  const s = abs.toString();
+  // If the string is in scientific notation (e.g. 1e-7), the value has no
+  // significant digits within 4 decimal places; treat fractional part as empty.
+  let intPart, fracStr;
+  if (s.indexOf('e') !== -1 || s.indexOf('E') !== -1) {
+    intPart = String(Math.trunc(abs));
+    fracStr = '';
+  } else {
+    const dotIdx = s.indexOf('.');
+    if (dotIdx === -1) {
+      intPart = s;
+      fracStr = '';
+    } else {
+      intPart = s.slice(0, dotIdx);
+      // Pure string truncation — no rounding.
+      fracStr = s.slice(dotIdx + 1, dotIdx + 1 + PREVIEW_MAX_DECIMALS);
+    }
+  }
   // Strip trailing zeros so "1.5000" -> "1.5", "1.0000" -> "" (no dot).
   fracStr = fracStr.replace(/0+$/, '');
+  // Apply thousands commas to the integer part.
+  const intStr = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   if (fracStr === '') {
     // Guard against "-0": sign is only emitted when there is a non-zero result.
     const result = sign + intStr;
