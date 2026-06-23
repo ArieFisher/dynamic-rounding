@@ -79,4 +79,11 @@ chrome.runtime.onMessage.addListener((request, sender) => {
     sidebarTabId = null;
     return;
   }
+
+  if (request.action === "TABLE_TOGGLE_STATE") {
+    if (sidebarTabId !== null) {
+      chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: request.enabled });
+    }
+    return;
+  }
 });
