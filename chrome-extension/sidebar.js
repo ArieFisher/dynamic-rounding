@@ -51,9 +51,9 @@ function snap(v) {
 function pct(v) {
   // Map each stop to the centre of its grid cell so thumb centres sit exactly
   // over the tick marks. With 9 equal columns the cell centres fall at
-  // 1/18, 3/18, …, 17/18 of the track width, i.e. pct = ((v+1)/2 * 8 + 1)/9 * 100.
+  // 1/18, 3/18, …, 17/18 of the track width, i.e. pct = ((v+1)/2 * 8 + 0.5)/9 * 100.
   // This places −1 → 5.556% and +1 → 94.444%, matching the tick grid centres.
-  return ((v + 1) / 2 * 8 + 1) / 9 * 100;
+  return ((v + 1) / 2 * 8 + 0.5) / 9 * 100;
 }
 function fmtOffset(o) {
   let s = o.toFixed(2).replace(/\.?0+$/, '');
