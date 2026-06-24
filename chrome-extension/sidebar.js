@@ -77,6 +77,9 @@ const PREVIEW_NUM_TOP = 1;
 let cachedSamples = null;
 let cachedMaxMag = null;
 
+const PREVIEW_DECIMAL_THRESHOLD = 100;
+const PREVIEW_MAX_DECIMALS = 4;
+
 function formatNumberWithCommas(n) {
   if (typeof n !== 'number' || !isFinite(n)) return String(n);
   const sign = n < 0 ? '-' : '';
@@ -89,20 +92,210 @@ function formatNumberWithCommas(n) {
   return sign + intStr + (fracStr === '.' ? '' : fracStr);
 }
 
-function renderBand(el, rows, offset) {
-  if (!el) return;
-  if (!rows || rows.length === 0) {
-    el.innerHTML = '';
-    return;
+function truncateDecimals(n) {
+  if (Math.abs(n) >= PREVIEW_DECIMAL_THRESHOLD) {
+    return Math.trunc(n);
   }
+  return Math.trunc(n * Math.pow(10, PREVIEW_MAX_DECIMALS)) / Math.pow(10, PREVIEW_MAX_DECIMALS);
+}
+
+function formatOriginal(numOrStr) {
+  const parsed = toNumber(numOrStr);
+  if (parsed === null || !isFinite(parsed)) return String(numOrStr);
+  const sign = parsed < 0 ? '-' : '';
+  const abs = Math.abs(parsed);
+  if (abs >= PREVIEW_DECIMAL_THRESHOLD) {
+    // Integer-only display: reuse formatNumberWithCommas on the truncated integer.
+    return formatNumberWithCommas(Math.trunc(parsed));
+  }
+  // For |n| < 100: use abs.toString() which gives the shortest faithful
+  // round-trip decimal representation without rounding. Then truncate (not
+  // round) the decimal string to PREVIEW_MAX_DECIMALS digits via string slice.
+  const s = abs.toString();
+  // If the string is in scientific notation (e.g. 1e-7), the value has no
+  // significant digits within 4 decimal places; treat fractional part as empty.
+  let intPart, fracStr;
+  if (s.indexOf('e') !== -1 || s.indexOf('E') !== -1) {
+    intPart = String(Math.trunc(abs));
+    fracStr = '';
+  } else {
+    const dotIdx = s.indexOf('.');
+    if (dotIdx === -1) {
+      intPart = s;
+      fracStr = '';
+    } else {
+      intPart = s.slice(0, dotIdx);
+      // Pure string truncation — no rounding.
+      fracStr = s.slice(dotIdx + 1, dotIdx + 1 + PREVIEW_MAX_DECIMALS);
+    }
+  }
+  // Strip trailing zeros so "1.5000" -> "1.5", "1.0000" -> "" (no dot).
+  fracStr = fracStr.replace(/0+$/, '');
+  // Apply thousands commas to the integer part.
+  const intStr = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  if (fracStr === '') {
+    // Guard against "-0": sign is only emitted when there is a non-zero result.
+    const result = sign + intStr;
+    return result === '-0' ? '0' : result;
+  }
+  return sign + intStr + '.' + fracStr;
+}
+
+// CSS class name constants for band colouring.
+const STEP_CLASS_TOP = 'step top';
+const STEP_CLASS_BOT = 'step bot';
+const OOM_LABEL_CLASS = 'oom-label';
+const STRATEGY_CLASS = 'strategy';
+
+/**
+ * Return a human-readable OoM label for a given magnitude (floor(log10(|n|))).
+ * Examples: mag=5 → "100k+", mag=3 → "1k+", mag=0 → "1+", mag=-1 → "0.1+"
+ */
+function formatOomLabel(mag) {
+  const val = Math.pow(10, mag);
+  let str;
+  if (val >= 1e9) {
+    str = trimNum(val / 1e9) + 'B';
+  } else if (val >= 1e6) {
+    str = trimNum(val / 1e6) + 'M';
+  } else if (val >= 1e3) {
+    str = trimNum(val / 1e3) + 'k';
+  } else if (val >= 1) {
+    str = trimNum(val);
+  } else {
+    // Sub-integer magnitudes: e.g. mag=-1 → 0.1, mag=-2 → 0.01
+    str = trimNum(val);
+  }
+  return str + '+';
+}
+
+/**
+ * Build the strategy header string for the top band.
+ * e.g. "100k+ → nearest 25k (i.e. a quarter of 100k)"
+ *
+ * The "i.e." clause is derived by computing step/oomVal (the ratio of the step
+ * to the OoM magnitude) and looking it up in STRATEGY_RATIO_PHRASES.  The ratio
+ * is drawn from the fixed slider-stop set {0.1, 0.25, 0.5, 0.75, 1, 2.5, 5,
+ * 7.5, 10} regardless of maxMag, so a direct lookup is both correct and simple.
+ *
+ * When ratio == 1 (step equals the OoM) the clause is omitted entirely.
+ * When ratio is not in the table (fallback) the clause is also omitted.
+ */
+function formatStrategyHeader(maxMag, offset) {
+  // Lookup table: step/oomVal ratio → "(i.e. …)" clause phrase builder.
+  // Matched with tolerance 1e-9 since these are clean binary floats.
+  const STRATEGY_RATIO_PHRASES = [
+    { ratio: 0.1,  phrase: (b) => 'a tenth of ' + b },
+    { ratio: 0.25, phrase: (b) => 'a quarter of ' + b },
+    { ratio: 0.5,  phrase: (b) => 'a half of ' + b },
+    { ratio: 0.75, phrase: (b) => 'three quarters of ' + b },
+    // ratio == 1: clause omitted — not listed here.
+    { ratio: 2.5,  phrase: (b) => '2.5× ' + b },
+    { ratio: 5,    phrase: (b) => '5× ' + b },
+    { ratio: 7.5,  phrase: (b) => '7.5× ' + b },
+    { ratio: 10,   phrase: (b) => '10× ' + b },
+  ];
+  const oomLabel = formatOomLabel(maxMag);
+  const oomVal = Math.pow(10, maxMag);
+  // Use the representative top value (oomVal itself) to compute the step.
+  const step = stepForOffset(oomVal, offset);
+  const stepLabel = formatStep(step);
+  // ratio = step / oomVal: how large the step is relative to the OoM.
+  const ratio = step / oomVal;
+  // OoM label without the trailing "+" for use inside the clause.
+  const oomBare = oomLabel.replace(/\+$/, '');
+  // Look up the phrase for this ratio.
+  let clausePhrase = null;
+  for (const entry of STRATEGY_RATIO_PHRASES) {
+    if (Math.abs(ratio - entry.ratio) < 1e-9) {
+      clausePhrase = entry.phrase(oomBare);
+      break;
+    }
+  }
+  // ratio == 1 (or any unmatched ratio): omit the "(i.e. …)" clause entirely.
+  const base = oomLabel + ' → nearest ' + stepLabel;
+  return clausePhrase ? base + ' (i.e. ' + clausePhrase + ')' : base;
+}
+
+/**
+ * Render the top preview band: strategy header row followed by a single
+ * example row. Step labels are coloured blue (STEP_CLASS_TOP).
+ */
+function renderTopBand(el, rows, offset) {
+  if (!el) return;
   el.innerHTML = '';
-  for (const row of rows) {
+  if (!rows || rows.length === 0) return;
+
+  // Strategy header: spans all 4 grid columns.
+  if (cachedMaxMag !== null && cachedMaxMag !== undefined) {
+    const headerPair = document.createElement('div');
+    headerPair.className = 'pair';
+    const headerEl = document.createElement('span');
+    headerEl.className = STRATEGY_CLASS;
+    headerEl.textContent = formatStrategyHeader(cachedMaxMag, offset);
+    headerPair.appendChild(headerEl);
+    el.appendChild(headerPair);
+  }
+
+  // Single example row (PREVIEW_NUM_TOP = 1).
+  const row = rows[0];
+  const pair = document.createElement('div');
+  pair.className = 'pair';
+
+  const from = document.createElement('span');
+  from.className = 'from';
+  from.textContent = formatOriginal(row.original);
+  pair.appendChild(from);
+
+  const arrow = document.createElement('span');
+  arrow.className = 'arrow';
+  arrow.textContent = '→';
+  pair.appendChild(arrow);
+
+  const numEl = document.createElement('span');
+  numEl.className = 'num';
+  numEl.textContent = formatOriginal(roundWithOffset(row.num, offset));
+  pair.appendChild(numEl);
+
+  const stepEl = document.createElement('span');
+  stepEl.className = STEP_CLASS_TOP;
+  stepEl.textContent = '(' + formatStep(stepForOffset(row.num, offset)) + ')';
+  pair.appendChild(stepEl);
+
+  el.appendChild(pair);
+}
+
+/**
+ * Render the bottom preview band: rows sorted DESCENDING by magnitude,
+ * each showing the original with an OoM label and the step in brown.
+ */
+function renderBotBand(el, rows, offset, maxMag) {
+  if (!el) return;
+  el.innerHTML = '';
+  if (!rows || rows.length === 0) return;
+
+  // Sort descending by OoM magnitude so higher-magnitude rows appear first.
+  const sorted = rows.slice().sort((a, b) => {
+    const magA = a.num !== 0 ? Math.floor(Math.log10(Math.abs(a.num))) : -Infinity;
+    const magB = b.num !== 0 ? Math.floor(Math.log10(Math.abs(b.num))) : -Infinity;
+    return magB - magA;
+  });
+
+  for (const row of sorted) {
     const pair = document.createElement('div');
     pair.className = 'pair';
 
+    // "from" cell: "266,453 (100k+)" where the OoM label is brown.
     const from = document.createElement('span');
     from.className = 'from';
-    from.textContent = row.original;
+    from.textContent = formatOriginal(row.original);
+    if (row.num !== 0) {
+      const mag = Math.floor(Math.log10(Math.abs(row.num)));
+      const oomSpan = document.createElement('span');
+      oomSpan.className = OOM_LABEL_CLASS;
+      oomSpan.textContent = ' (' + formatOomLabel(mag) + ')';
+      from.appendChild(oomSpan);
+    }
     pair.appendChild(from);
 
     const arrow = document.createElement('span');
@@ -112,12 +305,11 @@ function renderBand(el, rows, offset) {
 
     const numEl = document.createElement('span');
     numEl.className = 'num';
-    const rounded = roundWithOffset(row.num, offset);
-    numEl.textContent = formatNumberWithCommas(rounded);
+    numEl.textContent = formatOriginal(roundWithOffset(row.num, offset));
     pair.appendChild(numEl);
 
     const stepEl = document.createElement('span');
-    stepEl.className = 'step';
+    stepEl.className = STEP_CLASS_BOT;
     stepEl.textContent = '(' + formatStep(stepForOffset(row.num, offset)) + ')';
     pair.appendChild(stepEl);
 
@@ -128,12 +320,12 @@ function renderBand(el, rows, offset) {
 function renderPreviewBands() {
   if (!topBandEl || !botBandEl) return;
   if (!cachedSamples) {
-    renderBand(topBandEl, null);
-    renderBand(botBandEl, null);
+    topBandEl.innerHTML = '';
+    botBandEl.innerHTML = '';
     return;
   }
-  renderBand(topBandEl, cachedSamples.top, topVal);
-  renderBand(botBandEl, cachedSamples.bottom, botVal);
+  renderTopBand(topBandEl, cachedSamples.top, topVal);
+  renderBotBand(botBandEl, cachedSamples.bottom, botVal, cachedMaxMag);
 }
 
 function fetchPreviewSamples() {
