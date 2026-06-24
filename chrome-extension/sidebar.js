@@ -319,8 +319,22 @@ document.body.addEventListener('click', (e) => {
   applyNow();
 });
 
+const SIDEBAR_FLASH_CLASS = 'dr-sidebar-flash';
+
+function flashSidebarContainer() {
+  document.body.classList.remove(SIDEBAR_FLASH_CLASS);
+  // Force reflow so the animation restarts if triggered again immediately.
+  void document.body.offsetWidth;
+  document.body.classList.add(SIDEBAR_FLASH_CLASS);
+  document.body.addEventListener('animationend', () => {
+    document.body.classList.remove(SIDEBAR_FLASH_CLASS);
+  }, { once: true });
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'CLOSE_SIDEBAR') {
+  if (request.action === 'TABLE_ACTIVATED') {
+    flashSidebarContainer();
+  } else if (request.action === 'CLOSE_SIDEBAR') {
     window.close();
   } else if (request.action === 'GET_SIDEBAR_SETTINGS') {
     sendResponse({ settings: currentSettings() });
