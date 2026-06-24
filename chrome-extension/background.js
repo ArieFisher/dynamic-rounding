@@ -80,6 +80,13 @@ chrome.runtime.onMessage.addListener((request, sender) => {
     return;
   }
 
+  if (request.action === "TABLE_TOGGLE_STATE") {
+    if (sidebarTabId !== null) {
+      chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: request.enabled });
+    }
+    return;
+  }
+
   if (request.action === "TABLE_ACTIVATED") {
     if (sidebarTabId !== null) {
       chrome.tabs.sendMessage(sidebarTabId, { action: "TABLE_ACTIVATED" });
