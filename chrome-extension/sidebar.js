@@ -9,6 +9,18 @@ const enabledEl = document.getElementById('enabled');
 const optionsSection = document.getElementById('optionsSection');
 const statusEl = document.getElementById('status');
 
+const NO_TABLE_CLASS = 'no-table';
+const NO_TABLE_STATUS_MSG = 'Right-click a table to connect it here.';
+
+function setTableBound(isBound) {
+  document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
+  if (!isBound) {
+    statusEl.textContent = NO_TABLE_STATUS_MSG;
+  } else if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
+    statusEl.textContent = '';
+  }
+}
+
 const CHECKBOX_TO_SETTING = {
   simplifyMixedCells: 'simplifyMixedCells',
   simplifyMixedCurrency: 'simplifyMixedCurrency',
@@ -338,9 +350,11 @@ function fetchPreviewSamples() {
       if (chrome.runtime.lastError || !response) {
         cachedSamples = null;
         cachedMaxMag = null;
+        setTableBound(false);
       } else {
         cachedSamples = response.samples;
         cachedMaxMag = response.maxMag;
+        setTableBound(response.samples !== null);
       }
       renderPreviewBands();
     });
@@ -474,7 +488,7 @@ function sendToActiveTab(message) {
     }
     chrome.tabs.sendMessage(tabs[0].id, message, () => {
       if (chrome.runtime.lastError) {
-        statusEl.textContent = 'Right-click a table first, then reopen the sidebar.';
+        setTableBound(false);
       } else {
         statusEl.textContent = '';
       }
@@ -583,6 +597,9 @@ function applyDefaultsToUI() {
   renderSliders();
 }
 applyDefaultsToUI();
+
+// Default to unbound until fetchPreviewSamples resolves.
+setTableBound(false);
 
 // Pull samples from whichever table the user has right-clicked. If no table
 // was targeted, content.js returns nulls and the bands render the prompt.
