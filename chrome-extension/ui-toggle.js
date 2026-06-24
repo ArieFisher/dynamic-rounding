@@ -227,6 +227,13 @@ function createToggleForTable(table) {
         }
         runToggleAction(table);
         syncSwitchForTable(table);
+        if (sidebarOpen && lastRightClickedTable && table === lastRightClickedTable) {
+          try {
+            chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: isTableRounded(table) });
+          } catch (e) {
+            // sidebar may be torn down; harmless
+          }
+        }
         scheduleAutoCollapse();
       }
     } else {
@@ -246,6 +253,13 @@ function createToggleForTable(table) {
       }
       runToggleAction(table);
       syncSwitchForTable(table);
+      if (sidebarOpen && lastRightClickedTable && table === lastRightClickedTable) {
+        try {
+          chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: isTableRounded(table) });
+        } catch (e) {
+          // sidebar may be torn down; harmless
+        }
+      }
     }
   });
 
