@@ -79,4 +79,11 @@ chrome.runtime.onMessage.addListener((request, sender) => {
     sidebarTabId = null;
     return;
   }
+
+  if (request.action === "TABLE_ACTIVATED") {
+    if (sidebarTabId !== null) {
+      chrome.tabs.sendMessage(sidebarTabId, { action: "TABLE_ACTIVATED" });
+    }
+    return;
+  }
 });
