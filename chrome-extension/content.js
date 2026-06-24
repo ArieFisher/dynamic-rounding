@@ -36,11 +36,19 @@ const tableOptions = new WeakMap();
 const gridObservers = new WeakMap();
 const gridReapplyTimers = new WeakMap();
 
+const ACTION_TABLE_ACTIVATED = 'TABLE_ACTIVATED';
+
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
   const table = findTargetTable(event.target);
   if (table) {
     lastRightClickedTable = table;
+    flashTargetedTable(table);
+    try {
+      chrome.runtime.sendMessage({ action: ACTION_TABLE_ACTIVATED });
+    } catch (e) {
+      // extension context may not be available; harmless
+    }
   }
 }, true);
 
