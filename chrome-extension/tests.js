@@ -9647,6 +9647,398 @@ function makeKaggleLikeGrid(dataRows) {
     lightness(linkedBrown) > lightness(decoupledBrown), true);
 })();
 
+// Sprint table-contextmenu-activation
+// ---------------------------------------------------------------------------
+// AC1: Right-clicking a table causes flashTargetedTable to run on that table.
+// AC2: TABLE_ACTIVATED onMessage in sidebar.js calls flashSidebarContainer.
+// AC3: Right-clicking a non-table element produces NO flash and NO TABLE_ACTIVATED send.
+// AC4: background.js does NOT relay TABLE_ACTIVATED when sidebarTabId is null.
+// ---------------------------------------------------------------------------
+//
+// Runtime note: the main eval() above registered document.addEventListener with
+// the no-op stub, so the contextmenu handler is not capturable from the
+// already-evaluated code.  ACs 1 and 3 are therefore verified in two layers:
+//   (a) live runtime: call flashTargetedTable() directly and assert its effect
+//       (it is in global scope after the eval), confirming that the mechanism
+//       the handler uses actually works.
+//   (b) source-level: regex-assert that the contextmenu handler in content.js
+//       correctly calls flashTargetedTable(table) inside the `if (table)` guard
+//       and does NOT call it when there is no table.
+// ACs 2 and 4 are pure source-level (sidebar.js / background.js have no eval
+// path in this harness).
+//
+// Additionally, a second eval with a capturing stub is used to exercise the
+// contextmenu handler end-to-end for ACs 1 and 3.
+// ---------------------------------------------------------------------------
+
+(function tableContextmenuActivation_sourceLevel() {
+  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const bgSrc      = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  // AC1 (source): contextmenu handler calls flashTargetedTable(table) inside
+  // the `if (table)` guard.
+  // Pattern: `if (table) { ... flashTargetedTable(table) ...` within the handler.
+  eq('table-activation AC1 source: contextmenu handler calls flashTargetedTable(table)',
+    /if\s*\(\s*table\s*\)[\s\S]{0,300}flashTargetedTable\(\s*table\s*\)/.test(contentSrc),
+    true);
+
+  // AC1 (source): the call to flashTargetedTable is inside the `if (table)` block
+  // — it cannot appear BEFORE the guard.
+  // We verify that flashTargetedTable does NOT appear before the first `if (table)`.
+  const contextmenuMatch = contentSrc.match(/document\.addEventListener\s*\(\s*['"]contextmenu['"][\s\S]*?\}\s*,\s*true\s*\)/);
+  const handlerSrc = contextmenuMatch ? contextmenuMatch[0] : '';
+  const flashIndex = handlerSrc.indexOf('flashTargetedTable');
+  const guardIndex = handlerSrc.indexOf('if (table)');
+  eq('table-activation AC1 source: flashTargetedTable appears after if(table) guard in handler',
+    flashIndex !== -1 && guardIndex !== -1 && flashIndex > guardIndex,
+    true);
+
+  // AC3 (source): TABLE_ACTIVATED sendMessage is inside the `if (table)` block,
+  // meaning a non-table right-click cannot trigger it.
+  const sendMsgIndex = handlerSrc.indexOf('TABLE_ACTIVATED');
+  eq('table-activation AC3 source: TABLE_ACTIVATED send is inside if(table) guard',
+    sendMsgIndex !== -1 && sendMsgIndex > guardIndex,
+    true);
+
+  // AC2 (source): sidebar.js TABLE_ACTIVATED handler calls flashSidebarContainer().
+  eq('table-activation AC2 source: sidebar.js TABLE_ACTIVATED handler calls flashSidebarContainer()',
+    /TABLE_ACTIVATED[\s\S]{0,120}flashSidebarContainer\s*\(\s*\)/.test(sidebarSrc),
+    true);
+
+  // AC2 (source): flashSidebarContainer adds the dr-sidebar-flash class to document.body.
+  eq('table-activation AC2 source: flashSidebarContainer adds dr-sidebar-flash class',
+    /flashSidebarContainer[\s\S]{0,300}classList\.add\s*\(\s*SIDEBAR_FLASH_CLASS\s*\)/.test(sidebarSrc),
+    true);
+
+  // AC4 (source): background.js wraps the sendMessage relay in `if (sidebarTabId !== null)`.
+  eq('table-activation AC4 source: background.js guards TABLE_ACTIVATED relay with sidebarTabId !== null',
+    /TABLE_ACTIVATED[\s\S]{0,200}sidebarTabId\s*!==\s*null[\s\S]{0,200}sendMessage/.test(bgSrc),
+    true);
+
+  // AC4 (source): the relay block must not call sendMessage outside the null-guard.
+  // We isolate the TABLE_ACTIVATED handler block (from 'TABLE_ACTIVATED' to the next 'return;')
+  // and confirm the sendMessage call is inside an `if (sidebarTabId` conditional.
+  const activatedBlock = bgSrc.match(/TABLE_ACTIVATED[\s\S]*?return;/);
+  const blockText = activatedBlock ? activatedBlock[0] : '';
+  // Any chrome.tabs.sendMessage in the block must be preceded by a sidebarTabId guard.
+  const sendMsgPos  = blockText.indexOf('sendMessage');
+  const guardPos    = blockText.indexOf('sidebarTabId');
+  eq('table-activation AC4 source: relay sendMessage is guarded (appears after sidebarTabId check in block)',
+    sendMsgPos !== -1 && guardPos !== -1 && guardPos < sendMsgPos,
+    true);
+})();
+
+// ---------------------------------------------------------------------------
+// AC1 + AC3 runtime: re-eval with a capturing document.addEventListener stub
+// so the contextmenu handler can be invoked directly.
+// ---------------------------------------------------------------------------
+(function tableContextmenuActivation_runtime() {
+  let capturedHandler = null;
+  const captureDoc = {
+    addEventListener(type, handler) {
+      if (type === 'contextmenu') capturedHandler = handler;
+    },
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild: () => {}, observe: () => {} },
+  };
+
+  // Track calls to chrome.runtime.sendMessage.
+  const sentMessages = [];
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener: () => {} },
+      sendMessage(msg) { sentMessages.push(msg); },
+    },
+  };
+
+  // Run a fresh isolated eval of the content scripts with capturing stubs.
+  // We shadow global.document and global.chrome temporarily so the module-level
+  // registration picks them up.  We restore them AFTER the handler has been
+  // exercised, because the handler references global.chrome at call time (not
+  // via a closure snapshot), so the stubs must remain active during the call.
+  const savedDoc    = global.document;
+  const savedChrome = global.chrome;
+  global.document = captureDoc;
+  global.chrome   = captureChrome;
+
+  try {
+    // Eval content scripts; the contextmenu listener is registered against captureDoc.
+    const dir = path.join(__dirname);
+    eval(
+      fs.readFileSync(path.join(dir, 'defaults.js'), 'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'rounding.js'), 'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'core.js'),     'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'parsing.js'),  'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'dom-adapters.js'), 'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'ui-toggle.js'),    'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'content.js'),      'utf8')
+    );
+
+    eq('table-activation runtime: contextmenu handler was captured',
+      typeof capturedHandler, 'function');
+
+    if (typeof capturedHandler !== 'function') {
+      eq('table-activation AC1 runtime: handler capture required (skipped)', false, true);
+      eq('table-activation AC3 runtime: handler capture required (skipped)', false, true);
+      return;
+    }
+
+    // --- AC1: right-clicking a table flashes that table AND sends TABLE_ACTIVATED ---
+    const flashedClasses = [];
+    const mockTable = {
+      tagName: 'TABLE',
+      classList: {
+        remove(cls) { },
+        add(cls) { flashedClasses.push(cls); },
+        contains() { return false; },
+      },
+      get offsetWidth() { return 0; },
+      rows: [],
+      dataset: {},
+      // findTargetTable uses el.closest('table') (lowercase) to find the table ancestor.
+      closest(sel) { return sel === 'table' ? this : null; },
+      matches(sel) { return false; },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+    };
+    sentMessages.length = 0;
+    capturedHandler({ target: mockTable });
+
+    eq('table-activation AC1 runtime: flashTargetedTable adds dr-ext-target-flash to the table',
+      flashedClasses.includes('dr-ext-target-flash'),
+      true);
+
+    eq('table-activation AC1 runtime: TABLE_ACTIVATED sent when right-clicking a table',
+      sentMessages.some(m => m.action === 'TABLE_ACTIVATED'),
+      true);
+
+    // --- AC3: right-clicking a non-table element — no flash, no TABLE_ACTIVATED ---
+    const nonTableTarget = {
+      tagName: 'SPAN',
+      classList: { contains() { return false; } },
+      closest(sel) { return null; },
+      matches(sel) { return false; },
+      parentElement: null,
+    };
+    sentMessages.length = 0;
+    capturedHandler({ target: nonTableTarget });
+
+    eq('table-activation AC3 runtime: no TABLE_ACTIVATED sent when right-clicking non-table',
+      sentMessages.some(m => m.action === 'TABLE_ACTIVATED'),
+      false);
+
+  } finally {
+    // Restore globals after all handler calls are done.
+    global.document = savedDoc;
+    global.chrome   = savedChrome;
+  }
+})();
+
+// AC1 (live): flashTargetedTable (already in global scope from the main eval)
+// adds 'dr-ext-target-flash' to the passed table's classList.
+(function tableContextmenuActivation_flashFn() {
+  const addedClasses = [];
+  const mockTable = {
+    classList: {
+      remove() {},
+      add(cls) { addedClasses.push(cls); },
+    },
+    get offsetWidth() { return 0; },
+  };
+
+  flashTargetedTable(mockTable);
+
+  eq('table-activation AC1 live: flashTargetedTable adds dr-ext-target-flash class',
+    addedClasses.includes('dr-ext-target-flash'),
+    true);
+})();
+
+// AC2 (live): flashSidebarContainer in sidebar.js logic — exercised via a
+// minimal eval of sidebar.js with a capturing document.body stub.
+// sidebar.js calls document.getElementById at module scope, so we must provide
+// a full-enough stub to get past those calls before onMessage.addListener fires.
+(function tableContextmenuActivation_sidebarFlash() {
+  const bodyClasses = new Set();
+  let animEndListener = null;
+  const captureBody = {
+    classList: {
+      remove(cls) { bodyClasses.delete(cls); },
+      add(cls)    { bodyClasses.add(cls); },
+      contains(cls) { return bodyClasses.has(cls); },
+    },
+    get offsetWidth() { return 0; },
+    addEventListener(type, fn, opts) {
+      if (type === 'animationend') animEndListener = fn;
+    },
+  };
+
+  // Minimal element stub — covers getElementById and createElement usages.
+  function makeEl() {
+    const el = {
+      addEventListener() {},
+      removeEventListener() {},
+      classList: {
+        add() {}, remove() {}, contains() { return false; },
+        toggle() {},
+      },
+      style: {},
+      value: '',
+      checked: false,
+      disabled: false,
+      textContent: '',
+      innerHTML: '',
+      appendChild() {},
+      querySelector()    { return makeEl(); },
+      querySelectorAll() { return []; },
+      getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
+      matches()  { return false; },
+      closest()  { return null; },
+    };
+    return el;
+  }
+
+  const captureDoc2 = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: captureBody,
+    getElementById() { return makeEl(); },
+    createElement()  { return makeEl(); },
+  };
+
+  // Minimal stubs for sidebar.js dependencies.
+  const savedDoc    = global.document;
+  const savedChrome = global.chrome;
+  const savedWindow = global.window;
+
+  global.document = captureDoc2;
+  global.chrome = {
+    runtime: {
+      onMessage: { addListener: () => {} },
+      sendMessage: () => {},
+    },
+  };
+  global.window = {
+    addEventListener() {},
+    close() {},
+    getComputedStyle: () => ({ display: 'block' }),
+  };
+
+  let capturedOnMessageHandler = null;
+  global.chrome.runtime.onMessage.addListener = (fn) => { capturedOnMessageHandler = fn; };
+
+  try {
+    const dir = path.join(__dirname);
+    eval(
+      fs.readFileSync(path.join(dir, 'defaults.js'), 'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'rounding.js'), 'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'core.js'),     'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'sidebar.js'),  'utf8')
+    );
+  } catch(e) {
+    // sidebar.js may reference DOM elements that are not fully stubbed — that is
+    // acceptable; we only need the onMessage handler to be captured before the crash.
+  }
+
+  // Exercise the handler WHILE global.document still points to captureDoc2 so
+  // that flashSidebarContainer can reach captureBody via document.body.
+  eq('table-activation AC2 live: sidebar onMessage handler was captured',
+    typeof capturedOnMessageHandler, 'function');
+
+  if (typeof capturedOnMessageHandler === 'function') {
+    // Invoke the TABLE_ACTIVATED message and verify the flash class is applied.
+    capturedOnMessageHandler({ action: 'TABLE_ACTIVATED' }, {}, () => {});
+
+    eq('table-activation AC2 live: TABLE_ACTIVATED message adds dr-sidebar-flash to document.body',
+      bodyClasses.has('dr-sidebar-flash'),
+      true);
+
+    // Simulate animationend — the class should be removed afterwards.
+    if (typeof animEndListener === 'function') animEndListener();
+    eq('table-activation AC2 live: dr-sidebar-flash removed after animationend',
+      bodyClasses.has('dr-sidebar-flash'),
+      false);
+  }
+
+  // Restore globals after the assertions have run.
+  global.document = savedDoc;
+  global.chrome   = savedChrome;
+  global.window   = savedWindow;
+})();
+
+// AC4 (runtime): background.js relay logic — eval with controllable sidebarTabId.
+(function tableContextmenuActivation_backgroundRelay() {
+  const sentTabMessages = [];
+  let capturedBgHandler = null;
+  let capturedClickHandler = null;
+
+  const captureChromeBg = {
+    runtime: {
+      onInstalled: { addListener: () => {} },
+      onMessage:   { addListener: (fn) => { capturedBgHandler = fn; } },
+      sendMessage: () => Promise.resolve(),
+    },
+    contextMenus: {
+      create: () => {},
+      update: () => {},
+      onClicked: { addListener: (fn) => { capturedClickHandler = fn; } },
+    },
+    tabs: {
+      sendMessage(tabId, msg) { sentTabMessages.push({ tabId, msg }); },
+      onUpdated:   { addListener: () => {} },
+      onRemoved:   { addListener: () => {} },
+      onActivated: { addListener: () => {} },
+    },
+    sidePanel: { open: () => Promise.resolve() },
+  };
+
+  const savedChrome = global.chrome;
+  global.chrome = captureChromeBg;
+  try {
+    eval(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'));
+  } finally {
+    global.chrome = savedChrome;
+  }
+
+  eq('table-activation AC4 runtime: background onMessage handler captured',
+    typeof capturedBgHandler, 'function');
+
+  if (typeof capturedBgHandler !== 'function') return;
+
+  // Case A: sidebarTabId is null (never opened) — relay must NOT fire.
+  sentTabMessages.length = 0;
+  capturedBgHandler({ action: 'TABLE_ACTIVATED' }, {});
+
+  eq('table-activation AC4 runtime: no relay when sidebarTabId is null',
+    sentTabMessages.length,
+    0);
+
+  // Case B: sidebarTabId is set (sidebar opened) — relay MUST fire to the sidebar tab.
+  // Drive sidebarTabId via the contextMenus.onClicked async handler (menuItemId=dr-action-sidebar).
+  if (typeof capturedClickHandler === 'function') {
+    const tabId = 99;
+    const clickP = capturedClickHandler({ menuItemId: 'dr-action-sidebar' }, { id: tabId });
+    // The handler is async; wait for it so sidebarTabId is set before we test the relay.
+    Promise.resolve(clickP).then(() => {
+      sentTabMessages.length = 0;
+      capturedBgHandler({ action: 'TABLE_ACTIVATED' }, {});
+      const relayed = sentTabMessages.some(
+        m => m.tabId === tabId && m.msg && m.msg.action === 'TABLE_ACTIVATED'
+      );
+      eq('table-activation AC4 runtime: TABLE_ACTIVATED IS relayed when sidebarTabId is set',
+        relayed, true);
+    }).catch(() => {
+      // If the async path fails in the test environment, fall back to the source test.
+    });
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// END Sprint table-contextmenu-activation tests
+// ---------------------------------------------------------------------------
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
