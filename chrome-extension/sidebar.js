@@ -368,6 +368,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } catch (e) {
       // sidebar may be in teardown; harmless
     }
+  } else if (request.action === 'TABLE_TOGGLE_STATE') {
+    enabledEl.checked = request.enabled;
+    updateDisabledState();
   }
 });
 
