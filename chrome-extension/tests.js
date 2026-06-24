@@ -10473,6 +10473,719 @@ function fireMouseClick(buttonEl, fn) {
 
 
 // ---------------------------------------------------------------------------
+// --- sidebar.js: truncateDecimals / formatOriginal ---
+//
+// Strategy: extract the real implementations from sidebar.js source via regex
+// and eval them in this scope (where toNumber and formatNumberWithCommas are
+// already available from the evaled core.js / content.js block above).
+// This exercises the REAL implementation, not a reimplementation.
+// ---------------------------------------------------------------------------
+(function sidebarHelperTests() {
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  // Extract the two constants and three functions we need from sidebar.js.
+  // We pull them as a verbatim block so they reference each other correctly.
+  // toNumber and formatNumberWithCommas are already on globalThis from the
+  // content-script eval above.
+  const constBlock = sidebarSrc.match(
+    /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
+  );
+  const fmtCommasFn = sidebarSrc.match(
+    /function formatNumberWithCommas\([\s\S]*?\n\}/
+  );
+  const truncateFn = sidebarSrc.match(
+    /function truncateDecimals\([\s\S]*?\n\}/
+  );
+  const formatOriginalFn = sidebarSrc.match(
+    /function formatOriginal\([\s\S]*?\n\}/
+  );
+
+  if (!constBlock || !fmtCommasFn || !truncateFn || !formatOriginalFn) {
+    // Signal extraction failure clearly — treat as a failed test so CI notices.
+    eq('sidebar-extract: able to extract truncateDecimals + formatOriginal from sidebar.js',
+       false, true);
+    return;
+  }
+
+  // Eval into a local object using an IIFE so the const declarations bind in
+  // function scope (not global) and the new Function body can hold them.
+  // toNumber is passed in from the already-evaled content-script scope.
+  // Note: string concatenation is used (not a template literal) to avoid any
+  // back-tick/interpolation issues with the extracted source text.
+  const helperSrc = '(function() {\n' +
+    constBlock[0] + '\n' +
+    fmtCommasFn[0] + '\n' +
+    truncateFn[0] + '\n' +
+    formatOriginalFn[0] + '\n' +
+    'return { formatNumberWithCommas: formatNumberWithCommas, truncateDecimals: truncateDecimals, formatOriginal: formatOriginal };\n' +
+    '})()';
+  const helpers = (new Function(
+    'toNumber',
+    'return ' + helperSrc + ';'
+  ))(toNumber);
+
+  const trunc = helpers.truncateDecimals;
+  const fmtOrig = helpers.formatOriginal;
+
+  // Verify we got real functions, not undefined.
+  eq('sidebar-extract: truncateDecimals is a function',
+     typeof trunc, 'function');
+  eq('sidebar-extract: formatOriginal is a function',
+     typeof fmtOrig, 'function');
+
+  // -----------------------------------------------------------------
+  // Acceptance criterion 1: original numbers display with thousands commas.
+  // formatOriginal converts numeric strings to comma-formatted numbers.
+  // -----------------------------------------------------------------
+  eq('AC1: formatOriginal integer string gets commas (273233 -> "273,233")',
+     fmtOrig('273233'), '273,233');
+  eq('AC1: formatOriginal large integer number gets commas',
+     fmtOrig(1000000), '1,000,000');
+  eq('AC1: formatOriginal already-comma string parses and re-formats ("273,233")',
+     fmtOrig('273,233'), '273,233');
+  eq('AC1: formatOriginal negative large integer gets commas',
+     fmtOrig(-1234567), '-1,234,567');
+
+  // -----------------------------------------------------------------
+  // Acceptance criterion 2: rounded numbers magnitude >= 100 → NO decimals.
+  // truncateDecimals should strip all decimals for |n| >= 100.
+  // -----------------------------------------------------------------
+  eq('AC2: truncateDecimals(1234.56) -> 1234 (magnitude >= 100, no decimals)',
+     trunc(1234.56), 1234);
+  eq('AC2: truncateDecimals(100.9999) -> 100 (exactly at threshold, no decimals)',
+     trunc(100.9999), 100);
+  eq('AC2: truncateDecimals(-1234.56) -> -1234 (negative, magnitude >= 100)',
+     trunc(-1234.56), -1234);
+  eq('AC2: truncateDecimals(-100.9) -> -100 (negative at threshold)',
+     trunc(-100.9), -100);
+  eq('AC2: formatOriginal("1234.56") -> "1,234" (magnitude >= 100, commas, no decimals)',
+     fmtOrig('1234.56'), '1,234');
+  eq('AC2: formatOriginal(100) -> "100" (exactly at boundary, no decimals)',
+     fmtOrig(100), '100');
+
+  // -----------------------------------------------------------------
+  // Acceptance criterion 3: magnitude < 100 → at most 4 decimals, TRUNCATED.
+  // This is the adversarial core: must be truncation, NOT rounding.
+  // -----------------------------------------------------------------
+
+  // Key adversarial case: 1.99999 must NOT round up to 2.
+  eq('AC3-adversarial: truncateDecimals(1.99999) -> 1.9999 (truncated, not rounded to 2)',
+     trunc(1.99999), 1.9999);
+  eq('AC3-adversarial: truncateDecimals(1.7999999999) -> 1.7999 (truncated at 4 decimals)',
+     trunc(1.7999999999), 1.7999);
+  eq('AC3-adversarial: truncateDecimals(1.00005) -> 1 (truncates, not rounds to 1.0001)',
+     trunc(1.00005), 1);
+
+  // Boundary: 99.99999 must NOT round to 100, and must stay < threshold, giving 4 dec.
+  eq('AC3-boundary-99.99999: truncateDecimals(99.99999) -> 99.9999 (below threshold, truncated)',
+     trunc(99.99999), 99.9999);
+  eq('AC3-boundary-99.99999: formatOriginal("99.99999") -> "99.9999" (not rounded to 100)',
+     fmtOrig('99.99999'), '99.9999');
+
+  // Boundary: exactly 100 — at threshold, no decimals.
+  eq('AC3-boundary-100: truncateDecimals(100) -> 100 (integer, no change)',
+     trunc(100), 100);
+  eq('AC3-boundary-100: truncateDecimals(100.0001) -> 100 (at/above threshold, trunc)',
+     trunc(100.0001), 100);
+
+  // Negatives below threshold: trunc toward zero (not floor).
+  eq('AC3-negative: truncateDecimals(-1.7999) -> -1.7999 (toward zero, not -1.8)',
+     trunc(-1.7999), -1.7999);
+  eq('AC3-negative: truncateDecimals(-1.99999) -> -1.9999 (truncated, not -2)',
+     trunc(-1.99999), -1.9999);
+  eq('AC3-negative: truncateDecimals(-99.99999) -> -99.9999 (negative, below threshold)',
+     trunc(-99.99999), -99.9999);
+  eq('AC3-negative: formatOriginal("-99.99999") -> "-99.9999" (negative, truncated, not -100)',
+     fmtOrig('-99.99999'), '-99.9999');
+  eq('AC3-negative: formatOriginal("-1.7999") -> "-1.7999" (toward zero)',
+     fmtOrig('-1.7999'), '-1.7999');
+
+  // Negative boundary: -100 at threshold → no decimals.
+  eq('AC3-negative-100: truncateDecimals(-100) -> -100',
+     trunc(-100), -100);
+  eq('AC3-negative-100: formatOriginal("-100") -> "-100"',
+     fmtOrig('-100'), '-100');
+  eq('AC3-negative-100: truncateDecimals(-100.5) -> -100 (magnitude >= 100, no decimals)',
+     trunc(-100.5), -100);
+
+  // Numbers with fewer than 4 decimals are preserved as-is (no padding).
+  eq('AC3-fewer-decimals: truncateDecimals(1.5) -> 1.5',
+     trunc(1.5), 1.5);
+  eq('AC3-fewer-decimals: truncateDecimals(0.1234) -> 0.1234',
+     trunc(0.1234), 0.1234);
+  eq('AC3-fewer-decimals: formatOriginal("1.5") -> "1.5"',
+     fmtOrig('1.5'), '1.5');
+
+  // -----------------------------------------------------------------
+  // Comma parsing of original: string with commas should parse and reformat.
+  // -----------------------------------------------------------------
+  eq('comma-parse: formatOriginal("273,233") -> "273,233" (toNumber strips commas)',
+     fmtOrig('273,233'), '273,233');
+  eq('comma-parse: formatOriginal("1,234.5678999") -> "1,234" (magnitude >= 100, trunc)',
+     fmtOrig('1,234.5678999'), '1,234');
+  eq('comma-parse: formatOriginal("99,999") -> "99,999" (magnitude >= 100, no decimals)',
+     fmtOrig('99,999'), '99,999');
+
+  // -----------------------------------------------------------------
+  // NaN / unparseable fallback: should return the raw string, not "NaN".
+  // -----------------------------------------------------------------
+  eq('NaN-fallback: formatOriginal("abc") -> "abc" (raw string passthrough)',
+     fmtOrig('abc'), 'abc');
+  eq('NaN-fallback: formatOriginal("") -> "" (empty string passthrough)',
+     fmtOrig(''), '');
+  eq('NaN-fallback: formatOriginal(null) -> "null" (null stringified)',
+     fmtOrig(null), 'null');
+  eq('NaN-fallback: formatOriginal("12abc") -> "12abc" (non-numeric string raw)',
+     fmtOrig('12abc'), '12abc');
+
+  // -----------------------------------------------------------------
+  // Edge cases: zero, very small numbers, integers.
+  // -----------------------------------------------------------------
+  eq('edge: truncateDecimals(0) -> 0',
+     trunc(0), 0);
+  eq('edge: formatOriginal("0") -> "0"',
+     fmtOrig('0'), '0');
+  eq('edge: formatOriginal(0.00001) -> "0" (truncated to 4 places, last digit gone)',
+     fmtOrig(0.00001), '0');
+  eq('edge: formatOriginal(0.00009999) -> "0" (below 4th decimal place)',
+     fmtOrig(0.00009999), '0');
+  eq('edge: formatOriginal(0.1234) -> "0.1234" (exactly 4 decimals)',
+     fmtOrig(0.1234), '0.1234');
+  eq('edge: formatOriginal(0.12345) -> "0.1234" (5th decimal truncated)',
+     fmtOrig(0.12345), '0.1234');
+
+  // -----------------------------------------------------------------
+  // REGRESSION GUARD: formatOriginal must TRUNCATE, never ROUND.
+  // These assertions pin the production function against the bug where
+  // toFixed() was used (which rounds), causing e.g. 1.7999999999 -> '1.8'.
+  // All cases below would fail under a rounding implementation.
+  // -----------------------------------------------------------------
+
+  // Spec AC3 canonical example: deep-9s value, must truncate not round.
+  eq('regression-trunc: formatOriginal(1.7999999999) -> "1.7999" (not "1.8")',
+     fmtOrig(1.7999999999), '1.7999');
+
+  // Near-integer truncation: 1.999999999 must NOT round up to 2.
+  eq('regression-trunc: formatOriginal(1.999999999) -> "1.9999" (not "2", not "1")',
+     fmtOrig(1.999999999), '1.9999');
+
+  // 5th decimal truncated, not rounded: 5.12349999999 must NOT become '5.1235'.
+  eq('regression-trunc: formatOriginal(5.12349999999) -> "5.1234" (not "5.1235")',
+     fmtOrig(5.12349999999), '5.1234');
+
+  // Just below threshold: numeric (not string) 99.99999 must NOT round to 100.
+  eq('regression-trunc: formatOriginal(99.99999) -> "99.9999" (not "100")',
+     fmtOrig(99.99999), '99.9999');
+
+  // Negative near-integer: -1.999999999 must NOT round to -2.
+  eq('regression-trunc: formatOriginal(-1.999999999) -> "-1.9999" (not "-2")',
+     fmtOrig(-1.999999999), '-1.9999');
+
+  // Negative just below threshold: numeric -99.99999 must NOT round to -100.
+  eq('regression-trunc: formatOriginal(-99.99999) -> "-99.9999" (not "-100")',
+     fmtOrig(-99.99999), '-99.9999');
+
+  // Magnitude >= 100 with numeric (not string) input: 1234.56 -> "1,234".
+  eq('regression-trunc: formatOriginal(1234.56) -> "1,234" (numeric input, commas, no decimals)',
+     fmtOrig(1234.56), '1,234');
+
+  // Numeric 1.5 (not string): trailing zeros stripped, no padding.
+  eq('regression-trunc: formatOriginal(1.5) -> "1.5" (numeric, no padding)',
+     fmtOrig(1.5), '1.5');
+
+  // Integer 2: no decimals, no commas.
+  eq('regression-trunc: formatOriginal(2) -> "2" (integer, no decimals)',
+     fmtOrig(2), '2');
+
+  // Negative tiny value: -0.00001 truncates to 0, must NOT produce "-0".
+  eq('regression-trunc: formatOriginal(-0.00001) -> "0" (no negative zero)',
+     fmtOrig(-0.00001), '0');
+
+  // Adversarial fp-noise: 49.99995 must NOT round to '50'.
+  eq('regression-trunc: formatOriginal(49.99995) -> "49.9999" (fp-noise, not "50")',
+     fmtOrig(49.99995), '49.9999');
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint advanced-preview-redesign
+// AC1: formatOomLabel exhaustive suffix-boundary check
+// AC2: formatStrategyHeader structure + "(i.e. …)" clause correctness
+// AC3: renderBotBand DESCENDING sort (real DOM-stub eval)
+// AC4: step-label CSS classes (step top / step bot)
+// Adversarial: sort-mutation side-effect check
+// ---------------------------------------------------------------------------
+(function advancedPreviewRedesignTests() {
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const roundingSrc = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
+
+  // -------------------------------------------------------------------------
+  // Extract formatOomLabel and formatStrategyHeader from sidebar.js source.
+  // They depend on trimNum (from rounding.js), stepForOffset and formatStep
+  // (also rounding.js).  We pass them as parameters to new Function.
+  // -------------------------------------------------------------------------
+  const constBlock = sidebarSrc.match(
+    /const STEP_CLASS_TOP\s*=[\s\S]*?const STRATEGY_CLASS\s*=.*?;/
+  );
+  const formatOomLabelFn = sidebarSrc.match(
+    /function formatOomLabel\([\s\S]*?\n\}/
+  );
+  const formatStrategyHeaderFn = sidebarSrc.match(
+    /function formatStrategyHeader\([\s\S]*?\n\}/
+  );
+
+  if (!constBlock || !formatOomLabelFn || !formatStrategyHeaderFn) {
+    eq('sidebar-ap-extract: able to extract formatOomLabel + formatStrategyHeader', false, true);
+    return;
+  }
+
+  // Build a helper bundle: rounding helpers + sidebar functions.
+  // stepForOffset, formatStep, trimNum come from rounding.js (already evaled
+  // into the test scope's globalThis; we pass them in to avoid scope issues).
+  const apHelperSrc = '(function(trimNum, stepForOffset, formatStep) {\n' +
+    constBlock[0] + '\n' +
+    formatOomLabelFn[0] + '\n' +
+    formatStrategyHeaderFn[0] + '\n' +
+    'return { formatOomLabel: formatOomLabel, formatStrategyHeader: formatStrategyHeader };\n' +
+    '})(trimNum, stepForOffset, formatStep)';
+
+  let apHelpers;
+  try {
+    apHelpers = (new Function('trimNum', 'stepForOffset', 'formatStep',
+      'return ' + apHelperSrc + ';'
+    ))(trimNum, stepForOffset, formatStep);
+  } catch (e) {
+    eq('sidebar-ap-extract: new Function eval succeeded', false, true);
+    return;
+  }
+
+  const fmtOom = apHelpers.formatOomLabel;
+  const fmtHdr = apHelpers.formatStrategyHeader;
+
+  eq('ap-extract: formatOomLabel is a function', typeof fmtOom, 'function');
+  eq('ap-extract: formatStrategyHeader is a function', typeof fmtHdr, 'function');
+
+  // -------------------------------------------------------------------------
+  // AC1: Exhaustive formatOomLabel mapping for mag = 9,8,7,6,5,4,3,2,1,0,-1,-2
+  // Expected values derived from the spec pattern (10^mag with k/M/B suffix),
+  // NOT from reading the implementation.
+  // -------------------------------------------------------------------------
+  // Suffix boundaries: mag 9 → 1B+, mag 6 → 1M+, mag 3 → 1k+
+  eq('AC1-oom: mag=9 → "1B+" (1e9 boundary)', fmtOom(9), '1B+');
+  eq('AC1-oom: mag=8 → "100M+" (within B range, 1e8=100M)', fmtOom(8), '100M+');
+  eq('AC1-oom: mag=7 → "10M+" (within M range, 1e7=10M)', fmtOom(7), '10M+');
+  eq('AC1-oom: mag=6 → "1M+" (1e6 boundary)', fmtOom(6), '1M+');
+  eq('AC1-oom: mag=5 → "100k+" (within k range, 1e5=100k)', fmtOom(5), '100k+');
+  eq('AC1-oom: mag=4 → "10k+" (within k range, 1e4=10k)', fmtOom(4), '10k+');
+  eq('AC1-oom: mag=3 → "1k+" (1e3 boundary)', fmtOom(3), '1k+');
+  eq('AC1-oom: mag=2 → "100+" (1e2, no suffix)', fmtOom(2), '100+');
+  eq('AC1-oom: mag=1 → "10+" (1e1, no suffix)', fmtOom(1), '10+');
+  eq('AC1-oom: mag=0 → "1+" (1e0=1, no suffix)', fmtOom(0), '1+');
+  eq('AC1-oom: mag=-1 → "0.1+" (sub-unit, 1e-1=0.1)', fmtOom(-1), '0.1+');
+  eq('AC1-oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
+
+  // -------------------------------------------------------------------------
+  // AC2: formatStrategyHeader structure and "(i.e. …)" clause correctness.
+  // We compute the expected step independently via stepForOffset/formatStep.
+  // -------------------------------------------------------------------------
+
+  // Scenario A: maxMag=5, offset=-0.5 → step=50k, ratio=2 → "a half of"
+  // stepForOffset(1e5, -0.5): f=0.5, target_mag=5+ceil(-0.5)=5+0=5, step=0.5*1e5=50000
+  (function hdrScenarioA() {
+    const maxMag = 5; const offset = -0.5;
+    const oomLabel = '100k+';
+    const oomVal = Math.pow(10, maxMag);       // 100000
+    const step = stepForOffset(oomVal, offset); // 50000
+    const stepLabel = formatStep(step);         // '50k'
+    const oomStepLabel = formatStep(oomVal);   // '100k'
+    const header = fmtHdr(maxMag, offset);
+    eq('AC2-A: header contains oom label (100k+)', header.includes(oomLabel), true);
+    eq('AC2-A: header contains arrow →', header.includes('→'), true);
+    eq('AC2-A: header contains "nearest ' + stepLabel + '"', header.includes('nearest ' + stepLabel), true);
+    eq('AC2-A: header contains "(i.e."', header.includes('(i.e.'), true);
+    // ratio=2 → "a half of" (ordinal mapping)
+    eq('AC2-A: header contains "a half of"', header.includes('a half of'), true);
+    eq('AC2-A: header references oom step label (' + oomStepLabel + ')',
+      header.includes(oomStepLabel), true);
+  })();
+
+  // Scenario B: maxMag=3, offset=-0.5 → step=500, ratio=2 → "a half of"
+  (function hdrScenarioB() {
+    const maxMag = 3; const offset = -0.5;
+    const oomLabel = '1k+';
+    const oomVal = Math.pow(10, maxMag);
+    const step = stepForOffset(oomVal, offset); // 500
+    const stepLabel = formatStep(step);         // '500'
+    const header = fmtHdr(maxMag, offset);
+    eq('AC2-B: header contains oom label (1k+)', header.includes(oomLabel), true);
+    eq('AC2-B: header contains "nearest ' + stepLabel + '"', header.includes('nearest ' + stepLabel), true);
+    eq('AC2-B: header contains "a half of"', header.includes('a half of'), true);
+  })();
+
+  // Scenario C: maxMag=5, offset=-0.25 → step=25k, ratio=4 → "a quarter of"
+  (function hdrScenarioC() {
+    const maxMag = 5; const offset = -0.25;
+    const oomVal = Math.pow(10, maxMag);
+    const step = stepForOffset(oomVal, offset); // 25000
+    const stepLabel = formatStep(step);         // '25k'
+    const header = fmtHdr(maxMag, offset);
+    eq('AC2-C: header contains "nearest ' + stepLabel + '"', header.includes('nearest ' + stepLabel), true);
+    eq('AC2-C: header contains "a quarter of"', header.includes('a quarter of'), true);
+  })();
+
+  // Scenario D: maxMag=6, offset=-0.75 → step=750k, ratio = step/oom = 0.75.
+  // The direct ratio→phrase lookup emits the correct "three quarters of 1M"
+  // clause. (This previously regressed to a garbled "1/1 of" when the clause
+  // was derived via Math.round of an inverted ratio — guarded here so it
+  // can't come back.)
+  (function hdrScenarioD_adversarial() {
+    const maxMag = 6; const offset = -0.75;
+    const oomVal = Math.pow(10, maxMag);        // 1000000
+    const step = stepForOffset(oomVal, offset); // 750000
+    // ratio = step/oomVal = 0.75 → "three quarters of 1M"
+    const header = fmtHdr(maxMag, offset);
+    // Fixed: direct ratio→phrase lookup emits the correct clause.
+    eq('AC2-D: ratio=0.75 → "three quarters of" emitted',
+      header.includes('three quarters of'), true);
+    // Also confirm step label is present
+    eq('AC2-D-adversarial: header contains "nearest 750k"', header.includes('nearest 750k'), true);
+  })();
+
+  // Scenario E: offset=0 (integer) → step=oomVal, ratio=1 → clause omitted
+  (function hdrScenarioE() {
+    const maxMag = 2; const offset = 0;
+    const oomVal = Math.pow(10, maxMag); // 100
+    const step = stepForOffset(oomVal, offset); // 100
+    const stepLabel = formatStep(step);          // '100'
+    const header = fmtHdr(maxMag, offset);
+    eq('AC2-E: offset=0 header contains "nearest ' + stepLabel + '"',
+      header.includes('nearest ' + stepLabel), true);
+    // ratio=1: "(i.e. …)" clause is omitted entirely.
+    eq('AC2-E: offset=0 ratio=1 → no "(i.e." clause', header.includes('(i.e.'), false);
+  })();
+
+  // -------------------------------------------------------------------------
+  // AC2-ALL-STOPS: All 9 slider stops × 2 maxMag values.
+  // For each stop we independently derive step/stepLabel via the real
+  // stepForOffset/formatStep so the assertions are spec-arithmetic-derived,
+  // not copied from implementation output.  The human phrase fragments are
+  // hardcoded because those ARE the spec contract.
+  //
+  // Stops: offset ∈ {-1, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1}
+  //   offset -1   → ratio 0.1   → "a tenth of"
+  //   offset -0.75→ ratio 0.75  → "three quarters of"
+  //   offset -0.5 → ratio 0.5   → "a half of"
+  //   offset -0.25→ ratio 0.25  → "a quarter of"
+  //   offset  0   → ratio 1     → no "(i.e." clause
+  //   offset +0.25→ ratio 2.5   → "2.5×"
+  //   offset +0.5 → ratio 5     → "5×"
+  //   offset +0.75→ ratio 7.5   → "7.5×"
+  //   offset +1   → ratio 10    → "10×"
+  // -------------------------------------------------------------------------
+  (function hdrAllStops() {
+    const stops = [
+      { offset: -1,    phrase: 'a tenth of',       hasClause: true  },
+      { offset: -0.75, phrase: 'three quarters of', hasClause: true  },
+      { offset: -0.5,  phrase: 'a half of',         hasClause: true  },
+      { offset: -0.25, phrase: 'a quarter of',      hasClause: true  },
+      { offset:  0,    phrase: null,                hasClause: false },
+      { offset:  0.25, phrase: '2.5×',          hasClause: true  },
+      { offset:  0.5,  phrase: '5×',            hasClause: true  },
+      { offset:  0.75, phrase: '7.5×',          hasClause: true  },
+      { offset:  1,    phrase: '10×',           hasClause: true  },
+    ];
+
+    // Test against TWO different maxMag values to confirm maxMag-independence of phrases.
+    const testMags = [6, 5]; // 1M and 100k
+
+    for (const mag of testMags) {
+      const oomVal = Math.pow(10, mag);
+      const oomLabel = fmtOom(mag);                  // e.g. "1M+" or "100k+"
+      const oomBare  = oomLabel.replace(/\+$/, ''); // e.g. "1M"  or "100k"
+
+      for (const stop of stops) {
+        const tag = 'AC2-ALL mag=' + mag + ' offset=' + stop.offset;
+        const step      = stepForOffset(oomVal, stop.offset);
+        const stepLabel = formatStep(step);
+        const header    = fmtHdr(mag, stop.offset);
+
+        // 1. Header always starts with "<oomLabel> →" (with the "+").
+        eq(tag + ': header contains oomLabel "' + oomLabel + '"',
+          header.includes(oomLabel), true);
+
+        // 2. Header always contains "→".
+        eq(tag + ': header contains arrow "→"',
+          header.includes('→'), true);
+
+        // 3. Header always contains "nearest <stepLabel>" using REAL stepForOffset.
+        eq(tag + ': header contains "nearest ' + stepLabel + '"',
+          header.includes('nearest ' + stepLabel), true);
+
+        // 4a. Clause presence / absence.
+        if (stop.hasClause) {
+          eq(tag + ': header contains "(i.e."',
+            header.includes('(i.e.'), true);
+          // 4b. The specific human phrase must appear.
+          eq(tag + ': header contains phrase "' + stop.phrase + '"',
+            header.includes(stop.phrase), true);
+          // 4c. The phrase must reference the bare OoM label (no trailing "+").
+          eq(tag + ': phrase references oomBare "' + oomBare + '"',
+            header.includes(oomBare), true);
+        } else {
+          // offset=0 → ratio=1 → clause omitted entirely.
+          eq(tag + ': offset=0 → no "(i.e." clause',
+            header.includes('(i.e.'), false);
+        }
+      }
+    }
+  })();
+
+  // -------------------------------------------------------------------------
+  // AC2-NO-GARBLE: None of the 9 outputs for any of the two test mags should
+  // contain known garbled fragments from the old broken implementation.
+  // -------------------------------------------------------------------------
+  (function hdrNoGarble() {
+    const allOffsets = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+    const testMags   = [6, 5];
+    const badPatterns = ['1/1', '0.1 of', '0.133', 'NaN', 'undefined'];
+
+    for (const mag of testMags) {
+      for (const offset of allOffsets) {
+        const header = fmtHdr(mag, offset);
+        for (const bad of badPatterns) {
+          eq('AC2-NO-GARBLE mag=' + mag + ' offset=' + offset + ': no "' + bad + '"',
+            header.includes(bad), false);
+        }
+      }
+    }
+  })();
+
+  // -------------------------------------------------------------------------
+  // AC3: renderBotBand DESCENDING sort by magnitude.
+  // Extract renderBotBand from sidebar.js, provide DOM stubs, call with rows
+  // in ASCENDING order, assert rendered order is DESCENDING.
+  // Also check for sort-mutation side-effect on the caller's array.
+  // -------------------------------------------------------------------------
+  const renderBotBandFn = sidebarSrc.match(
+    /function renderBotBand\([\s\S]*?\n\}/
+  );
+  const renderTopBandFn = sidebarSrc.match(
+    /function renderTopBand\([\s\S]*?\n\}/
+  );
+
+  if (!renderBotBandFn || !renderTopBandFn) {
+    eq('sidebar-ap-extract: able to extract renderBotBand + renderTopBand', false, true);
+    return;
+  }
+
+  // Build a minimal DOM stub sufficient for renderBotBand.
+  // We collect appended children in order so we can inspect the render sequence.
+  function makeEl(tag) {
+    const children = [];
+    const el = {
+      _tag: tag,
+      _children: children,
+      _classNames: [],
+      className: '',
+      textContent: '',
+      innerHTML: '',
+      appendChild(child) { children.push(child); return child; },
+      set className(v) { this._classNames.push(v); },
+      get className() { return this._classNames[this._classNames.length - 1] || ''; },
+    };
+    return el;
+  }
+
+  // Collect elements appended to the band container in order.
+  function makeBandEl() {
+    const appended = [];
+    return {
+      _appended: appended,
+      innerHTML: '',
+      appendChild(child) { appended.push(child); return child; },
+    };
+  }
+
+  // Stub document.createElement for the eval scope.
+  const stubDocument = {
+    createElement(tag) { return makeEl(tag); }
+  };
+
+  // Extract the sidebar consts and render functions + their helpers.
+  // We need: STEP_CLASS_TOP/BOT, OOM_LABEL_CLASS, STRATEGY_CLASS,
+  //          formatOomLabel, formatStrategyHeader, renderTopBand, renderBotBand.
+  // External deps we pass in: formatOriginal, roundWithOffset, stepForOffset,
+  //                            formatStep, cachedMaxMag (null = no strategy header).
+  const renderSrc = '(function(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag) {\n' +
+    constBlock[0] + '\n' +
+    formatOomLabelFn[0] + '\n' +
+    formatStrategyHeaderFn[0] + '\n' +
+    renderTopBandFn[0] + '\n' +
+    renderBotBandFn[0] + '\n' +
+    'return { renderBotBand: renderBotBand, renderTopBand: renderTopBand };\n' +
+    '})';
+
+  let renderHelpers;
+  try {
+    // We need formatOriginal from the already-evaled sidebar helpers.
+    // However, formatOriginal in sidebar.js depends on toNumber (from content.js,
+    // already on globalThis). Extract it from sidebar.js source.
+    const sidebarConstBlock2 = sidebarSrc.match(
+      /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
+    );
+    const fmtCommasFn2 = sidebarSrc.match(/function formatNumberWithCommas\([\s\S]*?\n\}/);
+    const formatOriginalFn2 = sidebarSrc.match(/function formatOriginal\([\s\S]*?\n\}/);
+
+    const fmtOrigSrc = '(function(toNumber) {\n' +
+      sidebarConstBlock2[0] + '\n' +
+      fmtCommasFn2[0] + '\n' +
+      formatOriginalFn2[0] + '\n' +
+      'return formatOriginal;\n' +
+      '})(toNumber)';
+    const realFormatOriginal = (new Function('toNumber', 'return ' + fmtOrigSrc + ';'))(toNumber);
+
+    renderHelpers = (new Function(
+      'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
+      'formatStep', 'trimNum', 'cachedMaxMag',
+      'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
+    ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, null);
+  } catch (e) {
+    eq('sidebar-ap-extract: renderBotBand eval succeeded', String(e), '');
+    return;
+  }
+
+  const realRenderBotBand = renderHelpers.renderBotBand;
+  const realRenderTopBand = renderHelpers.renderTopBand;
+
+  eq('ap-extract: renderBotBand is a function', typeof realRenderBotBand, 'function');
+  eq('ap-extract: renderTopBand is a function', typeof realRenderTopBand, 'function');
+
+  // Rows fed in ASCENDING magnitude order: 50 (mag=1), 500 (mag=2), 5000 (mag=3), 50000 (mag=4)
+  const rowsAscending = [
+    { num: 50,    original: '50' },
+    { num: 500,   original: '500' },
+    { num: 5000,  original: '5,000' },
+    { num: 50000, original: '50,000' },
+  ];
+  // Deep-copy original array reference so we can check mutation.
+  const originalArray = rowsAscending.slice();
+
+  const bandEl = makeBandEl();
+  realRenderBotBand(bandEl, rowsAscending, -0.5, 4);
+
+  // The band container should have 4 "pair" div children.
+  eq('AC3-sort: renderBotBand appended 4 pair elements', bandEl._appended.length, 4);
+
+  // Each pair div contains children: from-span, arrow-span, num-span, step-span.
+  // The from-span's textContent reflects the original number.
+  // We can extract the rendered order by reading from-span textContent on each pair.
+  function getFromText(pairEl) {
+    // first child is the "from" span
+    return pairEl._children[0] ? pairEl._children[0].textContent : '';
+  }
+
+  const renderedFromTexts = bandEl._appended.map(getFromText);
+  // Expected descending order: 50,000 first, then 5,000, 500, 50
+  eq('AC3-sort: first rendered row is highest magnitude (50,000)',
+    renderedFromTexts[0], '50,000');
+  eq('AC3-sort: second rendered row is next (5,000)',
+    renderedFromTexts[1], '5,000');
+  eq('AC3-sort: third rendered row (500)',
+    renderedFromTexts[2], '500');
+  eq('AC3-sort: fourth rendered row is lowest magnitude (50)',
+    renderedFromTexts[3], '50');
+
+  // -------------------------------------------------------------------------
+  // Adversarial: sort-mutation check.
+  // renderBotBand uses rows.slice().sort(...) which must NOT mutate the caller's
+  // array. If it sorts in place, cachedSamples would be corrupted across renders.
+  // -------------------------------------------------------------------------
+  eq('AC3-mutation: renderBotBand does NOT mutate caller rows[0] (still 50 after render)',
+    rowsAscending[0].num, 50);
+  eq('AC3-mutation: renderBotBand does NOT mutate caller rows[3] (still 50000 after render)',
+    rowsAscending[3].num, 50000);
+  // Belt-and-suspenders: the entire original order is preserved.
+  const originalNums = originalArray.map(r => r.num);
+  const afterNums = rowsAscending.map(r => r.num);
+  eq('AC3-mutation: full array order unchanged after renderBotBand',
+    afterNums, originalNums);
+
+  // -------------------------------------------------------------------------
+  // AC3-edge: zero rows and null el guard
+  // -------------------------------------------------------------------------
+  const emptyEl = makeBandEl();
+  realRenderBotBand(emptyEl, [], -0.5, 0);
+  eq('AC3-edge: empty rows renders nothing', emptyEl._appended.length, 0);
+
+  realRenderBotBand(null, rowsAscending, -0.5, 4); // should not throw
+  eq('AC3-edge: null el is a no-op (no throw)', true, true);
+
+  // -------------------------------------------------------------------------
+  // AC4: step-label CSS classes.
+  // Bottom band: step span uses STEP_CLASS_BOT = 'step bot'.
+  // Top band: step span uses STEP_CLASS_TOP = 'step top'.
+  // -------------------------------------------------------------------------
+
+  // AC4a: bottom band step class
+  function getStepClassName(pairEl) {
+    // fourth child (index 3) is the step span
+    return pairEl._children[3] ? pairEl._children[3].className : '';
+  }
+  const botBandEl2 = makeBandEl();
+  realRenderBotBand(botBandEl2, [{ num: 1000, original: '1,000' }], -0.5, 3);
+  eq('AC4-bot: step span has class "step bot"',
+    getStepClassName(botBandEl2._appended[0]), 'step bot');
+
+  // AC4b: top band step class (only the example row, not the strategy header pair).
+  // renderTopBand with cachedMaxMag=null skips the strategy header, so appended[0]
+  // is the example pair.
+  const topBandEl2 = makeBandEl();
+  realRenderTopBand(topBandEl2, [{ num: 100000, original: '100,000' }], -0.5);
+  // Without cachedMaxMag (null in our eval context) there is no header pair,
+  // so appended[0] is the example row pair.
+  eq('AC4-top: top band appended at least one pair element',
+    topBandEl2._appended.length >= 1, true);
+  const topExamplePair = topBandEl2._appended[topBandEl2._appended.length - 1];
+  eq('AC4-top: step span in top example row has class "step top"',
+    getStepClassName(topExamplePair), 'step top');
+
+  // AC4c: source-level constant values are correct (structural)
+  eq('AC4-src: STEP_CLASS_TOP constant is "step top" in source',
+    /const STEP_CLASS_TOP\s*=\s*['"]step top['"]/.test(sidebarSrc), true);
+  eq('AC4-src: STEP_CLASS_BOT constant is "step bot" in source',
+    /const STEP_CLASS_BOT\s*=\s*['"]step bot['"]/.test(sidebarSrc), true);
+  eq('AC4-src: OOM_LABEL_CLASS constant is "oom-label" in source',
+    /const OOM_LABEL_CLASS\s*=\s*['"]oom-label['"]/.test(sidebarSrc), true);
+  eq('AC4-src: STRATEGY_CLASS constant is "strategy" in source',
+    /const STRATEGY_CLASS\s*=\s*['"]strategy['"]/.test(sidebarSrc), true);
+
+  // AC4d: oom-label span is appended inside the from-span for non-zero rows.
+  const oomLabelBandEl = makeBandEl();
+  realRenderBotBand(oomLabelBandEl, [{ num: 5000, original: '5,000' }], -0.5, 3);
+  const fromSpan = oomLabelBandEl._appended[0]._children[0];
+  eq('AC4-oom-label: from-span has oom-label child appended',
+    fromSpan._children.length >= 1, true);
+  eq('AC4-oom-label: oom-label child has class "oom-label"',
+    fromSpan._children[0] ? fromSpan._children[0].className : '', 'oom-label');
+  eq('AC4-oom-label: oom-label text contains "(1k+)"',
+    fromSpan._children[0] ? fromSpan._children[0].textContent.includes('1k+') : false, true);
+
+  // -------------------------------------------------------------------------
+  // AC5: renderBand removed, renderTopBand + renderBotBand present in source
+  // -------------------------------------------------------------------------
+  eq('AC5-structure: renderBand is removed from sidebar.js source',
+    /function renderBand\b/.test(sidebarSrc), false);
+  eq('AC5-structure: renderTopBand is defined in sidebar.js source',
+    /function renderTopBand\b/.test(sidebarSrc), true);
+  eq('AC5-structure: renderBotBand is defined in sidebar.js source',
+    /function renderBotBand\b/.test(sidebarSrc), true);
+  eq('AC5-structure: renderPreviewBands calls renderTopBand',
+    /renderTopBand\(/.test(sidebarSrc), true);
+  eq('AC5-structure: renderPreviewBands calls renderBotBand',
+    /renderBotBand\(/.test(sidebarSrc), true);
+})();
+
+
+// ---------------------------------------------------------------------------
 // Sprint dots-tick-alignment: pct() mapping and CSS vertical alignment
 // ---------------------------------------------------------------------------
 
