@@ -10871,27 +10871,30 @@ function fireMouseClick(buttonEl, fn) {
   // hardcoded because those ARE the spec contract.
   //
   // Stops: offset ∈ {-1, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1}
-  //   offset -1   → ratio 0.1   → "a tenth of"
-  //   offset -0.75→ ratio 0.75  → "three quarters of"
-  //   offset -0.5 → ratio 0.5   → "a half of"
-  //   offset -0.25→ ratio 0.25  → "a quarter of"
+  //   offset -1   → ratio 0.1   → "a tenth of <oomBare>"
+  //   offset -0.75→ ratio 0.75  → "three quarters of <oomBare>"
+  //   offset -0.5 → ratio 0.5   → "a half of <oomBare>"
+  //   offset -0.25→ ratio 0.25  → "a quarter of <oomBare>"
   //   offset  0   → ratio 1     → no "(i.e." clause
-  //   offset +0.25→ ratio 2.5   → "2.5×"
-  //   offset +0.5 → ratio 5     → "5×"
-  //   offset +0.75→ ratio 7.5   → "7.5×"
-  //   offset +1   → ratio 10    → "10×"
+  //   offset +0.25→ ratio 2.5   → re-based: "a quarter of <nextDecadeLabel>"
+  //   offset +0.5 → ratio 5     → re-based: "a half of <nextDecadeLabel>"
+  //   offset +0.75→ ratio 7.5   → re-based: "three quarters of <nextDecadeLabel>"
+  //   offset +1   → ratio 10    → re-based ratio=1 → no "(i.e." clause
   // -------------------------------------------------------------------------
   (function hdrAllStops() {
+    // phraseFor receives the context label (oomBare for negative offsets,
+    // nextDecadeLabel for positive) and returns the expected phrase fragment.
+    // null means the clause is omitted entirely.
     const stops = [
-      { offset: -1,    phrase: 'a tenth of',       hasClause: true  },
-      { offset: -0.75, phrase: 'three quarters of', hasClause: true  },
-      { offset: -0.5,  phrase: 'a half of',         hasClause: true  },
-      { offset: -0.25, phrase: 'a quarter of',      hasClause: true  },
-      { offset:  0,    phrase: null,                hasClause: false },
-      { offset:  0.25, phrase: '2.5×',          hasClause: true  },
-      { offset:  0.5,  phrase: '5×',            hasClause: true  },
-      { offset:  0.75, phrase: '7.5×',          hasClause: true  },
-      { offset:  1,    phrase: '10×',           hasClause: true  },
+      { offset: -1,    phraseFor: (b) => 'a tenth of ' + b,         hasClause: true,  useNextDecade: false },
+      { offset: -0.75, phraseFor: (b) => 'three quarters of ' + b,  hasClause: true,  useNextDecade: false },
+      { offset: -0.5,  phraseFor: (b) => 'a half of ' + b,          hasClause: true,  useNextDecade: false },
+      { offset: -0.25, phraseFor: (b) => 'a quarter of ' + b,       hasClause: true,  useNextDecade: false },
+      { offset:  0,    phraseFor: () => null,                        hasClause: false, useNextDecade: false },
+      { offset:  0.25, phraseFor: (b) => 'a quarter of ' + b,       hasClause: true,  useNextDecade: true  },
+      { offset:  0.5,  phraseFor: (b) => 'a half of ' + b,          hasClause: true,  useNextDecade: true  },
+      { offset:  0.75, phraseFor: (b) => 'three quarters of ' + b,  hasClause: true,  useNextDecade: true  },
+      { offset:  1,    phraseFor: () => null,                        hasClause: false, useNextDecade: true  },
     ];
 
     // Test against TWO different maxMag values to confirm maxMag-independence of phrases.
@@ -10899,14 +10902,17 @@ function fireMouseClick(buttonEl, fn) {
 
     for (const mag of testMags) {
       const oomVal = Math.pow(10, mag);
-      const oomLabel = fmtOom(mag);                  // e.g. "1M+" or "100k+"
-      const oomBare  = oomLabel.replace(/\+$/, ''); // e.g. "1M"  or "100k"
+      const oomLabel = fmtOom(mag);                         // e.g. "1M+" or "100k+"
+      const oomBare  = oomLabel.replace(/\+$/, '');         // e.g. "1M"  or "100k"
+      const nextDecadeLabel = fmtOom(mag + 1).replace(/\+$/, ''); // e.g. "10M" or "1M"
 
       for (const stop of stops) {
         const tag = 'AC2-ALL mag=' + mag + ' offset=' + stop.offset;
         const step      = stepForOffset(oomVal, stop.offset);
         const stepLabel = formatStep(step);
         const header    = fmtHdr(mag, stop.offset);
+        const clauseBase = stop.useNextDecade ? nextDecadeLabel : oomBare;
+        const phrase = stop.phraseFor(clauseBase);
 
         // 1. Header always starts with "<oomLabel> →" (with the "+").
         eq(tag + ': header contains oomLabel "' + oomLabel + '"',
@@ -10924,15 +10930,15 @@ function fireMouseClick(buttonEl, fn) {
         if (stop.hasClause) {
           eq(tag + ': header contains "(i.e."',
             header.includes('(i.e.'), true);
-          // 4b. The specific human phrase must appear.
-          eq(tag + ': header contains phrase "' + stop.phrase + '"',
-            header.includes(stop.phrase), true);
-          // 4c. The phrase must reference the bare OoM label (no trailing "+").
-          eq(tag + ': phrase references oomBare "' + oomBare + '"',
-            header.includes(oomBare), true);
+          // 4b. The specific human phrase must appear in full (includes the base label).
+          eq(tag + ': header contains phrase "' + phrase + '"',
+            header.includes(phrase), true);
+          // 4c. No bare N× multiplier strings should appear (old behavior, now removed).
+          eq(tag + ': header does NOT contain "×"',
+            header.includes('×'), false);
         } else {
-          // offset=0 → ratio=1 → clause omitted entirely.
-          eq(tag + ': offset=0 → no "(i.e." clause',
+          // offset=0 or offset=1 → ratio=1 re-based → clause omitted entirely.
+          eq(tag + ': no "(i.e." clause',
             header.includes('(i.e.'), false);
         }
       }
@@ -11513,6 +11519,286 @@ function fireMouseClick(buttonEl, fn) {
   const thumbLeftMatches = (sidebarJsSrc.match(thumbLeftPattern) || []).length;
   eq('dots-tick: both pct() calls are style.left assignments (not fill/label)',
     thumbLeftMatches, 2);
+})();
+
+
+// ---------------------------------------------------------------------------
+// Sprint sidebar-preview-and-controls
+// AC1 (Bug #2): APPLY_SIDEBAR_SETTINGS sends a synchronous response
+// AC2 (Bug #3): formatStrategyHeader re-basing — mag=3 exhaustive table
+// AC3 (Bug #1): embedded-in-text numbers feed maxMag
+// ---------------------------------------------------------------------------
+
+// -------------------------------------------------------------------------
+// AC1: APPLY_SIDEBAR_SETTINGS is acknowledged (sendResponse fires synchronously)
+//
+// The content.js onMessage listener was registered at module-eval time against
+// a no-op stub. To capture the real listener we re-eval the full content-script
+// stack with a capturing chrome stub in an isolated scope, then dispatch the
+// message and verify the sendResponse callback fires.
+// -------------------------------------------------------------------------
+(function ac1_applySidebarSettings() {
+  let capturedListener = null;
+  const captureChrome = {
+    runtime: {
+      onMessage: {
+        addListener(fn) { capturedListener = fn; }
+      },
+      sendMessage: () => {},
+      lastError: null,
+    },
+  };
+  const captureDoc = {
+    addEventListener: () => {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild: () => {}, observe: () => {} },
+  };
+  const captureWindow = {
+    addEventListener: () => {},
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+  };
+
+  const savedChrome = global.chrome;
+  const savedDoc    = global.document;
+  const savedWindow = global.window;
+  global.chrome   = captureChrome;
+  global.document = captureDoc;
+  global.window   = captureWindow;
+
+  try {
+    const dir = path.join(__dirname);
+    eval(
+      fs.readFileSync(path.join(dir, 'defaults.js'),     'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'rounding.js'),     'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'core.js'),         'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'parsing.js'),      'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'dom-adapters.js'), 'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'ui-toggle.js'),    'utf8') + '\n' +
+      fs.readFileSync(path.join(dir, 'content.js'),      'utf8')
+    );
+  } catch (e) {
+    // content.js module-level code may fail in the stub environment; the
+    // onMessage listener registers before any dynamic code runs, so we
+    // only need the addListener call to have fired.
+  } finally {
+    global.chrome   = savedChrome;
+    global.document = savedDoc;
+    global.window   = savedWindow;
+  }
+
+  eq('AC1: content.js onMessage listener was captured',
+    typeof capturedListener, 'function');
+
+  if (typeof capturedListener !== 'function') return;
+
+  // Dispatch APPLY_SIDEBAR_SETTINGS and verify sendResponse is called.
+  let sendResponseCalledWith = undefined;
+  let sendResponseCallCount  = 0;
+  function fakeSendResponse(val) {
+    sendResponseCallCount++;
+    sendResponseCalledWith = val;
+  }
+
+  const returnValue = capturedListener(
+    { action: 'APPLY_SIDEBAR_SETTINGS', settings: {} },
+    {},
+    fakeSendResponse
+  );
+
+  eq('AC1: sendResponse was called for APPLY_SIDEBAR_SETTINGS',
+    sendResponseCallCount, 1);
+
+  eq('AC1: sendResponse called with {ok:true}',
+    sendResponseCalledWith && sendResponseCalledWith.ok, true);
+
+  // The branch must NOT return true (that would leave the message port open
+  // for an async response that will never arrive).
+  eq('AC1: APPLY_SIDEBAR_SETTINGS branch does NOT return true (synchronous)',
+    returnValue === true, false);
+
+  // Source-level belt-and-suspenders: the branch contains a sendResponse( call.
+  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  eq('AC1-src: APPLY_SIDEBAR_SETTINGS branch contains sendResponse( call',
+    /APPLY_SIDEBAR_SETTINGS[\s\S]{0,200}sendResponse\(/.test(contentSrc), true);
+})();
+
+// -------------------------------------------------------------------------
+// AC2 (Bug #3): formatStrategyHeader — exhaustive mag=3 (1k+) table.
+// Every offset stop is verified with exact clause text against the re-basing
+// spec: negative offsets reference the band's own OoM bare label ("1k"),
+// positive offsets re-base onto the next decade ("10k"), offset=0 and offset=1
+// omit the clause. No "×" multiplier form should appear in any header.
+// -------------------------------------------------------------------------
+(function ac2_mag3_exhaustiveTable() {
+  const sidebarSrc  = fs.readFileSync(path.join(__dirname, 'sidebar.js'),  'utf8');
+  const constBlock  = sidebarSrc.match(/const STEP_CLASS_TOP\s*=[\s\S]*?const STRATEGY_CLASS\s*=.*?;/);
+  const fmtOomFn    = sidebarSrc.match(/function formatOomLabel\([\s\S]*?\n\}/);
+  const fmtHdrFn    = sidebarSrc.match(/function formatStrategyHeader\([\s\S]*?\n\}/);
+
+  if (!constBlock || !fmtOomFn || !fmtHdrFn) {
+    eq('AC2-mag3-extract: able to extract formatOomLabel + formatStrategyHeader', false, true);
+    return;
+  }
+
+  const helperSrc = '(function(trimNum, stepForOffset, formatStep) {\n' +
+    constBlock[0] + '\n' + fmtOomFn[0] + '\n' + fmtHdrFn[0] + '\n' +
+    'return { formatOomLabel: formatOomLabel, formatStrategyHeader: formatStrategyHeader };\n' +
+    '})(trimNum, stepForOffset, formatStep)';
+
+  let helpers;
+  try {
+    helpers = (new Function('trimNum', 'stepForOffset', 'formatStep',
+      'return ' + helperSrc + ';'
+    ))(trimNum, stepForOffset, formatStep);
+  } catch (e) {
+    eq('AC2-mag3-eval: new Function eval succeeded', String(e), '');
+    return;
+  }
+
+  const fmtOom = helpers.formatOomLabel;
+  const fmtHdr = helpers.formatStrategyHeader;
+
+  const mag = 3;
+  const oomVal         = Math.pow(10, mag);           // 1000
+  const oomLabel       = fmtOom(mag);                  // "1k+"
+  const oomBare        = oomLabel.replace(/\+$/, ''); // "1k"
+  const nextDecadeLabel = fmtOom(mag + 1).replace(/\+$/, ''); // "10k"
+
+  // Verify our derived labels are correct.
+  eq('AC2-mag3: oomLabel is "1k+"', oomLabel, '1k+');
+  eq('AC2-mag3: nextDecadeLabel is "10k"', nextDecadeLabel, '10k');
+
+  const scenarios = [
+    // [offset, expectClause, expectedFragment, refLabel]
+    { offset: -1,    hasClause: true,  fragment: 'a tenth of',         base: oomBare        },
+    { offset: -0.25, hasClause: true,  fragment: 'a quarter of',       base: oomBare        },
+    { offset: -0.5,  hasClause: true,  fragment: 'a half of',          base: oomBare        },
+    { offset: -0.75, hasClause: true,  fragment: 'three quarters of',  base: oomBare        },
+    { offset:  0,    hasClause: false, fragment: null,                  base: null           },
+    { offset:  0.25, hasClause: true,  fragment: 'a quarter of',       base: nextDecadeLabel },
+    { offset:  0.5,  hasClause: true,  fragment: 'a half of',          base: nextDecadeLabel },
+    { offset:  0.75, hasClause: true,  fragment: 'three quarters of',  base: nextDecadeLabel },
+    { offset:  1,    hasClause: false, fragment: null,                  base: null           },
+  ];
+
+  for (const sc of scenarios) {
+    const tag    = 'AC2-mag3 offset=' + sc.offset;
+    const step   = stepForOffset(oomVal, sc.offset);
+    const stepLbl = formatStep(step);
+    const header  = fmtHdr(mag, sc.offset);
+
+    // Band label always present.
+    eq(tag + ': header contains "' + oomLabel + '"',
+      header.includes(oomLabel), true);
+
+    // Step label always present.
+    eq(tag + ': header contains "nearest ' + stepLbl + '"',
+      header.includes('nearest ' + stepLbl), true);
+
+    if (sc.hasClause) {
+      // (i.e. …) clause present.
+      eq(tag + ': header contains "(i.e."',
+        header.includes('(i.e.'), true);
+
+      // Full clause phrase: "a half of 1k" or "a quarter of 10k" etc.
+      const fullPhrase = sc.fragment + ' ' + sc.base;
+      eq(tag + ': header contains "' + fullPhrase + '"',
+        header.includes(fullPhrase), true);
+
+      // No "×" multiplier form.
+      eq(tag + ': header does NOT contain "×"',
+        header.includes('×'), false);
+    } else {
+      // offset=0 and offset=1: clause omitted.
+      eq(tag + ': no "(i.e." clause',
+        header.includes('(i.e.'), false);
+
+      // No "×" either.
+      eq(tag + ': header does NOT contain "×"',
+        header.includes('×'), false);
+    }
+  }
+
+  // Spot-check full expected strings for the spec table rows.
+  eq('AC2-mag3 offset=-1: full clause "a tenth of 1k"',
+    fmtHdr(mag, -1).includes('a tenth of 1k'), true);
+  eq('AC2-mag3 offset=-0.25: full clause "a quarter of 1k"',
+    fmtHdr(mag, -0.25).includes('a quarter of 1k'), true);
+  eq('AC2-mag3 offset=-0.5: full clause "a half of 1k"',
+    fmtHdr(mag, -0.5).includes('a half of 1k'), true);
+  eq('AC2-mag3 offset=-0.75: full clause "three quarters of 1k"',
+    fmtHdr(mag, -0.75).includes('three quarters of 1k'), true);
+  eq('AC2-mag3 offset=0.25: full clause "a quarter of 10k"',
+    fmtHdr(mag, 0.25).includes('a quarter of 10k'), true);
+  eq('AC2-mag3 offset=0.5: full clause "a half of 10k"',
+    fmtHdr(mag, 0.5).includes('a half of 10k'), true);
+  eq('AC2-mag3 offset=0.75: full clause "three quarters of 10k"',
+    fmtHdr(mag, 0.75).includes('three quarters of 10k'), true);
+
+  // offset=0.5 step label and band label unchanged (regression guard).
+  eq('AC2-mag3 offset=0.5: header contains "1k+ → nearest 5k"',
+    fmtHdr(mag, 0.5).includes('1k+ → nearest 5k'), true);
+
+  // offset=-1 step label and band label unchanged (regression guard).
+  eq('AC2-mag3 offset=-1: header contains "→ nearest 100"',
+    fmtHdr(mag, -1).includes('→ nearest 100'), true);
+})();
+
+// -------------------------------------------------------------------------
+// AC3 (Bug #1): embedded-in-text numbers feed maxMag.
+// A table whose only large values are embedded in mixed-text cells (like
+// "₹2,000 crore") must produce maxMag=3 (from 2,000) even when a stand-alone
+// small numeric cell (e.g. "5") is also present.
+// -------------------------------------------------------------------------
+(function ac3_embeddedInTextMaxMag() {
+  function tdCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+
+  // The large number is embedded inside prose; the small number is pure-numeric.
+  // "₹2,000 crore": toNumber returns null (not a pure number), so
+  // extractNumbersInText extracts 2000 → magnitude 3.
+  // "5": toNumber returns 5 → magnitude 0.
+  const table = {
+    rows: [
+      { cells: [tdCell('₹2,000 crore'), tdCell('5')] },
+    ],
+  };
+
+  const result = extractPreviewSamples(table);
+
+  eq('AC3: maxMag is 3 (from embedded 2,000, not suppressed by stand-alone 5)',
+    result.maxMag, 3);
+
+  eq('AC3: top band contains the large embedded number',
+    result.samples.top.length >= 1, true);
+
+  eq('AC3: top band num is 2000 (the embedded value)',
+    result.samples.top[0] && result.samples.top[0].num, 2000);
+
+  // Complementary: a pure-number table still works as before (regression guard).
+  const pureTable = {
+    rows: [
+      { cells: [tdCell('27,000,000'), tdCell('286')] },
+    ],
+  };
+  const pureResult = extractPreviewSamples(pureTable);
+  eq('AC3-regression: pure-number table maxMag is 7 (27M)',
+    pureResult.maxMag, 7);
+
+  // Also verify that collectNumericCells picks up the embedded number from
+  // the mixed-text cell, proving the extraction path is exercised.
+  const mixedTable = {
+    rows: [
+      { cells: [tdCell('Revenue: ₹2,000 crore'), tdCell('5')] },
+    ],
+  };
+  const cells = collectNumericCells(mixedTable);
+  // Should find at least 2000 among the collected cells.
+  const nums = cells.map(c => c.num);
+  eq('AC3-collect: collectNumericCells finds 2000 from embedded text',
+    nums.includes(2000), true);
 })();
 
 
