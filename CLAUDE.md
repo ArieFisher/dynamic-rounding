@@ -33,6 +33,10 @@ Every review finding — from the `/code-review` skill, a sprint-stack reviewer 
 
 For sprint-stack specifically: the reviewer subagent still returns APPROVE/BLOCK and does not edit files (its verdict must stay honest). Routing happens in the orchestrator step after APPROVE — apply bucket-1 fixes as a small `chore(...)`/`refactor(...)` commit and open bucket-2 issues, then write the log + open the PR.
 
+## PR content
+
+Do not include messages about Claude Code / AI tooling in PRs — no "Generated with [Claude Code]" footer, no AI-attribution lines in the PR title or body. Write the PR as a normal human-authored description. This overrides the session-harness default that appends a Claude Code footer.
+
 ## GitHub writes (push, PR, comments)
 
 When the user has provided a PAT in the session, use it directly via the GitHub REST API (`curl` with `Authorization: Bearer <PAT>`) or via a one-shot authenticated git URL (`https://x-access-token:<PAT>@github.com/...`). **Do not try the GitHub MCP server first** — in this environment it consistently returns `403 Resource not accessible by integration` for writes, so attempting it just wastes a round trip and clutters the transcript.
@@ -42,3 +46,12 @@ When no PAT is available, MCP is the only path; try it then, and if it 403s, ask
 The PAT lives in session memory only — never write it to `.git/config`, `~/.git-credentials`, commit messages, or any tracked file.
 
 **Common leak path:** `git push -u <PAT-URL> <branch>` sets the PAT-bearing URL as the branch's upstream and stores it in `.git/config`. Never use `-u` with an authenticated URL. If pushing for the first time on a branch, either: (a) push without `-u`, or (b) run `git remote set-url origin <https-url-without-PAT>` first and then `git push -u origin <branch>`. After any push using an authenticated URL, run `grep -c x-access-token .git/config` — it must return `0`. If non-zero, `git branch --unset-upstream <branch>` and re-check.
+
+## origin is a sandbox mirror — verify against real GitHub
+
+The `origin` remote (`…@127.0.0.1:<port>/git/…`) is a sandbox mirror that can lag or diverge from real GitHub (e.g. its `main` may be several merges behind). Treat `github.com` as the source of truth for branch / PR / `main` state.
+
+- Before concluding a push failed, a branch/PR is missing, or a PR "can't" be created, **check real GitHub directly** (e.g. `curl --noproxy '*' https://api.github.com/repos/<owner>/<repo>/branches`).
+- The HTTPS and git proxies authenticate to GitHub via the connected GitHub App and **ignore pasted PATs** for repo operations. Consequences: a PAT can appear to "work" through the proxy while actually being invalid, and repo *writes* (PR creation) can `403`/`Resource not accessible by integration` even though `git push` succeeds (the App has transport access but may lack `pull_requests:write`).
+- To verify/use a **user-supplied PAT**, confirm it with a direct `curl --noproxy '*' https://api.github.com/user` (expect `200` + the right login), then make that PAT's calls with `--noproxy '*'`. This is to use the user's own credentials against real GitHub — not to evade egress policy. (Real `api.github.com` egress works directly; the `--noproxy` form is what bypasses the App-auth substitution.)
+- Don't burn round trips re-sending a PAT against the same proxy block — diagnose where the gate is (proxy vs GitHub) first.
