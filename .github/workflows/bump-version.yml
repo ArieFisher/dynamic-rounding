@@ -93,8 +93,9 @@ jobs:
           git checkout -b "$BUMP_BRANCH"
           git commit -m "chore(version): bump after #${{ github.event.pull_request.number }}"
           git push origin "$BUMP_BRANCH"
-          gh pr create \
+          PR_URL=$(gh pr create \
             --title "chore(version): bump after #${{ github.event.pull_request.number }}" \
             --body "Automated version bump triggered by merge of PR #${{ github.event.pull_request.number }}." \
             --base main \
-            --head "$BUMP_BRANCH"
+            --head "$BUMP_BRANCH")
+          gh pr merge "$PR_URL" --auto --squash
