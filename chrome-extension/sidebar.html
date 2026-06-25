@@ -201,7 +201,21 @@
     .results-band .arrow { color: #5f6368; text-align: center; }
     .results-band .num { color: #202124; text-align: right; }
     .results-band .oom-label { color: #b3623d; }
+    .results-band .step-label { color: #b3623d; }
     .results-band .strategy { color: #1a73e8; grid-column: 1 / -1; font-style: italic; }
+    /* Top band: strategy header + worked example share one line and wrap
+       together (as whole units) when the sidebar is too narrow for both. */
+    #topBand {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: baseline;
+      column-gap: 8px;
+      row-gap: 2px;
+    }
+    #topBand .strategy,
+    #topBand .example { white-space: nowrap; }
+    #topBand .example .arrow { margin: 0 4px; }
     .results-band .empty {
       color: #80868b;
       font-style: italic;
