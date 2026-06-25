@@ -76,19 +76,14 @@ function pct(v) {
   // This places −1 → 5.556% and +1 → 94.444%, matching the tick grid centres.
   return ((v + 1) / 2 * 8 + 0.5) / 9 * 100;
 }
-function fmtOffset(o) {
-  let s = o.toFixed(2).replace(/\.?0+$/, '');
-  if (s === '-0') s = '0';
-  return s.replace('-', '−');
-}
 function renderSliders() {
   if (!topThumb || !botThumb) return;
   topThumb.style.left = pct(topVal) + '%';
   botThumb.style.left = pct(botVal) + '%';
   botThumb.classList.toggle('linked', linked);
   if (sliderBlockEl) sliderBlockEl.classList.toggle('linked', linked);
-  if (topLabelEl) topLabelEl.textContent = 'largest numbers: ' + fmtOffset(topVal);
-  if (botLabelEl) botLabelEl.textContent = 'all other numbers: ' + fmtOffset(botVal);
+  if (topLabelEl) topLabelEl.textContent = 'largest numbers';
+  if (botLabelEl) botLabelEl.textContent = 'all other numbers';
   if (topThumb) topThumb.setAttribute('aria-valuenow', String(topVal));
   if (botThumb) botThumb.setAttribute('aria-valuenow', String(botVal));
   renderPreviewBands();
@@ -166,8 +161,6 @@ function formatOriginal(numOrStr) {
 }
 
 // CSS class name constants for band colouring.
-const STEP_CLASS_TOP = 'step top';
-const STEP_CLASS_BOT = 'step bot';
 const OOM_LABEL_CLASS = 'oom-label';
 const STRATEGY_CLASS = 'strategy';
 
@@ -194,72 +187,19 @@ function formatOomLabel(mag) {
 }
 
 /**
- * Build the strategy header string for the top band.
- * e.g. "100k+ → nearest 25k (i.e. a quarter of 100k)"
- *
- * The "i.e." clause is derived by computing step/oomVal (the ratio of the step
- * to the OoM magnitude) and looking it up in STRATEGY_RATIO_PHRASES.  The ratio
- * is drawn from the fixed slider-stop set {0.1, 0.25, 0.5, 0.75, 1, 2.5, 5,
- * 7.5, 10} regardless of maxMag, so a direct lookup is both correct and simple.
- *
- * When ratio == 1 (step equals the OoM) the clause is omitted entirely.
- * When ratio is not in the table (fallback) the clause is also omitted.
+ * Build the strategy header string for the top band, e.g.
+ * "1M+ → nearest 500k". The descriptive "(i.e. a half of 1M)" clause was
+ * removed per issue #1 — the OoM label and step alone convey the strategy.
  */
 function formatStrategyHeader(maxMag, offset) {
-  // Lookup table: step/oomVal ratio → "(i.e. …)" clause phrase builder.
-  // Only the four sub-OoM descriptive entries; ratio==1 and above-OoM ratios
-  // are handled separately below (re-based onto the next decade).
-  // Matched with tolerance 1e-9 since these are clean binary floats.
-  const STRATEGY_RATIO_PHRASES = [
-    { ratio: 0.1,  phrase: (b) => 'a tenth of ' + b },
-    { ratio: 0.25, phrase: (b) => 'a quarter of ' + b },
-    { ratio: 0.5,  phrase: (b) => 'a half of ' + b },
-    { ratio: 0.75, phrase: (b) => 'three quarters of ' + b },
-    // ratio == 1: clause omitted — not listed here.
-  ];
-  const oomLabel = formatOomLabel(maxMag);
-  const oomVal = Math.pow(10, maxMag);
-  // Use the representative top value (oomVal itself) to compute the step.
-  const step = stepForOffset(oomVal, offset);
-  const stepLabel = formatStep(step);
-  // ratio = step / oomVal: how large the step is relative to the OoM.
-  const ratio = step / oomVal;
-
-  let clausePhrase = null;
-  if (step > oomVal) {
-    // step > oomVal: re-base the clause onto the next decade (10 × oomVal).
-    // rebasedRatio = ratio / 10 maps {2.5, 5, 7.5, 10} → {0.25, 0.5, 0.75, 1.0}.
-    const rebasedRatio = ratio / 10;
-    // The clause base label is the next-decade OoM label without its trailing "+".
-    const nextDecadeLabel = formatOomLabel(maxMag + 1).replace(/\+$/, '');
-    // ratio == 10 → rebasedRatio == 1.0 → clause omitted (equals the next decade).
-    for (const entry of STRATEGY_RATIO_PHRASES) {
-      if (Math.abs(rebasedRatio - entry.ratio) < 1e-9) {
-        clausePhrase = entry.phrase(nextDecadeLabel);
-        break;
-      }
-    }
-  } else {
-    // step <= oomVal: look up ratio against the band's own OoM label.
-    // OoM label without the trailing "+" for use inside the clause.
-    const oomBare = oomLabel.replace(/\+$/, '');
-    // ratio == 1: clause omitted (not in table).
-    for (const entry of STRATEGY_RATIO_PHRASES) {
-      if (Math.abs(ratio - entry.ratio) < 1e-9) {
-        clausePhrase = entry.phrase(oomBare);
-        break;
-      }
-    }
-  }
-
-  // ratio == 1 (or any unmatched ratio): omit the "(i.e. …)" clause entirely.
-  const base = oomLabel + ' → nearest ' + stepLabel;
-  return clausePhrase ? base + ' (i.e. ' + clausePhrase + ')' : base;
+  const step = stepForOffset(Math.pow(10, maxMag), offset);
+  return formatOomLabel(maxMag) + ' → nearest ' + formatStep(step);
 }
 
 /**
  * Render the top preview band: strategy header row followed by a single
- * example row. Step labels are coloured blue (STEP_CLASS_TOP).
+ * example row ("e.g. <original> → <rounded>"). Per issues #1/#3 the example
+ * carries no step or magnitude annotation and shows the bare original number.
  */
 function renderTopBand(el, rows, offset) {
   if (!el) return;
@@ -284,7 +224,8 @@ function renderTopBand(el, rows, offset) {
 
   const from = document.createElement('span');
   from.className = 'from';
-  from.textContent = formatOriginal(row.original);
+  // Bare original number (text stripped per #3), prefixed "e.g." per #1.
+  from.textContent = 'e.g. ' + formatOriginal(row.num);
   pair.appendChild(from);
 
   const arrow = document.createElement('span');
@@ -297,17 +238,14 @@ function renderTopBand(el, rows, offset) {
   numEl.textContent = formatOriginal(roundWithOffset(row.num, offset));
   pair.appendChild(numEl);
 
-  const stepEl = document.createElement('span');
-  stepEl.className = STEP_CLASS_TOP;
-  stepEl.textContent = '(' + formatStep(stepForOffset(row.num, offset)) + ')';
-  pair.appendChild(stepEl);
-
   el.appendChild(pair);
 }
 
 /**
- * Render the bottom preview band: rows sorted DESCENDING by magnitude,
- * each showing the original with an OoM label and the step in brown.
+ * Render the bottom preview band: rows sorted DESCENDING by magnitude, each
+ * showing the bare original number with its OoM label (kept per the issue #3
+ * decision — strip the largest band, keep the tag for the other numbers). The
+ * trailing step annotation is removed.
  */
 function renderBotBand(el, rows, offset, maxMag) {
   if (!el) return;
@@ -325,10 +263,11 @@ function renderBotBand(el, rows, offset, maxMag) {
     const pair = document.createElement('div');
     pair.className = 'pair';
 
-    // "from" cell: "266,453 (100k+)" where the OoM label is brown.
+    // "from" cell: "266,453 (100k+)" where the OoM label is brown. The bare
+    // original number is shown (surrounding text stripped per #3).
     const from = document.createElement('span');
     from.className = 'from';
-    from.textContent = formatOriginal(row.original);
+    from.textContent = formatOriginal(row.num);
     if (row.num !== 0) {
       const mag = Math.floor(Math.log10(Math.abs(row.num)));
       const oomSpan = document.createElement('span');
@@ -347,11 +286,6 @@ function renderBotBand(el, rows, offset, maxMag) {
     numEl.className = 'num';
     numEl.textContent = formatOriginal(roundWithOffset(row.num, offset));
     pair.appendChild(numEl);
-
-    const stepEl = document.createElement('span');
-    stepEl.className = STEP_CLASS_BOT;
-    stepEl.textContent = '(' + formatStep(stepForOffset(row.num, offset)) + ')';
-    pair.appendChild(stepEl);
 
     el.appendChild(pair);
   }

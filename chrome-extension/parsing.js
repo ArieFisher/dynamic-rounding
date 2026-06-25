@@ -419,6 +419,55 @@ function extractNumbersInText(text) {
   return matches;
 }
 
+// --- Era-marked calendar years (e.g. "2898 AD", "500 BC", "AD 79", "1200 CE") ---
+// A number bound to an era marker is a calendar year — a date — so it must be
+// rounded by date logic (decade/century), never by the numeric offset. These
+// helpers locate such year tokens so they can be excluded from numeric magnitude
+// detection, numeric rounding, and the sidebar preview examples (issue #4).
+const ERA_MARKER = '(?:A\\.?D\\.?|B\\.?C\\.?E\\.?|B\\.?C\\.?|C\\.?E\\.?|A\\.?H\\.?|B\\.?P\\.?)';
+// "<year> <era>": the digits are not part of a larger number (no leading digit
+// or decimal point) and the era marker is a standalone token (not followed by a
+// letter, so "ADELAIDE" / "ADD" never match).
+const ERA_YEAR_AFTER_RE = new RegExp('(?<![\\d.])(\\d[\\d,]*)\\s*' + ERA_MARKER + '(?![A-Za-z])', 'gi');
+// "<era> <year>": e.g. "AD 79". Era marker preceded by a non-letter boundary.
+const ERA_YEAR_BEFORE_RE = new RegExp('(?<![A-Za-z])' + ERA_MARKER + '\\s+(\\d[\\d,]*)', 'gi');
+
+/**
+ * Return {start, end} ranges (offsets into `text`) of every digit run that
+ * forms a calendar year bound to an era marker, in either order ("2898 AD" or
+ * "AD 79").
+ */
+function eraYearDigitRanges(text) {
+  if (typeof text !== 'string') return [];
+  const ranges = [];
+  let m;
+  const after = new RegExp(ERA_YEAR_AFTER_RE.source, 'gi');
+  while ((m = after.exec(text)) !== null) {
+    const start = m.index + m[0].indexOf(m[1]);
+    ranges.push({ start, end: start + m[1].length });
+  }
+  const before = new RegExp(ERA_YEAR_BEFORE_RE.source, 'gi');
+  while ((m = before.exec(text)) !== null) {
+    const start = m.index + m[0].lastIndexOf(m[1]);
+    ranges.push({ start, end: start + m[1].length });
+  }
+  return ranges;
+}
+
+/**
+ * True if the number occurrence [index, index + numStr.length) in `text` is a
+ * calendar year bound to an era marker (and therefore a date, not a numeric
+ * value to be offset-rounded).
+ */
+function isEraYear(text, index, numStr) {
+  if (typeof text !== 'string' || typeof numStr !== 'string') return false;
+  const end = index + numStr.length;
+  for (const r of eraYearDigitRanges(text)) {
+    if (index < r.end && end > r.start) return true;
+  }
+  return false;
+}
+
 /**
  * Returns the number of fractional digits in n's string representation.
  * Sign is stripped before counting. null/undefined/NaN all return 0.
