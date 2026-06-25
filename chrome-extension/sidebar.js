@@ -15,10 +15,19 @@ const NO_TABLE_STATUS_MSG = 'Right-click a table to connect it here.';
 function setTableBound(isBound) {
   document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
   if (!isBound) {
+    // No active table: there is nothing for rounding to act on, so flip the
+    // main toggle to its off state rather than dimming the whole sidebar.
+    enabledEl.checked = false;
     statusEl.textContent = NO_TABLE_STATUS_MSG;
-  } else if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
-    statusEl.textContent = '';
+  } else {
+    // A table is now bound: restore the toggle to the shared default (the
+    // per-table state then arrives via TABLE_TOGGLE_STATE / reset).
+    enabledEl.checked = DR_DEFAULTS.enabled !== false;
+    if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
+      statusEl.textContent = '';
+    }
   }
+  updateDisabledState();
 }
 
 const CHECKBOX_TO_SETTING = {
