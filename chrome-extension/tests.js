@@ -11270,6 +11270,10 @@ function fireMouseClick(buttonEl, fn) {
   eq('no-table AC4: body.no-table sets opacity in sidebar.html',
     /body\.no-table[\s\S]{0,200}opacity:\s*0\.4/.test(sidebarHtml), true);
 
+  // AC4 (static): the title-row main toggle pill is also disabled under no-table.
+  eq('no-table AC4: sidebar.html has body.no-table .title-row .switch CSS rule',
+    /body\.no-table\s+\.title-row\s+\.switch/.test(sidebarHtml), true);
+
   // AC1 (static): sidebar.html default #status text is the no-table message.
   eq('no-table AC1: sidebar.html default #status text is the no-table message',
     /id="status"[^>]*>Right-click a table to connect it here\./.test(sidebarHtml), true);
