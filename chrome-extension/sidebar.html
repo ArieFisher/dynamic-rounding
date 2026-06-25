@@ -182,7 +182,7 @@
        and the whole band is centered horizontally under the slider. */
     .results-band {
       display: grid;
-      grid-template-columns: auto auto auto auto;
+      grid-template-columns: auto auto auto;
       justify-content: center;
       column-gap: 6px;
       row-gap: 2px;
@@ -200,9 +200,6 @@
     }
     .results-band .arrow { color: #5f6368; text-align: center; }
     .results-band .num { color: #202124; text-align: right; }
-    .results-band .step { color: #5f6368; text-align: left; }
-    .results-band .step.top { color: #1a73e8; }
-    .results-band .step.bot { color: #b3623d; }
     .results-band .oom-label { color: #b3623d; }
     .results-band .strategy { color: #1a73e8; grid-column: 1 / -1; font-style: italic; }
     .results-band .empty {
@@ -347,7 +344,7 @@
     <summary>Advanced</summary>
     <div class="slider-block" id="sliderBlock">
       <div class="label-row">
-        <span class="lbl top" id="topLabel">largest numbers: −0.5</span>
+        <span class="lbl top" id="topLabel">largest numbers</span>
       </div>
       <div class="results-band" id="topBand"></div>
       <div class="dual-wrap" id="dualWrap">
@@ -363,7 +360,7 @@
              aria-label="largest numbers offset" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="-0.5"></div>
       </div>
       <div class="label-row">
-        <span class="lbl bot" id="botLabel">all other numbers: −0.5</span>
+        <span class="lbl bot" id="botLabel">all other numbers</span>
       </div>
       <div class="results-band" id="botBand"></div>
     </div>
