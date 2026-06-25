@@ -145,7 +145,7 @@
     }
     .dual-ticks {
       position: absolute; left: 0; right: 0; top: 20px;
-      display: grid; grid-template-columns: repeat(11, 1fr);
+      display: grid; grid-template-columns: repeat(9, 1fr);
       pointer-events: none;
       /* top: 20px centres each 12px tick (top + 6px) on the thumb centre at 26px */
     }
@@ -153,8 +153,8 @@
       height: 12px; width: 2px; background: #b5b9c0;
       justify-self: center; border-radius: 1px;
     }
-    /* Distinguish the zero tick (offset = 0), the 7th of 11 stops. */
-    .dual-ticks .t:nth-child(7) {
+    /* Distinguish the zero tick (offset = 0), the 6th of 9 stops. */
+    .dual-ticks .t:nth-child(6) {
       background: #7a8089;
       height: 14px;
     }
@@ -367,7 +367,6 @@
           <span class="t"></span><span class="t"></span><span class="t"></span>
           <span class="t"></span><span class="t"></span><span class="t"></span>
           <span class="t"></span><span class="t"></span><span class="t"></span>
-          <span class="t"></span><span class="t"></span>
         </div>
         <div class="dual-thumb bot linked" id="botThumb" tabindex="0" role="slider"
              aria-label="all other numbers offset" aria-valuemin="-2" aria-valuemax="1" aria-valuenow="-0.5"></div>
