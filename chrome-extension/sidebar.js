@@ -208,31 +208,46 @@ function formatStrategyHeader(maxMag, offset) {
 }
 
 /**
- * Render the top preview band: the strategy header (blue) and a single worked
- * example ("e.g. <original> → <rounded>", black) share one line, wrapping to
- * two lines only when the sidebar is too narrow to fit both. The example
- * carries no step annotation and shows the bare original number (text stripped
- * per #3).
+ * Render the top preview band on two lines: the strategy header (blue) on the
+ * first line and a single worked example ("e.g. <original> → <rounded>", black)
+ * on the second. Both lines are laid out as from|arrow|num pairs in the shared
+ * 3-column grid so their "→" arrows line up vertically. The example carries no
+ * step annotation and shows the bare original number (text stripped per #3).
  */
 function renderTopBand(el, rows, offset) {
   if (!el) return;
   el.innerHTML = '';
   if (!rows || rows.length === 0) return;
 
-  // Strategy header, e.g. "1M+ → nearest 250k". Kept whole (nowrap) so it never
-  // breaks mid-phrase; the flex container wraps it as a unit beside the example.
+  // Strategy line, e.g. "1M+ → nearest 250k", split into the same
+  // from | arrow | num columns as the example so the arrows align.
   if (cachedMaxMag !== null && cachedMaxMag !== undefined) {
-    const headerEl = document.createElement('span');
-    headerEl.className = STRATEGY_CLASS;
-    headerEl.textContent = formatStrategyHeader(cachedMaxMag, offset);
-    el.appendChild(headerEl);
+    const step = stepForOffset(Math.pow(10, cachedMaxMag), offset);
+    const strat = document.createElement('div');
+    strat.className = 'pair ' + STRATEGY_CLASS;
+
+    const stratFrom = document.createElement('span');
+    stratFrom.className = 'from';
+    stratFrom.textContent = formatOomLabel(cachedMaxMag);
+    strat.appendChild(stratFrom);
+
+    const stratArrow = document.createElement('span');
+    stratArrow.className = 'arrow';
+    stratArrow.textContent = '→';
+    strat.appendChild(stratArrow);
+
+    const stratNum = document.createElement('span');
+    stratNum.className = 'num';
+    stratNum.textContent = 'nearest ' + formatStep(step);
+    strat.appendChild(stratNum);
+
+    el.appendChild(strat);
   }
 
-  // Single example (PREVIEW_NUM_TOP = 1), grouped in one nowrap span so the
-  // whole "e.g. … → …" wraps to the next line as a unit when space is tight.
+  // Single example (PREVIEW_NUM_TOP = 1) on its own line below the strategy.
   const row = rows[0];
-  const example = document.createElement('span');
-  example.className = 'example';
+  const example = document.createElement('div');
+  example.className = 'pair example';
 
   const from = document.createElement('span');
   from.className = 'from';
