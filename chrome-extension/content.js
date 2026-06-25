@@ -104,6 +104,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (lastRightClickedTable) {
       applySidebarRounding(lastRightClickedTable, request.settings || DR_DEFAULTS);
     }
+    sendResponse({ ok: true });
     return;
   }
 
@@ -333,8 +334,14 @@ function collectNumericCells(table) {
       if (isDateLike(trimmed) || isTimeLike(trimmed)) continue;
       if (/^(19|20)\d{2}$/.test(trimmed)) continue;
       const num = toNumber(trimmed);
-      if (num === null || num === 0 || !isFinite(num)) continue;
-      out.push({ text: trimmed, num });
+      if (num !== null && num !== 0 && isFinite(num)) {
+        out.push({ text: trimmed, num });
+      } else {
+        const extracted = extractNumbersInText(trimmed);
+        for (const { num: extractedNum } of extracted) {
+          out.push({ text: trimmed, num: extractedNum });
+        }
+      }
     }
   }
   return out;
