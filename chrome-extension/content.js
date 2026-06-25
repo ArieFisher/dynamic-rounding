@@ -408,21 +408,17 @@ function extractPreviewSamples(table) {
     }
   }
 
-  // Bottom band: remaining magnitudes, one per bucket, descending. If <3
-  // distinct buckets remain, fill from the largest remaining bucket.
+  // Bottom band: one representative per remaining (lower) order of magnitude,
+  // descending. Every distinct magnitude present gets its own example — there
+  // is no cap — so e.g. a dataset of 1234 / 123 / -12 yields a top-band 1k+
+  // line plus bottom-band 100+ and 10+ lines. Magnitude is floor(log10|num|),
+  // so negatives bucket by their absolute value.
   const bottomMags = Array.from(byMag.keys())
     .filter(m => (maxMag - m) >= numTop)
     .sort((a, b) => b - a);
   const bottom = [];
   for (const m of bottomMags) {
-    if (bottom.length >= 3) break;
     bottom.push(demoFirst(byMag.get(m), otherOffset)[0]);
-  }
-  if (bottom.length < 3 && bottomMags.length > 0) {
-    const bucket = demoFirst(byMag.get(bottomMags[0]), otherOffset);
-    for (let i = 1; i < bucket.length && bottom.length < 3; i++) {
-      bottom.push(bucket[i]);
-    }
   }
 
   const toRow = c => ({ original: c.text, num: c.num });
