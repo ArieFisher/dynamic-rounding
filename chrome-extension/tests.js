@@ -4044,6 +4044,41 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   eq('extractPreviewSamples: bottom[2] is 56', result.samples.bottom[2].num, 56);
 })();
 
+(function previewBand_extractPreviewSamples_onePerOrderOfMagnitude() {
+  // The bottom band shows one example per distinct lower order of magnitude,
+  // with no cap. Negatives bucket by absolute value. For 1234 / 123 / -12 the
+  // preview is three lines: top-band 1k+ (1234) plus bottom-band 100+ (123)
+  // and 10+ (|-12|).
+  function tdCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+  const table = {
+    rows: [{ cells: [tdCell('1234'), tdCell('123'), tdCell('-12')] }],
+  };
+  const result = extractPreviewSamples(table);
+  eq('onePerOom: maxMag is 3 (1234)', result.maxMag, 3);
+  eq('onePerOom: top band is the 1k+ value (1234)', result.samples.top[0].num, 1234);
+  eq('onePerOom: bottom band has one row per lower magnitude (2)',
+    result.samples.bottom.length, 2);
+  eq('onePerOom: bottom[0] is the 100+ value (123)', result.samples.bottom[0].num, 123);
+  eq('onePerOom: bottom[1] is the 10+ value, abs of -12', result.samples.bottom[1].num, -12);
+
+  // No cap: five distinct lower magnitudes yield five bottom rows (old code
+  // capped the band at 3).
+  const deep = {
+    rows: [{ cells: [
+      tdCell('7,000,000'),                                  // mag 6 -> top
+      tdCell('500,000'), tdCell('40,000'), tdCell('3,000'), // mags 5,4,3
+      tdCell('200'), tdCell('10'),                          // mags 2,1
+    ] }],
+  };
+  const deepResult = extractPreviewSamples(deep);
+  eq('onePerOom: uncapped bottom band has 5 rows (one per lower OoM)',
+    deepResult.samples.bottom.length, 5);
+  eq('onePerOom: bottom rows are descending by magnitude',
+    deepResult.samples.bottom.map(r => r.num), [500000, 40000, 3000, 200, 10]);
+})();
+
 (function previewBand_extractPreviewSamples_prefersDemonstrative() {
   // Within a magnitude bucket, an already-round value (250,000,000) would make
   // a useless "X -> X" preview row. extractPreviewSamples should surface a cell
@@ -11138,10 +11173,11 @@ function fireMouseClick(buttonEl, fn) {
   eq('AC4-src: STEP_LABEL_CLASS constant is "step-label" in source',
     /const STEP_LABEL_CLASS\s*=\s*['"]step-label['"]/.test(sidebarSrc), true);
 
-  // AC4e: when cachedMaxMag is set, the top band renders the strategy header
-  // AND the example into the same band container (which the #topBand flex rule
-  // lays out on one line, wrapping each as a whole unit). Rebuild the render
-  // helpers with a non-null cachedMaxMag to exercise the header path.
+  // AC4e: when cachedMaxMag is set, the top band renders the strategy line AND
+  // the example as two from|arrow|num pairs in the same band container (the
+  // #topBand grid lays them on two lines with their "→" arrows aligned in the
+  // middle column). Rebuild the render helpers with a non-null cachedMaxMag to
+  // exercise the header path.
   let renderHelpersWithMag;
   try {
     renderHelpersWithMag = (new Function(
@@ -11155,25 +11191,39 @@ function fireMouseClick(buttonEl, fn) {
   if (renderHelpersWithMag) {
     const topWithHdr = makeBandEl();
     renderHelpersWithMag.renderTopBand(topWithHdr, [{ num: 8584629, original: '8,584,629' }], -0.5);
-    eq('AC4e: top band appends 2 elements (strategy header + example)',
+    eq('AC4e: top band appends 2 elements (strategy line + example)',
       topWithHdr._appended.length, 2);
-    eq('AC4e: first appended element is the strategy header (class "strategy")',
-      topWithHdr._appended[0].className, 'strategy');
-    eq('AC4e: strategy header text starts "1M+ → nearest" (maxMag=6)',
-      topWithHdr._appended[0].textContent.indexOf('1M+ → nearest') === 0, true);
-    eq('AC4e: second appended element groups the example (class "example")',
-      topWithHdr._appended[1].className, 'example');
-    eq('AC4e: example group has 3 cells (from/arrow/num)',
-      topWithHdr._appended[1]._children.length, 3);
+    const stratPair = topWithHdr._appended[0];
+    const examplePair = topWithHdr._appended[1];
+    eq('AC4e: first appended element is the strategy pair (class "pair strategy")',
+      stratPair.className, 'pair strategy');
+    eq('AC4e: strategy pair has 3 cells (from/arrow/num)',
+      stratPair._children.length, 3);
+    eq('AC4e: strategy "from" is the OoM label "1M+" (maxMag=6)',
+      stratPair._children[0].textContent, '1M+');
+    eq('AC4e: strategy "num" starts "nearest "',
+      stratPair._children[2].textContent.indexOf('nearest ') === 0, true);
+    eq('AC4e: second appended element is the example pair (class "pair example")',
+      examplePair.className, 'pair example');
+    eq('AC4e: example pair has 3 cells (from/arrow/num)',
+      examplePair._children.length, 3);
+    // The two "→" arrows sit in the same (middle) grid column so they align.
+    eq('AC4e: strategy arrow is in the middle cell ("→")',
+      stratPair._children[1].textContent, '→');
+    eq('AC4e: example arrow is in the middle cell ("→")',
+      examplePair._children[1].textContent, '→');
   }
 
-  // AC4f: sidebar.html lays the top band out as a wrapping flex row so the
-  // strategy + example share one line (and wrap together when too narrow).
+  // AC4f: sidebar.html lays the top band out on the shared results-band grid
+  // (no flex override), so the strategy line and the example line stack and
+  // their "→" arrows align in the middle column. The strategy cells are blue.
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  eq('AC4f: #topBand rule sets display:flex in sidebar.html',
-    /#topBand\s*\{[^}]*display:\s*flex/.test(sidebarHtmlSrc), true);
-  eq('AC4f: #topBand rule sets flex-wrap:wrap in sidebar.html',
-    /#topBand\s*\{[^}]*flex-wrap:\s*wrap/.test(sidebarHtmlSrc), true);
+  eq('AC4f: #topBand element carries the results-band grid class',
+    /<div[^>]*id="topBand"[^>]*class="results-band"|<div[^>]*class="results-band"[^>]*id="topBand"/.test(sidebarHtmlSrc), true);
+  eq('AC4f: #topBand is NOT overridden to display:flex',
+    /#topBand\s*\{[^}]*display:\s*flex/.test(sidebarHtmlSrc), false);
+  eq('AC4f: #topBand strategy cells are blue (#1a73e8)',
+    /#topBand \.strategy \.num\s*\{\s*color:\s*#1a73e8/.test(sidebarHtmlSrc), true);
   eq('AC4f: .step-label colour rule present in sidebar.html',
     /\.step-label\s*\{\s*color:\s*#b3623d/.test(sidebarHtmlSrc), true);
 
