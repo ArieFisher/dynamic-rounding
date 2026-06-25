@@ -17,4 +17,4 @@
 - **Reviewer notes:** All four acceptance criteria met; developer stayed within scope (no js/python, no rounding math, no IPC shape change, no manifest/version bump); code and tests in separate commits with correct prefixes. Two non-blocking notes: (1) commits omit `Co-Authored-By`/session footers — correct per repo git-workflow-policy §4, which forbids them (reviewer's note based on the generic harness default, overridden by repo convention; no action). (2) the in-text fallback passed the raw `text` rather than `trimmed` to `extractNumbersInText` — cosmetic only; fixed forward (bucket-1) and folded into the feature commit, suite still green.
 
 ## PR
-<!-- filled in after PR creation -->
+https://github.com/ArieFisher/dynamic-rounding/pull/168
