@@ -10932,6 +10932,7 @@ function fireMouseClick(buttonEl, fn) {
     '})';
 
   let renderHelpers;
+  let realFormatOriginal;
   try {
     // We need formatOriginal from the already-evaled sidebar helpers.
     // However, formatOriginal in sidebar.js depends on toNumber (from content.js,
@@ -10948,7 +10949,7 @@ function fireMouseClick(buttonEl, fn) {
       formatOriginalFn2[0] + '\n' +
       'return formatOriginal;\n' +
       '})(toNumber)';
-    const realFormatOriginal = (new Function('toNumber', 'return ' + fmtOrigSrc + ';'))(toNumber);
+    realFormatOriginal = (new Function('toNumber', 'return ' + fmtOrigSrc + ';'))(toNumber);
 
     renderHelpers = (new Function(
       'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
@@ -11027,30 +11028,50 @@ function fireMouseClick(buttonEl, fn) {
   eq('AC3-edge: null el is a no-op (no throw)', true, true);
 
   // -------------------------------------------------------------------------
-  // AC4: example rows carry no trailing step annotation (issues #1/#3).
-  // Each band pair has exactly three children — from, arrow, num — and no
-  // fourth "step" span. The top example's "from" is prefixed "e.g."; the
-  // bottom band keeps its OoM label inside the "from" span.
+  // AC4: bottom-band examples carry a brown trailing step label "(5k)" after
+  // the rounded number, showing what the example rounds to the nearest of. The
+  // pair still has three cells (from, arrow, num); the step span lives INSIDE
+  // the num span (a 4th grid child would wrap to the next row). The top example
+  // keeps its three cells and is prefixed "e.g.".
   // -------------------------------------------------------------------------
 
-  // AC4a: bottom band pair has no step span (only from/arrow/num).
+  // AC4a: bottom band pair has 3 cells (from/arrow/num); the brown step label
+  // is nested in the num span, not a 4th grid child.
   const botBandEl2 = makeBandEl();
   realRenderBotBand(botBandEl2, [{ num: 1000, original: '1,000' }], -0.5, 3);
-  eq('AC4-bot: bottom example pair has exactly 3 children (no step span)',
+  eq('AC4-bot: bottom example pair has exactly 3 cells (from/arrow/num)',
     botBandEl2._appended[0]._children.length, 3);
+  const botNumSpan = botBandEl2._appended[0]._children[2];
+  eq('AC4-bot: num span has a nested step-label child',
+    botNumSpan._children.length, 1);
+  eq('AC4-bot: step-label child has class "step-label"',
+    botNumSpan._children[0] ? botNumSpan._children[0].className : '', 'step-label');
+  // 1,000 at offset -0.5 rounds to the nearest 500 → label "(500)".
+  eq('AC4-bot: step-label text is " (500)"',
+    botNumSpan._children[0] ? botNumSpan._children[0].textContent : '', ' (500)');
 
-  // AC4b: top band example pair has no step span and is prefixed "e.g.".
+  // AC4a-zero: a zero row gets no step label (avoids "(0)").
+  const botZeroEl = makeBandEl();
+  realRenderBotBand(botZeroEl, [{ num: 0, original: '0' }], -0.5, 3);
+  const zeroNumSpan = botZeroEl._appended[0]._children[2];
+  eq('AC4-bot-zero: zero row num span has no step-label child',
+    zeroNumSpan._children.length, 0);
+
+  // AC4b: top band example pair is prefixed "e.g." and has no step label.
   // renderTopBand with cachedMaxMag=null skips the strategy header, so the only
-  // appended element is the example pair.
+  // appended element is the example.
   const topBandEl2 = makeBandEl();
   realRenderTopBand(topBandEl2, [{ num: 100000, original: '100,000' }], -0.5);
-  eq('AC4-top: top band appended exactly one pair (no header, no step)',
+  eq('AC4-top: top band appended exactly one element (no header)',
     topBandEl2._appended.length, 1);
   const topExamplePair = topBandEl2._appended[0];
-  eq('AC4-top: top example pair has exactly 3 children (no step span)',
+  eq('AC4-top: top example has exactly 3 cells (from/arrow/num, no step)',
     topExamplePair._children.length, 3);
   eq('AC4-top: top example "from" is prefixed "e.g."',
     topExamplePair._children[0].textContent, 'e.g. 100,000');
+  // Top-band num cell carries no nested step label.
+  eq('AC4-top: top example num cell has no nested step label',
+    topExamplePair._children[2]._children.length, 0);
 
   // AC4-strip (issue #3): the "from" shows the bare number, not the original
   // surrounding text. renderTopBand keys off row.num, so a row whose original
@@ -11070,6 +11091,47 @@ function fireMouseClick(buttonEl, fn) {
     /const OOM_LABEL_CLASS\s*=\s*['"]oom-label['"]/.test(sidebarSrc), true);
   eq('AC4-src: STRATEGY_CLASS constant is "strategy" in source',
     /const STRATEGY_CLASS\s*=\s*['"]strategy['"]/.test(sidebarSrc), true);
+  eq('AC4-src: STEP_LABEL_CLASS constant is "step-label" in source',
+    /const STEP_LABEL_CLASS\s*=\s*['"]step-label['"]/.test(sidebarSrc), true);
+
+  // AC4e: when cachedMaxMag is set, the top band renders the strategy header
+  // AND the example into the same band container (which the #topBand flex rule
+  // lays out on one line, wrapping each as a whole unit). Rebuild the render
+  // helpers with a non-null cachedMaxMag to exercise the header path.
+  let renderHelpersWithMag;
+  try {
+    renderHelpersWithMag = (new Function(
+      'document', 'formatOriginal', 'roundWithOffset', 'stepForOffset',
+      'formatStep', 'trimNum', 'cachedMaxMag',
+      'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
+    ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, 6);
+  } catch (e) {
+    eq('AC4e: renderTopBand (cachedMaxMag=6) eval succeeded', String(e), '');
+  }
+  if (renderHelpersWithMag) {
+    const topWithHdr = makeBandEl();
+    renderHelpersWithMag.renderTopBand(topWithHdr, [{ num: 8584629, original: '8,584,629' }], -0.5);
+    eq('AC4e: top band appends 2 elements (strategy header + example)',
+      topWithHdr._appended.length, 2);
+    eq('AC4e: first appended element is the strategy header (class "strategy")',
+      topWithHdr._appended[0].className, 'strategy');
+    eq('AC4e: strategy header text starts "1M+ → nearest" (maxMag=6)',
+      topWithHdr._appended[0].textContent.indexOf('1M+ → nearest') === 0, true);
+    eq('AC4e: second appended element groups the example (class "example")',
+      topWithHdr._appended[1].className, 'example');
+    eq('AC4e: example group has 3 cells (from/arrow/num)',
+      topWithHdr._appended[1]._children.length, 3);
+  }
+
+  // AC4f: sidebar.html lays the top band out as a wrapping flex row so the
+  // strategy + example share one line (and wrap together when too narrow).
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  eq('AC4f: #topBand rule sets display:flex in sidebar.html',
+    /#topBand\s*\{[^}]*display:\s*flex/.test(sidebarHtmlSrc), true);
+  eq('AC4f: #topBand rule sets flex-wrap:wrap in sidebar.html',
+    /#topBand\s*\{[^}]*flex-wrap:\s*wrap/.test(sidebarHtmlSrc), true);
+  eq('AC4f: .step-label colour rule present in sidebar.html',
+    /\.step-label\s*\{\s*color:\s*#b3623d/.test(sidebarHtmlSrc), true);
 
   // AC4d: oom-label span is still appended inside the from-span for non-zero
   // rows of the bottom band (kept per the issue #3 decision).
