@@ -45,7 +45,14 @@ const timeGranularityEl = document.getElementById('timeGranularity');
 const rangeExprEl = document.getElementById('rangeExpr');
 
 // ----- Variant F: linked dual-thumb sliders -----
-const STOPS = [-2, -1.5, -1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+// Stops are ordered so the *rounding strategy* changes monotonically across the
+// track (finest step on the left, coarsest on the right), NOT by offset value.
+// stepForOffset is non-monotonic in the offset because half-step offsets
+// interleave with the integer ones: e.g. at mag 6 the steps run
+//   -2:10k  -1.5:50k  -1:100k  -0.25:250k  -0.5:500k  -0.75:750k
+//    0:1M   0.25:2.5M  0.5:5M   0.75:7.5M    1:10M
+// Hence -0.25 precedes -0.5 precedes -0.75, and -1 sits right after -1.5.
+const STOPS = [-2, -1.5, -1, -0.25, -0.5, -0.75, 0, 0.25, 0.5, 0.75, 1];
 const DEFAULT_OFFSET = -0.5;
 
 const sliderBlockEl = document.getElementById('sliderBlock');
