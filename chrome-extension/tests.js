@@ -11256,19 +11256,18 @@ function fireMouseClick(buttonEl, fn) {
   // This gap is architectural and cannot be covered by a unit test without a
   // full browser environment; flagged here for reviewer awareness.
 
-  // AC4 (static): sidebar.html CSS applies pointer-events:none + opacity to
-  // optionsSection and advancedSection under body.no-table.
-  eq('no-table AC4: sidebar.html has body.no-table #optionsSection CSS rule',
-    /body\.no-table\s+#optionsSection/.test(sidebarHtml), true);
+  // AC4 (static): the no-table state must NOT dim/disable the sidebar sections.
+  // Behaviour changed — instead of greying the whole sidebar, the main toggle is
+  // flipped off (covered by the behavioural tests below). Guard against the old
+  // dimming rules being reintroduced.
+  eq('no-table AC4: sidebar.html does NOT dim #optionsSection under body.no-table',
+    /body\.no-table\s+#optionsSection/.test(sidebarHtml), false);
 
-  eq('no-table AC4: sidebar.html has body.no-table #advancedSection CSS rule',
-    /body\.no-table\s+#advancedSection/.test(sidebarHtml), true);
+  eq('no-table AC4: sidebar.html does NOT dim #advancedSection under body.no-table',
+    /body\.no-table\s+#advancedSection/.test(sidebarHtml), false);
 
-  eq('no-table AC4: body.no-table disables pointer-events in sidebar.html',
-    /body\.no-table[\s\S]{0,200}pointer-events:\s*none/.test(sidebarHtml), true);
-
-  eq('no-table AC4: body.no-table sets opacity in sidebar.html',
-    /body\.no-table[\s\S]{0,200}opacity:\s*0\.4/.test(sidebarHtml), true);
+  eq('no-table AC4: sidebar.html does NOT disable the title-row pill under body.no-table',
+    /body\.no-table\s+\.title-row\s+\.switch/.test(sidebarHtml), false);
 
   // AC1 (static): sidebar.html default #status text is the no-table message.
   eq('no-table AC1: sidebar.html default #status text is the no-table message',
@@ -11300,13 +11299,17 @@ function fireMouseClick(buttonEl, fn) {
     }
 
     // Build stub environment for each sub-test.
-    function makeEnv(initialStatus) {
+    function makeEnv(initialStatus, initialChecked) {
       const classList = makeClassList();
       const statusEl = { textContent: initialStatus !== undefined ? initialStatus : '' };
+      const enabledEl = { checked: initialChecked !== undefined ? initialChecked : true };
       const fakeDoc = { body: { classList } };
+      const DR_DEFAULTS = { enabled: true };
+      let updateDisabledCalls = 0;
+      function updateDisabledState() { updateDisabledCalls++; }
 
       // Extract constants + function from sidebar source, then eval in closure.
-      // We pull the three relevant declarations and avoid running the rest of
+      // We pull the relevant declarations and avoid running the rest of
       // sidebar.js (which needs getElementById, chrome.tabs, etc.).
       const snippet = `
         const NO_TABLE_CLASS = 'no-table';
@@ -11314,16 +11317,26 @@ function fireMouseClick(buttonEl, fn) {
         function setTableBound(isBound) {
           document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
           if (!isBound) {
+            enabledEl.checked = false;
             statusEl.textContent = NO_TABLE_STATUS_MSG;
-          } else if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
-            statusEl.textContent = '';
+          } else {
+            enabledEl.checked = DR_DEFAULTS.enabled !== false;
+            if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
+              statusEl.textContent = '';
+            }
           }
+          updateDisabledState();
         }
       `;
-      // Use a function wrapper so 'document' and 'statusEl' resolve from closure.
-      const fn = new Function('document', 'statusEl', snippet + '\nreturn setTableBound;');
-      const setTableBound = fn(fakeDoc, statusEl);
-      return { classList, statusEl, setTableBound };
+      // Use a function wrapper so the closure vars resolve from the params.
+      const fn = new Function(
+        'document', 'statusEl', 'enabledEl', 'DR_DEFAULTS', 'updateDisabledState',
+        snippet + '\nreturn setTableBound;');
+      const setTableBound = fn(fakeDoc, statusEl, enabledEl, DR_DEFAULTS, updateDisabledState);
+      return {
+        classList, statusEl, enabledEl, setTableBound,
+        getUpdateDisabledCalls: () => updateDisabledCalls,
+      };
     }
 
     // AC1a: setTableBound(false) → body gets 'no-table' class.
@@ -11391,6 +11404,35 @@ function fireMouseClick(buttonEl, fn) {
       eq('no-table AC2-reverse: status message restored when table removed',
         statusEl.textContent, 'Right-click a table to connect it here.');
     }
+
+    // Toggle-off behaviour: setTableBound(false) flips the main pill to off
+    // (rather than dimming the sidebar) and runs updateDisabledState.
+    {
+      const { enabledEl, setTableBound, getUpdateDisabledCalls } = makeEnv(undefined, true);
+      setTableBound(false);
+      eq('no-table toggle: setTableBound(false) turns the main pill off',
+        enabledEl.checked, false);
+      eq('no-table toggle: setTableBound(false) calls updateDisabledState',
+        getUpdateDisabledCalls() >= 1, true);
+    }
+
+    // Bind restores the toggle to the shared default (true), so the init
+    // sequence setTableBound(false) → setTableBound(true) does not leave the
+    // pill stuck off once a table resolves.
+    {
+      const { enabledEl, setTableBound } = makeEnv(undefined, true);
+      setTableBound(false); // init: no table yet → pill off
+      setTableBound(true);  // table resolved → restore default
+      eq('no-table toggle: setTableBound(true) restores pill to default on bind',
+        enabledEl.checked, true);
+    }
+
+    // Static guard: the real setTableBound flips enabledEl.checked off and runs
+    // updateDisabledState (not just a class toggle).
+    eq('no-table toggle: sidebar.js setTableBound sets enabledEl.checked = false when unbound',
+      /setTableBound[\s\S]{0,400}enabledEl\.checked\s*=\s*false/.test(sidebarSrc), true);
+    eq('no-table toggle: sidebar.js setTableBound calls updateDisabledState',
+      /setTableBound[\s\S]{0,400}updateDisabledState\(\)/.test(sidebarSrc), true);
 
     // AC2 gap — ADVERSARIAL: verify that the sidebar does NOT have a runtime
     // message handler that directly calls setTableBound(true) when a table is
