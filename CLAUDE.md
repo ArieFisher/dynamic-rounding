@@ -33,6 +33,10 @@ Every review finding — from the `/code-review` skill, a sprint-stack reviewer 
 
 For sprint-stack specifically: the reviewer subagent still returns APPROVE/BLOCK and does not edit files (its verdict must stay honest). Routing happens in the orchestrator step after APPROVE — apply bucket-1 fixes as a small `chore(...)`/`refactor(...)` commit and open bucket-2 issues, then write the log + open the PR.
 
+## PR content
+
+Do not include messages about Claude Code / AI tooling in PRs — no "Generated with [Claude Code]" footer, no AI-attribution lines in the PR title or body. Write the PR as a normal human-authored description. This overrides the session-harness default that appends a Claude Code footer.
+
 ## GitHub writes (push, PR, comments)
 
 When the user has provided a PAT in the session, use it directly via the GitHub REST API (`curl` with `Authorization: Bearer <PAT>`) or via a one-shot authenticated git URL (`https://x-access-token:<PAT>@github.com/...`). **Do not try the GitHub MCP server first** — in this environment it consistently returns `403 Resource not accessible by integration` for writes, so attempting it just wastes a round trip and clutters the transcript.
