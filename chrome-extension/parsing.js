@@ -487,13 +487,25 @@ function extractNumbersInText(text) {
 // rounded by date logic (decade/century), never by the numeric offset. These
 // helpers locate such year tokens so they can be excluded from numeric magnitude
 // detection, numeric rounding, and the sidebar preview examples (issue #4).
-const ERA_MARKER = '(?:A\\.?D\\.?|B\\.?C\\.?E\\.?|B\\.?C\\.?|C\\.?E\\.?|A\\.?H\\.?|B\\.?P\\.?)';
+// Period-less markers must be UPPERCASE. Bare lowercase forms ("ad", "bp",
+// "ah", "ce", "bc") collide with ordinary English words and abbreviations
+// ("ad hoc", "120 bp" basis points, "ah") and must not be read as years.
+// Conventionally written eras are uppercase (AD, BC, CE, BCE, AH, BP), so this
+// keeps real years matching while dropping the word collisions. BCE precedes BC
+// so the longer marker wins the alternation.
+const ERA_MARKER_UPPER = '(?:AD|BCE|BC|CE|AH|BP)';
+// Period-punctuated forms are unambiguous, so they stay case-insensitive
+// ("A.D.", "a.d.", "B.C.E.", …). Each requires at least its first period, so a
+// bare uppercase form is matched only by ERA_MARKER_UPPER above.
+const ERA_MARKER_DOTTED = '(?:[Aa]\\.[Dd]\\.?|[Bb]\\.[Cc]\\.[Ee]\\.?|[Bb]\\.[Cc]\\.?|[Cc]\\.[Ee]\\.?|[Aa]\\.[Hh]\\.?|[Bb]\\.[Pp]\\.?)';
+const ERA_MARKER = '(?:' + ERA_MARKER_UPPER + '|' + ERA_MARKER_DOTTED + ')';
 // "<year> <era>": the digits are not part of a larger number (no leading digit
 // or decimal point) and the era marker is a standalone token (not followed by a
-// letter, so "ADELAIDE" / "ADD" never match).
-const ERA_YEAR_AFTER_RE = new RegExp('(?<![\\d.])(\\d[\\d,]*)\\s*' + ERA_MARKER + '(?![A-Za-z])', 'gi');
+// letter, so "ADELAIDE" / "ADD" never match). Case-sensitive ('g', not 'gi') so
+// the uppercase-only requirement on period-less markers holds.
+const ERA_YEAR_AFTER_RE = new RegExp('(?<![\\d.])(\\d[\\d,]*)\\s*' + ERA_MARKER + '(?![A-Za-z])', 'g');
 // "<era> <year>": e.g. "AD 79". Era marker preceded by a non-letter boundary.
-const ERA_YEAR_BEFORE_RE = new RegExp('(?<![A-Za-z])' + ERA_MARKER + '\\s+(\\d[\\d,]*)', 'gi');
+const ERA_YEAR_BEFORE_RE = new RegExp('(?<![A-Za-z])' + ERA_MARKER + '\\s+(\\d[\\d,]*)', 'g');
 
 /**
  * Return {start, end} ranges (offsets into `text`) of every digit run that
@@ -504,12 +516,12 @@ function eraYearDigitRanges(text) {
   if (typeof text !== 'string') return [];
   const ranges = [];
   let m;
-  const after = new RegExp(ERA_YEAR_AFTER_RE.source, 'gi');
+  const after = new RegExp(ERA_YEAR_AFTER_RE.source, 'g');
   while ((m = after.exec(text)) !== null) {
     const start = m.index + m[0].indexOf(m[1]);
     ranges.push({ start, end: start + m[1].length });
   }
-  const before = new RegExp(ERA_YEAR_BEFORE_RE.source, 'gi');
+  const before = new RegExp(ERA_YEAR_BEFORE_RE.source, 'g');
   while ((m = before.exec(text)) !== null) {
     const start = m.index + m[0].lastIndexOf(m[1]);
     ranges.push({ start, end: start + m[1].length });
