@@ -202,20 +202,15 @@
     .results-band .num { color: #202124; text-align: right; }
     .results-band .oom-label { color: #b3623d; }
     .results-band .step-label { color: #b3623d; }
-    .results-band .strategy { color: #1a73e8; grid-column: 1 / -1; font-style: italic; }
-    /* Top band: strategy header + worked example share one line and wrap
-       together (as whole units) when the sidebar is too narrow for both. */
-    #topBand {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      align-items: baseline;
-      column-gap: 8px;
-      row-gap: 2px;
-    }
-    #topBand .strategy,
-    #topBand .example { white-space: nowrap; }
-    #topBand .example .arrow { margin: 0 4px; }
+    /* Top band: strategy header on the first line, worked example on the
+       second. Both render as from|arrow|num pairs in the shared 3-column grid,
+       so the two "→" arrows line up vertically between the lines. */
+    #topBand .strategy { font-style: italic; }
+    #topBand .strategy .from,
+    #topBand .strategy .arrow,
+    #topBand .strategy .num { color: #1a73e8; }
+    #topBand .from,
+    #topBand .num { white-space: nowrap; }
     .results-band .empty {
       color: #80868b;
       font-style: italic;
