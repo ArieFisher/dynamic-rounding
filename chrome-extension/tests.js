@@ -10842,13 +10842,13 @@ function fireMouseClick(buttonEl, fn) {
   })();
 
   // -------------------------------------------------------------------------
-  // AC2-ALL-STOPS: All 9 slider stops × 2 maxMag values. The header is always
+  // AC2-ALL-STOPS: All 11 slider stops × 2 maxMag values. The header is always
   // exactly "<oomLabel> → nearest <stepLabel>" with the step derived from the
   // real stepForOffset/formatStep, and never contains a "(i.e." clause or a
   // "×" multiplier.
   // -------------------------------------------------------------------------
   (function hdrAllStops() {
-    const stops = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+    const stops = [-2, -1.5, -1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
     const testMags = [6, 5]; // 1M and 100k
 
     for (const mag of testMags) {
@@ -11437,16 +11437,20 @@ function fireMouseClick(buttonEl, fn) {
     failures.push({ name: 'dots-tick: pct() function found in sidebar.js', actual: false, expected: true });
   } else {
     passed++;
-    const pct = new Function('v', pctMatch[1]);
-
-    // The 9 stops in order (k=0..8):
-    const stops = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+    // The 11 stops in order (k=0..10):
+    const stops = [-2, -1.5, -1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+    const N = stops.length;
+    // pct() now closes over STOPS and snap(); supply both so the extracted body
+    // runs standalone. snap() is the nearest-stop fallback for non-stop inputs.
+    const snap = (v) => stops.reduce((b, s) => Math.abs(s - v) < Math.abs(b - v) ? s : b, stops[0]);
+    const pctRaw = new Function('STOPS', 'snap', 'v', pctMatch[1]);
+    const pct = (v) => pctRaw(stops, snap, v);
     const TOL = 1e-6;
 
-    // AC1a: Each stop maps to the centre of its grid cell in a 9-equal-column grid.
-    // Cell k centre = (k + 0.5) / 9 * 100.
+    // AC1a: Each stop maps to the centre of its grid cell in an N-equal-column grid.
+    // Cell k centre = (k + 0.5) / N * 100.
     stops.forEach((v, k) => {
-      const expected = (k + 0.5) / 9 * 100;
+      const expected = (k + 0.5) / N * 100;
       const actual = pct(v);
       const ok = Math.abs(actual - expected) < TOL;
       if (ok) {
@@ -11461,52 +11465,52 @@ function fireMouseClick(buttonEl, fn) {
       }
     });
 
-    // AC1b: Key exact values — extremes and centre.
-    const pctNeg1 = pct(-1);
+    // AC1b: Key exact values — extremes and the zero stop (index 6 of 11).
+    const pctNeg2 = pct(-2);
     const pctZero = pct(0);
     const pctPos1 = pct(1);
 
-    eq('dots-tick: pct(-1) ≈ 5.5556% (1st cell centre)',
-      Math.abs(pctNeg1 - 100/18) < TOL, true);
-    eq('dots-tick: pct(0) === 50% (centre cell)',
-      pctZero, 50);
-    eq('dots-tick: pct(1) ≈ 94.4444% (9th cell centre)',
-      Math.abs(pctPos1 - 100*17/18) < TOL, true);
+    eq('dots-tick: pct(-2) ≈ 4.5455% (1st cell centre)',
+      Math.abs(pctNeg2 - 0.5 / N * 100) < TOL, true);
+    eq('dots-tick: pct(0) ≈ 59.0909% (7th cell centre, asymmetric range)',
+      Math.abs(pctZero - 6.5 / N * 100) < TOL, true);
+    eq('dots-tick: pct(1) ≈ 95.4545% (11th cell centre)',
+      Math.abs(pctPos1 - 10.5 / N * 100) < TOL, true);
 
-    // AC1c: old formula (v+1)/2*100 must NOT produce these values at the extremes.
-    // If the old formula were still in use, pct(-1) would be 0 and pct(1) would be
-    // 100 — verify the new formula does NOT produce those.
-    eq('dots-tick: pct(-1) is NOT 0 (old formula would give 0)',
-      pct(-1) !== 0, true);
-    eq('dots-tick: pct(1) is NOT 100 (old formula would give 100)',
+    // AC1c: the extremes are inset by half a cell, never flush at 0/100.
+    // A value-proportional formula would push an end stop to 0 or 100; the
+    // index-based formula keeps both ends a half-cell in.
+    eq('dots-tick: pct(-2) is NOT 0 (end stop is inset by half a cell)',
+      pct(-2) !== 0, true);
+    eq('dots-tick: pct(1) is NOT 100 (end stop is inset by half a cell)',
       pct(1) !== 100, true);
 
-    // AC2: Monotonic — pct is strictly increasing across all 9 stops.
+    // AC2: Monotonic — pct is strictly increasing across all 11 stops.
     let monotonic = true;
     for (let i = 1; i < stops.length; i++) {
       if (pct(stops[i]) <= pct(stops[i - 1])) { monotonic = false; break; }
     }
-    eq('dots-tick: pct() is strictly increasing across all 9 stops', monotonic, true);
+    eq('dots-tick: pct() is strictly increasing across all 11 stops', monotonic, true);
 
-    // AC3: Symmetric — pct(-v) + pct(v) === 100 for all non-zero stops.
-    // Use tolerance for float arithmetic.
-    const symStops = [-0.75, -0.5, -0.25, 0.25, 0.5, 0.75, 1];
-    let symmetric = true;
-    for (const v of symStops) {
-      if (Math.abs(pct(-v) + pct(v) - 100) > TOL) { symmetric = false; break; }
+    // AC3: Equal columns — adjacent stops are exactly one cell (100/N %) apart,
+    // regardless of the uneven numeric spacing of the stop values.
+    let equalCols = true;
+    const cell = 100 / N;
+    for (let i = 1; i < stops.length; i++) {
+      if (Math.abs((pct(stops[i]) - pct(stops[i - 1])) - cell) > TOL) { equalCols = false; break; }
     }
-    eq('dots-tick: pct(-v) + pct(v) === 100 (symmetric about 50%)', symmetric, true);
+    eq('dots-tick: adjacent stops are one equal column (100/N %) apart', equalCols, true);
   }
 
-  // --- AC4: 9-column grid assumption — verify tick markup matches formula ---
-  // The pct formula assumes 9 equal columns. Adversarial check: count the actual
-  // tick spans and verify the CSS declares exactly repeat(9, 1fr).
+  // --- AC4: 11-column grid assumption — verify tick markup matches formula ---
+  // The pct formula assumes N equal columns. Adversarial check: count the actual
+  // tick spans and verify the CSS declares exactly repeat(11, 1fr).
   const tickSpans = (sidebarHtmlSrc.match(/class="t"/g) || []).length;
-  eq('dots-tick: .dual-ticks contains exactly 9 tick spans (matches pct() formula)',
-    tickSpans, 9);
+  eq('dots-tick: .dual-ticks contains exactly 11 tick spans (matches pct() formula)',
+    tickSpans, 11);
 
-  eq('dots-tick: .dual-ticks CSS uses repeat(9, 1fr) grid',
-    /\.dual-ticks\s*\{[^}]*grid-template-columns\s*:\s*repeat\(9,\s*1fr\)/.test(sidebarHtmlSrc), true);
+  eq('dots-tick: .dual-ticks CSS uses repeat(11, 1fr) grid',
+    /\.dual-ticks\s*\{[^}]*grid-template-columns\s*:\s*repeat\(11,\s*1fr\)/.test(sidebarHtmlSrc), true);
 
   // --- AC5: Vertical CSS — .dual-ticks uses top: 20px (not 22px) ---
   eq('dots-tick: .dual-ticks CSS top is 20px',
@@ -11675,7 +11679,7 @@ function fireMouseClick(buttonEl, fn) {
 
   eq('AC2-mag3: oomLabel is "1k+"', oomLabel, '1k+');
 
-  const offsets = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+  const offsets = [-2, -1.5, -1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
   for (const offset of offsets) {
     const tag     = 'AC2-mag3 offset=' + offset;
     const stepLbl = formatStep(stepForOffset(oomVal, offset));
@@ -11692,6 +11696,11 @@ function fireMouseClick(buttonEl, fn) {
     fmtHdr(mag, 0.5), '1k+ → nearest 5k');
   eq('AC2-mag3 offset=-1: header is exactly "1k+ → nearest 100"',
     fmtHdr(mag, -1), '1k+ → nearest 100');
+  // New extended stops: -1.5 → 0.5·10^(mag-1)=50, -2 → 10^(mag-2)=10.
+  eq('AC2-mag3 offset=-1.5: header is exactly "1k+ → nearest 50"',
+    fmtHdr(mag, -1.5), '1k+ → nearest 50');
+  eq('AC2-mag3 offset=-2: header is exactly "1k+ → nearest 10"',
+    fmtHdr(mag, -2), '1k+ → nearest 10');
 })();
 
 // -------------------------------------------------------------------------
