@@ -337,7 +337,7 @@ function collectNumericCells(table) {
       const text = storedOriginal !== undefined ? storedOriginal : cellObj.getText();
       const trimmed = typeof text === 'string' ? text.trim() : '';
       if (!trimmed) continue;
-      if (isDateLike(trimmed) || isTimeLike(trimmed)) continue;
+      if (isDateLike(trimmed) || isTimeLike(trimmed) || isDateTimeLike(trimmed)) continue;
       if (/^(19|20)\d{2}$/.test(trimmed)) continue;
       const num = toNumber(trimmed);
       if (num !== null && num !== 0 && isFinite(num)) {
@@ -504,6 +504,10 @@ function computeGridRoundedValues(wrapperEl, opts) {
         info = { mode: 'skip' };
       } else if (isWholeCellQuoted) {
         info = { mode: 'skip' };
+      } else if (isDateTimeLike(trimmed)) {
+        // ISO date-time follows the time instruction (date preserved). Checked
+        // before isDateLike, which would otherwise match a space-separated form.
+        info = opts.simplifyTimes ? { mode: 'time' } : { mode: 'skip' };
       } else if (isDateLike(trimmed)) {
         if (!opts.simplifyDates) {
           info = { mode: 'skip' };
@@ -793,6 +797,10 @@ function roundTable(table, options) {
         rowInfo.push({ mode: 'skip' });
       } else if (isWholeCellQuoted) {
         rowInfo.push({ mode: 'skip' });
+      } else if (isDateTimeLike(trimmed)) {
+        // ISO date-time follows the time instruction (date preserved). Checked
+        // before isDateLike, which would otherwise match a space-separated form.
+        rowInfo.push(opts.simplifyTimes ? { mode: 'time' } : { mode: 'skip' });
       } else if (isDateLike(trimmed)) {
         // Date-like cells must never fall through to numeric rounding (a bare
         // year like "2018" parses as a number). Simplify when the toggle is on,

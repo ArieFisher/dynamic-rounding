@@ -272,6 +272,34 @@ function isTimeLike(text) {
 }
 
 /**
+ * Parse an ISO 8601 date-time string into its wall-clock components.
+ * Accepts "YYYY-MM-DDTHH:MM[:SS[.fff]][Z|±HH[:]MM]"; the date/time separator
+ * may be "T" or a single space. Seconds, fractional seconds, and the timezone
+ * offset are recognised but discarded — simplification keeps only the
+ * wall-clock date plus HH:MM.
+ * @returns {{year:number, month:number, day:number, hour:number, minute:number}|null}
+ */
+function parseISODateTime(text) {
+  if (typeof text !== 'string') return null;
+  const m = text.trim().match(
+    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?$/
+  );
+  if (!m) return null;
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  const day = parseInt(m[3], 10);
+  const hour = parseInt(m[4], 10);
+  const minute = parseInt(m[5], 10);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  if (hour > 23 || minute > 59) return null;
+  return { year, month, day, hour, minute };
+}
+
+function isDateTimeLike(text) {
+  return parseISODateTime(text) !== null;
+}
+
+/**
  * Round a date cell to the requested granularity and return a year-only string.
  *
  * @param {string} text          - Original cell text.
@@ -313,8 +341,43 @@ function roundDateText(text, granularity, prefilled) {
   return roundedYearStr;
 }
 
+/**
+ * Simplify an already-parsed ISO 8601 date-time per the time granularity,
+ * preserving the date. Returns "YYYY-MM-DD HH:MM" ('minute') or the hour-rounded
+ * "YYYY-MM-DD HH:00" ('hour', round-half-up). The date is never changed: when
+ * rounding up the final hour would cross midnight, the time is clamped to 23:59
+ * on the same day instead of rolling into the next day.
+ * The original seconds, milliseconds, and timezone offset are dropped.
+ */
+function roundISODateTime(dt, granularity) {
+  let { year, month, day, hour, minute } = dt;
+  if (granularity === 'hour') {
+    if (minute >= 30) {
+      if (hour === 23) {
+        // Rounding up would advance the date; clamp to the last minute of the
+        // same day instead.
+        minute = 59;
+      } else {
+        hour += 1;
+        minute = 0;
+      }
+    } else {
+      minute = 0;
+    }
+  }
+  const pad = n => String(n).padStart(2, '0');
+  return `${year}-${pad(month)}-${pad(day)} ${pad(hour)}:${pad(minute)}`;
+}
+
 function roundTimeText(text, granularity) {
   if (typeof text !== 'string') return null;
+
+  // ISO 8601 date-time cells follow the time instruction but keep their date.
+  // Unlike a bare clock time, 'minute' granularity is not a no-op here: it still
+  // normalises the cell to "YYYY-MM-DD HH:MM" (dropping seconds/ms/offset).
+  const dt = parseISODateTime(text);
+  if (dt) return roundISODateTime(dt, granularity);
+
   if (granularity === 'minute' || !granularity) return null;
   if (granularity !== 'hour') return null;
   const trimmed = text.trim();

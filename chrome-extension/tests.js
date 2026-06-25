@@ -619,6 +619,36 @@ eq('roundTimeText: 23:30 wraps to 00:00 (24-hour)',
 eq('roundTimeText: lowercase pm suffix preserved',
   roundTimeText('2:45pm', 'hour'), '3:00pm');
 
+// --- ISO 8601 date-time: follows the time instruction, date preserved ---
+eq('parseISODateTime: full offset timestamp',
+  parseISODateTime('2025-11-26T16:16:00.000-05:00'),
+  { year: 2025, month: 11, day: 26, hour: 16, minute: 16 });
+eq('parseISODateTime: Z suffix', parseISODateTime('2025-11-26T16:16:00Z'),
+  { year: 2025, month: 11, day: 26, hour: 16, minute: 16 });
+eq('parseISODateTime: space separator', parseISODateTime('2025-11-26 16:16'),
+  { year: 2025, month: 11, day: 26, hour: 16, minute: 16 });
+eq('parseISODateTime: not a datetime -> null',
+  parseISODateTime('2025-11-26'), null);
+eq('parseISODateTime: out-of-range hour -> null',
+  parseISODateTime('2025-11-26T25:16'), null);
+eq('isDateTimeLike: ISO timestamp -> true',
+  isDateTimeLike('2025-11-26T16:16:00.000-05:00'), true);
+eq('isDateTimeLike: bare date -> false', isDateTimeLike('2025-11-26'), false);
+eq('isDateTimeLike: bare time -> false', isDateTimeLike('16:16'), false);
+
+eq('roundTimeText: ISO datetime minute -> drops seconds/ms/offset, T->space',
+  roundTimeText('2025-11-26T16:16:00.000-05:00', 'minute'), '2025-11-26 16:16');
+eq('roundTimeText: ISO datetime hour rounds 16:16 down',
+  roundTimeText('2025-11-26T16:16:00.000-05:00', 'hour'), '2025-11-26 16:00');
+eq('roundTimeText: ISO datetime hour rounds 16:30 up (half-up)',
+  roundTimeText('2025-11-26T16:30:00Z', 'hour'), '2025-11-26 17:00');
+eq('roundTimeText: ISO datetime hour-up at end of day clamps to 23:59 same day',
+  roundTimeText('2025-11-26T23:45:00Z', 'hour'), '2025-11-26 23:59');
+eq('roundTimeText: ISO datetime 23:15 hour rounds down to 23:00 (same day)',
+  roundTimeText('2025-11-26T23:15:00Z', 'hour'), '2025-11-26 23:00');
+eq('roundTimeText: ISO datetime minute is idempotent on space form',
+  roundTimeText('2025-11-26 16:16', 'minute'), '2025-11-26 16:16');
+
 // --- Sprint C: advanced parameter resolvers ---
 
 eq('resolveOffset: null -> fallback', resolveOffset(null, -0.5), -0.5);
