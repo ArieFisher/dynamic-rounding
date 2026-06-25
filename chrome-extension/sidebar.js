@@ -198,6 +198,8 @@ function formatOomLabel(mag) {
  */
 function formatStrategyHeader(maxMag, offset) {
   // Lookup table: step/oomVal ratio → "(i.e. …)" clause phrase builder.
+  // Only the four sub-OoM descriptive entries; ratio==1 and above-OoM ratios
+  // are handled separately below (re-based onto the next decade).
   // Matched with tolerance 1e-9 since these are clean binary floats.
   const STRATEGY_RATIO_PHRASES = [
     { ratio: 0.1,  phrase: (b) => 'a tenth of ' + b },
@@ -205,10 +207,6 @@ function formatStrategyHeader(maxMag, offset) {
     { ratio: 0.5,  phrase: (b) => 'a half of ' + b },
     { ratio: 0.75, phrase: (b) => 'three quarters of ' + b },
     // ratio == 1: clause omitted — not listed here.
-    { ratio: 2.5,  phrase: (b) => '2.5× ' + b },
-    { ratio: 5,    phrase: (b) => '5× ' + b },
-    { ratio: 7.5,  phrase: (b) => '7.5× ' + b },
-    { ratio: 10,   phrase: (b) => '10× ' + b },
   ];
   const oomLabel = formatOomLabel(maxMag);
   const oomVal = Math.pow(10, maxMag);
@@ -217,16 +215,34 @@ function formatStrategyHeader(maxMag, offset) {
   const stepLabel = formatStep(step);
   // ratio = step / oomVal: how large the step is relative to the OoM.
   const ratio = step / oomVal;
-  // OoM label without the trailing "+" for use inside the clause.
-  const oomBare = oomLabel.replace(/\+$/, '');
-  // Look up the phrase for this ratio.
+
   let clausePhrase = null;
-  for (const entry of STRATEGY_RATIO_PHRASES) {
-    if (Math.abs(ratio - entry.ratio) < 1e-9) {
-      clausePhrase = entry.phrase(oomBare);
-      break;
+  if (step > oomVal) {
+    // step > oomVal: re-base the clause onto the next decade (10 × oomVal).
+    // rebasedRatio = ratio / 10 maps {2.5, 5, 7.5, 10} → {0.25, 0.5, 0.75, 1.0}.
+    const rebasedRatio = ratio / 10;
+    // The clause base label is the next-decade OoM label without its trailing "+".
+    const nextDecadeLabel = formatOomLabel(maxMag + 1).replace(/\+$/, '');
+    // ratio == 10 → rebasedRatio == 1.0 → clause omitted (equals the next decade).
+    for (const entry of STRATEGY_RATIO_PHRASES) {
+      if (Math.abs(rebasedRatio - entry.ratio) < 1e-9) {
+        clausePhrase = entry.phrase(nextDecadeLabel);
+        break;
+      }
+    }
+  } else {
+    // step <= oomVal: look up ratio against the band's own OoM label.
+    // OoM label without the trailing "+" for use inside the clause.
+    const oomBare = oomLabel.replace(/\+$/, '');
+    // ratio == 1: clause omitted (not in table).
+    for (const entry of STRATEGY_RATIO_PHRASES) {
+      if (Math.abs(ratio - entry.ratio) < 1e-9) {
+        clausePhrase = entry.phrase(oomBare);
+        break;
+      }
     }
   }
+
   // ratio == 1 (or any unmatched ratio): omit the "(i.e. …)" clause entirely.
   const base = oomLabel + ' → nearest ' + stepLabel;
   return clausePhrase ? base + ' (i.e. ' + clausePhrase + ')' : base;
