@@ -328,7 +328,13 @@ function collectNumericCells(table) {
     const cells = row.getCells();
     for (const cellObj of cells) {
       if (cellObj.tagName !== 'TD') continue;
-      const text = cellObj.getText();
+      // Issue #2: when the table is already simplified, read the stored original
+      // rather than the rounded text now showing in the cell. Native-table rounded
+      // cells stash it on dataset.originalValue; grid cells already return their
+      // pre-round text from getText() (dataset.drOriginal).
+      const cellEl = cellObj.el;
+      const storedOriginal = cellEl && cellEl.dataset ? cellEl.dataset.originalValue : undefined;
+      const text = storedOriginal !== undefined ? storedOriginal : cellObj.getText();
       const trimmed = typeof text === 'string' ? text.trim() : '';
       if (!trimmed) continue;
       if (isDateLike(trimmed) || isTimeLike(trimmed)) continue;
@@ -338,7 +344,10 @@ function collectNumericCells(table) {
         out.push({ text: trimmed, num });
       } else {
         const extracted = extractNumbersInText(trimmed);
-        for (const { num: extractedNum } of extracted) {
+        for (const { num: extractedNum, numStr, index } of extracted) {
+          // Issue #4: era-marked years (e.g. "2898 AD") are dates, not numbers —
+          // exclude them from magnitude detection and the preview examples.
+          if (isEraYear(trimmed, index, numStr)) continue;
           out.push({ text: trimmed, num: extractedNum });
         }
       }
@@ -828,6 +837,9 @@ function roundTable(table, options) {
               if (superRanges.length > 0) {
                 matches = matches.filter(m => !overlapsQuoteRange(superRanges, m.index, m.index + m.numStr.length));
               }
+              // Issue #4: drop era-marked years (e.g. "2898 AD") — dates, not
+              // numbers to be offset-rounded.
+              matches = matches.filter(m => !isEraYear(text, m.index, m.numStr));
               if (matches.length > 0) {
                 rowInfo.push({ mode: 'extracted', matches });
               } else {
@@ -850,6 +862,9 @@ function roundTable(table, options) {
           if (superRanges.length > 0) {
             matches = matches.filter(m => !overlapsQuoteRange(superRanges, m.index, m.index + m.numStr.length));
           }
+          // Issue #4: drop era-marked years (e.g. "2898 AD") — dates, not
+          // numbers to be offset-rounded.
+          matches = matches.filter(m => !isEraYear(text, m.index, m.numStr));
           if (matches.length > 0) {
             rowInfo.push({ mode: 'extracted', matches });
           } else {
