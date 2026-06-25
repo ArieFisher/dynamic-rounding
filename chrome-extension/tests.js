@@ -76,6 +76,8 @@ globalThis.injectTogglesForAddedNode = injectTogglesForAddedNode;
 globalThis.isDataTable = isDataTable;
 globalThis.collectNumericCells = collectNumericCells;
 globalThis.extractPreviewSamples = extractPreviewSamples;
+globalThis.isEraYear = isEraYear;
+globalThis.eraYearDigitRanges = eraYearDigitRanges;
 globalThis.formatStep = formatStep;
 globalThis.stepForOffset = stepForOffset;
 // Expose new toggle geometry constants (all are const, so direct assignment works)
@@ -1464,6 +1466,34 @@ function withLinkCreateTreeWalker(fn) {
       cells[0].classList.contains('dr-ext-rounded'), false);
     // Note: 42 is a single cell with a large magnitude; whether it rounds depends on
     // the set. The key invariant is the quoted cell is skipped.
+  });
+})();
+
+// --- 3b. Era-marked years are not parameter-rounded by roundTable (issue #4) ---
+
+(function eraYearNotParameterRounded() {
+  withCreateTreeWalker(function() {
+    // "Kalki 2898 AD": the 2898 is a calendar year (era marker), so it must NOT
+    // be rounded to 3,000 by the numeric offset. A real number in the same row
+    // still rounds (control), proving the exclusion is specific to the era year.
+    const table = makeMockTable([[
+      { tag: 'td', text: 'Kalki 2898 AD' },
+      { tag: 'td', text: '1,050,000,000' },
+    ]]);
+    const opts = {
+      enabled: true, simplifyMixedCells: true, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedPercent: true, simplifyMixedCurrency: true,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    const cells = table.rows[0].cells;
+    eq('era-round: "Kalki 2898 AD" cell is NOT rounded (era year, not a number)',
+      cells[0].classList.contains('dr-ext-rounded'), false);
+    eq('era-round: "Kalki 2898 AD" text left unchanged',
+      cells[0].innerText, 'Kalki 2898 AD');
+    eq('era-round: control 1,050,000,000 still rounds',
+      cells[1].classList.contains('dr-ext-rounded'), true);
   });
 })();
 
@@ -10724,7 +10754,7 @@ function fireMouseClick(buttonEl, fn) {
   // (also rounding.js).  We pass them as parameters to new Function.
   // -------------------------------------------------------------------------
   const constBlock = sidebarSrc.match(
-    /const STEP_CLASS_TOP\s*=[\s\S]*?const STRATEGY_CLASS\s*=.*?;/
+    /const OOM_LABEL_CLASS\s*=[\s\S]*?const STRATEGY_CLASS\s*=.*?;/
   );
   const formatOomLabelFn = sidebarSrc.match(
     /function formatOomLabel\([\s\S]*?\n\}/
@@ -10784,183 +10814,54 @@ function fireMouseClick(buttonEl, fn) {
   eq('AC1-oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
 
   // -------------------------------------------------------------------------
-  // AC2: formatStrategyHeader structure and "(i.e. …)" clause correctness.
-  // We compute the expected step independently via stepForOffset/formatStep.
+  // AC2: formatStrategyHeader structure. Per issue #1 the descriptive
+  // "(i.e. a half of 1M)" clause was removed — the header is now exactly
+  // "<oomLabel> → nearest <stepLabel>" with no clause, for every stop.
+  // We derive the expected step independently via stepForOffset/formatStep.
   // -------------------------------------------------------------------------
 
-  // Scenario A: maxMag=5, offset=-0.5 → step=50k, ratio=2 → "a half of"
-  // stepForOffset(1e5, -0.5): f=0.5, target_mag=5+ceil(-0.5)=5+0=5, step=0.5*1e5=50000
+  // Scenario A: maxMag=5, offset=-0.5 → step=50k.
   (function hdrScenarioA() {
     const maxMag = 5; const offset = -0.5;
-    const oomLabel = '100k+';
-    const oomVal = Math.pow(10, maxMag);       // 100000
-    const step = stepForOffset(oomVal, offset); // 50000
-    const stepLabel = formatStep(step);         // '50k'
-    const oomStepLabel = formatStep(oomVal);   // '100k'
+    const oomVal = Math.pow(10, maxMag);        // 100000
+    const stepLabel = formatStep(stepForOffset(oomVal, offset)); // '50k'
     const header = fmtHdr(maxMag, offset);
-    eq('AC2-A: header contains oom label (100k+)', header.includes(oomLabel), true);
-    eq('AC2-A: header contains arrow →', header.includes('→'), true);
-    eq('AC2-A: header contains "nearest ' + stepLabel + '"', header.includes('nearest ' + stepLabel), true);
-    eq('AC2-A: header contains "(i.e."', header.includes('(i.e.'), true);
-    // ratio=2 → "a half of" (ordinal mapping)
-    eq('AC2-A: header contains "a half of"', header.includes('a half of'), true);
-    eq('AC2-A: header references oom step label (' + oomStepLabel + ')',
-      header.includes(oomStepLabel), true);
+    eq('AC2-A: header is exactly "100k+ → nearest 50k"',
+      header, '100k+ → nearest ' + stepLabel);
+    eq('AC2-A: header has no "(i.e." clause', header.includes('(i.e.'), false);
   })();
 
-  // Scenario B: maxMag=3, offset=-0.5 → step=500, ratio=2 → "a half of"
+  // Scenario B: maxMag=3, offset=-0.5 → step=500.
   (function hdrScenarioB() {
     const maxMag = 3; const offset = -0.5;
-    const oomLabel = '1k+';
-    const oomVal = Math.pow(10, maxMag);
-    const step = stepForOffset(oomVal, offset); // 500
-    const stepLabel = formatStep(step);         // '500'
+    const stepLabel = formatStep(stepForOffset(Math.pow(10, maxMag), offset)); // '500'
     const header = fmtHdr(maxMag, offset);
-    eq('AC2-B: header contains oom label (1k+)', header.includes(oomLabel), true);
-    eq('AC2-B: header contains "nearest ' + stepLabel + '"', header.includes('nearest ' + stepLabel), true);
-    eq('AC2-B: header contains "a half of"', header.includes('a half of'), true);
-  })();
-
-  // Scenario C: maxMag=5, offset=-0.25 → step=25k, ratio=4 → "a quarter of"
-  (function hdrScenarioC() {
-    const maxMag = 5; const offset = -0.25;
-    const oomVal = Math.pow(10, maxMag);
-    const step = stepForOffset(oomVal, offset); // 25000
-    const stepLabel = formatStep(step);         // '25k'
-    const header = fmtHdr(maxMag, offset);
-    eq('AC2-C: header contains "nearest ' + stepLabel + '"', header.includes('nearest ' + stepLabel), true);
-    eq('AC2-C: header contains "a quarter of"', header.includes('a quarter of'), true);
-  })();
-
-  // Scenario D: maxMag=6, offset=-0.75 → step=750k, ratio = step/oom = 0.75.
-  // The direct ratio→phrase lookup emits the correct "three quarters of 1M"
-  // clause. (This previously regressed to a garbled "1/1 of" when the clause
-  // was derived via Math.round of an inverted ratio — guarded here so it
-  // can't come back.)
-  (function hdrScenarioD_adversarial() {
-    const maxMag = 6; const offset = -0.75;
-    const oomVal = Math.pow(10, maxMag);        // 1000000
-    const step = stepForOffset(oomVal, offset); // 750000
-    // ratio = step/oomVal = 0.75 → "three quarters of 1M"
-    const header = fmtHdr(maxMag, offset);
-    // Fixed: direct ratio→phrase lookup emits the correct clause.
-    eq('AC2-D: ratio=0.75 → "three quarters of" emitted',
-      header.includes('three quarters of'), true);
-    // Also confirm step label is present
-    eq('AC2-D-adversarial: header contains "nearest 750k"', header.includes('nearest 750k'), true);
-  })();
-
-  // Scenario E: offset=0 (integer) → step=oomVal, ratio=1 → clause omitted
-  (function hdrScenarioE() {
-    const maxMag = 2; const offset = 0;
-    const oomVal = Math.pow(10, maxMag); // 100
-    const step = stepForOffset(oomVal, offset); // 100
-    const stepLabel = formatStep(step);          // '100'
-    const header = fmtHdr(maxMag, offset);
-    eq('AC2-E: offset=0 header contains "nearest ' + stepLabel + '"',
-      header.includes('nearest ' + stepLabel), true);
-    // ratio=1: "(i.e. …)" clause is omitted entirely.
-    eq('AC2-E: offset=0 ratio=1 → no "(i.e." clause', header.includes('(i.e.'), false);
+    eq('AC2-B: header is exactly "1k+ → nearest 500"',
+      header, '1k+ → nearest ' + stepLabel);
+    eq('AC2-B: header has no clause', header.includes('(i.e.'), false);
   })();
 
   // -------------------------------------------------------------------------
-  // AC2-ALL-STOPS: All 9 slider stops × 2 maxMag values.
-  // For each stop we independently derive step/stepLabel via the real
-  // stepForOffset/formatStep so the assertions are spec-arithmetic-derived,
-  // not copied from implementation output.  The human phrase fragments are
-  // hardcoded because those ARE the spec contract.
-  //
-  // Stops: offset ∈ {-1, -0.75, -0.5, -0.25, 0, +0.25, +0.5, +0.75, +1}
-  //   offset -1   → ratio 0.1   → "a tenth of <oomBare>"
-  //   offset -0.75→ ratio 0.75  → "three quarters of <oomBare>"
-  //   offset -0.5 → ratio 0.5   → "a half of <oomBare>"
-  //   offset -0.25→ ratio 0.25  → "a quarter of <oomBare>"
-  //   offset  0   → ratio 1     → no "(i.e." clause
-  //   offset +0.25→ ratio 2.5   → re-based: "a quarter of <nextDecadeLabel>"
-  //   offset +0.5 → ratio 5     → re-based: "a half of <nextDecadeLabel>"
-  //   offset +0.75→ ratio 7.5   → re-based: "three quarters of <nextDecadeLabel>"
-  //   offset +1   → ratio 10    → re-based ratio=1 → no "(i.e." clause
+  // AC2-ALL-STOPS: All 9 slider stops × 2 maxMag values. The header is always
+  // exactly "<oomLabel> → nearest <stepLabel>" with the step derived from the
+  // real stepForOffset/formatStep, and never contains a "(i.e." clause or a
+  // "×" multiplier.
   // -------------------------------------------------------------------------
   (function hdrAllStops() {
-    // phraseFor receives the context label (oomBare for negative offsets,
-    // nextDecadeLabel for positive) and returns the expected phrase fragment.
-    // null means the clause is omitted entirely.
-    const stops = [
-      { offset: -1,    phraseFor: (b) => 'a tenth of ' + b,         hasClause: true,  useNextDecade: false },
-      { offset: -0.75, phraseFor: (b) => 'three quarters of ' + b,  hasClause: true,  useNextDecade: false },
-      { offset: -0.5,  phraseFor: (b) => 'a half of ' + b,          hasClause: true,  useNextDecade: false },
-      { offset: -0.25, phraseFor: (b) => 'a quarter of ' + b,       hasClause: true,  useNextDecade: false },
-      { offset:  0,    phraseFor: () => null,                        hasClause: false, useNextDecade: false },
-      { offset:  0.25, phraseFor: (b) => 'a quarter of ' + b,       hasClause: true,  useNextDecade: true  },
-      { offset:  0.5,  phraseFor: (b) => 'a half of ' + b,          hasClause: true,  useNextDecade: true  },
-      { offset:  0.75, phraseFor: (b) => 'three quarters of ' + b,  hasClause: true,  useNextDecade: true  },
-      { offset:  1,    phraseFor: () => null,                        hasClause: false, useNextDecade: true  },
-    ];
-
-    // Test against TWO different maxMag values to confirm maxMag-independence of phrases.
+    const stops = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
     const testMags = [6, 5]; // 1M and 100k
 
     for (const mag of testMags) {
       const oomVal = Math.pow(10, mag);
-      const oomLabel = fmtOom(mag);                         // e.g. "1M+" or "100k+"
-      const oomBare  = oomLabel.replace(/\+$/, '');         // e.g. "1M"  or "100k"
-      const nextDecadeLabel = fmtOom(mag + 1).replace(/\+$/, ''); // e.g. "10M" or "1M"
-
-      for (const stop of stops) {
-        const tag = 'AC2-ALL mag=' + mag + ' offset=' + stop.offset;
-        const step      = stepForOffset(oomVal, stop.offset);
-        const stepLabel = formatStep(step);
-        const header    = fmtHdr(mag, stop.offset);
-        const clauseBase = stop.useNextDecade ? nextDecadeLabel : oomBare;
-        const phrase = stop.phraseFor(clauseBase);
-
-        // 1. Header always starts with "<oomLabel> →" (with the "+").
-        eq(tag + ': header contains oomLabel "' + oomLabel + '"',
-          header.includes(oomLabel), true);
-
-        // 2. Header always contains "→".
-        eq(tag + ': header contains arrow "→"',
-          header.includes('→'), true);
-
-        // 3. Header always contains "nearest <stepLabel>" using REAL stepForOffset.
-        eq(tag + ': header contains "nearest ' + stepLabel + '"',
-          header.includes('nearest ' + stepLabel), true);
-
-        // 4a. Clause presence / absence.
-        if (stop.hasClause) {
-          eq(tag + ': header contains "(i.e."',
-            header.includes('(i.e.'), true);
-          // 4b. The specific human phrase must appear in full (includes the base label).
-          eq(tag + ': header contains phrase "' + phrase + '"',
-            header.includes(phrase), true);
-          // 4c. No bare N× multiplier strings should appear (old behavior, now removed).
-          eq(tag + ': header does NOT contain "×"',
-            header.includes('×'), false);
-        } else {
-          // offset=0 or offset=1 → ratio=1 re-based → clause omitted entirely.
-          eq(tag + ': no "(i.e." clause',
-            header.includes('(i.e.'), false);
-        }
-      }
-    }
-  })();
-
-  // -------------------------------------------------------------------------
-  // AC2-NO-GARBLE: None of the 9 outputs for any of the two test mags should
-  // contain known garbled fragments from the old broken implementation.
-  // -------------------------------------------------------------------------
-  (function hdrNoGarble() {
-    const allOffsets = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
-    const testMags   = [6, 5];
-    const badPatterns = ['1/1', '0.1 of', '0.133', 'NaN', 'undefined'];
-
-    for (const mag of testMags) {
-      for (const offset of allOffsets) {
+      const oomLabel = fmtOom(mag);
+      for (const offset of stops) {
+        const tag = 'AC2-ALL mag=' + mag + ' offset=' + offset;
+        const stepLabel = formatStep(stepForOffset(oomVal, offset));
         const header = fmtHdr(mag, offset);
-        for (const bad of badPatterns) {
-          eq('AC2-NO-GARBLE mag=' + mag + ' offset=' + offset + ': no "' + bad + '"',
-            header.includes(bad), false);
-        }
+        eq(tag + ': header is exactly "' + oomLabel + ' → nearest ' + stepLabel + '"',
+          header, oomLabel + ' → nearest ' + stepLabel);
+        eq(tag + ': no "(i.e." clause', header.includes('(i.e.'), false);
+        eq(tag + ': no "×" multiplier', header.includes('×'), false);
       }
     }
   })();
@@ -11126,45 +11027,52 @@ function fireMouseClick(buttonEl, fn) {
   eq('AC3-edge: null el is a no-op (no throw)', true, true);
 
   // -------------------------------------------------------------------------
-  // AC4: step-label CSS classes.
-  // Bottom band: step span uses STEP_CLASS_BOT = 'step bot'.
-  // Top band: step span uses STEP_CLASS_TOP = 'step top'.
+  // AC4: example rows carry no trailing step annotation (issues #1/#3).
+  // Each band pair has exactly three children — from, arrow, num — and no
+  // fourth "step" span. The top example's "from" is prefixed "e.g."; the
+  // bottom band keeps its OoM label inside the "from" span.
   // -------------------------------------------------------------------------
 
-  // AC4a: bottom band step class
-  function getStepClassName(pairEl) {
-    // fourth child (index 3) is the step span
-    return pairEl._children[3] ? pairEl._children[3].className : '';
-  }
+  // AC4a: bottom band pair has no step span (only from/arrow/num).
   const botBandEl2 = makeBandEl();
   realRenderBotBand(botBandEl2, [{ num: 1000, original: '1,000' }], -0.5, 3);
-  eq('AC4-bot: step span has class "step bot"',
-    getStepClassName(botBandEl2._appended[0]), 'step bot');
+  eq('AC4-bot: bottom example pair has exactly 3 children (no step span)',
+    botBandEl2._appended[0]._children.length, 3);
 
-  // AC4b: top band step class (only the example row, not the strategy header pair).
-  // renderTopBand with cachedMaxMag=null skips the strategy header, so appended[0]
-  // is the example pair.
+  // AC4b: top band example pair has no step span and is prefixed "e.g.".
+  // renderTopBand with cachedMaxMag=null skips the strategy header, so the only
+  // appended element is the example pair.
   const topBandEl2 = makeBandEl();
   realRenderTopBand(topBandEl2, [{ num: 100000, original: '100,000' }], -0.5);
-  // Without cachedMaxMag (null in our eval context) there is no header pair,
-  // so appended[0] is the example row pair.
-  eq('AC4-top: top band appended at least one pair element',
-    topBandEl2._appended.length >= 1, true);
-  const topExamplePair = topBandEl2._appended[topBandEl2._appended.length - 1];
-  eq('AC4-top: step span in top example row has class "step top"',
-    getStepClassName(topExamplePair), 'step top');
+  eq('AC4-top: top band appended exactly one pair (no header, no step)',
+    topBandEl2._appended.length, 1);
+  const topExamplePair = topBandEl2._appended[0];
+  eq('AC4-top: top example pair has exactly 3 children (no step span)',
+    topExamplePair._children.length, 3);
+  eq('AC4-top: top example "from" is prefixed "e.g."',
+    topExamplePair._children[0].textContent, 'e.g. 100,000');
 
-  // AC4c: source-level constant values are correct (structural)
-  eq('AC4-src: STEP_CLASS_TOP constant is "step top" in source',
-    /const STEP_CLASS_TOP\s*=\s*['"]step top['"]/.test(sidebarSrc), true);
-  eq('AC4-src: STEP_CLASS_BOT constant is "step bot" in source',
-    /const STEP_CLASS_BOT\s*=\s*['"]step bot['"]/.test(sidebarSrc), true);
+  // AC4-strip (issue #3): the "from" shows the bare number, not the original
+  // surrounding text. renderTopBand keys off row.num, so a row whose original
+  // was "₹2,000 crore" still renders just "e.g. 2,000".
+  const stripBandEl = makeBandEl();
+  realRenderTopBand(stripBandEl, [{ num: 2000, original: '₹2,000 crore' }], -0.5);
+  eq('AC4-strip: top "from" strips surrounding text to bare "e.g. 2,000"',
+    stripBandEl._appended[0]._children[0].textContent, 'e.g. 2,000');
+
+  // AC4c: source-level constant values are correct (structural). The step-class
+  // constants were removed; the OoM-label and strategy classes remain.
+  eq('AC4-src: STEP_CLASS_TOP constant removed from source',
+    /const STEP_CLASS_TOP\b/.test(sidebarSrc), false);
+  eq('AC4-src: STEP_CLASS_BOT constant removed from source',
+    /const STEP_CLASS_BOT\b/.test(sidebarSrc), false);
   eq('AC4-src: OOM_LABEL_CLASS constant is "oom-label" in source',
     /const OOM_LABEL_CLASS\s*=\s*['"]oom-label['"]/.test(sidebarSrc), true);
   eq('AC4-src: STRATEGY_CLASS constant is "strategy" in source',
     /const STRATEGY_CLASS\s*=\s*['"]strategy['"]/.test(sidebarSrc), true);
 
-  // AC4d: oom-label span is appended inside the from-span for non-zero rows.
+  // AC4d: oom-label span is still appended inside the from-span for non-zero
+  // rows of the bottom band (kept per the issue #3 decision).
   const oomLabelBandEl = makeBandEl();
   realRenderBotBand(oomLabelBandEl, [{ num: 5000, original: '5,000' }], -0.5, 3);
   const fromSpan = oomLabelBandEl._appended[0]._children[0];
@@ -11666,15 +11574,13 @@ function fireMouseClick(buttonEl, fn) {
 })();
 
 // -------------------------------------------------------------------------
-// AC2 (Bug #3): formatStrategyHeader — exhaustive mag=3 (1k+) table.
-// Every offset stop is verified with exact clause text against the re-basing
-// spec: negative offsets reference the band's own OoM bare label ("1k"),
-// positive offsets re-base onto the next decade ("10k"), offset=0 and offset=1
-// omit the clause. No "×" multiplier form should appear in any header.
+// AC2: formatStrategyHeader — exhaustive mag=3 (1k+) table. Per issue #1 the
+// header is exactly "<oomLabel> → nearest <stepLabel>" for every offset stop,
+// with no "(i.e. …)" clause and no "×" multiplier.
 // -------------------------------------------------------------------------
 (function ac2_mag3_exhaustiveTable() {
   const sidebarSrc  = fs.readFileSync(path.join(__dirname, 'sidebar.js'),  'utf8');
-  const constBlock  = sidebarSrc.match(/const STEP_CLASS_TOP\s*=[\s\S]*?const STRATEGY_CLASS\s*=.*?;/);
+  const constBlock  = sidebarSrc.match(/const OOM_LABEL_CLASS\s*=[\s\S]*?const STRATEGY_CLASS\s*=.*?;/);
   const fmtOomFn    = sidebarSrc.match(/function formatOomLabel\([\s\S]*?\n\}/);
   const fmtHdrFn    = sidebarSrc.match(/function formatStrategyHeader\([\s\S]*?\n\}/);
 
@@ -11702,89 +11608,28 @@ function fireMouseClick(buttonEl, fn) {
   const fmtHdr = helpers.formatStrategyHeader;
 
   const mag = 3;
-  const oomVal         = Math.pow(10, mag);           // 1000
-  const oomLabel       = fmtOom(mag);                  // "1k+"
-  const oomBare        = oomLabel.replace(/\+$/, ''); // "1k"
-  const nextDecadeLabel = fmtOom(mag + 1).replace(/\+$/, ''); // "10k"
+  const oomVal   = Math.pow(10, mag);  // 1000
+  const oomLabel = fmtOom(mag);        // "1k+"
 
-  // Verify our derived labels are correct.
   eq('AC2-mag3: oomLabel is "1k+"', oomLabel, '1k+');
-  eq('AC2-mag3: nextDecadeLabel is "10k"', nextDecadeLabel, '10k');
 
-  const scenarios = [
-    // [offset, expectClause, expectedFragment, refLabel]
-    { offset: -1,    hasClause: true,  fragment: 'a tenth of',         base: oomBare        },
-    { offset: -0.25, hasClause: true,  fragment: 'a quarter of',       base: oomBare        },
-    { offset: -0.5,  hasClause: true,  fragment: 'a half of',          base: oomBare        },
-    { offset: -0.75, hasClause: true,  fragment: 'three quarters of',  base: oomBare        },
-    { offset:  0,    hasClause: false, fragment: null,                  base: null           },
-    { offset:  0.25, hasClause: true,  fragment: 'a quarter of',       base: nextDecadeLabel },
-    { offset:  0.5,  hasClause: true,  fragment: 'a half of',          base: nextDecadeLabel },
-    { offset:  0.75, hasClause: true,  fragment: 'three quarters of',  base: nextDecadeLabel },
-    { offset:  1,    hasClause: false, fragment: null,                  base: null           },
-  ];
+  const offsets = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+  for (const offset of offsets) {
+    const tag     = 'AC2-mag3 offset=' + offset;
+    const stepLbl = formatStep(stepForOffset(oomVal, offset));
+    const header  = fmtHdr(mag, offset);
 
-  for (const sc of scenarios) {
-    const tag    = 'AC2-mag3 offset=' + sc.offset;
-    const step   = stepForOffset(oomVal, sc.offset);
-    const stepLbl = formatStep(step);
-    const header  = fmtHdr(mag, sc.offset);
-
-    // Band label always present.
-    eq(tag + ': header contains "' + oomLabel + '"',
-      header.includes(oomLabel), true);
-
-    // Step label always present.
-    eq(tag + ': header contains "nearest ' + stepLbl + '"',
-      header.includes('nearest ' + stepLbl), true);
-
-    if (sc.hasClause) {
-      // (i.e. …) clause present.
-      eq(tag + ': header contains "(i.e."',
-        header.includes('(i.e.'), true);
-
-      // Full clause phrase: "a half of 1k" or "a quarter of 10k" etc.
-      const fullPhrase = sc.fragment + ' ' + sc.base;
-      eq(tag + ': header contains "' + fullPhrase + '"',
-        header.includes(fullPhrase), true);
-
-      // No "×" multiplier form.
-      eq(tag + ': header does NOT contain "×"',
-        header.includes('×'), false);
-    } else {
-      // offset=0 and offset=1: clause omitted.
-      eq(tag + ': no "(i.e." clause',
-        header.includes('(i.e.'), false);
-
-      // No "×" either.
-      eq(tag + ': header does NOT contain "×"',
-        header.includes('×'), false);
-    }
+    eq(tag + ': header is exactly "' + oomLabel + ' → nearest ' + stepLbl + '"',
+      header, oomLabel + ' → nearest ' + stepLbl);
+    eq(tag + ': no "(i.e." clause', header.includes('(i.e.'), false);
+    eq(tag + ': no "×" multiplier', header.includes('×'), false);
   }
 
-  // Spot-check full expected strings for the spec table rows.
-  eq('AC2-mag3 offset=-1: full clause "a tenth of 1k"',
-    fmtHdr(mag, -1).includes('a tenth of 1k'), true);
-  eq('AC2-mag3 offset=-0.25: full clause "a quarter of 1k"',
-    fmtHdr(mag, -0.25).includes('a quarter of 1k'), true);
-  eq('AC2-mag3 offset=-0.5: full clause "a half of 1k"',
-    fmtHdr(mag, -0.5).includes('a half of 1k'), true);
-  eq('AC2-mag3 offset=-0.75: full clause "three quarters of 1k"',
-    fmtHdr(mag, -0.75).includes('three quarters of 1k'), true);
-  eq('AC2-mag3 offset=0.25: full clause "a quarter of 10k"',
-    fmtHdr(mag, 0.25).includes('a quarter of 10k'), true);
-  eq('AC2-mag3 offset=0.5: full clause "a half of 10k"',
-    fmtHdr(mag, 0.5).includes('a half of 10k'), true);
-  eq('AC2-mag3 offset=0.75: full clause "three quarters of 10k"',
-    fmtHdr(mag, 0.75).includes('three quarters of 10k'), true);
-
-  // offset=0.5 step label and band label unchanged (regression guard).
-  eq('AC2-mag3 offset=0.5: header contains "1k+ → nearest 5k"',
-    fmtHdr(mag, 0.5).includes('1k+ → nearest 5k'), true);
-
-  // offset=-1 step label and band label unchanged (regression guard).
-  eq('AC2-mag3 offset=-1: header contains "→ nearest 100"',
-    fmtHdr(mag, -1).includes('→ nearest 100'), true);
+  // Spot-check the exact step labels for two representative stops (regression guard).
+  eq('AC2-mag3 offset=0.5: header is exactly "1k+ → nearest 5k"',
+    fmtHdr(mag, 0.5), '1k+ → nearest 5k');
+  eq('AC2-mag3 offset=-1: header is exactly "1k+ → nearest 100"',
+    fmtHdr(mag, -1), '1k+ → nearest 100');
 })();
 
 // -------------------------------------------------------------------------
@@ -11843,6 +11688,80 @@ function fireMouseClick(buttonEl, fn) {
     nums.includes(2000), true);
 })();
 
+
+// -------------------------------------------------------------------------
+// Issue #4: era-marked years are dates, not offset-rounded numbers.
+// isEraYear locates a year token bound to an era marker; collectNumericCells /
+// extractPreviewSamples must exclude such tokens from magnitude detection and
+// the preview examples.
+// -------------------------------------------------------------------------
+(function eraYearDetection() {
+  // isEraYear: the digit token bound to a marker (either order) is an era year.
+  eq('era: "Kalki 2898 AD" → 2898 is an era year',
+    isEraYear('Kalki 2898 AD', 'Kalki '.length, '2898'), true);
+  eq('era: "500 BC" → 500 is an era year',
+    isEraYear('500 BC', 0, '500'), true);
+  eq('era: "AD 79" → 79 is an era year',
+    isEraYear('AD 79', 'AD '.length, '79'), true);
+  eq('era: "1200 CE" → 1200 is an era year',
+    isEraYear('1200 CE', 0, '1200'), true);
+  eq('era: "2,898 BCE" → comma year is an era year',
+    isEraYear('2,898 BCE', 0, '2,898'), true);
+
+  // Negatives: plain numbers, and marker letters embedded in a word.
+  eq('era: plain "Revenue 3,000,000" is NOT an era year',
+    isEraYear('Revenue 3,000,000', 'Revenue '.length, '3,000,000'), false);
+  eq('era: bare "2898" (no marker) is NOT an era year',
+    isEraYear('2898', 0, '2898'), false);
+  eq('era: "ADELAIDE 12" does NOT match (AD inside a word)',
+    isEraYear('ADELAIDE 12', 'ADELAIDE '.length, '12'), false);
+
+  function tdCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+
+  // collectNumericCells: the era year is dropped, real numbers are kept.
+  const cells = collectNumericCells({
+    rows: [{ cells: [tdCell('Kalki 2898 AD'), tdCell('1,050,000,000')] }],
+  });
+  const nums = cells.map(c => c.num);
+  eq('era-collect: 2898 (era year) excluded from numeric cells',
+    nums.includes(2898), false);
+  eq('era-collect: 1,050,000,000 (real number) still collected',
+    nums.includes(1050000000), true);
+
+  // extractPreviewSamples: maxMag comes from the real number, not the era year,
+  // and no sample row carries the era-year value.
+  const result = extractPreviewSamples({
+    rows: [{ cells: [tdCell('Kalki 2898 AD'), tdCell('1,050,000,000'), tdCell('500')] }],
+  });
+  eq('era-samples: maxMag is 9 (from 1.05B, not the 2898 AD year)',
+    result.maxMag, 9);
+  const sampleNums = result.samples.top.concat(result.samples.bottom).map(r => r.num);
+  eq('era-samples: no example row is the 2898 AD year',
+    sampleNums.includes(2898), false);
+})();
+
+// -------------------------------------------------------------------------
+// Issue #2: when a native table is already simplified, collectNumericCells
+// reads the stored original (dataset.originalValue) rather than the rounded
+// text now showing in the cell.
+// -------------------------------------------------------------------------
+(function originalValueOnSimplifiedTable() {
+  // A rounded native cell: innerText shows the rounded "3,000,000" but the true
+  // original "2,794,356" is stashed on dataset.originalValue.
+  const roundedCell = {
+    tagName: 'TD',
+    innerText: '3,000,000',
+    textContent: '3,000,000',
+    dataset: { originalValue: '2,794,356' },
+  };
+  const cells = collectNumericCells({ rows: [{ cells: [roundedCell] }] });
+  eq('orig-value: reads original text, not rounded',
+    cells[0].text, '2,794,356');
+  eq('orig-value: parses num from original, not rounded',
+    cells[0].num, 2794356);
+})();
 
 // --- Report ---
 console.log(`Passed: ${passed}`);
