@@ -11911,6 +11911,19 @@ function fireMouseClick(buttonEl, fn) {
   eq('era: "ADELAIDE 12" does NOT match (AD inside a word)',
     isEraYear('ADELAIDE 12', 'ADELAIDE '.length, '12'), false);
 
+  // Lowercase, period-less marker letters are ordinary words/abbreviations, not
+  // eras: "3,420 ad hoc", "120 bp" (basis points), "5 ah", "12 ce", "9 bc".
+  // These must NOT be read as years (they'd otherwise be excluded from rounding).
+  eq('era: "3,420 ad hoc" → "ad" is a word, NOT an era year',
+    isEraYear('3,420 ad hoc', 0, '3,420'), false);
+  eq('era: "120 bp" (basis points) is NOT an era year',
+    isEraYear('120 bp', 0, '120'), false);
+  eq('era: "5 ah" is NOT an era year',
+    isEraYear('5 ah', 0, '5'), false);
+  // Period-punctuated lowercase forms stay unambiguous and DO match.
+  eq('era: "79 a.d." (dotted, lowercase) is still an era year',
+    isEraYear('79 a.d.', 0, '79'), true);
+
   function tdCell(text) {
     return { tagName: 'TD', innerText: text, textContent: text };
   }
@@ -11924,6 +11937,17 @@ function fireMouseClick(buttonEl, fn) {
     nums.includes(2898), false);
   eq('era-collect: 1,050,000,000 (real number) still collected',
     nums.includes(1050000000), true);
+
+  // Regression: "~3,420 ad hoc" — "ad" was being read as the AD era marker, so
+  // the 3,420 was dropped and the cell never rounded. It must now be collected.
+  const adHocCells = collectNumericCells({
+    rows: [{ cells: [tdCell('~30,800 PAD (EFT)'), tdCell('~3,420 ad hoc')] }],
+  });
+  const adHocNums = adHocCells.map(c => c.num);
+  eq('era-collect: "~3,420 ad hoc" number is collected (not an era year)',
+    adHocNums.includes(3420), true);
+  eq('era-collect: "~30,800 PAD (EFT)" number is collected',
+    adHocNums.includes(30800), true);
 
   // extractPreviewSamples: maxMag comes from the real number, not the era year,
   // and no sample row carries the era-year value.
