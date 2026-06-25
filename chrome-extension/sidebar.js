@@ -162,6 +162,7 @@ function formatOriginal(numOrStr) {
 
 // CSS class name constants for band colouring.
 const OOM_LABEL_CLASS = 'oom-label';
+const STEP_LABEL_CLASS = 'step-label';
 const STRATEGY_CLASS = 'strategy';
 
 /**
@@ -197,55 +198,57 @@ function formatStrategyHeader(maxMag, offset) {
 }
 
 /**
- * Render the top preview band: strategy header row followed by a single
- * example row ("e.g. <original> → <rounded>"). Per issues #1/#3 the example
- * carries no step or magnitude annotation and shows the bare original number.
+ * Render the top preview band: the strategy header (blue) and a single worked
+ * example ("e.g. <original> → <rounded>", black) share one line, wrapping to
+ * two lines only when the sidebar is too narrow to fit both. The example
+ * carries no step annotation and shows the bare original number (text stripped
+ * per #3).
  */
 function renderTopBand(el, rows, offset) {
   if (!el) return;
   el.innerHTML = '';
   if (!rows || rows.length === 0) return;
 
-  // Strategy header: spans all 4 grid columns.
+  // Strategy header, e.g. "1M+ → nearest 250k". Kept whole (nowrap) so it never
+  // breaks mid-phrase; the flex container wraps it as a unit beside the example.
   if (cachedMaxMag !== null && cachedMaxMag !== undefined) {
-    const headerPair = document.createElement('div');
-    headerPair.className = 'pair';
     const headerEl = document.createElement('span');
     headerEl.className = STRATEGY_CLASS;
     headerEl.textContent = formatStrategyHeader(cachedMaxMag, offset);
-    headerPair.appendChild(headerEl);
-    el.appendChild(headerPair);
+    el.appendChild(headerEl);
   }
 
-  // Single example row (PREVIEW_NUM_TOP = 1).
+  // Single example (PREVIEW_NUM_TOP = 1), grouped in one nowrap span so the
+  // whole "e.g. … → …" wraps to the next line as a unit when space is tight.
   const row = rows[0];
-  const pair = document.createElement('div');
-  pair.className = 'pair';
+  const example = document.createElement('span');
+  example.className = 'example';
 
   const from = document.createElement('span');
   from.className = 'from';
   // Bare original number (text stripped per #3), prefixed "e.g." per #1.
   from.textContent = 'e.g. ' + formatOriginal(row.num);
-  pair.appendChild(from);
+  example.appendChild(from);
 
   const arrow = document.createElement('span');
   arrow.className = 'arrow';
   arrow.textContent = '→';
-  pair.appendChild(arrow);
+  example.appendChild(arrow);
 
   const numEl = document.createElement('span');
   numEl.className = 'num';
   numEl.textContent = formatOriginal(roundWithOffset(row.num, offset));
-  pair.appendChild(numEl);
+  example.appendChild(numEl);
 
-  el.appendChild(pair);
+  el.appendChild(example);
 }
 
 /**
  * Render the bottom preview band: rows sorted DESCENDING by magnitude, each
  * showing the bare original number with its OoM label (kept per the issue #3
- * decision — strip the largest band, keep the tag for the other numbers). The
- * trailing step annotation is removed.
+ * decision — strip the largest band, keep the tag for the other numbers). A
+ * brown trailing step annotation — "(5k)" — follows the rounded number to show
+ * what each example rounds to the nearest of.
  */
 function renderBotBand(el, rows, offset, maxMag) {
   if (!el) return;
@@ -285,6 +288,13 @@ function renderBotBand(el, rows, offset, maxMag) {
     const numEl = document.createElement('span');
     numEl.className = 'num';
     numEl.textContent = formatOriginal(roundWithOffset(row.num, offset));
+    // "(5k)" brown step label: the value this example rounds to the nearest of.
+    if (row.num !== 0) {
+      const stepEl = document.createElement('span');
+      stepEl.className = STEP_LABEL_CLASS;
+      stepEl.textContent = ' (' + formatStep(stepForOffset(row.num, offset)) + ')';
+      numEl.appendChild(stepEl);
+    }
     pair.appendChild(numEl);
 
     el.appendChild(pair);
