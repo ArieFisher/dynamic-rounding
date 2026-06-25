@@ -45,7 +45,7 @@ const timeGranularityEl = document.getElementById('timeGranularity');
 const rangeExprEl = document.getElementById('rangeExpr');
 
 // ----- Variant F: linked dual-thumb sliders -----
-const STOPS = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+const STOPS = [-2, -1.5, -1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
 const DEFAULT_OFFSET = -0.5;
 
 const sliderBlockEl = document.getElementById('sliderBlock');
@@ -71,10 +71,13 @@ function snap(v) {
 }
 function pct(v) {
   // Map each stop to the centre of its grid cell so thumb centres sit exactly
-  // over the tick marks. With 9 equal columns the cell centres fall at
-  // 1/18, 3/18, …, 17/18 of the track width, i.e. pct = ((v+1)/2 * 8 + 0.5)/9 * 100.
-  // This places −1 → 5.556% and +1 → 94.444%, matching the tick grid centres.
-  return ((v + 1) / 2 * 8 + 0.5) / 9 * 100;
+  // over the tick marks. The stops are unevenly spaced, so we position by the
+  // stop's index in STOPS (equal columns) rather than by its numeric value:
+  // cell k centre = (k + 0.5) / N of the track width. With N = STOPS.length
+  // this places the first stop and last stop at half-cell insets from each end.
+  let k = STOPS.indexOf(v);
+  if (k === -1) k = STOPS.indexOf(snap(v));
+  return (k + 0.5) / STOPS.length * 100;
 }
 function renderSliders() {
   if (!topThumb || !botThumb) return;
@@ -359,8 +362,10 @@ function startDrag(which) {
         ? ev.clientX
         : (ev.touches && ev.touches[0] ? ev.touches[0].clientX : 0);
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      const raw = ratio * 2 - 1;
-      const snapped = snap(raw);
+      // Equal columns: the track is divided into STOPS.length cells; the cell
+      // the pointer is over selects its stop. Mirrors pct()'s index geometry.
+      const idx = Math.max(0, Math.min(STOPS.length - 1, Math.floor(ratio * STOPS.length)));
+      const snapped = STOPS[idx];
       if (which === 'top') {
         if (topVal === snapped && (!linked || botVal === snapped)) return;
         topVal = snapped;
