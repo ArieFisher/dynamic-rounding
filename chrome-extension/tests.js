@@ -6982,6 +6982,9 @@ function makeElementNode(className, childNodes) {
     childNodes: kids,
     children: kids.filter(n => n.nodeType === 1),
     dataset: {},
+    // Real DOM elements expose removeAttribute; toggleOriginalValues calls it on
+    // every restored cell (to drop the rounding tooltip). No-op in the stub.
+    removeAttribute() {},
     classList: (() => {
       const c = [];
       return {
@@ -8128,6 +8131,65 @@ function flushTimers(pendingTimers) {
     // Original value must be restored.
     eq('GV5: cell[0] text node value is restored to original after resetTable',
       grid.cellEls[0].childNodes[0].nodeValue, '8584629');
+
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// GV5b (Regression #cstif9): Per-table toggle → show originals on a virtualized
+// grid. toggleOriginalValues restores pristine values; the still-connected grid
+// re-apply observer must NOT re-round them. Before the fix, the observer saw the
+// restore writes' characterData mutations and re-rounded the cells ~100ms later,
+// making them flash original then snap back to rounded and leaving the toggle
+// state (drShowingOriginal='true') disconnected from the DOM.
+// ---------------------------------------------------------------------------
+(function gv5b_toggleOriginal_observerDoesNotReRound() {
+  let ctx;
+  try {
+    ctx = setupVirtGrid([
+      ['8584629', '100'],
+      ['1234567', '200'],
+    ]);
+    const { grid, pendingTimers } = ctx;
+    const obs = ctx.capturedObserver;
+
+    // Pre-condition: cells are rounded after roundTable.
+    eq('GV5b (pre): cell[0] is rounded after roundTable',
+      grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
+
+    // User clicks the per-table pillbox toggle to show original values.
+    toggleOriginalValues(grid.wrapperEl);
+
+    // Flag must be set and originals restored.
+    eq('GV5b: drShowingOriginal is "true" after toggleOriginalValues',
+      grid.wrapperEl.dataset.drShowingOriginal, 'true');
+    eq('GV5b: cell[0] text node restored to original',
+      grid.cellEls[0].childNodes[0].nodeValue, '8584629');
+
+    // The restore writes fire characterData mutations the observer listens for.
+    // Simulate that, then flush the debounce timer.
+    obs.trigger([{ type: 'characterData' }]);
+    flushTimers(pendingTimers);
+
+    // The cell must STILL show the original value — the re-apply guard bails
+    // because drShowingOriginal === 'true'.
+    eq('GV5b: cell[0] still original after observer fires (no re-round)',
+      grid.cellEls[0].childNodes[0].nodeValue, '8584629');
+    eq('GV5b: cell[1] still original after observer fires (no re-round)',
+      grid.cellEls[1].childNodes[0].nodeValue, '100');
+
+    // Toggling back on must re-round (resetTable + roundTable path).
+    toggleOriginalValues(grid.wrapperEl);
+    eq('GV5b: drShowingOriginal cleared after toggling back on',
+      grid.wrapperEl.dataset.drShowingOriginal, undefined);
+    eq('GV5b: cell[0] re-rounded after toggling back on',
+      grid.cellEls[0].childNodes[0].nodeValue !== '8584629', true);
 
   } finally {
     if (ctx) {

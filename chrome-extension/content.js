@@ -664,6 +664,22 @@ function reapplyGridRounding(wrapperEl) {
     return;
   }
 
+  // Showing-original guard: when the per-table toggle has flipped the grid to
+  // show pristine values (toggleOriginalValues sets drShowingOriginal='true'),
+  // re-applying rounding would fight the toggle. The restore writes original
+  // text nodes, which themselves fire characterData mutations on the scroll
+  // container; without this guard the observer re-rounds them ~100ms later,
+  // making the cell flash original then snap back to rounded and leaving the
+  // toggle/sidebar state disconnected from the DOM. Reconnect (so future
+  // re-rounds after toggling back on still work) and bail without writing.
+  if (wrapperEl.dataset && wrapperEl.dataset.drShowingOriginal === 'true') {
+    if (observer) {
+      const scrollContainer = new GridAdapter(wrapperEl)._getScrollContainer();
+      observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
+    }
+    return;
+  }
+
   // Delegate to the single shared classify+compute function.
   // targetValue is null for excluded/out-of-range/skip cells (leave untouched).
   const cellTargets = computeGridRoundedValues(wrapperEl, opts);
@@ -1016,6 +1032,12 @@ function toggleOriginalValues(table) {
     resetTable(table);
     roundTable(table, opts);
   } else {
+    // Set the showing-original flag BEFORE mutating cells. Restoring grid cells
+    // writes their text nodes, which fire characterData mutations the grid's
+    // re-apply observer is listening for; setting the flag first guarantees the
+    // debounced reapplyGridRounding (and its showing-original guard) sees the
+    // toggled state and leaves the originals in place instead of re-rounding.
+    table.dataset.drShowingOriginal = 'true';
     // Restore each cell to its pristine value; keep the class and dataset so
     // a subsequent toggle knows to re-round.
     for (const cell of roundedCells) {
@@ -1030,7 +1052,6 @@ function toggleOriginalValues(table) {
       }
       cell.removeAttribute('title');
     }
-    table.dataset.drShowingOriginal = 'true';
   }
   syncSwitchForTable(table);
 }
