@@ -1016,10 +1016,16 @@ function toggleOriginalValues(table) {
     resetTable(table);
     roundTable(table, opts);
   } else {
-    // Restore each cell to its pristine HTML; keep the class and dataset so
+    // Restore each cell to its pristine value; keep the class and dataset so
     // a subsequent toggle knows to re-round.
     for (const cell of roundedCells) {
-      if (cell.dataset.originalHtml !== undefined) {
+      if (cell.dataset.drOriginal !== undefined) {
+        // Grid path: restore the text node in place (preserves node identity).
+        const tn = findCellTextNode(cell);
+        if (tn !== null) {
+          tn.nodeValue = cell.dataset.drOriginal;
+        }
+      } else if (cell.dataset.originalHtml !== undefined) {
         cell.innerHTML = cell.dataset.originalHtml;
       }
       cell.removeAttribute('title');
