@@ -485,11 +485,12 @@ function computeGridRoundedValues(wrapperEl, opts) {
 
   for (let r = 0; r < adapterRows.length; r++) {
     const adapterCells = adapterRows[r].getCells();
-    let dataCol = 0;
     for (let c = 0; c < adapterCells.length; c++) {
       const cellObj = adapterCells[c];
+      // <th> cells are never rounded, but they still occupy their column — see
+      // the column-index note in roundTable's native path.
       if (cellObj.tagName !== 'TD') continue;
-      const col = dataCol++;
+      const col = c;
       const cell = cellObj.el;
       const text = cellObj.getText();
       const trimmed = typeof text === 'string' ? text.trim() : '';
@@ -789,13 +790,17 @@ function roundTable(table, options) {
     const rowData = [];
     const rowCells = [];
     const rowInfo = [];
-    let dataCol = 0;
     for (let c = 0; c < adapterCells.length; c++) {
       const cellObj = adapterCells[c];
       const cell = cellObj.el;
-      // Skip <th> row-header cells entirely — they are not data columns.
+      // Skip <th> cells entirely — they are never rounded.
       if (cellObj.tagName !== 'TD') continue;
-      const col = dataCol++;
+      // The column index is the cell's position in the row, counting <th> row
+      // headers rather than skipping them. A <th scope="row"> IS the table's
+      // first column as rendered, so in such a table the leading <td> is column
+      // B: "first column" (and range "A") target the header column, not the
+      // first data cell after it.
+      const col = c;
       const text = cellObj.getText();
       rowData.push(text);
       // For native adapters carry the raw element (unchanged).
@@ -901,6 +906,10 @@ function roundTable(table, options) {
   }
 
   // --- Column post-pass: resolve ambiguous numeric date cells per column ---
+  // Note: rowData / rowInfo are packed per row (one entry per <td>), so the `c`
+  // below is the nth-<td> index, not the `col` used for range/exclusion gating.
+  // For a table with a uniform <th> layout the two differ by a constant, so
+  // cells still group by their real column.
   // Determine the maximum number of data columns across all rows.
   const numCols = cellInfo.reduce((max, row) => Math.max(max, row.length), 0);
   for (let c = 0; c < numCols; c++) {

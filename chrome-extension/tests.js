@@ -889,12 +889,14 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint first-col-is-a: pin behavior of <th>-skipping dataCol counter
+// Sprint first-col-is-a: pin column-index behavior for tables with <th> cells
 //
-// The dev's fix (reading II / data-perspective):
-//   - <th> cells are skipped entirely; only <td> cells are counted.
-//   - rangeExpr "A" maps to the first <td> (dataCol 0), not the leftmost DOM cell.
-//   - simplifyFirstColumn=false excludes the first <td>, not the leftmost DOM cell.
+// Column index is the cell's position in its row, counting <th> cells:
+//   - <th> cells are never rounded, but they still occupy their column.
+//   - rangeExpr "A" maps to the leftmost DOM cell — the <th> in a row-header
+//     table, so the leading <td> there is column "B".
+//   - simplifyFirstColumn gates the leftmost DOM cell, so in a row-header table
+//     it does not gate the leading <td>.
 //
 // Helper: build a minimal mock table that roundTable can traverse.
 // roundTable accesses: table.rows -> array of {cells: array of cell-like objects}
@@ -951,10 +953,10 @@ function withCreateTreeWalker(fn) {
   try { fn(); } finally { delete global.document.createTreeWalker; }
 }
 
-// --- Test 1: Table with row headers — range = "A" targets first <td>, not the <th> ---
+// --- Test 1: Table with row headers — nothing outside the range is rounded ---
 // Row: [<th>Name</th>, <td>100</td>, <td>200</td>]
-// With rangeExpr = "A" (col 0 in dataCol space) and simplifyFirstColumn=true (not excluded),
-// "A" should hit <td>100</td> (the first <td>), NOT the <th>Name</th>.
+// With rangeExpr = "A" the range covers the <th> column only; neither <td> is
+// in range, and the <th> itself is never rounded.
 (function firstColIsA_withRowHeader() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
@@ -973,8 +975,10 @@ function withCreateTreeWalker(fn) {
     // <th> Name: must NOT be rounded (it's not a <td>, skipped by the loop entirely)
     eq('first-col-is-A (row-header table): <th> Name is never rounded',
       cells[0].classList.contains('dr-ext-rounded'), false);
-    // <td> 200: dataCol 1 = column B — out of range A, must NOT be rounded
-    eq('first-col-is-A (row-header table): <td>200 at dataCol 1 not rounded',
+    // <td>100 is column B and <td>200 column C — both out of range A
+    eq('first-col-is-A (row-header table): <td>100 at column B not rounded',
+      cells[1].classList.contains('dr-ext-rounded'), false);
+    eq('first-col-is-A (row-header table): <td>200 at column C not rounded',
       cells[2].classList.contains('dr-ext-rounded'), false);
   });
 })();
@@ -1006,33 +1010,61 @@ function withCreateTreeWalker(fn) {
   });
 })();
 
-// --- Test 3: simplifyFirstColumn=false + row headers ---
-// Row: [<th>Name</th>, <td>100</td>, <td>200</td>]
-// rangeExpr = '' (whole table), simplifyFirstColumn = false.
-// Dev behavior: simplifyFirstColumn=false checks dataCol === 0, so <td>100</td> is
-// excluded (not the <th>, which is skipped from the data loop entirely).
-(function simplifyFirstColumn_withRowHeader() {
+// --- Test 3 / 4 helper: row-header table shaped like Wikipedia's
+// "List of James Bond films" — every data row opens with <th scope="row">.
+//   [<th>Dr. No</th>,     <td>59.5</td>,  <td>1234</td>]
+//   [<th>Goldfinger</th>, <td>124.9</td>, <td>5678</td>]
+// Columns: A = the <th>, B = the first <td>, C = the second <td>.
+function runRowHeaderTable(optsOverrides) {
+  let rows;
   withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'th', text: 'Name' },
-      { tag: 'td', text: '100'  },
-      { tag: 'td', text: '200'  },
-    ]]);
-    const opts = {
+    const table = makeMockTable([
+      [{ tag: 'th', text: 'Dr. No'     }, { tag: 'td', text: '59.5'  }, { tag: 'td', text: '1234' }],
+      [{ tag: 'th', text: 'Goldfinger' }, { tag: 'td', text: '124.9' }, { tag: 'td', text: '5678' }],
+    ]);
+    roundTable(table, Object.assign({
       enabled: true, simplifyMixedCells: false, simplifyDates: true, simplifyTimes: true,
-      simplifyFirstColumn: false, simplifyMixedPercent: false, simplifyMixedCurrency: false,
+      simplifyFirstRow: true, simplifyFirstColumn: false,
+      simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
-    };
-    roundTable(table, opts);
-    const cells = table.rows[0].cells;
-    // <th> Name: skipped (not a TD)
-    eq('simplifyFirstColumn=false (row-header table): <th> Name never rounded',
-      cells[0].classList.contains('dr-ext-rounded'), false);
-    // <td>100 is dataCol 0 — excluded by simplifyFirstColumn=false (dev reading II)
-    eq('simplifyFirstColumn=false (row-header table): <td>100 at dataCol 0 is excluded',
-      cells[1].classList.contains('dr-ext-rounded'), false);
+    }, optsOverrides));
+    rows = table.rows.map(row => row.cells);
   });
+  return rows;
+}
+
+function isRounded(cell) { return cell.classList.contains('dr-ext-rounded'); }
+
+// --- Test 3: simplifyFirstColumn gates the <th>, not the leading <td> ---
+// Regression: selecting "first column" used to enable the *second* rendered
+// column, because only <td> cells were counted and the <th> was invisible to
+// the column index. The <th> is the first column, so the leading <td> (column
+// B) is rounded regardless of the toggle, and the <th> is never rounded.
+(function simplifyFirstColumn_withRowHeader() {
+  for (const flag of [false, true]) {
+    const rows = runRowHeaderTable({ simplifyFirstColumn: flag });
+    eq(`simplifyFirstColumn=${flag} (row-header table): <th> is never rounded`,
+      isRounded(rows[0][0]), false);
+    eq(`simplifyFirstColumn=${flag} (row-header table): leading <td> is column B, not gated`,
+      isRounded(rows[0][1]), true);
+  }
+})();
+
+// --- Test 4: range letters count the <th> column ---
+// "A" is the <th> column (nothing to round there); "B" is the leading <td>.
+(function rangeLetters_withRowHeader() {
+  const rangeA = runRowHeaderTable({ rangeExpr: 'A' });
+  eq('range "A" (row-header table): <th> column matched, leading <td> untouched',
+    isRounded(rangeA[0][1]), false);
+  eq('range "A" (row-header table): column C untouched',
+    isRounded(rangeA[0][2]), false);
+
+  const rangeB = runRowHeaderTable({ rangeExpr: 'B' });
+  eq('range "B" (row-header table): leading <td> is rounded',
+    isRounded(rangeB[0][1]), true);
+  eq('range "B" (row-header table): column C untouched',
+    isRounded(rangeB[0][2]), false);
 })();
 
 // --- Sprint icon-no-sidebar: manifest + background invariants ---
