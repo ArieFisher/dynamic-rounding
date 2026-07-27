@@ -14,7 +14,7 @@ const DR_DEFAULTS = {
   simplifyFirstColumn: false,
   simplifyDates: true,
   simplifyTimes: false,
-  dateGranularity: 'decade',
+  dateGranularity: 'year',
   timeGranularity: 'hour',
   // Concrete numeric defaults (Variant F UI always sends concrete numbers, never
   // null/blank). num_top is no longer surfaced in the UI but stays here as the

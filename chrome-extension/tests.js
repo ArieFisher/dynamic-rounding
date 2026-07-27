@@ -1716,8 +1716,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     DR_DEFAULTS.simplifyMixedCurrency, true);
   eq('sidebar-defaults: simplifyMixedPercent default is true in DR_DEFAULTS',
     DR_DEFAULTS.simplifyMixedPercent, true);
-  eq('sidebar-defaults: dateGranularity default is "decade" in DR_DEFAULTS',
-    DR_DEFAULTS.dateGranularity, 'decade');
+  eq('sidebar-defaults: dateGranularity default is "year" in DR_DEFAULTS',
+    DR_DEFAULTS.dateGranularity, 'year');
   eq('sidebar-defaults: timeGranularity default is "hour" in DR_DEFAULTS',
     DR_DEFAULTS.timeGranularity, 'hour');
   eq('sidebar-defaults: sidebar.html does not hard-code "checked" attributes',
@@ -4331,8 +4331,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
     DR_DEFAULTS.simplifyFirstRow, false);
   eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyFirstColumn is false',
     DR_DEFAULTS.simplifyFirstColumn, false);
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.dateGranularity is "decade"',
-    DR_DEFAULTS.dateGranularity, 'decade');
+  eq('sidebar-tidyup AC3: DR_DEFAULTS.dateGranularity is "year"',
+    DR_DEFAULTS.dateGranularity, 'year');
   eq('sidebar-tidyup AC3: DR_DEFAULTS.timeGranularity is "hour"',
     DR_DEFAULTS.timeGranularity, 'hour');
 
