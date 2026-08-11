@@ -8,7 +8,7 @@ For example: can you see the story in this:
 How about now:
 
 <p align="center">
- <img src="docs/media/revenue_chart_2.png" alt="chart showing revenue" width="400">
+ <img src="docs/media/revenue_chart_3.png" alt="chart showing revenue" width="400">
  <br>
   <sup><i>pattern</i>: revenue drops during summer and winter breaks 
   <br> <i>meaning</i>: a business cycle tied to the academic calendar </sup>
