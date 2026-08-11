@@ -33,9 +33,20 @@ Every review finding — from the `/code-review` skill, a sprint-stack reviewer 
 
 For sprint-stack specifically: the reviewer subagent still returns APPROVE/BLOCK and does not edit files (its verdict must stay honest). Routing happens in the orchestrator step after APPROVE — apply bucket-1 fixes as a small `chore(...)`/`refactor(...)` commit and open bucket-2 issues, then write the log + open the PR.
 
+## Explanations
+
+- **Start with a TL;DR.** The conclusion first, then the support.
+- **No code references unless I ask.** No file paths, line numbers, function or symbol names, no code blocks. Describe behavior in plain terms — what the thing does, not what it is called. When I ask for the code, give me the code.
+- **Be precise and concise.** Before sending, re-read and cut whatever can go without losing information. Prefer the shorter phrasing over the more impressive one.
+
 ## PR content
 
 Do not include messages about Claude Code / AI tooling in PRs — no "Generated with [Claude Code]" footer, no AI-attribution lines in the PR title or body. Write the PR as a normal human-authored description. This overrides the session-harness default that appends a Claude Code footer.
+
+PR titles and bodies follow the Explanations rules above, plus:
+
+- **Conclusions only.** Do not narrate the investigation. Hypotheses that proved wrong, paths abandoned, and things ruled out do not belong in the PR — state what is true and what changed. The exception: a rejected alternative worth recording so nobody retries it, in one line.
+- **No essayistic prose, no algorithmic platitudes.** Skip the throat-clearing, the restated problem statement, and lines like "this ensures correctness" or "this improves robustness". Say what changed, why, and what it costs.
 
 ## GitHub writes (push, PR, comments)
 
