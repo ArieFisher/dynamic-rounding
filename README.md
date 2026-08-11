@@ -1,36 +1,33 @@
 # Make data readable
 
-Data can tell rich stories, but only if you can find the patterns. 
+Data can tell rich stories, but sometimes the numbers get in the way.
 
 For example: can you see the story in this:
-> Jan-Dec:  $31,311.28, $38,080.94, $45,291.38, $45,090.27, $47,709.54, $41,400.09, $24,923.26, $25,303.28, $41,200.80, $43,098.42, $42,210.11, $32,892.62
+> Jan-Dec:  $19,752.96, $22,222.08, $18,518.40, $24,691.20, $24,675.40, $18,518.40, $0.00, $3,703.68, $24,580.60, $24,691.20, $22,222.08, $19,752.96
 
 How about now:
 
 <p align="center">
- <img src="docs/media/revenue_chart_2.png" alt="chart showing revenue" width="400">
+ <img src="docs/media/revenue_chart_3.png" alt="chart showing revenue" width="400">
  <br>
   <sup><i>pattern</i>: revenue drops during summer and winter breaks 
   <br> <i>meaning</i>: a business cycle tied to the academic calendar </sup>
 </p>
 
-The data is *exactly* the same.  But the numbers hide the pattern.
+Same data, but one presentation overwhelmed our ability to hold that much data in our head and make sense of it.  
 
-The human brain is wired to seek meaning, continually searching for patterns and unconsciously interpreting them.
+We are pretty goood at doing that - the brain continually searches for patterns and unconsciously interprets them - we just need a little help sometimes.
 
-Consider these presentations:
+We can make it easier for ourselves to see the patterns and extract meaning from data just by making small changes to the numbers themselves.
 
-<p align="center">
- <img src="docs/media/wikipedia_population.png" alt="chart showing revenue" width = "600">
-  <br>
-  <sup> <i>pattern</i>: Dallas-Fort Worth is about the size of Chicago or Houston; 
-  <br> <i>meaning</i>: Dallas-Fort Worth is top-5 (vs. 9th and 10th).</sup>
+Does this make the story more clear?  
+> Jan-Dec:  $20,000, $22,000, $19,000, $25,000, $25,000, $19,000, $0, $4,000, $25,000, $25,000, $22,000, $20,000 
 
-</p>
+I see a story of consistent revenue that falls off a cliff in July/August, and returns immediately.  Once we look closely, we can see Spring Break and Winter Vacation, even Thanksgiving.  
 
-Our eyes receive the image on the left, but our brains see the one on the right. This library simply accelerates that process.
+Our eyes _receive_ numbers as originally shown, but our brains _see_ them as just above. This library accelerates what we are *already* doing.
 
-Detail can detract from understanding. This library makes data more readable, helping us find the patterns, relationships, and the stories hidden within.
+This library makes data more readable, helping us see the patterns and relationships, and find the stories hidden within.
 
 
 ## Implementations
@@ -77,48 +74,3 @@ Detail can detract from understanding. This library makes data more readable, he
 ## License
 
 MIT
-
-
-<br><br><br><br>
-# Appendix
-
-## An example of reading a story from data
-
-Data holds information it was not designed to reveal. For example, this cloud invoice reveals read a company's business model, underlying architectural beliefs and transformation goals.
-
-| Service Name | Cloud Bill |
-| :---- | :---- |
-| Cloud CDN | $4,228,910.4100 |
-| Cloud Storage | $3,812,105.5929 |
-| Cloud Load Balancing | $1,011,204.393 |
-| BigQuery | $824,479 |
-| Cloud Dataflow | $62,583.3113 |
-| Cloud Dataproc | $43,937.77 |
-| Cloud Pub/Sub | $9,911.21 |
-| Compute Engine | $17.24 |
-| *source: kaggle.com* |  |
-
-Let's hunt for signal:
-
-| Service Name | Simplified | Observations |
-| :---- | :---- | :---- |
-| Cloud CDN | 4,250,000 | This company 'serves': Web, possibly media platform |
-| Cloud Load Balancing | 3,750,000 | High traffic volume:  globally-popular? |
-| Cloud Storage | 1,000,000 | Significant storage footprint: serving media (e.g. streaming video)?  Gaming unlikely (too compute-intensive for this bill) |
-| BigQuery | 800,000 | Data platform: logs (a streaming company) and business intelligence? |
-| Cloud Dataflow | 65,000 | - Real-time processing pipeline: streaming telemetry?   <br> - Spend relative to BigQuery is low: an experiment? |
-| Cloud Pub/Sub | 45,000 | Streaming ingestion layer? |
-| Cloud Dataproc | 10,000 | - Batch: analytics?  <br> - Lower spend than Dataflow -> streaming (log processing?) a higher priority |
-| Compute Engine | 15 | Minimal usage of raw infrastructure:  prefer managed/serverless? |
-| *If this interpretation feels obvious, try re-reading the raw invoice first and check if these observations jump out at you.* |  |  |
-
-**TL;DR**  
-This invoice suggests a large-scale content platform undergoing a **transition from centralized analytics toward a split architecture: real-time streaming plus batch processing**, with strong reliance on managed services.
-
-**Key Narratives**
-
-- **Business model**: A global-scale content or media-serving platform with heavy delivery and storage demand.  
-- ***Architectural beliefs***: \- Near-zero Compute Engine spend suggests a strong preference for managed/serverless infrastructure.  
-- ***BigQuery Decomposition***: BigQuery is still the system of record (nearly 10:1 cost vs. other data solutions) as the team experiments with streaming log ingestion and lower-cost batch processing (while respecting its preference for managed services).  
-- ***Streaming over Batch***: The 10:1 ratio between streaming ($110k) and batch ($10k) shows a company that prioritizes immediacy, processing CDN telemetry in real-time to detect errors, fraud, or performance dips.  
-- ***Logs over Analytics***: The combined cost of the data pipeline suggests that the logs themselves are the "nerve system" of the business, enabling real-time tuning of the $4.25M CDN spend.
