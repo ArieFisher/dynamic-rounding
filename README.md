@@ -23,12 +23,11 @@ We can make it easier for ourselves to see the patterns and extract meaning from
 Does this make the story more clear?  
 > Jan-Dec:  $20,000, $22,000, $19,000, $25,000, $25,000, $19,000, $0, $4,000, $25,000, $25,000, $22,000, $20,000 
 
-I see a story of consistent revenue that falls off a cliff in July/August, and returns immediately.  Once we look closely, we can see Spring Break and Winter Vacation, even Thanksgiving.  Clearing away the specificity while keeping the data's shape let our pattern searching inclination find purchase.
+I see a story of consistent revenue that falls off a cliff in July/August, and returns immediately.  Once we look closely, we can see Spring Break and Winter Vacation, even Thanksgiving.  
 
-Our eyes _receive_ numbers as originally shown, but our brains _see_ them as just above. This library simply accelerates that process.
+Our eyes _receive_ numbers as originally shown, but our brains _see_ them as just above. This library accelerates what we are *already* doing.
 
-Detail can detract from understanding. This library makes data more readable, helping us find the patterns and relationships, and the stories hidden within.
-
+This library makes data more readable, helping us see the patterns and relationships, and find the stories hidden within.
 
 
 ## Implementations
