@@ -201,6 +201,76 @@ eq('extractAll: no digits returns empty array',
   extractNumbersInText('N/A'),
   []);
 
+// --- Boundary guard: digits welded to letters are identifiers, not quantities ---
+// Rounding them yields a value that still looks like a valid identifier, so the
+// corruption cannot be spotted by eye. The whole run must be skipped.
+
+const numStrs = text => extractNumbersInText(text).map(m => m.numStr);
+
+eq('guard: application number is not mined for digits',
+  numStrs('XR47182913MKB07'),
+  []);
+
+eq('guard: trailing zero-padded segment is not mined',
+  numStrs('MKB07'),
+  []);
+
+eq('guard: short label+digit is not mined',
+  numStrs('Q3'),
+  []);
+
+eq('guard: refusal does not let the scan re-enter mid-number',
+  numStrs('abc1,200'),
+  []);
+
+// --- Boundary guard: a hyphen after a digit is a separator, not a minus sign ---
+
+eq('guard: phone number yields two positive numbers',
+  numStrs('555-1234'),
+  ['555', '1234']);
+
+eq('guard: ZIP+4 yields two positive numbers',
+  numStrs('12345-6789'),
+  ['12345', '6789']);
+
+eq('guard: hyphen range yields two positive numbers',
+  numStrs('10-20'),
+  ['10', '20']);
+
+eq('guard: hyphen-typed range now matches en-dash behaviour',
+  numStrs('₹1,968-2,054 crore'),
+  ['1,968', '2,054']);
+
+eq('guard: en-dash range is unchanged',
+  numStrs('₹1,968–2,054 crore'),
+  ['1,968', '2,054']);
+
+eq('guard: year-month is no longer read as a negative month',
+  numStrs('2022-04'),
+  ['2022', '04']);
+
+// --- Boundary guard: genuine negatives and ordinary quantities still match ---
+
+eq('guard: negative after whitespace still signed',
+  numStrs('down -1,200 units'),
+  ['-1,200']);
+
+eq('guard: leading negative still signed',
+  numStrs('-5.2% change'),
+  ['-5.2']);
+
+eq('guard: currency-prefixed amount unaffected',
+  numStrs('$48,090.00'),
+  ['48,090.00']);
+
+eq('guard: numbers after a letter-word boundary unaffected',
+  numStrs('between 1,200 and 3,400 units'),
+  ['1,200', '3,400']);
+
+eq('guard: caret exponent notation unaffected',
+  numStrs('10^12'),
+  ['10', '12']);
+
 // --- formatExtractedNumber ---
 
 eq('format: large number gets commas matching original',
