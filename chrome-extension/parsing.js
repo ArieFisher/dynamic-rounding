@@ -14,8 +14,27 @@
  * the shared global scope consumed by content.js.
  */
 
-const NUMBER_IN_TEXT_REGEX = /-?\d[\d,]*(?:\.\d+)?/;
-const NUMBER_IN_TEXT_REGEX_GLOBAL = /-?\d[\d,]*(?:\.\d+)?/g;
+// A digit run only counts as a quantity when it starts at a clean boundary: the
+// preceding character must not be a letter, digit, dot, or comma.
+//
+// Letters: digits welded to letters belong to an identifier, not a measurement
+// ("XR47182913MKB07", "MKB07", "Q3"). Mining them produces a rounded value that
+// still looks like a valid identifier, so the corruption is undetectable.
+// Refusing the leading digit is enough to drop the whole run, because every
+// later position inside it is itself preceded by a digit.
+//
+// Dot/comma: stops the scan re-entering a number it just refused — without
+// them "abc1,200" would skip "1,200" and then match the bare "200".
+//
+// The guard also decides when a leading "-" is a minus sign rather than a
+// separator. In "2022-04", "555-1234" or "10-20" the hyphen follows a digit, so
+// it is rejected as a sign; the digits after it still match on their own and
+// stay positive. Genuine negatives ("down -1,200 units") are preceded by
+// whitespace or punctuation and are unaffected. Note that en-dash ranges
+// ("₹615.71–623.33 crore") never relied on this — "-?" only ever matched an
+// ASCII hyphen — so hyphen-typed ranges now behave like en-dash ones.
+const NUMBER_IN_TEXT_REGEX = /(?<![\w.,])-?\d[\d,]*(?:\.\d+)?/;
+const NUMBER_IN_TEXT_REGEX_GLOBAL = /(?<![\w.,])-?\d[\d,]*(?:\.\d+)?/g;
 
 function lettersToColIndex(letters) {
   const up = letters.toUpperCase();
