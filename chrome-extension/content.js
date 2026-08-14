@@ -291,7 +291,7 @@ function resetTable(table) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
   for (const cell of roundedCells) {
     // Grid cells are reset via nodeValue patching (drOriginal is set by GridAdapter.setText).
-    // Native-table cells are reset via innerHTML (originalHtml is set by NativeTableAdapter.setText).
+    // Native-table cells are reset via innerHTML (originalHtml is stashed by roundTable's native path).
     if (cell.dataset.drOriginal !== undefined) {
       // Grid path: restore the original text node value in place (preserves node identity).
       const tn = findCellTextNode(cell);
