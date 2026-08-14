@@ -6949,6 +6949,41 @@ function makeNativeTableEl(rowsSpec) {
     cells0[0].el, tableEl.rows[0].cells[0]);
 })();
 
+// TA1b: NativeTableAdapter cells expose NO setText — deliberate absence guard.
+// The native path writes cells directly in roundTable so it can preserve markup
+// in mixed cells and stash both originalHtml and originalValue. A setText here
+// would be reached by any future code that drives both adapters through one
+// loop; a textContent-based one would flatten mixed cells and skip
+// originalValue, silently feeding the sidebar preview its own rounded output.
+// Absent, that future code fails at the call site instead. This test keeps the
+// absence deliberate rather than incidental — if you are adding setText back,
+// it must preserve markup and stash BOTH dataset keys, and this guard must be
+// rewritten to assert that, not simply deleted.
+(function nativeTableAdapter_hasNoSetText() {
+  const tableEl = makeNativeTableEl([
+    [{ tag: 'td', text: '1,234' }],
+  ]);
+  const cell = makeAdapter(tableEl).getRows()[0].getCells()[0];
+
+  eq('TA1b: native adapter cell exposes no setText',
+    cell.setText, undefined);
+
+  // Source scan: nothing in the class may assign textContent/innerHTML on a
+  // cell. Catches a setText re-added under a different name.
+  const start = domAdaptersCode.indexOf('class NativeTableAdapter');
+  const rest = domAdaptersCode.slice(start);
+  const classBody = rest.slice(0, rest.indexOf('\n}\n'));
+
+  eq('TA1b (setup): NativeTableAdapter class body located',
+    start >= 0 && classBody.length > 0, true);
+
+  eq('TA1b: NativeTableAdapter class body has no textContent= assignment',
+    /textContent\s*=[^=]/.test(classBody), false);
+
+  eq('TA1b: NativeTableAdapter class body has no innerHTML= assignment',
+    /innerHTML\s*=[^=]/.test(classBody), false);
+})();
+
 // TA2: NativeTableAdapter — cell count matches table structure
 // A 3-row × 3-column table round-trips with correct row and cell counts.
 (function nativeTableAdapter_3x3() {
