@@ -48,11 +48,12 @@ class NativeTableAdapter {
     return Array.from(this.el.rows).map(row => ({
       getCells() {
         return Array.from(row.cells).map(cell => ({
+          // No setText: the native path writes cells directly in roundTable so it
+          // can preserve markup in mixed cells and stash both originalHtml and
+          // originalValue. A textContent-based setText here would flatten mixed
+          // cells and skip originalValue, silently feeding the sidebar preview
+          // its own rounded output.
           getText() { return cell.innerText || cell.textContent || ''; },
-          setText(s) {
-            cell.dataset.originalHtml = cell.innerHTML;
-            cell.textContent = s;
-          },
           el: cell,
           tagName: cell.tagName,
         }));
