@@ -102,7 +102,6 @@ function renderSliders() {
 // ----- Preview band -----
 const topBandEl = document.getElementById('topBand');
 const botBandEl = document.getElementById('botBand');
-const PREVIEW_NUM_TOP = 1;
 let cachedSamples = null;
 let cachedMaxMag = null;
 
@@ -188,10 +187,8 @@ function formatOomLabel(mag) {
     str = trimNum(val / 1e6) + 'M';
   } else if (val >= 1e3) {
     str = trimNum(val / 1e3) + 'k';
-  } else if (val >= 1) {
-    str = trimNum(val);
   } else {
-    // Sub-integer magnitudes: e.g. mag=-1 → 0.1, mag=-2 → 0.01
+    // Includes sub-integer magnitudes: mag=-1 → 0.1, mag=-2 → 0.01
     str = trimNum(val);
   }
   return str + '+';
@@ -244,7 +241,7 @@ function renderTopBand(el, rows, offset) {
     el.appendChild(strat);
   }
 
-  // Single example (PREVIEW_NUM_TOP = 1) on its own line below the strategy.
+  // Single example on its own line below the strategy.
   const row = rows[0];
   const example = document.createElement('div');
   example.className = 'pair example';
