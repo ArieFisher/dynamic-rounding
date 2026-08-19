@@ -10366,21 +10366,16 @@ function fireMouseClick(buttonEl, fn) {
     /flashSidebarContainer[\s\S]{0,300}classList\.add\s*\(\s*SIDEBAR_FLASH_CLASS\s*\)/.test(sidebarSrc),
     true);
 
-  // AC4 (source): background.js wraps the sendMessage relay in `if (sidebarTabId !== null)`.
-  eq('table-activation AC4 source: background.js guards TABLE_ACTIVATED relay with sidebarTabId !== null',
-    /TABLE_ACTIVATED[\s\S]{0,200}sidebarTabId\s*!==\s*null[\s\S]{0,200}sendMessage/.test(bgSrc),
-    true);
+  // AC4 (source): background.js does not relay TABLE_ACTIVATED at all. The
+  // panel receives it straight from content.js via runtime.sendMessage, so the
+  // old relay only ever delivered it to a content script with no handler.
+  // Runtime coverage lives in backgroundMessageRouting.
+  eq('table-activation AC4 source: background.js does not send TABLE_ACTIVATED',
+    /sendMessage\s*\([^)]*TABLE_ACTIVATED/.test(bgSrc), false);
 
-  // AC4 (source): the relay block must not call sendMessage outside the null-guard.
-  // We isolate the TABLE_ACTIVATED handler block (from 'TABLE_ACTIVATED' to the next 'return;')
-  // and confirm the sendMessage call is inside an `if (sidebarTabId` conditional.
-  const activatedBlock = bgSrc.match(/TABLE_ACTIVATED[\s\S]*?return;/);
-  const blockText = activatedBlock ? activatedBlock[0] : '';
-  // Any chrome.tabs.sendMessage in the block must be preceded by a sidebarTabId guard.
-  const sendMsgPos  = blockText.indexOf('sendMessage');
-  const guardPos    = blockText.indexOf('sidebarTabId');
-  eq('table-activation AC4 source: relay sendMessage is guarded (appears after sidebarTabId check in block)',
-    sendMsgPos !== -1 && guardPos !== -1 && guardPos < sendMsgPos,
+  // AC4 (source): content.js reaches the panel directly, without the background.
+  eq('table-activation AC4 source: content.js sends TABLE_ACTIVATED via runtime.sendMessage',
+    /chrome\.runtime\.sendMessage\s*\(\s*\{\s*action:\s*ACTION_TABLE_ACTIVATED/.test(contentSrc),
     true);
 })();
 
@@ -12179,6 +12174,129 @@ function fireMouseClick(buttonEl, fn) {
     cells[0].text, '2,794,356');
   eq('orig-value: parses num from original, not rounded',
     cells[0].num, 2794356);
+})();
+
+// ---------------------------------------------------------------------------
+// Background message routing.
+//
+// chrome.runtime.sendMessage from the service worker reaches extension pages
+// such as the side panel, and never reaches content scripts. A content script
+// is reachable only through chrome.tabs.sendMessage(tabId, ...). Two rules
+// follow, and both are asserted at runtime rather than by source regex:
+//
+//   1. Closing the panel must notify the panel AND the content script. Without
+//      the tab-directed send, content.js never clears sidebarOpen, so the flag
+//      stays true for the rest of the tab's life and every branch that reads it
+//      sees stale state.
+//   2. TABLE_ACTIVATED must not be relayed into the tab. content.js already
+//      sends it with runtime.sendMessage, which the panel receives directly.
+//      Relaying it to sidebarTabId delivers it to a content script that has no
+//      handler for that action.
+// ---------------------------------------------------------------------------
+
+(function backgroundMessageRouting() {
+  const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
+
+  // Evaluate background.js against a capturing stub. sidePanel is deliberately
+  // omitted: background.js guards on `chrome.sidePanel && chrome.sidePanel.open`,
+  // so with it absent the menu handler never awaits and runs to completion
+  // synchronously, letting us assert without async plumbing.
+  // rejectClosePath simulates a tab that is already gone by the time the close
+  // message goes out, which is exactly the onRemoved case.
+  function loadBackground({ rejectClosePath = false } = {}) {
+    const runtimeSends = [];
+    const tabSends = [];
+    const listeners = {};
+    const chromeStub = {
+      runtime: {
+        onInstalled: { addListener: () => {} },
+        onMessage: { addListener: (fn) => { listeners.message = fn; } },
+        sendMessage: (msg) => { runtimeSends.push(msg); return Promise.resolve(); },
+      },
+      contextMenus: {
+        create: () => {},
+        update: () => {},
+        onClicked: { addListener: (fn) => { listeners.menuClicked = fn; } },
+      },
+      tabs: {
+        sendMessage: (tabId, msg) => {
+          tabSends.push({ tabId, msg });
+          return rejectClosePath && msg.action === 'CLOSE_SIDEBAR'
+            ? Promise.reject(new Error('no receiving end'))
+            : Promise.resolve();
+        },
+        onUpdated:   { addListener: (fn) => { listeners.updated = fn; } },
+        onRemoved:   { addListener: (fn) => { listeners.removed = fn; } },
+        onActivated: { addListener: (fn) => { listeners.activated = fn; } },
+      },
+    };
+    new Function('chrome', 'console', bgSrc)(
+      chromeStub,
+      { warn: () => {}, debug: () => {}, log: () => {} }
+    );
+    return { runtimeSends, tabSends, listeners };
+  }
+
+  const PANEL_TAB = 7;
+
+  function openPanel(ctx) {
+    ctx.listeners.menuClicked({ menuItemId: 'dr-action-sidebar' }, { id: PANEL_TAB });
+  }
+
+  // --- Rule 1: closing notifies both the panel and the content script ---
+  (function closeNotifiesBoth() {
+    const ctx = loadBackground();
+    openPanel(ctx);
+    eq('bg routing: opening the panel sends SIDEBAR_OPENED to that tab',
+      ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.action === 'SIDEBAR_OPENED'),
+      true);
+
+    ctx.runtimeSends.length = 0;
+    ctx.tabSends.length = 0;
+
+    // Activating a different tab closes the panel.
+    ctx.listeners.activated({ tabId: 99 });
+
+    eq('bg routing: CLOSE_SIDEBAR broadcast reaches the panel',
+      ctx.runtimeSends.some(m => m.action === 'CLOSE_SIDEBAR'), true);
+    eq('bg routing: CLOSE_SIDEBAR is also sent to the content script tab',
+      ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.action === 'CLOSE_SIDEBAR'),
+      true);
+  })();
+
+  // The same must hold for the other two close triggers.
+  (function closeOnNavigationAndRemoval() {
+    const navCtx = loadBackground();
+    openPanel(navCtx);
+    navCtx.tabSends.length = 0;
+    navCtx.listeners.updated(PANEL_TAB, { status: 'loading' });
+    eq('bg routing: navigation away sends CLOSE_SIDEBAR to the content script',
+      navCtx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.action === 'CLOSE_SIDEBAR'),
+      true);
+
+    // A removed tab has no receiving end; the send must not surface an error.
+    const goneCtx = loadBackground({ rejectClosePath: true });
+    openPanel(goneCtx);
+    let threw = false;
+    try {
+      goneCtx.listeners.removed(PANEL_TAB);
+    } catch (e) {
+      threw = true;
+    }
+    eq('bg routing: closing a removed tab does not throw', threw, false);
+  })();
+
+  // --- Rule 2: TABLE_ACTIVATED is not relayed into the tab ---
+  (function activatedNotRelayedToTab() {
+    const ctx = loadBackground();
+    openPanel(ctx);
+    ctx.tabSends.length = 0;
+
+    ctx.listeners.message({ action: 'TABLE_ACTIVATED' }, {});
+
+    eq('bg routing: TABLE_ACTIVATED is not relayed to the content script',
+      ctx.tabSends.filter(s => s.msg.action === 'TABLE_ACTIVATED').length, 0);
+  })();
 })();
 
 // --- Report ---
