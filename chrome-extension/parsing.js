@@ -578,17 +578,14 @@ function decimalCount(n) {
 /**
  * Format a rounded number extracted from inline text for display.
  *
- * Band rule for minimumFractionDigits:
- *   |rounded| < 10  → use Math.max(decimals, floorDecimals)
- *     The <10 band covers small values such as percentages/fractions where
- *     the offset's own decimal precision is meaningful to the reader.
- *   |rounded| >= 10 → zero decimals (existing short-circuit unchanged).
- *     Large magnitudes are already rounded to integer multiples of a coarse
- *     base, so decimal places would be spurious.
+ * Trailing zeros are always stripped, at every magnitude: minimumFractionDigits
+ * stays 0. Sprint trim-trailing-zeros replaced the earlier band rule that raised
+ * the floor to the offset's own decimal count for |rounded| < 10.
  *
  * @param {number} rounded       - The rounded numeric value.
  * @param {string} originalNumStr - The original number string (for comma/decimal detection).
- * @param {number} [floorDecimals=0] - Minimum decimal places from the offset's own precision.
+ * @param {number} [floorDecimals=0] - Ignored. Kept so existing call sites and the
+ *   tests that assert output does not depend on it keep their signature.
  */
 function formatExtractedNumber(rounded, originalNumStr, floorDecimals = 0) {
   const hasCommas = originalNumStr.includes(',');
@@ -602,13 +599,11 @@ function formatExtractedNumber(rounded, originalNumStr, floorDecimals = 0) {
 /**
  * Restore the formatting of a pure-numeric cell after rounding.
  *
- * Band rule for minimumFractionDigits (mirrors formatExtractedNumber):
- *   |roundedValue| < 10  → use Math.max(decimals, floorDecimals)
- *   |roundedValue| >= 10 → zero decimals (short-circuit, unchanged)
+ * Trailing zeros are always stripped, mirroring formatExtractedNumber.
  *
  * @param {number} roundedValue   - The rounded numeric value.
  * @param {string} originalString - Original cell text (for symbol/format detection).
- * @param {number} [floorDecimals=0] - Minimum decimal places from the offset's precision.
+ * @param {number} [floorDecimals=0] - Ignored. See formatExtractedNumber.
  */
 function restoreFormatting(roundedValue, originalString, floorDecimals = 0) {
   let result;
