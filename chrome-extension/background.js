@@ -40,7 +40,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 function closeSidebarIfOpen() {
+  // The side panel is an extension page and hears the broadcast. A content
+  // script does not: it is reachable only through its tab. Both need telling,
+  // or content.js keeps sidebarOpen set for the rest of the tab's life.
   chrome.runtime.sendMessage({ action: "CLOSE_SIDEBAR" }).catch(() => {});
+  if (sidebarTabId !== null) {
+    chrome.tabs.sendMessage(sidebarTabId, { action: "CLOSE_SIDEBAR" }).catch(() => {});
+  }
   sidebarTabId = null;
 }
 
@@ -87,10 +93,8 @@ chrome.runtime.onMessage.addListener((request, sender) => {
     return;
   }
 
-  if (request.action === "TABLE_ACTIVATED") {
-    if (sidebarTabId !== null) {
-      chrome.tabs.sendMessage(sidebarTabId, { action: "TABLE_ACTIVATED" });
-    }
-    return;
-  }
+  // TABLE_ACTIVATED needs no relay. content.js sends it with
+  // runtime.sendMessage, which the side panel already receives directly.
+  // Forwarding it to sidebarTabId aimed it at the content script, which has no
+  // handler for that action.
 });
