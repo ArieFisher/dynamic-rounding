@@ -10,7 +10,7 @@ Usage:
 
 import math
 import re
-from typing import Optional, Union
+from typing import Optional
 
 try:
     import pandas as pd
