@@ -37,12 +37,10 @@ jobs:
             chrome:
               - 'chrome-extension/**'
 
-      - name: Configure git identity and credentials
+      - name: Configure git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config credential.helper store
-          echo "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com" >> ~/.git-credentials
 
       - name: Bump Python version (python/pyproject.toml)
         if: steps.changes.outputs.python == 'true'
@@ -84,7 +82,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git add -A
+          git add python/pyproject.toml chrome-extension/manifest.json
           if git diff --cached --quiet; then
             echo "No version files changed; nothing to commit."
             exit 0
