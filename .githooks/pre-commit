@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#
+# Blocks a commit that would add a file the repository has no place for.
+# Enable once per clone:  git config core.hooksPath .githooks
+#
+set -uo pipefail
+
+repo=$(git rev-parse --show-toplevel)
+exec "$repo/scripts/check-files.sh" --staged

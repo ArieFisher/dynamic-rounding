@@ -1,0 +1,30 @@
+name: Repo hygiene
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  file-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gate files added by this pull request
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/check-files.sh --range "$BASE_SHA" "$HEAD_SHA"
+
+      - name: Audit every tracked file
+        if: github.event_name != 'pull_request'
+        run: scripts/check-files.sh --tracked

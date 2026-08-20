@@ -25,8 +25,24 @@ Follow [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-
 
 1. Create a feature branch (`git checkout -b feature/my-description`)
     - *External contributors: fork the repo first.*
-2. Make and test your changes (see below)
-3. Submit a PR with a clear description
+2. Enable the repo hooks once per clone: `git config core.hooksPath .githooks`
+3. Make and test your changes (see below)
+4. Submit a PR with a clear description
+
+### Adding files
+
+Every new file must pass one test: **does this file serve someone using or building DynamicRounding?** Output from your editor, your agent tooling, or a local scan describes your machine, not this project. It stays out.
+
+`scripts/check-files.sh` enforces that. The `pre-commit` hook runs it on what you stage, and the `Repo hygiene` workflow runs it again on every PR. It rejects two things:
+
+- a path outside `chrome-extension/`, `js/`, `python/`, `docs/`, `scripts/`, `.github/`, `.githooks/`, or the short allowlist of root files
+- contents matching a credential pattern
+
+Run it yourself any time with `scripts/check-files.sh --staged`, or audit the whole tree with `scripts/check-files.sh --tracked`.
+
+If the gate is wrong about your file, change the policy block at the top of the script in the same PR and say why. Do not reach for `--no-verify`.
+
+Keep scratch work outside the repo. `docs/private/` is git-ignored if you want it nearby.
 
 ### Code Style
 

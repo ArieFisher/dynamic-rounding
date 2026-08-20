@@ -13,6 +13,17 @@ Never create or push branches with a `claude/` or `session/` prefix. The harness
 
 `<label>` / `<slug>` is a short kebab-case description.
 
+## Adding files
+
+This repository is public. Before staging a new file, answer: does it serve someone using or building DynamicRounding? If the answer is no, it does not go in — and a report about my local toolchain, an agent scan, a session journal, or a scratch note is always no. One such file reached `main` once already.
+
+- **Never `git add .` or `git add -A`.** Stage the paths you meant to change, by name.
+- **Write scratch output to the session scratchpad**, not the repo. `docs/private/` is git-ignored if it has to live here.
+- **Never pass `-f` to `git add`** to defeat `.gitignore`, and never `--no-verify` to skip the `pre-commit` gate. If a rule blocks a file that belongs, change the policy block in `scripts/check-files.sh` in the same change and say why in the PR.
+- New root-level files need a `.gitignore` negation, deliberately. The root is an allowlist.
+
+`scripts/check-files.sh --staged` is the same check the hook and CI run. Run it before you commit.
+
 ## Review findings
 
 Route every review finding — from `/code-review`, a sprint-stack reviewer subagent, or your own inspection — to exactly one place. Never leave an actionable item as a "non-blocking note" for me to remember and re-instruct.
