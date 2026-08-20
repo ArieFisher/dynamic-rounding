@@ -21,4 +21,31 @@ docs/private/
 .agent/*
 !.agent/rules/
 !.agent/skills/
-PR_MESSAGE.md
+
+# Root-level markdown is an allowlist. Every stray that reached this repo was a
+# root .md: a scan report, a scratch design doc, a generated PR message. To add
+# a root document on purpose, add a negation below.
+/*.md
+!/README.md
+!/CLAUDE.md
+!/CONTRIBUTING.md
+!/MAINTAINERS.md
+
+# Agent and tool output. Reports about the local toolchain describe the
+# developer's machine, not this project, and belong nowhere near a public repo.
+*-baseline.md
+*_baseline.md
+*-report.md
+*_report.md
+.remember/
+.security/
+
+# Credentials
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
