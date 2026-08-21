@@ -42,6 +42,8 @@ Run it yourself any time with `scripts/check-files.sh --staged`, or audit the wh
 
 If the gate is wrong about your file, change the policy block at the top of the script in the same PR and say why. Do not reach for `--no-verify`.
 
+The policy block is the whole gate, so a bad edit there makes it pass everything. `bash scripts/check-files-test.sh` plants a violation of each rule in a scratch repository and requires the gate to catch it. Run it after any policy change; `Repo hygiene` runs it too.
+
 Keep scratch work outside the repo. `docs/private/` is git-ignored if you want it nearby.
 
 ### Code Style
