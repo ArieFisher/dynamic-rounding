@@ -18,6 +18,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Self-test the file gate
+        run: bash scripts/check-files-test.sh
+
       - name: Gate files added by this pull request
         if: github.event_name == 'pull_request'
         env:
