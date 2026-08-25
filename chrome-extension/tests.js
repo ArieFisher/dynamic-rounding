@@ -1034,8 +1034,7 @@ function makeMockTable(rowsSpec, querySelectorResult) {
   };
 }
 
-// roundTable calls chrome.runtime.sendMessage; already stubbed globally.
-// It also calls document.createTreeWalker (via replaceTextPreservingHTML).
+// roundTable calls document.createTreeWalker (via replaceTextPreservingHTML).
 // We need to stub that too so the "apply rounding" path doesn't crash.
 // Stub createTreeWalker to return a walker that finds the cell's single text node.
 
@@ -13894,6 +13893,274 @@ const LADDER_OPTS = {
       }
     }
   }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint engine-returns-results: static purity scan.
+// The simplification engine (roundTable, computeGridRoundedValues,
+// reapplyGridRounding) must never call chrome.* directly — it returns result
+// values instead, and the controller sends the messages. Mirrors the
+// detectionFunctions_sourceScan_noPageWrites pattern above.
+// ---------------------------------------------------------------------------
+(function engineFunctions_sourceScan_noChromeCalls() {
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('engine purity scan: source file content.js present in manifest', false, true);
+    return;
+  }
+  const ENGINE_FNS = ['roundTable', 'computeGridRoundedValues', 'reapplyGridRounding'];
+
+  // Extract a top-level `function name(` body by brace-matching from the
+  // opening brace to its balanced close (same approach as the detection
+  // purity scan above).
+  function extractFunctionBody(src, fnName) {
+    const sig = new RegExp(`function ${fnName}\\s*\\(`);
+    const m = sig.exec(src);
+    if (!m) return null;
+    const braceStart = src.indexOf('{', m.index);
+    if (braceStart === -1) return null;
+    let depth = 0;
+    for (let i = braceStart; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') {
+        depth--;
+        if (depth === 0) return src.slice(braceStart, i + 1);
+      }
+    }
+    return null;
+  }
+
+  for (const fnName of ENGINE_FNS) {
+    const body = extractFunctionBody(contentSrc, fnName);
+    eq(`engine purity scan: ${fnName} body located in content.js`, body !== null, true);
+    if (body === null) continue;
+    eq(`engine purity scan: ${fnName} does not reference "chrome."`,
+      body.includes('chrome.'), false);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint engine-returns-results: the engine runs end-to-end with NO `chrome`
+// global present at all — not even a stub. This loads the real content-script
+// bundle in a vm sandbox that never defines `chrome`. The only top-level
+// statement in content.js that unconditionally touches chrome — registering
+// the runtime message listener, controller wiring unrelated to the engine —
+// is neutralized to a no-op so the module can load; every other chrome.*
+// reference in content.js lives inside a function body this test never calls.
+// If roundTable (or anything it reaches) touched chrome, loading or calling
+// it here would throw ReferenceError: chrome is not defined.
+// ---------------------------------------------------------------------------
+(function engineRunsWithNoChromeGlobal() {
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('no-chrome e2e: source file content.js present in manifest', false, true);
+    return;
+  }
+
+  const NEEDLE = 'chrome.runtime.onMessage.addListener(';
+  eq('no-chrome e2e: exactly one top-level onMessage.addListener call site to neutralize',
+    contentSrc.split(NEEDLE).length - 1, 1);
+  const noChromeContentSrc = contentSrc.replace(NEEDLE, '(function(){}).call(null,');
+
+  // Sandbox has NO `chrome` property whatsoever — only the DOM/browser
+  // primitives the engine's non-controller code paths actually touch
+  // (document.createTreeWalker via replaceTextPreservingHTML, NodeFilter).
+  const sandbox = {
+    document: {
+      addEventListener() {},
+      createTreeWalker(cell) {
+        let done = false;
+        return {
+          nextNode() {
+            if (done) return null;
+            done = true;
+            return {
+              get nodeValue() { return this._val !== undefined ? this._val : cell.innerText; },
+              set nodeValue(v) { cell.innerText = v; cell.textContent = v; this._val = v; },
+            };
+          },
+        };
+      },
+    },
+    window: {
+      addEventListener() {},
+      getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+    },
+    NodeFilter: { SHOW_TEXT: 4 },
+    Node: { ELEMENT_NODE: 1 },
+  };
+
+  const vm = require('vm');
+  const ctx = vm.createContext(sandbox);
+  // Load the content scripts in manifest order (same order contentScriptBundle
+  // uses), substituting the neutralized content.js source for the real one.
+  const bundle = contentScriptFiles
+    .map((file) => (file === 'content.js' ? noChromeContentSrc : contentScriptSources.get(file)))
+    .join('\n');
+
+  let threw = null;
+  try {
+    vm.runInContext(bundle + '\nthis.__roundTable = roundTable;', ctx);
+  } catch (e) {
+    threw = e.message;
+  }
+  eq('no-chrome e2e: the engine bundle loads with no `chrome` global defined anywhere',
+    threw, null);
+  eq('no-chrome e2e: `chrome` is genuinely absent from the sandbox',
+    'chrome' in sandbox, false);
+  if (threw !== null || typeof sandbox.__roundTable !== 'function') return;
+
+  const table = makeMockTable([[{ tag: 'td', text: '1,234,567' }]]);
+  let callThrew = null;
+  let result;
+  try {
+    result = sandbox.__roundTable(table, {
+      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      // The fixture's only row is row 0 — simplifyFirstRow/Column must be true
+      // or getExclusionReason would exclude the only cell under test.
+      simplifyFirstRow: true, simplifyFirstColumn: true,
+      simplifyMixedPercent: false, simplifyMixedCurrency: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+    });
+  } catch (e) {
+    callThrew = e.message;
+  }
+
+  eq('no-chrome e2e: calling roundTable on a fixture does not throw with no chrome global present',
+    callThrew, null);
+  eq('no-chrome e2e: roundTable returns rangeStatus "ok"',
+    result && result.rangeStatus, 'ok');
+  eq('no-chrome e2e: roundTable returns applied: true',
+    result && result.applied, true);
+  eq('no-chrome e2e: roundTable actually rounded the fixture cell',
+    table.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint engine-returns-results: pin the exact RANGE_OK/RANGE_ERROR message
+// sequence for one full toggle flow (runToggleAction -> roundTable ->
+// sendRangeStatusMessage -> chrome.runtime.sendMessage).
+//
+// Before this sprint, roundTable sent RANGE_ERROR/RANGE_OK itself. Now the
+// engine returns { applied, rangeStatus, error } and the controller sends the
+// message. The two expected sequences below (one per range-validity branch)
+// were verified byte-for-byte against content.js as it stood at commit
+// 4340bd1 (the refactor/merge-ladder tip this sprint branched from) by
+// running that commit's real content.js through this same vm harness and
+// diffing the captured chrome.runtime.sendMessage sequence against the one
+// captured here. They were identical. This test pins that verified sequence
+// so a future change cannot silently drop or duplicate a message.
+// ---------------------------------------------------------------------------
+(function engineReturnsResults_rangeStatusMessageSequence() {
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('range-status sequence: source file content.js present in manifest', false, true);
+    return;
+  }
+
+  // Isolated vm context per run so module-level state (DR_DEFAULTS mutation,
+  // highlightStyleInjected, tableOptions) never bleeds between the two
+  // scenarios below.
+  function runFullToggleFlow(rangeExprOverride) {
+    const sentMessages = [];
+    const sandbox = {
+      document: {
+        addEventListener() {},
+        querySelectorAll() { return []; },
+        readyState: 'complete',
+        body: { appendChild() {} },
+        createElement() { return { textContent: '' }; },
+        head: { appendChild() {} },
+        createTreeWalker(cell) {
+          let done = false;
+          return {
+            nextNode() {
+              if (done) return null;
+              done = true;
+              return {
+                get nodeValue() { return this._val !== undefined ? this._val : cell.innerText; },
+                set nodeValue(v) { cell.innerText = v; cell.textContent = v; this._val = v; },
+              };
+            },
+          };
+        },
+      },
+      window: {
+        addEventListener() {},
+        getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+      },
+      NodeFilter: { SHOW_TEXT: 4 },
+      Node: { ELEMENT_NODE: 1 },
+      MutationObserver: class { observe() {} disconnect() {} },
+      ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
+      chrome: {
+        runtime: {
+          sendMessage(msg) { sentMessages.push(msg); },
+          onMessage: { addListener() {} },
+          lastError: null,
+        },
+      },
+    };
+    const vm = require('vm');
+    const ctx = vm.createContext(sandbox);
+    const bundle = contentScriptFiles
+      .map((file) => (file === 'content.js' ? contentSrc : contentScriptSources.get(file)))
+      .join('\n');
+    vm.runInContext(
+      bundle + '\nthis.__runToggleAction = runToggleAction; this.__DR_DEFAULTS = DR_DEFAULTS;',
+      ctx
+    );
+
+    // 2x2 so the target cell (row 1, col 1) sits outside DR_DEFAULTS's
+    // simplifyFirstRow/simplifyFirstColumn: false exclusion — DR_DEFAULTS
+    // (unlike the no-chrome e2e fixture above) is used as-is here, matching
+    // runToggleAction's real call, which passes no per-call options.
+    const table = makeMockTable([
+      [{ tag: 'td', text: 'label' }, { tag: 'td', text: 'header' }],
+      [{ tag: 'td', text: 'label' }, { tag: 'td', text: '1,234,567' }],
+    ]);
+    // runToggleAction unconditionally ends with flashRangePulse(table, null),
+    // which flashes the whole-table outline via table.classList — a real
+    // <table> element has this; the bare mock from makeMockTable does not.
+    table.classList = { add() {}, remove() {} };
+    if (rangeExprOverride !== undefined) {
+      sandbox.__DR_DEFAULTS.rangeExpr = rangeExprOverride;
+    }
+    let threw = null;
+    try {
+      sandbox.__runToggleAction(table);
+    } catch (e) {
+      threw = e.message;
+    }
+    return { sentMessages, threw, table };
+  }
+
+  // --- Scenario 1: valid range (default rangeExpr === '') -> rounds, RANGE_OK ---
+  const okRun = runFullToggleFlow(undefined);
+  eq('range-status sequence (valid range): runToggleAction does not throw',
+    okRun.threw, null);
+  eq('range-status sequence (valid range): exact message sequence matches parent-branch capture',
+    okRun.sentMessages,
+    [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ]);
+  eq('range-status sequence (valid range): the cell was actually rounded',
+    okRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), true);
+
+  // --- Scenario 2: invalid range ("1a" matches neither a column letter nor a
+  // row number pattern) -> no rounding, RANGE_ERROR with the parse error ---
+  const errorRun = runFullToggleFlow('1a');
+  eq('range-status sequence (invalid range): runToggleAction does not throw',
+    errorRun.threw, null);
+  eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture',
+    errorRun.sentMessages,
+    [
+      { action: 'RANGE_ERROR', error: 'Invalid range: "1a"' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ]);
+  eq('range-status sequence (invalid range): the cell was NOT rounded',
+    errorRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), false);
 })();
 
 // --- Report ---
