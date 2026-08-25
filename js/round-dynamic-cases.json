@@ -568,5 +568,65 @@
         ]
       }
     ]
+  },
+  {
+    "description": "Percent inputs with additional formatting: decimal magnitude, parenthetical negative, sub-unit value, and surrounding spaces",
+    "cases": [
+      {
+        "input": "1,234.5%",
+        "params": {},
+        "expected": 1000
+      },
+      {
+        "input": "(1,000%)",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "0.1%",
+        "params": {},
+        "expected": 0.1
+      },
+      {
+        "input": " 42 % ",
+        "params": {},
+        "expected": 40
+      }
+    ]
+  },
+  {
+    "description": "Malformed dash/percent-only strings pass through unchanged (cleaned-to-empty guard)",
+    "cases": [
+      {
+        "input": "--5",
+        "params": {},
+        "expected": "--5"
+      },
+      {
+        "input": "-%",
+        "params": {},
+        "expected": "-%"
+      },
+      {
+        "input": "%",
+        "params": {},
+        "expected": "%"
+      }
+    ]
+  },
+  {
+    "description": "Very large magnitudes near the toPrecision(12)/.12g noise-strip boundary",
+    "cases": [
+      {
+        "input": 1000000000000000,
+        "params": {},
+        "expected": 1000000000000000
+      },
+      {
+        "input": 1000000000000123,
+        "params": {},
+        "expected": 1000000000000000
+      }
+    ]
   }
 ]
