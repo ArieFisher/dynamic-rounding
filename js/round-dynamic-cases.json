@@ -1,0 +1,702 @@
+[
+  {
+    "description": "Plain integers at several magnitudes, default offset",
+    "cases": [
+      {
+        "input": 5,
+        "params": {},
+        "expected": 5
+      },
+      {
+        "input": 42,
+        "params": {},
+        "expected": 40
+      },
+      {
+        "input": 987,
+        "params": {},
+        "expected": 1000
+      },
+      {
+        "input": 4321,
+        "params": {},
+        "expected": 4500
+      },
+      {
+        "input": 42109,
+        "params": {},
+        "expected": 40000
+      },
+      {
+        "input": 4308910,
+        "params": {},
+        "expected": 4500000
+      },
+      {
+        "input": 87654321,
+        "params": {},
+        "expected": 90000000
+      },
+      {
+        "input": 1234567890,
+        "params": {},
+        "expected": 1000000000
+      }
+    ]
+  },
+  {
+    "description": "Plain decimals at several magnitudes, default offset",
+    "cases": [
+      {
+        "input": 0.5,
+        "params": {},
+        "expected": 0.5
+      },
+      {
+        "input": 0.35,
+        "params": {},
+        "expected": 0.35
+      },
+      {
+        "input": 0.047,
+        "params": {},
+        "expected": 0.045
+      },
+      {
+        "input": 0.0004321,
+        "params": {},
+        "expected": 0.00045
+      },
+      {
+        "input": 3.14159,
+        "params": {},
+        "expected": 3
+      },
+      {
+        "input": 12.5,
+        "params": {},
+        "expected": 15
+      }
+    ]
+  },
+  {
+    "description": "Explicit offset sweep on one value, for cross-implementation formula agreement",
+    "cases": [
+      {
+        "input": 87654321,
+        "params": {
+          "offset_top": 0
+        },
+        "expected": 90000000
+      },
+      {
+        "input": 87654321,
+        "params": {
+          "offset_top": -1
+        },
+        "expected": 88000000
+      },
+      {
+        "input": 87654321,
+        "params": {
+          "offset_top": 1
+        },
+        "expected": 100000000
+      },
+      {
+        "input": 87654321,
+        "params": {
+          "offset_top": -0.5
+        },
+        "expected": 90000000
+      },
+      {
+        "input": 87654321,
+        "params": {
+          "offset_top": 0.5
+        },
+        "expected": 100000000
+      },
+      {
+        "input": 87654321,
+        "params": {
+          "offset_top": -1.5
+        },
+        "expected": 88000000
+      },
+      {
+        "input": 87654321,
+        "params": {
+          "offset_top": -2.5
+        },
+        "expected": 87700000
+      },
+      {
+        "input": 87654321,
+        "params": {
+          "offset_top": 0.25
+        },
+        "expected": 100000000
+      },
+      {
+        "input": 87654321,
+        "params": {
+          "offset_top": -0.25
+        },
+        "expected": 87500000
+      }
+    ]
+  },
+  {
+    "description": "Negative numbers written with a leading ASCII minus sign",
+    "cases": [
+      {
+        "input": -5,
+        "params": {},
+        "expected": -5
+      },
+      {
+        "input": -1234,
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": -42109,
+        "params": {},
+        "expected": -40000
+      },
+      {
+        "input": -87654321,
+        "params": {},
+        "expected": -90000000
+      },
+      {
+        "input": -0.35,
+        "params": {},
+        "expected": -0.35
+      }
+    ]
+  },
+  {
+    "description": "Negative numbers written as accounting parentheses",
+    "cases": [
+      {
+        "input": "(5)",
+        "params": {},
+        "expected": -5
+      },
+      {
+        "input": "(1234)",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "(87654321)",
+        "params": {},
+        "expected": -90000000
+      },
+      {
+        "input": "(0.35)",
+        "params": {},
+        "expected": -0.35
+      },
+      {
+        "input": "($1,234)",
+        "params": {},
+        "expected": -1000
+      }
+    ]
+  },
+  {
+    "description": "Percent-sign inputs: the extension strips \"%\" and rounds the numeric magnitude",
+    "cases": [
+      {
+        "input": "50%",
+        "params": {},
+        "expected": 50
+      },
+      {
+        "input": "12.5%",
+        "params": {},
+        "expected": 15
+      },
+      {
+        "input": "-50%",
+        "params": {},
+        "expected": -50
+      },
+      {
+        "input": "(50%)",
+        "params": {},
+        "expected": -50
+      },
+      {
+        "input": "1,234%",
+        "params": {},
+        "expected": 1000
+      },
+      {
+        "input": "0.5%",
+        "params": {},
+        "expected": 0.5
+      },
+      {
+        "input": "100%",
+        "params": {},
+        "expected": 100
+      }
+    ]
+  },
+  {
+    "description": "Currency-symbol inputs ($, €, £, ¥)",
+    "cases": [
+      {
+        "input": "$1,234",
+        "params": {},
+        "expected": 1000
+      },
+      {
+        "input": "€1,234.56",
+        "params": {},
+        "expected": 1000
+      },
+      {
+        "input": "£987",
+        "params": {},
+        "expected": 1000
+      },
+      {
+        "input": "¥42109",
+        "params": {},
+        "expected": 40000
+      },
+      {
+        "input": "$0.35",
+        "params": {},
+        "expected": 0.35
+      }
+    ]
+  },
+  {
+    "description": "Comma thousands separators",
+    "cases": [
+      {
+        "input": "4,428,910",
+        "params": {},
+        "expected": 4500000
+      },
+      {
+        "input": "1,234",
+        "params": {},
+        "expected": 1000
+      },
+      {
+        "input": "12,345.67",
+        "params": {},
+        "expected": 10000
+      },
+      {
+        "input": "1,234,567",
+        "params": {},
+        "expected": 1000000
+      }
+    ]
+  },
+  {
+    "description": "Unicode dash/minus variants normalized to ASCII minus before parsing (U+2212 MINUS SIGN, U+2010 HYPHEN, U+2011 NON-BREAKING HYPHEN, U+2012 FIGURE DASH, U+2013 EN DASH, U+2014 EM DASH, U+2015 HORIZONTAL BAR, U+FE58 SMALL EM DASH, U+FE63 SMALL HYPHEN-MINUS, U+FF0D FULLWIDTH HYPHEN-MINUS)",
+    "cases": [
+      {
+        "input": "−1234",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "‐1234",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "‑1234",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "‒1234",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "–1234",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "—1234",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "―1234",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "﹘1234",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "﹣1234",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "－1234",
+        "params": {},
+        "expected": -1000
+      }
+    ]
+  },
+  {
+    "description": "Sub-unit fractional-offset steps that produce IEEE-754 floating-point noise; the extension strips it to 12 significant digits",
+    "cases": [
+      {
+        "input": 7,
+        "params": {
+          "offset_top": -0.6
+        },
+        "expected": 7.2
+      },
+      {
+        "input": 9,
+        "params": {
+          "offset_top": -0.4
+        },
+        "expected": 9.2
+      },
+      {
+        "input": 0.3,
+        "params": {
+          "offset_top": -0.8
+        },
+        "expected": 0.32
+      },
+      {
+        "input": 0.7,
+        "params": {
+          "offset_top": -0.9
+        },
+        "expected": 0.72
+      },
+      {
+        "input": 2.3,
+        "params": {
+          "offset_top": -0.7
+        },
+        "expected": 2.1
+      },
+      {
+        "input": 0.9,
+        "params": {
+          "offset_top": -0.7
+        },
+        "expected": 0.91
+      }
+    ]
+  },
+  {
+    "description": "Values below 1 (sub-unit magnitudes), default offset",
+    "cases": [
+      {
+        "input": 0.03,
+        "params": {},
+        "expected": 0.03
+      },
+      {
+        "input": 0.007,
+        "params": {},
+        "expected": 0.007
+      },
+      {
+        "input": 0.00042,
+        "params": {},
+        "expected": 0.0004
+      },
+      {
+        "input": 0.9,
+        "params": {},
+        "expected": 0.9
+      }
+    ]
+  },
+  {
+    "description": "Zero in various formats",
+    "cases": [
+      {
+        "input": 0,
+        "params": {},
+        "expected": 0
+      },
+      {
+        "input": "0",
+        "params": {},
+        "expected": 0
+      },
+      {
+        "input": "0%",
+        "params": {},
+        "expected": 0
+      },
+      {
+        "input": "$0",
+        "params": {},
+        "expected": 0
+      },
+      {
+        "input": "(0)",
+        "params": {},
+        "expected": 0
+      }
+    ]
+  },
+  {
+    "description": "Non-numeric values pass through unchanged",
+    "cases": [
+      {
+        "input": "hello",
+        "params": {},
+        "expected": "hello"
+      },
+      {
+        "input": "",
+        "params": {},
+        "expected": ""
+      },
+      {
+        "input": "N/A",
+        "params": {},
+        "expected": "N/A"
+      }
+    ]
+  },
+  {
+    "description": "Dataset mode: num_top=1 applies offset_top only to the single largest magnitude",
+    "cases": [
+      {
+        "input": [
+          87654321,
+          4308910,
+          42109,
+          1234
+        ],
+        "params": {
+          "offset_top": -1,
+          "offset_other": 0,
+          "num_top": 1
+        },
+        "expected": [
+          88000000,
+          4000000,
+          40000,
+          1000
+        ]
+      }
+    ]
+  },
+  {
+    "description": "Dataset mode: num_top=2 extends offset_top to the top two magnitudes",
+    "cases": [
+      {
+        "input": [
+          87654321,
+          4308910,
+          42109,
+          1234
+        ],
+        "params": {
+          "offset_top": -1,
+          "offset_other": 0,
+          "num_top": 2
+        },
+        "expected": [
+          88000000,
+          4300000,
+          40000,
+          1000
+        ]
+      }
+    ]
+  },
+  {
+    "description": "Dataset mode with mixed formatted inputs (percent, currency, thousands separators, unicode dash) sharing one magnitude scale",
+    "cases": [
+      {
+        "input": [
+          "87,654,321",
+          "50%",
+          "$4,308,910",
+          "−42109"
+        ],
+        "params": {
+          "offset_top": -0.5,
+          "offset_other": -0.5,
+          "num_top": 1
+        },
+        "expected": [
+          90000000,
+          50,
+          4500000,
+          -40000
+        ]
+      }
+    ]
+  },
+  {
+    "description": "Dataset mode with all params defaulted",
+    "cases": [
+      {
+        "input": [
+          4428910,
+          983321,
+          42109
+        ],
+        "params": {},
+        "expected": [
+          4500000,
+          1000000,
+          40000
+        ]
+      }
+    ]
+  },
+  {
+    "description": "Percent inputs with additional formatting: decimal magnitude, parenthetical negative, sub-unit value, and surrounding spaces",
+    "cases": [
+      {
+        "input": "1,234.5%",
+        "params": {},
+        "expected": 1000
+      },
+      {
+        "input": "(1,000%)",
+        "params": {},
+        "expected": -1000
+      },
+      {
+        "input": "0.1%",
+        "params": {},
+        "expected": 0.1
+      },
+      {
+        "input": " 42 % ",
+        "params": {},
+        "expected": 40
+      }
+    ]
+  },
+  {
+    "description": "Malformed dash/percent-only strings pass through unchanged (cleaned-to-empty guard)",
+    "cases": [
+      {
+        "input": "--5",
+        "params": {},
+        "expected": "--5"
+      },
+      {
+        "input": "-%",
+        "params": {},
+        "expected": "-%"
+      },
+      {
+        "input": "%",
+        "params": {},
+        "expected": "%"
+      }
+    ]
+  },
+  {
+    "description": "Very large magnitudes near the toPrecision(12)/.12g noise-strip boundary",
+    "cases": [
+      {
+        "input": 1000000000000000,
+        "params": {},
+        "expected": 1000000000000000
+      },
+      {
+        "input": 1000000000000123,
+        "params": {},
+        "expected": 1000000000000000
+      }
+    ]
+  },
+  {
+    "description": "Unicode digits pass through unchanged (fullwidth, non-ASCII: JS Number() rejects them, but Python float() would normalize them if not explicitly guarded)",
+    "cases": [
+      {
+        "input": "５０",
+        "params": {},
+        "expected": "５０"
+      }
+    ]
+  },
+  {
+    "description": "Tie-rounding at the 12-significant-digit noise-strip boundary (JS toPrecision(12) rounds half-away-from-zero)",
+    "cases": [
+      {
+        "input": 1234567890125,
+        "params": {
+          "offset_top": -12
+        },
+        "expected": 1234567890130
+      },
+      {
+        "input": 1000000000005,
+        "params": {
+          "offset_top": -12
+        },
+        "expected": 1000000000010
+      },
+      {
+        "input": -1234567890125,
+        "params": {
+          "offset_top": -12
+        },
+        "expected": -1234567890130
+      },
+      {
+        "input": -1000000000005,
+        "params": {
+          "offset_top": -12
+        },
+        "expected": -1000000000010
+      }
+    ]
+  },
+  {
+    "description": "Symbol-only and separator-only strings pass through unchanged (cleaned-to-empty guard)",
+    "cases": [
+      {
+        "input": "$",
+        "params": {},
+        "expected": "$"
+      },
+      {
+        "input": ",",
+        "params": {},
+        "expected": ","
+      }
+    ]
+  },
+  {
+    "description": "Results with more than 12 significant digits are truncated to 12 by the noise-strip (a documented limitation, not float noise)",
+    "cases": [
+      {
+        "input": 1234567890123,
+        "params": {
+          "offset_top": -12
+        },
+        "expected": 1234567890120
+      }
+    ]
+  }
+]
