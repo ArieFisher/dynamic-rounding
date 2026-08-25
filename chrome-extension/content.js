@@ -1065,7 +1065,7 @@ function toggleOriginalValues(table) {
   syncSwitchForTable(table);
 }
 
-// ROUND_DYNAMIC, singleValueMode, datasetMode, findMaxMagnitude, toNumber, and
-// validateOffset (plus DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP, VALIDATION_LIMIT,
-// CLEAN_REGEX, PARENS_REGEX) live in core.js, loaded by manifest content_scripts
-// ahead of this file so the sidebar can call the same ROUND_DYNAMIC core.
+// findMaxMagnitude and toNumber (plus DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP,
+// VALIDATION_LIMIT, CLEAN_REGEX, PARENS_REGEX) live in core.js, loaded by
+// manifest content_scripts ahead of this file so the sidebar shares the same
+// coercion helpers.

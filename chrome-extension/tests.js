@@ -12491,7 +12491,7 @@ function fireMouseClick(buttonEl, fn) {
     // rounding.js
     'roundWithOffset', 'roundCellSetAware', 'stepForOffset', 'formatStep', 'trimNum',
     // core.js
-    'ROUND_DYNAMIC', 'singleValueMode', 'datasetMode', 'findMaxMagnitude', 'toNumber', 'validateOffset',
+    'findMaxMagnitude', 'toNumber',
     // parsing.js
     'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
     'isInRanges', 'resolveOffset', 'resolveNumTop', 'getExclusionReason',
