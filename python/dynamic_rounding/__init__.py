@@ -5,6 +5,7 @@ MIT License
 """
 
 import math
+from decimal import Decimal, ROUND_HALF_UP
 from importlib.metadata import version, PackageNotFoundError
 from typing import Union, List, Optional, Any
 
@@ -147,6 +148,32 @@ def _find_max_magnitude(values: List[Any]) -> Optional[int]:
     return max_mag
 
 
+def _strip_noise_12sig(value: float) -> float:
+    """
+    Round a non-negative float to 12 significant digits, ties away from zero.
+
+    Matches JavaScript's ``Number(x.toPrecision(12))`` bit-for-bit, including
+    at exact half-tie boundaries. Python's own ``f'{x:.12g}'`` formatting
+    rounds ties to even (banker's rounding), which disagrees with JS at
+    values like 1234567890125 -> JS 1234567890130, ``.12g`` 1234567890120.
+    ``_round_with_offset`` only ever calls this on a non-negative value (the
+    sign is re-applied by the caller afterward), so away-from-zero and
+    away-from-positive-infinity coincide here.
+    """
+    if value == 0:
+        return 0.0
+    # Decimal(value) captures the exact binary value of the float, the same
+    # value JS's toPrecision(12) rounds from -- not the shortest round-trip
+    # decimal string (which Decimal(str(value)) or Decimal(repr(value))
+    # would give, and which can disagree with the exact value at the digit
+    # a half-tie is decided on).
+    exact = Decimal(value)
+    exponent = exact.adjusted()  # position of the most-significant digit
+    quantum = Decimal(1).scaleb(exponent - 11)  # 12 significant digits
+    quantized = exact.quantize(quantum, rounding=ROUND_HALF_UP)
+    return float(quantized)
+
+
 def _round_with_offset(value: float, offset: float) -> float:
     """
     Round a number using the offset model.
@@ -197,6 +224,9 @@ def _round_with_offset(value: float, offset: float) -> float:
         if abs(x_int) >= X_FLOOR_THRESHOLD:
             floor_x = _round_with_offset(absval, x_int)
             result = max(result, abs(floor_x))
+
+    # Strip IEEE-754 float noise from sub-unit steps (e.g. 11 * 0.1 = 1.1000...01).
+    result = _strip_noise_12sig(result)
 
     return sign * result
 
