@@ -6,8 +6,13 @@
  */
 
 // Constants
-const CLEAN_REGEX = /[$€£¥,\s]/g;
+const CLEAN_REGEX = /[$€£¥,\s%]/g;
 const PARENS_REGEX = /^\((.+)\)$/;
+// Unicode dash/minus variants normalized to an ASCII "-" before parsing, so a
+// leading unusual dash (e.g. a pasted en dash or minus sign) reads as a
+// negative sign instead of failing to parse. Matches the chrome extension's
+// lib/dr-number/core.js, the source of truth for this behavior.
+const DASH_REGEX = /[‐-―−﹘﹣－]/g;
 
 // parameters' default values
 const DEFAULT_OFFSET_TOP = -0.5; // in all modes, by default, round to the nearest half order of magnitude
@@ -196,6 +201,9 @@ function roundWithOffset(num, offset) {
     result = Math.round(result);
   }
 
+  // Strip IEEE-754 float noise from sub-unit steps (e.g. 11 * 0.1 = 1.1000…01).
+  result = Number(result.toPrecision(12));
+
   return sign * result;
 }
 
@@ -209,10 +217,14 @@ function toNumber(value) {
     return isFinite(value) ? value : null;
   }
   if (typeof value === "string" && value.trim() !== "") {
-    // Remove common formatting: currency symbols, commas, spaces, parentheses for negatives
+    // Remove common formatting: currency symbols, commas, spaces, percent
+    // signs, parentheses for negatives, and normalize unusual dash/minus
+    // characters to an ASCII "-" first so they parse as a sign.
     let cleaned = value.trim()
+      .replace(DASH_REGEX, "-")
       .replace(CLEAN_REGEX, "")
       .replace(PARENS_REGEX, "-$1"); // (100) -> -100
+    if (cleaned === "") return null;
     const parsed = Number(cleaned);
     return isFinite(parsed) ? parsed : null;
   }

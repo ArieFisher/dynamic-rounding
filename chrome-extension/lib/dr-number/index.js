@@ -22,12 +22,8 @@ const DR_NUMBER = {
   trimNum,
 
   // core.js
-  ROUND_DYNAMIC,
-  singleValueMode,
-  datasetMode,
   findMaxMagnitude,
   toNumber,
-  validateOffset,
 
   // parsing.js
   lettersToColIndex,
