@@ -14,7 +14,6 @@ the "matching function" for this table.
 """
 
 import json
-import math
 import numbers
 from pathlib import Path
 
@@ -52,9 +51,15 @@ def _case_id(pair):
 def _assert_matches(actual, expected):
     # round_dynamic_series can hand back numpy scalar types (np.int64,
     # np.float64), which are numbers.Real but not Python int/float.
+    #
+    # Compare numeric results exactly (==), not with a tolerance. The Python,
+    # JS, and chrome-extension implementations run the identical formula, so
+    # an exact match is the point: a tolerance here would hide float-noise
+    # regressions (e.g. removing the .12g strip in dynamic_rounding's
+    # _round_with_offset) instead of catching them.
     if isinstance(expected, numbers.Real) and not isinstance(expected, bool):
         assert isinstance(actual, numbers.Real) and not isinstance(actual, bool)
-        assert math.isclose(float(actual), float(expected), rel_tol=1e-9, abs_tol=1e-9)
+        assert float(actual) == float(expected)
     else:
         assert actual == expected
 

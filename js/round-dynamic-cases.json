@@ -628,5 +628,15 @@
         "expected": 1000000000000000
       }
     ]
+  },
+  {
+    "description": "Unicode digits pass through unchanged (fullwidth, non-ASCII: JS Number() rejects them, but Python float() would normalize them if not explicitly guarded)",
+    "cases": [
+      {
+        "input": "５０",
+        "params": {},
+        "expected": "５０"
+      }
+    ]
   }
 ]

@@ -64,6 +64,12 @@ def _parse_number(value) -> Optional[float]:
             cleaned = '-' + match.group(1)
         if not cleaned:
             return None
+        # float() normalizes non-ASCII digits (e.g. fullwidth "５０") to their
+        # numeric value, but JS's Number() does not. Reject non-ASCII strings
+        # here so this parser passes them through unchanged, matching the
+        # chrome extension and js/round_dynamic.js (the source of truth).
+        if not cleaned.isascii():
+            return None
         try:
             return float(cleaned)
         except ValueError:
