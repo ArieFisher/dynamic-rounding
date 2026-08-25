@@ -1,0 +1,199 @@
+{
+  "title": "Decoupling migration",
+  "base_branch": "main",
+  "created": "2026-08-25",
+  "source_markdown": "docs/sprint-plans/decoupling-migration.md",
+  "repo_conventions": {
+    "version_files": [
+      { "path": "chrome-extension/manifest.json", "format": "dotted integers in `version` key; bumped by merge-time workflow — sprint branches must not touch it" },
+      { "path": "python/pyproject.toml", "format": "semver in `version` key; bumped by merge-time workflow — sprint branches must not touch it" }
+    ],
+    "test_command": "node chrome-extension/tests.js && node js/tests.js && (cd python && pytest)",
+    "branch_naming": "refactor/<label>, chore/<label>, fix/<label> by change type; never claude/ or session/",
+    "commit_convention": "Conventional Commits with scope, e.g. refactor(extension): ..."
+  },
+  "sprints": [
+    {
+      "label": "test-harness-manifest",
+      "branch": "chore/test-harness-manifest",
+      "goal": "The test harness locates content-script sources from manifest.json instead of seven hardcoded filenames, and source-text assertions check the concatenated source.",
+      "scope": "chrome-extension/tests.js only. Replace the seven named readFileSync calls with a read of the manifest's content_scripts[].js list, concatenated in manifest order into one evaluated source and one combined text for fragment assertions. Point the ~20 source-text assertions (src.includes(...)-style) at the combined text.",
+      "out_of_scope": "Any change to source files; any assertion deletion beyond mechanical retargeting.",
+      "acceptance_criteria": [
+        "No readFileSync call in chrome-extension/tests.js names defaults.js, rounding.js, core.js, parsing.js, dom-adapters.js, ui-toggle.js, or content.js directly for content-script loading",
+        "The suite passes with the same assertion count as before the change (1,229)",
+        "Renaming a content-script file in a scratch copy (updating only the manifest) leaves source loading intact"
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "background.js and the sidebar files are not content scripts; derive their paths from the manifest's background and side_panel keys where the tests read them. Keep the eval-in-shared-scope model and the existing global stubs unchanged. Version files are workflow-bumped at merge; do not touch them."
+    },
+    {
+      "label": "extract-dr-number",
+      "branch": "refactor/extract-dr-number",
+      "goal": "The pure number logic (parsing, rounding, formatting, date/time parse and round, max magnitude, step-for-offset) moves into chrome-extension/lib/dr-number/ with no logic changes.",
+      "scope": "Move parsing.js, rounding.js, and core.js content into lib/dr-number/ files that together publish one global bundle DR_NUMBER; update manifest.json script order and sidebar.html script tags; retarget the test file's republishing block. Add two discipline tests: (a) evaluating each package file in isolation adds exactly one name to the shared scope; (b) the manifest lists lib/ packages before non-package scripts.",
+      "out_of_scope": "Deleting anything; merging formatters; behavior changes of any kind.",
+      "acceptance_criteria": [
+        "All three test suites pass; extension assertion count does not drop",
+        "defaults.js, dom-adapters.js, ui-toggle.js, content.js are unmoved",
+        "The two discipline tests exist and pass"
+      ],
+      "depends_on": ["test-harness-manifest"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Pure moves only — if a change is tempting, note it in the PR body instead. The sidebar loads scripts via sidebar.html, not the manifest; update both. Chrome gives declared content scripts no module loading (verified 2026-08-25); the one-bundle-per-file discipline substitutes for imports."
+    },
+    {
+      "label": "delete-dead-code",
+      "branch": "chore/delete-dead-code",
+      "goal": "Remove the extension's never-used public entry point, two modes, and validator, and correct the two comments that describe the code falsely.",
+      "scope": "In lib/dr-number/: delete ROUND_DYNAMIC, singleValueMode, datasetMode, validateOffset, and the two restated defaults (DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP) that only those functions read. Fix the header comment claiming both contexts call the same entry point, and the second false comment identified with it. Remove republish lines and tests that only exercise deleted code.",
+      "out_of_scope": "js/round_dynamic.js — the Sheets copy keeps its own entry point; any logic change to surviving functions.",
+      "acceptance_criteria": [
+        "The named functions and constants appear nowhere in chrome-extension/ sources",
+        "findMaxMagnitude and toNumber survive unchanged (extension code calls them)",
+        "All suites pass"
+      ],
+      "depends_on": ["extract-dr-number"],
+      "version_bump": "patch",
+      "complexity": "S",
+      "dev_notes": "Deletion order matters to the tests — remove the republish lines in the same commit as the functions or the eval fails loudly."
+    },
+    {
+      "label": "unify-rounding-core",
+      "branch": "fix/unify-rounding-core",
+      "goal": "The three copies of the rounding core agree, with the extension copy as the source of truth; one shared table of test cases runs against all three.",
+      "scope": "Bring js/round_dynamic.js and the Python package up to the extension's behavior: percent-sign stripping, unusual-dash normalization, floating-point noise removal. Add a shared case table js/round-dynamic-cases.json (input, parameters, expected output) consumed by js/tests.js, the Python test suite, and chrome-extension/tests.js. Add a changelog entry in js/CHANGELOG.md naming the two input kinds whose output changes — percent inputs and sub-unit steps — with a before-and-after example of each.",
+      "out_of_scope": "Extension behavior changes; API signature changes in any copy.",
+      "acceptance_criteria": [
+        "The shared case table exists and all three suites load and pass it",
+        "Sheets output changes only on percent inputs and sub-unit steps; the changelog entry documents both with examples",
+        "All suites pass"
+      ],
+      "depends_on": ["delete-dead-code"],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "This is the only sprint where a user can see numbers change. Audit the Python copy's drift while writing the case table; if Python behavior changes beyond the two named input kinds, list every change in the PR body and extend the changelog. Keep the case table out of the Python sdist if packaging would otherwise ship it."
+    },
+    {
+      "label": "extract-dr-table",
+      "branch": "refactor/extract-dr-table",
+      "goal": "Table detection moves into chrome-extension/lib/dr-table/ (bundle DR_TABLE), runs under jsdom, and stops changing the page.",
+      "scope": "Move detection from dom-adapters.js into the package. Two behavior changes: (1) finding a table no longer builds the toggle widget or writes the marker class — tableAt returns { handle, isNew } and the caller badges; (2) the off-screen accessibility-table filter becomes an optional predicate the extension passes in (current extension behavior preserved). Four ports, each with a working default so findTables(document) needs no configuration: StyleProbe (layout reads, replacing the guarded ones), NumericProbe (the extension passes the real dr-number parser), VendorProfiles (Databricks and AG Grid selector lists as data), doc (the page document, passed in). Existing adapter objects serve as handles. Dead-handle rule: no handle-taking call throws; a dead handle answers null/no-op.",
+      "out_of_scope": "The snapshot read/write/restore layer; ladder or engine changes; any change to which tables are detected (behavior-identical detection, side effects removed).",
+      "acceptance_criteria": [
+        "A new test runs findTables under jsdom with no Chrome globals stubbed",
+        "Detection code contains no widget construction and no marker-class write; the marker class is written only by the caller",
+        "Vendor selectors live in a data structure in one file, not inline in detection logic",
+        "All suites pass; detection results on the existing test fixtures are unchanged"
+      ],
+      "depends_on": ["extract-dr-number"],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "The marker class stays in the page as a style hook written by the caller — this sprint moves the writer, not the class. The re-badge decision from isNew must reproduce today's badging exactly; a table seen twice gets no second widget."
+    },
+    {
+      "label": "merge-ladder",
+      "branch": "refactor/merge-ladder",
+      "goal": "One classification ladder in chrome-extension/lib/dr-simplify/ (bundle DR_SIMPLIFY) replaces the two copies kept matching by comments.",
+      "scope": "Extract the ladder (first row, percent, currency, quoted text, link, footnote marker, out of range) into a pure package depending only on DR_NUMBER. It takes plain cell values, never page elements, and returns decisions as data — each planned cell carries {mode, value, reason}. Both former call sites (the engine and the preview-sample extractor) call the shared ladder. Delete the sidebar's duplicate formatters in favor of dr-number's. Range validation returns a result value instead of sending a message.",
+      "out_of_scope": "Live-settings wiring for the preview (arrives in app-model-settings); engine messaging changes.",
+      "acceptance_criteria": [
+        "One ladder implementation; the comments promising the copies match are gone because the copies are gone",
+        "Every divergence found between the two copies is either preserved deliberately (documented in the PR body with a test) or fixed (with a test)",
+        "The sidebar's local formatters are deleted; it calls dr-number's",
+        "All suites pass"
+      ],
+      "depends_on": ["extract-dr-table"],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "Medium behavior risk by design — each place the copies quietly disagreed is a latent bug that surfaces here. Diff the two copies rule by rule before writing code; write a failing test per divergence first. If the sidebar's formatters encode deliberate display differences, preserve them behind explicit parameters and record the decision in the PR body."
+    },
+    {
+      "label": "engine-returns-results",
+      "branch": "refactor/engine-returns-results",
+      "goal": "The simplification engine stops sending Chrome extension messages; it returns a result and the controller does the messaging.",
+      "scope": "content.js engine paths that call chrome.runtime.sendMessage from inside computation. The engine returns result values; the controller sends whatever messages the results require.",
+      "out_of_scope": "The event bus (next sprint); any change to message payloads observed by the sidebar or background.",
+      "acceptance_criteria": [
+        "No chrome.* call remains inside the engine's computation paths",
+        "A test runs the engine end-to-end with no Chrome stub present",
+        "Observable messaging behavior is unchanged (same messages, same payloads, sent by the controller)"
+      ],
+      "depends_on": ["merge-ladder"],
+      "version_bump": "patch",
+      "complexity": "S",
+      "dev_notes": "This is the step that lets the engine run outside Chrome. Keep the diff small; resist relocating the engine while touching it."
+    },
+    {
+      "label": "app-model-selection",
+      "branch": "refactor/app-model-selection",
+      "goal": "An application model and a typed event bus exist; the selected table and the sidebar-open flag live in the model; the toggle view reports intents instead of writing another file's variables.",
+      "scope": "New chrome-extension/app/store.js (the application model) and chrome-extension/adapters/messaging.js (the event bus over Chrome messaging). Two topic families only: intent topics (toggle, select, sidebar-open — views publish, controller is sole subscriber) and state-change topics (model publishes after changing; views subscribe and redraw from the model). Move the two file-level variables the toggle view writes from outside (content.js's last-right-clicked table and sidebar-open flag) into the model. Unify bound/selected into one field, the selected table identifier ('bound' means 'selected while the sidebar is open'). Delivery rules: state-change messages carry the whole value for their topic; a view that opens or reconnects pulls current state from the model before drawing; the bus stores nothing.",
+      "out_of_scope": "Settings (next sprint); registry and originals (sprint after).",
+      "acceptance_criteria": [
+        "No file writes another file's variables; content.js file-level selection state is gone",
+        "Intent and state-change topics are typed and enumerated in one place; a test publishes each intent and asserts the model change and the state-change message",
+        "A test simulates a reconnecting view and asserts it pulls current state rather than depending on missed messages",
+        "All suites pass; user-visible behavior unchanged"
+      ],
+      "depends_on": ["engine-returns-results"],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "The bus spans page script, sidebar, and background over Chrome messaging, which drops messages to closed contexts and guarantees no cross-context order — the two delivery rules absorb both; never add a message-history or last-value replay to the bus."
+    },
+    {
+      "label": "app-model-settings",
+      "branch": "refactor/app-model-settings",
+      "goal": "Settings live in the application model; the ten-retry cross-process settings pull is deleted; the preview band reads live settings.",
+      "scope": "Settings move into the model with the sidebar as a view of them (checkboxes and sliders publish settings-change intents; the model publishes the new settings; subscribers redraw). Delete the controller's retry loop (ten tries at 50 ms with default fallback). Point the preview-sample extractor at live settings from the model, fixing the preview-band-versus-table mismatch.",
+      "out_of_scope": "Registry and originals; toggle view changes.",
+      "acceptance_criteria": [
+        "The retry loop is gone; no timing-based settings access remains",
+        "A test moves a slider and asserts the preview band and the table round from the same settings values",
+        "Settings survive a sidebar close and reopen (pulled from the model on open)",
+        "All suites pass"
+      ],
+      "depends_on": ["app-model-selection"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Settings persistence across page loads stays wherever it lives today (extension storage); the model is the in-session owner, storage is its backing."
+    },
+    {
+      "label": "app-model-registry",
+      "branch": "refactor/app-model-registry",
+      "goal": "The registry of found tables, the original values, and the simplified/original flag live in the application model; the marker class becomes a style hook only.",
+      "scope": "Collapse the three stores of 'tables found' (weak map, set, marker class read-back) into one registry in the model; registry entries let go of removed tables on their own. Originals move from three page attributes into the registry entry, keyed by cell reference, merging the two restore paths. The simplified/original flag moves from a page attribute into the registry entry; the re-apply observer and the view read the model, and the nine-line guard comment protecting the shared page attribute is deleted along with the sharing. No code queries the marker class as state.",
+      "out_of_scope": "Removing the marker class from the page (it stays for styling); any detection change.",
+      "acceptance_criteria": [
+        "No read of the marker class exists outside CSS and the code that writes it for styling",
+        "One restore path; a test restores a native table and a grid through the same call",
+        "The re-apply observer works from model state: a simulated grid redraw re-applies rounding without reading page attributes",
+        "The guard comment is gone because the guarded sharing is gone",
+        "All suites pass"
+      ],
+      "depends_on": ["app-model-settings"],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "The largest behavior-risk sprint. Known accepted cost: originals in the model do not survive Chrome re-injecting the content script, which page attributes did; the design accepts this (re-injection re-detects and the model rebuilds). Freeze the magnitude basis on first sight for virtualized grids so scrolling cannot change the rounding basis — a stability-over-representativeness trade the design makes deliberately."
+    },
+    {
+      "label": "toggle-split",
+      "branch": "refactor/toggle-split",
+      "goal": "The toggle code splits into drawing (render from model state) and reporting (publish intents), and the range-flash bug on grids is fixed.",
+      "scope": "ui-toggle.js splits into a view that renders from state-change subscriptions and publishes intents, and nothing else — controller logic it holds today moves to the controller. Fix the bug found in review: the range flash assumes a native table and silently does nothing on grids; make it work on grids, with a new test that fails without the fix.",
+      "out_of_scope": "Visual changes; sidebar changes.",
+      "acceptance_criteria": [
+        "The toggle view holds no state the logic reads and calls no browser interfaces beyond rendering",
+        "A test asserts the range flash fires on a grid fixture",
+        "All suites pass; toggle appearance and behavior otherwise unchanged"
+      ],
+      "depends_on": ["app-model-selection"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Runs parallel to the settings and registry sprints (disjoint files)."
+    }
+  ]
+}
