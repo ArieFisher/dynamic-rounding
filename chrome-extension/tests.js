@@ -12511,6 +12511,29 @@ function fireMouseClick(buttonEl, fn) {
     true);
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint delete-dead-code removed ROUND_DYNAMIC, singleValueMode, datasetMode,
+// and validateOffset from core.js as unreachable: nothing in the extension
+// ever called ROUND_DYNAMIC or the two mode functions it dispatched to, and
+// validateOffset only existed to serve them. These typeof checks read the
+// bare names the main eval's function declarations leave in this module's
+// scope (the same sloppy-mode leak DR_NUMBER's helpers rely on before their
+// explicit globalThis bridge) — so a reintroduced declaration in core.js
+// flips a result from 'undefined' to 'function' even if nobody re-adds a
+// globalThis bridge or a DR_NUMBER entry for it.
+// ---------------------------------------------------------------------------
+(function deletedRoundingEntryPointsStayDeleted() {
+  eq('core.js: ROUND_DYNAMIC stays deleted', typeof ROUND_DYNAMIC, 'undefined');
+  eq('core.js: singleValueMode stays deleted', typeof singleValueMode, 'undefined');
+  eq('core.js: datasetMode stays deleted', typeof datasetMode, 'undefined');
+  eq('core.js: validateOffset stays deleted', typeof validateOffset, 'undefined');
+
+  const deletedNames = ['ROUND_DYNAMIC', 'singleValueMode', 'datasetMode', 'validateOffset'];
+  eq('lib/dr-number/index.js: DR_NUMBER does not re-expose any deleted rounding entry point',
+    deletedNames.some((n) => Object.prototype.hasOwnProperty.call(globalThis.DR_NUMBER || {}, n)),
+    false);
+})();
+
 (function libPathsLoadBeforeNonLibContentScripts() {
   // defaults.js is the one deliberate exception: it is the shared-defaults
   // config file and loads first, ahead of the lib/dr-number package itself.
