@@ -67,10 +67,23 @@ document.addEventListener('contextmenu', (event) => {
   }
 }, true);
 
+// roundTable (the simplification engine) no longer sends chrome messages
+// itself — it returns { applied, rangeStatus: 'ok'|'error', error } and
+// leaves messaging to the controller. Every call site sends the same
+// RANGE_ERROR/RANGE_OK message the engine used to send, unconditionally,
+// so observable messaging is unchanged.
+function sendRangeStatusMessage(result) {
+  if (result.rangeStatus === 'error') {
+    chrome.runtime.sendMessage({ action: 'RANGE_ERROR', error: result.error });
+  } else {
+    chrome.runtime.sendMessage({ action: 'RANGE_OK' });
+  }
+}
+
 function runToggleAction(table) {
   ensureHighlightStyleInjected();
   if (!table.querySelector('.dr-ext-rounded')) {
-    roundTable(table);
+    sendRangeStatusMessage(roundTable(table));
     chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
   } else {
     toggleOriginalValues(table);
@@ -164,7 +177,7 @@ function applySidebarRounding(table, options) {
   ensureHighlightStyleInjected();
   resetTable(table);
   if (opts.enabled !== false) {
-    roundTable(table, opts);
+    sendRangeStatusMessage(roundTable(table, opts));
     if (table.querySelector('.dr-ext-rounded')) {
       chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
     }
@@ -796,16 +809,14 @@ function roundTable(table, options) {
   const numTop = resolveNumTop(opts.numTop, DEFAULT_NUM_TOP);
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   if (rangeParse.error) {
-    chrome.runtime.sendMessage({ action: 'RANGE_ERROR', error: rangeParse.error });
-    return;
+    return { applied: false, rangeStatus: 'error', error: rangeParse.error };
   }
-  chrome.runtime.sendMessage({ action: 'RANGE_OK' });
   const ranges = rangeParse.ranges;
   const adapter = makeAdapter(table);
   const adapterRows = adapter.getRows();
   // Clean stub path: if the adapter returns no rows (e.g. GridAdapter stub),
   // return early without throwing.
-  if (adapterRows.length === 0) return;
+  if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
   const isVirtualized = adapter.isVirtualized();
 
   // --- Virtualized grid path ---
@@ -853,7 +864,7 @@ function roundTable(table, options) {
       observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
       gridObservers.set(wrapperEl, observer);
     }
-    return;
+    return { applied: true, rangeStatus: 'ok' };
   }
 
   // --- Native <table> path (byte-identical to prior implementation) ---
@@ -1012,6 +1023,7 @@ function roundTable(table, options) {
     }
   }
   syncSwitchForTable(table);
+  return { applied: true, rangeStatus: 'ok' };
 }
 
 function toggleOriginalValues(table) {
@@ -1025,7 +1037,7 @@ function toggleOriginalValues(table) {
     // reflects current parameters rather than a stale cached value.
     const opts = tableOptions.get(table) || DR_DEFAULTS;
     resetTable(table);
-    roundTable(table, opts);
+    sendRangeStatusMessage(roundTable(table, opts));
   } else {
     // Set the showing-original flag BEFORE mutating cells. Restoring grid cells
     // writes their text nodes, which fire characterData mutations the grid's
