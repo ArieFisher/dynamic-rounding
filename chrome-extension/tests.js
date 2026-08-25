@@ -14036,6 +14036,133 @@ const LADDER_OPTS = {
     table.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint engine-returns-results: pin the exact RANGE_OK/RANGE_ERROR message
+// sequence for one full toggle flow (runToggleAction -> roundTable ->
+// sendRangeStatusMessage -> chrome.runtime.sendMessage).
+//
+// Before this sprint, roundTable sent RANGE_ERROR/RANGE_OK itself. Now the
+// engine returns { applied, rangeStatus, error } and the controller sends the
+// message. The two expected sequences below (one per range-validity branch)
+// were verified byte-for-byte against content.js as it stood at commit
+// 4340bd1 (the refactor/merge-ladder tip this sprint branched from) by
+// running that commit's real content.js through this same vm harness and
+// diffing the captured chrome.runtime.sendMessage sequence against the one
+// captured here. They were identical. This test pins that verified sequence
+// so a future change cannot silently drop or duplicate a message.
+// ---------------------------------------------------------------------------
+(function engineReturnsResults_rangeStatusMessageSequence() {
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('range-status sequence: source file content.js present in manifest', false, true);
+    return;
+  }
+
+  // Isolated vm context per run so module-level state (DR_DEFAULTS mutation,
+  // highlightStyleInjected, tableOptions) never bleeds between the two
+  // scenarios below.
+  function runFullToggleFlow(rangeExprOverride) {
+    const sentMessages = [];
+    const sandbox = {
+      document: {
+        addEventListener() {},
+        querySelectorAll() { return []; },
+        readyState: 'complete',
+        body: { appendChild() {} },
+        createElement() { return { textContent: '' }; },
+        head: { appendChild() {} },
+        createTreeWalker(cell) {
+          let done = false;
+          return {
+            nextNode() {
+              if (done) return null;
+              done = true;
+              return {
+                get nodeValue() { return this._val !== undefined ? this._val : cell.innerText; },
+                set nodeValue(v) { cell.innerText = v; cell.textContent = v; this._val = v; },
+              };
+            },
+          };
+        },
+      },
+      window: {
+        addEventListener() {},
+        getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+      },
+      NodeFilter: { SHOW_TEXT: 4 },
+      Node: { ELEMENT_NODE: 1 },
+      MutationObserver: class { observe() {} disconnect() {} },
+      ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
+      chrome: {
+        runtime: {
+          sendMessage(msg) { sentMessages.push(msg); },
+          onMessage: { addListener() {} },
+          lastError: null,
+        },
+      },
+    };
+    const vm = require('vm');
+    const ctx = vm.createContext(sandbox);
+    const bundle = contentScriptFiles
+      .map((file) => (file === 'content.js' ? contentSrc : contentScriptSources.get(file)))
+      .join('\n');
+    vm.runInContext(
+      bundle + '\nthis.__runToggleAction = runToggleAction; this.__DR_DEFAULTS = DR_DEFAULTS;',
+      ctx
+    );
+
+    // 2x2 so the target cell (row 1, col 1) sits outside DR_DEFAULTS's
+    // simplifyFirstRow/simplifyFirstColumn: false exclusion — DR_DEFAULTS
+    // (unlike the no-chrome e2e fixture above) is used as-is here, matching
+    // runToggleAction's real call, which passes no per-call options.
+    const table = makeMockTable([
+      [{ tag: 'td', text: 'label' }, { tag: 'td', text: 'header' }],
+      [{ tag: 'td', text: 'label' }, { tag: 'td', text: '1,234,567' }],
+    ]);
+    // runToggleAction unconditionally ends with flashRangePulse(table, null),
+    // which flashes the whole-table outline via table.classList — a real
+    // <table> element has this; the bare mock from makeMockTable does not.
+    table.classList = { add() {}, remove() {} };
+    if (rangeExprOverride !== undefined) {
+      sandbox.__DR_DEFAULTS.rangeExpr = rangeExprOverride;
+    }
+    let threw = null;
+    try {
+      sandbox.__runToggleAction(table);
+    } catch (e) {
+      threw = e.message;
+    }
+    return { sentMessages, threw, table };
+  }
+
+  // --- Scenario 1: valid range (default rangeExpr === '') -> rounds, RANGE_OK ---
+  const okRun = runFullToggleFlow(undefined);
+  eq('range-status sequence (valid range): runToggleAction does not throw',
+    okRun.threw, null);
+  eq('range-status sequence (valid range): exact message sequence matches parent-branch capture',
+    okRun.sentMessages,
+    [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ]);
+  eq('range-status sequence (valid range): the cell was actually rounded',
+    okRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), true);
+
+  // --- Scenario 2: invalid range ("1a" matches neither a column letter nor a
+  // row number pattern) -> no rounding, RANGE_ERROR with the parse error ---
+  const errorRun = runFullToggleFlow('1a');
+  eq('range-status sequence (invalid range): runToggleAction does not throw',
+    errorRun.threw, null);
+  eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture',
+    errorRun.sentMessages,
+    [
+      { action: 'RANGE_ERROR', error: 'Invalid range: "1a"' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ]);
+  eq('range-status sequence (invalid range): the cell was NOT rounded',
+    errorRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), false);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
