@@ -20,8 +20,9 @@
 
 let lastRightClickedElement = null;
 // Widened contract: may hold a <table> element OR a div-based grid root (any
-// element carrying class dr-ext-grid or returned by findTargetTable). All
-// callers that previously assumed HTMLTableElement must tolerate any Element.
+// element carrying class dr-ext-grid or returned by findTargetTable's
+// .handle). All callers that previously assumed HTMLTableElement must
+// tolerate any Element.
 let lastRightClickedTable = null;
 let sidebarOpen = false;
 
@@ -38,10 +39,24 @@ const gridReapplyTimers = new WeakMap();
 
 const ACTION_TABLE_ACTIVATED = 'TABLE_ACTIVATED';
 
+// findTargetTable() only reports what it found; it never writes the
+// dr-ext-grid marker or builds the toggle widget. When it discovers a grid
+// root for the first time (found.isNew), this caller does both, exactly as
+// findTargetTable used to do internally before the sprint that split
+// detection into lib/dr-table.
+function markAndToggleIfNewGrid(found) {
+  if (found.isNew) {
+    found.handle.classList.add('dr-ext-grid');
+    createToggleForTable(found.handle);
+  }
+  return found.handle;
+}
+
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
-  const table = findTargetTable(event.target);
-  if (table) {
+  const found = findTargetTable(event.target);
+  if (found) {
+    const table = markAndToggleIfNewGrid(found);
     lastRightClickedTable = table;
     flashTargetedTable(table);
     try {
@@ -68,9 +83,9 @@ function runToggleAction(table) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'MENU_CLICKED') {
     if (lastRightClickedElement) {
-      const table = findTargetTable(lastRightClickedElement);
-      if (table) {
-        runToggleAction(table);
+      const found = findTargetTable(lastRightClickedElement);
+      if (found) {
+        runToggleAction(markAndToggleIfNewGrid(found));
       } else {
         console.debug("Dynamic Rounding: No table found at right-click location.");
       }

@@ -14,6 +14,18 @@
  * constants and the structure-preserving cell-write helpers
  * (replaceTextPreservingHTML, applyExtractedPatches, getSuperscriptRanges,
  * link filtering). Loaded by manifest content_scripts before content.js.
+ *
+ * This file is the lib/dr-table package's detection layer. Detection
+ * (isDataTable, looksLikeGrid, findTargetTable, isPhantomA11yTable) reports
+ * findings only — it never writes a marker class or builds a toggle widget.
+ * Callers (ui-toggle.js, content.js) own both: they check their own "seen"
+ * registry (a WeakMap or the dr-ext-grid class) and, for a first-time match,
+ * write the marker and construct the widget.
+ *
+ * Every environment-sensitive read (computed style, offsetWidth, number
+ * parsing, the vendor grid selectors, `document` itself) goes through a
+ * small port with a working default, so the functions below run under a
+ * plain Node/jsdom-less context with no Chrome globals and no `window`.
  */
 
 // Grid detection constants
@@ -25,12 +37,80 @@ const GRID_WALK_DEPTH_CAP = 15;
 const GRID_COL_WIDTH_SAMPLE = 10;
 /** CSS display values that indicate a grid/flex layout. */
 const GRID_DISPLAY_VALUES = new Set(['grid', 'flex', 'inline-grid', 'inline-flex']);
-/** Library class substrings that short-circuit the geometry probe. */
-const GRID_LIBRARY_CLASS_TOKENS = ['dg--', 'ag-'];
 /** CSS selector for the cheap proactive ARIA pass. */
 const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
 /** Debounce delay (ms) for the grid virtualization re-apply observer. */
 const GRID_REAPPLY_DEBOUNCE_MS = 100;
+/** Node.ELEMENT_NODE, with a fallback for contexts with no `Node` global (its value, 1, is part of the DOM spec and never changes). */
+const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE) || 1;
+
+// --- Ports: pluggable defaults for environment-sensitive reads ---
+// Each accepts an optional `opts` bag on the calling function; every default
+// below mirrors this file's pre-port behavior exactly when the real browser
+// globals are present, and degrades to a safe, working default when they are
+// not — that degradation, not a thrown error, is what lets detection run
+// standalone (a Node script, a unit test, a future non-extension host).
+
+/**
+ * StyleProbe: the shared source for every guarded getComputedStyle/offsetWidth
+ * read in this file (looksLikeGrid's display and column-width checks,
+ * isPhantomA11yTable's positioned-ancestor check, getSuperscriptRanges'
+ * vertical-align check). With no real getComputedStyle, assumes a normal,
+ * visible, statically-positioned block element — the jsdom-less default that
+ * lets detection keep running instead of reasoning from an absent style.
+ */
+const DEFAULT_STYLE_PROBE = {
+  getComputedStyle(el) {
+    if (typeof getComputedStyle === 'function') {
+      try { return getComputedStyle(el) || null; } catch (e) { return null; }
+    }
+    return { display: 'block', visibility: 'visible', position: 'static', left: '', verticalAlign: '' };
+  },
+  getOffsetWidth(el) {
+    return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1;
+  },
+};
+
+/**
+ * NumericProbe: parses a cell's text to a number for the "does this look
+ * numeric" checks in looksLikeGrid/isDataTable. This default is a
+ * self-contained, byte-equivalent port of the predicate detection used
+ * before the lib/dr-table extraction: strip currency/comma/percent/
+ * whitespace symbols, then parseFloat. It deliberately does NOT delegate to
+ * DR_NUMBER.toNumber — that parser's unicode-minus and parenthesized-negative
+ * handling changes which tables are detected (dates, times, and unit-suffixed
+ * cells lose their toggle; accounting negatives gain one). A caller that
+ * wants DR_NUMBER-aware detection passes a custom probe via opts.numericProbe.
+ */
+const DEFAULT_NUMERIC_PROBE = {
+  parse(text) {
+    const cleaned = String(text).trim().replace(/[$€£¥,\s%]/g, '');
+    if (cleaned === '') return null;
+    const parsed = parseFloat(cleaned);
+    return isFinite(parsed) ? parsed : null;
+  },
+};
+
+/**
+ * VendorProfiles: known third-party grid libraries. `classToken` short-
+ * circuits looksLikeGrid's geometry probe; `scrollContainerSelectors` /
+ * `pinnedPaneSelectors` resolve GridAdapter's scroll and pinned panes.
+ * A consumer may pass a custom list via opts.vendorProfiles.
+ */
+const DEFAULT_VENDOR_PROFILES = [
+  {
+    name: 'databricks',
+    classToken: 'dg--',
+    scrollContainerSelectors: ['.dg--grid-scroll-container', '.dg--grid-container'],
+    pinnedPaneSelectors: ['.dg--pinned-grid'],
+  },
+  {
+    name: 'ag-grid',
+    classToken: 'ag-',
+    scrollContainerSelectors: ['.ag-center-cols-viewport'],
+    pinnedPaneSelectors: ['.ag-pinned-left-cols-container'],
+  },
+];
 
 // --- TableAdapter abstraction ---
 // Two adapter classes provide a uniform row/cell interface over both native
@@ -95,8 +175,9 @@ function findCellTextNode(cellEl) {
 const GRID_ROUNDED_CLASS = 'dr-ext-rounded';
 
 class GridAdapter {
-  constructor(el) {
+  constructor(el, opts = {}) {
     this.el = el;
+    this.vendorProfiles = opts.vendorProfiles || DEFAULT_VENDOR_PROFILES;
   }
   getElement() { return this.el; }
   isVirtualized() { return true; }
@@ -107,11 +188,10 @@ class GridAdapter {
    */
   _getScrollContainer() {
     const el = this.el;
-    // Known library selectors (single-pane Databricks, AG Grid, etc.)
+    // Known library selectors (single-pane Databricks, AG Grid, etc.), plus
+    // the generic ARIA grid role as a final, vendor-agnostic fallback.
     const knownSelectors = [
-      '.dg--grid-scroll-container',
-      '.dg--grid-container',
-      '.ag-center-cols-viewport',
+      ...this.vendorProfiles.flatMap((p) => p.scrollContainerSelectors || []),
       '[role="grid"]',
     ];
     for (const sel of knownSelectors) {
@@ -134,10 +214,7 @@ class GridAdapter {
    * Returns null for single-pane grids (Databricks).
    */
   _getPinnedPane(scrollContainer) {
-    const pinnedSelectors = [
-      '.dg--pinned-grid',
-      '.ag-pinned-left-cols-container',
-    ];
+    const pinnedSelectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
     const el = this.el;
     for (const sel of pinnedSelectors) {
       const found = el.querySelector && el.querySelector(sel);
@@ -310,11 +387,11 @@ class GridAdapter {
  * Duck-typing fallback: plain objects with a `rows` property (e.g. test stubs)
  * are treated as native tables since they expose the same row/cell interface.
  */
-function makeAdapter(el) {
+function makeAdapter(el, opts = {}) {
   if (el.tagName === 'TABLE' || (el.tagName === undefined && el.rows)) {
     return new NativeTableAdapter(el);
   }
-  return new GridAdapter(el);
+  return new GridAdapter(el, opts);
 }
 
 /**
@@ -329,18 +406,22 @@ function makeAdapter(el) {
  * <sup> element (or has verticalAlign 'super'), record {start: cursor, end: cursor + len}.
  *
  * Guards:
- * - If document.createTreeWalker is unavailable, returns [].
- * - getComputedStyle is only called when typeof getComputedStyle === 'function', so the
- *   helper never throws in the Node test harness.
+ * - If doc.createTreeWalker is unavailable, returns [].
+ * - The vertical-align check goes through opts.styleProbe (default:
+ *   DEFAULT_STYLE_PROBE), so the helper never throws when getComputedStyle
+ *   is absent.
  * @param {Element} cell
+ * @param {{doc?: Document, styleProbe?: object}} [opts]
  * @returns {{start: number, end: number}[]}
  */
-function getSuperscriptRanges(cell) {
-  if (!cell || typeof document === 'undefined' || typeof document.createTreeWalker !== 'function') {
+function getSuperscriptRanges(cell, opts = {}) {
+  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
+  const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
+  if (!cell || !doc || typeof doc.createTreeWalker !== 'function') {
     return [];
   }
   const ranges = [];
-  const treeWalker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
+  const treeWalker = doc.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
   let cursor = 0;
   let node;
   while ((node = treeWalker.nextNode())) {
@@ -354,16 +435,12 @@ function getSuperscriptRanges(cell) {
           isSup = true;
           break;
         }
-        // Also check computed verticalAlign, but only when getComputedStyle is available
-        // (it may be absent in the Node test harness).
-        if (!isSup && typeof getComputedStyle === 'function') {
-          try {
-            const style = getComputedStyle(ancestor);
-            if (style && style.verticalAlign === 'super') {
-              isSup = true;
-              break;
-            }
-          } catch (e) { /* ignore */ }
+        if (!isSup) {
+          const style = styleProbe.getComputedStyle(ancestor);
+          if (style && style.verticalAlign === 'super') {
+            isSup = true;
+            break;
+          }
         }
         ancestor = ancestor.parentNode || ancestor.parentElement;
       }
@@ -566,13 +643,18 @@ function applyExtractedPatches(cell, patches) {
  *
  * Short-circuit ACCEPT (skip step 6) when el carries:
  *   - role="grid" or role="table"  (ARIA)
- *   - a class containing "dg--" or "ag-"  (known library prefixes)
+ *   - a class matching one of opts.vendorProfiles' classToken (default:
+ *     DEFAULT_VENDOR_PROFILES — "dg--" or "ag-")
  *
  * @param {Element} el
+ * @param {{styleProbe?: object, numericProbe?: object, vendorProfiles?: object[]}} [opts]
  * @returns {boolean}
  */
-function looksLikeGrid(el) {
+function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
+  const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
+  const numericProbe = opts.numericProbe || DEFAULT_NUMERIC_PROBE;
+  const vendorProfiles = opts.vendorProfiles || DEFAULT_VENDOR_PROFILES;
 
   // --- Step 1: Child count ≥ GRID_MIN_CHILDREN ---
   const children = Array.from(el.children);
@@ -610,10 +692,8 @@ function looksLikeGrid(el) {
   const candidateRows = children.filter(c => c.children.length === modalChildCount);
 
   // --- Step 4: Layout — display is grid or flex ---
-  let display = '';
-  if (typeof getComputedStyle === 'function') {
-    try { display = getComputedStyle(el).display || ''; } catch (e) { /* ignore */ }
-  }
+  const computedForDisplay = styleProbe.getComputedStyle(el);
+  const display = (computedForDisplay && computedForDisplay.display) || '';
   if (!GRID_DISPLAY_VALUES.has(display)) return false;
 
   // --- Step 5: Numeric content — ≥ 1 cell parses as a finite number (mandatory) ---
@@ -621,8 +701,9 @@ function looksLikeGrid(el) {
   outer:
   for (const row of candidateRows) {
     for (const cell of Array.from(row.children)) {
-      const text = (cell.textContent || '').trim().replace(CLEAN_REGEX, '');
-      if (text !== '' && isFinite(parseFloat(text))) { hasNumeric = true; break outer; }
+      const text = (cell.textContent || '').trim();
+      const parsed = text === '' ? null : numericProbe.parse(text);
+      if (parsed !== null && isFinite(parsed)) { hasNumeric = true; break outer; }
     }
   }
   if (!hasNumeric) return false;
@@ -631,12 +712,12 @@ function looksLikeGrid(el) {
   const role = el.getAttribute && el.getAttribute('role');
   if (role === 'grid' || role === 'table') return true;
   const elClass = (el.className && typeof el.className === 'string') ? el.className : '';
-  if (GRID_LIBRARY_CLASS_TOKENS.some(token => elClass.includes(token))) return true;
+  if (vendorProfiles.some(profile => elClass.includes(profile.classToken))) return true;
 
   // --- Step 6: Column-width alignment — sample offsetWidth of column-0 cells ---
   // Bounded to GRID_COL_WIDTH_SAMPLE rows; only runs when all prior steps passed.
   const sample = candidateRows.slice(0, GRID_COL_WIDTH_SAMPLE);
-  const widths = sample.map(row => row.children[0] ? row.children[0].offsetWidth : -1)
+  const widths = sample.map(row => row.children[0] ? styleProbe.getOffsetWidth(row.children[0]) : -1)
                        .filter(w => w > 0);
   if (widths.length < 2) return true; // too few rows to measure — benefit of the doubt
   const firstWidth = widths[0];
@@ -654,40 +735,51 @@ function looksLikeGrid(el) {
  *   3. Walk UP from el calling looksLikeGrid at each ancestor; return the
  *      OUTERMOST match — keep walking while the parent also passes; stop when
  *      the parent fails, is <body>, or depth exceeds GRID_WALK_DEPTH_CAP.
- *      On a new match: add dr-ext-grid, call createToggleForTable, return it.
+ *
+ * REPORTS only — this function never writes the dr-ext-grid marker class and
+ * never builds a toggle widget. It returns { handle, isNew }, where `handle`
+ * is the resolved element and `isNew` tells the caller whether this is the
+ * first time the walk-up path (case 3) has resolved to this element — i.e.
+ * whether the caller still needs to mark it and construct its widget. Cases
+ * 1 and 2 resolve to an element the caller already knows how to handle
+ * (a bare <table>, or an already-marked grid root), so isNew is always false
+ * for them; only case 3 can discover a not-yet-seen grid root.
  *
  * Returns null if nothing found.
  *
  * @param {Element} el
- * @returns {Element|null}
+ * @param {{styleProbe?: object, numericProbe?: object, vendorProfiles?: object[], doc?: Document}} [opts]
+ * @returns {{handle: Element, isNew: boolean}|null}
  */
-function findTargetTable(el) {
+function findTargetTable(el, opts = {}) {
   if (!el) return null;
+  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
 
   // 1. Nearest <table> ancestor.
   if (typeof el.closest === 'function') {
     const tableAncestor = el.closest('table');
-    if (tableAncestor) return tableAncestor;
+    if (tableAncestor) return { handle: tableAncestor, isNew: false };
   }
 
   // 2. Nearest ancestor already tagged as a grid root.
   if (typeof el.closest === 'function') {
     const existingGrid = el.closest('.dr-ext-grid');
-    if (existingGrid) return existingGrid;
+    if (existingGrid) return { handle: existingGrid, isNew: false };
   }
 
   // 3. Walk up, calling looksLikeGrid; return the outermost consecutive match.
   let current = el.parentElement || el.parentNode;
   let depth = 0;
   let outermost = null;
+  const docBody = doc && doc.body;
 
-  while (current && current !== document.body && depth < GRID_WALK_DEPTH_CAP) {
-    if (current.nodeType !== Node.ELEMENT_NODE) {
+  while (current && current !== docBody && depth < GRID_WALK_DEPTH_CAP) {
+    if (current.nodeType !== DR_TABLE_ELEMENT_NODE) {
       current = current.parentElement || current.parentNode;
       depth++;
       continue;
     }
-    if (looksLikeGrid(current)) {
+    if (looksLikeGrid(current, opts)) {
       outermost = current;
       // Keep walking to find the outermost matching container.
     } else if (outermost !== null) {
@@ -699,11 +791,7 @@ function findTargetTable(el) {
   }
 
   if (outermost !== null) {
-    if (!outermost.classList.contains('dr-ext-grid')) {
-      outermost.classList.add('dr-ext-grid');
-      createToggleForTable(outermost);
-    }
-    return outermost;
+    return { handle: outermost, isNew: !outermost.classList.contains('dr-ext-grid') };
   }
 
   return null;
@@ -722,9 +810,11 @@ const OFFSCREEN_LEFT_PX_THRESHOLD = -9999;
  * when available.  Returns null when no positioned ancestor is found.
  *
  * @param {Element} el
+ * @param {{styleProbe?: object}} [opts]
  * @returns {Element|null}
  */
-function _nearestPositionedAncestor(el) {
+function _nearestPositionedAncestor(el, opts = {}) {
+  const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   const POSITIONED = new Set(['relative', 'absolute', 'fixed', 'sticky']);
   let current = el;
   while (current) {
@@ -738,9 +828,10 @@ function _nearestPositionedAncestor(el) {
     if (current.style && typeof current.style.position === 'string') {
       pos = current.style.position;
     }
-    // Computed style when inline is absent and getComputedStyle is available
-    if (!pos && typeof getComputedStyle === 'function') {
-      try { pos = getComputedStyle(current).position || ''; } catch (e) { /* ignore */ }
+    // Computed style when inline is absent
+    if (!pos) {
+      const style = styleProbe.getComputedStyle(current);
+      if (style && style.position) pos = style.position;
     }
     if (POSITIONED.has(pos)) return current;
     current = current.parentElement || current.parentNode || null;
@@ -775,9 +866,11 @@ function _parsePx(value) {
  *      table is an a11y fallback for a chart rendered by that SVG.
  *
  * @param {Element} table
+ * @param {{styleProbe?: object}} [opts]
  * @returns {boolean}
  */
-function isPhantomA11yTable(table) {
+function isPhantomA11yTable(table, opts = {}) {
+  const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   if (!table || typeof table.getAttribute !== 'function') return false;
 
   // --- Signal 1: aria-hidden on self or any ancestor ---
@@ -792,7 +885,7 @@ function isPhantomA11yTable(table) {
   }
 
   // --- Signal 2: nearest positioned ancestor has left ≤ threshold ---
-  const posAncestor = _nearestPositionedAncestor(table);
+  const posAncestor = _nearestPositionedAncestor(table, opts);
   const checkEl = posAncestor || table;
 
   let leftVal = NaN;
@@ -801,11 +894,9 @@ function isPhantomA11yTable(table) {
     leftVal = _parsePx(checkEl.style.left);
   }
   // Fall back to computed style when inline is absent
-  if (isNaN(leftVal) && typeof getComputedStyle === 'function') {
-    try {
-      const computed = getComputedStyle(checkEl);
-      if (computed && computed.left) leftVal = _parsePx(computed.left);
-    } catch (e) { /* ignore */ }
+  if (isNaN(leftVal)) {
+    const computed = styleProbe.getComputedStyle(checkEl);
+    if (computed && computed.left) leftVal = _parsePx(computed.left);
   }
   if (!isNaN(leftVal) && leftVal <= OFFSCREEN_LEFT_PX_THRESHOLD) return true;
 
@@ -829,8 +920,14 @@ function isPhantomA11yTable(table) {
   return false;
 }
 
-function isDataTable(table) {
-  const adapter = makeAdapter(table);
+/**
+ * @param {Element} table
+ * @param {{numericProbe?: object, vendorProfiles?: object[]}} [opts]
+ * @returns {boolean}
+ */
+function isDataTable(table, opts = {}) {
+  const numericProbe = opts.numericProbe || DEFAULT_NUMERIC_PROBE;
+  const adapter = makeAdapter(table, opts);
   const rows = adapter.getRows();
   if (rows.length < 2) return false;
   let hasMultipleColumns = false;
@@ -850,9 +947,64 @@ function isDataTable(table) {
     for (let j = 0; j < cells.length; j++) {
       if (cellCount >= maxCells) return false;
       cellCount++;
-      const text = cells[j].getText().trim().replace(CLEAN_REGEX, '');
-      if (text !== '' && isFinite(parseFloat(text))) return true;
+      const text = cells[j].getText().trim();
+      if (text === '') continue;
+      const parsed = numericProbe.parse(text);
+      if (parsed !== null && isFinite(parsed)) return true;
     }
   }
   return false;
+}
+
+/**
+ * Scan `root` for native <table> elements and ARIA grid roots ([role="grid"]
+ * or [role="table"]), mirroring the two-pass order the toggle scanners use
+ * (native tables first, then a cheap ARIA pass for div-based grids whose
+ * table descendants — if any — are all accessibility artifacts already
+ * dropped by tableFilter).
+ *
+ * REPORTS only — like findTargetTable, this never writes the dr-ext-grid
+ * marker class and never builds a toggle widget. Each result is
+ * { handle, isNew }; isNew is computed from opts.isSeen (a caller-supplied
+ * "have I already handled this element" check — e.g. `tableToggles.has` for
+ * native tables, or a dr-ext-grid classList check for grid roots). Without
+ * opts.isSeen every result reports isNew: true, since detection keeps no
+ * registry of its own.
+ *
+ * @param {Element|Document} root
+ * @param {{
+ *   tableFilter?: (table: Element) => boolean,
+ *   isSeen?: (handle: Element) => boolean,
+ *   styleProbe?: object, numericProbe?: object, vendorProfiles?: object[],
+ * }} [opts]
+ * @returns {{handle: Element, isNew: boolean}[]}
+ */
+function findTables(root, opts = {}) {
+  if (!root || typeof root.querySelectorAll !== 'function') return [];
+  const tableFilter = opts.tableFilter || isPhantomA11yTable;
+  const isSeen = opts.isSeen || (() => false);
+  const results = [];
+
+  // Pass 1: native <table> elements; tableFilter drops accessibility artifacts.
+  const nativeTables = root.tagName === 'TABLE' ? [root] : Array.from(root.querySelectorAll('table'));
+  for (const table of nativeTables) {
+    if (tableFilter(table, opts)) continue;
+    results.push({ handle: table, isNew: !isSeen(table) });
+  }
+
+  // Pass 2: cheap ARIA pass for div-based grid roots. Skip a root already
+  // covered by pass 1, and skip a grid root whose only table descendants are
+  // accessibility artifacts pass 1 dropped (so a grid that embeds nothing but
+  // a phantom a11y table is still found here).
+  const rootIsAriaRoot = root.tagName !== 'TABLE' && typeof root.matches === 'function' && root.matches(GRID_ARIA_SELECTOR);
+  const ariaCandidates = (rootIsAriaRoot ? [root] : []).concat(Array.from(root.querySelectorAll(GRID_ARIA_SELECTOR)));
+  for (const el of ariaCandidates) {
+    if (el.tagName === 'TABLE') continue;
+    if (results.some((r) => r.handle === el)) continue;
+    const nestedTables = typeof el.querySelectorAll === 'function' ? Array.from(el.querySelectorAll('table')) : [];
+    if (nestedTables.some((t) => !tableFilter(t, opts))) continue; // a real native table inside — pass 1 owns it
+    results.push({ handle: el, isNew: !isSeen(el) });
+  }
+
+  return results;
 }
