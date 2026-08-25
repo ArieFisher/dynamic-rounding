@@ -198,6 +198,9 @@ def _round_with_offset(value: float, offset: float) -> float:
             floor_x = _round_with_offset(absval, x_int)
             result = max(result, abs(floor_x))
 
+    # Strip IEEE-754 float noise from sub-unit steps (e.g. 11 * 0.1 = 1.1000...01).
+    result = float(f'{result:.12g}')
+
     return sign * result
 
 
