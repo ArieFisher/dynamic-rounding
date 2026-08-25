@@ -19,9 +19,10 @@
       ],
       "js": [
         "defaults.js",
-        "rounding.js",
-        "core.js",
-        "parsing.js",
+        "lib/dr-number/rounding.js",
+        "lib/dr-number/core.js",
+        "lib/dr-number/parsing.js",
+        "lib/dr-number/index.js",
         "dom-adapters.js",
         "ui-toggle.js",
         "content.js"

@@ -66,8 +66,8 @@ function sourceByName(name) {
 const contentScriptBundle = contentScriptFiles
   .map((file) => contentScriptSources.get(file))
   .join('\n');
-const coreCode = sourceByName('core.js');
-const parsingCode = sourceByName('parsing.js');
+const coreCode = sourceByName('lib/dr-number/core.js');
+const parsingCode = sourceByName('lib/dr-number/parsing.js');
 const domAdaptersCode = sourceByName('dom-adapters.js');
 const uiToggleCode = sourceByName('ui-toggle.js');
 // Combined source for "source-includes" assertions that no longer care which
@@ -75,6 +75,7 @@ const uiToggleCode = sourceByName('ui-toggle.js');
 const allContentSrc = contentScriptBundle;
 eval(contentScriptBundle + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
+globalThis.DR_NUMBER = DR_NUMBER;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
@@ -1820,10 +1821,12 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, rounding, core, parsing, dom-adapters, ui-toggle, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, dr-number package, dom-adapters, ui-toggle, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
-      'defaults.js', 'rounding.js', 'core.js',
-      'parsing.js', 'dom-adapters.js', 'ui-toggle.js', 'content.js',
+      'defaults.js',
+      'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
+      'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
+      'dom-adapters.js', 'ui-toggle.js', 'content.js',
     ]), true);
 
   // AC3: (sidebar-tidyup) the old "section-heading" with "Include numbers in cells containing:"
@@ -3378,7 +3381,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // Re-eval content.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor
   // gates on the constant. We sandbox the patched source so the eq()
   // assertions below don't disturb the live extension globals.
-  const roundingSrc = sourceByName('rounding.js');
+  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const contentSrc = sourceByName('content.js');
   if (roundingSrc === null || contentSrc === null || coreCode === null ||
       parsingCode === null || domAdaptersCode === null || uiToggleCode === null) {
@@ -4309,13 +4312,14 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 
 (function previewBand_manifestLoadsRoundingJs() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('manifest content_scripts loads rounding.js between defaults.js and content.js',
-    manifest.content_scripts[0].js[1], 'rounding.js');
+  eq('manifest content_scripts loads lib/dr-number/rounding.js between defaults.js and content.js',
+    manifest.content_scripts[0].js[1], 'lib/dr-number/rounding.js');
 })();
 
-// The extracted layers (core.js + the Phase 2 split: parsing.js, dom-adapters.js,
-// ui-toggle.js) must all load AFTER rounding.js and BEFORE content.js — content.js
-// runs last because it holds the only load-time-executing code (listeners and the
+// The extracted layers (the lib/dr-number package: rounding.js, core.js,
+// parsing.js, index.js, plus the Phase 2 split: dom-adapters.js, ui-toggle.js)
+// must all load AFTER defaults.js and BEFORE content.js — content.js runs last
+// because it holds the only load-time-executing code (listeners and the
 // MutationObserver wiring). This ordering is duplicated in three places (manifest
 // content_scripts, sidebar.html, and this harness's eval concatenation); they must
 // stay in lockstep.
@@ -4323,18 +4327,22 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   const js = manifest.content_scripts[0].js;
   const after = (a, b) => js.indexOf(a) > -1 && js.indexOf(b) > -1 && js.indexOf(a) < js.indexOf(b);
-  eq('manifest: rounding.js < core.js < parsing.js < dom-adapters.js < ui-toggle.js < content.js',
-    after('rounding.js', 'core.js') && after('core.js', 'parsing.js') &&
-    after('parsing.js', 'dom-adapters.js') && after('dom-adapters.js', 'ui-toggle.js') &&
+  eq('manifest: rounding.js < core.js < parsing.js < index.js < dom-adapters.js < ui-toggle.js < content.js',
+    after('lib/dr-number/rounding.js', 'lib/dr-number/core.js') &&
+    after('lib/dr-number/core.js', 'lib/dr-number/parsing.js') &&
+    after('lib/dr-number/parsing.js', 'lib/dr-number/index.js') &&
+    after('lib/dr-number/index.js', 'dom-adapters.js') &&
+    after('dom-adapters.js', 'ui-toggle.js') &&
     after('ui-toggle.js', 'content.js'), true);
   eq('manifest: content.js loads last', js[js.length - 1], 'content.js');
 
   // The sidebar deliberately does NOT load the content-only layers — it only
   // needs the pure domain (defaults, rounding, core).
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  eq('sidebar.html loads core.js after rounding.js and before sidebar.js',
-    /rounding\.js[\s\S]*core\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
-  eq('sidebar.html does not load content-only parsing.js', sidebarHtml.includes('parsing.js'), false);
+  eq('sidebar.html loads lib/dr-number/core.js after lib/dr-number/rounding.js and before sidebar.js',
+    /lib\/dr-number\/rounding\.js[\s\S]*lib\/dr-number\/core\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+  eq('sidebar.html does not load content-only lib/dr-number/parsing.js', sidebarHtml.includes('lib/dr-number/parsing.js'), false);
+  eq('sidebar.html does not load content-only lib/dr-number/index.js', sidebarHtml.includes('lib/dr-number/index.js'), false);
   eq('sidebar.html does not load content-only dom-adapters.js', sidebarHtml.includes('dom-adapters.js'), false);
   eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
 
@@ -4356,8 +4364,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('sidebar.html has #topBand', /<div[^>]*id="topBand"/.test(sidebarHtml), true);
   eq('sidebar.html has #botBand', /<div[^>]*id="botBand"/.test(sidebarHtml), true);
-  eq('sidebar.html loads rounding.js before sidebar.js',
-    /rounding\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+  eq('sidebar.html loads lib/dr-number/rounding.js before sidebar.js',
+    /lib\/dr-number\/rounding\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -10645,8 +10653,8 @@ function fireMouseClick(buttonEl, fn) {
   global.chrome.runtime.onMessage.addListener = (fn) => { capturedOnMessageHandler = fn; };
 
   const defaultsSrcForFlash = sourceByName('defaults.js');
-  const roundingSrcForFlash = sourceByName('rounding.js');
-  const coreSrcForFlash = sourceByName('core.js');
+  const roundingSrcForFlash = sourceByName('lib/dr-number/rounding.js');
+  const coreSrcForFlash = sourceByName('lib/dr-number/core.js');
   if (defaultsSrcForFlash === null || roundingSrcForFlash === null || coreSrcForFlash === null) {
     eq('table-activation AC2 live: source files (defaults/rounding/core) present in manifest',
       false, true);
@@ -12379,7 +12387,9 @@ function fireMouseClick(buttonEl, fn) {
 // ---------------------------------------------------------------------------
 (function manifestDrivenSourceLoading() {
   const CONTENT_SCRIPT_FILES = [
-    'defaults.js', 'rounding.js', 'core.js', 'parsing.js',
+    'defaults.js',
+    'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
+    'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
     'dom-adapters.js', 'ui-toggle.js', 'content.js',
   ];
 
@@ -12460,8 +12470,103 @@ function fireMouseClick(buttonEl, fn) {
   // vacuously pass instead of catching a real regression.
   // NOTE: this count changes when a content-script package is added to or
   // removed from manifest.json; update it alongside the manifest edit.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 7 files today',
-    manifest.content_scripts[0].js.length, 7);
+  // Sprint extract-dr-number replaced rounding.js/core.js/parsing.js with the
+  // four-file lib/dr-number package (rounding.js, core.js, parsing.js,
+  // index.js), raising the count from 7 to 8.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 8 files today',
+    manifest.content_scripts[0].js.length, 8);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint extract-dr-number: the pure number-logic package now lives under
+// lib/dr-number/ (rounding.js, core.js, parsing.js, index.js). These two
+// tests are the discipline checks the sprint calls for: (a) index.js's only
+// job — assigning every public function onto one DR_NUMBER bundle — actually
+// happened, and (b) every lib/ content script the manifest lists loads before
+// any non-lib content script, so the package boundary shows up in load order,
+// not just in the filesystem.
+// ---------------------------------------------------------------------------
+(function drNumberBundleIsPublished() {
+  const EXPECTED_DR_NUMBER_NAMES = [
+    // rounding.js
+    'roundWithOffset', 'roundCellSetAware', 'stepForOffset', 'formatStep', 'trimNum',
+    // core.js
+    'ROUND_DYNAMIC', 'singleValueMode', 'datasetMode', 'findMaxMagnitude', 'toNumber', 'validateOffset',
+    // parsing.js
+    'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
+    'isInRanges', 'resolveOffset', 'resolveNumTop', 'getExclusionReason',
+    'resolveMonthName', 'normalizeDateCandidate', 'parseDateLike', 'parseAmbiguousNumericDate',
+    'isDateLike', 'isTimeLike', 'parseISODateTime', 'isDateTimeLike',
+    'roundDateText', 'roundISODateTime', 'roundTimeText',
+    'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumberInText', 'extractNumbersInText',
+    'eraYearDigitRanges', 'isEraYear', 'decimalCount', 'formatExtractedNumber', 'restoreFormatting',
+  ].sort();
+
+  eq('lib/dr-number/index.js: DR_NUMBER exists on the global scope after the main eval',
+    typeof globalThis.DR_NUMBER, 'object');
+  eq('lib/dr-number/index.js: DR_NUMBER exposes exactly the expected public function names',
+    Object.keys(globalThis.DR_NUMBER || {}).sort(), EXPECTED_DR_NUMBER_NAMES);
+  eq('lib/dr-number/index.js: every DR_NUMBER entry is itself a function',
+    EXPECTED_DR_NUMBER_NAMES.every((n) => typeof (globalThis.DR_NUMBER || {})[n] === 'function'),
+    true);
+})();
+
+(function libPathsLoadBeforeNonLibContentScripts() {
+  // defaults.js is the one deliberate exception: it is the shared-defaults
+  // config file and loads first, ahead of the lib/dr-number package itself.
+  // Every OTHER non-lib content script (dom-adapters.js, ui-toggle.js,
+  // content.js — the DOM/UI consumers) must load after every lib/ path.
+  const js = manifest.content_scripts[0].js;
+  const isLib = (f) => f.startsWith('lib/');
+  const isConsumer = (f) => !isLib(f) && f !== 'defaults.js';
+  const lastLibIndex = js.reduce((last, f, i) => (isLib(f) ? i : last), -1);
+  const firstConsumerIndex = js.findIndex(isConsumer);
+  eq('manifest: at least one lib/ content script is listed',
+    lastLibIndex >= 0, true);
+  eq('manifest: every lib/ content script loads before any non-lib, non-defaults content script',
+    firstConsumerIndex === -1 || lastLibIndex < firstConsumerIndex, true);
+})();
+
+// index.js's own doc comment says "No logic lives here — this is a pure
+// re-export list." That claim is only as good as index.js's grammar: the file
+// must introduce exactly one top-level binding (DR_NUMBER) and nothing else.
+// drNumberBundleIsPublished above checks DR_NUMBER's *contents*; this checks
+// that index.js could not have smuggled in a second global even if its
+// contents were otherwise correct — a stray second `const`/`function` at top
+// level would land on the shared content-script scope unnoticed by any
+// content-only assertion.
+(function indexJsDeclaresExactlyOneGlobal() {
+  const indexSrc = sourceByName('lib/dr-number/index.js');
+  if (indexSrc === null) {
+    eq('lib/dr-number/index.js: source present in manifest', false, true);
+    return;
+  }
+  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
+  eq('lib/dr-number/index.js: exactly one top-level declaration in the file',
+    topLevelDeclarations.length, 1);
+  eq('lib/dr-number/index.js: the sole top-level declaration is DR_NUMBER',
+    /^const DR_NUMBER\b/m.test(indexSrc), true);
+})();
+
+// The EXPECTED_DR_NUMBER_NAMES list in drNumberBundleIsPublished above is a
+// hand-copied literal, kept explicit on purpose. This test instead derives
+// the expected set mechanically — regex-extracting every top-level
+// `function name(...)` declaration straight from rounding.js, core.js, and
+// parsing.js — so a function added to (or removed from) one of those files
+// without a matching index.js edit fails here even if someone forgets to
+// update the hand-copied list too.
+(function drNumberBundleMatchesSourceDeclarations() {
+  const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
+  const declaredNamesIn = (src) => src === null ? [] : [...src.matchAll(FUNCTION_DECL_RE)].map((m) => m[1]);
+  const declaredNames = [
+    ...declaredNamesIn(sourceByName('lib/dr-number/rounding.js')),
+    ...declaredNamesIn(sourceByName('lib/dr-number/core.js')),
+    ...declaredNamesIn(sourceByName('lib/dr-number/parsing.js')),
+  ].sort();
+  eq('lib/dr-number bundle: source files declared at least one top-level function',
+    declaredNames.length > 0, true);
+  eq('lib/dr-number bundle: DR_NUMBER keys are exactly the top-level functions declared in rounding.js + core.js + parsing.js',
+    Object.keys(globalThis.DR_NUMBER || {}).sort(), declaredNames);
 })();
 
 // --- Report ---
