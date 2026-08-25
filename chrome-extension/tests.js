@@ -12299,6 +12299,47 @@ function fireMouseClick(buttonEl, fn) {
   })();
 })();
 
+// ---------------------------------------------------------------------------
+// Manifest-driven source loading: lock the properties the bootstrap section
+// (top of this file) depends on, so a future edit cannot quietly reintroduce
+// hardcoded content-script filenames or silently load zero scripts.
+// ---------------------------------------------------------------------------
+(function manifestDrivenSourceLoading() {
+  const CONTENT_SCRIPT_FILES = [
+    'defaults.js', 'rounding.js', 'core.js', 'parsing.js',
+    'dom-adapters.js', 'ui-toggle.js', 'content.js',
+  ];
+
+  // AC1: no readFileSync call in this file names a content-script file as a
+  // string literal. The manifest-driven map (`contentScriptFiles.map(...)`)
+  // and any loop-variable read (e.g. `readFileSync(path.join(__dirname, file))`)
+  // are allowed — only a literal filename argument counts as a violation.
+  const testsSelfSource = fs.readFileSync(path.join(__dirname, 'tests.js'), 'utf8');
+  const literalNamePattern = new RegExp(
+    'readFileSync\\([^)]*[\'"](' + CONTENT_SCRIPT_FILES.join('|').replace(/\./g, '\\.') + ')[\'"]'
+  );
+  eq('manifest-driven loading AC1: no readFileSync names a content-script file as a string literal',
+    literalNamePattern.test(testsSelfSource), false);
+
+  // "concatenated in manifest order": contentScriptBundle must equal the
+  // per-file sources (as looked up in contentScriptSources, keyed by the
+  // manifest's own file list) joined in the order the manifest lists them.
+  const expectedBundle = contentScriptFiles
+    .map((file) => contentScriptSources.get(file))
+    .join('\n');
+  eq('manifest-driven loading: contentScriptBundle is the manifest-order concatenation of sources',
+    contentScriptBundle, expectedBundle);
+
+  // Guard against the failure mode where the manifest's js list becomes empty
+  // (or truncated) and contentScriptBundle silently becomes '' or partial —
+  // every "source includes X" assertion elsewhere in this file would then
+  // vacuously pass instead of catching a real regression.
+  // NOTE: this count changes when a content-script package is added to or
+  // removed from manifest.json; update it alongside the manifest edit.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 7 files today',
+    manifest.content_scripts[0].js.length, 7);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
