@@ -69,6 +69,7 @@ const contentScriptBundle = contentScriptFiles
 const coreCode = sourceByName('lib/dr-number/core.js');
 const parsingCode = sourceByName('lib/dr-number/parsing.js');
 const detectCode = sourceByName('lib/dr-table/detect.js');
+const ladderCode = sourceByName('lib/dr-simplify/ladder.js');
 const uiToggleCode = sourceByName('ui-toggle.js');
 // Combined source for "source-includes" assertions that no longer care which
 // content-script file a symbol physically lives in after the Phase 2 split.
@@ -141,6 +142,14 @@ globalThis.NativeTableAdapter = NativeTableAdapter;
 globalThis.GridAdapter = GridAdapter;
 // Expose the lib/dr-table package bundle, mirroring DR_NUMBER below.
 globalThis.DR_TABLE = DR_TABLE;
+// Expose the lib/dr-simplify package bundle (the classification ladder),
+// mirroring DR_NUMBER/DR_TABLE above.
+globalThis.DR_SIMPLIFY = DR_SIMPLIFY;
+globalThis.classifyCell = classifyCell;
+globalThis.pickDateFormatHint = pickDateFormatHint;
+globalThis.resolveAmbiguousDateDecision = resolveAmbiguousDateDecision;
+globalThis.finalizeExtractedDecision = finalizeExtractedDecision;
+globalThis.decisionToLegacyInfo = decisionToLegacyInfo;
 // Expose grid-virtualization internals for the grid-virtualization test suite.
 globalThis.reapplyGridRounding = reapplyGridRounding;
 globalThis.computeGridRoundedValues = computeGridRoundedValues;
@@ -1827,12 +1836,14 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, dr-number package, dr-table package, ui-toggle, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, dr-number package, dr-table package, dr-simplify package, ui-toggle, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'defaults.js',
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
       'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
-      'lib/dr-table/detect.js', 'lib/dr-table/index.js', 'ui-toggle.js', 'content.js',
+      'lib/dr-table/detect.js', 'lib/dr-table/index.js',
+      'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
+      'ui-toggle.js', 'content.js',
     ]), true);
 
   // AC3: (sidebar-tidyup) the old "section-heading" with "Include numbers in cells containing:"
@@ -4278,14 +4289,25 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // num_top = 1 (DR_DEFAULTS) -> top band picks the highest magnitude only
   // (others differ from max_mag by >= 1). To exercise the 2-row top band,
   // give it two cells at the same top magnitude.
+  //
+  // The data sits at row >= 1 / column >= 1 behind a TH header row and a TH
+  // label column: DR_DEFAULTS.simplifyFirstRow/simplifyFirstColumn are both
+  // false, and since sprint merge-ladder the preview now honours that
+  // exclusion (see the merge-ladder divergence tests below) the way the
+  // engine always did — a row-0/column-0 <td> would be dropped, same as it
+  // would be when actually rounding the table.
   function tdCell(text) {
     return { tagName: 'TD', innerText: text, textContent: text };
   }
+  function thCell(text) {
+    return { tagName: 'TH', innerText: text, textContent: text };
+  }
   const table = {
     rows: [
-      { cells: [tdCell('27,000,000'), tdCell('18,000,000')] }, // both mag 7
-      { cells: [tdCell('4,080'),  tdCell('312')] },             // mag 3, 2
-      { cells: [tdCell('56')] },                                // mag 1
+      { cells: [thCell(''), thCell('A'), thCell('B')] },
+      { cells: [thCell('Row1'), tdCell('27,000,000'), tdCell('18,000,000')] }, // both mag 7
+      { cells: [thCell('Row2'), tdCell('4,080'),  tdCell('312')] },            // mag 3, 2
+      { cells: [thCell('Row3'), tdCell('56')] },                              // mag 1
     ],
   };
   const result = extractPreviewSamples(table);
@@ -4307,8 +4329,14 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   function tdCell(text) {
     return { tagName: 'TD', innerText: text, textContent: text };
   }
+  function thCell(text) {
+    return { tagName: 'TH', innerText: text, textContent: text };
+  }
   const table = {
-    rows: [{ cells: [tdCell('1234'), tdCell('123'), tdCell('-12')] }],
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
+      { cells: [thCell('Row'), tdCell('1234'), tdCell('123'), tdCell('-12')] },
+    ],
   };
   const result = extractPreviewSamples(table);
   eq('onePerOom: maxMag is 3 (1234)', result.maxMag, 3);
@@ -4321,11 +4349,14 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // No cap: five distinct lower magnitudes yield five bottom rows (old code
   // capped the band at 3).
   const deep = {
-    rows: [{ cells: [
-      tdCell('7,000,000'),                                  // mag 6 -> top
-      tdCell('500,000'), tdCell('40,000'), tdCell('3,000'), // mags 5,4,3
-      tdCell('200'), tdCell('10'),                          // mags 2,1
-    ] }],
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C'), thCell('D'), thCell('E'), thCell('F')] },
+      { cells: [thCell('Row'),
+        tdCell('7,000,000'),                                  // mag 6 -> top
+        tdCell('500,000'), tdCell('40,000'), tdCell('3,000'), // mags 5,4,3
+        tdCell('200'), tdCell('10'),                          // mags 2,1
+      ] },
+    ],
   };
   const deepResult = extractPreviewSamples(deep);
   eq('onePerOom: uncapped bottom band has 5 rows (one per lower OoM)',
@@ -4342,12 +4373,16 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   function tdCell(text) {
     return { tagName: 'TD', innerText: text, textContent: text };
   }
+  function thCell(text) {
+    return { tagName: 'TH', innerText: text, textContent: text };
+  }
   const table = {
     rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B')] },
       // Top bucket (mag 8): round value first, then a value that changes.
-      { cells: [tdCell('250,000,000'), tdCell('269,690,569')] },
+      { cells: [thCell('Top'), tdCell('250,000,000'), tdCell('269,690,569')] },
       // Bottom bucket (mag 5): round value first, then a value that changes.
-      { cells: [tdCell('350,000'), tdCell('235,132')] },
+      { cells: [thCell('Bottom'), tdCell('350,000'), tdCell('235,132')] },
     ],
   };
   const result = extractPreviewSamples(table);
@@ -4363,9 +4398,13 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   function tdCell(text) {
     return { tagName: 'TD', innerText: text, textContent: text };
   }
+  function thCell(text) {
+    return { tagName: 'TH', innerText: text, textContent: text };
+  }
   const table = {
     rows: [
-      { cells: [tdCell('250,000,000'), tdCell('500,000')] },
+      { cells: [thCell(''), thCell('A'), thCell('B')] },
+      { cells: [thCell('Row'), tdCell('250,000,000'), tdCell('500,000')] },
     ],
   };
   const result = extractPreviewSamples(table);
@@ -4378,8 +4417,14 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   function tdCell(text) {
     return { tagName: 'TD', innerText: text, textContent: text };
   }
+  function thCell(text) {
+    return { tagName: 'TH', innerText: text, textContent: text };
+  }
   const table = {
-    rows: [{ cells: [tdCell('27,000,000'), tdCell('18,000,000'), tdCell('45,000,000')] }],
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
+      { cells: [thCell('Row'), tdCell('27,000,000'), tdCell('18,000,000'), tdCell('45,000,000')] },
+    ],
   };
   const result = extractPreviewSamples(table);
   eq('extractPreviewSamples (all-top): top has 2 rows', result.samples.top.length, 2);
@@ -4416,13 +4461,15 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   const js = manifest.content_scripts[0].js;
   const after = (a, b) => js.indexOf(a) > -1 && js.indexOf(b) > -1 && js.indexOf(a) < js.indexOf(b);
-  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ui-toggle.js < content.js',
+  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < dr-simplify index.js < ui-toggle.js < content.js',
     after('lib/dr-number/rounding.js', 'lib/dr-number/core.js') &&
     after('lib/dr-number/core.js', 'lib/dr-number/parsing.js') &&
     after('lib/dr-number/parsing.js', 'lib/dr-number/index.js') &&
     after('lib/dr-number/index.js', 'lib/dr-table/detect.js') &&
     after('lib/dr-table/detect.js', 'lib/dr-table/index.js') &&
-    after('lib/dr-table/index.js', 'ui-toggle.js') &&
+    after('lib/dr-table/index.js', 'lib/dr-simplify/ladder.js') &&
+    after('lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js') &&
+    after('lib/dr-simplify/index.js', 'ui-toggle.js') &&
     after('ui-toggle.js', 'content.js'), true);
   eq('manifest: content.js loads last', js[js.length - 1], 'content.js');
 
@@ -4435,6 +4482,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   eq('sidebar.html does not load content-only lib/dr-number/index.js', sidebarHtml.includes('lib/dr-number/index.js'), false);
   eq('sidebar.html does not load content-only lib/dr-table/detect.js', sidebarHtml.includes('lib/dr-table/detect.js'), false);
   eq('sidebar.html does not load content-only lib/dr-table/index.js', sidebarHtml.includes('lib/dr-table/index.js'), false);
+  eq('sidebar.html does not load content-only lib/dr-simplify/ladder.js', sidebarHtml.includes('lib/dr-simplify/ladder.js'), false);
+  eq('sidebar.html does not load content-only lib/dr-simplify/index.js', sidebarHtml.includes('lib/dr-simplify/index.js'), false);
   eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
 
   // NOTE: the main bootstrap eval() (top of this file) no longer concatenates
@@ -5762,7 +5811,11 @@ const supTestOpts = {
 (function invertPills_oldKeysAbsent() {
   const contentSrc = sourceByName('content.js');
   const defaultsSrc = sourceByName('defaults.js');
-  if (contentSrc === null || defaultsSrc === null) {
+  // Sprint merge-ladder moved the simplifyDates/simplifyTimes option reads
+  // (and every other classification-ladder rule) out of content.js and into
+  // lib/dr-simplify/ladder.js; content.js now only calls classifyCell.
+  const ladderSrc = sourceByName('lib/dr-simplify/ladder.js');
+  if (contentSrc === null || defaultsSrc === null || ladderSrc === null) {
     eq('invert-pills regression: source files present in manifest', false, true);
     return;
   }
@@ -5781,12 +5834,18 @@ const supTestOpts = {
     /\bexcludeDates\b/.test(sidebarSrc), false);
   eq('invert-pills regression: sidebar.js does not reference excludeTimes',
     /\bexcludeTimes\b/.test(sidebarSrc), false);
+  eq('invert-pills regression: lib/dr-simplify/ladder.js does not reference excludeDates',
+    /\bexcludeDates\b/.test(ladderSrc), false);
+  eq('invert-pills regression: lib/dr-simplify/ladder.js does not reference excludeTimes',
+    /\bexcludeTimes\b/.test(ladderSrc), false);
 
   // Conversely, simplifyDates and simplifyTimes MUST appear in each file.
-  eq('invert-pills regression: content.js references simplifyDates',
-    /\bsimplifyDates\b/.test(contentSrc), true);
-  eq('invert-pills regression: content.js references simplifyTimes',
-    /\bsimplifyTimes\b/.test(contentSrc), true);
+  // content.js references them only transitively now (via opts passed to
+  // classifyCell) — the ladder is the actual point of use.
+  eq('invert-pills regression: lib/dr-simplify/ladder.js references simplifyDates',
+    /\bsimplifyDates\b/.test(ladderSrc), true);
+  eq('invert-pills regression: lib/dr-simplify/ladder.js references simplifyTimes',
+    /\bsimplifyTimes\b/.test(ladderSrc), true);
   eq('invert-pills regression: defaults.js references simplifyDates',
     /\bsimplifyDates\b/.test(defaultsSrc), true);
   eq('invert-pills regression: defaults.js references simplifyTimes',
@@ -7665,10 +7724,17 @@ function makeGridWrapper(rowData, opts) {
 (function gr5_extractPreviewSamples_gridStructure() {
   // Build a grid with numeric cells of two distinct magnitudes so both
   // top and bottom bands are populated in the returned structure.
+  //
+  // A leading header row and label column keep the numeric data off row 0 /
+  // column 0: DR_DEFAULTS.simplifyFirstRow/simplifyFirstColumn are both
+  // false, and grid cells are always tagName 'TD' (GridAdapter has no <th>
+  // concept), so unlike a native table there is no tag-based escape from the
+  // exclusion — position is all that matters.
   const grid = makeGridWrapper([
-    ['8584629', '286'],
-    ['9123456', '514'],
-    ['7654321', '432'],
+    ['label', 'x', 'y'],
+    ['R1', '8584629', '286'],
+    ['R2', '9123456', '514'],
+    ['R3', '7654321', '432'],
   ]);
 
   const result = extractPreviewSamples(grid.wrapperEl);
@@ -12440,14 +12506,22 @@ function fireMouseClick(buttonEl, fn) {
   function tdCell(text) {
     return { tagName: 'TD', innerText: text, textContent: text };
   }
+  function thCell(text) {
+    return { tagName: 'TH', innerText: text, textContent: text };
+  }
 
   // The large number is embedded inside prose; the small number is pure-numeric.
   // "₹2,000 crore": toNumber returns null (not a pure number), so
   // extractNumbersInText extracts 2000 → magnitude 3.
   // "5": toNumber returns 5 → magnitude 0.
+  //
+  // A header row + label column keep the data off row 0 / column 0
+  // (DR_DEFAULTS excludes both by default; see the merge-ladder divergence
+  // tests below).
   const table = {
     rows: [
-      { cells: [tdCell('₹2,000 crore'), tdCell('5')] },
+      { cells: [thCell(''), thCell('A'), thCell('B')] },
+      { cells: [thCell('Row'), tdCell('₹2,000 crore'), tdCell('5')] },
     ],
   };
 
@@ -12465,7 +12539,8 @@ function fireMouseClick(buttonEl, fn) {
   // Complementary: a pure-number table still works as before (regression guard).
   const pureTable = {
     rows: [
-      { cells: [tdCell('27,000,000'), tdCell('286')] },
+      { cells: [thCell(''), thCell('A'), thCell('B')] },
+      { cells: [thCell('Row'), tdCell('27,000,000'), tdCell('286')] },
     ],
   };
   const pureResult = extractPreviewSamples(pureTable);
@@ -12476,7 +12551,8 @@ function fireMouseClick(buttonEl, fn) {
   // the mixed-text cell, proving the extraction path is exercised.
   const mixedTable = {
     rows: [
-      { cells: [tdCell('Revenue: ₹2,000 crore'), tdCell('5')] },
+      { cells: [thCell(''), thCell('A'), thCell('B')] },
+      { cells: [thCell('Row'), tdCell('Revenue: ₹2,000 crore'), tdCell('5')] },
     ],
   };
   const cells = collectNumericCells(mixedTable);
@@ -12530,10 +12606,20 @@ function fireMouseClick(buttonEl, fn) {
   function tdCell(text) {
     return { tagName: 'TD', innerText: text, textContent: text };
   }
+  function thCell(text) {
+    return { tagName: 'TH', innerText: text, textContent: text };
+  }
+
+  // A header row + label column keep the data off row 0 / column 0
+  // throughout this block (DR_DEFAULTS excludes both by default; see the
+  // merge-ladder divergence tests below).
 
   // collectNumericCells: the era year is dropped, real numbers are kept.
   const cells = collectNumericCells({
-    rows: [{ cells: [tdCell('Kalki 2898 AD'), tdCell('1,050,000,000')] }],
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B')] },
+      { cells: [thCell('Row'), tdCell('Kalki 2898 AD'), tdCell('1,050,000,000')] },
+    ],
   });
   const nums = cells.map(c => c.num);
   eq('era-collect: 2898 (era year) excluded from numeric cells',
@@ -12544,7 +12630,10 @@ function fireMouseClick(buttonEl, fn) {
   // Regression: "~3,420 ad hoc" — "ad" was being read as the AD era marker, so
   // the 3,420 was dropped and the cell never rounded. It must now be collected.
   const adHocCells = collectNumericCells({
-    rows: [{ cells: [tdCell('~30,800 PAD (EFT)'), tdCell('~3,420 ad hoc')] }],
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B')] },
+      { cells: [thCell('Row'), tdCell('~30,800 PAD (EFT)'), tdCell('~3,420 ad hoc')] },
+    ],
   });
   const adHocNums = adHocCells.map(c => c.num);
   eq('era-collect: "~3,420 ad hoc" number is collected (not an era year)',
@@ -12555,7 +12644,10 @@ function fireMouseClick(buttonEl, fn) {
   // extractPreviewSamples: maxMag comes from the real number, not the era year,
   // and no sample row carries the era-year value.
   const result = extractPreviewSamples({
-    rows: [{ cells: [tdCell('Kalki 2898 AD'), tdCell('1,050,000,000'), tdCell('500')] }],
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
+      { cells: [thCell('Row'), tdCell('Kalki 2898 AD'), tdCell('1,050,000,000'), tdCell('500')] },
+    ],
   });
   eq('era-samples: maxMag is 9 (from 1.05B, not the 2898 AD year)',
     result.maxMag, 9);
@@ -12578,7 +12670,19 @@ function fireMouseClick(buttonEl, fn) {
     textContent: '3,000,000',
     dataset: { originalValue: '2,794,356' },
   };
-  const cells = collectNumericCells({ rows: [{ cells: [roundedCell] }] });
+  // A header row + label column keep the cell off row 0 / column 0
+  // (DR_DEFAULTS excludes both by default; see the merge-ladder divergence
+  // tests below) so this stays a test of the dataset.originalValue read path,
+  // not an incidental first-row/first-column exclusion.
+  const labelCell = { tagName: 'TH', innerText: '', textContent: '' };
+  const headerCell = { tagName: 'TH', innerText: 'A', textContent: 'A' };
+  const rowLabelCell = { tagName: 'TH', innerText: 'Row', textContent: 'Row' };
+  const cells = collectNumericCells({
+    rows: [
+      { cells: [labelCell, headerCell] },
+      { cells: [rowLabelCell, roundedCell] },
+    ],
+  });
   eq('orig-value: reads original text, not rounded',
     cells[0].text, '2,794,356');
   eq('orig-value: parses num from original, not rounded',
@@ -12718,7 +12822,9 @@ function fireMouseClick(buttonEl, fn) {
     'defaults.js',
     'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
     'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
-    'lib/dr-table/detect.js', 'lib/dr-table/index.js', 'ui-toggle.js', 'content.js',
+    'lib/dr-table/detect.js', 'lib/dr-table/index.js',
+    'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
+    'ui-toggle.js', 'content.js',
   ];
 
   // AC1: no content-script filename literal reaches readFileSync/path.join
@@ -12802,9 +12908,11 @@ function fireMouseClick(buttonEl, fn) {
   // four-file lib/dr-number package (rounding.js, core.js, parsing.js,
   // index.js), raising the count from 7 to 8. Sprint extract-dr-table then
   // replaced dom-adapters.js with the two-file lib/dr-table package
-  // (detect.js, index.js), raising the count from 8 to 9.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 9 files today',
-    manifest.content_scripts[0].js.length, 9);
+  // (detect.js, index.js), raising the count from 8 to 9. Sprint merge-ladder
+  // then added the two-file lib/dr-simplify package (ladder.js, index.js),
+  // raising the count from 9 to 11.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 11 files today',
+    manifest.content_scripts[0].js.length, 11);
 })();
 
 // ---------------------------------------------------------------------------
@@ -13069,6 +13177,447 @@ function fireMouseClick(buttonEl, fn) {
     findTables(root).length, 0);
   eq('findTables: a pass-through tableFilter keeps the phantom a11y table',
     findTables(root, { tableFilter: () => false }).length, 1);
+})();
+
+// =============================================================================
+// Sprint merge-ladder: lib/dr-simplify classification ladder
+// =============================================================================
+//
+// Before this sprint the classification ladder existed as two hand-kept-in-
+// sync copies: the engine's per-cell loop in content.js (itself duplicated
+// between the native-<table> path and computeGridRoundedValues, which
+// documented itself as needing to match the native path "EXACTLY") and a much
+// thinner copy in the sidebar preview-sample extractor (collectNumericCells /
+// extractPreviewSamples) that skipped most of the rules outright. All three
+// now call classifyCell (lib/dr-simplify/ladder.js).
+//
+// This section has three parts:
+//   1. Package discipline — mirrors the DR_NUMBER/DR_TABLE checks.
+//   2. classifyCell unit tests — one per ladder rule, exercised directly with
+//      plain data (no DOM), matching the file's PURE contract.
+//   3. Divergence tests — the preview extractor used to skip almost every
+//      rule below; each test pins the MERGED (engine-wins) behavior and
+//      documents what the old preview copy did instead.
+
+// --- 1. Package discipline ---
+
+(function drSimplifyBundleMatchesSourceDeclarations() {
+  const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
+  const declaredNames = ladderCode === null ? [] :
+    [...ladderCode.matchAll(FUNCTION_DECL_RE)].map((m) => m[1]).sort();
+  eq('lib/dr-simplify/ladder.js: source present in manifest', ladderCode !== null, true);
+  eq('lib/dr-simplify bundle: ladder.js declared at least one top-level function',
+    declaredNames.length > 0, true);
+  eq('lib/dr-simplify/index.js: DR_SIMPLIFY exists on the global scope after the main eval',
+    typeof globalThis.DR_SIMPLIFY, 'object');
+  eq('lib/dr-simplify bundle: DR_SIMPLIFY keys are exactly the top-level functions declared in ladder.js',
+    Object.keys(globalThis.DR_SIMPLIFY || {}).sort(), declaredNames);
+  eq('lib/dr-simplify bundle: every DR_SIMPLIFY entry is itself a function',
+    declaredNames.every((n) => typeof (globalThis.DR_SIMPLIFY || {})[n] === 'function'), true);
+})();
+
+(function drSimplifyIndexJsDeclaresExactlyOneGlobal() {
+  const indexSrc = sourceByName('lib/dr-simplify/index.js');
+  if (indexSrc === null) {
+    eq('lib/dr-simplify/index.js: source present in manifest', false, true);
+    return;
+  }
+  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
+  eq('lib/dr-simplify/index.js: exactly one top-level declaration in the file',
+    topLevelDeclarations.length, 1);
+  eq('lib/dr-simplify/index.js: the sole top-level declaration is DR_SIMPLIFY',
+    /^const DR_SIMPLIFY\b/m.test(indexSrc), true);
+})();
+
+// --- 2. classifyCell unit tests (pure, no DOM) ---
+
+const LADDER_OPTS = {
+  simplifyFirstRow: false,
+  simplifyFirstColumn: false,
+  simplifyMixedPercent: true,
+  simplifyMixedCurrency: true,
+  simplifyDates: true,
+  simplifyTimes: false,
+  simplifyMixedCells: true,
+};
+
+(function classifyCell_outOfRange() {
+  const ranges = [{ colMin: 5, colMax: 10, rowMin: 0, rowMax: 100 }];
+  eq('classifyCell: out-of-range cell is skipped',
+    classifyCell({ text: '100', rowIndex: 1, columnIndex: 0, ranges }, LADDER_OPTS),
+    { mode: 'skip', reason: 'out-of-range' });
+})();
+
+(function classifyCell_firstRow() {
+  eq('classifyCell: first-row cell is skipped when simplifyFirstRow is false',
+    classifyCell({ text: '100', rowIndex: 0, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'skip', reason: 'first-row' });
+  eq('classifyCell: first-row cell simplifies when simplifyFirstRow is true',
+    classifyCell({ text: '100', rowIndex: 0, columnIndex: 1, ranges: null },
+      Object.assign({}, LADDER_OPTS, { simplifyFirstRow: true })),
+    { mode: 'pure', reason: 'simplify', value: { num: 100 } });
+})();
+
+(function classifyCell_firstColumn() {
+  eq('classifyCell: first-column cell is skipped when simplifyFirstColumn is false',
+    classifyCell({ text: '100', rowIndex: 1, columnIndex: 0, ranges: null }, LADDER_OPTS),
+    { mode: 'skip', reason: 'first-column' });
+  eq('classifyCell: first-column cell simplifies when simplifyFirstColumn is true',
+    classifyCell({ text: '100', rowIndex: 1, columnIndex: 0, ranges: null },
+      Object.assign({}, LADDER_OPTS, { simplifyFirstColumn: true })),
+    { mode: 'pure', reason: 'simplify', value: { num: 100 } });
+})();
+
+(function classifyCell_percent() {
+  eq('classifyCell: percent cell simplifies when simplifyMixedPercent is true',
+    classifyCell({ text: '50%', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'pure', reason: 'simplify', value: { num: 50 } });
+  eq('classifyCell: percent cell is skipped when simplifyMixedPercent is false',
+    classifyCell({ text: '50%', rowIndex: 1, columnIndex: 1, ranges: null },
+      Object.assign({}, LADDER_OPTS, { simplifyMixedPercent: false })),
+    { mode: 'skip', reason: 'percent' });
+})();
+
+(function classifyCell_currency() {
+  eq('classifyCell: currency cell simplifies when simplifyMixedCurrency is true',
+    classifyCell({ text: '$100', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'pure', reason: 'simplify', value: { num: 100 } });
+  eq('classifyCell: currency cell is skipped when simplifyMixedCurrency is false',
+    classifyCell({ text: '$100', rowIndex: 1, columnIndex: 1, ranges: null },
+      Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false })),
+    { mode: 'skip', reason: 'currency' });
+})();
+
+(function classifyCell_quoted() {
+  eq('classifyCell: whole-cell-quoted cell is skipped regardless of content',
+    classifyCell({ text: '"12345"', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'skip', reason: 'quoted' });
+})();
+
+(function classifyCell_dates() {
+  eq('classifyCell: date-like cell is skipped when simplifyDates is false',
+    classifyCell({ text: '2020-01-01', rowIndex: 1, columnIndex: 1, ranges: null },
+      Object.assign({}, LADDER_OPTS, { simplifyDates: false })),
+    { mode: 'skip', reason: 'dates-disabled' });
+  eq('classifyCell: unambiguous date-like cell resolves when simplifyDates is true',
+    classifyCell({ text: '2020-01-01', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'date', reason: 'simplify', value: { month: 1, day: 1, year: 2020 } });
+  eq('classifyCell: ambiguous numeric date returns a pending decision',
+    classifyCell({ text: '03/04/2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { ambiguous: { n1: 3, n2: 4, year: 2020 } } });
+})();
+
+(function classifyCell_times() {
+  eq('classifyCell: time-like cell is skipped when simplifyTimes is false',
+    classifyCell({ text: '3:45 PM', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'skip', reason: 'times-disabled' });
+  eq('classifyCell: time-like cell simplifies when simplifyTimes is true',
+    classifyCell({ text: '3:45 PM', rowIndex: 1, columnIndex: 1, ranges: null },
+      Object.assign({}, LADDER_OPTS, { simplifyTimes: true })),
+    { mode: 'time', reason: 'simplify' });
+})();
+
+(function classifyCell_link() {
+  eq('classifyCell: whole-cell link cell is skipped',
+    classifyCell({ text: '42', rowIndex: 1, columnIndex: 1, ranges: null, isWholeLink: true }, LADDER_OPTS),
+    { mode: 'skip', reason: 'link' });
+})();
+
+(function classifyCell_footnoteSuperscript() {
+  // "10<sup>12</sup>" flattens to "1012"; the sole match spans the whole
+  // string and overlaps the superscript mask, so nothing survives.
+  eq('classifyCell: whole-cell exponent with no surviving match after masking is skipped',
+    classifyCell({
+      text: '1012', rowIndex: 1, columnIndex: 1, ranges: null,
+      hasSuperscript: true, superscriptRanges: [{ start: 2, end: 4 }],
+    }, LADDER_OPTS),
+    { mode: 'skip', reason: 'footnote' });
+
+  // "20 <sup>15</sup>" flattens to "20 1015": the standalone "20" survives
+  // masking even though the sup-adjacent "1015" match does not.
+  eq('classifyCell: a superscript-flagged cell keeps non-overlapping matches',
+    classifyCell({
+      text: '20 1015', rowIndex: 1, columnIndex: 1, ranges: null,
+      hasSuperscript: true, superscriptRanges: [{ start: 5, end: 7 }],
+    }, LADDER_OPTS),
+    { mode: 'extracted', reason: 'footnote', value: { matches: [{ numStr: '20', num: 20, index: 0 }] } });
+
+  eq('classifyCell: superscript-flagged cell is skipped when simplifyMixedCells is false',
+    classifyCell({
+      text: '1012', rowIndex: 1, columnIndex: 1, ranges: null, hasSuperscript: true,
+    }, Object.assign({}, LADDER_OPTS, { simplifyMixedCells: false })),
+    { mode: 'skip', reason: 'footnote' });
+
+  eq('classifyCell: superscript-flagged cell is skipped when allowExtracted is false (grid)',
+    classifyCell({
+      text: '1012', rowIndex: 1, columnIndex: 1, ranges: null, hasSuperscript: true, allowExtracted: false,
+    }, LADDER_OPTS),
+    { mode: 'skip', reason: 'footnote' });
+})();
+
+(function classifyCell_mixedText() {
+  eq('classifyCell: mixed text with a numeric match simplifies',
+    classifyCell({ text: 'Revenue 500 units', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).mode,
+    'extracted');
+  eq('classifyCell: mixed text drops era-marked years from extracted matches',
+    classifyCell({ text: 'Kalki 2898 AD and 500 more', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS)
+      .value.matches.map((m) => m.num),
+    [500]);
+  eq('classifyCell: mixed text drops numbers inside a quoted span',
+    classifyCell({ text: 'Product "42" ships in 10 days', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS)
+      .value.matches.map((m) => m.numStr),
+    ['10']);
+  eq('classifyCell: mixed text is skipped when simplifyMixedCells is false',
+    classifyCell({ text: 'Revenue 500 units', rowIndex: 1, columnIndex: 1, ranges: null },
+      Object.assign({}, LADDER_OPTS, { simplifyMixedCells: false })),
+    { mode: 'skip', reason: 'mixed-disabled' });
+  eq('classifyCell: mixed text is skipped when allowExtracted is false (grid)',
+    classifyCell({ text: 'Revenue 500 units', rowIndex: 1, columnIndex: 1, ranges: null, allowExtracted: false }, LADDER_OPTS),
+    { mode: 'skip', reason: 'mixed-disabled' });
+  eq('classifyCell: mixed text with no numeric content is skipped',
+    classifyCell({ text: 'hello world', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'skip', reason: 'no-number' });
+})();
+
+(function pickDateFormatHint_and_resolveAmbiguousDateDecision() {
+  eq('pickDateFormatHint: n1 > 12 only -> DMY', pickDateFormatHint([{ n1: 25, n2: 4 }]), 'DMY');
+  eq('pickDateFormatHint: n2 > 12 only -> MDY', pickDateFormatHint([{ n1: 3, n2: 25 }]), 'MDY');
+  eq('pickDateFormatHint: both > 12 across the column -> MIXED',
+    pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'MIXED');
+  eq('pickDateFormatHint: neither > 12 -> AMBIGUOUS', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'AMBIGUOUS');
+
+  eq('resolveAmbiguousDateDecision: MDY resolves n1 as month, n2 as day',
+    resolveAmbiguousDateDecision({ value: { ambiguous: { n1: 3, n2: 4, year: 2020 } } }, 'MDY'),
+    { mode: 'date', reason: 'simplify', value: { month: 3, day: 4, year: 2020 } });
+  eq('resolveAmbiguousDateDecision: DMY resolves n2 as month, n1 as day',
+    resolveAmbiguousDateDecision({ value: { ambiguous: { n1: 3, n2: 4, year: 2020 } } }, 'DMY'),
+    { mode: 'date', reason: 'simplify', value: { month: 4, day: 3, year: 2020 } });
+  eq('resolveAmbiguousDateDecision: MIXED downgrades to skip',
+    resolveAmbiguousDateDecision({ value: { ambiguous: { n1: 25, n2: 25, year: 2020 } } }, 'MIXED'),
+    { mode: 'skip', reason: 'ambiguous-date' });
+  eq('resolveAmbiguousDateDecision: AMBIGUOUS downgrades to skip',
+    resolveAmbiguousDateDecision({ value: { ambiguous: { n1: 3, n2: 4, year: 2020 } } }, 'AMBIGUOUS'),
+    { mode: 'skip', reason: 'ambiguous-date' });
+})();
+
+// --- 3. Divergence tests: merged (engine-wins) preview behavior ---
+//
+// Every fixture below hides its numeric data behind a TH header row and a TH
+// label column so the first-row/first-column rule (itself one of the
+// divergences, tested explicitly first) doesn't confound the others.
+
+(function mergeLadderDivergence_outOfRange() {
+  // OLD preview copy: collectNumericCells never parsed rangeExpr or checked
+  // isInRanges — every numeric cell was sampled regardless of the sidebar's
+  // range restriction. The merged ladder now applies isInRanges exactly like
+  // the engine.
+  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B')] },
+      { cells: [thCell('Row'), tdCell('123'), tdCell('456')] },
+    ],
+  };
+  eq('merge-ladder divergence (no range restriction): both columns are sampled',
+    collectNumericCells(table).map((c) => c.num).sort(), [123, 456]);
+  eq('merge-ladder divergence (out-of-range): a rangeExpr restricts the sample to the in-range column',
+    collectNumericCells(table, { rangeExpr: 'B:B' }).map((c) => c.num), [123]);
+  eq('merge-ladder divergence (invalid range): an invalid range expression yields no samples, matching the engine which rounds nothing',
+    collectNumericCells(table, { rangeExpr: 'not a range' }).length, 0);
+})();
+
+(function mergeLadderDivergence_firstRow() {
+  // OLD preview copy: walked every <td> with no row/column awareness — a
+  // numeric header-row <td> was sampled like any other cell. The merged
+  // ladder applies getExclusionReason's first-row rule exactly like the
+  // engine, whose DR_DEFAULTS ships simplifyFirstRow: false.
+  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  const table = {
+    rows: [
+      { cells: [tdCell('label'), tdCell('777')] }, // row 0
+      { cells: [tdCell('label'), tdCell('888')] }, // row 1
+    ],
+  };
+  eq('merge-ladder divergence (first-row): the row-0 numeric cell is excluded even though its column is not first',
+    collectNumericCells(table).map((c) => c.num), [888]);
+})();
+
+(function mergeLadderDivergence_firstColumn() {
+  // Same rule, isolated to the column axis (DR_DEFAULTS ships
+  // simplifyFirstColumn: false too).
+  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  const table = {
+    rows: [
+      { cells: [tdCell('999'), tdCell('999')] },  // row 0 — excluded by first-row regardless
+      { cells: [tdCell('111'), tdCell('222')] },  // row 1: column 0 vs column 1
+    ],
+  };
+  eq('merge-ladder divergence (first-column): the column-0 numeric cell is excluded even in a non-first row',
+    collectNumericCells(table).map((c) => c.num), [222]);
+})();
+
+(function mergeLadderDivergence_percentGating() {
+  // OLD preview copy: never checked simplifyMixedPercent — a percent cell was
+  // always sampled as a pure number, even with the sidebar's percent toggle
+  // off. The merged ladder applies getExclusionReason's percent rule.
+  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A')] },
+      { cells: [thCell('Row'), tdCell('50%')] },
+    ],
+  };
+  eq('merge-ladder divergence (percent on): percent cell is sampled',
+    collectNumericCells(table, { simplifyMixedPercent: true }).map((c) => c.num), [50]);
+  eq('merge-ladder divergence (percent off): percent cell is excluded from samples',
+    collectNumericCells(table, { simplifyMixedPercent: false }).length, 0);
+})();
+
+(function mergeLadderDivergence_currencyGating() {
+  // Same rule, currency symbols.
+  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A')] },
+      { cells: [thCell('Row'), tdCell('$100')] },
+    ],
+  };
+  eq('merge-ladder divergence (currency on): currency cell is sampled',
+    collectNumericCells(table, { simplifyMixedCurrency: true }).map((c) => c.num), [100]);
+  eq('merge-ladder divergence (currency off): currency cell is excluded from samples',
+    collectNumericCells(table, { simplifyMixedCurrency: false }).length, 0);
+})();
+
+(function mergeLadderDivergence_quotedCell() {
+  // OLD preview copy had no whole-cell-quote check — toNumber('"12345"')
+  // fails (quotes aren't stripped), so it fell into the mixed-text fallback
+  // and extractNumbersInText happily found "12345" inside the quotes,
+  // sampling a cell the engine treats as literal text and never touches.
+  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A')] },
+      { cells: [thCell('Row'), tdCell('"12345"')] },
+    ],
+  };
+  eq('merge-ladder divergence (quoted cell): a whole-cell-quoted number is excluded from samples',
+    collectNumericCells(table).length, 0);
+})();
+
+(function mergeLadderDivergence_quotedNumberInMixedText() {
+  // OLD preview copy's mixed-text fallback never applied quote masking —
+  // 'Product "42" ships in 10 days' would surface 42 (a quoted, literal
+  // value) as a would-change sample alongside the real number 10.
+  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A')] },
+      { cells: [thCell('Row'), tdCell('Product "42" ships in 10 days')] },
+    ],
+  };
+  eq('merge-ladder divergence (quoted number in mixed text): only the unquoted number is sampled',
+    collectNumericCells(table).map((c) => c.num), [10]);
+})();
+
+(function mergeLadderDivergence_wholeCellLink() {
+  // OLD preview copy never called isCellWholeLink — a pure numeric cell whose
+  // entire visible text is a hyperlink (e.g. a linked page number) was
+  // sampled like any other pure number, even though the engine leaves it
+  // untouched.
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  const linkCell = makeLinkCell(['42'], null);
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A')] },
+      { cells: [thCell('Row'), linkCell] },
+    ],
+  };
+  eq('merge-ladder divergence (whole-cell link): a whole-cell-link number is excluded from samples',
+    collectNumericCells(table).length, 0);
+})();
+
+(function mergeLadderDivergence_mixedTextLinkedNumber() {
+  // OLD preview copy's mixed-text fallback never applied filterLinkMatches —
+  // "<text> 42" with "42" wrapped in <a> would surface 42 as a sample the
+  // engine never touches (filterLinkMatches drops it).
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  const mixedLinkCell = makeLinkCell(['42'], 'See page for details');
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A')] },
+      { cells: [thCell('Row'), mixedLinkCell] },
+    ],
+  };
+  withLinkCreateTreeWalker(() => {
+    eq('merge-ladder divergence (linked number in mixed text): a number inside <a> is excluded from samples',
+      collectNumericCells(table).length, 0);
+  });
+})();
+
+(function mergeLadderDivergence_superscriptMasking() {
+  // OLD preview copy never checked cell.querySelector('sup') — a whole-cell
+  // exponent like "10<sup>12</sup>" (flattened innerText "1012") was parsed
+  // as the single pure number 1012, a wrong value the engine never produces
+  // (the engine masks the exponent and, finding nothing left to round,
+  // leaves the cell untouched entirely).
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  withSupCreateTreeWalker(() => {
+    const supCell = makeSuperscriptCell([
+      { text: '10', inSup: false },
+      { text: '12', inSup: true },
+    ]);
+    const table = {
+      rows: [
+        { cells: [thCell(''), thCell('A')] },
+        { cells: [thCell('Row'), supCell] },
+      ],
+    };
+    eq('merge-ladder divergence (superscript exponent): a whole-cell exponent is excluded, not misread as 1012',
+      collectNumericCells(table).length, 0);
+  });
+})();
+
+(function mergeLadderDivergence_mixedCellsOption() {
+  // OLD preview copy's mixed-text fallback ran unconditionally — it never
+  // checked opts.simplifyMixedCells, so turning that sidebar toggle off had
+  // no effect on the preview even though the engine would leave every mixed
+  // cell untouched.
+  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A')] },
+      { cells: [thCell('Row'), tdCell('Revenue: 5,000 units')] },
+    ],
+  };
+  eq('merge-ladder divergence (mixed cells on): embedded number is sampled',
+    collectNumericCells(table, { simplifyMixedCells: true }).map((c) => c.num), [5000]);
+  eq('merge-ladder divergence (mixed cells off): embedded number is excluded from samples',
+    collectNumericCells(table, { simplifyMixedCells: false }).length, 0);
+})();
+
+(function mergeLadderParity_datesAndTimesStillExcludedFromPreview() {
+  // Deliberate, UNCHANGED scope restriction (not a divergence fix): the
+  // preview band is about numeric magnitude/offset, so mode:'date' and
+  // mode:'time' decisions from the ladder are excluded from the sample pool
+  // even though the ladder classifies them and the engine would simplify
+  // them. The old preview copy also excluded dates/times (via its own
+  // isDateLike/isTimeLike/isDateTimeLike checks) — this is parity, not a fix.
+  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B')] },
+      { cells: [thCell('Row'), tdCell('2020-01-01'), tdCell('3:45 PM')] },
+    ],
+  };
+  eq('merge-ladder parity (dates/times): date and time cells are still excluded from preview samples',
+    collectNumericCells(table, { simplifyTimes: true }).length, 0);
 })();
 
 // --- Report ---
