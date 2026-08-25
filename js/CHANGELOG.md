@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (2026-08-25)
+
+Brought `ROUND_DYNAMIC`'s string parsing and float cleanup in line with the chrome extension's copy of the same logic, which already handled these cases correctly. A new shared test-case table (`js/round-dynamic-cases.json`) now runs against the extension, this file, and the Python port, so the three stay in agreement going forward.
+
+- **Percent-sign inputs** now get the `%` stripped and the numeric value rounded, instead of passing through unchanged.
+  Before: `ROUND_DYNAMIC("50%", -0.5)` → `"50%"`
+  After: `ROUND_DYNAMIC("50%", -0.5)` → `50`
+- **Sub-unit fractional-offset steps** now strip IEEE-754 floating-point noise, instead of returning it.
+  Before: `ROUND_DYNAMIC(7, -0.6)` → `7.199999999999999`
+  After: `ROUND_DYNAMIC(7, -0.6)` → `7.2`
+- **Unicode dash and minus-sign variants** (en dash, em dash, minus sign, and other Unicode hyphen forms) at the start of a value now normalize to an ASCII `-` and read as a negative sign, instead of passing through unchanged.
+  Before: `ROUND_DYNAMIC("−87654321", -0.5)` → `"−87654321"` (U+2212 MINUS SIGN)
+  After: `ROUND_DYNAMIC("−87654321", -0.5)` → `-90000000`
+
 ### Added
 
 - **Docs:** Added `## Note: decimal precision in Sheets` section to README explaining that `ROUND_DYNAMIC` (as a custom function) cannot set cell number formats directly. Includes guidance on manually applying a custom number format to match the offset's decimal count, with examples for offsets 0.5 and 0.25.
