@@ -330,18 +330,72 @@ function resetTable(table) {
   syncSwitchForTable(table);
 }
 
+// --- Shared adapters between the classification ladder (lib/dr-simplify)
+// and this file's DOM-touching call sites ---
+
+// classifyCell (lib/dr-simplify) applies every text-only filter to a mixed-
+// text cell's candidate matches (quote spans, superscript spans, era years)
+// but cannot filter out numbers embedded inside an <a> element itself — that
+// needs lib/dr-table's filterLinkMatches, which walks real text nodes. Since
+// every one of these filters is an independent per-match predicate, running
+// this one after the ladder's own filters yields the same final set as
+// running all of them together (see lib/dr-simplify/ladder.js header). If
+// filtering empties the match list, the cell downgrades to skip.
+function finalizeExtractedDecision(decision, cell) {
+  if (decision.mode !== 'extracted') return decision;
+  const filtered = filterLinkMatches(cell, decision.value.matches);
+  if (filtered.length === 0) return { mode: 'skip', reason: decision.reason };
+  return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
+}
+
+// Adapts a classifyCell decision to the { mode, num, ambiguous, month, day,
+// year, matches } shape the column post-pass and value-computation passes
+// below already expect. Those passes compute rounded VALUES from a decision
+// (not classification), so this sprint leaves their (still duplicated
+// between the native and grid paths) logic as found.
+function decisionToLegacyInfo(decision) {
+  if (decision.mode === 'pure') return { mode: 'pure', num: decision.value.num };
+  if (decision.mode === 'extracted') return { mode: 'extracted', matches: decision.value.matches };
+  if (decision.mode === 'date') {
+    return decision.pending === 'ambiguous-date'
+      ? { mode: 'date', ambiguous: decision.value.ambiguous }
+      : { mode: 'date', month: decision.value.month, day: decision.value.day, year: decision.value.year };
+  }
+  if (decision.mode === 'time') return { mode: 'time' };
+  return { mode: 'skip' };
+}
+
 // --- Preview-band sample extraction (consumed by sidebar via IPC) ---
 
-// Walk every <td> in the table and return its trimmed text + parsed number, but
-// only for cells whose entire content parses as a single number (mode 'pure'
-// in roundTable's classifier). Cells matched only via simplifyMixedCells / dates /
-// times are intentionally skipped here — they're deferred to a future sprint.
-function collectNumericCells(table) {
+// Walk every <td> in the table and return its trimmed text + parsed number,
+// via the same classification ladder (lib/dr-simplify) the engine uses, so a
+// cell only appears here if the engine would actually change it. Restricted
+// to mode:'pure' and mode:'extracted' decisions — this preview band is about
+// numeric magnitude/offset, not date/time granularity, so mode:'date' and
+// mode:'time' decisions are deliberately left out of the sample pool even
+// though the ladder classifies them.
+//
+// options defaults to DR_DEFAULTS, matching the one real call site
+// (extractPreviewSamples, called with no settings argument by the
+// GET_PREVIEW_SAMPLES handler above). Wiring the preview to the sidebar's
+// live settings instead of DR_DEFAULTS is out of scope for this change; the
+// optional parameter exists so tests can exercise the ladder's option-gated
+// rules directly.
+function collectNumericCells(table, options) {
+  const opts = Object.assign({}, DR_DEFAULTS, options || {});
+  const rangeParse = parseRangeExpr(opts.rangeExpr);
+  // An invalid range expression makes the engine round nothing at all
+  // (roundTable returns before touching any cell); mirror that here instead
+  // of falling back to "whole table".
+  if (rangeParse.error) return [];
+  const ranges = rangeParse.ranges;
+
   const out = [];
   const rows = makeAdapter(table).getRows();
-  for (const row of rows) {
-    const cells = row.getCells();
-    for (const cellObj of cells) {
+  for (let r = 0; r < rows.length; r++) {
+    const cells = rows[r].getCells();
+    for (let c = 0; c < cells.length; c++) {
+      const cellObj = cells[c];
       if (cellObj.tagName !== 'TD') continue;
       // Issue #2: when the table is already simplified, read the stored original
       // rather than the rounded text now showing in the cell. Native-table rounded
@@ -352,20 +406,31 @@ function collectNumericCells(table) {
       const text = storedOriginal !== undefined ? storedOriginal : cellObj.getText();
       const trimmed = typeof text === 'string' ? text.trim() : '';
       if (!trimmed) continue;
-      if (isDateLike(trimmed) || isTimeLike(trimmed) || isDateTimeLike(trimmed)) continue;
-      if (/^(19|20)\d{2}$/.test(trimmed)) continue;
-      const num = toNumber(trimmed);
-      if (num !== null && num !== 0 && isFinite(num)) {
-        out.push({ text: trimmed, num });
-      } else {
-        const extracted = extractNumbersInText(trimmed);
-        for (const { num: extractedNum, numStr, index } of extracted) {
-          // Issue #4: era-marked years (e.g. "2898 AD") are dates, not numbers —
-          // exclude them from magnitude detection and the preview examples.
-          if (isEraYear(trimmed, index, numStr)) continue;
+
+      const hasSuperscript = !!(cellEl && cellEl.querySelector && cellEl.querySelector('sup'));
+      const decision = finalizeExtractedDecision(
+        classifyCell({
+          text,
+          rowIndex: r,
+          columnIndex: c,
+          ranges,
+          isWholeLink: !!(cellEl && isCellWholeLink(cellEl)),
+          hasSuperscript,
+          superscriptRanges: hasSuperscript ? getSuperscriptRanges(cellEl) : [],
+        }, opts),
+        cellEl
+      );
+
+      if (decision.mode === 'pure') {
+        const { num } = decision.value;
+        if (num !== 0 && isFinite(num)) out.push({ text: trimmed, num });
+      } else if (decision.mode === 'extracted') {
+        for (const { num: extractedNum } of decision.value.matches) {
           out.push({ text: trimmed, num: extractedNum });
         }
       }
+      // mode:'date'/'time'/'skip' are not numeric-preview material — see the
+      // function comment above.
     }
   }
   return out;
@@ -445,10 +510,12 @@ function extractPreviewSamples(table) {
 
 /**
  * Classify and compute rounded target values for all visible cells of a
- * virtualized grid, using the EXACT same gating logic as the initial
- * `roundTable` pass: isInRanges, getExclusionReason (firstRow / firstColumn /
- * percent / currency), whole-cell-quote, date/time, isCellWholeLink, <sup>
- * handling, and mode:'extracted' skip-on-grid.
+ * virtualized grid. Classification (isInRanges, getExclusionReason, whole-
+ * cell-quote, date/time, link, superscript) runs through the same
+ * classifyCell ladder (lib/dr-simplify) the native-table path in roundTable
+ * calls below, with allowExtracted: false — the two paths share one
+ * implementation, so they cannot drift the way two hand-kept-in-sync copies
+ * could.
  *
  * max_mag is computed only over the surviving in-range, non-excluded pure
  * (and extracted) numeric cells — the same filtered set the initial pass uses —
@@ -510,54 +577,21 @@ function computeGridRoundedValues(wrapperEl, opts) {
       const text = cellObj.getText();
       const trimmed = typeof text === 'string' ? text.trim() : '';
 
-      const isWholeCellQuoted = trimmed.startsWith('"') && trimmed.endsWith('"') &&
-        (trimmed.match(/"/g) || []).length === 2;
-
-      let info;
-      if (!isInRanges(r, col, ranges)) {
-        info = { mode: 'skip' };
-      } else if (getExclusionReason(text, col, opts, r)) {
-        info = { mode: 'skip' };
-      } else if (isWholeCellQuoted) {
-        info = { mode: 'skip' };
-      } else if (isDateTimeLike(trimmed)) {
-        // ISO date-time follows the time instruction (date preserved). Checked
-        // before isDateLike, which would otherwise match a space-separated form.
-        info = opts.simplifyTimes ? { mode: 'time' } : { mode: 'skip' };
-      } else if (isDateLike(trimmed)) {
-        if (!opts.simplifyDates) {
-          info = { mode: 'skip' };
-        } else {
-          const ambig = parseAmbiguousNumericDate(trimmed);
-          if (ambig !== null) {
-            info = { mode: 'date', ambiguous: ambig };
-          } else {
-            const parsed = parseDateLike(trimmed);
-            info = { mode: 'date', month: parsed.month, day: parsed.day, year: parsed.year };
-          }
-        }
-      } else if (isTimeLike(trimmed)) {
-        info = opts.simplifyTimes ? { mode: 'time' } : { mode: 'skip' };
-      } else {
-        const num = toNumber(text);
-        if (num !== null) {
-          if (isCellWholeLink(cell)) {
-            info = { mode: 'skip' };
-          } else if (cell.querySelector && cell.querySelector('sup')) {
-            // mode:'extracted' is skipped on grids (nodeValue-only write model).
-            // Tracked in issue #120.
-            info = { mode: 'skip' };
-          } else {
-            info = { mode: 'pure', num };
-          }
-        } else if (opts.simplifyMixedCells) {
-          // mode:'extracted' is skipped on grids (nodeValue-only write model).
-          // Tracked in issue #120.
-          info = { mode: 'skip' };
-        } else {
-          info = { mode: 'skip' };
-        }
-      }
+      // allowExtracted: false — mode:'extracted' (mixed-text/superscript
+      // cells) is unsupported on grids (nodeValue-only write model, issue
+      // #120), whatever opts.simplifyMixedCells says.
+      const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
+      const decision = classifyCell({
+        text,
+        rowIndex: r,
+        columnIndex: col,
+        ranges,
+        isWholeLink: isCellWholeLink(cell),
+        hasSuperscript,
+        superscriptRanges: hasSuperscript ? getSuperscriptRanges(cell) : [],
+        allowExtracted: false,
+      }, opts);
+      const info = decisionToLegacyInfo(decision);
 
       const entryIdx = cellEntries.length;
       cellEntries.push({ cellObj, text, trimmed, info, col, rowIdx: r });
@@ -571,33 +605,11 @@ function computeGridRoundedValues(wrapperEl, opts) {
 
   // --- Column post-pass: resolve ambiguous date cells per column ---
   for (const [col, indices] of ambigByCol) {
-    let hasN1gt12 = false;
-    let hasN2gt12 = false;
-    for (const idx of indices) {
-      const { info } = cellEntries[idx];
-      if (info.ambiguous.n1 > 12) hasN1gt12 = true;
-      if (info.ambiguous.n2 > 12) hasN2gt12 = true;
-    }
-    let formatHint;
-    if (hasN1gt12 && !hasN2gt12) {
-      formatHint = 'DMY';
-    } else if (hasN2gt12 && !hasN1gt12) {
-      formatHint = 'MDY';
-    } else if (hasN1gt12 && hasN2gt12) {
-      formatHint = 'MIXED';
-    } else {
-      formatHint = 'AMBIGUOUS';
-    }
+    const formatHint = pickDateFormatHint(indices.map((idx) => cellEntries[idx].info.ambiguous));
     for (const idx of indices) {
       const entry = cellEntries[idx];
-      const { info } = entry;
-      if (formatHint === 'MDY') {
-        entry.info = { mode: 'date', month: info.ambiguous.n1, day: info.ambiguous.n2, year: info.ambiguous.year };
-      } else if (formatHint === 'DMY') {
-        entry.info = { mode: 'date', month: info.ambiguous.n2, day: info.ambiguous.n1, year: info.ambiguous.year };
-      } else {
-        entry.info = { mode: 'skip' };
-      }
+      const pendingDecision = { value: { ambiguous: entry.info.ambiguous } };
+      entry.info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, formatHint));
     }
   }
   // --- End column post-pass ---
@@ -821,99 +833,23 @@ function roundTable(table, options) {
       // For native adapters carry the raw element (unchanged).
       rowCells.push(cell);
 
-      const trimmed = typeof text === 'string' ? text.trim() : '';
-      // Whole-cell quote short-circuit: if the entire cell content is a single
-      // balanced ASCII double-quoted span, skip it entirely (no numbers to round).
-      const isWholeCellQuoted = trimmed.startsWith('"') && trimmed.endsWith('"') &&
-        (trimmed.match(/"/g) || []).length === 2;
-
-      if (!isInRanges(r, col, ranges)) {
-        rowInfo.push({ mode: 'skip' });
-      } else if (getExclusionReason(text, col, opts, r)) {
-        rowInfo.push({ mode: 'skip' });
-      } else if (isWholeCellQuoted) {
-        rowInfo.push({ mode: 'skip' });
-      } else if (isDateTimeLike(trimmed)) {
-        // ISO date-time follows the time instruction (date preserved). Checked
-        // before isDateLike, which would otherwise match a space-separated form.
-        rowInfo.push(opts.simplifyTimes ? { mode: 'time' } : { mode: 'skip' });
-      } else if (isDateLike(trimmed)) {
-        // Date-like cells must never fall through to numeric rounding (a bare
-        // year like "2018" parses as a number). Simplify when the toggle is on,
-        // otherwise leave the cell untouched.
-        if (!opts.simplifyDates) {
-          rowInfo.push({ mode: 'skip' });
-        } else {
-          const ambig = parseAmbiguousNumericDate(trimmed);
-          if (ambig !== null) {
-            rowInfo.push({ mode: 'date', ambiguous: ambig });
-          } else {
-            // Unambiguous: parse now and store the resolved fields
-            const parsed = parseDateLike(trimmed);
-            rowInfo.push({ mode: 'date', month: parsed.month, day: parsed.day, year: parsed.year });
-          }
-        }
-      } else if (isTimeLike(trimmed)) {
-        // Same guard for time-like cells.
-        rowInfo.push(opts.simplifyTimes ? { mode: 'time' } : { mode: 'skip' });
-      } else {
-        const num = toNumber(text);
-        if (num !== null) {
-          // Whole-cell link check: if the entire visible text is inside <a> tags, skip.
-          if (isCellWholeLink(cell)) {
-            rowInfo.push({ mode: 'skip' });
-          } else if (cell.querySelector && cell.querySelector('sup')) {
-            // The cell contains a <sup> element: the flattened text mixes base and exponent
-            // digits (e.g. "10<sup>12</sup>" -> innerText "1012").  Route through the
-            // inline-extraction path so superscript masking can protect the exponent.
-            if (opts.simplifyMixedCells) {
-              let matches = extractNumbersInText(text);
-              matches = filterLinkMatches(cell, matches);
-              const quoteRanges = getQuoteMaskedRanges(text);
-              if (quoteRanges.length > 0) {
-                matches = matches.filter(m => !overlapsQuoteRange(quoteRanges, m.index, m.index + m.numStr.length));
-              }
-              const superRanges = getSuperscriptRanges(cell);
-              if (superRanges.length > 0) {
-                matches = matches.filter(m => !overlapsQuoteRange(superRanges, m.index, m.index + m.numStr.length));
-              }
-              // Issue #4: drop era-marked years (e.g. "2898 AD") — dates, not
-              // numbers to be offset-rounded.
-              matches = matches.filter(m => !isEraYear(text, m.index, m.numStr));
-              if (matches.length > 0) {
-                rowInfo.push({ mode: 'extracted', matches });
-              } else {
-                rowInfo.push({ mode: 'skip' });
-              }
-            } else {
-              rowInfo.push({ mode: 'skip' });
-            }
-          } else {
-            rowInfo.push({ mode: 'pure', num });
-          }
-        } else if (opts.simplifyMixedCells) {
-          let matches = extractNumbersInText(text);
-          matches = filterLinkMatches(cell, matches);
-          const quoteRanges = getQuoteMaskedRanges(text);
-          if (quoteRanges.length > 0) {
-            matches = matches.filter(m => !overlapsQuoteRange(quoteRanges, m.index, m.index + m.numStr.length));
-          }
-          const superRanges = getSuperscriptRanges(cell);
-          if (superRanges.length > 0) {
-            matches = matches.filter(m => !overlapsQuoteRange(superRanges, m.index, m.index + m.numStr.length));
-          }
-          // Issue #4: drop era-marked years (e.g. "2898 AD") — dates, not
-          // numbers to be offset-rounded.
-          matches = matches.filter(m => !isEraYear(text, m.index, m.numStr));
-          if (matches.length > 0) {
-            rowInfo.push({ mode: 'extracted', matches });
-          } else {
-            rowInfo.push({ mode: 'skip' });
-          }
-        } else {
-          rowInfo.push({ mode: 'skip' });
-        }
-      }
+      // isCellWholeLink and getSuperscriptRanges are DOM-only checks the pure
+      // ladder cannot perform itself (see lib/dr-simplify/ladder.js header);
+      // compute them here and pass the results in as plain data.
+      const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
+      const decision = finalizeExtractedDecision(
+        classifyCell({
+          text,
+          rowIndex: r,
+          columnIndex: col,
+          ranges,
+          isWholeLink: isCellWholeLink(cell),
+          hasSuperscript,
+          superscriptRanges: hasSuperscript ? getSuperscriptRanges(cell) : [],
+        }, opts),
+        cell
+      );
+      rowInfo.push(decisionToLegacyInfo(decision));
     }
     data.push(rowData);
     cellsMap.push(rowCells);
@@ -938,35 +874,12 @@ function roundTable(table, options) {
     }
     if (ambigCells.length === 0) continue;
 
-    // Compute format hint from the ambiguous cells.
-    let hasN1gt12 = false; // n1 > 12 → rejects MDY interpretation (n1 must be day)
-    let hasN2gt12 = false; // n2 > 12 → rejects DMY interpretation (n2 must be day)
-    for (const { info } of ambigCells) {
-      if (info.ambiguous.n1 > 12) hasN1gt12 = true;
-      if (info.ambiguous.n2 > 12) hasN2gt12 = true;
-    }
-
-    let formatHint;
-    if (hasN1gt12 && !hasN2gt12) {
-      formatHint = 'DMY'; // n1 is day, n2 is month
-    } else if (hasN2gt12 && !hasN1gt12) {
-      formatHint = 'MDY'; // n1 is month, n2 is day
-    } else if (hasN1gt12 && hasN2gt12) {
-      formatHint = 'MIXED';
-    } else {
-      formatHint = 'AMBIGUOUS';
-    }
-
-    // Resolve or downgrade each ambiguous cell based on the hint.
+    // Compute format hint from the ambiguous cells, then resolve or downgrade
+    // each one based on the hint.
+    const formatHint = pickDateFormatHint(ambigCells.map(({ info }) => info.ambiguous));
     for (const { r, info } of ambigCells) {
-      if (formatHint === 'MDY') {
-        cellInfo[r][c] = { mode: 'date', month: info.ambiguous.n1, day: info.ambiguous.n2, year: info.ambiguous.year };
-      } else if (formatHint === 'DMY') {
-        cellInfo[r][c] = { mode: 'date', month: info.ambiguous.n2, day: info.ambiguous.n1, year: info.ambiguous.year };
-      } else {
-        // AMBIGUOUS or MIXED — cannot resolve safely
-        cellInfo[r][c] = { mode: 'skip' };
-      }
+      const pendingDecision = { value: { ambiguous: info.ambiguous } };
+      cellInfo[r][c] = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, formatHint));
     }
   }
   // --- End column post-pass ---

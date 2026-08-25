@@ -25,6 +25,8 @@
         "lib/dr-number/index.js",
         "lib/dr-table/detect.js",
         "lib/dr-table/index.js",
+        "lib/dr-simplify/ladder.js",
+        "lib/dr-simplify/index.js",
         "ui-toggle.js",
         "content.js"
       ]
