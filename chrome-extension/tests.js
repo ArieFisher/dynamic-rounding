@@ -66,15 +66,16 @@ function sourceByName(name) {
 const contentScriptBundle = contentScriptFiles
   .map((file) => contentScriptSources.get(file))
   .join('\n');
-const coreCode = sourceByName('core.js');
-const parsingCode = sourceByName('parsing.js');
-const domAdaptersCode = sourceByName('dom-adapters.js');
+const coreCode = sourceByName('lib/dr-number/core.js');
+const parsingCode = sourceByName('lib/dr-number/parsing.js');
+const detectCode = sourceByName('lib/dr-table/detect.js');
 const uiToggleCode = sourceByName('ui-toggle.js');
 // Combined source for "source-includes" assertions that no longer care which
 // content-script file a symbol physically lives in after the Phase 2 split.
 const allContentSrc = contentScriptBundle;
 eval(contentScriptBundle + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
+globalThis.DR_NUMBER = DR_NUMBER;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
@@ -133,10 +134,13 @@ Object.defineProperty(globalThis, 'lastRightClickedTable', {
 // Expose grid-detection helpers for the grid-detection test suite.
 globalThis.looksLikeGrid = looksLikeGrid;
 globalThis.findTargetTable = findTargetTable;
+globalThis.findTables = findTables;
 // Expose TableAdapter abstraction for the grid-adapter test suite.
 globalThis.makeAdapter = makeAdapter;
 globalThis.NativeTableAdapter = NativeTableAdapter;
 globalThis.GridAdapter = GridAdapter;
+// Expose the lib/dr-table package bundle, mirroring DR_NUMBER below.
+globalThis.DR_TABLE = DR_TABLE;
 // Expose grid-virtualization internals for the grid-virtualization test suite.
 globalThis.reapplyGridRounding = reapplyGridRounding;
 globalThis.computeGridRoundedValues = computeGridRoundedValues;
@@ -146,6 +150,9 @@ globalThis.GRID_REAPPLY_DEBOUNCE_MS = GRID_REAPPLY_DEBOUNCE_MS;
 // Expose phantom a11y predicate and its threshold constant for tests
 globalThis.isPhantomA11yTable = isPhantomA11yTable;
 globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = OFFSCREEN_LEFT_PX_THRESHOLD;
+// Expose content.js's badge/marker call-site wrapper (sprint extract-dr-table)
+// for direct unit testing.
+globalThis.markAndToggleIfNewGrid = markAndToggleIfNewGrid;
 `);
 
 let passed = 0;
@@ -1689,7 +1696,7 @@ function withLinkCreateTreeWalker(fn) {
 
 (function quoteRegressionGuards() {
   // 5a. cell.innerText || cell.textContent is the read source (static analysis).
-  // Lives in the NativeTableAdapter (dom-adapters.js) after the Phase 2 split.
+  // Lives in the NativeTableAdapter (lib/dr-table/detect.js) after the Phase 2 split.
   const contentSrc = allContentSrc;
   eq('regression: read source is cell.innerText || cell.textContent',
     contentSrc.includes('cell.innerText || cell.textContent'), true);
@@ -1820,10 +1827,12 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, rounding, core, parsing, dom-adapters, ui-toggle, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, dr-number package, dr-table package, ui-toggle, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
-      'defaults.js', 'rounding.js', 'core.js',
-      'parsing.js', 'dom-adapters.js', 'ui-toggle.js', 'content.js',
+      'defaults.js',
+      'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
+      'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
+      'lib/dr-table/detect.js', 'lib/dr-table/index.js', 'ui-toggle.js', 'content.js',
     ]), true);
 
   // AC3: (sidebar-tidyup) the old "section-heading" with "Include numbers in cells containing:"
@@ -2950,6 +2959,89 @@ function makeIsDataTable(rowsSpec) {
     isDataTable(table), false);
 })();
 
+// ---------------------------------------------------------------------------
+// Regression: DEFAULT_NUMERIC_PROBE must stay byte-equivalent to the old
+// pre-extraction predicate (trim -> strip CLEAN_REGEX chars -> parseFloat ->
+// isFinite). A prior version of this probe delegated to DR_NUMBER.toNumber,
+// which uses Number() plus unicode-minus/parenthesized-negative handling and
+// disagrees with parseFloat on exactly these shapes: date-only, time-only,
+// and value-with-unit cells (parseFloat accepts a numeric prefix; Number does
+// not), and accounting-negative cells (Number, via the parens rewrite, parses
+// them; parseFloat does not). Each assertion below fails against the
+// DR_NUMBER-delegating probe and passes against the restored parseFloat-based
+// one — verified by running this file against the pre-fix commit.
+// ---------------------------------------------------------------------------
+
+// Date-only column: parseFloat('2024-01-15') -> 2024 (numeric prefix) -> true.
+// DR_NUMBER.toNumber('2024-01-15') -> Number('2024-01-15') -> NaN -> false.
+(function isDataTable_dateOnlyColumn() {
+  const table = makeIsDataTable([
+    ['Date',       'Owner'],
+    ['2024-01-15', 'Alice'],
+  ]);
+  eq('isDataTable: date-only column ("2024-01-15") -> true (matches old parseFloat predicate)',
+    isDataTable(table), true);
+})();
+
+// Slash-formatted date column: same parseFloat-prefix argument as above.
+(function isDataTable_slashDateColumn() {
+  const table = makeIsDataTable([
+    ['Date',        'Owner'],
+    ['15/03/2024',  'Bob'],
+  ]);
+  eq('isDataTable: slash date column ("15/03/2024") -> true (matches old parseFloat predicate)',
+    isDataTable(table), true);
+})();
+
+// Time-only column: parseFloat('09:30') -> 9 (numeric prefix) -> true.
+// DR_NUMBER.toNumber('09:30') -> Number('09:30') -> NaN -> false.
+(function isDataTable_timeOnlyColumn() {
+  const table = makeIsDataTable([
+    ['Time',  'Event'],
+    ['09:30', 'Standup'],
+  ]);
+  eq('isDataTable: time-only column ("09:30") -> true (matches old parseFloat predicate)',
+    isDataTable(table), true);
+})();
+
+// Value-with-unit column: CLEAN_REGEX strips the space ("3.5 kg" -> "3.5kg"),
+// then parseFloat('3.5kg') -> 3.5 -> true.
+// DR_NUMBER.toNumber('3.5 kg') -> Number('3.5kg') -> NaN -> false.
+(function isDataTable_unitSuffixColumn() {
+  const table = makeIsDataTable([
+    ['Weight', 'Item'],
+    ['3.5 kg', 'Box'],
+  ]);
+  eq('isDataTable: unit-suffix column ("3.5 kg") -> true (matches old parseFloat predicate)',
+    isDataTable(table), true);
+})();
+
+// All-text table: no cell parses as numeric under either probe -> false.
+// (Distinct fixture from isDataTable_3x3_allText above, kept local to this
+// regression block so it reads as a self-contained before/after set.)
+(function isDataTable_allTextColumn() {
+  const table = makeIsDataTable([
+    ['Status', 'Owner'],
+    ['Open',   'Alice'],
+  ]);
+  eq('isDataTable: all-text table -> false (no cell parses as numeric under either probe)',
+    isDataTable(table), false);
+})();
+
+// Accounting-negative cell: old CLEAN_REGEX + parseFloat leaves the
+// parentheses in place; parseFloat('(1,234)' -> '(1234)') -> NaN -> false.
+// DR_NUMBER.toNumber rewrites "(1234)" -> "-1234" -> -1234 -> true. Verify
+// against the parent branch's own behavior (git show refactor/extract-dr-number)
+// before asserting: the parent's predicate also returns false here.
+(function isDataTable_accountingNegativeColumn() {
+  const table = makeIsDataTable([
+    ['Amount',   'Item'],
+    ['(1,234)',  'Refund'],
+  ]);
+  eq('isDataTable: accounting-negative cell ("(1,234)") -> false (matches parent-branch predicate)',
+    isDataTable(table), false);
+})();
+
 // --- Sprint trim-trailing-zeros (chrome-extension): whole-number short-circuit ---
 
 // restoreFormatting drops trailing zeros for whole-number results under 10
@@ -3378,10 +3470,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // Re-eval content.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor
   // gates on the constant. We sandbox the patched source so the eq()
   // assertions below don't disturb the live extension globals.
-  const roundingSrc = sourceByName('rounding.js');
+  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const contentSrc = sourceByName('content.js');
   if (roundingSrc === null || contentSrc === null || coreCode === null ||
-      parsingCode === null || domAdaptersCode === null || uiToggleCode === null) {
+      parsingCode === null || detectCode === null || uiToggleCode === null) {
     eq('x-floor flip: source files present in manifest', false, true);
     return;
   }
@@ -3405,11 +3497,11 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   const vm = require('vm');
   const ctx = vm.createContext(sandbox);
   // content.js runs its observer/listener wiring at load and depends on the
-  // extracted layers (core/parsing/dom-adapters/ui-toggle), so eval them in the
+  // extracted layers (core/parsing/detect/ui-toggle), so eval them in the
   // same order the manifest loads them before content.js.
   vm.runInContext(
     patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
-    domAdaptersCode + '\n' + uiToggleCode + '\n' + contentSrc +
+    detectCode + '\n' + uiToggleCode + '\n' + contentSrc +
     '\nthis.__roundWithOffset = roundWithOffset;', ctx);
   const patchedRound = sandbox.__roundWithOffset;
 
@@ -4309,37 +4401,44 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 
 (function previewBand_manifestLoadsRoundingJs() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('manifest content_scripts loads rounding.js between defaults.js and content.js',
-    manifest.content_scripts[0].js[1], 'rounding.js');
+  eq('manifest content_scripts loads lib/dr-number/rounding.js between defaults.js and content.js',
+    manifest.content_scripts[0].js[1], 'lib/dr-number/rounding.js');
 })();
 
-// The extracted layers (core.js + the Phase 2 split: parsing.js, dom-adapters.js,
-// ui-toggle.js) must all load AFTER rounding.js and BEFORE content.js — content.js
-// runs last because it holds the only load-time-executing code (listeners and the
-// MutationObserver wiring). This ordering is duplicated in three places (manifest
-// content_scripts, sidebar.html, and this harness's eval concatenation); they must
-// stay in lockstep.
+// The extracted layers (the lib/dr-number package: rounding.js, core.js,
+// parsing.js, index.js; the lib/dr-table package: detect.js, index.js; plus
+// ui-toggle.js) must all load AFTER defaults.js and BEFORE content.js —
+// content.js runs last because it holds the only load-time-executing code
+// (listeners and the MutationObserver wiring). This ordering is duplicated in
+// three places (manifest content_scripts, sidebar.html, and this harness's
+// eval concatenation); they must stay in lockstep.
 (function layerLoadOrderAcrossEntryPoints() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   const js = manifest.content_scripts[0].js;
   const after = (a, b) => js.indexOf(a) > -1 && js.indexOf(b) > -1 && js.indexOf(a) < js.indexOf(b);
-  eq('manifest: rounding.js < core.js < parsing.js < dom-adapters.js < ui-toggle.js < content.js',
-    after('rounding.js', 'core.js') && after('core.js', 'parsing.js') &&
-    after('parsing.js', 'dom-adapters.js') && after('dom-adapters.js', 'ui-toggle.js') &&
+  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ui-toggle.js < content.js',
+    after('lib/dr-number/rounding.js', 'lib/dr-number/core.js') &&
+    after('lib/dr-number/core.js', 'lib/dr-number/parsing.js') &&
+    after('lib/dr-number/parsing.js', 'lib/dr-number/index.js') &&
+    after('lib/dr-number/index.js', 'lib/dr-table/detect.js') &&
+    after('lib/dr-table/detect.js', 'lib/dr-table/index.js') &&
+    after('lib/dr-table/index.js', 'ui-toggle.js') &&
     after('ui-toggle.js', 'content.js'), true);
   eq('manifest: content.js loads last', js[js.length - 1], 'content.js');
 
   // The sidebar deliberately does NOT load the content-only layers — it only
   // needs the pure domain (defaults, rounding, core).
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  eq('sidebar.html loads core.js after rounding.js and before sidebar.js',
-    /rounding\.js[\s\S]*core\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
-  eq('sidebar.html does not load content-only parsing.js', sidebarHtml.includes('parsing.js'), false);
-  eq('sidebar.html does not load content-only dom-adapters.js', sidebarHtml.includes('dom-adapters.js'), false);
+  eq('sidebar.html loads lib/dr-number/core.js after lib/dr-number/rounding.js and before sidebar.js',
+    /lib\/dr-number\/rounding\.js[\s\S]*lib\/dr-number\/core\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+  eq('sidebar.html does not load content-only lib/dr-number/parsing.js', sidebarHtml.includes('lib/dr-number/parsing.js'), false);
+  eq('sidebar.html does not load content-only lib/dr-number/index.js', sidebarHtml.includes('lib/dr-number/index.js'), false);
+  eq('sidebar.html does not load content-only lib/dr-table/detect.js', sidebarHtml.includes('lib/dr-table/detect.js'), false);
+  eq('sidebar.html does not load content-only lib/dr-table/index.js', sidebarHtml.includes('lib/dr-table/index.js'), false);
   eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
 
   // NOTE: the main bootstrap eval() (top of this file) no longer concatenates
-  // coreCode/parsingCode/domAdaptersCode/uiToggleCode/code directly — it evals
+  // coreCode/parsingCode/detectCode/uiToggleCode/code directly — it evals
   // the manifest-driven contentScriptBundle instead (see the
   // manifestDrivenSourceLoading self-test below for that ordering guarantee).
   // This assertion instead checks that later per-layer eval sites in this file
@@ -4347,8 +4446,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // in layer order, since a few sections still build their own eval string
   // from the individual layer sources.
   const testsSource = fs.readFileSync(path.join(__dirname, 'tests.js'), 'utf8');
-  eq('tests.js: per-layer eval sites reference core→parsing→dom-adapters→ui-toggle→content in layer order',
-    /coreCode[\s\S]*parsingCode[\s\S]*domAdaptersCode[\s\S]*uiToggleCode[\s\S]*code\b/.test(
+  eq('tests.js: per-layer eval sites reference core→parsing→detect→ui-toggle→content in layer order',
+    /coreCode[\s\S]*parsingCode[\s\S]*detectCode[\s\S]*uiToggleCode[\s\S]*code\b/.test(
       testsSource.slice(testsSource.indexOf('eval('))), true);
 })();
 
@@ -4356,8 +4455,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('sidebar.html has #topBand', /<div[^>]*id="topBand"/.test(sidebarHtml), true);
   eq('sidebar.html has #botBand', /<div[^>]*id="botBand"/.test(sidebarHtml), true);
-  eq('sidebar.html loads rounding.js before sidebar.js',
-    /rounding\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+  eq('sidebar.html loads lib/dr-number/rounding.js before sidebar.js',
+    /lib\/dr-number\/rounding\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -6751,7 +6850,7 @@ function withFindTargetEnv(elements, fn) {
     const result = findTargetTable(inner);
 
     eq('findTargetTable: returns outermost ancestor (S6), not inner pane',
-      result, outer);
+      result.handle, outer);
   });
 })();
 
@@ -6795,11 +6894,11 @@ function withFindTargetEnv(elements, fn) {
 
     // Must return outerOk, not failsLLG or body
     eq('findTargetTable: stops at failing parent, returns outermost passing container',
-      result, outerOk);
+      result.handle, outerOk);
 
     // Must NOT return the body sentinel or the failing container
     eq('findTargetTable: does not return failing container',
-      result === failsLLG, false);
+      result.handle === failsLLG, false);
   });
 })();
 
@@ -6825,7 +6924,11 @@ function withFindTargetEnv(elements, fn) {
     const result = findTargetTable(clickTarget);
 
     eq('findTargetTable: prefers native <table> ancestor over grid heuristic',
-      result, tableEl);
+      result.handle, tableEl);
+    // A bare <table> ancestor is a case the caller already knows how to
+    // handle (it never gets the dr-ext-grid marker); isNew is always false.
+    eq('findTargetTable: native <table> ancestor reports isNew: false',
+      result.isNew, false);
   });
 })();
 
@@ -6884,14 +6987,21 @@ function withFindTargetEnv(elements, fn) {
     const result = findTargetTable(clickTarget);
 
     eq('findTargetTable: returns already-tagged .dr-ext-grid ancestor immediately',
-      result, existingGrid);
+      result.handle, existingGrid);
+    // Already marked — the caller has already handled this one; isNew is false.
+    eq('findTargetTable: already-tagged .dr-ext-grid ancestor reports isNew: false',
+      result.isNew, false);
   });
 })();
 
-// FT6: findTargetTable — marks the outermost grid with dr-ext-grid class (AC2)
-// After findTargetTable discovers a new grid via walk-up, it must add
-// 'dr-ext-grid' to the outermost element.
-(function findTargetTable_marksOutermostWithClass() {
+// FT6: findTargetTable — REPORTS a new grid via { handle, isNew: true } and
+// does not mark it itself (sprint extract-dr-table: detection moved to
+// lib/dr-table and now only reports; the caller — content.js's
+// markAndToggleIfNewGrid — owns the dr-ext-grid write and the widget build).
+// This test used to assert findTargetTable itself added the class (AC2 under
+// the old contract); it is reworked here to assert the new split instead:
+// findTargetTable must resolve the new grid AND must leave it unmarked.
+(function findTargetTable_reportsNewGridWithoutMarking() {
   withFindTargetEnv([], function() {
     const makeRows5 = () => [
       makeGridRow([{text:'A',width:100},{text:'100'}], 'row', 20),
@@ -6911,10 +7021,53 @@ function withFindTargetEnv(elements, fn) {
 
     inner.closest = function(sel) { return null; };
 
-    findTargetTable(inner);
+    const result = findTargetTable(inner);
 
-    eq('findTargetTable: marks outermost grid with dr-ext-grid class',
-      outer.classList.contains('dr-ext-grid'), true);
+    eq('findTargetTable: resolves the new grid to the outermost element',
+      result.handle, outer);
+    eq('findTargetTable: reports isNew: true for a not-yet-marked grid',
+      result.isNew, true);
+    eq('findTargetTable: does NOT write the dr-ext-grid marker itself (reports only)',
+      outer.classList.contains('dr-ext-grid'), false);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// content.js markAndToggleIfNewGrid — the badge/marker call-site wrapper that
+// replaced findTargetTable's old internal mutation. It owns exactly what
+// findTargetTable used to do inline: write the dr-ext-grid marker and build
+// the toggle widget, but only for a first-time (isNew) discovery.
+// ---------------------------------------------------------------------------
+(function markAndToggleIfNewGrid_newGridGetsMarkedAndWidget() {
+  withFindTargetEnv([], function() {
+    const savedToggleStyleInjected = toggleStyleInjected;
+    const table = makePass1DataTable();
+    table.parentElement = { tagName: 'DIV', getAttribute: () => null, style: {}, parentElement: null, parentNode: null };
+
+    const handleReturned = markAndToggleIfNewGrid({ handle: table, isNew: true });
+
+    eq('markAndToggleIfNewGrid: returns found.handle',
+      handleReturned, table);
+    eq('markAndToggleIfNewGrid: adds dr-ext-grid to a newly discovered grid',
+      table.classList.contains('dr-ext-grid'), true);
+    eq('markAndToggleIfNewGrid: builds the toggle widget for a newly discovered grid',
+      tableToggles.has(table), true);
+
+    cleanupPass1Tables([table]);
+    toggleStyleInjected = savedToggleStyleInjected;
+  });
+})();
+
+(function markAndToggleIfNewGrid_alreadySeenHandleSkipsMarkAndWidget() {
+  withFindTargetEnv([], function() {
+    const table = makePass1DataTable();
+
+    markAndToggleIfNewGrid({ handle: table, isNew: false });
+
+    eq('markAndToggleIfNewGrid: does not mark an already-seen handle',
+      table.classList.contains('dr-ext-grid'), false);
+    eq('markAndToggleIfNewGrid: does not build a widget for an already-seen handle',
+      tableToggles.has(table), false);
   });
 })();
 
@@ -7026,12 +7179,12 @@ function makeNativeTableEl(rowsSpec) {
 
   // Source scan: nothing in the class may assign textContent/innerHTML on a
   // cell. Catches a setText re-added under a different name.
-  if (domAdaptersCode === null) {
-    eq('TA1b: source file dom-adapters.js present in manifest', false, true);
+  if (detectCode === null) {
+    eq('TA1b: source file lib/dr-table/detect.js present in manifest', false, true);
     return;
   }
-  const start = domAdaptersCode.indexOf('class NativeTableAdapter');
-  const rest = domAdaptersCode.slice(start);
+  const start = detectCode.indexOf('class NativeTableAdapter');
+  const rest = detectCode.slice(start);
   const classBody = rest.slice(0, rest.indexOf('\n}\n'));
 
   eq('TA1b (setup): NativeTableAdapter class body located',
@@ -7416,7 +7569,7 @@ function makeGridWrapper(rowData, opts) {
   // The _makeCellObj method must ONLY use tn.nodeValue = s.
   // Source scan: the setText implementation inside _makeCellObj must not contain
   // 'textContent =' (with a write) or 'innerHTML =' outside the native-table path.
-  // GridAdapter now lives in dom-adapters.js (Phase 2 split).
+  // GridAdapter now lives in lib/dr-table/detect.js (Phase 2 split).
   const src = allContentSrc;
 
   // Extract _makeCellObj body (from _makeCellObj to the closing brace of its returned object)
@@ -7733,7 +7886,7 @@ function makeGridWrapper(rowData, opts) {
 // nodeValue-safe. It will flag a regression if someone adds an innerHTML= write
 // in the adapter's setText or in a new grid-specific roundTable branch.
 (function gr6j_gridSetText_sourceGuard_noInnerHTMLInAdapterSetText() {
-  // GridAdapter now lives in dom-adapters.js (Phase 2 split).
+  // GridAdapter now lives in lib/dr-table/detect.js (Phase 2 split).
   const src = allContentSrc;
 
   // Extract _makeCellObj body (the GridAdapter's cell factory, ~1000 chars)
@@ -10404,27 +10557,30 @@ function fireMouseClick(buttonEl, fn) {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // AC1 (source): contextmenu handler calls flashTargetedTable(table) inside
-  // the `if (table)` guard.
-  // Pattern: `if (table) { ... flashTargetedTable(table) ...` within the handler.
+  // the `if (found)` guard. Sprint extract-dr-table: findTargetTable now
+  // reports { handle, isNew } instead of the table itself, so the handler
+  // guards on `found` and derives `table` from markAndToggleIfNewGrid(found)
+  // before flashing it.
+  // Pattern: `if (found) { ... flashTargetedTable(table) ...` within the handler.
   eq('table-activation AC1 source: contextmenu handler calls flashTargetedTable(table)',
-    /if\s*\(\s*table\s*\)[\s\S]{0,300}flashTargetedTable\(\s*table\s*\)/.test(contentSrc),
+    /if\s*\(\s*found\s*\)[\s\S]{0,300}flashTargetedTable\(\s*table\s*\)/.test(contentSrc),
     true);
 
-  // AC1 (source): the call to flashTargetedTable is inside the `if (table)` block
+  // AC1 (source): the call to flashTargetedTable is inside the `if (found)` block
   // — it cannot appear BEFORE the guard.
-  // We verify that flashTargetedTable does NOT appear before the first `if (table)`.
+  // We verify that flashTargetedTable does NOT appear before the first `if (found)`.
   const contextmenuMatch = contentSrc.match(/document\.addEventListener\s*\(\s*['"]contextmenu['"][\s\S]*?\}\s*,\s*true\s*\)/);
   const handlerSrc = contextmenuMatch ? contextmenuMatch[0] : '';
   const flashIndex = handlerSrc.indexOf('flashTargetedTable');
-  const guardIndex = handlerSrc.indexOf('if (table)');
-  eq('table-activation AC1 source: flashTargetedTable appears after if(table) guard in handler',
+  const guardIndex = handlerSrc.indexOf('if (found)');
+  eq('table-activation AC1 source: flashTargetedTable appears after if(found) guard in handler',
     flashIndex !== -1 && guardIndex !== -1 && flashIndex > guardIndex,
     true);
 
-  // AC3 (source): TABLE_ACTIVATED sendMessage is inside the `if (table)` block,
+  // AC3 (source): TABLE_ACTIVATED sendMessage is inside the `if (found)` block,
   // meaning a non-table right-click cannot trigger it.
   const sendMsgIndex = handlerSrc.indexOf('TABLE_ACTIVATED');
-  eq('table-activation AC3 source: TABLE_ACTIVATED send is inside if(table) guard',
+  eq('table-activation AC3 source: TABLE_ACTIVATED send is inside if(found) guard',
     sendMsgIndex !== -1 && sendMsgIndex > guardIndex,
     true);
 
@@ -10551,6 +10707,186 @@ function fireMouseClick(buttonEl, fn) {
   }
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint extract-dr-table (adversarial hardening): end-to-end double-invocation
+// coverage through the REAL captured content.js listeners — not a direct call
+// to markAndToggleIfNewGrid with a hand-built {handle, isNew} object (that is
+// already covered above, but only exercises the wrapper in isolation).
+//
+// Before this sprint, findTargetTable itself wrote the dr-ext-grid marker
+// inline, so a table seen twice never grew a second widget. That guard now
+// lives across two calls (findTargetTable reports isNew; the caller's
+// markAndToggleIfNewGrid marks+builds only when isNew). This test proves the
+// split still reproduces the old guarantee end-to-end: firing the actual
+// captured 'contextmenu' listener twice on the same never-before-seen grid,
+// and then firing the actual captured 'MENU_CLICKED' onMessage listener
+// against that same target, builds exactly one toggle widget.
+// ---------------------------------------------------------------------------
+(function doubleInvocation_contextmenuAndMenuClicked_noDuplicateWidget() {
+  // A minimal div-based "grid" using the same ARIA-free, querySelectorAll-less
+  // fallback shape GridAdapter already supports (repetitive children): no
+  // real Text nodes, so GridAdapter's setText() finds nothing to patch and
+  // safely no-ops. This fixture only needs to prove marker/widget bookkeeping,
+  // not actual cell rewriting (covered elsewhere).
+  function makeCell(text) { return { nodeType: 1, textContent: text, children: [] }; }
+  function makeRow(texts) { return { nodeType: 1, className: 'row', children: texts.map(makeCell) }; }
+  const rows = [
+    makeRow(['A', '100']), makeRow(['B', '200']), makeRow(['C', '300']),
+    makeRow(['D', '400']), makeRow(['E', '500']),
+  ];
+  const gridClassList = (() => {
+    const c = [];
+    return {
+      _c: c,
+      add(x) { if (!c.includes(x)) c.push(x); },
+      remove(x) { const i = c.indexOf(x); if (i >= 0) c.splice(i, 1); },
+      contains(x) { return c.includes(x); },
+    };
+  })();
+  const gridEl = {
+    nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows,
+    classList: gridClassList, parentElement: null, parentNode: null,
+    // runToggleAction calls table.querySelector(...) directly, with no `&&`
+    // guard, so this must exist (returning "not already rounded").
+    querySelector() { return null; },
+    getBoundingClientRect() { return { top: 10, right: 100, bottom: 50, left: 10, width: 90, height: 40 }; },
+  };
+  const clickTarget = {
+    nodeType: 1, tagName: 'DIV', parentElement: gridEl, parentNode: gridEl,
+    closest(sel) { return null; }, // first right-click: no <table>/.dr-ext-grid ancestor yet
+  };
+
+  let buttonCreateCount = 0;
+  function mockCreateElement(tag) {
+    if (tag === 'button') {
+      buttonCreateCount++;
+      return {
+        type: '', className: '', style: {}, dataset: {},
+        classList: { add() {}, remove() {}, contains() { return false; } },
+        setAttribute() {}, getAttribute() { return null; },
+        addEventListener() {}, appendChild() {}, parentElement: null,
+      };
+    }
+    return { className: '', style: {}, textContent: '', appendChild() {} };
+  }
+
+  let contextmenuHandler = null;
+  let onMessageHandler = null;
+  const captureDoc = {
+    addEventListener(type, handler) { if (type === 'contextmenu') contextmenuHandler = handler; },
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild() {}, observe() {} },
+    head: { appendChild() {} },
+    createElement: mockCreateElement,
+  };
+  const sentMessages = [];
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener(fn) { onMessageHandler = fn; } },
+      sendMessage(msg) { sentMessages.push(msg); },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedGCS = global.getComputedStyle;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  // findTargetTable's walk-up (case 3) calls looksLikeGrid, which reads layout
+  // via the bare `getComputedStyle` global (not the window.getComputedStyle
+  // stub set up once at the top of this file). Provide a flex display so the
+  // fixture clears looksLikeGrid's layout gate.
+  global.getComputedStyle = () => ({ display: 'flex' });
+
+  try {
+    eval(contentScriptBundle);
+
+    eq('double-invocation: contextmenu handler was captured', typeof contextmenuHandler, 'function');
+    eq('double-invocation: MENU_CLICKED onMessage handler was captured', typeof onMessageHandler, 'function');
+    if (typeof contextmenuHandler !== 'function' || typeof onMessageHandler !== 'function') return;
+
+    // --- First right-click: new grid discovered via walk-up -> marked + widget built ---
+    contextmenuHandler({ target: clickTarget });
+
+    eq('double-invocation: first contextmenu marks the grid with dr-ext-grid',
+      gridEl.classList.contains('dr-ext-grid'), true);
+    eq('double-invocation: first contextmenu builds exactly one toggle widget',
+      buttonCreateCount, 1);
+
+    // --- Second right-click on the SAME target: findTargetTable now resolves
+    // this grid via case 2 (closest('.dr-ext-grid')), since it is already
+    // marked -- the replacement for the old inline-write re-entry guard. ---
+    clickTarget.closest = function(sel) { return sel === '.dr-ext-grid' ? gridEl : null; };
+    contextmenuHandler({ target: clickTarget });
+
+    eq('double-invocation: second contextmenu on the same grid builds NO second widget',
+      buttonCreateCount, 1);
+
+    // --- MENU_CLICKED dispatch against the same last-right-clicked element:
+    // must reuse the existing widget too, not build another. ---
+    onMessageHandler({ action: 'MENU_CLICKED' }, {}, () => {});
+
+    eq('double-invocation: MENU_CLICKED on an already-marked grid builds NO widget',
+      buttonCreateCount, 1);
+    eq('double-invocation: MENU_CLICKED still runs the toggle action (RANGE_OK sent)',
+      sentMessages.some((m) => m.action === 'RANGE_OK'), true);
+  } finally {
+    global.document = savedDoc;
+    global.chrome = savedChrome;
+    global.getComputedStyle = savedGCS;
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint extract-dr-table (adversarial hardening): static purity scan.
+// Detection functions (findTargetTable, findTables, looksLikeGrid, isDataTable,
+// isPhantomA11yTable) must never write to the page — no classList.add,
+// createElement, appendChild, or createToggleForTable inside their bodies.
+// Write-layer helpers (replaceTextPreservingHTML, applyExtractedPatches,
+// GridAdapter's setText) legitimately create/mutate nodes and are correctly
+// excluded from this scan — they are reachable only from explicit write calls
+// (roundTable / reapplyGridRounding), never from detection.
+// ---------------------------------------------------------------------------
+(function detectionFunctions_sourceScan_noPageWrites() {
+  if (detectCode === null) {
+    eq('purity scan: source file lib/dr-table/detect.js present in manifest', false, true);
+    return;
+  }
+  const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createToggleForTable'];
+  const DETECTION_FNS = ['findTargetTable', 'findTables', 'looksLikeGrid', 'isDataTable', 'isPhantomA11yTable'];
+
+  // Extract a top-level `function name(` body by brace-matching from the
+  // opening brace to its balanced close. Good enough for this file's flat,
+  // non-string-brace-heavy source.
+  function extractFunctionBody(src, fnName) {
+    const sig = new RegExp(`function ${fnName}\\s*\\(`);
+    const m = sig.exec(src);
+    if (!m) return null;
+    const braceStart = src.indexOf('{', m.index);
+    if (braceStart === -1) return null;
+    let depth = 0;
+    for (let i = braceStart; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') {
+        depth--;
+        if (depth === 0) return src.slice(braceStart, i + 1);
+      }
+    }
+    return null;
+  }
+
+  for (const fnName of DETECTION_FNS) {
+    const body = extractFunctionBody(detectCode, fnName);
+    eq(`purity scan: ${fnName} body located in lib/dr-table/detect.js`, body !== null, true);
+    if (body === null) continue;
+    for (const token of FORBIDDEN) {
+      eq(`purity scan: ${fnName} does not call/reference "${token}"`,
+        body.includes(token), false);
+    }
+  }
+})();
+
 // AC1 (live): flashTargetedTable (already in global scope from the main eval)
 // adds 'dr-ext-target-flash' to the passed table's classList.
 (function tableContextmenuActivation_flashFn() {
@@ -10645,8 +10981,8 @@ function fireMouseClick(buttonEl, fn) {
   global.chrome.runtime.onMessage.addListener = (fn) => { capturedOnMessageHandler = fn; };
 
   const defaultsSrcForFlash = sourceByName('defaults.js');
-  const roundingSrcForFlash = sourceByName('rounding.js');
-  const coreSrcForFlash = sourceByName('core.js');
+  const roundingSrcForFlash = sourceByName('lib/dr-number/rounding.js');
+  const coreSrcForFlash = sourceByName('lib/dr-number/core.js');
   if (defaultsSrcForFlash === null || roundingSrcForFlash === null || coreSrcForFlash === null) {
     eq('table-activation AC2 live: source files (defaults/rounding/core) present in manifest',
       false, true);
@@ -12379,8 +12715,10 @@ function fireMouseClick(buttonEl, fn) {
 // ---------------------------------------------------------------------------
 (function manifestDrivenSourceLoading() {
   const CONTENT_SCRIPT_FILES = [
-    'defaults.js', 'rounding.js', 'core.js', 'parsing.js',
-    'dom-adapters.js', 'ui-toggle.js', 'content.js',
+    'defaults.js',
+    'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
+    'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
+    'lib/dr-table/detect.js', 'lib/dr-table/index.js', 'ui-toggle.js', 'content.js',
   ];
 
   // AC1: no content-script filename literal reaches readFileSync/path.join
@@ -12460,8 +12798,343 @@ function fireMouseClick(buttonEl, fn) {
   // vacuously pass instead of catching a real regression.
   // NOTE: this count changes when a content-script package is added to or
   // removed from manifest.json; update it alongside the manifest edit.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 7 files today',
-    manifest.content_scripts[0].js.length, 7);
+  // Sprint extract-dr-number replaced rounding.js/core.js/parsing.js with the
+  // four-file lib/dr-number package (rounding.js, core.js, parsing.js,
+  // index.js), raising the count from 7 to 8. Sprint extract-dr-table then
+  // replaced dom-adapters.js with the two-file lib/dr-table package
+  // (detect.js, index.js), raising the count from 8 to 9.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 9 files today',
+    manifest.content_scripts[0].js.length, 9);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint extract-dr-number: the pure number-logic package now lives under
+// lib/dr-number/ (rounding.js, core.js, parsing.js, index.js). These two
+// tests are the discipline checks the sprint calls for: (a) index.js's only
+// job — assigning every public function onto one DR_NUMBER bundle — actually
+// happened, and (b) every lib/ content script the manifest lists loads before
+// any non-lib content script, so the package boundary shows up in load order,
+// not just in the filesystem.
+// ---------------------------------------------------------------------------
+(function drNumberBundleIsPublished() {
+  const EXPECTED_DR_NUMBER_NAMES = [
+    // rounding.js
+    'roundWithOffset', 'roundCellSetAware', 'stepForOffset', 'formatStep', 'trimNum',
+    // core.js
+    'findMaxMagnitude', 'toNumber',
+    // parsing.js
+    'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
+    'isInRanges', 'resolveOffset', 'resolveNumTop', 'getExclusionReason',
+    'resolveMonthName', 'normalizeDateCandidate', 'parseDateLike', 'parseAmbiguousNumericDate',
+    'isDateLike', 'isTimeLike', 'parseISODateTime', 'isDateTimeLike',
+    'roundDateText', 'roundISODateTime', 'roundTimeText',
+    'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumberInText', 'extractNumbersInText',
+    'eraYearDigitRanges', 'isEraYear', 'decimalCount', 'formatExtractedNumber', 'restoreFormatting',
+  ].sort();
+
+  eq('lib/dr-number/index.js: DR_NUMBER exists on the global scope after the main eval',
+    typeof globalThis.DR_NUMBER, 'object');
+  eq('lib/dr-number/index.js: DR_NUMBER exposes exactly the expected public function names',
+    Object.keys(globalThis.DR_NUMBER || {}).sort(), EXPECTED_DR_NUMBER_NAMES);
+  eq('lib/dr-number/index.js: every DR_NUMBER entry is itself a function',
+    EXPECTED_DR_NUMBER_NAMES.every((n) => typeof (globalThis.DR_NUMBER || {})[n] === 'function'),
+    true);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint delete-dead-code removed ROUND_DYNAMIC, singleValueMode, datasetMode,
+// and validateOffset from core.js as unreachable: nothing in the extension
+// ever called ROUND_DYNAMIC or the two mode functions it dispatched to, and
+// validateOffset only existed to serve them. These typeof checks read the
+// bare names the main eval's function declarations leave in this module's
+// scope (the same sloppy-mode leak DR_NUMBER's helpers rely on before their
+// explicit globalThis bridge) — so a reintroduced declaration in core.js
+// flips a result from 'undefined' to 'function' even if nobody re-adds a
+// globalThis bridge or a DR_NUMBER entry for it.
+// ---------------------------------------------------------------------------
+(function deletedRoundingEntryPointsStayDeleted() {
+  eq('core.js: ROUND_DYNAMIC stays deleted', typeof ROUND_DYNAMIC, 'undefined');
+  eq('core.js: singleValueMode stays deleted', typeof singleValueMode, 'undefined');
+  eq('core.js: datasetMode stays deleted', typeof datasetMode, 'undefined');
+  eq('core.js: validateOffset stays deleted', typeof validateOffset, 'undefined');
+
+  const deletedNames = ['ROUND_DYNAMIC', 'singleValueMode', 'datasetMode', 'validateOffset'];
+  eq('lib/dr-number/index.js: DR_NUMBER does not re-expose any deleted rounding entry point',
+    deletedNames.some((n) => Object.prototype.hasOwnProperty.call(globalThis.DR_NUMBER || {}, n)),
+    false);
+})();
+
+(function libPathsLoadBeforeNonLibContentScripts() {
+  // defaults.js is the one deliberate exception: it is the shared-defaults
+  // config file and loads first, ahead of the lib/dr-number package itself.
+  // Every OTHER non-lib content script (ui-toggle.js, content.js — the DOM/UI
+  // consumers) must load after every lib/ path.
+  const js = manifest.content_scripts[0].js;
+  const isLib = (f) => f.startsWith('lib/');
+  const isConsumer = (f) => !isLib(f) && f !== 'defaults.js';
+  const lastLibIndex = js.reduce((last, f, i) => (isLib(f) ? i : last), -1);
+  const firstConsumerIndex = js.findIndex(isConsumer);
+  eq('manifest: at least one lib/ content script is listed',
+    lastLibIndex >= 0, true);
+  eq('manifest: every lib/ content script loads before any non-lib, non-defaults content script',
+    firstConsumerIndex === -1 || lastLibIndex < firstConsumerIndex, true);
+})();
+
+// index.js's own doc comment says "No logic lives here — this is a pure
+// re-export list." That claim is only as good as index.js's grammar: the file
+// must introduce exactly one top-level binding (DR_NUMBER) and nothing else.
+// drNumberBundleIsPublished above checks DR_NUMBER's *contents*; this checks
+// that index.js could not have smuggled in a second global even if its
+// contents were otherwise correct — a stray second `const`/`function` at top
+// level would land on the shared content-script scope unnoticed by any
+// content-only assertion.
+(function indexJsDeclaresExactlyOneGlobal() {
+  const indexSrc = sourceByName('lib/dr-number/index.js');
+  if (indexSrc === null) {
+    eq('lib/dr-number/index.js: source present in manifest', false, true);
+    return;
+  }
+  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
+  eq('lib/dr-number/index.js: exactly one top-level declaration in the file',
+    topLevelDeclarations.length, 1);
+  eq('lib/dr-number/index.js: the sole top-level declaration is DR_NUMBER',
+    /^const DR_NUMBER\b/m.test(indexSrc), true);
+})();
+
+// The EXPECTED_DR_NUMBER_NAMES list in drNumberBundleIsPublished above is a
+// hand-copied literal, kept explicit on purpose. This test instead derives
+// the expected set mechanically — regex-extracting every top-level
+// `function name(...)` declaration straight from rounding.js, core.js, and
+// parsing.js — so a function added to (or removed from) one of those files
+// without a matching index.js edit fails here even if someone forgets to
+// update the hand-copied list too.
+(function drNumberBundleMatchesSourceDeclarations() {
+  const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
+  const declaredNamesIn = (src) => src === null ? [] : [...src.matchAll(FUNCTION_DECL_RE)].map((m) => m[1]);
+  const declaredNames = [
+    ...declaredNamesIn(sourceByName('lib/dr-number/rounding.js')),
+    ...declaredNamesIn(sourceByName('lib/dr-number/core.js')),
+    ...declaredNamesIn(sourceByName('lib/dr-number/parsing.js')),
+  ].sort();
+  eq('lib/dr-number bundle: source files declared at least one top-level function',
+    declaredNames.length > 0, true);
+  eq('lib/dr-number bundle: DR_NUMBER keys are exactly the top-level functions declared in rounding.js + core.js + parsing.js',
+    Object.keys(globalThis.DR_NUMBER || {}).sort(), declaredNames);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint extract-dr-table: table detection now lives under lib/dr-table/
+// (detect.js, index.js), mirroring the lib/dr-number package structure and
+// discipline checks above. Four groups of tests:
+//   1. DR_TABLE bundle discipline (mirrors drNumberBundleIsPublished /
+//      indexJsDeclaresExactlyOneGlobal, but against an explicit hand-written
+//      list, not a source-derived one — detect.js also carries write-engine
+//      helpers alongside detection, so "every top-level function" is not the
+//      right criterion here the way it is for the pure lib/dr-number files).
+//   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
+//   3. VendorProfiles: a custom list replaces (not merges with) the default.
+//   4. findTables' tableFilter: default drops a phantom a11y table; a
+//      pass-through filter keeps it.
+// ---------------------------------------------------------------------------
+(function drTableBundleIsPublished() {
+  const EXPECTED_DR_TABLE_NAMES = [
+    'findCellTextNode',
+    'NativeTableAdapter',
+    'GridAdapter',
+    'makeAdapter',
+    'getSuperscriptRanges',
+    'isCellWholeLink',
+    'filterLinkMatches',
+    'replaceTextPreservingHTML',
+    'applyExtractedPatches',
+    'looksLikeGrid',
+    'findTargetTable',
+    'findTables',
+    'isPhantomA11yTable',
+    'isDataTable',
+  ].sort();
+
+  eq('lib/dr-table/index.js: DR_TABLE exists on the global scope after the main eval',
+    typeof globalThis.DR_TABLE, 'object');
+  eq('lib/dr-table/index.js: DR_TABLE exposes exactly the expected public names',
+    Object.keys(globalThis.DR_TABLE || {}).sort(), EXPECTED_DR_TABLE_NAMES);
+  eq('lib/dr-table/index.js: every DR_TABLE entry is itself a function (classes included — typeof a class is "function")',
+    EXPECTED_DR_TABLE_NAMES.every((n) => typeof (globalThis.DR_TABLE || {})[n] === 'function'),
+    true);
+})();
+
+(function drTableIndexJsDeclaresExactlyOneGlobal() {
+  const indexSrc = sourceByName('lib/dr-table/index.js');
+  if (indexSrc === null) {
+    eq('lib/dr-table/index.js: source present in manifest', false, true);
+    return;
+  }
+  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
+  eq('lib/dr-table/index.js: exactly one top-level declaration in the file',
+    topLevelDeclarations.length, 1);
+  eq('lib/dr-table/index.js: the sole top-level declaration is DR_TABLE',
+    /^const DR_TABLE\b/m.test(indexSrc), true);
+})();
+
+// jsdom-less criterion: detect.js is evaluated ALONE, in a vm context with no
+// `chrome`, no `window`, and no `getComputedStyle` at all, against a minimal
+// fake document holding one plain <table>. Detection must still find the
+// table and must not throw — this is the acceptance bar for "runs under
+// jsdom-style stubs with no Chrome globals."
+(function detectionRunsWithNoChromeGlobals() {
+  if (detectCode === null) {
+    eq('jsdom-less: source file lib/dr-table/detect.js present in manifest', false, true);
+    return;
+  }
+  const vm = require('vm');
+
+  const fakeTable = {
+    tagName: 'TABLE',
+    rows: [
+      { cells: [{ textContent: 'Name' }, { textContent: '100' }] },
+      { cells: [{ textContent: 'Foo' },  { textContent: '200' }] },
+    ],
+  };
+  const fakeDoc = {
+    querySelectorAll(sel) {
+      if (sel === 'table') return [fakeTable];
+      return [];
+    },
+  };
+
+  // The sandbox carries ONLY fakeDoc/fakeTable and whatever detectCode itself
+  // declares — no window, no getComputedStyle, no chrome, no document global.
+  const sandbox = { fakeDoc, fakeTable, results: null, threw: null };
+  const ctx = vm.createContext(sandbox);
+
+  vm.runInContext(
+    detectCode + `
+    try {
+      var found = findTables(fakeDoc);
+      results = {
+        isDataTable: isDataTable(fakeTable),
+        tablesFound: found.length,
+        firstIsFakeTable: found[0] && found[0].handle === fakeTable,
+        firstIsNew: found[0] && found[0].isNew,
+      };
+    } catch (e) {
+      threw = e.message;
+    }
+    `,
+    ctx
+  );
+
+  eq('jsdom-less: detection does not throw with no chrome/window/getComputedStyle',
+    sandbox.threw, null);
+  eq('jsdom-less: isDataTable finds a plain 2x2 numeric table with no getComputedStyle',
+    sandbox.results && sandbox.results.isDataTable, true);
+  eq('jsdom-less: findTables finds the one plain table under a minimal fake document',
+    sandbox.results && sandbox.results.tablesFound, 1);
+  eq('jsdom-less: findTables resolves to the same table object',
+    sandbox.results && sandbox.results.firstIsFakeTable, true);
+  eq('jsdom-less: findTables reports the plain table as isNew (no registry supplied)',
+    sandbox.results && sandbox.results.firstIsNew, true);
+})();
+
+// VendorProfiles: a custom list replaces the default, and GridAdapter honors
+// it for scroll-container resolution — proving the port is genuinely
+// pluggable, not just a constant renamed in place.
+(function gridAdapter_customVendorProfilesHonored() {
+  const scrollEl = { tagName: 'DIV', className: 'my-lib-scroll' };
+  const wrapperEl = {
+    tagName: 'DIV',
+    className: 'my-lib-wrapper',
+    matches() { return false; },
+    querySelector(sel) {
+      return sel === '.my-lib-scroll-container' ? scrollEl : null;
+    },
+  };
+  const customProfiles = [
+    { name: 'my-lib', classToken: 'my-lib-', scrollContainerSelectors: ['.my-lib-scroll-container'], pinnedPaneSelectors: [] },
+  ];
+
+  const adapter = new GridAdapter(wrapperEl, { vendorProfiles: customProfiles });
+  eq('GridAdapter: a custom vendorProfiles scroll-container selector is honored',
+    adapter._getScrollContainer(), scrollEl);
+
+  // Sanity: the DEFAULT profiles do not know this vendor's selector, so the
+  // custom list above is what made the resolution succeed, not a coincidence.
+  const adapterDefault = new GridAdapter(wrapperEl, {});
+  eq('GridAdapter: default vendorProfiles do not resolve an unrelated vendor selector (sanity)',
+    adapterDefault._getScrollContainer(), wrapperEl);
+})();
+
+// findTables' tableFilter: default (isPhantomA11yTable) drops a phantom a11y
+// table; a pass-through filter keeps it. reuses makePass1DataTable / the
+// aria-hidden phantom shape from the pass1-filter suite above.
+(function findTables_tableFilterDefaultVsPassThrough() {
+  const phantomTable = makePass1DataTable();
+  const hiddenParent = {
+    tagName: 'DIV',
+    getAttribute: (name) => (name === 'aria-hidden' ? 'true' : null),
+    style: {},
+    parentElement: null,
+    parentNode: null,
+  };
+  phantomTable.parentElement = hiddenParent;
+  phantomTable.parentNode = null;
+
+  const root = {
+    tagName: 'BODY',
+    querySelectorAll(sel) {
+      return sel === 'table' ? [phantomTable] : [];
+    },
+  };
+
+  eq('findTables: sanity — the fixture is both a valid data table and a phantom a11y table',
+    isDataTable(phantomTable) && isPhantomA11yTable(phantomTable), true);
+  eq('findTables: default tableFilter (isPhantomA11yTable) drops a phantom a11y table',
+    findTables(root).length, 0);
+  eq('findTables: a pass-through tableFilter keeps the phantom a11y table',
+    findTables(root, { tableFilter: () => false }).length, 1);
+})();
+
+// --- Shared rounding case table (js/round-dynamic-cases.json) ---
+//
+// This table is generated from this package's own parsing/rounding path (the
+// source of truth) and is also run against js/tests.js and python/tests/, so
+// the three copies of dynamic rounding stay in agreement. Running it here
+// too guards against future drift in this copy: it should pass by
+// construction, since the table was generated by calling these very
+// functions.
+(function sharedCaseTable() {
+  const sharedCaseGroups = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '..', 'js', 'round-dynamic-cases.json'), 'utf8')
+  );
+
+  // core.js declares these as module-local `const`s, which a direct eval
+  // never leaks to the enclosing scope (only its function declarations do,
+  // which is how toNumber/roundWithOffset/etc. above are reachable). Mirror
+  // the documented defaults here rather than exposing another global just
+  // for this test section.
+  const SHARED_DEFAULT_OFFSET = -0.5;
+  const SHARED_DEFAULT_NUM_TOP = 1;
+
+  for (const group of sharedCaseGroups) {
+    for (const c of group.cases) {
+      const { input, params, expected } = c;
+      const name = `[shared] ${group.description}: ${JSON.stringify(input)}`;
+      if (Array.isArray(input)) {
+        const oTop = params.offset_top === undefined ? SHARED_DEFAULT_OFFSET : params.offset_top;
+        const oOther = params.offset_other === undefined ? oTop : params.offset_other;
+        const nTop = params.num_top === undefined ? SHARED_DEFAULT_NUM_TOP : params.num_top;
+        const nums = input.map((v) => toNumber(v));
+        const maxMag = findMaxMagnitude([nums]);
+        const actual = input.map((v, i) => roundCellSetAware(v, nums[i], maxMag, oTop, oOther, nTop));
+        eq(name, actual, expected);
+      } else {
+        const offset = params.offset_top === undefined ? SHARED_DEFAULT_OFFSET : params.offset_top;
+        const num = toNumber(input);
+        const actual = num === null ? input : (num === 0 ? 0 : roundWithOffset(num, offset));
+        eq(name, actual, expected);
+      }
+    }
+  }
 })();
 
 // --- Report ---

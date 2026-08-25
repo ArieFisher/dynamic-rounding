@@ -628,6 +628,68 @@ test('87054321 offset=+0.25 < offset=-0.25 (this value)',
     ROUND_DYNAMIC(87054321, 0.25) < ROUND_DYNAMIC(87054321, -0.25), true);
 
 // =============================================================================
+// SHARED ROUNDING CASE TABLE (js/round-dynamic-cases.json)
+// =============================================================================
+// This table is generated from the chrome extension's own parsing/rounding
+// path (the source of truth) and is also run against chrome-extension/tests.js
+// and python/tests/. It exists so the three copies of dynamic rounding stay
+// in agreement instead of drifting silently.
+
+console.log('=== Shared Case Table ===\n');
+
+const sharedCaseGroups = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'round-dynamic-cases.json'), 'utf8')
+);
+
+// Exact equality, not the tolerant `test()` helper: this table exists partly
+// to catch IEEE-754 float-noise drift (e.g. 7.199999999999999 vs 7.2), and
+// test()'s 0.0001 tolerance would hide exactly that kind of difference.
+function testExact(name, actual, expected) {
+    const isEqual = Object.is(actual, expected);
+    if (isEqual) {
+        passed++;
+    } else {
+        failed++;
+        failures.push({ name, actual, expected });
+    }
+}
+
+function testArrayExact(name, actual, expected) {
+    // ROUND_DYNAMIC normalizes a flat array to a single-row 2D array before
+    // rounding, so flatten both sides before comparing (mirrors testArray()).
+    const flatActual = actual.flat();
+    const flatExpected = expected.flat();
+    if (flatActual.length !== flatExpected.length) {
+        failed++;
+        failures.push({ name, actual: `length ${flatActual.length}`, expected: `length ${flatExpected.length}` });
+        return;
+    }
+    for (let i = 0; i < flatActual.length; i++) {
+        if (!Object.is(flatActual[i], flatExpected[i])) {
+            failed++;
+            failures.push({ name: `${name}[${i}]`, actual: flatActual[i], expected: flatExpected[i] });
+            return;
+        }
+    }
+    passed++;
+}
+
+for (const group of sharedCaseGroups) {
+    for (const c of group.cases) {
+        const { input, params, expected } = c;
+        const name = `[shared] ${group.description}: ${JSON.stringify(input)}`;
+        if (Array.isArray(input)) {
+            // Dataset mode: ROUND_DYNAMIC(range, offset_top, offset_other, num_top)
+            const actual = ROUND_DYNAMIC(input, params.offset_top, params.offset_other, params.num_top);
+            testArrayExact(name, actual, expected);
+        } else {
+            // Single mode: ROUND_DYNAMIC(value, offset)
+            testExact(name, ROUND_DYNAMIC(input, params.offset_top), expected);
+        }
+    }
+}
+
+// =============================================================================
 // RESULTS
 // =============================================================================
 

@@ -11,8 +11,8 @@
 // here too via shared global scope.
 
 // EPSILON, X_FLOOR_THRESHOLD, roundWithOffset, and roundCellSetAware live in
-// rounding.js (loaded by manifest content_scripts ahead of this file) so the
-// sidebar can call the same arithmetic for its preview band.
+// rounding.js, loaded by manifest content_scripts ahead of this file. The
+// sidebar loads rounding.js separately via a script tag in sidebar.html.
 
 // DR_DEFAULTS is loaded from defaults.js (declared first in manifest content_scripts).
 // It is shared with sidebar.js so the sidebar UI's initial state and the
@@ -20,8 +20,9 @@
 
 let lastRightClickedElement = null;
 // Widened contract: may hold a <table> element OR a div-based grid root (any
-// element carrying class dr-ext-grid or returned by findTargetTable). All
-// callers that previously assumed HTMLTableElement must tolerate any Element.
+// element carrying class dr-ext-grid or returned by findTargetTable's
+// .handle). All callers that previously assumed HTMLTableElement must
+// tolerate any Element.
 let lastRightClickedTable = null;
 let sidebarOpen = false;
 
@@ -38,10 +39,24 @@ const gridReapplyTimers = new WeakMap();
 
 const ACTION_TABLE_ACTIVATED = 'TABLE_ACTIVATED';
 
+// findTargetTable() only reports what it found; it never writes the
+// dr-ext-grid marker or builds the toggle widget. When it discovers a grid
+// root for the first time (found.isNew), this caller does both, exactly as
+// findTargetTable used to do internally before the sprint that split
+// detection into lib/dr-table.
+function markAndToggleIfNewGrid(found) {
+  if (found.isNew) {
+    found.handle.classList.add('dr-ext-grid');
+    createToggleForTable(found.handle);
+  }
+  return found.handle;
+}
+
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
-  const table = findTargetTable(event.target);
-  if (table) {
+  const found = findTargetTable(event.target);
+  if (found) {
+    const table = markAndToggleIfNewGrid(found);
     lastRightClickedTable = table;
     flashTargetedTable(table);
     try {
@@ -68,9 +83,9 @@ function runToggleAction(table) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'MENU_CLICKED') {
     if (lastRightClickedElement) {
-      const table = findTargetTable(lastRightClickedElement);
-      if (table) {
-        runToggleAction(table);
+      const found = findTargetTable(lastRightClickedElement);
+      if (found) {
+        runToggleAction(markAndToggleIfNewGrid(found));
       } else {
         console.debug("Dynamic Rounding: No table found at right-click location.");
       }
@@ -1065,7 +1080,7 @@ function toggleOriginalValues(table) {
   syncSwitchForTable(table);
 }
 
-// ROUND_DYNAMIC, singleValueMode, datasetMode, findMaxMagnitude, toNumber, and
-// validateOffset (plus DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP, VALIDATION_LIMIT,
-// CLEAN_REGEX, PARENS_REGEX) live in core.js, loaded by manifest content_scripts
-// ahead of this file so the sidebar can call the same ROUND_DYNAMIC core.
+// findMaxMagnitude and toNumber (plus DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP,
+// VALIDATION_LIMIT, CLEAN_REGEX, PARENS_REGEX) live in core.js, loaded by
+// manifest content_scripts ahead of this file. The sidebar loads core.js
+// separately via a script tag in sidebar.html.

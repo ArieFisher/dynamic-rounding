@@ -20,20 +20,27 @@ except ImportError:
 
 from . import _round_with_offset, _validate_offset, _preserve_type, DEFAULT_OFFSET
 
-# Regex for parsing formatted strings (JS-compatible)
-CLEAN_REGEX = re.compile(r'[$€£¥,\s]')
+# Regex for parsing formatted strings (JS-compatible). Matches the chrome
+# extension's lib/dr-number/core.js, the source of truth for this behavior.
+CLEAN_REGEX = re.compile(r'[$€£¥,\s%]')
 PARENS_REGEX = re.compile(r'^\((.+)\)$')
+# Unicode dash/minus variants normalized to an ASCII "-" before parsing, so a
+# leading unusual dash (e.g. a pasted en dash or minus sign) reads as a
+# negative sign instead of failing to parse.
+DASH_REGEX = re.compile(r'[‐-―−﹘﹣－]')
 
 
 def _parse_number(value) -> Optional[float]:
     """
     Parse formatted string to number (JS-compatible).
-    
+
     Handles:
         - Currency symbols: $, €, £, ¥
         - Thousands separators: commas, spaces
+        - Percent signs: 50% → 50
+        - Unicode dash/minus variants normalized to "-"
         - Accounting negatives: (500) → -500
-    
+
     Returns:
         Parsed float, or None if parsing fails.
     """
@@ -41,22 +48,33 @@ def _parse_number(value) -> Optional[float]:
         if math.isfinite(value):
             return float(value)
         return None
-    
+
     if isinstance(value, str):
         cleaned = value.strip()
         if not cleaned:
             return None
-        # Remove currency and thousands separators
+        # Normalize unusual dash/minus characters to ASCII "-" first so they
+        # parse as a sign.
+        cleaned = DASH_REGEX.sub('-', cleaned)
+        # Remove currency symbols, thousands separators, and percent signs.
         cleaned = CLEAN_REGEX.sub('', cleaned)
         # Handle accounting parentheses: (100) → -100
         match = PARENS_REGEX.match(cleaned)
         if match:
             cleaned = '-' + match.group(1)
+        if not cleaned:
+            return None
+        # float() normalizes non-ASCII digits (e.g. fullwidth "５０") to their
+        # numeric value, but JS's Number() does not. Reject non-ASCII strings
+        # here so this parser passes them through unchanged, matching the
+        # chrome extension and js/round_dynamic.js (the source of truth).
+        if not cleaned.isascii():
+            return None
         try:
             return float(cleaned)
         except ValueError:
             return None
-    
+
     return None
 
 
