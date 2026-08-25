@@ -13620,6 +13620,61 @@ const LADDER_OPTS = {
     collectNumericCells(table, { simplifyTimes: true }).length, 0);
 })();
 
+// --- 4. Engine-path equivalence pin ---
+//
+// The divergence tests above pin the PREVIEW path against the merged ladder.
+// They say nothing about the ENGINE path (roundTable's native-table loop),
+// which is what actually writes values into a page. Before this sprint the
+// native loop carried its own inline copy of every rule below; classifyCell
+// now makes every one of those decisions instead. A single fixture that
+// exercises several rules together, with the exact applied cell text pinned,
+// catches a future change to the ladder's shared logic (rule order,
+// max_mag interaction, formatting) that a per-rule unit test run in
+// isolation would not: rules here interact through one shared max_mag pass
+// and one shared column post-pass, same as on a real page.
+//
+// These values were captured by running this exact fixture through
+// roundTable on both this branch and its pre-ladder parent branch (the two
+// hand-kept-in-sync copies), confirming byte-identical output. This test
+// pins that already-verified behavior against future drift; it does not
+// re-derive it.
+(function mergeLadderEnginePin_multiRuleNativeTable() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([
+      [{ tag: 'th', text: '' }, { tag: 'th', text: 'A' }, { tag: 'th', text: 'B' },
+       { tag: 'th', text: 'C' }, { tag: 'th', text: 'D' }, { tag: 'th', text: 'E' },
+       { tag: 'th', text: 'F' }],
+      [{ tag: 'th', text: 'Row' },
+       { tag: 'td', text: '27,000,000' },        // plain, top band
+       { tag: 'td', text: '4,080' },              // plain, other band
+       { tag: 'td', text: '50%' },                // percent (gated on)
+       { tag: 'td', text: '$1,234,000' },         // currency (gated on)
+       { tag: 'td', text: '"98765"' },            // whole-cell quoted: untouched
+       { tag: 'td', text: '2020-01-01' }],        // unambiguous ISO date
+      [{ tag: 'th', text: 'Row2' },
+       { tag: 'td', text: 'Revenue: 5,234,000 units' },  // mixed-text extraction
+       { tag: 'td', text: 'Kalki 2898 AD' },              // era year: no surviving number
+       { tag: 'td', text: '312' },                        // plain, shares max_mag with row 1
+       { tag: 'td', text: '' }, { tag: 'td', text: '' }, { tag: 'td', text: '' }],
+    ]);
+    const opts = {
+      enabled: true, simplifyFirstRow: false, simplifyFirstColumn: false,
+      simplifyMixedPercent: true, simplifyMixedCurrency: true,
+      simplifyDates: true, simplifyTimes: true, simplifyMixedCells: true,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+      dateGranularity: 'month', timeGranularity: 'hour',
+    };
+    roundTable(table, opts);
+    const applied = table.rows.map((row) => row.cells.map((c) => c.textContent));
+    eq('merge-ladder engine pin: multi-rule fixture applies the exact pinned values',
+      applied, [
+        ['', 'A', 'B', 'C', 'D', 'E', 'F'],
+        ['Row', '25,000,000', '4,000', '50%', '$1,000,000', '"98765"', '2020'],
+        ['Row2', 'Revenue: 5,000,000 units', 'Kalki 2898 AD', '300', '', '', ''],
+      ]);
+  });
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
