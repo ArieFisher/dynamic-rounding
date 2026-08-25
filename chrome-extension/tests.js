@@ -66,13 +66,10 @@ function sourceByName(name) {
 const contentScriptBundle = contentScriptFiles
   .map((file) => contentScriptSources.get(file))
   .join('\n');
-const defaultsCode = sourceByName('defaults.js');
-const roundingCode = sourceByName('rounding.js');
 const coreCode = sourceByName('core.js');
 const parsingCode = sourceByName('parsing.js');
 const domAdaptersCode = sourceByName('dom-adapters.js');
 const uiToggleCode = sourceByName('ui-toggle.js');
-const code = sourceByName('content.js');
 // Combined source for "source-includes" assertions that no longer care which
 // content-script file a symbol physically lives in after the Phase 2 split.
 const allContentSrc = contentScriptBundle;
