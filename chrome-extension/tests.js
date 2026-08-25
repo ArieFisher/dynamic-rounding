@@ -2959,6 +2959,89 @@ function makeIsDataTable(rowsSpec) {
     isDataTable(table), false);
 })();
 
+// ---------------------------------------------------------------------------
+// Regression: DEFAULT_NUMERIC_PROBE must stay byte-equivalent to the old
+// pre-extraction predicate (trim -> strip CLEAN_REGEX chars -> parseFloat ->
+// isFinite). A prior version of this probe delegated to DR_NUMBER.toNumber,
+// which uses Number() plus unicode-minus/parenthesized-negative handling and
+// disagrees with parseFloat on exactly these shapes: date-only, time-only,
+// and value-with-unit cells (parseFloat accepts a numeric prefix; Number does
+// not), and accounting-negative cells (Number, via the parens rewrite, parses
+// them; parseFloat does not). Each assertion below fails against the
+// DR_NUMBER-delegating probe and passes against the restored parseFloat-based
+// one — verified by running this file against the pre-fix commit.
+// ---------------------------------------------------------------------------
+
+// Date-only column: parseFloat('2024-01-15') -> 2024 (numeric prefix) -> true.
+// DR_NUMBER.toNumber('2024-01-15') -> Number('2024-01-15') -> NaN -> false.
+(function isDataTable_dateOnlyColumn() {
+  const table = makeIsDataTable([
+    ['Date',       'Owner'],
+    ['2024-01-15', 'Alice'],
+  ]);
+  eq('isDataTable: date-only column ("2024-01-15") -> true (matches old parseFloat predicate)',
+    isDataTable(table), true);
+})();
+
+// Slash-formatted date column: same parseFloat-prefix argument as above.
+(function isDataTable_slashDateColumn() {
+  const table = makeIsDataTable([
+    ['Date',        'Owner'],
+    ['15/03/2024',  'Bob'],
+  ]);
+  eq('isDataTable: slash date column ("15/03/2024") -> true (matches old parseFloat predicate)',
+    isDataTable(table), true);
+})();
+
+// Time-only column: parseFloat('09:30') -> 9 (numeric prefix) -> true.
+// DR_NUMBER.toNumber('09:30') -> Number('09:30') -> NaN -> false.
+(function isDataTable_timeOnlyColumn() {
+  const table = makeIsDataTable([
+    ['Time',  'Event'],
+    ['09:30', 'Standup'],
+  ]);
+  eq('isDataTable: time-only column ("09:30") -> true (matches old parseFloat predicate)',
+    isDataTable(table), true);
+})();
+
+// Value-with-unit column: CLEAN_REGEX strips the space ("3.5 kg" -> "3.5kg"),
+// then parseFloat('3.5kg') -> 3.5 -> true.
+// DR_NUMBER.toNumber('3.5 kg') -> Number('3.5kg') -> NaN -> false.
+(function isDataTable_unitSuffixColumn() {
+  const table = makeIsDataTable([
+    ['Weight', 'Item'],
+    ['3.5 kg', 'Box'],
+  ]);
+  eq('isDataTable: unit-suffix column ("3.5 kg") -> true (matches old parseFloat predicate)',
+    isDataTable(table), true);
+})();
+
+// All-text table: no cell parses as numeric under either probe -> false.
+// (Distinct fixture from isDataTable_3x3_allText above, kept local to this
+// regression block so it reads as a self-contained before/after set.)
+(function isDataTable_allTextColumn() {
+  const table = makeIsDataTable([
+    ['Status', 'Owner'],
+    ['Open',   'Alice'],
+  ]);
+  eq('isDataTable: all-text table -> false (no cell parses as numeric under either probe)',
+    isDataTable(table), false);
+})();
+
+// Accounting-negative cell: old CLEAN_REGEX + parseFloat leaves the
+// parentheses in place; parseFloat('(1,234)' -> '(1234)') -> NaN -> false.
+// DR_NUMBER.toNumber rewrites "(1234)" -> "-1234" -> -1234 -> true. Verify
+// against the parent branch's own behavior (git show refactor/extract-dr-number)
+// before asserting: the parent's predicate also returns false here.
+(function isDataTable_accountingNegativeColumn() {
+  const table = makeIsDataTable([
+    ['Amount',   'Item'],
+    ['(1,234)',  'Refund'],
+  ]);
+  eq('isDataTable: accounting-negative cell ("(1,234)") -> false (matches parent-branch predicate)',
+    isDataTable(table), false);
+})();
+
 // --- Sprint trim-trailing-zeros (chrome-extension): whole-number short-circuit ---
 
 // restoreFormatting drops trailing zeros for whole-number results under 10

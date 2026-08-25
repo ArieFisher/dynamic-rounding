@@ -73,22 +73,20 @@ const DEFAULT_STYLE_PROBE = {
 
 /**
  * NumericProbe: parses a cell's text to a number for the "does this look
- * numeric" checks in looksLikeGrid/isDataTable. Prefers DR_NUMBER.toNumber
- * (the same parsing the round pass uses, handling currency/comma/percent
- * strip and parenthesized negatives) when the lib/dr-number package is
- * loaded; falls back to a plain digit-regex parse when it is not.
+ * numeric" checks in looksLikeGrid/isDataTable. This default is a
+ * self-contained, byte-equivalent port of the predicate detection used
+ * before the lib/dr-table extraction: strip currency/comma/percent/
+ * whitespace symbols, then parseFloat. It deliberately does NOT delegate to
+ * DR_NUMBER.toNumber — that parser's unicode-minus and parenthesized-negative
+ * handling changes which tables are detected (dates, times, and unit-suffixed
+ * cells lose their toggle; accounting negatives gain one). A caller that
+ * wants DR_NUMBER-aware detection passes a custom probe via opts.numericProbe.
  */
 const DEFAULT_NUMERIC_PROBE = {
   parse(text) {
-    if (typeof DR_NUMBER !== 'undefined' && DR_NUMBER && typeof DR_NUMBER.toNumber === 'function') {
-      return DR_NUMBER.toNumber(text);
-    }
-    if (typeof toNumber === 'function') {
-      return toNumber(text);
-    }
-    const match = String(text).match(/-?\d+(\.\d+)?/);
-    if (!match) return null;
-    const parsed = Number(match[0]);
+    const cleaned = String(text).trim().replace(/[$€£¥,\s%]/g, '');
+    if (cleaned === '') return null;
+    const parsed = parseFloat(cleaned);
     return isFinite(parsed) ? parsed : null;
   },
 };

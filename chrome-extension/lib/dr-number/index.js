@@ -3,9 +3,9 @@
  *
  * Loaded LAST within lib/dr-number, after rounding.js, core.js, and
  * parsing.js. Those three files still declare their functions as bare
- * top-level names on the shared global scope (content.js, dom-adapters.js,
- * ui-toggle.js, and sidebar.js keep consuming those bare names unchanged —
- * this sprint does not migrate any consumer). This file adds one more thing:
+ * top-level names on the shared global scope (content.js and sidebar.js
+ * keep consuming those bare names unchanged — this sprint does not migrate
+ * any consumer). This file adds one more thing:
  * a single DR_NUMBER object that groups every public function the package
  * exposes, so future consumers can start depending on DR_NUMBER.x instead of
  * the bare name without another move.
