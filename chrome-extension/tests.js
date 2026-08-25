@@ -12527,6 +12527,48 @@ function fireMouseClick(buttonEl, fn) {
     firstConsumerIndex === -1 || lastLibIndex < firstConsumerIndex, true);
 })();
 
+// index.js's own doc comment says "No logic lives here — this is a pure
+// re-export list." That claim is only as good as index.js's grammar: the file
+// must introduce exactly one top-level binding (DR_NUMBER) and nothing else.
+// drNumberBundleIsPublished above checks DR_NUMBER's *contents*; this checks
+// that index.js could not have smuggled in a second global even if its
+// contents were otherwise correct — a stray second `const`/`function` at top
+// level would land on the shared content-script scope unnoticed by any
+// content-only assertion.
+(function indexJsDeclaresExactlyOneGlobal() {
+  const indexSrc = sourceByName('lib/dr-number/index.js');
+  if (indexSrc === null) {
+    eq('lib/dr-number/index.js: source present in manifest', false, true);
+    return;
+  }
+  const topLevelDeclarations = indexSrc.match(/^(const|let|var|function\b|class\b)/gm) || [];
+  eq('lib/dr-number/index.js: exactly one top-level declaration in the file',
+    topLevelDeclarations.length, 1);
+  eq('lib/dr-number/index.js: the sole top-level declaration is DR_NUMBER',
+    /^const DR_NUMBER\b/m.test(indexSrc), true);
+})();
+
+// The EXPECTED_DR_NUMBER_NAMES list in drNumberBundleIsPublished above is a
+// hand-copied literal, kept explicit on purpose. This test instead derives
+// the expected set mechanically — regex-extracting every top-level
+// `function name(...)` declaration straight from rounding.js, core.js, and
+// parsing.js — so a function added to (or removed from) one of those files
+// without a matching index.js edit fails here even if someone forgets to
+// update the hand-copied list too.
+(function drNumberBundleMatchesSourceDeclarations() {
+  const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
+  const declaredNamesIn = (src) => src === null ? [] : [...src.matchAll(FUNCTION_DECL_RE)].map((m) => m[1]);
+  const declaredNames = [
+    ...declaredNamesIn(sourceByName('lib/dr-number/rounding.js')),
+    ...declaredNamesIn(sourceByName('lib/dr-number/core.js')),
+    ...declaredNamesIn(sourceByName('lib/dr-number/parsing.js')),
+  ].sort();
+  eq('lib/dr-number bundle: source files declared at least one top-level function',
+    declaredNames.length > 0, true);
+  eq('lib/dr-number bundle: DR_NUMBER keys are exactly the top-level functions declared in rounding.js + core.js + parsing.js',
+    Object.keys(globalThis.DR_NUMBER || {}).sort(), declaredNames);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
