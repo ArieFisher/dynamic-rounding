@@ -4444,6 +4444,142 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   eq('extractPreviewSamples (empty): bottom length 0', result.samples.bottom.length, 0);
 })();
 
+// ---------------------------------------------------------------------------
+// Regression: collectNumericCells must classify a rounded cell's stored
+// original text (dataset.originalValue) using ranges/filters measured against
+// THAT text, not against the live (already-rounded, differently-offset) cell.
+// Reviewer repro: reviewer-sup-stale.js.
+// ---------------------------------------------------------------------------
+
+// A reactive multi-segment cell mock: unlike makeSuperscriptCell (used by the
+// static AC tests above), writing a text node's nodeValue here also updates
+// cell.innerText/textContent/innerHTML, so getText() sees the post-round
+// shortened text the way a real DOM element would.
+function makeReactiveCell(segments) {
+  const cell = {
+    tagName: 'TD',
+    dataset: {},
+    title: '',
+    classList: {
+      _c: [],
+      add(x) { this._c.push(x); },
+      contains(x) { return this._c.includes(x); },
+      remove(x) { this._c = this._c.filter((y) => y !== x); },
+    },
+    querySelectorAll: (sel) => (sel === 'a' && cell._anchor ? [cell._anchor] : []),
+    querySelector: (sel) => (sel === 'sup' && segments.some((s) => s.inSup) ? { tagName: 'SUP' } : null),
+    removeAttribute() {},
+    contains(el) { return el === cell._anchor; },
+  };
+  const refresh = () => {
+    const joined = segments.map((s) => s.text).join('');
+    cell.innerText = joined;
+    cell.textContent = joined;
+    cell.innerHTML = joined;
+  };
+  cell._textNodes = segments.map((seg) => {
+    let parent;
+    if (seg.inSup) {
+      parent = { tagName: 'SUP', parentNode: cell, parentElement: cell };
+    } else if (seg.inAnchor) {
+      const anchorEl = cell._anchor || (cell._anchor = { tagName: 'A', closest: (sel) => (sel === 'a' ? cell._anchor : null) });
+      parent = anchorEl;
+    } else {
+      parent = { closest: () => null, tagName: 'TD' };
+    }
+    return {
+      get nodeValue() { return seg.text; },
+      set nodeValue(v) { seg.text = v; refresh(); },
+      parentNode: parent,
+      parentElement: parent,
+    };
+  });
+  refresh();
+  return cell;
+}
+
+function withReactiveCreateTreeWalker(fn) {
+  const saved = global.document.createTreeWalker;
+  global.document.createTreeWalker = function (cell) {
+    const nodes = cell._textNodes ? [...cell._textNodes] : [];
+    return { nextNode() { return nodes.shift() || null; } };
+  };
+  try {
+    fn();
+  } finally {
+    if (saved === undefined) delete global.document.createTreeWalker;
+    else global.document.createTreeWalker = saved;
+  }
+}
+
+(function previewBand_supStaleRegression() {
+  withReactiveCreateTreeWalker(function () {
+    const opts = {
+      simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedCells: true,
+      simplifyMixedCurrency: true, simplifyMixedPercent: true,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+    };
+    // "1234.5678 kg" + <sup>"9"</sup> -> flattened "1234.5678 kg9". The
+    // footnote digit sits after a decimal number that rounding shortens
+    // (e.g. "1234.5678" -> "1000"), shifting where "9" lands in the live text.
+    const segsFor = () => ([
+      { text: '1234.5678 kg', inSup: false },
+      { text: '9', inSup: true },
+    ]);
+    const otherCell = () => makeReactiveCell([{ text: '99999', inSup: false }]);
+
+    const beforeTable = { rows: [{ cells: [makeReactiveCell(segsFor()), otherCell()] }], dataset: {} };
+    const before = collectNumericCells(beforeTable, opts);
+    eq('sup-stale regression: pre-round preview finds a numeric sample in the sup cell',
+      before.length > 0, true);
+
+    const cell = makeReactiveCell(segsFor());
+    const table = { rows: [{ cells: [cell, otherCell()] }], dataset: {} };
+    roundTable(table, opts);
+    eq('sup-stale regression: cell was actually rounded (dataset.originalValue set)',
+      cell.dataset.originalValue, '1234.5678 kg9');
+
+    const after = collectNumericCells(table, opts);
+    eq('sup-stale regression: preview sample set is unchanged after rounding',
+      after.map((c) => c.num), before.map((c) => c.num));
+  });
+})();
+
+(function previewBand_linkedNumberPostRoundRegression() {
+  withReactiveCreateTreeWalker(function () {
+    const opts = {
+      simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedCells: true,
+      simplifyMixedCurrency: true, simplifyMixedPercent: true,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+    };
+    // Plain "1234.5678" (should round) plus a link whose OWN number,
+    // "51234.5678", contains the plain number's digits as a substring. Once
+    // rounding shortens the plain occurrence away, a live-text substring
+    // search for "1234.5678" spuriously matches inside the linked node
+    // instead, wrongly excluding the still-valid plain match.
+    const segsFor = () => ([
+      { text: 'Total 1234.5678 see also ', inSup: false, inAnchor: false },
+      { text: '51234.5678', inSup: false, inAnchor: true },
+    ]);
+    const otherCell = () => makeReactiveCell([{ text: '99999', inSup: false }]);
+
+    const beforeTable = { rows: [{ cells: [makeReactiveCell(segsFor()), otherCell()] }], dataset: {} };
+    const before = collectNumericCells(beforeTable, opts);
+    eq('linked-number-post-round regression: pre-round preview keeps the plain (non-linked) number',
+      before.some((c) => c.num === 1234.5678), true);
+
+    const cell = makeReactiveCell(segsFor());
+    const table = { rows: [{ cells: [cell, otherCell()] }], dataset: {} };
+    roundTable(table, opts);
+    eq('linked-number-post-round regression: cell was actually rounded (dataset.originalValue set)',
+      cell.dataset.originalValue, 'Total 1234.5678 see also 51234.5678');
+
+    const after = collectNumericCells(table, opts);
+    eq('linked-number-post-round regression: preview sample set is unchanged after rounding',
+      after.map((c) => c.num), before.map((c) => c.num));
+  });
+})();
+
 (function previewBand_manifestLoadsRoundingJs() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   eq('manifest content_scripts loads lib/dr-number/rounding.js between defaults.js and content.js',
@@ -13286,6 +13422,25 @@ const LADDER_OPTS = {
     classifyCell({ text: '$100', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false })),
     { mode: 'skip', reason: 'currency' });
+})();
+
+(function classifyCell_unknownExclusionFailsClosed() {
+  // getExclusionReason today only ever returns 'firstRow' | 'firstColumn' |
+  // 'percent' | 'currency' | null, but classifyCell's ladder must fail
+  // closed (skip) on any other non-null value a future exclusion rule
+  // returns, instead of silently falling through and simplifying the cell.
+  // classifyCell calls getExclusionReason as a bare same-scope identifier
+  // (not through an overridable namespace), so the override has to live in
+  // its own isolated scope built from the same three source files, with a
+  // stub getExclusionReason declared after the real one (last declaration
+  // of a name wins in the same scope).
+  const isolatedSrc = coreCode + '\n' + parsingCode + '\n' +
+    'function getExclusionReason() { return "someFutureReason"; }\n' +
+    ladderCode + '\nreturn classifyCell;';
+  const isolatedClassifyCell = new Function(isolatedSrc)();
+  eq('classifyCell: unrecognized non-null exclusion reason still skips the cell',
+    isolatedClassifyCell({ text: '100', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'skip', reason: 'excluded' });
 })();
 
 (function classifyCell_quoted() {

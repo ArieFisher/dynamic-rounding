@@ -323,6 +323,8 @@ function resetTable(table) {
       cell.classList.remove('dr-ext-rounded');
       delete cell.dataset.originalValue;
       delete cell.dataset.originalHtml;
+      delete cell.dataset.drSupRanges;
+      delete cell.dataset.drLinkFilteredIdx;
       cell.removeAttribute('title');
     }
   }
@@ -341,9 +343,20 @@ function resetTable(table) {
 // this one after the ladder's own filters yields the same final set as
 // running all of them together (see lib/dr-simplify/ladder.js header). If
 // filtering empties the match list, the cell downgrades to skip.
-function finalizeExtractedDecision(decision, cell) {
+// staleFilteredIndices: when the caller is classifying a cell's *stored*
+// pre-round text (dataset.originalValue) rather than the live cell, the live
+// text no longer contains the original numStr values, so filterLinkMatches'
+// substring search against live text nodes cannot locate them (and its
+// fallback silently keeps everything, dropping the link filter with no
+// signal). The write path already ran filterLinkMatches once, against the
+// live text, at the moment it rounded the cell; the caller passes the surviving
+// match indices from that run here (see roundTable's dataset.drLinkFilteredIdx
+// stash) so the same filter outcome applies instead of being silently skipped.
+function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
   if (decision.mode !== 'extracted') return decision;
-  const filtered = filterLinkMatches(cell, decision.value.matches);
+  const filtered = staleFilteredIndices
+    ? decision.value.matches.filter((m) => staleFilteredIndices.has(m.index))
+    : filterLinkMatches(cell, decision.value.matches);
   if (filtered.length === 0) return { mode: 'skip', reason: decision.reason };
   return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
 }
@@ -403,11 +416,47 @@ function collectNumericCells(table, options) {
       // pre-round text from getText() (dataset.drOriginal).
       const cellEl = cellObj.el;
       const storedOriginal = cellEl && cellEl.dataset ? cellEl.dataset.originalValue : undefined;
-      const text = storedOriginal !== undefined ? storedOriginal : cellObj.getText();
+      const usingStoredOriginal = storedOriginal !== undefined;
+      const text = usingStoredOriginal ? storedOriginal : cellObj.getText();
       const trimmed = typeof text === 'string' ? text.trim() : '';
       if (!trimmed) continue;
 
       const hasSuperscript = !!(cellEl && cellEl.querySelector && cellEl.querySelector('sup'));
+      // A rounded cell's <sup>-bearing text is stale: text above is the
+      // pre-round original, but rounding shortens the live text elsewhere in
+      // the cell, so re-measuring ranges against the LIVE element would index
+      // the wrong characters in the original string (see roundTable's write
+      // path, which stashes dataset.drSupRanges against this exact text
+      // before mutating). isWholeLink is not similarly stale: rounding only
+      // patches text-node values, never adds or removes <a> elements, and the
+      // whole-link check compares live anchor text to live cell text — both
+      // move together, so it stays correct read live. A cell that WAS a
+      // whole link would have been skipped (never rounded), so a rounded
+      // cell reaching here was never a whole link to begin with.
+      let superscriptRanges = [];
+      if (hasSuperscript) {
+        if (usingStoredOriginal && cellEl.dataset.drSupRanges !== undefined) {
+          try {
+            superscriptRanges = JSON.parse(cellEl.dataset.drSupRanges);
+          } catch (e) {
+            superscriptRanges = [];
+          }
+        } else {
+          superscriptRanges = getSuperscriptRanges(cellEl);
+        }
+      }
+      // Likewise, the link filter's live-text substring search cannot locate
+      // the original numStr once the cell is rounded; reuse the match indices
+      // the write path already kept (dataset.drLinkFilteredIdx) instead of
+      // re-deriving from the (now mismatched) live text.
+      let staleFilteredIndices = null;
+      if (usingStoredOriginal && cellEl.dataset.drLinkFilteredIdx !== undefined) {
+        try {
+          staleFilteredIndices = new Set(JSON.parse(cellEl.dataset.drLinkFilteredIdx));
+        } catch (e) {
+          staleFilteredIndices = new Set();
+        }
+      }
       const decision = finalizeExtractedDecision(
         classifyCell({
           text,
@@ -416,9 +465,10 @@ function collectNumericCells(table, options) {
           ranges,
           isWholeLink: !!(cellEl && isCellWholeLink(cellEl)),
           hasSuperscript,
-          superscriptRanges: hasSuperscript ? getSuperscriptRanges(cellEl) : [],
+          superscriptRanges,
         }, opts),
-        cellEl
+        cellEl,
+        staleFilteredIndices
       );
 
       if (decision.mode === 'pure') {
@@ -936,6 +986,14 @@ function roundTable(table, options) {
         }
         if (patches.length === 0) continue;
         cell.dataset.originalHtml = cell.innerHTML;
+        // Stash superscript ranges and the surviving (link-filtered) match
+        // indices measured against the pre-round text, BEFORE
+        // applyExtractedPatches shortens it — collectNumericCells reads these
+        // back instead of re-measuring the (now-rounded, differently-offset)
+        // live element against this stored original text. See
+        // finalizeExtractedDecision and collectNumericCells for the read side.
+        cell.dataset.drSupRanges = JSON.stringify(getSuperscriptRanges(cell));
+        cell.dataset.drLinkFilteredIdx = JSON.stringify(info.matches.map((m) => m.index));
         applyExtractedPatches(cell, patches);
         cell.title = `Original: ${originalValue}`;
         cell.classList.add('dr-ext-rounded');

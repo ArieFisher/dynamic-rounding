@@ -125,6 +125,9 @@ function classifyCell(input, options) {
   if (exclusion === 'firstColumn') return { mode: 'skip', reason: 'first-column' };
   if (exclusion === 'percent') return { mode: 'skip', reason: 'percent' };
   if (exclusion === 'currency') return { mode: 'skip', reason: 'currency' };
+  // Fail closed: any non-null exclusion reason this ladder does not recognize
+  // still skips the cell, instead of silently falling through to simplify it.
+  if (exclusion) return { mode: 'skip', reason: 'excluded' };
 
   if (isWholeCellQuoted(trimmed)) {
     return { mode: 'skip', reason: 'quoted' };
