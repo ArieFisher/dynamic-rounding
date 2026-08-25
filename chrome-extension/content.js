@@ -19,12 +19,21 @@
 // right-click toggle's fallback options come from a single source.
 
 let lastRightClickedElement = null;
-// Widened contract: may hold a <table> element OR a div-based grid root (any
-// element carrying class dr-ext-grid or returned by findTargetTable's
-// .handle). All callers that previously assumed HTMLTableElement must
-// tolerate any Element.
-let lastRightClickedTable = null;
-let sidebarOpen = false;
+// The selected table (may hold a <table> element OR a div-based grid root —
+// any element carrying class dr-ext-grid or returned by findTargetTable's
+// .handle — so all callers that previously assumed HTMLTableElement must
+// tolerate any Element) and the sidebar-open flag live in DR_STORE now, not
+// as file-level bindings here. ui-toggle.js used to assign the selected
+// table directly into this file's `let lastRightClickedTable`; it now
+// publishes an intent instead (see the DR_BUS.subscribe call below), and
+// every read/write in this file goes through DR_STORE's getters/setters.
+
+// The controller is the sole subscriber to intent topics. ui-toggle.js
+// publishes 'intent:selectTable' instead of writing this file's variables
+// directly; this is where that intent turns into a model change.
+DR_BUS.subscribe('intent:selectTable', ({ table }) => {
+  DR_STORE.setSelectedTable(table);
+});
 
 // Per-table memory of the options used for the most recent roundTable() run.
 // Consulted by toggleOriginalValues() when re-running the pipeline so that the
@@ -57,7 +66,7 @@ document.addEventListener('contextmenu', (event) => {
   const found = findTargetTable(event.target);
   if (found) {
     const table = markAndToggleIfNewGrid(found);
-    lastRightClickedTable = table;
+    DR_STORE.setSelectedTable(table);
     flashTargetedTable(table);
     try {
       chrome.runtime.sendMessage({ action: ACTION_TABLE_ACTIVATED });
@@ -107,9 +116,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'SIDEBAR_OPENED') {
-    sidebarOpen = true;
-    if (lastRightClickedTable) {
-      requestSidebarSettingsAndApply(lastRightClickedTable);
+    DR_STORE.setSidebarOpen(true);
+    // Reconnect: pull the model's current selection rather than trust
+    // whatever this file's variables happened to hold before — the sidebar
+    // may be reopening after a close, and DR_STORE is the single owner of
+    // record for which table is selected.
+    const selected = DR_STORE.getSelectedTable();
+    if (selected) {
+      requestSidebarSettingsAndApply(selected);
       // Tell the sidebar its cached preview samples are stale; it will re-pull
       // GET_PREVIEW_SAMPLES against the now-current targeted table.
       try {
@@ -124,21 +138,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'CLOSE_SIDEBAR') {
-    sidebarOpen = false;
+    DR_STORE.setSidebarOpen(false);
     return;
   }
 
   if (request.action === 'APPLY_SIDEBAR_SETTINGS') {
-    if (lastRightClickedTable) {
-      applySidebarRounding(lastRightClickedTable, request.settings || DR_DEFAULTS);
+    const selected = DR_STORE.getSelectedTable();
+    if (selected) {
+      applySidebarRounding(selected, request.settings || DR_DEFAULTS);
     }
     sendResponse({ ok: true });
     return;
   }
 
   if (request.action === 'GET_PREVIEW_SAMPLES') {
-    if (lastRightClickedTable) {
-      const payload = extractPreviewSamples(lastRightClickedTable);
+    const selected = DR_STORE.getSelectedTable();
+    if (selected) {
+      const payload = extractPreviewSamples(selected);
       sendResponse(payload);
     } else {
       sendResponse({ samples: null, maxMag: null });

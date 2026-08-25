@@ -70,6 +70,8 @@ const coreCode = sourceByName('lib/dr-number/core.js');
 const parsingCode = sourceByName('lib/dr-number/parsing.js');
 const detectCode = sourceByName('lib/dr-table/detect.js');
 const ladderCode = sourceByName('lib/dr-simplify/ladder.js');
+const messagingCode = sourceByName('adapters/messaging.js');
+const storeCode = sourceByName('app/store.js');
 const uiToggleCode = sourceByName('ui-toggle.js');
 // Combined source for "source-includes" assertions that no longer care which
 // content-script file a symbol physically lives in after the Phase 2 split.
@@ -120,18 +122,26 @@ Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   set(v) { _globalTapCollapseAdded = v; },
   configurable: true,
 });
-// Expose sidebarOpen and lastRightClickedTable so sidebar-rebind tests can control
-// and inspect them without going through the onMessage listener (which is a no-op stub).
+// sidebarOpen and lastRightClickedTable no longer exist as bindings in
+// content.js (sprint app-model-selection moved both into DR_STORE) — these
+// two shims keep every existing sidebar-rebind test working unmodified by
+// proxying the old names onto the store's getter/setter pair, exactly like
+// the toggleStyleInjected/_globalTapCollapseAdded shims above proxy onto
+// their own file-level lets.
 Object.defineProperty(globalThis, 'sidebarOpen', {
-  get() { return sidebarOpen; },
-  set(v) { sidebarOpen = v; },
+  get() { return DR_STORE.isSidebarOpen(); },
+  set(v) { DR_STORE.setSidebarOpen(v); },
   configurable: true,
 });
 Object.defineProperty(globalThis, 'lastRightClickedTable', {
-  get() { return lastRightClickedTable; },
-  set(v) { lastRightClickedTable = v; },
+  get() { return DR_STORE.getSelectedTable(); },
+  set(v) { DR_STORE.setSelectedTable(v); },
   configurable: true,
 });
+// Expose the application model and event bus directly for the
+// app-model-selection test suite.
+globalThis.DR_STORE = DR_STORE;
+globalThis.DR_BUS = DR_BUS;
 // Expose grid-detection helpers for the grid-detection test suite.
 globalThis.looksLikeGrid = looksLikeGrid;
 globalThis.findTargetTable = findTargetTable;
@@ -1835,13 +1845,14 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, dr-number package, dr-table package, dr-simplify package, ui-toggle, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'defaults.js',
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
       'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
       'lib/dr-table/detect.js', 'lib/dr-table/index.js',
       'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
+      'adapters/messaging.js', 'app/store.js',
       'ui-toggle.js', 'content.js',
     ]), true);
 
@@ -3483,7 +3494,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const contentSrc = sourceByName('content.js');
   if (roundingSrc === null || contentSrc === null || coreCode === null ||
-      parsingCode === null || detectCode === null || uiToggleCode === null) {
+      parsingCode === null || detectCode === null || messagingCode === null ||
+      storeCode === null || uiToggleCode === null) {
     eq('x-floor flip: source files present in manifest', false, true);
     return;
   }
@@ -3511,7 +3523,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // same order the manifest loads them before content.js.
   vm.runInContext(
     patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
-    detectCode + '\n' + uiToggleCode + '\n' + contentSrc +
+    detectCode + '\n' + messagingCode + '\n' + storeCode + '\n' +
+    uiToggleCode + '\n' + contentSrc +
     '\nthis.__roundWithOffset = roundWithOffset;', ctx);
   const patchedRound = sandbox.__roundWithOffset;
 
@@ -4596,7 +4609,7 @@ function withReactiveCreateTreeWalker(fn) {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   const js = manifest.content_scripts[0].js;
   const after = (a, b) => js.indexOf(a) > -1 && js.indexOf(b) > -1 && js.indexOf(a) < js.indexOf(b);
-  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < dr-simplify index.js < ui-toggle.js < content.js',
+  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < dr-simplify index.js < messaging.js < store.js < ui-toggle.js < content.js',
     after('lib/dr-number/rounding.js', 'lib/dr-number/core.js') &&
     after('lib/dr-number/core.js', 'lib/dr-number/parsing.js') &&
     after('lib/dr-number/parsing.js', 'lib/dr-number/index.js') &&
@@ -4604,7 +4617,9 @@ function withReactiveCreateTreeWalker(fn) {
     after('lib/dr-table/detect.js', 'lib/dr-table/index.js') &&
     after('lib/dr-table/index.js', 'lib/dr-simplify/ladder.js') &&
     after('lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js') &&
-    after('lib/dr-simplify/index.js', 'ui-toggle.js') &&
+    after('lib/dr-simplify/index.js', 'adapters/messaging.js') &&
+    after('adapters/messaging.js', 'app/store.js') &&
+    after('app/store.js', 'ui-toggle.js') &&
     after('ui-toggle.js', 'content.js'), true);
   eq('manifest: content.js loads last', js[js.length - 1], 'content.js');
 
@@ -5250,25 +5265,37 @@ function fireTouchSecondTap(buttonEl) {
 
 (function sidebarRebind_sourceLevel() {
   // Click-handler rebind logic now spans content.js + ui-toggle.js (Phase 2);
-  // scan the combined content-script source.
+  // scan the combined content-script source. Sprint app-model-selection moved
+  // the sidebarOpen flag and the selected-table reference into DR_STORE
+  // (app/store.js) — ui-toggle.js reports an intent instead of writing
+  // content.js's variables directly, and content.js's own writes go through
+  // DR_STORE's setters instead of a bare assignment. These assertions were
+  // updated in that sprint to check the new structure instead of the old
+  // direct-assignment one.
   const contentSrc = allContentSrc;
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const storeSrc = sourceByName('app/store.js') || '';
 
-  // content.js: sidebarOpen flag is declared as a module-level let
-  eq('rebind source: content.js declares let sidebarOpen = false',
-    /let\s+sidebarOpen\s*=\s*false/.test(contentSrc), true);
+  // app/store.js: sidebarOpen flag is declared as a module-level let, closed
+  // over by DR_STORE — content.js no longer declares it itself.
+  eq('rebind source: app/store.js declares let sidebarOpen = false',
+    /let\s+sidebarOpen\s*=\s*false/.test(storeSrc), true);
+  eq('rebind source: content.js no longer declares sidebarOpen itself',
+    /let\s+sidebarOpen\b/.test(sourceByName('content.js') || ''), false);
 
-  // content.js: SIDEBAR_OPENED handler sets sidebarOpen = true
-  eq('rebind source: content.js SIDEBAR_OPENED sets sidebarOpen = true',
-    /SIDEBAR_OPENED[\s\S]{0,200}sidebarOpen\s*=\s*true/.test(contentSrc), true);
+  // content.js: SIDEBAR_OPENED handler sets sidebarOpen via DR_STORE
+  eq('rebind source: content.js SIDEBAR_OPENED calls DR_STORE.setSidebarOpen(true)',
+    /SIDEBAR_OPENED[\s\S]{0,200}DR_STORE\.setSidebarOpen\(true\)/.test(contentSrc), true);
 
-  // content.js: CLOSE_SIDEBAR handler sets sidebarOpen = false
-  eq('rebind source: content.js CLOSE_SIDEBAR sets sidebarOpen = false',
-    /CLOSE_SIDEBAR[\s\S]{0,100}sidebarOpen\s*=\s*false/.test(contentSrc), true);
+  // content.js: CLOSE_SIDEBAR handler sets sidebarOpen via DR_STORE
+  eq('rebind source: content.js CLOSE_SIDEBAR calls DR_STORE.setSidebarOpen(false)',
+    /CLOSE_SIDEBAR[\s\S]{0,100}DR_STORE\.setSidebarOpen\(false\)/.test(contentSrc), true);
 
-  // content.js mouse/keyboard click branch contains the rebind precondition
-  eq('rebind source: mouse/keyboard branch has sidebarOpen && lastRightClickedTable && table !== lastRightClickedTable guard',
-    /sidebarOpen\s*&&\s*lastRightClickedTable\s*&&\s*table\s*!==\s*lastRightClickedTable/.test(contentSrc), true);
+  // ui-toggle.js mouse/keyboard click branch contains the rebind
+  // precondition, now reading the store instead of raw variables.
+  eq('rebind source: mouse/keyboard branch guards on DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()',
+    /DR_STORE\.isSidebarOpen\(\)\s*&&\s*DR_STORE\.getSelectedTable\(\)\s*&&\s*table\s*!==\s*DR_STORE\.getSelectedTable\(\)/.test(contentSrc),
+    true);
 
   // content.js: both click branches send RESET_SIDEBAR_TO_DEFAULTS
   // Count occurrences — must appear at least twice (one per branch)
@@ -5276,9 +5303,14 @@ function fireTouchSecondTap(buttonEl) {
   eq('rebind source: RESET_SIDEBAR_TO_DEFAULTS appears in both click branches (>= 2 occurrences)',
     resetCount >= 2, true);
 
-  // content.js: rebind sets lastRightClickedTable = table before sending messages
-  eq('rebind source: content.js assigns lastRightClickedTable = table in rebind block',
-    /lastRightClickedTable\s*=\s*table/.test(contentSrc), true);
+  // ui-toggle.js: rebind publishes the select-table intent instead of
+  // assigning content.js's selection variable directly.
+  eq('rebind source: ui-toggle.js publishes intent:selectTable in the rebind block instead of writing a content.js variable',
+    /DR_BUS\.publish\(\s*'intent:selectTable'/.test(contentSrc), true);
+  eq('rebind source: no file assigns lastRightClickedTable directly anymore',
+    /\blastRightClickedTable\s*=[^=]/.test(sourceByName('ui-toggle.js') || '') ||
+    /\blastRightClickedTable\s*=[^=]/.test(sourceByName('content.js') || ''),
+    false);
 
   // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI
   eq('rebind source: sidebar.js RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI()',
@@ -12959,6 +12991,7 @@ function fireMouseClick(buttonEl, fn) {
     'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
     'lib/dr-table/detect.js', 'lib/dr-table/index.js',
     'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
+    'adapters/messaging.js', 'app/store.js',
     'ui-toggle.js', 'content.js',
   ];
 
@@ -13045,9 +13078,10 @@ function fireMouseClick(buttonEl, fn) {
   // replaced dom-adapters.js with the two-file lib/dr-table package
   // (detect.js, index.js), raising the count from 8 to 9. Sprint merge-ladder
   // then added the two-file lib/dr-simplify package (ladder.js, index.js),
-  // raising the count from 9 to 11.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 11 files today',
-    manifest.content_scripts[0].js.length, 11);
+  // raising the count from 9 to 11. Sprint app-model-selection then added
+  // adapters/messaging.js and app/store.js, raising the count from 11 to 13.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 13 files today',
+    manifest.content_scripts[0].js.length, 13);
 })();
 
 // ---------------------------------------------------------------------------
@@ -14161,6 +14195,142 @@ const LADDER_OPTS = {
     ]);
   eq('range-status sequence (invalid range): the cell was NOT rounded',
     errorRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-selection: the application model (app/store.js, DR_STORE)
+// and the typed event bus (adapters/messaging.js, DR_BUS). The selected
+// table and the sidebar-open flag moved out of content.js's file-level lets
+// into DR_STORE; ui-toggle.js reports an intent through DR_BUS instead of
+// writing content.js's variables directly.
+// ---------------------------------------------------------------------------
+(function appModelSelection_storeAndBus() {
+  const busSrc = sourceByName('adapters/messaging.js');
+  const storeSrc = sourceByName('app/store.js');
+  if (busSrc === null || storeSrc === null) {
+    eq('app-model-selection: adapters/messaging.js and app/store.js are present in the manifest', false, true);
+    return;
+  }
+
+  // --- (a) discipline: one top-level declaration per file, like the lib
+  // packages' index.js bundles. ---
+  const topLevelDecls = (src) => src.match(/^(const|let|var|function\b|class\b)/gm) || [];
+  eq('adapters/messaging.js: exactly one top-level declaration in the file',
+    topLevelDecls(busSrc).length, 1);
+  eq('adapters/messaging.js: the sole top-level declaration is DR_BUS',
+    /^const DR_BUS\b/m.test(busSrc), true);
+  eq('app/store.js: exactly one top-level declaration in the file',
+    topLevelDecls(storeSrc).length, 1);
+  eq('app/store.js: the sole top-level declaration is DR_STORE',
+    /^const DR_STORE\b/m.test(storeSrc), true);
+
+  // --- (a) discipline: DR_BUS.TOPICS enumerates every topic with a family,
+  // and no topic falls outside the two families. ---
+  const KNOWN_FAMILIES = ['intent', 'state-change'];
+  const topics = DR_BUS.TOPICS;
+  const topicNames = Object.keys(topics);
+  eq('DR_BUS.TOPICS: at least one topic is registered',
+    topicNames.length > 0, true);
+  eq('DR_BUS.TOPICS: every topic belongs to one of the two known families',
+    topicNames.every((t) => KNOWN_FAMILIES.includes(topics[t].family)), true);
+  eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
+    topicNames.slice().sort(),
+    ['intent:selectTable', 'state:selectedTableChanged', 'state:sidebarOpenChanged'].sort());
+  eq('DR_BUS.TOPICS: intent:selectTable is in the intent family',
+    topics['intent:selectTable'].family, 'intent');
+  eq('DR_BUS.TOPICS: state:selectedTableChanged is in the state-change family',
+    topics['state:selectedTableChanged'].family, 'state-change');
+  eq('DR_BUS.TOPICS: state:sidebarOpenChanged is in the state-change family',
+    topics['state:sidebarOpenChanged'].family, 'state-change');
+
+  // Publishing to an unregistered topic is rejected rather than silently
+  // dropped, so the registry stays authoritative rather than aspirational.
+  let unknownTopicThrew = null;
+  try {
+    DR_BUS.publish('not:a:real:topic', {});
+  } catch (e) {
+    unknownTopicThrew = e.message;
+  }
+  eq('DR_BUS.publish: an unregistered topic throws instead of publishing silently',
+    typeof unknownTopicThrew, 'string');
+
+  // --- (b) publishing the intent changes the model and emits the
+  // resulting state-change with the whole new value. ---
+  const originalSelected = DR_STORE.getSelectedTable();
+  try {
+    const fakeTable = { __fake: 'table-A' };
+    let stateChangePayload = 'NOT_CALLED';
+    const unsubscribe = DR_BUS.subscribe('state:selectedTableChanged', (payload) => {
+      stateChangePayload = payload;
+    });
+    try {
+      DR_BUS.publish('intent:selectTable', { table: fakeTable });
+    } finally {
+      unsubscribe();
+    }
+    eq('intent:selectTable: publishing the intent updates DR_STORE.getSelectedTable()',
+      DR_STORE.getSelectedTable(), fakeTable);
+    eq('intent:selectTable: the resulting state-change fires exactly once, carrying the whole new value',
+      stateChangePayload, { table: fakeTable });
+  } finally {
+    DR_STORE.setSelectedTable(originalSelected);
+  }
+
+  // --- (c) reconnect: closing and reopening the sidebar must pull the
+  // model's current snapshot, not depend on a state-change message the
+  // sidebar could have missed while it was gone (the bus keeps no history). ---
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedOpen = DR_STORE.isSidebarOpen();
+  try {
+    const reconnectTable = { __fake: 'table-B' };
+    DR_STORE.setSelectedTable(reconnectTable);
+    DR_STORE.setSidebarOpen(true);
+
+    DR_STORE.setSidebarOpen(false); // simulate the sidebar closing
+
+    // No message is replayed here on purpose — a reconnecting view pulls,
+    // it does not listen for what it missed.
+    const snapshotWhileClosed = DR_STORE.getSnapshot();
+    eq('reconnect: the selection survives the sidebar closing (read via getSnapshot, not a replayed message)',
+      snapshotWhileClosed.selectedTable, reconnectTable);
+    eq('reconnect: sidebarOpen reflects the close via the store',
+      snapshotWhileClosed.sidebarOpen, false);
+
+    DR_STORE.setSidebarOpen(true); // simulate the sidebar reopening
+    eq('reconnect: sidebarOpen reflects the reopen via the store, independent of message history',
+      DR_STORE.isSidebarOpen(), true);
+    eq('reconnect: selectedTable is unchanged by the reopen — the reopening view pulls it, it is not reset',
+      DR_STORE.getSelectedTable(), reconnectTable);
+  } finally {
+    DR_STORE.setSelectedTable(savedSelected);
+    DR_STORE.setSidebarOpen(savedOpen);
+  }
+
+  // --- (d) no file writes another file's variables: build the list of
+  // identifiers content.js declares at its top level, then confirm
+  // ui-toggle.js contains no assignment to any of them. ---
+  const contentSrcForScan = sourceByName('content.js');
+  const uiToggleSrcForScan = sourceByName('ui-toggle.js');
+  const topLevelBindingNames = (src) => {
+    const names = [];
+    const re = /^(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
+    let match;
+    while ((match = re.exec(src))) names.push(match[1]);
+    return names;
+  };
+  const contentTopLevelNames = topLevelBindingNames(contentSrcForScan);
+  eq('static scan: content.js still declares its usual top-level bindings (sanity check on the scan itself)',
+    contentTopLevelNames.includes('lastRightClickedElement') && contentTopLevelNames.includes('tableOptions'),
+    true);
+  eq('static scan: content.js no longer declares lastRightClickedTable or sidebarOpen at top level',
+    contentTopLevelNames.includes('lastRightClickedTable') || contentTopLevelNames.includes('sidebarOpen'),
+    false);
+  const crossFileWrites = contentTopLevelNames.filter((name) => {
+    const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
+    return assignRe.test(uiToggleSrcForScan);
+  });
+  eq("static scan: ui-toggle.js assigns none of content.js's top-level bindings",
+    crossFileWrites, []);
 })();
 
 // --- Report ---
