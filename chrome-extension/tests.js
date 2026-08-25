@@ -1796,8 +1796,11 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   const sidebarJsPath = path.join(__dirname, 'sidebar.js');
   const sidebarJsSource = fs.readFileSync(sidebarJsPath, 'utf8');
 
-  const contentJsPath = path.join(__dirname, 'content.js');
-  const contentJsSource = fs.readFileSync(contentJsPath, 'utf8');
+  const contentJsSource = sourceByName('content.js');
+  if (contentJsSource === null) {
+    eq('sidebar-defaults: source file content.js present in manifest', false, true);
+    return;
+  }
 
   // AC1/AC2: Sidebar UI defaults now live in defaults.js (single source of
   // truth shared with content.js). The HTML must NOT hard-code checked /
@@ -4338,8 +4341,16 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   eq('sidebar.html does not load content-only dom-adapters.js', sidebarHtml.includes('dom-adapters.js'), false);
   eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
 
+  // NOTE: the main bootstrap eval() (top of this file) no longer concatenates
+  // coreCode/parsingCode/domAdaptersCode/uiToggleCode/code directly — it evals
+  // the manifest-driven contentScriptBundle instead (see the
+  // manifestDrivenSourceLoading self-test below for that ordering guarantee).
+  // This assertion instead checks that later per-layer eval sites in this file
+  // (e.g. the x-floor sandbox concatenation) still reference those variables
+  // in layer order, since a few sections still build their own eval string
+  // from the individual layer sources.
   const testsSource = fs.readFileSync(path.join(__dirname, 'tests.js'), 'utf8');
-  eq('tests.js eval concatenation orders the layers core→parsing→dom-adapters→ui-toggle→content',
+  eq('tests.js: per-layer eval sites reference core→parsing→dom-adapters→ui-toggle→content in layer order',
     /coreCode[\s\S]*parsingCode[\s\S]*domAdaptersCode[\s\S]*uiToggleCode[\s\S]*code\b/.test(
       testsSource.slice(testsSource.indexOf('eval('))), true);
 })();
@@ -5964,9 +5975,11 @@ const supTestOpts = {
   // AC1: Renames are total — no old key names survive in any source file.
   // Pattern strings are split across concatenation to prevent self-matching.
   // -------------------------------------------------------------------------
-  const sourceFiles = [
-    'defaults.js', 'sidebar.html', 'sidebar.js', 'content.js', 'tests.js'
-  ];
+  // Content-script entries are manifest-driven (guarded, no crash on a
+  // rename); the other files are not content scripts, so they keep direct
+  // reads by their own fixed names.
+  const contentScriptFileNames = ['defaults.js', 'content.js'];
+  const directReadFileNames = ['sidebar.html', 'sidebar.js', 'tests.js'];
   const oldKeys = [
     'include' + 'Words',
     'include' + 'Currency',
@@ -5974,7 +5987,18 @@ const supTestOpts = {
     'exclude' + 'FirstRow',
     'exclude' + 'FirstColumn',
   ];
-  for (const file of sourceFiles) {
+  for (const file of contentScriptFileNames) {
+    const src = sourceByName(file);
+    if (src === null) {
+      eq(`AC1: source file ${file} present in manifest`, false, true);
+      continue;
+    }
+    for (const key of oldKeys) {
+      eq(`AC1: old key "${key}" absent from ${file}`,
+        src.includes(key), false);
+    }
+  }
+  for (const file of directReadFileNames) {
     const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
     for (const key of oldKeys) {
       eq(`AC1: old key "${key}" absent from ${file}`,
@@ -10623,12 +10647,24 @@ function fireMouseClick(buttonEl, fn) {
   let capturedOnMessageHandler = null;
   global.chrome.runtime.onMessage.addListener = (fn) => { capturedOnMessageHandler = fn; };
 
+  const defaultsSrcForFlash = sourceByName('defaults.js');
+  const roundingSrcForFlash = sourceByName('rounding.js');
+  const coreSrcForFlash = sourceByName('core.js');
+  if (defaultsSrcForFlash === null || roundingSrcForFlash === null || coreSrcForFlash === null) {
+    eq('table-activation AC2 live: source files (defaults/rounding/core) present in manifest',
+      false, true);
+    global.document = savedDoc;
+    global.chrome   = savedChrome;
+    global.window   = savedWindow;
+    return;
+  }
+
   try {
     const dir = path.join(__dirname);
     eval(
-      contentScriptSources.get('defaults.js') + '\n' +
-      contentScriptSources.get('rounding.js') + '\n' +
-      contentScriptSources.get('core.js')     + '\n' +
+      defaultsSrcForFlash + '\n' +
+      roundingSrcForFlash + '\n' +
+      coreSrcForFlash     + '\n' +
       fs.readFileSync(path.join(dir, 'sidebar.js'), 'utf8')
     );
   } catch(e) {
@@ -11049,7 +11085,6 @@ function fireMouseClick(buttonEl, fn) {
 // ---------------------------------------------------------------------------
 (function advancedPreviewRedesignTests() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  const roundingSrc = sourceByName('rounding.js');
 
   // -------------------------------------------------------------------------
   // Extract formatOomLabel and formatStrategyHeader from sidebar.js source.
@@ -12351,16 +12386,67 @@ function fireMouseClick(buttonEl, fn) {
     'dom-adapters.js', 'ui-toggle.js', 'content.js',
   ];
 
-  // AC1: no readFileSync call in this file names a content-script file as a
-  // string literal. The manifest-driven map (`contentScriptFiles.map(...)`)
-  // and any loop-variable read (e.g. `readFileSync(path.join(__dirname, file))`)
-  // are allowed — only a literal filename argument counts as a violation.
+  // AC1: no content-script filename literal reaches readFileSync/path.join
+  // anywhere in this file, whether directly (`readFileSync('content.js')`,
+  // or `path.join(__dirname, 'content.js')` assigned to a path variable
+  // that's read next) or indirectly (a hardcoded array mixing content-script
+  // names with other names, later iterated by a loop that reads via
+  // readFileSync/path.join). A loop-variable read fed by the manifest itself
+  // (`readFileSync(path.join(__dirname, file))` where `file` comes from
+  // contentScriptFiles) is allowed — only a hardcoded name is a violation.
+  // Guarded lookups (sourceByName(...), contentScriptSources.get(...)) and
+  // eq()/comment text that merely name a file are not reads and are stripped
+  // first so they can't hide a real violation or false-positive one.
   const testsSelfSource = fs.readFileSync(path.join(__dirname, 'tests.js'), 'utf8');
-  const literalNamePattern = new RegExp(
-    'readFileSync\\([^)]*[\'"](' + CONTENT_SCRIPT_FILES.join('|').replace(/\./g, '\\.') + ')[\'"]'
-  );
-  eq('manifest-driven loading AC1: no readFileSync names a content-script file as a string literal',
-    literalNamePattern.test(testsSelfSource), false);
+  const literalAlternation = CONTENT_SCRIPT_FILES.join('|').replace(/\./g, '\\.');
+  const literalNamePattern = new RegExp(`['"](${literalAlternation})['"]`);
+
+  function findContentScriptFilenameLeaks(source) {
+    const stripped = source
+      // eq() label strings (the first argument) are descriptive text.
+      .replace(/\beq\(\s*(['"`])(?:\\.|(?!\1)[\s\S])*\1/g, 'eq(LABEL')
+      // Comments may name a file without reading it.
+      .replace(/\/\/[^\n]*/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      // A guarded lookup by literal key is not a filesystem read.
+      .replace(/sourceByName\(\s*(['"])[^'"]+\1\s*\)/g, 'sourceByName(GUARDED)')
+      .replace(/contentScriptSources\.get\(\s*(['"])[^'"]+\1\s*\)/g, 'contentScriptSources.get(GUARDED)');
+
+    const violations = [];
+
+    // Direct: a literal filename sharing a line with readFileSync or
+    // path.join — catches both a literal read argument and a literal path
+    // built on the same line and read from a variable right after.
+    stripped.split('\n').forEach((line, i) => {
+      if (literalNamePattern.test(line) && /readFileSync|path\.join/.test(line)) {
+        violations.push(`line ${i + 1}: content-script filename literal combined with readFileSync/path.join`);
+      }
+    });
+
+    // Indirect: a hardcoded array mixing 2+ content-script names, assigned
+    // to a const, later iterated by a for-of loop whose body reads via
+    // readFileSync/path.join.
+    const arrayDeclPattern = /const\s+(\w+)\s*=\s*\[([^\]]*)\]/g;
+    let m;
+    while ((m = arrayDeclPattern.exec(stripped))) {
+      const [, varName, arrBody] = m;
+      const nameHits = arrBody.match(new RegExp(`['"](${literalAlternation})['"]`, 'g')) || [];
+      if (nameHits.length < 2) continue;
+      const loopPattern = new RegExp(
+        `\\n(\\s*)for\\s*\\(\\s*const\\s+\\w+\\s+of\\s+${varName}\\s*\\)\\s*\\{([\\s\\S]*?)\\n\\1\\}`
+      );
+      const loopMatch = loopPattern.exec(stripped);
+      if (loopMatch && /readFileSync|path\.join/.test(loopMatch[2])) {
+        violations.push(`array "${varName}" mixes content-script filenames with a readFileSync/path.join loop`);
+      }
+    }
+
+    return violations;
+  }
+
+  const filenameLeaks = findContentScriptFilenameLeaks(testsSelfSource);
+  eq('manifest-driven loading AC1: no content-script filename literal (direct or via a loop-fed array) reaches readFileSync/path.join',
+    filenameLeaks.length === 0 ? 'none' : filenameLeaks.join('; '), 'none');
 
   // "concatenated in manifest order": contentScriptBundle must equal the
   // per-file sources (as looked up in contentScriptSources, keyed by the
