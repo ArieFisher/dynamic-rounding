@@ -638,5 +638,65 @@
         "expected": "５０"
       }
     ]
+  },
+  {
+    "description": "Tie-rounding at the 12-significant-digit noise-strip boundary (JS toPrecision(12) rounds half-away-from-zero)",
+    "cases": [
+      {
+        "input": 1234567890125,
+        "params": {
+          "offset_top": -12
+        },
+        "expected": 1234567890130
+      },
+      {
+        "input": 1000000000005,
+        "params": {
+          "offset_top": -12
+        },
+        "expected": 1000000000010
+      },
+      {
+        "input": -1234567890125,
+        "params": {
+          "offset_top": -12
+        },
+        "expected": -1234567890130
+      },
+      {
+        "input": -1000000000005,
+        "params": {
+          "offset_top": -12
+        },
+        "expected": -1000000000010
+      }
+    ]
+  },
+  {
+    "description": "Symbol-only and separator-only strings pass through unchanged (cleaned-to-empty guard)",
+    "cases": [
+      {
+        "input": "$",
+        "params": {},
+        "expected": "$"
+      },
+      {
+        "input": ",",
+        "params": {},
+        "expected": ","
+      }
+    ]
+  },
+  {
+    "description": "Results with more than 12 significant digits are truncated to 12 by the noise-strip (a documented limitation, not float noise)",
+    "cases": [
+      {
+        "input": 1234567890123,
+        "params": {
+          "offset_top": -12
+        },
+        "expected": 1234567890120
+      }
+    ]
   }
 ]

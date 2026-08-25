@@ -19,6 +19,12 @@ Brought `ROUND_DYNAMIC`'s string parsing and float cleanup in line with the chro
 - **Unicode dash and minus-sign variants** (en dash, em dash, minus sign, and other Unicode hyphen forms) at the start of a value now normalize to an ASCII `-` and read as a negative sign, instead of passing through unchanged.
   Before: `ROUND_DYNAMIC("−87654321", -0.5)` → `"−87654321"` (U+2212 MINUS SIGN)
   After: `ROUND_DYNAMIC("−87654321", -0.5)` → `-90000000`
+- **Symbol-only and separator-only strings** (a currency symbol or thousands separator with no digits, e.g. `"$"`, `","`, `"€"`, `"  $  "`) now pass through unchanged, instead of returning `0`. Stripping the symbol used to leave an empty string, and `Number("")` is `0`; a value with no digits at all is now treated as non-numeric instead.
+  Before: `ROUND_DYNAMIC("$", -0.5)` → `0`
+  After: `ROUND_DYNAMIC("$", -0.5)` → `"$"`
+- **Results carrying more than 12 significant digits** are now truncated to 12 significant digits, as a side effect of the float-noise strip above. This is a real precision loss at fine offsets on large or highly precise inputs, not only a fix for trailing float noise.
+  Before: `ROUND_DYNAMIC(1234567890123, -12)` → `1234567890123`
+  After: `ROUND_DYNAMIC(1234567890123, -12)` → `1234567890120`
 
 ### Added
 
