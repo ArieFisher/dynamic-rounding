@@ -38,23 +38,37 @@ global.MutationObserver = class { observe() {} disconnect() {} };
 global.ResizeObserver  = class { observe() {} unobserve() {} disconnect() {} };
 global.Node = { ELEMENT_NODE: 1 };
 
-// In a browser/extension the two files share a single top-level scope; we
-// emulate that here by evaluating them together, and re-expose DR_DEFAULTS on
-// globalThis so test assertions outside the eval can read it.
+// In a browser/extension the content scripts share a single top-level scope,
+// loaded in the order manifest.json lists them under content_scripts[0].js.
+// Read that list from the manifest instead of hardcoding filenames, so
+// renaming a content script only requires a manifest update. We evaluate
+// them together here, and re-expose DR_DEFAULTS on globalThis so test
+// assertions outside the eval can read it.
 // We also expose the per-table toggle infrastructure declared with const/let
 // inside the eval'd code so the auto-table-toggle test section can access them.
-const defaultsCode = fs.readFileSync(path.join(__dirname, 'defaults.js'), 'utf8');
-const roundingCode = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
-const coreCode = fs.readFileSync(path.join(__dirname, 'core.js'), 'utf8');
-const parsingCode = fs.readFileSync(path.join(__dirname, 'parsing.js'), 'utf8');
-const domAdaptersCode = fs.readFileSync(path.join(__dirname, 'dom-adapters.js'), 'utf8');
-const uiToggleCode = fs.readFileSync(path.join(__dirname, 'ui-toggle.js'), 'utf8');
-const code = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
+const contentScriptFiles = manifest.content_scripts[0].js;
+// Map from manifest filename to its individual source text, built FROM the
+// manifest list. A few tests still need one file's text by name (a patched
+// copy of a single constant, or a fragment check scoped to one file) — they
+// look it up here instead of re-reading the file.
+const contentScriptSources = new Map(
+  contentScriptFiles.map((file) => [file, fs.readFileSync(path.join(__dirname, file), 'utf8')])
+);
+const contentScriptBundle = contentScriptFiles
+  .map((file) => contentScriptSources.get(file))
+  .join('\n');
+const defaultsCode = contentScriptSources.get('defaults.js');
+const roundingCode = contentScriptSources.get('rounding.js');
+const coreCode = contentScriptSources.get('core.js');
+const parsingCode = contentScriptSources.get('parsing.js');
+const domAdaptersCode = contentScriptSources.get('dom-adapters.js');
+const uiToggleCode = contentScriptSources.get('ui-toggle.js');
+const code = contentScriptSources.get('content.js');
 // Combined source for "source-includes" assertions that no longer care which
 // content-script file a symbol physically lives in after the Phase 2 split.
-const allContentSrc = parsingCode + '\n' + domAdaptersCode + '\n' + uiToggleCode + '\n' + code;
-eval(defaultsCode + '\n' + roundingCode + '\n' + coreCode + '\n' +
-     parsingCode + '\n' + domAdaptersCode + '\n' + uiToggleCode + '\n' + code + `
+const allContentSrc = contentScriptBundle;
+eval(contentScriptBundle + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
@@ -1840,7 +1854,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
 // ---------------------------------------------------------------------------
 
 (function sprintSidebarPullAndUnifiedToggle() {
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const contentSrc = contentScriptSources.get('content.js');
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // --- Sidebar pull: content.js requests, sidebar.js responds ---
@@ -3352,8 +3366,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // Re-eval content.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor
   // gates on the constant. We sandbox the patched source so the eq()
   // assertions below don't disturb the live extension globals.
-  const roundingSrc = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const roundingSrc = contentScriptSources.get('rounding.js');
+  const contentSrc = contentScriptSources.get('content.js');
   const patchedRounding = roundingSrc.replace(
     /const X_FLOOR_THRESHOLD = 1;/,
     'const X_FLOOR_THRESHOLD = 0;'
@@ -5622,8 +5636,8 @@ const supTestOpts = {
 // If the old names are still present as property assignments or conditions, the
 // inversion is incomplete and rounding behaviour would be controlled by the wrong key.
 (function invertPills_oldKeysAbsent() {
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-  const defaultsSrc = fs.readFileSync(path.join(__dirname, 'defaults.js'), 'utf8');
+  const contentSrc = contentScriptSources.get('content.js');
+  const defaultsSrc = contentScriptSources.get('defaults.js');
   const sidebarSrc  = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // "excludeDates" and "excludeTimes" must not appear as identifiers in any of these files.
@@ -7071,7 +7085,7 @@ function makeNativeTableEl(rowsSpec) {
 // Per AC4 of the grid-adapter sprint, these stale Sprint 1 selectors must have
 // been replaced by role="cell" / data-row / data-index.
 (function sourceNoLegacySelectors() {
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const contentSrc = contentScriptSources.get('content.js');
 
   eq('grid-adapter AC4: no role="gridcell" literal remains in content.js',
     contentSrc.includes('role="gridcell"'), false);
@@ -10046,7 +10060,7 @@ function fireMouseClick(buttonEl, fn) {
 (function pillbox_AC2_sidebarToTablePath_regression() {
   // Static guard: content.js must still contain the APPLY_SIDEBAR_SETTINGS
   // message handler that triggers rounding when the sidebar changes settings.
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const contentSrc = contentScriptSources.get('content.js');
   eq('AC2 regression: content.js still handles APPLY_SIDEBAR_SETTINGS message',
     contentSrc.includes('APPLY_SIDEBAR_SETTINGS'), true);
 
@@ -10327,7 +10341,7 @@ function fireMouseClick(buttonEl, fn) {
 // ---------------------------------------------------------------------------
 
 (function tableContextmenuActivation_sourceLevel() {
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const contentSrc = contentScriptSources.get('content.js');
   const bgSrc      = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
@@ -10415,16 +10429,9 @@ function fireMouseClick(buttonEl, fn) {
 
   try {
     // Eval content scripts; the contextmenu listener is registered against captureDoc.
-    const dir = path.join(__dirname);
-    eval(
-      fs.readFileSync(path.join(dir, 'defaults.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'rounding.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'core.js'),     'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'parsing.js'),  'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'dom-adapters.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'ui-toggle.js'),    'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'content.js'),      'utf8')
-    );
+    // contentScriptBundle is already the manifest-order concatenation of all
+    // content scripts (see the bootstrap section above).
+    eval(contentScriptBundle);
 
     eq('table-activation runtime: contextmenu handler was captured',
       typeof capturedHandler, 'function');
@@ -10582,10 +10589,10 @@ function fireMouseClick(buttonEl, fn) {
   try {
     const dir = path.join(__dirname);
     eval(
-      fs.readFileSync(path.join(dir, 'defaults.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'rounding.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'core.js'),     'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'sidebar.js'),  'utf8')
+      contentScriptSources.get('defaults.js') + '\n' +
+      contentScriptSources.get('rounding.js') + '\n' +
+      contentScriptSources.get('core.js')     + '\n' +
+      fs.readFileSync(path.join(dir, 'sidebar.js'), 'utf8')
     );
   } catch(e) {
     // sidebar.js may reference DOM elements that are not fully stubbed — that is
@@ -11005,7 +11012,7 @@ function fireMouseClick(buttonEl, fn) {
 // ---------------------------------------------------------------------------
 (function advancedPreviewRedesignTests() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  const roundingSrc = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
+  const roundingSrc = contentScriptSources.get('rounding.js');
 
   // -------------------------------------------------------------------------
   // Extract formatOomLabel and formatStrategyHeader from sidebar.js source.
@@ -11901,16 +11908,9 @@ function fireMouseClick(buttonEl, fn) {
   global.window   = captureWindow;
 
   try {
-    const dir = path.join(__dirname);
-    eval(
-      fs.readFileSync(path.join(dir, 'defaults.js'),     'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'rounding.js'),     'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'core.js'),         'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'parsing.js'),      'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'dom-adapters.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'ui-toggle.js'),    'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'content.js'),      'utf8')
-    );
+    // contentScriptBundle is already the manifest-order concatenation of all
+    // content scripts (see the bootstrap section above).
+    eval(contentScriptBundle);
   } catch (e) {
     // content.js module-level code may fail in the stub environment; the
     // onMessage listener registers before any dynamic code runs, so we
@@ -11952,7 +11952,7 @@ function fireMouseClick(buttonEl, fn) {
     returnValue === true, false);
 
   // Source-level belt-and-suspenders: the branch contains a sendResponse( call.
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const contentSrc = contentScriptSources.get('content.js');
   eq('AC1-src: APPLY_SIDEBAR_SETTINGS branch contains sendResponse( call',
     /APPLY_SIDEBAR_SETTINGS[\s\S]{0,200}sendResponse\(/.test(contentSrc), true);
 })();
