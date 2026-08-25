@@ -55,16 +55,24 @@ const contentScriptFiles = manifest.content_scripts[0].js;
 const contentScriptSources = new Map(
   contentScriptFiles.map((file) => [file, fs.readFileSync(path.join(__dirname, file), 'utf8')])
 );
+// Manifest-safe accessor for one file's source. If a file gets renamed in
+// manifest.json but a test section below still looks it up by its old
+// literal name, this returns null instead of undefined — callers guard on
+// null explicitly instead of letting `undefined` reach a vm.runInContext()
+// string build or a String.prototype call and crash the whole suite.
+function sourceByName(name) {
+  return contentScriptSources.get(name) ?? null;
+}
 const contentScriptBundle = contentScriptFiles
   .map((file) => contentScriptSources.get(file))
   .join('\n');
-const defaultsCode = contentScriptSources.get('defaults.js');
-const roundingCode = contentScriptSources.get('rounding.js');
-const coreCode = contentScriptSources.get('core.js');
-const parsingCode = contentScriptSources.get('parsing.js');
-const domAdaptersCode = contentScriptSources.get('dom-adapters.js');
-const uiToggleCode = contentScriptSources.get('ui-toggle.js');
-const code = contentScriptSources.get('content.js');
+const defaultsCode = sourceByName('defaults.js');
+const roundingCode = sourceByName('rounding.js');
+const coreCode = sourceByName('core.js');
+const parsingCode = sourceByName('parsing.js');
+const domAdaptersCode = sourceByName('dom-adapters.js');
+const uiToggleCode = sourceByName('ui-toggle.js');
+const code = sourceByName('content.js');
 // Combined source for "source-includes" assertions that no longer care which
 // content-script file a symbol physically lives in after the Phase 2 split.
 const allContentSrc = contentScriptBundle;
@@ -1854,7 +1862,11 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
 // ---------------------------------------------------------------------------
 
 (function sprintSidebarPullAndUnifiedToggle() {
-  const contentSrc = contentScriptSources.get('content.js');
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('sprint-sidebar-pull: source file content.js present in manifest', false, true);
+    return;
+  }
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // --- Sidebar pull: content.js requests, sidebar.js responds ---
@@ -3366,8 +3378,13 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // Re-eval content.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor
   // gates on the constant. We sandbox the patched source so the eq()
   // assertions below don't disturb the live extension globals.
-  const roundingSrc = contentScriptSources.get('rounding.js');
-  const contentSrc = contentScriptSources.get('content.js');
+  const roundingSrc = sourceByName('rounding.js');
+  const contentSrc = sourceByName('content.js');
+  if (roundingSrc === null || contentSrc === null || coreCode === null ||
+      parsingCode === null || domAdaptersCode === null || uiToggleCode === null) {
+    eq('x-floor flip: source files present in manifest', false, true);
+    return;
+  }
   const patchedRounding = roundingSrc.replace(
     /const X_FLOOR_THRESHOLD = 1;/,
     'const X_FLOOR_THRESHOLD = 0;'
@@ -5636,8 +5653,12 @@ const supTestOpts = {
 // If the old names are still present as property assignments or conditions, the
 // inversion is incomplete and rounding behaviour would be controlled by the wrong key.
 (function invertPills_oldKeysAbsent() {
-  const contentSrc = contentScriptSources.get('content.js');
-  const defaultsSrc = contentScriptSources.get('defaults.js');
+  const contentSrc = sourceByName('content.js');
+  const defaultsSrc = sourceByName('defaults.js');
+  if (contentSrc === null || defaultsSrc === null) {
+    eq('invert-pills regression: source files present in manifest', false, true);
+    return;
+  }
   const sidebarSrc  = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // "excludeDates" and "excludeTimes" must not appear as identifiers in any of these files.
@@ -6984,6 +7005,10 @@ function makeNativeTableEl(rowsSpec) {
 
   // Source scan: nothing in the class may assign textContent/innerHTML on a
   // cell. Catches a setText re-added under a different name.
+  if (domAdaptersCode === null) {
+    eq('TA1b: source file dom-adapters.js present in manifest', false, true);
+    return;
+  }
   const start = domAdaptersCode.indexOf('class NativeTableAdapter');
   const rest = domAdaptersCode.slice(start);
   const classBody = rest.slice(0, rest.indexOf('\n}\n'));
@@ -7085,7 +7110,11 @@ function makeNativeTableEl(rowsSpec) {
 // Per AC4 of the grid-adapter sprint, these stale Sprint 1 selectors must have
 // been replaced by role="cell" / data-row / data-index.
 (function sourceNoLegacySelectors() {
-  const contentSrc = contentScriptSources.get('content.js');
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('grid-adapter AC4: source file content.js present in manifest', false, true);
+    return;
+  }
 
   eq('grid-adapter AC4: no role="gridcell" literal remains in content.js',
     contentSrc.includes('role="gridcell"'), false);
@@ -10060,7 +10089,11 @@ function fireMouseClick(buttonEl, fn) {
 (function pillbox_AC2_sidebarToTablePath_regression() {
   // Static guard: content.js must still contain the APPLY_SIDEBAR_SETTINGS
   // message handler that triggers rounding when the sidebar changes settings.
-  const contentSrc = contentScriptSources.get('content.js');
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('AC2 regression: source file content.js present in manifest', false, true);
+    return;
+  }
   eq('AC2 regression: content.js still handles APPLY_SIDEBAR_SETTINGS message',
     contentSrc.includes('APPLY_SIDEBAR_SETTINGS'), true);
 
@@ -10341,7 +10374,11 @@ function fireMouseClick(buttonEl, fn) {
 // ---------------------------------------------------------------------------
 
 (function tableContextmenuActivation_sourceLevel() {
-  const contentSrc = contentScriptSources.get('content.js');
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('table-activation source: source file content.js present in manifest', false, true);
+    return;
+  }
   const bgSrc      = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
@@ -11012,7 +11049,7 @@ function fireMouseClick(buttonEl, fn) {
 // ---------------------------------------------------------------------------
 (function advancedPreviewRedesignTests() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  const roundingSrc = contentScriptSources.get('rounding.js');
+  const roundingSrc = sourceByName('rounding.js');
 
   // -------------------------------------------------------------------------
   // Extract formatOomLabel and formatStrategyHeader from sidebar.js source.
@@ -11952,7 +11989,11 @@ function fireMouseClick(buttonEl, fn) {
     returnValue === true, false);
 
   // Source-level belt-and-suspenders: the branch contains a sendResponse( call.
-  const contentSrc = contentScriptSources.get('content.js');
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('AC1-src: source file content.js present in manifest', false, true);
+    return;
+  }
   eq('AC1-src: APPLY_SIDEBAR_SETTINGS branch contains sendResponse( call',
     /APPLY_SIDEBAR_SETTINGS[\s\S]{0,200}sendResponse\(/.test(contentSrc), true);
 })();
