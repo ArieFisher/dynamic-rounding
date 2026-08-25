@@ -11,8 +11,8 @@
 // here too via shared global scope.
 
 // EPSILON, X_FLOOR_THRESHOLD, roundWithOffset, and roundCellSetAware live in
-// rounding.js (loaded by manifest content_scripts ahead of this file) so the
-// sidebar can call the same arithmetic for its preview band.
+// rounding.js, loaded by manifest content_scripts ahead of this file. The
+// sidebar loads rounding.js separately via a script tag in sidebar.html.
 
 // DR_DEFAULTS is loaded from defaults.js (declared first in manifest content_scripts).
 // It is shared with sidebar.js so the sidebar UI's initial state and the
@@ -1067,5 +1067,5 @@ function toggleOriginalValues(table) {
 
 // findMaxMagnitude and toNumber (plus DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP,
 // VALIDATION_LIMIT, CLEAN_REGEX, PARENS_REGEX) live in core.js, loaded by
-// manifest content_scripts ahead of this file so the sidebar shares the same
-// coercion helpers.
+// manifest content_scripts ahead of this file. The sidebar loads core.js
+// separately via a script tag in sidebar.html.

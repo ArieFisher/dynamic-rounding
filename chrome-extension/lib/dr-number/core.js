@@ -13,7 +13,7 @@
  * rounding.js, which must load before this file.
  */
 
-// Constants owned by the core dispatch/coercion layer.
+// Constants owned by the coercion + magnitude layer.
 const CLEAN_REGEX = /[$€£¥,\s%]/g;
 const PARENS_REGEX = /^\((.+)\)$/;
 const DEFAULT_OFFSET_TOP = -0.5;
