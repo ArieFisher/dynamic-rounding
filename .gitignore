@@ -40,6 +40,9 @@ docs/private/
 .remember/
 .security/
 
+# Sprint-stack runtime worktrees
+.sprint-stack/
+
 # Credentials
 .env
 .env.*

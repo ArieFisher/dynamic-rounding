@@ -38,23 +38,42 @@ global.MutationObserver = class { observe() {} disconnect() {} };
 global.ResizeObserver  = class { observe() {} unobserve() {} disconnect() {} };
 global.Node = { ELEMENT_NODE: 1 };
 
-// In a browser/extension the two files share a single top-level scope; we
-// emulate that here by evaluating them together, and re-expose DR_DEFAULTS on
-// globalThis so test assertions outside the eval can read it.
+// In a browser/extension the content scripts share a single top-level scope,
+// loaded in the order manifest.json lists them under content_scripts[0].js.
+// Read that list from the manifest instead of hardcoding filenames, so
+// renaming a content script only requires a manifest update. We evaluate
+// them together here, and re-expose DR_DEFAULTS on globalThis so test
+// assertions outside the eval can read it.
 // We also expose the per-table toggle infrastructure declared with const/let
 // inside the eval'd code so the auto-table-toggle test section can access them.
-const defaultsCode = fs.readFileSync(path.join(__dirname, 'defaults.js'), 'utf8');
-const roundingCode = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
-const coreCode = fs.readFileSync(path.join(__dirname, 'core.js'), 'utf8');
-const parsingCode = fs.readFileSync(path.join(__dirname, 'parsing.js'), 'utf8');
-const domAdaptersCode = fs.readFileSync(path.join(__dirname, 'dom-adapters.js'), 'utf8');
-const uiToggleCode = fs.readFileSync(path.join(__dirname, 'ui-toggle.js'), 'utf8');
-const code = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
+const contentScriptFiles = manifest.content_scripts[0].js;
+// Map from manifest filename to its individual source text, built FROM the
+// manifest list. A few tests still need one file's text by name (a patched
+// copy of a single constant, or a fragment check scoped to one file) — they
+// look it up here instead of re-reading the file.
+const contentScriptSources = new Map(
+  contentScriptFiles.map((file) => [file, fs.readFileSync(path.join(__dirname, file), 'utf8')])
+);
+// Manifest-safe accessor for one file's source. If a file gets renamed in
+// manifest.json but a test section below still looks it up by its old
+// literal name, this returns null instead of undefined — callers guard on
+// null explicitly instead of letting `undefined` reach a vm.runInContext()
+// string build or a String.prototype call and crash the whole suite.
+function sourceByName(name) {
+  return contentScriptSources.get(name) ?? null;
+}
+const contentScriptBundle = contentScriptFiles
+  .map((file) => contentScriptSources.get(file))
+  .join('\n');
+const coreCode = sourceByName('core.js');
+const parsingCode = sourceByName('parsing.js');
+const domAdaptersCode = sourceByName('dom-adapters.js');
+const uiToggleCode = sourceByName('ui-toggle.js');
 // Combined source for "source-includes" assertions that no longer care which
 // content-script file a symbol physically lives in after the Phase 2 split.
-const allContentSrc = parsingCode + '\n' + domAdaptersCode + '\n' + uiToggleCode + '\n' + code;
-eval(defaultsCode + '\n' + roundingCode + '\n' + coreCode + '\n' +
-     parsingCode + '\n' + domAdaptersCode + '\n' + uiToggleCode + '\n' + code + `
+const allContentSrc = contentScriptBundle;
+eval(contentScriptBundle + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
@@ -1774,8 +1793,11 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   const sidebarJsPath = path.join(__dirname, 'sidebar.js');
   const sidebarJsSource = fs.readFileSync(sidebarJsPath, 'utf8');
 
-  const contentJsPath = path.join(__dirname, 'content.js');
-  const contentJsSource = fs.readFileSync(contentJsPath, 'utf8');
+  const contentJsSource = sourceByName('content.js');
+  if (contentJsSource === null) {
+    eq('sidebar-defaults: source file content.js present in manifest', false, true);
+    return;
+  }
 
   // AC1/AC2: Sidebar UI defaults now live in defaults.js (single source of
   // truth shared with content.js). The HTML must NOT hard-code checked /
@@ -1840,7 +1862,11 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
 // ---------------------------------------------------------------------------
 
 (function sprintSidebarPullAndUnifiedToggle() {
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('sprint-sidebar-pull: source file content.js present in manifest', false, true);
+    return;
+  }
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // --- Sidebar pull: content.js requests, sidebar.js responds ---
@@ -3352,8 +3378,13 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // Re-eval content.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor
   // gates on the constant. We sandbox the patched source so the eq()
   // assertions below don't disturb the live extension globals.
-  const roundingSrc = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const roundingSrc = sourceByName('rounding.js');
+  const contentSrc = sourceByName('content.js');
+  if (roundingSrc === null || contentSrc === null || coreCode === null ||
+      parsingCode === null || domAdaptersCode === null || uiToggleCode === null) {
+    eq('x-floor flip: source files present in manifest', false, true);
+    return;
+  }
   const patchedRounding = roundingSrc.replace(
     /const X_FLOOR_THRESHOLD = 1;/,
     'const X_FLOOR_THRESHOLD = 0;'
@@ -4307,8 +4338,16 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   eq('sidebar.html does not load content-only dom-adapters.js', sidebarHtml.includes('dom-adapters.js'), false);
   eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
 
+  // NOTE: the main bootstrap eval() (top of this file) no longer concatenates
+  // coreCode/parsingCode/domAdaptersCode/uiToggleCode/code directly — it evals
+  // the manifest-driven contentScriptBundle instead (see the
+  // manifestDrivenSourceLoading self-test below for that ordering guarantee).
+  // This assertion instead checks that later per-layer eval sites in this file
+  // (e.g. the x-floor sandbox concatenation) still reference those variables
+  // in layer order, since a few sections still build their own eval string
+  // from the individual layer sources.
   const testsSource = fs.readFileSync(path.join(__dirname, 'tests.js'), 'utf8');
-  eq('tests.js eval concatenation orders the layers core→parsing→dom-adapters→ui-toggle→content',
+  eq('tests.js: per-layer eval sites reference core→parsing→dom-adapters→ui-toggle→content in layer order',
     /coreCode[\s\S]*parsingCode[\s\S]*domAdaptersCode[\s\S]*uiToggleCode[\s\S]*code\b/.test(
       testsSource.slice(testsSource.indexOf('eval('))), true);
 })();
@@ -5622,8 +5661,12 @@ const supTestOpts = {
 // If the old names are still present as property assignments or conditions, the
 // inversion is incomplete and rounding behaviour would be controlled by the wrong key.
 (function invertPills_oldKeysAbsent() {
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
-  const defaultsSrc = fs.readFileSync(path.join(__dirname, 'defaults.js'), 'utf8');
+  const contentSrc = sourceByName('content.js');
+  const defaultsSrc = sourceByName('defaults.js');
+  if (contentSrc === null || defaultsSrc === null) {
+    eq('invert-pills regression: source files present in manifest', false, true);
+    return;
+  }
   const sidebarSrc  = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // "excludeDates" and "excludeTimes" must not appear as identifiers in any of these files.
@@ -5929,9 +5972,11 @@ const supTestOpts = {
   // AC1: Renames are total — no old key names survive in any source file.
   // Pattern strings are split across concatenation to prevent self-matching.
   // -------------------------------------------------------------------------
-  const sourceFiles = [
-    'defaults.js', 'sidebar.html', 'sidebar.js', 'content.js', 'tests.js'
-  ];
+  // Content-script entries are manifest-driven (guarded, no crash on a
+  // rename); the other files are not content scripts, so they keep direct
+  // reads by their own fixed names.
+  const contentScriptFileNames = ['defaults.js', 'content.js'];
+  const directReadFileNames = ['sidebar.html', 'sidebar.js', 'tests.js'];
   const oldKeys = [
     'include' + 'Words',
     'include' + 'Currency',
@@ -5939,7 +5984,18 @@ const supTestOpts = {
     'exclude' + 'FirstRow',
     'exclude' + 'FirstColumn',
   ];
-  for (const file of sourceFiles) {
+  for (const file of contentScriptFileNames) {
+    const src = sourceByName(file);
+    if (src === null) {
+      eq(`AC1: source file ${file} present in manifest`, false, true);
+      continue;
+    }
+    for (const key of oldKeys) {
+      eq(`AC1: old key "${key}" absent from ${file}`,
+        src.includes(key), false);
+    }
+  }
+  for (const file of directReadFileNames) {
     const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
     for (const key of oldKeys) {
       eq(`AC1: old key "${key}" absent from ${file}`,
@@ -6970,6 +7026,10 @@ function makeNativeTableEl(rowsSpec) {
 
   // Source scan: nothing in the class may assign textContent/innerHTML on a
   // cell. Catches a setText re-added under a different name.
+  if (domAdaptersCode === null) {
+    eq('TA1b: source file dom-adapters.js present in manifest', false, true);
+    return;
+  }
   const start = domAdaptersCode.indexOf('class NativeTableAdapter');
   const rest = domAdaptersCode.slice(start);
   const classBody = rest.slice(0, rest.indexOf('\n}\n'));
@@ -7071,7 +7131,11 @@ function makeNativeTableEl(rowsSpec) {
 // Per AC4 of the grid-adapter sprint, these stale Sprint 1 selectors must have
 // been replaced by role="cell" / data-row / data-index.
 (function sourceNoLegacySelectors() {
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('grid-adapter AC4: source file content.js present in manifest', false, true);
+    return;
+  }
 
   eq('grid-adapter AC4: no role="gridcell" literal remains in content.js',
     contentSrc.includes('role="gridcell"'), false);
@@ -10046,7 +10110,11 @@ function fireMouseClick(buttonEl, fn) {
 (function pillbox_AC2_sidebarToTablePath_regression() {
   // Static guard: content.js must still contain the APPLY_SIDEBAR_SETTINGS
   // message handler that triggers rounding when the sidebar changes settings.
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('AC2 regression: source file content.js present in manifest', false, true);
+    return;
+  }
   eq('AC2 regression: content.js still handles APPLY_SIDEBAR_SETTINGS message',
     contentSrc.includes('APPLY_SIDEBAR_SETTINGS'), true);
 
@@ -10327,7 +10395,11 @@ function fireMouseClick(buttonEl, fn) {
 // ---------------------------------------------------------------------------
 
 (function tableContextmenuActivation_sourceLevel() {
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('table-activation source: source file content.js present in manifest', false, true);
+    return;
+  }
   const bgSrc      = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
@@ -10415,16 +10487,9 @@ function fireMouseClick(buttonEl, fn) {
 
   try {
     // Eval content scripts; the contextmenu listener is registered against captureDoc.
-    const dir = path.join(__dirname);
-    eval(
-      fs.readFileSync(path.join(dir, 'defaults.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'rounding.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'core.js'),     'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'parsing.js'),  'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'dom-adapters.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'ui-toggle.js'),    'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'content.js'),      'utf8')
-    );
+    // contentScriptBundle is already the manifest-order concatenation of all
+    // content scripts (see the bootstrap section above).
+    eval(contentScriptBundle);
 
     eq('table-activation runtime: contextmenu handler was captured',
       typeof capturedHandler, 'function');
@@ -10579,13 +10644,25 @@ function fireMouseClick(buttonEl, fn) {
   let capturedOnMessageHandler = null;
   global.chrome.runtime.onMessage.addListener = (fn) => { capturedOnMessageHandler = fn; };
 
+  const defaultsSrcForFlash = sourceByName('defaults.js');
+  const roundingSrcForFlash = sourceByName('rounding.js');
+  const coreSrcForFlash = sourceByName('core.js');
+  if (defaultsSrcForFlash === null || roundingSrcForFlash === null || coreSrcForFlash === null) {
+    eq('table-activation AC2 live: source files (defaults/rounding/core) present in manifest',
+      false, true);
+    global.document = savedDoc;
+    global.chrome   = savedChrome;
+    global.window   = savedWindow;
+    return;
+  }
+
   try {
     const dir = path.join(__dirname);
     eval(
-      fs.readFileSync(path.join(dir, 'defaults.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'rounding.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'core.js'),     'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'sidebar.js'),  'utf8')
+      defaultsSrcForFlash + '\n' +
+      roundingSrcForFlash + '\n' +
+      coreSrcForFlash     + '\n' +
+      fs.readFileSync(path.join(dir, 'sidebar.js'), 'utf8')
     );
   } catch(e) {
     // sidebar.js may reference DOM elements that are not fully stubbed — that is
@@ -11005,7 +11082,6 @@ function fireMouseClick(buttonEl, fn) {
 // ---------------------------------------------------------------------------
 (function advancedPreviewRedesignTests() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  const roundingSrc = fs.readFileSync(path.join(__dirname, 'rounding.js'), 'utf8');
 
   // -------------------------------------------------------------------------
   // Extract formatOomLabel and formatStrategyHeader from sidebar.js source.
@@ -11901,16 +11977,9 @@ function fireMouseClick(buttonEl, fn) {
   global.window   = captureWindow;
 
   try {
-    const dir = path.join(__dirname);
-    eval(
-      fs.readFileSync(path.join(dir, 'defaults.js'),     'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'rounding.js'),     'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'core.js'),         'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'parsing.js'),      'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'dom-adapters.js'), 'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'ui-toggle.js'),    'utf8') + '\n' +
-      fs.readFileSync(path.join(dir, 'content.js'),      'utf8')
-    );
+    // contentScriptBundle is already the manifest-order concatenation of all
+    // content scripts (see the bootstrap section above).
+    eval(contentScriptBundle);
   } catch (e) {
     // content.js module-level code may fail in the stub environment; the
     // onMessage listener registers before any dynamic code runs, so we
@@ -11952,7 +12021,11 @@ function fireMouseClick(buttonEl, fn) {
     returnValue === true, false);
 
   // Source-level belt-and-suspenders: the branch contains a sendResponse( call.
-  const contentSrc = fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8');
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('AC1-src: source file content.js present in manifest', false, true);
+    return;
+  }
   eq('AC1-src: APPLY_SIDEBAR_SETTINGS branch contains sendResponse( call',
     /APPLY_SIDEBAR_SETTINGS[\s\S]{0,200}sendResponse\(/.test(contentSrc), true);
 })();
@@ -12297,6 +12370,98 @@ function fireMouseClick(buttonEl, fn) {
     eq('bg routing: TABLE_ACTIVATED is not relayed to the content script',
       ctx.tabSends.filter(s => s.msg.action === 'TABLE_ACTIVATED').length, 0);
   })();
+})();
+
+// ---------------------------------------------------------------------------
+// Manifest-driven source loading: lock the properties the bootstrap section
+// (top of this file) depends on, so a future edit cannot quietly reintroduce
+// hardcoded content-script filenames or silently load zero scripts.
+// ---------------------------------------------------------------------------
+(function manifestDrivenSourceLoading() {
+  const CONTENT_SCRIPT_FILES = [
+    'defaults.js', 'rounding.js', 'core.js', 'parsing.js',
+    'dom-adapters.js', 'ui-toggle.js', 'content.js',
+  ];
+
+  // AC1: no content-script filename literal reaches readFileSync/path.join
+  // anywhere in this file, whether directly (`readFileSync('content.js')`,
+  // or `path.join(__dirname, 'content.js')` assigned to a path variable
+  // that's read next) or indirectly (a hardcoded array mixing content-script
+  // names with other names, later iterated by a loop that reads via
+  // readFileSync/path.join). A loop-variable read fed by the manifest itself
+  // (`readFileSync(path.join(__dirname, file))` where `file` comes from
+  // contentScriptFiles) is allowed — only a hardcoded name is a violation.
+  // Guarded lookups (sourceByName(...), contentScriptSources.get(...)) and
+  // eq()/comment text that merely name a file are not reads and are stripped
+  // first so they can't hide a real violation or false-positive one.
+  const testsSelfSource = fs.readFileSync(path.join(__dirname, 'tests.js'), 'utf8');
+  const literalAlternation = CONTENT_SCRIPT_FILES.join('|').replace(/\./g, '\\.');
+  const literalNamePattern = new RegExp(`['"](${literalAlternation})['"]`);
+
+  function findContentScriptFilenameLeaks(source) {
+    const stripped = source
+      // eq() label strings (the first argument) are descriptive text.
+      .replace(/\beq\(\s*(['"`])(?:\\.|(?!\1)[\s\S])*\1/g, 'eq(LABEL')
+      // Comments may name a file without reading it.
+      .replace(/\/\/[^\n]*/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      // A guarded lookup by literal key is not a filesystem read.
+      .replace(/sourceByName\(\s*(['"])[^'"]+\1\s*\)/g, 'sourceByName(GUARDED)')
+      .replace(/contentScriptSources\.get\(\s*(['"])[^'"]+\1\s*\)/g, 'contentScriptSources.get(GUARDED)');
+
+    const violations = [];
+
+    // Direct: a literal filename sharing a line with readFileSync or
+    // path.join — catches both a literal read argument and a literal path
+    // built on the same line and read from a variable right after.
+    stripped.split('\n').forEach((line, i) => {
+      if (literalNamePattern.test(line) && /readFileSync|path\.join/.test(line)) {
+        violations.push(`line ${i + 1}: content-script filename literal combined with readFileSync/path.join`);
+      }
+    });
+
+    // Indirect: a hardcoded array mixing 2+ content-script names, assigned
+    // to a const, later iterated by a for-of loop whose body reads via
+    // readFileSync/path.join.
+    const arrayDeclPattern = /const\s+(\w+)\s*=\s*\[([^\]]*)\]/g;
+    let m;
+    while ((m = arrayDeclPattern.exec(stripped))) {
+      const [, varName, arrBody] = m;
+      const nameHits = arrBody.match(new RegExp(`['"](${literalAlternation})['"]`, 'g')) || [];
+      if (nameHits.length < 2) continue;
+      const loopPattern = new RegExp(
+        `\\n(\\s*)for\\s*\\(\\s*const\\s+\\w+\\s+of\\s+${varName}\\s*\\)\\s*\\{([\\s\\S]*?)\\n\\1\\}`
+      );
+      const loopMatch = loopPattern.exec(stripped);
+      if (loopMatch && /readFileSync|path\.join/.test(loopMatch[2])) {
+        violations.push(`array "${varName}" mixes content-script filenames with a readFileSync/path.join loop`);
+      }
+    }
+
+    return violations;
+  }
+
+  const filenameLeaks = findContentScriptFilenameLeaks(testsSelfSource);
+  eq('manifest-driven loading AC1: no content-script filename literal (direct or via a loop-fed array) reaches readFileSync/path.join',
+    filenameLeaks.length === 0 ? 'none' : filenameLeaks.join('; '), 'none');
+
+  // "concatenated in manifest order": contentScriptBundle must equal the
+  // per-file sources (as looked up in contentScriptSources, keyed by the
+  // manifest's own file list) joined in the order the manifest lists them.
+  const expectedBundle = contentScriptFiles
+    .map((file) => contentScriptSources.get(file))
+    .join('\n');
+  eq('manifest-driven loading: contentScriptBundle is the manifest-order concatenation of sources',
+    contentScriptBundle, expectedBundle);
+
+  // Guard against the failure mode where the manifest's js list becomes empty
+  // (or truncated) and contentScriptBundle silently becomes '' or partial —
+  // every "source includes X" assertion elsewhere in this file would then
+  // vacuously pass instead of catching a real regression.
+  // NOTE: this count changes when a content-script package is added to or
+  // removed from manifest.json; update it alongside the manifest edit.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 7 files today',
+    manifest.content_scripts[0].js.length, 7);
 })();
 
 // --- Report ---
