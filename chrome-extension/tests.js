@@ -10624,6 +10624,186 @@ function fireMouseClick(buttonEl, fn) {
   }
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint extract-dr-table (adversarial hardening): end-to-end double-invocation
+// coverage through the REAL captured content.js listeners — not a direct call
+// to markAndToggleIfNewGrid with a hand-built {handle, isNew} object (that is
+// already covered above, but only exercises the wrapper in isolation).
+//
+// Before this sprint, findTargetTable itself wrote the dr-ext-grid marker
+// inline, so a table seen twice never grew a second widget. That guard now
+// lives across two calls (findTargetTable reports isNew; the caller's
+// markAndToggleIfNewGrid marks+builds only when isNew). This test proves the
+// split still reproduces the old guarantee end-to-end: firing the actual
+// captured 'contextmenu' listener twice on the same never-before-seen grid,
+// and then firing the actual captured 'MENU_CLICKED' onMessage listener
+// against that same target, builds exactly one toggle widget.
+// ---------------------------------------------------------------------------
+(function doubleInvocation_contextmenuAndMenuClicked_noDuplicateWidget() {
+  // A minimal div-based "grid" using the same ARIA-free, querySelectorAll-less
+  // fallback shape GridAdapter already supports (repetitive children): no
+  // real Text nodes, so GridAdapter's setText() finds nothing to patch and
+  // safely no-ops. This fixture only needs to prove marker/widget bookkeeping,
+  // not actual cell rewriting (covered elsewhere).
+  function makeCell(text) { return { nodeType: 1, textContent: text, children: [] }; }
+  function makeRow(texts) { return { nodeType: 1, className: 'row', children: texts.map(makeCell) }; }
+  const rows = [
+    makeRow(['A', '100']), makeRow(['B', '200']), makeRow(['C', '300']),
+    makeRow(['D', '400']), makeRow(['E', '500']),
+  ];
+  const gridClassList = (() => {
+    const c = [];
+    return {
+      _c: c,
+      add(x) { if (!c.includes(x)) c.push(x); },
+      remove(x) { const i = c.indexOf(x); if (i >= 0) c.splice(i, 1); },
+      contains(x) { return c.includes(x); },
+    };
+  })();
+  const gridEl = {
+    nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows,
+    classList: gridClassList, parentElement: null, parentNode: null,
+    // runToggleAction calls table.querySelector(...) directly, with no `&&`
+    // guard, so this must exist (returning "not already rounded").
+    querySelector() { return null; },
+    getBoundingClientRect() { return { top: 10, right: 100, bottom: 50, left: 10, width: 90, height: 40 }; },
+  };
+  const clickTarget = {
+    nodeType: 1, tagName: 'DIV', parentElement: gridEl, parentNode: gridEl,
+    closest(sel) { return null; }, // first right-click: no <table>/.dr-ext-grid ancestor yet
+  };
+
+  let buttonCreateCount = 0;
+  function mockCreateElement(tag) {
+    if (tag === 'button') {
+      buttonCreateCount++;
+      return {
+        type: '', className: '', style: {}, dataset: {},
+        classList: { add() {}, remove() {}, contains() { return false; } },
+        setAttribute() {}, getAttribute() { return null; },
+        addEventListener() {}, appendChild() {}, parentElement: null,
+      };
+    }
+    return { className: '', style: {}, textContent: '', appendChild() {} };
+  }
+
+  let contextmenuHandler = null;
+  let onMessageHandler = null;
+  const captureDoc = {
+    addEventListener(type, handler) { if (type === 'contextmenu') contextmenuHandler = handler; },
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild() {}, observe() {} },
+    head: { appendChild() {} },
+    createElement: mockCreateElement,
+  };
+  const sentMessages = [];
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener(fn) { onMessageHandler = fn; } },
+      sendMessage(msg) { sentMessages.push(msg); },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedGCS = global.getComputedStyle;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  // findTargetTable's walk-up (case 3) calls looksLikeGrid, which reads layout
+  // via the bare `getComputedStyle` global (not the window.getComputedStyle
+  // stub set up once at the top of this file). Provide a flex display so the
+  // fixture clears looksLikeGrid's layout gate.
+  global.getComputedStyle = () => ({ display: 'flex' });
+
+  try {
+    eval(contentScriptBundle);
+
+    eq('double-invocation: contextmenu handler was captured', typeof contextmenuHandler, 'function');
+    eq('double-invocation: MENU_CLICKED onMessage handler was captured', typeof onMessageHandler, 'function');
+    if (typeof contextmenuHandler !== 'function' || typeof onMessageHandler !== 'function') return;
+
+    // --- First right-click: new grid discovered via walk-up -> marked + widget built ---
+    contextmenuHandler({ target: clickTarget });
+
+    eq('double-invocation: first contextmenu marks the grid with dr-ext-grid',
+      gridEl.classList.contains('dr-ext-grid'), true);
+    eq('double-invocation: first contextmenu builds exactly one toggle widget',
+      buttonCreateCount, 1);
+
+    // --- Second right-click on the SAME target: findTargetTable now resolves
+    // this grid via case 2 (closest('.dr-ext-grid')), since it is already
+    // marked -- the replacement for the old inline-write re-entry guard. ---
+    clickTarget.closest = function(sel) { return sel === '.dr-ext-grid' ? gridEl : null; };
+    contextmenuHandler({ target: clickTarget });
+
+    eq('double-invocation: second contextmenu on the same grid builds NO second widget',
+      buttonCreateCount, 1);
+
+    // --- MENU_CLICKED dispatch against the same last-right-clicked element:
+    // must reuse the existing widget too, not build another. ---
+    onMessageHandler({ action: 'MENU_CLICKED' }, {}, () => {});
+
+    eq('double-invocation: MENU_CLICKED on an already-marked grid builds NO widget',
+      buttonCreateCount, 1);
+    eq('double-invocation: MENU_CLICKED still runs the toggle action (RANGE_OK sent)',
+      sentMessages.some((m) => m.action === 'RANGE_OK'), true);
+  } finally {
+    global.document = savedDoc;
+    global.chrome = savedChrome;
+    global.getComputedStyle = savedGCS;
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint extract-dr-table (adversarial hardening): static purity scan.
+// Detection functions (findTargetTable, findTables, looksLikeGrid, isDataTable,
+// isPhantomA11yTable) must never write to the page — no classList.add,
+// createElement, appendChild, or createToggleForTable inside their bodies.
+// Write-layer helpers (replaceTextPreservingHTML, applyExtractedPatches,
+// GridAdapter's setText) legitimately create/mutate nodes and are correctly
+// excluded from this scan — they are reachable only from explicit write calls
+// (roundTable / reapplyGridRounding), never from detection.
+// ---------------------------------------------------------------------------
+(function detectionFunctions_sourceScan_noPageWrites() {
+  if (detectCode === null) {
+    eq('purity scan: source file lib/dr-table/detect.js present in manifest', false, true);
+    return;
+  }
+  const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createToggleForTable'];
+  const DETECTION_FNS = ['findTargetTable', 'findTables', 'looksLikeGrid', 'isDataTable', 'isPhantomA11yTable'];
+
+  // Extract a top-level `function name(` body by brace-matching from the
+  // opening brace to its balanced close. Good enough for this file's flat,
+  // non-string-brace-heavy source.
+  function extractFunctionBody(src, fnName) {
+    const sig = new RegExp(`function ${fnName}\\s*\\(`);
+    const m = sig.exec(src);
+    if (!m) return null;
+    const braceStart = src.indexOf('{', m.index);
+    if (braceStart === -1) return null;
+    let depth = 0;
+    for (let i = braceStart; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') {
+        depth--;
+        if (depth === 0) return src.slice(braceStart, i + 1);
+      }
+    }
+    return null;
+  }
+
+  for (const fnName of DETECTION_FNS) {
+    const body = extractFunctionBody(detectCode, fnName);
+    eq(`purity scan: ${fnName} body located in lib/dr-table/detect.js`, body !== null, true);
+    if (body === null) continue;
+    for (const token of FORBIDDEN) {
+      eq(`purity scan: ${fnName} does not call/reference "${token}"`,
+        body.includes(token), false);
+    }
+  }
+})();
+
 // AC1 (live): flashTargetedTable (already in global scope from the main eval)
 // adds 'dr-ext-target-flash' to the passed table's classList.
 (function tableContextmenuActivation_flashFn() {
