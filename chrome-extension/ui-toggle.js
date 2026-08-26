@@ -12,13 +12,20 @@
  * highlight/flash affordances, and the detection predicates (looksLikeGrid,
  * findTargetTable, isDataTable) that decide what counts as a roundable table.
  * Module-level state here is view-transient only — DOM/timer bookkeeping
- * (tableToggles, trackedTables, the resize-observer map, the style-injected
- * flags, the per-button auto-collapse timer) — never selection or sidebar
- * state, which live in DR_STORE (app/store.js). A user action (click/tap)
- * reports an intent on DR_BUS instead of calling a content.js function
- * directly; content.js is the sole subscriber and owns what happens next.
- * All load-time-executing wiring (observers, listeners) stays in content.js.
- * Loaded before content.js.
+ * (tableToggles: table → its button element; trackedTables: the
+ * reposition-on-scroll list; the resize-observer map; the style-injected
+ * flags; the per-button auto-collapse timer) — never selection, sidebar, or
+ * "have I found this table" state, which live in DR_STORE (app/store.js).
+ * Before the app-model-registry sprint, tableToggles/trackedTables and the
+ * dr-ext-grid marker class doubled as three separate "tables found" stores;
+ * createToggleForTable now also registers the table with DR_STORE, and
+ * every "have I already handled this element" check reads DR_STORE.hasTable
+ * instead. tableToggles/trackedTables keep their narrower remaining job: a
+ * DOM reference to each table's button, for aria-pressed updates and
+ * scroll/resize repositioning. A user action (click/tap) reports an intent
+ * on DR_BUS instead of calling a content.js function directly; content.js
+ * is the sole subscriber and owns what happens next. All load-time-executing
+ * wiring (observers, listeners) stays in content.js. Loaded before content.js.
  */
 
 // Toggle geometry constants
@@ -46,8 +53,13 @@ const trackedTables = new Set();
 /** WeakMap from HTMLTableElement → ResizeObserver for the toggle */
 const tableResizeObservers = new WeakMap();
 
+// isTableRounded used to read two page states directly: whether any cell
+// carried the dr-ext-rounded class, and whether table.dataset.drShowingOriginal
+// was 'true' (issue #245). Both now live in DR_STORE's per-table registry
+// entry as a single appliedFlag — 'simplified' only when roundTable actually
+// changed a cell and the table isn't currently showing originals.
 function isTableRounded(table) {
-  return table.querySelector('.dr-ext-rounded') !== null && table.dataset.drShowingOriginal !== 'true';
+  return DR_STORE.getTableAppliedFlag(table) === 'simplified';
 }
 
 function syncSwitchForTable(table) {
@@ -242,9 +254,13 @@ function createToggleForTable(table) {
   // Stop mousedown propagation to avoid triggering host-page handlers
   button.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  // Store button in WeakMap and table in tracked set
+  // Store button in WeakMap and table in tracked set (view-only bookkeeping —
+  // the button element itself, and the reposition-on-scroll list). The
+  // "found" registration these two used to also stand in for now goes
+  // through DR_STORE's table registry, the one place that concept lives.
   tableToggles.set(table, button);
   trackedTables.add(table);
+  DR_STORE.registerTable(table);
 
   // Set up ResizeObserver for repositioning
   const ro = new ResizeObserver(() => {
@@ -272,15 +288,15 @@ function injectTableToggles() {
   // Pass 1: native <table> elements; phantom a11y tables are skipped.
   document.querySelectorAll('table').forEach(table => {
     if (isPhantomA11yTable(table)) return;
-    if (!tableToggles.has(table)) {
+    if (!DR_STORE.hasTable(table)) {
       createToggleForTable(table);
     }
   });
   // Pass 2: cheap ARIA pass — [role="grid"] and [role="table"].
-  // Skip elements already carrying dr-ext-grid (already handled) or that
+  // Skip elements already found (DR_STORE's table registry) or that
   // contain / are a <table> already handled by pass 1.
   document.querySelectorAll(GRID_ARIA_SELECTOR).forEach(el => {
-    if (el.classList.contains('dr-ext-grid')) return;
+    if (DR_STORE.hasTable(el)) return;
     if (el.tagName === 'TABLE') return; // handled by pass 1
     if (Array.from(el.querySelectorAll('table')).some(t => !isPhantomA11yTable(t))) return; // contains a real native table — let pass 1 own it
     el.classList.add('dr-ext-grid');
