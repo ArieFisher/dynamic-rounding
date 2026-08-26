@@ -14421,43 +14421,21 @@ const LADDER_OPTS = {
 
 // ---------------------------------------------------------------------------
 // Sprint app-model-selection (adversarial hardening): parent-equivalence pin.
-// The contextmenu handler in content.js is the one call site that both
-// branches implement: the parent (refactor/engine-returns-results) writes a
-// bare `lastRightClickedTable = table` file-level let; HEAD calls
-// DR_STORE.setSelectedTable(table) instead. This loads the REAL contextmenu
-// listener from both branches (parent fetched via `git show`, HEAD from the
-// files on disk) against the same fixture, with the sidebar-open flag set to
-// both true and false beforehand, and asserts the chrome.runtime.sendMessage
-// sequence each branch produces is byte-identical — the model swap changed
-// where the selection lives, not what content.js sends over the wire.
+// The contextmenu handler in content.js is the one call site both branches
+// implement: the pre-model code wrote a bare `lastRightClickedTable = table`
+// file-level let; HEAD calls DR_STORE.setSelectedTable(table) instead. The
+// expected sendMessage sequences below are LITERALS captured from the parent
+// branch (refactor/engine-returns-results, commit 35a5f52) by running its
+// real contextmenu listener in this same harness, and were verified
+// byte-identical to HEAD's output at review time. Freezing them keeps this
+// pin alive on main and in shallow CI checkouts, where the parent ref does
+// not exist for `git show`.
 // ---------------------------------------------------------------------------
 (function appModelSelection_parentEquivalence_contextmenuSelectionFlow() {
-  const { execFileSync } = require('child_process');
-  const PARENT_REF = 'refactor/engine-returns-results';
-
-  function gitShow(relPath) {
-    try {
-      return execFileSync('git', ['show', `${PARENT_REF}:chrome-extension/${relPath}`], {
-        cwd: __dirname, encoding: 'utf8',
-      });
-    } catch (e) {
-      return null;
-    }
-  }
-
-  const parentManifestRaw = gitShow('manifest.json');
-  if (parentManifestRaw === null) {
-    eq('parent-equivalence: able to read manifest.json from ' + PARENT_REF + ' via git show', false, true);
-    return;
-  }
-  const parentManifest = JSON.parse(parentManifestRaw);
-  const parentFiles = parentManifest.content_scripts[0].js;
-  const parentSources = parentFiles.map((f) => gitShow(f));
-  if (parentSources.some((s) => s === null)) {
-    eq('parent-equivalence: able to read every parent content script via git show', false, true);
-    return;
-  }
-  const parentBundle = parentSources.join('\n');
+  const PARENT_EXPECTED_SEQUENCES = {
+    true: [{ action: 'TABLE_ACTIVATED' }],
+    false: [{ action: 'TABLE_ACTIVATED' }],
+  };
 
   // Minimal fixture the contextmenu handler's findTargetTable() walk-up
   // recognizes immediately as a table (closest('table') returns itself) —
@@ -14522,15 +14500,12 @@ const LADDER_OPTS = {
   }
 
   for (const sidebarOpenValue of [true, false]) {
-    const parentMessages = runContextmenuFixture(parentBundle, `\nsidebarOpen = ${sidebarOpenValue};`);
     const headMessages = runContextmenuFixture(contentScriptBundle, `\nDR_STORE.setSidebarOpen(${sidebarOpenValue});`);
 
-    eq(`parent-equivalence: parent branch's contextmenu handler was captured (sidebarOpen=${sidebarOpenValue})`,
-      parentMessages !== null, true);
     eq(`parent-equivalence: HEAD's contextmenu handler was captured (sidebarOpen=${sidebarOpenValue})`,
       headMessages !== null, true);
-    eq(`parent-equivalence: contextmenu sendMessage sequence is byte-identical between parent and HEAD (sidebarOpen=${sidebarOpenValue})`,
-      headMessages, parentMessages);
+    eq(`parent-equivalence: contextmenu sendMessage sequence matches the frozen parent sequence (sidebarOpen=${sidebarOpenValue})`,
+      headMessages, PARENT_EXPECTED_SEQUENCES[String(sidebarOpenValue)]);
   }
 })();
 
