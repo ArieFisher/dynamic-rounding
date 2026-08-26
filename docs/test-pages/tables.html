@@ -87,8 +87,268 @@
     </tbody>
   </table>
 
+  <h2>Table 3</h2>
+  <p>Wide numeric matrix. Values span about ten orders of magnitude inside one
+    table, so the top band and the rest of the table take different offsets.</p>
+
+  <!--
+    Set-aware precision is computed across the whole table, not per column.
+    max_mag comes from the largest in-range value, and a cell takes the "top"
+    offset when max_mag minus its own magnitude is under num_top. At the default
+    num_top of one, that is the three Users cells in the ten-million band; every
+    other cell takes the "other" offset. Pull the two offsets apart in the
+    sidebar and the Users column should move while the rest of the table holds.
+
+    Also covered: a zero, which comes back unchanged; negatives; and a sub-unit
+    column that exercises fractional steps and float-noise trimming.
+
+    The Region column is a row header, so it is excluded while "simplify first
+    column" stays off.
+  -->
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Region</th>
+        <th scope="col">Users</th>
+        <th scope="col">Sessions</th>
+        <th scope="col">Errors</th>
+        <th scope="col">Latency (ms)</th>
+        <th scope="col">Error rate</th>
+        <th scope="col">Net change</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th scope="row">North America</th>
+        <td>87,054,321</td>
+        <td>4,428,910</td>
+        <td>12,844</td>
+        <td>118</td>
+        <td>0.0146</td>
+        <td>1,204,338</td>
+      </tr>
+      <tr>
+        <th scope="row">Europe</th>
+        <td>41,203,668</td>
+        <td>2,183,447</td>
+        <td>9,610</td>
+        <td>96</td>
+        <td>0.0092</td>
+        <td>-58,210</td>
+      </tr>
+      <tr>
+        <th scope="row">Asia Pacific</th>
+        <td>12,880,145</td>
+        <td>983,321</td>
+        <td>3,275</td>
+        <td>142</td>
+        <td>0.0331</td>
+        <td>216,905</td>
+      </tr>
+      <tr>
+        <th scope="row">Latin America</th>
+        <td>3,617,402</td>
+        <td>214,558</td>
+        <td>878</td>
+        <td>173</td>
+        <td>0.0057</td>
+        <td>-7,441</td>
+      </tr>
+      <tr>
+        <th scope="row">Middle East</th>
+        <td>942,118</td>
+        <td>42,109</td>
+        <td>264</td>
+        <td>205</td>
+        <td>0.0028</td>
+        <td>0</td>
+      </tr>
+      <tr>
+        <th scope="row">Africa</th>
+        <td>88,730</td>
+        <td>5,207</td>
+        <td>31</td>
+        <td>246</td>
+        <td>0.0004</td>
+        <td>-312</td>
+      </tr>
+    </tbody>
+  </table>
+  <br><br>
+
+  <h2>Table 4</h2>
+  <p>Dates, clock times, and timestamps. Dates and times sit behind separate
+    settings, so the Governed by column says which switch drives each row.</p>
+
+  <!--
+    Expected output at the shipped defaults: dates on at year granularity, times
+    off, and times at hour granularity once switched on.
+
+    Dates round to a year, and a month of July or later carries the year up:
+      2020-07-21                    -> 2021
+      2020/03/15                    -> 2020
+      June 21, 2020                 -> 2020
+      Sept. 4, 1998                 -> 1999
+      June 21st, 2020               -> 2020
+      21 June 2020                  -> 2020
+      2020 June 21                  -> 2020
+      Jun 2020                      -> 2020
+      1998                          -> 1998
+      Paid on 2025-04-02            -> Paid on 2025
+      "2020-07-21"                  -> held back, the whole cell is quoted
+
+    All-numeric dates cannot be read on their own, so a post-pass reads the
+    whole column first. Here 7/21/2020 is the only row that settles the
+    question: a second part over twelve can only be a day, which fixes the
+    column as month-first and lets the other two rows resolve.
+      7/21/2020                     -> 2021
+      7/4/99                        -> 2000
+      3/9/2021                      -> 2021
+    A column carrying evidence for both readings is refused rather than guessed.
+
+    Clock times round to the hour at the half-hour mark, and the original
+    meridiem style, hour padding, and seconds field are all preserved:
+      14:29                         -> 14:00
+      14:29:30                      -> 15:00:00
+      3:45 PM                       -> 4:00 PM
+      11:58 p.m.                    -> 12:00 a.m.
+      09:05                         -> 09:00
+
+    Timestamps are matched before dates, follow the time setting, and keep their
+    date. Seconds, milliseconds, and the zone offset are dropped. Rounding up
+    out of the last hour clamps to the same day rather than rolling over:
+      2024-11-03T14:29:00           -> 2024-11-03 14:00
+      2024-11-03 14:31:00           -> 2024-11-03 15:00
+      2024-11-03T23:45:00Z          -> 2024-11-03 23:59
+      2024-11-03T08:15:30.250-05:00 -> 2024-11-03 08:00
+  -->
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Format</th>
+        <th scope="col">Value</th>
+        <th scope="col">Governed by</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th scope="row">ISO, dashes</th>
+        <td>2020-07-21</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">ISO, slashes</th>
+        <td>2020/03/15</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">Month day, year</th>
+        <td>June 21, 2020</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">Abbreviated month</th>
+        <td>Sept. 4, 1998</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">Ordinal day</th>
+        <td>June 21st, 2020</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">Day month year</th>
+        <td>21 June 2020</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">Year month day</th>
+        <td>2020 June 21</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">Month and year</th>
+        <td>Jun 2020</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">Bare year</th>
+        <td>1998</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">All numeric, day over twelve</th>
+        <td>7/21/2020</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">All numeric, short year</th>
+        <td>7/4/99</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">All numeric, read from the column</th>
+        <td>3/9/2021</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">Date inside a sentence</th>
+        <td>Paid on 2025-04-02</td>
+        <td>Dates</td>
+      </tr>
+      <tr>
+        <th scope="row">Quoted, held back</th>
+        <td>"2020-07-21"</td>
+        <td>Nothing</td>
+      </tr>
+      <tr>
+        <th scope="row">Clock, twenty-four hour</th>
+        <td>14:29</td>
+        <td>Times</td>
+      </tr>
+      <tr>
+        <th scope="row">Clock with seconds</th>
+        <td>14:29:30</td>
+        <td>Times</td>
+      </tr>
+      <tr>
+        <th scope="row">Clock, twelve hour</th>
+        <td>3:45 PM</td>
+        <td>Times</td>
+      </tr>
+      <tr>
+        <th scope="row">Clock, dotted meridiem</th>
+        <td>11:58 p.m.</td>
+        <td>Times</td>
+      </tr>
+      <tr>
+        <th scope="row">Clock, padded hour</th>
+        <td>09:05</td>
+        <td>Times</td>
+      </tr>
+      <tr>
+        <th scope="row">Timestamp, T separator</th>
+        <td>2024-11-03T14:29:00</td>
+        <td>Times</td>
+      </tr>
+      <tr>
+        <th scope="row">Timestamp, space separator</th>
+        <td>2024-11-03 14:31:00</td>
+        <td>Times</td>
+      </tr>
+      <tr>
+        <th scope="row">Timestamp, UTC marker</th>
+        <td>2024-11-03T23:45:00Z</td>
+        <td>Times</td>
+      </tr>
+      <tr>
+        <th scope="row">Timestamp, offset and milliseconds</th>
+        <td>2024-11-03T08:15:30.250-05:00</td>
+        <td>Times</td>
+      </tr>
+    </tbody>
+  </table>
+
 </body>
 
 </html>
-
-```
