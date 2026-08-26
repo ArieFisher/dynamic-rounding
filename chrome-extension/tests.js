@@ -172,6 +172,14 @@ globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = OFFSCREEN_LEFT_PX_THRESHOLD;
 // Expose content.js's badge/marker call-site wrapper (sprint extract-dr-table)
 // for direct unit testing.
 globalThis.markAndToggleIfNewGrid = markAndToggleIfNewGrid;
+// Expose the DR_STORE-backed originals port (app-model-registry sprint) so
+// grid-adapter tests can build an adapter the same way roundTable/
+// collectNumericCells/computeGridRoundedValues do in production — a plain
+// makeAdapter(el) with no opts uses lib/dr-table's private default port
+// instead, which is invisible to DR_STORE and would make a test's setup
+// silently diverge from what the real call sites do.
+globalThis.registryOriginalsPort = registryOriginalsPort;
+globalThis.restoreTable = restoreTable;
 `);
 
 let passed = 0;
@@ -4593,8 +4601,8 @@ function withReactiveCreateTreeWalker(fn) {
     const cell = makeReactiveCell(segsFor());
     const table = { rows: [{ cells: [cell, otherCell()] }], dataset: {} };
     roundTable(table, opts);
-    eq('sup-stale regression: cell was actually rounded (dataset.originalValue set)',
-      cell.dataset.originalValue, '1234.5678 kg9');
+    eq('sup-stale regression: cell was actually rounded (registry original.value set)',
+      DR_STORE.getTableOriginal(table, cell).value, '1234.5678 kg9');
 
     const after = collectNumericCells(table, opts);
     eq('sup-stale regression: preview sample set is unchanged after rounding',
@@ -4628,8 +4636,8 @@ function withReactiveCreateTreeWalker(fn) {
     const cell = makeReactiveCell(segsFor());
     const table = { rows: [{ cells: [cell, otherCell()] }], dataset: {} };
     roundTable(table, opts);
-    eq('linked-number-post-round regression: cell was actually rounded (dataset.originalValue set)',
-      cell.dataset.originalValue, 'Total 1234.5678 see also 51234.5678');
+    eq('linked-number-post-round regression: cell was actually rounded (registry original.value set)',
+      DR_STORE.getTableOriginal(table, cell).value, 'Total 1234.5678 see also 51234.5678');
 
     const after = collectNumericCells(table, opts);
     eq('linked-number-post-round regression: preview sample set is unchanged after rounding',
@@ -7245,32 +7253,30 @@ function withFindTargetEnv(elements, fn) {
   });
 })();
 
-// FT5: findTargetTable — returns already-tagged ancestor (.dr-ext-grid) without re-walking
-// If an ancestor already carries `dr-ext-grid`, it must be returned immediately
-// via closest('.dr-ext-grid') without calling looksLikeGrid again.
+// FT5: findTargetTable — returns already-found ancestor without re-walking
+// If an ancestor is already known per opts.isSeen (app-model-registry sprint
+// replaced the closest('.dr-ext-grid') read with an injected isSeen check —
+// see lib/dr-table/detect.js), it must be returned immediately without
+// calling looksLikeGrid again.
 (function findTargetTable_returnsAlreadyTaggedGrid() {
   withFindTargetEnv([], function() {
     const existingGrid = makeWalkEl({ display: 'flex' });
-    existingGrid.classList.add('dr-ext-grid');
 
     const clickTarget = {
       tagName: 'DIV',
       nodeType: 1,
       parentElement: existingGrid,
       parentNode: existingGrid,
-      closest: function(sel) {
-        if (sel === 'table') return null;
-        if (sel === '.dr-ext-grid') return existingGrid;
-        return null;
-      },
+      closest: function(sel) { return null; },
     };
 
-    const result = findTargetTable(clickTarget);
+    const seen = new Set([existingGrid]);
+    const result = findTargetTable(clickTarget, { isSeen: (el) => seen.has(el) });
 
-    eq('findTargetTable: returns already-tagged .dr-ext-grid ancestor immediately',
+    eq('findTargetTable: returns already-found ancestor immediately',
       result.handle, existingGrid);
-    // Already marked — the caller has already handled this one; isNew is false.
-    eq('findTargetTable: already-tagged .dr-ext-grid ancestor reports isNew: false',
+    // Already found — the caller has already handled this one; isNew is false.
+    eq('findTargetTable: already-found ancestor reports isNew: false',
       result.isNew, false);
   });
 })();
@@ -7878,7 +7884,7 @@ function makeGridWrapper(rowData, opts) {
     ['1234567', '99'],
   ]);
 
-  const adapter = makeAdapter(grid.wrapperEl);
+  const adapter = makeAdapter(grid.wrapperEl, { originalsPort: registryOriginalsPort(grid.wrapperEl) });
   const rows = adapter.getRows();
 
   // Round all cells
@@ -7888,11 +7894,11 @@ function makeGridWrapper(rowData, opts) {
     });
   });
 
-  // All cells should carry dr-ext-rounded and drOriginal
+  // All cells should carry dr-ext-rounded and a registry original
   eq('GR4 (setup): cell 0 is rounded',
     grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
-  eq('GR4 (setup): cell 0 drOriginal is stored original value',
-    grid.cellEls[0].dataset.drOriginal, '8584629');
+  eq('GR4 (setup): cell 0 registry original is stored original value',
+    DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), '8584629');
 
   // Simulate a recycled row: cell has NO .dr-ext-rounded (framework removed+readded it)
   // We model this by creating a fresh cell that was never rounded by us.
@@ -7928,8 +7934,8 @@ function makeGridWrapper(rowData, opts) {
   eq('GR4: cell 0 no longer carries dr-ext-rounded',
     grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
 
-  eq('GR4: cell 0 drOriginal cleared after reset',
-    grid.cellEls[0].dataset.drOriginal, undefined);
+  eq('GR4: cell 0 registry original cleared after reset',
+    DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), undefined);
 
   // The recycled cell was never touched by us and must not be modified
   eq('GR4: recycled cell text node untouched (framework text preserved)',
@@ -8066,22 +8072,22 @@ function makeGridWrapper(rowData, opts) {
     emptyCell.classList.contains('dr-ext-rounded'), false);
 })();
 
-// GR6e: dataset.drOriginal is stored ONCE and NOT overwritten on a second setText call
+// GR6e: the registry original is stored ONCE and NOT overwritten on a second setText call
 (function gr6e_drOriginal_storedOnce() {
   const grid = makeGridWrapper([['12345']]);
-  const adapter = makeAdapter(grid.wrapperEl);
+  const adapter = makeAdapter(grid.wrapperEl, { originalsPort: registryOriginalsPort(grid.wrapperEl) });
   const cellObj = adapter.getRows()[0].getCells()[0];
 
   // First setText: original should be stored
   cellObj.setText('12000');
-  const storedOriginal = grid.cellEls[0].dataset.drOriginal;
-  eq('GR6e: drOriginal stored on first setText',
+  const storedOriginal = DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]);
+  eq('GR6e: registry original stored on first setText',
     storedOriginal, '12345');
 
-  // Second setText (e.g. rounding again): drOriginal must NOT change
+  // Second setText (e.g. rounding again): the registry original must NOT change
   cellObj.setText('10000');
-  eq('GR6e: drOriginal NOT overwritten on second setText',
-    grid.cellEls[0].dataset.drOriginal, '12345');
+  eq('GR6e: registry original NOT overwritten on second setText',
+    DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), '12345');
 
   // But the nodeValue IS updated
   eq('GR6e: nodeValue updated to second setText value',
@@ -8282,11 +8288,12 @@ function makeE2EGridWrapper(rowData) {
   eq('E2E-GR1: cell[0] childNodes.length unchanged after roundTable',
     cell0.childNodes.length, childCountBefore);
 
-  // drOriginal must be set on the cell element (nodeValue path).
-  eq('E2E-GR1: cell[0] dataset.drOriginal is set to original text',
-    cell0.dataset.drOriginal, originalValue);
+  // The registry original must be recorded for the cell (nodeValue path).
+  eq('E2E-GR1: cell[0] registry original is set to original text',
+    DR_STORE.getTableOriginal(grid.wrapperEl, cell0), originalValue);
 
-  // originalHtml must NOT be set (that is the native-table / extracted path).
+  // originalHtml must NOT be set (that is the native-table / extracted path,
+  // which records a { html, value, ... } record instead of a plain string).
   eq('E2E-GR1: cell[0] dataset.originalHtml is NOT set on a grid cell',
     cell0.dataset.originalHtml, undefined);
 })();
@@ -8329,9 +8336,9 @@ function makeE2EGridWrapper(rowData) {
   eq('E2E-GR2: dr-ext-rounded removed after resetTable',
     cell0.classList.contains('dr-ext-rounded'), false);
 
-  // drOriginal must be cleared.
-  eq('E2E-GR2: dataset.drOriginal cleared after resetTable',
-    cell0.dataset.drOriginal, undefined);
+  // The registry original must be cleared.
+  eq('E2E-GR2: registry original cleared after resetTable',
+    DR_STORE.getTableOriginal(grid.wrapperEl, cell0), undefined);
 
   // childNodes.length still unchanged (no innerHTML write at any point).
   eq('E2E-GR2: childNodes.length unchanged throughout (no innerHTML write)',
@@ -8401,12 +8408,12 @@ function makeE2EGridWrapper(rowData) {
   eq('E2E-GR4: pure-numeric cell text changed from original',
     numericCell.childNodes[0].nodeValue !== numericTextBefore, true);
 
-  // drOriginal set on numeric, not on mixed.
-  eq('E2E-GR4: drOriginal set on pure-numeric cell',
-    numericCell.dataset.drOriginal, numericTextBefore);
+  // Registry original set on numeric, not on mixed.
+  eq('E2E-GR4: registry original set on pure-numeric cell',
+    DR_STORE.getTableOriginal(grid.wrapperEl, numericCell), numericTextBefore);
 
-  eq('E2E-GR4: drOriginal NOT set on mixed-text cell',
-    mixedCell.dataset.drOriginal, undefined);
+  eq('E2E-GR4: registry original NOT set on mixed-text cell',
+    DR_STORE.getTableOriginal(grid.wrapperEl, mixedCell), undefined);
 })();
 
 // =============================================================================
@@ -8599,7 +8606,7 @@ function flushTimers(pendingTimers) {
 
     const tn0 = cell0.childNodes[0];
     const roundedValue = tn0.nodeValue;   // e.g. '8600000'
-    const originalValue = cell0.dataset.drOriginal;  // e.g. '8584629'
+    const originalValue = DR_STORE.getTableOriginal(grid.wrapperEl, cell0);  // e.g. '8584629'
 
     eq('GV2 (pre): roundedValue differs from original',
       roundedValue !== originalValue, true);
@@ -8809,8 +8816,8 @@ function flushTimers(pendingTimers) {
     toggleOriginalValues(grid.wrapperEl);
 
     // Flag must be set and originals restored.
-    eq('GV5b: drShowingOriginal is "true" after toggleOriginalValues',
-      grid.wrapperEl.dataset.drShowingOriginal, 'true');
+    eq('GV5b: appliedFlag is "original" after toggleOriginalValues',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
     eq('GV5b: cell[0] text node restored to original',
       grid.cellEls[0].childNodes[0].nodeValue, '8584629');
 
@@ -8828,8 +8835,8 @@ function flushTimers(pendingTimers) {
 
     // Toggling back on must re-round (resetTable + roundTable path).
     toggleOriginalValues(grid.wrapperEl);
-    eq('GV5b: drShowingOriginal cleared after toggling back on',
-      grid.wrapperEl.dataset.drShowingOriginal, undefined);
+    eq('GV5b: appliedFlag is "simplified" after toggling back on',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'simplified');
     eq('GV5b: cell[0] re-rounded after toggling back on',
       grid.cellEls[0].childNodes[0].nodeValue !== '8584629', true);
 
@@ -9022,7 +9029,7 @@ function flushTimers(pendingTimers) {
     // Capture the rounded value so we can verify re-apply restores it.
     const tn_r1c1 = cell_r1c1.childNodes[0];
     const roundedValue_r1c1 = tn_r1c1.nodeValue;
-    const originalValue_r1c1 = cell_r1c1.dataset.drOriginal;  // '87654321'
+    const originalValue_r1c1 = DR_STORE.getTableOriginal(grid.wrapperEl, cell_r1c1);  // '87654321'
 
     eq('GV8 (pre): row-1 col-1 rounded value differs from original',
       roundedValue_r1c1 !== originalValue_r1c1, true);
@@ -9128,7 +9135,7 @@ function flushTimers(pendingTimers) {
     // Capture the rounded value for re-apply verification.
     const tn_r1c0 = cell_r1c0.childNodes[0];
     const roundedValue_r1c0 = tn_r1c0.nodeValue;
-    const originalValue_r1c0 = cell_r1c0.dataset.drOriginal;
+    const originalValue_r1c0 = DR_STORE.getTableOriginal(grid.wrapperEl, cell_r1c0);
 
     eq('GV9 (pre): row-1 col-0 rounded value differs from original',
       roundedValue_r1c0 !== originalValue_r1c0, true);
@@ -10131,7 +10138,8 @@ function withToggleDocumentMock(fn) {
 // ---------------------------------------------------------------------------
 (function pass2aria_adversarial_alreadyTagged_skipped() {
   const grid = makeAriaGrid([]);
-  grid.classList.add('dr-ext-grid'); // pre-tag it
+  grid.classList.add('dr-ext-grid'); // pre-tag it (style hook only, no longer read as state)
+  DR_STORE.registerTable(grid); // the actual "already found" signal pass 2 now checks
 
   withToggleDocumentMock(function() {
     global.document.querySelectorAll = function(sel) {
@@ -12889,31 +12897,36 @@ function fireMouseClick(buttonEl, fn) {
 
 // -------------------------------------------------------------------------
 // Issue #2: when a native table is already simplified, collectNumericCells
-// reads the stored original (dataset.originalValue) rather than the rounded
+// reads the stored original (DR_STORE's table registry, app-model-registry
+// sprint — this used to be dataset.originalValue) rather than the rounded
 // text now showing in the cell.
 // -------------------------------------------------------------------------
 (function originalValueOnSimplifiedTable() {
   // A rounded native cell: innerText shows the rounded "3,000,000" but the true
-  // original "2,794,356" is stashed on dataset.originalValue.
+  // original "2,794,356" is recorded in the registry.
   const roundedCell = {
     tagName: 'TD',
     innerText: '3,000,000',
     textContent: '3,000,000',
-    dataset: { originalValue: '2,794,356' },
+    dataset: {},
   };
   // A header row + label column keep the cell off row 0 / column 0
   // (DR_DEFAULTS excludes both by default; see the merge-ladder divergence
-  // tests below) so this stays a test of the dataset.originalValue read path,
+  // tests below) so this stays a test of the registry original read path,
   // not an incidental first-row/first-column exclusion.
   const labelCell = { tagName: 'TH', innerText: '', textContent: '' };
   const headerCell = { tagName: 'TH', innerText: 'A', textContent: 'A' };
   const rowLabelCell = { tagName: 'TH', innerText: 'Row', textContent: 'Row' };
-  const cells = collectNumericCells({
+  const mockTable = {
     rows: [
       { cells: [labelCell, headerCell] },
       { cells: [rowLabelCell, roundedCell] },
     ],
+  };
+  DR_STORE.setTableOriginal(mockTable, roundedCell, {
+    html: '2,794,356', value: '2,794,356', supRanges: null, linkFilteredIdx: null,
   });
+  const cells = collectNumericCells(mockTable);
   eq('orig-value: reads original text, not rounded',
     cells[0].text, '2,794,356');
   eq('orig-value: parses num from original, not rounded',
