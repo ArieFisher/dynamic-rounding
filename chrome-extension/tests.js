@@ -14506,6 +14506,64 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
+// Sprint app-model-settings, adversarial: wire-payload parity with the parent
+// branch's sendToActiveTab (refactor/app-model-selection, before this sprint
+// inverted the transport). The message body itself is unchanged — {action,
+// settings}, same field names, same nesting, no extra bus-envelope fields —
+// but sendToActiveTab always passed chrome.tabs.sendMessage a THIRD argument,
+// a response callback, and used it to react to delivery: clear statusEl on
+// success, setTableBound(false) on chrome.runtime.lastError (no content
+// script on the tab). adapters/messaging.js's publish() relay calls
+// chrome.tabs.sendMessage with only two arguments — no callback — so that
+// reaction is silently gone for the settings-apply path: a real Chrome would
+// also log an "Unchecked runtime.lastError" warning on every failed delivery.
+// This isolates DR_BUS in its own vm sandbox (messaging.js has no DOM
+// dependency) and pins the call shape directly, independent of sidebar.js's
+// heavier DOM requirements.
+// ---------------------------------------------------------------------------
+(function appModelSettings_wirePayload_parityWithParentSendToActiveTab() {
+  if (messagingCode === null) {
+    eq('wire payload: adapters/messaging.js present in manifest', false, true);
+    return;
+  }
+  const vm = require('vm');
+  const sentCalls = [];
+  const sandbox = {
+    chrome: {
+      tabs: {
+        query(q, cb) { cb([{ id: 7 }]); },
+        sendMessage(...args) { sentCalls.push(args); },
+      },
+      runtime: {},
+    },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
+
+  sandbox.__DR_BUS.publish('intent:settingsChanged', { settings: { offsetTop: -2, rangeExpr: 'A1:B2' } });
+
+  eq('wire payload: exactly one chrome.tabs.sendMessage call for one publish()',
+    sentCalls.length, 1);
+  if (sentCalls.length !== 1) return;
+
+  const [tabId, msg, callback] = sentCalls[0];
+  eq('wire payload: message action is unchanged (APPLY_SIDEBAR_SETTINGS)',
+    msg.action, 'APPLY_SIDEBAR_SETTINGS');
+  eq('wire payload: message field names are exactly {action, settings} — no extra bus-envelope fields',
+    Object.keys(msg).sort(), ['action', 'settings'].sort());
+  eq('wire payload: settings payload is nested exactly as sendToActiveTab sent it, unchanged',
+    JSON.stringify(msg.settings), JSON.stringify({ offsetTop: -2, rangeExpr: 'A1:B2' }));
+
+  // ADVERSARIAL — currently fails: the parent's sendToActiveTab always
+  // passed a response callback (chrome.tabs.sendMessage's 3rd argument) and
+  // used it to reflect delivery failure back into the UI (setTableBound(false)
+  // on chrome.runtime.lastError) and to clear statusEl on success. publish()
+  // drops that callback, so a failed settings-apply delivery is now silent.
+  eq('wire payload: publish() passes a response callback to chrome.tabs.sendMessage, matching sendToActiveTab\'s delivery-failure handling (regression — see PR notes)',
+    typeof callback, 'function');
+})();
+
+// ---------------------------------------------------------------------------
 // Sprint app-model-settings: settings live in DR_STORE, sourced from
 // DR_DEFAULTS at init, changed only through setSettings (publishing the
 // whole new value), and read back through getSettings().
@@ -14680,6 +14738,149 @@ const LADDER_OPTS = {
     getResponse.settings.rangeExpr, 'B2:E8');
   eq('reconnect: a changed boolean flag survives the close/reopen',
     getResponse.settings.simplifyMixedCells, false);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-settings, adversarial: the full wire path, not the store
+// directly. appModelSettings_previewAndTableAgreeOnLiveSettings (above) calls
+// DR_STORE.setSettings() straight from the test — it never exercises
+// content.js's own onMessage listener or the state:settingsChanged
+// subscriber, which is the actual code path a real APPLY_SIDEBAR_SETTINGS
+// message drives. This test dispatches that message through the captured
+// listener (the AC1 pattern) against a table already bound as "selected",
+// lets the real subscriber call applySidebarRounding, and checks the
+// resulting cells against extractPreviewSamples computed from the same
+// settings on an identical table — so the assertion covers the message
+// arriving, not just the pure math agreeing.
+// ---------------------------------------------------------------------------
+(function appModelSettings_wireMessageAppliesLiveSettingsToBoundTableAndPreviewAgrees() {
+  function makeWiredMockTable(rowsSpec) {
+    const table = makeMockTable(rowsSpec);
+    table.classList = { remove() {}, add() {}, contains() { return false; } };
+    table.offsetWidth = 0;
+    table.querySelectorAll = () => [];
+    return table;
+  }
+
+  // Values chosen so the offsets below visibly change them (unlike, say,
+  // 1,000,000 / 50 at offsetTop -2 / offsetOther 0.25, which round to
+  // themselves and would pass this test even if rounding silently no-op'd).
+  const rowsSpec = [[
+    { tag: 'td', text: '1,234,567' },
+    { tag: 'td', text: '37' },
+  ]];
+  const CUSTOM_OFFSET_TOP = -2;
+  const CUSTOM_OFFSET_OTHER = 0.25;
+
+  let capturedListener = null;
+  let wiredDR_STORE = null;
+  let wiredExtractPreviewSamples = null;
+  let boundTable = null;
+  let ackResponse = null;
+
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener(fn) { capturedListener = fn; } },
+      sendMessage: () => {},
+      lastError: null,
+    },
+  };
+  const captureDoc = {
+    addEventListener: () => {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    // applySidebarRounding's ensureHighlightStyleInjected() needs these —
+    // the reconnect/AC1 tests above never reach that call (no selected
+    // table, so the subscriber's `if (selected)` guard short-circuits).
+    createElement: () => ({ textContent: '', appendChild() {} }),
+    head: { appendChild() {} },
+    documentElement: { appendChild() {} },
+    body: { appendChild: () => {}, observe: () => {} },
+  };
+  const captureWindow = {
+    addEventListener: () => {},
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+  };
+
+  const saved = { chrome: global.chrome, document: global.document, window: global.window };
+  global.chrome = captureChrome;
+  global.document = captureDoc;
+  global.window = captureWindow;
+
+  try {
+    withCreateTreeWalker(() => {
+      try {
+        eval(contentScriptBundle + `
+          wiredDR_STORE = DR_STORE;
+          wiredExtractPreviewSamples = extractPreviewSamples;
+        `);
+      } catch (e) {
+        // module-level init may fail against the stub DOM; the onMessage
+        // listener and the two wiring assignments above both run before any
+        // dynamic/async code (see the AC1 test).
+      }
+
+      if (typeof capturedListener !== 'function' || !wiredDR_STORE) return;
+
+      // Bind a table as "selected" — mirrors what the contextmenu handler
+      // does for real, so the state:settingsChanged subscriber has
+      // something to apply the incoming message to.
+      boundTable = makeWiredMockTable(rowsSpec);
+      wiredDR_STORE.setSelectedTable(boundTable);
+
+      const customSettings = Object.assign({}, DR_DEFAULTS, {
+        simplifyFirstRow: true, simplifyFirstColumn: true,
+        offsetTop: CUSTOM_OFFSET_TOP, offsetOther: CUSTOM_OFFSET_OTHER,
+        numTop: 1, rangeExpr: '',
+      });
+
+      // The real wire message, dispatched through the real onMessage
+      // listener — not DR_STORE.setSettings() called directly from the test.
+      capturedListener(
+        { action: 'APPLY_SIDEBAR_SETTINGS', settings: customSettings },
+        {},
+        (r) => { ackResponse = r; }
+      );
+    });
+  } finally {
+    global.chrome = saved.chrome;
+    global.document = saved.document;
+    global.window = saved.window;
+  }
+
+  eq('wire E2E: content.js onMessage listener was captured',
+    typeof capturedListener, 'function');
+  eq('wire E2E: APPLY_SIDEBAR_SETTINGS was acknowledged',
+    ackResponse && ackResponse.ok, true);
+  if (!boundTable) return;
+
+  // The subscriber applied the message straight to the bound table — no
+  // separate "apply" call from the test.
+  const renderedTop = toNumber(boundTable.rows[0].cells[0].innerText);
+  const renderedBottom = toNumber(boundTable.rows[0].cells[1].innerText);
+  eq('wire E2E: the fixture top value actually changed under rounding (test validity check)',
+    renderedTop !== 1234567, true);
+  eq('wire E2E: the fixture bottom value actually changed under rounding (test validity check)',
+    renderedBottom !== 37, true);
+  eq('wire E2E: the bound table was actually rounded by the real subscriber path',
+    boundTable.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
+
+  // A fresh, identically-populated table for the preview extractor, so its
+  // read of DR_STORE.getSettings() cannot see already-rounded text.
+  const previewTable = makeWiredMockTable(rowsSpec);
+  const preview = wiredExtractPreviewSamples(previewTable);
+  eq('wire E2E: preview top band has the large cell',
+    preview.samples.top.length, 1);
+  eq('wire E2E: preview bottom band has the small cell',
+    preview.samples.bottom.length, 1);
+
+  const previewTop = roundWithOffset(preview.samples.top[0].num, CUSTOM_OFFSET_TOP);
+  const previewBottom = roundWithOffset(preview.samples.bottom[0].num, CUSTOM_OFFSET_OTHER);
+
+  eq('wire E2E: the table cell the real message pipeline rendered matches the preview-predicted top value',
+    renderedTop, previewTop);
+  eq('wire E2E: the table cell the real message pipeline rendered matches the preview-predicted bottom value',
+    renderedBottom, previewBottom);
 })();
 
 // ---------------------------------------------------------------------------
