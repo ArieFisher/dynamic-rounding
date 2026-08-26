@@ -17,10 +17,13 @@
  *
  * This file is the lib/dr-table package's detection layer. Detection
  * (isDataTable, looksLikeGrid, findTargetTable, isPhantomA11yTable) reports
- * findings only — it never writes a marker class or builds a toggle widget.
- * Callers (ui-toggle.js, content.js) own both: they check their own "seen"
- * registry (a WeakMap or the dr-ext-grid class) and, for a first-time match,
- * write the marker and construct the widget.
+ * findings only — it never writes a marker class or builds a toggle widget,
+ * and (app-model-registry sprint) it never reads the dr-ext-grid class as
+ * state either: "have I already found this element" is an injected opts.isSeen
+ * check (see findTargetTable, findTables). Callers (ui-toggle.js, content.js)
+ * own both sides: they check DR_STORE's table registry and, for a first-time
+ * match, write the dr-ext-grid marker (a style hook only, from here on) and
+ * construct the widget.
  *
  * Every environment-sensitive read (computed style, offsetWidth, number
  * parsing, the vendor grid selectors, `document` itself) goes through a
@@ -174,10 +177,32 @@ function findCellTextNode(cellEl) {
 /** CSS class applied to rounded grid cells (same class used by native-table path). */
 const GRID_ROUNDED_CLASS = 'dr-ext-rounded';
 
+/**
+ * OriginalsPort: pluggable per-cell "what did this cell say before I rounded
+ * it" storage for GridAdapter's getText/setText, following the same port-
+ * with-a-working-default pattern as StyleProbe/NumericProbe above. The
+ * default is a private WeakMap<cellEl, text> — correct for a standalone or
+ * test caller with no application model to hand in. content.js's real call
+ * sites inject a port backed by DR_STORE's per-table registry entry (see
+ * app/store.js, loaded after this file) instead, which is what makes a
+ * grid's originals survive a rounding toggle without a page attribute.
+ * A custom port is passed via opts.originalsPort on makeAdapter/GridAdapter.
+ */
+function makeDefaultOriginalsPort() {
+  const store = new WeakMap();
+  return {
+    has(cellEl) { return store.has(cellEl); },
+    get(cellEl) { return store.get(cellEl); },
+    set(cellEl, text) { store.set(cellEl, text); },
+  };
+}
+const DEFAULT_ORIGINALS_PORT = makeDefaultOriginalsPort();
+
 class GridAdapter {
   constructor(el, opts = {}) {
     this.el = el;
     this.vendorProfiles = opts.vendorProfiles || DEFAULT_VENDOR_PROFILES;
+    this.originalsPort = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
   }
   getElement() { return this.el; }
   isVirtualized() { return true; }
@@ -305,13 +330,14 @@ class GridAdapter {
    * @returns {{getText(): string, setText(s: string): void, el: Element, tagName: string}}
    */
   _makeCellObj(cellEl) {
+    const port = this.originalsPort;
     return {
       el: cellEl,
       tagName: 'TD', // grid cells are treated as data cells (no <th> concept)
       getText() {
         // Prefer the stored original (if already rounded), else live text
-        if (cellEl.dataset && cellEl.dataset.drOriginal !== undefined) {
-          return cellEl.dataset.drOriginal;
+        if (port.has(cellEl)) {
+          return port.get(cellEl);
         }
         const tn = findCellTextNode(cellEl);
         return tn ? tn.nodeValue : (cellEl.textContent || '');
@@ -319,9 +345,9 @@ class GridAdapter {
       setText(s) {
         const tn = findCellTextNode(cellEl);
         if (tn === null) return; // no-op: cell has no text node to patch
-        // Store the original value on the cell element once.
-        if (cellEl.dataset && cellEl.dataset.drOriginal === undefined) {
-          cellEl.dataset.drOriginal = tn.nodeValue;
+        // Store the original value once, through the port.
+        if (!port.has(cellEl)) {
+          port.set(cellEl, tn.nodeValue);
         }
         // Patch in place — NEVER replace the node (preserves React fiber identity).
         tn.nodeValue = s;
@@ -731,29 +757,39 @@ function looksLikeGrid(el, opts = {}) {
  *
  * Resolution order (per D1 / S6):
  *   1. Nearest <table> ancestor (cheapest, most precise).
- *   2. Nearest ancestor already carrying class dr-ext-grid.
+ *   2. Nearest ancestor (or el itself) already registered as found, per
+ *      opts.isSeen.
  *   3. Walk UP from el calling looksLikeGrid at each ancestor; return the
  *      OUTERMOST match — keep walking while the parent also passes; stop when
  *      the parent fails, is <body>, or depth exceeds GRID_WALK_DEPTH_CAP.
  *
  * REPORTS only — this function never writes the dr-ext-grid marker class and
- * never builds a toggle widget. It returns { handle, isNew }, where `handle`
- * is the resolved element and `isNew` tells the caller whether this is the
- * first time the walk-up path (case 3) has resolved to this element — i.e.
- * whether the caller still needs to mark it and construct its widget. Cases
- * 1 and 2 resolve to an element the caller already knows how to handle
- * (a bare <table>, or an already-marked grid root), so isNew is always false
- * for them; only case 3 can discover a not-yet-seen grid root.
+ * never builds a toggle widget, and it never reads that class either: "has
+ * this element already been found" is opts.isSeen, a caller-supplied check
+ * (e.g. the app model's table registry), following the same contract
+ * findTables (below) already uses. Without opts.isSeen, step 2 is a no-op
+ * and case 3's isNew is always true — this function keeps no registry of its
+ * own, so with nothing to consult it cannot claim to have seen anything
+ * before.
+ *
+ * It returns { handle, isNew }, where `handle` is the resolved element and
+ * `isNew` tells the caller whether this is the first time resolution has
+ * reached this element — i.e. whether the caller still needs to mark it and
+ * construct its widget. Case 1 resolves to an element the caller already
+ * knows how to handle (a bare <table>), so isNew is always false for it;
+ * cases 2 and 3 defer to opts.isSeen.
  *
  * Returns null if nothing found.
  *
  * @param {Element} el
- * @param {{styleProbe?: object, numericProbe?: object, vendorProfiles?: object[], doc?: Document}} [opts]
+ * @param {{styleProbe?: object, numericProbe?: object, vendorProfiles?: object[], doc?: Document, isSeen?: (handle: Element) => boolean}} [opts]
  * @returns {{handle: Element, isNew: boolean}|null}
  */
 function findTargetTable(el, opts = {}) {
   if (!el) return null;
   const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
+  const isSeen = opts.isSeen || (() => false);
+  const docBody = doc && doc.body;
 
   // 1. Nearest <table> ancestor.
   if (typeof el.closest === 'function') {
@@ -761,17 +797,24 @@ function findTargetTable(el, opts = {}) {
     if (tableAncestor) return { handle: tableAncestor, isNew: false };
   }
 
-  // 2. Nearest ancestor already tagged as a grid root.
-  if (typeof el.closest === 'function') {
-    const existingGrid = el.closest('.dr-ext-grid');
-    if (existingGrid) return { handle: existingGrid, isNew: false };
+  // 2. Nearest already-found ancestor (or el itself), per opts.isSeen — a
+  // walk-up rather than a closest('.dr-ext-grid') query, since isSeen is an
+  // arbitrary per-element check (typically a WeakMap-backed registry.has),
+  // not a CSS selector.
+  let seenCandidate = el;
+  let seenDepth = 0;
+  while (seenCandidate && seenCandidate !== docBody && seenDepth < GRID_WALK_DEPTH_CAP) {
+    if (seenCandidate.nodeType === DR_TABLE_ELEMENT_NODE && isSeen(seenCandidate)) {
+      return { handle: seenCandidate, isNew: false };
+    }
+    seenCandidate = seenCandidate.parentElement || seenCandidate.parentNode;
+    seenDepth++;
   }
 
   // 3. Walk up, calling looksLikeGrid; return the outermost consecutive match.
   let current = el.parentElement || el.parentNode;
   let depth = 0;
   let outermost = null;
-  const docBody = doc && doc.body;
 
   while (current && current !== docBody && depth < GRID_WALK_DEPTH_CAP) {
     if (current.nodeType !== DR_TABLE_ELEMENT_NODE) {
@@ -791,7 +834,7 @@ function findTargetTable(el, opts = {}) {
   }
 
   if (outermost !== null) {
-    return { handle: outermost, isNew: !outermost.classList.contains('dr-ext-grid') };
+    return { handle: outermost, isNew: !isSeen(outermost) };
   }
 
   return null;
@@ -966,10 +1009,9 @@ function isDataTable(table, opts = {}) {
  * REPORTS only — like findTargetTable, this never writes the dr-ext-grid
  * marker class and never builds a toggle widget. Each result is
  * { handle, isNew }; isNew is computed from opts.isSeen (a caller-supplied
- * "have I already handled this element" check — e.g. `tableToggles.has` for
- * native tables, or a dr-ext-grid classList check for grid roots). Without
- * opts.isSeen every result reports isNew: true, since detection keeps no
- * registry of its own.
+ * "have I already handled this element" check — e.g. DR_STORE.hasTable,
+ * for both native tables and grid roots alike). Without opts.isSeen every
+ * result reports isNew: true, since detection keeps no registry of its own.
  *
  * @param {Element|Document} root
  * @param {{

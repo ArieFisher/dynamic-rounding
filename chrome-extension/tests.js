@@ -172,6 +172,14 @@ globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = OFFSCREEN_LEFT_PX_THRESHOLD;
 // Expose content.js's badge/marker call-site wrapper (sprint extract-dr-table)
 // for direct unit testing.
 globalThis.markAndToggleIfNewGrid = markAndToggleIfNewGrid;
+// Expose the DR_STORE-backed originals port (app-model-registry sprint) so
+// grid-adapter tests can build an adapter the same way roundTable/
+// collectNumericCells/computeGridRoundedValues do in production — a plain
+// makeAdapter(el) with no opts uses lib/dr-table's private default port
+// instead, which is invisible to DR_STORE and would make a test's setup
+// silently diverge from what the real call sites do.
+globalThis.registryOriginalsPort = registryOriginalsPort;
+globalThis.restoreTable = restoreTable;
 `);
 
 let passed = 0;
@@ -1939,14 +1947,24 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   eq('unified: data-rounded-value attribute no longer written',
     /data-rounded-value|dataset\.roundedValue/.test(contentSrc), false);
 
-  eq('unified: data-original-html attribute is written',
-    /dataset\.originalHtml\s*=/.test(contentSrc), true);
+  // app-model-registry sprint: native-table originals (html/value/supRanges/
+  // linkFilteredIdx) and the per-table round options moved off page
+  // attributes / a file-level WeakMap into DR_STORE's table registry — see
+  // the "table registry" test section below for the full replacement suite.
+  eq('unified (superseded by app-model-registry): dataset.originalHtml is no longer written',
+    /dataset\.originalHtml\s*=/.test(contentSrc), false);
 
-  eq('unified: per-table options WeakMap declared',
-    /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), true);
+  eq('registry: native-table originals are recorded via DR_STORE.setTableOriginal',
+    /DR_STORE\.setTableOriginal\(\s*table\s*,\s*cell\s*,\s*\{\s*html:/.test(contentSrc), true);
+
+  eq('unified (superseded by app-model-registry): tableOptions WeakMap no longer declared',
+    /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), false);
+
+  eq('registry: round options are recorded via DR_STORE.setTableRoundOptions',
+    /DR_STORE\.setTableRoundOptions\(table,\s*opts\)/.test(contentSrc), true);
 
   eq('unified: toggleOriginalValues calls roundTable for original→rounded path',
-    /function toggleOriginalValues[\s\S]{0,500}roundTable\(/.test(contentSrc), true);
+    /function toggleOriginalValues[\s\S]{0,1500}roundTable\(/.test(contentSrc), true);
 
   // --- Display simplification: "35.0" → "35" when value unchanged but format would ---
 
@@ -2173,23 +2191,26 @@ function makeMockButton() {
 // --- AC5: isTableRounded returns true after roundTable marks cells ---
 
 (function atToggle_isTableRounded_afterRound() {
-  // Directly inject the rounded class to simulate a rounded table (don't run
-  // the full roundTable pipeline which requires tree walkers etc.)
+  // Directly inject the rounded class AND set the registry's appliedFlag to
+  // simulate a rounded table (don't run the full roundTable pipeline which
+  // requires tree walkers etc.) — isTableRounded reads DR_STORE's appliedFlag
+  // (app-model-registry sprint), not the class, so both are set here the way
+  // roundTable itself would leave them.
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  // Manually mark the cell as rounded — this is what roundTable does.
   table._cells[0].classList.add('dr-ext-rounded');
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
   eq('auto-table-toggle: isTableRounded(table with .dr-ext-rounded cell) is true',
     isTableRounded(table), true);
 })();
 
-// --- AC5: isTableRounded returns false when drShowingOriginal === 'true' ---
+// --- AC5: isTableRounded returns false when appliedFlag !== 'simplified' ---
 // (toggleOriginalValues sets this; the table still has rounded cells but is showing originals)
 
 (function atToggle_isTableRounded_showingOriginal() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
-  table.dataset.drShowingOriginal = 'true';
-  eq('auto-table-toggle: isTableRounded is false when drShowingOriginal===true',
+  DR_STORE.setTableAppliedFlag(table, 'original');
+  eq('auto-table-toggle: isTableRounded is false when appliedFlag is "original"',
     isTableRounded(table), false);
 })();
 
@@ -2198,10 +2219,15 @@ function makeMockButton() {
 
 (function atToggle_isTableRounded_afterToggleOff() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  // Simulate a post-roundTable state: cell has rounded class + originalHtml
+  // Simulate a post-roundTable state: cell has rounded class + a registry
+  // original record (app-model-registry sprint — this used to be
+  // cell.dataset.originalHtml), and the registry's appliedFlag is
+  // 'simplified' so toggleOriginalValues reads it as currently-rounded and
+  // takes the "hide" branch.
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
-  cell.dataset.originalHtml = '1,000';
+  DR_STORE.setTableOriginal(table, cell, { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
   cell.innerHTML = '1,000';
   // Also need to stub innerHTML setter so toggleOriginalValues can restore it
   Object.defineProperty(cell, 'innerHTML', {
@@ -2213,13 +2239,13 @@ function makeMockButton() {
   // Inject toggle entry (proper button stub) so syncSwitchForTable doesn't crash
   injectToggleEntry(table);
 
-  // Calling toggleOriginalValues (showingOriginal=false path) sets drShowingOriginal='true'
+  // Calling toggleOriginalValues (showingOriginal=false path) sets appliedFlag='original'
   toggleOriginalValues(table);
 
   eq('auto-table-toggle: after toggleOriginalValues, isTableRounded is false',
     isTableRounded(table), false);
-  eq('auto-table-toggle: after toggleOriginalValues, drShowingOriginal is "true"',
-    table.dataset.drShowingOriginal, 'true');
+  eq('auto-table-toggle: after toggleOriginalValues, appliedFlag is "original"',
+    DR_STORE.getTableAppliedFlag(table), 'original');
 })();
 
 // --- AC6: syncSwitchForTable sets aria-pressed on the button to match isTableRounded ---
@@ -2241,6 +2267,7 @@ function makeMockButton() {
 
   // Mark table as rounded
   table._cells[0].classList.add('dr-ext-rounded');
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
 
   syncSwitchForTable(table);
   eq('auto-table-toggle: syncSwitchForTable sets aria-pressed="true" on rounded table',
@@ -2251,7 +2278,7 @@ function makeMockButton() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   const button = injectToggleEntry(table);
   table._cells[0].classList.add('dr-ext-rounded');
-  table.dataset.drShowingOriginal = 'true';
+  DR_STORE.setTableAppliedFlag(table, 'original');
   button.setAttribute('aria-pressed', 'true');
 
   syncSwitchForTable(table);
@@ -2519,7 +2546,8 @@ function makeMockButton() {
   const table = makeToggleTable([{ tag: 'td', text: '8,500,000' }]);
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
-  cell.dataset.originalHtml = '8,584,629';
+  DR_STORE.setTableOriginal(table, cell, { html: '8,584,629', value: '8,584,629', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
 
   // The cell's innerHTML property needs to be writable
   let htmlVal = cell.innerHTML;
@@ -2533,9 +2561,9 @@ function makeMockButton() {
 
   runToggleAction(table);
 
-  // After toggling off: drShowingOriginal must be 'true' (AC4)
-  eq('auto-table-toggle: runToggleAction on rounded table sets drShowingOriginal=true (AC4)',
-    table.dataset.drShowingOriginal, 'true');
+  // After toggling off: appliedFlag must be 'original' (AC4)
+  eq('auto-table-toggle: runToggleAction on rounded table sets appliedFlag=original (AC4)',
+    DR_STORE.getTableAppliedFlag(table), 'original');
   // aria-pressed should be "false" — table is now showing originals, not rounded
   eq('auto-table-toggle: aria-pressed="false" after toggle-off via runToggleAction',
     input.getAttribute('aria-pressed'), 'false');
@@ -2836,13 +2864,20 @@ function makeMockButton() {
   Object.defineProperty(cell, 'innerHTML', {
     get(){return htmlVal;}, set(v){htmlVal=v;}, configurable: true
   });
-  cell.dataset.originalHtml = '50000';
+  // Registry-backed setup (app-model-registry sprint): restoreTable reads
+  // the pre-round original from DR_STORE, not a dataset attribute, so the
+  // fixture must register one for the cell to be genuinely restorable — a
+  // dr-ext-rounded class with no registry entry is the unrestorable case
+  // (see the content-script re-injection tests), which is a different
+  // scenario than the one this test means to exercise.
+  DR_STORE.setTableOriginal(table, cell, { html: '50000', value: '50000', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
 
   // Fire click via handlers
   const clickHandlers = buttonEl._listeners['click'] || [];
   clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
 
-  // After click: table shows originals (drShowingOriginal='true'), aria-pressed='false'
+  // After click: table shows originals (appliedFlag 'original' in DR_STORE), aria-pressed='false'
   eq('accessibility AC3: button click (mouse, was-rounded) sets aria-pressed="false"',
     buttonEl.getAttribute('aria-pressed'), 'false');
 })();
@@ -3590,6 +3625,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 (function morphAC_syncSwitch_roundedTable() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
   const button = injectToggleEntry(table);
   syncSwitchForTable(table);
   eq('expanding-toggle: syncSwitchForTable rounded table → aria-pressed="true"',
@@ -3599,10 +3635,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 (function morphAC_syncSwitch_showingOriginal() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
-  table.dataset.drShowingOriginal = 'true';
+  DR_STORE.setTableAppliedFlag(table, 'original');
   const button = injectToggleEntry(table);
   syncSwitchForTable(table);
-  eq('expanding-toggle: syncSwitchForTable drShowingOriginal=true → aria-pressed="false"',
+  eq('expanding-toggle: syncSwitchForTable appliedFlag=\'original\' (showing originals) with a rounded cell present → aria-pressed="false"',
     button.getAttribute('aria-pressed'), 'false');
 })();
 
@@ -4572,8 +4608,8 @@ function withReactiveCreateTreeWalker(fn) {
     const cell = makeReactiveCell(segsFor());
     const table = { rows: [{ cells: [cell, otherCell()] }], dataset: {} };
     roundTable(table, opts);
-    eq('sup-stale regression: cell was actually rounded (dataset.originalValue set)',
-      cell.dataset.originalValue, '1234.5678 kg9');
+    eq('sup-stale regression: cell was actually rounded (registry original.value set)',
+      DR_STORE.getTableOriginal(table, cell).value, '1234.5678 kg9');
 
     const after = collectNumericCells(table, opts);
     eq('sup-stale regression: preview sample set is unchanged after rounding',
@@ -4607,8 +4643,8 @@ function withReactiveCreateTreeWalker(fn) {
     const cell = makeReactiveCell(segsFor());
     const table = { rows: [{ cells: [cell, otherCell()] }], dataset: {} };
     roundTable(table, opts);
-    eq('linked-number-post-round regression: cell was actually rounded (dataset.originalValue set)',
-      cell.dataset.originalValue, 'Total 1234.5678 see also 51234.5678');
+    eq('linked-number-post-round regression: cell was actually rounded (registry original.value set)',
+      DR_STORE.getTableOriginal(table, cell).value, 'Total 1234.5678 see also 51234.5678');
 
     const after = collectNumericCells(table, opts);
     eq('linked-number-post-round regression: preview sample set is unchanged after rounding',
@@ -7224,32 +7260,30 @@ function withFindTargetEnv(elements, fn) {
   });
 })();
 
-// FT5: findTargetTable — returns already-tagged ancestor (.dr-ext-grid) without re-walking
-// If an ancestor already carries `dr-ext-grid`, it must be returned immediately
-// via closest('.dr-ext-grid') without calling looksLikeGrid again.
+// FT5: findTargetTable — returns already-found ancestor without re-walking
+// If an ancestor is already known per opts.isSeen (app-model-registry sprint
+// replaced the closest('.dr-ext-grid') read with an injected isSeen check —
+// see lib/dr-table/detect.js), it must be returned immediately without
+// calling looksLikeGrid again.
 (function findTargetTable_returnsAlreadyTaggedGrid() {
   withFindTargetEnv([], function() {
     const existingGrid = makeWalkEl({ display: 'flex' });
-    existingGrid.classList.add('dr-ext-grid');
 
     const clickTarget = {
       tagName: 'DIV',
       nodeType: 1,
       parentElement: existingGrid,
       parentNode: existingGrid,
-      closest: function(sel) {
-        if (sel === 'table') return null;
-        if (sel === '.dr-ext-grid') return existingGrid;
-        return null;
-      },
+      closest: function(sel) { return null; },
     };
 
-    const result = findTargetTable(clickTarget);
+    const seen = new Set([existingGrid]);
+    const result = findTargetTable(clickTarget, { isSeen: (el) => seen.has(el) });
 
-    eq('findTargetTable: returns already-tagged .dr-ext-grid ancestor immediately',
+    eq('findTargetTable: returns already-found ancestor immediately',
       result.handle, existingGrid);
-    // Already marked — the caller has already handled this one; isNew is false.
-    eq('findTargetTable: already-tagged .dr-ext-grid ancestor reports isNew: false',
+    // Already found — the caller has already handled this one; isNew is false.
+    eq('findTargetTable: already-found ancestor reports isNew: false',
       result.isNew, false);
   });
 })();
@@ -7857,7 +7891,7 @@ function makeGridWrapper(rowData, opts) {
     ['1234567', '99'],
   ]);
 
-  const adapter = makeAdapter(grid.wrapperEl);
+  const adapter = makeAdapter(grid.wrapperEl, { originalsPort: registryOriginalsPort(grid.wrapperEl) });
   const rows = adapter.getRows();
 
   // Round all cells
@@ -7867,11 +7901,11 @@ function makeGridWrapper(rowData, opts) {
     });
   });
 
-  // All cells should carry dr-ext-rounded and drOriginal
+  // All cells should carry dr-ext-rounded and a registry original
   eq('GR4 (setup): cell 0 is rounded',
     grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
-  eq('GR4 (setup): cell 0 drOriginal is stored original value',
-    grid.cellEls[0].dataset.drOriginal, '8584629');
+  eq('GR4 (setup): cell 0 registry original is stored original value',
+    DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), '8584629');
 
   // Simulate a recycled row: cell has NO .dr-ext-rounded (framework removed+readded it)
   // We model this by creating a fresh cell that was never rounded by us.
@@ -7907,8 +7941,8 @@ function makeGridWrapper(rowData, opts) {
   eq('GR4: cell 0 no longer carries dr-ext-rounded',
     grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
 
-  eq('GR4: cell 0 drOriginal cleared after reset',
-    grid.cellEls[0].dataset.drOriginal, undefined);
+  eq('GR4: cell 0 registry original cleared after reset',
+    DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), undefined);
 
   // The recycled cell was never touched by us and must not be modified
   eq('GR4: recycled cell text node untouched (framework text preserved)',
@@ -8045,22 +8079,22 @@ function makeGridWrapper(rowData, opts) {
     emptyCell.classList.contains('dr-ext-rounded'), false);
 })();
 
-// GR6e: dataset.drOriginal is stored ONCE and NOT overwritten on a second setText call
+// GR6e: the registry original is stored ONCE and NOT overwritten on a second setText call
 (function gr6e_drOriginal_storedOnce() {
   const grid = makeGridWrapper([['12345']]);
-  const adapter = makeAdapter(grid.wrapperEl);
+  const adapter = makeAdapter(grid.wrapperEl, { originalsPort: registryOriginalsPort(grid.wrapperEl) });
   const cellObj = adapter.getRows()[0].getCells()[0];
 
   // First setText: original should be stored
   cellObj.setText('12000');
-  const storedOriginal = grid.cellEls[0].dataset.drOriginal;
-  eq('GR6e: drOriginal stored on first setText',
+  const storedOriginal = DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]);
+  eq('GR6e: registry original stored on first setText',
     storedOriginal, '12345');
 
-  // Second setText (e.g. rounding again): drOriginal must NOT change
+  // Second setText (e.g. rounding again): the registry original must NOT change
   cellObj.setText('10000');
-  eq('GR6e: drOriginal NOT overwritten on second setText',
-    grid.cellEls[0].dataset.drOriginal, '12345');
+  eq('GR6e: registry original NOT overwritten on second setText',
+    DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), '12345');
 
   // But the nodeValue IS updated
   eq('GR6e: nodeValue updated to second setText value',
@@ -8261,11 +8295,12 @@ function makeE2EGridWrapper(rowData) {
   eq('E2E-GR1: cell[0] childNodes.length unchanged after roundTable',
     cell0.childNodes.length, childCountBefore);
 
-  // drOriginal must be set on the cell element (nodeValue path).
-  eq('E2E-GR1: cell[0] dataset.drOriginal is set to original text',
-    cell0.dataset.drOriginal, originalValue);
+  // The registry original must be recorded for the cell (nodeValue path).
+  eq('E2E-GR1: cell[0] registry original is set to original text',
+    DR_STORE.getTableOriginal(grid.wrapperEl, cell0), originalValue);
 
-  // originalHtml must NOT be set (that is the native-table / extracted path).
+  // originalHtml must NOT be set (that is the native-table / extracted path,
+  // which records a { html, value, ... } record instead of a plain string).
   eq('E2E-GR1: cell[0] dataset.originalHtml is NOT set on a grid cell',
     cell0.dataset.originalHtml, undefined);
 })();
@@ -8308,9 +8343,9 @@ function makeE2EGridWrapper(rowData) {
   eq('E2E-GR2: dr-ext-rounded removed after resetTable',
     cell0.classList.contains('dr-ext-rounded'), false);
 
-  // drOriginal must be cleared.
-  eq('E2E-GR2: dataset.drOriginal cleared after resetTable',
-    cell0.dataset.drOriginal, undefined);
+  // The registry original must be cleared.
+  eq('E2E-GR2: registry original cleared after resetTable',
+    DR_STORE.getTableOriginal(grid.wrapperEl, cell0), undefined);
 
   // childNodes.length still unchanged (no innerHTML write at any point).
   eq('E2E-GR2: childNodes.length unchanged throughout (no innerHTML write)',
@@ -8380,12 +8415,12 @@ function makeE2EGridWrapper(rowData) {
   eq('E2E-GR4: pure-numeric cell text changed from original',
     numericCell.childNodes[0].nodeValue !== numericTextBefore, true);
 
-  // drOriginal set on numeric, not on mixed.
-  eq('E2E-GR4: drOriginal set on pure-numeric cell',
-    numericCell.dataset.drOriginal, numericTextBefore);
+  // Registry original set on numeric, not on mixed.
+  eq('E2E-GR4: registry original set on pure-numeric cell',
+    DR_STORE.getTableOriginal(grid.wrapperEl, numericCell), numericTextBefore);
 
-  eq('E2E-GR4: drOriginal NOT set on mixed-text cell',
-    mixedCell.dataset.drOriginal, undefined);
+  eq('E2E-GR4: registry original NOT set on mixed-text cell',
+    DR_STORE.getTableOriginal(grid.wrapperEl, mixedCell), undefined);
 })();
 
 // =============================================================================
@@ -8578,7 +8613,7 @@ function flushTimers(pendingTimers) {
 
     const tn0 = cell0.childNodes[0];
     const roundedValue = tn0.nodeValue;   // e.g. '8600000'
-    const originalValue = cell0.dataset.drOriginal;  // e.g. '8584629'
+    const originalValue = DR_STORE.getTableOriginal(grid.wrapperEl, cell0);  // e.g. '8584629'
 
     eq('GV2 (pre): roundedValue differs from original',
       roundedValue !== originalValue, true);
@@ -8788,8 +8823,8 @@ function flushTimers(pendingTimers) {
     toggleOriginalValues(grid.wrapperEl);
 
     // Flag must be set and originals restored.
-    eq('GV5b: drShowingOriginal is "true" after toggleOriginalValues',
-      grid.wrapperEl.dataset.drShowingOriginal, 'true');
+    eq('GV5b: appliedFlag is "original" after toggleOriginalValues',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
     eq('GV5b: cell[0] text node restored to original',
       grid.cellEls[0].childNodes[0].nodeValue, '8584629');
 
@@ -8807,8 +8842,8 @@ function flushTimers(pendingTimers) {
 
     // Toggling back on must re-round (resetTable + roundTable path).
     toggleOriginalValues(grid.wrapperEl);
-    eq('GV5b: drShowingOriginal cleared after toggling back on',
-      grid.wrapperEl.dataset.drShowingOriginal, undefined);
+    eq('GV5b: appliedFlag is "simplified" after toggling back on',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'simplified');
     eq('GV5b: cell[0] re-rounded after toggling back on',
       grid.cellEls[0].childNodes[0].nodeValue !== '8584629', true);
 
@@ -9001,7 +9036,7 @@ function flushTimers(pendingTimers) {
     // Capture the rounded value so we can verify re-apply restores it.
     const tn_r1c1 = cell_r1c1.childNodes[0];
     const roundedValue_r1c1 = tn_r1c1.nodeValue;
-    const originalValue_r1c1 = cell_r1c1.dataset.drOriginal;  // '87654321'
+    const originalValue_r1c1 = DR_STORE.getTableOriginal(grid.wrapperEl, cell_r1c1);  // '87654321'
 
     eq('GV8 (pre): row-1 col-1 rounded value differs from original',
       roundedValue_r1c1 !== originalValue_r1c1, true);
@@ -9107,7 +9142,7 @@ function flushTimers(pendingTimers) {
     // Capture the rounded value for re-apply verification.
     const tn_r1c0 = cell_r1c0.childNodes[0];
     const roundedValue_r1c0 = tn_r1c0.nodeValue;
-    const originalValue_r1c0 = cell_r1c0.dataset.drOriginal;
+    const originalValue_r1c0 = DR_STORE.getTableOriginal(grid.wrapperEl, cell_r1c0);
 
     eq('GV9 (pre): row-1 col-0 rounded value differs from original',
       roundedValue_r1c0 !== originalValue_r1c0, true);
@@ -10110,7 +10145,8 @@ function withToggleDocumentMock(fn) {
 // ---------------------------------------------------------------------------
 (function pass2aria_adversarial_alreadyTagged_skipped() {
   const grid = makeAriaGrid([]);
-  grid.classList.add('dr-ext-grid'); // pre-tag it
+  grid.classList.add('dr-ext-grid'); // pre-tag it (style hook only, no longer read as state)
+  DR_STORE.registerTable(grid); // the actual "already found" signal pass 2 now checks
 
   withToggleDocumentMock(function() {
     global.document.querySelectorAll = function(sel) {
@@ -12868,31 +12904,36 @@ function fireMouseClick(buttonEl, fn) {
 
 // -------------------------------------------------------------------------
 // Issue #2: when a native table is already simplified, collectNumericCells
-// reads the stored original (dataset.originalValue) rather than the rounded
+// reads the stored original (DR_STORE's table registry, app-model-registry
+// sprint — this used to be dataset.originalValue) rather than the rounded
 // text now showing in the cell.
 // -------------------------------------------------------------------------
 (function originalValueOnSimplifiedTable() {
   // A rounded native cell: innerText shows the rounded "3,000,000" but the true
-  // original "2,794,356" is stashed on dataset.originalValue.
+  // original "2,794,356" is recorded in the registry.
   const roundedCell = {
     tagName: 'TD',
     innerText: '3,000,000',
     textContent: '3,000,000',
-    dataset: { originalValue: '2,794,356' },
+    dataset: {},
   };
   // A header row + label column keep the cell off row 0 / column 0
   // (DR_DEFAULTS excludes both by default; see the merge-ladder divergence
-  // tests below) so this stays a test of the dataset.originalValue read path,
+  // tests below) so this stays a test of the registry original read path,
   // not an incidental first-row/first-column exclusion.
   const labelCell = { tagName: 'TH', innerText: '', textContent: '' };
   const headerCell = { tagName: 'TH', innerText: 'A', textContent: 'A' };
   const rowLabelCell = { tagName: 'TH', innerText: 'Row', textContent: 'Row' };
-  const cells = collectNumericCells({
+  const mockTable = {
     rows: [
       { cells: [labelCell, headerCell] },
       { cells: [rowLabelCell, roundedCell] },
     ],
+  };
+  DR_STORE.setTableOriginal(mockTable, roundedCell, {
+    html: '2,794,356', value: '2,794,356', supRanges: null, linkFilteredIdx: null,
   });
+  const cells = collectNumericCells(mockTable);
   eq('orig-value: reads original text, not rounded',
     cells[0].text, '2,794,356');
   eq('orig-value: parses num from original, not rounded',
@@ -14377,7 +14418,7 @@ const LADDER_OPTS = {
   };
   const contentTopLevelNames = topLevelBindingNames(contentSrcForScan);
   eq('static scan: content.js still declares its usual top-level bindings (sanity check on the scan itself)',
-    contentTopLevelNames.includes('lastRightClickedElement') && contentTopLevelNames.includes('tableOptions'),
+    contentTopLevelNames.includes('lastRightClickedElement') && contentTopLevelNames.includes('gridObservers'),
     true);
   eq('static scan: content.js no longer declares lastRightClickedTable or sidebarOpen at top level',
     contentTopLevelNames.includes('lastRightClickedTable') || contentTopLevelNames.includes('sidebarOpen'),
@@ -14397,11 +14438,18 @@ const LADDER_OPTS = {
   // anti-pattern this sprint removed) would slip through undetected. Close
   // that gap by scanning for writes to DR_STORE's own private field names,
   // read directly from app/store.js rather than from content.js.
-  const storeFieldNames = Array.from(storeSrc.matchAll(/\b(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/g))
+  //
+  // The field declarations sit one level inside the IIFE (2-space indent);
+  // anchoring on that indentation (rather than a bare \b(?:let|const) scan
+  // anywhere in the file) is what keeps this from also matching the `const
+  // entry = ...` locals declared inside the table-registry getters/setters
+  // (app-model-registry sprint) — those are per-call temporaries, not fields.
+  const storeFieldNames = Array.from(storeSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_STORE');
-  eq('static scan: app/store.js declares its three private fields (sanity check on the scan itself)',
-    storeFieldNames.slice().sort(), ['selectedTable', 'sidebarOpen', 'settings'].sort());
+  eq('static scan: app/store.js declares its five private fields (sanity check on the scan itself)',
+    storeFieldNames.slice().sort(),
+    ['registeredTables', 'selectedTable', 'settings', 'sidebarOpen', 'tableRegistry'].sort());
   const storeFieldWrites = storeFieldNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
     return assignRe.test(uiToggleSrcForScan) || assignRe.test(contentSrcForScan);
@@ -15509,6 +15557,732 @@ const LADDER_OPTS = {
       headMessages !== null, true);
     eq(`parent-equivalence: contextmenu sendMessage sequence matches the frozen parent sequence (sidebarOpen=${sidebarOpenValue})`,
       headMessages, PARENT_EXPECTED_SEQUENCES[String(sidebarOpenValue)]);
+  }
+})();
+
+// =============================================================================
+// Sprint app-model-registry: the registry of found tables, per-cell originals,
+// and the simplified/original flag live in DR_STORE; the dr-ext-grid marker
+// class becomes a style hook only.
+// =============================================================================
+
+// --- (a) One restore path: a native table and a grid restore through the
+// same restoreTable() call. ---
+(function registrySprint_oneRestorePathForBothKinds() {
+  withCreateTreeWalker(function () {
+    // Native table: header row (excluded) + one data row.
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Header' }],
+      [{ tag: 'td', text: '8,584,629' }],
+    ]);
+    table._cells.forEach(c => { c.querySelectorAll = () => []; });
+    roundTable(table, Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: false, simplifyFirstColumn: true }));
+    const nativeCell = table._cells[1];
+    eq('registry restore: native cell is rounded before restore',
+      nativeCell.classList.contains('dr-ext-rounded'), true);
+
+    restoreTable(table, false);
+    eq('registry restore: native cell HTML restored via the shared restoreTable() call',
+      nativeCell.innerHTML, '8,584,629');
+    eq('registry restore: native cell no longer carries dr-ext-rounded',
+      nativeCell.classList.contains('dr-ext-rounded'), false);
+  });
+
+  // Grid: the SAME restoreTable() function, dispatching internally on kind.
+  const grid = makeE2EGridWrapper([['8584629', '286']]);
+  roundTable(grid.wrapperEl, Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true }));
+  const gridCell = grid.cellEls[0];
+  eq('registry restore: grid cell is rounded before restore',
+    gridCell.classList.contains('dr-ext-rounded'), true);
+
+  restoreTable(grid.wrapperEl, false);
+  eq('registry restore: grid cell text node restored via the same restoreTable() call',
+    gridCell.childNodes[0].nodeValue, '8584629');
+  eq('registry restore: grid cell no longer carries dr-ext-rounded',
+    gridCell.classList.contains('dr-ext-rounded'), false);
+})();
+
+// --- (b) The re-apply observer works from model state: a simulated grid
+// redraw re-applies rounding correctly with every page attribute this cell
+// might have carried stripped away first. ---
+(function registrySprint_reapplyFromModelStateOnly() {
+  let ctx;
+  try {
+    ctx = setupVirtGrid([
+      ['8584629', '100'],
+      ['1234567', '200'],
+    ]);
+    const { grid, pendingTimers } = ctx;
+    const cell0 = grid.cellEls[0];
+    const roundedValue = cell0.childNodes[0].nodeValue;
+    const originalValue = DR_STORE.getTableOriginal(grid.wrapperEl, cell0);
+
+    // Strip every page attribute a pre-registry build would have relied on —
+    // the re-apply must work from DR_STORE alone.
+    cell0.dataset = {};
+    grid.wrapperEl.dataset = {};
+
+    // Simulate a redraw reverting the sort (framework rewrites the text node
+    // back to the original; node identity and the dr-ext-rounded class survive).
+    cell0.childNodes[0].nodeValue = originalValue;
+
+    const obs = ctx.capturedObserver;
+    obs.trigger([{ type: 'characterData', target: cell0.childNodes[0] }]);
+    flushTimers(pendingTimers);
+
+    eq('registry reapply: cell re-rounded after redraw with no page attributes present',
+      cell0.childNodes[0].nodeValue, roundedValue);
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// --- (c) Static lock: no production read of the dr-ext-grid marker class as
+// state — classList.contains/closest('.dr-ext-grid') may appear only as a
+// write (classList.add) or inside a comment discussing the history; a real
+// read call is what this locks out. ---
+(function registrySprint_noMarkerClassReadLock() {
+  const filesToScan = ['content.js', 'ui-toggle.js', 'lib/dr-table/detect.js'];
+  const readPatterns = [
+    /classList\.contains\(\s*['"]dr-ext-grid['"]\s*\)/g,
+    /\.closest\(\s*['"]\.dr-ext-grid['"]\s*\)/g,
+  ];
+  for (const file of filesToScan) {
+    const src = sourceByName(file);
+    if (src === null) {
+      eq(`registry static lock: ${file} present in manifest`, false, true);
+      continue;
+    }
+    // Strip line comments and block comments before scanning, so a comment
+    // that merely mentions the old pattern (documenting the sprint's own
+    // removal of it) cannot trip the lock.
+    const withoutComments = src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    const matches = readPatterns.flatMap((re) => withoutComments.match(re) || []);
+    eq(`registry static lock: ${file} has no dr-ext-grid marker-class read`,
+      matches, []);
+  }
+})();
+
+// --- (d) The shared-ownership guard comment is gone from content.js — the
+// flag it warned about no longer has two independent writers to coordinate. ---
+(function registrySprint_guardCommentRemoved() {
+  const contentSrc = sourceByName('content.js');
+  eq('registry: the old showing-original shared-ownership guard comment is gone',
+    /Showing-original guard: when the per-table toggle has flipped the grid/.test(contentSrc),
+    false);
+})();
+
+// --- (e) Originals survive a full round → show-original → re-round cycle,
+// read back correctly from the registry each time. ---
+(function registrySprint_originalsSurviveToggleCycle() {
+  withCreateTreeWalker(function () {
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Header' }],
+      [{ tag: 'td', text: '8,584,629' }],
+    ]);
+    table._cells.forEach(c => { c.querySelectorAll = () => []; });
+    injectToggleEntry(table);
+    const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: false, simplifyFirstColumn: true });
+    const cell = table._cells[1];
+    // withCreateTreeWalker's fake tree walker writes rounded text through
+    // innerText/textContent (mirroring the DOM's own child-node/serialization
+    // relationship, which a plain mock object does not have for free) — link
+    // all three properties to one backing value so a write through any of
+    // them (the round path via the walker, the restore path via a direct
+    // innerHTML assignment) is visible through all three, the way a real
+    // <td> keeps them in sync.
+    let _text = cell.innerHTML;
+    Object.defineProperties(cell, {
+      innerHTML: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+    });
+
+    roundTable(table, opts);
+    const roundedText = cell.textContent;
+    eq('registry cycle: cell rounds away from the original text',
+      roundedText !== '8,584,629', true);
+
+    toggleOriginalValues(table); // show original
+    eq('registry cycle: cell shows the exact original text after toggling off',
+      cell.textContent, '8,584,629');
+    eq('registry cycle: isTableRounded is false while showing original',
+      isTableRounded(table), false);
+
+    toggleOriginalValues(table); // toggle back to rounded
+    eq('registry cycle: cell is rounded again after toggling back on',
+      cell.textContent, roundedText);
+    eq('registry cycle: isTableRounded is true again after toggling back on',
+      isTableRounded(table), true);
+  });
+})();
+
+// --- (f) Grid magnitude basis freeze: DELIBERATE BEHAVIOR CHANGE from the
+// parent branch (refactor/app-model-settings), where computeGridRoundedValues
+// took no frozenMaxMag parameter and reapplyGridRounding recomputed max_mag
+// from whatever was visible on every scroll re-apply. HEAD's roundTable
+// freezes max_mag on first sight into DR_STORE.setTableMaxMagnitude and every
+// later reapplyGridRounding reuses that frozen value (see content.js's
+// frozenMaxMag doc on computeGridRoundedValues). offsetTop/offsetOther are
+// deliberately set apart so a magnitude-driven bucket flip is visible in the
+// formatted output, not just in the stored number. ---
+(function registrySprint_gridMagnitudeFrozenAtFirstSight() {
+  let ctx;
+  try {
+    const opts = { offsetTop: -1, offsetOther: 0, numTop: 1 };
+    // Sole visible row at first sight: magnitude 2 (555) — freezes max_mag at 2.
+    ctx = setupVirtGrid([['555']], opts);
+    const { grid, pendingTimers } = ctx;
+    const cell555 = grid.cellEls[0];
+
+    eq('magnitude freeze: 555 rounds via offsetTop (max_mag=2, within numTop of itself)',
+      cell555.childNodes[0].nodeValue, '560');
+    eq('magnitude freeze: DR_STORE freezes maxMagnitude at 2 on first sight',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 2);
+
+    // Simulate scroll bringing a magnitude-9 row into view alongside the
+    // still-visible 555 row — appended to the wrapper's children, the
+    // fallback _getRowEls path this unlabelled-grid shape uses.
+    const hugeCell = makeGridCellWithTextNode('5000000000');
+    const hugeRow = makeElementNode('row', [hugeCell]);
+    hugeRow.dataset = { row: '1' };
+    hugeRow.children = [hugeCell];
+    grid.wrapperEl.children.push(hugeRow);
+
+    const obs = ctx.capturedObserver;
+    obs.trigger([{ type: 'characterData', target: cell555.childNodes[0] }]);
+    flushTimers(pendingTimers);
+
+    // If the basis recomputed from the now-visible magnitude-9 row (the
+    // parent's behavior), 555 would fall out of the top bucket and round to
+    // "600" (offsetOther) instead. HEAD must keep "560".
+    eq('magnitude freeze: after a scroll-triggered reapply exposing a magnitude-9 row, 555 KEEPS the magnitude-2 basis ("560"), not a recomputed magnitude-9 basis ("600")',
+      cell555.childNodes[0].nodeValue, '560');
+    eq('magnitude freeze: DR_STORE.getTableMaxMagnitude never shifts off the frozen value',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 2);
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// --- (f) continued: a peek-to-original-and-back round trip goes through
+// toggleOriginalValues' resetTable()+roundTable() path, which clears the
+// frozen basis (resetTable sets maxMagnitude back to null) and re-freezes
+// fresh from whatever is visible at the moment of toggling back — it does
+// NOT preserve the basis established by the original round. This is the
+// registry's actual behavior, documented here so a reviewer can judge
+// whether "frozen at first sight" was meant to survive a peek round trip. ---
+(function registrySprint_toggleRoundTripReFreezesRatherThanPreserving() {
+  let ctx;
+  try {
+    const opts = { offsetTop: -1, offsetOther: 0, numTop: 1 };
+    ctx = setupVirtGrid([['555']], opts);
+    const { grid } = ctx;
+    const cell555 = grid.cellEls[0];
+
+    eq('toggle round trip: initial freeze is at max_mag=2 ("560")',
+      cell555.childNodes[0].nodeValue, '560');
+    eq('toggle round trip: DR_STORE holds the frozen basis before any toggle',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 2);
+
+    // Scroll in a magnitude-9 row BEFORE peeking, so the "first sight" the
+    // re-round sees on toggle-back is the magnitude-9 view, not the original
+    // magnitude-2 view.
+    const hugeCell = makeGridCellWithTextNode('5000000000');
+    const hugeRow = makeElementNode('row', [hugeCell]);
+    hugeRow.dataset = { row: '1' };
+    hugeRow.children = [hugeCell];
+    grid.wrapperEl.children.push(hugeRow);
+
+    toggleOriginalValues(grid.wrapperEl); // peek at originals
+    eq('toggle round trip: peeking to original clears the display back to "555"',
+      cell555.childNodes[0].nodeValue, '555');
+
+    toggleOriginalValues(grid.wrapperEl); // peek back to rounded
+    eq('toggle round trip: DR_STORE re-freezes from the now-visible magnitude-9 row (9), not the original magnitude-2 basis',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 9);
+    // Under the re-frozen (9) basis, current_mag(555)=2, max_mag-current_mag=7
+    // >= numTop(1), so 555 now takes offsetOther ("600") — a DIFFERENT
+    // rendered value than the original round produced ("560"), purely
+    // because of what happened to be visible at toggle-back time.
+    eq('toggle round trip: 555 renders differently after the round trip than its original round ("600", not "560")',
+      cell555.childNodes[0].nodeValue, '600');
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// --- (g) TABLE_TOGGLE_STATE sequence: isTableRounded (claim 4 — now reading
+// DR_STORE's appliedFlag instead of a dr-ext-rounded/dataset.drShowingOriginal
+// pair) must report correctly to the sidebar across a full round -> peek-
+// original -> peek-back cycle, not just a single toggle. The pillbox-sprint
+// AC1 test above pins one click; the toggle-split parent-equivalence guard
+// matrix pins one intent:toggleTable dispatch. Neither exercises the 3-step
+// peek cycle this sprint's registry model actually has to get right. ---
+(function registrySprint_tableToggleStateAcrossPeekCycle() {
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedOpen = DR_STORE.isSidebarOpen();
+  const sent = [];
+  const origSend = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
+
+  try {
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
+      [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
+    ]);
+    injectToggleEntry(table);
+    DR_STORE.setSelectedTable(table);
+    DR_STORE.setSidebarOpen(true);
+
+    // makeToggleTableCell gives innerHTML/innerText/textContent as three
+    // INDEPENDENT properties. A real <td>'s innerHTML/innerText/textContent
+    // all derive from the same child-node tree, so writing one (restoreTable's
+    // `cell.innerHTML = original.html`) is immediately visible through the
+    // others (roundTable's re-classification reads getText() -> innerText).
+    // Without this link the mock desyncs after the peek-original restore:
+    // innerHTML goes back to '12,345' but innerText stays on the stale
+    // rounded string, so the round-trip's re-round misclassifies the cell as
+    // already-rounded and skips it — a fixture artifact, not a product bug
+    // (see the identical link in registrySprint_originalsSurviveToggleCycle
+    // above, needed for the same reason on the 2-toggle case).
+    const dataCell = table._cells[3]; // row1/col1: 'Row' | '12,345'
+    let _text = dataCell.innerHTML;
+    Object.defineProperties(dataCell, {
+      innerHTML: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+    });
+
+    withCreateTreeWalker(function () {
+      DR_BUS.publish('intent:toggleTable', { table }); // round
+      DR_BUS.publish('intent:toggleTable', { table }); // peek original
+      DR_BUS.publish('intent:toggleTable', { table }); // peek back
+    });
+
+    const toggleMsgs = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
+    eq('toggle-state cycle: exactly one TABLE_TOGGLE_STATE per dispatch (3 total)',
+      toggleMsgs.length, 3);
+    eq('toggle-state cycle: enabled sequence is true (rounded), false (peek original), true (peek back)',
+      toggleMsgs.map(m => m.enabled), [true, false, true]);
+    eq('toggle-state cycle: isTableRounded agrees with the last reported state',
+      isTableRounded(table), true);
+  } finally {
+    global.chrome.runtime.sendMessage = origSend;
+    DR_STORE.setSelectedTable(savedSelected);
+    DR_STORE.setSidebarOpen(savedOpen);
+  }
+})();
+
+// --- (h) WeakMap/Set lockstep, part 1: a table re-added after removal (the
+// SAME element reference, as a virtualized-DOM library recycling a detached
+// node back into the tree would do) must come back with a FRESH registry
+// entry, not the previous round's leftover state. unregisterTable deletes
+// the WeakMap entry outright, so a later registerTable (via _ensureEntry)
+// can only build a brand-new entry — this pins that no per-cell original,
+// appliedFlag, round options, or frozen magnitude survives the round trip. ---
+(function registrySprint_reregisterAfterUnregisterGetsFreshEntry() {
+  const table = { tagName: 'TABLE' }; // identity is all that matters here
+  const cell = { tagName: 'TD' };
+
+  DR_STORE.registerTable(table);
+  DR_STORE.setTableOriginal(table, cell, { html: '8,584,629', value: '8,584,629', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
+  DR_STORE.setTableRoundOptions(table, { offsetTop: -1 });
+  DR_STORE.setTableMaxMagnitude(table, 7);
+
+  eq('re-register: table is rounded with state before removal (pre-condition)',
+    DR_STORE.getTableAppliedFlag(table), 'simplified');
+
+  // Simulate the removed-node observer's cleanup: unregisterTable is the
+  // ONLY registry call it makes (content.js's removedNodes loop).
+  DR_STORE.unregisterTable(table);
+
+  eq('re-register: hasTable is false immediately after unregisterTable',
+    DR_STORE.hasTable(table), false);
+
+  // The SAME table reference comes back (e.g. a virtualized list recycling
+  // the detached DOM node into view again). registerTable is idempotent /
+  // "found again" — it must not resurrect the old entry.
+  DR_STORE.registerTable(table);
+
+  eq('re-register: appliedFlag resets to "original" (not the leftover "simplified")',
+    DR_STORE.getTableAppliedFlag(table), 'original');
+  eq('re-register: the old per-cell original does NOT leak through (hasTableOriginal is false)',
+    DR_STORE.hasTableOriginal(table, cell), false);
+  eq('re-register: getTableOriginal for the old cell reference is undefined, not the stale record',
+    DR_STORE.getTableOriginal(table, cell), undefined);
+  eq('re-register: lastRoundOptions resets to null (not the leftover options object)',
+    DR_STORE.getTableRoundOptions(table), null);
+  eq('re-register: maxMagnitude resets to null (not the leftover frozen value)',
+    DR_STORE.getTableMaxMagnitude(table), null);
+})();
+
+// --- (h) WeakMap/Set lockstep, part 2: the removed-node MutationObserver
+// callback must find and unregister a table when the removedNodes entry is
+// an ANCESTOR of the table, not the table itself — the real production
+// callback (content.js's `_tableObserver`), not GV7's manual re-
+// implementation of its cleanup steps. Exercised by re-evaluating the
+// content-script bundle with a capturing MutationObserver installed first
+// (mirrors appModelSelection_parentEquivalence_contextmenuSelectionFlow's
+// runContextmenuFixture technique above), so `_tableObserver`'s real
+// constructor closure is the one under test. ---
+(function registrySprint_ancestorRemovalUnregistersDescendantTable() {
+  const capturedInstances = [];
+  class CapturingTableObserverMO {
+    constructor(cb) { this._cb = cb; this.disconnectCalled = false; capturedInstances.push(this); }
+    observe(target, opts) { this._target = target; this._opts = opts; }
+    disconnect() { this.disconnectCalled = true; }
+  }
+
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete', // else-branch runs synchronously: injectTableToggles() + observe()
+    body: { appendChild() {} },
+  };
+  const captureChrome = {
+    runtime: { onMessage: { addListener() {} }, sendMessage() {} },
+  };
+  const saved = {
+    document: global.document, chrome: global.chrome, window: global.window,
+    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    Node: global.Node, NodeFilter: global.NodeFilter,
+  };
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
+  global.MutationObserver = CapturingTableObserverMO;
+  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  global.Node = { ELEMENT_NODE: 1 };
+  global.NodeFilter = { SHOW_TEXT: 4 };
+
+  try {
+    // Expose this eval's own DR_STORE/tableToggles/trackedTables bindings
+    // (distinct instances from the file-level ones the rest of the suite
+    // uses) onto globalThis so this function can drive and inspect them
+    // after eval() returns — same trick the top-of-file eval already uses.
+    eval(contentScriptBundle + `
+      globalThis.__rt_DR_STORE = DR_STORE;
+      globalThis.__rt_tableToggles = tableToggles;
+      globalThis.__rt_trackedTables = trackedTables;
+    `);
+
+    eq('ancestor removal: exactly one MutationObserver constructed (the _tableObserver watching document.body)',
+      capturedInstances.length, 1);
+    const tableObserver = capturedInstances[0];
+    eq('ancestor removal: _tableObserver.observe was called with document.body',
+      tableObserver._target === captureDoc.body, true);
+
+    const freshDR_STORE = global.__rt_DR_STORE;
+    const freshTableToggles = global.__rt_tableToggles;
+    const freshTrackedTables = global.__rt_trackedTables;
+
+    // A table nested under a container — the removedNodes record will carry
+    // the CONTAINER, never the table directly (e.g. a host page detaching a
+    // wrapping <div> that happens to hold the table, not the table itself).
+    const table = { tagName: 'TABLE', nodeType: 1 };
+    const removedButtons = [];
+    const button = { parentElement: { removeChild(b) { removedButtons.push(b); } } };
+    freshTableToggles.set(table, button);
+    freshTrackedTables.add(table);
+    freshDR_STORE.registerTable(table);
+
+    eq('ancestor removal (pre): table is registered before the removal fires',
+      freshDR_STORE.hasTable(table), true);
+
+    const container = {
+      nodeType: 1,
+      // The only DOM relationship the real removal loop consults: does this
+      // removed node CONTAIN the tracked table (a real Node.contains check
+      // on a real ancestor, stubbed here to report the containment we set up).
+      contains(el) { return el === table; },
+    };
+
+    // Fire the REAL captured callback — table itself is absent from
+    // removedNodes; only its ancestor container is.
+    tableObserver._cb([{ addedNodes: [], removedNodes: [container] }]);
+
+    eq('ancestor removal: DR_STORE.hasTable is false after the ancestor-only removal record',
+      freshDR_STORE.hasTable(table), false);
+    eq('ancestor removal: trackedTables no longer has the table',
+      freshTrackedTables.has(table), false);
+    eq('ancestor removal: the table\'s toggle button was removed from its parent',
+      removedButtons.includes(button), true);
+
+    // A DIRECT removedNodes entry (the table itself, not an ancestor) must
+    // also still work — the `table === node` half of the containment check.
+    const table2 = { tagName: 'TABLE', nodeType: 1 };
+    freshTableToggles.set(table2, { parentElement: { removeChild() {} } });
+    freshTrackedTables.add(table2);
+    freshDR_STORE.registerTable(table2);
+    tableObserver._cb([{ addedNodes: [], removedNodes: [table2] }]);
+    eq('direct removal: DR_STORE.hasTable is false when the table itself is the removedNodes entry',
+      freshDR_STORE.hasTable(table2), false);
+  } finally {
+    global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
+    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+  }
+})();
+
+// --- (i) Peek-toggle round trip under grid row recycling: round -> peek to
+// original (keepEntry:true) -> the host virtualization library recycles ONE
+// cell (same row, a genuinely NEW element takes that grid position — the
+// documented "element replaced" pattern, distinct from this extension's own
+// nodeValue-patch-in-place write model) -> peek back to rounded.
+//
+// Uses a live-scanning querySelectorAll (walks wrapper.children -> row
+// .children each call) instead of makeE2EGridWrapper's snapshot list, so
+// the recycled cell is genuinely undiscoverable via '.dr-ext-rounded' the
+// way a real detached-and-replaced DOM node would be — makeE2EGridWrapper's
+// fixed `allCells` array would otherwise still "see" the old cell and mask
+// the scenario this test exists to exercise. ---
+(function registrySprint_peekRoundTripUnderGridRecycling() {
+  const grid = makeGridWrapper([['87654321', '1234567']]);
+  grid.wrapperEl.querySelectorAll = function(sel) {
+    if (sel !== '.dr-ext-rounded') return [];
+    const found = [];
+    for (const row of grid.wrapperEl.children) {
+      for (const cell of row.children) {
+        if (cell.classList && cell.classList.contains('dr-ext-rounded')) found.push(cell);
+      }
+    }
+    return found;
+  };
+  grid.wrapperEl.querySelector = function(sel) {
+    return grid.wrapperEl.querySelectorAll(sel)[0] || null;
+  };
+
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+  roundTable(grid.wrapperEl, opts);
+
+  const cellA = grid.cellEls[0]; // will be recycled away
+  const cellSurvivor = grid.cellEls[1]; // stays in place across the whole cycle
+
+  eq('recycling: both cells round on the initial pass (pre-condition)',
+    cellA.classList.contains('dr-ext-rounded') && cellSurvivor.classList.contains('dr-ext-rounded'), true);
+
+  toggleOriginalValues(grid.wrapperEl); // peek to original (keepEntry:true)
+  eq('recycling: peek-to-original restores cellA\'s display text',
+    cellA.childNodes[0].nodeValue, '87654321');
+
+  // Simulate the host grid recycling row 0's first cell: a brand-new element
+  // (never seen by this extension) occupies that position; cellA is no
+  // longer reachable from the table at all.
+  const cellB = makeGridCellWithTextNode('99999999');
+  grid.rowEls[0].children = [cellB, cellSurvivor];
+
+  toggleOriginalValues(grid.wrapperEl); // peek back to rounded
+
+  // Functional correctness: the recycled cell is treated as any other live
+  // cell on the full re-round pass (resetTable + roundTable) toggling back
+  // to rounded runs — it rounds fresh from ITS OWN content, not corrupted
+  // and not skipped. This matches what the parent (dataset-based) branch
+  // would also do on the same scenario: a genuinely new element has no
+  // dataset either, so both designs re-detect it from scratch. FAITHFUL
+  // MATCH, not a regression.
+  eq('recycling: the recycled cell (cellB) is picked up and rounded on peek-back, not skipped',
+    cellB.classList.contains('dr-ext-rounded'), true);
+  eq('recycling: the recycled cell\'s rounded value differs from its own live text',
+    cellB.childNodes[0].nodeValue !== '99999999', true);
+  eq('recycling: the surviving cell also re-rounds correctly on peek-back',
+    cellSurvivor.classList.contains('dr-ext-rounded'), true);
+
+  // The registry's per-table `originals` is a WeakMap keyed by cell element
+  // (app/store.js). A recycled-away cell that no longer matches the rounded
+  // selector is never visited by restoreTable, so its entry is never deleted
+  // explicitly — the WeakMap makes that safe: once nothing references the
+  // cell, the entry is collectible. This test holds cellA alive by
+  // reference, so its original stays retrievable; a genuinely unreachable
+  // cell's entry is garbage, matching the parent's dataset design where a
+  // detached element's data went away with the node.
+  eq('recycling: a live-referenced recycled cell\'s registry original stays retrievable (WeakMap keeps it while referenced, collects it when not)',
+    DR_STORE.hasTableOriginal(grid.wrapperEl, cellA), true);
+})();
+
+// --- (j) Content-script re-injection: DR_STORE lives in the content script's
+// JS heap, which a re-injection (extension reload/update while a tab stays
+// open) throws away and rebuilds from scratch — the live PAGE DOM survives
+// untouched (classes, text, everything the OLD script instance wrote stay
+// exactly as they were). The bundle is eval'd TWICE here against the SAME
+// fixture tables/document, each eval producing its own independent DR_STORE
+// (direct eval gives let/const their own lexical environment per call — the
+// same mechanism runContextmenuFixture above already relies on), to model
+// exactly that: instance 1 rounds the tables; instance 2 (fresh registry,
+// same already-rounded DOM) is what a real re-injected script would face.
+//
+// A re-injected instance still cannot recover the true original from its
+// own (empty) registry — that half of the KNOWN ACCEPTED COST comment on
+// restoreTable (content.js) holds. What this test pins is the consequence
+// the sprint did NOT accept: an unrestorable cell must be left exactly as
+// found — marker, title, and text untouched — instead of resetTable
+// stripping the marker and title off a cell it could not actually restore,
+// and instead of toggleOriginalValues then re-running roundTable over
+// already-rounded text and stamping a FALSE "Original: ..." title over the
+// one attribute that still held the truth. Scenario A drives resetTable
+// directly (the "reset" recovery action); scenario B drives the actual
+// toggle-click wiring end to end. ---
+(function registrySprint_reinjectionUnrestorableResetStaysTruthful() {
+  function makeReinjectionFixtureTable(dataText) {
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
+      [{ tag: 'td', text: 'Row' },   { tag: 'td', text: dataText }],
+    ]);
+    // Link innerHTML/innerText/textContent to one backing value on the data
+    // cell, matching a real <td>'s single-node-tree-backed semantics (same
+    // fix angle (f)'s test needed, for the same reason: restoreTable writes
+    // innerHTML only, and getText()/the fake tree walker below read innerText).
+    const dataCell = table._cells[3];
+    let _text = dataCell.innerHTML;
+    Object.defineProperties(dataCell, {
+      innerHTML: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+    });
+    // A real removeAttribute('title') clears the title. makeToggleTableCell's
+    // default stub is a no-op, which would hide exactly the bug this test
+    // exists to catch — an implementation that unconditionally strips the
+    // title would otherwise leave dataCell.title looking untouched.
+    dataCell.removeAttribute = function (name) {
+      if (name === 'title') this.title = '';
+    };
+    return { table, dataCell };
+  }
+
+  const { table: table1, dataCell: dataCell1 } = makeReinjectionFixtureTable('12,345');
+  const { table: table2, dataCell: dataCell2 } = makeReinjectionFixtureTable('67,890');
+  const trueOriginal1 = '12,345';
+  const trueOriginal2 = '67,890';
+
+  // A minimal document shared by every eval'd instance below — this is the
+  // "live page" that persists across the simulated re-injection.
+  // createTreeWalker mirrors withCreateTreeWalker's single-fake-text-node
+  // approach, reading and writing through the SAME linked innerText/
+  // innerHTML property. createElement/head back ensureHighlightStyleInjected,
+  // which scenario B (the real click path) exercises for real.
+  const sharedDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild() {} },
+    head: { appendChild() {} },
+    createElement() { return { textContent: '' }; },
+    createTreeWalker(cell) {
+      let done = false;
+      return {
+        nextNode() {
+          if (done) return null;
+          done = true;
+          return {
+            get nodeValue() { return cell.innerText; },
+            set nodeValue(v) { cell.innerText = v; cell.textContent = v; },
+          };
+        },
+      };
+    },
+  };
+  const saved = {
+    document: global.document, chrome: global.chrome, window: global.window,
+    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    Node: global.Node, NodeFilter: global.NodeFilter,
+  };
+  global.document = sharedDoc;
+  global.chrome = { runtime: { onMessage: { addListener() {} }, sendMessage() {} } };
+  global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
+  global.MutationObserver = class { observe() {} disconnect() {} };
+  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  global.Node = { ELEMENT_NODE: 1 };
+  global.NodeFilter = { SHOW_TEXT: 4 };
+
+  try {
+    // --- Instance 1: the content script as originally injected. Rounds
+    // both fixture tables directly (bypassing detection/UI wiring,
+    // irrelevant to this mechanism) with DR_DEFAULTS, same as
+    // runToggleAction's fresh-round path. ---
+    eval(contentScriptBundle + `
+      globalThis.__ri1_roundTable = roundTable;
+      globalThis.__ri1_isTableRounded = isTableRounded;
+    `);
+    global.__ri1_roundTable(table1, DR_DEFAULTS);
+    global.__ri1_roundTable(table2, DR_DEFAULTS);
+    const roundedText1 = dataCell1.innerText;
+    const roundedTitle1 = dataCell1.title;
+    const roundedText2 = dataCell2.innerText;
+    const roundedTitle2 = dataCell2.title;
+
+    eq('re-injection (pre): instance 1 actually rounded the cell away from the true original',
+      roundedText1 !== trueOriginal1, true);
+    eq('re-injection (pre): instance 1 reports the table as rounded',
+      global.__ri1_isTableRounded(table1), true);
+    eq('re-injection (pre): the title attribute holds the true original',
+      roundedTitle1, `Original: ${trueOriginal1}`);
+
+    // --- Instance 2: simulates re-injection. The DOM is untouched (both
+    // data cells still show their rounded text, still carry
+    // dr-ext-rounded) but this eval's DR_STORE is BRAND NEW — instance 1's
+    // registry (and its stored true originals) is unreachable garbage now,
+    // exactly as a real content-script reload would leave it. ---
+    eval(contentScriptBundle + `
+      globalThis.__ri2_isTableRounded = isTableRounded;
+      globalThis.__ri2_resetTable = resetTable;
+      globalThis.__ri2_DR_STORE = DR_STORE;
+      globalThis.__ri2_DR_BUS = DR_BUS;
+    `);
+
+    eq('re-injection: a fresh instance reports the table as NOT rounded, despite the DOM still showing rounded text — a state/display mismatch the moment re-injection happens',
+      global.__ri2_isTableRounded(table1), false);
+
+    // --- Scenario A: the user's most natural recovery action is "reset"
+    // (or an equivalent toggle-to-original click). Drive the SAME
+    // production primitive (resetTable) the sprint's own restoreTable
+    // KNOWN ACCEPTED COST comment discusses. ---
+    const unrestorableCount = global.__ri2_resetTable(table1);
+
+    eq('re-injection reset: resetTable reports the one cell it could not restore',
+      unrestorableCount, 1);
+    eq('re-injection reset: the dr-ext-rounded marker SURVIVES — the screen still shows rounded text, so the marker must stay truthful instead of claiming a clean reset that did not happen',
+      dataCell1.classList.contains('dr-ext-rounded'), true);
+    eq('re-injection reset: the title attribute SURVIVES — it is the last remaining copy of the true original and must not be stripped when nothing was actually restored',
+      dataCell1.title, roundedTitle1);
+    eq('re-injection reset: the displayed text is unchanged — not falsely "restored"',
+      dataCell1.innerText, roundedText1);
+    eq('re-injection reset: appliedFlag stays \'simplified\' — the truthful state, since the screen still shows rounded text',
+      global.__ri2_DR_STORE.getTableAppliedFlag(table1), 'simplified');
+
+    // --- Scenario B: the toggle-click path (not covered before this fix) —
+    // drives the exact wiring a real click on the toggle switch uses
+    // (ui-toggle.js's click handler publishes this same intent), end to
+    // end through content.js's intent:toggleTable subscriber,
+    // runToggleAction, and toggleOriginalValues. One click on a
+    // re-injected, already-rounded table must not double-round the text or
+    // stamp a false title over it. ---
+    global.__ri2_DR_BUS.publish('intent:toggleTable', { table: table2 });
+
+    eq('re-injection click path: one click after re-injection does not strip the dr-ext-rounded marker',
+      dataCell2.classList.contains('dr-ext-rounded'), true);
+    eq('re-injection click path: one click does not rewrite the title with a false original (no double-round)',
+      dataCell2.title, roundedTitle2);
+    eq('re-injection click path: one click leaves the displayed text unchanged',
+      dataCell2.innerText, roundedText2);
+  } finally {
+    global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
+    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
   }
 })();
 

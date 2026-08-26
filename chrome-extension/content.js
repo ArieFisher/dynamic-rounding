@@ -84,10 +84,11 @@ DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
   }
 });
 
-// Per-table memory of the options used for the most recent roundTable() run.
-// Consulted by toggleOriginalValues() when re-running the pipeline so that the
-// "toggle back to rounded" path uses the same parameters as the original render.
-const tableOptions = new WeakMap();
+// The options used for the most recent roundTable() run (consulted by
+// toggleOriginalValues() when re-running the pipeline), the frozen grid
+// magnitude basis, the simplified/original flag, and every cell's pre-round
+// original now live in DR_STORE's per-table registry entry (app/store.js) —
+// not a file-level WeakMap here.
 
 // Grid virtualization re-apply state.
 // gridObservers: wrapperEl → MutationObserver watching the scroll container.
@@ -110,9 +111,13 @@ function markAndToggleIfNewGrid(found) {
   return found.handle;
 }
 
+// Every findTargetTable() call site passes DR_STORE.hasTable as isSeen —
+// detection stays decoupled from the model (see lib/dr-table/detect.js), but
+// the controller is exactly where "have we found this" ought to answer from
+// the registry rather than the dr-ext-grid marker class.
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
-  const found = findTargetTable(event.target);
+  const found = findTargetTable(event.target, { isSeen: DR_STORE.hasTable });
   if (found) {
     const table = markAndToggleIfNewGrid(found);
     DR_STORE.setSelectedTable(table);
@@ -154,7 +159,7 @@ function runToggleAction(table) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'MENU_CLICKED') {
     if (lastRightClickedElement) {
-      const found = findTargetTable(lastRightClickedElement);
+      const found = findTargetTable(lastRightClickedElement, { isSeen: DR_STORE.hasTable });
       if (found) {
         runToggleAction(markAndToggleIfNewGrid(found));
       } else {
@@ -248,19 +253,19 @@ function applySidebarRounding(table, options) {
 function injectTogglesForAddedNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
   // Pass 1: native <table> elements; phantom a11y tables are skipped.
-  if (node.tagName === 'TABLE' && !tableToggles.has(node) && !isPhantomA11yTable(node)) {
+  if (node.tagName === 'TABLE' && !DR_STORE.hasTable(node) && !isPhantomA11yTable(node)) {
     createToggleForTable(node);
   }
   if (typeof node.querySelectorAll === 'function') {
     node.querySelectorAll('table').forEach(table => {
-      if (!tableToggles.has(table) && !isPhantomA11yTable(table)) {
+      if (!DR_STORE.hasTable(table) && !isPhantomA11yTable(table)) {
         createToggleForTable(table);
       }
     });
     // Pass 2: cheap ARIA pass for added nodes — mirror injectTableToggles Pass 2.
     // A grid that only embeds phantom a11y tables must still be detected.
     node.querySelectorAll(GRID_ARIA_SELECTOR).forEach(el => {
-      if (el.classList.contains('dr-ext-grid')) return;
+      if (DR_STORE.hasTable(el)) return;
       if (el.tagName === 'TABLE') return;
       if (Array.from(el.querySelectorAll('table')).some(t => !isPhantomA11yTable(t))) return;
       el.classList.add('dr-ext-grid');
@@ -269,7 +274,7 @@ function injectTogglesForAddedNode(node) {
   }
   // The added node itself may be a [role="grid"/"table"] non-table element.
   if (node.tagName !== 'TABLE' && typeof node.matches === 'function' &&
-      node.matches(GRID_ARIA_SELECTOR) && !node.classList.contains('dr-ext-grid')) {
+      node.matches(GRID_ARIA_SELECTOR) && !DR_STORE.hasTable(node)) {
     if (!Array.from(node.querySelectorAll('table')).some(t => !isPhantomA11yTable(t))) {
       node.classList.add('dr-ext-grid');
       createToggleForTable(node);
@@ -289,21 +294,16 @@ if (typeof MutationObserver !== 'undefined') {
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        // Handle removed table nodes and grid roots.
-        const tablesToRemove = [];
-        if (node.tagName === 'TABLE') {
-          tablesToRemove.push(node);
-        }
-        if (typeof node.querySelectorAll === 'function') {
-          node.querySelectorAll('table').forEach(t => tablesToRemove.push(t));
-          // Also collect removed grid roots.
-          node.querySelectorAll('.dr-ext-grid').forEach(g => tablesToRemove.push(g));
-        }
-        // The removed node itself may be a grid root.
-        if (node.classList && node.classList.contains('dr-ext-grid')) {
-          tablesToRemove.push(node);
-        }
-        for (const table of tablesToRemove) {
+        // Find every table/grid this removed subtree contains by walking
+        // DR_STORE's registered tables (the enumerable companion to its
+        // WeakMap registry) instead of querying for the dr-ext-grid marker
+        // class — the registry is the single "have we found this" answer
+        // now, and it covers native tables too, so one loop replaces the
+        // old tagName check + two separate querySelectorAll passes.
+        for (const table of DR_STORE.getRegisteredTables()) {
+          const contained = table === node ||
+            (typeof node.contains === 'function' && node.contains(table));
+          if (!contained) continue;
           const button = tableToggles.get(table);
           if (button && button.parentElement) {
             button.parentElement.removeChild(button);
@@ -325,6 +325,7 @@ if (typeof MutationObserver !== 'undefined') {
             gridObservers.delete(table);
           }
           trackedTables.delete(table);
+          DR_STORE.unregisterTable(table);
         }
       }
     }
@@ -348,6 +349,81 @@ if (typeof MutationObserver !== 'undefined') {
 
 // --- End per-table toggle switch infrastructure ---
 
+// registryOriginalsPort adapts DR_STORE's per-table registry entry to the
+// OriginalsPort interface GridAdapter expects (see lib/dr-table/detect.js) —
+// the one place a grid's per-cell originals leave the page (they used to be
+// dataset.drOriginal) and enter the application model. Every makeAdapter()
+// call below that touches a grid's cell text passes this so read and write
+// go through the same store the native path already uses directly.
+function registryOriginalsPort(table) {
+  return {
+    has(cellEl) { return DR_STORE.hasTableOriginal(table, cellEl); },
+    get(cellEl) { return DR_STORE.getTableOriginal(table, cellEl); },
+    set(cellEl, text) { DR_STORE.setTableOriginal(table, cellEl, text); },
+  };
+}
+
+// Restore a table's rounded cells to their pre-round originals, reading from
+// DR_STORE's registry instead of page attributes (dataset.originalValue/
+// originalHtml/drOriginal used to carry this, with two separately-written
+// restore branches). Dispatches once on table kind — native tables restore
+// via innerHTML, grids via per-cell text-node patching — so the caller sees
+// exactly one restore path regardless of which write model applies
+// underneath.
+//
+// keepEntry: false (resetTable's full teardown, and the "toggle back to
+// rounded" re-round) clears the dr-ext-rounded marker and the stored
+// original per cell — a genuinely fresh state. true (toggleOriginalValues'
+// "peek at originals" toggle) restores the display but keeps both, so the
+// very next toggle can find these same cells again — see toggleOriginalValues
+// for why the class must survive a peek.
+//
+// KNOWN ACCEPTED COST: registry-held originals do not survive Chrome
+// re-injecting the content script, which page attributes did (a reload of
+// the content script is a fresh DR_STORE, so re-detection just rebuilds the
+// registry from the current DOM instead of resuming from stale data — the
+// sprint judged that an acceptable trade for a single restore path).
+//
+// A cell with no registry entry (the accepted-cost case above) is left
+// completely untouched: its dr-ext-rounded marker, its title (the last
+// surviving copy of the true original, if the write path is still what set
+// it), and its displayed text all stay exactly as they were. Clearing any
+// of those for a cell that was NOT actually restored would claim a recovery
+// that did not happen and destroy data that was still recoverable by eye
+// even though the registry could no longer recover it programmatically.
+// Returns the count of cells left unrestored, so callers (resetTable,
+// toggleOriginalValues) can tell a genuine restore from a no-op one.
+function restoreTable(table, keepEntry) {
+  const roundedCells = table.querySelectorAll('.dr-ext-rounded');
+  if (roundedCells.length === 0) return 0;
+  const isGrid = makeAdapter(table).isVirtualized();
+  let unrestorableCount = 0;
+  for (const cell of roundedCells) {
+    const original = DR_STORE.getTableOriginal(table, cell);
+    if (original === undefined) {
+      unrestorableCount++;
+      continue;
+    }
+    if (isGrid) {
+      const tn = findCellTextNode(cell);
+      if (tn !== null) tn.nodeValue = original;
+    } else {
+      cell.innerHTML = original.html;
+    }
+    cell.removeAttribute('title');
+    if (!keepEntry) {
+      cell.classList.remove('dr-ext-rounded'); // === GRID_ROUNDED_CLASS
+      DR_STORE.deleteTableOriginal(table, cell);
+    }
+  }
+  return unrestorableCount;
+}
+
+// Returns the count of cells restoreTable could not restore (see its doc).
+// A non-zero count means the screen still shows rounded text for at least
+// one cell, so appliedFlag is left at 'simplified' — the truthful state —
+// instead of 'original', which would claim a clean reset that did not
+// happen for every cell.
 function resetTable(table) {
   // --- Grid virtualization teardown (must happen BEFORE cell restore) ---
   // Clear any pending debounce timer so a queued re-apply cannot fire after reset.
@@ -362,37 +438,16 @@ function resetTable(table) {
     gridObserver.disconnect();
     gridObservers.delete(table);
   }
-  // Also clear the stored options so reapplyGridRounding (if somehow still
-  // in-flight) will bail out harmlessly when it finds no opts.
-  tableOptions.delete(table);
+  // Also clear the stored options and frozen magnitude basis so
+  // reapplyGridRounding (if somehow still in-flight) bails out harmlessly,
+  // and so the next roundTable() call re-freezes fresh.
+  DR_STORE.setTableRoundOptions(table, null);
+  DR_STORE.setTableMaxMagnitude(table, null);
 
-  const roundedCells = table.querySelectorAll('.dr-ext-rounded');
-  for (const cell of roundedCells) {
-    // Grid cells are reset via nodeValue patching (drOriginal is set by GridAdapter.setText).
-    // Native-table cells are reset via innerHTML (originalHtml is stashed by roundTable's native path).
-    if (cell.dataset.drOriginal !== undefined) {
-      // Grid path: restore the original text node value in place (preserves node identity).
-      const tn = findCellTextNode(cell);
-      if (tn !== null) {
-        tn.nodeValue = cell.dataset.drOriginal;
-      }
-      cell.classList.remove(GRID_ROUNDED_CLASS);
-      delete cell.dataset.drOriginal;
-    } else {
-      // Native-table path: restore full HTML (supports mixed/extracted cells).
-      if (cell.dataset.originalHtml !== undefined) {
-        cell.innerHTML = cell.dataset.originalHtml;
-      }
-      cell.classList.remove('dr-ext-rounded');
-      delete cell.dataset.originalValue;
-      delete cell.dataset.originalHtml;
-      delete cell.dataset.drSupRanges;
-      delete cell.dataset.drLinkFilteredIdx;
-      cell.removeAttribute('title');
-    }
-  }
-  delete table.dataset.drShowingOriginal;
+  const unrestorableCount = restoreTable(table, false);
+  DR_STORE.setTableAppliedFlag(table, unrestorableCount > 0 ? 'simplified' : 'original');
   syncSwitchForTable(table);
+  return unrestorableCount;
 }
 
 // --- Shared adapters between the classification ladder (lib/dr-simplify)
@@ -407,14 +462,15 @@ function resetTable(table) {
 // running all of them together (see lib/dr-simplify/ladder.js header). If
 // filtering empties the match list, the cell downgrades to skip.
 // staleFilteredIndices: when the caller is classifying a cell's *stored*
-// pre-round text (dataset.originalValue) rather than the live cell, the live
-// text no longer contains the original numStr values, so filterLinkMatches'
-// substring search against live text nodes cannot locate them (and its
-// fallback silently keeps everything, dropping the link filter with no
-// signal). The write path already ran filterLinkMatches once, against the
-// live text, at the moment it rounded the cell; the caller passes the surviving
-// match indices from that run here (see roundTable's dataset.drLinkFilteredIdx
-// stash) so the same filter outcome applies instead of being silently skipped.
+// pre-round text (the registry record's value — see DR_STORE.getTableOriginal)
+// rather than the live cell, the live text no longer contains the original
+// numStr values, so filterLinkMatches' substring search against live text
+// nodes cannot locate them (and its fallback silently keeps everything,
+// dropping the link filter with no signal). The write path already ran
+// filterLinkMatches once, against the live text, at the moment it rounded
+// the cell; the caller passes the surviving match indices from that run
+// here (see roundTable's registry record's linkFilteredIdx) so the same
+// filter outcome applies instead of being silently skipped.
 function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
   if (decision.mode !== 'extracted') return decision;
   const filtered = staleFilteredIndices
@@ -465,7 +521,7 @@ function collectNumericCells(table, options) {
   const ranges = rangeParse.ranges;
 
   const out = [];
-  const rows = makeAdapter(table).getRows();
+  const rows = makeAdapter(table, { originalsPort: registryOriginalsPort(table) }).getRows();
   for (let r = 0; r < rows.length; r++) {
     const cells = rows[r].getCells();
     for (let c = 0; c < cells.length; c++) {
@@ -473,11 +529,15 @@ function collectNumericCells(table, options) {
       if (cellObj.tagName !== 'TD') continue;
       // Issue #2: when the table is already simplified, read the stored original
       // rather than the rounded text now showing in the cell. Native-table rounded
-      // cells stash it on dataset.originalValue; grid cells already return their
-      // pre-round text from getText() (dataset.drOriginal).
+      // cells hold a { html, value, supRanges, linkFilteredIdx } record in the
+      // registry; grid cells already return their pre-round text from getText()
+      // (the registry-backed originals port — see registryOriginalsPort), so
+      // only a native-shaped record (an object, not a string) counts as
+      // "stored original" here.
       const cellEl = cellObj.el;
-      const storedOriginal = cellEl && cellEl.dataset ? cellEl.dataset.originalValue : undefined;
-      const usingStoredOriginal = storedOriginal !== undefined;
+      const storedRecord = cellEl ? DR_STORE.getTableOriginal(table, cellEl) : undefined;
+      const usingStoredOriginal = !!storedRecord && typeof storedRecord === 'object';
+      const storedOriginal = usingStoredOriginal ? storedRecord.value : undefined;
       const text = usingStoredOriginal ? storedOriginal : cellObj.getText();
       const trimmed = typeof text === 'string' ? text.trim() : '';
       if (!trimmed) continue;
@@ -487,36 +547,28 @@ function collectNumericCells(table, options) {
       // pre-round original, but rounding shortens the live text elsewhere in
       // the cell, so re-measuring ranges against the LIVE element would index
       // the wrong characters in the original string (see roundTable's write
-      // path, which stashes dataset.drSupRanges against this exact text
-      // before mutating). isWholeLink is not similarly stale: rounding only
-      // patches text-node values, never adds or removes <a> elements, and the
-      // whole-link check compares live anchor text to live cell text — both
-      // move together, so it stays correct read live. A cell that WAS a
-      // whole link would have been skipped (never rounded), so a rounded
-      // cell reaching here was never a whole link to begin with.
+      // path, which stashes the registry record's supRanges against this
+      // exact text before mutating). isWholeLink is not similarly stale:
+      // rounding only patches text-node values, never adds or removes <a>
+      // elements, and the whole-link check compares live anchor text to live
+      // cell text — both move together, so it stays correct read live. A
+      // cell that WAS a whole link would have been skipped (never rounded),
+      // so a rounded cell reaching here was never a whole link to begin with.
       let superscriptRanges = [];
       if (hasSuperscript) {
-        if (usingStoredOriginal && cellEl.dataset.drSupRanges !== undefined) {
-          try {
-            superscriptRanges = JSON.parse(cellEl.dataset.drSupRanges);
-          } catch (e) {
-            superscriptRanges = [];
-          }
+        if (usingStoredOriginal && storedRecord.supRanges) {
+          superscriptRanges = storedRecord.supRanges;
         } else {
           superscriptRanges = getSuperscriptRanges(cellEl);
         }
       }
       // Likewise, the link filter's live-text substring search cannot locate
       // the original numStr once the cell is rounded; reuse the match indices
-      // the write path already kept (dataset.drLinkFilteredIdx) instead of
-      // re-deriving from the (now mismatched) live text.
+      // the write path already kept (the registry record's linkFilteredIdx)
+      // instead of re-deriving from the (now mismatched) live text.
       let staleFilteredIndices = null;
-      if (usingStoredOriginal && cellEl.dataset.drLinkFilteredIdx !== undefined) {
-        try {
-          staleFilteredIndices = new Set(JSON.parse(cellEl.dataset.drLinkFilteredIdx));
-        } catch (e) {
-          staleFilteredIndices = new Set();
-        }
+      if (usingStoredOriginal && storedRecord.linkFilteredIdx) {
+        staleFilteredIndices = new Set(storedRecord.linkFilteredIdx);
       }
       const decision = finalizeExtractedDecision(
         classifyCell({
@@ -653,21 +705,28 @@ function extractPreviewSamples(table) {
  *
  * @param {Element} wrapperEl - The grid wrapper element.
  * @param {object}  opts      - Fully-resolved rounding options.
- * @returns {Array<{cellObj: object, targetValue: string|null}>}
+ * @param {number|null} [frozenMaxMag] - The magnitude basis to use instead of
+ *   recomputing from the currently-visible cells. roundTable's initial pass
+ *   leaves this undefined/null and freezes whatever this function computes;
+ *   reapplyGridRounding always passes DR_STORE's frozen value, so a
+ *   scroll-triggered re-apply can never shift the basis the initial pass
+ *   established (the sprint's deliberate stability trade for virtualized
+ *   grids — see roundTable's virtualized branch).
+ * @returns {{results: Array<{cellObj: object, targetValue: string|null}>, maxMag: number}}
  */
-function computeGridRoundedValues(wrapperEl, opts) {
+function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
   const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
   const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
   const numTop = resolveNumTop(opts.numTop, DEFAULT_NUM_TOP);
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   // If the range expression is invalid, no cells should be rounded.
-  if (rangeParse.error) return [];
+  if (rangeParse.error) return { results: [], maxMag: null };
   const ranges = rangeParse.ranges;
   const floorDecimals = Math.max(decimalCount(offsetTop), decimalCount(offsetOther));
 
-  const adapter = makeAdapter(wrapperEl);
+  const adapter = makeAdapter(wrapperEl, { originalsPort: registryOriginalsPort(wrapperEl) });
   const adapterRows = adapter.getRows();
-  if (adapterRows.length === 0) return [];
+  if (adapterRows.length === 0) return { results: [], maxMag: null };
 
   // --- Pass 1: classify every visible TD cell (same logic as roundTable) ---
   // cellEntries: flat array of { cellObj, text, trimmed, info }
@@ -730,12 +789,19 @@ function computeGridRoundedValues(wrapperEl, opts) {
   // --- End column post-pass ---
 
   // --- Pass 2: compute max_mag over filtered (in-range, non-excluded) numeric cells ---
-  const allNums = [];
-  for (const { info } of cellEntries) {
-    if (info.mode === 'pure') allNums.push(info.num);
-    // mode:'extracted' is skipped on grids, so no extracted nums here
+  // Skipped entirely when a frozen basis was supplied — see the frozenMaxMag
+  // param doc above.
+  let max_mag;
+  if (frozenMaxMag !== undefined && frozenMaxMag !== null) {
+    max_mag = frozenMaxMag;
+  } else {
+    const allNums = [];
+    for (const { info } of cellEntries) {
+      if (info.mode === 'pure') allNums.push(info.num);
+      // mode:'extracted' is skipped on grids, so no extracted nums here
+    }
+    max_mag = findMaxMagnitude([allNums]);
   }
-  const max_mag = findMaxMagnitude([allNums]);
 
   // --- Pass 3: compute target value for each cell ---
   const results = [];
@@ -766,7 +832,7 @@ function computeGridRoundedValues(wrapperEl, opts) {
     results.push({ cellObj, targetValue });
   }
 
-  return results;
+  return { results, maxMag: max_mag };
 }
 
 /**
@@ -785,7 +851,7 @@ function computeGridRoundedValues(wrapperEl, opts) {
  * Guards against infinite re-triggering by disconnecting the grid's observer
  * for the duration of the write pass and reconnecting after.
  *
- * @param {Element} wrapperEl - The grid wrapper element (key into tableOptions).
+ * @param {Element} wrapperEl - The grid wrapper element (key into DR_STORE's table registry).
  */
 function reapplyGridRounding(wrapperEl) {
   // Clear the stored timer reference (it has already fired).
@@ -797,7 +863,7 @@ function reapplyGridRounding(wrapperEl) {
   // without this guard we enter an infinite re-apply loop.
   if (observer) observer.disconnect();
 
-  const opts = tableOptions.get(wrapperEl);
+  const opts = DR_STORE.getTableRoundOptions(wrapperEl);
   if (!opts) {
     // Table has been reset/removed — reconnect (no-op write) and bail.
     if (observer) {
@@ -807,15 +873,11 @@ function reapplyGridRounding(wrapperEl) {
     return;
   }
 
-  // Showing-original guard: when the per-table toggle has flipped the grid to
-  // show pristine values (toggleOriginalValues sets drShowingOriginal='true'),
-  // re-applying rounding would fight the toggle. The restore writes original
-  // text nodes, which themselves fire characterData mutations on the scroll
-  // container; without this guard the observer re-rounds them ~100ms later,
-  // making the cell flash original then snap back to rounded and leaving the
-  // toggle/sidebar state disconnected from the DOM. Reconnect (so future
-  // re-rounds after toggling back on still work) and bail without writing.
-  if (wrapperEl.dataset && wrapperEl.dataset.drShowingOriginal === 'true') {
+  // Bail without writing while the table is showing originals (DR_STORE's
+  // appliedFlag, set by toggleOriginalValues before it restores cells) —
+  // otherwise this re-apply would fight the toggle. Reconnect so a later
+  // toggle back to rounded still triggers re-applies.
+  if (DR_STORE.getTableAppliedFlag(wrapperEl) !== 'simplified') {
     if (observer) {
       const scrollContainer = new GridAdapter(wrapperEl)._getScrollContainer();
       observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
@@ -823,9 +885,11 @@ function reapplyGridRounding(wrapperEl) {
     return;
   }
 
-  // Delegate to the single shared classify+compute function.
+  // Delegate to the single shared classify+compute function, with the
+  // frozen magnitude basis so scrolling cannot shift the rounding basis.
   // targetValue is null for excluded/out-of-range/skip cells (leave untouched).
-  const cellTargets = computeGridRoundedValues(wrapperEl, opts);
+  const frozenMaxMag = DR_STORE.getTableMaxMagnitude(wrapperEl);
+  const { results: cellTargets } = computeGridRoundedValues(wrapperEl, opts, frozenMaxMag);
 
   for (const { cellObj, targetValue } of cellTargets) {
     // null means "leave unchanged" — excluded, out-of-range, or no change needed.
@@ -833,17 +897,14 @@ function reapplyGridRounding(wrapperEl) {
 
     const tn = findCellTextNode(cellObj.el);
     if (!tn) continue;
-    const currentValue = tn.nodeValue;
-
     // Only write if the live text node differs from the computed target.
-    if (currentValue === targetValue) continue;
+    if (tn.nodeValue === targetValue) continue;
 
-    // Store the original value on freshly-recycled rows (not yet rounded by us).
-    if (cellObj.el.dataset && cellObj.el.dataset.drOriginal === undefined) {
-      cellObj.el.dataset.drOriginal = currentValue;
-    }
-    tn.nodeValue = targetValue;
-    if (cellObj.el.classList) cellObj.el.classList.add(GRID_ROUNDED_CLASS);
+    // setText stashes the pre-write value as this cell's original (through
+    // the registry-backed originals port) the first time it sees this cell,
+    // exactly like the initial roundTable pass — one write model, whichever
+    // pass calls it.
+    cellObj.setText(targetValue);
   }
 
   // Reconnect the observer after the write pass.
@@ -855,7 +916,7 @@ function reapplyGridRounding(wrapperEl) {
 
 function roundTable(table, options) {
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
-  tableOptions.set(table, opts);
+  DR_STORE.setTableRoundOptions(table, opts);
   const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
   const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
   const numTop = resolveNumTop(opts.numTop, DEFAULT_NUM_TOP);
@@ -864,7 +925,7 @@ function roundTable(table, options) {
     return { applied: false, rangeStatus: 'error', error: rangeParse.error };
   }
   const ranges = rangeParse.ranges;
-  const adapter = makeAdapter(table);
+  const adapter = makeAdapter(table, { originalsPort: registryOriginalsPort(table) });
   const adapterRows = adapter.getRows();
   // Clean stub path: if the adapter returns no rows (e.g. GridAdapter stub),
   // return early without throwing.
@@ -876,12 +937,24 @@ function roundTable(table, options) {
   // so the initial write pass and reapplyGridRounding share one gated path and
   // cannot produce diverging results for the same visible DOM + opts.
   if (isVirtualized) {
-    const cellTargets = computeGridRoundedValues(table, opts);
+    // Freeze the magnitude basis on first sight: leave frozenMaxMag
+    // undefined so computeGridRoundedValues computes it fresh from what's
+    // visible right now, then store that value so every later
+    // reapplyGridRounding (scroll/sort) reuses it instead of recomputing —
+    // otherwise a scroll that changes which rows are visible could shift
+    // the rounding basis mid-session. resetTable clears this back to null,
+    // so a fresh roundTable() call (e.g. re-rounding after settings change)
+    // re-freezes from its own first sight rather than reusing a stale value.
+    const { results: cellTargets, maxMag } = computeGridRoundedValues(table, opts);
+    DR_STORE.setTableMaxMagnitude(table, maxMag);
+    let appliedAny = false;
     for (const { cellObj, targetValue } of cellTargets) {
       // null means "leave unchanged" — excluded, out-of-range, or no change needed.
       if (targetValue === null) continue;
       cellObj.setText(targetValue);
+      appliedAny = true;
     }
+    DR_STORE.setTableAppliedFlag(table, appliedAny ? 'simplified' : 'original');
     syncSwitchForTable(table);
 
     // Attach the scroll/sort re-apply observer AFTER the initial pass so our own
@@ -1012,6 +1085,7 @@ function roundTable(table, options) {
   // This reflects the precision implied by the user's offset choice (e.g. offset 0.25 → 2 decimals).
   const floorDecimals = Math.max(decimalCount(offsetTop), decimalCount(offsetOther));
 
+  let appliedAny = false;
   for (let r = 0; r < data.length; r++) {
     for (let c = 0; c < data[r].length; c++) {
       const info = cellInfo[r][c];
@@ -1048,32 +1122,42 @@ function roundTable(table, options) {
           if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
         }
         if (patches.length === 0) continue;
-        cell.dataset.originalHtml = cell.innerHTML;
-        // Stash superscript ranges and the surviving (link-filtered) match
-        // indices measured against the pre-round text, BEFORE
-        // applyExtractedPatches shortens it — collectNumericCells reads these
-        // back instead of re-measuring the (now-rounded, differently-offset)
-        // live element against this stored original text. See
+        // Stash the pristine HTML, superscript ranges, and the surviving
+        // (link-filtered) match indices — measured against the pre-round
+        // text, BEFORE applyExtractedPatches shortens it — in the registry
+        // instead of four separate dataset attributes. collectNumericCells
+        // reads this record back instead of re-measuring the (now-rounded,
+        // differently-offset) live element against stored original text. See
         // finalizeExtractedDecision and collectNumericCells for the read side.
-        cell.dataset.drSupRanges = JSON.stringify(getSuperscriptRanges(cell));
-        cell.dataset.drLinkFilteredIdx = JSON.stringify(info.matches.map((m) => m.index));
+        DR_STORE.setTableOriginal(table, cell, {
+          html: cell.innerHTML,
+          value: originalValue,
+          supRanges: getSuperscriptRanges(cell),
+          linkFilteredIdx: info.matches.map((m) => m.index),
+        });
         applyExtractedPatches(cell, patches);
         cell.title = `Original: ${originalValue}`;
         cell.classList.add('dr-ext-rounded');
-        cell.dataset.originalValue = originalValue;
+        appliedAny = true;
         continue;
       }
 
       // Native-table path: cache pristine HTML before mutation so toggle/reset can
       // restore it without needing to keep the rounded value around.
       const cell = cellsMap[r][c];
-      cell.dataset.originalHtml = cell.innerHTML;
+      DR_STORE.setTableOriginal(table, cell, {
+        html: cell.innerHTML,
+        value: originalValue,
+        supRanges: null,
+        linkFilteredIdx: null,
+      });
       replaceTextPreservingHTML(cell, originalValue, formattedValue);
       cell.title = `Original: ${originalValue}`;
       cell.classList.add('dr-ext-rounded');
-      cell.dataset.originalValue = originalValue;
+      appliedAny = true;
     }
   }
+  DR_STORE.setTableAppliedFlag(table, appliedAny ? 'simplified' : 'original');
   syncSwitchForTable(table);
   return { applied: true, rangeStatus: 'ok' };
 }
@@ -1082,35 +1166,37 @@ function toggleOriginalValues(table) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
   if (roundedCells.length === 0) return;
 
-  const showingOriginal = table.dataset.drShowingOriginal === 'true';
+  const showingOriginal = DR_STORE.getTableAppliedFlag(table) !== 'simplified';
 
   if (showingOriginal) {
     // Re-run the pipeline with the last-used options so the rounded view
     // reflects current parameters rather than a stale cached value.
-    const opts = tableOptions.get(table) || DR_DEFAULTS;
-    resetTable(table);
+    const opts = DR_STORE.getTableRoundOptions(table) || DR_DEFAULTS;
+    const unrestorableCount = resetTable(table);
+    if (unrestorableCount > 0) {
+      // At least one cell has no registry original to restore (e.g. a
+      // content-script re-injection wiped the registry — see restoreTable's
+      // KNOWN ACCEPTED COST doc). resetTable already left that cell's
+      // marker, title, and text untouched and set appliedFlag to
+      // 'simplified' to match what the screen actually shows. Re-running
+      // roundTable here would round already-rounded text and stamp a false
+      // "Original: ..." title over the one attribute that still held the
+      // truth, so stop instead of taking the re-round branch.
+      return;
+    }
     sendRangeStatusMessage(roundTable(table, opts));
   } else {
-    // Set the showing-original flag BEFORE mutating cells. Restoring grid cells
-    // writes their text nodes, which fire characterData mutations the grid's
-    // re-apply observer is listening for; setting the flag first guarantees the
-    // debounced reapplyGridRounding (and its showing-original guard) sees the
-    // toggled state and leaves the originals in place instead of re-rounding.
-    table.dataset.drShowingOriginal = 'true';
-    // Restore each cell to its pristine value; keep the class and dataset so
-    // a subsequent toggle knows to re-round.
-    for (const cell of roundedCells) {
-      if (cell.dataset.drOriginal !== undefined) {
-        // Grid path: restore the text node in place (preserves node identity).
-        const tn = findCellTextNode(cell);
-        if (tn !== null) {
-          tn.nodeValue = cell.dataset.drOriginal;
-        }
-      } else if (cell.dataset.originalHtml !== undefined) {
-        cell.innerHTML = cell.dataset.originalHtml;
-      }
-      cell.removeAttribute('title');
-    }
+    // Set the flag BEFORE mutating cells. Restoring grid cells writes their
+    // text nodes, which fire characterData mutations the grid's re-apply
+    // observer is listening for; setting the flag first guarantees the
+    // debounced reapplyGridRounding (and its showing-original guard) sees
+    // the toggled state and leaves the originals in place instead of
+    // re-rounding.
+    DR_STORE.setTableAppliedFlag(table, 'original');
+    // keepEntry: true — restore the display but keep the dr-ext-rounded
+    // marker and the registry's stored originals, so the next toggle finds
+    // these same cells again (see restoreTable's doc for why).
+    restoreTable(table, true);
   }
   syncSwitchForTable(table);
 }
