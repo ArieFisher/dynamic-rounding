@@ -11,8 +11,14 @@
  * Toggle geometry, style injection, button creation/positioning, the
  * highlight/flash affordances, and the detection predicates (looksLikeGrid,
  * findTargetTable, isDataTable) that decide what counts as a roundable table.
- * Module-level state lives here but all load-time-executing wiring (observers,
- * listeners) stays in content.js. Loaded before content.js.
+ * Module-level state here is view-transient only — DOM/timer bookkeeping
+ * (tableToggles, trackedTables, the resize-observer map, the style-injected
+ * flags, the per-button auto-collapse timer) — never selection or sidebar
+ * state, which live in DR_STORE (app/store.js). A user action (click/tap)
+ * reports an intent on DR_BUS instead of calling a content.js function
+ * directly; content.js is the sole subscriber and owns what happens next.
+ * All load-time-executing wiring (observers, listeners) stays in content.js.
+ * Loaded before content.js.
  */
 
 // Toggle geometry constants
@@ -201,7 +207,14 @@ function createToggleForTable(table) {
     }, TOUCH_AUTOCOLLAPSE_MS);
   }
 
-  // Click handler: mouse/keyboard → immediate toggle; touch/pen → two-tap expand-then-toggle
+  // Click handler: mouse/keyboard → immediate toggle; touch/pen → two-tap
+  // expand-then-toggle. Once a tap/click actually commits to a toggle, this
+  // view reports the intent and stops — it calls no content.js function
+  // itself. The controller (content.js) is the sole subscriber to
+  // intent:toggleTable; it decides whether the selection rebinds, runs the
+  // toggle, and sends whatever sidebar messaging that implies. This view
+  // keeps only the expand/collapse interaction state (view-transient), never
+  // the toggle logic.
   button.addEventListener('click', (e) => {
     e.stopPropagation();
     const pType = button.dataset.pointerType;
@@ -211,61 +224,13 @@ function createToggleForTable(table) {
         button.classList.add('expanded');
         scheduleAutoCollapse();
       } else {
-        // Second tap: toggle state, refresh collapse timer
-        if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()) {
-          // Report the intent instead of writing content.js's selection
-          // variable directly — the controller (content.js) is the sole
-          // subscriber and decides how the model changes.
-          DR_BUS.publish('intent:selectTable', { table });
-          try {
-            chrome.runtime.sendMessage({ action: 'RESET_SIDEBAR_TO_DEFAULTS' });
-          } catch (e) {
-            // sidebar may be torn down; harmless
-          }
-          try {
-            chrome.runtime.sendMessage({ action: 'PREVIEW_SAMPLES_CHANGED' });
-          } catch (e) {
-            // sidebar may be torn down; harmless
-          }
-        }
-        runToggleAction(table);
-        syncSwitchForTable(table);
-        if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table === DR_STORE.getSelectedTable()) {
-          try {
-            chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: isTableRounded(table) });
-          } catch (e) {
-            // sidebar may be torn down; harmless
-          }
-        }
+        // Second tap: report the toggle intent, refresh collapse timer
+        DR_BUS.publish('intent:toggleTable', { table });
         scheduleAutoCollapse();
       }
     } else {
       // Mouse / keyboard (Space is handled natively by <button>; Enter via keydown below)
-      if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()) {
-        // Report the intent instead of writing content.js's selection
-        // variable directly — the controller (content.js) is the sole
-        // subscriber and decides how the model changes.
-        DR_BUS.publish('intent:selectTable', { table });
-        try {
-          chrome.runtime.sendMessage({ action: 'RESET_SIDEBAR_TO_DEFAULTS' });
-        } catch (e) {
-          // sidebar may be torn down; harmless
-        }
-        try {
-          chrome.runtime.sendMessage({ action: 'PREVIEW_SAMPLES_CHANGED' });
-        } catch (e) {
-          // sidebar may be torn down; harmless
-        }
-      }
-      runToggleAction(table);
-      syncSwitchForTable(table);
-      if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table === DR_STORE.getSelectedTable()) {
-        try {
-          chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: isTableRounded(table) });
-        } catch (e) {
-          // sidebar may be torn down; harmless
-        }
-      }
+      DR_BUS.publish('intent:toggleTable', { table });
     }
   });
 

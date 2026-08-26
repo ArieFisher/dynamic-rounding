@@ -5291,21 +5291,31 @@ function fireTouchSecondTap(buttonEl) {
   eq('rebind source: content.js CLOSE_SIDEBAR calls DR_STORE.setSidebarOpen(false)',
     /CLOSE_SIDEBAR[\s\S]{0,100}DR_STORE\.setSidebarOpen\(false\)/.test(contentSrc), true);
 
-  // ui-toggle.js mouse/keyboard click branch contains the rebind
-  // precondition, now reading the store instead of raw variables.
-  eq('rebind source: mouse/keyboard branch guards on DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()',
+  // content.js's intent:toggleTable handler (sprint toggle-split moved this
+  // out of ui-toggle.js's two click branches into the one controller
+  // subscriber both branches now report to) contains the rebind precondition,
+  // reading the store instead of raw variables.
+  eq('rebind source: the intent:toggleTable handler guards on DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()',
     /DR_STORE\.isSidebarOpen\(\)\s*&&\s*DR_STORE\.getSelectedTable\(\)\s*&&\s*table\s*!==\s*DR_STORE\.getSelectedTable\(\)/.test(contentSrc),
     true);
 
-  // content.js: both click branches send RESET_SIDEBAR_TO_DEFAULTS
-  // Count occurrences — must appear at least twice (one per branch)
+  // content.js: sprint toggle-split consolidated the mouse and touch click
+  // branches' controller logic (which used to each carry their own
+  // RESET_SIDEBAR_TO_DEFAULTS send) into one intent:toggleTable subscriber
+  // in content.js, so the literal now appears once, not per branch. The
+  // occurrence-count check below was written when each branch sent it
+  // separately; it now checks the single, shared dispatch site still exists.
   const resetCount = (contentSrc.match(/RESET_SIDEBAR_TO_DEFAULTS/g) || []).length;
-  eq('rebind source: RESET_SIDEBAR_TO_DEFAULTS appears in both click branches (>= 2 occurrences)',
-    resetCount >= 2, true);
+  eq('rebind source: RESET_SIDEBAR_TO_DEFAULTS is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
+    resetCount >= 1, true);
 
-  // ui-toggle.js: rebind publishes the select-table intent instead of
-  // assigning content.js's selection variable directly.
-  eq('rebind source: ui-toggle.js publishes intent:selectTable in the rebind block instead of writing a content.js variable',
+  // content.js: the intent:toggleTable handler's rebind branch publishes the
+  // select-table intent instead of assigning DR_STORE's field directly —
+  // sprint toggle-split moved this call out of ui-toggle.js along with the
+  // rest of the rebind logic, but it stays a published intent rather than a
+  // direct DR_STORE.setSelectedTable() call, keeping one place ("select
+  // this table") for any caller of that concern, controller included.
+  eq('rebind source: intent:toggleTable publishes intent:selectTable in the rebind block instead of writing DR_STORE directly',
     /DR_BUS\.publish\(\s*'intent:selectTable'/.test(contentSrc), true);
   eq('rebind source: no file assigns lastRightClickedTable directly anymore',
     /\blastRightClickedTable\s*=[^=]/.test(sourceByName('ui-toggle.js') || '') ||
@@ -14235,9 +14245,14 @@ const LADDER_OPTS = {
     topicNames.every((t) => KNOWN_FAMILIES.includes(topics[t].family)), true);
   eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
     topicNames.slice().sort(),
-    ['intent:selectTable', 'state:selectedTableChanged', 'state:sidebarOpenChanged'].sort());
+    ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged', 'state:sidebarOpenChanged'].sort());
   eq('DR_BUS.TOPICS: intent:selectTable is in the intent family',
     topics['intent:selectTable'].family, 'intent');
+  // Sprint toggle-split: the toggle view's click handler no longer calls
+  // runToggleAction directly — it reports intent:toggleTable, and content.js
+  // (the sole subscriber) decides what a committed toggle does.
+  eq('DR_BUS.TOPICS: intent:toggleTable is in the intent family',
+    topics['intent:toggleTable'].family, 'intent');
   eq('DR_BUS.TOPICS: state:selectedTableChanged is in the state-change family',
     topics['state:selectedTableChanged'].family, 'state-change');
   eq('DR_BUS.TOPICS: state:sidebarOpenChanged is in the state-change family',
@@ -14351,6 +14366,68 @@ const LADDER_OPTS = {
   });
   eq("static scan (hardened): neither ui-toggle.js nor content.js assigns DR_STORE's private field names directly",
     storeFieldWrites, []);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint toggle-split: ui-toggle.js splits into drawing (render from state,
+// hold only view-transient state) and reporting (publish intents on DR_BUS
+// instead of calling the controller directly). The click handler used to
+// call runToggleAction (and, transitively via runToggleAction, could reach
+// toggleOriginalValues) straight from the view; both are content.js
+// controller functions now reached only through the published
+// intent:toggleTable, never called from ui-toggle.js itself.
+// ---------------------------------------------------------------------------
+(function toggleSplit_viewCallsNoControllerFunctionDirectly() {
+  const uiToggleSrc = sourceByName('ui-toggle.js');
+  if (uiToggleSrc === null) {
+    eq('toggle-split: ui-toggle.js is present in the manifest', false, true);
+    return;
+  }
+  // Forbidden list: content.js controller functions a user action used to
+  // reach directly from ui-toggle.js's click handler before this sprint.
+  const FORBIDDEN_CONTROLLER_CALLS = ['runToggleAction', 'toggleOriginalValues'];
+  const foundCalls = FORBIDDEN_CONTROLLER_CALLS.filter((name) => {
+    const callRe = new RegExp('\\b' + name + '\\s*\\(');
+    return callRe.test(uiToggleSrc);
+  });
+  eq('toggle-split: ui-toggle.js contains no direct call to runToggleAction/toggleOriginalValues',
+    foundCalls, []);
+
+  // The click handler reports the toggle activation as an intent instead.
+  eq('toggle-split: ui-toggle.js publishes intent:toggleTable from the click handler',
+    /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiToggleSrc), true);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint toggle-split: publishing intent:toggleTable is content.js's only
+// path to running the toggle now — prove the wiring end to end (mirrors the
+// intent:selectTable behavioral pin in the app-model-selection block above).
+// ---------------------------------------------------------------------------
+(function toggleSplit_intentToggleTableRunsTheToggle() {
+  // DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn) — use a
+  // 2x2 table so [row1, col1] is processed (same shape as the pillbox AC2
+  // regression test above, which exercises runToggleAction directly).
+  const table = makeToggleTable([
+    [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
+    [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
+  ]);
+  injectToggleEntry(table);
+
+  const wasRounded = isTableRounded(table);
+  withCreateTreeWalker(function () {
+    DR_BUS.publish('intent:toggleTable', { table });
+  });
+  const isNowRounded = isTableRounded(table);
+
+  eq('toggle-split: publishing intent:toggleTable runs runToggleAction (table becomes rounded)',
+    !wasRounded && isNowRounded, true);
+
+  // Toggling again reverts to showing the original (same path, same intent).
+  withCreateTreeWalker(function () {
+    DR_BUS.publish('intent:toggleTable', { table });
+  });
+  eq('toggle-split: publishing intent:toggleTable again toggles back (showing originals)',
+    isTableRounded(table), false);
 })();
 
 // ---------------------------------------------------------------------------
