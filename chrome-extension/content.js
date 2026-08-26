@@ -383,19 +383,32 @@ function registryOriginalsPort(table) {
 // the content script is a fresh DR_STORE, so re-detection just rebuilds the
 // registry from the current DOM instead of resuming from stale data — the
 // sprint judged that an acceptable trade for a single restore path).
+//
+// A cell with no registry entry (the accepted-cost case above) is left
+// completely untouched: its dr-ext-rounded marker, its title (the last
+// surviving copy of the true original, if the write path is still what set
+// it), and its displayed text all stay exactly as they were. Clearing any
+// of those for a cell that was NOT actually restored would claim a recovery
+// that did not happen and destroy data that was still recoverable by eye
+// even though the registry could no longer recover it programmatically.
+// Returns the count of cells left unrestored, so callers (resetTable,
+// toggleOriginalValues) can tell a genuine restore from a no-op one.
 function restoreTable(table, keepEntry) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
-  if (roundedCells.length === 0) return;
+  if (roundedCells.length === 0) return 0;
   const isGrid = makeAdapter(table).isVirtualized();
+  let unrestorableCount = 0;
   for (const cell of roundedCells) {
     const original = DR_STORE.getTableOriginal(table, cell);
-    if (original !== undefined) {
-      if (isGrid) {
-        const tn = findCellTextNode(cell);
-        if (tn !== null) tn.nodeValue = original;
-      } else {
-        cell.innerHTML = original.html;
-      }
+    if (original === undefined) {
+      unrestorableCount++;
+      continue;
+    }
+    if (isGrid) {
+      const tn = findCellTextNode(cell);
+      if (tn !== null) tn.nodeValue = original;
+    } else {
+      cell.innerHTML = original.html;
     }
     cell.removeAttribute('title');
     if (!keepEntry) {
@@ -403,8 +416,14 @@ function restoreTable(table, keepEntry) {
       DR_STORE.deleteTableOriginal(table, cell);
     }
   }
+  return unrestorableCount;
 }
 
+// Returns the count of cells restoreTable could not restore (see its doc).
+// A non-zero count means the screen still shows rounded text for at least
+// one cell, so appliedFlag is left at 'simplified' — the truthful state —
+// instead of 'original', which would claim a clean reset that did not
+// happen for every cell.
 function resetTable(table) {
   // --- Grid virtualization teardown (must happen BEFORE cell restore) ---
   // Clear any pending debounce timer so a queued re-apply cannot fire after reset.
@@ -425,9 +444,10 @@ function resetTable(table) {
   DR_STORE.setTableRoundOptions(table, null);
   DR_STORE.setTableMaxMagnitude(table, null);
 
-  restoreTable(table, false);
-  DR_STORE.setTableAppliedFlag(table, 'original');
+  const unrestorableCount = restoreTable(table, false);
+  DR_STORE.setTableAppliedFlag(table, unrestorableCount > 0 ? 'simplified' : 'original');
   syncSwitchForTable(table);
+  return unrestorableCount;
 }
 
 // --- Shared adapters between the classification ladder (lib/dr-simplify)
@@ -1152,7 +1172,18 @@ function toggleOriginalValues(table) {
     // Re-run the pipeline with the last-used options so the rounded view
     // reflects current parameters rather than a stale cached value.
     const opts = DR_STORE.getTableRoundOptions(table) || DR_DEFAULTS;
-    resetTable(table);
+    const unrestorableCount = resetTable(table);
+    if (unrestorableCount > 0) {
+      // At least one cell has no registry original to restore (e.g. a
+      // content-script re-injection wiped the registry — see restoreTable's
+      // KNOWN ACCEPTED COST doc). resetTable already left that cell's
+      // marker, title, and text untouched and set appliedFlag to
+      // 'simplified' to match what the screen actually shows. Re-running
+      // roundTable here would round already-rounded text and stamp a false
+      // "Original: ..." title over the one attribute that still held the
+      // truth, so stop instead of taking the re-round branch.
+      return;
+    }
     sendRangeStatusMessage(roundTable(table, opts));
   } else {
     // Set the flag BEFORE mutating cells. Restoring grid cells writes their

@@ -1964,7 +1964,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /DR_STORE\.setTableRoundOptions\(table,\s*opts\)/.test(contentSrc), true);
 
   eq('unified: toggleOriginalValues calls roundTable for original→rounded path',
-    /function toggleOriginalValues[\s\S]{0,500}roundTable\(/.test(contentSrc), true);
+    /function toggleOriginalValues[\s\S]{0,1500}roundTable\(/.test(contentSrc), true);
 
   // --- Display simplification: "35.0" → "35" when value unchanged but format would ---
 
@@ -2864,7 +2864,14 @@ function makeMockButton() {
   Object.defineProperty(cell, 'innerHTML', {
     get(){return htmlVal;}, set(v){htmlVal=v;}, configurable: true
   });
-  cell.dataset.originalHtml = '50000';
+  // Registry-backed setup (app-model-registry sprint): restoreTable reads
+  // the pre-round original from DR_STORE, not a dataset attribute, so the
+  // fixture must register one for the cell to be genuinely restorable — a
+  // dr-ext-rounded class with no registry entry is the unrestorable case
+  // (see the content-script re-injection tests), which is a different
+  // scenario than the one this test means to exercise.
+  DR_STORE.setTableOriginal(table, cell, { html: '50000', value: '50000', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
 
   // Fire click via handlers
   const clickHandlers = buttonEl._listeners['click'] || [];
@@ -16119,27 +16126,28 @@ const LADDER_OPTS = {
 // open) throws away and rebuilds from scratch — the live PAGE DOM survives
 // untouched (classes, text, everything the OLD script instance wrote stay
 // exactly as they were). The bundle is eval'd TWICE here against the SAME
-// fixture table/document, each eval producing its own independent DR_STORE
+// fixture tables/document, each eval producing its own independent DR_STORE
 // (direct eval gives let/const their own lexical environment per call — the
 // same mechanism runContextmenuFixture above already relies on), to model
-// exactly that: instance 1 rounds the table; instance 2 (fresh registry,
+// exactly that: instance 1 rounds the tables; instance 2 (fresh registry,
 // same already-rounded DOM) is what a real re-injected script would face.
 //
-// CONFIRMED via parent source (chrome-extension/content.js on
-// refactor/app-model-settings): the parent read/wrote cell.dataset.
-// originalValue/originalHtml directly on the DOM element. Because dataset
-// lives on the element, it survives re-injection the same way the rounded
-// text does — the parent's second instance recovers the true original
-// cleanly. HEAD's registry does not: this test demonstrates the true
-// original becomes UNRECOVERABLE through the UI once a second instance
-// touches the table — a reachable, non-blocking-to-notice but data-losing
-// regression, flagged prominently per the sprint's own "KNOWN ACCEPTED
-// COST" comment on restoreTable (content.js) for the reviewer's judgment. ---
-(function registrySprint_reinjectionLosesOriginalsParentRecovers() {
-  function makeReinjectionFixtureTable() {
+// A re-injected instance still cannot recover the true original from its
+// own (empty) registry — that half of the KNOWN ACCEPTED COST comment on
+// restoreTable (content.js) holds. What this test pins is the consequence
+// the sprint did NOT accept: an unrestorable cell must be left exactly as
+// found — marker, title, and text untouched — instead of resetTable
+// stripping the marker and title off a cell it could not actually restore,
+// and instead of toggleOriginalValues then re-running roundTable over
+// already-rounded text and stamping a FALSE "Original: ..." title over the
+// one attribute that still held the truth. Scenario A drives resetTable
+// directly (the "reset" recovery action); scenario B drives the actual
+// toggle-click wiring end to end. ---
+(function registrySprint_reinjectionUnrestorableResetStaysTruthful() {
+  function makeReinjectionFixtureTable(dataText) {
     const table = makeToggleTable([
       [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
-      [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
+      [{ tag: 'td', text: 'Row' },   { tag: 'td', text: dataText }],
     ]);
     // Link innerHTML/innerText/textContent to one backing value on the data
     // cell, matching a real <td>'s single-node-tree-backed semantics (same
@@ -16152,21 +16160,34 @@ const LADDER_OPTS = {
       innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
       textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
     });
+    // A real removeAttribute('title') clears the title. makeToggleTableCell's
+    // default stub is a no-op, which would hide exactly the bug this test
+    // exists to catch — an implementation that unconditionally strips the
+    // title would otherwise leave dataCell.title looking untouched.
+    dataCell.removeAttribute = function (name) {
+      if (name === 'title') this.title = '';
+    };
     return { table, dataCell };
   }
 
-  const { table, dataCell } = makeReinjectionFixtureTable();
-  const trueOriginal = '12,345';
+  const { table: table1, dataCell: dataCell1 } = makeReinjectionFixtureTable('12,345');
+  const { table: table2, dataCell: dataCell2 } = makeReinjectionFixtureTable('67,890');
+  const trueOriginal1 = '12,345';
+  const trueOriginal2 = '67,890';
 
-  // A minimal document shared by BOTH eval'd instances — this is the "live
-  // page" that persists across the simulated re-injection. createTreeWalker
-  // mirrors withCreateTreeWalker's single-fake-text-node approach, reading
-  // and writing through the SAME linked innerText/innerHTML property.
+  // A minimal document shared by every eval'd instance below — this is the
+  // "live page" that persists across the simulated re-injection.
+  // createTreeWalker mirrors withCreateTreeWalker's single-fake-text-node
+  // approach, reading and writing through the SAME linked innerText/
+  // innerHTML property. createElement/head back ensureHighlightStyleInjected,
+  // which scenario B (the real click path) exercises for real.
   const sharedDoc = {
     addEventListener() {},
     querySelectorAll: () => [],
     readyState: 'complete',
     body: { appendChild() {} },
+    head: { appendChild() {} },
+    createElement() { return { textContent: '' }; },
     createTreeWalker(cell) {
       let done = false;
       return {
@@ -16195,47 +16216,75 @@ const LADDER_OPTS = {
   global.NodeFilter = { SHOW_TEXT: 4 };
 
   try {
-    // --- Instance 1: the content script as originally injected. Rounds the
-    // table directly (bypassing detection/UI wiring, irrelevant to this
-    // mechanism) with DR_DEFAULTS, same as runToggleAction's fresh-round path. ---
+    // --- Instance 1: the content script as originally injected. Rounds
+    // both fixture tables directly (bypassing detection/UI wiring,
+    // irrelevant to this mechanism) with DR_DEFAULTS, same as
+    // runToggleAction's fresh-round path. ---
     eval(contentScriptBundle + `
       globalThis.__ri1_roundTable = roundTable;
       globalThis.__ri1_isTableRounded = isTableRounded;
     `);
-    global.__ri1_roundTable(table, DR_DEFAULTS);
-    const roundedText = dataCell.innerText;
+    global.__ri1_roundTable(table1, DR_DEFAULTS);
+    global.__ri1_roundTable(table2, DR_DEFAULTS);
+    const roundedText1 = dataCell1.innerText;
+    const roundedTitle1 = dataCell1.title;
+    const roundedText2 = dataCell2.innerText;
+    const roundedTitle2 = dataCell2.title;
 
     eq('re-injection (pre): instance 1 actually rounded the cell away from the true original',
-      roundedText !== trueOriginal, true);
+      roundedText1 !== trueOriginal1, true);
     eq('re-injection (pre): instance 1 reports the table as rounded',
-      global.__ri1_isTableRounded(table), true);
+      global.__ri1_isTableRounded(table1), true);
+    eq('re-injection (pre): the title attribute holds the true original',
+      roundedTitle1, `Original: ${trueOriginal1}`);
 
-    // --- Instance 2: simulates re-injection. The DOM is untouched (dataCell
-    // still shows roundedText, still carries dr-ext-rounded) but this eval's
-    // DR_STORE is BRAND NEW — instance 1's registry (and its stored true
-    // original) is unreachable garbage now, exactly as a real content-script
-    // reload would leave it. ---
+    // --- Instance 2: simulates re-injection. The DOM is untouched (both
+    // data cells still show their rounded text, still carry
+    // dr-ext-rounded) but this eval's DR_STORE is BRAND NEW — instance 1's
+    // registry (and its stored true originals) is unreachable garbage now,
+    // exactly as a real content-script reload would leave it. ---
     eval(contentScriptBundle + `
       globalThis.__ri2_isTableRounded = isTableRounded;
       globalThis.__ri2_resetTable = resetTable;
       globalThis.__ri2_DR_STORE = DR_STORE;
+      globalThis.__ri2_DR_BUS = DR_BUS;
     `);
 
     eq('re-injection: a fresh instance reports the table as NOT rounded, despite the DOM still showing rounded text — a state/display mismatch the moment re-injection happens',
-      global.__ri2_isTableRounded(table), false);
+      global.__ri2_isTableRounded(table1), false);
 
-    // The user's most natural recovery action is "reset" (or an equivalent
-    // toggle-to-original click). Drive the SAME production primitive
-    // (resetTable) the sprint's own restoreTable KNOWN ACCEPTED COST comment
-    // discusses.
-    global.__ri2_resetTable(table);
+    // --- Scenario A: the user's most natural recovery action is "reset"
+    // (or an equivalent toggle-to-original click). Drive the SAME
+    // production primitive (resetTable) the sprint's own restoreTable
+    // KNOWN ACCEPTED COST comment discusses. ---
+    const unrestorableCount = global.__ri2_resetTable(table1);
 
-    eq('re-injection: after reset, the dr-ext-rounded marker IS cleared (the UI looks "back to normal")',
-      dataCell.classList.contains('dr-ext-rounded'), false);
-    eq('re-injection REGRESSION (reachable, non-blocking to notice, DATA-LOSING — reviewer judgment requested): the displayed text after "reset" is STILL the rounded value, not the true original — the true original is unrecoverable through the UI from this point on',
-      dataCell.innerText, roundedText);
-    eq('re-injection REGRESSION corollary: the value is provably NOT the true original',
-      dataCell.innerText !== trueOriginal, true);
+    eq('re-injection reset: resetTable reports the one cell it could not restore',
+      unrestorableCount, 1);
+    eq('re-injection reset: the dr-ext-rounded marker SURVIVES — the screen still shows rounded text, so the marker must stay truthful instead of claiming a clean reset that did not happen',
+      dataCell1.classList.contains('dr-ext-rounded'), true);
+    eq('re-injection reset: the title attribute SURVIVES — it is the last remaining copy of the true original and must not be stripped when nothing was actually restored',
+      dataCell1.title, roundedTitle1);
+    eq('re-injection reset: the displayed text is unchanged — not falsely "restored"',
+      dataCell1.innerText, roundedText1);
+    eq('re-injection reset: appliedFlag stays \'simplified\' — the truthful state, since the screen still shows rounded text',
+      global.__ri2_DR_STORE.getTableAppliedFlag(table1), 'simplified');
+
+    // --- Scenario B: the toggle-click path (not covered before this fix) —
+    // drives the exact wiring a real click on the toggle switch uses
+    // (ui-toggle.js's click handler publishes this same intent), end to
+    // end through content.js's intent:toggleTable subscriber,
+    // runToggleAction, and toggleOriginalValues. One click on a
+    // re-injected, already-rounded table must not double-round the text or
+    // stamp a false title over it. ---
+    global.__ri2_DR_BUS.publish('intent:toggleTable', { table: table2 });
+
+    eq('re-injection click path: one click after re-injection does not strip the dr-ext-rounded marker',
+      dataCell2.classList.contains('dr-ext-rounded'), true);
+    eq('re-injection click path: one click does not rewrite the title with a false original (no double-round)',
+      dataCell2.title, roundedTitle2);
+    eq('re-injection click path: one click leaves the displayed text unchanged',
+      dataCell2.innerText, roundedText2);
   } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
