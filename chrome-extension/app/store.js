@@ -72,10 +72,11 @@ const DR_STORE = (function () {
   // primitive for the entries themselves — a table removed from the page
   // without an explicit unregisterTable() call (a bug, or a host page that
   // detaches a node some other way) still lets its entry go instead of
-  // leaking for the life of the tab. WeakMap cannot be enumerated, and two
-  // existing call sites need enumeration: ui-toggle.js repositions every
-  // tracked toggle on scroll/resize, and content.js's removal observer walks
-  // a removed subtree looking for tables it was tracking. Rather than a
+  // leaking for the life of the tab. WeakMap cannot be enumerated, and
+  // content.js's removal observer needs enumeration — it walks a removed
+  // subtree looking for tables it was tracking. (ui-toggle.js's own
+  // scroll/resize repositioning does NOT read this Set; it iterates its own
+  // trackedTables Set instead — see ui-toggle.js.) Rather than a
   // WeakRef-based companion (which needs its own periodic sweep to reclaim
   // dead refs, and this codebase has no such sweep loop anywhere), the
   // enumerable companion here is a plain Set kept in exact lockstep with the
@@ -97,8 +98,14 @@ const DR_STORE = (function () {
         // mixed-content markup and needs all four to classify and restore a
         // cell correctly. restoreTable (content.js) and collectNumericCells
         // (content.js) are the two readers, and both already know which
-        // shape to expect from which kind of table.
-        originals: new Map(),
+        // shape to expect from which kind of table. A WeakMap, not a Map,
+        // for the same reason tableRegistry itself is one: nothing
+        // enumerates a table's originals (only .get/.set/.has/.delete by a
+        // specific cell), so there is no companion Set to keep in lockstep
+        // here, and a cell recycled out of the page by the host (grid
+        // virtualization, a framework re-render) lets its entry go instead
+        // of accumulating for the life of the table's registration.
+        originals: new WeakMap(),
         // 'original' | 'simplified' — replaces dataset.drShowingOriginal.
         // 'original' covers both "never rounded" and "rounded, currently
         // showing originals"; isTableRounded (ui-toggle.js) is exactly
@@ -167,10 +174,14 @@ const DR_STORE = (function () {
   // consulted synchronously by the controller, not application-level state
   // a view redraws itself from.
 
-  // registerTable: the "found" moment. Called once, from the single place a
-  // toggle actually gets built (ui-toggle.js's createToggleForTable) — idempotent,
-  // so a rediscovery (e.g. injectTogglesForAddedNode revisiting a node) is a
-  // no-op.
+  // registerTable: the "found" moment as far as the toggle UI is concerned —
+  // called once, from ui-toggle.js's createToggleForTable, idempotent so a
+  // rediscovery (e.g. injectTogglesForAddedNode revisiting a node) is a
+  // no-op. It is NOT the only path to a table having a registry entry:
+  // setTableOriginal, setTableAppliedFlag, setTableRoundOptions, and
+  // setTableMaxMagnitude below all call the same _ensureEntry and will
+  // silently create one on first write if registerTable never ran for that
+  // table.
   function registerTable(table) {
     _ensureEntry(table);
   }
@@ -187,9 +198,10 @@ const DR_STORE = (function () {
     return tableRegistry.has(table);
   }
 
-  // getRegisteredTables: the enumerable companion's one reader — scroll/
-  // resize repositioning (ui-toggle.js) and removed-subtree cleanup
-  // (content.js) both need to iterate every found table.
+  // getRegisteredTables: the enumerable companion's one reader —
+  // content.js's removed-subtree cleanup, which needs to iterate every
+  // found table. (ui-toggle.js's scroll/resize repositioning iterates its
+  // own trackedTables Set instead; it does not read this.)
   function getRegisteredTables() {
     return Array.from(registeredTables);
   }

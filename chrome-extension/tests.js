@@ -3635,10 +3635,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 (function morphAC_syncSwitch_showingOriginal() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
-  table.dataset.drShowingOriginal = 'true';
+  DR_STORE.setTableAppliedFlag(table, 'original');
   const button = injectToggleEntry(table);
   syncSwitchForTable(table);
-  eq('expanding-toggle: syncSwitchForTable drShowingOriginal=true → aria-pressed="false"',
+  eq('expanding-toggle: syncSwitchForTable appliedFlag=\'original\' (showing originals) with a rounded cell present → aria-pressed="false"',
     button.getAttribute('aria-pressed'), 'false');
 })();
 
