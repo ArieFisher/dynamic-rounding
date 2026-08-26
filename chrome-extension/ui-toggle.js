@@ -357,6 +357,12 @@ function flashTargetedTable(table) {
  * - If ranges is an array, overlays an absolutely-positioned div sized to the bounding
  *   rect of all targeted cells, then removes itself after the animation ends (~1.2s).
  *   The div is appended to document.body so it never wraps or alters td elements.
+ *
+ * Cell enumeration goes through the same TableAdapter (lib/dr-table, makeAdapter)
+ * the rounding engine and preview use, not table.rows/row.cells directly — those
+ * only exist on native <table> elements, so reading them here used to leave
+ * div-based grids with zero matched cells and a silent no-op flash. The adapter
+ * gives a uniform row/cell view over both native tables and grids.
  */
 function flashRangePulse(table, ranges) {
   if (!ranges) {
@@ -366,13 +372,13 @@ function flashRangePulse(table, ranges) {
   }
 
   // Collect all cells that fall within any of the provided ranges.
-  const rows = Array.from(table.rows);
+  const adapterRows = makeAdapter(table).getRows();
   const matchedCells = [];
-  for (let r = 0; r < rows.length; r++) {
-    const cells = Array.from(rows[r].cells);
+  for (let r = 0; r < adapterRows.length; r++) {
+    const cells = adapterRows[r].getCells();
     for (let c = 0; c < cells.length; c++) {
       if (isInRanges(r, c, ranges)) {
-        matchedCells.push(cells[c]);
+        matchedCells.push(cells[c].el);
       }
     }
   }

@@ -14431,6 +14431,69 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
+// Sprint toggle-split: KNOWN BUG FIX — flashRangePulse used to read
+// table.rows/row.cells directly, which only exist on native <table>
+// elements. On a div-based grid this always found zero matching cells and
+// silently fell back to (or, depending on the caller, simply skipped) the
+// flash. flashRangePulse now enumerates cells through the same TableAdapter
+// (makeAdapter) the rounding engine and preview already use, so a grid's
+// cells are found the same way a native table's are. This test fails
+// without the fix: matchedCells.length would be 0 for the grid case below,
+// and the (missing/whole-grid) fallback flash would not carry the
+// range-restricted geometry asserted here.
+// ---------------------------------------------------------------------------
+(function toggleSplit_rangeFlashWorksOnGrids() {
+  // 2x2 div-based grid (no ARIA roles, no vendor classes — the plain
+  // fallback shape GridAdapter already supports elsewhere in this suite).
+  const grid = makeGridWrapper([
+    ['1,000,000', '500'],
+    ['2,000,000', '750'],
+  ]);
+
+  // Distinct bounding rects per cell (document order: row0/col0, row0/col1,
+  // row1/col0, row1/col1) so the union rect proves WHICH cells were matched
+  // (column 1 only) rather than the whole grid or nothing at all.
+  const rects = [
+    { top: 0,  left: 0,   right: 100, bottom: 20 },
+    { top: 0,  left: 100, right: 200, bottom: 20 },
+    { top: 20, left: 0,   right: 100, bottom: 40 },
+    { top: 20, left: 100, right: 200, bottom: 40 },
+  ];
+  grid.cellEls.forEach((cell, i) => { cell.getBoundingClientRect = () => rects[i]; });
+
+  // Intercept the overlay div flashRangePulse creates and appends.
+  const origCreateElement = global.document.createElement;
+  const origBody = global.document.body;
+  const origSetTimeout = global.setTimeout;
+  let overlay = null;
+  global.document.createElement = (tag) => {
+    const el = { style: {}, addEventListener() {} };
+    if (tag === 'div') overlay = el;
+    return el;
+  };
+  const appended = [];
+  global.document.body = { appendChild(el) { appended.push(el); } };
+  global.setTimeout = () => 0; // avoid a real pending 1.5s cleanup timer
+
+  // Range expression equivalent to selecting column B only (both rows) —
+  // a partial range, so a whole-grid fallback would be visibly wrong.
+  const ranges = [{ colMin: 1, colMax: 1, rowMin: 0, rowMax: 1 }];
+  flashRangePulse(grid.wrapperEl, ranges);
+
+  global.document.createElement = origCreateElement;
+  global.document.body = origBody;
+  global.setTimeout = origSetTimeout;
+
+  eq('range-flash grid: an overlay is appended to document.body (not silently skipped)',
+    appended.length, 1);
+  eq('range-flash grid: the overlay carries the range-pulse class',
+    overlay && overlay.className, 'dr-ext-range-pulse');
+  eq('range-flash grid: the overlay is sized/positioned to the union of the matched grid cells (col 1 only), not the whole grid or nothing',
+    overlay && { top: overlay.style.top, left: overlay.style.left, width: overlay.style.width, height: overlay.style.height },
+    { top: '0px', left: '100px', width: '100px', height: '40px' });
+})();
+
+// ---------------------------------------------------------------------------
 // Sprint app-model-selection (adversarial hardening): statelessness. The bus
 // keeps no last-value cache and no delivery history (see adapters/messaging.js
 // header) — a subscriber that attaches AFTER a publish must never see that
