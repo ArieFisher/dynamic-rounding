@@ -14331,6 +14331,207 @@ const LADDER_OPTS = {
   });
   eq("static scan: ui-toggle.js assigns none of content.js's top-level bindings",
     crossFileWrites, []);
+
+  // --- (e) hardening: the scan above only catches writes to content.js's
+  // SURVIVING top-level bindings. It has a blind spot — a name that moved OUT
+  // of content.js into DR_STORE (selectedTable, sidebarOpen) is invisible to
+  // that scan once it is gone from content.js's own declaration list, so a
+  // file that reintroduces a bare assignment to that name (exactly the old
+  // anti-pattern this sprint removed) would slip through undetected. Close
+  // that gap by scanning for writes to DR_STORE's own private field names,
+  // read directly from app/store.js rather than from content.js.
+  const storeFieldNames = Array.from(storeSrc.matchAll(/\b(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/g))
+    .map((m) => m[1])
+    .filter((name) => name !== 'DR_STORE');
+  eq('static scan: app/store.js declares its two private fields (sanity check on the scan itself)',
+    storeFieldNames.slice().sort(), ['selectedTable', 'sidebarOpen'].sort());
+  const storeFieldWrites = storeFieldNames.filter((name) => {
+    const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
+    return assignRe.test(uiToggleSrcForScan) || assignRe.test(contentSrcForScan);
+  });
+  eq("static scan (hardened): neither ui-toggle.js nor content.js assigns DR_STORE's private field names directly",
+    storeFieldWrites, []);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-selection (adversarial hardening): statelessness. The bus
+// keeps no last-value cache and no delivery history (see adapters/messaging.js
+// header) — a subscriber that attaches AFTER a publish must never see that
+// publish, unlike an EventEmitter with replay or a BehaviorSubject.
+// ---------------------------------------------------------------------------
+(function appModelSelection_busIsStateless_lateSubscriberMissesPastPublish() {
+  const topic = 'state:selectedTableChanged';
+  const fakeTable = { __fake: 'stateless-check' };
+  const savedSelected = DR_STORE.getSelectedTable();
+  try {
+    // Publish BEFORE any subscriber attaches — nothing is listening yet.
+    DR_BUS.publish(topic, { table: fakeTable });
+
+    let received = 'NOT_CALLED';
+    const unsubscribe = DR_BUS.subscribe(topic, (payload) => { received = payload; });
+    try {
+      eq('DR_BUS statelessness: a subscriber that attaches after a publish never receives that publish',
+        received, 'NOT_CALLED');
+    } finally {
+      unsubscribe();
+    }
+  } finally {
+    DR_STORE.setSelectedTable(savedSelected);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-selection (adversarial hardening): reentrancy. Same-context
+// delivery is synchronous (see adapters/messaging.js header), so a subscribed
+// handler may itself call DR_BUS.publish() for a different topic before
+// returning. A two-topic cycle — A's handler publishes B; B's handler
+// increments a counter and, guarded to do so only once, publishes A back —
+// must settle without an infinite loop or a stack overflow.
+// ---------------------------------------------------------------------------
+(function appModelSelection_busReentrancy_twoTopicCycleSettles() {
+  const TOPIC_A = 'state:selectedTableChanged';
+  const TOPIC_B = 'state:sidebarOpenChanged';
+  let counter = 0;
+
+  const unsubA = DR_BUS.subscribe(TOPIC_A, () => {
+    DR_BUS.publish(TOPIC_B, { sidebarOpen: true }); // A's handler always publishes B
+  });
+  const unsubB = DR_BUS.subscribe(TOPIC_B, () => {
+    counter++;
+    if (counter === 1) {
+      DR_BUS.publish(TOPIC_A, { table: null }); // guarded to bounce back to A only once
+    }
+  });
+
+  let threw = null;
+  try {
+    DR_BUS.publish(TOPIC_A, { table: null }); // kick off the cycle
+  } catch (e) {
+    threw = e.message;
+  } finally {
+    unsubA();
+    unsubB();
+  }
+
+  eq('DR_BUS reentrancy: a guarded two-topic publish cycle completes without throwing (no infinite loop/stack overflow)',
+    threw, null);
+  eq('DR_BUS reentrancy: B fires exactly twice (initial A->B hop, then one guarded bounce back through A)',
+    counter, 2);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-selection (adversarial hardening): parent-equivalence pin.
+// The contextmenu handler in content.js is the one call site that both
+// branches implement: the parent (refactor/engine-returns-results) writes a
+// bare `lastRightClickedTable = table` file-level let; HEAD calls
+// DR_STORE.setSelectedTable(table) instead. This loads the REAL contextmenu
+// listener from both branches (parent fetched via `git show`, HEAD from the
+// files on disk) against the same fixture, with the sidebar-open flag set to
+// both true and false beforehand, and asserts the chrome.runtime.sendMessage
+// sequence each branch produces is byte-identical — the model swap changed
+// where the selection lives, not what content.js sends over the wire.
+// ---------------------------------------------------------------------------
+(function appModelSelection_parentEquivalence_contextmenuSelectionFlow() {
+  const { execFileSync } = require('child_process');
+  const PARENT_REF = 'refactor/engine-returns-results';
+
+  function gitShow(relPath) {
+    try {
+      return execFileSync('git', ['show', `${PARENT_REF}:chrome-extension/${relPath}`], {
+        cwd: __dirname, encoding: 'utf8',
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  const parentManifestRaw = gitShow('manifest.json');
+  if (parentManifestRaw === null) {
+    eq('parent-equivalence: able to read manifest.json from ' + PARENT_REF + ' via git show', false, true);
+    return;
+  }
+  const parentManifest = JSON.parse(parentManifestRaw);
+  const parentFiles = parentManifest.content_scripts[0].js;
+  const parentSources = parentFiles.map((f) => gitShow(f));
+  if (parentSources.some((s) => s === null)) {
+    eq('parent-equivalence: able to read every parent content script via git show', false, true);
+    return;
+  }
+  const parentBundle = parentSources.join('\n');
+
+  // Minimal fixture the contextmenu handler's findTargetTable() walk-up
+  // recognizes immediately as a table (closest('table') returns itself) —
+  // same shape the existing table-contextmenu-activation runtime test uses.
+  function makeFixtureTarget() {
+    return {
+      tagName: 'TABLE',
+      classList: { remove() {}, add() {}, contains() { return false; } },
+      get offsetWidth() { return 0; },
+      rows: [],
+      dataset: {},
+      closest(sel) { return sel === 'table' ? this : null; },
+      matches() { return false; },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+    };
+  }
+
+  // Evaluates `bundle`, then `postEvalLine` (same eval call, so postEvalLine
+  // can still reference the bundle's top-level let/const bindings — e.g.
+  // DR_STORE or the bare `sidebarOpen` — even though those bindings are not
+  // reachable from outside this function once eval() returns), captures the
+  // 'contextmenu' listener the bundle registers, fires it once against a
+  // fresh fixture target, and returns the resulting sendMessage sequence.
+  function runContextmenuFixture(bundle, postEvalLine) {
+    let capturedHandler = null;
+    const sentMessages = [];
+    const captureDoc = {
+      addEventListener(type, handler) { if (type === 'contextmenu') capturedHandler = handler; },
+      querySelectorAll: () => [],
+      readyState: 'complete',
+      body: { appendChild() {} },
+    };
+    const captureChrome = {
+      runtime: {
+        onMessage: { addListener() {} },
+        sendMessage(msg) { sentMessages.push(msg); },
+      },
+    };
+    const saved = {
+      document: global.document, chrome: global.chrome, window: global.window,
+      MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+      Node: global.Node, NodeFilter: global.NodeFilter,
+    };
+    global.document = captureDoc;
+    global.chrome = captureChrome;
+    global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
+    global.MutationObserver = class { observe() {} disconnect() {} };
+    global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+    global.Node = { ELEMENT_NODE: 1 };
+    global.NodeFilter = { SHOW_TEXT: 4 };
+    try {
+      eval(bundle + postEvalLine);
+      if (typeof capturedHandler !== 'function') return null;
+      capturedHandler({ target: makeFixtureTarget() });
+      return sentMessages;
+    } finally {
+      global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
+      global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+      global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+    }
+  }
+
+  for (const sidebarOpenValue of [true, false]) {
+    const parentMessages = runContextmenuFixture(parentBundle, `\nsidebarOpen = ${sidebarOpenValue};`);
+    const headMessages = runContextmenuFixture(contentScriptBundle, `\nDR_STORE.setSidebarOpen(${sidebarOpenValue});`);
+
+    eq(`parent-equivalence: parent branch's contextmenu handler was captured (sidebarOpen=${sidebarOpenValue})`,
+      parentMessages !== null, true);
+    eq(`parent-equivalence: HEAD's contextmenu handler was captured (sidebarOpen=${sidebarOpenValue})`,
+      headMessages !== null, true);
+    eq(`parent-equivalence: contextmenu sendMessage sequence is byte-identical between parent and HEAD (sidebarOpen=${sidebarOpenValue})`,
+      headMessages, parentMessages);
+  }
 })();
 
 // --- Report ---
