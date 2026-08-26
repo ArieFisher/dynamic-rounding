@@ -70,6 +70,8 @@ const coreCode = sourceByName('lib/dr-number/core.js');
 const parsingCode = sourceByName('lib/dr-number/parsing.js');
 const detectCode = sourceByName('lib/dr-table/detect.js');
 const ladderCode = sourceByName('lib/dr-simplify/ladder.js');
+const messagingCode = sourceByName('adapters/messaging.js');
+const storeCode = sourceByName('app/store.js');
 const uiToggleCode = sourceByName('ui-toggle.js');
 // Combined source for "source-includes" assertions that no longer care which
 // content-script file a symbol physically lives in after the Phase 2 split.
@@ -120,18 +122,26 @@ Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   set(v) { _globalTapCollapseAdded = v; },
   configurable: true,
 });
-// Expose sidebarOpen and lastRightClickedTable so sidebar-rebind tests can control
-// and inspect them without going through the onMessage listener (which is a no-op stub).
+// sidebarOpen and lastRightClickedTable no longer exist as bindings in
+// content.js (sprint app-model-selection moved both into DR_STORE) — these
+// two shims keep every existing sidebar-rebind test working unmodified by
+// proxying the old names onto the store's getter/setter pair, exactly like
+// the toggleStyleInjected/_globalTapCollapseAdded shims above proxy onto
+// their own file-level lets.
 Object.defineProperty(globalThis, 'sidebarOpen', {
-  get() { return sidebarOpen; },
-  set(v) { sidebarOpen = v; },
+  get() { return DR_STORE.isSidebarOpen(); },
+  set(v) { DR_STORE.setSidebarOpen(v); },
   configurable: true,
 });
 Object.defineProperty(globalThis, 'lastRightClickedTable', {
-  get() { return lastRightClickedTable; },
-  set(v) { lastRightClickedTable = v; },
+  get() { return DR_STORE.getSelectedTable(); },
+  set(v) { DR_STORE.setSelectedTable(v); },
   configurable: true,
 });
+// Expose the application model and event bus directly for the
+// app-model-selection test suite.
+globalThis.DR_STORE = DR_STORE;
+globalThis.DR_BUS = DR_BUS;
 // Expose grid-detection helpers for the grid-detection test suite.
 globalThis.looksLikeGrid = looksLikeGrid;
 globalThis.findTargetTable = findTargetTable;
@@ -1034,8 +1044,7 @@ function makeMockTable(rowsSpec, querySelectorResult) {
   };
 }
 
-// roundTable calls chrome.runtime.sendMessage; already stubbed globally.
-// It also calls document.createTreeWalker (via replaceTextPreservingHTML).
+// roundTable calls document.createTreeWalker (via replaceTextPreservingHTML).
 // We need to stub that too so the "apply rounding" path doesn't crash.
 // Stub createTreeWalker to return a walker that finds the cell's single text node.
 
@@ -1836,13 +1845,14 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, dr-number package, dr-table package, dr-simplify package, ui-toggle, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'defaults.js',
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
       'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
       'lib/dr-table/detect.js', 'lib/dr-table/index.js',
       'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
+      'adapters/messaging.js', 'app/store.js',
       'ui-toggle.js', 'content.js',
     ]), true);
 
@@ -1889,16 +1899,40 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   }
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
-  // --- Sidebar pull: content.js requests, sidebar.js responds ---
+  // --- Sprint app-model-settings inverted this pull: settings now live in
+  // DR_STORE (content-script context), so content.js applies from its own
+  // model instead of polling the sidebar, and the sidebar asks content.js
+  // for the current value instead of answering that old poll. ---
 
-  eq('pull: content.js sends GET_SIDEBAR_SETTINGS',
-    /chrome\.runtime\.sendMessage\(\s*\{\s*action:\s*['"]GET_SIDEBAR_SETTINGS['"]/.test(contentSrc), true);
+  eq('pull (inverted): content.js no longer sends GET_SIDEBAR_SETTINGS',
+    /chrome\.runtime\.sendMessage\(\s*\{\s*action:\s*['"]GET_SIDEBAR_SETTINGS['"]/.test(contentSrc), false);
 
-  eq('pull: content.js no longer applies defaults on SIDEBAR_OPENED',
+  eq('pull (inverted): the ten-retry settings-polling function is gone from content.js',
+    /requestSidebarSettingsAndApply/.test(contentSrc), false);
+
+  // No timing-based settings access remains: content.js's only other
+  // setTimeout use is the unrelated grid-virtualization re-apply debounce
+  // (GRID_REAPPLY_DEBOUNCE_MS), which is not a retry loop and does not
+  // reference settings/attempt/GET_SIDEBAR_SETTINGS at all.
+  const setTimeoutCalls = contentSrc.match(/setTimeout\([\s\S]{0,120}/g) || [];
+  eq('pull (inverted): every remaining setTimeout in content.js is the grid re-apply debounce, not a settings retry',
+    setTimeoutCalls.every((call) => !/attempt|GET_SIDEBAR_SETTINGS|requestSidebarSettingsAndApply/.test(call)),
+    true);
+
+  eq('pull (inverted): content.js no longer applies defaults on SIDEBAR_OPENED',
     /SIDEBAR_OPENED[\s\S]{0,200}applySidebarRounding\([^)]*DR_DEFAULTS/.test(contentSrc), false);
 
-  eq('pull: sidebar.js handles GET_SIDEBAR_SETTINGS and responds with currentSettings()',
-    /GET_SIDEBAR_SETTINGS[\s\S]{0,120}sendResponse\([^)]*currentSettings\(\)/.test(sidebarSrc), true);
+  eq('pull (inverted): content.js applies the model\'s own settings on SIDEBAR_OPENED',
+    /SIDEBAR_OPENED[\s\S]{0,400}applySidebarRounding\([^)]*DR_STORE\.getSettings\(\)/.test(contentSrc), true);
+
+  eq('pull (inverted): sidebar.js no longer handles GET_SIDEBAR_SETTINGS',
+    /GET_SIDEBAR_SETTINGS/.test(sidebarSrc), false);
+
+  eq('pull (inverted): content.js handles GET_SETTINGS and responds with the model\'s settings',
+    /GET_SETTINGS['"][\s\S]{0,200}sendResponse\([^)]*DR_STORE\.getSettings\(\)/.test(contentSrc), true);
+
+  eq('pull (inverted): sidebar.js pulls settings via chrome.tabs.sendMessage GET_SETTINGS on open',
+    /chrome\.tabs\.sendMessage\([^,]*,\s*\{\s*action:\s*['"]GET_SETTINGS['"]/.test(sidebarSrc), true);
 
   // --- Unified rounding path: drop data-rounded-value, cache innerHTML ---
 
@@ -3484,7 +3518,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const contentSrc = sourceByName('content.js');
   if (roundingSrc === null || contentSrc === null || coreCode === null ||
-      parsingCode === null || detectCode === null || uiToggleCode === null) {
+      parsingCode === null || detectCode === null || messagingCode === null ||
+      storeCode === null || uiToggleCode === null) {
     eq('x-floor flip: source files present in manifest', false, true);
     return;
   }
@@ -3512,7 +3547,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // same order the manifest loads them before content.js.
   vm.runInContext(
     patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
-    detectCode + '\n' + uiToggleCode + '\n' + contentSrc +
+    detectCode + '\n' + messagingCode + '\n' + storeCode + '\n' +
+    uiToggleCode + '\n' + contentSrc +
     '\nthis.__roundWithOffset = roundWithOffset;', ctx);
   const patchedRound = sandbox.__roundWithOffset;
 
@@ -4597,7 +4633,7 @@ function withReactiveCreateTreeWalker(fn) {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   const js = manifest.content_scripts[0].js;
   const after = (a, b) => js.indexOf(a) > -1 && js.indexOf(b) > -1 && js.indexOf(a) < js.indexOf(b);
-  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < dr-simplify index.js < ui-toggle.js < content.js',
+  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < dr-simplify index.js < messaging.js < store.js < ui-toggle.js < content.js',
     after('lib/dr-number/rounding.js', 'lib/dr-number/core.js') &&
     after('lib/dr-number/core.js', 'lib/dr-number/parsing.js') &&
     after('lib/dr-number/parsing.js', 'lib/dr-number/index.js') &&
@@ -4605,7 +4641,9 @@ function withReactiveCreateTreeWalker(fn) {
     after('lib/dr-table/detect.js', 'lib/dr-table/index.js') &&
     after('lib/dr-table/index.js', 'lib/dr-simplify/ladder.js') &&
     after('lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js') &&
-    after('lib/dr-simplify/index.js', 'ui-toggle.js') &&
+    after('lib/dr-simplify/index.js', 'adapters/messaging.js') &&
+    after('adapters/messaging.js', 'app/store.js') &&
+    after('app/store.js', 'ui-toggle.js') &&
     after('ui-toggle.js', 'content.js'), true);
   eq('manifest: content.js loads last', js[js.length - 1], 'content.js');
 
@@ -5251,35 +5289,62 @@ function fireTouchSecondTap(buttonEl) {
 
 (function sidebarRebind_sourceLevel() {
   // Click-handler rebind logic now spans content.js + ui-toggle.js (Phase 2);
-  // scan the combined content-script source.
+  // scan the combined content-script source. Sprint app-model-selection moved
+  // the sidebarOpen flag and the selected-table reference into DR_STORE
+  // (app/store.js) — ui-toggle.js reports an intent instead of writing
+  // content.js's variables directly, and content.js's own writes go through
+  // DR_STORE's setters instead of a bare assignment. These assertions were
+  // updated in that sprint to check the new structure instead of the old
+  // direct-assignment one.
   const contentSrc = allContentSrc;
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const storeSrc = sourceByName('app/store.js') || '';
 
-  // content.js: sidebarOpen flag is declared as a module-level let
-  eq('rebind source: content.js declares let sidebarOpen = false',
-    /let\s+sidebarOpen\s*=\s*false/.test(contentSrc), true);
+  // app/store.js: sidebarOpen flag is declared as a module-level let, closed
+  // over by DR_STORE — content.js no longer declares it itself.
+  eq('rebind source: app/store.js declares let sidebarOpen = false',
+    /let\s+sidebarOpen\s*=\s*false/.test(storeSrc), true);
+  eq('rebind source: content.js no longer declares sidebarOpen itself',
+    /let\s+sidebarOpen\b/.test(sourceByName('content.js') || ''), false);
 
-  // content.js: SIDEBAR_OPENED handler sets sidebarOpen = true
-  eq('rebind source: content.js SIDEBAR_OPENED sets sidebarOpen = true',
-    /SIDEBAR_OPENED[\s\S]{0,200}sidebarOpen\s*=\s*true/.test(contentSrc), true);
+  // content.js: SIDEBAR_OPENED handler sets sidebarOpen via DR_STORE
+  eq('rebind source: content.js SIDEBAR_OPENED calls DR_STORE.setSidebarOpen(true)',
+    /SIDEBAR_OPENED[\s\S]{0,200}DR_STORE\.setSidebarOpen\(true\)/.test(contentSrc), true);
 
-  // content.js: CLOSE_SIDEBAR handler sets sidebarOpen = false
-  eq('rebind source: content.js CLOSE_SIDEBAR sets sidebarOpen = false',
-    /CLOSE_SIDEBAR[\s\S]{0,100}sidebarOpen\s*=\s*false/.test(contentSrc), true);
+  // content.js: CLOSE_SIDEBAR handler sets sidebarOpen via DR_STORE
+  eq('rebind source: content.js CLOSE_SIDEBAR calls DR_STORE.setSidebarOpen(false)',
+    /CLOSE_SIDEBAR[\s\S]{0,100}DR_STORE\.setSidebarOpen\(false\)/.test(contentSrc), true);
 
-  // content.js mouse/keyboard click branch contains the rebind precondition
-  eq('rebind source: mouse/keyboard branch has sidebarOpen && lastRightClickedTable && table !== lastRightClickedTable guard',
-    /sidebarOpen\s*&&\s*lastRightClickedTable\s*&&\s*table\s*!==\s*lastRightClickedTable/.test(contentSrc), true);
+  // content.js's intent:toggleTable handler (sprint toggle-split moved this
+  // out of ui-toggle.js's two click branches into the one controller
+  // subscriber both branches now report to) contains the rebind precondition,
+  // reading the store instead of raw variables.
+  eq('rebind source: the intent:toggleTable handler guards on DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()',
+    /DR_STORE\.isSidebarOpen\(\)\s*&&\s*DR_STORE\.getSelectedTable\(\)\s*&&\s*table\s*!==\s*DR_STORE\.getSelectedTable\(\)/.test(contentSrc),
+    true);
 
-  // content.js: both click branches send RESET_SIDEBAR_TO_DEFAULTS
-  // Count occurrences — must appear at least twice (one per branch)
+  // content.js: sprint toggle-split consolidated the mouse and touch click
+  // branches' controller logic (which used to each carry their own
+  // RESET_SIDEBAR_TO_DEFAULTS send) into one intent:toggleTable subscriber
+  // in content.js, so the literal now appears once, not per branch. The
+  // occurrence-count check below was written when each branch sent it
+  // separately; it now checks the single, shared dispatch site still exists.
   const resetCount = (contentSrc.match(/RESET_SIDEBAR_TO_DEFAULTS/g) || []).length;
-  eq('rebind source: RESET_SIDEBAR_TO_DEFAULTS appears in both click branches (>= 2 occurrences)',
-    resetCount >= 2, true);
+  eq('rebind source: RESET_SIDEBAR_TO_DEFAULTS is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
+    resetCount >= 1, true);
 
-  // content.js: rebind sets lastRightClickedTable = table before sending messages
-  eq('rebind source: content.js assigns lastRightClickedTable = table in rebind block',
-    /lastRightClickedTable\s*=\s*table/.test(contentSrc), true);
+  // content.js: the intent:toggleTable handler's rebind branch publishes the
+  // select-table intent instead of assigning DR_STORE's field directly —
+  // sprint toggle-split moved this call out of ui-toggle.js along with the
+  // rest of the rebind logic, but it stays a published intent rather than a
+  // direct DR_STORE.setSelectedTable() call, keeping one place ("select
+  // this table") for any caller of that concern, controller included.
+  eq('rebind source: intent:toggleTable publishes intent:selectTable in the rebind block instead of writing DR_STORE directly',
+    /DR_BUS\.publish\(\s*'intent:selectTable'/.test(contentSrc), true);
+  eq('rebind source: no file assigns lastRightClickedTable directly anymore',
+    /\blastRightClickedTable\s*=[^=]/.test(sourceByName('ui-toggle.js') || '') ||
+    /\blastRightClickedTable\s*=[^=]/.test(sourceByName('content.js') || ''),
+    false);
 
   // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI
   eq('rebind source: sidebar.js RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI()',
@@ -12330,11 +12395,20 @@ function fireMouseClick(buttonEl, fn) {
     }
 
     // Static guard: the real setTableBound flips enabledEl.checked off and runs
-    // updateDisabledState (not just a class toggle).
+    // updateDisabledState (not just a class toggle). Isolate the function's own
+    // body (rather than scanning from the first "setTableBound" text match
+    // anywhere in the file) so a coincidental match elsewhere — e.g. an
+    // unrelated setTableBound(...) call sitting near an unrelated
+    // updateDisabledState() call in some other function — cannot pass this
+    // for the wrong reason.
+    const setTableBoundFnMatch = sidebarSrc.match(/function setTableBound\([\s\S]*?\n}/);
+    const setTableBoundFnBody = setTableBoundFnMatch ? setTableBoundFnMatch[0] : '';
+    eq('no-table toggle: sidebar.js setTableBound function body was isolated (sanity check on the scan itself)',
+      setTableBoundFnBody.length > 0, true);
     eq('no-table toggle: sidebar.js setTableBound sets enabledEl.checked = false when unbound',
-      /setTableBound[\s\S]{0,400}enabledEl\.checked\s*=\s*false/.test(sidebarSrc), true);
+      /enabledEl\.checked\s*=\s*false/.test(setTableBoundFnBody), true);
     eq('no-table toggle: sidebar.js setTableBound calls updateDisabledState',
-      /setTableBound[\s\S]{0,400}updateDisabledState\(\)/.test(sidebarSrc), true);
+      /updateDisabledState\(\)/.test(setTableBoundFnBody), true);
 
     // AC2 gap — ADVERSARIAL: verify that the sidebar does NOT have a runtime
     // message handler that directly calls setTableBound(true) when a table is
@@ -12960,6 +13034,7 @@ function fireMouseClick(buttonEl, fn) {
     'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
     'lib/dr-table/detect.js', 'lib/dr-table/index.js',
     'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
+    'adapters/messaging.js', 'app/store.js',
     'ui-toggle.js', 'content.js',
   ];
 
@@ -13046,9 +13121,10 @@ function fireMouseClick(buttonEl, fn) {
   // replaced dom-adapters.js with the two-file lib/dr-table package
   // (detect.js, index.js), raising the count from 8 to 9. Sprint merge-ladder
   // then added the two-file lib/dr-simplify package (ladder.js, index.js),
-  // raising the count from 9 to 11.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 11 files today',
-    manifest.content_scripts[0].js.length, 11);
+  // raising the count from 9 to 11. Sprint app-model-selection then added
+  // adapters/messaging.js and app/store.js, raising the count from 11 to 13.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 13 files today',
+    manifest.content_scripts[0].js.length, 13);
 })();
 
 // ---------------------------------------------------------------------------
@@ -13893,6 +13969,1546 @@ const LADDER_OPTS = {
         eq(name, actual, expected);
       }
     }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint engine-returns-results: static purity scan.
+// The simplification engine (roundTable, computeGridRoundedValues,
+// reapplyGridRounding) must never call chrome.* directly — it returns result
+// values instead, and the controller sends the messages. Mirrors the
+// detectionFunctions_sourceScan_noPageWrites pattern above.
+// ---------------------------------------------------------------------------
+(function engineFunctions_sourceScan_noChromeCalls() {
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('engine purity scan: source file content.js present in manifest', false, true);
+    return;
+  }
+  const ENGINE_FNS = ['roundTable', 'computeGridRoundedValues', 'reapplyGridRounding'];
+
+  // Extract a top-level `function name(` body by brace-matching from the
+  // opening brace to its balanced close (same approach as the detection
+  // purity scan above).
+  function extractFunctionBody(src, fnName) {
+    const sig = new RegExp(`function ${fnName}\\s*\\(`);
+    const m = sig.exec(src);
+    if (!m) return null;
+    const braceStart = src.indexOf('{', m.index);
+    if (braceStart === -1) return null;
+    let depth = 0;
+    for (let i = braceStart; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') {
+        depth--;
+        if (depth === 0) return src.slice(braceStart, i + 1);
+      }
+    }
+    return null;
+  }
+
+  for (const fnName of ENGINE_FNS) {
+    const body = extractFunctionBody(contentSrc, fnName);
+    eq(`engine purity scan: ${fnName} body located in content.js`, body !== null, true);
+    if (body === null) continue;
+    eq(`engine purity scan: ${fnName} does not reference "chrome."`,
+      body.includes('chrome.'), false);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint engine-returns-results: the engine runs end-to-end with NO `chrome`
+// global present at all — not even a stub. This loads the real content-script
+// bundle in a vm sandbox that never defines `chrome`. The only top-level
+// statement in content.js that unconditionally touches chrome — registering
+// the runtime message listener, controller wiring unrelated to the engine —
+// is neutralized to a no-op so the module can load; every other chrome.*
+// reference in content.js lives inside a function body this test never calls.
+// If roundTable (or anything it reaches) touched chrome, loading or calling
+// it here would throw ReferenceError: chrome is not defined.
+// ---------------------------------------------------------------------------
+(function engineRunsWithNoChromeGlobal() {
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('no-chrome e2e: source file content.js present in manifest', false, true);
+    return;
+  }
+
+  const NEEDLE = 'chrome.runtime.onMessage.addListener(';
+  eq('no-chrome e2e: exactly one top-level onMessage.addListener call site to neutralize',
+    contentSrc.split(NEEDLE).length - 1, 1);
+  const noChromeContentSrc = contentSrc.replace(NEEDLE, '(function(){}).call(null,');
+
+  // Sandbox has NO `chrome` property whatsoever — only the DOM/browser
+  // primitives the engine's non-controller code paths actually touch
+  // (document.createTreeWalker via replaceTextPreservingHTML, NodeFilter).
+  const sandbox = {
+    document: {
+      addEventListener() {},
+      createTreeWalker(cell) {
+        let done = false;
+        return {
+          nextNode() {
+            if (done) return null;
+            done = true;
+            return {
+              get nodeValue() { return this._val !== undefined ? this._val : cell.innerText; },
+              set nodeValue(v) { cell.innerText = v; cell.textContent = v; this._val = v; },
+            };
+          },
+        };
+      },
+    },
+    window: {
+      addEventListener() {},
+      getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+    },
+    NodeFilter: { SHOW_TEXT: 4 },
+    Node: { ELEMENT_NODE: 1 },
+  };
+
+  const vm = require('vm');
+  const ctx = vm.createContext(sandbox);
+  // Load the content scripts in manifest order (same order contentScriptBundle
+  // uses), substituting the neutralized content.js source for the real one.
+  const bundle = contentScriptFiles
+    .map((file) => (file === 'content.js' ? noChromeContentSrc : contentScriptSources.get(file)))
+    .join('\n');
+
+  let threw = null;
+  try {
+    vm.runInContext(bundle + '\nthis.__roundTable = roundTable;', ctx);
+  } catch (e) {
+    threw = e.message;
+  }
+  eq('no-chrome e2e: the engine bundle loads with no `chrome` global defined anywhere',
+    threw, null);
+  eq('no-chrome e2e: `chrome` is genuinely absent from the sandbox',
+    'chrome' in sandbox, false);
+  if (threw !== null || typeof sandbox.__roundTable !== 'function') return;
+
+  const table = makeMockTable([[{ tag: 'td', text: '1,234,567' }]]);
+  let callThrew = null;
+  let result;
+  try {
+    result = sandbox.__roundTable(table, {
+      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      // The fixture's only row is row 0 — simplifyFirstRow/Column must be true
+      // or getExclusionReason would exclude the only cell under test.
+      simplifyFirstRow: true, simplifyFirstColumn: true,
+      simplifyMixedPercent: false, simplifyMixedCurrency: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+    });
+  } catch (e) {
+    callThrew = e.message;
+  }
+
+  eq('no-chrome e2e: calling roundTable on a fixture does not throw with no chrome global present',
+    callThrew, null);
+  eq('no-chrome e2e: roundTable returns rangeStatus "ok"',
+    result && result.rangeStatus, 'ok');
+  eq('no-chrome e2e: roundTable returns applied: true',
+    result && result.applied, true);
+  eq('no-chrome e2e: roundTable actually rounded the fixture cell',
+    table.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint engine-returns-results: pin the exact RANGE_OK/RANGE_ERROR message
+// sequence for one full toggle flow (runToggleAction -> roundTable ->
+// sendRangeStatusMessage -> chrome.runtime.sendMessage).
+//
+// Before this sprint, roundTable sent RANGE_ERROR/RANGE_OK itself. Now the
+// engine returns { applied, rangeStatus, error } and the controller sends the
+// message. The two expected sequences below (one per range-validity branch)
+// were verified byte-for-byte against content.js as it stood at commit
+// 4340bd1 (the refactor/merge-ladder tip this sprint branched from) by
+// running that commit's real content.js through this same vm harness and
+// diffing the captured chrome.runtime.sendMessage sequence against the one
+// captured here. They were identical. This test pins that verified sequence
+// so a future change cannot silently drop or duplicate a message.
+// ---------------------------------------------------------------------------
+(function engineReturnsResults_rangeStatusMessageSequence() {
+  const contentSrc = sourceByName('content.js');
+  if (contentSrc === null) {
+    eq('range-status sequence: source file content.js present in manifest', false, true);
+    return;
+  }
+
+  // Isolated vm context per run so module-level state (DR_DEFAULTS mutation,
+  // highlightStyleInjected, tableOptions) never bleeds between the two
+  // scenarios below.
+  function runFullToggleFlow(rangeExprOverride) {
+    const sentMessages = [];
+    const sandbox = {
+      document: {
+        addEventListener() {},
+        querySelectorAll() { return []; },
+        readyState: 'complete',
+        body: { appendChild() {} },
+        createElement() { return { textContent: '' }; },
+        head: { appendChild() {} },
+        createTreeWalker(cell) {
+          let done = false;
+          return {
+            nextNode() {
+              if (done) return null;
+              done = true;
+              return {
+                get nodeValue() { return this._val !== undefined ? this._val : cell.innerText; },
+                set nodeValue(v) { cell.innerText = v; cell.textContent = v; this._val = v; },
+              };
+            },
+          };
+        },
+      },
+      window: {
+        addEventListener() {},
+        getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+      },
+      NodeFilter: { SHOW_TEXT: 4 },
+      Node: { ELEMENT_NODE: 1 },
+      MutationObserver: class { observe() {} disconnect() {} },
+      ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
+      chrome: {
+        runtime: {
+          sendMessage(msg) { sentMessages.push(msg); },
+          onMessage: { addListener() {} },
+          lastError: null,
+        },
+      },
+    };
+    const vm = require('vm');
+    const ctx = vm.createContext(sandbox);
+    const bundle = contentScriptFiles
+      .map((file) => (file === 'content.js' ? contentSrc : contentScriptSources.get(file)))
+      .join('\n');
+    vm.runInContext(
+      bundle + '\nthis.__runToggleAction = runToggleAction; this.__DR_DEFAULTS = DR_DEFAULTS;',
+      ctx
+    );
+
+    // 2x2 so the target cell (row 1, col 1) sits outside DR_DEFAULTS's
+    // simplifyFirstRow/simplifyFirstColumn: false exclusion — DR_DEFAULTS
+    // (unlike the no-chrome e2e fixture above) is used as-is here, matching
+    // runToggleAction's real call, which passes no per-call options.
+    const table = makeMockTable([
+      [{ tag: 'td', text: 'label' }, { tag: 'td', text: 'header' }],
+      [{ tag: 'td', text: 'label' }, { tag: 'td', text: '1,234,567' }],
+    ]);
+    // runToggleAction unconditionally ends with flashRangePulse(table, null),
+    // which flashes the whole-table outline via table.classList — a real
+    // <table> element has this; the bare mock from makeMockTable does not.
+    table.classList = { add() {}, remove() {} };
+    if (rangeExprOverride !== undefined) {
+      sandbox.__DR_DEFAULTS.rangeExpr = rangeExprOverride;
+    }
+    let threw = null;
+    try {
+      sandbox.__runToggleAction(table);
+    } catch (e) {
+      threw = e.message;
+    }
+    return { sentMessages, threw, table };
+  }
+
+  // --- Scenario 1: valid range (default rangeExpr === '') -> rounds, RANGE_OK ---
+  const okRun = runFullToggleFlow(undefined);
+  eq('range-status sequence (valid range): runToggleAction does not throw',
+    okRun.threw, null);
+  eq('range-status sequence (valid range): exact message sequence matches parent-branch capture',
+    okRun.sentMessages,
+    [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ]);
+  eq('range-status sequence (valid range): the cell was actually rounded',
+    okRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), true);
+
+  // --- Scenario 2: invalid range ("1a" matches neither a column letter nor a
+  // row number pattern) -> no rounding, RANGE_ERROR with the parse error ---
+  const errorRun = runFullToggleFlow('1a');
+  eq('range-status sequence (invalid range): runToggleAction does not throw',
+    errorRun.threw, null);
+  eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture',
+    errorRun.sentMessages,
+    [
+      { action: 'RANGE_ERROR', error: 'Invalid range: "1a"' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ]);
+  eq('range-status sequence (invalid range): the cell was NOT rounded',
+    errorRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-selection: the application model (app/store.js, DR_STORE)
+// and the typed event bus (adapters/messaging.js, DR_BUS). The selected
+// table and the sidebar-open flag moved out of content.js's file-level lets
+// into DR_STORE; ui-toggle.js reports an intent through DR_BUS instead of
+// writing content.js's variables directly.
+// ---------------------------------------------------------------------------
+(function appModelSelection_storeAndBus() {
+  const busSrc = sourceByName('adapters/messaging.js');
+  const storeSrc = sourceByName('app/store.js');
+  if (busSrc === null || storeSrc === null) {
+    eq('app-model-selection: adapters/messaging.js and app/store.js are present in the manifest', false, true);
+    return;
+  }
+
+  // --- (a) discipline: one top-level declaration per file, like the lib
+  // packages' index.js bundles. ---
+  const topLevelDecls = (src) => src.match(/^(const|let|var|function\b|class\b)/gm) || [];
+  eq('adapters/messaging.js: exactly one top-level declaration in the file',
+    topLevelDecls(busSrc).length, 1);
+  eq('adapters/messaging.js: the sole top-level declaration is DR_BUS',
+    /^const DR_BUS\b/m.test(busSrc), true);
+  eq('app/store.js: exactly one top-level declaration in the file',
+    topLevelDecls(storeSrc).length, 1);
+  eq('app/store.js: the sole top-level declaration is DR_STORE',
+    /^const DR_STORE\b/m.test(storeSrc), true);
+
+  // --- (a) discipline: DR_BUS.TOPICS enumerates every topic with a family,
+  // and no topic falls outside the two families. ---
+  const KNOWN_FAMILIES = ['intent', 'state-change'];
+  const topics = DR_BUS.TOPICS;
+  const topicNames = Object.keys(topics);
+  eq('DR_BUS.TOPICS: at least one topic is registered',
+    topicNames.length > 0, true);
+  eq('DR_BUS.TOPICS: every topic belongs to one of the two known families',
+    topicNames.every((t) => KNOWN_FAMILIES.includes(topics[t].family)), true);
+  eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
+    topicNames.slice().sort(),
+    ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged', 'state:sidebarOpenChanged',
+     'intent:settingsChanged', 'state:settingsChanged'].sort());
+  eq('DR_BUS.TOPICS: intent:selectTable is in the intent family',
+    topics['intent:selectTable'].family, 'intent');
+  // Sprint toggle-split: the toggle view's click handler no longer calls
+  // runToggleAction directly — it reports intent:toggleTable, and content.js
+  // (the sole subscriber) decides what a committed toggle does.
+  eq('DR_BUS.TOPICS: intent:toggleTable is in the intent family',
+    topics['intent:toggleTable'].family, 'intent');
+  eq('DR_BUS.TOPICS: state:selectedTableChanged is in the state-change family',
+    topics['state:selectedTableChanged'].family, 'state-change');
+  eq('DR_BUS.TOPICS: state:sidebarOpenChanged is in the state-change family',
+    topics['state:sidebarOpenChanged'].family, 'state-change');
+  eq('DR_BUS.TOPICS: intent:settingsChanged is in the intent family',
+    topics['intent:settingsChanged'].family, 'intent');
+  eq('DR_BUS.TOPICS: state:settingsChanged is in the state-change family',
+    topics['state:settingsChanged'].family, 'state-change');
+  eq('DR_BUS.TOPICS: intent:settingsChanged carries the APPLY_SIDEBAR_SETTINGS wireAction (cross-context: sidebar page -> content script)',
+    topics['intent:settingsChanged'].wireAction, 'APPLY_SIDEBAR_SETTINGS');
+  eq('DR_BUS.TOPICS: state:settingsChanged has no wireAction (same-context: model -> controller only)',
+    topics['state:settingsChanged'].wireAction, null);
+
+  // Publishing to an unregistered topic is rejected rather than silently
+  // dropped, so the registry stays authoritative rather than aspirational.
+  let unknownTopicThrew = null;
+  try {
+    DR_BUS.publish('not:a:real:topic', {});
+  } catch (e) {
+    unknownTopicThrew = e.message;
+  }
+  eq('DR_BUS.publish: an unregistered topic throws instead of publishing silently',
+    typeof unknownTopicThrew, 'string');
+
+  // --- (b) publishing the intent changes the model and emits the
+  // resulting state-change with the whole new value. ---
+  const originalSelected = DR_STORE.getSelectedTable();
+  try {
+    const fakeTable = { __fake: 'table-A' };
+    let stateChangePayload = 'NOT_CALLED';
+    const unsubscribe = DR_BUS.subscribe('state:selectedTableChanged', (payload) => {
+      stateChangePayload = payload;
+    });
+    try {
+      DR_BUS.publish('intent:selectTable', { table: fakeTable });
+    } finally {
+      unsubscribe();
+    }
+    eq('intent:selectTable: publishing the intent updates DR_STORE.getSelectedTable()',
+      DR_STORE.getSelectedTable(), fakeTable);
+    eq('intent:selectTable: the resulting state-change fires exactly once, carrying the whole new value',
+      stateChangePayload, { table: fakeTable });
+  } finally {
+    DR_STORE.setSelectedTable(originalSelected);
+  }
+
+  // --- (c) reconnect: closing and reopening the sidebar must pull the
+  // model's current snapshot, not depend on a state-change message the
+  // sidebar could have missed while it was gone (the bus keeps no history). ---
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedOpen = DR_STORE.isSidebarOpen();
+  try {
+    const reconnectTable = { __fake: 'table-B' };
+    DR_STORE.setSelectedTable(reconnectTable);
+    DR_STORE.setSidebarOpen(true);
+
+    DR_STORE.setSidebarOpen(false); // simulate the sidebar closing
+
+    // No message is replayed here on purpose — a reconnecting view pulls,
+    // it does not listen for what it missed.
+    const snapshotWhileClosed = DR_STORE.getSnapshot();
+    eq('reconnect: the selection survives the sidebar closing (read via getSnapshot, not a replayed message)',
+      snapshotWhileClosed.selectedTable, reconnectTable);
+    eq('reconnect: sidebarOpen reflects the close via the store',
+      snapshotWhileClosed.sidebarOpen, false);
+
+    DR_STORE.setSidebarOpen(true); // simulate the sidebar reopening
+    eq('reconnect: sidebarOpen reflects the reopen via the store, independent of message history',
+      DR_STORE.isSidebarOpen(), true);
+    eq('reconnect: selectedTable is unchanged by the reopen — the reopening view pulls it, it is not reset',
+      DR_STORE.getSelectedTable(), reconnectTable);
+  } finally {
+    DR_STORE.setSelectedTable(savedSelected);
+    DR_STORE.setSidebarOpen(savedOpen);
+  }
+
+  // --- (d) no file writes another file's variables: build the list of
+  // identifiers content.js declares at its top level, then confirm
+  // ui-toggle.js contains no assignment to any of them. ---
+  const contentSrcForScan = sourceByName('content.js');
+  const uiToggleSrcForScan = sourceByName('ui-toggle.js');
+  const topLevelBindingNames = (src) => {
+    const names = [];
+    const re = /^(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
+    let match;
+    while ((match = re.exec(src))) names.push(match[1]);
+    return names;
+  };
+  const contentTopLevelNames = topLevelBindingNames(contentSrcForScan);
+  eq('static scan: content.js still declares its usual top-level bindings (sanity check on the scan itself)',
+    contentTopLevelNames.includes('lastRightClickedElement') && contentTopLevelNames.includes('tableOptions'),
+    true);
+  eq('static scan: content.js no longer declares lastRightClickedTable or sidebarOpen at top level',
+    contentTopLevelNames.includes('lastRightClickedTable') || contentTopLevelNames.includes('sidebarOpen'),
+    false);
+  const crossFileWrites = contentTopLevelNames.filter((name) => {
+    const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
+    return assignRe.test(uiToggleSrcForScan);
+  });
+  eq("static scan: ui-toggle.js assigns none of content.js's top-level bindings",
+    crossFileWrites, []);
+
+  // --- (e) hardening: the scan above only catches writes to content.js's
+  // SURVIVING top-level bindings. It has a blind spot — a name that moved OUT
+  // of content.js into DR_STORE (selectedTable, sidebarOpen) is invisible to
+  // that scan once it is gone from content.js's own declaration list, so a
+  // file that reintroduces a bare assignment to that name (exactly the old
+  // anti-pattern this sprint removed) would slip through undetected. Close
+  // that gap by scanning for writes to DR_STORE's own private field names,
+  // read directly from app/store.js rather than from content.js.
+  const storeFieldNames = Array.from(storeSrc.matchAll(/\b(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/g))
+    .map((m) => m[1])
+    .filter((name) => name !== 'DR_STORE');
+  eq('static scan: app/store.js declares its three private fields (sanity check on the scan itself)',
+    storeFieldNames.slice().sort(), ['selectedTable', 'sidebarOpen', 'settings'].sort());
+  const storeFieldWrites = storeFieldNames.filter((name) => {
+    const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
+    return assignRe.test(uiToggleSrcForScan) || assignRe.test(contentSrcForScan);
+  });
+  eq("static scan (hardened): neither ui-toggle.js nor content.js assigns DR_STORE's private field names directly",
+    storeFieldWrites, []);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint toggle-split: ui-toggle.js splits into drawing (render from state,
+// hold only view-transient state) and reporting (publish intents on DR_BUS
+// instead of calling the controller directly). The click handler used to
+// call runToggleAction (and, transitively via runToggleAction, could reach
+// toggleOriginalValues) straight from the view; both are content.js
+// controller functions now reached only through the published
+// intent:toggleTable, never called from ui-toggle.js itself.
+// ---------------------------------------------------------------------------
+(function toggleSplit_viewCallsNoControllerFunctionDirectly() {
+  const uiToggleSrc = sourceByName('ui-toggle.js');
+  if (uiToggleSrc === null) {
+    eq('toggle-split: ui-toggle.js is present in the manifest', false, true);
+    return;
+  }
+  // Forbidden list: content.js controller functions a user action used to
+  // reach directly from ui-toggle.js's click handler before this sprint.
+  const FORBIDDEN_CONTROLLER_CALLS = ['runToggleAction', 'toggleOriginalValues'];
+  const foundCalls = FORBIDDEN_CONTROLLER_CALLS.filter((name) => {
+    const callRe = new RegExp('\\b' + name + '\\s*\\(');
+    return callRe.test(uiToggleSrc);
+  });
+  eq('toggle-split: ui-toggle.js contains no direct call to runToggleAction/toggleOriginalValues',
+    foundCalls, []);
+
+  // The click handler reports the toggle activation as an intent instead.
+  eq('toggle-split: ui-toggle.js publishes intent:toggleTable from the click handler',
+    /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiToggleSrc), true);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint toggle-split: publishing intent:toggleTable is content.js's only
+// path to running the toggle now — prove the wiring end to end (mirrors the
+// intent:selectTable behavioral pin in the app-model-selection block above).
+// ---------------------------------------------------------------------------
+(function toggleSplit_intentToggleTableRunsTheToggle() {
+  // DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn) — use a
+  // 2x2 table so [row1, col1] is processed (same shape as the pillbox AC2
+  // regression test above, which exercises runToggleAction directly).
+  const table = makeToggleTable([
+    [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
+    [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
+  ]);
+  injectToggleEntry(table);
+
+  const wasRounded = isTableRounded(table);
+  withCreateTreeWalker(function () {
+    DR_BUS.publish('intent:toggleTable', { table });
+  });
+  const isNowRounded = isTableRounded(table);
+
+  eq('toggle-split: publishing intent:toggleTable runs runToggleAction (table becomes rounded)',
+    !wasRounded && isNowRounded, true);
+
+  // Toggling again reverts to showing the original (same path, same intent).
+  withCreateTreeWalker(function () {
+    DR_BUS.publish('intent:toggleTable', { table });
+  });
+  eq('toggle-split: publishing intent:toggleTable again toggles back (showing originals)',
+    isTableRounded(table), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint toggle-split: KNOWN BUG FIX — flashRangePulse used to read
+// table.rows/row.cells directly, which only exist on native <table>
+// elements. On a div-based grid Array.from(undefined) threw a TypeError,
+// aborting the caller mid-flow (reverting the fix crashes this suite rather
+// than failing an assertion). flashRangePulse now enumerates cells through the same TableAdapter
+// (makeAdapter) the rounding engine and preview already use, so a grid's
+// cells are found the same way a native table's are. This test fails
+// without the fix: matchedCells.length would be 0 for the grid case below,
+// and the (missing/whole-grid) fallback flash would not carry the
+// range-restricted geometry asserted here.
+// ---------------------------------------------------------------------------
+(function toggleSplit_rangeFlashWorksOnGrids() {
+  // 2x2 div-based grid (no ARIA roles, no vendor classes — the plain
+  // fallback shape GridAdapter already supports elsewhere in this suite).
+  const grid = makeGridWrapper([
+    ['1,000,000', '500'],
+    ['2,000,000', '750'],
+  ]);
+
+  // Distinct bounding rects per cell (document order: row0/col0, row0/col1,
+  // row1/col0, row1/col1) so the union rect proves WHICH cells were matched
+  // (column 1 only) rather than the whole grid or nothing at all.
+  const rects = [
+    { top: 0,  left: 0,   right: 100, bottom: 20 },
+    { top: 0,  left: 100, right: 200, bottom: 20 },
+    { top: 20, left: 0,   right: 100, bottom: 40 },
+    { top: 20, left: 100, right: 200, bottom: 40 },
+  ];
+  grid.cellEls.forEach((cell, i) => { cell.getBoundingClientRect = () => rects[i]; });
+
+  // Intercept the overlay div flashRangePulse creates and appends.
+  const origCreateElement = global.document.createElement;
+  const origBody = global.document.body;
+  const origSetTimeout = global.setTimeout;
+  let overlay = null;
+  global.document.createElement = (tag) => {
+    const el = { style: {}, addEventListener() {} };
+    if (tag === 'div') overlay = el;
+    return el;
+  };
+  const appended = [];
+  global.document.body = { appendChild(el) { appended.push(el); } };
+  global.setTimeout = () => 0; // avoid a real pending 1.5s cleanup timer
+
+  // Range expression equivalent to selecting column B only (both rows) —
+  // a partial range, so a whole-grid fallback would be visibly wrong.
+  const ranges = [{ colMin: 1, colMax: 1, rowMin: 0, rowMax: 1 }];
+  flashRangePulse(grid.wrapperEl, ranges);
+
+  global.document.createElement = origCreateElement;
+  global.document.body = origBody;
+  global.setTimeout = origSetTimeout;
+
+  eq('range-flash grid: an overlay is appended to document.body (not silently skipped)',
+    appended.length, 1);
+  eq('range-flash grid: the overlay carries the range-pulse class',
+    overlay && overlay.className, 'dr-ext-range-pulse');
+  eq('range-flash grid: the overlay is sized/positioned to the union of the matched grid cells (col 1 only), not the whole grid or nothing',
+    overlay && { top: overlay.style.top, left: overlay.style.left, width: overlay.style.width, height: overlay.style.height },
+    { top: '0px', left: '100px', width: '100px', height: '40px' });
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint toggle-split (adversarial hardening): CLICK-HANDLER PARENT-EQUIVALENCE
+// PIN across the full guard matrix. The consolidation claims that collapsing
+// ui-toggle.js's two inlined click branches (mouse/keyboard, touch second-tap)
+// down to one `DR_BUS.publish('intent:toggleTable', { table })` line each,
+// with content.js's new intent:toggleTable subscriber running the same
+// guarded body both branches used to run inline, produces the identical
+// observable chrome.runtime.sendMessage sequence as before. This pin proves
+// that claim across {same table, different table} x {sidebar open, closed},
+// for both click branches — not just that a guard's boolean outcome matches
+// (the AC1-AC4 rebind tests above already cover that), but that the ORDER
+// and full contents of every dispatched message are unchanged.
+//
+// The expected sequences below are LITERALS captured by running the REAL
+// click handler from both this sprint's parent (refactor/app-model-selection,
+// the last commit with the guard/dispatch logic inlined per click branch in
+// ui-toggle.js) and HEAD against this same fixture and harness, and verified
+// byte-identical at review time. Frozen here rather than re-derived via
+// `git show` at test-run time, matching the rationale in commit 394afa7: a
+// shallow checkout or CI runner may not have the parent ref available.
+// ---------------------------------------------------------------------------
+(function toggleSplit_parentEquivalence_toggleClickGuardMatrix() {
+  // Keyed by `${sidebarOpen}:${sameTable}` — mouse and touch second-tap
+  // produce the identical sequence per guard cell, since both branches ran
+  // (and, post-split, both report to) the same guarded body. That equality
+  // is itself part of what this pin proves: see the per-mode assertions
+  // below, which check mouse and touch against the same expected literal.
+  const PARENT_EXPECTED_SEQUENCES = {
+    'true:true': [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+      { action: 'TABLE_TOGGLE_STATE', enabled: true },
+    ],
+    'true:false': [
+      { action: 'RESET_SIDEBAR_TO_DEFAULTS' },
+      { action: 'PREVIEW_SAMPLES_CHANGED' },
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+      { action: 'TABLE_TOGGLE_STATE', enabled: true },
+    ],
+    'false:true': [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ],
+    'false:false': [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ],
+  };
+
+  // sameTable=true reuses the SAME table object for both "who's currently
+  // selected" and "who gets clicked" — the no-rebind cell of the matrix.
+  // sameTable=false selects a different table than the one clicked — the
+  // rebind cell, which the guard must send RESET_SIDEBAR_TO_DEFAULTS +
+  // PREVIEW_SAMPLES_CHANGED for.
+  function runToggleClickFixture(mode, sidebarOpenValue, sameTable) {
+    const clicked = makeToggleTable([
+      [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+      [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+    ]);
+    clicked._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+    let selected = clicked;
+    if (!sameTable) {
+      selected = makeToggleTable([
+        [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+        [{ tag: 'td', text: '1,000,000' }, { tag: 'td', text: '500' }],
+      ]);
+      selected._cells.forEach(c => { c.querySelectorAll = () => []; });
+    }
+
+    const sentMessages = [];
+    const origSendMessage = global.chrome.runtime.sendMessage;
+    global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+    sidebarOpen = sidebarOpenValue;
+    lastRightClickedTable = selected;
+
+    const buttonEl = createToggleWithSpies(clicked);
+    if (mode === 'mouse') fireMouseClick(buttonEl);
+    else fireTouchSecondTap(buttonEl);
+
+    global.chrome.runtime.sendMessage = origSendMessage;
+    sidebarOpen = false;
+    lastRightClickedTable = null;
+
+    return sentMessages;
+  }
+
+  for (const sidebarOpenValue of [true, false]) {
+    for (const sameTable of [true, false]) {
+      const key = `${sidebarOpenValue}:${sameTable}`;
+      const expected = PARENT_EXPECTED_SEQUENCES[key];
+      for (const mode of ['mouse', 'touch']) {
+        const seq = runToggleClickFixture(mode, sidebarOpenValue, sameTable);
+        eq(`toggle click guard-matrix (${mode}, sidebarOpen=${sidebarOpenValue}, sameTable=${sameTable}): sendMessage sequence matches the frozen parent sequence`,
+          seq, expected);
+      }
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-selection (adversarial hardening): statelessness. The bus
+// keeps no last-value cache and no delivery history (see adapters/messaging.js
+// header) — a subscriber that attaches AFTER a publish must never see that
+// publish, unlike an EventEmitter with replay or a BehaviorSubject.
+// ---------------------------------------------------------------------------
+(function appModelSelection_busIsStateless_lateSubscriberMissesPastPublish() {
+  const topic = 'state:selectedTableChanged';
+  const fakeTable = { __fake: 'stateless-check' };
+  const savedSelected = DR_STORE.getSelectedTable();
+  try {
+    // Publish BEFORE any subscriber attaches — nothing is listening yet.
+    DR_BUS.publish(topic, { table: fakeTable });
+
+    let received = 'NOT_CALLED';
+    const unsubscribe = DR_BUS.subscribe(topic, (payload) => { received = payload; });
+    try {
+      eq('DR_BUS statelessness: a subscriber that attaches after a publish never receives that publish',
+        received, 'NOT_CALLED');
+    } finally {
+      unsubscribe();
+    }
+  } finally {
+    DR_STORE.setSelectedTable(savedSelected);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-selection (adversarial hardening): reentrancy. Same-context
+// delivery is synchronous (see adapters/messaging.js header), so a subscribed
+// handler may itself call DR_BUS.publish() for a different topic before
+// returning. A two-topic cycle — A's handler publishes B; B's handler
+// increments a counter and, guarded to do so only once, publishes A back —
+// must settle without an infinite loop or a stack overflow.
+// ---------------------------------------------------------------------------
+(function appModelSelection_busReentrancy_twoTopicCycleSettles() {
+  const TOPIC_A = 'state:selectedTableChanged';
+  const TOPIC_B = 'state:sidebarOpenChanged';
+  let counter = 0;
+
+  const unsubA = DR_BUS.subscribe(TOPIC_A, () => {
+    DR_BUS.publish(TOPIC_B, { sidebarOpen: true }); // A's handler always publishes B
+  });
+  const unsubB = DR_BUS.subscribe(TOPIC_B, () => {
+    counter++;
+    if (counter === 1) {
+      DR_BUS.publish(TOPIC_A, { table: null }); // guarded to bounce back to A only once
+    }
+  });
+
+  let threw = null;
+  try {
+    DR_BUS.publish(TOPIC_A, { table: null }); // kick off the cycle
+  } catch (e) {
+    threw = e.message;
+  } finally {
+    unsubA();
+    unsubB();
+  }
+
+  eq('DR_BUS reentrancy: a guarded two-topic publish cycle completes without throwing (no infinite loop/stack overflow)',
+    threw, null);
+  eq('DR_BUS reentrancy: B fires exactly twice (initial A->B hop, then one guarded bounce back through A)',
+    counter, 2);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-settings (issue #240): the depth guard itself. The cycle
+// above is self-limiting (a caller-side counter stops it after one bounce);
+// this one is NOT — neither handler has a stop condition, so without the
+// bus's own guard this would recurse until the real call stack overflows.
+// ---------------------------------------------------------------------------
+(function appModelSettings_busReentrancy_unguardedCycleTerminatesSafely() {
+  const TOPIC_A = 'state:selectedTableChanged';
+  const TOPIC_B = 'state:sidebarOpenChanged';
+
+  const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { sidebarOpen: true }); });
+  const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, { table: null }); });
+
+  let threw = null;
+  try {
+    DR_BUS.publish(TOPIC_A, { table: null });
+  } catch (e) {
+    threw = e.message;
+  } finally {
+    unsubA();
+    unsubB();
+  }
+
+  eq('DR_BUS reentrancy (unguarded cycle): publish() throws a catchable error instead of crashing with a real stack overflow',
+    typeof threw, 'string');
+  eq('DR_BUS reentrancy (unguarded cycle): the thrown error names the depth guard, not a raw engine stack-overflow error',
+    /publish depth exceeded/.test(threw || ''), true);
+
+  // The guard must reset cleanly — every nested publish() decrements the
+  // depth counter in a finally as the exception unwinds — so an unrelated
+  // publish afterward must behave normally, not still read as "deep".
+  let secondThrew = null;
+  const unsubCheck = DR_BUS.subscribe(TOPIC_A, () => {});
+  try {
+    DR_BUS.publish(TOPIC_A, { table: null });
+  } catch (e) {
+    secondThrew = e.message;
+  } finally {
+    unsubCheck();
+  }
+  eq('DR_BUS reentrancy (unguarded cycle): the depth counter recovers — a later unrelated publish does not throw',
+    secondThrew, null);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-settings, adversarial: wire-payload parity with the parent
+// branch's sendToActiveTab (refactor/app-model-selection, before this sprint
+// inverted the transport). The message body itself is unchanged — {action,
+// settings}, same field names, same nesting, no extra bus-envelope fields —
+// but sendToActiveTab always passed chrome.tabs.sendMessage a THIRD argument,
+// a response callback, and used it to react to delivery: clear statusEl on
+// success, setTableBound(false) on chrome.runtime.lastError (no content
+// script on the tab). adapters/messaging.js's publish() relay calls
+// chrome.tabs.sendMessage with only two arguments — no callback — so that
+// reaction is silently gone for the settings-apply path: a real Chrome would
+// also log an "Unchecked runtime.lastError" warning on every failed delivery.
+// This isolates DR_BUS in its own vm sandbox (messaging.js has no DOM
+// dependency) and pins the call shape directly, independent of sidebar.js's
+// heavier DOM requirements.
+// ---------------------------------------------------------------------------
+(function appModelSettings_wirePayload_parityWithParentSendToActiveTab() {
+  if (messagingCode === null) {
+    eq('wire payload: adapters/messaging.js present in manifest', false, true);
+    return;
+  }
+  const vm = require('vm');
+  const sentCalls = [];
+  const sandbox = {
+    chrome: {
+      tabs: {
+        query(q, cb) { cb([{ id: 7 }]); },
+        sendMessage(...args) { sentCalls.push(args); },
+      },
+      runtime: {},
+    },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
+
+  sandbox.__DR_BUS.publish('intent:settingsChanged', { settings: { offsetTop: -2, rangeExpr: 'A1:B2' } });
+
+  eq('wire payload: exactly one chrome.tabs.sendMessage call for one publish()',
+    sentCalls.length, 1);
+  if (sentCalls.length !== 1) return;
+
+  const [tabId, msg, callback] = sentCalls[0];
+  eq('wire payload: message action is unchanged (APPLY_SIDEBAR_SETTINGS)',
+    msg.action, 'APPLY_SIDEBAR_SETTINGS');
+  eq('wire payload: message field names are exactly {action, settings} — no extra bus-envelope fields',
+    Object.keys(msg).sort(), ['action', 'settings'].sort());
+  eq('wire payload: settings payload is nested exactly as sendToActiveTab sent it, unchanged',
+    JSON.stringify(msg.settings), JSON.stringify({ offsetTop: -2, rangeExpr: 'A1:B2' }));
+
+  // ADVERSARIAL regression pin (see PR notes): the parent's sendToActiveTab
+  // always passed a response callback (chrome.tabs.sendMessage's 3rd
+  // argument) and used it to reflect delivery failure back into the UI
+  // (setTableBound(false) on chrome.runtime.lastError) and to clear statusEl
+  // on success. This only pins the MECHANISM — that publish() still passes a
+  // callback — not the behavior; see appModelSettings_settingsPublish_
+  // deliveryFeedback_behavioral below for the behavioral coverage.
+  eq('wire payload: publish() passes a response callback to chrome.tabs.sendMessage, matching sendToActiveTab\'s delivery-failure handling (regression — see PR notes)',
+    typeof callback, 'function');
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-settings, adversarial fix (behavioral): the pin above only
+// proves publish() PASSES a callback to chrome.tabs.sendMessage — it says
+// nothing about what that callback does. This drives sidebar.js's real
+// applyNow() -> DR_BUS.publish() path end to end and checks the two
+// behaviors refactor/app-model-selection's sendToActiveTab had: a failed
+// delivery (chrome.runtime.lastError) must unbind the sidebar via
+// setTableBound(false); a successful delivery must clear #status.
+// ---------------------------------------------------------------------------
+(function appModelSettings_settingsPublish_deliveryFeedback_behavioral() {
+  const defaultsSrc = sourceByName('defaults.js');
+  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
+  const coreSrc = sourceByName('lib/dr-number/core.js');
+  if (defaultsSrc === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+    eq('settings publish delivery: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+
+  // Minimal element stub — same shape as the other sidebar.js eval harnesses
+  // in this file (see tableContextmenuActivation_sidebarFlash above).
+  function makeEl() {
+    return {
+      addEventListener() {}, removeEventListener() {},
+      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+      style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
+      appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
+      getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
+      matches() { return false; }, closest() { return null; }, dataset: {},
+    };
+  }
+
+  // #status and #enabled are the two elements setTableBound touches; capture
+  // the exact objects sidebar.js's document.getElementById() hands back so we
+  // can read their mutations directly, with no need to export any function.
+  const statusEl = makeEl();
+  const enabledEl = makeEl();
+  enabledEl.checked = true;
+  let enabledChangeHandler = null;
+  enabledEl.addEventListener = function (type, fn) { if (type === 'change') enabledChangeHandler = fn; };
+
+  const bodyClasses = new Set();
+  const captureBody = {
+    classList: {
+      add(cls) { bodyClasses.add(cls); },
+      remove(cls) { bodyClasses.delete(cls); },
+      contains(cls) { return bodyClasses.has(cls); },
+      toggle(cls, force) {
+        if (force === undefined) {
+          if (bodyClasses.has(cls)) bodyClasses.delete(cls); else bodyClasses.add(cls);
+        } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
+      },
+    },
+    addEventListener() {},
+    get offsetWidth() { return 0; },
+  };
+
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: captureBody,
+    getElementById(id) {
+      if (id === 'status') return statusEl;
+      if (id === 'enabled') return enabledEl;
+      return makeEl();
+    },
+    createElement() { return makeEl(); },
+  };
+
+  // chrome.tabs.query/sendMessage resolve synchronously so the whole chain —
+  // sidebar.js's applyNow() -> DR_BUS.publish() -> chrome.tabs.sendMessage's
+  // own callback -> sidebar.js's onDelivery — runs deterministically within
+  // one call, with queuedLastError controlling chrome.runtime.lastError at
+  // the moment onDelivery reads it (matching real sendMessage semantics).
+  const sentTabMessages = [];
+  let queuedLastError = null;
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener() {} },
+      sendMessage() {},
+      get lastError() { return queuedLastError; },
+    },
+    tabs: {
+      query(q, cb) { cb([{ id: 42 }]); },
+      sendMessage(tabId, msg, cb) {
+        sentTabMessages.push(msg);
+        if (typeof cb === 'function') cb();
+      },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedWindow = global.window;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, close() {}, getComputedStyle: () => ({ display: 'block' }) };
+
+  // sidebar.js's top-level code — including its own change/click listener
+  // registrations — resolves `document`/`chrome`/`window` dynamically off
+  // the global object every time it runs, not just at eval time. The
+  // captured enabledChangeHandler is called below, well after the initial
+  // eval, so the stubs must stay installed for that call too — restore the
+  // real globals only once every scenario below has run.
+  try {
+    try {
+      eval(
+        defaultsSrc + '\n' +
+        roundingSrc + '\n' +
+        coreSrc + '\n' +
+        messagingCode + '\n' +
+        fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
+      );
+    } catch (e) {
+      // sidebar.js's module-level settings/preview pull can throw past this
+      // point in this stub environment (chrome.tabs.sendMessage's callback
+      // gets no real response) — the 'change' listener registers before that
+      // runs, so we only need it captured.
+    }
+
+    eq('settings publish delivery: sidebar\'s enabled-checkbox change handler was captured',
+      typeof enabledChangeHandler, 'function');
+    if (typeof enabledChangeHandler !== 'function') return;
+
+    // --- Failure: chrome.runtime.lastError set -> setTableBound(false) ran. ---
+    bodyClasses.delete('no-table');
+    enabledEl.checked = true;
+    statusEl.textContent = '';
+    queuedLastError = { message: 'Could not establish connection.' };
+    sentTabMessages.length = 0;
+    enabledChangeHandler();
+
+    eq('settings publish delivery: one APPLY_SIDEBAR_SETTINGS message sent for the change',
+      sentTabMessages.length, 1);
+    eq('settings publish delivery: failed delivery adds the no-table class (setTableBound(false) ran)',
+      bodyClasses.has('no-table'), true);
+    eq('settings publish delivery: failed delivery flips the enabled checkbox off (setTableBound(false) ran)',
+      enabledEl.checked, false);
+    eq('settings publish delivery: failed delivery sets #status to the no-table message (setTableBound(false) ran)',
+      statusEl.textContent, 'Right-click a table to connect it here.');
+
+    // --- Success: no lastError -> #status is cleared. ---
+    bodyClasses.delete('no-table');
+    statusEl.textContent = 'a stale status message';
+    queuedLastError = null;
+    enabledChangeHandler();
+
+    eq('settings publish delivery: successful delivery clears #status',
+      statusEl.textContent, '');
+  } finally {
+    global.document = savedDoc;
+    global.chrome = savedChrome;
+    global.window = savedWindow;
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-settings: settings live in DR_STORE, sourced from
+// DR_DEFAULTS at init, changed only through setSettings (publishing the
+// whole new value), and read back through getSettings().
+// ---------------------------------------------------------------------------
+(function appModelSettings_storeSettingsField() {
+  eq('DR_STORE.getSettings: defaults to DR_DEFAULTS-shaped values at store init',
+    DR_STORE.getSettings().offsetTop, DR_DEFAULTS.offsetTop);
+
+  const savedSettings = DR_STORE.getSettings();
+  try {
+    let stateChangePayload = 'NOT_CALLED';
+    const unsubscribe = DR_BUS.subscribe('state:settingsChanged', (payload) => {
+      stateChangePayload = payload;
+    });
+    const newSettings = Object.assign({}, DR_DEFAULTS, { offsetTop: 0.25, rangeExpr: 'A1:C9' });
+    try {
+      DR_STORE.setSettings(newSettings);
+    } finally {
+      unsubscribe();
+    }
+    eq('DR_STORE.setSettings: getSettings() reflects the new value',
+      DR_STORE.getSettings().offsetTop, 0.25);
+    eq('DR_STORE.setSettings: the resulting state-change carries the whole new value, not a delta',
+      stateChangePayload && stateChangePayload.settings && stateChangePayload.settings.rangeExpr, 'A1:C9');
+
+    // getSettings() returns a copy — mutating what a caller read must not
+    // corrupt the store's own internal value (immutability convention).
+    const read = DR_STORE.getSettings();
+    read.offsetTop = 999;
+    eq('DR_STORE.getSettings: returns a copy, not a live reference — mutating it does not affect the store',
+      DR_STORE.getSettings().offsetTop, 0.25);
+  } finally {
+    DR_STORE.setSettings(savedSettings);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-settings, AC2: the preview band and the table must round
+// the same cell to the same value once a setting changes — the bug this
+// sprint fixes was extractPreviewSamples reading DR_DEFAULTS while roundTable
+// read the model, so they disagreed the moment a slider moved off default.
+// ---------------------------------------------------------------------------
+(function appModelSettings_previewAndTableAgreeOnLiveSettings() {
+  const savedSettings = DR_STORE.getSettings();
+  try {
+    const customSettings = Object.assign({}, DR_DEFAULTS, {
+      simplifyFirstRow: true,
+      simplifyFirstColumn: true,
+      offsetTop: -2,
+      offsetOther: 0.25,
+      numTop: 1,
+      rangeExpr: '',
+    });
+    // Validity check on the fixture itself: these offsets must differ from
+    // DR_DEFAULTS, or a regression back to reading DR_DEFAULTS would slip
+    // through this test undetected.
+    eq('preview/table agreement: fixture offsets differ from DR_DEFAULTS (test validity check)',
+      customSettings.offsetTop !== DR_DEFAULTS.offsetTop && customSettings.offsetOther !== DR_DEFAULTS.offsetOther,
+      true);
+    DR_STORE.setSettings(customSettings);
+
+    const previewTable = makeMockTable([[
+      { tag: 'td', text: '1,000,000' },
+      { tag: 'td', text: '50' },
+    ]]);
+    const preview = extractPreviewSamples(previewTable);
+    eq('preview/table agreement: top band has the large cell',
+      preview.samples.top.length, 1);
+    eq('preview/table agreement: bottom band has the small cell',
+      preview.samples.bottom.length, 1);
+
+    const expectedTop = roundWithOffset(1000000, customSettings.offsetTop);
+    const expectedBottom = roundWithOffset(50, customSettings.offsetOther);
+
+    // What the sidebar's preview band would render for these two cells,
+    // built from the same sample the model supplied.
+    eq('preview/table agreement: preview top sample rounds via the live offsetTop',
+      roundWithOffset(preview.samples.top[0].num, customSettings.offsetTop), expectedTop);
+    eq('preview/table agreement: preview bottom sample rounds via the live offsetOther',
+      roundWithOffset(preview.samples.bottom[0].num, customSettings.offsetOther), expectedBottom);
+
+    // What the table actually renders for the identical cells, applied the
+    // way the state:settingsChanged subscriber does — straight from the model.
+    const liveTable = makeMockTable([[
+      { tag: 'td', text: '1,000,000' },
+      { tag: 'td', text: '50' },
+    ]]);
+    withCreateTreeWalker(() => {
+      roundTable(liveTable, DR_STORE.getSettings());
+    });
+    const renderedTop = toNumber(liveTable.rows[0].cells[0].innerText);
+    const renderedBottom = toNumber(liveTable.rows[0].cells[1].innerText);
+
+    eq('preview/table agreement: the table cell value matches the preview-predicted top value',
+      renderedTop, expectedTop);
+    eq('preview/table agreement: the table cell value matches the preview-predicted bottom value',
+      renderedBottom, expectedBottom);
+  } finally {
+    DR_STORE.setSettings(savedSettings);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-settings, AC5: settings survive a sidebar close and
+// reopen — pulled from the model (GET_SETTINGS), not reset to DR_DEFAULTS.
+// Uses the same isolated-eval capture pattern as the APPLY_SIDEBAR_SETTINGS
+// AC1 test above, so this shared-scope DR_STORE is untouched by it.
+// ---------------------------------------------------------------------------
+(function appModelSettings_settingsSurviveSidebarReconnect() {
+  let capturedListener = null;
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener(fn) { capturedListener = fn; } },
+      sendMessage: () => {},
+      lastError: null,
+    },
+  };
+  const captureDoc = {
+    addEventListener: () => {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild: () => {}, observe: () => {} },
+  };
+  const captureWindow = {
+    addEventListener: () => {},
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+  };
+
+  const saved = { chrome: global.chrome, document: global.document, window: global.window };
+  global.chrome = captureChrome;
+  global.document = captureDoc;
+  global.window = captureWindow;
+  try {
+    eval(contentScriptBundle);
+  } catch (e) {
+    // module-level code may fail in the stub environment; the onMessage
+    // listener registers before any dynamic code runs (see the AC1 test).
+  } finally {
+    global.chrome = saved.chrome;
+    global.document = saved.document;
+    global.window = saved.window;
+  }
+
+  eq('reconnect: the isolated listener was captured',
+    typeof capturedListener, 'function');
+  if (typeof capturedListener !== 'function') return;
+
+  // The sidebar sets a custom value (an "open" session), then — simulated by
+  // nothing happening in between — closes and reopens, pulling the model.
+  const customSettings = {
+    enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: true,
+    simplifyMixedPercent: true, simplifyFirstRow: false, simplifyFirstColumn: false,
+    simplifyDates: true, simplifyTimes: false, dateGranularity: 'year', timeGranularity: 'hour',
+    offsetTop: 0.25, offsetOther: -1.5, numTop: 1, rangeExpr: 'B2:E8',
+  };
+  let applyResponse = null;
+  capturedListener({ action: 'APPLY_SIDEBAR_SETTINGS', settings: customSettings }, {}, (r) => { applyResponse = r; });
+  eq('reconnect: APPLY_SIDEBAR_SETTINGS was acknowledged before the (simulated) close',
+    applyResponse && applyResponse.ok, true);
+
+  // Reopen: exactly what pullSettingsAndApplyToUI's GET_SETTINGS request does.
+  let getResponse = null;
+  capturedListener({ action: 'GET_SETTINGS' }, {}, (r) => { getResponse = r; });
+
+  eq('reconnect: GET_SETTINGS returns a settings object',
+    !!(getResponse && getResponse.settings), true);
+  eq('reconnect: offsetTop survives the close/reopen',
+    getResponse.settings.offsetTop, 0.25);
+  eq('reconnect: offsetOther survives the close/reopen',
+    getResponse.settings.offsetOther, -1.5);
+  eq('reconnect: rangeExpr survives the close/reopen',
+    getResponse.settings.rangeExpr, 'B2:E8');
+  eq('reconnect: a changed boolean flag survives the close/reopen',
+    getResponse.settings.simplifyMixedCells, false);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-settings, bucket-2 fix: a pulled enabled:false must survive
+// sidebar reopen when the reopen lands on a TABLE THAT IS BOUND. This drives
+// sidebar.js's real pullSettingsAndApplyToUI() -> applySettingsToUI() ->
+// fetchPreviewSamples() chain end to end (same eval harness shape as
+// appModelSettings_settingsPublish_deliveryFeedback_behavioral above).
+//
+// The bug: pullSettingsAndApplyToUI applies the pulled settings (correctly
+// setting enabledEl.checked = false), then calls fetchPreviewSamples(), whose
+// response callback calls setTableBound(true) once GET_PREVIEW_SAMPLES
+// resolves with a bound table — and setTableBound's bound branch
+// unconditionally does `enabledEl.checked = DR_DEFAULTS.enabled !== false`,
+// which is true, clobbering the pulled false. The comment that used to sit
+// above pullSettingsAndApplyToUI only reasoned about the no-table case.
+// ---------------------------------------------------------------------------
+(function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
+  const defaultsSrc = sourceByName('defaults.js');
+  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
+  const coreSrc = sourceByName('lib/dr-number/core.js');
+  if (defaultsSrc === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+    eq('reopen-bound: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+
+  // Same minimal element stub as the other full-sidebar.js eval harnesses in
+  // this file (see appModelSettings_settingsPublish_deliveryFeedback_behavioral).
+  function makeEl() {
+    return {
+      addEventListener() {}, removeEventListener() {},
+      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+      style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
+      appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
+      getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
+      matches() { return false; }, closest() { return null; }, dataset: {},
+      setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+    };
+  }
+
+  const statusEl = makeEl();
+  const enabledEl = makeEl();
+
+  const bodyClasses = new Set();
+  const captureBody = {
+    classList: {
+      add(cls) { bodyClasses.add(cls); },
+      remove(cls) { bodyClasses.delete(cls); },
+      contains(cls) { return bodyClasses.has(cls); },
+      toggle(cls, force) {
+        if (force === undefined) {
+          if (bodyClasses.has(cls)) bodyClasses.delete(cls); else bodyClasses.add(cls);
+        } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
+      },
+    },
+    addEventListener() {},
+    get offsetWidth() { return 0; },
+  };
+
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: captureBody,
+    getElementById(id) {
+      if (id === 'status') return statusEl;
+      if (id === 'enabled') return enabledEl;
+      return makeEl();
+    },
+    createElement() { return makeEl(); },
+  };
+
+  // The model holds enabled:false. GET_SETTINGS returns that pulled settings
+  // object; GET_PREVIEW_SAMPLES returns a non-null samples object, i.e. the
+  // reopen landed on a table that is bound (the reviewer's reachable end
+  // state). Both resolve synchronously so the whole
+  // pullSettingsAndApplyToUI() -> fetchPreviewSamples() chain — including
+  // sidebar.js's own module-level call to pullSettingsAndApplyToUI() on
+  // load — settles deterministically within the single eval() call below.
+  const pulledSettings = Object.assign({}, DR_DEFAULTS, { enabled: false });
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener() {} },
+      sendMessage() {},
+      lastError: null,
+    },
+    tabs: {
+      query(q, cb) { cb([{ id: 42 }]); },
+      sendMessage(tabId, msg, cb) {
+        if (msg.action === 'GET_SETTINGS') {
+          cb({ settings: pulledSettings });
+        } else if (msg.action === 'GET_PREVIEW_SAMPLES') {
+          cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
+        } else {
+          cb({ ok: true });
+        }
+      },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedWindow = global.window;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, close() {}, getComputedStyle: () => ({ display: 'block' }) };
+
+  let evalError = null;
+  try {
+    try {
+      eval(
+        defaultsSrc + '\n' +
+        roundingSrc + '\n' +
+        coreSrc + '\n' +
+        messagingCode + '\n' +
+        fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
+      );
+    } catch (e) {
+      // The stubs above are built to let the whole module-level
+      // pullSettingsAndApplyToUI() -> fetchPreviewSamples() chain resolve
+      // synchronously and without throwing, unlike the sibling harness (which
+      // only needs the 'change' listener captured before its own pull runs).
+      // Record any throw instead of silently swallowing it — an unstubbed
+      // DOM method here must fail this test loudly, not make enabledEl.checked
+      // read its untouched initial value and pass for the wrong reason.
+      evalError = e;
+    }
+
+    eq('reopen-bound: sidebar.js\'s module-level pull ran to completion with no stub gaps',
+      evalError, null);
+    eq('reopen-bound: the pulled enabled:false survives the reopen once the preview response resolves (samples !== null)',
+      enabledEl.checked, false);
+  } finally {
+    global.document = savedDoc;
+    global.chrome = savedChrome;
+    global.window = savedWindow;
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-settings, adversarial: the full wire path, not the store
+// directly. appModelSettings_previewAndTableAgreeOnLiveSettings (above) calls
+// DR_STORE.setSettings() straight from the test — it never exercises
+// content.js's own onMessage listener or the state:settingsChanged
+// subscriber, which is the actual code path a real APPLY_SIDEBAR_SETTINGS
+// message drives. This test dispatches that message through the captured
+// listener (the AC1 pattern) against a table already bound as "selected",
+// lets the real subscriber call applySidebarRounding, and checks the
+// resulting cells against extractPreviewSamples computed from the same
+// settings on an identical table — so the assertion covers the message
+// arriving, not just the pure math agreeing.
+// ---------------------------------------------------------------------------
+(function appModelSettings_wireMessageAppliesLiveSettingsToBoundTableAndPreviewAgrees() {
+  function makeWiredMockTable(rowsSpec) {
+    const table = makeMockTable(rowsSpec);
+    table.classList = { remove() {}, add() {}, contains() { return false; } };
+    table.offsetWidth = 0;
+    table.querySelectorAll = () => [];
+    return table;
+  }
+
+  // Values chosen so the offsets below visibly change them (unlike, say,
+  // 1,000,000 / 50 at offsetTop -2 / offsetOther 0.25, which round to
+  // themselves and would pass this test even if rounding silently no-op'd).
+  const rowsSpec = [[
+    { tag: 'td', text: '1,234,567' },
+    { tag: 'td', text: '37' },
+  ]];
+  const CUSTOM_OFFSET_TOP = -2;
+  const CUSTOM_OFFSET_OTHER = 0.25;
+
+  let capturedListener = null;
+  let wiredDR_STORE = null;
+  let wiredExtractPreviewSamples = null;
+  let boundTable = null;
+  let ackResponse = null;
+
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener(fn) { capturedListener = fn; } },
+      sendMessage: () => {},
+      lastError: null,
+    },
+  };
+  const captureDoc = {
+    addEventListener: () => {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    // applySidebarRounding's ensureHighlightStyleInjected() needs these —
+    // the reconnect/AC1 tests above never reach that call (no selected
+    // table, so the subscriber's `if (selected)` guard short-circuits).
+    createElement: () => ({ textContent: '', appendChild() {} }),
+    head: { appendChild() {} },
+    documentElement: { appendChild() {} },
+    body: { appendChild: () => {}, observe: () => {} },
+  };
+  const captureWindow = {
+    addEventListener: () => {},
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+  };
+
+  const saved = { chrome: global.chrome, document: global.document, window: global.window };
+  global.chrome = captureChrome;
+  global.document = captureDoc;
+  global.window = captureWindow;
+
+  try {
+    withCreateTreeWalker(() => {
+      try {
+        eval(contentScriptBundle + `
+          wiredDR_STORE = DR_STORE;
+          wiredExtractPreviewSamples = extractPreviewSamples;
+        `);
+      } catch (e) {
+        // module-level init may fail against the stub DOM; the onMessage
+        // listener and the two wiring assignments above both run before any
+        // dynamic/async code (see the AC1 test).
+      }
+
+      if (typeof capturedListener !== 'function' || !wiredDR_STORE) return;
+
+      // Bind a table as "selected" — mirrors what the contextmenu handler
+      // does for real, so the state:settingsChanged subscriber has
+      // something to apply the incoming message to.
+      boundTable = makeWiredMockTable(rowsSpec);
+      wiredDR_STORE.setSelectedTable(boundTable);
+
+      const customSettings = Object.assign({}, DR_DEFAULTS, {
+        simplifyFirstRow: true, simplifyFirstColumn: true,
+        offsetTop: CUSTOM_OFFSET_TOP, offsetOther: CUSTOM_OFFSET_OTHER,
+        numTop: 1, rangeExpr: '',
+      });
+
+      // The real wire message, dispatched through the real onMessage
+      // listener — not DR_STORE.setSettings() called directly from the test.
+      capturedListener(
+        { action: 'APPLY_SIDEBAR_SETTINGS', settings: customSettings },
+        {},
+        (r) => { ackResponse = r; }
+      );
+    });
+  } finally {
+    global.chrome = saved.chrome;
+    global.document = saved.document;
+    global.window = saved.window;
+  }
+
+  eq('wire E2E: content.js onMessage listener was captured',
+    typeof capturedListener, 'function');
+  eq('wire E2E: APPLY_SIDEBAR_SETTINGS was acknowledged',
+    ackResponse && ackResponse.ok, true);
+  if (!boundTable) return;
+
+  // The subscriber applied the message straight to the bound table — no
+  // separate "apply" call from the test.
+  const renderedTop = toNumber(boundTable.rows[0].cells[0].innerText);
+  const renderedBottom = toNumber(boundTable.rows[0].cells[1].innerText);
+  eq('wire E2E: the fixture top value actually changed under rounding (test validity check)',
+    renderedTop !== 1234567, true);
+  eq('wire E2E: the fixture bottom value actually changed under rounding (test validity check)',
+    renderedBottom !== 37, true);
+  eq('wire E2E: the bound table was actually rounded by the real subscriber path',
+    boundTable.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
+
+  // A fresh, identically-populated table for the preview extractor, so its
+  // read of DR_STORE.getSettings() cannot see already-rounded text.
+  const previewTable = makeWiredMockTable(rowsSpec);
+  const preview = wiredExtractPreviewSamples(previewTable);
+  eq('wire E2E: preview top band has the large cell',
+    preview.samples.top.length, 1);
+  eq('wire E2E: preview bottom band has the small cell',
+    preview.samples.bottom.length, 1);
+
+  const previewTop = roundWithOffset(preview.samples.top[0].num, CUSTOM_OFFSET_TOP);
+  const previewBottom = roundWithOffset(preview.samples.bottom[0].num, CUSTOM_OFFSET_OTHER);
+
+  eq('wire E2E: the table cell the real message pipeline rendered matches the preview-predicted top value',
+    renderedTop, previewTop);
+  eq('wire E2E: the table cell the real message pipeline rendered matches the preview-predicted bottom value',
+    renderedBottom, previewBottom);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-selection (adversarial hardening): parent-equivalence pin.
+// The contextmenu handler in content.js is the one call site both branches
+// implement: the pre-model code wrote a bare `lastRightClickedTable = table`
+// file-level let; HEAD calls DR_STORE.setSelectedTable(table) instead. The
+// expected sendMessage sequences below are LITERALS captured from the parent
+// branch (refactor/engine-returns-results, commit 35a5f52) by running its
+// real contextmenu listener in this same harness, and were verified
+// byte-identical to HEAD's output at review time. Freezing them keeps this
+// pin alive on main and in shallow CI checkouts, where the parent ref does
+// not exist for `git show`.
+// ---------------------------------------------------------------------------
+(function appModelSelection_parentEquivalence_contextmenuSelectionFlow() {
+  const PARENT_EXPECTED_SEQUENCES = {
+    true: [{ action: 'TABLE_ACTIVATED' }],
+    false: [{ action: 'TABLE_ACTIVATED' }],
+  };
+
+  // Minimal fixture the contextmenu handler's findTargetTable() walk-up
+  // recognizes immediately as a table (closest('table') returns itself) —
+  // same shape the existing table-contextmenu-activation runtime test uses.
+  function makeFixtureTarget() {
+    return {
+      tagName: 'TABLE',
+      classList: { remove() {}, add() {}, contains() { return false; } },
+      get offsetWidth() { return 0; },
+      rows: [],
+      dataset: {},
+      closest(sel) { return sel === 'table' ? this : null; },
+      matches() { return false; },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+    };
+  }
+
+  // Evaluates `bundle`, then `postEvalLine` (same eval call, so postEvalLine
+  // can still reference the bundle's top-level let/const bindings — e.g.
+  // DR_STORE or the bare `sidebarOpen` — even though those bindings are not
+  // reachable from outside this function once eval() returns), captures the
+  // 'contextmenu' listener the bundle registers, fires it once against a
+  // fresh fixture target, and returns the resulting sendMessage sequence.
+  function runContextmenuFixture(bundle, postEvalLine) {
+    let capturedHandler = null;
+    const sentMessages = [];
+    const captureDoc = {
+      addEventListener(type, handler) { if (type === 'contextmenu') capturedHandler = handler; },
+      querySelectorAll: () => [],
+      readyState: 'complete',
+      body: { appendChild() {} },
+    };
+    const captureChrome = {
+      runtime: {
+        onMessage: { addListener() {} },
+        sendMessage(msg) { sentMessages.push(msg); },
+      },
+    };
+    const saved = {
+      document: global.document, chrome: global.chrome, window: global.window,
+      MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+      Node: global.Node, NodeFilter: global.NodeFilter,
+    };
+    global.document = captureDoc;
+    global.chrome = captureChrome;
+    global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
+    global.MutationObserver = class { observe() {} disconnect() {} };
+    global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+    global.Node = { ELEMENT_NODE: 1 };
+    global.NodeFilter = { SHOW_TEXT: 4 };
+    try {
+      eval(bundle + postEvalLine);
+      if (typeof capturedHandler !== 'function') return null;
+      capturedHandler({ target: makeFixtureTarget() });
+      return sentMessages;
+    } finally {
+      global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
+      global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+      global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+    }
+  }
+
+  for (const sidebarOpenValue of [true, false]) {
+    const headMessages = runContextmenuFixture(contentScriptBundle, `\nDR_STORE.setSidebarOpen(${sidebarOpenValue});`);
+
+    eq(`parent-equivalence: HEAD's contextmenu handler was captured (sidebarOpen=${sidebarOpenValue})`,
+      headMessages !== null, true);
+    eq(`parent-equivalence: contextmenu sendMessage sequence matches the frozen parent sequence (sidebarOpen=${sidebarOpenValue})`,
+      headMessages, PARENT_EXPECTED_SEQUENCES[String(sidebarOpenValue)]);
   }
 })();
 
