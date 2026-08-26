@@ -110,9 +110,13 @@ function markAndToggleIfNewGrid(found) {
   return found.handle;
 }
 
+// Every findTargetTable() call site passes DR_STORE.hasTable as isSeen —
+// detection stays decoupled from the model (see lib/dr-table/detect.js), but
+// the controller is exactly where "have we found this" ought to answer from
+// the registry rather than the dr-ext-grid marker class.
 document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
-  const found = findTargetTable(event.target);
+  const found = findTargetTable(event.target, { isSeen: DR_STORE.hasTable });
   if (found) {
     const table = markAndToggleIfNewGrid(found);
     DR_STORE.setSelectedTable(table);
@@ -154,7 +158,7 @@ function runToggleAction(table) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'MENU_CLICKED') {
     if (lastRightClickedElement) {
-      const found = findTargetTable(lastRightClickedElement);
+      const found = findTargetTable(lastRightClickedElement, { isSeen: DR_STORE.hasTable });
       if (found) {
         runToggleAction(markAndToggleIfNewGrid(found));
       } else {
@@ -248,19 +252,19 @@ function applySidebarRounding(table, options) {
 function injectTogglesForAddedNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
   // Pass 1: native <table> elements; phantom a11y tables are skipped.
-  if (node.tagName === 'TABLE' && !tableToggles.has(node) && !isPhantomA11yTable(node)) {
+  if (node.tagName === 'TABLE' && !DR_STORE.hasTable(node) && !isPhantomA11yTable(node)) {
     createToggleForTable(node);
   }
   if (typeof node.querySelectorAll === 'function') {
     node.querySelectorAll('table').forEach(table => {
-      if (!tableToggles.has(table) && !isPhantomA11yTable(table)) {
+      if (!DR_STORE.hasTable(table) && !isPhantomA11yTable(table)) {
         createToggleForTable(table);
       }
     });
     // Pass 2: cheap ARIA pass for added nodes — mirror injectTableToggles Pass 2.
     // A grid that only embeds phantom a11y tables must still be detected.
     node.querySelectorAll(GRID_ARIA_SELECTOR).forEach(el => {
-      if (el.classList.contains('dr-ext-grid')) return;
+      if (DR_STORE.hasTable(el)) return;
       if (el.tagName === 'TABLE') return;
       if (Array.from(el.querySelectorAll('table')).some(t => !isPhantomA11yTable(t))) return;
       el.classList.add('dr-ext-grid');
@@ -269,7 +273,7 @@ function injectTogglesForAddedNode(node) {
   }
   // The added node itself may be a [role="grid"/"table"] non-table element.
   if (node.tagName !== 'TABLE' && typeof node.matches === 'function' &&
-      node.matches(GRID_ARIA_SELECTOR) && !node.classList.contains('dr-ext-grid')) {
+      node.matches(GRID_ARIA_SELECTOR) && !DR_STORE.hasTable(node)) {
     if (!Array.from(node.querySelectorAll('table')).some(t => !isPhantomA11yTable(t))) {
       node.classList.add('dr-ext-grid');
       createToggleForTable(node);
@@ -289,21 +293,16 @@ if (typeof MutationObserver !== 'undefined') {
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        // Handle removed table nodes and grid roots.
-        const tablesToRemove = [];
-        if (node.tagName === 'TABLE') {
-          tablesToRemove.push(node);
-        }
-        if (typeof node.querySelectorAll === 'function') {
-          node.querySelectorAll('table').forEach(t => tablesToRemove.push(t));
-          // Also collect removed grid roots.
-          node.querySelectorAll('.dr-ext-grid').forEach(g => tablesToRemove.push(g));
-        }
-        // The removed node itself may be a grid root.
-        if (node.classList && node.classList.contains('dr-ext-grid')) {
-          tablesToRemove.push(node);
-        }
-        for (const table of tablesToRemove) {
+        // Find every table/grid this removed subtree contains by walking
+        // DR_STORE's registered tables (the enumerable companion to its
+        // WeakMap registry) instead of querying for the dr-ext-grid marker
+        // class — the registry is the single "have we found this" answer
+        // now, and it covers native tables too, so one loop replaces the
+        // old tagName check + two separate querySelectorAll passes.
+        for (const table of DR_STORE.getRegisteredTables()) {
+          const contained = table === node ||
+            (typeof node.contains === 'function' && node.contains(table));
+          if (!contained) continue;
           const button = tableToggles.get(table);
           if (button && button.parentElement) {
             button.parentElement.removeChild(button);
@@ -325,6 +324,7 @@ if (typeof MutationObserver !== 'undefined') {
             gridObservers.delete(table);
           }
           trackedTables.delete(table);
+          DR_STORE.unregisterTable(table);
         }
       }
     }
