@@ -15819,6 +15819,68 @@ const LADDER_OPTS = {
   }
 })();
 
+// --- (g) TABLE_TOGGLE_STATE sequence: isTableRounded (claim 4 — now reading
+// DR_STORE's appliedFlag instead of a dr-ext-rounded/dataset.drShowingOriginal
+// pair) must report correctly to the sidebar across a full round -> peek-
+// original -> peek-back cycle, not just a single toggle. The pillbox-sprint
+// AC1 test above pins one click; the toggle-split parent-equivalence guard
+// matrix pins one intent:toggleTable dispatch. Neither exercises the 3-step
+// peek cycle this sprint's registry model actually has to get right. ---
+(function registrySprint_tableToggleStateAcrossPeekCycle() {
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedOpen = DR_STORE.isSidebarOpen();
+  const sent = [];
+  const origSend = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
+
+  try {
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
+      [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
+    ]);
+    injectToggleEntry(table);
+    DR_STORE.setSelectedTable(table);
+    DR_STORE.setSidebarOpen(true);
+
+    // makeToggleTableCell gives innerHTML/innerText/textContent as three
+    // INDEPENDENT properties. A real <td>'s innerHTML/innerText/textContent
+    // all derive from the same child-node tree, so writing one (restoreTable's
+    // `cell.innerHTML = original.html`) is immediately visible through the
+    // others (roundTable's re-classification reads getText() -> innerText).
+    // Without this link the mock desyncs after the peek-original restore:
+    // innerHTML goes back to '12,345' but innerText stays on the stale
+    // rounded string, so the round-trip's re-round misclassifies the cell as
+    // already-rounded and skips it — a fixture artifact, not a product bug
+    // (see the identical link in registrySprint_originalsSurviveToggleCycle
+    // above, needed for the same reason on the 2-toggle case).
+    const dataCell = table._cells[3]; // row1/col1: 'Row' | '12,345'
+    let _text = dataCell.innerHTML;
+    Object.defineProperties(dataCell, {
+      innerHTML: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+    });
+
+    withCreateTreeWalker(function () {
+      DR_BUS.publish('intent:toggleTable', { table }); // round
+      DR_BUS.publish('intent:toggleTable', { table }); // peek original
+      DR_BUS.publish('intent:toggleTable', { table }); // peek back
+    });
+
+    const toggleMsgs = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
+    eq('toggle-state cycle: exactly one TABLE_TOGGLE_STATE per dispatch (3 total)',
+      toggleMsgs.length, 3);
+    eq('toggle-state cycle: enabled sequence is true (rounded), false (peek original), true (peek back)',
+      toggleMsgs.map(m => m.enabled), [true, false, true]);
+    eq('toggle-state cycle: isTableRounded agrees with the last reported state',
+      isTableRounded(table), true);
+  } finally {
+    global.chrome.runtime.sendMessage = origSend;
+    DR_STORE.setSelectedTable(savedSelected);
+    DR_STORE.setSidebarOpen(savedOpen);
+  }
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
