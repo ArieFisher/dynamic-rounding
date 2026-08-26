@@ -334,7 +334,14 @@ function renderPreviewBands() {
   renderBotBand(botBandEl, cachedSamples.bottom, botVal, cachedMaxMag);
 }
 
-function fetchPreviewSamples() {
+// pulledSettings is optional: when this call is the tail end of
+// pullSettingsAndApplyToUI (sidebar reopen), it carries the settings object
+// just pulled from the model. setTableBound(true) below resets enabledEl to
+// the shared default on every bind, which is correct for a live rebind
+// (PREVIEW_SAMPLES_CHANGED) but would clobber a pulled enabled:false with a
+// bound table — so when pulledSettings is present, its enabled value wins
+// back over that default once the bind has resolved.
+function fetchPreviewSamples(pulledSettings) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs[0]) return;
     chrome.tabs.sendMessage(tabs[0].id, { action: 'GET_PREVIEW_SAMPLES' }, (response) => {
@@ -346,6 +353,10 @@ function fetchPreviewSamples() {
         cachedSamples = response.samples;
         cachedMaxMag = response.maxMag;
         setTableBound(response.samples !== null);
+        if (response.samples !== null && pulledSettings) {
+          enabledEl.checked = pulledSettings.enabled !== false;
+          updateDisabledState();
+        }
       }
       renderPreviewBands();
     });
@@ -473,24 +484,27 @@ function updateDisabledState() {
   }
 }
 
-function sendToActiveTab(message) {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (!tabs[0]) {
-      statusEl.textContent = 'No active tab.';
-      return;
-    }
-    chrome.tabs.sendMessage(tabs[0].id, message, () => {
+// Cross-context: this page and content.js are separate extension contexts,
+// so the settings change is reported as an intent over DR_BUS rather than
+// writing the model directly (mirrors ui-toggle.js's intent:selectTable in
+// the content-script context). DR_BUS relays it to the active tab's content
+// script — the same chrome.tabs.query + chrome.tabs.sendMessage transport
+// this file used directly before this topic existed (see
+// adapters/messaging.js's publish()).
+//
+// onDelivery reproduces sendToActiveTab's old response callback exactly: on
+// chrome.runtime.lastError (no content script on the tab — delivery failed)
+// unbind the sidebar UI; on success, clear any stale #status message.
+function applyNow() {
+  DR_BUS.publish('intent:settingsChanged', { settings: currentSettings() }, {
+    onDelivery: function () {
       if (chrome.runtime.lastError) {
         setTableBound(false);
       } else {
         statusEl.textContent = '';
       }
-    });
+    }
   });
-}
-
-function applyNow() {
-  sendToActiveTab({ action: 'APPLY_SIDEBAR_SETTINGS', settings: currentSettings() });
 }
 
 enabledEl.addEventListener('change', () => {
@@ -535,8 +549,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     flashSidebarContainer();
   } else if (request.action === 'CLOSE_SIDEBAR') {
     window.close();
-  } else if (request.action === 'GET_SIDEBAR_SETTINGS') {
-    sendResponse({ settings: currentSettings() });
   } else if (request.action === 'RANGE_ERROR') {
     statusEl.textContent = request.error || 'Invalid range expression.';
     statusEl.dataset.source = 'range';
@@ -570,36 +582,80 @@ window.addEventListener('unload', () => {
   }
 });
 
-// Seed the UI from the shared defaults so the sidebar and content.js never
-// drift apart. Editing defaults.js updates both at once.
-function applyDefaultsToUI() {
-  enabledEl.checked = DR_DEFAULTS.enabled !== false;
+// Populate every control from a settings object. DR_DEFAULTS and a pulled
+// live-settings snapshot share this one path so the sidebar and content.js
+// can never drift apart no matter which one supplied the values.
+function applySettingsToUI(settings) {
+  const s = Object.assign({}, DR_DEFAULTS, settings || {});
+  enabledEl.checked = s.enabled !== false;
   for (const id in CHECKBOX_TO_SETTING) {
     const el = document.getElementById(id);
-    if (el) el.checked = !!DR_DEFAULTS[CHECKBOX_TO_SETTING[id]];
+    if (el) el.checked = !!s[CHECKBOX_TO_SETTING[id]];
   }
-  if (dateGranularityEl && DR_DEFAULTS.dateGranularity) {
-    dateGranularityEl.value = DR_DEFAULTS.dateGranularity;
+  if (dateGranularityEl && s.dateGranularity) {
+    dateGranularityEl.value = s.dateGranularity;
   }
-  if (timeGranularityEl && DR_DEFAULTS.timeGranularity) {
-    timeGranularityEl.value = DR_DEFAULTS.timeGranularity;
+  if (timeGranularityEl && s.timeGranularity) {
+    timeGranularityEl.value = s.timeGranularity;
   }
-  topVal = snap(typeof DR_DEFAULTS.offsetTop === 'number' ? DR_DEFAULTS.offsetTop : DEFAULT_OFFSET);
-  botVal = topVal;
-  linked = true;
+  topVal = snap(typeof s.offsetTop === 'number' ? s.offsetTop : DEFAULT_OFFSET);
+  botVal = snap(typeof s.offsetOther === 'number' ? s.offsetOther : topVal);
+  linked = (topVal === botVal);
   renderSliders();
+  if (rangeExprEl) rangeExprEl.value = typeof s.rangeExpr === 'string' ? s.rangeExpr : '';
 }
-applyDefaultsToUI();
+
+// Seed the UI from the shared defaults so the sidebar and content.js never
+// drift apart even before a table has ever been selected (RESET_SIDEBAR_TO_
+// DEFAULTS, and this file's own fallback when the live pull below fails).
+function applyDefaultsToUI() {
+  applySettingsToUI(DR_DEFAULTS);
+}
+
+// Reconnect: pull the model's current settings from content.js (the
+// settings' sole owner) rather than resetting to shipped defaults on every
+// sidebar open — a close/reopen must not lose what the user configured. No
+// active tab, no content script yet, or no response at all falls back to
+// defaults, same as before this pull existed.
+//
+// fetchPreviewSamples runs only after the pull settles (success or fallback),
+// never in parallel with it: fetchPreviewSamples's own setTableBound call is
+// what forces enabledEl back off when no table is bound, and that must stay
+// the last word — racing it against this pull could let a pulled "enabled:
+// true" win the UI over an actual no-table state. When the pull DID resolve a
+// settings object, that same object is threaded into fetchPreviewSamples so
+// it can restore a pulled "enabled: false" after its own bound branch resets
+// enabledEl to the shared default (see fetchPreviewSamples above).
+function pullSettingsAndApplyToUI() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs[0]) {
+      applyDefaultsToUI();
+      fetchPreviewSamples();
+      return;
+    }
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'GET_SETTINGS' }, (response) => {
+      if (chrome.runtime.lastError || !response || !response.settings) {
+        applyDefaultsToUI();
+        fetchPreviewSamples();
+      } else {
+        applySettingsToUI(response.settings);
+        fetchPreviewSamples(response.settings);
+      }
+    });
+  });
+}
 
 // Default to unbound until fetchPreviewSamples resolves.
 setTableBound(false);
 
-// Pull samples from whichever table the user has right-clicked. If no table
-// was targeted, content.js returns nulls and the bands render the prompt.
-fetchPreviewSamples();
-
-// Defensively clear rangeExpr so browser autofill can never leak a stale value
-// into a hidden field and silently constrain content.js output.
+// Defensively clear rangeExpr so browser autofill can never leak a stale
+// value into a hidden field before the settings pull below (which sets it
+// from the model) resolves.
 if (rangeExprEl) rangeExprEl.value = '';
+
+// Pulls live settings, then (see above) pulls preview samples for whichever
+// table the user has right-clicked. If no table was targeted, content.js
+// returns nulls and the bands render the prompt.
+pullSettingsAndApplyToUI();
 
 updateDisabledState();
