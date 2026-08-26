@@ -15716,6 +15716,109 @@ const LADDER_OPTS = {
   });
 })();
 
+// --- (f) Grid magnitude basis freeze: DELIBERATE BEHAVIOR CHANGE from the
+// parent branch (refactor/app-model-settings), where computeGridRoundedValues
+// took no frozenMaxMag parameter and reapplyGridRounding recomputed max_mag
+// from whatever was visible on every scroll re-apply. HEAD's roundTable
+// freezes max_mag on first sight into DR_STORE.setTableMaxMagnitude and every
+// later reapplyGridRounding reuses that frozen value (see content.js's
+// frozenMaxMag doc on computeGridRoundedValues). offsetTop/offsetOther are
+// deliberately set apart so a magnitude-driven bucket flip is visible in the
+// formatted output, not just in the stored number. ---
+(function registrySprint_gridMagnitudeFrozenAtFirstSight() {
+  let ctx;
+  try {
+    const opts = { offsetTop: -1, offsetOther: 0, numTop: 1 };
+    // Sole visible row at first sight: magnitude 2 (555) — freezes max_mag at 2.
+    ctx = setupVirtGrid([['555']], opts);
+    const { grid, pendingTimers } = ctx;
+    const cell555 = grid.cellEls[0];
+
+    eq('magnitude freeze: 555 rounds via offsetTop (max_mag=2, within numTop of itself)',
+      cell555.childNodes[0].nodeValue, '560');
+    eq('magnitude freeze: DR_STORE freezes maxMagnitude at 2 on first sight',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 2);
+
+    // Simulate scroll bringing a magnitude-9 row into view alongside the
+    // still-visible 555 row — appended to the wrapper's children, the
+    // fallback _getRowEls path this unlabelled-grid shape uses.
+    const hugeCell = makeGridCellWithTextNode('5000000000');
+    const hugeRow = makeElementNode('row', [hugeCell]);
+    hugeRow.dataset = { row: '1' };
+    hugeRow.children = [hugeCell];
+    grid.wrapperEl.children.push(hugeRow);
+
+    const obs = ctx.capturedObserver;
+    obs.trigger([{ type: 'characterData', target: cell555.childNodes[0] }]);
+    flushTimers(pendingTimers);
+
+    // If the basis recomputed from the now-visible magnitude-9 row (the
+    // parent's behavior), 555 would fall out of the top bucket and round to
+    // "600" (offsetOther) instead. HEAD must keep "560".
+    eq('magnitude freeze: after a scroll-triggered reapply exposing a magnitude-9 row, 555 KEEPS the magnitude-2 basis ("560"), not a recomputed magnitude-9 basis ("600")',
+      cell555.childNodes[0].nodeValue, '560');
+    eq('magnitude freeze: DR_STORE.getTableMaxMagnitude never shifts off the frozen value',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 2);
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// --- (f) continued: a peek-to-original-and-back round trip goes through
+// toggleOriginalValues' resetTable()+roundTable() path, which clears the
+// frozen basis (resetTable sets maxMagnitude back to null) and re-freezes
+// fresh from whatever is visible at the moment of toggling back — it does
+// NOT preserve the basis established by the original round. This is the
+// registry's actual behavior, documented here so a reviewer can judge
+// whether "frozen at first sight" was meant to survive a peek round trip. ---
+(function registrySprint_toggleRoundTripReFreezesRatherThanPreserving() {
+  let ctx;
+  try {
+    const opts = { offsetTop: -1, offsetOther: 0, numTop: 1 };
+    ctx = setupVirtGrid([['555']], opts);
+    const { grid } = ctx;
+    const cell555 = grid.cellEls[0];
+
+    eq('toggle round trip: initial freeze is at max_mag=2 ("560")',
+      cell555.childNodes[0].nodeValue, '560');
+    eq('toggle round trip: DR_STORE holds the frozen basis before any toggle',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 2);
+
+    // Scroll in a magnitude-9 row BEFORE peeking, so the "first sight" the
+    // re-round sees on toggle-back is the magnitude-9 view, not the original
+    // magnitude-2 view.
+    const hugeCell = makeGridCellWithTextNode('5000000000');
+    const hugeRow = makeElementNode('row', [hugeCell]);
+    hugeRow.dataset = { row: '1' };
+    hugeRow.children = [hugeCell];
+    grid.wrapperEl.children.push(hugeRow);
+
+    toggleOriginalValues(grid.wrapperEl); // peek at originals
+    eq('toggle round trip: peeking to original clears the display back to "555"',
+      cell555.childNodes[0].nodeValue, '555');
+
+    toggleOriginalValues(grid.wrapperEl); // peek back to rounded
+    eq('toggle round trip: DR_STORE re-freezes from the now-visible magnitude-9 row (9), not the original magnitude-2 basis',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 9);
+    // Under the re-frozen (9) basis, current_mag(555)=2, max_mag-current_mag=7
+    // >= numTop(1), so 555 now takes offsetOther ("600") — a DIFFERENT
+    // rendered value than the original round produced ("560"), purely
+    // because of what happened to be visible at toggle-back time.
+    eq('toggle round trip: 555 renders differently after the round trip than its original round ("600", not "560")',
+      cell555.childNodes[0].nodeValue, '600');
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
