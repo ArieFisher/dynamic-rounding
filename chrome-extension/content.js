@@ -35,6 +35,20 @@ DR_BUS.subscribe('intent:selectTable', ({ table }) => {
   DR_STORE.setSelectedTable(table);
 });
 
+// The bus's first state-change subscriber (see adapters/messaging.js's depth
+// guard, issue #240): whenever the model's settings change — regardless of
+// source — apply the new value to whichever table is currently selected.
+// The sidebar's own control-change messages are handled directly by the
+// APPLY_SIDEBAR_SETTINGS listener below (DR_STORE.setSettings there is what
+// triggers this subscriber); this also covers any future in-context caller
+// that sets settings without going through that message.
+DR_BUS.subscribe('state:settingsChanged', ({ settings }) => {
+  const selected = DR_STORE.getSelectedTable();
+  if (selected) {
+    applySidebarRounding(selected, settings);
+  }
+});
+
 // Per-table memory of the options used for the most recent roundTable() run.
 // Consulted by toggleOriginalValues() when re-running the pipeline so that the
 // "toggle back to rounded" path uses the same parameters as the original render.
@@ -117,13 +131,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'SIDEBAR_OPENED') {
     DR_STORE.setSidebarOpen(true);
-    // Reconnect: pull the model's current selection rather than trust
-    // whatever this file's variables happened to hold before — the sidebar
-    // may be reopening after a close, and DR_STORE is the single owner of
-    // record for which table is selected.
+    // Reconnect: pull the model's own selection and settings — the sidebar
+    // may be reopening after a close, and DR_STORE owns both of record.
     const selected = DR_STORE.getSelectedTable();
     if (selected) {
-      requestSidebarSettingsAndApply(selected);
+      applySidebarRounding(selected, DR_STORE.getSettings());
       // Tell the sidebar its cached preview samples are stale; it will re-pull
       // GET_PREVIEW_SAMPLES against the now-current targeted table.
       try {
@@ -143,11 +155,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'APPLY_SIDEBAR_SETTINGS') {
-    const selected = DR_STORE.getSelectedTable();
-    if (selected) {
-      applySidebarRounding(selected, request.settings || DR_DEFAULTS);
-    }
+    // Record it; the state-change subscriber above applies it to the table.
+    DR_STORE.setSettings(request.settings || DR_DEFAULTS);
     sendResponse({ ok: true });
+    return;
+  }
+
+  if (request.action === 'GET_SETTINGS') {
+    // Inverse of the old sidebar pull: the sidebar asks the model instead.
+    sendResponse({ settings: DR_STORE.getSettings() });
     return;
   }
 
@@ -170,23 +186,6 @@ window.addEventListener('pagehide', () => {
     // extension context may already be gone
   }
 });
-
-// Ask the sidebar for its current UI state, then apply. The sidebar may not
-// have finished loading when SIDEBAR_OPENED fires from the background, so we
-// retry a few times before falling back to defaults.
-function requestSidebarSettingsAndApply(table, attempt = 0) {
-  chrome.runtime.sendMessage({ action: 'GET_SIDEBAR_SETTINGS' }, (response) => {
-    if (chrome.runtime.lastError || !response || !response.settings) {
-      if (attempt < 10) {
-        setTimeout(() => requestSidebarSettingsAndApply(table, attempt + 1), 50);
-      } else {
-        applySidebarRounding(table, DR_DEFAULTS);
-      }
-      return;
-    }
-    applySidebarRounding(table, response.settings);
-  });
-}
 
 function applySidebarRounding(table, options) {
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
@@ -417,12 +416,10 @@ function decisionToLegacyInfo(decision) {
 // mode:'time' decisions are deliberately left out of the sample pool even
 // though the ladder classifies them.
 //
-// options defaults to DR_DEFAULTS, matching the one real call site
-// (extractPreviewSamples, called with no settings argument by the
-// GET_PREVIEW_SAMPLES handler above). Wiring the preview to the sidebar's
-// live settings instead of DR_DEFAULTS is out of scope for this change; the
-// optional parameter exists so tests can exercise the ladder's option-gated
-// rules directly.
+// options defaults to DR_DEFAULTS when the caller passes none (tests exercise
+// the ladder's option-gated rules directly this way); the real call site,
+// extractPreviewSamples below, passes the model's live settings so the
+// preview band classifies cells exactly as roundTable will.
 function collectNumericCells(table, options) {
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
   const rangeParse = parseRangeExpr(opts.rangeExpr);
@@ -520,13 +517,17 @@ function collectNumericCells(table, options) {
 // the band shows the actual offset_top vs offset_other split that
 // roundCellSetAware will apply to the table.
 function extractPreviewSamples(table) {
-  const cells = collectNumericCells(table);
+  // Live settings, not shipped defaults — otherwise the preview band and the
+  // table disagree the moment the sidebar's slider or checkboxes diverge
+  // from DR_DEFAULTS (issue this sprint fixes).
+  const liveSettings = DR_STORE.getSettings();
+  const cells = collectNumericCells(table, liveSettings);
   if (cells.length === 0) {
     return { samples: { top: [], bottom: [] }, maxMag: null };
   }
-  const numTop = DR_DEFAULTS.numTop || 1;
-  const topOffset = typeof DR_DEFAULTS.offsetTop === 'number' ? DR_DEFAULTS.offsetTop : -0.5;
-  const otherOffset = typeof DR_DEFAULTS.offsetOther === 'number' ? DR_DEFAULTS.offsetOther : -0.5;
+  const numTop = liveSettings.numTop || 1;
+  const topOffset = typeof liveSettings.offsetTop === 'number' ? liveSettings.offsetTop : -0.5;
+  const otherOffset = typeof liveSettings.offsetOther === 'number' ? liveSettings.offsetOther : -0.5;
 
   // Reorder a magnitude bucket so cells that visibly *change* under the band's
   // default offset come first. Picking the raw document-order cell can land on
