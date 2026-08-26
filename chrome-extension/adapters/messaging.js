@@ -11,12 +11,16 @@
  * Two topic families, and only two — every topic in DR_BUS.TOPICS carries
  * one of these two family tags:
  *
- *   - 'intent'       Published by views (e.g. ui-toggle.js) to report a user
- *                     action. The controller in content.js is the sole
- *                     subscriber. Every intent topic this sprint stays
- *                     inside the content-script scope: the view and its
- *                     controller share one JS context, so intent delivery
- *                     never needs chrome.runtime.
+ *   - 'intent'       Published by views (e.g. ui-toggle.js, sidebar.js) to
+ *                     report a user action. The controller in content.js is
+ *                     the sole subscriber. Most intent topics stay inside
+ *                     the content-script scope (the view and its controller
+ *                     share one JS context, so delivery never needs
+ *                     chrome.runtime) — but a view running in a different
+ *                     extension context (the sidebar is its own page, not
+ *                     part of the tab's content script) carries a wireAction
+ *                     so the same publish() call reaches the controller
+ *                     across contexts too.
  *   - 'state-change' Published by the model (app/store.js) whenever a
  *                     stored field changes. A view subscribes to redraw on
  *                     future changes, or simply reads the store's getters
@@ -36,14 +40,22 @@
  *     handler directly, in subscription order, before returning. A
  *     controller that calls a store setter in response to a subscribed
  *     intent sees the store already updated by the time publish() returns.
+ *     Because delivery is synchronous, a handler that itself publishes
+ *     (directly, or by way of a store setter) can re-enter publish() before
+ *     the original call returns; see the depth guard below.
  *   - A topic MAY also carry a wireAction: the name of an existing
- *     chrome.runtime message action that sidebar.js/background.js already
- *     understand. When present, publish() additionally relays the payload
- *     as that action's message over chrome.runtime.sendMessage, so a
- *     cross-context subscriber keeps seeing the wire format it always has —
- *     no topic uses this yet (every topic this sprint stays same-context);
- *     the mechanism exists so a future topic can adopt an existing wire
- *     action instead of inventing a second, competing message shape.
+ *     chrome.runtime message action that sidebar.js/background.js/content.js
+ *     already understand. When present, publish() additionally relays the
+ *     payload as that action's message, over whichever transport reaches
+ *     the OTHER context from the one currently publishing:
+ *       - From a content script, chrome.runtime.sendMessage() reaches every
+ *         extension page (background, the open sidebar) — it cannot reach a
+ *         content script (chrome.runtime.sendMessage's own contract).
+ *       - From an extension page (the sidebar), chrome.tabs is available
+ *         and chrome.runtime.sendMessage cannot reach a content script at
+ *         all, so the relay instead queries the active tab and uses
+ *         chrome.tabs.sendMessage — the exact transport sidebar.js already
+ *         used for its content-script calls before this topic existed.
  *     Symmetrically, an incoming chrome.runtime message whose action
  *     matches a registered wireAction is redelivered here as a same-context
  *     publish (without re-sending it back out), so a cross-context topic
@@ -64,6 +76,16 @@ const DR_BUS = (function () {
     'intent:selectTable': { family: INTENT, wireAction: null },
     'state:selectedTableChanged': { family: STATE_CHANGE, wireAction: null },
     'state:sidebarOpenChanged': { family: STATE_CHANGE, wireAction: null },
+    // Published by the sidebar's controls (a different extension context
+    // from the model) on every settings change. wireAction reuses
+    // APPLY_SIDEBAR_SETTINGS, the message name content.js already handles,
+    // so the wire format is unchanged — only the sender's code path is.
+    'intent:settingsChanged': { family: INTENT, wireAction: 'APPLY_SIDEBAR_SETTINGS' },
+    // Published by the model (app/store.js) after every settings change,
+    // regardless of source. The controller subscribes to apply the new
+    // value to the selected table — this is the bus's first state-change
+    // subscriber (see the depth guard below, issue #240).
+    'state:settingsChanged': { family: STATE_CHANGE, wireAction: null },
   };
 
   const subscribers = new Map(); // topic name -> Set<handler>
@@ -100,16 +122,57 @@ const DR_BUS = (function () {
     }
   }
 
+  // A handler invoked by deliverLocally() may itself publish (directly, or
+  // through a store setter) before returning — same-context delivery is
+  // synchronous (see the header), so that nested publish() runs on top of
+  // this one's still-live stack frame. A cycle with no caller-side guard
+  // would recurse until the real call stack overflows (issue #240). This
+  // cap allows any legitimate shallow chain (the deepest today, a guarded
+  // two-topic bounce-back, reaches 4) while turning an unguarded cycle into
+  // a clear, catchable error instead of a crash.
+  const MAX_PUBLISH_DEPTH = 20;
+  let publishDepth = 0;
+
   function publish(topic, payload) {
     assertKnownTopic(topic);
-    deliverLocally(topic, payload);
-    const wireAction = TOPICS[topic].wireAction;
-    if (wireAction && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-      try {
-        chrome.runtime.sendMessage(Object.assign({ action: wireAction }, payload));
-      } catch (e) {
-        // extension context may not be available; harmless.
+    publishDepth++;
+    try {
+      if (publishDepth > MAX_PUBLISH_DEPTH) {
+        throw new Error(
+          'DR_BUS: publish depth exceeded ' + MAX_PUBLISH_DEPTH +
+          ' while publishing "' + topic + '" — likely an unguarded reentrant publish cycle'
+        );
       }
+      deliverLocally(topic, payload);
+      const wireAction = TOPICS[topic].wireAction;
+      if (!wireAction || typeof chrome === 'undefined' || !chrome.runtime) return;
+      if (chrome.tabs && typeof chrome.tabs.query === 'function' && typeof chrome.tabs.sendMessage === 'function') {
+        // Extension-page context (the sidebar): chrome.runtime.sendMessage
+        // cannot reach a content script, so relay via the active tab —
+        // the same transport sidebar.js already used for this call.
+        try {
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (!tabs || !tabs[0]) return;
+            try {
+              chrome.tabs.sendMessage(tabs[0].id, Object.assign({ action: wireAction }, payload));
+            } catch (e) {
+              // no content script on this tab (or it hasn't loaded yet); harmless.
+            }
+          });
+        } catch (e) {
+          // extension context may not be available; harmless.
+        }
+      } else if (typeof chrome.runtime.sendMessage === 'function') {
+        // Content-script context: broadcast to every extension page
+        // (background, the open sidebar) — unchanged from before this topic.
+        try {
+          chrome.runtime.sendMessage(Object.assign({ action: wireAction }, payload));
+        } catch (e) {
+          // extension context may not be available; harmless.
+        }
+      }
+    } finally {
+      publishDepth--;
     }
   }
 
