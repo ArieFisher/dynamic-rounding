@@ -14900,6 +14900,144 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
+// Sprint app-model-settings, bucket-2 fix: a pulled enabled:false must survive
+// sidebar reopen when the reopen lands on a TABLE THAT IS BOUND. This drives
+// sidebar.js's real pullSettingsAndApplyToUI() -> applySettingsToUI() ->
+// fetchPreviewSamples() chain end to end (same eval harness shape as
+// appModelSettings_settingsPublish_deliveryFeedback_behavioral above).
+//
+// The bug: pullSettingsAndApplyToUI applies the pulled settings (correctly
+// setting enabledEl.checked = false), then calls fetchPreviewSamples(), whose
+// response callback calls setTableBound(true) once GET_PREVIEW_SAMPLES
+// resolves with a bound table — and setTableBound's bound branch
+// unconditionally does `enabledEl.checked = DR_DEFAULTS.enabled !== false`,
+// which is true, clobbering the pulled false. The comment that used to sit
+// above pullSettingsAndApplyToUI only reasoned about the no-table case.
+// ---------------------------------------------------------------------------
+(function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
+  const defaultsSrc = sourceByName('defaults.js');
+  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
+  const coreSrc = sourceByName('lib/dr-number/core.js');
+  if (defaultsSrc === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+    eq('reopen-bound: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+
+  // Same minimal element stub as the other full-sidebar.js eval harnesses in
+  // this file (see appModelSettings_settingsPublish_deliveryFeedback_behavioral).
+  function makeEl() {
+    return {
+      addEventListener() {}, removeEventListener() {},
+      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+      style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
+      appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
+      getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
+      matches() { return false; }, closest() { return null; }, dataset: {},
+      setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+    };
+  }
+
+  const statusEl = makeEl();
+  const enabledEl = makeEl();
+
+  const bodyClasses = new Set();
+  const captureBody = {
+    classList: {
+      add(cls) { bodyClasses.add(cls); },
+      remove(cls) { bodyClasses.delete(cls); },
+      contains(cls) { return bodyClasses.has(cls); },
+      toggle(cls, force) {
+        if (force === undefined) {
+          if (bodyClasses.has(cls)) bodyClasses.delete(cls); else bodyClasses.add(cls);
+        } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
+      },
+    },
+    addEventListener() {},
+    get offsetWidth() { return 0; },
+  };
+
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: captureBody,
+    getElementById(id) {
+      if (id === 'status') return statusEl;
+      if (id === 'enabled') return enabledEl;
+      return makeEl();
+    },
+    createElement() { return makeEl(); },
+  };
+
+  // The model holds enabled:false. GET_SETTINGS returns that pulled settings
+  // object; GET_PREVIEW_SAMPLES returns a non-null samples object, i.e. the
+  // reopen landed on a table that is bound (the reviewer's reachable end
+  // state). Both resolve synchronously so the whole
+  // pullSettingsAndApplyToUI() -> fetchPreviewSamples() chain — including
+  // sidebar.js's own module-level call to pullSettingsAndApplyToUI() on
+  // load — settles deterministically within the single eval() call below.
+  const pulledSettings = Object.assign({}, DR_DEFAULTS, { enabled: false });
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener() {} },
+      sendMessage() {},
+      lastError: null,
+    },
+    tabs: {
+      query(q, cb) { cb([{ id: 42 }]); },
+      sendMessage(tabId, msg, cb) {
+        if (msg.action === 'GET_SETTINGS') {
+          cb({ settings: pulledSettings });
+        } else if (msg.action === 'GET_PREVIEW_SAMPLES') {
+          cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
+        } else {
+          cb({ ok: true });
+        }
+      },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedWindow = global.window;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, close() {}, getComputedStyle: () => ({ display: 'block' }) };
+
+  let evalError = null;
+  try {
+    try {
+      eval(
+        defaultsSrc + '\n' +
+        roundingSrc + '\n' +
+        coreSrc + '\n' +
+        messagingCode + '\n' +
+        fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
+      );
+    } catch (e) {
+      // The stubs above are built to let the whole module-level
+      // pullSettingsAndApplyToUI() -> fetchPreviewSamples() chain resolve
+      // synchronously and without throwing, unlike the sibling harness (which
+      // only needs the 'change' listener captured before its own pull runs).
+      // Record any throw instead of silently swallowing it — an unstubbed
+      // DOM method here must fail this test loudly, not make enabledEl.checked
+      // read its untouched initial value and pass for the wrong reason.
+      evalError = e;
+    }
+
+    eq('reopen-bound: sidebar.js\'s module-level pull ran to completion with no stub gaps',
+      evalError, null);
+    eq('reopen-bound: the pulled enabled:false survives the reopen once the preview response resolves (samples !== null)',
+      enabledEl.checked, false);
+  } finally {
+    global.document = savedDoc;
+    global.chrome = savedChrome;
+    global.window = savedWindow;
+  }
+})();
+
+// ---------------------------------------------------------------------------
 // Sprint app-model-settings, adversarial: the full wire path, not the store
 // directly. appModelSettings_previewAndTableAgreeOnLiveSettings (above) calls
 // DR_STORE.setSettings() straight from the test — it never exercises

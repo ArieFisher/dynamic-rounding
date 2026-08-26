@@ -334,7 +334,14 @@ function renderPreviewBands() {
   renderBotBand(botBandEl, cachedSamples.bottom, botVal, cachedMaxMag);
 }
 
-function fetchPreviewSamples() {
+// pulledSettings is optional: when this call is the tail end of
+// pullSettingsAndApplyToUI (sidebar reopen), it carries the settings object
+// just pulled from the model. setTableBound(true) below resets enabledEl to
+// the shared default on every bind, which is correct for a live rebind
+// (PREVIEW_SAMPLES_CHANGED) but would clobber a pulled enabled:false with a
+// bound table — so when pulledSettings is present, its enabled value wins
+// back over that default once the bind has resolved.
+function fetchPreviewSamples(pulledSettings) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs[0]) return;
     chrome.tabs.sendMessage(tabs[0].id, { action: 'GET_PREVIEW_SAMPLES' }, (response) => {
@@ -346,6 +353,10 @@ function fetchPreviewSamples() {
         cachedSamples = response.samples;
         cachedMaxMag = response.maxMag;
         setTableBound(response.samples !== null);
+        if (response.samples !== null && pulledSettings) {
+          enabledEl.checked = pulledSettings.enabled !== false;
+          updateDisabledState();
+        }
       }
       renderPreviewBands();
     });
@@ -611,7 +622,10 @@ function applyDefaultsToUI() {
 // never in parallel with it: fetchPreviewSamples's own setTableBound call is
 // what forces enabledEl back off when no table is bound, and that must stay
 // the last word — racing it against this pull could let a pulled "enabled:
-// true" win the UI over an actual no-table state.
+// true" win the UI over an actual no-table state. When the pull DID resolve a
+// settings object, that same object is threaded into fetchPreviewSamples so
+// it can restore a pulled "enabled: false" after its own bound branch resets
+// enabledEl to the shared default (see fetchPreviewSamples above).
 function pullSettingsAndApplyToUI() {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs[0]) {
@@ -622,10 +636,11 @@ function pullSettingsAndApplyToUI() {
     chrome.tabs.sendMessage(tabs[0].id, { action: 'GET_SETTINGS' }, (response) => {
       if (chrome.runtime.lastError || !response || !response.settings) {
         applyDefaultsToUI();
+        fetchPreviewSamples();
       } else {
         applySettingsToUI(response.settings);
+        fetchPreviewSamples(response.settings);
       }
-      fetchPreviewSamples();
     });
   });
 }

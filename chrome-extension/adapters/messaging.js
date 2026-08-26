@@ -138,9 +138,11 @@ const DR_BUS = (function () {
   // synchronous (see the header), so that nested publish() runs on top of
   // this one's still-live stack frame. A cycle with no caller-side guard
   // would recurse until the real call stack overflows (issue #240). This
-  // cap allows any legitimate shallow chain (the deepest today, a guarded
-  // two-topic bounce-back, reaches 4) while turning an unguarded cycle into
-  // a clear, catchable error instead of a crash.
+  // cap allows any legitimate shallow chain (the deepest in production, the
+  // intent:selectTable -> state:selectedTableChanged hop, reaches 2; a
+  // guarded two-topic bounce-back reaches 4, but only in the reentrancy
+  // test) while turning an unguarded cycle into a clear, catchable error
+  // instead of a crash.
   const MAX_PUBLISH_DEPTH = 20;
   let publishDepth = 0;
 
