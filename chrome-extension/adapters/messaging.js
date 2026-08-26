@@ -85,6 +85,7 @@ const DR_BUS = (function () {
   // topic is same-context only.
   const TOPICS = {
     'intent:selectTable': { family: INTENT, wireAction: null },
+    'intent:toggleTable': { family: INTENT, wireAction: null },
     'state:selectedTableChanged': { family: STATE_CHANGE, wireAction: null },
     'state:sidebarOpenChanged': { family: STATE_CHANGE, wireAction: null },
     // Published by the sidebar's controls (a different extension context

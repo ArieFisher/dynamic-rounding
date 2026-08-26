@@ -49,6 +49,41 @@ DR_BUS.subscribe('state:settingsChanged', ({ settings }) => {
   }
 });
 
+// ui-toggle.js's click handler reports every committed toggle activation
+// (an immediate mouse/keyboard click, or the second tap of a touch/pen
+// two-tap) as this one intent instead of calling runToggleAction or
+// toggleOriginalValues itself. This is where that intent turns into: the
+// select-if-different rebind (and the sidebar-reset messaging it implies),
+// the toggle action, and the sidebar's live toggle-state messaging — all
+// controller decisions that used to live inline in the view's click handler.
+DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
+  if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()) {
+    // Report the intent instead of writing DR_STORE directly here — one
+    // intent (select) stays the single place a table becomes "selected",
+    // even when a second intent (toggle) is what triggered it.
+    DR_BUS.publish('intent:selectTable', { table });
+    try {
+      chrome.runtime.sendMessage({ action: 'RESET_SIDEBAR_TO_DEFAULTS' });
+    } catch (e) {
+      // sidebar may be torn down; harmless
+    }
+    try {
+      chrome.runtime.sendMessage({ action: 'PREVIEW_SAMPLES_CHANGED' });
+    } catch (e) {
+      // sidebar may be torn down; harmless
+    }
+  }
+  runToggleAction(table);
+  syncSwitchForTable(table);
+  if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table === DR_STORE.getSelectedTable()) {
+    try {
+      chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: isTableRounded(table) });
+    } catch (e) {
+      // sidebar may be torn down; harmless
+    }
+  }
+});
+
 // Per-table memory of the options used for the most recent roundTable() run.
 // Consulted by toggleOriginalValues() when re-running the pipeline so that the
 // "toggle back to rounded" path uses the same parameters as the original render.
