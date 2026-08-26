@@ -5291,21 +5291,31 @@ function fireTouchSecondTap(buttonEl) {
   eq('rebind source: content.js CLOSE_SIDEBAR calls DR_STORE.setSidebarOpen(false)',
     /CLOSE_SIDEBAR[\s\S]{0,100}DR_STORE\.setSidebarOpen\(false\)/.test(contentSrc), true);
 
-  // ui-toggle.js mouse/keyboard click branch contains the rebind
-  // precondition, now reading the store instead of raw variables.
-  eq('rebind source: mouse/keyboard branch guards on DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()',
+  // content.js's intent:toggleTable handler (sprint toggle-split moved this
+  // out of ui-toggle.js's two click branches into the one controller
+  // subscriber both branches now report to) contains the rebind precondition,
+  // reading the store instead of raw variables.
+  eq('rebind source: the intent:toggleTable handler guards on DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()',
     /DR_STORE\.isSidebarOpen\(\)\s*&&\s*DR_STORE\.getSelectedTable\(\)\s*&&\s*table\s*!==\s*DR_STORE\.getSelectedTable\(\)/.test(contentSrc),
     true);
 
-  // content.js: both click branches send RESET_SIDEBAR_TO_DEFAULTS
-  // Count occurrences — must appear at least twice (one per branch)
+  // content.js: sprint toggle-split consolidated the mouse and touch click
+  // branches' controller logic (which used to each carry their own
+  // RESET_SIDEBAR_TO_DEFAULTS send) into one intent:toggleTable subscriber
+  // in content.js, so the literal now appears once, not per branch. The
+  // occurrence-count check below was written when each branch sent it
+  // separately; it now checks the single, shared dispatch site still exists.
   const resetCount = (contentSrc.match(/RESET_SIDEBAR_TO_DEFAULTS/g) || []).length;
-  eq('rebind source: RESET_SIDEBAR_TO_DEFAULTS appears in both click branches (>= 2 occurrences)',
-    resetCount >= 2, true);
+  eq('rebind source: RESET_SIDEBAR_TO_DEFAULTS is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
+    resetCount >= 1, true);
 
-  // ui-toggle.js: rebind publishes the select-table intent instead of
-  // assigning content.js's selection variable directly.
-  eq('rebind source: ui-toggle.js publishes intent:selectTable in the rebind block instead of writing a content.js variable',
+  // content.js: the intent:toggleTable handler's rebind branch publishes the
+  // select-table intent instead of assigning DR_STORE's field directly —
+  // sprint toggle-split moved this call out of ui-toggle.js along with the
+  // rest of the rebind logic, but it stays a published intent rather than a
+  // direct DR_STORE.setSelectedTable() call, keeping one place ("select
+  // this table") for any caller of that concern, controller included.
+  eq('rebind source: intent:toggleTable publishes intent:selectTable in the rebind block instead of writing DR_STORE directly',
     /DR_BUS\.publish\(\s*'intent:selectTable'/.test(contentSrc), true);
   eq('rebind source: no file assigns lastRightClickedTable directly anymore',
     /\blastRightClickedTable\s*=[^=]/.test(sourceByName('ui-toggle.js') || '') ||
@@ -14235,9 +14245,14 @@ const LADDER_OPTS = {
     topicNames.every((t) => KNOWN_FAMILIES.includes(topics[t].family)), true);
   eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
     topicNames.slice().sort(),
-    ['intent:selectTable', 'state:selectedTableChanged', 'state:sidebarOpenChanged'].sort());
+    ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged', 'state:sidebarOpenChanged'].sort());
   eq('DR_BUS.TOPICS: intent:selectTable is in the intent family',
     topics['intent:selectTable'].family, 'intent');
+  // Sprint toggle-split: the toggle view's click handler no longer calls
+  // runToggleAction directly — it reports intent:toggleTable, and content.js
+  // (the sole subscriber) decides what a committed toggle does.
+  eq('DR_BUS.TOPICS: intent:toggleTable is in the intent family',
+    topics['intent:toggleTable'].family, 'intent');
   eq('DR_BUS.TOPICS: state:selectedTableChanged is in the state-change family',
     topics['state:selectedTableChanged'].family, 'state-change');
   eq('DR_BUS.TOPICS: state:sidebarOpenChanged is in the state-change family',
@@ -14351,6 +14366,233 @@ const LADDER_OPTS = {
   });
   eq("static scan (hardened): neither ui-toggle.js nor content.js assigns DR_STORE's private field names directly",
     storeFieldWrites, []);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint toggle-split: ui-toggle.js splits into drawing (render from state,
+// hold only view-transient state) and reporting (publish intents on DR_BUS
+// instead of calling the controller directly). The click handler used to
+// call runToggleAction (and, transitively via runToggleAction, could reach
+// toggleOriginalValues) straight from the view; both are content.js
+// controller functions now reached only through the published
+// intent:toggleTable, never called from ui-toggle.js itself.
+// ---------------------------------------------------------------------------
+(function toggleSplit_viewCallsNoControllerFunctionDirectly() {
+  const uiToggleSrc = sourceByName('ui-toggle.js');
+  if (uiToggleSrc === null) {
+    eq('toggle-split: ui-toggle.js is present in the manifest', false, true);
+    return;
+  }
+  // Forbidden list: content.js controller functions a user action used to
+  // reach directly from ui-toggle.js's click handler before this sprint.
+  const FORBIDDEN_CONTROLLER_CALLS = ['runToggleAction', 'toggleOriginalValues'];
+  const foundCalls = FORBIDDEN_CONTROLLER_CALLS.filter((name) => {
+    const callRe = new RegExp('\\b' + name + '\\s*\\(');
+    return callRe.test(uiToggleSrc);
+  });
+  eq('toggle-split: ui-toggle.js contains no direct call to runToggleAction/toggleOriginalValues',
+    foundCalls, []);
+
+  // The click handler reports the toggle activation as an intent instead.
+  eq('toggle-split: ui-toggle.js publishes intent:toggleTable from the click handler',
+    /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiToggleSrc), true);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint toggle-split: publishing intent:toggleTable is content.js's only
+// path to running the toggle now — prove the wiring end to end (mirrors the
+// intent:selectTable behavioral pin in the app-model-selection block above).
+// ---------------------------------------------------------------------------
+(function toggleSplit_intentToggleTableRunsTheToggle() {
+  // DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn) — use a
+  // 2x2 table so [row1, col1] is processed (same shape as the pillbox AC2
+  // regression test above, which exercises runToggleAction directly).
+  const table = makeToggleTable([
+    [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
+    [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
+  ]);
+  injectToggleEntry(table);
+
+  const wasRounded = isTableRounded(table);
+  withCreateTreeWalker(function () {
+    DR_BUS.publish('intent:toggleTable', { table });
+  });
+  const isNowRounded = isTableRounded(table);
+
+  eq('toggle-split: publishing intent:toggleTable runs runToggleAction (table becomes rounded)',
+    !wasRounded && isNowRounded, true);
+
+  // Toggling again reverts to showing the original (same path, same intent).
+  withCreateTreeWalker(function () {
+    DR_BUS.publish('intent:toggleTable', { table });
+  });
+  eq('toggle-split: publishing intent:toggleTable again toggles back (showing originals)',
+    isTableRounded(table), false);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint toggle-split: KNOWN BUG FIX — flashRangePulse used to read
+// table.rows/row.cells directly, which only exist on native <table>
+// elements. On a div-based grid Array.from(undefined) threw a TypeError,
+// aborting the caller mid-flow (reverting the fix crashes this suite rather
+// than failing an assertion). flashRangePulse now enumerates cells through the same TableAdapter
+// (makeAdapter) the rounding engine and preview already use, so a grid's
+// cells are found the same way a native table's are. This test fails
+// without the fix: matchedCells.length would be 0 for the grid case below,
+// and the (missing/whole-grid) fallback flash would not carry the
+// range-restricted geometry asserted here.
+// ---------------------------------------------------------------------------
+(function toggleSplit_rangeFlashWorksOnGrids() {
+  // 2x2 div-based grid (no ARIA roles, no vendor classes — the plain
+  // fallback shape GridAdapter already supports elsewhere in this suite).
+  const grid = makeGridWrapper([
+    ['1,000,000', '500'],
+    ['2,000,000', '750'],
+  ]);
+
+  // Distinct bounding rects per cell (document order: row0/col0, row0/col1,
+  // row1/col0, row1/col1) so the union rect proves WHICH cells were matched
+  // (column 1 only) rather than the whole grid or nothing at all.
+  const rects = [
+    { top: 0,  left: 0,   right: 100, bottom: 20 },
+    { top: 0,  left: 100, right: 200, bottom: 20 },
+    { top: 20, left: 0,   right: 100, bottom: 40 },
+    { top: 20, left: 100, right: 200, bottom: 40 },
+  ];
+  grid.cellEls.forEach((cell, i) => { cell.getBoundingClientRect = () => rects[i]; });
+
+  // Intercept the overlay div flashRangePulse creates and appends.
+  const origCreateElement = global.document.createElement;
+  const origBody = global.document.body;
+  const origSetTimeout = global.setTimeout;
+  let overlay = null;
+  global.document.createElement = (tag) => {
+    const el = { style: {}, addEventListener() {} };
+    if (tag === 'div') overlay = el;
+    return el;
+  };
+  const appended = [];
+  global.document.body = { appendChild(el) { appended.push(el); } };
+  global.setTimeout = () => 0; // avoid a real pending 1.5s cleanup timer
+
+  // Range expression equivalent to selecting column B only (both rows) —
+  // a partial range, so a whole-grid fallback would be visibly wrong.
+  const ranges = [{ colMin: 1, colMax: 1, rowMin: 0, rowMax: 1 }];
+  flashRangePulse(grid.wrapperEl, ranges);
+
+  global.document.createElement = origCreateElement;
+  global.document.body = origBody;
+  global.setTimeout = origSetTimeout;
+
+  eq('range-flash grid: an overlay is appended to document.body (not silently skipped)',
+    appended.length, 1);
+  eq('range-flash grid: the overlay carries the range-pulse class',
+    overlay && overlay.className, 'dr-ext-range-pulse');
+  eq('range-flash grid: the overlay is sized/positioned to the union of the matched grid cells (col 1 only), not the whole grid or nothing',
+    overlay && { top: overlay.style.top, left: overlay.style.left, width: overlay.style.width, height: overlay.style.height },
+    { top: '0px', left: '100px', width: '100px', height: '40px' });
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint toggle-split (adversarial hardening): CLICK-HANDLER PARENT-EQUIVALENCE
+// PIN across the full guard matrix. The consolidation claims that collapsing
+// ui-toggle.js's two inlined click branches (mouse/keyboard, touch second-tap)
+// down to one `DR_BUS.publish('intent:toggleTable', { table })` line each,
+// with content.js's new intent:toggleTable subscriber running the same
+// guarded body both branches used to run inline, produces the identical
+// observable chrome.runtime.sendMessage sequence as before. This pin proves
+// that claim across {same table, different table} x {sidebar open, closed},
+// for both click branches — not just that a guard's boolean outcome matches
+// (the AC1-AC4 rebind tests above already cover that), but that the ORDER
+// and full contents of every dispatched message are unchanged.
+//
+// The expected sequences below are LITERALS captured by running the REAL
+// click handler from both this sprint's parent (refactor/app-model-selection,
+// the last commit with the guard/dispatch logic inlined per click branch in
+// ui-toggle.js) and HEAD against this same fixture and harness, and verified
+// byte-identical at review time. Frozen here rather than re-derived via
+// `git show` at test-run time, matching the rationale in commit 394afa7: a
+// shallow checkout or CI runner may not have the parent ref available.
+// ---------------------------------------------------------------------------
+(function toggleSplit_parentEquivalence_toggleClickGuardMatrix() {
+  // Keyed by `${sidebarOpen}:${sameTable}` — mouse and touch second-tap
+  // produce the identical sequence per guard cell, since both branches ran
+  // (and, post-split, both report to) the same guarded body. That equality
+  // is itself part of what this pin proves: see the per-mode assertions
+  // below, which check mouse and touch against the same expected literal.
+  const PARENT_EXPECTED_SEQUENCES = {
+    'true:true': [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+      { action: 'TABLE_TOGGLE_STATE', enabled: true },
+    ],
+    'true:false': [
+      { action: 'RESET_SIDEBAR_TO_DEFAULTS' },
+      { action: 'PREVIEW_SAMPLES_CHANGED' },
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+      { action: 'TABLE_TOGGLE_STATE', enabled: true },
+    ],
+    'false:true': [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ],
+    'false:false': [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ],
+  };
+
+  // sameTable=true reuses the SAME table object for both "who's currently
+  // selected" and "who gets clicked" — the no-rebind cell of the matrix.
+  // sameTable=false selects a different table than the one clicked — the
+  // rebind cell, which the guard must send RESET_SIDEBAR_TO_DEFAULTS +
+  // PREVIEW_SAMPLES_CHANGED for.
+  function runToggleClickFixture(mode, sidebarOpenValue, sameTable) {
+    const clicked = makeToggleTable([
+      [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+      [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+    ]);
+    clicked._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+    let selected = clicked;
+    if (!sameTable) {
+      selected = makeToggleTable([
+        [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+        [{ tag: 'td', text: '1,000,000' }, { tag: 'td', text: '500' }],
+      ]);
+      selected._cells.forEach(c => { c.querySelectorAll = () => []; });
+    }
+
+    const sentMessages = [];
+    const origSendMessage = global.chrome.runtime.sendMessage;
+    global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+    sidebarOpen = sidebarOpenValue;
+    lastRightClickedTable = selected;
+
+    const buttonEl = createToggleWithSpies(clicked);
+    if (mode === 'mouse') fireMouseClick(buttonEl);
+    else fireTouchSecondTap(buttonEl);
+
+    global.chrome.runtime.sendMessage = origSendMessage;
+    sidebarOpen = false;
+    lastRightClickedTable = null;
+
+    return sentMessages;
+  }
+
+  for (const sidebarOpenValue of [true, false]) {
+    for (const sameTable of [true, false]) {
+      const key = `${sidebarOpenValue}:${sameTable}`;
+      const expected = PARENT_EXPECTED_SEQUENCES[key];
+      for (const mode of ['mouse', 'touch']) {
+        const seq = runToggleClickFixture(mode, sidebarOpenValue, sameTable);
+        eq(`toggle click guard-matrix (${mode}, sidebarOpen=${sidebarOpenValue}, sameTable=${sameTable}): sendMessage sequence matches the frozen parent sequence`,
+          seq, expected);
+      }
+    }
+  }
 })();
 
 // ---------------------------------------------------------------------------
