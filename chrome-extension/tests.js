@@ -1964,7 +1964,9 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /DR_STORE\.setTableRoundOptions\(table,\s*opts\)/.test(contentSrc), true);
 
   eq('unified: toggleOriginalValues calls roundTable for original→rounded path',
-    /function toggleOriginalValues[\s\S]{0,1500}roundTable\(/.test(contentSrc), true);
+    // Window sized for the locked-table guard (issue #262) that now sits
+    // between the function head and the re-round call.
+    /function toggleOriginalValues[\s\S]{0,2200}roundTable\(/.test(contentSrc), true);
 
   // --- Display simplification: "35.0" → "35" when value unchanged but format would ---
 
@@ -2154,6 +2156,7 @@ function makeMockButton() {
     classList,
     setAttribute(name, value) { attrs[name] = value; },
     getAttribute(name) { return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null; },
+    removeAttribute(name) { delete attrs[name]; },
     addEventListener(evt, fn) {
       if (!listeners[evt]) listeners[evt] = [];
       listeners[evt].push(fn);
@@ -2265,8 +2268,13 @@ function makeMockButton() {
   const button = injectToggleEntry(table);
   button.setAttribute('aria-pressed', 'false'); // pre-set to false to confirm it gets corrected
 
-  // Mark table as rounded
+  // Mark table as rounded. A registry record accompanies the marker:
+  // production rounded/showing-original states always carry one (roundTable
+  // writes it; the keepEntry restore preserves it). A marker WITHOUT a
+  // record is the locked re-injection state (issue #262), tested in the
+  // re-injection suite.
   table._cells[0].classList.add('dr-ext-rounded');
+  DR_STORE.setTableOriginal(table, table._cells[0], { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
 
   syncSwitchForTable(table);
@@ -2278,6 +2286,8 @@ function makeMockButton() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   const button = injectToggleEntry(table);
   table._cells[0].classList.add('dr-ext-rounded');
+  // Registry record present — see atToggle_syncSwitch_ariaTrueWhenRounded.
+  DR_STORE.setTableOriginal(table, table._cells[0], { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'original');
   button.setAttribute('aria-pressed', 'true');
 
@@ -2336,6 +2346,7 @@ function makeMockButton() {
       getAttribute(name) {
         return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
       },
+      removeAttribute(name) { delete attrs[name]; },
       classList: (() => {
         const c = [];
         return {
@@ -2714,6 +2725,7 @@ function makeMockButton() {
       getAttribute(name) {
         return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
       },
+      removeAttribute(name) { delete attrs[name]; },
       contains() { return false; },
     };
     createdElements.push(el);
@@ -2814,7 +2826,7 @@ function makeMockButton() {
       })(),
       appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
       addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
-      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;}, removeAttribute(n){delete attrs[n];},
       contains(){return false;},
       dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
     };
@@ -3625,6 +3637,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 (function morphAC_syncSwitch_roundedTable() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
+  // Registry record present — see atToggle_syncSwitch_ariaTrueWhenRounded.
+  DR_STORE.setTableOriginal(table, table._cells[0], { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
   const button = injectToggleEntry(table);
   syncSwitchForTable(table);
@@ -3635,6 +3649,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 (function morphAC_syncSwitch_showingOriginal() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
+  // Registry record present — see atToggle_syncSwitch_ariaTrueWhenRounded.
+  DR_STORE.setTableOriginal(table, table._cells[0], { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'original');
   const button = injectToggleEntry(table);
   syncSwitchForTable(table);
@@ -3668,7 +3684,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       })(),
       appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
       addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
-      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;}, removeAttribute(n){delete attrs[n];},
       contains(){return false;},
       dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
     };
@@ -3749,7 +3765,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       })(),
       appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
       addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
-      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;}, removeAttribute(n){delete attrs[n];},
       contains(){return false;},
       dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
     };
@@ -3833,7 +3849,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       })(),
       appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
       addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
-      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;}, removeAttribute(n){delete attrs[n];},
       contains(){return false;},
       dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
     };
@@ -3922,7 +3938,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       })(),
       appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
       addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
-      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;}, removeAttribute(n){delete attrs[n];},
       contains(){return false;},
       dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
     };
@@ -4000,7 +4016,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       })(),
       appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
       addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
-      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;}, removeAttribute(n){delete attrs[n];},
       contains(){return false;},
       dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
     };
@@ -4104,7 +4120,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       })(),
       appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
       addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
-      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;}, removeAttribute(n){delete attrs[n];},
       contains(node){return false;},
       dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
     };
@@ -4204,7 +4220,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
       })(),
       appendChild(ch){this._children.push(ch);ch.parentElement=this;return ch;},
       addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
-      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      setAttribute(n,v){attrs[n]=v;}, getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;}, removeAttribute(n){delete attrs[n];},
       contains(node){return node === this || (this._children && this._children.includes(node));},
       dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
     };
@@ -4963,6 +4979,7 @@ function createToggleWithSpies(table) {
       addEventListener(evt,fn){if(!listeners[evt])listeners[evt]=[];listeners[evt].push(fn);},
       setAttribute(n,v){attrs[n]=v;},
       getAttribute(n){return Object.prototype.hasOwnProperty.call(attrs,n)?attrs[n]:null;},
+      removeAttribute(n){delete attrs[n];},
       contains(){return false;},
       dispatchEvent(evt){(listeners[evt.type]||[]).forEach(fn=>fn(evt));},
     };
@@ -5382,13 +5399,14 @@ function fireTouchSecondTap(buttonEl) {
     /\blastRightClickedTable\s*=[^=]/.test(sourceByName('content.js') || ''),
     false);
 
-  // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI
+  // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI.
+  // Window sized for the unlock lines (issue #262) at the handler's top.
   eq('rebind source: sidebar.js RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI()',
-    /RESET_SIDEBAR_TO_DEFAULTS[\s\S]{0,200}applyDefaultsToUI\(\)/.test(sidebarSrc), true);
+    /RESET_SIDEBAR_TO_DEFAULTS[\s\S]{0,400}applyDefaultsToUI\(\)/.test(sidebarSrc), true);
 
   // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler calls fetchPreviewSamples
   eq('rebind source: sidebar.js RESET_SIDEBAR_TO_DEFAULTS handler calls fetchPreviewSamples()',
-    /RESET_SIDEBAR_TO_DEFAULTS[\s\S]{0,200}fetchPreviewSamples\(\)/.test(sidebarSrc), true);
+    /RESET_SIDEBAR_TO_DEFAULTS[\s\S]{0,400}fetchPreviewSamples\(\)/.test(sidebarSrc), true);
 
   // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler does NOT auto-apply settings
   // (must NOT call applyNow() or applySidebarRounding() inside the handler)
@@ -7077,6 +7095,7 @@ function withFindTargetEnv(elements, fn) {
     dataset: {},
     setAttribute: () => {},
     getAttribute: () => null,
+    removeAttribute: () => {},
     addEventListener: () => {},
     classList: { _c: [], add(c){ this._c.push(c); }, remove(c){ this._c=this._c.filter(x=>x!==c); }, contains(c){ return this._c.includes(c); } },
     appendChild: () => {},
@@ -9579,6 +9598,7 @@ function runPass1WithTables(tables) {
       addEventListener(evt, fn) { if (!listeners[evt]) listeners[evt]=[]; listeners[evt].push(fn); },
       setAttribute(name, val) { attrs[name] = val; },
       getAttribute(name) { return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null; },
+      removeAttribute(name) { delete attrs[name]; },
     };
   };
 
@@ -9992,6 +10012,7 @@ function withToggleDocumentMock(fn) {
       getAttribute(name) {
         return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
       },
+      removeAttribute(name) { delete attrs[name]; },
       classList: (() => {
         const c = [];
         return {
@@ -10451,6 +10472,7 @@ function makeRealToggleButton(tableSpec, docMock) {
       getAttribute(n) {
         return Object.prototype.hasOwnProperty.call(attrs, n) ? attrs[n] : null;
       },
+      removeAttribute(n) { delete attrs[n]; },
       contains() { return false; },
       dispatchEvent(evt) { (listeners[evt.type] || []).forEach(fn => fn(evt)); },
     };
@@ -11050,8 +11072,11 @@ function fireMouseClick(buttonEl, fn) {
     nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows,
     classList: gridClassList, parentElement: null, parentNode: null,
     // runToggleAction calls table.querySelector(...) directly, with no `&&`
-    // guard, so this must exist (returning "not already rounded").
+    // guard, so this must exist (returning "not already rounded"), and
+    // syncSwitchForTable's lock check scans querySelectorAll the same way
+    // (returning "no rounded cells").
     querySelector() { return null; },
+    querySelectorAll() { return []; },
     getBoundingClientRect() { return { top: 10, right: 100, bottom: 50, left: 10, width: 90, height: 40 }; },
   };
   const clickTarget = {
@@ -11066,7 +11091,7 @@ function fireMouseClick(buttonEl, fn) {
       return {
         type: '', className: '', style: {}, dataset: {},
         classList: { add() {}, remove() {}, contains() { return false; } },
-        setAttribute() {}, getAttribute() { return null; },
+        setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
         addEventListener() {}, appendChild() {}, parentElement: null,
       };
     }
@@ -12304,8 +12329,8 @@ function fireMouseClick(buttonEl, fn) {
     // Build stub environment for each sub-test.
     function makeEnv(initialStatus, initialChecked) {
       const classList = makeClassList();
-      const statusEl = { textContent: initialStatus !== undefined ? initialStatus : '' };
-      const enabledEl = { checked: initialChecked !== undefined ? initialChecked : true };
+      const statusEl = { textContent: initialStatus !== undefined ? initialStatus : '', dataset: {} };
+      const enabledEl = { checked: initialChecked !== undefined ? initialChecked : true, disabled: false };
       const fakeDoc = { body: { classList } };
       const DR_DEFAULTS = { enabled: true };
       let updateDisabledCalls = 0;
@@ -12314,12 +12339,16 @@ function fireMouseClick(buttonEl, fn) {
       // Extract constants + function from sidebar source, then eval in closure.
       // We pull the relevant declarations and avoid running the rest of
       // sidebar.js (which needs getElementById, chrome.tabs, etc.).
+      // Keep this copy in step with the real setTableBound in sidebar.js.
       const snippet = `
         const NO_TABLE_CLASS = 'no-table';
         const NO_TABLE_STATUS_MSG = 'Right-click a table to connect it here.';
         function setTableBound(isBound) {
           document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
           if (!isBound) {
+            document.body.classList.remove('table-locked');
+            enabledEl.disabled = false;
+            delete statusEl.dataset.source;
             enabledEl.checked = false;
             statusEl.textContent = NO_TABLE_STATUS_MSG;
           } else {
@@ -15056,11 +15085,27 @@ const LADDER_OPTS = {
   let enabledChangeHandler = null;
   enabledEl.addEventListener = function (type, fn) { if (type === 'change') enabledChangeHandler = fn; };
 
+  const bodyClasses = new Set();
+  const captureBody = {
+    classList: {
+      add(cls) { bodyClasses.add(cls); },
+      remove(cls) { bodyClasses.delete(cls); },
+      contains(cls) { return bodyClasses.has(cls); },
+      toggle(cls, force) {
+        if (force === undefined) {
+          if (bodyClasses.has(cls)) bodyClasses.delete(cls); else bodyClasses.add(cls);
+        } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
+      },
+    },
+    addEventListener() {},
+    get offsetWidth() { return 0; },
+  };
+
   const captureDoc = {
     addEventListener() {},
     querySelectorAll: () => [],
     readyState: 'complete',
-    body: { classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} }, addEventListener() {}, get offsetWidth() { return 0; } },
+    body: captureBody,
     getElementById(id) {
       if (id === 'status') return statusEl;
       if (id === 'enabled') return enabledEl;
@@ -15070,11 +15115,12 @@ const LADDER_OPTS = {
   };
 
   let onMessageHandler = null;
+  let queuedLastError = null;
   const captureChrome = {
     runtime: {
       onMessage: { addListener(fn) { onMessageHandler = fn; } },
       sendMessage() {},
-      get lastError() { return null; },
+      get lastError() { return queuedLastError; },
     },
     tabs: {
       query(q, cb) { cb([{ id: 42 }]); },
@@ -15154,11 +15200,69 @@ const LADDER_OPTS = {
     enabledChangeHandler();
     eq('apply-blocked notice: an unsourced stale status still clears on delivery success',
       statusEl.textContent, '');
+
+    // --- Issue #262: APPLY_BLOCKED also locks the panel. The connected
+    // table is stuck showing simplified values, so the main toggle must
+    // show ON (the truth) and stop accepting input, and the settings area
+    // dims via body.table-locked. APPLY_OK, a table switch
+    // (RESET_SIDEBAR_TO_DEFAULTS), and unbinding (delivery failure →
+    // setTableBound(false)) each lift the lock. ---
+    enabledEl.checked = false;
+    enabledEl.disabled = false;
+    onMessageHandler({ action: 'APPLY_BLOCKED', count: 1 }, {}, () => {});
+    eq('sidebar lock: APPLY_BLOCKED adds body.table-locked',
+      bodyClasses.has('table-locked'), true);
+    eq('sidebar lock: APPLY_BLOCKED forces the main toggle ON — the table IS simplified',
+      enabledEl.checked, true);
+    eq('sidebar lock: APPLY_BLOCKED disables the main toggle',
+      enabledEl.disabled, true);
+
+    onMessageHandler({ action: 'APPLY_OK' }, {}, () => {});
+    eq('sidebar lock: APPLY_OK lifts the lock',
+      bodyClasses.has('table-locked'), false);
+    eq('sidebar lock: APPLY_OK re-enables the main toggle',
+      enabledEl.disabled, false);
+
+    onMessageHandler({ action: 'APPLY_BLOCKED', count: 1 }, {}, () => {});
+    onMessageHandler({ action: 'RESET_SIDEBAR_TO_DEFAULTS' }, {}, () => {});
+    eq('sidebar lock: a table switch (RESET_SIDEBAR_TO_DEFAULTS) lifts the lock',
+      bodyClasses.has('table-locked'), false);
+    eq('sidebar lock: a table switch re-enables the main toggle',
+      enabledEl.disabled, false);
+
+    onMessageHandler({ action: 'APPLY_BLOCKED', count: 1 }, {}, () => {});
+    queuedLastError = { message: 'Could not establish connection.' };
+    enabledChangeHandler();
+    queuedLastError = null;
+    eq('sidebar lock: unbinding (delivery failure) lifts the lock',
+      bodyClasses.has('table-locked'), false);
+    eq('sidebar lock: unbinding re-enables the main toggle for the no-table state',
+      enabledEl.disabled, false);
+    eq('sidebar lock: unbinding drops the stale source tag — the no-table message it writes is unsourced',
+      statusEl.dataset.source, undefined);
   } finally {
     global.document = savedDoc;
     global.chrome = savedChrome;
     global.window = savedWindow;
   }
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #262 (static): the locked presentation exists in the stylesheets.
+// body.table-locked must dim and mute the settings area and the title-row
+// switch in sidebar.html; the on-page pill's locked look lives in
+// ui-toggle.js's injected style.
+// ---------------------------------------------------------------------------
+(function lockedPresentation_stylesExist() {
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  eq('locked styles: sidebar.html styles body.table-locked',
+    sidebarHtmlSrc.includes('body.table-locked'), true);
+  eq('locked styles: the locked sidebar blocks pointer input (pointer-events: none present in the table-locked block)',
+    /body\.table-locked[^}]*\{[^}]*pointer-events:\s*none/.test(sidebarHtmlSrc), true);
+  eq('locked styles: ui-toggle.js styles the locked pill class',
+    uiToggleCode !== null && uiToggleCode.includes('.dr-ext-morph-locked'), true);
+  eq('locked styles: the locked pill shows a not-allowed cursor',
+    uiToggleCode !== null && /\.dr-ext-morph-locked[^}]*\{[^}]*cursor:\s*not-allowed/.test(uiToggleCode), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -16316,6 +16420,12 @@ const LADDER_OPTS = {
   const { table: table1, dataCell: dataCell1 } = makeReinjectionFixtureTable('12,345');
   const { table: table2, dataCell: dataCell2 } = makeReinjectionFixtureTable('67,890');
   const { table: table3, dataCell: dataCell3 } = makeReinjectionFixtureTable('54,321');
+  // Scenario D fixtures (issue #262): table5 is rounded by instance 1 and
+  // then untouched — the pill's wrong-on-arrival case. table6 starts
+  // unrounded and is later rounded BY instance 2 itself — the sanity case
+  // proving the lock keys on missing registry records, not on "rounded".
+  const { table: table5, dataCell: dataCell5 } = makeReinjectionFixtureTable('9,876');
+  const { table: table6 } = makeReinjectionFixtureTable('8,765');
   const trueOriginal1 = '12,345';
   const trueOriginal2 = '67,890';
   const trueOriginal3 = '54,321';
@@ -16372,6 +16482,7 @@ const LADDER_OPTS = {
     global.__ri1_roundTable(table1, DR_DEFAULTS);
     global.__ri1_roundTable(table2, DR_DEFAULTS);
     global.__ri1_roundTable(table3, DR_DEFAULTS);
+    global.__ri1_roundTable(table5, DR_DEFAULTS);
     const roundedText1 = dataCell1.innerText;
     const roundedTitle1 = dataCell1.title;
     const roundedText2 = dataCell2.innerText;
@@ -16401,6 +16512,9 @@ const LADDER_OPTS = {
       globalThis.__ri2_resetTable = resetTable;
       globalThis.__ri2_DR_STORE = DR_STORE;
       globalThis.__ri2_DR_BUS = DR_BUS;
+      globalThis.__ri2_roundTable = roundTable;
+      globalThis.__ri2_syncSwitchForTable = syncSwitchForTable;
+      globalThis.__ri2_tableToggles = tableToggles;
     `);
 
     eq('re-injection: a fresh instance reports the table as NOT rounded, despite the DOM still showing rounded text — a state/display mismatch the moment re-injection happens',
@@ -16477,6 +16591,79 @@ const LADDER_OPTS = {
       sentMessages.some((m) => m.action === 'APPLY_OK'), false);
     eq('re-injection sidebar apply: no RANGE_OK/RANGE_ERROR — roundTable never ran',
       sentMessages.some((m) => m.action === 'RANGE_OK' || m.action === 'RANGE_ERROR'), false);
+
+    // --- Scenario D (issue #262): the on-page pill on a locked table. A
+    // table is locked when it shows cells wearing dr-ext-rounded that the
+    // registry has no record for — the post-re-injection state. The pill
+    // must render selected AND locked on arrival (before any interaction):
+    // aria-pressed 'true' because the screen shows simplified text,
+    // aria-disabled 'true' plus a hover title because nothing here can
+    // change it. A table instance 2 rounded ITSELF (registry records
+    // present) must stay a normal, unlocked pill — the lock keys on
+    // missing records, not on "rounded". ---
+    const stub5 = makeMockButton();
+    global.__ri2_tableToggles.set(table5, stub5);
+    global.__ri2_syncSwitchForTable(table5);
+
+    eq('re-injection pill: locked table renders selected on arrival (screen shows simplified text)',
+      stub5.getAttribute('aria-pressed'), 'true');
+    eq('re-injection pill: locked table renders aria-disabled',
+      stub5.getAttribute('aria-disabled'), 'true');
+    eq('re-injection pill: locked table carries the locked marker class',
+      stub5.classList.contains('dr-ext-morph-locked'), true);
+    eq('re-injection pill: locked table explains itself on hover',
+      typeof stub5.title === 'string' && stub5.title.includes('Reload the page'), true);
+
+    const stub6 = makeMockButton();
+    global.__ri2_tableToggles.set(table6, stub6);
+    global.__ri2_syncSwitchForTable(table6);
+    eq('re-injection pill: an unrounded table renders unselected',
+      stub6.getAttribute('aria-pressed'), 'false');
+    eq('re-injection pill: an unrounded table is not locked',
+      stub6.getAttribute('aria-disabled'), null);
+
+    global.__ri2_roundTable(table6, DR_DEFAULTS);
+    global.__ri2_syncSwitchForTable(table6);
+    eq('re-injection pill: a table THIS instance rounded renders selected',
+      stub6.getAttribute('aria-pressed'), 'true');
+    eq('re-injection pill: a table THIS instance rounded is NOT locked — its registry records exist',
+      stub6.getAttribute('aria-disabled'), null);
+    eq('re-injection pill: a table THIS instance rounded carries no locked class',
+      stub6.classList.contains('dr-ext-morph-locked'), false);
+
+    // --- Scenario E (issue #262): toggle clicks on a locked table must not
+    // oscillate the pill. Before the fix, alternating clicks flipped
+    // appliedFlag between 'simplified' and 'original' (both
+    // toggleOriginalValues branches no-op on cells without registry
+    // records), so the pill toggled visually while the table never changed,
+    // and TABLE_TOGGLE_STATE reported enabled:false to the sidebar under a
+    // visibly simplified table. ---
+    const stub2 = makeMockButton();
+    global.__ri2_tableToggles.set(table2, stub2);
+    global.__ri2_DR_STORE.setSidebarOpen(true);
+    sentMessages.length = 0;
+
+    global.__ri2_DR_BUS.publish('intent:toggleTable', { table: table2 });
+    eq('re-injection toggle click 1: appliedFlag stays \'simplified\' — the truthful state',
+      global.__ri2_DR_STORE.getTableAppliedFlag(table2), 'simplified');
+    eq('re-injection toggle click 1: the pill stays selected',
+      stub2.getAttribute('aria-pressed'), 'true');
+
+    global.__ri2_DR_BUS.publish('intent:toggleTable', { table: table2 });
+    eq('re-injection toggle click 2: appliedFlag still \'simplified\' — no oscillation',
+      global.__ri2_DR_STORE.getTableAppliedFlag(table2), 'simplified');
+    eq('re-injection toggle click 2: the pill still selected — no oscillation',
+      stub2.getAttribute('aria-pressed'), 'true');
+    eq('re-injection toggle clicks: the pill is locked',
+      stub2.getAttribute('aria-disabled'), 'true');
+    eq('re-injection toggle clicks: displayed text never changed',
+      dataCell2.innerText, roundedText2);
+    eq('re-injection toggle clicks: the title still holds the true original',
+      dataCell2.title, roundedTitle2);
+
+    const toggleStates = sentMessages.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
+    eq('re-injection toggle clicks: every TABLE_TOGGLE_STATE reports enabled:true — the sidebar toggle must not flip off under a simplified table',
+      toggleStates.length > 0 && toggleStates.every((m) => m.enabled === true), true);
   } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;

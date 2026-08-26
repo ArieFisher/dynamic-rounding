@@ -21,6 +21,12 @@ function setTableBound(isBound) {
   if (!isBound) {
     // No active table: there is nothing for rounding to act on, so flip the
     // main toggle to its off state rather than dimming the whole sidebar.
+    // Any lock belonged to the table that just went away (issue #262), and
+    // the message written below is unsourced — drop a stale source tag so
+    // applyNow's delivery-success clear can still collect it.
+    document.body.classList.remove('table-locked');
+    enabledEl.disabled = false;
+    delete statusEl.dataset.source;
     enabledEl.checked = false;
     statusEl.textContent = NO_TABLE_STATUS_MSG;
   } else {
@@ -571,14 +577,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'APPLY_BLOCKED') {
     statusEl.textContent = APPLY_BLOCKED_STATUS_MSG;
     statusEl.dataset.source = 'blocked';
+    // Issue #262: the connected table is stuck showing simplified values.
+    // Show that truth and stop accepting input: main toggle ON and
+    // disabled, settings area dimmed via body.table-locked (sidebar.html).
+    document.body.classList.add('table-locked');
+    enabledEl.checked = true;
+    enabledEl.disabled = true;
+    updateDisabledState();
   } else if (request.action === 'APPLY_OK') {
     if (statusEl.dataset.source === 'blocked') {
       statusEl.textContent = '';
       delete statusEl.dataset.source;
     }
+    document.body.classList.remove('table-locked');
+    enabledEl.disabled = false;
   } else if (request.action === 'PREVIEW_SAMPLES_CHANGED') {
     fetchPreviewSamples();
   } else if (request.action === 'RESET_SIDEBAR_TO_DEFAULTS') {
+    // A table switch: the lock, if any, belonged to the previous table. The
+    // new table's own reconnect apply re-locks if it must (APPLY_BLOCKED).
+    document.body.classList.remove('table-locked');
+    enabledEl.disabled = false;
     try {
       applyDefaultsToUI();
       fetchPreviewSamples();

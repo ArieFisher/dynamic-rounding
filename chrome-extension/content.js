@@ -1181,6 +1181,17 @@ function toggleOriginalValues(table) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
   if (roundedCells.length === 0) return;
 
+  if (tableHasUnrestorableCells(table)) {
+    // Locked table (issue #262): rounded markers with no registry originals
+    // behind them. Both branches below no-op on such cells while flipping
+    // appliedFlag, which made the pill oscillate between states the screen
+    // never leaves. Pin the flag to the truthful state — the screen shows
+    // simplified text — and re-render the (locked) pill instead.
+    DR_STORE.setTableAppliedFlag(table, 'simplified');
+    syncSwitchForTable(table);
+    return;
+  }
+
   const showingOriginal = DR_STORE.getTableAppliedFlag(table) !== 'simplified';
 
   if (showingOriginal) {
