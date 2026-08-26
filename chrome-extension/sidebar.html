@@ -244,6 +244,20 @@
       font-weight: 500;
       color: #5f6368;
     }
+    /* Locked table (issue #262): the connected table is stuck showing
+       simplified values (see content.js's APPLY_BLOCKED). The settings area
+       and the main toggle dim and stop accepting input; #status carries the
+       explanation. */
+    body.table-locked #optionsSection,
+    body.table-locked .title-row .switch {
+      opacity: 0.4;
+      pointer-events: none;
+    }
+    body.table-locked #status {
+      font-size: 13px;
+      font-weight: 500;
+      color: #5f6368;
+    }
     .divider {
       border: none;
       border-top: 1px solid #e8eaed;
