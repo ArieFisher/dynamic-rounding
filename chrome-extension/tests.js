@@ -15881,6 +15881,158 @@ const LADDER_OPTS = {
   }
 })();
 
+// --- (h) WeakMap/Set lockstep, part 1: a table re-added after removal (the
+// SAME element reference, as a virtualized-DOM library recycling a detached
+// node back into the tree would do) must come back with a FRESH registry
+// entry, not the previous round's leftover state. unregisterTable deletes
+// the WeakMap entry outright, so a later registerTable (via _ensureEntry)
+// can only build a brand-new entry — this pins that no per-cell original,
+// appliedFlag, round options, or frozen magnitude survives the round trip. ---
+(function registrySprint_reregisterAfterUnregisterGetsFreshEntry() {
+  const table = { tagName: 'TABLE' }; // identity is all that matters here
+  const cell = { tagName: 'TD' };
+
+  DR_STORE.registerTable(table);
+  DR_STORE.setTableOriginal(table, cell, { html: '8,584,629', value: '8,584,629', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
+  DR_STORE.setTableRoundOptions(table, { offsetTop: -1 });
+  DR_STORE.setTableMaxMagnitude(table, 7);
+
+  eq('re-register: table is rounded with state before removal (pre-condition)',
+    DR_STORE.getTableAppliedFlag(table), 'simplified');
+
+  // Simulate the removed-node observer's cleanup: unregisterTable is the
+  // ONLY registry call it makes (content.js's removedNodes loop).
+  DR_STORE.unregisterTable(table);
+
+  eq('re-register: hasTable is false immediately after unregisterTable',
+    DR_STORE.hasTable(table), false);
+
+  // The SAME table reference comes back (e.g. a virtualized list recycling
+  // the detached DOM node into view again). registerTable is idempotent /
+  // "found again" — it must not resurrect the old entry.
+  DR_STORE.registerTable(table);
+
+  eq('re-register: appliedFlag resets to "original" (not the leftover "simplified")',
+    DR_STORE.getTableAppliedFlag(table), 'original');
+  eq('re-register: the old per-cell original does NOT leak through (hasTableOriginal is false)',
+    DR_STORE.hasTableOriginal(table, cell), false);
+  eq('re-register: getTableOriginal for the old cell reference is undefined, not the stale record',
+    DR_STORE.getTableOriginal(table, cell), undefined);
+  eq('re-register: lastRoundOptions resets to null (not the leftover options object)',
+    DR_STORE.getTableRoundOptions(table), null);
+  eq('re-register: maxMagnitude resets to null (not the leftover frozen value)',
+    DR_STORE.getTableMaxMagnitude(table), null);
+})();
+
+// --- (h) WeakMap/Set lockstep, part 2: the removed-node MutationObserver
+// callback must find and unregister a table when the removedNodes entry is
+// an ANCESTOR of the table, not the table itself — the real production
+// callback (content.js's `_tableObserver`), not GV7's manual re-
+// implementation of its cleanup steps. Exercised by re-evaluating the
+// content-script bundle with a capturing MutationObserver installed first
+// (mirrors appModelSelection_parentEquivalence_contextmenuSelectionFlow's
+// runContextmenuFixture technique above), so `_tableObserver`'s real
+// constructor closure is the one under test. ---
+(function registrySprint_ancestorRemovalUnregistersDescendantTable() {
+  const capturedInstances = [];
+  class CapturingTableObserverMO {
+    constructor(cb) { this._cb = cb; this.disconnectCalled = false; capturedInstances.push(this); }
+    observe(target, opts) { this._target = target; this._opts = opts; }
+    disconnect() { this.disconnectCalled = true; }
+  }
+
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete', // else-branch runs synchronously: injectTableToggles() + observe()
+    body: { appendChild() {} },
+  };
+  const captureChrome = {
+    runtime: { onMessage: { addListener() {} }, sendMessage() {} },
+  };
+  const saved = {
+    document: global.document, chrome: global.chrome, window: global.window,
+    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    Node: global.Node, NodeFilter: global.NodeFilter,
+  };
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
+  global.MutationObserver = CapturingTableObserverMO;
+  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  global.Node = { ELEMENT_NODE: 1 };
+  global.NodeFilter = { SHOW_TEXT: 4 };
+
+  try {
+    // Expose this eval's own DR_STORE/tableToggles/trackedTables bindings
+    // (distinct instances from the file-level ones the rest of the suite
+    // uses) onto globalThis so this function can drive and inspect them
+    // after eval() returns — same trick the top-of-file eval already uses.
+    eval(contentScriptBundle + `
+      globalThis.__rt_DR_STORE = DR_STORE;
+      globalThis.__rt_tableToggles = tableToggles;
+      globalThis.__rt_trackedTables = trackedTables;
+    `);
+
+    eq('ancestor removal: exactly one MutationObserver constructed (the _tableObserver watching document.body)',
+      capturedInstances.length, 1);
+    const tableObserver = capturedInstances[0];
+    eq('ancestor removal: _tableObserver.observe was called with document.body',
+      tableObserver._target === captureDoc.body, true);
+
+    const freshDR_STORE = global.__rt_DR_STORE;
+    const freshTableToggles = global.__rt_tableToggles;
+    const freshTrackedTables = global.__rt_trackedTables;
+
+    // A table nested under a container — the removedNodes record will carry
+    // the CONTAINER, never the table directly (e.g. a host page detaching a
+    // wrapping <div> that happens to hold the table, not the table itself).
+    const table = { tagName: 'TABLE', nodeType: 1 };
+    const removedButtons = [];
+    const button = { parentElement: { removeChild(b) { removedButtons.push(b); } } };
+    freshTableToggles.set(table, button);
+    freshTrackedTables.add(table);
+    freshDR_STORE.registerTable(table);
+
+    eq('ancestor removal (pre): table is registered before the removal fires',
+      freshDR_STORE.hasTable(table), true);
+
+    const container = {
+      nodeType: 1,
+      // The only DOM relationship the real removal loop consults: does this
+      // removed node CONTAIN the tracked table (a real Node.contains check
+      // on a real ancestor, stubbed here to report the containment we set up).
+      contains(el) { return el === table; },
+    };
+
+    // Fire the REAL captured callback — table itself is absent from
+    // removedNodes; only its ancestor container is.
+    tableObserver._cb([{ addedNodes: [], removedNodes: [container] }]);
+
+    eq('ancestor removal: DR_STORE.hasTable is false after the ancestor-only removal record',
+      freshDR_STORE.hasTable(table), false);
+    eq('ancestor removal: trackedTables no longer has the table',
+      freshTrackedTables.has(table), false);
+    eq('ancestor removal: the table\'s toggle button was removed from its parent',
+      removedButtons.includes(button), true);
+
+    // A DIRECT removedNodes entry (the table itself, not an ancestor) must
+    // also still work — the `table === node` half of the containment check.
+    const table2 = { tagName: 'TABLE', nodeType: 1 };
+    freshTableToggles.set(table2, { parentElement: { removeChild() {} } });
+    freshTrackedTables.add(table2);
+    freshDR_STORE.registerTable(table2);
+    tableObserver._cb([{ addedNodes: [], removedNodes: [table2] }]);
+    eq('direct removal: DR_STORE.hasTable is false when the table itself is the removedNodes entry',
+      freshDR_STORE.hasTable(table2), false);
+  } finally {
+    global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
+    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+  }
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
