@@ -360,8 +360,8 @@ function flashTargetedTable(table) {
  *
  * Cell enumeration goes through the same TableAdapter (lib/dr-table, makeAdapter)
  * the rounding engine and preview use, not table.rows/row.cells directly — those
- * only exist on native <table> elements, so reading them here used to leave
- * div-based grids with zero matched cells and a silent no-op flash. The adapter
+ * only exist on native <table> elements, so reading them here used to throw
+ * a TypeError on div-based grids and abort the caller mid-flow. The adapter
  * gives a uniform row/cell view over both native tables and grids.
  */
 function flashRangePulse(table, ranges) {

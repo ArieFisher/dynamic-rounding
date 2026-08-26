@@ -14433,9 +14433,9 @@ const LADDER_OPTS = {
 // ---------------------------------------------------------------------------
 // Sprint toggle-split: KNOWN BUG FIX — flashRangePulse used to read
 // table.rows/row.cells directly, which only exist on native <table>
-// elements. On a div-based grid this always found zero matching cells and
-// silently fell back to (or, depending on the caller, simply skipped) the
-// flash. flashRangePulse now enumerates cells through the same TableAdapter
+// elements. On a div-based grid Array.from(undefined) threw a TypeError,
+// aborting the caller mid-flow (reverting the fix crashes this suite rather
+// than failing an assertion). flashRangePulse now enumerates cells through the same TableAdapter
 // (makeAdapter) the rounding engine and preview already use, so a grid's
 // cells are found the same way a native table's are. This test fails
 // without the fix: matchedCells.length would be 0 for the grid case below,
