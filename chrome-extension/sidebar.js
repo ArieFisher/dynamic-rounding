@@ -11,6 +11,10 @@ const statusEl = document.getElementById('status');
 
 const NO_TABLE_CLASS = 'no-table';
 const NO_TABLE_STATUS_MSG = 'Right-click a table to connect it here.';
+// Shown when the content script refuses an apply because the table's
+// registry originals did not survive a content-script re-injection (the
+// APPLY_BLOCKED message — see content.js's applySidebarRounding guard).
+const APPLY_BLOCKED_STATUS_MSG = 'This table\'s original values are no longer available. Reload the page, then apply settings again.';
 
 function setTableBound(isBound) {
   document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
@@ -500,7 +504,12 @@ function applyNow() {
     onDelivery: function () {
       if (chrome.runtime.lastError) {
         setTableBound(false);
-      } else {
+      } else if (!statusEl.dataset.source) {
+        // Clear only an unsourced stale message (the no-table reminder).
+        // Sourced messages — a range error, an apply-blocked notice — are
+        // cleared by their own OK messages and must survive this callback:
+        // Chrome does not guarantee whether this response callback or the
+        // content script's status message is delivered first.
         statusEl.textContent = '';
       }
     }
@@ -556,6 +565,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'RANGE_OK') {
     if (rangeExprEl) rangeExprEl.classList.remove('invalid');
     if (statusEl.dataset.source === 'range') {
+      statusEl.textContent = '';
+      delete statusEl.dataset.source;
+    }
+  } else if (request.action === 'APPLY_BLOCKED') {
+    statusEl.textContent = APPLY_BLOCKED_STATUS_MSG;
+    statusEl.dataset.source = 'blocked';
+  } else if (request.action === 'APPLY_OK') {
+    if (statusEl.dataset.source === 'blocked') {
       statusEl.textContent = '';
       delete statusEl.dataset.source;
     }

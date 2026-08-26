@@ -230,7 +230,22 @@ window.addEventListener('pagehide', () => {
 function applySidebarRounding(table, options) {
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
   ensureHighlightStyleInjected();
-  resetTable(table);
+  const unrestorableCount = resetTable(table);
+  if (unrestorableCount > 0) {
+    // Same refusal as toggleOriginalValues' guard: at least one cell's
+    // registry original is gone (a content-script re-injection — see
+    // restoreTable's KNOWN ACCEPTED COST doc). Running roundTable now would
+    // round the already-rounded text, stamp a false "Original: ..." title
+    // over the one attribute that still holds the truth, and record the
+    // rounded value as the registry original of record. resetTable already
+    // left every such cell untouched and the appliedFlag truthful; tell the
+    // sidebar why nothing changed and stop. APPLY_OK below clears the
+    // notice once an apply works again (a table switch, or the site
+    // re-rendered the table with fresh cells).
+    chrome.runtime.sendMessage({ action: 'APPLY_BLOCKED', count: unrestorableCount });
+    return;
+  }
+  chrome.runtime.sendMessage({ action: 'APPLY_OK' });
   if (opts.enabled !== false) {
     sendRangeStatusMessage(roundTable(table, opts));
     if (table.querySelector('.dr-ext-rounded')) {
