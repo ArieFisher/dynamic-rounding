@@ -14494,6 +14494,108 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
+// Sprint toggle-split (adversarial hardening): CLICK-HANDLER PARENT-EQUIVALENCE
+// PIN across the full guard matrix. The consolidation claims that collapsing
+// ui-toggle.js's two inlined click branches (mouse/keyboard, touch second-tap)
+// down to one `DR_BUS.publish('intent:toggleTable', { table })` line each,
+// with content.js's new intent:toggleTable subscriber running the same
+// guarded body both branches used to run inline, produces the identical
+// observable chrome.runtime.sendMessage sequence as before. This pin proves
+// that claim across {same table, different table} x {sidebar open, closed},
+// for both click branches — not just that a guard's boolean outcome matches
+// (the AC1-AC4 rebind tests above already cover that), but that the ORDER
+// and full contents of every dispatched message are unchanged.
+//
+// The expected sequences below are LITERALS captured by running the REAL
+// click handler from both this sprint's parent (refactor/app-model-selection,
+// the last commit with the guard/dispatch logic inlined per click branch in
+// ui-toggle.js) and HEAD against this same fixture and harness, and verified
+// byte-identical at review time. Frozen here rather than re-derived via
+// `git show` at test-run time, matching the rationale in commit 394afa7: a
+// shallow checkout or CI runner may not have the parent ref available.
+// ---------------------------------------------------------------------------
+(function toggleSplit_parentEquivalence_toggleClickGuardMatrix() {
+  // Keyed by `${sidebarOpen}:${sameTable}` — mouse and touch second-tap
+  // produce the identical sequence per guard cell, since both branches ran
+  // (and, post-split, both report to) the same guarded body. That equality
+  // is itself part of what this pin proves: see the per-mode assertions
+  // below, which check mouse and touch against the same expected literal.
+  const PARENT_EXPECTED_SEQUENCES = {
+    'true:true': [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+      { action: 'TABLE_TOGGLE_STATE', enabled: true },
+    ],
+    'true:false': [
+      { action: 'RESET_SIDEBAR_TO_DEFAULTS' },
+      { action: 'PREVIEW_SAMPLES_CHANGED' },
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+      { action: 'TABLE_TOGGLE_STATE', enabled: true },
+    ],
+    'false:true': [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ],
+    'false:false': [
+      { action: 'RANGE_OK' },
+      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+    ],
+  };
+
+  // sameTable=true reuses the SAME table object for both "who's currently
+  // selected" and "who gets clicked" — the no-rebind cell of the matrix.
+  // sameTable=false selects a different table than the one clicked — the
+  // rebind cell, which the guard must send RESET_SIDEBAR_TO_DEFAULTS +
+  // PREVIEW_SAMPLES_CHANGED for.
+  function runToggleClickFixture(mode, sidebarOpenValue, sameTable) {
+    const clicked = makeToggleTable([
+      [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+      [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+    ]);
+    clicked._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+    let selected = clicked;
+    if (!sameTable) {
+      selected = makeToggleTable([
+        [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+        [{ tag: 'td', text: '1,000,000' }, { tag: 'td', text: '500' }],
+      ]);
+      selected._cells.forEach(c => { c.querySelectorAll = () => []; });
+    }
+
+    const sentMessages = [];
+    const origSendMessage = global.chrome.runtime.sendMessage;
+    global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+    sidebarOpen = sidebarOpenValue;
+    lastRightClickedTable = selected;
+
+    const buttonEl = createToggleWithSpies(clicked);
+    if (mode === 'mouse') fireMouseClick(buttonEl);
+    else fireTouchSecondTap(buttonEl);
+
+    global.chrome.runtime.sendMessage = origSendMessage;
+    sidebarOpen = false;
+    lastRightClickedTable = null;
+
+    return sentMessages;
+  }
+
+  for (const sidebarOpenValue of [true, false]) {
+    for (const sameTable of [true, false]) {
+      const key = `${sidebarOpenValue}:${sameTable}`;
+      const expected = PARENT_EXPECTED_SEQUENCES[key];
+      for (const mode of ['mouse', 'touch']) {
+        const seq = runToggleClickFixture(mode, sidebarOpenValue, sameTable);
+        eq(`toggle click guard-matrix (${mode}, sidebarOpen=${sidebarOpenValue}, sameTable=${sameTable}): sendMessage sequence matches the frozen parent sequence`,
+          seq, expected);
+      }
+    }
+  }
+})();
+
+// ---------------------------------------------------------------------------
 // Sprint app-model-selection (adversarial hardening): statelessness. The bus
 // keeps no last-value cache and no delivery history (see adapters/messaging.js
 // header) — a subscriber that attaches AFTER a publish must never see that
