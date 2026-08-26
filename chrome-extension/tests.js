@@ -15553,6 +15553,169 @@ const LADDER_OPTS = {
   }
 })();
 
+// =============================================================================
+// Sprint app-model-registry: the registry of found tables, per-cell originals,
+// and the simplified/original flag live in DR_STORE; the dr-ext-grid marker
+// class becomes a style hook only.
+// =============================================================================
+
+// --- (a) One restore path: a native table and a grid restore through the
+// same restoreTable() call. ---
+(function registrySprint_oneRestorePathForBothKinds() {
+  withCreateTreeWalker(function () {
+    // Native table: header row (excluded) + one data row.
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Header' }],
+      [{ tag: 'td', text: '8,584,629' }],
+    ]);
+    table._cells.forEach(c => { c.querySelectorAll = () => []; });
+    roundTable(table, Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: false, simplifyFirstColumn: true }));
+    const nativeCell = table._cells[1];
+    eq('registry restore: native cell is rounded before restore',
+      nativeCell.classList.contains('dr-ext-rounded'), true);
+
+    restoreTable(table, false);
+    eq('registry restore: native cell HTML restored via the shared restoreTable() call',
+      nativeCell.innerHTML, '8,584,629');
+    eq('registry restore: native cell no longer carries dr-ext-rounded',
+      nativeCell.classList.contains('dr-ext-rounded'), false);
+  });
+
+  // Grid: the SAME restoreTable() function, dispatching internally on kind.
+  const grid = makeE2EGridWrapper([['8584629', '286']]);
+  roundTable(grid.wrapperEl, Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true }));
+  const gridCell = grid.cellEls[0];
+  eq('registry restore: grid cell is rounded before restore',
+    gridCell.classList.contains('dr-ext-rounded'), true);
+
+  restoreTable(grid.wrapperEl, false);
+  eq('registry restore: grid cell text node restored via the same restoreTable() call',
+    gridCell.childNodes[0].nodeValue, '8584629');
+  eq('registry restore: grid cell no longer carries dr-ext-rounded',
+    gridCell.classList.contains('dr-ext-rounded'), false);
+})();
+
+// --- (b) The re-apply observer works from model state: a simulated grid
+// redraw re-applies rounding correctly with every page attribute this cell
+// might have carried stripped away first. ---
+(function registrySprint_reapplyFromModelStateOnly() {
+  let ctx;
+  try {
+    ctx = setupVirtGrid([
+      ['8584629', '100'],
+      ['1234567', '200'],
+    ]);
+    const { grid, pendingTimers } = ctx;
+    const cell0 = grid.cellEls[0];
+    const roundedValue = cell0.childNodes[0].nodeValue;
+    const originalValue = DR_STORE.getTableOriginal(grid.wrapperEl, cell0);
+
+    // Strip every page attribute a pre-registry build would have relied on —
+    // the re-apply must work from DR_STORE alone.
+    cell0.dataset = {};
+    grid.wrapperEl.dataset = {};
+
+    // Simulate a redraw reverting the sort (framework rewrites the text node
+    // back to the original; node identity and the dr-ext-rounded class survive).
+    cell0.childNodes[0].nodeValue = originalValue;
+
+    const obs = ctx.capturedObserver;
+    obs.trigger([{ type: 'characterData', target: cell0.childNodes[0] }]);
+    flushTimers(pendingTimers);
+
+    eq('registry reapply: cell re-rounded after redraw with no page attributes present',
+      cell0.childNodes[0].nodeValue, roundedValue);
+  } finally {
+    if (ctx) {
+      global.MutationObserver = ctx.origMO;
+      global.setTimeout = ctx.origSetTimeout;
+      global.clearTimeout = ctx.origClearTimeout;
+    }
+  }
+})();
+
+// --- (c) Static lock: no production read of the dr-ext-grid marker class as
+// state — classList.contains/closest('.dr-ext-grid') may appear only as a
+// write (classList.add) or inside a comment discussing the history; a real
+// read call is what this locks out. ---
+(function registrySprint_noMarkerClassReadLock() {
+  const filesToScan = ['content.js', 'ui-toggle.js', 'lib/dr-table/detect.js'];
+  const readPatterns = [
+    /classList\.contains\(\s*['"]dr-ext-grid['"]\s*\)/g,
+    /\.closest\(\s*['"]\.dr-ext-grid['"]\s*\)/g,
+  ];
+  for (const file of filesToScan) {
+    const src = sourceByName(file);
+    if (src === null) {
+      eq(`registry static lock: ${file} present in manifest`, false, true);
+      continue;
+    }
+    // Strip line comments and block comments before scanning, so a comment
+    // that merely mentions the old pattern (documenting the sprint's own
+    // removal of it) cannot trip the lock.
+    const withoutComments = src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    const matches = readPatterns.flatMap((re) => withoutComments.match(re) || []);
+    eq(`registry static lock: ${file} has no dr-ext-grid marker-class read`,
+      matches, []);
+  }
+})();
+
+// --- (d) The shared-ownership guard comment is gone from content.js — the
+// flag it warned about no longer has two independent writers to coordinate. ---
+(function registrySprint_guardCommentRemoved() {
+  const contentSrc = sourceByName('content.js');
+  eq('registry: the old showing-original shared-ownership guard comment is gone',
+    /Showing-original guard: when the per-table toggle has flipped the grid/.test(contentSrc),
+    false);
+})();
+
+// --- (e) Originals survive a full round → show-original → re-round cycle,
+// read back correctly from the registry each time. ---
+(function registrySprint_originalsSurviveToggleCycle() {
+  withCreateTreeWalker(function () {
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Header' }],
+      [{ tag: 'td', text: '8,584,629' }],
+    ]);
+    table._cells.forEach(c => { c.querySelectorAll = () => []; });
+    injectToggleEntry(table);
+    const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: false, simplifyFirstColumn: true });
+    const cell = table._cells[1];
+    // withCreateTreeWalker's fake tree walker writes rounded text through
+    // innerText/textContent (mirroring the DOM's own child-node/serialization
+    // relationship, which a plain mock object does not have for free) — link
+    // all three properties to one backing value so a write through any of
+    // them (the round path via the walker, the restore path via a direct
+    // innerHTML assignment) is visible through all three, the way a real
+    // <td> keeps them in sync.
+    let _text = cell.innerHTML;
+    Object.defineProperties(cell, {
+      innerHTML: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+    });
+
+    roundTable(table, opts);
+    const roundedText = cell.textContent;
+    eq('registry cycle: cell rounds away from the original text',
+      roundedText !== '8,584,629', true);
+
+    toggleOriginalValues(table); // show original
+    eq('registry cycle: cell shows the exact original text after toggling off',
+      cell.textContent, '8,584,629');
+    eq('registry cycle: isTableRounded is false while showing original',
+      isTableRounded(table), false);
+
+    toggleOriginalValues(table); // toggle back to rounded
+    eq('registry cycle: cell is rounded again after toggling back on',
+      cell.textContent, roundedText);
+    eq('registry cycle: isTableRounded is true again after toggling back on',
+      isTableRounded(table), true);
+  });
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
