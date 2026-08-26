@@ -2877,7 +2877,7 @@ function makeMockButton() {
   const clickHandlers = buttonEl._listeners['click'] || [];
   clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
 
-  // After click: table shows originals (drShowingOriginal='true'), aria-pressed='false'
+  // After click: table shows originals (appliedFlag 'original' in DR_STORE), aria-pressed='false'
   eq('accessibility AC3: button click (mouse, was-rounded) sets aria-pressed="false"',
     buttonEl.getAttribute('aria-pressed'), 'false');
 })();
@@ -16103,21 +16103,15 @@ const LADDER_OPTS = {
   eq('recycling: the surviving cell also re-rounds correctly on peek-back',
     cellSurvivor.classList.contains('dr-ext-rounded'), true);
 
-  // REGRESSION vs parent (non-blocking, flagged for reviewer judgment):
-  // the registry's per-table `originals` map (app/store.js) is a plain Map
-  // keyed by cell element, not a WeakMap, and restoreTable/resetTable only
-  // ever iterate table.querySelectorAll('.dr-ext-rounded') — a recycled-away
-  // cell that no longer matches that selector is never visited, so its
-  // DR_STORE.deleteTableOriginal call never happens. cellA's entry survives
-  // in that Map for the life of the table's registration even though cellA
-  // itself is permanently unreachable. The parent's dataset-attribute design
-  // had no equivalent structure: a detached element's dataset simply went
-  // away with the node, with nothing left to accumulate. Under heavy
-  // virtualized-grid scroll churn (many cells recycled over a long session)
-  // this Map grows unboundedly until the table itself is unregistered — a
-  // memory-growth characteristic the parent did not have. Not a visible
-  // correctness bug (nothing renders wrong), so not blocking on its own.
-  eq('recycling REGRESSION (non-blocking): cellA\'s registry original is STILL present after it is unreachable — the per-table Map leaks recycled-away cells, unlike the parent\'s dataset-attribute design',
+  // The registry's per-table `originals` is a WeakMap keyed by cell element
+  // (app/store.js). A recycled-away cell that no longer matches the rounded
+  // selector is never visited by restoreTable, so its entry is never deleted
+  // explicitly — the WeakMap makes that safe: once nothing references the
+  // cell, the entry is collectible. This test holds cellA alive by
+  // reference, so its original stays retrievable; a genuinely unreachable
+  // cell's entry is garbage, matching the parent's dataset design where a
+  // detached element's data went away with the node.
+  eq('recycling: a live-referenced recycled cell\'s registry original stays retrievable (WeakMap keeps it while referenced, collects it when not)',
     DR_STORE.hasTableOriginal(grid.wrapperEl, cellA), true);
 })();
 
