@@ -16114,6 +16114,135 @@ const LADDER_OPTS = {
     DR_STORE.hasTableOriginal(grid.wrapperEl, cellA), true);
 })();
 
+// --- (j) Content-script re-injection: DR_STORE lives in the content script's
+// JS heap, which a re-injection (extension reload/update while a tab stays
+// open) throws away and rebuilds from scratch — the live PAGE DOM survives
+// untouched (classes, text, everything the OLD script instance wrote stay
+// exactly as they were). The bundle is eval'd TWICE here against the SAME
+// fixture table/document, each eval producing its own independent DR_STORE
+// (direct eval gives let/const their own lexical environment per call — the
+// same mechanism runContextmenuFixture above already relies on), to model
+// exactly that: instance 1 rounds the table; instance 2 (fresh registry,
+// same already-rounded DOM) is what a real re-injected script would face.
+//
+// CONFIRMED via parent source (chrome-extension/content.js on
+// refactor/app-model-settings): the parent read/wrote cell.dataset.
+// originalValue/originalHtml directly on the DOM element. Because dataset
+// lives on the element, it survives re-injection the same way the rounded
+// text does — the parent's second instance recovers the true original
+// cleanly. HEAD's registry does not: this test demonstrates the true
+// original becomes UNRECOVERABLE through the UI once a second instance
+// touches the table — a reachable, non-blocking-to-notice but data-losing
+// regression, flagged prominently per the sprint's own "KNOWN ACCEPTED
+// COST" comment on restoreTable (content.js) for the reviewer's judgment. ---
+(function registrySprint_reinjectionLosesOriginalsParentRecovers() {
+  function makeReinjectionFixtureTable() {
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
+      [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
+    ]);
+    // Link innerHTML/innerText/textContent to one backing value on the data
+    // cell, matching a real <td>'s single-node-tree-backed semantics (same
+    // fix angle (f)'s test needed, for the same reason: restoreTable writes
+    // innerHTML only, and getText()/the fake tree walker below read innerText).
+    const dataCell = table._cells[3];
+    let _text = dataCell.innerHTML;
+    Object.defineProperties(dataCell, {
+      innerHTML: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+    });
+    return { table, dataCell };
+  }
+
+  const { table, dataCell } = makeReinjectionFixtureTable();
+  const trueOriginal = '12,345';
+
+  // A minimal document shared by BOTH eval'd instances — this is the "live
+  // page" that persists across the simulated re-injection. createTreeWalker
+  // mirrors withCreateTreeWalker's single-fake-text-node approach, reading
+  // and writing through the SAME linked innerText/innerHTML property.
+  const sharedDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild() {} },
+    createTreeWalker(cell) {
+      let done = false;
+      return {
+        nextNode() {
+          if (done) return null;
+          done = true;
+          return {
+            get nodeValue() { return cell.innerText; },
+            set nodeValue(v) { cell.innerText = v; cell.textContent = v; },
+          };
+        },
+      };
+    },
+  };
+  const saved = {
+    document: global.document, chrome: global.chrome, window: global.window,
+    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    Node: global.Node, NodeFilter: global.NodeFilter,
+  };
+  global.document = sharedDoc;
+  global.chrome = { runtime: { onMessage: { addListener() {} }, sendMessage() {} } };
+  global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
+  global.MutationObserver = class { observe() {} disconnect() {} };
+  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  global.Node = { ELEMENT_NODE: 1 };
+  global.NodeFilter = { SHOW_TEXT: 4 };
+
+  try {
+    // --- Instance 1: the content script as originally injected. Rounds the
+    // table directly (bypassing detection/UI wiring, irrelevant to this
+    // mechanism) with DR_DEFAULTS, same as runToggleAction's fresh-round path. ---
+    eval(contentScriptBundle + `
+      globalThis.__ri1_roundTable = roundTable;
+      globalThis.__ri1_isTableRounded = isTableRounded;
+    `);
+    global.__ri1_roundTable(table, DR_DEFAULTS);
+    const roundedText = dataCell.innerText;
+
+    eq('re-injection (pre): instance 1 actually rounded the cell away from the true original',
+      roundedText !== trueOriginal, true);
+    eq('re-injection (pre): instance 1 reports the table as rounded',
+      global.__ri1_isTableRounded(table), true);
+
+    // --- Instance 2: simulates re-injection. The DOM is untouched (dataCell
+    // still shows roundedText, still carries dr-ext-rounded) but this eval's
+    // DR_STORE is BRAND NEW — instance 1's registry (and its stored true
+    // original) is unreachable garbage now, exactly as a real content-script
+    // reload would leave it. ---
+    eval(contentScriptBundle + `
+      globalThis.__ri2_isTableRounded = isTableRounded;
+      globalThis.__ri2_resetTable = resetTable;
+      globalThis.__ri2_DR_STORE = DR_STORE;
+    `);
+
+    eq('re-injection: a fresh instance reports the table as NOT rounded, despite the DOM still showing rounded text — a state/display mismatch the moment re-injection happens',
+      global.__ri2_isTableRounded(table), false);
+
+    // The user's most natural recovery action is "reset" (or an equivalent
+    // toggle-to-original click). Drive the SAME production primitive
+    // (resetTable) the sprint's own restoreTable KNOWN ACCEPTED COST comment
+    // discusses.
+    global.__ri2_resetTable(table);
+
+    eq('re-injection: after reset, the dr-ext-rounded marker IS cleared (the UI looks "back to normal")',
+      dataCell.classList.contains('dr-ext-rounded'), false);
+    eq('re-injection REGRESSION (reachable, non-blocking to notice, DATA-LOSING — reviewer judgment requested): the displayed text after "reset" is STILL the rounded value, not the true original — the true original is unrecoverable through the UI from this point on',
+      dataCell.innerText, roundedText);
+    eq('re-injection REGRESSION corollary: the value is provably NOT the true original',
+      dataCell.innerText !== trueOriginal, true);
+  } finally {
+    global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
+    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+  }
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
