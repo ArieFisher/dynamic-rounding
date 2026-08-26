@@ -14554,13 +14554,172 @@ const LADDER_OPTS = {
   eq('wire payload: settings payload is nested exactly as sendToActiveTab sent it, unchanged',
     JSON.stringify(msg.settings), JSON.stringify({ offsetTop: -2, rangeExpr: 'A1:B2' }));
 
-  // ADVERSARIAL — currently fails: the parent's sendToActiveTab always
-  // passed a response callback (chrome.tabs.sendMessage's 3rd argument) and
-  // used it to reflect delivery failure back into the UI (setTableBound(false)
-  // on chrome.runtime.lastError) and to clear statusEl on success. publish()
-  // drops that callback, so a failed settings-apply delivery is now silent.
+  // ADVERSARIAL regression pin (see PR notes): the parent's sendToActiveTab
+  // always passed a response callback (chrome.tabs.sendMessage's 3rd
+  // argument) and used it to reflect delivery failure back into the UI
+  // (setTableBound(false) on chrome.runtime.lastError) and to clear statusEl
+  // on success. This only pins the MECHANISM — that publish() still passes a
+  // callback — not the behavior; see appModelSettings_settingsPublish_
+  // deliveryFeedback_behavioral below for the behavioral coverage.
   eq('wire payload: publish() passes a response callback to chrome.tabs.sendMessage, matching sendToActiveTab\'s delivery-failure handling (regression — see PR notes)',
     typeof callback, 'function');
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint app-model-settings, adversarial fix (behavioral): the pin above only
+// proves publish() PASSES a callback to chrome.tabs.sendMessage — it says
+// nothing about what that callback does. This drives sidebar.js's real
+// applyNow() -> DR_BUS.publish() path end to end and checks the two
+// behaviors refactor/app-model-selection's sendToActiveTab had: a failed
+// delivery (chrome.runtime.lastError) must unbind the sidebar via
+// setTableBound(false); a successful delivery must clear #status.
+// ---------------------------------------------------------------------------
+(function appModelSettings_settingsPublish_deliveryFeedback_behavioral() {
+  const defaultsSrc = sourceByName('defaults.js');
+  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
+  const coreSrc = sourceByName('lib/dr-number/core.js');
+  if (defaultsSrc === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+    eq('settings publish delivery: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+
+  // Minimal element stub — same shape as the other sidebar.js eval harnesses
+  // in this file (see tableContextmenuActivation_sidebarFlash above).
+  function makeEl() {
+    return {
+      addEventListener() {}, removeEventListener() {},
+      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+      style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
+      appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
+      getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
+      matches() { return false; }, closest() { return null; }, dataset: {},
+    };
+  }
+
+  // #status and #enabled are the two elements setTableBound touches; capture
+  // the exact objects sidebar.js's document.getElementById() hands back so we
+  // can read their mutations directly, with no need to export any function.
+  const statusEl = makeEl();
+  const enabledEl = makeEl();
+  enabledEl.checked = true;
+  let enabledChangeHandler = null;
+  enabledEl.addEventListener = function (type, fn) { if (type === 'change') enabledChangeHandler = fn; };
+
+  const bodyClasses = new Set();
+  const captureBody = {
+    classList: {
+      add(cls) { bodyClasses.add(cls); },
+      remove(cls) { bodyClasses.delete(cls); },
+      contains(cls) { return bodyClasses.has(cls); },
+      toggle(cls, force) {
+        if (force === undefined) {
+          if (bodyClasses.has(cls)) bodyClasses.delete(cls); else bodyClasses.add(cls);
+        } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
+      },
+    },
+    addEventListener() {},
+    get offsetWidth() { return 0; },
+  };
+
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: captureBody,
+    getElementById(id) {
+      if (id === 'status') return statusEl;
+      if (id === 'enabled') return enabledEl;
+      return makeEl();
+    },
+    createElement() { return makeEl(); },
+  };
+
+  // chrome.tabs.query/sendMessage resolve synchronously so the whole chain —
+  // sidebar.js's applyNow() -> DR_BUS.publish() -> chrome.tabs.sendMessage's
+  // own callback -> sidebar.js's onDelivery — runs deterministically within
+  // one call, with queuedLastError controlling chrome.runtime.lastError at
+  // the moment onDelivery reads it (matching real sendMessage semantics).
+  const sentTabMessages = [];
+  let queuedLastError = null;
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener() {} },
+      sendMessage() {},
+      get lastError() { return queuedLastError; },
+    },
+    tabs: {
+      query(q, cb) { cb([{ id: 42 }]); },
+      sendMessage(tabId, msg, cb) {
+        sentTabMessages.push(msg);
+        if (typeof cb === 'function') cb();
+      },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedWindow = global.window;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, close() {}, getComputedStyle: () => ({ display: 'block' }) };
+
+  // sidebar.js's top-level code — including its own change/click listener
+  // registrations — resolves `document`/`chrome`/`window` dynamically off
+  // the global object every time it runs, not just at eval time. The
+  // captured enabledChangeHandler is called below, well after the initial
+  // eval, so the stubs must stay installed for that call too — restore the
+  // real globals only once every scenario below has run.
+  try {
+    try {
+      eval(
+        defaultsSrc + '\n' +
+        roundingSrc + '\n' +
+        coreSrc + '\n' +
+        messagingCode + '\n' +
+        fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
+      );
+    } catch (e) {
+      // sidebar.js's module-level settings/preview pull can throw past this
+      // point in this stub environment (chrome.tabs.sendMessage's callback
+      // gets no real response) — the 'change' listener registers before that
+      // runs, so we only need it captured.
+    }
+
+    eq('settings publish delivery: sidebar\'s enabled-checkbox change handler was captured',
+      typeof enabledChangeHandler, 'function');
+    if (typeof enabledChangeHandler !== 'function') return;
+
+    // --- Failure: chrome.runtime.lastError set -> setTableBound(false) ran. ---
+    bodyClasses.delete('no-table');
+    enabledEl.checked = true;
+    statusEl.textContent = '';
+    queuedLastError = { message: 'Could not establish connection.' };
+    sentTabMessages.length = 0;
+    enabledChangeHandler();
+
+    eq('settings publish delivery: one APPLY_SIDEBAR_SETTINGS message sent for the change',
+      sentTabMessages.length, 1);
+    eq('settings publish delivery: failed delivery adds the no-table class (setTableBound(false) ran)',
+      bodyClasses.has('no-table'), true);
+    eq('settings publish delivery: failed delivery flips the enabled checkbox off (setTableBound(false) ran)',
+      enabledEl.checked, false);
+    eq('settings publish delivery: failed delivery sets #status to the no-table message (setTableBound(false) ran)',
+      statusEl.textContent, 'Right-click a table to connect it here.');
+
+    // --- Success: no lastError -> #status is cleared. ---
+    bodyClasses.delete('no-table');
+    statusEl.textContent = 'a stale status message';
+    queuedLastError = null;
+    enabledChangeHandler();
+
+    eq('settings publish delivery: successful delivery clears #status',
+      statusEl.textContent, '');
+  } finally {
+    global.document = savedDoc;
+    global.chrome = savedChrome;
+    global.window = savedWindow;
+  }
 })();
 
 // ---------------------------------------------------------------------------

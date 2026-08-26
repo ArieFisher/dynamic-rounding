@@ -61,6 +61,17 @@
  *     publish (without re-sending it back out), so a cross-context topic
  *     behaves the same as a same-context one from a subscriber's point of
  *     view.
+ *   - publish() takes an optional third argument, opts. On the extension-
+ *     page relay branch (chrome.tabs.sendMessage), opts.onDelivery, when a
+ *     function, is invoked after delivery settles — this is how a caller
+ *     (e.g. sidebar.js) reacts to a delivery outcome (chrome.runtime.
+ *     lastError on failure) the exact way sendToActiveTab did before this
+ *     topic existed. The bus always supplies chrome.tabs.sendMessage its own
+ *     callback and touches chrome.runtime.lastError inside it — regardless
+ *     of whether the caller passed onDelivery — so a failed delivery never
+ *     logs Chrome's "Unchecked runtime.lastError" warning. The bus itself
+ *     stays generic: it forwards the outcome, but never inspects it or knows
+ *     what a caller does with it.
  *
  * Loaded after the lib/ packages and before app/store.js — the store
  * publishes through this bus, so the bus must exist first.
@@ -133,7 +144,7 @@ const DR_BUS = (function () {
   const MAX_PUBLISH_DEPTH = 20;
   let publishDepth = 0;
 
-  function publish(topic, payload) {
+  function publish(topic, payload, opts) {
     assertKnownTopic(topic);
     publishDepth++;
     try {
@@ -146,6 +157,7 @@ const DR_BUS = (function () {
       deliverLocally(topic, payload);
       const wireAction = TOPICS[topic].wireAction;
       if (!wireAction || typeof chrome === 'undefined' || !chrome.runtime) return;
+      const onDelivery = opts && typeof opts.onDelivery === 'function' ? opts.onDelivery : null;
       if (chrome.tabs && typeof chrome.tabs.query === 'function' && typeof chrome.tabs.sendMessage === 'function') {
         // Extension-page context (the sidebar): chrome.runtime.sendMessage
         // cannot reach a content script, so relay via the active tab —
@@ -154,7 +166,15 @@ const DR_BUS = (function () {
           chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (!tabs || !tabs[0]) return;
             try {
-              chrome.tabs.sendMessage(tabs[0].id, Object.assign({ action: wireAction }, payload));
+              chrome.tabs.sendMessage(tabs[0].id, Object.assign({ action: wireAction }, payload), () => {
+                // Always touch chrome.runtime.lastError, even when the caller
+                // supplied no onDelivery — otherwise a failed delivery logs
+                // Chrome's "Unchecked runtime.lastError" warning. The bus
+                // reads it purely to consume it; interpreting it is the
+                // caller's job via onDelivery, same as sendToActiveTab did.
+                void chrome.runtime.lastError;
+                if (onDelivery) onDelivery();
+              });
             } catch (e) {
               // no content script on this tab (or it hasn't loaded yet); harmless.
             }

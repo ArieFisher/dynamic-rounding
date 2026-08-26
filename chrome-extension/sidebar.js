@@ -480,8 +480,20 @@ function updateDisabledState() {
 // script — the same chrome.tabs.query + chrome.tabs.sendMessage transport
 // this file used directly before this topic existed (see
 // adapters/messaging.js's publish()).
+//
+// onDelivery reproduces sendToActiveTab's old response callback exactly: on
+// chrome.runtime.lastError (no content script on the tab — delivery failed)
+// unbind the sidebar UI; on success, clear any stale #status message.
 function applyNow() {
-  DR_BUS.publish('intent:settingsChanged', { settings: currentSettings() });
+  DR_BUS.publish('intent:settingsChanged', { settings: currentSettings() }, {
+    onDelivery: function () {
+      if (chrome.runtime.lastError) {
+        setTableBound(false);
+      } else {
+        statusEl.textContent = '';
+      }
+    }
+  });
 }
 
 enabledEl.addEventListener('change', () => {
