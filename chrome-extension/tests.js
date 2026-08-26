@@ -16033,6 +16033,87 @@ const LADDER_OPTS = {
   }
 })();
 
+// --- (i) Peek-toggle round trip under grid row recycling: round -> peek to
+// original (keepEntry:true) -> the host virtualization library recycles ONE
+// cell (same row, a genuinely NEW element takes that grid position — the
+// documented "element replaced" pattern, distinct from this extension's own
+// nodeValue-patch-in-place write model) -> peek back to rounded.
+//
+// Uses a live-scanning querySelectorAll (walks wrapper.children -> row
+// .children each call) instead of makeE2EGridWrapper's snapshot list, so
+// the recycled cell is genuinely undiscoverable via '.dr-ext-rounded' the
+// way a real detached-and-replaced DOM node would be — makeE2EGridWrapper's
+// fixed `allCells` array would otherwise still "see" the old cell and mask
+// the scenario this test exists to exercise. ---
+(function registrySprint_peekRoundTripUnderGridRecycling() {
+  const grid = makeGridWrapper([['87654321', '1234567']]);
+  grid.wrapperEl.querySelectorAll = function(sel) {
+    if (sel !== '.dr-ext-rounded') return [];
+    const found = [];
+    for (const row of grid.wrapperEl.children) {
+      for (const cell of row.children) {
+        if (cell.classList && cell.classList.contains('dr-ext-rounded')) found.push(cell);
+      }
+    }
+    return found;
+  };
+  grid.wrapperEl.querySelector = function(sel) {
+    return grid.wrapperEl.querySelectorAll(sel)[0] || null;
+  };
+
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+  roundTable(grid.wrapperEl, opts);
+
+  const cellA = grid.cellEls[0]; // will be recycled away
+  const cellSurvivor = grid.cellEls[1]; // stays in place across the whole cycle
+
+  eq('recycling: both cells round on the initial pass (pre-condition)',
+    cellA.classList.contains('dr-ext-rounded') && cellSurvivor.classList.contains('dr-ext-rounded'), true);
+
+  toggleOriginalValues(grid.wrapperEl); // peek to original (keepEntry:true)
+  eq('recycling: peek-to-original restores cellA\'s display text',
+    cellA.childNodes[0].nodeValue, '87654321');
+
+  // Simulate the host grid recycling row 0's first cell: a brand-new element
+  // (never seen by this extension) occupies that position; cellA is no
+  // longer reachable from the table at all.
+  const cellB = makeGridCellWithTextNode('99999999');
+  grid.rowEls[0].children = [cellB, cellSurvivor];
+
+  toggleOriginalValues(grid.wrapperEl); // peek back to rounded
+
+  // Functional correctness: the recycled cell is treated as any other live
+  // cell on the full re-round pass (resetTable + roundTable) toggling back
+  // to rounded runs — it rounds fresh from ITS OWN content, not corrupted
+  // and not skipped. This matches what the parent (dataset-based) branch
+  // would also do on the same scenario: a genuinely new element has no
+  // dataset either, so both designs re-detect it from scratch. FAITHFUL
+  // MATCH, not a regression.
+  eq('recycling: the recycled cell (cellB) is picked up and rounded on peek-back, not skipped',
+    cellB.classList.contains('dr-ext-rounded'), true);
+  eq('recycling: the recycled cell\'s rounded value differs from its own live text',
+    cellB.childNodes[0].nodeValue !== '99999999', true);
+  eq('recycling: the surviving cell also re-rounds correctly on peek-back',
+    cellSurvivor.classList.contains('dr-ext-rounded'), true);
+
+  // REGRESSION vs parent (non-blocking, flagged for reviewer judgment):
+  // the registry's per-table `originals` map (app/store.js) is a plain Map
+  // keyed by cell element, not a WeakMap, and restoreTable/resetTable only
+  // ever iterate table.querySelectorAll('.dr-ext-rounded') — a recycled-away
+  // cell that no longer matches that selector is never visited, so its
+  // DR_STORE.deleteTableOriginal call never happens. cellA's entry survives
+  // in that Map for the life of the table's registration even though cellA
+  // itself is permanently unreachable. The parent's dataset-attribute design
+  // had no equivalent structure: a detached element's dataset simply went
+  // away with the node, with nothing left to accumulate. Under heavy
+  // virtualized-grid scroll churn (many cells recycled over a long session)
+  // this Map grows unboundedly until the table itself is unregistered — a
+  // memory-growth characteristic the parent did not have. Not a visible
+  // correctness bug (nothing renders wrong), so not blocking on its own.
+  eq('recycling REGRESSION (non-blocking): cellA\'s registry original is STILL present after it is unreachable — the per-table Map leaks recycled-away cells, unlike the parent\'s dataset-attribute design',
+    DR_STORE.hasTableOriginal(grid.wrapperEl, cellA), true);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
