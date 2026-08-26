@@ -212,8 +212,11 @@ function createToggleForTable(table) {
         scheduleAutoCollapse();
       } else {
         // Second tap: toggle state, refresh collapse timer
-        if (sidebarOpen && lastRightClickedTable && table !== lastRightClickedTable) {
-          lastRightClickedTable = table;
+        if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()) {
+          // Report the intent instead of writing content.js's selection
+          // variable directly — the controller (content.js) is the sole
+          // subscriber and decides how the model changes.
+          DR_BUS.publish('intent:selectTable', { table });
           try {
             chrome.runtime.sendMessage({ action: 'RESET_SIDEBAR_TO_DEFAULTS' });
           } catch (e) {
@@ -227,7 +230,7 @@ function createToggleForTable(table) {
         }
         runToggleAction(table);
         syncSwitchForTable(table);
-        if (sidebarOpen && lastRightClickedTable && table === lastRightClickedTable) {
+        if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table === DR_STORE.getSelectedTable()) {
           try {
             chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: isTableRounded(table) });
           } catch (e) {
@@ -238,8 +241,11 @@ function createToggleForTable(table) {
       }
     } else {
       // Mouse / keyboard (Space is handled natively by <button>; Enter via keydown below)
-      if (sidebarOpen && lastRightClickedTable && table !== lastRightClickedTable) {
-        lastRightClickedTable = table;
+      if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()) {
+        // Report the intent instead of writing content.js's selection
+        // variable directly — the controller (content.js) is the sole
+        // subscriber and decides how the model changes.
+        DR_BUS.publish('intent:selectTable', { table });
         try {
           chrome.runtime.sendMessage({ action: 'RESET_SIDEBAR_TO_DEFAULTS' });
         } catch (e) {
@@ -253,7 +259,7 @@ function createToggleForTable(table) {
       }
       runToggleAction(table);
       syncSwitchForTable(table);
-      if (sidebarOpen && lastRightClickedTable && table === lastRightClickedTable) {
+      if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table === DR_STORE.getSelectedTable()) {
         try {
           chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: isTableRounded(table) });
         } catch (e) {
