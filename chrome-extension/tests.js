@@ -1939,11 +1939,21 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   eq('unified: data-rounded-value attribute no longer written',
     /data-rounded-value|dataset\.roundedValue/.test(contentSrc), false);
 
-  eq('unified: data-original-html attribute is written',
-    /dataset\.originalHtml\s*=/.test(contentSrc), true);
+  // app-model-registry sprint: native-table originals (html/value/supRanges/
+  // linkFilteredIdx) and the per-table round options moved off page
+  // attributes / a file-level WeakMap into DR_STORE's table registry — see
+  // the "table registry" test section below for the full replacement suite.
+  eq('unified (superseded by app-model-registry): dataset.originalHtml is no longer written',
+    /dataset\.originalHtml\s*=/.test(contentSrc), false);
 
-  eq('unified: per-table options WeakMap declared',
-    /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), true);
+  eq('registry: native-table originals are recorded via DR_STORE.setTableOriginal',
+    /DR_STORE\.setTableOriginal\(\s*table\s*,\s*cell\s*,\s*\{\s*html:/.test(contentSrc), true);
+
+  eq('unified (superseded by app-model-registry): tableOptions WeakMap no longer declared',
+    /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), false);
+
+  eq('registry: round options are recorded via DR_STORE.setTableRoundOptions',
+    /DR_STORE\.setTableRoundOptions\(table,\s*opts\)/.test(contentSrc), true);
 
   eq('unified: toggleOriginalValues calls roundTable for original→rounded path',
     /function toggleOriginalValues[\s\S]{0,500}roundTable\(/.test(contentSrc), true);
@@ -2173,23 +2183,26 @@ function makeMockButton() {
 // --- AC5: isTableRounded returns true after roundTable marks cells ---
 
 (function atToggle_isTableRounded_afterRound() {
-  // Directly inject the rounded class to simulate a rounded table (don't run
-  // the full roundTable pipeline which requires tree walkers etc.)
+  // Directly inject the rounded class AND set the registry's appliedFlag to
+  // simulate a rounded table (don't run the full roundTable pipeline which
+  // requires tree walkers etc.) — isTableRounded reads DR_STORE's appliedFlag
+  // (app-model-registry sprint), not the class, so both are set here the way
+  // roundTable itself would leave them.
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  // Manually mark the cell as rounded — this is what roundTable does.
   table._cells[0].classList.add('dr-ext-rounded');
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
   eq('auto-table-toggle: isTableRounded(table with .dr-ext-rounded cell) is true',
     isTableRounded(table), true);
 })();
 
-// --- AC5: isTableRounded returns false when drShowingOriginal === 'true' ---
+// --- AC5: isTableRounded returns false when appliedFlag !== 'simplified' ---
 // (toggleOriginalValues sets this; the table still has rounded cells but is showing originals)
 
 (function atToggle_isTableRounded_showingOriginal() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
-  table.dataset.drShowingOriginal = 'true';
-  eq('auto-table-toggle: isTableRounded is false when drShowingOriginal===true',
+  DR_STORE.setTableAppliedFlag(table, 'original');
+  eq('auto-table-toggle: isTableRounded is false when appliedFlag is "original"',
     isTableRounded(table), false);
 })();
 
@@ -2198,10 +2211,15 @@ function makeMockButton() {
 
 (function atToggle_isTableRounded_afterToggleOff() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  // Simulate a post-roundTable state: cell has rounded class + originalHtml
+  // Simulate a post-roundTable state: cell has rounded class + a registry
+  // original record (app-model-registry sprint — this used to be
+  // cell.dataset.originalHtml), and the registry's appliedFlag is
+  // 'simplified' so toggleOriginalValues reads it as currently-rounded and
+  // takes the "hide" branch.
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
-  cell.dataset.originalHtml = '1,000';
+  DR_STORE.setTableOriginal(table, cell, { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
   cell.innerHTML = '1,000';
   // Also need to stub innerHTML setter so toggleOriginalValues can restore it
   Object.defineProperty(cell, 'innerHTML', {
@@ -2213,13 +2231,13 @@ function makeMockButton() {
   // Inject toggle entry (proper button stub) so syncSwitchForTable doesn't crash
   injectToggleEntry(table);
 
-  // Calling toggleOriginalValues (showingOriginal=false path) sets drShowingOriginal='true'
+  // Calling toggleOriginalValues (showingOriginal=false path) sets appliedFlag='original'
   toggleOriginalValues(table);
 
   eq('auto-table-toggle: after toggleOriginalValues, isTableRounded is false',
     isTableRounded(table), false);
-  eq('auto-table-toggle: after toggleOriginalValues, drShowingOriginal is "true"',
-    table.dataset.drShowingOriginal, 'true');
+  eq('auto-table-toggle: after toggleOriginalValues, appliedFlag is "original"',
+    DR_STORE.getTableAppliedFlag(table), 'original');
 })();
 
 // --- AC6: syncSwitchForTable sets aria-pressed on the button to match isTableRounded ---
@@ -2241,6 +2259,7 @@ function makeMockButton() {
 
   // Mark table as rounded
   table._cells[0].classList.add('dr-ext-rounded');
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
 
   syncSwitchForTable(table);
   eq('auto-table-toggle: syncSwitchForTable sets aria-pressed="true" on rounded table',
@@ -2251,7 +2270,7 @@ function makeMockButton() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   const button = injectToggleEntry(table);
   table._cells[0].classList.add('dr-ext-rounded');
-  table.dataset.drShowingOriginal = 'true';
+  DR_STORE.setTableAppliedFlag(table, 'original');
   button.setAttribute('aria-pressed', 'true');
 
   syncSwitchForTable(table);
@@ -2519,7 +2538,8 @@ function makeMockButton() {
   const table = makeToggleTable([{ tag: 'td', text: '8,500,000' }]);
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
-  cell.dataset.originalHtml = '8,584,629';
+  DR_STORE.setTableOriginal(table, cell, { html: '8,584,629', value: '8,584,629', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
 
   // The cell's innerHTML property needs to be writable
   let htmlVal = cell.innerHTML;
@@ -2533,9 +2553,9 @@ function makeMockButton() {
 
   runToggleAction(table);
 
-  // After toggling off: drShowingOriginal must be 'true' (AC4)
-  eq('auto-table-toggle: runToggleAction on rounded table sets drShowingOriginal=true (AC4)',
-    table.dataset.drShowingOriginal, 'true');
+  // After toggling off: appliedFlag must be 'original' (AC4)
+  eq('auto-table-toggle: runToggleAction on rounded table sets appliedFlag=original (AC4)',
+    DR_STORE.getTableAppliedFlag(table), 'original');
   // aria-pressed should be "false" — table is now showing originals, not rounded
   eq('auto-table-toggle: aria-pressed="false" after toggle-off via runToggleAction',
     input.getAttribute('aria-pressed'), 'false');
@@ -3590,6 +3610,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 (function morphAC_syncSwitch_roundedTable() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
+  DR_STORE.setTableAppliedFlag(table, 'simplified');
   const button = injectToggleEntry(table);
   syncSwitchForTable(table);
   eq('expanding-toggle: syncSwitchForTable rounded table → aria-pressed="true"',
@@ -14377,7 +14398,7 @@ const LADDER_OPTS = {
   };
   const contentTopLevelNames = topLevelBindingNames(contentSrcForScan);
   eq('static scan: content.js still declares its usual top-level bindings (sanity check on the scan itself)',
-    contentTopLevelNames.includes('lastRightClickedElement') && contentTopLevelNames.includes('tableOptions'),
+    contentTopLevelNames.includes('lastRightClickedElement') && contentTopLevelNames.includes('gridObservers'),
     true);
   eq('static scan: content.js no longer declares lastRightClickedTable or sidebarOpen at top level',
     contentTopLevelNames.includes('lastRightClickedTable') || contentTopLevelNames.includes('sidebarOpen'),
@@ -14397,11 +14418,18 @@ const LADDER_OPTS = {
   // anti-pattern this sprint removed) would slip through undetected. Close
   // that gap by scanning for writes to DR_STORE's own private field names,
   // read directly from app/store.js rather than from content.js.
-  const storeFieldNames = Array.from(storeSrc.matchAll(/\b(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/g))
+  //
+  // The field declarations sit one level inside the IIFE (2-space indent);
+  // anchoring on that indentation (rather than a bare \b(?:let|const) scan
+  // anywhere in the file) is what keeps this from also matching the `const
+  // entry = ...` locals declared inside the table-registry getters/setters
+  // (app-model-registry sprint) — those are per-call temporaries, not fields.
+  const storeFieldNames = Array.from(storeSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_STORE');
-  eq('static scan: app/store.js declares its three private fields (sanity check on the scan itself)',
-    storeFieldNames.slice().sort(), ['selectedTable', 'sidebarOpen', 'settings'].sort());
+  eq('static scan: app/store.js declares its five private fields (sanity check on the scan itself)',
+    storeFieldNames.slice().sort(),
+    ['registeredTables', 'selectedTable', 'settings', 'sidebarOpen', 'tableRegistry'].sort());
   const storeFieldWrites = storeFieldNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
     return assignRe.test(uiToggleSrcForScan) || assignRe.test(contentSrcForScan);
