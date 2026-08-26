@@ -5086,15 +5086,20 @@ function fireTouchSecondTap(buttonEl) {
   eq('rebind AC1 mouse: lastRightClickedTable rebound to tableB',
     reboundToB_mouse, true);
 
-  // 1b. RESET_SIDEBAR_TO_DEFAULTS dispatched exactly once
-  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
-  eq('rebind AC1 mouse: RESET_SIDEBAR_TO_DEFAULTS dispatched exactly once',
-    resetCalls.length, 1);
+  // 1b. TABLE_SWITCHED dispatched exactly once. Issue #251 renamed the
+  // switch message from RESET_SIDEBAR_TO_DEFAULTS: the sidebar's handler now
+  // pulls the model's settings, and the old name described the defaults
+  // reset that fix removed.
+  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
+  eq('rebind AC1 mouse: TABLE_SWITCHED dispatched exactly once',
+    switchCalls.length, 1);
 
-  // 1c. PREVIEW_SAMPLES_CHANGED also dispatched
+  // 1c. PREVIEW_SAMPLES_CHANGED NOT dispatched — the TABLE_SWITCHED pull
+  // chain already ends in the preview fetch; a second trigger would be a
+  // duplicate round-trip.
   const previewCalls = sentMessages.filter(m => m.action === 'PREVIEW_SAMPLES_CHANGED');
-  eq('rebind AC1 mouse: PREVIEW_SAMPLES_CHANGED dispatched',
-    previewCalls.length >= 1, true);
+  eq('rebind AC1 mouse: PREVIEW_SAMPLES_CHANGED not dispatched on a switch',
+    previewCalls.length, 0);
 
   // 1d. Toggle still runs (cells get rounded, since table has numbers)
   eq('rebind AC1 mouse: toggle action ran against tableB (cells rounded)',
@@ -5139,13 +5144,13 @@ function fireTouchSecondTap(buttonEl) {
   eq('rebind AC1 touch: lastRightClickedTable rebound to tableB',
     reboundToB_touch, true);
 
-  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
-  eq('rebind AC1 touch: RESET_SIDEBAR_TO_DEFAULTS dispatched exactly once',
-    resetCalls.length, 1);
+  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
+  eq('rebind AC1 touch: TABLE_SWITCHED dispatched exactly once',
+    switchCalls.length, 1);
 
   const previewCalls = sentMessages.filter(m => m.action === 'PREVIEW_SAMPLES_CHANGED');
-  eq('rebind AC1 touch: PREVIEW_SAMPLES_CHANGED dispatched',
-    previewCalls.length >= 1, true);
+  eq('rebind AC1 touch: PREVIEW_SAMPLES_CHANGED not dispatched on a switch',
+    previewCalls.length, 0);
 
   eq('rebind AC1 touch: toggle action ran against tableB (cells rounded)',
     hasRounded_touch, true);
@@ -5176,10 +5181,10 @@ function fireTouchSecondTap(buttonEl) {
   sidebarOpen = false;
   lastRightClickedTable = null;
 
-  // Same-table guard: RESET must NOT be dispatched
-  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
-  eq('rebind AC2 mouse: RESET_SIDEBAR_TO_DEFAULTS NOT dispatched for same-table click',
-    resetCalls.length, 0);
+  // Same-table guard: the switch message must NOT be dispatched
+  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
+  eq('rebind AC2 mouse: TABLE_SWITCHED NOT dispatched for same-table click',
+    switchCalls.length, 0);
 })();
 
 // ---------------------------------------------------------------------------
@@ -5207,9 +5212,9 @@ function fireTouchSecondTap(buttonEl) {
   sidebarOpen = false;
   lastRightClickedTable = null;
 
-  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
-  eq('rebind AC2 touch: RESET_SIDEBAR_TO_DEFAULTS NOT dispatched for same-table click',
-    resetCalls.length, 0);
+  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
+  eq('rebind AC2 touch: TABLE_SWITCHED NOT dispatched for same-table click',
+    switchCalls.length, 0);
 })();
 
 // ---------------------------------------------------------------------------
@@ -5243,9 +5248,9 @@ function fireTouchSecondTap(buttonEl) {
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
-  eq('rebind AC3 mouse: RESET_SIDEBAR_TO_DEFAULTS NOT dispatched when sidebar closed',
-    resetCalls.length, 0);
+  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
+  eq('rebind AC3 mouse: TABLE_SWITCHED NOT dispatched when sidebar closed',
+    switchCalls.length, 0);
 })();
 
 // ---------------------------------------------------------------------------
@@ -5278,14 +5283,14 @@ function fireTouchSecondTap(buttonEl) {
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
-  eq('rebind AC3 touch: RESET_SIDEBAR_TO_DEFAULTS NOT dispatched when sidebar closed',
-    resetCalls.length, 0);
+  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
+  eq('rebind AC3 touch: TABLE_SWITCHED NOT dispatched when sidebar closed',
+    switchCalls.length, 0);
 })();
 
 // ---------------------------------------------------------------------------
 // AC4: CLOSE_SIDEBAR flips sidebarOpen back to false; subsequent different-table
-//      click does NOT dispatch RESET_SIDEBAR_TO_DEFAULTS.
+//      click does NOT dispatch TABLE_SWITCHED.
 //
 // Because chrome.runtime.onMessage.addListener is a no-op stub, we deliver
 // SIDEBAR_OPENED / CLOSE_SIDEBAR by setting sidebarOpen directly via the
@@ -5328,9 +5333,9 @@ function fireTouchSecondTap(buttonEl) {
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  const resetCalls = sentMessages.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
-  eq('rebind AC4: after CLOSE_SIDEBAR, different-table click does NOT dispatch RESET',
-    resetCalls.length, 0);
+  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
+  eq('rebind AC4: after CLOSE_SIDEBAR, different-table click does NOT dispatch TABLE_SWITCHED',
+    switchCalls.length, 0);
 })();
 
 // ---------------------------------------------------------------------------
@@ -5377,14 +5382,16 @@ function fireTouchSecondTap(buttonEl) {
     true);
 
   // content.js: sprint toggle-split consolidated the mouse and touch click
-  // branches' controller logic (which used to each carry their own
-  // RESET_SIDEBAR_TO_DEFAULTS send) into one intent:toggleTable subscriber
-  // in content.js, so the literal now appears once, not per branch. The
-  // occurrence-count check below was written when each branch sent it
-  // separately; it now checks the single, shared dispatch site still exists.
-  const resetCount = (contentSrc.match(/RESET_SIDEBAR_TO_DEFAULTS/g) || []).length;
-  eq('rebind source: RESET_SIDEBAR_TO_DEFAULTS is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
-    resetCount >= 1, true);
+  // branches' controller logic (which used to each carry their own switch
+  // send) into one intent:toggleTable subscriber in content.js, so the
+  // literal now appears once, not per branch. Issue #251 renamed the switch
+  // message from RESET_SIDEBAR_TO_DEFAULTS to TABLE_SWITCHED — the sidebar's
+  // handler pulls the model's settings instead of resetting to defaults.
+  const switchCount = (contentSrc.match(/TABLE_SWITCHED/g) || []).length;
+  eq('rebind source: TABLE_SWITCHED is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
+    switchCount >= 1, true);
+  eq('rebind source: the RESET_SIDEBAR_TO_DEFAULTS message is gone from the content-script source',
+    /RESET_SIDEBAR_TO_DEFAULTS/.test(contentSrc), false);
 
   // content.js: the intent:toggleTable handler's rebind branch publishes the
   // select-table intent instead of assigning DR_STORE's field directly —
@@ -5399,21 +5406,23 @@ function fireTouchSecondTap(buttonEl) {
     /\blastRightClickedTable\s*=[^=]/.test(sourceByName('content.js') || ''),
     false);
 
-  // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI.
-  // Window sized for the unlock lines (issue #262) at the handler's top.
-  eq('rebind source: sidebar.js RESET_SIDEBAR_TO_DEFAULTS handler calls applyDefaultsToUI()',
-    /RESET_SIDEBAR_TO_DEFAULTS[\s\S]{0,400}applyDefaultsToUI\(\)/.test(sidebarSrc), true);
+  // sidebar.js: TABLE_SWITCHED handler re-reads the model's settings (issue
+  // #251) instead of resetting the controls to the shipped defaults. Window
+  // sized for the unlock lines (issue #262) at the handler's top.
+  eq('rebind source: sidebar.js TABLE_SWITCHED handler calls pullSettingsAndApplyToUI()',
+    /TABLE_SWITCHED[\s\S]{0,400}pullSettingsAndApplyToUI\(\)/.test(sidebarSrc), true);
 
-  // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler calls fetchPreviewSamples
-  eq('rebind source: sidebar.js RESET_SIDEBAR_TO_DEFAULTS handler calls fetchPreviewSamples()',
-    /RESET_SIDEBAR_TO_DEFAULTS[\s\S]{0,400}fetchPreviewSamples\(\)/.test(sidebarSrc), true);
+  // sidebar.js: TABLE_SWITCHED handler does NOT reset the controls to the
+  // shipped defaults — that reset is what desynced the panel from the model.
+  const switchHandlerMatch = sidebarSrc.match(/TABLE_SWITCHED[\s\S]{0,400}/);
+  const switchHandlerBlock = switchHandlerMatch ? switchHandlerMatch[0] : '';
+  eq('rebind source: sidebar.js TABLE_SWITCHED handler does NOT call applyDefaultsToUI()',
+    /applyDefaultsToUI\s*\(\)/.test(switchHandlerBlock), false);
 
-  // sidebar.js: RESET_SIDEBAR_TO_DEFAULTS handler does NOT auto-apply settings
+  // sidebar.js: TABLE_SWITCHED handler does NOT auto-apply settings
   // (must NOT call applyNow() or applySidebarRounding() inside the handler)
-  const resetHandlerMatch = sidebarSrc.match(/RESET_SIDEBAR_TO_DEFAULTS[\s\S]{0,400}/);
-  const resetHandlerBlock = resetHandlerMatch ? resetHandlerMatch[0] : '';
-  eq('rebind source: sidebar.js RESET handler does NOT call applyNow()',
-    /applyNow\s*\(\)/.test(resetHandlerBlock), false);
+  eq('rebind source: sidebar.js TABLE_SWITCHED handler does NOT call applyNow()',
+    /applyNow\s*\(\)/.test(switchHandlerBlock), false);
 })();
 
 // =============================================================================
@@ -10632,7 +10641,7 @@ function fireMouseClick(buttonEl, fn) {
 //
 // IMPLEMENTATION BEHAVIOUR (found by adversarial test):
 // When table !== lastRightClickedTable, the click handler first reassigns
-// `lastRightClickedTable = table` (and sends RESET_SIDEBAR_TO_DEFAULTS), then
+// `lastRightClickedTable = table` (and sends TABLE_SWITCHED), then
 // the TABLE_TOGGLE_STATE guard re-checks — and now `table === lastRightClickedTable`
 // is TRUE, so TABLE_TOGGLE_STATE IS sent.
 //
@@ -10662,7 +10671,7 @@ function fireMouseClick(buttonEl, fn) {
 
   fireMouseClick(buttonA);
 
-  const resetMsgs   = sent.filter(m => m.action === 'RESET_SIDEBAR_TO_DEFAULTS');
+  const switchMsgs  = sent.filter(m => m.action === 'TABLE_SWITCHED');
   const toggleMsgs  = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
   const lrc = lastRightClickedTable;
 
@@ -10674,9 +10683,9 @@ function fireMouseClick(buttonEl, fn) {
   eq('AC3 impl: clicking non-lastRightClickedTable reassigns lastRightClickedTable',
     lrc === tableA, true);
 
-  // Implementation sends RESET_SIDEBAR_TO_DEFAULTS for the table switch.
-  eq('AC3 impl: clicking non-lastRightClickedTable sends RESET_SIDEBAR_TO_DEFAULTS',
-    resetMsgs.length >= 1, true);
+  // Implementation sends TABLE_SWITCHED for the table switch.
+  eq('AC3 impl: clicking non-lastRightClickedTable sends TABLE_SWITCHED',
+    switchMsgs.length >= 1, true);
 
   // GAP (spec vs impl): spec says TABLE_TOGGLE_STATE must NOT be sent for a
   // non-matching table, but the implementation DOES send it (after reassignment).
@@ -12230,9 +12239,10 @@ function fireMouseClick(buttonEl, fn) {
 //
 // AC1 – init state: body gets no-table class, #status reads the prompt message.
 // AC2 – bound state: setTableBound(true) removes no-table; also check that
-//        PREVIEW_SAMPLES_CHANGED triggers fetchPreviewSamples (the only live-rebind
-//        path) — note this means the sidebar does NOT listen for a separate
-//        SET_TABLE_BOUND message; see gap note below.
+//        PREVIEW_SAMPLES_CHANGED triggers the settings pull whose chain ends
+//        in fetchPreviewSamples (the only live-rebind path) — note this means
+//        the sidebar does NOT listen for a separate SET_TABLE_BOUND message;
+//        see gap note below.
 // AC3 – old error string is gone from sidebar.js.
 // AC4 – sidebar.html CSS disables optionsSection/advancedSection when no-table.
 // ---------------------------------------------------------------------------
@@ -12265,16 +12275,16 @@ function fireMouseClick(buttonEl, fn) {
     /setTableBound\(response\.samples\s*!==\s*null\)/.test(sidebarSrc), true);
 
   // AC2 gap check: the sidebar handles PREVIEW_SAMPLES_CHANGED by calling
-  // fetchPreviewSamples(), which then calls setTableBound inside its callback.
-  // There is NO direct setTableBound call in the PREVIEW_SAMPLES_CHANGED handler,
-  // and no separate runtime message that calls setTableBound(true) synchronously.
-  // This means the live-rebind path (user right-clicks a new table while sidebar
-  // is open) works, but ONLY because content.js sends PREVIEW_SAMPLES_CHANGED
-  // which triggers a full fetchPreviewSamples round-trip. The sidebar has no
-  // push-style binding message. We assert the handler exists and calls
-  // fetchPreviewSamples, then flag the architectural gap as a note.
-  eq('no-table AC2: PREVIEW_SAMPLES_CHANGED handler calls fetchPreviewSamples',
-    /PREVIEW_SAMPLES_CHANGED[\s\S]{0,80}fetchPreviewSamples\(\)/.test(sidebarSrc), true);
+  // pullSettingsAndApplyToUI() (issue #251: every refresh re-reads the
+  // model's settings first; its chain ends in fetchPreviewSamples, which
+  // calls setTableBound inside its callback). There is NO direct
+  // setTableBound call in the PREVIEW_SAMPLES_CHANGED handler, and no
+  // separate runtime message that calls setTableBound(true) synchronously.
+  // The sidebar has no push-style binding message. We assert the handler
+  // exists and starts the pull chain, then flag the architectural gap as a
+  // note.
+  eq('no-table AC2: PREVIEW_SAMPLES_CHANGED handler calls pullSettingsAndApplyToUI',
+    /PREVIEW_SAMPLES_CHANGED[\s\S]{0,300}pullSettingsAndApplyToUI\(\)/.test(sidebarSrc), true);
 
   // GAP NOTE: The sidebar does not handle a dedicated "TABLE_BOUND" push message.
   // If content.js ever fails to send PREVIEW_SAMPLES_CHANGED after a new right-click
@@ -12352,7 +12362,6 @@ function fireMouseClick(buttonEl, fn) {
             enabledEl.checked = false;
             statusEl.textContent = NO_TABLE_STATUS_MSG;
           } else {
-            enabledEl.checked = DR_DEFAULTS.enabled !== false;
             if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
               statusEl.textContent = '';
             }
@@ -12448,15 +12457,18 @@ function fireMouseClick(buttonEl, fn) {
         getUpdateDisabledCalls() >= 1, true);
     }
 
-    // Bind restores the toggle to the shared default (true), so the init
-    // sequence setTableBound(false) → setTableBound(true) does not leave the
-    // pill stuck off once a table resolves.
+    // Bind leaves the pill alone (issue #251): the settings apply that runs
+    // before the bind resolves — applySettingsToUI on a pull, or
+    // applyDefaultsToUI on the pull's fallback — is the pill's only writer
+    // for the bound state. A bind that reset the pill to the shipped default
+    // is what desynced the panel from the model.
     {
       const { enabledEl, setTableBound } = makeEnv(undefined, true);
-      setTableBound(false); // init: no table yet → pill off
-      setTableBound(true);  // table resolved → restore default
-      eq('no-table toggle: setTableBound(true) restores pill to default on bind',
-        enabledEl.checked, true);
+      setTableBound(false);      // init: no table yet → pill off
+      enabledEl.checked = false; // the model pull applied enabled:false
+      setTableBound(true);       // table resolved → bind must not touch it
+      eq('no-table toggle: setTableBound(true) leaves the pill to the pulled value on bind',
+        enabledEl.checked, false);
     }
 
     // Static guard: the real setTableBound flips enabledEl.checked off and runs
@@ -12474,6 +12486,11 @@ function fireMouseClick(buttonEl, fn) {
       /enabledEl\.checked\s*=\s*false/.test(setTableBoundFnBody), true);
     eq('no-table toggle: sidebar.js setTableBound calls updateDisabledState',
       /updateDisabledState\(\)/.test(setTableBoundFnBody), true);
+    // Issue #251: the bound branch must not reset the pill to the shipped
+    // default — the model (or the pull's explicit defaults fallback) is the
+    // pill's only source once a table is bound.
+    eq('no-table toggle: sidebar.js setTableBound bound branch no longer references DR_DEFAULTS (issue #251)',
+      /DR_DEFAULTS/.test(setTableBoundFnBody), false);
 
     // AC2 gap — ADVERSARIAL: verify that the sidebar does NOT have a runtime
     // message handler that directly calls setTableBound(true) when a table is
@@ -14645,9 +14662,14 @@ const LADDER_OPTS = {
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
       { action: 'TABLE_TOGGLE_STATE', enabled: true },
     ],
+    // Issue #251 changed this cell's contract deliberately: the switch
+    // message was renamed to TABLE_SWITCHED (its sidebar handler pulls the
+    // model's settings instead of resetting to defaults), and the separate
+    // PREVIEW_SAMPLES_CHANGED send was dropped — the pull chain already ends
+    // in the preview fetch. The other three cells stay byte-identical to the
+    // frozen parent capture.
     'true:false': [
-      { action: 'RESET_SIDEBAR_TO_DEFAULTS' },
-      { action: 'PREVIEW_SAMPLES_CHANGED' },
+      { action: 'TABLE_SWITCHED' },
       { action: 'RANGE_OK' },
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
       { action: 'TABLE_TOGGLE_STATE', enabled: true },
@@ -14665,8 +14687,7 @@ const LADDER_OPTS = {
   // sameTable=true reuses the SAME table object for both "who's currently
   // selected" and "who gets clicked" — the no-rebind cell of the matrix.
   // sameTable=false selects a different table than the one clicked — the
-  // rebind cell, which the guard must send RESET_SIDEBAR_TO_DEFAULTS +
-  // PREVIEW_SAMPLES_CHANGED for.
+  // rebind cell, which the guard must send TABLE_SWITCHED for.
   function runToggleClickFixture(mode, sidebarOpenValue, sameTable) {
     const clicked = makeToggleTable([
       [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
@@ -15205,7 +15226,7 @@ const LADDER_OPTS = {
     // table is stuck showing simplified values, so the main toggle must
     // show ON (the truth) and stop accepting input, and the settings area
     // dims via body.table-locked. APPLY_OK, a table switch
-    // (RESET_SIDEBAR_TO_DEFAULTS), and unbinding (delivery failure →
+    // (TABLE_SWITCHED), and unbinding (delivery failure →
     // setTableBound(false)) each lift the lock. ---
     enabledEl.checked = false;
     enabledEl.disabled = false;
@@ -15224,8 +15245,8 @@ const LADDER_OPTS = {
       enabledEl.disabled, false);
 
     onMessageHandler({ action: 'APPLY_BLOCKED', count: 1 }, {}, () => {});
-    onMessageHandler({ action: 'RESET_SIDEBAR_TO_DEFAULTS' }, {}, () => {});
-    eq('sidebar lock: a table switch (RESET_SIDEBAR_TO_DEFAULTS) lifts the lock',
+    onMessageHandler({ action: 'TABLE_SWITCHED' }, {}, () => {});
+    eq('sidebar lock: a table switch (TABLE_SWITCHED) lifts the lock',
       bodyClasses.has('table-locked'), false);
     eq('sidebar lock: a table switch re-enables the main toggle',
       enabledEl.disabled, false);
@@ -15449,13 +15470,16 @@ const LADDER_OPTS = {
 // fetchPreviewSamples() chain end to end (same eval harness shape as
 // appModelSettings_settingsPublish_deliveryFeedback_behavioral above).
 //
-// The bug: pullSettingsAndApplyToUI applies the pulled settings (correctly
-// setting enabledEl.checked = false), then calls fetchPreviewSamples(), whose
-// response callback calls setTableBound(true) once GET_PREVIEW_SAMPLES
-// resolves with a bound table — and setTableBound's bound branch
-// unconditionally does `enabledEl.checked = DR_DEFAULTS.enabled !== false`,
-// which is true, clobbering the pulled false. The comment that used to sit
-// above pullSettingsAndApplyToUI only reasoned about the no-table case.
+// The bug (as found): pullSettingsAndApplyToUI applied the pulled settings
+// (correctly setting enabledEl.checked = false), then called
+// fetchPreviewSamples(), whose response callback called setTableBound(true)
+// once GET_PREVIEW_SAMPLES resolved with a bound table — and setTableBound's
+// bound branch unconditionally did `enabledEl.checked = DR_DEFAULTS.enabled
+// !== false`, which is true, clobbering the pulled false. Sprint 9 patched
+// it by threading the pulled settings through fetchPreviewSamples; issue
+// #251 then removed the bound branch's default write entirely, which made
+// the threading unnecessary. This test stays as the regression pin either
+// way: a pulled enabled:false must survive the reopen.
 // ---------------------------------------------------------------------------
 (function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
   const defaultsSrc = sourceByName('defaults.js');
@@ -15577,6 +15601,186 @@ const LADDER_OPTS = {
     global.document = savedDoc;
     global.chrome = savedChrome;
     global.window = savedWindow;
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #251: the sidebar mirrors the model's settings on any table switch.
+// A shared harness (same eval shape as the reopen-bound test above, plus an
+// onMessage capture and a rangeExpr capture) drives sidebar.js's real
+// onMessage handler. The model holds enabled:false and a non-default
+// rangeExpr; each scenario first drifts the controls away from the model —
+// exactly what the old code left behind — then delivers the message under
+// test and asserts the panel snapped back to the model.
+// ---------------------------------------------------------------------------
+function makeIssue251SidebarHarness() {
+  const defaultsSrc = sourceByName('defaults.js');
+  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
+  const coreSrc = sourceByName('lib/dr-number/core.js');
+  if (defaultsSrc === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+    return null;
+  }
+
+  function makeEl() {
+    return {
+      addEventListener() {}, removeEventListener() {},
+      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+      style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
+      appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
+      getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
+      matches() { return false; }, closest() { return null; }, dataset: {},
+      setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+    };
+  }
+
+  const statusEl = makeEl();
+  const enabledEl = makeEl();
+  const rangeExprEl = makeEl();
+
+  const bodyClasses = new Set();
+  const captureBody = {
+    classList: {
+      add(cls) { bodyClasses.add(cls); },
+      remove(cls) { bodyClasses.delete(cls); },
+      contains(cls) { return bodyClasses.has(cls); },
+      toggle(cls, force) {
+        if (force === undefined) {
+          if (bodyClasses.has(cls)) bodyClasses.delete(cls); else bodyClasses.add(cls);
+        } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
+      },
+    },
+    addEventListener() {},
+    get offsetWidth() { return 0; },
+  };
+
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: captureBody,
+    getElementById(id) {
+      if (id === 'status') return statusEl;
+      if (id === 'enabled') return enabledEl;
+      if (id === 'rangeExpr') return rangeExprEl;
+      return makeEl();
+    },
+    createElement() { return makeEl(); },
+  };
+
+  // The model's settings differ from the shipped defaults on two controls,
+  // so a handler that pulls is distinguishable from one that resets: after
+  // any refresh the panel must show enabled:false and rangeExpr 'B2:E8'.
+  const modelSettings = Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: 'B2:E8' });
+  let onMessageHandler = null;
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener(fn) { onMessageHandler = fn; } },
+      sendMessage() {},
+      lastError: null,
+    },
+    tabs: {
+      query(q, cb) { cb([{ id: 42 }]); },
+      sendMessage(tabId, msg, cb) {
+        if (msg.action === 'GET_SETTINGS') {
+          cb({ settings: modelSettings });
+        } else if (msg.action === 'GET_PREVIEW_SAMPLES') {
+          cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
+        } else {
+          cb({ ok: true });
+        }
+      },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedWindow = global.window;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, close() {}, getComputedStyle: () => ({ display: 'block' }) };
+
+  let evalError = null;
+  try {
+    eval(
+      defaultsSrc + '\n' +
+      roundingSrc + '\n' +
+      coreSrc + '\n' +
+      messagingCode + '\n' +
+      fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
+    );
+  } catch (e) {
+    evalError = e;
+  }
+
+  return {
+    statusEl, enabledEl, rangeExprEl, bodyClasses, evalError,
+    dispatch(msg) { onMessageHandler(msg, {}, () => {}); },
+    hasHandler() { return typeof onMessageHandler === 'function'; },
+    restore() {
+      global.document = savedDoc;
+      global.chrome = savedChrome;
+      global.window = savedWindow;
+    },
+  };
+}
+
+(function issue251_tableSwitchMirrorsModelSettings() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('switch-pull: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('switch-pull: sidebar.js loaded with no stub gaps', h.evalError, null);
+    eq('switch-pull: sidebar onMessage handler was captured', h.hasHandler(), true);
+    if (h.evalError !== null || !h.hasHandler()) return;
+
+    // Drift the panel away from the model: the pill shows on (as the old
+    // defaults reset left it), the range expression is blank, and the
+    // previous table's apply left the panel locked.
+    h.enabledEl.checked = true;
+    h.rangeExprEl.value = '';
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    eq('switch-pull: precondition — the previous table\'s APPLY_BLOCKED locked the panel',
+      h.bodyClasses.has('table-locked'), true);
+
+    // The switch message: lift the lock, re-read the model.
+    h.dispatch({ action: 'TABLE_SWITCHED' });
+    eq('switch-pull: a table switch lifts the lock',
+      h.bodyClasses.has('table-locked'), false);
+    eq('switch-pull: a table switch re-enables the main toggle',
+      h.enabledEl.disabled, false);
+    eq('switch-pull: the main toggle mirrors the model\'s enabled:false after a switch',
+      h.enabledEl.checked, false);
+    eq('switch-pull: the range expression mirrors the model after a switch (pull, not defaults reset)',
+      h.rangeExprEl.value, 'B2:E8');
+  } finally {
+    h.restore();
+  }
+})();
+
+(function issue251_previewRefreshMirrorsModelSettings() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('refresh-pull: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('refresh-pull: sidebar.js loaded with no stub gaps', h.evalError, null);
+    eq('refresh-pull: sidebar onMessage handler was captured', h.hasHandler(), true);
+    if (h.evalError !== null || !h.hasHandler()) return;
+
+    // Drift the pill on, then deliver the stale-view signal. The old bare
+    // preview fetch ended in setTableBound(true), which reset the pill to
+    // the shipped default (on) — the model says off.
+    h.enabledEl.checked = true;
+    h.dispatch({ action: 'PREVIEW_SAMPLES_CHANGED' });
+    eq('refresh-pull: the main toggle mirrors the model\'s enabled:false after a preview refresh',
+      h.enabledEl.checked, false);
+  } finally {
+    h.restore();
   }
 })();
 

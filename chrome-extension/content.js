@@ -53,9 +53,9 @@ DR_BUS.subscribe('state:settingsChanged', ({ settings }) => {
 // (an immediate mouse/keyboard click, or the second tap of a touch/pen
 // two-tap) as this one intent instead of calling runToggleAction or
 // toggleOriginalValues itself. This is where that intent turns into: the
-// select-if-different rebind (and the sidebar-reset messaging it implies),
-// the toggle action, and the sidebar's live toggle-state messaging — all
-// controller decisions that used to live inline in the view's click handler.
+// select-if-different rebind (and its TABLE_SWITCHED message), the toggle
+// action, and the sidebar's live toggle-state messaging — all controller
+// decisions that used to live inline in the view's click handler.
 DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
   if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()) {
     // Report the intent instead of writing DR_STORE directly here — one
@@ -63,12 +63,10 @@ DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
     // even when a second intent (toggle) is what triggered it.
     DR_BUS.publish('intent:selectTable', { table });
     try {
-      chrome.runtime.sendMessage({ action: 'RESET_SIDEBAR_TO_DEFAULTS' });
-    } catch (e) {
-      // sidebar may be torn down; harmless
-    }
-    try {
-      chrome.runtime.sendMessage({ action: 'PREVIEW_SAMPLES_CHANGED' });
+      // One message per switch. The sidebar's handler re-reads the model's
+      // settings (issue #251) and that pull chain ends in the preview
+      // fetch, so no separate PREVIEW_SAMPLES_CHANGED send is needed here.
+      chrome.runtime.sendMessage({ action: 'TABLE_SWITCHED' });
     } catch (e) {
       // sidebar may be torn down; harmless
     }
@@ -176,8 +174,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const selected = DR_STORE.getSelectedTable();
     if (selected) {
       applySidebarRounding(selected, DR_STORE.getSettings());
-      // Tell the sidebar its cached preview samples are stale; it will re-pull
-      // GET_PREVIEW_SAMPLES against the now-current targeted table.
+      // Tell the sidebar its view is stale; it re-reads the model's settings
+      // and re-pulls GET_PREVIEW_SAMPLES against the now-current targeted
+      // table.
       try {
         chrome.runtime.sendMessage({ action: 'PREVIEW_SAMPLES_CHANGED' });
       } catch (e) {
