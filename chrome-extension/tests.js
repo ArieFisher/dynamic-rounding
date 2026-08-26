@@ -15013,6 +15013,155 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
+// Issue #254 (sidebar side): the APPLY_BLOCKED / APPLY_OK notice lifecycle.
+// The content script refuses a sidebar apply on a table whose registry
+// originals did not survive re-injection (see the re-injection suite's
+// scenario C) and sends APPLY_BLOCKED; every non-refused apply sends
+// APPLY_OK. This drives sidebar.js's real onMessage handler and applyNow's
+// real delivery callback, in the same eval harness as the delivery-feedback
+// test above, and pins:
+//   - APPLY_BLOCKED shows the user-visible notice in #status (source-tagged);
+//   - the notice survives applyNow's delivery-success clear — Chrome does
+//     not guarantee whether the response callback or the content script's
+//     status message lands first, so the clear must skip sourced messages;
+//   - APPLY_OK clears the notice, and ONLY the notice (a range error's
+//     source tag is not its to clear), mirroring RANGE_OK;
+//   - an unsourced stale status still clears on delivery success (the
+//     behavior the delivery-feedback test above pins is preserved).
+// ---------------------------------------------------------------------------
+(function sidebarApplyBlocked_noticeLifecycle() {
+  const defaultsSrc = sourceByName('defaults.js');
+  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
+  const coreSrc = sourceByName('lib/dr-number/core.js');
+  if (defaultsSrc === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+    eq('apply-blocked notice: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+
+  function makeEl() {
+    return {
+      addEventListener() {}, removeEventListener() {},
+      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+      style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
+      appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
+      getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
+      matches() { return false; }, closest() { return null; }, dataset: {},
+    };
+  }
+
+  const statusEl = makeEl();
+  const enabledEl = makeEl();
+  enabledEl.checked = true;
+  let enabledChangeHandler = null;
+  enabledEl.addEventListener = function (type, fn) { if (type === 'change') enabledChangeHandler = fn; };
+
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} }, addEventListener() {}, get offsetWidth() { return 0; } },
+    getElementById(id) {
+      if (id === 'status') return statusEl;
+      if (id === 'enabled') return enabledEl;
+      return makeEl();
+    },
+    createElement() { return makeEl(); },
+  };
+
+  let onMessageHandler = null;
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener(fn) { onMessageHandler = fn; } },
+      sendMessage() {},
+      get lastError() { return null; },
+    },
+    tabs: {
+      query(q, cb) { cb([{ id: 42 }]); },
+      sendMessage(tabId, msg, cb) { if (typeof cb === 'function') cb(); },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedWindow = global.window;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, close() {}, getComputedStyle: () => ({ display: 'block' }) };
+
+  try {
+    try {
+      eval(
+        defaultsSrc + '\n' +
+        roundingSrc + '\n' +
+        coreSrc + '\n' +
+        messagingCode + '\n' +
+        fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
+      );
+    } catch (e) {
+      // sidebar.js's module-level settings/preview pull can throw past this
+      // point in this stub environment — both the onMessage listener and the
+      // 'change' listener register before that runs.
+    }
+
+    eq('apply-blocked notice: sidebar onMessage handler was captured',
+      typeof onMessageHandler, 'function');
+    eq('apply-blocked notice: sidebar\'s enabled-checkbox change handler was captured',
+      typeof enabledChangeHandler, 'function');
+    if (typeof onMessageHandler !== 'function' || typeof enabledChangeHandler !== 'function') return;
+
+    // --- APPLY_BLOCKED shows the notice, tagged with its source. ---
+    statusEl.textContent = '';
+    delete statusEl.dataset.source;
+    onMessageHandler({ action: 'APPLY_BLOCKED', count: 3 }, {}, () => {});
+    eq('apply-blocked notice: APPLY_BLOCKED sets the user-visible notice in #status',
+      statusEl.textContent,
+      'This table\'s original values are no longer available. Reload the page, then apply settings again.');
+    eq('apply-blocked notice: the notice is tagged with its source',
+      statusEl.dataset.source, 'blocked');
+
+    // --- The notice survives applyNow's delivery-success clear. ---
+    enabledChangeHandler();
+    eq('apply-blocked notice: a delivery-success clear does NOT wipe the notice (message/response ordering is not guaranteed)',
+      statusEl.textContent,
+      'This table\'s original values are no longer available. Reload the page, then apply settings again.');
+
+    // --- RANGE_OK does not clear it either (source mismatch). ---
+    onMessageHandler({ action: 'RANGE_OK' }, {}, () => {});
+    eq('apply-blocked notice: RANGE_OK leaves the blocked notice alone',
+      statusEl.textContent,
+      'This table\'s original values are no longer available. Reload the page, then apply settings again.');
+
+    // --- APPLY_OK clears it. ---
+    onMessageHandler({ action: 'APPLY_OK' }, {}, () => {});
+    eq('apply-blocked notice: APPLY_OK clears the notice',
+      statusEl.textContent, '');
+    eq('apply-blocked notice: APPLY_OK removes the source tag',
+      statusEl.dataset.source, undefined);
+
+    // --- APPLY_OK leaves a range error alone (source mismatch, mirroring
+    // RANGE_OK's own guard). ---
+    onMessageHandler({ action: 'RANGE_ERROR', error: 'Invalid range expression.' }, {}, () => {});
+    onMessageHandler({ action: 'APPLY_OK' }, {}, () => {});
+    eq('apply-blocked notice: APPLY_OK leaves a range error alone',
+      statusEl.textContent, 'Invalid range expression.');
+    onMessageHandler({ action: 'RANGE_OK' }, {}, () => {});
+
+    // --- An unsourced stale status still clears on delivery success — the
+    // delivery-feedback behavior pinned above is preserved. ---
+    statusEl.textContent = 'a stale status message';
+    delete statusEl.dataset.source;
+    enabledChangeHandler();
+    eq('apply-blocked notice: an unsourced stale status still clears on delivery success',
+      statusEl.textContent, '');
+  } finally {
+    global.document = savedDoc;
+    global.chrome = savedChrome;
+    global.window = savedWindow;
+  }
+})();
+
+// ---------------------------------------------------------------------------
 // Sprint app-model-settings: settings live in DR_STORE, sourced from
 // DR_DEFAULTS at init, changed only through setSettings (publishing the
 // whole new value), and read back through getSettings().
@@ -16166,8 +16315,10 @@ const LADDER_OPTS = {
 
   const { table: table1, dataCell: dataCell1 } = makeReinjectionFixtureTable('12,345');
   const { table: table2, dataCell: dataCell2 } = makeReinjectionFixtureTable('67,890');
+  const { table: table3, dataCell: dataCell3 } = makeReinjectionFixtureTable('54,321');
   const trueOriginal1 = '12,345';
   const trueOriginal2 = '67,890';
+  const trueOriginal3 = '54,321';
 
   // A minimal document shared by every eval'd instance below — this is the
   // "live page" that persists across the simulated re-injection.
@@ -16220,10 +16371,18 @@ const LADDER_OPTS = {
     `);
     global.__ri1_roundTable(table1, DR_DEFAULTS);
     global.__ri1_roundTable(table2, DR_DEFAULTS);
+    global.__ri1_roundTable(table3, DR_DEFAULTS);
     const roundedText1 = dataCell1.innerText;
     const roundedTitle1 = dataCell1.title;
     const roundedText2 = dataCell2.innerText;
     const roundedTitle2 = dataCell2.title;
+    const roundedText3 = dataCell3.innerText;
+    const roundedTitle3 = dataCell3.title;
+
+    eq('re-injection (pre): instance 1 actually rounded the sidebar-scenario cell away from the true original',
+      roundedText3 !== trueOriginal3, true);
+    eq('re-injection (pre): the sidebar-scenario cell\'s title holds the true original',
+      roundedTitle3, `Original: ${trueOriginal3}`);
 
     eq('re-injection (pre): instance 1 actually rounded the cell away from the true original',
       roundedText1 !== trueOriginal1, true);
@@ -16279,6 +16438,45 @@ const LADDER_OPTS = {
       dataCell2.title, roundedTitle2);
     eq('re-injection click path: one click leaves the displayed text unchanged',
       dataCell2.innerText, roundedText2);
+
+    // --- Scenario C (issue #254): the sidebar apply path — the one other
+    // resetTable caller. Drives the real wiring end to end: a sidebar
+    // settings change lands as DR_STORE.setSettings (the
+    // APPLY_SIDEBAR_SETTINGS listener), whose state:settingsChanged
+    // subscriber calls applySidebarRounding on the selected table. Before
+    // the fix this ran roundTable over the already-rounded text — stamping
+    // a false "Original: <rounded value>" title over the surviving truth
+    // and recording the rounded value as the registry original of record.
+    // It must refuse instead, and tell the sidebar why nothing changed.
+    //
+    // The new settings must DIFFER from the ones instance 1 rounded with:
+    // re-rounding under identical settings is a value-preserving no-op the
+    // engine skips, which would hide the title-stamping this test exists
+    // to catch. offsetTop 1 re-rounds instance 1's '55,000' to '100,000',
+    // so an unguarded apply visibly rewrites the cell and its title. ---
+    const sentMessages = [];
+    global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+    global.__ri2_DR_STORE.setSelectedTable(table3);
+    global.__ri2_DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { offsetTop: 1 }));
+
+    eq('re-injection sidebar apply: the dr-ext-rounded marker survives',
+      dataCell3.classList.contains('dr-ext-rounded'), true);
+    eq('re-injection sidebar apply: the title still holds the TRUE original — not a re-stamped "Original: <rounded value>"',
+      dataCell3.title, roundedTitle3);
+    eq('re-injection sidebar apply: the displayed text is unchanged (no double-round)',
+      dataCell3.innerText, roundedText3);
+    eq('re-injection sidebar apply: appliedFlag stays \'simplified\' — the screen still shows rounded text',
+      global.__ri2_DR_STORE.getTableAppliedFlag(table3), 'simplified');
+    eq('re-injection sidebar apply: the registry records NO original for the unrestorable cell — a rounded value must not become the original of record',
+      global.__ri2_DR_STORE.getTableOriginal(table3, dataCell3), undefined);
+    eq('re-injection sidebar apply: exactly one APPLY_BLOCKED notice is sent',
+      sentMessages.filter((m) => m.action === 'APPLY_BLOCKED').length, 1);
+    eq('re-injection sidebar apply: the APPLY_BLOCKED notice carries the unrestorable-cell count',
+      (sentMessages.find((m) => m.action === 'APPLY_BLOCKED') || {}).count, 1);
+    eq('re-injection sidebar apply: no APPLY_OK — the apply was refused',
+      sentMessages.some((m) => m.action === 'APPLY_OK'), false);
+    eq('re-injection sidebar apply: no RANGE_OK/RANGE_ERROR — roundTable never ran',
+      sentMessages.some((m) => m.action === 'RANGE_OK' || m.action === 'RANGE_ERROR'), false);
   } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
