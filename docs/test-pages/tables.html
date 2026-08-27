@@ -3,8 +3,18 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Service Costs & Revenue Summary</title>
+  <title>DynamicRounding table test page</title>
   <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 24px;
+      max-width: 960px;
+    }
+
+    section {
+      margin-bottom: 40px;
+    }
+
     table {
       border-collapse: collapse;
       margin-bottom: 24px;
@@ -17,337 +27,1217 @@
       min-width: 80px;
       text-align: left;
     }
+
+    pre {
+      border: 1px solid #cccccc;
+      padding: 12px;
+      background: #f7f7f7;
+      overflow-x: auto;
+    }
+
+    .expect {
+      font-size: 0.9em;
+      color: #555555;
+    }
+
+    /* Div-based grid fixtures */
+    .aria-grid .g-row {
+      display: grid;
+      grid-template-columns: 140px 110px 110px 110px;
+    }
+
+    .aria-grid [role="columnheader"],
+    .aria-grid [role="cell"],
+    .aria-grid .g-cell {
+      border: 1px solid #cccccc;
+      padding: 6px 10px;
+    }
+
+    .plain-grid {
+      display: grid;
+      width: 480px;
+    }
+
+    .plain-row {
+      display: grid;
+      grid-template-columns: 140px 110px 110px 110px;
+    }
+
+    .plain-cell {
+      border: 1px solid #cccccc;
+      padding: 6px 10px;
+    }
+
+    .dg--table-wrapper {
+      display: flex;
+      width: 460px;
+    }
+
+    .dg--grid-container {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dg--virtual-row {
+      display: flex;
+    }
+
+    .dg--cell {
+      border: 1px solid #cccccc;
+      padding: 6px 10px;
+      width: 110px;
+    }
+
+    .dg--pinned-grid .dg--cell {
+      width: 40px;
+      background: #f0f0f0;
+    }
+
+    #tr-grid td {
+      border: 1px solid #cccccc;
+      padding: 6px 10px;
+      min-width: 100px;
+    }
+
+    #tr-grid {
+      display: grid;
+    }
   </style>
 </head>
 
 <body>
 
-  <h1>Table 1</h1>
-  <table>
-    <thead>
-      <tr>
-        <th scope="col">Service Name</th>
-        <th scope="col">Cost ($)</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>GKE</td>
-        <td>1,671,739.50</td>
-      </tr>
-      <tr>
-        <td>Compute Engine</td>
-        <td>1,310,383.29</td>
-      </tr>
-      <tr>
-        <td>Cloud Spanner</td>
-        <td>24,278.50</td>
-      </tr>
-      <tr>
-        <td>AI Platform</td>
-        <td>13,377.48</td>
-      </tr>
-      <tr>
-        <td>Dataflow</td>
-        <td>149.42</td>
-      </tr>
-      <tr>
-        <td>Cloud Functions</td>
-        <td>17.98</td>
-      </tr>
-    </tbody>
-  </table>
-  <br><br>
-  <h2>Table 2</h2>
-  <table>
-    <thead>
-      <tr>
-        <th scope="col">Metric</th>
-        <th scope="col">January</th>
-        <th scope="col">February</th>
-        <th scope="col">March</th>
-        <th scope="col">April</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <th scope="row">Revenue</th>
-        <td>$1000</td>
-        <td>$1530.000</td>
-        <td>$1,390</td>
-        <td>$ 320</td>
-      </tr>
-      <tr>
-        <th scope="row">% change</th>
-        <td>-</td>
-        <td>53.00%</td>
-        <td>-9.16%</td>
-        <td>77% off</td>
-      </tr>
-    </tbody>
-  </table>
+  <h1>DynamicRounding table test page</h1>
+  <p>One fixture per kind of table the Chrome extension handles, plus the kinds
+    it must refuse. Load the unpacked extension, allow file URL access (or serve
+    this page over localhost), and check each section against its stated
+    expectation. Details sit in HTML comments next to each fixture.</p>
+  <p class="expect">Shipped defaults: first row and first column excluded,
+    mixed cells on, currency and percent on, dates on at year granularity,
+    times off. A toggle is the small pill at a table's top-right corner.</p>
 
-  <h2>Table 3</h2>
-  <p>Wide numeric matrix. Values span about ten orders of magnitude inside one
-    table, so the top band and the rest of the table take different offsets.</p>
+  <section>
+    <h2>1. Basic data table</h2>
+    <p class="expect">Expect: toggle at load. Values span magnitudes; the top
+      band and the rest take different offsets.</p>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Service Name</th>
+          <th scope="col">Cost ($)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GKE</td>
+          <td>1,671,739.50</td>
+        </tr>
+        <tr>
+          <td>Compute Engine</td>
+          <td>1,310,383.29</td>
+        </tr>
+        <tr>
+          <td>Cloud Spanner</td>
+          <td>24,278.50</td>
+        </tr>
+        <tr>
+          <td>AI Platform</td>
+          <td>13,377.48</td>
+        </tr>
+        <tr>
+          <td>Dataflow</td>
+          <td>149.42</td>
+        </tr>
+        <tr>
+          <td>Cloud Functions</td>
+          <td>17.98</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
 
-  <!--
-    Set-aware precision is computed across the whole table, not per column.
-    max_mag comes from the largest in-range value, and a cell takes the "top"
-    offset when max_mag minus its own magnitude is under num_top. At the default
-    num_top of one, that is the three Users cells in the ten-million band; every
-    other cell takes the "other" offset. Pull the two offsets apart in the
-    sidebar and the Users column should move while the rest of the table holds.
+  <section>
+    <h2>2. Currency and percent cells</h2>
+    <p class="expect">Expect: toggle at load. Symbols survive rounding; the
+      row-header column stays put.</p>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Metric</th>
+          <th scope="col">January</th>
+          <th scope="col">February</th>
+          <th scope="col">March</th>
+          <th scope="col">April</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Revenue</th>
+          <td>$1000</td>
+          <td>$1530.000</td>
+          <td>$1,390</td>
+          <td>$ 320</td>
+        </tr>
+        <tr>
+          <th scope="row">% change</th>
+          <td>-</td>
+          <td>53.00%</td>
+          <td>-9.16%</td>
+          <td>77% off</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
 
-    Also covered: a zero, which comes back unchanged; negatives; and a sub-unit
-    column that exercises fractional steps and float-noise trimming.
+  <section>
+    <h2>3. Set-aware precision across magnitudes</h2>
+    <p>Wide numeric matrix. Values span about ten orders of magnitude inside one
+      table, so the top band and the rest of the table take different offsets.</p>
+    <p class="expect">Expect: toggle at load.</p>
 
-    The Region column is a row header, so it is excluded while "simplify first
-    column" stays off.
-  -->
-  <table>
-    <thead>
-      <tr>
-        <th scope="col">Region</th>
-        <th scope="col">Users</th>
-        <th scope="col">Sessions</th>
-        <th scope="col">Errors</th>
-        <th scope="col">Latency (ms)</th>
-        <th scope="col">Error rate</th>
-        <th scope="col">Net change</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <th scope="row">North America</th>
-        <td>87,054,321</td>
-        <td>4,428,910</td>
-        <td>12,844</td>
-        <td>118</td>
-        <td>0.0146</td>
-        <td>1,204,338</td>
-      </tr>
-      <tr>
-        <th scope="row">Europe</th>
-        <td>41,203,668</td>
-        <td>2,183,447</td>
-        <td>9,610</td>
-        <td>96</td>
-        <td>0.0092</td>
-        <td>-58,210</td>
-      </tr>
-      <tr>
-        <th scope="row">Asia Pacific</th>
-        <td>12,880,145</td>
-        <td>983,321</td>
-        <td>3,275</td>
-        <td>142</td>
-        <td>0.0331</td>
-        <td>216,905</td>
-      </tr>
-      <tr>
-        <th scope="row">Latin America</th>
-        <td>3,617,402</td>
-        <td>214,558</td>
-        <td>878</td>
-        <td>173</td>
-        <td>0.0057</td>
-        <td>-7,441</td>
-      </tr>
-      <tr>
-        <th scope="row">Middle East</th>
-        <td>942,118</td>
-        <td>42,109</td>
-        <td>264</td>
-        <td>205</td>
-        <td>0.0028</td>
-        <td>0</td>
-      </tr>
-      <tr>
-        <th scope="row">Africa</th>
-        <td>88,730</td>
-        <td>5,207</td>
-        <td>31</td>
-        <td>246</td>
-        <td>0.0004</td>
-        <td>-312</td>
-      </tr>
-    </tbody>
-  </table>
-  <br><br>
+    <!--
+      Set-aware precision is computed across the whole table, not per column.
+      max_mag comes from the largest in-range value, and a cell takes the "top"
+      offset when max_mag minus its own magnitude is under num_top. At the default
+      num_top of one, that is the three Users cells in the ten-million band; every
+      other cell takes the "other" offset. Pull the two offsets apart in the
+      sidebar and the Users column should move while the rest of the table holds.
 
-  <h2>Table 4</h2>
-  <p>Dates, clock times, and timestamps. Dates and times sit behind separate
-    settings, so the Governed by column says which switch drives each row.</p>
+      Also covered: a zero, which comes back unchanged; negatives; and a sub-unit
+      column that exercises fractional steps and float-noise trimming.
 
-  <!--
-    Expected output at the shipped defaults: dates on at year granularity, times
-    off, and times at hour granularity once switched on.
+      The Region column is a row header, so it is excluded while "simplify first
+      column" stays off.
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Region</th>
+          <th scope="col">Users</th>
+          <th scope="col">Sessions</th>
+          <th scope="col">Errors</th>
+          <th scope="col">Latency (ms)</th>
+          <th scope="col">Error rate</th>
+          <th scope="col">Net change</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">North America</th>
+          <td>87,054,321</td>
+          <td>4,428,910</td>
+          <td>12,844</td>
+          <td>118</td>
+          <td>0.0146</td>
+          <td>1,204,338</td>
+        </tr>
+        <tr>
+          <th scope="row">Europe</th>
+          <td>41,203,668</td>
+          <td>2,183,447</td>
+          <td>9,610</td>
+          <td>96</td>
+          <td>0.0092</td>
+          <td>-58,210</td>
+        </tr>
+        <tr>
+          <th scope="row">Asia Pacific</th>
+          <td>12,880,145</td>
+          <td>983,321</td>
+          <td>3,275</td>
+          <td>142</td>
+          <td>0.0331</td>
+          <td>216,905</td>
+        </tr>
+        <tr>
+          <th scope="row">Latin America</th>
+          <td>3,617,402</td>
+          <td>214,558</td>
+          <td>878</td>
+          <td>173</td>
+          <td>0.0057</td>
+          <td>-7,441</td>
+        </tr>
+        <tr>
+          <th scope="row">Middle East</th>
+          <td>942,118</td>
+          <td>42,109</td>
+          <td>264</td>
+          <td>205</td>
+          <td>0.0028</td>
+          <td>0</td>
+        </tr>
+        <tr>
+          <th scope="row">Africa</th>
+          <td>88,730</td>
+          <td>5,207</td>
+          <td>31</td>
+          <td>246</td>
+          <td>0.0004</td>
+          <td>-312</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
 
-    Dates round to a year, and a month of July or later carries the year up:
-      2020-07-21                    -> 2021
-      2020/03/15                    -> 2020
-      June 21, 2020                 -> 2020
-      Sept. 4, 1998                 -> 1999
-      June 21st, 2020               -> 2020
-      21 June 2020                  -> 2020
-      2020 June 21                  -> 2020
-      Jun 2020                      -> 2020
-      1998                          -> 1998
-      Paid on 2025-04-02            -> Paid on 2025
-      "2020-07-21"                  -> held back, the whole cell is quoted
+  <section>
+    <h2>4. Dates, times, timestamps</h2>
+    <p>Dates and times sit behind separate settings, so the Governed by column
+      says which switch drives each row.</p>
+    <p class="expect">Expect: toggle at load. Dates round to a year by default;
+      time rows move only after Times is switched on.</p>
 
-    All-numeric dates cannot be read on their own, so a post-pass reads the
-    whole column first. Here 7/21/2020 is the only row that settles the
-    question: a second part over twelve can only be a day, which fixes the
-    column as month-first and lets the other two rows resolve.
-      7/21/2020                     -> 2021
-      7/4/99                        -> 2000
-      3/9/2021                      -> 2021
-    A column carrying evidence for both readings is refused rather than guessed.
+    <!--
+      Expected output at the shipped defaults: dates on at year granularity, times
+      off, and times at hour granularity once switched on.
 
-    Clock times round to the hour at the half-hour mark, and the original
-    meridiem style, hour padding, and seconds field are all preserved:
-      14:29                         -> 14:00
-      14:29:30                      -> 15:00:00
-      3:45 PM                       -> 4:00 PM
-      11:58 p.m.                    -> 12:00 a.m.
-      09:05                         -> 09:00
+      Dates round to a year, and a month of July or later carries the year up:
+        2020-07-21                    -> 2021
+        2020/03/15                    -> 2020
+        June 21, 2020                 -> 2020
+        Sept. 4, 1998                 -> 1999
+        June 21st, 2020               -> 2020
+        21 June 2020                  -> 2020
+        2020 June 21                  -> 2020
+        Jun 2020                      -> 2020
+        1998                          -> 1998
+        Paid on 2025-04-02            -> Paid on 2025
+        "2020-07-21"                  -> held back, the whole cell is quoted
 
-    Timestamps are matched before dates, follow the time setting, and keep their
-    date. Seconds, milliseconds, and the zone offset are dropped. Rounding up
-    out of the last hour clamps to the same day rather than rolling over:
-      2024-11-03T14:29:00           -> 2024-11-03 14:00
-      2024-11-03 14:31:00           -> 2024-11-03 15:00
-      2024-11-03T23:45:00Z          -> 2024-11-03 23:59
-      2024-11-03T08:15:30.250-05:00 -> 2024-11-03 08:00
-  -->
-  <table>
-    <thead>
+      All-numeric dates cannot be read on their own, so a post-pass reads the
+      whole column first. Here 7/21/2020 is the only row that settles the
+      question: a second part over twelve can only be a day, which fixes the
+      column as month-first and lets the other two rows resolve.
+        7/21/2020                     -> 2021
+        7/4/99                        -> 2000
+        3/9/2021                      -> 2021
+      A column carrying evidence for both readings is refused rather than guessed.
+
+      Clock times round to the hour at the half-hour mark, and the original
+      meridiem style, hour padding, and seconds field are all preserved:
+        14:29                         -> 14:00
+        14:29:30                      -> 15:00:00
+        3:45 PM                       -> 4:00 PM
+        11:58 p.m.                    -> 12:00 a.m.
+        09:05                         -> 09:00
+
+      Timestamps are matched before dates, follow the time setting, and keep their
+      date. Seconds, milliseconds, and the zone offset are dropped. Rounding up
+      out of the last hour clamps to the same day rather than rolling over:
+        2024-11-03T14:29:00           -> 2024-11-03 14:00
+        2024-11-03 14:31:00           -> 2024-11-03 15:00
+        2024-11-03T23:45:00Z          -> 2024-11-03 23:59
+        2024-11-03T08:15:30.250-05:00 -> 2024-11-03 08:00
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Format</th>
+          <th scope="col">Value</th>
+          <th scope="col">Governed by</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">ISO, dashes</th>
+          <td>2020-07-21</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">ISO, slashes</th>
+          <td>2020/03/15</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Month day, year</th>
+          <td>June 21, 2020</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Abbreviated month</th>
+          <td>Sept. 4, 1998</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Ordinal day</th>
+          <td>June 21st, 2020</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Day month year</th>
+          <td>21 June 2020</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Year month day</th>
+          <td>2020 June 21</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Month and year</th>
+          <td>Jun 2020</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Bare year</th>
+          <td>1998</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">All numeric, day over twelve</th>
+          <td>7/21/2020</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">All numeric, short year</th>
+          <td>7/4/99</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">All numeric, read from the column</th>
+          <td>3/9/2021</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Date inside a sentence</th>
+          <td>Paid on 2025-04-02</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Quoted, held back</th>
+          <td>"2020-07-21"</td>
+          <td>Nothing</td>
+        </tr>
+        <tr>
+          <th scope="row">Clock, twenty-four hour</th>
+          <td>14:29</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Clock with seconds</th>
+          <td>14:29:30</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Clock, twelve hour</th>
+          <td>3:45 PM</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Clock, dotted meridiem</th>
+          <td>11:58 p.m.</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Clock, padded hour</th>
+          <td>09:05</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Timestamp, T separator</th>
+          <td>2024-11-03T14:29:00</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Timestamp, space separator</th>
+          <td>2024-11-03 14:31:00</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Timestamp, UTC marker</th>
+          <td>2024-11-03T23:45:00Z</td>
+          <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Timestamp, offset and milliseconds</th>
+          <td>2024-11-03T08:15:30.250-05:00</td>
+          <td>Times</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>5. Signs, symbols, quoting</h2>
+    <p class="expect">Expect: toggle at load. Each row names its own rule.</p>
+
+    <!--
+      Accounting negative   (1,234,567)  -> reads as a negative, comes back in parens
+      Unicode minus         −8,700       -> reads as a negative; the rounded value
+                                            comes back with an ASCII hyphen
+      Explicit plus         +12.5%       -> the plus survives on a positive result
+      Rupee                 ₹1,234,567   -> ₹ is not stripped by the pure-number
+                                            parser, so the number is pulled out of
+                                            the text and the symbol stays in place
+      Yen / pound / euro                 -> stripped, rounded, restored
+      Quoted number         "12,345"     -> a fully quoted cell is literal text;
+                                            held back
+      Trailing zeros        35.0         -> numerically unchanged, displayed as 35
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Case</th>
+          <th scope="col">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Accounting negative</th>
+          <td>(1,234,567)</td>
+        </tr>
+        <tr>
+          <th scope="row">Unicode minus</th>
+          <td>−8,700</td>
+        </tr>
+        <tr>
+          <th scope="row">Explicit plus</th>
+          <td>+12.5%</td>
+        </tr>
+        <tr>
+          <th scope="row">Rupee</th>
+          <td>₹1,234,567</td>
+        </tr>
+        <tr>
+          <th scope="row">Yen</th>
+          <td>¥12,345,678</td>
+        </tr>
+        <tr>
+          <th scope="row">Pound</th>
+          <td>£987,654</td>
+        </tr>
+        <tr>
+          <th scope="row">Euro</th>
+          <td>€2,345,678</td>
+        </tr>
+        <tr>
+          <th scope="row">Quoted number, held back</th>
+          <td>"12,345"</td>
+        </tr>
+        <tr>
+          <th scope="row">Trailing zeros</th>
+          <td>35.0</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>6. Numbers inside text</h2>
+    <p class="expect">Expect: toggle at load. Only genuine quantities move; the
+      surrounding words, markup, identifiers, and protected spans hold.</p>
+
+    <!--
+      Revenue grew 12,345 units in Q3      -> 12,345 rounds; Q3 is an identifier
+      Inventory down -1,200 units          -> the negative rounds, sign kept
+      Ships in lots of 10-20 units         -> a hyphen after a digit is a
+                                              separator, not a minus: 10 and 20
+                                              round independently and stay positive
+      ₹615.71–623.33 crore                 -> both endpoints of the en-dash range round
+      Serial XR47182913MKB07               -> digits welded to letters are an
+                                              identifier; held
+      SKU "8421" ships in 3,500 boxes      -> the quoted span is masked; 3,500 rounds
+      Founded 2898 AD                      -> an era-marked year is a date, never
+                                              offset-rounded; held
+      AD 79 eruption displaced 11,000      -> 79 held (era year), 11,000 rounds
+      Minted 500 BC, value 4,250 drachmae  -> 500 held, 4,250 rounds
+      Spread widened 120 bp                -> lowercase bp is basis points, not
+                                              Before Present; 120 rounds
+      <b>1,234</b> units shipped           -> the bold markup survives the patch
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Case</th>
+          <th scope="col">Text</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Number in a sentence</th>
+          <td>Revenue grew 12,345 units in Q3</td>
+        </tr>
+        <tr>
+          <th scope="row">Negative in a sentence</th>
+          <td>Inventory down -1,200 units</td>
+        </tr>
+        <tr>
+          <th scope="row">Hyphen range</th>
+          <td>Ships in lots of 10-20 units</td>
+        </tr>
+        <tr>
+          <th scope="row">En-dash range</th>
+          <td>₹615.71–623.33 crore</td>
+        </tr>
+        <tr>
+          <th scope="row">Identifier, held</th>
+          <td>Serial XR47182913MKB07</td>
+        </tr>
+        <tr>
+          <th scope="row">Quoted span masked</th>
+          <td>SKU "8421" ships in 3,500 boxes</td>
+        </tr>
+        <tr>
+          <th scope="row">Era year, held</th>
+          <td>Founded 2898 AD</td>
+        </tr>
+        <tr>
+          <th scope="row">Era year leading</th>
+          <td>AD 79 eruption displaced 11,000</td>
+        </tr>
+        <tr>
+          <th scope="row">Era year, BC</th>
+          <td>Minted 500 BC, value 4,250 drachmae</td>
+        </tr>
+        <tr>
+          <th scope="row">Lowercase unit, not an era</th>
+          <td>Spread widened 120 bp</td>
+        </tr>
+        <tr>
+          <th scope="row">Number inside markup</th>
+          <td><b>1,234</b> units shipped</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>7. Footnotes and superscripts</h2>
+    <p class="expect">Expect: toggle at load. Superscript digits are masked so
+      exponents and numeric footnotes never merge into the base number.</p>
+
+    <!--
+      1,234 with letter footnote     -> rounds; the sup element survives
+      6,789 with star footnote       -> rounds
+      2,345 with numeric footnote    -> held: in the flattened text the footnote
+                                        digit welds onto the number, and the mask
+                                        drops the whole overlapping run rather
+                                        than round a corrupted value
+      Ten to the twelfth             -> held: the only digit run overlaps the exponent
+      3.5 times ten to the sixth     -> 3.5 rounds; the power of ten holds
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Case</th>
+          <th scope="col">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Letter footnote</th>
+          <td>1,234<sup>a</sup></td>
+        </tr>
+        <tr>
+          <th scope="row">Star footnote</th>
+          <td>6,789<sup>*</sup></td>
+        </tr>
+        <tr>
+          <th scope="row">Numeric footnote, held</th>
+          <td>2,345<sup>1</sup></td>
+        </tr>
+        <tr>
+          <th scope="row">Power of ten, held</th>
+          <td>10<sup>12</sup></td>
+        </tr>
+        <tr>
+          <th scope="row">Coefficient rounds, exponent holds</th>
+          <td>3.5 × 10<sup>6</sup></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>8. Linked numbers</h2>
+    <p class="expect">Expect: toggle at load. A number that is a link, or sits
+      inside one, is navigation and holds; plain numbers beside links round.</p>
+
+    <!--
+      Whole-cell link                -> the cell's entire text is the link; held
+      Linked reference in a sentence -> the 12 inside the link holds, 9,850 rounds
+      Wikipedia-style citation       -> 56,304 rounds; the [7] is superscript and
+                                        linked, protected twice over
+      Link without digits            -> 3,420 rounds; the link is untouched
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Case</th>
+          <th scope="col">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Whole-cell link, held</th>
+          <td><a href="#8">4,127</a></td>
+        </tr>
+        <tr>
+          <th scope="row">Linked number in text</th>
+          <td>See <a href="#8">ref 12</a>, total 9,850</td>
+        </tr>
+        <tr>
+          <th scope="row">Citation marker</th>
+          <td>56,304<sup><a href="#8">[7]</a></sup></td>
+        </tr>
+        <tr>
+          <th scope="row">Link without digits</th>
+          <td>Download <a href="#8">report</a>: 3,420 rows</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>9. Ambiguous date columns</h2>
+    <p class="expect">Expect: toggle at load. Each column resolves, or is
+      refused, on its own evidence.</p>
+
+    <!--
+      Day-first resolved: 25/04/2020 has a first part over twelve, which can only
+      be a day. That fixes the whole column as day-first:
+        25/04/2020 -> 2020,  03/04/2021 -> 2021,  07/08/2020 -> 2021
+      Ambiguous only: no cell settles the reading, so the column is refused and
+      every cell holds.
+      Conflicting: 25/04/2021 says day-first, 04/25/2021 says month-first. The
+      column is refused rather than guessed.
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Day-first resolved</th>
+          <th scope="col">Ambiguous, held</th>
+          <th scope="col">Conflicting, held</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>25/04/2020</td>
+          <td>03/04/2020</td>
+          <td>25/04/2021</td>
+        </tr>
+        <tr>
+          <td>03/04/2021</td>
+          <td>05/06/2021</td>
+          <td>04/25/2021</td>
+        </tr>
+        <tr>
+          <td>07/08/2020</td>
+          <td>02/03/2019</td>
+          <td>06/07/2020</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>10. ARIA grid with row groups</h2>
+    <p class="expect">Expect: toggle at load. Only rows inside the row group
+      round; the header row and the Total row sit outside it and hold. The
+      North row also holds: it is the first row the grid reports, so the
+      shipped first-row default covers it.</p>
+
+    <!--
+      The proactive scan picks up any role="grid" or role="table" element that
+      passes the data test. Row discovery is scoped to role="rowgroup" when one
+      is present (the ARIA analog of tbody), so the header and summary rows
+      outside the group are never treated as data. Grid cells have no th
+      concept: every cell is data, and the shipped first-column default is what
+      protects the Region column. Because scoping drops the header row before
+      rows are numbered, the first data row counts as row one and takes the
+      first-row default.
+    -->
+    <div class="aria-grid" role="grid" aria-label="Quarterly sessions by region">
+      <div class="g-row" role="row">
+        <span role="columnheader">Region</span>
+        <span role="columnheader">Q1</span>
+        <span role="columnheader">Q2</span>
+        <span role="columnheader">Q3</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">North</span>
+          <span role="cell">1,482,391</span>
+          <span role="cell">1,506,220</span>
+          <span role="cell">1,611,842</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">South</span>
+          <span role="cell">918,554</span>
+          <span role="cell">947,310</span>
+          <span role="cell">1,002,466</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">East</span>
+          <span role="cell">427,808</span>
+          <span role="cell">431,552</span>
+          <span role="cell">440,193</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">West</span>
+          <span role="cell">263,114</span>
+          <span role="cell">270,987</span>
+          <span role="cell">281,745</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Central</span>
+          <span role="cell">88,209</span>
+          <span role="cell">90,114</span>
+          <span role="cell">93,662</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Islands</span>
+          <span role="cell">12,406</span>
+          <span role="cell">12,911</span>
+          <span role="cell">13,048</span>
+        </div>
+      </div>
+      <div class="g-row" role="row">
+        <span class="g-cell">Total</span>
+        <span class="g-cell">3,192,482</span>
+        <span class="g-cell">3,259,094</span>
+        <span class="g-cell">3,442,996</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>11. ARIA table without row groups</h2>
+    <p class="expect">Expect: toggle at load. The first row holds under the
+      shipped first-row default; every other row rounds.</p>
+
+    <!--
+      role="table" is accepted the same way role="grid" is. With no rowgroup,
+      every role="row" child is a candidate row, so only the shipped first-row
+      and first-column defaults protect the labels.
+    -->
+    <div class="aria-grid" role="table" aria-label="Storage by bucket">
+      <div class="g-row" role="row">
+        <span role="columnheader">Bucket</span>
+        <span role="columnheader">Objects</span>
+        <span role="columnheader">Bytes (GB)</span>
+        <span role="columnheader">Cost ($)</span>
+      </div>
+      <div class="g-row" role="row">
+        <span role="cell">media-prod</span>
+        <span role="cell">4,812,336</span>
+        <span role="cell">92,441</span>
+        <span role="cell">2,218.58</span>
+      </div>
+      <div class="g-row" role="row">
+        <span role="cell">logs-archive</span>
+        <span role="cell">1,209,447</span>
+        <span role="cell">48,102</span>
+        <span role="cell">1,154.45</span>
+      </div>
+      <div class="g-row" role="row">
+        <span role="cell">backups</span>
+        <span role="cell">88,215</span>
+        <span role="cell">31,779</span>
+        <span role="cell">762.70</span>
+      </div>
+      <div class="g-row" role="row">
+        <span role="cell">thumbnails</span>
+        <span role="cell">6,504,911</span>
+        <span role="cell">3,208</span>
+        <span role="cell">76.99</span>
+      </div>
+      <div class="g-row" role="row">
+        <span role="cell">temp</span>
+        <span role="cell">14,382</span>
+        <span role="cell">207</span>
+        <span role="cell">4.97</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>12. Unmarked grid, found by right-click</h2>
+    <p class="expect">Expect: no toggle at load. Right-click any cell and the
+      toggle appears; the geometry probe is what finds this one.</p>
+
+    <!--
+      No table element, no ARIA role, no known vendor class. The load-time scan
+      covers native tables and ARIA roots only, so this grid stays undiscovered
+      until a right-click walks up from the clicked cell: five or more repetitive
+      children, consistent cell counts, a grid or flex display, at least one
+      numeric cell, and aligned first-column widths make it a grid. The walk
+      keeps climbing while the parent also qualifies and returns the outermost
+      match, so the toggle lands on the whole grid, not the clicked row.
+    -->
+    <div class="plain-grid">
+      <div class="plain-row">
+        <span class="plain-cell">Product</span>
+        <span class="plain-cell">Units</span>
+        <span class="plain-cell">Returns</span>
+        <span class="plain-cell">Net</span>
+      </div>
+      <div class="plain-row">
+        <span class="plain-cell">Anvils</span>
+        <span class="plain-cell">64,120</span>
+        <span class="plain-cell">1,833</span>
+        <span class="plain-cell">62,287</span>
+      </div>
+      <div class="plain-row">
+        <span class="plain-cell">Springs</span>
+        <span class="plain-cell">31,507</span>
+        <span class="plain-cell">402</span>
+        <span class="plain-cell">31,105</span>
+      </div>
+      <div class="plain-row">
+        <span class="plain-cell">Magnets</span>
+        <span class="plain-cell">18,266</span>
+        <span class="plain-cell">951</span>
+        <span class="plain-cell">17,315</span>
+      </div>
+      <div class="plain-row">
+        <span class="plain-cell">Rockets</span>
+        <span class="plain-cell">7,414</span>
+        <span class="plain-cell">1,208</span>
+        <span class="plain-cell">6,206</span>
+      </div>
+      <div class="plain-row">
+        <span class="plain-cell">Decoys</span>
+        <span class="plain-cell">2,893</span>
+        <span class="plain-cell">77</span>
+        <span class="plain-cell">2,816</span>
+      </div>
+      <div class="plain-row">
+        <span class="plain-cell">Glue</span>
+        <span class="plain-cell">640</span>
+        <span class="plain-cell">12</span>
+        <span class="plain-cell">628</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>13. Pinned-pane vendor grid</h2>
+    <p class="expect">Expect: toggle at load on the wrapper. The pinned row
+      numbers stitch in as column A, so the first-column default protects
+      them; the orders row is the grid's first row and holds under the
+      first-row default.</p>
+
+    <!--
+      Databricks-shaped DOM: a role="table" wrapper holding a pinned pane of row
+      numbers next to a scrollable data pane, all in dg-prefixed classes with no
+      role="row" on the rows. Row discovery falls through to the vendor row
+      class, cells to the vendor cell class, and rows pair across panes by their
+      data-row key, pinned cells first. The scrollable pane is its own ARIA
+      root, so it currently also grows a second toggle of its own; the pinned
+      pane alone is a single column and fails the data test.
+    -->
+    <div class="dg--table-wrapper" role="table" aria-label="Query results">
+      <div class="dg--grid-container dg--pinned-grid" role="grid">
+        <div class="dg--virtual-row" data-row="0">
+          <div class="dg--cell">1</div>
+        </div>
+        <div class="dg--virtual-row" data-row="1">
+          <div class="dg--cell">2</div>
+        </div>
+        <div class="dg--virtual-row" data-row="2">
+          <div class="dg--cell">3</div>
+        </div>
+        <div class="dg--virtual-row" data-row="3">
+          <div class="dg--cell">4</div>
+        </div>
+        <div class="dg--virtual-row" data-row="4">
+          <div class="dg--cell">5</div>
+        </div>
+        <div class="dg--virtual-row" data-row="5">
+          <div class="dg--cell">6</div>
+        </div>
+      </div>
+      <div class="dg--grid-container dg--grid-scroll-container" role="grid">
+        <div class="dg--virtual-row" data-row="0">
+          <div class="dg--cell">orders</div>
+          <div class="dg--cell">8,412,930</div>
+          <div class="dg--cell">311.42</div>
+        </div>
+        <div class="dg--virtual-row" data-row="1">
+          <div class="dg--cell">refunds</div>
+          <div class="dg--cell">402,118</div>
+          <div class="dg--cell">28.90</div>
+        </div>
+        <div class="dg--virtual-row" data-row="2">
+          <div class="dg--cell">sessions</div>
+          <div class="dg--cell">1,977,204</div>
+          <div class="dg--cell">64.17</div>
+        </div>
+        <div class="dg--virtual-row" data-row="3">
+          <div class="dg--cell">signups</div>
+          <div class="dg--cell">88,451</div>
+          <div class="dg--cell">9.03</div>
+        </div>
+        <div class="dg--virtual-row" data-row="4">
+          <div class="dg--cell">churn</div>
+          <div class="dg--cell">12,006</div>
+          <div class="dg--cell">1.31</div>
+        </div>
+        <div class="dg--virtual-row" data-row="5">
+          <div class="dg--cell">upgrades</div>
+          <div class="dg--cell">4,289</div>
+          <div class="dg--cell">0.52</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>14. ARIA grid with bare table rows</h2>
+    <p class="expect">Expect: toggle at load. The rows are tr elements with no
+      surrounding table, built by script because the HTML parser drops stray
+      table rows.</p>
+
+    <!--
+      Kaggle-shaped DOM: a role="grid" element whose rows are orphan tr
+      elements. Row discovery falls through role="row" and the vendor row class
+      to a plain tr selector; cells fall through to the row's direct children.
+    -->
+    <div id="tr-grid" role="grid" aria-label="Films by gross"></div>
+    <script>
+      (function () {
+        var grid = document.getElementById('tr-grid');
+        var rows = [
+          ['Film', 'Year', 'Gross ($)'],
+          ['Meteor Season', '2019', '812,405,112'],
+          ['Quiet Harbor', '2021', '164,220,987'],
+          ['Last Transit', '2018', '96,733,401'],
+          ['Paper Planets', '2022', '41,006,218'],
+          ['The Long Thaw', '2020', '8,914,552']
+        ];
+        for (var i = 0; i < rows.length; i++) {
+          var tr = document.createElement('tr');
+          for (var j = 0; j < rows[i].length; j++) {
+            var td = document.createElement('td');
+            td.textContent = rows[i][j];
+            tr.appendChild(td);
+          }
+          grid.appendChild(tr);
+        }
+      })();
+    </script>
+  </section>
+
+  <section>
+    <h2>15. Table added after load</h2>
+    <p class="expect">Expect: no table until the button is pressed; the added
+      table grows a toggle on its own within a moment.</p>
+
+    <!--
+      Exercises the mutation observer: nodes added after the initial scan are
+      re-checked with the same native-table and ARIA passes, including the
+      phantom filtering.
+    -->
+    <button type="button" id="add-table-btn">Add a table</button>
+    <div id="dynamic-slot"></div>
+    <script>
+      (function () {
+        var added = false;
+        document.getElementById('add-table-btn').addEventListener('click', function () {
+          if (added) return;
+          added = true;
+          var table = document.createElement('table');
+          var data = [
+            ['Sensor', 'Reading'],
+            ['Alpha', '1,942,308'],
+            ['Beta', '87,441'],
+            ['Gamma', '5,209'],
+            ['Delta', '316']
+          ];
+          for (var i = 0; i < data.length; i++) {
+            var tr = document.createElement('tr');
+            for (var j = 0; j < data[i].length; j++) {
+              var cell = document.createElement(i === 0 ? 'th' : 'td');
+              cell.textContent = data[i][j];
+              tr.appendChild(cell);
+            }
+            table.appendChild(tr);
+          }
+          document.getElementById('dynamic-slot').appendChild(table);
+        });
+      })();
+    </script>
+  </section>
+
+  <section>
+    <h2>16. Accessibility artifacts, never toggled</h2>
+    <p class="expect">Expect: no toggle on any of the three tables below at
+      load. They are real table elements, but each carries a phantom signal.</p>
+
+    <p>16a. Marked hidden for assistive technology (visible here on purpose):</p>
+    <!-- aria-hidden on the table itself, or any ancestor, is a phantom signal. -->
+    <table aria-hidden="true">
       <tr>
-        <th scope="col">Format</th>
-        <th scope="col">Value</th>
-        <th scope="col">Governed by</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <th scope="row">ISO, dashes</th>
-        <td>2020-07-21</td>
-        <td>Dates</td>
+        <th>Series</th>
+        <th>Value</th>
       </tr>
       <tr>
-        <th scope="row">ISO, slashes</th>
-        <td>2020/03/15</td>
-        <td>Dates</td>
+        <td>A</td>
+        <td>1,204,551</td>
       </tr>
       <tr>
-        <th scope="row">Month day, year</th>
-        <td>June 21, 2020</td>
-        <td>Dates</td>
+        <td>B</td>
+        <td>88,340</td>
+      </tr>
+    </table>
+
+    <p>16b. Positioned far off-screen (nothing should render below, and no
+      stray toggle should appear near the page corner):</p>
+    <!--
+      A positioned ancestor with a large negative left offset marks the table
+      as an off-screen accessibility artifact.
+    -->
+    <div style="position: relative;">
+      <div style="position: absolute; left: -10000px; top: 0;">
+        <table>
+          <tr>
+            <th>Series</th>
+            <th>Value</th>
+          </tr>
+          <tr>
+            <td>A</td>
+            <td>2,391,004</td>
+          </tr>
+          <tr>
+            <td>B</td>
+            <td>47,110</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <p>16c. Data fallback for a chart (the labeled SVG marks it):</p>
+    <!--
+      A table sharing a positioned ancestor with a labeled SVG is read as the
+      chart's accessibility fallback and refused.
+    -->
+    <div style="position: relative; border: 1px dashed #cccccc; padding: 12px;">
+      <svg aria-label="Quarterly revenue chart" width="220" height="80" role="img">
+        <rect x="10" y="30" width="40" height="50" fill="#8faadc"></rect>
+        <rect x="60" y="20" width="40" height="60" fill="#8faadc"></rect>
+        <rect x="110" y="42" width="40" height="38" fill="#8faadc"></rect>
+        <rect x="160" y="10" width="40" height="70" fill="#8faadc"></rect>
+      </svg>
+      <table>
+        <tr>
+          <th>Quarter</th>
+          <th>Revenue</th>
+        </tr>
+        <tr>
+          <td>Q1</td>
+          <td>4,120,900</td>
+        </tr>
+        <tr>
+          <td>Q2</td>
+          <td>4,558,210</td>
+        </tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>17. Tables that fail the data test</h2>
+    <p class="expect">Expect: no toggle on any table below. Each one misses a
+      requirement: two rows, two columns in some row, and a numeric cell.</p>
+
+    <p>17a. One row only:</p>
+    <table>
+      <tr>
+        <td>Total</td>
+        <td>9,412,338</td>
+      </tr>
+    </table>
+
+    <p>17b. One column only:</p>
+    <table>
+      <tr>
+        <td>1,204</td>
       </tr>
       <tr>
-        <th scope="row">Abbreviated month</th>
-        <td>Sept. 4, 1998</td>
-        <td>Dates</td>
+        <td>88,551</td>
       </tr>
       <tr>
-        <th scope="row">Ordinal day</th>
-        <td>June 21st, 2020</td>
-        <td>Dates</td>
+        <td>7,209</td>
+      </tr>
+    </table>
+
+    <p>17c. No numbers anywhere:</p>
+    <table>
+      <tr>
+        <th>City</th>
+        <th>Airport</th>
       </tr>
       <tr>
-        <th scope="row">Day month year</th>
-        <td>21 June 2020</td>
-        <td>Dates</td>
+        <td>Toronto</td>
+        <td>Pearson</td>
       </tr>
       <tr>
-        <th scope="row">Year month day</th>
-        <td>2020 June 21</td>
-        <td>Dates</td>
+        <td>Osaka</td>
+        <td>Kansai</td>
       </tr>
-      <tr>
-        <th scope="row">Month and year</th>
-        <td>Jun 2020</td>
-        <td>Dates</td>
-      </tr>
-      <tr>
-        <th scope="row">Bare year</th>
-        <td>1998</td>
-        <td>Dates</td>
-      </tr>
-      <tr>
-        <th scope="row">All numeric, day over twelve</th>
-        <td>7/21/2020</td>
-        <td>Dates</td>
-      </tr>
-      <tr>
-        <th scope="row">All numeric, short year</th>
-        <td>7/4/99</td>
-        <td>Dates</td>
-      </tr>
-      <tr>
-        <th scope="row">All numeric, read from the column</th>
-        <td>3/9/2021</td>
-        <td>Dates</td>
-      </tr>
-      <tr>
-        <th scope="row">Date inside a sentence</th>
-        <td>Paid on 2025-04-02</td>
-        <td>Dates</td>
-      </tr>
-      <tr>
-        <th scope="row">Quoted, held back</th>
-        <td>"2020-07-21"</td>
-        <td>Nothing</td>
-      </tr>
-      <tr>
-        <th scope="row">Clock, twenty-four hour</th>
-        <td>14:29</td>
-        <td>Times</td>
-      </tr>
-      <tr>
-        <th scope="row">Clock with seconds</th>
-        <td>14:29:30</td>
-        <td>Times</td>
-      </tr>
-      <tr>
-        <th scope="row">Clock, twelve hour</th>
-        <td>3:45 PM</td>
-        <td>Times</td>
-      </tr>
-      <tr>
-        <th scope="row">Clock, dotted meridiem</th>
-        <td>11:58 p.m.</td>
-        <td>Times</td>
-      </tr>
-      <tr>
-        <th scope="row">Clock, padded hour</th>
-        <td>09:05</td>
-        <td>Times</td>
-      </tr>
-      <tr>
-        <th scope="row">Timestamp, T separator</th>
-        <td>2024-11-03T14:29:00</td>
-        <td>Times</td>
-      </tr>
-      <tr>
-        <th scope="row">Timestamp, space separator</th>
-        <td>2024-11-03 14:31:00</td>
-        <td>Times</td>
-      </tr>
-      <tr>
-        <th scope="row">Timestamp, UTC marker</th>
-        <td>2024-11-03T23:45:00Z</td>
-        <td>Times</td>
-      </tr>
-      <tr>
-        <th scope="row">Timestamp, offset and milliseconds</th>
-        <td>2024-11-03T08:15:30.250-05:00</td>
-        <td>Times</td>
-      </tr>
-    </tbody>
-  </table>
+    </table>
+  </section>
+
+  <section>
+    <h2>18. Grid too small to qualify</h2>
+    <p class="expect">Expect: nothing found on right-click. Four rows sit below
+      the five-child floor of the geometry probe.</p>
+    <div class="plain-grid">
+      <div class="plain-row">
+        <span class="plain-cell">Item</span>
+        <span class="plain-cell">Count</span>
+        <span class="plain-cell">Rate</span>
+        <span class="plain-cell">Net</span>
+      </div>
+      <div class="plain-row">
+        <span class="plain-cell">One</span>
+        <span class="plain-cell">4,120</span>
+        <span class="plain-cell">0.51</span>
+        <span class="plain-cell">2,101</span>
+      </div>
+      <div class="plain-row">
+        <span class="plain-cell">Two</span>
+        <span class="plain-cell">1,893</span>
+        <span class="plain-cell">0.22</span>
+        <span class="plain-cell">416</span>
+      </div>
+      <div class="plain-row">
+        <span class="plain-cell">Three</span>
+        <span class="plain-cell">644</span>
+        <span class="plain-cell">0.09</span>
+        <span class="plain-cell">58</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>19. TSV, plain text</h2>
+    <p class="expect">Expect: no toggle. The extension reads DOM tables and
+      grids only; tab-separated text has neither rows nor cells to adapt. A
+      site that renders a TSV file as an HTML table is section 1's case.</p>
+    <pre>
+country	population	gdp_usd
+India	1,428,627,663	3,732,224,000,000
+Brazil	216,422,446	2,173,666,000,000
+Kenya	55,100,586	113,420,000,000
+Iceland	375,318	31,020,000,000
+</pre>
+  </section>
+
+  <section>
+    <h2>20. CSV, plain text</h2>
+    <p class="expect">Expect: no toggle, same reason as the TSV block. This is
+      also what a raw .csv file opened directly in the browser looks like to
+      the extension.</p>
+    <pre>
+symbol,shares,price,market_value
+AAPL,1200,"189.44","227,328.00"
+MSFT,450,"402.10","180,945.00"
+KO,8000,"61.22","489,760.00"
+TSLA,75,"248.09","18,606.75"
+</pre>
+  </section>
 
 </body>
 
