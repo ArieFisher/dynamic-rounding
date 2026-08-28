@@ -185,7 +185,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (lastRightClickedElement) {
       const found = findTargetTable(lastRightClickedElement, { isSeen: DR_STORE.hasTable });
       if (found) {
-        runToggleAction(markAndToggleIfNewGrid(found));
+        // Issue #275: report the intent instead of calling runToggleAction
+        // directly, so the menu item runs the same controller branches a
+        // pill click runs. The right-click that opened this menu already
+        // connected the table (the contextmenu handler's setSelectedTable),
+        // so with the sidebar open this lands in the connected-table branch
+        // and writes the record (#272); with it closed, the subscriber
+        // falls through to the same plain toggle as before.
+        DR_BUS.publish('intent:toggleTable', { table: markAndToggleIfNewGrid(found) });
       } else {
         console.debug("Dynamic Rounding: No table found at right-click location.");
       }

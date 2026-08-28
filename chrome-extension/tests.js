@@ -11301,12 +11301,18 @@ function fireMouseClick(buttonEl, fn) {
 
     // --- MENU_CLICKED dispatch against the same last-right-clicked element:
     // must reuse the existing widget too, not build another. ---
+    const beforeMenuClick = sentMessages.length;
     onMessageHandler({ action: 'MENU_CLICKED' }, {}, () => {});
 
     eq('double-invocation: MENU_CLICKED on an already-marked grid builds NO widget',
       buttonCreateCount, 1);
-    eq('double-invocation: MENU_CLICKED still runs the toggle action (RANGE_OK sent)',
-      sentMessages.some((m) => m.action === 'RANGE_OK'), true);
+    // Exact sequence, not presence: with the sidebar closed the menu toggle
+    // must fall through to the plain toggle — no APPLY_OK, no
+    // TABLE_TOGGLE_STATE, which the #272/#275 record-writing branch would
+    // emit. This is the only pin on the sidebar-closed menu path.
+    eq('double-invocation: a sidebar-closed MENU_CLICKED runs the plain toggle and nothing else',
+      sentMessages.slice(beforeMenuClick).map((m) => m.action),
+      ['RANGE_OK', 'UPDATE_MENU_LABEL']);
   } finally {
     global.document = savedDoc;
     global.chrome = savedChrome;
@@ -17164,6 +17170,119 @@ function makeIssue251SidebarHarness() {
     DR_STORE.setSettings(savedSettings);
     DR_STORE.setSelectedTable(savedSelected);
     DR_STORE.setSidebarOpen(savedOpen);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #275: the context-menu toggle must go through the same controller
+// branch a pill click uses. The right-click that opens the menu already
+// connects the table (the contextmenu handler calls setSelectedTable), so
+// with the sidebar open, "Toggle readable data" on that table must write the
+// record and report it (TABLE_TOGGLE_STATE) — the #272 contract. Before the
+// fix, MENU_CLICKED called runToggleAction directly: the page changed, the
+// record and the panel both went stale, and the next reopen or switch
+// re-imposed the stale record. Fresh-eval fixture modeled on the
+// double-invocation test above; same minimal grid, real captured handlers.
+// ---------------------------------------------------------------------------
+(function issue275_menuToggleOnConnectedTableWritesRecord() {
+  function makeCell(text) { return { nodeType: 1, textContent: text, children: [] }; }
+  function makeRow(texts) { return { nodeType: 1, className: 'row', children: texts.map(makeCell) }; }
+  const rows = [
+    makeRow(['A', '100']), makeRow(['B', '200']), makeRow(['C', '300']),
+    makeRow(['D', '400']), makeRow(['E', '500']),
+  ];
+  const gridClassList = (() => {
+    const c = [];
+    return {
+      add(x) { if (!c.includes(x)) c.push(x); },
+      remove(x) { const i = c.indexOf(x); if (i >= 0) c.splice(i, 1); },
+      contains(x) { return c.includes(x); },
+    };
+  })();
+  const gridEl = {
+    nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows,
+    classList: gridClassList, parentElement: null, parentNode: null,
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+    getBoundingClientRect() { return { top: 10, right: 100, bottom: 50, left: 10, width: 90, height: 40 }; },
+  };
+  const clickTarget = {
+    nodeType: 1, tagName: 'DIV', parentElement: gridEl, parentNode: gridEl,
+    closest() { return null; },
+  };
+
+  function mockCreateElement(tag) {
+    if (tag === 'button') {
+      return {
+        type: '', className: '', style: {}, dataset: {},
+        classList: { add() {}, remove() {}, contains() { return false; } },
+        setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+        addEventListener() {}, appendChild() {}, parentElement: null,
+      };
+    }
+    return { className: '', style: {}, textContent: '', appendChild() {}, addEventListener() {} };
+  }
+
+  let contextmenuHandler = null;
+  let onMessageHandler = null;
+  const captureDoc = {
+    addEventListener(type, handler) { if (type === 'contextmenu') contextmenuHandler = handler; },
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild() {}, observe() {} },
+    head: { appendChild() {} },
+    createElement: mockCreateElement,
+  };
+  const sentMessages = [];
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener(fn) { onMessageHandler = fn; } },
+      sendMessage(msg) { sentMessages.push(msg); },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedGCS = global.getComputedStyle;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.getComputedStyle = () => ({ display: 'flex' });
+
+  try {
+    eval(contentScriptBundle + `
+      globalThis.__i275_DR_STORE = DR_STORE;
+    `);
+    const store = global.__i275_DR_STORE;
+
+    eq('menu-toggle record: contextmenu handler was captured', typeof contextmenuHandler, 'function');
+    eq('menu-toggle record: onMessage handler was captured', typeof onMessageHandler, 'function');
+    if (typeof contextmenuHandler !== 'function' || typeof onMessageHandler !== 'function') return;
+
+    // The right-click that opens the menu: discovers, marks, and CONNECTS
+    // the grid — exactly what a real menu use does before MENU_CLICKED.
+    contextmenuHandler({ target: clickTarget });
+    eq('menu-toggle record: the right-click connected the grid',
+      store.getSelectedTable(), gridEl);
+
+    // Sidebar open, record on, table showing rounded values.
+    store.setSidebarOpen(true);
+    store.setTableAppliedFlag(gridEl, 'simplified');
+    eq('menu-toggle record: precondition — the record starts enabled',
+      store.getSettings().enabled, true);
+
+    sentMessages.length = 0;
+    onMessageHandler({ action: 'MENU_CLICKED' }, {}, () => {});
+
+    eq('menu-toggle record: the menu toggle on the connected table writes the record\'s off',
+      store.getSettings().enabled, false);
+    const toggleMsgs = sentMessages.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
+    eq('menu-toggle record: the menu toggle reports the record to the panel — off',
+      toggleMsgs.map((m) => m.enabled), [false]);
+  } finally {
+    delete global.__i275_DR_STORE;
+    global.document = savedDoc;
+    global.chrome = savedChrome;
+    global.getComputedStyle = savedGCS;
   }
 })();
 
