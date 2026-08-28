@@ -68,11 +68,11 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 | offset | meaning | 87,054,321 rounds to |
 |--------|---------|----------------------|
-| 1 | one OoM coarser | 100,000,000 |
-| 0 | current OoM | 90,000,000 |
-| -0.5 | half of current OoM | 85,000,000 |
-| -1 | one OoM finer | 87,000,000 |
-| -1.5 | half of one OoM finer | 87,000,000 |
+| 1 | one magnitude coarser | 100,000,000 |
+| 0 | current magnitude | 90,000,000 |
+| -0.5 | half of the current magnitude | 85,000,000 |
+| -1 | one magnitude finer | 87,000,000 |
+| -1.5 | half of one magnitude finer | 87,000,000 |
 
 Notes:
 - Values between -1 and 1 with the same absolute value produce the same result (e.g., 0.5 and -0.5).
@@ -114,7 +114,7 @@ Given a `value` and an `offset`:
 - `oom_offset`: integer part of offset
 - `fraction`: fractional part of offset (or 1 if offset is a whole number)
 - `target_mag`: the magnitude we're rounding to
-- `base`: the actual rounding unit (e.g., 1,000,000 or 500,000)
+- `step`: the actual rounding unit (e.g., 1,000,000 or 500,000)
 
 **Step 1: Find current magnitude**
 ```
@@ -137,15 +137,15 @@ target_mag = current_mag + oom_offset
 ```
 Example: `7 + (-1) = 6`
 
-**Step 4: Calculate rounding base**
+**Step 4: Calculate rounding step**
 ```
-base = 10^target_mag × fraction
+step = 10^target_mag × fraction
 ```
 Example: `10^6 × 0.5 = 500,000`
 
 **Step 5: Round**
 ```
-result = round(value / base + epsilon) × base
+result = round(value / step + epsilon) × step
 ```
 Example: `round(87054321 / 500000 + 1e-9) × 500000 = 175 × 500000 = 87,000,000`
 
@@ -174,22 +174,4 @@ For dataset operations, the code pre-parses the entire range into a numeric arra
 
 ## Vocabulary
 
-### Core Concepts
-
-| Term | Definition |
-|------|------------|
-| Order of magnitude (OoM) | The power of 10 of a number. E.g., 87,054,321 has OoM 7 (10^7 = 10,000,000). |
-| Magnitude | Shorthand for order of magnitude. Calculated as `floor(log10(abs(value)))`. |
-| Offset | How many orders of magnitude to shift when rounding. Negative = finer, positive = coarser. |
-
-### Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| value | The number to round. |
-| range | The range of values (for rounding or context). |
-| offset | OoM adjustment (single mode). |
-| offset_top | OoM adjustment for top magnitude(s). |
-| offset_other | OoM adjustment for other magnitudes. |
-| num_top | How many top orders of magnitude get `offset_top`. |
-| enforce_numeric | Python only. If `True`, raises `ValueError` for non-numeric input. |
+The project vocabulary — core terms, parameters, and the terms for tables, cells, and the extension — lives in [vocabulary.md](./vocabulary.md).
