@@ -131,12 +131,16 @@ jobs:
                 echo "The bump conflicts with main. Leaving the branch and $PR_URL in place."
                 exit 1
                 ;;
+              BEHIND)
+                echo "main advanced past the bump branch. Leaving the branch and $PR_URL in place."
+                exit 1
+                ;;
             esac
             echo "Merge state is $STATE (attempt $attempt of 40); checking again in 15 seconds."
             sleep 15
           done
           if [ -z "$READY" ]; then
-            echo "Checks did not pass within 10 minutes. Leaving the branch and $PR_URL in place."
+            echo "No merge-ready verdict within 10 minutes. Leaving the branch and $PR_URL in place."
             exit 1
           fi
           if ! gh pr merge "$PR_URL" --squash; then
