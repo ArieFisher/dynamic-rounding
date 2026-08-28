@@ -17,9 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out main
-        uses: actions/checkout@v4
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+        uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
@@ -28,8 +26,6 @@ jobs:
       - name: Detect which packages changed
         id: changes
         uses: dorny/paths-filter@v4
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         with:
           filters: |
             python:
@@ -78,6 +74,26 @@ jobs:
           print(f"chrome-extension/manifest.json: bumped to {mf['version']}")
           PY
 
+      - name: Verify the bumped version files still parse
+        if: steps.changes.outputs.python == 'true' || steps.changes.outputs.chrome == 'true'
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, sys, tomllib
+          checks = (
+              ("chrome-extension/manifest.json", json.loads),
+              ("python/pyproject.toml", tomllib.loads),
+          )
+          for name, parse in checks:
+              path = pathlib.Path(name)
+              if not path.exists():
+                  continue
+              try:
+                  parse(path.read_text())
+              except Exception as exc:
+                  sys.exit(f"{name} no longer parses after the version bump: {exc}")
+              print(f"{name}: parses")
+          PY
+
       - name: Open version-bump PR if anything changed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -96,4 +112,23 @@ jobs:
             --body "Automated version bump triggered by merge of PR #${{ github.event.pull_request.number }}." \
             --base main \
             --head "$BUMP_BRANCH")
-          gh pr merge "$PR_URL" --auto --squash
+          # Merge now rather than with --auto. The bump only edits version files on
+          # a branch cut from a green main, and no test reads the version, so there
+          # is nothing for the PR checks to prove. GitHub needs a moment to compute
+          # mergeability after the PR is created, hence the retry.
+          MERGED=""
+          for attempt in 1 2 3 4 5 6; do
+            if gh pr merge "$PR_URL" --squash; then
+              MERGED="yes"
+              break
+            fi
+            echo "Merge not accepted yet (attempt $attempt); retrying in 10 seconds."
+            sleep 10
+          done
+          if [ -z "$MERGED" ]; then
+            echo "Could not merge $PR_URL. Leaving the branch and the PR in place."
+            exit 1
+          fi
+          # Automatic head-branch deletion does not fire for merges made with the
+          # workflow token, so delete the bump branch here.
+          git push origin --delete "$BUMP_BRANCH"
