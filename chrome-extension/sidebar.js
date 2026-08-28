@@ -16,6 +16,26 @@ const NO_TABLE_STATUS_MSG = 'Right-click a table to connect it here.';
 // APPLY_BLOCKED message — see content.js's applySidebarRounding guard).
 const APPLY_BLOCKED_STATUS_MSG = 'This table\'s original values are no longer available. Reload the page, then apply settings again.';
 
+// Issue #272: while the #262 lock forces the main toggle ON, the record's
+// real enabled lives here — the forced ON is display-only. Captured when the
+// lock engages, updated by any record value landing under the lock (a pull,
+// or a TABLE_TOGGLE_STATE), read by every save (currentSettings), and put
+// back on the switch when the lock lifts. null whenever no lock holds a
+// stashed value.
+let lockStashedEnabled = null;
+
+// Lock teardown shared by APPLY_OK and TABLE_SWITCHED: lift the #262 lock
+// and restore the record's stashed enabled to the switch (issue #272).
+function liftLockAndRestoreEnabled() {
+  document.body.classList.remove('table-locked');
+  enabledEl.disabled = false;
+  if (lockStashedEnabled !== null) {
+    enabledEl.checked = lockStashedEnabled;
+    lockStashedEnabled = null;
+    updateDisabledState();
+  }
+}
+
 function setTableBound(isBound) {
   document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
   if (!isBound) {
@@ -23,9 +43,12 @@ function setTableBound(isBound) {
     // main toggle to its off state rather than dimming the whole sidebar.
     // Any lock belonged to the table that just went away (issue #262), and
     // the message written below is unsourced — drop a stale source tag so
-    // applyNow's delivery-success clear can still collect it.
+    // applyNow's delivery-success clear can still collect it. The stash goes
+    // with the lock (issue #272): the explicit off below is the no-table
+    // state, not a restore.
     document.body.classList.remove('table-locked');
     enabledEl.disabled = false;
+    lockStashedEnabled = null;
     delete statusEl.dataset.source;
     enabledEl.checked = false;
     statusEl.textContent = NO_TABLE_STATUS_MSG;
@@ -460,7 +483,13 @@ if (botThumb) {
 }
 
 function currentSettings() {
-  const settings = { enabled: enabledEl.checked };
+  // Under the #262 lock the switch shows a forced ON that is display-only
+  // (issue #272) — a save while locked (the sliders stay usable) must carry
+  // the record's stashed enabled, not the forced ON.
+  const isLocked = document.body.classList.contains('table-locked');
+  const settings = {
+    enabled: isLocked && lockStashedEnabled !== null ? lockStashedEnabled : enabledEl.checked,
+  };
   for (const id in CHECKBOX_TO_SETTING) {
     const el = document.getElementById(id);
     if (el) settings[CHECKBOX_TO_SETTING[id]] = el.checked;
@@ -575,6 +604,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Issue #262: the connected table is stuck showing simplified values.
     // Show that truth and stop accepting input: main toggle ON and
     // disabled, settings area dimmed via body.table-locked (sidebar.html).
+    // The record's enabled goes to the stash first (issue #272) — a re-lock
+    // while already locked keeps the stash, never captures the forced ON.
+    if (!document.body.classList.contains('table-locked')) {
+      lockStashedEnabled = enabledEl.checked;
+    }
     document.body.classList.add('table-locked');
     enabledEl.checked = true;
     enabledEl.disabled = true;
@@ -584,8 +618,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       statusEl.textContent = '';
       delete statusEl.dataset.source;
     }
-    document.body.classList.remove('table-locked');
-    enabledEl.disabled = false;
+    liftLockAndRestoreEnabled();
   } else if (request.action === 'PREVIEW_SAMPLES_CHANGED') {
     // Stale view: re-read the model's settings, then the previews (the pull
     // chain ends in fetchPreviewSamples). A bare preview fetch here used to
@@ -595,9 +628,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // A table switch: the lock, if any, belonged to the previous table.
     // The switch apply on the content side runs after this message is
     // sent, so its APPLY_BLOCKED re-locks the panel right after this lift
-    // when the new table is stuck.
-    document.body.classList.remove('table-locked');
-    enabledEl.disabled = false;
+    // when the new table is stuck. Restoring the stash before the pull
+    // (issue #272) keeps the switch honest in that gap, so a re-lock
+    // captures the record's value, never a leftover forced ON.
+    liftLockAndRestoreEnabled();
     // The panel mirrors the model's settings on any switch (issue #251); it
     // does not reset to the shipped defaults.
     try {
@@ -606,8 +640,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // sidebar may be in teardown; harmless
     }
   } else if (request.action === 'TABLE_TOGGLE_STATE') {
-    enabledEl.checked = request.enabled;
-    updateDisabledState();
+    // The message reports the record (issue #272). Under the #262 lock the
+    // forced ON is display-only, so the record's value goes to the stash;
+    // the lift puts it on the switch.
+    if (document.body.classList.contains('table-locked')) {
+      lockStashedEnabled = request.enabled;
+    } else {
+      enabledEl.checked = request.enabled;
+      updateDisabledState();
+    }
   }
 });
 
@@ -627,10 +668,13 @@ function applySettingsToUI(settings) {
   // The #262 lock forces the main toggle ON + disabled while the bound
   // table is stuck simplified. A pull resolving under the lock — a
   // reconnect refresh whose apply just re-blocked — must not write the
-  // model's enabled over that forced ON; every other control still
-  // mirrors the model.
+  // model's enabled over that forced ON; it lands in the stash instead
+  // (issue #272), so the lift shows the model's latest value. Every other
+  // control still mirrors the model.
   if (!document.body.classList.contains('table-locked')) {
     enabledEl.checked = s.enabled !== false;
+  } else {
+    lockStashedEnabled = s.enabled !== false;
   }
   for (const id in CHECKBOX_TO_SETTING) {
     const el = document.getElementById(id);

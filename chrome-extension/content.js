@@ -53,11 +53,12 @@ DR_BUS.subscribe('state:settingsChanged', ({ settings }) => {
 // (an immediate mouse/keyboard click, or the second tap of a touch/pen
 // two-tap) as this one intent instead of calling runToggleAction or
 // toggleOriginalValues itself. This is where that intent turns into one of
-// two controller actions: a click on a DIFFERENT table while the sidebar
+// three controller actions: a click on a DIFFERENT table while the sidebar
 // is open connects that table and syncs it to the model (the rebind
-// branch, with its TABLE_SWITCHED message); every other click runs the
-// plain toggle with the sidebar's live toggle-state messaging. All of it
-// used to live inline in the view's click handler.
+// branch, with its TABLE_SWITCHED message); a click on the CONNECTED table
+// writes the flipped enabled into the model, whose state-change subscriber
+// runs the apply (issue #272); every other click runs the plain toggle.
+// All of it used to live inline in the view's click handler.
 DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
   if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()) {
     // Report the intent instead of writing DR_STORE directly here — one
@@ -84,15 +85,32 @@ DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
     applySidebarRounding(table, DR_STORE.getSettings());
     return;
   }
-  runToggleAction(table);
-  syncSwitchForTable(table);
-  if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table === DR_STORE.getSelectedTable()) {
+  if (table === DR_STORE.getSelectedTable()) {
+    // Issue #272: a toggle on the CONNECTED table writes the record and lets
+    // the state-change subscriber above run the same applySidebarRounding a
+    // panel switch flip runs — one flow for "toggle the connected table" no
+    // matter which control starts it, and the record stays the single
+    // source. No panel-state read here: the record write and the apply that
+    // follows work the same with the panel closed, and gating this branch on
+    // visibility was the coupling that let a closed-panel toggle change the
+    // page while the record went stale. The flip direction reads the table
+    // (what the user sees), so the click always means "change what is in
+    // front of me" even if record and table had drifted apart.
+    // TABLE_TOGGLE_STATE reports the record's new value unconditionally —
+    // with the panel closed no panel page exists to receive it (background
+    // additionally gates its relay), and while the #262 lock holds, the
+    // open panel routes it to its stash instead of the forced-ON switch.
+    const nextEnabled = !isTableRounded(table);
+    DR_STORE.setSettings(Object.assign({}, DR_STORE.getSettings(), { enabled: nextEnabled }));
     try {
-      chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: isTableRounded(table) });
+      chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: nextEnabled });
     } catch (e) {
       // sidebar may be torn down; harmless
     }
+    return;
   }
+  runToggleAction(table);
+  syncSwitchForTable(table);
 });
 
 // The options used for the most recent roundTable() run (consulted by
@@ -172,7 +190,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (lastRightClickedElement) {
       const found = findTargetTable(lastRightClickedElement, { isSeen: DR_STORE.hasTable });
       if (found) {
-        runToggleAction(markAndToggleIfNewGrid(found));
+        // Issue #275: report the intent instead of calling runToggleAction
+        // directly, so the menu item runs the same controller branches a
+        // pill click runs. The right-click that opened this menu already
+        // connected the table (the contextmenu handler's setSelectedTable),
+        // so this lands in the connected-table branch and writes the
+        // record (#272) — panel open or closed alike.
+        DR_BUS.publish('intent:toggleTable', { table: markAndToggleIfNewGrid(found) });
       } else {
         console.debug("Dynamic Rounding: No table found at right-click location.");
       }

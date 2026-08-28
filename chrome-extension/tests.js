@@ -10907,8 +10907,14 @@ function fireMouseClick(buttonEl, fn) {
   lastRightClickedTable = null;
 
   const toggleMsgs = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
-  eq('AC3 corollary 2: sidebarOpen=false → TABLE_TOGGLE_STATE NOT sent even when table matches',
-    toggleMsgs.length, 0);
+  // Contract moved with the panel-state decoupling (issue #272 family): a
+  // toggle on the CONNECTED table writes the record and reports it even with
+  // the sidebar closed — the controller no longer reads panel visibility.
+  // "No spurious sidebar update" still holds because a closed sidebar has no
+  // page to receive the message; background additionally gates its relay on
+  // sidebarTabId (AC4 below).
+  eq('AC3 corollary 2: sidebarOpen=false, table matches → the record is still reported once (no panel page exists to receive it)',
+    toggleMsgs.length, 1);
 })();
 
 // ---------------------------------------------------------------------------
@@ -11301,12 +11307,21 @@ function fireMouseClick(buttonEl, fn) {
 
     // --- MENU_CLICKED dispatch against the same last-right-clicked element:
     // must reuse the existing widget too, not build another. ---
+    const beforeMenuClick = sentMessages.length;
     onMessageHandler({ action: 'MENU_CLICKED' }, {}, () => {});
 
     eq('double-invocation: MENU_CLICKED on an already-marked grid builds NO widget',
       buttonCreateCount, 1);
-    eq('double-invocation: MENU_CLICKED still runs the toggle action (RANGE_OK sent)',
-      sentMessages.some((m) => m.action === 'RANGE_OK'), true);
+    // Exact sequence, not presence. The right-click above CONNECTED this
+    // grid, and the panel-state decoupling (issue #272 family) makes a
+    // toggle on the connected table take the record path with the sidebar
+    // closed too: APPLY_OK from the apply, RANGE_OK from the round, then the
+    // record report. No UPDATE_MENU_LABEL here only because this minimal
+    // grid's querySelector always returns null, so the enabled branch's
+    // conditional send is skipped — a fixture artifact, not contract.
+    eq('double-invocation: a sidebar-closed MENU_CLICKED on the connected grid takes the record path',
+      sentMessages.slice(beforeMenuClick).map((m) => m.action),
+      ['APPLY_OK', 'RANGE_OK', 'TABLE_TOGGLE_STATE']);
   } finally {
     global.document = savedDoc;
     global.chrome = savedChrome;
@@ -14796,7 +14811,16 @@ const LADDER_OPTS = {
   // is itself part of what this pin proves: see the per-mode assertions
   // below, which check mouse and touch against the same expected literal.
   const PARENT_EXPECTED_SEQUENCES = {
+    // Issue #272 changed this cell's contract deliberately. A pill toggle on
+    // the CONNECTED table now writes the record (DR_STORE.setSettings with
+    // the flipped enabled) and lets the state-change subscriber run the same
+    // applySidebarRounding a panel switch flip runs — so the apply's own
+    // APPLY_OK now leads the sequence, and TABLE_TOGGLE_STATE reports the
+    // record's new enabled. The panel-state decoupling then moved the
+    // 'false:true' cell onto this same sequence; 'false:false' is the one
+    // cell still byte-identical to the frozen parent capture.
     'true:true': [
+      { action: 'APPLY_OK' },
       { action: 'RANGE_OK' },
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
       { action: 'TABLE_TOGGLE_STATE', enabled: true },
@@ -14809,17 +14833,25 @@ const LADDER_OPTS = {
     // APPLY_BLOCKED/APPLY_OK lands; the apply then emits its usual
     // messages. No PREVIEW_SAMPLES_CHANGED (the sidebar's pull chain ends
     // in the preview fetch) and no TABLE_TOGGLE_STATE (the panel redraws
-    // from the model pull). The other three cells stay byte-identical to
-    // the frozen parent capture.
+    // from the model pull). The same-table cells moved later — see the
+    // comments on 'true:true' and 'false:true'; only 'false:false' still
+    // matches the frozen parent capture.
     'true:false': [
       { action: 'TABLE_SWITCHED' },
       { action: 'APPLY_OK' },
       { action: 'RANGE_OK' },
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
     ],
+    // The panel-state decoupling (issue #272 family) moved this cell too: a
+    // toggle on the CONNECTED table takes the record path with the sidebar
+    // closed as well, so the sequence matches the 'true:true' cell above.
+    // Only the 'false:false' cell keeps the frozen parent capture — the one
+    // remaining direct-toggle case, an unconnected table.
     'false:true': [
+      { action: 'APPLY_OK' },
       { action: 'RANGE_OK' },
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+      { action: 'TABLE_TOGGLE_STATE', enabled: true },
     ],
     'false:false': [
       { action: 'RANGE_OK' },
@@ -15765,8 +15797,16 @@ function makeIssue251SidebarHarness() {
   }
 
   function makeEl() {
+    const listeners = {};
     return {
-      addEventListener() {}, removeEventListener() {},
+      addEventListener(type, fn) {
+        if (!listeners[type]) listeners[type] = [];
+        listeners[type].push(fn);
+      },
+      // fire: drive a captured listener the way a real control event would —
+      // lets a test trigger sidebar.js's applyNow path (issue #272 tests).
+      fire(type, evt) { (listeners[type] || []).forEach((fn) => fn(evt)); },
+      removeEventListener() {},
       classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
       style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
       appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
@@ -15796,16 +15836,18 @@ function makeIssue251SidebarHarness() {
     get offsetWidth() { return 0; },
   };
 
+  // Memoized: sidebar.js grabs each control once at module level and attaches
+  // listeners to it; a test must be able to reach that SAME element (via
+  // el(id) on the returned harness) to fire those listeners (issue #272).
+  const elsById = { status: statusEl, enabled: enabledEl, rangeExpr: rangeExprEl };
   const captureDoc = {
     addEventListener() {},
     querySelectorAll: () => [],
     readyState: 'complete',
     body: captureBody,
     getElementById(id) {
-      if (id === 'status') return statusEl;
-      if (id === 'enabled') return enabledEl;
-      if (id === 'rangeExpr') return rangeExprEl;
-      return makeEl();
+      if (!elsById[id]) elsById[id] = makeEl();
+      return elsById[id];
     },
     createElement() { return makeEl(); },
   };
@@ -15815,6 +15857,7 @@ function makeIssue251SidebarHarness() {
   // any refresh the panel must show enabled:false and rangeExpr 'B2:E8'.
   const modelSettings = Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: 'B2:E8' });
   let onMessageHandler = null;
+  const tabMessages = [];
   const captureChrome = {
     runtime: {
       onMessage: { addListener(fn) { onMessageHandler = fn; } },
@@ -15824,6 +15867,7 @@ function makeIssue251SidebarHarness() {
     tabs: {
       query(q, cb) { cb([{ id: 42 }]); },
       sendMessage(tabId, msg, cb) {
+        tabMessages.push(msg);
         if (msg.action === 'GET_SETTINGS') {
           cb({ settings: modelSettings });
         } else if (msg.action === 'GET_PREVIEW_SAMPLES') {
@@ -15856,7 +15900,9 @@ function makeIssue251SidebarHarness() {
   }
 
   return {
-    statusEl, enabledEl, rangeExprEl, bodyClasses, evalError,
+    statusEl, enabledEl, rangeExprEl, bodyClasses, evalError, tabMessages,
+    chromeMock: captureChrome,
+    el(id) { return elsById[id]; },
     dispatch(msg) { onMessageHandler(msg, {}, () => {}); },
     hasHandler() { return typeof onMessageHandler === 'function'; },
     restore() {
@@ -17043,12 +17089,516 @@ function makeIssue251SidebarHarness() {
       dataCell2.title, roundedTitle2);
 
     const toggleStates = sentMessages.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
-    eq('re-injection toggle clicks: every TABLE_TOGGLE_STATE reports enabled:true — the sidebar toggle must not flip off under a simplified table',
-      toggleStates.length > 0 && toggleStates.every((m) => m.enabled === true), true);
+    // Issue #272 changed this contract: TABLE_TOGGLE_STATE reports the RECORD's
+    // enabled — the value the click wrote — not the stuck table's display
+    // state. The first click is a rebind (table3 was selected) and sends no
+    // toggle-state; the second click asks to turn the stuck table off, so the
+    // record and the message both go false. The panel guards its own display:
+    // under the #262 lock (this table's APPLY_BLOCKED lands first) the forced
+    // ON is display-only and the record's value goes to the lock's stash —
+    // pinned by the issue272 sidebar-harness tests below.
+    eq('re-injection toggle clicks: TABLE_TOGGLE_STATE reports the record — off, as the click asked',
+      toggleStates.map((m) => m.enabled), [false]);
+    eq('re-injection toggle clicks: the record holds the user\'s off, even though the stuck table cannot change',
+      global.__ri2_DR_STORE.getSettings().enabled, false);
+    const actionSeq = sentMessages.map((m) => m.action);
+    eq('re-injection toggle clicks: the blocked click\'s APPLY_BLOCKED precedes its toggle-state — the panel locks before the record value lands in its stash',
+      actionSeq.lastIndexOf('APPLY_BLOCKED') !== -1 &&
+      actionSeq.indexOf('TABLE_TOGGLE_STATE') !== -1 &&
+      actionSeq.lastIndexOf('APPLY_BLOCKED') < actionSeq.indexOf('TABLE_TOGGLE_STATE'), true);
   } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #272, leak 1: a pill toggle on the CONNECTED table must write the
+// record (DR_STORE.settings.enabled), not just the table DOM and the panel's
+// switch. Before the fix, content.js's same-table intent:toggleTable branch
+// ran runToggleAction + TABLE_TOGGLE_STATE and never called setSettings, so
+// any later pull — a panel reopen or a table switch — showed the record's
+// stale enabled over the table's truth, and a reopen-style apply silently
+// re-rounded a table the user had toggled off.
+// ---------------------------------------------------------------------------
+(function issue272_sameTablePillToggleWritesRecord() {
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedOpen = DR_STORE.isSidebarOpen();
+  const savedSettings = DR_STORE.getSettings();
+  const sent = [];
+  const origSend = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
+
+  try {
+    // Known starting record: enabled on, everything else shipped defaults.
+    // Reset with nothing selected so the state-change subscriber no-ops.
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
+
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
+      [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
+    ]);
+    injectToggleEntry(table);
+    DR_STORE.setSelectedTable(table);
+    DR_STORE.setSidebarOpen(true);
+
+    // Same innerHTML/innerText/textContent link as the toggle-state cycle
+    // test above — restoreTable writes innerHTML, the re-round reads
+    // innerText, and a real <td> derives both from one child-node tree.
+    const dataCell = table._cells[3]; // row1/col1: 'Row' | '12,345'
+    let _text = dataCell.innerHTML;
+    Object.defineProperties(dataCell, {
+      innerHTML: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+    });
+
+    withCreateTreeWalker(function () {
+      DR_BUS.publish('intent:toggleTable', { table }); // pill: turn rounding on
+    });
+    eq('leak-1: the first pill toggle rounds the connected table',
+      isTableRounded(table), true);
+    eq('leak-1: the record follows the pill — enabled true after toggle-on',
+      DR_STORE.getSettings().enabled, true);
+
+    withCreateTreeWalker(function () {
+      DR_BUS.publish('intent:toggleTable', { table }); // pill: turn rounding off
+    });
+    eq('leak-1: the second pill toggle restores the table to originals',
+      isTableRounded(table), false);
+    eq('leak-1: the record follows the pill — enabled false after toggle-off',
+      DR_STORE.getSettings().enabled, false);
+
+    // The reopen path (SIDEBAR_OPENED runs this same apply) must honor the
+    // record the pill just wrote — not silently re-round the table.
+    withCreateTreeWalker(function () {
+      applySidebarRounding(table, DR_STORE.getSettings());
+    });
+    eq('leak-1: a reopen-style apply honors the record — the table stays on originals',
+      isTableRounded(table), false);
+
+    const toggleMsgs = sent.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
+    eq('leak-1: one TABLE_TOGGLE_STATE per pill toggle, reporting the record — true then false',
+      toggleMsgs.map((m) => m.enabled), [true, false]);
+  } finally {
+    global.chrome.runtime.sendMessage = origSend;
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(savedSettings);
+    DR_STORE.setSelectedTable(savedSelected);
+    DR_STORE.setSidebarOpen(savedOpen);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Decoupling the toggle from the panel's state: a toggle on the CONNECTED
+// table writes the record whether the panel is open or not. The old gate
+// read panel visibility to pick between the record path and the direct
+// path — controller logic coupled to view state — so a toggle made while
+// the panel was closed changed the page without changing the record, and
+// the next panel open re-imposed the stale record. The record write and the
+// apply that follows never needed the panel; only the gate did.
+// TABLE_TOGGLE_STATE is sent regardless too: the controller reports the
+// record; a closed sidebar has no page to receive it, and background.js
+// additionally gates its relay (the AC4 guard), so no delivery decision
+// lives here.
+// ---------------------------------------------------------------------------
+(function closedPanel_connectedTableToggleWritesRecord() {
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedOpen = DR_STORE.isSidebarOpen();
+  const savedSettings = DR_STORE.getSettings();
+  const sent = [];
+  const origSend = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
+
+  try {
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
+
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
+      [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
+    ]);
+    injectToggleEntry(table);
+    DR_STORE.setSelectedTable(table);
+    DR_STORE.setSidebarOpen(false); // the panel is CLOSED throughout
+
+    const dataCell = table._cells[3];
+    let _text = dataCell.innerHTML;
+    Object.defineProperties(dataCell, {
+      innerHTML: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+    });
+
+    withCreateTreeWalker(function () {
+      DR_BUS.publish('intent:toggleTable', { table }); // on
+      DR_BUS.publish('intent:toggleTable', { table }); // off
+    });
+    eq('closed-panel toggle: the table shows originals after on-then-off',
+      isTableRounded(table), false);
+    eq('closed-panel toggle: the record follows the connected table with the panel closed',
+      DR_STORE.getSettings().enabled, false);
+
+    // The panel-open apply (SIDEBAR_OPENED runs this) must find the record
+    // already honest — no re-round of a table toggled off while closed.
+    withCreateTreeWalker(function () {
+      applySidebarRounding(table, DR_STORE.getSettings());
+    });
+    eq('closed-panel toggle: a later panel open honors the record — the table stays on originals',
+      isTableRounded(table), false);
+
+    const toggleMsgs = sent.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
+    eq('closed-panel toggle: the record is reported regardless of panel state (no panel page exists to receive it)',
+      toggleMsgs.map((m) => m.enabled), [true, false]);
+  } finally {
+    global.chrome.runtime.sendMessage = origSend;
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(savedSettings);
+    DR_STORE.setSelectedTable(savedSelected);
+    DR_STORE.setSidebarOpen(savedOpen);
+  }
+})();
+
+// The single record governs only the connected table: a closed-panel toggle
+// on some OTHER table keeps the direct path and must not write the record.
+(function closedPanel_unconnectedTableToggleLeavesRecordAlone() {
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedOpen = DR_STORE.isSidebarOpen();
+  const savedSettings = DR_STORE.getSettings();
+  try {
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
+
+    const connected = makeToggleTable([
+      [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
+      [{ tag: 'td', text: 'R' }, { tag: 'td', text: '1,000,000' }],
+    ]);
+    injectToggleEntry(connected);
+    const other = makeToggleTable([
+      [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
+      [{ tag: 'td', text: 'R' }, { tag: 'td', text: '12,345' }],
+    ]);
+    injectToggleEntry(other);
+    DR_STORE.setSelectedTable(connected);
+    DR_STORE.setSidebarOpen(false);
+
+    withCreateTreeWalker(function () {
+      DR_BUS.publish('intent:toggleTable', { table: other });
+    });
+    eq('closed-panel unconnected toggle: the other table toggles directly',
+      isTableRounded(other), true);
+    eq('closed-panel unconnected toggle: the record is untouched',
+      DR_STORE.getSettings().enabled, true);
+    eq('closed-panel unconnected toggle: the connection did not move',
+      DR_STORE.getSelectedTable(), connected);
+  } finally {
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(savedSettings);
+    DR_STORE.setSelectedTable(savedSelected);
+    DR_STORE.setSidebarOpen(savedOpen);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #275: the context-menu toggle must go through the same controller
+// branch a pill click uses. The right-click that opens the menu already
+// connects the table (the contextmenu handler calls setSelectedTable), so
+// with the sidebar open, "Toggle readable data" on that table must write the
+// record and report it (TABLE_TOGGLE_STATE) — the #272 contract. Before the
+// fix, MENU_CLICKED called runToggleAction directly: the page changed, the
+// record and the panel both went stale, and the next reopen or switch
+// re-imposed the stale record. Fresh-eval fixture modeled on the
+// double-invocation test above; same minimal grid, real captured handlers.
+// ---------------------------------------------------------------------------
+(function issue275_menuToggleOnConnectedTableWritesRecord() {
+  function makeCell(text) { return { nodeType: 1, textContent: text, children: [] }; }
+  function makeRow(texts) { return { nodeType: 1, className: 'row', children: texts.map(makeCell) }; }
+  const rows = [
+    makeRow(['A', '100']), makeRow(['B', '200']), makeRow(['C', '300']),
+    makeRow(['D', '400']), makeRow(['E', '500']),
+  ];
+  const gridClassList = (() => {
+    const c = [];
+    return {
+      add(x) { if (!c.includes(x)) c.push(x); },
+      remove(x) { const i = c.indexOf(x); if (i >= 0) c.splice(i, 1); },
+      contains(x) { return c.includes(x); },
+    };
+  })();
+  const gridEl = {
+    nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows,
+    classList: gridClassList, parentElement: null, parentNode: null,
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+    getBoundingClientRect() { return { top: 10, right: 100, bottom: 50, left: 10, width: 90, height: 40 }; },
+  };
+  const clickTarget = {
+    nodeType: 1, tagName: 'DIV', parentElement: gridEl, parentNode: gridEl,
+    closest() { return null; },
+  };
+
+  function mockCreateElement(tag) {
+    if (tag === 'button') {
+      return {
+        type: '', className: '', style: {}, dataset: {},
+        classList: { add() {}, remove() {}, contains() { return false; } },
+        setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+        addEventListener() {}, appendChild() {}, parentElement: null,
+      };
+    }
+    return { className: '', style: {}, textContent: '', appendChild() {}, addEventListener() {} };
+  }
+
+  let contextmenuHandler = null;
+  let onMessageHandler = null;
+  const captureDoc = {
+    addEventListener(type, handler) { if (type === 'contextmenu') contextmenuHandler = handler; },
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild() {}, observe() {} },
+    head: { appendChild() {} },
+    createElement: mockCreateElement,
+  };
+  const sentMessages = [];
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener(fn) { onMessageHandler = fn; } },
+      sendMessage(msg) { sentMessages.push(msg); },
+    },
+  };
+
+  const savedDoc = global.document;
+  const savedChrome = global.chrome;
+  const savedGCS = global.getComputedStyle;
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.getComputedStyle = () => ({ display: 'flex' });
+
+  try {
+    eval(contentScriptBundle + `
+      globalThis.__i275_DR_STORE = DR_STORE;
+    `);
+    const store = global.__i275_DR_STORE;
+
+    eq('menu-toggle record: contextmenu handler was captured', typeof contextmenuHandler, 'function');
+    eq('menu-toggle record: onMessage handler was captured', typeof onMessageHandler, 'function');
+    if (typeof contextmenuHandler !== 'function' || typeof onMessageHandler !== 'function') return;
+
+    // The right-click that opens the menu: discovers, marks, and CONNECTS
+    // the grid — exactly what a real menu use does before MENU_CLICKED.
+    contextmenuHandler({ target: clickTarget });
+    eq('menu-toggle record: the right-click connected the grid',
+      store.getSelectedTable(), gridEl);
+
+    // Sidebar open, record on, table showing rounded values.
+    store.setSidebarOpen(true);
+    store.setTableAppliedFlag(gridEl, 'simplified');
+    eq('menu-toggle record: precondition — the record starts enabled',
+      store.getSettings().enabled, true);
+
+    sentMessages.length = 0;
+    onMessageHandler({ action: 'MENU_CLICKED' }, {}, () => {});
+
+    eq('menu-toggle record: the menu toggle on the connected table writes the record\'s off',
+      store.getSettings().enabled, false);
+    const toggleMsgs = sentMessages.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
+    eq('menu-toggle record: the menu toggle reports the record to the panel — off',
+      toggleMsgs.map((m) => m.enabled), [false]);
+  } finally {
+    delete global.__i275_DR_STORE;
+    global.document = savedDoc;
+    global.chrome = savedChrome;
+    global.getComputedStyle = savedGCS;
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #272, leak 2: the #262 lock's forced ON must be display-only. The
+// panel stashes the record's enabled when the lock engages, every save under
+// the lock writes the stashed value (the sliders stay usable while locked),
+// record changes landing under the lock update the stash, and lifting the
+// lock puts the stashed value back on the switch. Before the fix, a save
+// under the lock wrote the forced ON into the record — silently discarding
+// the user's off — and the forced ON outlived the lock until the next pull.
+// ---------------------------------------------------------------------------
+(function issue272_saveUnderLockWritesTheRecordsEnabled() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lock-save: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('lock-save: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    // The module-level pull mirrored the model: enabled off.
+    eq('lock-save: precondition — the switch mirrors the model\'s off',
+      h.enabledEl.checked, false);
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    eq('lock-save: precondition — the lock forces the switch on',
+      h.enabledEl.checked, true);
+
+    // A save while locked — the granularity control's change listener runs
+    // the same applyNow a slider drag ends in.
+    h.tabMessages.length = 0;
+    h.el('dateGranularity').fire('change');
+    const applyMsg = h.tabMessages.find((m) => m.action === 'APPLY_SIDEBAR_SETTINGS');
+    eq('lock-save: the save reaches the wire', applyMsg !== undefined, true);
+    eq('lock-save: a save under the lock writes the record\'s off — not the forced on',
+      applyMsg && applyMsg.settings.enabled, false);
+  } finally {
+    h.restore();
+  }
+})();
+
+(function issue272_lockLiftRestoresTheRecordsEnabled() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lock-lift: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('lock-lift: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    h.dispatch({ action: 'APPLY_OK' });
+    eq('lock-lift: APPLY_OK lifts the lock',
+      h.bodyClasses.has('table-locked'), false);
+    eq('lock-lift: APPLY_OK re-enables the switch', h.enabledEl.disabled, false);
+    eq('lock-lift: the switch returns to the record\'s off — the forced ON does not outlive the lock',
+      h.enabledEl.checked, false);
+  } finally {
+    h.restore();
+  }
+})();
+
+(function issue272_recordChangesUnderLockAreDisplayOnlyAndTracked() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('locked toggle-state: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('locked toggle-state: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    h.dispatch({ action: 'TABLE_TOGGLE_STATE', enabled: false });
+    eq('locked toggle-state: the switch stays forced on while locked — the record change is display-only',
+      h.enabledEl.checked, true);
+    h.dispatch({ action: 'TABLE_TOGGLE_STATE', enabled: true });
+    h.dispatch({ action: 'APPLY_OK' });
+    eq('locked toggle-state: the lift shows the record\'s latest value (on)',
+      h.enabledEl.checked, true);
+
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    h.dispatch({ action: 'TABLE_TOGGLE_STATE', enabled: false });
+    h.dispatch({ action: 'APPLY_OK' });
+    eq('locked toggle-state: the lift shows the record\'s latest value (off)',
+      h.enabledEl.checked, false);
+  } finally {
+    h.restore();
+  }
+})();
+
+// A re-lock while already locked must keep the stash — never capture the
+// forced ON. The real sequence: a save under the lock re-applies on the
+// content side, the stuck table blocks again, and a second APPLY_BLOCKED
+// lands while the switch is already forced on. Without the engage-guard the
+// stash becomes true and the next save writes the forced ON into the record
+// — leak 2 verbatim, one message later.
+(function issue272_reLockKeepsTheStash() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('re-lock: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('re-lock: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 }); // stash = model's off
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 }); // re-lock: stash must survive
+    h.tabMessages.length = 0;
+    h.el('dateGranularity').fire('change');
+    const applyMsg = h.tabMessages.find((m) => m.action === 'APPLY_SIDEBAR_SETTINGS');
+    eq('re-lock: a save after a second APPLY_BLOCKED still writes the record\'s off',
+      applyMsg && applyMsg.settings.enabled, false);
+    h.dispatch({ action: 'APPLY_OK' });
+    eq('re-lock: the lift still shows the record\'s off',
+      h.enabledEl.checked, false);
+  } finally {
+    h.restore();
+  }
+})();
+
+// Unbinding while locked (a save whose delivery fails runs setTableBound(false))
+// must drop the stash with the lock. Without the clear, the stash outlives the
+// lock and the next APPLY_OK restores a stale ON over the no-table off.
+(function issue272_unbindWhileLockedDropsTheStash() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('unbind-locked: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('unbind-locked: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    // Drift the switch on, then lock — the stash captures the drifted on.
+    h.enabledEl.checked = true;
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    // A save whose delivery fails: applyNow's onDelivery sees lastError and
+    // unbinds the panel (setTableBound(false)) — lock and stash both go.
+    h.chromeMock.runtime.lastError = { message: 'no receiving end' };
+    h.el('dateGranularity').fire('change');
+    h.chromeMock.runtime.lastError = null;
+    eq('unbind-locked: the failed delivery unbinds and lifts the lock',
+      h.bodyClasses.has('table-locked'), false);
+    eq('unbind-locked: the no-table state forces the switch off',
+      h.enabledEl.checked, false);
+    h.dispatch({ action: 'APPLY_OK' });
+    eq('unbind-locked: a later APPLY_OK does not resurrect the pre-unbind stash',
+      h.enabledEl.checked, false);
+  } finally {
+    h.restore();
+  }
+})();
+
+(function issue272_pullUnderLockTracksTheRecord() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lock-pull-stash: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('lock-pull-stash: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    // Drift the switch on, then lock — the stash captures the drifted on.
+    h.enabledEl.checked = true;
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    // A pull resolving under the lock reads the model's enabled:false. The
+    // display must not change (pinned by the #251 lock-vs-pull test above);
+    // the stash must track it so the lift shows the model, not the value
+    // stashed at lock time.
+    h.dispatch({ action: 'PREVIEW_SAMPLES_CHANGED' });
+    eq('lock-pull-stash: the pull leaves the locked switch on (display-only)',
+      h.enabledEl.checked, true);
+    h.dispatch({ action: 'APPLY_OK' });
+    eq('lock-pull-stash: the lift shows the model\'s off from the pull, not the pre-lock drift',
+      h.enabledEl.checked, false);
+  } finally {
+    h.restore();
   }
 })();
 
