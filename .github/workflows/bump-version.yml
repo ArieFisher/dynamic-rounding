@@ -115,9 +115,11 @@ jobs:
           # main requires the PR checks to pass, and they take a minute or two
           # from PR creation, so wait for GitHub's merge-state verdict before
           # merging. CLEAN, HAS_HOOKS, and UNSTABLE all mean the merge will be
-          # accepted. BLOCKED covers pending and failed checks alike, so a
-          # failed check waits out the deadline. On timeout, leave the PR and
-          # the branch for a human, as on any other refusal.
+          # accepted. DIRTY (a conflict) and BEHIND (main advanced past the
+          # bump) are terminal, so they end the run at once. BLOCKED covers
+          # pending and failed checks alike, so a failed check waits out the
+          # deadline. On timeout, leave the PR and the branch for a human, as
+          # on any other refusal.
           READY=""
           for attempt in $(seq 1 40); do
             STATE=$(gh pr view "$PR_URL" --json mergeStateStatus \
