@@ -53,11 +53,12 @@ DR_BUS.subscribe('state:settingsChanged', ({ settings }) => {
 // (an immediate mouse/keyboard click, or the second tap of a touch/pen
 // two-tap) as this one intent instead of calling runToggleAction or
 // toggleOriginalValues itself. This is where that intent turns into one of
-// two controller actions: a click on a DIFFERENT table while the sidebar
+// three controller actions: a click on a DIFFERENT table while the sidebar
 // is open connects that table and syncs it to the model (the rebind
-// branch, with its TABLE_SWITCHED message); every other click runs the
-// plain toggle with the sidebar's live toggle-state messaging. All of it
-// used to live inline in the view's click handler.
+// branch, with its TABLE_SWITCHED message); a click on the CONNECTED table
+// writes the flipped enabled into the model, whose state-change subscriber
+// runs the apply (issue #272); every other click runs the plain toggle.
+// All of it used to live inline in the view's click handler.
 DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
   if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()) {
     // Report the intent instead of writing DR_STORE directly here — one
@@ -84,15 +85,27 @@ DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
     applySidebarRounding(table, DR_STORE.getSettings());
     return;
   }
-  runToggleAction(table);
-  syncSwitchForTable(table);
-  if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table === DR_STORE.getSelectedTable()) {
+  if (DR_STORE.isSidebarOpen() && table === DR_STORE.getSelectedTable()) {
+    // Issue #272: a pill toggle on the CONNECTED table writes the record and
+    // lets the state-change subscriber above run the same applySidebarRounding
+    // a panel switch flip runs — one flow for "toggle the connected table" no
+    // matter which control starts it, and the record stays the single source.
+    // The flip direction reads the table (what the user sees), so the click
+    // always means "change what is in front of me" even if record and table
+    // had drifted apart. TABLE_TOGGLE_STATE reports the record's new value;
+    // when the apply blocks (stuck table), the panel's #262 lock keeps the
+    // forced ON on screen and routes this value to its stash instead.
+    const nextEnabled = !isTableRounded(table);
+    DR_STORE.setSettings(Object.assign({}, DR_STORE.getSettings(), { enabled: nextEnabled }));
     try {
-      chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: isTableRounded(table) });
+      chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: nextEnabled });
     } catch (e) {
       // sidebar may be torn down; harmless
     }
+    return;
   }
+  runToggleAction(table);
+  syncSwitchForTable(table);
 });
 
 // The options used for the most recent roundTable() run (consulted by
