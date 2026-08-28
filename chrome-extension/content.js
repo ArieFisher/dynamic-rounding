@@ -63,13 +63,24 @@ DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
     // even when a second intent (toggle) is what triggered it.
     DR_BUS.publish('intent:selectTable', { table });
     try {
-      // One message per switch. The sidebar's handler re-reads the model's
-      // settings (issue #251) and that pull chain ends in the preview
-      // fetch, so no separate PREVIEW_SAMPLES_CHANGED send is needed here.
+      // TABLE_SWITCHED goes out before the apply below, so the sidebar
+      // lifts the PREVIOUS table's lock before this table's own
+      // APPLY_BLOCKED/APPLY_OK lands. The sidebar's handler re-reads the
+      // model's settings, and that pull chain ends in the preview fetch,
+      // so no separate PREVIEW_SAMPLES_CHANGED send is needed.
       chrome.runtime.sendMessage({ action: 'TABLE_SWITCHED' });
     } catch (e) {
       // sidebar may be torn down; harmless
     }
+    // With the sidebar open, a click on a different table connects that
+    // table and syncs it to the model — the same apply a sidebar reopen
+    // runs (see SIDEBAR_OPENED) — instead of toggling it with the shipped
+    // defaults, so the table always matches what the panel is about to
+    // show (issue #251). applySidebarRounding sends the apply and range
+    // messages and syncs the on-page toggle itself. No TABLE_TOGGLE_STATE
+    // here: the panel redraws from the model pull.
+    applySidebarRounding(table, DR_STORE.getSettings());
+    return;
   }
   runToggleAction(table);
   syncSwitchForTable(table);

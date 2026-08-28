@@ -5339,6 +5339,97 @@ function fireTouchSecondTap(buttonEl) {
 })();
 
 // ---------------------------------------------------------------------------
+// Issue #251 (sync-on-switch): a switch with the sidebar open applies the
+// MODEL's settings to the clicked table — the panel then mirrors the model,
+// and the table matches what the panel shows. Two cells: a non-default
+// offset reaches the new table's rounding pass, and a model holding
+// enabled:false leaves the new table unrounded.
+// ---------------------------------------------------------------------------
+
+(function issue251_switchAppliesModelToNewTable() {
+  const savedSettings = DR_STORE.getSettings();
+  DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { offsetTop: -2, offsetOther: -2 }));
+
+  const tableA = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
+  // The value that must visibly round under offsetTop -2 sits in the SECOND
+  // column: the shipped defaults leave the first column alone, and 286 at
+  // offset -2 rounds to itself, so a first-column 8,584,629 would let a
+  // defaults-run pass hide.
+  const tableB = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+    [{ tag: 'td', text: '286' }, { tag: 'td', text: '8,584,629' }],
+  ]);
+  tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const origSendMessage = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = () => {};
+
+  sidebarOpen = true;
+  lastRightClickedTable = tableA;
+
+  const buttonB = createToggleWithSpies(tableB);
+  fireMouseClick(buttonB);
+
+  const rounded = tableB._cells.some(c => c.classList.contains('dr-ext-rounded'));
+  const usedOpts = DR_STORE.getTableRoundOptions(tableB);
+
+  global.chrome.runtime.sendMessage = origSendMessage;
+  sidebarOpen = false;
+  lastRightClickedTable = null;
+  DR_STORE.setSettings(savedSettings);
+
+  eq('sync-on-switch: the clicked table is rounded (model enabled is on)',
+    rounded, true);
+  eq('sync-on-switch: the rounding pass ran with the model\'s offset, not the shipped default',
+    usedOpts && usedOpts.offsetTop, -2);
+})();
+
+(function issue251_switchRespectsModelEnabledOff() {
+  const savedSettings = DR_STORE.getSettings();
+  DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+
+  const tableA = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
+  // Values that visibly change under the shipped default offset (see the
+  // wire-message test's note: 1,000,000-style values round to themselves
+  // and would let a wrongly-run rounding pass hide).
+  const tableB = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
+
+  const origSendMessage = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = () => {};
+
+  sidebarOpen = true;
+  lastRightClickedTable = tableA;
+
+  const buttonB = createToggleWithSpies(tableB);
+  fireMouseClick(buttonB);
+
+  const rounded = tableB._cells.some(c => c.classList.contains('dr-ext-rounded'));
+  const flag = DR_STORE.getTableAppliedFlag(tableB);
+
+  global.chrome.runtime.sendMessage = origSendMessage;
+  sidebarOpen = false;
+  lastRightClickedTable = null;
+  DR_STORE.setSettings(savedSettings);
+
+  eq('sync-on-switch: a model holding enabled:false leaves the clicked table unrounded',
+    rounded, false);
+  eq('sync-on-switch: the clicked table\'s applied flag stays original under enabled:false',
+    flag, 'original');
+})();
+
+// ---------------------------------------------------------------------------
 // Source-level assertions (supplementary): verify structural invariants that
 // cover both click branches and the sidebar.js handler in a single pass.
 // These complement the live tests above and are an accepted fallback pattern
@@ -5407,20 +5498,23 @@ function fireTouchSecondTap(buttonEl) {
     false);
 
   // sidebar.js: TABLE_SWITCHED handler re-reads the model's settings (issue
-  // #251) instead of resetting the controls to the shipped defaults. Window
-  // sized for the unlock lines (issue #262) at the handler's top.
+  // #251) instead of resetting the controls to the shipped defaults. The
+  // handler block is isolated up to the next `} else if` so the negative
+  // pins below cover the whole handler, not a fixed character window.
+  const switchHandlerMatch = sidebarSrc.match(/=== 'TABLE_SWITCHED'\)\s*\{([\s\S]*?)\n  \} else if/);
+  const switchHandlerBlock = switchHandlerMatch ? switchHandlerMatch[1] : '';
+  eq('rebind source: sidebar.js TABLE_SWITCHED handler block was isolated (sanity check on the scan itself)',
+    switchHandlerBlock.length > 0, true);
   eq('rebind source: sidebar.js TABLE_SWITCHED handler calls pullSettingsAndApplyToUI()',
-    /TABLE_SWITCHED[\s\S]{0,400}pullSettingsAndApplyToUI\(\)/.test(sidebarSrc), true);
+    /pullSettingsAndApplyToUI\(\)/.test(switchHandlerBlock), true);
 
   // sidebar.js: TABLE_SWITCHED handler does NOT reset the controls to the
   // shipped defaults — that reset is what desynced the panel from the model.
-  const switchHandlerMatch = sidebarSrc.match(/TABLE_SWITCHED[\s\S]{0,400}/);
-  const switchHandlerBlock = switchHandlerMatch ? switchHandlerMatch[0] : '';
   eq('rebind source: sidebar.js TABLE_SWITCHED handler does NOT call applyDefaultsToUI()',
     /applyDefaultsToUI\s*\(\)/.test(switchHandlerBlock), false);
 
   // sidebar.js: TABLE_SWITCHED handler does NOT auto-apply settings
-  // (must NOT call applyNow() or applySidebarRounding() inside the handler)
+  // (must NOT call applyNow() inside the handler)
   eq('rebind source: sidebar.js TABLE_SWITCHED handler does NOT call applyNow()',
     /applyNow\s*\(\)/.test(switchHandlerBlock), false);
 })();
@@ -10687,13 +10781,13 @@ function fireMouseClick(buttonEl, fn) {
   eq('AC3 impl: clicking non-lastRightClickedTable sends TABLE_SWITCHED',
     switchMsgs.length >= 1, true);
 
-  // GAP (spec vs impl): spec says TABLE_TOGGLE_STATE must NOT be sent for a
-  // non-matching table, but the implementation DOES send it (after reassignment).
-  // This test documents the actual behaviour; the reviewer should determine
-  // whether this is intentional (the sidebar auto-redirects to the new table)
-  // or a spec violation.
-  eq('AC3 GAP: implementation sends TABLE_TOGGLE_STATE even for non-lastRightClickedTable (after reassignment)',
-    toggleMsgs.length >= 1, true);
+  // The AC3 spec ("toggling a non-selected table sends no TABLE_TOGGLE_STATE")
+  // is satisfied since issue #251's sync-on-switch: the switch path applies
+  // the model to the new table and returns before the same-table
+  // TABLE_TOGGLE_STATE send, and the panel redraws from the model pull that
+  // TABLE_SWITCHED triggers instead.
+  eq('AC3: clicking non-lastRightClickedTable sends NO TABLE_TOGGLE_STATE (panel redraws from the model pull)',
+    toggleMsgs.length, 0);
 })();
 
 // AC3 guard that DOES hold: when lastRightClickedTable is null,
@@ -12489,7 +12583,7 @@ function fireMouseClick(buttonEl, fn) {
     // Issue #251: the bound branch must not reset the pill to the shipped
     // default — the model (or the pull's explicit defaults fallback) is the
     // pill's only source once a table is bound.
-    eq('no-table toggle: sidebar.js setTableBound bound branch no longer references DR_DEFAULTS (issue #251)',
+    eq('no-table toggle: sidebar.js setTableBound no longer references DR_DEFAULTS anywhere (issue #251)',
       /DR_DEFAULTS/.test(setTableBoundFnBody), false);
 
     // AC2 gap — ADVERSARIAL: verify that the sidebar does NOT have a runtime
@@ -14662,17 +14756,21 @@ const LADDER_OPTS = {
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
       { action: 'TABLE_TOGGLE_STATE', enabled: true },
     ],
-    // Issue #251 changed this cell's contract deliberately: the switch
-    // message was renamed to TABLE_SWITCHED (its sidebar handler pulls the
-    // model's settings instead of resetting to defaults), and the separate
-    // PREVIEW_SAMPLES_CHANGED send was dropped — the pull chain already ends
-    // in the preview fetch. The other three cells stay byte-identical to the
-    // frozen parent capture.
+    // Issue #251 changed this cell's contract deliberately. A switch with
+    // the sidebar open now syncs the clicked table to the model — the same
+    // applySidebarRounding a sidebar reopen runs — instead of toggling it
+    // with the shipped defaults. TABLE_SWITCHED goes out first so the
+    // sidebar lifts the previous table's lock before the apply's own
+    // APPLY_BLOCKED/APPLY_OK lands; the apply then emits its usual
+    // messages. No PREVIEW_SAMPLES_CHANGED (the sidebar's pull chain ends
+    // in the preview fetch) and no TABLE_TOGGLE_STATE (the panel redraws
+    // from the model pull). The other three cells stay byte-identical to
+    // the frozen parent capture.
     'true:false': [
       { action: 'TABLE_SWITCHED' },
+      { action: 'APPLY_OK' },
       { action: 'RANGE_OK' },
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
-      { action: 'TABLE_TOGGLE_STATE', enabled: true },
     ],
     'false:true': [
       { action: 'RANGE_OK' },
@@ -15779,6 +15877,40 @@ function makeIssue251SidebarHarness() {
     h.dispatch({ action: 'PREVIEW_SAMPLES_CHANGED' });
     eq('refresh-pull: the main toggle mirrors the model\'s enabled:false after a preview refresh',
       h.enabledEl.checked, false);
+  } finally {
+    h.restore();
+  }
+})();
+
+(function issue251_lockOutlivesAPullResolvingUnderIt() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lock-vs-pull: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('lock-vs-pull: sidebar.js loaded with no stub gaps', h.evalError, null);
+    eq('lock-vs-pull: sidebar onMessage handler was captured', h.hasHandler(), true);
+    if (h.evalError !== null || !h.hasHandler()) return;
+
+    // Issue #262's lock forces the main toggle ON + disabled (the bound
+    // table is stuck simplified). A settings pull that resolves while the
+    // lock is displayed — a reconnect refresh whose apply just re-blocked —
+    // must not write the model's enabled:false over the lock's forced ON.
+    // Ordering here mirrors the wire: APPLY_BLOCKED lands, then the
+    // stale-view refresh runs its pull.
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    eq('lock-vs-pull: precondition — APPLY_BLOCKED locked the panel',
+      h.bodyClasses.has('table-locked'), true);
+
+    h.dispatch({ action: 'PREVIEW_SAMPLES_CHANGED' });
+    eq('lock-vs-pull: the pull leaves the locked toggle ON — the table IS simplified',
+      h.enabledEl.checked, true);
+    eq('lock-vs-pull: the pull leaves the locked toggle disabled',
+      h.enabledEl.disabled, true);
+    eq('lock-vs-pull: the lock itself survives the pull',
+      h.bodyClasses.has('table-locked'), true);
   } finally {
     h.restore();
   }

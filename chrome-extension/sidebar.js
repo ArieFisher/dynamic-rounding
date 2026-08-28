@@ -592,8 +592,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // reset the main toggle to the shipped default (issue #251).
     pullSettingsAndApplyToUI();
   } else if (request.action === 'TABLE_SWITCHED') {
-    // A table switch: the lock, if any, belonged to the previous table. The
-    // new table's own reconnect apply re-locks if it must (APPLY_BLOCKED).
+    // A table switch: the lock, if any, belonged to the previous table.
+    // The switch apply on the content side runs after this message is
+    // sent, so its APPLY_BLOCKED re-locks the panel right after this lift
+    // when the new table is stuck.
     document.body.classList.remove('table-locked');
     enabledEl.disabled = false;
     // The panel mirrors the model's settings on any switch (issue #251); it
@@ -622,7 +624,14 @@ window.addEventListener('unload', () => {
 // can never drift apart no matter which one supplied the values.
 function applySettingsToUI(settings) {
   const s = Object.assign({}, DR_DEFAULTS, settings || {});
-  enabledEl.checked = s.enabled !== false;
+  // The #262 lock forces the main toggle ON + disabled while the bound
+  // table is stuck simplified. A pull resolving under the lock — a
+  // reconnect refresh whose apply just re-blocked — must not write the
+  // model's enabled over that forced ON; every other control still
+  // mirrors the model.
+  if (!document.body.classList.contains('table-locked')) {
+    enabledEl.checked = s.enabled !== false;
+  }
   for (const id in CHECKBOX_TO_SETTING) {
     const el = document.getElementById(id);
     if (el) el.checked = !!s[CHECKBOX_TO_SETTING[id]];
