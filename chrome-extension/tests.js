@@ -15877,6 +15877,7 @@ function makeIssue251SidebarHarness() {
 
   return {
     statusEl, enabledEl, rangeExprEl, bodyClasses, evalError, tabMessages,
+    chromeMock: captureChrome,
     el(id) { return elsById[id]; },
     dispatch(msg) { onMessageHandler(msg, {}, () => {}); },
     hasHandler() { return typeof onMessageHandler === 'function'; },
@@ -17076,8 +17077,11 @@ function makeIssue251SidebarHarness() {
       toggleStates.map((m) => m.enabled), [false]);
     eq('re-injection toggle clicks: the record holds the user\'s off, even though the stuck table cannot change',
       global.__ri2_DR_STORE.getSettings().enabled, false);
-    eq('re-injection toggle clicks: each blocked click told the panel to lock (APPLY_BLOCKED precedes each toggle-state)',
-      sentMessages.filter((m) => m.action === 'APPLY_BLOCKED').length >= 1, true);
+    const actionSeq = sentMessages.map((m) => m.action);
+    eq('re-injection toggle clicks: the blocked click\'s APPLY_BLOCKED precedes its toggle-state — the panel locks before the record value lands in its stash',
+      actionSeq.lastIndexOf('APPLY_BLOCKED') !== -1 &&
+      actionSeq.indexOf('TABLE_TOGGLE_STATE') !== -1 &&
+      actionSeq.lastIndexOf('APPLY_BLOCKED') < actionSeq.indexOf('TABLE_TOGGLE_STATE'), true);
   } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
@@ -17250,6 +17254,72 @@ function makeIssue251SidebarHarness() {
     h.dispatch({ action: 'TABLE_TOGGLE_STATE', enabled: false });
     h.dispatch({ action: 'APPLY_OK' });
     eq('locked toggle-state: the lift shows the record\'s latest value (off)',
+      h.enabledEl.checked, false);
+  } finally {
+    h.restore();
+  }
+})();
+
+// A re-lock while already locked must keep the stash — never capture the
+// forced ON. The real sequence: a save under the lock re-applies on the
+// content side, the stuck table blocks again, and a second APPLY_BLOCKED
+// lands while the switch is already forced on. Without the engage-guard the
+// stash becomes true and the next save writes the forced ON into the record
+// — leak 2 verbatim, one message later.
+(function issue272_reLockKeepsTheStash() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('re-lock: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('re-lock: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 }); // stash = model's off
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 }); // re-lock: stash must survive
+    h.tabMessages.length = 0;
+    h.el('dateGranularity').fire('change');
+    const applyMsg = h.tabMessages.find((m) => m.action === 'APPLY_SIDEBAR_SETTINGS');
+    eq('re-lock: a save after a second APPLY_BLOCKED still writes the record\'s off',
+      applyMsg && applyMsg.settings.enabled, false);
+    h.dispatch({ action: 'APPLY_OK' });
+    eq('re-lock: the lift still shows the record\'s off',
+      h.enabledEl.checked, false);
+  } finally {
+    h.restore();
+  }
+})();
+
+// Unbinding while locked (a save whose delivery fails runs setTableBound(false))
+// must drop the stash with the lock. Without the clear, the stash outlives the
+// lock and the next APPLY_OK restores a stale ON over the no-table off.
+(function issue272_unbindWhileLockedDropsTheStash() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('unbind-locked: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('unbind-locked: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    // Drift the switch on, then lock — the stash captures the drifted on.
+    h.enabledEl.checked = true;
+    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    // A save whose delivery fails: applyNow's onDelivery sees lastError and
+    // unbinds the panel (setTableBound(false)) — lock and stash both go.
+    h.chromeMock.runtime.lastError = { message: 'no receiving end' };
+    h.el('dateGranularity').fire('change');
+    h.chromeMock.runtime.lastError = null;
+    eq('unbind-locked: the failed delivery unbinds and lifts the lock',
+      h.bodyClasses.has('table-locked'), false);
+    eq('unbind-locked: the no-table state forces the switch off',
+      h.enabledEl.checked, false);
+    h.dispatch({ action: 'APPLY_OK' });
+    eq('unbind-locked: a later APPLY_OK does not resurrect the pre-unbind stash',
       h.enabledEl.checked, false);
   } finally {
     h.restore();
