@@ -112,20 +112,34 @@ jobs:
             --body "Automated version bump triggered by merge of PR #${{ github.event.pull_request.number }}." \
             --base main \
             --head "$BUMP_BRANCH")
-          # Merge now rather than with --auto. The bump only edits version files on
-          # a branch cut from a green main, and no test reads the version, so there
-          # is nothing for the PR checks to prove. GitHub needs a moment to compute
-          # mergeability after the PR is created, hence the retry.
-          MERGED=""
-          for attempt in 1 2 3 4 5 6; do
-            if gh pr merge "$PR_URL" --squash; then
-              MERGED="yes"
-              break
-            fi
-            echo "Merge not accepted yet (attempt $attempt); retrying in 10 seconds."
-            sleep 10
+          # main requires the PR checks to pass, and they take a minute or two
+          # from PR creation, so wait for GitHub's merge-state verdict before
+          # merging. CLEAN, HAS_HOOKS, and UNSTABLE all mean the merge will be
+          # accepted. BLOCKED covers pending and failed checks alike, so a
+          # failed check waits out the deadline. On timeout, leave the PR and
+          # the branch for a human, as on any other refusal.
+          READY=""
+          for attempt in $(seq 1 40); do
+            STATE=$(gh pr view "$PR_URL" --json mergeStateStatus \
+              --jq .mergeStateStatus || echo UNKNOWN)
+            case "$STATE" in
+              CLEAN|HAS_HOOKS|UNSTABLE)
+                READY="yes"
+                break
+                ;;
+              DIRTY)
+                echo "The bump conflicts with main. Leaving the branch and $PR_URL in place."
+                exit 1
+                ;;
+            esac
+            echo "Merge state is $STATE (attempt $attempt of 40); checking again in 15 seconds."
+            sleep 15
           done
-          if [ -z "$MERGED" ]; then
+          if [ -z "$READY" ]; then
+            echo "Checks did not pass within 10 minutes. Leaving the branch and $PR_URL in place."
+            exit 1
+          fi
+          if ! gh pr merge "$PR_URL" --squash; then
             echo "Could not merge $PR_URL. Leaving the branch and the PR in place."
             exit 1
           fi
