@@ -5101,8 +5101,8 @@ function fireTouchSecondTap(buttonEl) {
   eq('rebind AC1 mouse: PREVIEW_SAMPLES_CHANGED not dispatched on a switch',
     previewCalls.length, 0);
 
-  // 1d. Toggle still runs (cells get rounded, since table has numbers)
-  eq('rebind AC1 mouse: toggle action ran against tableB (cells rounded)',
+  // 1d. The switch apply rounds tableB (the model's enabled is on)
+  eq('rebind AC1 mouse: the switch apply rounded tableB',
     hasRounded_mouse, true);
 })();
 
@@ -5152,7 +5152,7 @@ function fireTouchSecondTap(buttonEl) {
   eq('rebind AC1 touch: PREVIEW_SAMPLES_CHANGED not dispatched on a switch',
     previewCalls.length, 0);
 
-  eq('rebind AC1 touch: toggle action ran against tableB (cells rounded)',
+  eq('rebind AC1 touch: the switch apply rounded tableB',
     hasRounded_touch, true);
 })();
 
@@ -5427,6 +5427,51 @@ function fireTouchSecondTap(buttonEl) {
     rounded, false);
   eq('sync-on-switch: the clicked table\'s applied flag stays original under enabled:false',
     flag, 'original');
+})();
+
+// Switching onto a LOCKED table (issue #262): the clicked table carries a
+// dr-ext-rounded cell with no registry original, so the switch apply's
+// resetTable refuses. The pin here is the ORDER — TABLE_SWITCHED must leave
+// before APPLY_BLOCKED, because the sidebar lifts the PREVIOUS table's lock
+// on TABLE_SWITCHED and the new table's APPLY_BLOCKED must land after that
+// lift to re-lock the panel. A send moved after the apply would leave a
+// stuck table showing an unlocked panel with nothing failing.
+//
+// The intent is published straight onto the bus: the view refuses clicks on
+// a locked pill (issue #263's aria-disabled guard), but a table can become
+// unrestorable between pill syncs, so the controller's own entry point must
+// hold the order on its own.
+(function issue251_switchOntoLockedTablePinsMessageOrder() {
+  const tableA = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
+  const tableB = makeToggleTable([
+    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
+  // The unrestorable pairing: rounded class, no DR_STORE original.
+  tableB._cells[2].classList.add('dr-ext-rounded');
+
+  const sentMessages = [];
+  const origSendMessage = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
+
+  sidebarOpen = true;
+  lastRightClickedTable = tableA;
+
+  DR_BUS.publish('intent:toggleTable', { table: tableB });
+
+  global.chrome.runtime.sendMessage = origSendMessage;
+  sidebarOpen = false;
+  lastRightClickedTable = null;
+
+  eq('locked-switch: the sequence is TABLE_SWITCHED then APPLY_BLOCKED, nothing else',
+    sentMessages.map(m => m.action), ['TABLE_SWITCHED', 'APPLY_BLOCKED']);
+  eq('locked-switch: APPLY_BLOCKED carries the unrestorable-cell count',
+    sentMessages[1] && sentMessages[1].count, 1);
 })();
 
 // ---------------------------------------------------------------------------
