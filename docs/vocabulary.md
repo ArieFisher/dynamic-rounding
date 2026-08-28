@@ -34,6 +34,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | table toggle | An on/off control on a data table.                                                                                   |
 | switch       | An on/off control in the sidebar.<br><br>                                                                            |
 | menu toggle  | The "Toggle readable data" item in the extension's right-click menu. Toggles the active table.                       |
+| pulse        | A brief highlight flashed over the cells a toggle or apply touched, as visual feedback.  <br><br>It covers the range expression's cells; a blank range expression pulses the whole table.<br> |
 | lens         | A simplified data set with different assumptions (parameters).                                                       |
 | lens control | The sidebar control (under 'advanced' as of this writing) where the user can change `offset_top` and `offset_other`. |
 | lens preview | Shows sample values from different OoM before and after simplification.                                              |
