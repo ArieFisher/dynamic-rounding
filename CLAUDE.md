@@ -46,6 +46,15 @@ Route every review finding — from `/code-review`, a sprint-stack reviewer suba
 
 For sprint-stack: the reviewer subagent returns APPROVE/BLOCK and edits no files, so the verdict describes the reviewed code. A bucket-2 finding forces BLOCK; the orchestrator applies the fix and the test, then re-runs review. After APPROVE, the orchestrator applies bucket-1 fixes as a small `chore(...)` or `refactor(...)` commit, opens bucket-3 issues, writes the log, and opens the PR.
 
+## Vocabulary
+
+`docs/vocabulary.md` is the term canon: one term per concept, across every platform and every document.
+
+- Read it in full, including the Retired synonyms table, when starting a branch.
+- At every commit, sweep the change's new prose — code comments, test names, the commit message, issue and PR text — for retired synonyms and undefined terms.
+- Replace a retired synonym with its canonical term.
+- A concept the work coins gets a definition row in `docs/vocabulary.md` on the same branch, as its own `docs:` commit, instead of drifting undefined.
+
 ## Writing style
 
 These rules govern all prose: chat responses, documents, PR titles and bodies, issues, commit messages, logs.
