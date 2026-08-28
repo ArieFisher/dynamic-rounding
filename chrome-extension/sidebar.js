@@ -30,9 +30,10 @@ function setTableBound(isBound) {
     enabledEl.checked = false;
     statusEl.textContent = NO_TABLE_STATUS_MSG;
   } else {
-    // A table is now bound: restore the toggle to the shared default (the
-    // per-table state then arrives via TABLE_TOGGLE_STATE / reset).
-    enabledEl.checked = DR_DEFAULTS.enabled !== false;
+    // A table is now bound. The main toggle is not touched here: the model
+    // is its source (issue #251) — applySettingsToUI on a pull, or
+    // applyDefaultsToUI on the pull's fallback, has already set it, and a
+    // bind must not reset it to the shipped default.
     if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
       statusEl.textContent = '';
     }
@@ -344,14 +345,12 @@ function renderPreviewBands() {
   renderBotBand(botBandEl, cachedSamples.bottom, botVal, cachedMaxMag);
 }
 
-// pulledSettings is optional: when this call is the tail end of
-// pullSettingsAndApplyToUI (sidebar reopen), it carries the settings object
-// just pulled from the model. setTableBound(true) below resets enabledEl to
-// the shared default on every bind, which is correct for a live rebind
-// (PREVIEW_SAMPLES_CHANGED) but would clobber a pulled enabled:false with a
-// bound table — so when pulledSettings is present, its enabled value wins
-// back over that default once the bind has resolved.
-function fetchPreviewSamples(pulledSettings) {
+// Refreshes the preview bands from the selected table; the bound/unbound
+// state is a side effect of the response (samples !== null means bound).
+// The main toggle is not written on the bound path: setTableBound(true)
+// leaves it to the settings apply that ran before this call (issue #251),
+// so no pulled value needs threading back in after the bind resolves.
+function fetchPreviewSamples() {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs[0]) return;
     chrome.tabs.sendMessage(tabs[0].id, { action: 'GET_PREVIEW_SAMPLES' }, (response) => {
@@ -363,10 +362,6 @@ function fetchPreviewSamples(pulledSettings) {
         cachedSamples = response.samples;
         cachedMaxMag = response.maxMag;
         setTableBound(response.samples !== null);
-        if (response.samples !== null && pulledSettings) {
-          enabledEl.checked = pulledSettings.enabled !== false;
-          updateDisabledState();
-        }
       }
       renderPreviewBands();
     });
@@ -592,15 +587,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     document.body.classList.remove('table-locked');
     enabledEl.disabled = false;
   } else if (request.action === 'PREVIEW_SAMPLES_CHANGED') {
-    fetchPreviewSamples();
-  } else if (request.action === 'RESET_SIDEBAR_TO_DEFAULTS') {
-    // A table switch: the lock, if any, belonged to the previous table. The
-    // new table's own reconnect apply re-locks if it must (APPLY_BLOCKED).
+    // Stale view: re-read the model's settings, then the previews (the pull
+    // chain ends in fetchPreviewSamples). A bare preview fetch here used to
+    // reset the main toggle to the shipped default (issue #251).
+    pullSettingsAndApplyToUI();
+  } else if (request.action === 'TABLE_SWITCHED') {
+    // A table switch: the lock, if any, belonged to the previous table.
+    // The switch apply on the content side runs after this message is
+    // sent, so its APPLY_BLOCKED re-locks the panel right after this lift
+    // when the new table is stuck.
     document.body.classList.remove('table-locked');
     enabledEl.disabled = false;
+    // The panel mirrors the model's settings on any switch (issue #251); it
+    // does not reset to the shipped defaults.
     try {
-      applyDefaultsToUI();
-      fetchPreviewSamples();
+      pullSettingsAndApplyToUI();
     } catch (e) {
       // sidebar may be in teardown; harmless
     }
@@ -623,7 +624,14 @@ window.addEventListener('unload', () => {
 // can never drift apart no matter which one supplied the values.
 function applySettingsToUI(settings) {
   const s = Object.assign({}, DR_DEFAULTS, settings || {});
-  enabledEl.checked = s.enabled !== false;
+  // The #262 lock forces the main toggle ON + disabled while the bound
+  // table is stuck simplified. A pull resolving under the lock — a
+  // reconnect refresh whose apply just re-blocked — must not write the
+  // model's enabled over that forced ON; every other control still
+  // mirrors the model.
+  if (!document.body.classList.contains('table-locked')) {
+    enabledEl.checked = s.enabled !== false;
+  }
   for (const id in CHECKBOX_TO_SETTING) {
     const el = document.getElementById(id);
     if (el) el.checked = !!s[CHECKBOX_TO_SETTING[id]];
@@ -642,26 +650,24 @@ function applySettingsToUI(settings) {
 }
 
 // Seed the UI from the shared defaults so the sidebar and content.js never
-// drift apart even before a table has ever been selected (RESET_SIDEBAR_TO_
-// DEFAULTS, and this file's own fallback when the live pull below fails).
+// drift apart even before a table has ever been selected (this file's own
+// fallback when the live pull below fails).
 function applyDefaultsToUI() {
   applySettingsToUI(DR_DEFAULTS);
 }
 
-// Reconnect: pull the model's current settings from content.js (the
-// settings' sole owner) rather than resetting to shipped defaults on every
-// sidebar open — a close/reopen must not lose what the user configured. No
-// active tab, no content script yet, or no response at all falls back to
-// defaults, same as before this pull existed.
+// Reconnect, table switch, or stale-view refresh: pull the model's current
+// settings from content.js (the settings' sole owner) rather than resetting
+// to shipped defaults — neither a close/reopen nor a switch may lose what
+// the user configured (issue #251). No active tab, no content script yet,
+// or no response at all falls back to defaults, same as before this pull
+// existed.
 //
 // fetchPreviewSamples runs only after the pull settles (success or fallback),
 // never in parallel with it: fetchPreviewSamples's own setTableBound call is
 // what forces enabledEl back off when no table is bound, and that must stay
 // the last word — racing it against this pull could let a pulled "enabled:
-// true" win the UI over an actual no-table state. When the pull DID resolve a
-// settings object, that same object is threaded into fetchPreviewSamples so
-// it can restore a pulled "enabled: false" after its own bound branch resets
-// enabledEl to the shared default (see fetchPreviewSamples above).
+// true" win the UI over an actual no-table state.
 function pullSettingsAndApplyToUI() {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs[0]) {
@@ -675,7 +681,7 @@ function pullSettingsAndApplyToUI() {
         fetchPreviewSamples();
       } else {
         applySettingsToUI(response.settings);
-        fetchPreviewSamples(response.settings);
+        fetchPreviewSamples();
       }
     });
   });

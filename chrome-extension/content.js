@@ -52,10 +52,12 @@ DR_BUS.subscribe('state:settingsChanged', ({ settings }) => {
 // ui-toggle.js's click handler reports every committed toggle activation
 // (an immediate mouse/keyboard click, or the second tap of a touch/pen
 // two-tap) as this one intent instead of calling runToggleAction or
-// toggleOriginalValues itself. This is where that intent turns into: the
-// select-if-different rebind (and the sidebar-reset messaging it implies),
-// the toggle action, and the sidebar's live toggle-state messaging — all
-// controller decisions that used to live inline in the view's click handler.
+// toggleOriginalValues itself. This is where that intent turns into one of
+// two controller actions: a click on a DIFFERENT table while the sidebar
+// is open connects that table and syncs it to the model (the rebind
+// branch, with its TABLE_SWITCHED message); every other click runs the
+// plain toggle with the sidebar's live toggle-state messaging. All of it
+// used to live inline in the view's click handler.
 DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
   if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()) {
     // Report the intent instead of writing DR_STORE directly here — one
@@ -63,15 +65,24 @@ DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
     // even when a second intent (toggle) is what triggered it.
     DR_BUS.publish('intent:selectTable', { table });
     try {
-      chrome.runtime.sendMessage({ action: 'RESET_SIDEBAR_TO_DEFAULTS' });
+      // TABLE_SWITCHED goes out before the apply below, so the sidebar
+      // lifts the PREVIOUS table's lock before this table's own
+      // APPLY_BLOCKED/APPLY_OK lands. The sidebar's handler re-reads the
+      // model's settings, and that pull chain ends in the preview fetch,
+      // so no separate PREVIEW_SAMPLES_CHANGED send is needed.
+      chrome.runtime.sendMessage({ action: 'TABLE_SWITCHED' });
     } catch (e) {
       // sidebar may be torn down; harmless
     }
-    try {
-      chrome.runtime.sendMessage({ action: 'PREVIEW_SAMPLES_CHANGED' });
-    } catch (e) {
-      // sidebar may be torn down; harmless
-    }
+    // With the sidebar open, a click on a different table connects that
+    // table and syncs it to the model — the same apply a sidebar reopen
+    // runs (see SIDEBAR_OPENED) — instead of toggling it with the shipped
+    // defaults, so the table always matches what the panel is about to
+    // show (issue #251). applySidebarRounding sends the apply and range
+    // messages and syncs the on-page toggle itself. No TABLE_TOGGLE_STATE
+    // here: the panel redraws from the model pull.
+    applySidebarRounding(table, DR_STORE.getSettings());
+    return;
   }
   runToggleAction(table);
   syncSwitchForTable(table);
@@ -176,8 +187,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const selected = DR_STORE.getSelectedTable();
     if (selected) {
       applySidebarRounding(selected, DR_STORE.getSettings());
-      // Tell the sidebar its cached preview samples are stale; it will re-pull
-      // GET_PREVIEW_SAMPLES against the now-current targeted table.
+      // Tell the sidebar its view is stale; it re-reads the model's settings
+      // and re-pulls GET_PREVIEW_SAMPLES against the now-current targeted
+      // table.
       try {
         chrome.runtime.sendMessage({ action: 'PREVIEW_SAMPLES_CHANGED' });
       } catch (e) {
