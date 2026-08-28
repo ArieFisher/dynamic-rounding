@@ -10907,8 +10907,14 @@ function fireMouseClick(buttonEl, fn) {
   lastRightClickedTable = null;
 
   const toggleMsgs = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
-  eq('AC3 corollary 2: sidebarOpen=false → TABLE_TOGGLE_STATE NOT sent even when table matches',
-    toggleMsgs.length, 0);
+  // Contract moved with the panel-state decoupling (issue #272 family): a
+  // toggle on the CONNECTED table writes the record and reports it even with
+  // the sidebar closed — the controller no longer reads panel visibility.
+  // "No spurious sidebar update" still holds because a closed sidebar has no
+  // page to receive the message; background additionally gates its relay on
+  // sidebarTabId (AC4 below).
+  eq('AC3 corollary 2: sidebarOpen=false, table matches → the record is still reported once (no panel page exists to receive it)',
+    toggleMsgs.length, 1);
 })();
 
 // ---------------------------------------------------------------------------
@@ -11306,13 +11312,16 @@ function fireMouseClick(buttonEl, fn) {
 
     eq('double-invocation: MENU_CLICKED on an already-marked grid builds NO widget',
       buttonCreateCount, 1);
-    // Exact sequence, not presence: with the sidebar closed the menu toggle
-    // must fall through to the plain toggle — no APPLY_OK, no
-    // TABLE_TOGGLE_STATE, which the #272/#275 record-writing branch would
-    // emit. This is the only pin on the sidebar-closed menu path.
-    eq('double-invocation: a sidebar-closed MENU_CLICKED runs the plain toggle and nothing else',
+    // Exact sequence, not presence. The right-click above CONNECTED this
+    // grid, and the panel-state decoupling (issue #272 family) makes a
+    // toggle on the connected table take the record path with the sidebar
+    // closed too: APPLY_OK from the apply, RANGE_OK from the round, then the
+    // record report. No UPDATE_MENU_LABEL here only because this minimal
+    // grid's querySelector always returns null, so the enabled branch's
+    // conditional send is skipped — a fixture artifact, not contract.
+    eq('double-invocation: a sidebar-closed MENU_CLICKED on the connected grid takes the record path',
       sentMessages.slice(beforeMenuClick).map((m) => m.action),
-      ['RANGE_OK', 'UPDATE_MENU_LABEL']);
+      ['APPLY_OK', 'RANGE_OK', 'TABLE_TOGGLE_STATE']);
   } finally {
     global.document = savedDoc;
     global.chrome = savedChrome;
@@ -14807,8 +14816,9 @@ const LADDER_OPTS = {
     // the flipped enabled) and lets the state-change subscriber run the same
     // applySidebarRounding a panel switch flip runs — so the apply's own
     // APPLY_OK now leads the sequence, and TABLE_TOGGLE_STATE reports the
-    // record's new enabled. The two sidebar-closed cells below stay
-    // byte-identical to the frozen parent capture.
+    // record's new enabled. The panel-state decoupling then moved the
+    // 'false:true' cell onto this same sequence; 'false:false' is the one
+    // cell still byte-identical to the frozen parent capture.
     'true:true': [
       { action: 'APPLY_OK' },
       { action: 'RANGE_OK' },
@@ -14823,17 +14833,25 @@ const LADDER_OPTS = {
     // APPLY_BLOCKED/APPLY_OK lands; the apply then emits its usual
     // messages. No PREVIEW_SAMPLES_CHANGED (the sidebar's pull chain ends
     // in the preview fetch) and no TABLE_TOGGLE_STATE (the panel redraws
-    // from the model pull). The other three cells stay byte-identical to
-    // the frozen parent capture.
+    // from the model pull). The same-table cells moved later — see the
+    // comments on 'true:true' and 'false:true'; only 'false:false' still
+    // matches the frozen parent capture.
     'true:false': [
       { action: 'TABLE_SWITCHED' },
       { action: 'APPLY_OK' },
       { action: 'RANGE_OK' },
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
     ],
+    // The panel-state decoupling (issue #272 family) moved this cell too: a
+    // toggle on the CONNECTED table takes the record path with the sidebar
+    // closed as well, so the sequence matches the 'true:true' cell above.
+    // Only the 'false:false' cell keeps the frozen parent capture — the one
+    // remaining direct-toggle case, an unconnected table.
     'false:true': [
+      { action: 'APPLY_OK' },
       { action: 'RANGE_OK' },
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+      { action: 'TABLE_TOGGLE_STATE', enabled: true },
     ],
     'false:false': [
       { action: 'RANGE_OK' },
@@ -17166,6 +17184,116 @@ function makeIssue251SidebarHarness() {
       toggleMsgs.map((m) => m.enabled), [true, false]);
   } finally {
     global.chrome.runtime.sendMessage = origSend;
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(savedSettings);
+    DR_STORE.setSelectedTable(savedSelected);
+    DR_STORE.setSidebarOpen(savedOpen);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Decoupling the toggle from the panel's state: a toggle on the CONNECTED
+// table writes the record whether the panel is open or not. The old gate
+// read panel visibility to pick between the record path and the direct
+// path — controller logic coupled to view state — so a toggle made while
+// the panel was closed changed the page without changing the record, and
+// the next panel open re-imposed the stale record. The record write and the
+// apply that follows never needed the panel; only the gate did.
+// TABLE_TOGGLE_STATE is sent regardless too: the controller reports the
+// record; a closed sidebar has no page to receive it, and background.js
+// additionally gates its relay (the AC4 guard), so no delivery decision
+// lives here.
+// ---------------------------------------------------------------------------
+(function closedPanel_connectedTableToggleWritesRecord() {
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedOpen = DR_STORE.isSidebarOpen();
+  const savedSettings = DR_STORE.getSettings();
+  const sent = [];
+  const origSend = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
+
+  try {
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
+
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
+      [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
+    ]);
+    injectToggleEntry(table);
+    DR_STORE.setSelectedTable(table);
+    DR_STORE.setSidebarOpen(false); // the panel is CLOSED throughout
+
+    const dataCell = table._cells[3];
+    let _text = dataCell.innerHTML;
+    Object.defineProperties(dataCell, {
+      innerHTML: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+      textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
+    });
+
+    withCreateTreeWalker(function () {
+      DR_BUS.publish('intent:toggleTable', { table }); // on
+      DR_BUS.publish('intent:toggleTable', { table }); // off
+    });
+    eq('closed-panel toggle: the table shows originals after on-then-off',
+      isTableRounded(table), false);
+    eq('closed-panel toggle: the record follows the connected table with the panel closed',
+      DR_STORE.getSettings().enabled, false);
+
+    // The panel-open apply (SIDEBAR_OPENED runs this) must find the record
+    // already honest — no re-round of a table toggled off while closed.
+    withCreateTreeWalker(function () {
+      applySidebarRounding(table, DR_STORE.getSettings());
+    });
+    eq('closed-panel toggle: a later panel open honors the record — the table stays on originals',
+      isTableRounded(table), false);
+
+    const toggleMsgs = sent.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
+    eq('closed-panel toggle: the record is reported regardless of panel state (no panel page exists to receive it)',
+      toggleMsgs.map((m) => m.enabled), [true, false]);
+  } finally {
+    global.chrome.runtime.sendMessage = origSend;
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(savedSettings);
+    DR_STORE.setSelectedTable(savedSelected);
+    DR_STORE.setSidebarOpen(savedOpen);
+  }
+})();
+
+// The single record governs only the connected table: a closed-panel toggle
+// on some OTHER table keeps the direct path and must not write the record.
+(function closedPanel_unconnectedTableToggleLeavesRecordAlone() {
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedOpen = DR_STORE.isSidebarOpen();
+  const savedSettings = DR_STORE.getSettings();
+  try {
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
+
+    const connected = makeToggleTable([
+      [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
+      [{ tag: 'td', text: 'R' }, { tag: 'td', text: '1,000,000' }],
+    ]);
+    injectToggleEntry(connected);
+    const other = makeToggleTable([
+      [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
+      [{ tag: 'td', text: 'R' }, { tag: 'td', text: '12,345' }],
+    ]);
+    injectToggleEntry(other);
+    DR_STORE.setSelectedTable(connected);
+    DR_STORE.setSidebarOpen(false);
+
+    withCreateTreeWalker(function () {
+      DR_BUS.publish('intent:toggleTable', { table: other });
+    });
+    eq('closed-panel unconnected toggle: the other table toggles directly',
+      isTableRounded(other), true);
+    eq('closed-panel unconnected toggle: the record is untouched',
+      DR_STORE.getSettings().enabled, true);
+    eq('closed-panel unconnected toggle: the connection did not move',
+      DR_STORE.getSelectedTable(), connected);
+  } finally {
     DR_STORE.setSelectedTable(null);
     DR_STORE.setSettings(savedSettings);
     DR_STORE.setSelectedTable(savedSelected);

@@ -85,16 +85,21 @@ DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
     applySidebarRounding(table, DR_STORE.getSettings());
     return;
   }
-  if (DR_STORE.isSidebarOpen() && table === DR_STORE.getSelectedTable()) {
-    // Issue #272: a pill toggle on the CONNECTED table writes the record and
-    // lets the state-change subscriber above run the same applySidebarRounding
-    // a panel switch flip runs — one flow for "toggle the connected table" no
-    // matter which control starts it, and the record stays the single source.
-    // The flip direction reads the table (what the user sees), so the click
-    // always means "change what is in front of me" even if record and table
-    // had drifted apart. TABLE_TOGGLE_STATE reports the record's new value;
-    // when the apply blocks (stuck table), the panel's #262 lock keeps the
-    // forced ON on screen and routes this value to its stash instead.
+  if (table === DR_STORE.getSelectedTable()) {
+    // Issue #272: a toggle on the CONNECTED table writes the record and lets
+    // the state-change subscriber above run the same applySidebarRounding a
+    // panel switch flip runs — one flow for "toggle the connected table" no
+    // matter which control starts it, and the record stays the single
+    // source. No panel-state read here: the record write and the apply that
+    // follows work the same with the panel closed, and gating this branch on
+    // visibility was the coupling that let a closed-panel toggle change the
+    // page while the record went stale. The flip direction reads the table
+    // (what the user sees), so the click always means "change what is in
+    // front of me" even if record and table had drifted apart.
+    // TABLE_TOGGLE_STATE reports the record's new value unconditionally —
+    // with the panel closed no panel page exists to receive it (background
+    // additionally gates its relay), and while the #262 lock holds, the
+    // open panel routes it to its stash instead of the forced-ON switch.
     const nextEnabled = !isTableRounded(table);
     DR_STORE.setSettings(Object.assign({}, DR_STORE.getSettings(), { enabled: nextEnabled }));
     try {
@@ -189,9 +194,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // directly, so the menu item runs the same controller branches a
         // pill click runs. The right-click that opened this menu already
         // connected the table (the contextmenu handler's setSelectedTable),
-        // so with the sidebar open this lands in the connected-table branch
-        // and writes the record (#272); with it closed, the subscriber
-        // falls through to the same plain toggle as before.
+        // so this lands in the connected-table branch and writes the
+        // record (#272) — panel open or closed alike.
         DR_BUS.publish('intent:toggleTable', { table: markAndToggleIfNewGrid(found) });
       } else {
         console.debug("Dynamic Rounding: No table found at right-click location.");
