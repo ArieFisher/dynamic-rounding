@@ -114,12 +114,12 @@
     expectation. Details sit in HTML comments next to each fixture.</p>
   <p class="expect">Shipped defaults: first row and first column excluded,
     mixed cells on, currency and percent on, dates on at year granularity,
-    times off. A toggle is the small pill at a table's top-right corner.</p>
+    times off. A pillbox is the small on/off control at a table's top-right corner.</p>
 
   <section>
     <h2>1. Basic data table</h2>
-    <p class="expect">Expect: toggle at load. Values span magnitudes; the top
-      band and the rest take different offsets.</p>
+    <p class="expect">Expect: pillbox at load. Values span magnitudes; the top
+      band and the other band take different offsets.</p>
     <table>
       <thead>
         <tr>
@@ -158,7 +158,7 @@
 
   <section>
     <h2>2. Currency and percent cells</h2>
-    <p class="expect">Expect: toggle at load. Symbols survive rounding; the
+    <p class="expect">Expect: pillbox at load. Symbols survive rounding; the
       row-header column stays put.</p>
     <table>
       <thead>
@@ -192,13 +192,14 @@
   <section>
     <h2>3. Set-aware precision across magnitudes</h2>
     <p>Wide numeric matrix. Values span about ten orders of magnitude inside one
-      table, so the top band and the rest of the table take different offsets.</p>
-    <p class="expect">Expect: toggle at load.</p>
+      table, so the top band and the other band take different offsets.</p>
+    <p class="expect">Expect: pillbox at load.</p>
 
     <!--
       Set-aware precision is computed across the whole table, not per column.
-      max_mag comes from the largest in-range value, and a cell takes the "top"
-      offset when max_mag minus its own magnitude is under num_top. At the default
+      The max magnitude comes from the largest in-range value, and a cell takes
+      the "top" offset when the max magnitude minus its own magnitude is under
+      num_top. At the default
       num_top of one, that is the three Users cells in the ten-million band; every
       other cell takes the "other" offset. Pull the two offsets apart in the
       sidebar and the Users column should move while the rest of the table holds.
@@ -284,7 +285,7 @@
     <h2>4. Dates, times, timestamps</h2>
     <p>Dates and times sit behind separate settings, so the Governed by column
       says which switch drives each row.</p>
-    <p class="expect">Expect: toggle at load. Dates round to a year by default;
+    <p class="expect">Expect: pillbox at load. Dates round to a year by default;
       time rows move only after Times is switched on.</p>
 
     <!--
@@ -304,8 +305,8 @@
         Paid on 2025-04-02            -> Paid on 2025
         "2020-07-21"                  -> held back, the whole cell is quoted
 
-      All-numeric dates cannot be read on their own, so a post-pass reads the
-      whole column first. Here 7/21/2020 is the only row that settles the
+      All-numeric dates cannot be read on their own, so the column post-pass
+      reads the whole column first. Here 7/21/2020 is the only row that settles the
       question: a second part over twelve can only be a day, which fixes the
       column as month-first and lets the other two rows resolve.
         7/21/2020                     -> 2021
@@ -459,7 +460,7 @@
 
   <section>
     <h2>5. Signs, symbols, quoting</h2>
-    <p class="expect">Expect: toggle at load. Each row names its own rule.</p>
+    <p class="expect">Expect: pillbox at load. Each row names its own rule.</p>
 
     <!--
       Accounting negative   (1,234,567)  -> reads as a negative, comes back in parens
@@ -524,7 +525,7 @@
 
   <section>
     <h2>6. Numbers inside text</h2>
-    <p class="expect">Expect: toggle at load. Only genuine quantities move; the
+    <p class="expect">Expect: pillbox at load. Only genuine quantities move; the
       surrounding words, markup, identifiers, and protected spans hold.</p>
 
     <!--
@@ -603,7 +604,7 @@
 
   <section>
     <h2>7. Footnotes and superscripts</h2>
-    <p class="expect">Expect: toggle at load. Superscript digits are masked so
+    <p class="expect">Expect: pillbox at load. Superscript digits are masked so
       exponents and numeric footnotes never merge into the base number.</p>
 
     <!--
@@ -650,7 +651,7 @@
 
   <section>
     <h2>8. Linked numbers</h2>
-    <p class="expect">Expect: toggle at load. A number that is a link, or sits
+    <p class="expect">Expect: pillbox at load. A number that is a link, or sits
       inside one, is navigation and holds; plain numbers beside links round.</p>
 
     <!--
@@ -690,7 +691,7 @@
 
   <section>
     <h2>9. Ambiguous date columns</h2>
-    <p class="expect">Expect: toggle at load. Each column resolves, or is
+    <p class="expect">Expect: pillbox at load. Each column resolves, or is
       refused, on its own evidence.</p>
 
     <!--
@@ -732,7 +733,7 @@
 
   <section>
     <h2>10. ARIA grid with row groups</h2>
-    <p class="expect">Expect: toggle at load. Only rows inside the row group
+    <p class="expect">Expect: pillbox at load. Only rows inside the row group
       round; the header row and the Total row sit outside it and hold. The
       North row rounds: row numbering counts the header row, so North is row
       two and the shipped first-row default names the header row alone.</p>
@@ -803,7 +804,7 @@
 
   <section>
     <h2>11. ARIA table without row groups</h2>
-    <p class="expect">Expect: toggle at load. The first row holds under the
+    <p class="expect">Expect: pillbox at load. The first row holds under the
       shipped first-row default; every other row rounds.</p>
 
     <!--
@@ -853,8 +854,8 @@
 
   <section>
     <h2>12. Unmarked grid, found by right-click</h2>
-    <p class="expect">Expect: no toggle at load. Right-click any cell and the
-      toggle appears; the geometry probe is what finds this one.</p>
+    <p class="expect">Expect: no pillbox at load. Right-click any cell and the
+      pillbox appears; the geometry probe is what finds this one.</p>
 
     <!--
       No table element, no ARIA role, no known vendor class. The load-time scan
@@ -863,7 +864,7 @@
       children, consistent cell counts, a grid or flex display, at least one
       numeric cell, and aligned first-column widths make it a grid. The walk
       keeps climbing while the parent also qualifies and returns the outermost
-      match, so the toggle lands on the whole grid, not the clicked row.
+      match, so the pillbox lands on the whole grid, not the clicked row.
     -->
     <div class="plain-grid">
       <div class="plain-row">
@@ -913,7 +914,7 @@
 
   <section>
     <h2>13. Pinned-pane vendor grid</h2>
-    <p class="expect">Expect: toggle at load on the wrapper. The pinned row
+    <p class="expect">Expect: pillbox at load on the wrapper. The pinned row
       numbers stitch in as column A, so the first-column default protects
       them; the orders row is the grid's first row and holds under the
       first-row default.</p>
@@ -924,7 +925,7 @@
       role="row" on the rows. Row discovery falls through to the vendor row
       class, cells to the vendor cell class, and rows pair across panes by their
       data-row key, pinned cells first. The scrollable pane is its own ARIA
-      root, so it currently also grows a second toggle of its own; the pinned
+      root, so it currently also grows a second pillbox of its own; the pinned
       pane alone is a single column and fails the data test.
     -->
     <div class="dg--table-wrapper" role="table" aria-label="Query results">
@@ -985,7 +986,7 @@
 
   <section>
     <h2>14. ARIA grid with bare table rows</h2>
-    <p class="expect">Expect: toggle at load. The rows are tr elements with no
+    <p class="expect">Expect: pillbox at load. The rows are tr elements with no
       surrounding table, built by script because the HTML parser drops stray
       table rows.</p>
 
@@ -1022,7 +1023,7 @@
   <section>
     <h2>15. Table added after load</h2>
     <p class="expect">Expect: no table until the button is pressed; the added
-      table grows a toggle on its own within a moment.</p>
+      table grows a pillbox on its own within a moment.</p>
 
     <!--
       Exercises the mutation observer: nodes added after the initial scan are
@@ -1062,7 +1063,7 @@
 
   <section>
     <h2>16. Accessibility artifacts, never toggled</h2>
-    <p class="expect">Expect: no toggle on any of the three tables below at
+    <p class="expect">Expect: no pillbox on any of the three tables below at
       load. They are real table elements, but each carries a phantom signal.</p>
 
     <p>16a. Marked hidden for assistive technology (visible here on purpose):</p>
@@ -1083,7 +1084,7 @@
     </table>
 
     <p>16b. Positioned far off-screen (nothing should render below, and no
-      stray toggle should appear near the page corner):</p>
+      stray pillbox should appear near the page corner):</p>
     <!--
       A positioned ancestor with a large negative left offset marks the table
       as an off-screen accessibility artifact.
@@ -1138,7 +1139,7 @@
 
   <section>
     <h2>17. Tables that fail the data test</h2>
-    <p class="expect">Expect: no toggle on any table below. Each one misses a
+    <p class="expect">Expect: no pillbox on any table below. Each one misses a
       requirement: two rows, two columns in some row, and a numeric cell.</p>
 
     <p>17a. One row only:</p>
@@ -1213,7 +1214,7 @@
 
   <section>
     <h2>19. TSV, plain text</h2>
-    <p class="expect">Expect: no toggle. The extension reads DOM tables and
+    <p class="expect">Expect: no pillbox. The extension reads DOM tables and
       grids only; tab-separated text has neither rows nor cells to adapt. A
       site that renders a TSV file as an HTML table is section 1's case.</p>
     <pre>
@@ -1227,7 +1228,7 @@ Iceland	375,318	31,020,000,000
 
   <section>
     <h2>20. CSV, plain text</h2>
-    <p class="expect">Expect: no toggle, same reason as the TSV block. This is
+    <p class="expect">Expect: no pillbox, same reason as the TSV block. This is
       also what a raw .csv file opened directly in the browser looks like to
       the extension.</p>
     <pre>
