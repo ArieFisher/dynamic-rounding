@@ -10761,6 +10761,49 @@ function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
     cells.some(function(c) { return c.num === 2400945; }), false);
 })();
 
+// Pin: only the footer section carries the outside mark on native tables.
+// A header-section row's td values still feed the dataset — the deliberate
+// scope of the outside-row rule (Arie approved footer-only). The offsets are
+// pulled apart: with the thead value (magnitude 8) in the basis, the body
+// value (magnitude 7) is the other band (nearest 1M → 88,000,000); marking
+// THEAD outside would flip it to the top band (nearest 5M → 90,000,000).
+(function nativeHeaderRow_staysInDataset() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([
+      [{ tag: 'td', text: '987,654,321' }],
+      [{ tag: 'td', text: '87,654,321' }],
+    ]);
+    table.rows[0].parentElement = { tagName: 'THEAD' };
+    const opts = {
+      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
+      simplifyMixedPercent: false, simplifyMixedCurrency: false,
+      offsetTop: -0.5, offsetOther: -1, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    eq('outside-row (native): a header-section value still feeds the dataset',
+      table.rows[1].cells[0].innerText, '88,000,000');
+  });
+})();
+
+// Pin: when a table's only numbers sit in outside rows, the dataset is empty
+// (max magnitude null) and every outside value takes the other-band offset —
+// the accepted edge, recorded so the next reader need not re-derive it.
+(function gridOutsideRow_emptyDatasetTakesOtherOffset() {
+  const g = makeRowgroupRoleGrid(
+    ['Region', 'Q1'],
+    [['North', 'n/a']],
+    ['Total', '24,009,450']
+  );
+  const opts = Object.assign({}, DR_DEFAULTS, { offsetTop: -0.5, offsetOther: -1 });
+  const { results, maxMag } = computeGridRoundedValues(g.wrapperEl, opts);
+  eq('outside-row: a dataset of outside rows alone is empty',
+    maxMag, null);
+  eq('outside-row: with an empty dataset the outside value takes the other-band offset',
+    results[5] && results[5].targetValue, '24,000,000');
+})();
+
 // Outside rows, native analog: a footer-section row rounds but stays out of
 // the dataset. The offsets are pulled apart so the basis is visible in the
 // output: with the footer value (magnitude 8) out of the basis, the body
