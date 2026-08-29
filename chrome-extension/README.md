@@ -55,7 +55,7 @@ Because virtualized grids recycle rows on scroll and rewrite cells in place on s
 
 A `display: grid` / `flex` container is not necessarily a *data* grid — it might be a nav menu, a card layout, or a photo gallery. The extension deliberately does **not** badge or round these. Two things keep them out:
 
-1. **Detection runs on demand, narrowly.** Only `role="grid"`/`role="table"` elements and known library grids (`dg--`, `ag-`) are tagged proactively. An unlabelled `<div>` structure is only ever evaluated when you **right-click inside it** (`findTargetTable` walks up calling `looksLikeGrid`).
+1. **Detection runs on demand, narrowly.** The load-time scan tags only `role="grid"`/`role="table"` elements and known library grids (`dg--`, `ag-`). An unlabelled `<div>` structure is only ever evaluated when you **right-click inside it** (`findTargetTable` walks up calling `looksLikeGrid`).
 2. **`looksLikeGrid` (`content.js`) applies a cheap-first ladder**, and a layout grid fails at least one rung:
    - ≥ N repetitive children sharing a class or child-shape (rejects ad-hoc layouts);
    - a consistent modal cell count across rows;

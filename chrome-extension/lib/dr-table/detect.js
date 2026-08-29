@@ -40,7 +40,7 @@ const GRID_WALK_DEPTH_CAP = 15;
 const GRID_COL_WIDTH_SAMPLE = 10;
 /** CSS display values that indicate a grid/flex layout. */
 const GRID_DISPLAY_VALUES = new Set(['grid', 'flex', 'inline-grid', 'inline-flex']);
-/** CSS selector for the cheap proactive ARIA pass. */
+/** CSS selector for the cheap load-time ARIA pass. */
 const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
 /** Debounce delay (ms) for the grid virtualization re-apply observer. */
 const GRID_REAPPLY_DEBOUNCE_MS = 100;
@@ -128,7 +128,13 @@ class NativeTableAdapter {
   getElement() { return this.el; }
   isVirtualized() { return false; }
   getRows() {
+    // isOutside marks a footer-section row — the native analog of a grid row
+    // outside the row group. Outside rows round like any other, but their
+    // values stay out of the dataset: consumers skip them when computing the
+    // max magnitude and the lens preview pool.
     return Array.from(this.el.rows).map(row => ({
+      isOutside: !!((row.parentElement || row.parentNode) &&
+        (row.parentElement || row.parentNode).tagName === 'TFOOT'),
       getCells() {
         return Array.from(row.cells).map(cell => ({
           // No setText: the native path writes cells directly in roundTable so it
@@ -249,45 +255,75 @@ class GridAdapter {
   }
 
   /**
-   * Extract rows from a container element.
+   * Extract rows from a container element, each as { el, isOutside }.
    *
    * Row source order: [role="row"] → .dg--virtual-row → <tr> → repetitive
    * children. The <tr> source covers ARIA grids (role="grid"/"table") that
    * render their rows as bare <tr> elements without role="row" — e.g. Kaggle's
    * Data Explorer, whose movie rows are orphan <tr> inside the grid.
    *
-   * Scoping: when the container groups rows in one or more [role="rowgroup"]
-   * elements (the ARIA analog of <tbody>), row discovery is restricted to those
-   * groups. This keeps header rows and per-column summary/stats rows — which
-   * sit OUTSIDE the rowgroup — from being treated as data rows. Both signals are
-   * standard ARIA, so this stays general (not site-specific).
+   * Rowgroups pick the row shape, not the row set: when the container groups
+   * rows in one or more [role="rowgroup"] elements (the ARIA analog of
+   * <tbody>), a selector wins only when it matches rows INSIDE a group — so a
+   * stray decorated block (e.g. Kaggle's role="row" description panel) cannot
+   * beat the <tr> rows that hold the data. The returned list is then the
+   * container-wide match list for that winning selector, in document order:
+   * header and summary rows outside the group count as rows like any other,
+   * and only the shipped first-row/first-column defaults hold them — the same
+   * treatment a native table's <thead> and Total rows get. Row position in
+   * this list IS the row's literal row number.
+   *
+   * isOutside marks the rows not inside any rowgroup. An outside row rounds
+   * like any other, but its values stay out of the dataset: consumers skip it
+   * when computing the max magnitude and the lens preview pool.
    *
    * @param {Element} container
-   * @returns {Element[]}
+   * @returns {{el: Element, isOutside: boolean}[]}
    */
-  _getRowEls(container) {
+  _getRowEntries(container) {
     if (!container) return [];
     if (!container.querySelectorAll) {
-      return container.children ? Array.from(container.children) : [];
+      const kids = container.children ? Array.from(container.children) : [];
+      return kids.map((el) => ({ el, isOutside: false }));
     }
-    // Scope to ARIA rowgroup(s) when present so header/summary rows outside the
-    // group are excluded; otherwise search the whole container.
     const rowgroups = container.querySelectorAll('[role="rowgroup"]');
-    const scopes = (rowgroups && rowgroups.length > 0)
-      ? Array.from(rowgroups)
-      : [container];
+    const isGrouped = !!(rowgroups && rowgroups.length > 0);
+    const scopes = isGrouped ? Array.from(rowgroups) : [container];
 
     for (const sel of ['[role="row"]', '.dg--virtual-row', 'tr']) {
       let rows = [];
       for (const scope of scopes) {
         if (scope.querySelectorAll) rows = rows.concat(Array.from(scope.querySelectorAll(sel)));
       }
-      if (rows.length > 0) return rows;
+      if (rows.length === 0) continue;
+      if (!isGrouped) return rows.map((el) => ({ el, isOutside: false }));
+      // The winning selector's full universe, not just the in-group matches;
+      // a universe row not inside any group is an outside row.
+      const inGroup = new Set(rows);
+      return Array.from(container.querySelectorAll(sel))
+        .map((el) => ({ el, isOutside: !inGroup.has(el) }));
     }
-    // Fallback: repetitive children of the first scope.
+    // Fallback: repetitive children of the first scope. When row groups are
+    // present this is non-conforming markup (a group must own rows), and the
+    // fallback stays narrow — the first group's children only — rather than
+    // guessing at rows among the container's mixed children; the whole-grid
+    // row universe above applies only to rows a selector can name.
     const first = scopes[0];
-    if (first && first.children) return Array.from(first.children);
+    if (first && first.children) {
+      return Array.from(first.children).map((el) => ({ el, isOutside: false }));
+    }
     return [];
+  }
+
+  /**
+   * Extract row elements from a container — _getRowEntries without the
+   * outside-row marking, for callers that only stitch by list position
+   * (pinned panes).
+   * @param {Element} container
+   * @returns {Element[]}
+   */
+  _getRowEls(container) {
+    return this._getRowEntries(container).map((entry) => entry.el);
   }
 
   /**
@@ -364,8 +400,8 @@ class GridAdapter {
     const scrollContainer = this._getScrollContainer();
     const pinnedPane = this._getPinnedPane(scrollContainer);
 
-    const scrollRows = this._getRowEls(scrollContainer);
-    if (scrollRows.length === 0) return [];
+    const scrollEntries = this._getRowEntries(scrollContainer);
+    if (scrollEntries.length === 0) return [];
 
     // Build a map from row-key → pinned row element for efficient stitching.
     let pinnedRows = [];
@@ -379,12 +415,13 @@ class GridAdapter {
     }
 
     const adapter = this;
-    return scrollRows.map((rowEl, idx) => {
+    return scrollEntries.map(({ el: rowEl, isOutside }, idx) => {
       const scrollKey = adapter._getRowKey(rowEl, idx);
       // Find the matching pinned row (by data-row / data-index / DOM index).
       let pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
 
       return {
+        isOutside,
         getCells() {
           const cells = [];
           // Pinned cells first (if any pinned pane exists).
@@ -840,8 +877,13 @@ function findTargetTable(el, opts = {}) {
   return null;
 }
 
-/** Maximum number of cells sampled across grid rows when probing isDataTable for virtual grids. */
+/** Maximum cells sampled PER ROW when probing isDataTable for virtual grids. */
 const GRID_IS_DATA_TABLE_CELL_SAMPLE = 10;
+/** Maximum rows sampled when probing isDataTable for virtual grids. Per-row
+ * bounds (not one shared budget) so a wide header row of text labels cannot
+ * exhaust the sample before the scan reaches a data row — the row universe
+ * starts at the header now that rowgroups no longer trim the row list. */
+const GRID_IS_DATA_TABLE_ROW_SAMPLE = 10;
 /** Left-offset threshold (px) below which an element is treated as deliberately off-screen hidden. */
 const OFFSCREEN_LEFT_PX_THRESHOLD = -9999;
 
@@ -981,15 +1023,16 @@ function isDataTable(table, opts = {}) {
     }
   }
   if (!hasMultipleColumns) return false;
-  // For virtual grids, limit the cell scan to a small sample to avoid probing
-  // potentially hundreds of rows. For native tables the loop is cheap.
-  const maxCells = adapter.isVirtualized() ? GRID_IS_DATA_TABLE_CELL_SAMPLE : Infinity;
-  let cellCount = 0;
-  for (let i = 0; i < rows.length; i++) {
+  // For virtual grids, bound the scan per row (rows × cells-per-row) to avoid
+  // probing potentially hundreds of rows. The bounds are per row, not one
+  // shared cell budget, so a header row of text labels gets its own allotment
+  // and cannot starve the data rows below it. For native tables the loop is
+  // cheap and unbounded.
+  const maxRows = adapter.isVirtualized() ? GRID_IS_DATA_TABLE_ROW_SAMPLE : Infinity;
+  const maxCellsPerRow = adapter.isVirtualized() ? GRID_IS_DATA_TABLE_CELL_SAMPLE : Infinity;
+  for (let i = 0; i < rows.length && i < maxRows; i++) {
     const cells = rows[i].getCells();
-    for (let j = 0; j < cells.length; j++) {
-      if (cellCount >= maxCells) return false;
-      cellCount++;
+    for (let j = 0; j < cells.length && j < maxCellsPerRow; j++) {
       const text = cells[j].getText().trim();
       if (text === '') continue;
       const parsed = numericProbe.parse(text);

@@ -10520,7 +10520,7 @@ function makeKaggleLikeGrid(dataRows) {
   return wrapper;
 }
 
-(function gridRowgroup_dataRowsOnly() {
+(function gridRowgroup_selectorFromGroup_universeFromGrid() {
   const grid = makeKaggleLikeGrid([
     ['2021-12-15', '5083.954', '8940'],
     ['2022-03-01', '3827.658', '1151'],
@@ -10529,12 +10529,12 @@ function makeKaggleLikeGrid(dataRows) {
   const adapter = makeAdapter(grid);
   const rows = adapter.getRows();
 
-  eq('grid-rowgroup: getRows() returns ONLY the 3 data rows (header/stats/desc excluded)',
-    rows.length, 3);
-  eq('grid-rowgroup: first data row first cell is the date (not "About this file")',
-    rows[0].getCells()[0].getText(), '2021-12-15');
-  eq('grid-rowgroup: data row exposes its numeric cell',
-    rows[0].getCells()[1].getText(), '5083.954');
+  eq('grid-rowgroup: getRows() returns all 5 <tr> rows — header and stats included, desc block excluded',
+    rows.length, 5);
+  eq('grid-rowgroup: the first row is the header row, not the role="row" desc block',
+    rows[0].getCells()[0].getText(), 'Release_Date');
+  eq('grid-rowgroup: the data rows follow the header and stats rows',
+    rows[2].getCells()[0].getText(), '2021-12-15');
   eq('grid-rowgroup: grid with bare-<tr> data rows is a data table',
     isDataTable(grid), true);
 })();
@@ -10556,6 +10556,280 @@ function makeKaggleLikeGrid(dataRows) {
     adapter.getRows().length, 2);
   eq('grid-orphan-tr: numeric cell readable',
     adapter.getRows()[0].getCells()[1].getText(), '10');
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint grid-first-row-literal: a rowgroup picks the row shape, not the row
+// set. The rows found inside it decide the winning selector; the row list is
+// then the whole grid's matches for that selector, so header and summary rows
+// outside the group are rows like any other. Only the shipped first-row and
+// first-column defaults hold rows: the header row holds because it is the
+// grid's literal first row, and a Total row below the group rounds with the
+// data. Before this, rowgroup scoping dropped the outside rows entirely and
+// the first-row default held the first DATA row — the grid's second literal
+// row.
+// ---------------------------------------------------------------------------
+
+// Build a Table-10-shaped ARIA grid: [role="row"] rows, with an optional
+// header row before the rowgroup and an optional summary row after it, both
+// OUTSIDE the group. Data rows sit inside the rowgroup.
+function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
+  function makeRoleRow(cellTexts) {
+    const cellEls = cellTexts.map(makeGridCellWithTextNode);
+    const row = makeElementNode('g-row', cellEls);
+    row.children = cellEls;
+    row.querySelectorAll = function(sel) {
+      if (sel === '[role="cell"]') return cellEls;
+      return [];
+    };
+    return row;
+  }
+
+  const headerRow = headerTexts ? makeRoleRow(headerTexts) : null;
+  const dataRowEls = dataRows.map(makeRoleRow);
+  const summaryRow = summaryTexts ? makeRoleRow(summaryTexts) : null;
+
+  const rowgroup = makeElementNode('', dataRowEls);
+  rowgroup.querySelectorAll = function(sel) {
+    if (sel === '[role="row"]') return dataRowEls;
+    return [];
+  };
+
+  // Document order, as the real querySelectorAll would report it.
+  const allRows = [];
+  if (headerRow) allRows.push(headerRow);
+  allRows.push.apply(allRows, dataRowEls);
+  if (summaryRow) allRows.push(summaryRow);
+
+  const kids = [];
+  if (headerRow) kids.push(headerRow);
+  kids.push(rowgroup);
+  if (summaryRow) kids.push(summaryRow);
+
+  const wrapper = makeElementNode('aria-grid', kids);
+  wrapper.tagName = 'DIV';
+  wrapper.matches = function() { return false; };
+  wrapper.querySelector = function() { return null; };
+  wrapper.querySelectorAll = function(sel) {
+    if (sel === '[role="rowgroup"]') return [rowgroup];
+    if (sel === '[role="row"]') return allRows;
+    return [];
+  };
+  return { wrapperEl: wrapper, dataRowEls, headerRow, summaryRow };
+}
+
+// Row universe: role="row" grid with a header row before the group and a
+// summary row after it — all four rows come back, in document order.
+(function gridRowUniverse_roleRows() {
+  const g = makeRowgroupRoleGrid(
+    ['Region', 'Q1'],
+    [['1111111', '1482391'], ['2222222', '918554']],
+    ['Total', '2400945']
+  );
+  const rows = makeAdapter(g.wrapperEl).getRows();
+  const firstCellText = function(row) {
+    return row ? row.getCells()[0].getText() : '(missing row)';
+  };
+  eq('row-universe: header, data, and summary rows all count as rows',
+    rows.length, 4);
+  eq('row-universe: the header row is the grid\'s first row',
+    firstCellText(rows[0]), 'Region');
+  eq('row-universe: the summary row is the grid\'s last row',
+    firstCellText(rows[3]), 'Total');
+})();
+
+// Row universe: two rowgroups with rows outside and between them — every
+// row of the winning shape comes back, in document order.
+(function gridRowUniverse_twoRowgroups() {
+  function makeRoleRow(cellTexts) {
+    const cellEls = cellTexts.map(makeGridCellWithTextNode);
+    const row = makeElementNode('g-row', cellEls);
+    row.children = cellEls;
+    row.querySelectorAll = function(sel) {
+      return sel === '[role="cell"]' ? cellEls : [];
+    };
+    return row;
+  }
+  const header = makeRoleRow(['Region', 'Q1']);
+  const a1 = makeRoleRow(['North', '100']);
+  const a2 = makeRoleRow(['South', '200']);
+  const sep = makeRoleRow(['Subtotal', '300']);
+  const b1 = makeRoleRow(['West', '400']);
+
+  const groupA = makeElementNode('', [a1, a2]);
+  groupA.querySelectorAll = (sel) => (sel === '[role="row"]' ? [a1, a2] : []);
+  const groupB = makeElementNode('', [b1]);
+  groupB.querySelectorAll = (sel) => (sel === '[role="row"]' ? [b1] : []);
+
+  const wrapper = makeElementNode('aria-grid', [header, groupA, sep, groupB]);
+  wrapper.tagName = 'DIV';
+  wrapper.matches = () => false;
+  wrapper.querySelector = () => null;
+  wrapper.querySelectorAll = function(sel) {
+    if (sel === '[role="rowgroup"]') return [groupA, groupB];
+    if (sel === '[role="row"]') return [header, a1, a2, sep, b1]; // document order
+    return [];
+  };
+
+  const rows = makeAdapter(wrapper).getRows();
+  eq('row-universe: two rowgroups — all five rows come back in document order',
+    rows.map(function(r) { return r.getCells()[0].getText(); }).join(','),
+    'Region,North,South,Subtotal,West');
+})();
+
+// Detection: the row universe now starts at the header row, and a wide
+// header of text labels must not exhaust the data-test sample before the
+// scan reaches a data row (review finding: a six-column sales grid whose
+// data rows lead with four text cells lost its pillbox).
+(function gridRowUniverse_isDataTable_wideHeader() {
+  const g = makeRowgroupRoleGrid(
+    ['Region', 'Country', 'Segment', 'Channel', 'Units', 'Revenue'],
+    [['North', 'Canada', 'Retail', 'Web', '120', '1482391']],
+    null
+  );
+  eq('row-universe: a grouped grid with a wide text header still passes the data test',
+    isDataTable(g.wrapperEl), true);
+})();
+
+// Behavior: the header row holds because it is the literal first row; the
+// first data row and the summary row round. The first column still holds.
+(function gridRowUniverse_headerHolds_dataAndSummaryRound() {
+  const g = makeRowgroupRoleGrid(
+    ['Region', '999999'],
+    [['North', '1482391'], ['South', '918554']],
+    ['Total', '2400945']
+  );
+  const { results } = computeGridRoundedValues(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
+  // results are row-major over all rows: [header c0, header c1, r1c0, r1c1, r2c0, r2c1, total c0, total c1]
+  eq('row-universe: every cell of every row is classified',
+    results.length, 8);
+  eq('row-universe: the header row\'s numeric cell holds under the first-row default',
+    results[1] && results[1].targetValue, null);
+  eq('row-universe: the first data row rounds under defaults',
+    !!(results[3] && results[3].targetValue !== null), true);
+  eq('row-universe: the first column of a data row still holds',
+    results[2] && results[2].targetValue, null);
+  eq('row-universe: the summary row below the group rounds with the data',
+    !!(results[7] && results[7].targetValue !== null), true);
+})();
+
+// Behavior: with the rowgroup first (no header row outside), the first data
+// row IS the grid's literal first row and holds under the default.
+(function gridRowUniverse_groupAtTop_firstDataRowHolds() {
+  const g = makeRowgroupRoleGrid(
+    null,
+    [['1111111', '1482391'], ['2222222', '918554']],
+    ['Total', '2400945']
+  );
+  const { results } = computeGridRoundedValues(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
+  eq('row-universe: rowgroup-first grid holds its first data row',
+    results[1] && results[1].targetValue, null);
+  eq('row-universe: rowgroup-first grid rounds its second data row',
+    !!(results[3] && results[3].targetValue !== null), true);
+  eq('row-universe: rowgroup-first grid rounds its summary row',
+    !!(results[5] && results[5].targetValue !== null), true);
+})();
+
+// Outside rows: a row outside the row group rounds, but its values stay out
+// of the dataset — they never feed the max magnitude or the lens preview.
+(function gridOutsideRow_staysOutOfDataset() {
+  // Total is a magnitude ABOVE the data (7 vs 6): if it fed the basis, the
+  // max magnitude would read 7.
+  const g = makeRowgroupRoleGrid(
+    ['Region', 'Q1'],
+    [['North', '1,482,391'], ['South', '918,554']],
+    ['Total', '24,009,450']
+  );
+  const { results, maxMag } = computeGridRoundedValues(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
+  eq('outside-row: the max magnitude comes from the data rows alone',
+    maxMag, 6);
+  eq('outside-row: the outside row still rounds against that dataset',
+    !!(results[7] && results[7].targetValue !== null), true);
+})();
+
+// Outside rows: the lens preview pool draws from the dataset only.
+(function gridOutsideRow_staysOutOfPreview() {
+  const g = makeRowgroupRoleGrid(
+    ['Region', 'Q1'],
+    [['North', '1482391'], ['South', '918554']],
+    ['Total', '2400945']
+  );
+  const cells = collectNumericCells(g.wrapperEl);
+  eq('outside-row: lens preview pool includes the first data row value',
+    cells.some(function(c) { return c.num === 1482391; }), true);
+  eq('outside-row: lens preview pool leaves the outside row value out',
+    cells.some(function(c) { return c.num === 2400945; }), false);
+})();
+
+// Pin: only the footer section carries the outside mark on native tables.
+// A header-section row's td values still feed the dataset — the deliberate
+// scope of the outside-row rule (Arie approved footer-only). The offsets are
+// pulled apart: with the thead value (magnitude 8) in the basis, the body
+// value (magnitude 7) is the other band (nearest 1M → 88,000,000); marking
+// THEAD outside would flip it to the top band (nearest 5M → 90,000,000).
+(function nativeHeaderRow_staysInDataset() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([
+      [{ tag: 'td', text: '987,654,321' }],
+      [{ tag: 'td', text: '87,654,321' }],
+    ]);
+    table.rows[0].parentElement = { tagName: 'THEAD' };
+    const opts = {
+      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
+      simplifyMixedPercent: false, simplifyMixedCurrency: false,
+      offsetTop: -0.5, offsetOther: -1, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    eq('outside-row (native): a header-section value still feeds the dataset',
+      table.rows[1].cells[0].innerText, '88,000,000');
+  });
+})();
+
+// Pin: when a table's only numbers sit in outside rows, the dataset is empty
+// (max magnitude null) and every outside value takes the other-band offset —
+// the accepted edge, recorded so the next reader need not re-derive it.
+(function gridOutsideRow_emptyDatasetTakesOtherOffset() {
+  const g = makeRowgroupRoleGrid(
+    ['Region', 'Q1'],
+    [['North', 'n/a']],
+    ['Total', '24,009,450']
+  );
+  const opts = Object.assign({}, DR_DEFAULTS, { offsetTop: -0.5, offsetOther: -1 });
+  const { results, maxMag } = computeGridRoundedValues(g.wrapperEl, opts);
+  eq('outside-row: a dataset of outside rows alone is empty',
+    maxMag, null);
+  eq('outside-row: with an empty dataset the outside value takes the other-band offset',
+    results[5] && results[5].targetValue, '24,000,000');
+})();
+
+// Outside rows, native analog: a footer-section row rounds but stays out of
+// the dataset. The offsets are pulled apart so the basis is visible in the
+// output: with the footer value (magnitude 8) out of the basis, the body
+// value (magnitude 7) is the top band and takes offset_top (nearest 5M →
+// 90,000,000); if the footer fed the basis, the body value would take
+// offset_other (nearest 1M → 88,000,000).
+(function nativeFooterRow_staysOutOfDataset() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([
+      [{ tag: 'td', text: '87,654,321' }],
+      [{ tag: 'td', text: '987,654,321' }],
+    ]);
+    table.rows[1].parentElement = { tagName: 'TFOOT' };
+    const opts = {
+      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
+      simplifyMixedPercent: false, simplifyMixedCurrency: false,
+      offsetTop: -0.5, offsetOther: -1, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    eq('outside-row (native): the body value rounds on the top band — the footer value did not raise the basis',
+      table.rows[0].cells[0].innerText, '90,000,000');
+    eq('outside-row (native): the footer row still rounds against the dataset',
+      table.rows[1].cells[0].innerText, '1,000,000,000');
+  });
 })();
 
 // ---------------------------------------------------------------------------
@@ -14781,6 +15055,58 @@ const LADDER_OPTS = {
   eq('range-flash grid: the overlay is sized/positioned to the union of the matched grid cells (col 1 only), not the whole grid or nothing',
     overlay && { top: overlay.style.top, left: overlay.style.left, width: overlay.style.width, height: overlay.style.height },
     { top: '0px', left: '100px', width: '100px', height: '40px' });
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint grid-first-row-literal: the range pulse numbers rows the same way
+// the engine gates them — by literal row number — so on a rowgroup grid the
+// pulse frames the rows the engine actually touches, not the rows one slot
+// below them.
+// ---------------------------------------------------------------------------
+(function gridLiteralNumbering_rangePulseFramesEngineRows() {
+  // Table-10 shape: header row outside the rowgroup, two data rows inside.
+  // The data rows are literal rows 2 and 3 (indices 1 and 2).
+  const g = makeRowgroupRoleGrid(
+    ['Region', 'Q1'],
+    [['North', '1482391'], ['South', '918554']],
+    null
+  );
+
+  // Distinct rects per data row so the overlay geometry proves WHICH row
+  // matched: first data row at 0–20, second at 20–40.
+  const rowRects = [
+    { top: 0,  left: 0, right: 200, bottom: 20 },
+    { top: 20, left: 0, right: 200, bottom: 40 },
+  ];
+  g.dataRowEls.forEach(function(rowEl, i) {
+    rowEl.children.forEach(function(cell) {
+      cell.getBoundingClientRect = function() { return rowRects[i]; };
+    });
+  });
+
+  const origCreateElement = global.document.createElement;
+  const origBody = global.document.body;
+  const origSetTimeout = global.setTimeout;
+  let overlay = null;
+  global.document.createElement = (tag) => {
+    const el = { style: {}, addEventListener() {} };
+    if (tag === 'div') overlay = el;
+    return el;
+  };
+  global.document.body = { appendChild() {} };
+  global.setTimeout = () => 0;
+
+  // Range naming literal row 2 only (index 1) — the first data row, the one
+  // the engine rounds first under the shipped defaults.
+  flashRangePulse(g.wrapperEl, [{ rowMin: 1, rowMax: 1, colMin: 0, colMax: 1 }]);
+
+  global.document.createElement = origCreateElement;
+  global.document.body = origBody;
+  global.setTimeout = origSetTimeout;
+
+  eq('range-pulse literal: the overlay frames the FIRST data row (literal row 2), matching the engine',
+    overlay && { top: overlay.style.top, height: overlay.style.height },
+    { top: '0px', height: '20px' });
 })();
 
 // ---------------------------------------------------------------------------
