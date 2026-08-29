@@ -40,7 +40,7 @@ const GRID_WALK_DEPTH_CAP = 15;
 const GRID_COL_WIDTH_SAMPLE = 10;
 /** CSS display values that indicate a grid/flex layout. */
 const GRID_DISPLAY_VALUES = new Set(['grid', 'flex', 'inline-grid', 'inline-flex']);
-/** CSS selector for the cheap proactive ARIA pass. */
+/** CSS selector for the cheap load-time ARIA pass. */
 const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
 /** Debounce delay (ms) for the grid virtualization re-apply observer. */
 const GRID_REAPPLY_DEBOUNCE_MS = 100;
