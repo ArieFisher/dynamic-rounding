@@ -14937,6 +14937,98 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
+// Sprint grid-first-row-literal: the range pulse numbers rows the same way
+// the engine gates them — by literal row number — so on a rowgroup grid the
+// pulse frames the rows the engine actually touches, not the rows one slot
+// below them.
+// ---------------------------------------------------------------------------
+(function gridLiteralNumbering_rangePulseFramesEngineRows() {
+  // Table-10 shape: header row outside the rowgroup, two data rows inside.
+  // The data rows are literal rows 2 and 3 (indices 1 and 2).
+  const g = makeRowgroupRoleGrid(
+    ['Region', 'Q1'],
+    [['North', '1482391'], ['South', '918554']],
+    null
+  );
+
+  // Distinct rects per data row so the overlay geometry proves WHICH row
+  // matched: first data row at 0–20, second at 20–40.
+  const rowRects = [
+    { top: 0,  left: 0, right: 200, bottom: 20 },
+    { top: 20, left: 0, right: 200, bottom: 40 },
+  ];
+  g.dataRowEls.forEach(function(rowEl, i) {
+    rowEl.children.forEach(function(cell) {
+      cell.getBoundingClientRect = function() { return rowRects[i]; };
+    });
+  });
+
+  const origCreateElement = global.document.createElement;
+  const origBody = global.document.body;
+  const origSetTimeout = global.setTimeout;
+  let overlay = null;
+  global.document.createElement = (tag) => {
+    const el = { style: {}, addEventListener() {} };
+    if (tag === 'div') overlay = el;
+    return el;
+  };
+  global.document.body = { appendChild() {} };
+  global.setTimeout = () => 0;
+
+  // Range naming literal row 2 only (index 1) — the first data row, the one
+  // the engine rounds first under the shipped defaults.
+  flashRangePulse(g.wrapperEl, [{ rowMin: 1, rowMax: 1, colMin: 0, colMax: 1 }]);
+
+  global.document.createElement = origCreateElement;
+  global.document.body = origBody;
+  global.setTimeout = origSetTimeout;
+
+  eq('range-pulse literal: the overlay frames the FIRST data row (literal row 2), matching the engine',
+    overlay && { top: overlay.style.top, height: overlay.style.height },
+    { top: '0px', height: '20px' });
+})();
+
+// Two rowgroups with rows outside and between them: numbering follows
+// document order, so the second group's rows continue the count past the
+// separator row.
+(function gridLiteralNumbering_twoRowgroups() {
+  function makeRoleRow(cellTexts) {
+    const cellEls = cellTexts.map(makeGridCellWithTextNode);
+    const row = makeElementNode('g-row', cellEls);
+    row.children = cellEls;
+    row.querySelectorAll = function(sel) {
+      return sel === '[role="cell"]' ? cellEls : [];
+    };
+    return row;
+  }
+  const header = makeRoleRow(['Region', 'Q1']);
+  const a1 = makeRoleRow(['North', '100']);
+  const a2 = makeRoleRow(['South', '200']);
+  const sep = makeRoleRow(['Subtotal', '300']);
+  const b1 = makeRoleRow(['West', '400']);
+
+  const groupA = makeElementNode('', [a1, a2]);
+  groupA.querySelectorAll = (sel) => (sel === '[role="row"]' ? [a1, a2] : []);
+  const groupB = makeElementNode('', [b1]);
+  groupB.querySelectorAll = (sel) => (sel === '[role="row"]' ? [b1] : []);
+
+  const wrapper = makeElementNode('aria-grid', [header, groupA, sep, groupB]);
+  wrapper.tagName = 'DIV';
+  wrapper.matches = () => false;
+  wrapper.querySelector = () => null;
+  wrapper.querySelectorAll = function(sel) {
+    if (sel === '[role="rowgroup"]') return [groupA, groupB];
+    if (sel === '[role="row"]') return [header, a1, a2, sep, b1]; // document order
+    return [];
+  };
+
+  const rows = makeAdapter(wrapper).getRows();
+  eq('literal-numbering: two rowgroups return only their data rows', rows.length, 3);
+  eq('literal-numbering: two rowgroups number in document order past the separator',
+    rows.map(function(r) { return r.literalIndex; }).join(','), '1,2,4');
+})();
+
+// ---------------------------------------------------------------------------
 // Sprint toggle-split (adversarial hardening): CLICK-HANDLER PARENT-EQUIVALENCE
 // PIN across the full guard matrix. The consolidation claims that collapsing
 // ui-toggle.js's two inlined click branches (mouse/keyboard, touch second-tap)

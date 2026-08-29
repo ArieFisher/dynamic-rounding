@@ -445,8 +445,11 @@ function flashRangePulse(table, ranges) {
   const matchedCells = [];
   for (let r = 0; r < adapterRows.length; r++) {
     const cells = adapterRows[r].getCells();
+    // Literal row number, same as the engine's range gating — the pulse must
+    // frame the rows the engine touches (see GridAdapter._getRowEntries).
+    const rowIdx = adapterRows[r].literalIndex;
     for (let c = 0; c < cells.length; c++) {
-      if (isInRanges(r, c, ranges)) {
+      if (isInRanges(rowIdx, c, ranges)) {
         matchedCells.push(cells[c].el);
       }
     }

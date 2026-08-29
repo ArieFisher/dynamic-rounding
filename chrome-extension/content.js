@@ -1058,6 +1058,9 @@ function roundTable(table, options) {
 
   for (let r = 0; r < adapterRows.length; r++) {
     const adapterCells = adapterRows[r].getCells();
+    // For a native table literalIndex always equals r; read it anyway so the
+    // adapter stays the one source of row numbers across every path.
+    const rowIdx = adapterRows[r].literalIndex;
     const rowData = [];
     const rowCells = [];
     const rowInfo = [];
@@ -1084,7 +1087,7 @@ function roundTable(table, options) {
       const decision = finalizeExtractedDecision(
         classifyCell({
           text,
-          rowIndex: r,
+          rowIndex: rowIdx,
           columnIndex: col,
           ranges,
           isWholeLink: isCellWholeLink(cell),
