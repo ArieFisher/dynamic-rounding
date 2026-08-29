@@ -733,20 +733,19 @@
 
   <section>
     <h2>10. ARIA grid with row groups</h2>
-    <p class="expect">Expect: pillbox at load. Only rows inside the row group
-      round; the header row and the Total row sit outside it and hold. The
-      North row rounds: row numbering counts the header row, so North is row
-      two and the shipped first-row default names the header row alone.</p>
+    <p class="expect">Expect: pillbox at load. The header row is the grid's
+      first row and holds under the shipped first-row default; the Region
+      column holds under the first-column default. Every other row rounds,
+      the Total row below the row group included.</p>
 
     <!--
       The load-time scan picks up any role="grid" or role="table" element that
-      passes the data test. Row discovery is scoped to role="rowgroup" when one
-      is present (the ARIA analog of tbody), so the header and summary rows
-      outside the group are never treated as data. Grid cells have no th
-      concept: every cell is data, and the shipped first-column default is what
-      protects the Region column. Row numbering counts the rows outside the
-      group, so "first row" means the grid's literal first row — the header
-      row here — and the first data row rounds.
+      passes the data test. The row group picks the row shape: the rows found
+      inside it decide the selector, and every match across the whole grid
+      counts as a row, so the header and Total rows are rows like any other.
+      Grid cells have no th concept: every cell is data. The header row holds
+      because it is the grid's literal first row; the Total row rounds with
+      the data — the same treatment a native table's Total row gets.
     -->
     <div class="aria-grid" role="grid" aria-label="Quarterly sessions by region">
       <div class="g-row" role="row">

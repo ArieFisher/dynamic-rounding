@@ -10520,7 +10520,7 @@ function makeKaggleLikeGrid(dataRows) {
   return wrapper;
 }
 
-(function gridRowgroup_dataRowsOnly() {
+(function gridRowgroup_selectorFromGroup_universeFromGrid() {
   const grid = makeKaggleLikeGrid([
     ['2021-12-15', '5083.954', '8940'],
     ['2022-03-01', '3827.658', '1151'],
@@ -10529,12 +10529,12 @@ function makeKaggleLikeGrid(dataRows) {
   const adapter = makeAdapter(grid);
   const rows = adapter.getRows();
 
-  eq('grid-rowgroup: getRows() returns ONLY the 3 data rows (header/stats/desc excluded)',
-    rows.length, 3);
-  eq('grid-rowgroup: first data row first cell is the date (not "About this file")',
-    rows[0].getCells()[0].getText(), '2021-12-15');
-  eq('grid-rowgroup: data row exposes its numeric cell',
-    rows[0].getCells()[1].getText(), '5083.954');
+  eq('grid-rowgroup: getRows() returns all 5 <tr> rows — header and stats included, desc block excluded',
+    rows.length, 5);
+  eq('grid-rowgroup: the first row is the header row, not the role="row" desc block',
+    rows[0].getCells()[0].getText(), 'Release_Date');
+  eq('grid-rowgroup: the data rows follow the header and stats rows',
+    rows[2].getCells()[0].getText(), '2021-12-15');
   eq('grid-rowgroup: grid with bare-<tr> data rows is a data table',
     isDataTable(grid), true);
 })();
@@ -10559,10 +10559,15 @@ function makeKaggleLikeGrid(dataRows) {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint grid-first-row-literal: row numbering counts rows outside the
-// rowgroup, so "first row" means the grid's literal first row. Before this,
-// rowgroup scoping renumbered the first data row to 0 and the shipped
-// first-row default held the wrong row (the table's second literal row).
+// Sprint grid-first-row-literal: a rowgroup picks the row shape, not the row
+// set. The rows found inside it decide the winning selector; the row list is
+// then the whole grid's matches for that selector, so header and summary rows
+// outside the group are rows like any other. Only the shipped first-row and
+// first-column defaults hold rows: the header row holds because it is the
+// grid's literal first row, and a Total row below the group rounds with the
+// data. Before this, rowgroup scoping dropped the outside rows entirely and
+// the first-row default held the first DATA row — the grid's second literal
+// row.
 // ---------------------------------------------------------------------------
 
 // Build a Table-10-shaped ARIA grid: [role="row"] rows, with an optional
@@ -10613,102 +10618,117 @@ function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
   return { wrapperEl: wrapper, dataRowEls, headerRow, summaryRow };
 }
 
-// Adapter numbering: role="row" grid with a header row before the group.
-(function gridLiteralNumbering_roleRows() {
+// Row universe: role="row" grid with a header row before the group and a
+// summary row after it — all four rows come back, in document order.
+(function gridRowUniverse_roleRows() {
   const g = makeRowgroupRoleGrid(
     ['Region', 'Q1'],
     [['1111111', '1482391'], ['2222222', '918554']],
     ['Total', '2400945']
   );
   const rows = makeAdapter(g.wrapperEl).getRows();
-  eq('literal-numbering: rowgroup scoping still returns only the data rows',
-    rows.length, 2);
-  eq('literal-numbering: first data row is literal row 2 (index 1)',
-    rows[0].literalIndex, 1);
-  eq('literal-numbering: second data row is literal row 3 (index 2)',
-    rows[1].literalIndex, 2);
-})();
-
-// Adapter numbering: bare-<tr> rows (Kaggle shape) count the header and
-// stats rows that sit before the rowgroup.
-(function gridLiteralNumbering_bareTrRows() {
-  const grid = makeKaggleLikeGrid([
-    ['2021-12-15', '5083.954', '8940'],
-    ['2022-03-01', '3827.658', '1151'],
-    ['2022-02-25', '2618.087', '122'],
-  ]);
-  const rows = makeAdapter(grid).getRows();
-  eq('literal-numbering: bare-<tr> data rows count the two rows before the group',
-    rows.map(function(r) { return r.literalIndex; }).join(','), '2,3,4');
-})();
-
-// Adapter numbering: native tables report their positions unchanged.
-(function nativeLiteralNumbering() {
-  const table = {
-    tagName: 'TABLE',
-    rows: [{ cells: [] }, { cells: [] }, { cells: [] }],
+  const firstCellText = function(row) {
+    return row ? row.getCells()[0].getText() : '(missing row)';
   };
-  const rows = makeAdapter(table).getRows();
-  eq('literal-numbering: native rows carry their literal position',
-    rows.map(function(r) { return r.literalIndex; }).join(','), '0,1,2');
+  eq('row-universe: header, data, and summary rows all count as rows',
+    rows.length, 4);
+  eq('row-universe: the header row is the grid\'s first row',
+    firstCellText(rows[0]), 'Region');
+  eq('row-universe: the summary row is the grid\'s last row',
+    firstCellText(rows[3]), 'Total');
 })();
 
-// Adapter numbering: a grid with no rowgroup keeps 0-based numbering.
-(function gridLiteralNumbering_noRowgroup() {
-  const grid = makeGridWrapper([
-    ['a', '10'],
-    ['b', '20'],
-  ], { useDgClasses: true });
-  const rows = makeAdapter(grid.wrapperEl).getRows();
-  eq('literal-numbering: no rowgroup means indices start at 0',
-    rows.map(function(r) { return r.literalIndex; }).join(','), '0,1');
+// Row universe: two rowgroups with rows outside and between them — every
+// row of the winning shape comes back, in document order.
+(function gridRowUniverse_twoRowgroups() {
+  function makeRoleRow(cellTexts) {
+    const cellEls = cellTexts.map(makeGridCellWithTextNode);
+    const row = makeElementNode('g-row', cellEls);
+    row.children = cellEls;
+    row.querySelectorAll = function(sel) {
+      return sel === '[role="cell"]' ? cellEls : [];
+    };
+    return row;
+  }
+  const header = makeRoleRow(['Region', 'Q1']);
+  const a1 = makeRoleRow(['North', '100']);
+  const a2 = makeRoleRow(['South', '200']);
+  const sep = makeRoleRow(['Subtotal', '300']);
+  const b1 = makeRoleRow(['West', '400']);
+
+  const groupA = makeElementNode('', [a1, a2]);
+  groupA.querySelectorAll = (sel) => (sel === '[role="row"]' ? [a1, a2] : []);
+  const groupB = makeElementNode('', [b1]);
+  groupB.querySelectorAll = (sel) => (sel === '[role="row"]' ? [b1] : []);
+
+  const wrapper = makeElementNode('aria-grid', [header, groupA, sep, groupB]);
+  wrapper.tagName = 'DIV';
+  wrapper.matches = () => false;
+  wrapper.querySelector = () => null;
+  wrapper.querySelectorAll = function(sel) {
+    if (sel === '[role="rowgroup"]') return [groupA, groupB];
+    if (sel === '[role="row"]') return [header, a1, a2, sep, b1]; // document order
+    return [];
+  };
+
+  const rows = makeAdapter(wrapper).getRows();
+  eq('row-universe: two rowgroups — all five rows come back in document order',
+    rows.map(function(r) { return r.getCells()[0].getText(); }).join(','),
+    'Region,North,South,Subtotal,West');
 })();
 
-// Behavior: with a header row above the rowgroup, the first data row is
-// literal row 2 — it ROUNDS under the shipped first-row default. The first
-// column still holds.
-(function gridLiteralNumbering_firstDataRowRounds() {
+// Behavior: the header row holds because it is the literal first row; the
+// first data row and the summary row round. The first column still holds.
+(function gridRowUniverse_headerHolds_dataAndSummaryRound() {
   const g = makeRowgroupRoleGrid(
-    ['Region', 'Q1'],
+    ['Region', '999999'],
     [['North', '1482391'], ['South', '918554']],
     ['Total', '2400945']
   );
   const { results } = computeGridRoundedValues(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
-  // results are row-major over the data rows: [r0c0, r0c1, r1c0, r1c1]
-  eq('literal-numbering: first data row numeric cell rounds under defaults',
-    results[1].targetValue !== null, true);
-  eq('literal-numbering: first column of the first data row still holds',
-    results[0].targetValue, null);
-  eq('literal-numbering: second data row numeric cell rounds',
-    results[3].targetValue !== null, true);
+  // results are row-major over all rows: [header c0, header c1, r1c0, r1c1, r2c0, r2c1, total c0, total c1]
+  eq('row-universe: every cell of every row is classified',
+    results.length, 8);
+  eq('row-universe: the header row\'s numeric cell holds under the first-row default',
+    results[1] && results[1].targetValue, null);
+  eq('row-universe: the first data row rounds under defaults',
+    !!(results[3] && results[3].targetValue !== null), true);
+  eq('row-universe: the first column of a data row still holds',
+    results[2] && results[2].targetValue, null);
+  eq('row-universe: the summary row below the group rounds with the data',
+    !!(results[7] && results[7].targetValue !== null), true);
 })();
 
 // Behavior: with the rowgroup first (no header row outside), the first data
 // row IS the grid's literal first row and holds under the default.
-(function gridLiteralNumbering_groupAtTop_firstDataRowHolds() {
+(function gridRowUniverse_groupAtTop_firstDataRowHolds() {
   const g = makeRowgroupRoleGrid(
     null,
     [['1111111', '1482391'], ['2222222', '918554']],
     ['Total', '2400945']
   );
   const { results } = computeGridRoundedValues(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
-  eq('literal-numbering: rowgroup-first grid holds its first data row',
-    results[1].targetValue, null);
-  eq('literal-numbering: rowgroup-first grid rounds its second data row',
-    results[3].targetValue !== null, true);
+  eq('row-universe: rowgroup-first grid holds its first data row',
+    results[1] && results[1].targetValue, null);
+  eq('row-universe: rowgroup-first grid rounds its second data row',
+    !!(results[3] && results[3].targetValue !== null), true);
+  eq('row-universe: rowgroup-first grid rounds its summary row',
+    !!(results[5] && results[5].targetValue !== null), true);
 })();
 
-// Behavior: the lens preview classifies with the same literal numbering, so
-// the first data row's value enters the sample pool.
-(function gridLiteralNumbering_previewIncludesFirstDataRow() {
+// Behavior: the lens preview draws from the same row universe, so the first
+// data row's value and the summary row's value both enter the sample pool.
+(function gridRowUniverse_previewIncludesDataAndSummary() {
   const g = makeRowgroupRoleGrid(
     ['Region', 'Q1'],
     [['North', '1482391'], ['South', '918554']],
-    null
+    ['Total', '2400945']
   );
   const cells = collectNumericCells(g.wrapperEl);
-  eq('literal-numbering: lens preview pool includes the first data row value',
+  eq('row-universe: lens preview pool includes the first data row value',
     cells.some(function(c) { return c.num === 1482391; }), true);
+  eq('row-universe: lens preview pool includes the summary row value',
+    cells.some(function(c) { return c.num === 2400945; }), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -14986,46 +15006,6 @@ const LADDER_OPTS = {
   eq('range-pulse literal: the overlay frames the FIRST data row (literal row 2), matching the engine',
     overlay && { top: overlay.style.top, height: overlay.style.height },
     { top: '0px', height: '20px' });
-})();
-
-// Two rowgroups with rows outside and between them: numbering follows
-// document order, so the second group's rows continue the count past the
-// separator row.
-(function gridLiteralNumbering_twoRowgroups() {
-  function makeRoleRow(cellTexts) {
-    const cellEls = cellTexts.map(makeGridCellWithTextNode);
-    const row = makeElementNode('g-row', cellEls);
-    row.children = cellEls;
-    row.querySelectorAll = function(sel) {
-      return sel === '[role="cell"]' ? cellEls : [];
-    };
-    return row;
-  }
-  const header = makeRoleRow(['Region', 'Q1']);
-  const a1 = makeRoleRow(['North', '100']);
-  const a2 = makeRoleRow(['South', '200']);
-  const sep = makeRoleRow(['Subtotal', '300']);
-  const b1 = makeRoleRow(['West', '400']);
-
-  const groupA = makeElementNode('', [a1, a2]);
-  groupA.querySelectorAll = (sel) => (sel === '[role="row"]' ? [a1, a2] : []);
-  const groupB = makeElementNode('', [b1]);
-  groupB.querySelectorAll = (sel) => (sel === '[role="row"]' ? [b1] : []);
-
-  const wrapper = makeElementNode('aria-grid', [header, groupA, sep, groupB]);
-  wrapper.tagName = 'DIV';
-  wrapper.matches = () => false;
-  wrapper.querySelector = () => null;
-  wrapper.querySelectorAll = function(sel) {
-    if (sel === '[role="rowgroup"]') return [groupA, groupB];
-    if (sel === '[role="row"]') return [header, a1, a2, sep, b1]; // document order
-    return [];
-  };
-
-  const rows = makeAdapter(wrapper).getRows();
-  eq('literal-numbering: two rowgroups return only their data rows', rows.length, 3);
-  eq('literal-numbering: two rowgroups number in document order past the separator',
-    rows.map(function(r) { return r.literalIndex; }).join(','), '1,2,4');
 })();
 
 // ---------------------------------------------------------------------------

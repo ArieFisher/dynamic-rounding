@@ -575,9 +575,6 @@ function collectNumericCells(table, options) {
   const rows = makeAdapter(table, { originalsPort: registryOriginalsPort(table) }).getRows();
   for (let r = 0; r < rows.length; r++) {
     const cells = rows[r].getCells();
-    // Literal row number, same as computeGridRoundedValues — the preview pool
-    // must classify each cell exactly as the engine will.
-    const rowIdx = rows[r].literalIndex;
     for (let c = 0; c < cells.length; c++) {
       const cellObj = cells[c];
       if (cellObj.tagName !== 'TD') continue;
@@ -627,7 +624,7 @@ function collectNumericCells(table, options) {
       const decision = finalizeExtractedDecision(
         classifyCell({
           text,
-          rowIndex: rowIdx,
+          rowIndex: r,
           columnIndex: c,
           ranges,
           isWholeLink: !!(cellEl && isCellWholeLink(cellEl)),
@@ -795,10 +792,6 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
 
   for (let r = 0; r < adapterRows.length; r++) {
     const adapterCells = adapterRows[r].getCells();
-    // literalIndex is the row's position in the whole grid, rows outside a
-    // rowgroup counted, so the first-row exclusion and range gating land on
-    // the grid's literal rows (see GridAdapter._getRowEntries).
-    const rowIdx = adapterRows[r].literalIndex;
     for (let c = 0; c < adapterCells.length; c++) {
       const cellObj = adapterCells[c];
       // <th> cells are never rounded, but they still occupy their column — see
@@ -815,7 +808,7 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
       const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
       const decision = classifyCell({
         text,
-        rowIndex: rowIdx,
+        rowIndex: r,
         columnIndex: col,
         ranges,
         isWholeLink: isCellWholeLink(cell),
@@ -826,7 +819,7 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
       const info = decisionToLegacyInfo(decision);
 
       const entryIdx = cellEntries.length;
-      cellEntries.push({ cellObj, text, trimmed, info, col, rowIdx });
+      cellEntries.push({ cellObj, text, trimmed, info, col, rowIdx: r });
 
       if (info.mode === 'date' && info.ambiguous) {
         if (!ambigByCol.has(col)) ambigByCol.set(col, []);
@@ -1058,9 +1051,6 @@ function roundTable(table, options) {
 
   for (let r = 0; r < adapterRows.length; r++) {
     const adapterCells = adapterRows[r].getCells();
-    // For a native table literalIndex always equals r; read it anyway so the
-    // adapter stays the one source of row numbers across every path.
-    const rowIdx = adapterRows[r].literalIndex;
     const rowData = [];
     const rowCells = [];
     const rowInfo = [];
@@ -1087,7 +1077,7 @@ function roundTable(table, options) {
       const decision = finalizeExtractedDecision(
         classifyCell({
           text,
-          rowIndex: rowIdx,
+          rowIndex: r,
           columnIndex: col,
           ranges,
           isWholeLink: isCellWholeLink(cell),
