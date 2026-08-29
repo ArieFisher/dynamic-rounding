@@ -128,7 +128,13 @@ class NativeTableAdapter {
   getElement() { return this.el; }
   isVirtualized() { return false; }
   getRows() {
+    // isOutside marks a footer-section row — the native analog of a grid row
+    // outside the row group. Outside rows round like any other, but their
+    // values stay out of the dataset: consumers skip them when computing the
+    // max magnitude and the lens preview pool.
     return Array.from(this.el.rows).map(row => ({
+      isOutside: !!((row.parentElement || row.parentNode) &&
+        (row.parentElement || row.parentNode).tagName === 'TFOOT'),
       getCells() {
         return Array.from(row.cells).map(cell => ({
           // No setText: the native path writes cells directly in roundTable so it
@@ -249,7 +255,7 @@ class GridAdapter {
   }
 
   /**
-   * Extract rows from a container element.
+   * Extract rows from a container element, each as { el, isOutside }.
    *
    * Row source order: [role="row"] → .dg--virtual-row → <tr> → repetitive
    * children. The <tr> source covers ARIA grids (role="grid"/"table") that
@@ -267,13 +273,18 @@ class GridAdapter {
    * treatment a native table's <thead> and Total rows get. Row position in
    * this list IS the row's literal row number.
    *
+   * isOutside marks the rows not inside any rowgroup. An outside row rounds
+   * like any other, but its values stay out of the dataset: consumers skip it
+   * when computing the max magnitude and the lens preview pool.
+   *
    * @param {Element} container
-   * @returns {Element[]}
+   * @returns {{el: Element, isOutside: boolean}[]}
    */
-  _getRowEls(container) {
+  _getRowEntries(container) {
     if (!container) return [];
     if (!container.querySelectorAll) {
-      return container.children ? Array.from(container.children) : [];
+      const kids = container.children ? Array.from(container.children) : [];
+      return kids.map((el) => ({ el, isOutside: false }));
     }
     const rowgroups = container.querySelectorAll('[role="rowgroup"]');
     const isGrouped = !!(rowgroups && rowgroups.length > 0);
@@ -285,8 +296,12 @@ class GridAdapter {
         if (scope.querySelectorAll) rows = rows.concat(Array.from(scope.querySelectorAll(sel)));
       }
       if (rows.length === 0) continue;
-      // The winning selector's full universe, not just the in-group matches.
-      return isGrouped ? Array.from(container.querySelectorAll(sel)) : rows;
+      if (!isGrouped) return rows.map((el) => ({ el, isOutside: false }));
+      // The winning selector's full universe, not just the in-group matches;
+      // a universe row not inside any group is an outside row.
+      const inGroup = new Set(rows);
+      return Array.from(container.querySelectorAll(sel))
+        .map((el) => ({ el, isOutside: !inGroup.has(el) }));
     }
     // Fallback: repetitive children of the first scope. When row groups are
     // present this is non-conforming markup (a group must own rows), and the
@@ -294,8 +309,21 @@ class GridAdapter {
     // guessing at rows among the container's mixed children; the whole-grid
     // row universe above applies only to rows a selector can name.
     const first = scopes[0];
-    if (first && first.children) return Array.from(first.children);
+    if (first && first.children) {
+      return Array.from(first.children).map((el) => ({ el, isOutside: false }));
+    }
     return [];
+  }
+
+  /**
+   * Extract row elements from a container — _getRowEntries without the
+   * outside-row marking, for callers that only stitch by list position
+   * (pinned panes).
+   * @param {Element} container
+   * @returns {Element[]}
+   */
+  _getRowEls(container) {
+    return this._getRowEntries(container).map((entry) => entry.el);
   }
 
   /**
@@ -372,8 +400,8 @@ class GridAdapter {
     const scrollContainer = this._getScrollContainer();
     const pinnedPane = this._getPinnedPane(scrollContainer);
 
-    const scrollRows = this._getRowEls(scrollContainer);
-    if (scrollRows.length === 0) return [];
+    const scrollEntries = this._getRowEntries(scrollContainer);
+    if (scrollEntries.length === 0) return [];
 
     // Build a map from row-key → pinned row element for efficient stitching.
     let pinnedRows = [];
@@ -387,12 +415,13 @@ class GridAdapter {
     }
 
     const adapter = this;
-    return scrollRows.map((rowEl, idx) => {
+    return scrollEntries.map(({ el: rowEl, isOutside }, idx) => {
       const scrollKey = adapter._getRowKey(rowEl, idx);
       // Find the matching pinned row (by data-row / data-index / DOM index).
       let pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
 
       return {
+        isOutside,
         getCells() {
           const cells = [];
           // Pinned cells first (if any pinned pane exists).

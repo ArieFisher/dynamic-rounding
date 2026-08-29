@@ -10730,19 +10730,63 @@ function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
     !!(results[5] && results[5].targetValue !== null), true);
 })();
 
-// Behavior: the lens preview draws from the same row universe, so the first
-// data row's value and the summary row's value both enter the sample pool.
-(function gridRowUniverse_previewIncludesDataAndSummary() {
+// Outside rows: a row outside the row group rounds, but its values stay out
+// of the dataset — they never feed the max magnitude or the lens preview.
+(function gridOutsideRow_staysOutOfDataset() {
+  // Total is a magnitude ABOVE the data (7 vs 6): if it fed the basis, the
+  // max magnitude would read 7.
+  const g = makeRowgroupRoleGrid(
+    ['Region', 'Q1'],
+    [['North', '1,482,391'], ['South', '918,554']],
+    ['Total', '24,009,450']
+  );
+  const { results, maxMag } = computeGridRoundedValues(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
+  eq('outside-row: the max magnitude comes from the data rows alone',
+    maxMag, 6);
+  eq('outside-row: the outside row still rounds against that dataset',
+    !!(results[7] && results[7].targetValue !== null), true);
+})();
+
+// Outside rows: the lens preview pool draws from the dataset only.
+(function gridOutsideRow_staysOutOfPreview() {
   const g = makeRowgroupRoleGrid(
     ['Region', 'Q1'],
     [['North', '1482391'], ['South', '918554']],
     ['Total', '2400945']
   );
   const cells = collectNumericCells(g.wrapperEl);
-  eq('row-universe: lens preview pool includes the first data row value',
+  eq('outside-row: lens preview pool includes the first data row value',
     cells.some(function(c) { return c.num === 1482391; }), true);
-  eq('row-universe: lens preview pool includes the summary row value',
-    cells.some(function(c) { return c.num === 2400945; }), true);
+  eq('outside-row: lens preview pool leaves the outside row value out',
+    cells.some(function(c) { return c.num === 2400945; }), false);
+})();
+
+// Outside rows, native analog: a footer-section row rounds but stays out of
+// the dataset. The offsets are pulled apart so the basis is visible in the
+// output: with the footer value (magnitude 8) out of the basis, the body
+// value (magnitude 7) is the top band and takes offset_top (nearest 5M →
+// 90,000,000); if the footer fed the basis, the body value would take
+// offset_other (nearest 1M → 88,000,000).
+(function nativeFooterRow_staysOutOfDataset() {
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([
+      [{ tag: 'td', text: '87,654,321' }],
+      [{ tag: 'td', text: '987,654,321' }],
+    ]);
+    table.rows[1].parentElement = { tagName: 'TFOOT' };
+    const opts = {
+      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true,
+      simplifyMixedPercent: false, simplifyMixedCurrency: false,
+      offsetTop: -0.5, offsetOther: -1, numTop: 1,
+      rangeExpr: ''
+    };
+    roundTable(table, opts);
+    eq('outside-row (native): the body value rounds on the top band — the footer value did not raise the basis',
+      table.rows[0].cells[0].innerText, '90,000,000');
+    eq('outside-row (native): the footer row still rounds against the dataset',
+      table.rows[1].cells[0].innerText, '1,000,000,000');
+  });
 })();
 
 // ---------------------------------------------------------------------------

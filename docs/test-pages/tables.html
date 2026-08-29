@@ -736,7 +736,8 @@
     <p class="expect">Expect: pillbox at load. The header row is the grid's
       first row and holds under the shipped first-row default; the Region
       column holds under the first-column default. Every other row rounds,
-      the Total row below the row group included.</p>
+      the Total row below the row group included — but the Total values stay
+      out of the max magnitude and the lens preview.</p>
 
     <!--
       The load-time scan picks up any role="grid" or role="table" element that
@@ -744,8 +745,10 @@
       inside it decide the selector, and every match across the whole grid
       counts as a row, so the header and Total rows are rows like any other.
       Grid cells have no th concept: every cell is data. The header row holds
-      because it is the grid's literal first row; the Total row rounds with
-      the data — the same treatment a native table's Total row gets.
+      because it is the grid's literal first row. The Total row is an outside
+      row: it rounds against the dataset without joining it, so its values
+      never set the max magnitude and never reach the lens preview. A native
+      table's footer rows get the same treatment.
     -->
     <div class="aria-grid" role="grid" aria-label="Quarterly sessions by region">
       <div class="g-row" role="row">

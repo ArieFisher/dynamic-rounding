@@ -574,6 +574,9 @@ function collectNumericCells(table, options) {
   const out = [];
   const rows = makeAdapter(table, { originalsPort: registryOriginalsPort(table) }).getRows();
   for (let r = 0; r < rows.length; r++) {
+    // Outside rows never feed the preview pool — the lens preview shows the
+    // dataset, and an outside row rounds against it without joining it.
+    if (rows[r].isOutside) continue;
     const cells = rows[r].getCells();
     for (let c = 0; c < cells.length; c++) {
       const cellObj = cells[c];
@@ -792,6 +795,9 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
 
   for (let r = 0; r < adapterRows.length; r++) {
     const adapterCells = adapterRows[r].getCells();
+    // Outside rows round like any other, but their values stay out of the
+    // dataset (pass 2 skips them when computing max_mag).
+    const isOutside = !!adapterRows[r].isOutside;
     for (let c = 0; c < adapterCells.length; c++) {
       const cellObj = adapterCells[c];
       // <th> cells are never rounded, but they still occupy their column — see
@@ -819,7 +825,7 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
       const info = decisionToLegacyInfo(decision);
 
       const entryIdx = cellEntries.length;
-      cellEntries.push({ cellObj, text, trimmed, info, col, rowIdx: r });
+      cellEntries.push({ cellObj, text, trimmed, info, col, rowIdx: r, isOutside });
 
       if (info.mode === 'date' && info.ambiguous) {
         if (!ambigByCol.has(col)) ambigByCol.set(col, []);
@@ -847,7 +853,9 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
     max_mag = frozenMaxMag;
   } else {
     const allNums = [];
-    for (const { info } of cellEntries) {
+    for (const { info, isOutside } of cellEntries) {
+      // Outside rows round against the dataset without joining it.
+      if (isOutside) continue;
       if (info.mode === 'pure') allNums.push(info.num);
       // mode:'extracted' is skipped on grids, so no extracted nums here
     }
@@ -1043,7 +1051,7 @@ function roundTable(table, options) {
     return { applied: true, rangeStatus: 'ok' };
   }
 
-  // --- Native <table> path (byte-identical to prior implementation) ---
+  // --- Native <table> path ---
   const data = [];
   // For native tables, cellsMap stores raw element.
   const cellsMap = [];
@@ -1122,8 +1130,11 @@ function roundTable(table, options) {
   // --- End column post-pass ---
 
   const allNums = [];
-  for (const row of cellInfo) {
-    for (const info of row) {
+  for (let r = 0; r < cellInfo.length; r++) {
+    // Outside rows (footer-section rows) round against the dataset without
+    // joining it — their values never set the max magnitude.
+    if (adapterRows[r] && adapterRows[r].isOutside) continue;
+    for (const info of cellInfo[r]) {
       if (info.mode === 'pure') allNums.push(info.num);
       else if (info.mode === 'extracted') {
         for (const m of info.matches) allNums.push(m.num);
