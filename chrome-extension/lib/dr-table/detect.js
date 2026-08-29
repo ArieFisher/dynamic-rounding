@@ -288,7 +288,11 @@ class GridAdapter {
       // The winning selector's full universe, not just the in-group matches.
       return isGrouped ? Array.from(container.querySelectorAll(sel)) : rows;
     }
-    // Fallback: repetitive children of the first scope.
+    // Fallback: repetitive children of the first scope. When row groups are
+    // present this is non-conforming markup (a group must own rows), and the
+    // fallback stays narrow — the first group's children only — rather than
+    // guessing at rows among the container's mixed children; the whole-grid
+    // row universe above applies only to rows a selector can name.
     const first = scopes[0];
     if (first && first.children) return Array.from(first.children);
     return [];
@@ -844,8 +848,13 @@ function findTargetTable(el, opts = {}) {
   return null;
 }
 
-/** Maximum number of cells sampled across grid rows when probing isDataTable for virtual grids. */
+/** Maximum cells sampled PER ROW when probing isDataTable for virtual grids. */
 const GRID_IS_DATA_TABLE_CELL_SAMPLE = 10;
+/** Maximum rows sampled when probing isDataTable for virtual grids. Per-row
+ * bounds (not one shared budget) so a wide header row of text labels cannot
+ * exhaust the sample before the scan reaches a data row — the row universe
+ * starts at the header now that rowgroups no longer trim the row list. */
+const GRID_IS_DATA_TABLE_ROW_SAMPLE = 10;
 /** Left-offset threshold (px) below which an element is treated as deliberately off-screen hidden. */
 const OFFSCREEN_LEFT_PX_THRESHOLD = -9999;
 
@@ -985,15 +994,16 @@ function isDataTable(table, opts = {}) {
     }
   }
   if (!hasMultipleColumns) return false;
-  // For virtual grids, limit the cell scan to a small sample to avoid probing
-  // potentially hundreds of rows. For native tables the loop is cheap.
-  const maxCells = adapter.isVirtualized() ? GRID_IS_DATA_TABLE_CELL_SAMPLE : Infinity;
-  let cellCount = 0;
-  for (let i = 0; i < rows.length; i++) {
+  // For virtual grids, bound the scan per row (rows × cells-per-row) to avoid
+  // probing potentially hundreds of rows. The bounds are per row, not one
+  // shared cell budget, so a header row of text labels gets its own allotment
+  // and cannot starve the data rows below it. For native tables the loop is
+  // cheap and unbounded.
+  const maxRows = adapter.isVirtualized() ? GRID_IS_DATA_TABLE_ROW_SAMPLE : Infinity;
+  const maxCellsPerRow = adapter.isVirtualized() ? GRID_IS_DATA_TABLE_CELL_SAMPLE : Infinity;
+  for (let i = 0; i < rows.length && i < maxRows; i++) {
     const cells = rows[i].getCells();
-    for (let j = 0; j < cells.length; j++) {
-      if (cellCount >= maxCells) return false;
-      cellCount++;
+    for (let j = 0; j < cells.length && j < maxCellsPerRow; j++) {
       const text = cells[j].getText().trim();
       if (text === '') continue;
       const parsed = numericProbe.parse(text);

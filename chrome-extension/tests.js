@@ -10677,6 +10677,20 @@ function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
     'Region,North,South,Subtotal,West');
 })();
 
+// Detection: the row universe now starts at the header row, and a wide
+// header of text labels must not exhaust the data-test sample before the
+// scan reaches a data row (review finding: a six-column sales grid whose
+// data rows lead with four text cells lost its pillbox).
+(function gridRowUniverse_isDataTable_wideHeader() {
+  const g = makeRowgroupRoleGrid(
+    ['Region', 'Country', 'Segment', 'Channel', 'Units', 'Revenue'],
+    [['North', 'Canada', 'Retail', 'Web', '120', '1482391']],
+    null
+  );
+  eq('row-universe: a grouped grid with a wide text header still passes the data test',
+    isDataTable(g.wrapperEl), true);
+})();
+
 // Behavior: the header row holds because it is the literal first row; the
 // first data row and the summary row round. The first column still holds.
 (function gridRowUniverse_headerHolds_dataAndSummaryRound() {
