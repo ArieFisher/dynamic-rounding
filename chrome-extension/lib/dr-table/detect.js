@@ -128,7 +128,11 @@ class NativeTableAdapter {
   getElement() { return this.el; }
   isVirtualized() { return false; }
   getRows() {
-    return Array.from(this.el.rows).map(row => ({
+    // literalIndex is the row's position in the table — the shared contract
+    // with GridAdapter.getRows, whose scoped rows can sit below rows the row
+    // list omits. For a native table the two coincide.
+    return Array.from(this.el.rows).map((row, literalIndex) => ({
+      literalIndex,
       getCells() {
         return Array.from(row.cells).map(cell => ({
           // No setText: the native path writes cells directly in roundTable so it
@@ -249,7 +253,7 @@ class GridAdapter {
   }
 
   /**
-   * Extract rows from a container element.
+   * Extract rows from a container element, each as { el, literalIndex }.
    *
    * Row source order: [role="row"] → .dg--virtual-row → <tr> → repetitive
    * children. The <tr> source covers ARIA grids (role="grid"/"table") that
@@ -262,32 +266,59 @@ class GridAdapter {
    * sit OUTSIDE the rowgroup — from being treated as data rows. Both signals are
    * standard ARIA, so this stays general (not site-specific).
    *
+   * literalIndex is the row's position among the container's FULL match list
+   * for the winning selector, rows outside the rowgroup(s) included. That
+   * makes "first row" mean the grid's literal first row: a data row with a
+   * header row above it is row two, so the first-row exclusion cannot land on
+   * it. Without scoping, literalIndex equals the row's list position.
+   *
    * @param {Element} container
-   * @returns {Element[]}
+   * @returns {{el: Element, literalIndex: number}[]}
    */
-  _getRowEls(container) {
+  _getRowEntries(container) {
     if (!container) return [];
     if (!container.querySelectorAll) {
-      return container.children ? Array.from(container.children) : [];
+      const kids = container.children ? Array.from(container.children) : [];
+      return kids.map((el, i) => ({ el, literalIndex: i }));
     }
     // Scope to ARIA rowgroup(s) when present so header/summary rows outside the
     // group are excluded; otherwise search the whole container.
     const rowgroups = container.querySelectorAll('[role="rowgroup"]');
-    const scopes = (rowgroups && rowgroups.length > 0)
-      ? Array.from(rowgroups)
-      : [container];
+    const isScoped = !!(rowgroups && rowgroups.length > 0);
+    const scopes = isScoped ? Array.from(rowgroups) : [container];
 
     for (const sel of ['[role="row"]', '.dg--virtual-row', 'tr']) {
       let rows = [];
       for (const scope of scopes) {
         if (scope.querySelectorAll) rows = rows.concat(Array.from(scope.querySelectorAll(sel)));
       }
-      if (rows.length > 0) return rows;
+      if (rows.length === 0) continue;
+      if (!isScoped) return rows.map((el, i) => ({ el, literalIndex: i }));
+      // Number each in-group row by its position in the container-wide match
+      // list, so the rows outside the group keep their spot in the count.
+      const all = Array.from(container.querySelectorAll(sel));
+      const positions = new Map(all.map((el, i) => [el, i]));
+      return rows.map((el, i) => ({
+        el,
+        literalIndex: positions.has(el) ? positions.get(el) : i,
+      }));
     }
     // Fallback: repetitive children of the first scope.
     const first = scopes[0];
-    if (first && first.children) return Array.from(first.children);
+    if (first && first.children) {
+      return Array.from(first.children).map((el, i) => ({ el, literalIndex: i }));
+    }
     return [];
+  }
+
+  /**
+   * Extract row elements from a container — _getRowEntries without the
+   * numbering, for callers that only stitch by list position (pinned panes).
+   * @param {Element} container
+   * @returns {Element[]}
+   */
+  _getRowEls(container) {
+    return this._getRowEntries(container).map((entry) => entry.el);
   }
 
   /**
@@ -364,8 +395,8 @@ class GridAdapter {
     const scrollContainer = this._getScrollContainer();
     const pinnedPane = this._getPinnedPane(scrollContainer);
 
-    const scrollRows = this._getRowEls(scrollContainer);
-    if (scrollRows.length === 0) return [];
+    const scrollEntries = this._getRowEntries(scrollContainer);
+    if (scrollEntries.length === 0) return [];
 
     // Build a map from row-key → pinned row element for efficient stitching.
     let pinnedRows = [];
@@ -379,12 +410,13 @@ class GridAdapter {
     }
 
     const adapter = this;
-    return scrollRows.map((rowEl, idx) => {
+    return scrollEntries.map(({ el: rowEl, literalIndex }, idx) => {
       const scrollKey = adapter._getRowKey(rowEl, idx);
       // Find the matching pinned row (by data-row / data-index / DOM index).
       let pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
 
       return {
+        literalIndex,
         getCells() {
           const cells = [];
           // Pinned cells first (if any pinned pane exists).
