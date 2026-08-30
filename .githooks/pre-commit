@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
-# Blocks a commit that would add a file the repository has no place for.
+# Blocks a commit that would add a file the repository has no place for, or
+# a retired synonym to a living doc's new prose.
 # Enable once per clone:  git config core.hooksPath .githooks
 #
 set -uo pipefail
 
 repo=$(git rev-parse --show-toplevel)
-exec "$repo/scripts/check-files.sh" --staged
+"$repo/scripts/check-files.sh" --staged || exit 1
+exec "$repo/scripts/check-vocab.sh" --staged
