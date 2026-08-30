@@ -3,7 +3,7 @@
 **Plan:** docs/sprint-plans/grid-support.md
 **Sprint goal:** Resolve the two unknowns that could force a re-architecture before any committed code assumes them away: (1) real grid DOM structure, (2) whether in-place text replacement survives the host framework's re-render.
 **Date:** 2026-06-11
-**Result:** Amend
+**Result:** Amend — resolved: the amendments shipped as [grid-support-v2.md](../sprint-plans/grid-support-v2.md), whose three sprints completed 2026-06-11/12. Do not re-defer downstream work on this verdict.
 
 ## Method
 
