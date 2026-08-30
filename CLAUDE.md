@@ -46,6 +46,14 @@ Route every review finding — from `/code-review`, a sprint-stack reviewer suba
 
 For sprint-stack: the reviewer subagent returns APPROVE/BLOCK and edits no files, so the verdict describes the reviewed code. A bucket-2 finding forces BLOCK; the orchestrator applies the fix and the test, then re-runs review. After APPROVE, the orchestrator applies bucket-1 fixes as a small `chore(...)` or `refactor(...)` commit, opens bucket-3 issues, writes the log, and opens the PR.
 
+## Docs track behavior
+
+`README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, and the `.agent/` instruction files are living docs. Sprint plans and logs, research notes, and `js/CHANGELOG.md` released entries are historical records — mark them, never rewrite them.
+
+- A PR that changes behavior updates every living doc its change invalidates, in the same branch. If none apply, write "No doc impact" in the PR body.
+- Documented input/output examples are under test: `node js/doc-tests.js` runs every pair the docs state against the library, locally and in CI. Keep a new example in a shape the extractors parse, or extend `js/doc-tests.js` in the same PR.
+- `scripts/check-vocab.sh --staged` gates new markdown prose on retired synonyms; the pre-commit hook and CI both run it. Historical records are exempt.
+
 ## Vocabulary
 
 `docs/vocabulary.md` is the term canon: one term per concept, across every platform and every document.

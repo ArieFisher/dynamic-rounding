@@ -27,7 +27,8 @@ Follow [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-
     - *External contributors: fork the repo first.*
 2. Enable the repo hooks once per clone: `git config core.hooksPath .githooks`
 3. Make and test your changes (see below)
-4. Submit a PR with a clear description
+4. Update the docs your change invalidates — the documented examples run against the library in CI (`node js/doc-tests.js`)
+5. Submit a PR with a clear description
 
 ### Adding files
 
