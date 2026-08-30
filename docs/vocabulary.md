@@ -129,6 +129,8 @@ Terms for reviews, plans, and discussion.
 | load-bearing  | Behavior depends on it. Removing a load-bearing item changes function, not only appearance. |
 | guard comment | A comment that warns future editors of a hidden dependency in nearby code.                  |
 | never used    | Code no caller reaches.                                                                     |
+| living doc    | A doc that describes the current system and must track it: the READMEs, the design doc, this vocabulary, the agent instructions. A behavior change updates the living docs it invalidates in the same branch. |
+| historical record | A doc that describes a moment: sprint plans and logs, research notes, changelog entries. Never rewritten — a superseded or completed record gets a status marker pointing forward. |
 | cost          | What a change spends (units may be: lines, risk, review time, runtime, etc.)                |
 | benefit       | What a change earns the user or the maintainer.                                             |
 
