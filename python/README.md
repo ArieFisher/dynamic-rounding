@@ -40,11 +40,12 @@ round_dynamic([4428910, 983321, 42109])
 from dynamic_rounding.pandas import round_dynamic_series
 import pandas as pd
 
-# Rounds Series with set-aware precision
+# Single mode — each value rounds on its own magnitude
 round_dynamic_series(df['revenue'])
 
-# Dataset mode with custom offsets
-round_dynamic_series(df['revenue'], offset_top=-0.5, offset_other=-0.5)
+# Dataset mode — engaged by passing offset_top and/or offset_other;
+# the max magnitude comes from the whole series
+round_dynamic_series(df['revenue'], offset_top=-0.5, offset_other=-1)
 
 # Parses formatted strings automatically
 s = pd.Series(["$1,200", "(500)", "4,428,910.41"])
@@ -53,10 +54,10 @@ round_dynamic_series(s)  # → [1000.0, -500.0, 4500000.0]
 
 ## Features
 
-- **Type preservation:** Returns `int` if input was `int` and result is whole number
+- **Type preservation:** Returns `int` when the input was `int` and the result is whole, and also when the result is whole and under 10 (trimming a trailing `.0`)
 - **None handling:** `None` input returns `None` (not 0)
 - **Pass-through:** Non-numeric values pass through unchanged by default
-- **String parsing (pandas):** Parses `$`, `€`, `£`, `¥`, commas, and `(500)` → `-500`
+- **String parsing (pandas):** Parses `$`, `€`, `£`, `¥`, commas, spaces, percent signs (`"50%"` → 50), Unicode dash and minus variants, and `(500)` → `-500`. A string with no digits (`"$"`) passes through, and strings with non-ASCII digits pass through for parity with the JS implementations
 
 ## API
 
@@ -67,7 +68,7 @@ round_dynamic_series(s)  # → [1000.0, -500.0, 4500000.0]
 - `offset`: OoM adjustment (default: -0.5)
 - `enforce_numeric`: If `True`, raises `ValueError` for non-numeric input
 
-**Dataset mode** (when `data` is a list):
+**Dataset mode** (when `data` is a list or tuple):
 - `data`: List of numbers to round
 - `offset_top`: OoM adjustment for top magnitude(s) (default: -0.5)
 - `offset_other`: OoM adjustment for other magnitudes (defaults to matching `offset_top`)
@@ -95,6 +96,12 @@ Same parameters as `round_dynamic`, but operates on a pandas Series.
 **Sign convention for fractional offsets:** The sign of the offset chooses the direction of the half-step. `+0.5` rounds to half of the *next-larger* OoM, `-0.5` to half of the *current* OoM. More generally, the step is `|frac(offset)| * 10 ** (OoM + ceil(offset))`.
 
 **Floor at the value's OoM:** After rounding, the magnitude of the result is at least `10 ** floor(log10(abs(value)))` — so a tens-of-millions value can never collapse to `0`.
+
+**Floor at the integer offset:** A fractional offset whose integer part is 1 or more never rounds finer than the corresponding integer offset. `round_dynamic(87054321, offset=-2.5)` returns `87100000` — the `-2` result floors the raw `-2.5` result.
+
+**12 significant digits:** Results are trimmed to 12 significant digits, with ties rounding away from zero. `round_dynamic(1234567890123, offset=-12)` returns `1234567890120`.
+
+**Limits:** Offset must be between -20 and 20; values outside that raise `ValueError`.
 
 ## Development
 
