@@ -30,7 +30,7 @@ Route every review finding — from `/code-review`, a sprint-stack reviewer suba
 
 **1\. Trivial and in-scope → fix now.** Apply the fix in the same change, re-run the test command, and mention it in one line. "Trivial and in-scope" means all of:
 
-- no behavior change (unused local, import, or variable; dead code the diff introduced; a comment typo; a wrong comment),  
+- no behavior change (unused local, import, or variable; never-used code the diff introduced; a comment typo; a wrong comment),  
 - touches only files and lines already in the diff,  
 - the existing test suite staying green proves it — no new test.
 

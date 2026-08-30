@@ -2,53 +2,54 @@
 
 ## Versioning
 
-JS and Python have independent version numbers:
+Three artifacts carry independent version numbers:
 
-| Implementation | Current Example | Location |
-|----------------|---------|----------|
-| JS | 0.2.x | `js/round_dynamic.js` header |
-| Python | 0.1.x | `python/pyproject.toml` + `python/dynamic_rounding/__init__.py` |
+| Artifact | Series | Where the version lives |
+|----------|--------|-------------------------|
+| Chrome extension | 2.1.x | `chrome-extension/manifest.json` |
+| Python | 0.2.x | `python/pyproject.toml` — the package reads it back at runtime via `importlib.metadata` |
+| JS (Google Sheets) | 0.3.x | `js/CHANGELOG.md` — the changelog is the version record; `js/round_dynamic.js` carries no version line |
 
-Bump version only when the implementation changes. Documentation-only changes don't require a version bump.
+## How versions move
+
+The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. If the PR touched `python/**` or `chrome-extension/**` — documentation included — it bumps the patch of the matching version file, opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. Nobody edits those two version files by hand.
+
+The JS version has no automation. It moves by adding a release entry to `js/CHANGELOG.md`.
 
 ## Releasing
 
-### JavaScript
+### Chrome extension
 
-1. Update version in `js/round_dynamic.js` header
-2. Update `js/CHANGELOG.md`
-3. Commit: `git commit -m "JS: Release v0.x.x"`
-4. Tag: `git tag js-v0.x.x`
-5. Push: `git push && git push --tags`
-6. Create GitHub Release from tag (optional)
-7. Update template spreadsheet with new code
+Merging to `main` is the release. Distribution is load-unpacked from the repo; there is no store listing to update.
+
+### JavaScript (Google Sheets)
+
+1. Add a release entry to `js/CHANGELOG.md` (this is the version bump)
+2. Update the [template spreadsheet](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) with the new `js/round_dynamic.js`
 
 ### Python
 
-1. Update version in both:
-   - `python/pyproject.toml`
-   - `python/dynamic_rounding/__init__.py` (header and `__version__`)
-2. Commit: `git commit -m "Python: Release v0.x.x"`
-3. Tag: `git tag py-v0.x.x`
-4. Build and upload:
-   ```bash
-   cd python
-   rm -rf dist build *.egg-info
-   python3 -m build
-   twine upload dist/*
-   ```
-5. Push: `git push && git push --tags`
-6. Create GitHub Release from tag (optional)
+The bump workflow has already moved `python/pyproject.toml` by merge time. To publish to PyPI:
+
+```bash
+cd python
+rm -rf dist build *.egg-info
+python3 -m build
+twine upload dist/*
+```
+
+### Tags
+
+The repo carries tags through `js-v0.2.4`, `py-v0.1.2`, and `v0.1.0`. Releases since the bump automation are untagged; create a tag only when cutting a GitHub Release.
 
 ## Changelog
 
-Each implementation has its own changelog:
-- `js/CHANGELOG.md`
-- Python: No separate changelog yet (use GitHub Releases or add `python/CHANGELOG.md` when needed)
-
-Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+- `js/CHANGELOG.md` is the only changelog, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
+- Python has none; PyPI release history and git history serve.
+- The Chrome extension has none; its version moves with every merged PR that touches it.
 
 ## File Naming Convention
 
-- ALL CAPS for standard repo metadata: README, LICENSE, CHANGELOG, CONTRIBUTING, MAINTAINERS
+- ALL CAPS for standard repo metadata: README, LICENSE, CHANGELOG, CONTRIBUTING, MAINTAINERS, CLAUDE
 - lowercase for everything else
+- The repo root is an allowlist: `scripts/check-files.sh` rejects any new root file not named in its policy block
