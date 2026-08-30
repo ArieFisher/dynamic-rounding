@@ -54,7 +54,7 @@ Brought `ROUND_DYNAMIC`'s string parsing and float cleanup in line with the chro
 
 ### Removed
 
-- The dataset-aware single mode (`=ROUND_DYNAMIC(value, range, ...)`). The function now has two modes: single and dataset, chosen by whether the first argument is a range.
+- The dataset-aware single mode (`=ROUND_DYNAMIC(value, range, ...)`). The function now has two modes: single and dataset, chosen by whether the first argument is a cell range.
 
 ## [0.2.4] - 2026-01-01
 
