@@ -30,7 +30,8 @@ trap cleanup EXIT
 
 scratch_repo() {
   local dir
-  dir=$(mktemp -d "${TMPDIR:-/tmp}/check-vocab-test.XXXXXX")
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/check-vocab-test.XXXXXX") || exit 2
+  [ -n "$dir" ] || exit 2
   scratch_dirs+=("$dir")
 
   git init -q "$dir"
@@ -93,6 +94,21 @@ expect_pass  "allowed sense passes"                 docs/design.md   'A blank ra
 expect_pass  "record path exempt"                   docs/sprint-logs/old-log.md 'The table toggle was renamed later.'
 expect_pass  "non-markdown file exempt"             scripts/notes.txt 'the table toggle lives here'
 
+# A rename-plus-edit must not slip past the filter: git reports it as R, and a
+# renamed living doc is the edit most likely to reintroduce old vocabulary.
+dir=$(scratch_repo)
+printf 'Clean prose about the pillbox.\n' > "$dir/docs/design.md"
+git -C "$dir" add docs/design.md
+git -C "$dir" commit -qm seed-doc
+git -C "$dir" mv docs/design.md docs/renamed.md
+printf 'Clean prose about the pillbox.\nThe table toggle turns rounding on.\n' > "$dir/docs/renamed.md"
+git -C "$dir" add docs/renamed.md
+if (cd "$dir" && scripts/check-vocab.sh --staged >/dev/null 2>&1); then
+  record fail "rename-plus-edit is caught (gate passed it)"
+else
+  record pass "rename-plus-edit is caught"
+fi
+
 # --range mode: a committed violation between two revisions is caught.
 dir=$(scratch_repo)
 base=$(git -C "$dir" rev-parse HEAD)
@@ -104,6 +120,35 @@ if (cd "$dir" && scripts/check-vocab.sh --range "$base" "$head" >/dev/null 2>&1)
   record fail "--range catches a committed violation (gate passed it)"
 else
   record pass "--range catches a committed violation"
+fi
+
+# --range with only the base branch containing a synonym: lines this branch
+# never wrote must not block it (three-dot semantics).
+dir=$(scratch_repo)
+printf 'The table toggle turns rounding on.\n' > "$dir/docs/design.md"
+git -C "$dir" add docs/design.md
+git -C "$dir" commit -qm base-owns-synonym
+git -C "$dir" checkout -qb topic
+printf 'A clean line about the pillbox.\n' > "$dir/docs/other.md"
+git -C "$dir" add docs/other.md
+git -C "$dir" commit -qm clean-topic
+git -C "$dir" checkout -q -
+printf 'The pillbox turns rounding on.\n' > "$dir/docs/design.md"
+git -C "$dir" add docs/design.md
+git -C "$dir" commit -qm base-cleans-itself
+mainhead=$(git -C "$dir" rev-parse HEAD)
+if (cd "$dir" && scripts/check-vocab.sh --range "$mainhead" topic >/dev/null 2>&1); then
+  record pass "--range ignores base-branch lines the topic never wrote"
+else
+  record fail "--range ignores base-branch lines the topic never wrote (gate blocked them)"
+fi
+
+# A revision git cannot resolve must fail the gate, not pass it.
+dir=$(scratch_repo)
+if (cd "$dir" && scripts/check-vocab.sh --range deadbeef HEAD >/dev/null 2>&1); then
+  record fail "unresolvable revision fails closed (gate passed without inspecting)"
+else
+  record pass "unresolvable revision fails closed"
 fi
 
 echo "check-vocab self-test: $passed passed, $failed failed"

@@ -52,7 +52,7 @@ For sprint-stack: the reviewer subagent returns APPROVE/BLOCK and edits no files
 
 - A PR that changes behavior updates every living doc its change invalidates, in the same branch. If none apply, write "No doc impact" in the PR body.
 - Documented input/output examples are under test: `node js/doc-tests.js` runs every pair the docs state against the library, locally and in CI. Keep a new example in a shape the extractors parse, or extend `js/doc-tests.js` in the same PR.
-- `scripts/check-vocab.sh --staged` gates new markdown prose on retired synonyms; the pre-commit hook and CI both run it. Historical records are exempt.
+- `scripts/check-vocab.sh --staged` gates new markdown prose on retired synonyms; the pre-commit hook and CI both run it. Historical records are exempt, and so is `docs/vocabulary.md` itself — it has to name the retired words.
 
 ## Vocabulary
 

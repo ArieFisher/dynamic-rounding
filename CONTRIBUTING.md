@@ -65,6 +65,11 @@ cd js
 node tests.js
 ```
 
+Run the doc-example suite — it executes every input/output pair the docs state against the library:
+```bash
+node js/doc-tests.js
+```
+
 Also verify in the [template spreadsheet](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) "Tests" tab.
 
 ### Chrome extension

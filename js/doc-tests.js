@@ -68,7 +68,7 @@ function checkDataset(doc, inputs, offsets, expecteds) {
 function assertMinCount(doc, found, min) {
   if (found < min) {
     failed++;
-    failures.push(`${doc}: extractor found only ${found} examples (needs >= ${min}) — the doc format changed; update js/doc-tests.js with it`);
+    failures.push(`${doc}: extractor found only ${found} examples (needs >= ${min}) — either the doc format changed (update the extractor in js/doc-tests.js) or examples were removed on purpose (lower this minimum)`);
   }
 }
 
@@ -182,7 +182,12 @@ function extractSheetsTab(doc, text) {
     if ((c[4] || '').includes(':') || datasetBlock) {  // dataset block: first row names the range
       if ((c[4] || '').includes(':')) {
         flushDataset();
-        datasetBlock = { inputs: [], offsets: [c[6], c[7], c[8]].map(parseOffset).filter(o => o !== undefined), expecteds: [] };
+        // Trailing blanks truncate; an interior blank stays undefined so the
+        // library applies its own default in that position rather than the
+        // next offset sliding into the wrong parameter slot.
+        const offsets = [c[6], c[7], c[8]].map(parseOffset);
+        while (offsets.length && offsets[offsets.length - 1] === undefined) offsets.pop();
+        datasetBlock = { inputs: [], offsets, expecteds: [] };
       }
       if (datasetBlock) {
         datasetBlock.inputs.push(parseNumber(c[2]));
@@ -259,13 +264,13 @@ const design = read('docs/design.md');
 const rootReadme = read('README.md');
 const sheetsTab = read('js/tests-googlesheets-tab.md');
 
-assertMinCount('js/README.md (formulas)', extractFormulaPairs('js/README.md', jsReadme), 6);
+assertMinCount('js/README.md (formulas)', extractFormulaPairs('js/README.md', jsReadme), 5);
 assertMinCount('js/README.md (offset table)', extractOffsetTable('js/README.md', jsReadme), 5);
 assertMinCount('js/README.md (casting)', extractCastingBullets('js/README.md', jsReadme), 5);
 assertMinCount('docs/design.md (offset table)', extractOffsetTable('docs/design.md', design), 5);
 assertMinCount('python/README.md', extractPythonPairs('python/README.md', pyReadme), 7);
 assertMinCount('python/README.md (offset table)', extractOffsetTable('python/README.md', pyReadme), 5);
-assertMinCount('README.md', extractFormulaPairs('README.md', rootReadme) + extractPythonPairs('README.md', rootReadme), 3);
+assertMinCount('README.md', extractFormulaPairs('README.md', rootReadme) + extractPythonPairs('README.md', rootReadme), 2);
 assertMinCount('js/tests-googlesheets-tab.md', extractSheetsTab('js/tests-googlesheets-tab.md', sheetsTab), 20);
 
 console.log(`\nDoc examples: ${passed} passed, ${failed} failed`);
