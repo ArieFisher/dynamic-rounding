@@ -26,20 +26,19 @@ Brought `ROUND_DYNAMIC`'s string parsing and float cleanup in line with the chro
   Before: `ROUND_DYNAMIC(1234567890123, -12)` → `1234567890123`
   After: `ROUND_DYNAMIC(1234567890123, -12)` → `1234567890120`
 
-### Added
-
-- **Docs:** Added `## Note: decimal precision in Sheets` section to README explaining that `ROUND_DYNAMIC` (as a custom function) cannot set cell number formats directly. Includes guidance on manually applying a custom number format to match the offset's decimal count, with examples for offsets 0.5 and 0.25.
-
 ## [0.3.0] - 2026-05-28
 
 ### Changed
 
 - **Breaking:** Redefined the meaning of fractional offsets (`+0.5`, `+0.25`, `+1.5`, etc.) so that the sign of the offset determines whether the half/quarter step sits above or below the current order of magnitude. Previously `+0.5` and `-0.5` produced identical results (a latent bug); now `+0.5` rounds toward one-OoM-larger steps and `-0.5` rounds toward current-OoM steps. The default offset (`-0.5`) is bytewise-unchanged, so callers on the default path are unaffected.
+- Whole-number results now return as integers, trimming a trailing `.0` from results under 10 (2026-05-26).
+- The version record moved: the `Version:` header line was removed from `js/round_dynamic.js`, and this changelog is now the authoritative JS version record.
 
 ### Added
 
 - **Feature 2:** Value-OoM floor. After rounding, the magnitude of the result is at least `10^floor(log10(|value|))` — i.e. a tens-of-millions value can never collapse to 0. Prevents the "small number simplifies to a bigger value than a bigger number" inversion that motivated this release.
 - **Feature 3:** "No-coarser-than-x" floor for fractional offsets with `|trunc(offset)| >= 1`. The floor is gated by an internal `X_FLOOR_THRESHOLD` constant (default `1`), not exposed on the public signature.
+- **Docs:** Added `## Note: decimal precision in Sheets` section to README (2026-05-24) explaining that `ROUND_DYNAMIC` (as a custom function) cannot set cell number formats directly. Includes guidance on manually applying a custom number format to match the offset's decimal count, with examples for offsets 0.5 and 0.25.
 
 ### Internal
 
@@ -49,14 +48,19 @@ Brought `ROUND_DYNAMIC`'s string parsing and float cleanup in line with the chro
 
 ### Changed
 
+- `offset_other` now defaults to matching `offset_top` (was `0`), so a dataset call that sets only `offset_top` rounds every band the same way.
 - Updated root README with better examples and a story-telling section.
 - Added `.obsidian/` to `.gitignore`.
+
+### Removed
+
+- The dataset-aware single mode (`=ROUND_DYNAMIC(value, range, ...)`). The function now has two modes: single and dataset, chosen by whether the first argument is a range.
 
 ## [0.2.4] - 2026-01-01
 
 ### Changed
 
-- **Performance (A1):** Optimized `datasetMode` and `datasetAwareSingleMode` to parse input ranges once (50% reduction in regex calls).
+- **Performance (A1):** Optimized `datasetMode` and `datasetAwareSingleMode` to parse the input dataset once (50% reduction in regex calls).
 - **Refactoring:** Extracted regex literals to file-scope constants (`CLEAN_REGEX`, `PARENS_REGEX`).
 - **Refactoring:** Extracted default values and internal limits to named constants (`DEFAULT_OFFSET_TOP`, `VALIDATION_LIMIT`, etc.).
 
@@ -119,7 +123,7 @@ Brought `ROUND_DYNAMIC`'s string parsing and float cleanup in line with the chro
 - `ROUND_DYNAMIC` custom function for Google Sheets
 - Magnitude-aware rounding with configurable offset
 - Dataset-aware rounding
-  - Automatic max magnitude detection from input range
+  - Automatic max magnitude detection from the input dataset
   - Finer offset for top magnitude tier, coarser offset for smaller numbers
 - Array input/output (spill ranges)
 - Handles numbers formatted as text (parses commas, currency symbols, parentheses)

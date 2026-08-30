@@ -34,7 +34,7 @@
 | \=IF(D32=E32, "✓", "✗") | 1234 | *(spills)* | `1,000` | 1,000 |  |  |  |
 |  |  |  |  |  |  |  |  |
 
-| Section 4: Input Handling |  |  |  |  |  |  |  |
+| Section 3: Input Handling |  |  |  |  |  |  |  |
 |  | **Input Handling** |  |  |  |  |  |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
 | \=IF(D45=E45, "✓", "✗") | $ (500.00) | `=FORMULATEXT(D45)` | `=ROUND_DYNAMIC(B45)` | \-500 |  | Note: accounting format |  |
@@ -46,11 +46,19 @@
 | \=IF(D51=E51, "✓", "✗") | TRUE | `=FORMULATEXT(D51)` | `=ROUND_DYNAMIC(B51)` | TRUE |  | \="ISLOGICAL(..)=" & ISLOGICAL(B51) |  |
 | \=IF(ISREF(D52), "✓", "✗") | \#REF\! | `=FORMULATEXT(D52)` | `=ROUND_DYNAMIC(B52)` | \#REF\! |  | \="ISREF(..)= " & ISREF(B52) |  |
 |  |  |  |  |  |  |  |  |
-| Section 5: Validation |  |  |  |  |  |  |  |
+| Section 4: Validation |  |  |  |  |  |  |  |
 |  | **Validation** |  |  |  |  |  |  |
 |  | **Input** | **OFFSET** | **Formula** | **Result** | **Expected** |  |  |
 | \=IF(ISERR(E57), "✓", "✗") | 1000 | 21 | `=FORMULATEXT(E57)` | `=ROUND_DYNAMIC(B57, C57)` | \#ERROR\! |  |  |
 | \=IF(ISERR(E58), "✓", "✗") | 1000 | \-21 | `=FORMULATEXT(E58)` | `=ROUND_DYNAMIC(B58, C58)` | \#ERROR\! |  |  |
-| \=IF(E59=F59, "✓", "✗") | 9393 | 20 | `=FORMULATEXT(E59)` | `=ROUND_DYNAMIC(B59, C59)` | 0 |  |  |
+| \=IF(E59=F59, "✓", "✗") | 9393 | 20 | `=FORMULATEXT(E59)` | `=ROUND_DYNAMIC(B59, C59)` | 1000 |  | Note: the value-OoM floor stops the collapse to 0 |
 | \=IF(E60=F60, "✓", "✗") | 9393 | \-20 | `=FORMULATEXT(E60)` | `=ROUND_DYNAMIC(B60, C60)` | `9393` |  |  |
+|  |  |  |  |  |  |  |  |
+
+| Section 5: Parsing edge cases |  |  |  |  |  |  |  |
+|  | **Parsing edge cases** |  |  |  |  | *//format the Input cells as plain text* |  |
+|  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
+| \=IF(D65=E65, "✓", "✗") | 50% | `=FORMULATEXT(D65)` | `=ROUND_DYNAMIC(B65)` | 50 |  | Note: percent sign stripped, not scaled; enter as text |  |
+| \=IF(D66=E66, "✓", "✗") | −500 | `=FORMULATEXT(D66)` | `=ROUND_DYNAMIC(B66)` | \-500 |  | Note: U+2212 minus sign normalized to ASCII |  |
+| \=IF(D67=E67, "✓", "✗") | $ | `=FORMULATEXT(D67)` | `=ROUND_DYNAMIC(B67)` | $ |  | Note: symbol-only string passes through, not 0 |  |
 |  |  |  |  |  |  |  |  |
