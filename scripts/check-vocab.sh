@@ -41,6 +41,9 @@ RETIRED_PATTERNS=(
 )
 
 # Paths the sweep never touches: point-in-time records and the canon itself.
+# Note on renames: a file moved OUT of an exempt path re-reads as all-new
+# prose. A historical record is never rewritten to satisfy this gate — extend
+# this list to cover the record's new home instead.
 EXEMPT_PATHS='^docs/sprint-logs/|^docs/sprint-plans/|^docs/research/|^js/CHANGELOG\.md$|^docs/vocabulary\.md$'
 
 # --------------------------------------------------------------------------
@@ -99,13 +102,15 @@ changed=$(git diff --name-only --diff-filter=ACMR "${diff_args[@]}") || {
   exit 2
 }
 
+# Prefixes pinned so the '+++ b/…' header filter holds under any local git
+# config (diff.noprefix, diff.mnemonicPrefix).
 while IFS= read -r file; do
   [[ -n "$file" ]] || continue
-  check_added_lines "$file" git diff --unified=0 "${diff_args[@]}"
+  check_added_lines "$file" git diff --unified=0 --src-prefix=a/ --dst-prefix=b/ "${diff_args[@]}"
 done <<< "$changed"
 
 if (( failures > 0 )); then
-  echo "check-vocab: $failures file(s) blocked. Replace the retired synonym with its canonical term (docs/vocabulary.md, Retired synonyms)." >&2
+  echo "check-vocab: $failures finding(s) blocked. Replace the retired synonym with its canonical term (docs/vocabulary.md, Retired synonyms)." >&2
   exit 1
 fi
 exit 0
