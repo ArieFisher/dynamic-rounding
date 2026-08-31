@@ -137,20 +137,22 @@ Terms for reviews, plans, and discussion.
 
 ## Retired synonyms
 
-| Say                  | Not              |
-| -------------------- | ---------------- |
-| active               | selected         |
-| step                 | base             |
-| application model    | store, app store |
-| bound                | linked           |
-| pillbox              | table toggle, pill, toggle (the control) |
-| originals            | undo state       |
-| never used (of code) | dead             |
-| dead handle          | orphaned handle  |
-| coupled              | fused, tied      |
-| benefit              | "what it buys"   |
-| lens preview         | preview band     |
-| settings record      | record           |
-| unrestorable         | stuck            |
-| load-time scan       | proactive scan   |
-| dataset              | range (the set of values; "range expression" stays) |
+The Example column shows the canonical term in a sentence.
+
+| Say                  | Not              | Example                                                                       |
+| -------------------- | ---------------- | ----------------------------------------------------------------------------- |
+| active               | selected         | The active table is the one the right-click menu acts on.                     |
+| step                 | base             | An offset of -0.5 on a magnitude-7 value gives a step of 5,000,000.           |
+| application model    | store, app store | The application model owns the registry; no other component keeps a copy.     |
+| bound                | linked           | The sidebar's controls read from the bound table.                             |
+| pillbox              | table toggle, pill, toggle (the control) | Only data tables get a pillbox.                           |
+| originals            | undo state       | Restore puts the originals back into the cells.                               |
+| never used (of code) | dead             | No caller reaches the helper, so it is never used.                            |
+| dead handle          | orphaned handle  | A dead handle names a table the page has removed.                             |
+| coupled              | fused, tied      | The sidebar view is coupled to the settings record.                           |
+| benefit              | "what it buys"   | The gate's benefit is one vocabulary across every living doc.                 |
+| lens preview         | preview band     | The lens preview shows samples from several magnitudes, before and after simplification. |
+| settings record      | record           | The switch writes to the settings record, and the active table re-simplifies from it. |
+| unrestorable         | stuck            | A table whose originals were never captured is unrestorable.                  |
+| load-time scan       | proactive scan   | The load-time scan finds native tables first, then elements with a grid role. |
+| dataset              | range (the set of values; "range expression" stays) | In set-aware simplification the max magnitude comes from the dataset. |
