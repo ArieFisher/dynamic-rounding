@@ -30,7 +30,7 @@ Route every review finding — from `/code-review`, a sprint-stack reviewer suba
 
 **1\. Trivial and in-scope → fix now.** Apply the fix in the same change, re-run the test command, and mention it in one line. "Trivial and in-scope" means all of:
 
-- no behavior change (unused local, import, or variable; dead code the diff introduced; a comment typo; a wrong comment),  
+- no behavior change (unused local, import, or variable; never-used code the diff introduced; a comment typo; a wrong comment),  
 - touches only files and lines already in the diff,  
 - the existing test suite staying green proves it — no new test.
 
@@ -45,6 +45,14 @@ Route every review finding — from `/code-review`, a sprint-stack reviewer suba
 **4\. FYI, no action → one line in the sprint log or PR notes.** Do not file an issue for it.
 
 For sprint-stack: the reviewer subagent returns APPROVE/BLOCK and edits no files, so the verdict describes the reviewed code. A bucket-2 finding forces BLOCK; the orchestrator applies the fix and the test, then re-runs review. After APPROVE, the orchestrator applies bucket-1 fixes as a small `chore(...)` or `refactor(...)` commit, opens bucket-3 issues, writes the log, and opens the PR.
+
+## Docs track behavior
+
+`README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, and the `.agent/` instruction files are living docs. Sprint plans and logs, research notes, and `js/CHANGELOG.md` released entries are historical records — mark them, never rewrite them.
+
+- A PR that changes behavior updates every living doc its change invalidates, in the same branch. If none apply, write "No doc impact" in the PR body.
+- Documented input/output examples are under test: `node js/doc-tests.js` runs every pair the docs state against the library, locally and in CI. Keep a new example in a shape the extractors parse, or extend `js/doc-tests.js` in the same PR.
+- `scripts/check-vocab.sh --staged` gates new markdown prose on retired synonyms; the pre-commit hook and CI both run it. Historical records are exempt, and so is `docs/vocabulary.md` itself — it has to name the retired words.
 
 ## Vocabulary
 

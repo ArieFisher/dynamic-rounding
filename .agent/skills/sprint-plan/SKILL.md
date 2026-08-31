@@ -1,10 +1,10 @@
 ---
 name: sprint-plan
 version: 2
-description: Plan multi-sprint feature work by surveying the current repo, applying architectural design principles to a feature list, breaking the work into sprints that maximize independence, and producing a markdown plan committed to a `plan/<slug>` branch with a PR opened to merge it into main. The plan is a static artifact — once merged it is never edited. The `sprint-stack` execution skill reads the plan from main. Use this skill whenever the user wants to break a feature backlog into sequenced sprints, design before implementing, or prepare input for `sprint-stack`. Triggers on phrases like "help me plan how to build X", "what's the right order to ship these features", "design this before we code it", "plan some work".
+description: Plan multi-sprint feature work by surveying the current repo, applying architectural design principles to a feature list, breaking the work into sprints that maximize independence, and producing a markdown plan committed to a `plan/<slug>` branch with a PR opened to merge it into main. After review, `--finalize` emits the JSON handoff (`docs/sprint-plans/<slug>.json`) that the `sprint-stack` execution skill consumes; the markdown is the human record, and its Status line moves to COMPLETED when the run finishes. Use this skill whenever the user wants to break a feature backlog into sequenced sprints, design before implementing, or prepare input for `sprint-stack`. Triggers on phrases like "help me plan how to build X", "what's the right order to ship these features", "design this before we code it", "plan some work".
 ---
 
-You are a senior architect helping the user plan a stack of sprints. The output is a markdown plan the user reviews and merges to main — after which it is read-only forever. No status field tracks execution; that belongs in per-sprint logs, not the plan.
+You are a senior architect helping the user plan a stack of sprints. The output is a markdown plan the user reviews and merges to main, plus — after approval — a JSON handoff for execution. Sprint definitions are never edited after the fact; execution state lives in the plan's Status header line, its Decisions Log, and the run log.
 
 ## Inputs
 
@@ -24,7 +24,8 @@ Don't design in a vacuum.
 
 - `git log --oneline -20`
 - Shallow directory tree
-- Read `README.md`, `CONTRIBUTING.md`, `docs/architecture.md` if present
+- Read `README.md`, `CONTRIBUTING.md`, `docs/design.md` if present
+- Read `docs/vocabulary.md` in full, including the Retired synonyms table — the plan's prose must use the canonical terms
 - Identify languages, frameworks
 - Note existing `CLAUDE.md`, `.agent/` content
 - Note visible design patterns (layered, hexagonal, service-oriented, etc.)
@@ -39,7 +40,7 @@ The execution skill needs these to do mechanical work correctly. Get them right 
 - **Test command**
 - **Lint/format commands**
 - **Build command** (if applicable)
-- **Branch naming** — default `feature/<label>`. Never use `claude/` as a prefix.
+- **Branch naming** — by change type: `feature/`, `fix/`, `chore/`, `refactor/`, or `docs/` plus the label. Never `claude/` or `session/`. Record each sprint's branch in the JSON handoff's per-sprint `branch` field.
 - **Commit convention** — Conventional Commits? Plain? Prefix?
 - **PR template path** — if one exists
 - **Version-bump workflow** — sprint-stack does not bump versions on feature branches. Versioning is expected to happen at merge time via a GitHub Action triggered by PR merges to base. Probe for one:
@@ -177,39 +178,32 @@ Sprint commits do not touch version files. Versioning is handled at merge time b
 
 ## Phase 6: Document, commit, and open PR
 
-### Push-auth precheck
+### Push and PR auth
 
-Before doing the work, confirm this session can push to the remote. Some environments route git through a read-only proxy or use a GitHub App integration that lacks write access; in those cases push will fail with `403` (`Permission to <repo> denied` or `Resource not accessible by integration`).
-
-Run a cheap check:
+`origin` may be a proxy that authenticates through a connected GitHub App and ignores pasted tokens. Push with plain `git push origin <branch>`, then verify arrival by reading real GitHub:
 
 ```
-git push --dry-run origin HEAD:refs/heads/__sprint_plan_auth_check 2>&1
+curl --noproxy '*' https://api.github.com/repos/<owner>/<repo>/branches
 ```
 
-If the output contains `403` or `denied`, ask the user for a fine-grained GitHub PAT with `contents: write` on this repo:
-
-> I can't push to this repo from the current session (got 403 from the remote). Paste a GitHub PAT with `contents: write` on `<owner>/<repo>` and I'll use it for the plan PR. The token stays in this session only.
-
-When the user provides a token, push using a one-shot authenticated URL rather than rewriting `remote.origin.url` (so the token doesn't get stored in `.git/config`):
+For PR creation, try `gh pr create`. If it returns `403 Resource not accessible by integration`, ask the user for a PAT and call the real API directly:
 
 ```
-git push "https://x-access-token:<TOKEN>@github.com/<owner>/<repo>.git" <branch>
+curl --noproxy '*' -H "Authorization: Bearer <PAT>" https://api.github.com/repos/<owner>/<repo>/pulls -d '{"title": "...", "head": "<branch>", "base": "main", "body": "..."}'
 ```
 
-Use the same authenticated URL for `gh pr create` via `GH_TOKEN=<TOKEN> gh pr create ...` if the `gh` CLI is being used.
-
-If the dry-run push succeeds, proceed normally — no token needed.
+Never put a token in a git URL — `push -u` with a token URL stores it in `.git/config` as the branch upstream, and the proxy ignores it anyway. Hold a PAT in session memory only; after any push involving one, `grep -c x-access-token .git/config` must return `0`.
 
 ### Write the plan
 
 Write the plan to `docs/sprint-plans/<slug>.md` using the structure below. Create branch `plan/<slug>` off `main`, commit with `plan: <slug>`, push, and open a PR to merge `plan/<slug>` into `main`.
 
-The plan has no status field. Merging the PR is the approval; the merged file in `main` is read-only forever. Do not add `DRAFT`, `APPROVED`, `COMPLETED`, or any execution-tracking status — none of them carry information that the git state doesn't already convey, and execution state belongs in per-sprint logs, not here.
+The plan carries one `**Status:**` header line. Merging the PR is the approval (`APPROVED`); when the run finishes, the status moves to `COMPLETED` with a pointer to the run log; a plan replaced before execution gets `SUPERSEDED` with a pointer to its successor. Sprint definitions are never edited after the fact — deviations land in the Decisions Log and the run log.
 
 ```markdown
 # Sprint Plan: <Title>
 
+**Status:** APPROVED
 **Created:** <date>
 **Base branch:** main
 **Slug:** <slug>
@@ -279,6 +273,7 @@ Tell the user:
 > Next:
 > 1. Review the plan in the PR. Edit on the `plan/<slug>` branch if needed.
 > 2. Merge the PR when satisfied. The plan is then permanent in `main` and `plan/<slug>` can be deleted.
-> 3. Run `/sprint-stack <slug>` to execute. The skill reads the plan from `main`.
+> 3. Run `/sprint-plan --finalize <slug>` to emit `docs/sprint-plans/<slug>.json` — the structured handoff (per sprint: `label`, `branch`, `goal`, `scope`, `acceptance_criteria`, `depends_on`, `version_bump` notes).
+> 4. Run `/sprint-stack <slug>` to execute. The skill reads the JSON from `main`.
 
-Stop. There is no finalize step. The merged plan is the handoff.
+The merged markdown plus the finalized JSON is the handoff.

@@ -1,5 +1,17 @@
 # Detecting Web-Based Data Grids (Databricks SQL & others)
 
+> **Status (2026-08-30): superseded.** Grid support shipped, and the shipped
+> detector does not use this note's approach. `looksLikeGrid` in
+> `chrome-extension/lib/dr-table/detect.js` ladders on child count, repetitive
+> structure, layout, numeric content, and column widths — not on pinned/scroll
+> co-occurrence or scroll-height signals — and the live spike
+> ([grid-support-feasibility-spike](../sprint-logs/grid-support-feasibility-spike.md))
+> found Databricks renders a single pane, not the pinned + scrollable split
+> described below. The open questions at the bottom are all answered by the
+> shipped `GridAdapter` (rows stitch by row key, then DOM index; detection
+> relies on `role="grid"`/`role="table"`, `role="row"`, `role="cell"`,
+> `role="rowgroup"`). Kept as the record of the pre-spike understanding.
+
 Research notes on identifying non-standard "data grid" tables in modern web apps,
 prompted by inspecting the Databricks SQL results window. Relevant to the Chrome
 extension's table detection/scraping logic.

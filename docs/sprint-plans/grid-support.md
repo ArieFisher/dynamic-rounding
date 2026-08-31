@@ -1,5 +1,6 @@
 # Sprint Plan: Virtualized Data Grid Support
 
+**Status:** Sprints 2–4 superseded — the feasibility spike returned Amend, and [grid-support-v2.md](./grid-support-v2.md) re-planned them. All v2 sprints shipped.
 **Created:** 2026-06-10
 **Base branch:** main
 **Slug:** grid-support

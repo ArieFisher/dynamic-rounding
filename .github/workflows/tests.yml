@@ -19,3 +19,5 @@ jobs:
         run: node js/tests.js
       - name: Run chrome extension tests
         run: node chrome-extension/tests.js
+      - name: Run the documented examples against the library
+        run: node js/doc-tests.js

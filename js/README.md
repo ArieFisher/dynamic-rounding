@@ -23,7 +23,7 @@ This is a custom function for Google Sheets that rounds numbers *declaratively* 
 
 ## Usage
 
-This function has three modes depending on the arguments provided.
+This function has two modes depending on the arguments provided.
 
 ### Single mode
 
@@ -43,7 +43,7 @@ Rounds a single value to the nearest half order of magnitude (default).
 
 **`=ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])`**
 
-Rounds an entire range with dataset-aware behavior: larger numbers retain more detail.
+Rounds an entire dataset with set-aware behavior: larger numbers retain more detail.
 
 | A | `=ROUND_DYNAMIC(A1:A4)` |
 |---|-------------------------|
@@ -73,6 +73,10 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 **Floor at the value's OoM:** After rounding, the magnitude of the result is at least `10^floor(log10(|value|))`. A tens-of-millions value can never collapse to `0`, regardless of the requested offset.
 
+**Floor at the integer offset:** A fractional offset whose integer part is 1 or more never rounds finer than the corresponding integer offset. `ROUND_DYNAMIC(87054321, -2.5)` returns 87,100,000 — the `-2` result floors the raw `-2.5` result.
+
+**12 significant digits:** Results are trimmed to 12 significant digits, with ties rounding away from zero. This strips floating-point noise from sub-unit steps and is a real precision loss at fine offsets on large or highly precise inputs.
+
 **Limits:** Offset must be between -20 and 20.
 
 ---
@@ -83,9 +87,12 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 - `"4,428,910.41"` → 4428910.41
 - `"$1,200"` → 1200
 - `"(500)"` → -500 (accounting format)
+- `"50%"` → 50 (the percent sign is stripped, not scaled)
+- `"1 200"` → 1200 (spaces read as thousands separators)
+- `"−500"` → -500 (Unicode dash and minus variants read as a negative sign)
 - Supports `$`, `€`, `£`, `¥`
 
-**Non-numeric values:** Pass through unchanged.
+**Non-numeric values:** Pass through unchanged. A string with no digits at all — a lone currency symbol or separator like `"$"` or `","` — also passes through instead of reading as `0`.
 
 **Empty/null values:** Return empty string.
 
@@ -104,7 +111,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| range | required | Range for rounding and/or magnitude detection |
+| range | required | The dataset: the values to round, and the source of the max magnitude |
 | offset_top | -0.5 | Offset for top magnitude(s) |
 | offset_other | matches offset_top | Offset for other magnitudes |
 | num_top | 1 | How many top orders get offset_top |
@@ -119,13 +126,14 @@ Run the test suite:
 node tests.js
 ```
 
-The test suite covers:
+The test suite (256 tests) covers:
 - Single mode: offset variations, magnitudes, string parsing
 - Dataset mode: default/custom parameters, mixed data types
-
 - Date/time handling: dates pass through unchanged
 - Parameter validation: offset must be between -20 and 20
 - Edge cases: undefined, NaN, Infinity, booleans, empty arrays
+- Half-step, quarter-step, and floor semantics, including the `X_FLOOR_THRESHOLD` flip
+- The shared case table (`round-dynamic-cases.json`) — the cross-platform contract that also runs against the Chrome extension and the Python port
 
 ---
 
@@ -142,7 +150,7 @@ As a result, if your offset parameter implies a specific number of decimal place
 | `=ROUND_DYNAMIC(A1:A10, 0.5)` | `0.0` or `0.0%` to show the one decimal place implied by offset 0.5 |
 | `=ROUND_DYNAMIC(A1:A10, 0.25)` | `0.00` or `0.00%` to show the two decimal places implied by offset 0.25 |
 
-The Chrome extension handles this automatically — it reads the offset's own decimal count and applies it as a minimum decimal floor when formatting small values (in the `0 ≤ |x| < 10` band).
+The Chrome extension has no such constraint: it writes plain numbers with trailing zeros trimmed, so no minimum decimal count applies.
 
 ---
 
