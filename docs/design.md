@@ -211,7 +211,7 @@ The extension is the largest consumer of the algorithm and carries its own compo
 
 Outside the content script: `sidebar.html`/`sidebar.js` (the sidebar, a separate extension page) and `background.js` (the service worker that registers the context menu and opens the side panel).
 
-**State.** The application model owns all application state: the active table, whether the sidebar is open, the settings record, and the registry of tables found on the page. Every read goes through its getters; every write goes through a setter, which publishes the field's whole new value on the bus. No component keeps its own copy, and nothing uses the page as memory.
+**State.** The application model holds all application state: the active table, whether the sidebar is open, the settings record, and the registry of tables found on the page. Every read goes through its getters; every write goes through a setter, which publishes the field's whole new value on the bus. No component keeps its own copy, and nothing uses the page as memory.
 
 **Messages.** The event bus carries two topic families and only two. Intent topics report what the user did (`intent:selectTable`, `intent:toggleTable`, `intent:settingsChanged`) — requests with no authority, consumed by the controller. State-change topics report what the model changed (`state:selectedTableChanged`, `state:sidebarOpenChanged`, `state:settingsChanged`) — views subscribe to redraw. A topic that must cross extension contexts (the sidebar is not part of the tab's content script) carries a wire action over `chrome.runtime`/`chrome.tabs` messaging; the publish call is the same either way.
 
