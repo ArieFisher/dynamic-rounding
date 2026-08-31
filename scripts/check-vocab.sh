@@ -19,25 +19,49 @@ set -uo pipefail
 # --------------------------------------------------------------------------
 
 # One pattern per retired synonym whose retired sense a grep can isolate,
-# narrowed where the bare word has legitimate other senses. Five rows of the
-# Retired synonyms table are deliberately uncovered — "base", "store",
-# "linked", "tied", and "record" carry too many legitimate senses to pattern
-# (e.g. "base branch", "tied to the academic calendar"); the human sweep
-# owns those. Keep in step with docs/vocabulary.md.
+# narrowed where the bare word has legitimate other senses. One row of the
+# Retired synonyms table stays deliberately uncovered: "record" looks the same
+# in its retired sense and in "historical record", a term these conventions
+# lean on, so the human sweep owns it. Keep in step with docs/vocabulary.md.
+#
+# Word boundaries, per edge, when adding a pattern:
+#   Front: add \b when a real word ends in the pattern's first token, so
+#     "stable toggle" and "confused" do not read as findings. Leave the front
+#     open where the prefixed form is the same mistake — "unselected table" and
+#     "unstuck table" are worth catching.
+#   Back: add \b only when a longer word starting with the pattern is
+#     legitimate prose ("pillbox", "baseline", "storefront"). Leaving it open
+#     is what catches "table toggles" and "undo states".
 RETIRED_PATTERNS=(
-  'table toggle'        # say: pillbox
+  '\btable toggle'      # say: pillbox
   '\bpill\b'            # say: pillbox
-  'undo state'          # say: originals
-  'preview band'        # say: lens preview
-  'proactive scan'      # say: load-time scan
-  'orphaned handle'     # say: dead handle
+  '\bundo state'        # say: originals
+  '\bpreview band'      # say: lens preview
+  '\bproactive scan'    # say: load-time scan
+  '\borphaned handle'   # say: dead handle
   '\bfused\b'           # say: coupled
   'what it buys'        # say: benefit
-  'dead code'           # say: never-used code
-  'selected table'      # say: active table (or bound table)
-  'stuck table'         # say: locked / unrestorable table
+  '\bdead code'         # say: never-used code
+  'selected table'      # say: active table (or bound table) — front open on purpose: "unselected"
+  'stuck table'         # say: locked / unrestorable table — front open on purpose: "unstuck"
   '\bapp store\b'       # say: application model
-  'entire range|whole range|input range'  # say: dataset ("range expression" and cell ranges keep their names)
+  '\bentire range|\bwhole range|\binput range'  # say: dataset ("range expression" and cell ranges keep their names)
+
+  # Collocations. Four retired words carry legitimate other senses, so each is
+  # narrowed to phrases that can only mean the retired thing. The bare word
+  # stays legal: "base branch", "store the value", "linked list", "tied to the
+  # academic calendar". Coverage is partial by design: a phrasing not listed
+  # here reaches the human sweep. That is the trade — a pattern broad enough to
+  # fire on clean prose teaches people to stop trusting the gate.
+  #
+  # Deliberately absent, each rejected for blocking real prose this repo writes:
+  # "a base of 10" (number bases, next to log10), "the extension store" and
+  # "publish to the store" (the Chrome Web Store), and a bare "is linked to the"
+  # (an issue linked to a PR). The qualified forms below carry the load.
+  'rounding base\b|\bbase unit\b|nearest base\b'  # say: step
+  '\b(state|panel|settings|table) store\b'  # say: application model ("app store" has its own row above)
+  '\blinked (table|state|cell|range)\b|is linked to the (table|sidebar|panel|switch|pillbox|state)\b'  # say: bound
+  'tightly tied|tied together|\btied to the (table|panel|pillbox|toggle|sidebar|switch|state)\b'  # say: coupled
 )
 
 # Paths the sweep never touches: point-in-time records and the canon itself.
@@ -45,6 +69,55 @@ RETIRED_PATTERNS=(
 # prose. A historical record is never rewritten to satisfy this gate — extend
 # this list to cover the record's new home instead.
 EXEMPT_PATHS='^docs/sprint-logs/|^docs/sprint-plans/|^docs/research/|^js/CHANGELOG\.md$|^docs/vocabulary\.md$'
+
+# --------------------------------------------------------------------------
+# Preflight
+# --------------------------------------------------------------------------
+
+# The pattern list is the whole policy, and an empty or broken list reports the
+# same silence as clean prose. These checks turn that silence into a refusal,
+# on every run of the gate rather than only when the self-test runs in CI.
+
+# A sentence the gate must be able to see. It belongs to no living doc, so a
+# real change never carries it. When the pattern it matches retires, point the
+# canary at another one.
+#
+# It matches exactly one pattern, and that pattern opens with \b. So the canary
+# also proves the search command honors word boundaries — the one feature these
+# patterns depend on that differs between grep implementations. A grep that
+# read \b as a literal would fail preflight instead of quietly under-blocking.
+CANARY='The table toggle turns rounding on.'
+
+# grep answers three ways: 0 found, 1 not found, 2 the pattern is broken.
+# Reading 2 as "not found" is how a malformed pattern disables itself without a
+# word, so the status travels back to every caller intact.
+match_pattern() {
+  local pattern="$1" text="$2"
+  printf '%s\n' "$text" | grep -iE "$pattern"
+}
+
+preflight() {
+  if (( ${#RETIRED_PATTERNS[@]} == 0 )); then
+    echo "check-vocab: the retired-synonym list is empty — refusing to pass without inspecting" >&2
+    exit 2
+  fi
+
+  local pattern status canary_seen=0
+  for pattern in "${RETIRED_PATTERNS[@]}"; do
+    match_pattern "$pattern" "$CANARY" >/dev/null
+    status=$?
+    if (( status > 1 )); then
+      printf 'check-vocab: /%s/ is not a valid expression — refusing to pass without inspecting\n' "$pattern" >&2
+      exit 2
+    fi
+    (( status == 0 )) && canary_seen=1
+  done
+
+  if (( canary_seen == 0 )); then
+    echo "check-vocab: no pattern matches the canary — the gate cannot see a known violation" >&2
+    exit 2
+  fi
+}
 
 # --------------------------------------------------------------------------
 # Check
@@ -64,8 +137,12 @@ check_added_lines() {
   [[ -n "$added" ]] || return 0
 
   for pattern in "${RETIRED_PATTERNS[@]}"; do
+    # Guard: preflight already compiled every pattern with this same grep, and
+    # a pattern's validity does not depend on the text searched. So the only
+    # answers left here are found and not-found, and swallowing the status is
+    # safe. Removing the preflight canary loop would make that untrue.
     local hits
-    hits=$(printf '%s\n' "$added" | grep -iE "$pattern" || true)
+    hits=$(match_pattern "$pattern" "$added" || true)
     if [[ -n "$hits" ]]; then
       printf '  BLOCKED  %s\n           retired synonym /%s/ in new prose — see docs/vocabulary.md:\n' "$file" "$pattern" >&2
       printf '%s\n' "$hits" | sed 's/^/           /' >&2
@@ -73,6 +150,9 @@ check_added_lines() {
     fi
   done
 }
+
+# Prove the policy works before trusting a verdict from it.
+preflight
 
 # The file list is captured in the main shell so a git failure is observable:
 # a gate that cannot diff must not report success. Renames count (R): a
