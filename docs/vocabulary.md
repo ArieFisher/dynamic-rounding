@@ -84,6 +84,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | Term | Meaning |
 | --- | --- |
 | simplify | Apply the full treatment to a table per the current settings: rounding for numbers, granularity for dates and times. |
+| form | Whether a table's cells are showing raw or simplified. Values: raw, simplified. |
 | apply | The sidebar gesture that pushes the current settings onto a bound table. |
 | originals | The cell values stored before simplification so the table can be restored. |
 | restore | Put the originals back. |
@@ -92,6 +93,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | stash | The sidebar's held copy of the settings record's on/off while the bound table is locked. <br><br>The switch's forced "on" is display only: a save made under the lock carries the stashed value, a settings-record change landing under the lock updates it, and lifting the lock puts it back on the switch. |
 | bound | The sidebar's association with one table: the table its controls read from and write to. |
 | active | The table user actions target. <br>The most recently right-clicked table, and, while the sidebar is open, the bound table. |
+| activate | Make a table active: right-click it, or bind it while the sidebar is open. |
 | range expression | An A1-style expression limiting which cells change. Blank means the whole table. |
 
 ## Parts of the extension
@@ -153,3 +155,5 @@ The Example column shows the canonical term in a sentence.
 | unrestorable | stuck | A table whose originals were never captured is unrestorable. |
 | load-time scan | proactive scan | The load-time scan finds native tables first, then elements with a grid role. |
 | dataset | range (the set of values; "range expression" stays) | In set-aware simplification the max magnitude comes from the dataset. |
+| form | state (of a table's raw/simplified values) | A table's form is raw or simplified. |
+| originals | raw values ("raw form" stays) | Restore puts the originals back into the cells. |
