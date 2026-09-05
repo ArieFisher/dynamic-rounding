@@ -136,24 +136,49 @@ Terms for reviews, plans, and discussion.
 
 ## Retired synonyms
 
-The Example column shows the canonical term in a sentence.
+The Example column shows the canonical term in a sentence. The Pattern column
+holds the expression `scripts/check-vocab.sh` greps for in new prose. This table
+is that gate's only list: a pattern added here takes effect on the next commit,
+and a row with no pattern is left to the human sweep.
 
-| Say | Not | Example |
-| --- | --- | --- |
-| active | selected | The active table is the one the right-click menu acts on. |
-| step | base | An offset of -0.5 on a magnitude-7 value gives a step of 5,000,000. |
-| application model | store, app store | The registry exists only in the application model; every other component reads it from there. |
-| bound | linked | The sidebar's controls read from the bound table. |
-| pillbox | table toggle, pill, toggle (the control) | Only data tables get a pillbox. |
-| originals | undo state | Restore puts the originals back into the cells. |
-| never used (of code) | dead | No caller reaches the helper, so it is never used. |
-| dead handle | orphaned handle | A dead handle stands for a table no longer in the page. |
-| coupled | fused, tied | The sidebar view is coupled to the settings record. |
-| benefit | "what it buys" | The gate's benefit is having a single vocabulary across every living doc. |
-| lens preview | preview band | The lens preview shows samples from several magnitudes, before and after simplification. |
-| settings record | record | The switch writes to the settings record, and the active table re-simplifies from it. |
-| unrestorable | stuck | A table whose originals were never captured is unrestorable. |
-| load-time scan | proactive scan | The load-time scan finds native tables first, then elements with a grid role. |
-| dataset | range (the set of values; "range expression" stays) | In set-aware simplification the max magnitude comes from the dataset. |
-| form | state (of a table's raw/simplified values) | A table's form is raw or simplified. |
-| originals | raw values ("raw form" stays) | Restore puts the originals back into the cells. |
+| Say | Not | Example | Pattern |
+| --- | --- | --- | --- |
+| active | selected | The active table is the one the right-click menu acts on. | `selected table` |
+| step | base | An offset of -0.5 on a magnitude-7 value gives a step of 5,000,000. | `rounding base\b\|\bbase unit\b\|nearest base\b` |
+| application model | store, app store | The registry exists only in the application model; every other component reads it from there. | `\bapp store\b\|\b(state\|panel\|settings\|table) store\b` |
+| bound | linked | The sidebar's controls read from the bound table. | `\blinked (table\|state\|cell\|range)\b\|is linked to the (table\|sidebar\|panel\|switch\|pillbox\|state)\b` |
+| pillbox | table toggle, pill, toggle (the control) | Only data tables get a pillbox. | `\btable toggle\|\bpill\b` |
+| originals | undo state, raw values ("raw form" stays) | Restore puts the originals back into the cells. | `\bundo state` |
+| never used (of code) | dead | No caller reaches the helper, so it is never used. | `\bdead code` |
+| dead handle | orphaned handle | A dead handle stands for a table no longer in the page. | `\borphaned handle` |
+| coupled | fused, tied | The sidebar view is coupled to the settings record. | `\bfused\b\|tightly tied\|tied together\|\btied to the (table\|panel\|pillbox\|toggle\|sidebar\|switch\|state)\b` |
+| benefit | "what it buys" | The gate's benefit is having a single vocabulary across every living doc. | `what it buys` |
+| lens preview | preview band | The lens preview shows samples from several magnitudes, before and after simplification. | `\bpreview band` |
+| settings record | record | The switch writes to the settings record, and the active table re-simplifies from it. | — |
+| unrestorable | stuck | A table whose originals were never captured is unrestorable. | `stuck table` |
+| load-time scan | proactive scan | The load-time scan finds native tables first, then elements with a grid role. | `\bproactive scan` |
+| dataset | range (the set of values; "range expression" stays) | In set-aware simplification the max magnitude comes from the dataset. | `\bentire range\|\bwhole range\|\binput range` |
+| form | state (of a table's raw/simplified values) | A table's form is raw or simplified. | — |
+
+### Writing a pattern
+
+Word boundaries go on the edges that need them, one edge at a time.
+
+- Front: add `\b` when a real word ends in the pattern's first token, so "stable toggle" and "confused" do not read as findings. Leave the front open where the prefixed form is the same mistake — "unselected table" and "unstuck table" are worth catching.
+- Back: add `\b` only when a longer word starting with the pattern is legitimate prose ("pillbox", "baseline", "storefront"). Leaving the back open is what catches "table toggles" and "undo states".
+- Write a `|` inside a pattern as `\|`, so the pattern survives the table cell.
+
+Four retired words carry legitimate other senses, so each is narrowed to the
+phrases that can only mean the retired thing. The bare word stays legal: "base
+branch", "store the value", "linked list", "tied to the academic calendar".
+Coverage is partial by design, and a phrasing no pattern lists reaches the human
+sweep. A pattern broad enough to fire on clean prose teaches people to stop
+trusting the gate.
+
+Rejected, each for blocking real prose this repo writes: "a base of 10" (number
+bases, next to log10), "the extension store" and "publish to the store" (the
+Chrome Web Store), and a bare "is linked to the" (an issue linked to a PR).
+
+Two rows have no pattern on purpose. "record" reads the same in its retired sense
+and in "historical record", a term these conventions lean on. "state" keeps
+senses this vocabulary defines, among them a locked table's state.

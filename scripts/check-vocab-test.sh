@@ -2,21 +2,25 @@
 #
 # Self-test for scripts/check-vocab.sh.
 #
-# The vocabulary gate's whole policy sits in one editable block. These cases
-# plant a retired synonym and require the gate to catch it, plant clean and
-# exempt content and require the gate to pass it, and damage the policy block
-# itself and require the gate to refuse. The gate's preflight is what makes
-# that last group possible: a broken block used to read as clean prose.
+# The vocabulary gate's whole policy is the Retired synonyms table in
+# docs/vocabulary.md. These cases plant a retired synonym and require the gate
+# to catch it, plant clean and exempt content and require the gate to pass it,
+# and damage that table and require the gate to refuse. The gate's preflight is
+# what makes the last group possible: a broken policy used to read as clean
+# prose.
 #
-# Every case runs in a scratch git repository. Run with no arguments; exits 0
-# when the gate behaves and 1 when any case fails.
+# Every case runs in a scratch git repository carrying a copy of the real
+# vocabulary, so the catch and pass cases run against the shipped patterns. Run
+# with no arguments; exits 0 when the gate behaves and 1 when any case fails.
 #
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 GATE="$here/check-vocab.sh"
+VOCAB="$here/../docs/vocabulary.md"
 
 [ -x "$GATE" ] || { echo "no executable gate at $GATE" >&2; exit 2; }
+[ -r "$VOCAB" ] || { echo "no readable vocabulary at $VOCAB" >&2; exit 2; }
 
 passed=0
 failed=0
@@ -43,8 +47,9 @@ scratch_repo() {
 
   mkdir -p "$dir/scripts" "$dir/docs/sprint-logs"
   cp "$GATE" "$dir/scripts/check-vocab.sh"
+  cp "$VOCAB" "$dir/docs/vocabulary.md"
   printf '# scratch\n' > "$dir/README.md"
-  git -C "$dir" add README.md scripts/check-vocab.sh
+  git -C "$dir" add README.md scripts/check-vocab.sh docs/vocabulary.md
   git -C "$dir" commit -qm seed
 
   printf '%s\n' "$dir"
@@ -72,28 +77,24 @@ expect_block() {
   fi
 }
 
-# expect_refusal <case name> <replacement RETIRED_PATTERNS line> <message>
-# Damages the policy block, stages clean prose, and requires the gate to refuse
-# with exit 2. A damaged policy that exits 0 is the failure these cases exist
-# to catch: the gate would approve every commit while seeing nothing.
+# expect_refusal <case name> <replacement table rows> <message>
+# Replaces the vocabulary with a Retired synonyms table built from the given
+# rows, stages clean prose, and requires the gate to refuse with exit 2. A
+# damaged policy that exits 0 is the failure these cases exist to catch: the
+# gate would approve every commit while seeing nothing.
 #
 # The message argument is what keeps the cases independent. Every preflight
 # branch refuses with the same exit code, so a case that checked only the code
 # would pass when its own branch was deleted and a later branch caught the
 # damage instead. Matching the branch's own words pins each case to one branch.
 #
-# The replacement travels through the environment, not through `awk -v`, which
-# expands escape sequences: a fixture written with \b would reach awk as a
-# backspace and quietly stop matching anything.
+# Rows travel through printf '%s', which leaves backslashes alone. A fixture
+# written with \b through anything that expands escapes would arrive as a
+# backspace and quietly stop matching.
 expect_refusal() {
-  local name="$1" replacement="$2" message="$3" dir status output
+  local name="$1" rows="$2" message="$3" heading="${4:-## Retired synonyms}" dir status output
   dir=$(scratch_repo)
-  repl="$replacement" awk '
-    /^RETIRED_PATTERNS=\(/ { print ENVIRON["repl"]; skip = 1; next }
-    skip && /^\)/          { skip = 0; next }
-    skip                   { next }
-                           { print }
-  ' "$GATE" > "$dir/scripts/check-vocab.sh"
+  write_vocab "$dir" "$rows" "$heading"
   printf 'Clean prose about the pillbox.\n' > "$dir/docs/design.md"
   git -C "$dir" add docs/design.md
   output=$( (cd "$dir" && bash scripts/check-vocab.sh --staged 2>&1 >/dev/null) )
@@ -105,6 +106,20 @@ expect_refusal() {
   else
     record pass "$name"
   fi
+}
+
+# write_vocab <scratch dir> <table rows> [heading]
+# A minimal vocabulary holding one Retired synonyms table. The heading text and
+# the four-column shape are the contract between the table and the gate, so a
+# case can break either one.
+write_vocab() {
+  local dir="$1" rows="$2" heading="${3:-## Retired synonyms}"
+  {
+    printf '# Vocabulary\n\n%s\n\n' "$heading"
+    printf '| Say | Not | Example | Pattern |\n'
+    printf '| --- | --- | --- | --- |\n'
+    printf '%s\n' "$rows"
+  } > "$dir/docs/vocabulary.md"
 }
 
 # expect_pass <case name> <relative path> <content>
@@ -147,7 +162,7 @@ expect_pass  "linked in its own sense passes"       docs/design.md   'The handle
 expect_block "collocation: tied as coupled"         docs/design.md   'The switch is tied together with the pillbox.'
 expect_pass  "tied in its own sense passes"         docs/design.md   'The release cadence is tied to the academic calendar.'
 
-# Preflight. The gate's own policy block is the one input nothing else checks,
+# Preflight. The Retired synonyms table is the one input nothing else checks,
 # so each way of breaking it must produce a refusal, not a clean bill.
 #
 # The malformed fixture keeps a valid pattern that matches the canary. Without
@@ -155,12 +170,37 @@ expect_pass  "tied in its own sense passes"         docs/design.md   'The releas
 # the canary check fires, and the gate refuses whether or not it can tell a
 # broken expression from an absent one. The valid pattern satisfies the canary
 # so only the malformed check is left to produce the refusal.
-expect_refusal "empty pattern list refuses"          'RETIRED_PATTERNS=()' \
+canary_row='| pillbox | table toggle | Only data tables get a pillbox. | `\btable toggle` |'
+
+expect_refusal "table with no pattern cell refuses" \
+               '| settings record | record | The switch writes to the settings record. | — |' \
                'the retired-synonym list is empty'
-expect_refusal "malformed pattern refuses"           "RETIRED_PATTERNS=( '\btable toggle' 'toggle(' )" \
+expect_refusal "malformed pattern refuses" \
+               "$canary_row"$'\n''| lens preview | preview band | The lens preview shows samples. | `toggle(` |' \
                'is not a valid expression'
-expect_refusal "list that misses the canary refuses" "RETIRED_PATTERNS=( 'a-phrase-no-doc-contains' )" \
+expect_refusal "list that misses the canary refuses" \
+               '| dead handle | orphaned handle | A dead handle stands for a table no longer in the page. | `a-phrase-no-doc-contains` |' \
                'no pattern matches the canary'
+expect_refusal "renamed heading refuses" \
+               "$canary_row" \
+               'the retired-synonym list is empty' \
+               '## Words we no longer use'
+
+# A missing vocabulary is the loudest way to lose the policy, and the gate must
+# not read it as nothing to enforce.
+dir=$(scratch_repo)
+rm -f "$dir/docs/vocabulary.md"
+printf 'Clean prose about the pillbox.\n' > "$dir/docs/design.md"
+git -C "$dir" add docs/design.md
+output=$( (cd "$dir" && bash scripts/check-vocab.sh --staged 2>&1 >/dev/null) )
+status=$?
+if [ "$status" -ne 2 ]; then
+  record fail "missing vocabulary refuses (gate exited $status)"
+elif ! printf '%s' "$output" | grep -qF 'cannot read'; then
+  record fail "missing vocabulary refuses (refused for another reason: $output)"
+else
+  record pass "missing vocabulary refuses"
+fi
 
 # A rename-plus-edit must not slip past the filter: git reports it as R, and a
 # renamed living doc is the edit most likely to reintroduce old vocabulary.
