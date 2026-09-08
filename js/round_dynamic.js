@@ -1,5 +1,5 @@
 /**
- * DynamicRounding - Dynamic rounding for readable data sets
+ * Declarative simplification for readable data sets
  * https://github.com/ArieFisher/dynamic-rounding
  * MIT License
  * Copyright (c) 2026 Arie Fisher
@@ -24,7 +24,7 @@ const EPSILON = 1e-9; // used to handle floating point inaccuracies
 const X_FLOOR_THRESHOLD = 1; // for half-step offsets x.5, also floor at roundWithOffset(value, trunc(offset)) when |trunc(offset)| >= this threshold
 
 /**
- * Declarative rounding by order of magnitude.
+ * Dynamic rounding against each number's order of magnitude.
  * [MODE 1] single value: =ROUND_DYNAMIC(value, [offset])
  * [MODE 2] dataset: =ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
