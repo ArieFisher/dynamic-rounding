@@ -33,7 +33,6 @@
 | \=IF(D31=E31, "✓", "✗") | 44109 | *(spills)* | `40,000` | 40,000 |  |  |  |
 | \=IF(D32=E32, "✓", "✗") | 1234 | *(spills)* | `1,000` | 1,000 |  |  |  |
 |  |  |  |  |  |  |  |  |
-
 | Section 3: Input Handling |  |  |  |  |  |  |  |
 |  | **Input Handling** |  |  |  |  |  |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
@@ -54,7 +53,6 @@
 | \=IF(E59=F59, "✓", "✗") | 9393 | 20 | `=FORMULATEXT(E59)` | `=ROUND_DYNAMIC(B59, C59)` | 1000 |  | Note: the value-OoM floor stops the collapse to 0 |
 | \=IF(E60=F60, "✓", "✗") | 9393 | \-20 | `=FORMULATEXT(E60)` | `=ROUND_DYNAMIC(B60, C60)` | `9393` |  |  |
 |  |  |  |  |  |  |  |  |
-
 | Section 5: Parsing edge cases |  |  |  |  |  |  |  |
 |  | **Parsing edge cases** |  |  |  |  | *//format the Input cells as plain text* |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
