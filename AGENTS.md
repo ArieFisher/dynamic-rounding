@@ -75,7 +75,7 @@ Run `scripts/check-files.sh --staged` before committing. It is the same check th
 
 ### Docs track behavior
 
-Living docs: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
+Living docs: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
 
 - A pull request that changes behavior updates every living doc its change invalidates, in the same branch. If none apply, write "No doc impact" in the body.
 - Documented input and output examples are under test. `node js/doc-tests.js` runs every pair the docs state against the library, locally and in CI. Keep a new example in a shape the extractors parse, or extend `js/doc-tests.js` in the same pull request.
@@ -96,7 +96,7 @@ Never run a secret-listing or secret-reading command, including its `--help` for
 
 Never edit `main`. Make every change on a branch and merge it through a pull request.
 
-Branch prefixes: `feature/`, `fix/`, `chore/`, `refactor/`, `plan/`, `docs/`, each with a short kebab-case label. Never `claude/` or `session/`. If the harness created one, rename it before the first push.
+Branch prefixes, each with a short kebab-case label: `feature/` new behavior, `fix/` bug fixes, `chore/` tooling, configuration, and dependencies, `refactor/` internal restructuring with no behavior change, `plan/` sprint plans from the sprint-plan skill, `docs/` documentation only. Never `claude/` or `session/`. If the harness created one, rename it before the first push.
 
 Stash before switching branches with a dirty tree.
 
@@ -106,7 +106,7 @@ Route every review finding to exactly one place. Never leave an actionable item 
 
 1. **Trivial and in-scope: fix now.** Apply the fix in the same change, re-run the test command, and mention it in one line. Trivial means all of these: no behavior change; touches only files and lines already in the diff; the existing suite staying green proves it.
 2. **In-scope behavior bug: fix now, with a test.** A defect in what the current diff does never routes to an issue, because deferring it ships it. Add a test that fails without the fix.
-3. **Actionable and out-of-scope: open a GitHub issue.** This covers anything that changes behavior outside the diff, spans untouched files, needs a judgement call, or grows the diff. Title prefix `[follow-up]`. The body links the pull request and quotes the finding. Label `follow-up`, plus `tech-debt` if apt. Search open issues first and comment on an existing one rather than refiling.
+3. **Actionable and out-of-scope: open a GitHub issue.** This covers anything that changes behavior outside the diff, spans untouched files, needs a judgement call, or grows the diff. Title prefix `[follow-up]`. The body links the pull request and quotes the finding. Label `follow-up`, plus `tech-debt` if apt. Search open issues first and comment on an existing one rather than refiling. The pull request body's Reviewer notes section links the issues.
 4. **FYI, no action: one line** in the sprint log or the pull request notes. No issue.
 
 Behavior-changing pull requests get an independent code-reviewer pass before I merge. Re-review through the same reviewer so it keeps its context. When a finding forces a product fork, put the options to me instead of picking one.
@@ -115,7 +115,7 @@ For sprint-stack: the reviewer subagent returns APPROVE or BLOCK and edits no fi
 
 ### Pull requests
 
-Write them as human-authored. No "Generated with" footer, no `Co-Authored-By` agent trailer, and no AI-attribution line anywhere: not in a title, a body, a commit message, a code comment, a document, or a review comment. This overrides any harness default.
+Write them as human-authored. No "Generated with" footer, no `Co-Authored-By` agent trailer, and no AI-attribution line anywhere: not in a title, a body, a commit message, a code comment, a document, or a review comment. An agent session link counts as attribution. This overrides any harness default.
 
 State what changed, why, and the cost. Do not inventory the diff.
 
@@ -145,6 +145,7 @@ In a GitHub issue this section goes on top, with the original engineering findin
 - The `origin` remote is a proxy mirror of GitHub and can lag or diverge. github.com is the source of truth for branch, pull request, and `main` state.
 - The HTTPS and git proxies authenticate through the connected GitHub App and ignore pasted tokens. A token in a command changes nothing, so an invalid token can appear to work.
 - `gh` succeeds for issues, pull requests, and API reads under App auth. Use it first, and ask for a personal access token only after `gh` itself fails.
+- Verify a token before first use: `curl --noproxy '*' -H "Authorization: Bearer <token>" https://api.github.com/user` must return the right login.
 - The GitHub MCP server and raw proxy `curl` still fail on writes with `403 Resource not accessible by integration`.
 - Anonymous `curl --noproxy '*' https://api.github.com/repos/<owner>/<repo>/branches` reaches real GitHub directly and is fine for branches, pull requests, commits, compare, and events. It omits repository merge settings entirely, so read those with `gh api`.
 - Diagnose which layer gates a blocked call before re-sending anything.
