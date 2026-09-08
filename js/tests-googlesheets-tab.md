@@ -1,4 +1,3 @@
-
 | \="Summary: " & COUNTIF(A2:A, "✓") & " passed, " & COUNTIF(A2:A, "✗") & " failed" |  |  |  |  |  |  |  |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
 |  |  |  |  |  |  |  |  |
@@ -21,42 +20,41 @@
 |  | **Dataset Mode** |  | *//format as number with no decimals* | *//format as number with no decimals* |  |  |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  |  |  |
 | \=IF(D21=E21, "✓", "✗") | 4428910 | `=FORMULATEXT(D21)` | `=ROUND_DYNAMIC($B$21:$B$24)` | 4,500,000 |  |  |  |
-| \=IF(D22=E22, "✓", "✗") | 983321 | *(spills)* | `1,000,000` | 1,000,000 |  |  |  |
-| \=IF(D23=E23, "✓", "✗") | 42109 | *(spills)* | `40,000` | 40,000 |  |  |  |
-| \=IF(D24=E24, "✓", "✗") | 1234 | *(spills)* | `1,000` | 1,000 |  |  |  |
+| \=IF(D22=E22, "✓", "✗") | 983321 | *(spills)* | 1,000,000 | 1,000,000 |  |  |  |
+| \=IF(D23=E23, "✓", "✗") | 42109 | *(spills)* | 40,000 | 40,000 |  |  |  |
+| \=IF(D24=E24, "✓", "✗") | 1234 | *(spills)* | 1,000 | 1,000 |  |  |  |
 |  |  |  |  |  |  |  |  |
-|  | **With custom params** |  |  |  |  |  |  |
-|  |  |  |  |  |  |  |  |
-|  | **Input** | **Formula** | **Result** | **Expected** | offset\_top | offset\_other | num\_top |
-| \=IF(D29=E29, "✓", "✗") | 4428910 | `=FORMULATEXT(D29)` | `=ROUND_DYNAMIC($B$29:$B$32, F29, G29, H29)` | 4,400,000 | \-1 | 0 | 1 |
-| \=IF(D30=E30, "✓", "✗") | 983321 | *(spills)* | `1,000,000` | 1,000,000 |  |  |  |
-| \=IF(D31=E31, "✓", "✗") | 44109 | *(spills)* | `40,000` | 40,000 |  |  |  |
-| \=IF(D32=E32, "✓", "✗") | 1234 | *(spills)* | `1,000` | 1,000 |  |  |  |
+|  | **With custom params** | offset\_top | offset\_other | num\_top |  |  |  |
+|  |  | \-1 | 0 | 1 |  |  |  |
+|  | **Input** | **Formula** | **Result** | **Expected** |  |  |  |
+| \=IF(D29=E29, "✓", "✗") | 4428910 | `=FORMULATEXT(D29)` | `=ROUND_DYNAMIC($B$29:$B$32, C27, D27, E27)` | 4,400,000 |  |  |  |
+| \=IF(D30=E30, "✓", "✗") | 983321 | *(spills)* | 1,000,000 | 1,000,000 |  |  |  |
+| \=IF(D31=E31, "✓", "✗") | 44109 | *(spills)* | 40,000 | 40,000 |  |  |  |
+| \=IF(D32=E32, "✓", "✗") | 1234 | *(spills)* | 1,000 | 1,000 |  |  |  |
 |  |  |  |  |  |  |  |  |
 | Section 3: Input Handling |  |  |  |  |  |  |  |
 |  | **Input Handling** |  |  |  |  |  |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
-| \=IF(D45=E45, "✓", "✗") | $ (500.00) | `=FORMULATEXT(D45)` | `=ROUND_DYNAMIC(B45)` | \-500 |  | Note: accounting format |  |
-| \=IF(D46=E46, "✓", "✗") | (500) | `=FORMULATEXT(D46)` | `=ROUND_DYNAMIC(B46)` | \-500 |  | Note: string representation of accounting format |  |
-| \=IF(D47=E47, "✓", "✗") | \-$500.00 | `=FORMULATEXT(D47)` | `=ROUND_DYNAMIC(B47)` | \-500 |  | Note: currency format |  |
-| \=IF(D48=E48, "✓", "✗") | $1,234.56 | `=FORMULATEXT(D48)` | `=ROUND_DYNAMIC(B48)` | 1000 |  | \="ISTEXT(..)= " & ISTEXT(B48) |  |
-| \=IF(D49=E49, "✓", "✗") | €4,500 | `=FORMULATEXT(D49)` | `=ROUND_DYNAMIC(B49)` | 4500 |  | \="ISTEXT(..)= " & ISTEXT(B49) |  |
-| \=IF(D50=E50, "✓", "✗") | 1,234,567 | `=FORMULATEXT(D50)` | `=ROUND_DYNAMIC(B50)` | 1000000 |  | \="ISTEXT(..)= " & ISTEXT(B50) |  |
-| \=IF(D51=E51, "✓", "✗") | TRUE | `=FORMULATEXT(D51)` | `=ROUND_DYNAMIC(B51)` | TRUE |  | \="ISLOGICAL(..)=" & ISLOGICAL(B51) |  |
-| \=IF(ISREF(D52), "✓", "✗") | \#REF\! | `=FORMULATEXT(D52)` | `=ROUND_DYNAMIC(B52)` | \#REF\! |  | \="ISREF(..)= " & ISREF(B52) |  |
+| \=IF(D37=E37, "✓", "✗") | $ (500.00) | `=FORMULATEXT(D37)` | `=ROUND_DYNAMIC(B37)` | \-500 |  | Note: accounting format |  |
+| \=IF(D38=E38, "✓", "✗") | (500) | `=FORMULATEXT(D38)` | `=ROUND_DYNAMIC(B38)` | \-500 |  | Note: string representation of accounting format |  |
+| \=IF(D39=E39, "✓", "✗") | \-$500.00 | `=FORMULATEXT(D39)` | `=ROUND_DYNAMIC(B39)` | \-500 |  | Note: currency format |  |
+| \=IF(D40=E40, "✓", "✗") | $1,234.56 | `=FORMULATEXT(D40)` | `=ROUND_DYNAMIC(B40)` | 1000 |  | \="ISTEXT(..)= " & ISTEXT(B40) |  |
+| \=IF(D41=E41, "✓", "✗") | €4,500 | `=FORMULATEXT(D41)` | `=ROUND_DYNAMIC(B41)` | 4500 |  | \="ISTEXT(..)= " & ISTEXT(B41) |  |
+| \=IF(D42=E42, "✓", "✗") | 1,234,567 | `=FORMULATEXT(D42)` | `=ROUND_DYNAMIC(B42)` | 1000000 |  | \="ISTEXT(..)= " & ISTEXT(B42) |  |
+| \=IF(D43=E43, "✓", "✗") | TRUE | `=FORMULATEXT(D43)` | `=ROUND_DYNAMIC(B43)` | TRUE |  | \="ISLOGICAL(..)=" & ISLOGICAL(B43) |  |
+| \=IF(ISREF(D44), "✓", "✗") | \#REF\! | `=FORMULATEXT(D44)` | `=ROUND_DYNAMIC(B44)` | \#REF\! |  | \="ISREF(..)= " & ISREF(B44) |  |
 |  |  |  |  |  |  |  |  |
 | Section 4: Validation |  |  |  |  |  |  |  |
 |  | **Validation** |  |  |  |  |  |  |
-|  | **Input** | **OFFSET** | **Formula** | **Result** | **Expected** |  |  |
-| \=IF(ISERR(E57), "✓", "✗") | 1000 | 21 | `=FORMULATEXT(E57)` | `=ROUND_DYNAMIC(B57, C57)` | \#ERROR\! |  |  |
-| \=IF(ISERR(E58), "✓", "✗") | 1000 | \-21 | `=FORMULATEXT(E58)` | `=ROUND_DYNAMIC(B58, C58)` | \#ERROR\! |  |  |
-| \=IF(E59=F59, "✓", "✗") | 9393 | 20 | `=FORMULATEXT(E59)` | `=ROUND_DYNAMIC(B59, C59)` | 1000 |  | Note: the value-OoM floor stops the collapse to 0 |
-| \=IF(E60=F60, "✓", "✗") | 9393 | \-20 | `=FORMULATEXT(E60)` | `=ROUND_DYNAMIC(B60, C60)` | `9393` |  |  |
+|  | **Input** | **OFFSET** | **Formula** | **Result** | **Expected** | **Note:** |  |
+| \=IF(ISERR(E49), "✓", "✗") | 1000 | 21 | `=FORMULATEXT(E49)` | `=ROUND_DYNAMIC(B49, C49)` | \#ERROR\! | Notice the cell's error message. |  |
+| \=IF(ISERR(E50), "✓", "✗") | 1000 | \-21 | `=FORMULATEXT(E50)` | `=ROUND_DYNAMIC(B50, C50)` | \#ERROR\! |  |  |
+| \=IF(E51=F51, "✓", "✗") | 9393 | 20 | `=FORMULATEXT(E51)` | `=ROUND_DYNAMIC(B51, C51)` | 1000 | Note: the value-OoM floor stops the collapse to 0 |  |
+| \=IF(E52=F52, "✓", "✗") | 9393 | \-20 | `=FORMULATEXT(E52)` | `=ROUND_DYNAMIC(B52, C52)` | 9393 |  |  |
 |  |  |  |  |  |  |  |  |
 | Section 5: Parsing edge cases |  |  |  |  |  |  |  |
 |  | **Parsing edge cases** |  |  |  |  | *//format the Input cells as plain text* |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
-| \=IF(D65=E65, "✓", "✗") | 50% | `=FORMULATEXT(D65)` | `=ROUND_DYNAMIC(B65)` | 50 |  | Note: percent sign stripped, not scaled; enter as text |  |
-| \=IF(D66=E66, "✓", "✗") | −500 | `=FORMULATEXT(D66)` | `=ROUND_DYNAMIC(B66)` | \-500 |  | Note: U+2212 minus sign normalized to ASCII |  |
-| \=IF(D67=E67, "✓", "✗") | $ | `=FORMULATEXT(D67)` | `=ROUND_DYNAMIC(B67)` | $ |  | Note: symbol-only string passes through, not 0 |  |
-|  |  |  |  |  |  |  |  |
+| \=IF(D57=E57, "✓", "✗") | 50% | `=FORMULATEXT(D57)` | `=ROUND_DYNAMIC(B57)` | 50 |  | Note: percent sign stripped, not scaled; enter as text |  |
+| \=IF(D58=E58, "✓", "✗") | −502 | `=FORMULATEXT(D58)` | `=ROUND_DYNAMIC(B58)` | \-500 |  | Note: the "long minus" sign (U+2212) normalizes to ASCII and the value parses as a regular number |  |
+| \=IF(D59=E59, "✓", "✗") | $ | `=FORMULATEXT(D59)` | `=ROUND_DYNAMIC(B59)` | $ |  | Note: symbol-only string passes through, not 0 |  |
