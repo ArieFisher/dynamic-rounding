@@ -38,11 +38,11 @@
 | \=IF(D37=E37, "✓", "✗") | $ (500.00) | `=FORMULATEXT(D37)` | `=ROUND_DYNAMIC(B37)` | \-500 |  | Note: accounting format |  |
 | \=IF(D38=E38, "✓", "✗") | (500) | `=FORMULATEXT(D38)` | `=ROUND_DYNAMIC(B38)` | \-500 |  | Note: string representation of accounting format |  |
 | \=IF(D39=E39, "✓", "✗") | \-$500.00 | `=FORMULATEXT(D39)` | `=ROUND_DYNAMIC(B39)` | \-500 |  | Note: currency format |  |
-| \=IF(D40=E40, "✓", "✗") | $1,234.56 | `=FORMULATEXT(D40)` | `=ROUND_DYNAMIC(B40)` | 1000 |  | \="ISTEXT(..)= " & ISTEXT(B40) |  |
-| \=IF(D41=E41, "✓", "✗") | €4,500 | `=FORMULATEXT(D41)` | `=ROUND_DYNAMIC(B41)` | 4500 |  | \="ISTEXT(..)= " & ISTEXT(B41) |  |
-| \=IF(D42=E42, "✓", "✗") | 1,234,567 | `=FORMULATEXT(D42)` | `=ROUND_DYNAMIC(B42)` | 1000000 |  | \="ISTEXT(..)= " & ISTEXT(B42) |  |
-| \=IF(D43=E43, "✓", "✗") | TRUE | `=FORMULATEXT(D43)` | `=ROUND_DYNAMIC(B43)` | TRUE |  | \="ISLOGICAL(..)=" & ISLOGICAL(B43) |  |
-| \=IF(ISREF(D44), "✓", "✗") | \#REF\! | `=FORMULATEXT(D44)` | `=ROUND_DYNAMIC(B44)` | \#REF\! |  | \="ISREF(..)= " & ISREF(B44) |  |
+| \=IF(D40=E40, "✓", "✗") | $1,234.56 | `=FORMULATEXT(D40)` | `=ROUND_DYNAMIC(B40)` | 1000 |  | \="ISTEXT(B40)= " & ISTEXT(B40) |  |
+| \=IF(D41=E41, "✓", "✗") | €4,500 | `=FORMULATEXT(D41)` | `=ROUND_DYNAMIC(B41)` | 4500 |  | \="ISTEXT(B41)= " & ISTEXT(B41) |  |
+| \=IF(D42=E42, "✓", "✗") | 1,234,567 | `=FORMULATEXT(D42)` | `=ROUND_DYNAMIC(B42)` | 1000000 |  | \="ISTEXT(B42)= " & ISTEXT(B42) |  |
+| \=IF(D43=E43, "✓", "✗") | TRUE | `=FORMULATEXT(D43)` | `=ROUND_DYNAMIC(B43)` | TRUE |  | \="ISLOGICAL(B43)=" & ISLOGICAL(B43) |  |
+| \=IF(ISREF(D44), "✓", "✗") | \#REF\! | `=FORMULATEXT(D44)` | `=ROUND_DYNAMIC(B44)` | \#REF\! |  | \="ISREF(B44)= " & ISREF(B44) |  |
 |  |  |  |  |  |  |  |  |
 | Section 4: Validation |  |  |  |  |  |  |  |
 |  | **Validation** |  |  |  |  |  |  |
