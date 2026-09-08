@@ -28,6 +28,7 @@ docs/private/
 /*.md
 !/README.md
 !/CLAUDE.md
+!/AGENTS.md
 !/CONTRIBUTING.md
 !/MAINTAINERS.md
 

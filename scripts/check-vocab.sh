@@ -18,51 +18,60 @@ set -uo pipefail
 # Policy
 # --------------------------------------------------------------------------
 
-# One pattern per retired synonym whose retired sense a grep can isolate,
-# narrowed where the bare word has legitimate other senses. One row of the
-# Retired synonyms table stays deliberately uncovered: "record" looks the same
-# in its retired sense and in "historical record", a term these conventions
-# lean on, so the human sweep owns it. Keep in step with docs/vocabulary.md.
+# The policy is one table: Retired synonyms in docs/vocabulary.md. Its Pattern
+# column is the repository's only list of retired synonyms, and this script
+# keeps no second copy. A row whose Pattern cell is not a backtick-wrapped
+# expression carries no pattern, and the human sweep owns that row.
 #
-# Word boundaries, per edge, when adding a pattern:
-#   Front: add \b when a real word ends in the pattern's first token, so
-#     "stable toggle" and "confused" do not read as findings. Leave the front
-#     open where the prefixed form is the same mistake — "unselected table" and
-#     "unstuck table" are worth catching.
-#   Back: add \b only when a longer word starting with the pattern is
-#     legitimate prose ("pillbox", "baseline", "storefront"). Leaving it open
-#     is what catches "table toggles" and "undo states".
-RETIRED_PATTERNS=(
-  '\btable toggle'      # say: pillbox
-  '\bpill\b'            # say: pillbox
-  '\bundo state'        # say: originals
-  '\bpreview band'      # say: lens preview
-  '\bproactive scan'    # say: load-time scan
-  '\borphaned handle'   # say: dead handle
-  '\bfused\b'           # say: coupled
-  'what it buys'        # say: benefit
-  '\bdead code'         # say: never-used code
-  'selected table'      # say: active table (or bound table) — front open on purpose: "unselected"
-  'stuck table'         # say: locked / unrestorable table — front open on purpose: "unstuck"
-  '\bapp store\b'       # say: application model
-  '\bentire range|\bwhole range|\binput range'  # say: dataset ("range expression" and cell ranges keep their names)
+# How to write a pattern — word boundaries per edge, the collocation rule, and
+# the patterns already rejected — sits under that table, beside the patterns.
 
-  # Collocations. Four retired words carry legitimate other senses, so each is
-  # narrowed to phrases that can only mean the retired thing. The bare word
-  # stays legal: "base branch", "store the value", "linked list", "tied to the
-  # academic calendar". Coverage is partial by design: a phrasing not listed
-  # here reaches the human sweep. That is the trade — a pattern broad enough to
-  # fire on clean prose teaches people to stop trusting the gate.
-  #
-  # Deliberately absent, each rejected for blocking real prose this repo writes:
-  # "a base of 10" (number bases, next to log10), "the extension store" and
-  # "publish to the store" (the Chrome Web Store), and a bare "is linked to the"
-  # (an issue linked to a PR). The qualified forms below carry the load.
-  'rounding base\b|\bbase unit\b|nearest base\b'  # say: step
-  '\b(state|panel|settings|table) store\b'  # say: application model ("app store" has its own row above)
-  '\blinked (table|state|cell|range)\b|is linked to the (table|sidebar|panel|switch|pillbox|state)\b'  # say: bound
-  'tightly tied|tied together|\btied to the (table|panel|pillbox|toggle|sidebar|switch|state)\b'  # say: coupled
-)
+repo_root=$(git rev-parse --show-toplevel) || {
+  echo "check-vocab: not inside a git repository — refusing to pass without inspecting" >&2
+  exit 2
+}
+VOCAB_DOC="$repo_root/docs/vocabulary.md"
+
+# Markdown separates cells with '|', the character a regular expression uses for
+# alternation, so the table writes an alternation as '\|'. Each escaped pipe
+# becomes a placeholder before the split on cell separators and a pipe again
+# after it. A '\b' passes through untouched.
+load_patterns() {
+  awk '
+    /^#/                  { in_section = ($0 == "## Retired synonyms"); next }
+    !in_section || !/^\|/ { next }
+    {
+      line = $0
+      gsub(/\\[|]/, "@@PIPE@@", line)
+      # Bracket expression, not a bare "|": a one-character separator is read
+      # literally by some awks and as a regular expression by others.
+      if (split(line, cell, "[|]") < 6) next
+      pattern = cell[5]
+      sub(/^[ \t]+/, "", pattern)
+      sub(/[ \t]+$/, "", pattern)
+      if (pattern !~ /^`.+`$/) next
+      pattern = substr(pattern, 2, length(pattern) - 2)
+      gsub(/@@PIPE@@/, "|", pattern)
+      print pattern
+    }
+  ' "$1"
+}
+
+if [[ ! -r "$VOCAB_DOC" ]]; then
+  echo "check-vocab: cannot read $VOCAB_DOC — refusing to pass without inspecting" >&2
+  exit 2
+fi
+
+patterns_text=$(load_patterns "$VOCAB_DOC") || {
+  echo "check-vocab: cannot read the Retired synonyms table — refusing to pass without inspecting" >&2
+  exit 2
+}
+
+RETIRED_PATTERNS=()
+while IFS= read -r loaded; do
+  [[ -n "$loaded" ]] || continue
+  RETIRED_PATTERNS+=("$loaded")
+done <<< "$patterns_text"
 
 # Paths the sweep never touches: point-in-time records and the canon itself.
 # Note on renames: a file moved OUT of an exempt path re-reads as all-new
@@ -76,7 +85,9 @@ EXEMPT_PATHS='^docs/sprint-logs/|^docs/sprint-plans/|^docs/research/|^js/CHANGEL
 
 # The pattern list is the whole policy, and an empty or broken list reports the
 # same silence as clean prose. These checks turn that silence into a refusal,
-# on every run of the gate rather than only when the self-test runs in CI.
+# on every run of the gate rather than only when the self-test runs in CI. The
+# list now arrives from a markdown table, so a renamed heading or a reshaped
+# row lands here too: it reads as an empty list, and the gate refuses.
 
 # A sentence the gate must be able to see. It belongs to no living doc, so a
 # real change never carries it. When the pattern it matches retires, point the

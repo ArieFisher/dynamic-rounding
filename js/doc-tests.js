@@ -165,9 +165,21 @@ function extractSheetsTab(doc, text) {
     datasetBlock = null;
   };
 
+  let pendingOffsets = null;
+
   for (const rawLine of text.split('\n')) {
     const line = rawLine.replace(/\\/g, '');
-    if (!line.startsWith('| =IF(')) { flushDataset(); continue; }
+    if (!line.startsWith('| =IF(')) {
+      // A "With custom params" block holds its offsets on a parameter row
+      // above the range formula (C27:E27), not on the formula row itself.
+      const p = line.split('|').map(s => s.trim().replace(/^`|`$/g, ''));
+      if (p[2] === '' && parseNumber(p[3]) !== null) {
+        pendingOffsets = [p[3], p[4], p[5]].map(parseOffset);
+        while (pendingOffsets.length && pendingOffsets[pendingOffsets.length - 1] === undefined) pendingOffsets.pop();
+      }
+      flushDataset();
+      continue;
+    }
     const c = line.split('|').map(s => s.trim().replace(/^`|`$/g, ''));
 
     if (c[1].includes('ISREF')) continue;              // cell-reference semantics; not runnable
@@ -185,8 +197,10 @@ function extractSheetsTab(doc, text) {
         // Trailing blanks truncate; an interior blank stays undefined so the
         // library applies its own default in that position rather than the
         // next offset sliding into the wrong parameter slot.
-        const offsets = [c[6], c[7], c[8]].map(parseOffset);
+        let offsets = [c[6], c[7], c[8]].map(parseOffset);
         while (offsets.length && offsets[offsets.length - 1] === undefined) offsets.pop();
+        if (!offsets.length && pendingOffsets) offsets = pendingOffsets;
+        pendingOffsets = null;
         datasetBlock = { inputs: [], offsets, expecteds: [] };
       }
       if (datasetBlock) {
