@@ -117,9 +117,10 @@ For sprint-stack: the reviewer subagent returns APPROVE or BLOCK and edits no fi
 
 Write them as human-authored. No "Generated with" footer, no `Co-Authored-By` agent trailer, and no AI-attribution line anywhere: not in a title, a body, a commit message, a code comment, a document, or a review comment. An agent session link counts as attribution. This overrides any harness default.
 
-State what changed, why, and the cost. Do not inventory the diff.
+**The diff test:** a sentence belongs in the body only if the reviewer could not write it themselves by reading the diff.
 
-- Describe the change at the level of intention. The diff already shows the file contents, the renamed pairs, and the table rows.
+- Things that are not typically visible in a diff can be included, e.g. intent, reason, cost, a constraint that shaped the code, a rejected alternative, etc.
+- Things that can be understood by reading the diff should be excluded, e.g. an edit list, a before-and-after value, a description of what a file now contains.
 - Never make a file path the subject of a sentence. Name files where the reviewer needs the pointer.
 - One exception to conclusions-only: record a rejected alternative in one line when the record stops a retry.
 
