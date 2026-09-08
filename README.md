@@ -6,14 +6,14 @@ For example: can you see the story in this?
 
 > Jan-Dec: $19,752.96, $22,222.08, $18,518.40, $24,691.20, $24,675.40, $18,518.40, $0.00, $3,703.68, $24,580.60, $24,691.20, $22,222.08, $19,752.96
 
-*pattern*: revenue drops during summer and winter breaks \
-*story*: a business cycle tied to the academic calendar
+**pattern**: revenue drops during summer and winter breaks \
+**story**: a business cycle tied to the academic calendar.
 
-This rendering of the same data makes the pattern (and by extension the story) easier to see.
+This view makes the pattern easier to see, and the story easier to pick up.
 
 ![chart showing revenue](docs/media/revenue_chart_3.png)
 
-<p align="center"><sup>I see a story of consistent revenue that falls off a cliff in July/August, and returns immediately. Once we look closely, we can see Spring Break and Winter Vacation, even Thanksgiving.</sup></p>
+<p align="center"><sup>If you look closely you can see Spring Break, Winter Vacation, and even Thanksgiving.</sup></p>
 
 We are pretty good at finding patterns in data, but sometimes the data works against itself, particularly when it comes at us in lists or even tables of overly-specific numbers.
 
