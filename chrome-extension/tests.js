@@ -18419,6 +18419,46 @@ function makeIssue251SidebarHarness() {
     'dr-capture-2026-09-09-no-source-140506.html');
 })();
 
+// --- sidebar: the capture section and its glue ---
+//
+// The suite never executes sidebar.js (it is asserted as source text — the
+// established style for sidebar wiring), so these tests pin the markup and
+// the glue's load-bearing seams: the three mark buttons, the form that
+// nothing saves without, the one save path, and the state pull.
+
+(function captureSidebarSection() {
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  eq('capture-ui: sidebar.html carries the capture section with three mark buttons',
+    sidebarHtmlSrc.includes('id="captureSection"') &&
+      ['data-mark="positive"', 'data-mark="question"', 'data-mark="negative"']
+        .every((m) => sidebarHtmlSrc.includes(m)),
+    true);
+  eq('capture-ui: the note form starts hidden and holds the three fields and both buttons',
+    /<div[^>]*id="captureForm"[^>]*hidden/.test(sidebarHtmlSrc) &&
+      ['id="captureExpected"', 'id="captureObserved"', 'id="captureCause"',
+        'id="captureSave"', 'id="captureCancel"']
+        .every((id) => sidebarHtmlSrc.includes(id)),
+    true);
+  eq('capture-ui: the glue pulls the capture state over GET_CAPTURE_STATE',
+    sidebarJsSrc.includes("action: 'GET_CAPTURE_STATE'"), true);
+  eq('capture-ui: exactly one save path creates the blob URL',
+    (sidebarJsSrc.match(/createObjectURL/g) || []).length, 1);
+  eq('capture-ui: nothing saves without a pressed mark',
+    /function saveCapture\(\)[\s\S]{0,200}if \(captureMark === null\) return;/.test(sidebarJsSrc),
+    true);
+  eq('capture-ui: the renderer receives the locked wording as a value, not a copy',
+    /buildCaptureDocument\(\{[\s\S]{0,120}lockedStatusText: APPLY_BLOCKED_STATUS_MSG/.test(sidebarJsSrc),
+    true);
+  eq('capture-ui: the filename comes from the package helper',
+    /DR_CAPTURE\.filenameFor\(/.test(sidebarJsSrc), true);
+  eq('capture-ui: the sidebar\'s own log snapshot travels beside the content script\'s',
+    /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
+  eq('capture-ui: a failed state pull still saves and records the failure',
+    /DR_LOG\.warn\([^)]*pull failed/.test(sidebarJsSrc), true);
+})();
+
 // --- lib/dr-log: the log buffer ---
 //
 // DR_LOG holds the last 50 rows the extension records, one instance per
