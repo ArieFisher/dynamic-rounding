@@ -220,6 +220,19 @@ const DR_STORE = (function () {
     return !!entry && entry.originals.has(cellRef);
   }
 
+  // The registry stores a cell's original in two shapes — a grid cell holds
+  // the plain pre-round text (one string), a native cell holds the
+  // four-field record documented in _ensureEntry. This read resolves that
+  // difference in one place and returns the original as plain text for
+  // either kind, or undefined when no original is stored. The capture's
+  // state serializer is the first caller; restoreTable and
+  // collectNumericCells (content.js) still carry their own shape branches.
+  function getTableOriginalText(table, cellRef) {
+    const original = getTableOriginal(table, cellRef);
+    if (original === undefined || original === null) return undefined;
+    return typeof original === 'object' ? original.value : original;
+  }
+
   function deleteTableOriginal(table, cellRef) {
     const entry = tableRegistry.get(table);
     if (entry) entry.originals.delete(cellRef);
@@ -269,6 +282,7 @@ const DR_STORE = (function () {
     getRegisteredTables,
     setTableOriginal,
     getTableOriginal,
+    getTableOriginalText,
     hasTableOriginal,
     deleteTableOriginal,
     setTableAppliedFlag,

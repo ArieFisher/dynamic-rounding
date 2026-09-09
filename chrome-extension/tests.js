@@ -17942,6 +17942,77 @@ function makeIssue251SidebarHarness() {
   }
 })();
 
+// --- capture: the displayed-text read and the plain-original-text read ---
+//
+// The capture records what the screen shows AND what each cell held before.
+// Two reads serve it. (1) Adapter cells gain getDisplayedText(): the live
+// rendered text, never the originals port — on a rounded grid getText()
+// answers with the ORIGINAL (the engine's contract; see the port-preferring
+// read in GridAdapter._makeCellObj), so a capture reading getText() would
+// lie about the screen. (2) The registry stores a cell's original in two
+// shapes (grid: plain string; native: a four-field record);
+// DR_STORE.getTableOriginalText() resolves the difference in one place and
+// returns plain text for either kind, or undefined when nothing is stored.
+
+(function captureDisplayedTextRead() {
+  // Native cell: the displayed text is the live text — the same read
+  // getText() uses, because the native write path never shadows it.
+  const nativeCellEl = { tagName: 'TD', innerText: '1,234', textContent: '1,234' };
+  const nativeStub = {
+    rows: [{ parentElement: { tagName: 'TBODY' }, cells: [nativeCellEl] }],
+  };
+  const nativeCell = new NativeTableAdapter(nativeStub).getRows()[0].getCells()[0];
+  eq('capture-reads: a native cell\'s displayed text is its live text',
+    typeof nativeCell.getDisplayedText === 'function'
+      ? nativeCell.getDisplayedText() : null,
+    '1,234');
+
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const makeGridCellEl = (text) => ({
+    nodeType: 1,
+    childNodes: [{ nodeType: 3, nodeValue: text }],
+    classList: { add() {}, contains() { return false; } },
+    textContent: text,
+  });
+  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+
+  // Grid cell, unrounded: displayed text equals the engine's read.
+  const fresh = adapter._makeCellObj(makeGridCellEl('98,765'));
+  eq('capture-reads: an unrounded grid cell\'s displayed text equals its engine text',
+    typeof fresh.getDisplayedText === 'function'
+      ? { displayed: fresh.getDisplayedText(), engine: fresh.getText() } : null,
+    { displayed: '98,765', engine: '98,765' });
+
+  // Grid cell, rounded: the engine's read answers with the original through
+  // the port; the displayed read answers with what the screen shows now.
+  const rounded = adapter._makeCellObj(makeGridCellEl('98,765'));
+  rounded.setText('99,000');
+  eq('capture-reads: a rounded grid cell keeps engine text = original, displayed text = live',
+    typeof rounded.getDisplayedText === 'function'
+      ? { engine: rounded.getText(), displayed: rounded.getDisplayedText() } : null,
+    { engine: '98,765', displayed: '99,000' });
+})();
+
+(function capturePlainOriginalTextRead() {
+  const has = typeof DR_STORE.getTableOriginalText === 'function';
+  const table = {};
+  const gridCell = {};
+  const nativeCell = {};
+  DR_STORE.setTableOriginal(table, gridCell, '98,765');
+  DR_STORE.setTableOriginal(table, nativeCell,
+    { html: '<b>1,234</b>', value: '1,234', supRanges: null, linkFilteredIdx: null });
+  eq('capture-reads: a grid original (plain string) reads back as its text',
+    has ? DR_STORE.getTableOriginalText(table, gridCell) : null, '98,765');
+  eq('capture-reads: a native original (record) reads back as its value field',
+    has ? DR_STORE.getTableOriginalText(table, nativeCell) : null, '1,234');
+  eq('capture-reads: a cell with no stored original reads back undefined',
+    has ? DR_STORE.getTableOriginalText(table, {}) : null, undefined);
+  DR_STORE.unregisterTable(table);
+})();
+
 // --- lib/dr-log: the log buffer ---
 //
 // DR_LOG holds the last 50 rows the extension records, one instance per
