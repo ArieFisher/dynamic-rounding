@@ -30,6 +30,15 @@ global.window = {
 };
 global.NodeFilter = { SHOW_TEXT: 4 };
 
+// DR_LOG (lib/dr-log) forwards every row to the real console so devtools
+// output is unchanged; in this suite that forwarding would print a row for
+// every instrumented call site straight into the test report. Mute the two
+// forwarded levels the content scripts use. The dr-log forwarding test
+// installs its own console.debug spy and puts this mute back. The report at
+// the bottom prints through console.log, which stays untouched.
+console.debug = () => {};
+console.warn = () => {};
+
 // Stub observer constructors BEFORE eval so that content.js module-level code
 // (guarded by `typeof MutationObserver !== 'undefined'`) sees them and runs
 // the initialisation block. The stubs are no-ops; tests never exercise the
@@ -79,6 +88,14 @@ const allContentSrc = contentScriptBundle;
 eval(contentScriptBundle + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
 globalThis.DR_NUMBER = DR_NUMBER;
+// Expose the log buffer (lib/dr-log) for the dr-log test suite.
+globalThis.DR_LOG = DR_LOG;
+// Expose the capture state serializer (lib/dr-capture) and its content.js
+// wire-response composer for the capture test suites.
+globalThis.collectCaptureState = collectCaptureState;
+globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
+// Expose the lib/dr-capture package bundle, mirroring DR_NUMBER above.
+globalThis.DR_CAPTURE = DR_CAPTURE;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
@@ -1853,13 +1870,16 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'defaults.js',
+      'lib/dr-log/index.js',
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
       'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
       'lib/dr-table/detect.js', 'lib/dr-table/index.js',
       'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
+      'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
+      'lib/dr-capture/index.js',
       'adapters/messaging.js', 'app/store.js',
       'ui-toggle.js', 'content.js',
     ]), true);
@@ -4671,7 +4691,7 @@ function withReactiveCreateTreeWalker(fn) {
 (function previewBand_manifestLoadsRoundingJs() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   eq('manifest content_scripts loads lib/dr-number/rounding.js between defaults.js and content.js',
-    manifest.content_scripts[0].js[1], 'lib/dr-number/rounding.js');
+    manifest.content_scripts[0].js[2], 'lib/dr-number/rounding.js');
 })();
 
 // The extracted layers (the lib/dr-number package: rounding.js, core.js,
@@ -13638,8 +13658,11 @@ function fireMouseClick(buttonEl, fn) {
   // then added the two-file lib/dr-simplify package (ladder.js, index.js),
   // raising the count from 9 to 11. Sprint app-model-selection then added
   // adapters/messaging.js and app/store.js, raising the count from 11 to 13.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 13 files today',
-    manifest.content_scripts[0].js.length, 13);
+  // The capture feature then added the log buffer (lib/dr-log/index.js) and
+  // the three-file lib/dr-capture package (state.js, render.js, index.js),
+  // raising the count from 13 to 17.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 17 files today',
+    manifest.content_scripts[0].js.length, 17);
 })();
 
 // ---------------------------------------------------------------------------
@@ -17926,6 +17949,666 @@ function makeIssue251SidebarHarness() {
   } finally {
     h.restore();
   }
+})();
+
+// --- capture: the displayed-text read and the plain-original-text read ---
+//
+// The capture records what the screen shows AND what each cell held before.
+// Two reads serve it. (1) Adapter cells gain getDisplayedText(): the live
+// rendered text, never the originals port — on a rounded grid getText()
+// answers with the ORIGINAL (the engine's contract; see the port-preferring
+// read in GridAdapter._makeCellObj), so a capture reading getText() would
+// lie about the screen. (2) The registry stores a cell's original in two
+// shapes (grid: plain string; native: a four-field record);
+// DR_STORE.getTableOriginalText() resolves the difference in one place and
+// returns plain text for either kind, or undefined when nothing is stored.
+
+(function captureDisplayedTextRead() {
+  // Native cell: the displayed text is the live text — the same read
+  // getText() uses, because the native write path never shadows it.
+  const nativeCellEl = { tagName: 'TD', innerText: '1,234', textContent: '1,234' };
+  const nativeStub = {
+    rows: [{ parentElement: { tagName: 'TBODY' }, cells: [nativeCellEl] }],
+  };
+  const nativeCell = new NativeTableAdapter(nativeStub).getRows()[0].getCells()[0];
+  eq('capture-reads: a native cell\'s displayed text is its live text',
+    typeof nativeCell.getDisplayedText === 'function'
+      ? nativeCell.getDisplayedText() : null,
+    '1,234');
+
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const makeGridCellEl = (text) => ({
+    nodeType: 1,
+    childNodes: [{ nodeType: 3, nodeValue: text }],
+    classList: { add() {}, contains() { return false; } },
+    textContent: text,
+  });
+  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+
+  // Grid cell, unrounded: displayed text equals the engine's read.
+  const fresh = adapter._makeCellObj(makeGridCellEl('98,765'));
+  eq('capture-reads: an unrounded grid cell\'s displayed text equals its engine text',
+    typeof fresh.getDisplayedText === 'function'
+      ? { displayed: fresh.getDisplayedText(), engine: fresh.getText() } : null,
+    { displayed: '98,765', engine: '98,765' });
+
+  // Grid cell, rounded: the engine's read answers with the original through
+  // the port; the displayed read answers with what the screen shows now.
+  const rounded = adapter._makeCellObj(makeGridCellEl('98,765'));
+  rounded.setText('99,000');
+  eq('capture-reads: a rounded grid cell keeps engine text = original, displayed text = live',
+    typeof rounded.getDisplayedText === 'function'
+      ? { engine: rounded.getText(), displayed: rounded.getDisplayedText() } : null,
+    { engine: '98,765', displayed: '99,000' });
+})();
+
+(function capturePlainOriginalTextRead() {
+  const has = typeof DR_STORE.getTableOriginalText === 'function';
+  const table = {};
+  const gridCell = {};
+  const nativeCell = {};
+  DR_STORE.setTableOriginal(table, gridCell, '98,765');
+  DR_STORE.setTableOriginal(table, nativeCell,
+    { html: '<b>1,234</b>', value: '1,234', supRanges: null, linkFilteredIdx: null });
+  eq('capture-reads: a grid original (plain string) reads back as its text',
+    has ? DR_STORE.getTableOriginalText(table, gridCell) : null, '98,765');
+  eq('capture-reads: a native original (record) reads back as its value field',
+    has ? DR_STORE.getTableOriginalText(table, nativeCell) : null, '1,234');
+  eq('capture-reads: a cell with no stored original reads back undefined',
+    has ? DR_STORE.getTableOriginalText(table, {}) : null, undefined);
+  DR_STORE.unregisterTable(table);
+})();
+
+// --- lib/dr-capture: the capture state serializer ---
+//
+// collectCaptureState() turns the registry into the plain-value capture
+// state: every registered table in full detail, plus the focused table's raw
+// markup as the fixture seed. Dependencies arrive as parameters with working
+// defaults (deps.store, deps.adapterFor), so these tests drive the function
+// with stand-ins and no DOM. Locked honesty is pinned here: a cell wearing
+// the rounded marker with no stored original serializes as original: null
+// and flips the table's locked flag — never a reconstructed value.
+
+(function captureStateSerializer() {
+  eq('capture-state: collectCaptureState loads in the content-script bundle',
+    typeof globalThis.collectCaptureState, 'function');
+  if (typeof globalThis.collectCaptureState !== 'function') return;
+
+  const markerClassList = (marked) => ({ contains: (c) => marked && c === 'dr-ext-rounded' });
+  const makeCellEl = (marked) => ({ classList: markerClassList(marked) });
+
+  // A fake store: tables and per-cell originals handed in as Maps.
+  const makeFakeStore = (tables, opts) => ({
+    getRegisteredTables: () => tables,
+    getSelectedTable: () => (opts && opts.selected) || null,
+    getSettings: () => ({ enabled: true, offsetTop: -0.5 }),
+    getTableAppliedFlag: (t) => (opts && opts.flags && opts.flags.get(t)) || 'original',
+    getTableRoundOptions: (t) => (opts && opts.roundOptions && opts.roundOptions.get(t)) || null,
+    getTableMaxMagnitude: (t) => {
+      const m = opts && opts.maxMags && opts.maxMags.get(t);
+      return m === undefined ? null : m;
+    },
+    getTableOriginalText: (t, cellEl) =>
+      opts && opts.originals ? opts.originals.get(cellEl) : undefined,
+  });
+
+  // A fake adapter factory: each table object carries its own row spec.
+  const fakeAdapterFor = (table) => ({
+    isVirtualized: () => !!table._virtualized,
+    getRows: () => table._rows.map((row) => ({
+      isOutside: !!row.isOutside,
+      getCells: () => row.cells.map((cell) => ({
+        el: cell.el,
+        tagName: cell.tagName || 'TD',
+        getDisplayedText: () => cell.text,
+      })),
+    })),
+  });
+
+  // Table A: native, simplified, one header row + one data row (ragged).
+  const a1 = makeCellEl(true);
+  const tableA = {
+    outerHTML: '<table><tr><td>99,000</td></tr></table>',
+    _rows: [
+      { cells: [{ el: makeCellEl(false), tagName: 'TH', text: 'Amount' }] },
+      { cells: [
+        { el: a1, text: '99,000' },
+        { el: makeCellEl(false), text: 'n/a' },
+      ] },
+      { isOutside: true, cells: [{ el: makeCellEl(false), text: 'Total' }] },
+    ],
+  };
+  // Table B: virtualized grid, untouched.
+  const tableB = {
+    _virtualized: true,
+    _rows: [{ cells: [{ el: makeCellEl(false), text: '42' }] }],
+  };
+
+  const originals = new Map([[a1, '98,765']]);
+  const flags = new Map([[tableA, 'simplified']]);
+  const roundOptions = new Map([[tableA, { offsetTop: -1, enabled: true }]]);
+  const maxMags = new Map([[tableB, 4]]);
+  const store = makeFakeStore([tableA, tableB],
+    { selected: tableA, originals, flags, roundOptions, maxMags });
+
+  const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
+
+  eq('capture-state: the state carries its format version', state.captureFormat, 1);
+  eq('capture-state: the settings record is carried verbatim',
+    state.settings, { enabled: true, offsetTop: -0.5 });
+  eq('capture-state: every registered table is serialized', state.tables.length, 2);
+  eq('capture-state: the focused table is found by index', state.activeTableIndex, 0);
+  eq('capture-state: the fixture seed is the focused table\'s raw markup verbatim',
+    state.fixtureSeed, '<table><tr><td>99,000</td></tr></table>');
+
+  const recA = state.tables[0];
+  eq('capture-state: per-table detail (kind, appliedFlag, lastRoundOptions, maxMagnitude, counts)',
+    {
+      kind: recA.kind, appliedFlag: recA.appliedFlag,
+      lastRoundOptions: recA.lastRoundOptions, maxMagnitude: recA.maxMagnitude,
+      rowCount: recA.rowCount, columnCount: recA.columnCount,
+    },
+    {
+      kind: 'native', appliedFlag: 'simplified',
+      lastRoundOptions: { offsetTop: -1, enabled: true }, maxMagnitude: null,
+      rowCount: 3, columnCount: 2,
+    });
+  eq('capture-state: a header cell serializes with role th',
+    recA.cells[0], { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null });
+  eq('capture-state: a simplified cell carries displayed text AND its original',
+    recA.cells[1], { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' });
+  eq('capture-state: a cell with no stored original serializes original: null',
+    recA.cells[2].original, null);
+  eq('capture-state: an outside row keeps its flag',
+    recA.cells[3].isOutside, true);
+  eq('capture-state: a marked cell WITH its original does not lock the table',
+    recA.locked, false);
+
+  const recB = state.tables[1];
+  eq('capture-state: a virtualized grid serializes as kind grid with its frozen magnitude',
+    { kind: recB.kind, maxMagnitude: recB.maxMagnitude }, { kind: 'grid', maxMagnitude: 4 });
+
+  // Locked honesty: the marker with no original behind it.
+  const lockedCell = makeCellEl(true);
+  const tableL = { _rows: [{ cells: [{ el: lockedCell, text: '99,000' }] }] };
+  const lockedState = collectCaptureState({
+    store: makeFakeStore([tableL], {}),
+    adapterFor: fakeAdapterFor,
+  });
+  eq('capture-state: a rounded marker with no stored original locks the table and stays null',
+    { locked: lockedState.tables[0].locked, original: lockedState.tables[0].cells[0].original },
+    { locked: true, original: null });
+
+  // Empty registry: an honest nothing.
+  const emptyState = collectCaptureState({
+    store: makeFakeStore([], {}),
+    adapterFor: fakeAdapterFor,
+  });
+  eq('capture-state: an empty registry serializes as no tables, no focus, no seed',
+    { tables: emptyState.tables, activeTableIndex: emptyState.activeTableIndex, fixtureSeed: emptyState.fixtureSeed },
+    { tables: [], activeTableIndex: null, fixtureSeed: null });
+
+  // A capture is a bug report: one table whose walk throws must not take
+  // the whole capture down. It serializes as an error record instead.
+  const throwingAdapterFor = () => ({
+    isVirtualized: () => false,
+    getRows: () => { throw new Error('hostile walk'); },
+  });
+  const errState = collectCaptureState({
+    store: makeFakeStore([{}, tableB], {}),
+    adapterFor: (t) => (t === tableB ? fakeAdapterFor(t) : throwingAdapterFor()),
+  });
+  eq('capture-state: a table whose walk throws serializes as an error record',
+    {
+      kind: errState.tables[0].kind,
+      cells: errState.tables[0].cells,
+      hasError: /hostile walk/.test(errState.tables[0].error),
+    },
+    { kind: 'unknown', cells: [], hasError: true });
+  eq('capture-state: the tables after a throwing one still serialize in full',
+    errState.tables[1].cells.length, 1);
+})();
+
+// --- content.js: the GET_CAPTURE_STATE wire action ---
+//
+// The sidebar pulls the whole page-side half of a capture in one request.
+// The response is composed by buildCaptureStateResponse() — a named function
+// the suite drives directly, because the top-level onMessage listener is a
+// no-op stub here (the established equivalent-path pattern, see the
+// CLOSE_SIDEBAR note above). A source assertion pins that the listener
+// branch exists and routes through it.
+
+(function captureWireAction() {
+  eq('capture-wire: buildCaptureStateResponse loads in the content-script bundle',
+    typeof globalThis.buildCaptureStateResponse, 'function');
+  eq('capture-wire: the listener answers GET_CAPTURE_STATE through buildCaptureStateResponse',
+    /GET_CAPTURE_STATE'[\s\S]{0,200}buildCaptureStateResponse\(\)/.test(sourceByName('content.js') || ''),
+    true);
+  if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
+
+  // The shared DR_STORE still holds stub tables registered by earlier test
+  // sections (the suite never unregisters them), so these assertions are
+  // relative: no absolute table counts, and the focus assertions pin MY
+  // table through activeTableIndex.
+  const prevSelected = DR_STORE.getSelectedTable();
+
+  // With no table bound: no lens preview, no seed, no focus — and the page
+  // field and log snapshot still present.
+  DR_STORE.setSelectedTable(null);
+  const unboundResponse = buildCaptureStateResponse();
+  eq('capture-wire: no table bound still answers with an honest unfocused state',
+    {
+      captureFormat: unboundResponse.captureFormat,
+      activeTableIndex: unboundResponse.activeTableIndex,
+      fixtureSeed: unboundResponse.fixtureSeed,
+      lensPreview: unboundResponse.lensPreview,
+      tablesIsArray: Array.isArray(unboundResponse.tables),
+    },
+    { captureFormat: 1, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+  eq('capture-wire: the response carries this context\'s log snapshot',
+    Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
+  eq('capture-wire: collecting logs its own row, and that row lands in the capture',
+    /capture state collected/.test(unboundResponse.log.entries.slice(-1)[0].text), true);
+  eq('capture-wire: the page field exists even where location does not',
+    'url' in unboundResponse.page && 'title' in unboundResponse.page, true);
+
+  // With a real stub table registered and selected.
+  const table = makeToggleTable([
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  table.outerHTML = '<table><tr><td>8,584,629</td><td>286</td></tr></table>';
+  DR_STORE.registerTable(table);
+  DR_STORE.setSelectedTable(table);
+  try {
+    const response = buildCaptureStateResponse();
+    const mine = response.tables[response.activeTableIndex];
+    eq('capture-wire: the bound table serializes in full and is the focus',
+      {
+        focused: response.activeTableIndex !== null,
+        kind: mine.kind,
+        cellTexts: mine.cells.map((c) => c.text),
+      },
+      { focused: true, kind: 'native', cellTexts: ['8,584,629', '286'] });
+    eq('capture-wire: the fixture seed is the bound table\'s markup',
+      response.fixtureSeed, '<table><tr><td>8,584,629</td><td>286</td></tr></table>');
+    eq('capture-wire: the capture carries the lens preview',
+      !!response.lensPreview && Array.isArray(response.lensPreview.samples.top), true);
+  } finally {
+    DR_STORE.setSelectedTable(prevSelected);
+    DR_STORE.unregisterTable(table);
+  }
+})();
+
+// --- lib/dr-capture: the capture file renderer ---
+//
+// buildCaptureDocument() is a pure string renderer: the whole capture state
+// in, one self-contained HTML document out. The safety doctrine (after the
+// model extension's, adapted for string assembly): every dynamic value
+// passes through one escape on its way in; the file declares a CSP that
+// forbids scripts and remote fetches; a hidden pre holds the full state as
+// escaped JSON (a script-typed island would let an end-tag in a payload
+// break out); and the capture carries the fixture seed twice — visible
+// escaped text for reading, JSON for byte-exact trust. These tests attack
+// the escaping with hostile payloads and round-trip the island.
+
+(function captureRenderer() {
+  eq('capture-render: the DR_CAPTURE package loads in the content-script bundle',
+    typeof globalThis.DR_CAPTURE, 'object');
+  eq('capture-render: manifest loads the dr-capture package whole and in order',
+    contentScriptFiles.indexOf('lib/dr-capture/state.js') !== -1 &&
+      contentScriptFiles.indexOf('lib/dr-capture/render.js') ===
+        contentScriptFiles.indexOf('lib/dr-capture/state.js') + 1 &&
+      contentScriptFiles.indexOf('lib/dr-capture/index.js') ===
+        contentScriptFiles.indexOf('lib/dr-capture/render.js') + 1,
+    true);
+  const sidebarHtmlForCapture = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  eq('capture-render: sidebar.html loads the dr-capture package before sidebar.js',
+    ['lib/dr-capture/state.js', 'lib/dr-capture/render.js', 'lib/dr-capture/index.js']
+      .every((f) => sidebarHtmlForCapture.indexOf(f) !== -1 &&
+        sidebarHtmlForCapture.indexOf(f) < sidebarHtmlForCapture.indexOf('"sidebar.js"')),
+    true);
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+
+  const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
+  const filenameFor = DR_CAPTURE.filenameFor;
+  const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
+
+  const makeState = (over) => Object.assign({
+    captureFormat: 1,
+    meta: {
+      url: 'https://www.example.com/prices', title: 'Prices',
+      version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
+    },
+    mark: 'positive',
+    note: 'rounded to 99,000\nbut the page stayed 98,765',
+    settings: { enabled: true },
+    activeTableIndex: 0,
+    tables: [{
+      kind: 'native', appliedFlag: 'simplified', lastRoundOptions: { offsetTop: -0.5 },
+      maxMagnitude: null, locked: false, rowCount: 2, columnCount: 1,
+      cells: [
+        { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null },
+        { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' },
+      ],
+    }],
+    lensPreview: { samples: { top: [{ original: '98,765', num: 98765 }], bottom: [] }, maxMag: 4 },
+    sidebarView: {
+      enabled: true,
+      switches: { simplifyMixedCells: true, simplifyDates: false },
+      dateGranularity: 'year', timeGranularity: 'hour', rangeExpr: '',
+      stops: [-2, -1.5, -1, -0.5, -0.25, 0, 0.25, 0.5, 1],
+      topVal: -0.5, botVal: -0.5, coupled: true,
+      status: '', noTable: false, locked: false,
+      lensPreview: { top: ['98,765'], bottom: [] },
+    },
+    log: {
+      content: {
+        entries: [{ at: '2026-09-09T18:00:00.000Z', level: 'debug', text: 'apply ran' }],
+        dropped: 0, limit: 50,
+      },
+      sidebar: { entries: [], dropped: 0, limit: 50 },
+    },
+    page: { url: 'https://www.example.com/prices', title: 'Prices' },
+    fixtureSeed: '<table><tr><td>98,765</td></tr></table>',
+  }, over || {});
+
+  // Extract and parse the hidden JSON island the way a consuming tool does:
+  // take the pre's text, undo the HTML escaping (ampersand last), JSON.parse.
+  const islandJson = (docHtml) => {
+    const m = docHtml.match(/<pre id="capture-state" hidden>([\s\S]*?)<\/pre>/);
+    if (!m) return null;
+    return JSON.parse(m[1]
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&'));
+  };
+
+  const html = buildCaptureDocument({ state: makeState(), lockedStatusText: LOCKED_TEXT });
+
+  eq('capture-render: the CSP forbids scripts and remote fetches',
+    /http-equiv="Content-Security-Policy"[^>]*script-src 'none'/.test(html) &&
+      /img-src data:/.test(html), true);
+  // The capture is itself a page with a real table, and with file access
+  // enabled Chrome injects the extension's content scripts into it. The
+  // document element carries the capture marker so the content script
+  // stands down on capture pages — otherwise the extension rounds the
+  // capture's own table and the file misreports the evidence it holds.
+  eq('capture-render: the document element carries the capture marker',
+    /<html lang="en" data-dr-capture="1">/.test(html), true);
+  eq('capture-render: the file carries no script element at all',
+    html.toLowerCase().includes('<script'), false);
+  eq('capture-render: the mark shows as its glyph and is stored as its bare word',
+    html.includes('\u{1F44D}') && islandJson(html).mark, 'positive');
+  eq('capture-render: header facts are present',
+    ['https://www.example.com/prices', '2.1.50', 'test-platform', '2026-09-09T18:00:00.000Z']
+      .every((s) => html.includes(s)), true);
+  eq('capture-render: the remarks render under their label',
+    html.includes('Remarks:') && html.includes('rounded to 99,000'), true);
+  eq('capture-render: a simplified cell shows its value with the original on hover',
+    /<td[^>]*title="Original: 98,765"[^>]*>99,000<\/td>/.test(html), true);
+  eq('capture-render: the focused table renders a second time with the originals',
+    /with the originals/.test(html) &&
+      /<td[^>]*>98,765<\/td>/.test(html), true);
+  eq('capture-render: the likeness shows both thumbs when the lens control is coupled',
+    (html.match(/class="cap-thumb/g) || []).length, 2);
+  eq('capture-render: the coupled heading names the shared value',
+    html.includes('Lens control (coupled, both at -0.5)'), true);
+  eq('capture-render: the registry section lists every table with the focused one marked',
+    /<h2>Registry<\/h2>/.test(html) &&
+      /native[\s\S]{0,120}focused/.test(html), true);
+  eq('capture-render: the footer names the state block without a how-to sentence',
+    html.includes('holds the full capture state') &&
+      !html.includes('To extract the state'), true);
+  eq('capture-render: the island round-trips the whole state',
+    islandJson(html).tables[0].cells[1],
+    { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' });
+
+  // Hostile payloads: cell text and title attribute.
+  const hostile = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: null,
+        maxMagnitude: null, locked: false, rowCount: 1, columnCount: 1,
+        cells: [{
+          row: 0, col: 0, role: 'td', isOutside: false,
+          text: '"><img src=x onerror=alert(1)>',
+          original: 'a"b<c>&d\'e',
+        }],
+      }],
+    }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: hostile cell text appears only escaped',
+    hostile.includes('<img'), false);
+  eq('capture-render: hostile cell text is still readable in its escaped form',
+    hostile.includes('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;'), true);
+  eq('capture-render: a hostile original cannot break out of the title attribute',
+    /title="Original: a&quot;b&lt;c&gt;&amp;d&#39;e"/.test(hostile), true);
+
+  // Hostile fixture seed: an end-tag for the island's own pre plus a script
+  // element, with a carriage return JSON must carry byte-exact.
+  const hostileSeed = '</pre><script>alert(1)</script>\r\n<table><tr><td>1</td></tr></table>';
+  const seeded = buildCaptureDocument({
+    state: makeState({ fixtureSeed: hostileSeed }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: a hostile seed cannot break out of the island or add a script',
+    seeded.toLowerCase().includes('<script'), false);
+  eq('capture-render: the island returns the hostile seed byte-exact',
+    islandJson(seeded).fixtureSeed, hostileSeed);
+
+  // Locked table: the wording arrives as a value (no third copy) and renders.
+  const locked = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: null,
+        maxMagnitude: null, locked: true, rowCount: 1, columnCount: 1,
+        cells: [{ row: 0, col: 0, role: 'td', isOutside: false, text: '99,000', original: null }],
+      }],
+    }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: a locked table renders the locked wording passed in as a value',
+    locked.includes('This table&#39;s original values are no longer available'), true);
+
+  // Console section: both contexts labeled; an empty buffer is a finding.
+  eq('capture-render: both log sections render, and an empty one says so',
+    html.includes('Content script') && html.includes('Sidebar') &&
+      html.includes('Nothing was logged.'), true);
+
+  // No table bound: the capture stays honest instead of refusing.
+  const unbound = buildCaptureDocument({
+    state: makeState({ activeTableIndex: null, tables: [], fixtureSeed: null }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: an unbound capture says no table was bound',
+    unbound.includes('No table was bound'), true);
+  eq('capture-render: an unbound capture says it carries no fixture seed',
+    unbound.includes('No fixture seed'), true);
+
+  // Filename: date first (sorts beside fixtures), time last (a second
+  // capture is a new file), host slug in between.
+  eq('capture-render: the filename is date-first, host-slugged, time-last',
+    filenameFor({ at: new Date(2026, 8, 9, 14, 5, 6), url: 'https://www.example.com/prices' }),
+    'dr-capture-2026-09-09-example-com-140506.html');
+  eq('capture-render: a capture with no page url gets the no-source slug',
+    filenameFor({ at: new Date(2026, 8, 9, 14, 5, 6), url: null }),
+    'dr-capture-2026-09-09-no-source-140506.html');
+})();
+
+// --- sidebar: the capture section and its glue ---
+//
+// The suite never executes sidebar.js (it is asserted as source text — the
+// established style for sidebar wiring), so these tests pin the markup and
+// the glue's load-bearing seams: the three mark buttons, the form that
+// nothing saves without, the one save path, and the state pull.
+
+(function captureSidebarSection() {
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  eq('capture-ui: sidebar.html carries the capture section with three mark buttons',
+    sidebarHtmlSrc.includes('id="captureSection"') &&
+      ['data-mark="positive"', 'data-mark="question"', 'data-mark="negative"']
+        .every((m) => sidebarHtmlSrc.includes(m)),
+    true);
+  eq('capture-ui: the note form starts hidden and holds one remarks field and both buttons',
+    /<div[^>]*id="captureForm"[^>]*hidden/.test(sidebarHtmlSrc) &&
+      ['id="captureRemarks"', 'id="captureSave"', 'id="captureCancel"']
+        .every((id) => sidebarHtmlSrc.includes(id)) &&
+      !sidebarHtmlSrc.includes('id="captureExpected"'),
+    true);
+  eq('capture-ui: the remarks preview text follows the mark',
+    ['Suggestions / questions / remarks', 'expected / observed / cause (if known)']
+      .every((hint) => sidebarJsSrc.includes(hint)) &&
+      /placeholder/.test(sidebarJsSrc),
+    true);
+  eq('capture-ui: the glue pulls the capture state over GET_CAPTURE_STATE',
+    sidebarJsSrc.includes("action: 'GET_CAPTURE_STATE'"), true);
+  eq('capture-ui: exactly one save path creates the blob URL',
+    (sidebarJsSrc.match(/createObjectURL/g) || []).length, 1);
+  eq('capture-ui: nothing saves without a pressed mark',
+    /function saveCapture\(\)[\s\S]{0,200}if \(captureMark === null\) return;/.test(sidebarJsSrc),
+    true);
+  eq('capture-ui: the renderer receives the locked wording as a value, not a copy',
+    /buildCaptureDocument\(\{[\s\S]{0,120}lockedStatusText: APPLY_BLOCKED_STATUS_MSG/.test(sidebarJsSrc),
+    true);
+  eq('capture-ui: the filename comes from the package helper',
+    /DR_CAPTURE\.filenameFor\(/.test(sidebarJsSrc), true);
+  eq('capture-ui: the sidebar\'s own log snapshot travels beside the content script\'s',
+    /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
+  eq('capture-ui: a failed state pull still saves and records the failure',
+    /DR_LOG\.warn\([^)]*pull failed/.test(sidebarJsSrc), true);
+})();
+
+// --- content.js: the extension stands down on capture pages ---
+//
+// A saved capture holds a real table; opened with file access enabled, the
+// content script runs on it like on any page. The renderer stamps
+// data-dr-capture on the document element, and the controller gates its two
+// entry points on that marker — the contextmenu handler (selection and the
+// menu path) and the load-time scan with its added-node observer (pillboxes
+// and registration). With neither, no table on a capture page is ever
+// selected, registered, or rounded. Source-text assertions, matching the
+// suite's style for load-time wiring the harness cannot re-run.
+
+(function captureMarkerStandDown() {
+  const src = sourceByName('content.js') || '';
+  eq('capture-marker: the controller reads the capture marker once',
+    /const IS_CAPTURE_PAGE = [\s\S]{0,220}drCapture/.test(src), true);
+  eq('capture-marker: the contextmenu handler stands down on a capture page',
+    /contextmenu[\s\S]{0,120}if \(IS_CAPTURE_PAGE\) return;/.test(src), true);
+  eq('capture-marker: the load-time scan and observer stand down on a capture page',
+    /typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE/.test(src), true);
+})();
+
+// --- lib/dr-log: the log buffer ---
+//
+// DR_LOG holds the last 50 rows the extension records, one instance per
+// context (content script and sidebar each evaluate the file separately).
+// Every capture carries a snapshot of this buffer, so these tests pin the
+// row shape, the cap, the drop counter, the console forwarding, and the
+// snapshot's copy semantics. The buffer is a singleton shared with every
+// other test in this file, so all assertions here are relative (last row,
+// before/after counts) — and the cap test runs last because it fills it.
+
+(function drLogBuffer() {
+  eq('dr-log: DR_LOG loads in the content-script bundle',
+    typeof globalThis.DR_LOG, 'object');
+  eq('dr-log: manifest loads lib/dr-log/index.js directly after defaults.js',
+    contentScriptFiles[1], 'lib/dr-log/index.js');
+  const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  eq('dr-log: sidebar.html loads lib/dr-log/index.js before sidebar.js',
+    sidebarHtml.indexOf('lib/dr-log/index.js') !== -1 &&
+      sidebarHtml.indexOf('lib/dr-log/index.js') < sidebarHtml.indexOf('sidebar.js'),
+    true);
+  if (typeof globalThis.DR_LOG !== 'object') return;
+  const LOG = globalThis.DR_LOG;
+
+  LOG.debug('row shape probe');
+  let snap = LOG.snapshot();
+  const last = snap.entries[snap.entries.length - 1];
+  eq('dr-log: a row holds its level and text',
+    { level: last.level, text: last.text },
+    { level: 'debug', text: 'row shape probe' });
+  eq('dr-log: a row\'s timestamp parses as a date',
+    isNaN(Date.parse(last.at)), false);
+  eq('dr-log: the snapshot reports the row cap', snap.limit, 50);
+
+  // console.info and console.error are not muted by the harness (only debug
+  // and warn are); spy them for the duration of these three calls so the
+  // forwarded rows stay out of the test report.
+  const origInfo = console.info;
+  const origError = console.error;
+  console.info = () => {};
+  console.error = () => {};
+  LOG.info('info probe');
+  LOG.warn('warn probe');
+  LOG.error('error probe');
+  console.info = origInfo;
+  console.error = origError;
+  eq('dr-log: info, warn, and error rows carry their level',
+    LOG.snapshot().entries.slice(-3).map((e) => e.level),
+    ['info', 'warn', 'error']);
+
+  LOG.debug(42);
+  eq('dr-log: non-string text is stored as a string',
+    LOG.snapshot().entries.slice(-1)[0].text, '42');
+
+  // Forwarding: a row still reaches the console (devtools behavior is
+  // unchanged). The harness mutes console.debug/console.warn globally; this
+  // test installs its own spy and puts the mute back.
+  const origDebug = console.debug;
+  let forwarded = null;
+  console.debug = (msg) => { forwarded = msg; };
+  LOG.debug('forwarding probe');
+  console.debug = origDebug;
+  eq('dr-log: a row forwards to the console', forwarded, 'forwarding probe');
+
+  const snapA = LOG.snapshot();
+  snapA.entries[snapA.entries.length - 1].text = 'mutated';
+  eq('dr-log: snapshot rows are copies, so mutating one never reaches the buffer',
+    LOG.snapshot().entries.slice(-1)[0].text, 'forwarding probe');
+
+  LOG.debug('x'.repeat(3000));
+  eq('dr-log: a long row is cut at 2000 characters',
+    LOG.snapshot().entries.slice(-1)[0].text.length, 2000);
+
+  // The 50-row cap and the drop counter — last in this section because it
+  // fills the shared buffer.
+  const droppedBefore = LOG.snapshot().dropped;
+  for (let i = 0; i < 55; i++) LOG.debug('cap probe ' + i);
+  snap = LOG.snapshot();
+  eq('dr-log: the buffer holds at most 50 rows', snap.entries.length, 50);
+  eq('dr-log: rows dropped past the cap are counted',
+    snap.dropped >= droppedBefore + 5, true);
+  eq('dr-log: the newest row survives the cap',
+    snap.entries[snap.entries.length - 1].text, 'cap probe 54');
+})();
+
+// --- lib/dr-log: call sites route through the buffer ---
+//
+// The extension's own console.debug call sites (two in content.js, one in
+// detect.js) route through DR_LOG so their rows land in the capture. A
+// direct console.debug row is invisible to the capture, so none may remain
+// in the content scripts. detect.js is also evaluated standalone in vm
+// sandboxes elsewhere in this suite, so its call site guards on DR_LOG's
+// presence instead of assuming the load order.
+
+(function drLogCallSites() {
+  eq('dr-log: content.js keeps no direct console.debug call',
+    /console\.debug\(/.test(sourceByName('content.js') || ''), false);
+  eq('dr-log: detect.js keeps no direct console.debug call',
+    /console\.debug\(/.test(detectCode || ''), false);
+  eq('dr-log: registration logs a row (ui-toggle.js)',
+    /DR_LOG\.debug\([^)]*egistered/.test(uiToggleCode || ''), true);
+  eq('dr-log: a blocked apply logs a warn row (content.js)',
+    /DR_LOG\.warn\([^)]*locked/.test(sourceByName('content.js') || ''), true);
+  eq('dr-log: a table turning locked logs a warn row (ui-toggle.js)',
+    /DR_LOG\.warn\([^)]*ocked/.test(uiToggleCode || ''), true);
 })();
 
 // --- Report ---

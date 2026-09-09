@@ -73,6 +73,10 @@ This repository is public. Before staging a new file, answer this: does it serve
 
 Run `scripts/check-files.sh --staged` before committing. It is the same check the hook and CI run.
 
+### Regression fixtures
+
+A capture from the extension holds real page content, and this repository is public. A committed regression fixture is always a minimized synthetic copy: rebuild the failing structure with invented values that still reproduce the defect, and commit only that. A raw capture never enters the repository.
+
 ### Docs track behavior
 
 Living docs: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.

@@ -18,6 +18,18 @@
 // It is shared with sidebar.js so the sidebar UI's initial state and the
 // right-click toggle's fallback options come from a single source.
 
+// The capture marker: a saved capture (lib/dr-capture/render.js) stamps
+// data-dr-capture on its document element, because the capture is itself a
+// page with a real table and — with file access enabled — Chrome injects
+// this content script into it. On such a page the controller stands down:
+// no contextmenu selection, no load-time scan, no observer, so no table in
+// a capture is ever registered, selected, or rounded. A capture must show
+// what was captured, never what this extension would do to it. Page rules
+// cannot enforce this (a page's Content-Security-Policy does not apply to
+// an extension's injected code), so the guard sits here.
+const IS_CAPTURE_PAGE = !!(typeof document !== 'undefined' && document.documentElement &&
+  document.documentElement.dataset && document.documentElement.dataset.drCapture !== undefined);
+
 let lastRightClickedElement = null;
 // The selected table (may hold a <table> element OR a div-based grid root —
 // any element carrying class dr-ext-grid or returned by findTargetTable's
@@ -145,11 +157,13 @@ function markAndToggleIfNewGrid(found) {
 // the controller is exactly where "have we found this" ought to answer from
 // the registry rather than the dr-ext-grid marker class.
 document.addEventListener('contextmenu', (event) => {
+  if (IS_CAPTURE_PAGE) return;
   lastRightClickedElement = event.target;
   const found = findTargetTable(event.target, { isSeen: DR_STORE.hasTable });
   if (found) {
     const table = markAndToggleIfNewGrid(found);
     DR_STORE.setSelectedTable(table);
+    DR_LOG.debug("Dynamic Rounding: table activated by right-click.");
     flashTargetedTable(table);
     try {
       chrome.runtime.sendMessage({ action: ACTION_TABLE_ACTIVATED });
@@ -198,7 +212,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // record (#272) — panel open or closed alike.
         DR_BUS.publish('intent:toggleTable', { table: markAndToggleIfNewGrid(found) });
       } else {
-        console.debug("Dynamic Rounding: No table found at right-click location.");
+        DR_LOG.debug("Dynamic Rounding: No table found at right-click location.");
       }
     }
     return;
@@ -220,7 +234,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // sidebar may not be open yet; harmless
       }
     } else {
-      console.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
+      DR_LOG.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
     }
     return;
   }
@@ -253,6 +267,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     return;
   }
+
+  if (request.action === 'GET_CAPTURE_STATE') {
+    sendResponse(buildCaptureStateResponse());
+    return;
+  }
 });
 
 window.addEventListener('pagehide', () => {
@@ -278,16 +297,20 @@ function applySidebarRounding(table, options) {
     // sidebar why nothing changed and stop. APPLY_OK below clears the
     // notice once an apply works again (a table switch, or the site
     // re-rendered the table with fresh cells).
+    DR_LOG.warn("Dynamic Rounding: apply blocked; " + unrestorableCount + " cell(s) unrestorable.");
     chrome.runtime.sendMessage({ action: 'APPLY_BLOCKED', count: unrestorableCount });
     return;
   }
   chrome.runtime.sendMessage({ action: 'APPLY_OK' });
   if (opts.enabled !== false) {
-    sendRangeStatusMessage(roundTable(table, opts));
+    const result = roundTable(table, opts);
+    sendRangeStatusMessage(result);
+    DR_LOG.debug("Dynamic Rounding: apply ran (applied=" + result.applied + ", rangeStatus=" + result.rangeStatus + ").");
     if (table.querySelector('.dr-ext-rounded')) {
       chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
     }
   } else {
+    DR_LOG.debug("Dynamic Rounding: apply ran with rounding off; table reset.");
     chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
@@ -333,7 +356,7 @@ function injectTogglesForAddedNode(node) {
   }
 }
 
-if (typeof MutationObserver !== 'undefined') {
+if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
   ensureScrollResizeListeners();
 
   // MutationObserver to watch for dynamically added/removed tables and grids
@@ -377,6 +400,7 @@ if (typeof MutationObserver !== 'undefined') {
           }
           trackedTables.delete(table);
           DR_STORE.unregisterTable(table);
+          DR_LOG.debug("Dynamic Rounding: removed table unregistered.");
         }
       }
     }
@@ -729,6 +753,34 @@ function extractPreviewSamples(table) {
   };
 }
 
+// --- Capture state (consumed by sidebar via the GET_CAPTURE_STATE pull) ---
+
+// The whole page-side half of a capture, in one response: the serialized
+// registry (lib/dr-capture/state.js), plus what only this context holds —
+// the page's own address and title, the lens preview for the focused table,
+// and this context's log rows. Composed in a named function so the suite
+// drives it directly (the top-level onMessage listener is a no-op stub
+// there); the listener branch below only relays it.
+//
+// The cell-count row is recorded BEFORE the log snapshot is taken, so an
+// oversized capture carries its own size evidence inside itself.
+function buildCaptureStateResponse() {
+  const state = collectCaptureState();
+  const selected = DR_STORE.getSelectedTable();
+  const cellCounts = state.tables.map(function (t) { return t.cells.length; });
+  DR_LOG.debug('Dynamic Rounding: capture state collected (' + state.tables.length +
+    ' table(s), cells per table: [' + cellCounts.join(', ') + ']).');
+  return Object.assign({
+    page: {
+      url: typeof location !== 'undefined' ? location.href : null,
+      title: (typeof document !== 'undefined' && typeof document.title === 'string')
+        ? document.title : null,
+    },
+    lensPreview: selected ? extractPreviewSamples(selected) : null,
+    log: DR_LOG.snapshot(),
+  }, state);
+}
+
 /**
  * Classify and compute rounded target values for all visible cells of a
  * virtualized grid. Classification (isInRanges, getExclusionReason, whole-
@@ -943,6 +995,8 @@ function reapplyGridRounding(wrapperEl) {
     }
     return;
   }
+
+  DR_LOG.debug("Dynamic Rounding: grid re-apply fired.");
 
   // Delegate to the single shared classify+compute function, with the
   // frozen magnitude basis so scrolling cannot shift the rounding basis.
@@ -1242,6 +1296,7 @@ function toggleOriginalValues(table) {
   const showingOriginal = DR_STORE.getTableAppliedFlag(table) !== 'simplified';
 
   if (showingOriginal) {
+    DR_LOG.debug("Dynamic Rounding: toggle back to simplified with last-used options.");
     // Re-run the pipeline with the last-used options so the rounded view
     // reflects current parameters rather than a stale cached value.
     const opts = DR_STORE.getTableRoundOptions(table) || DR_DEFAULTS;
@@ -1259,6 +1314,7 @@ function toggleOriginalValues(table) {
     }
     sendRangeStatusMessage(roundTable(table, opts));
   } else {
+    DR_LOG.debug("Dynamic Rounding: toggle to originals.");
     // Set the flag BEFORE mutating cells. Restoring grid cells writes their
     // text nodes, which fire characterData mutations the grid's re-apply
     // observer is listening for; setting the flag first guarantees the

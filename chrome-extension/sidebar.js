@@ -568,6 +568,9 @@ if (rangeExprEl) rangeExprEl.addEventListener('input', applyNow);
 document.body.addEventListener('click', (e) => {
   if (e.target.matches('input, select, option, summary')) return;
   if (e.target.closest && e.target.closest('.dual-wrap')) return;
+  // Capture interactions are not settings changes: a mark press, a note
+  // keystroke, or the finish button must not publish the settings record.
+  if (e.target.closest && e.target.closest('#captureSection')) return;
   applyNow();
 });
 
@@ -599,6 +602,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       delete statusEl.dataset.source;
     }
   } else if (request.action === 'APPLY_BLOCKED') {
+    DR_LOG.warn('Dynamic Rounding: apply blocked received; panel locked.');
     statusEl.textContent = APPLY_BLOCKED_STATUS_MSG;
     statusEl.dataset.source = 'blocked';
     // Issue #262: the connected table is stuck showing simplified values.
@@ -625,6 +629,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // reset the main toggle to the shipped default (issue #251).
     pullSettingsAndApplyToUI();
   } else if (request.action === 'TABLE_SWITCHED') {
+    DR_LOG.debug('Dynamic Rounding: table switch received.');
     // A table switch: the lock, if any, belonged to the previous table.
     // The switch apply on the content side runs after this message is
     // sent, so its APPLY_BLOCKED re-locks the panel right after this lift
@@ -730,6 +735,188 @@ function pullSettingsAndApplyToUI() {
     });
   });
 }
+
+// ----- Capture (the bug-report file) -----
+// Three marks; pressing one unfolds the note form; the finish button is the
+// only thing that saves. The capture stays available with no table bound —
+// an empty registry is exactly what a "found no table" report must show —
+// and a failed state pull still saves, with the failure recorded as a row.
+
+const captureFormEl = document.getElementById('captureForm');
+const captureMarkEls = Array.from(document.querySelectorAll('.capture-mark'));
+const captureRemarksEl = document.getElementById('captureRemarks');
+const captureSaveEl = document.getElementById('captureSave');
+const captureCancelEl = document.getElementById('captureCancel');
+
+// The one note field's preview text follows the mark: a negative capture
+// prompts for the fixture loop's three facts, a question mark prompts
+// loosely, a positive mark needs only remarks.
+const CAPTURE_REMARKS_HINTS = {
+  positive: 'Remarks',
+  question: 'Suggestions / questions / remarks',
+  negative: 'expected / observed / cause (if known)',
+};
+
+// The pressed mark, as its bare word — null while the form is folded.
+let captureMark = null;
+
+function renderCaptureMarks() {
+  for (const el of captureMarkEls) {
+    el.setAttribute('aria-pressed', el.dataset.mark === captureMark ? 'true' : 'false');
+  }
+  if (captureFormEl) captureFormEl.hidden = captureMark === null;
+  if (captureRemarksEl && captureMark !== null) {
+    captureRemarksEl.placeholder = CAPTURE_REMARKS_HINTS[captureMark] || '';
+  }
+}
+
+// Folds the form and clears the mark. Typed note text survives a fold, so
+// an accidental cancel loses nothing; a completed save clears it below.
+function foldCaptureForm() {
+  captureMark = null;
+  renderCaptureMarks();
+}
+
+for (const el of captureMarkEls) {
+  el.addEventListener('click', () => {
+    // Re-pressing the lit mark folds the form (same-mark toggle).
+    captureMark = el.dataset.mark === captureMark ? null : el.dataset.mark;
+    if (captureMark !== null) {
+      DR_LOG.debug('Dynamic Rounding: capture form opened (' + captureMark + ').');
+    }
+    renderCaptureMarks();
+  });
+}
+
+if (captureCancelEl) captureCancelEl.addEventListener('click', foldCaptureForm);
+
+// An anchor, not chrome.downloads: that permission gates the API, and the
+// download attribute is honored for a blob made on an extension page — the
+// model extension's proven save path. The delayed revoke gives the browser
+// time to read the blob.
+function saveCaptureFile(opts) {
+  const url = URL.createObjectURL(new Blob([opts.html], { type: 'text/html' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = opts.filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// The sidebar's own half of the capture state: every control's value, the
+// lens control positions, and what the status line said — read at finish
+// time from this page's live controls and variables. Sidebar view state has
+// no model by existing design, so this is evidence-taking, not a second
+// store of record.
+function collectSidebarView() {
+  const switches = {};
+  for (const id in CHECKBOX_TO_SETTING) {
+    const el = document.getElementById(id);
+    if (el) switches[CHECKBOX_TO_SETTING[id]] = el.checked;
+  }
+  return {
+    enabled: enabledEl.checked,
+    switches: switches,
+    dateGranularity: dateGranularityEl ? dateGranularityEl.value : null,
+    timeGranularity: timeGranularityEl ? timeGranularityEl.value : null,
+    rangeExpr: rangeExprEl ? rangeExprEl.value : '',
+    stops: STOPS.slice(),
+    topVal: topVal,
+    botVal: botVal,
+    coupled: linked,
+    status: statusEl.textContent,
+    noTable: document.body.classList.contains(NO_TABLE_CLASS),
+    locked: document.body.classList.contains('table-locked'),
+    lockStashedEnabled: lockStashedEnabled,
+    lensPreview: {
+      top: topBandEl ? Array.from(topBandEl.children).map((n) => n.textContent) : [],
+      bottom: botBandEl ? Array.from(botBandEl.children).map((n) => n.textContent) : [],
+    },
+  };
+}
+
+// One capture state from the page's half (the GET_CAPTURE_STATE response,
+// or null when the pull failed) and this page's half. CAPTURE_FORMAT comes
+// from lib/dr-capture/state.js, loaded by this page too, so the fallback
+// carries the same version the serializer stamps.
+function assembleAndSaveCapture(mark, note, pageState) {
+  const at = new Date();
+  const state = Object.assign({
+    captureFormat: CAPTURE_FORMAT,
+    page: null,
+    settings: null,
+    activeTableIndex: null,
+    tables: [],
+    lensPreview: null,
+    fixtureSeed: null,
+    log: null,
+  }, pageState || {});
+  state.meta = {
+    url: state.page ? state.page.url : null,
+    title: state.page ? state.page.title : null,
+    version: chrome.runtime.getManifest().version,
+    platform: navigator.userAgent,
+    at: at.toISOString(),
+  };
+  state.mark = mark;
+  state.note = note;
+  state.sidebarView = collectSidebarView();
+  // Provenance is evidence: the two contexts' rows stay in separate lists.
+  state.log = {
+    content: pageState ? pageState.log || null : null,
+    sidebar: DR_LOG.snapshot(),
+  };
+  const html = DR_CAPTURE.buildCaptureDocument({
+    state: state,
+    lockedStatusText: APPLY_BLOCKED_STATUS_MSG,
+  });
+  saveCaptureFile({
+    filename: DR_CAPTURE.filenameFor({ at: at, url: state.meta.url }),
+    html: html,
+  });
+  DR_LOG.debug('Dynamic Rounding: capture saved.');
+  foldCaptureForm();
+  if (captureRemarksEl) captureRemarksEl.value = '';
+  // The saved flash uses the unsourced-status convention applyNow's delivery
+  // callback established: sourced messages (range error, apply blocked)
+  // always win the line.
+  if (!statusEl.dataset.source) {
+    statusEl.textContent = 'Capture saved.';
+    setTimeout(() => {
+      if (!statusEl.dataset.source && statusEl.textContent === 'Capture saved.') {
+        statusEl.textContent = '';
+      }
+    }, 2500);
+  }
+}
+
+function saveCapture() {
+  if (captureMark === null) return;
+  const mark = captureMark;
+  const note = captureRemarksEl ? captureRemarksEl.value : '';
+  DR_LOG.debug('Dynamic Rounding: finish pressed; pulling capture state.');
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs[0]) {
+      DR_LOG.warn('Dynamic Rounding: capture state pull failed (no active tab).');
+      assembleAndSaveCapture(mark, note, null);
+      return;
+    }
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'GET_CAPTURE_STATE' }, (response) => {
+      if (chrome.runtime.lastError || !response) {
+        DR_LOG.warn('Dynamic Rounding: capture state pull failed (' +
+          (chrome.runtime.lastError ? chrome.runtime.lastError.message : 'no response') + ').');
+        assembleAndSaveCapture(mark, note, null);
+      } else {
+        assembleAndSaveCapture(mark, note, response);
+      }
+    });
+  });
+}
+
+if (captureSaveEl) captureSaveEl.addEventListener('click', saveCapture);
+renderCaptureMarks();
 
 // Default to unbound until fetchPreviewSamples resolves.
 setTableBound(false);

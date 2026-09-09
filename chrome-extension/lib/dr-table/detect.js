@@ -143,6 +143,14 @@ class NativeTableAdapter {
           // cells and skip originalValue, silently feeding the sidebar preview
           // its own rounded output.
           getText() { return cell.innerText || cell.textContent || ''; },
+          // The displayed text: what the screen shows right now. On a native
+          // cell that is the same live read getText() uses (the native write
+          // path never shadows it); the method exists so consumers that need
+          // "as displayed" — the capture's state serializer — can use one
+          // read on either adapter kind. GridAdapter's counterpart differs:
+          // there getText() answers with the original through the originals
+          // port once the cell is rounded.
+          getDisplayedText() { return cell.innerText || cell.textContent || ''; },
           el: cell,
           tagName: cell.tagName,
         }));
@@ -388,6 +396,17 @@ class GridAdapter {
         // Patch in place — NEVER replace the node (preserves React fiber identity).
         tn.nodeValue = s;
         if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
+      },
+      // The displayed text: what the screen shows right now — always the
+      // live text node, never the originals port. On a rounded grid cell
+      // getText() above answers with the ORIGINAL (the engine's contract:
+      // classification must see pre-round text), so a consumer that needs
+      // "as displayed" — the capture's state serializer — reads this one.
+      // Declared after setText so the GR3b/GR6j source guards' fixed scan
+      // window over _makeCellObj still covers the write path.
+      getDisplayedText() {
+        const tn = findCellTextNode(cellEl);
+        return tn ? tn.nodeValue : (cellEl.textContent || '');
       },
     };
   }
@@ -653,7 +672,9 @@ function replaceTextPreservingHTML(cell, originalText, newText) {
   }
   
   // Removed absolute innerText fallback to completely eliminate risk of breaking column widths or DOM structures
-  console.debug("Dynamic Rounding: Skipped complex multi-node cell replacement to preserve layout.");
+  // lib/dr-table also runs standalone (test sandboxes evaluate this file
+  // alone), so the row routes through DR_LOG only when dr-log is loaded.
+  (typeof DR_LOG !== 'undefined' ? DR_LOG : console).debug("Dynamic Rounding: Skipped complex multi-node cell replacement to preserve layout.");
 }
 
 /**
