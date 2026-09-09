@@ -18283,7 +18283,7 @@ function makeIssue251SidebarHarness() {
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
     },
     mark: 'positive',
-    note: { expected: 'rounded to 99,000', observed: 'stayed 98,765', cause: 'unknown' },
+    note: 'rounded to 99,000\nbut the page stayed 98,765',
     settings: { enabled: true },
     activeTableIndex: 0,
     tables: [{
@@ -18345,8 +18345,8 @@ function makeIssue251SidebarHarness() {
   eq('capture-render: header facts are present',
     ['https://www.example.com/prices', '2.1.50', 'test-platform', '2026-09-09T18:00:00.000Z']
       .every((s) => html.includes(s)), true);
-  eq('capture-render: the note fields render',
-    html.includes('rounded to 99,000') && html.includes('stayed 98,765'), true);
+  eq('capture-render: the remarks render under their label',
+    html.includes('Remarks:') && html.includes('rounded to 99,000'), true);
   eq('capture-render: a simplified cell shows its value with the original on hover',
     /<td[^>]*title="Original: 98,765"[^>]*>99,000<\/td>/.test(html), true);
   eq('capture-render: the focused table renders a second time with the originals',
@@ -18455,11 +18455,16 @@ function makeIssue251SidebarHarness() {
       ['data-mark="positive"', 'data-mark="question"', 'data-mark="negative"']
         .every((m) => sidebarHtmlSrc.includes(m)),
     true);
-  eq('capture-ui: the note form starts hidden and holds the three fields and both buttons',
+  eq('capture-ui: the note form starts hidden and holds one remarks field and both buttons',
     /<div[^>]*id="captureForm"[^>]*hidden/.test(sidebarHtmlSrc) &&
-      ['id="captureExpected"', 'id="captureObserved"', 'id="captureCause"',
-        'id="captureSave"', 'id="captureCancel"']
-        .every((id) => sidebarHtmlSrc.includes(id)),
+      ['id="captureRemarks"', 'id="captureSave"', 'id="captureCancel"']
+        .every((id) => sidebarHtmlSrc.includes(id)) &&
+      !sidebarHtmlSrc.includes('id="captureExpected"'),
+    true);
+  eq('capture-ui: the remarks preview text follows the mark',
+    ['Suggestions / questions / remarks', 'expected / observed / cause (if known)']
+      .every((hint) => sidebarJsSrc.includes(hint)) &&
+      /placeholder/.test(sidebarJsSrc),
     true);
   eq('capture-ui: the glue pulls the capture state over GET_CAPTURE_STATE',
     sidebarJsSrc.includes("action: 'GET_CAPTURE_STATE'"), true);

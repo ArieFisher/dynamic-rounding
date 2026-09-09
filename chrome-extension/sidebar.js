@@ -744,11 +744,18 @@ function pullSettingsAndApplyToUI() {
 
 const captureFormEl = document.getElementById('captureForm');
 const captureMarkEls = Array.from(document.querySelectorAll('.capture-mark'));
-const captureExpectedEl = document.getElementById('captureExpected');
-const captureObservedEl = document.getElementById('captureObserved');
-const captureCauseEl = document.getElementById('captureCause');
+const captureRemarksEl = document.getElementById('captureRemarks');
 const captureSaveEl = document.getElementById('captureSave');
 const captureCancelEl = document.getElementById('captureCancel');
+
+// The one note field's preview text follows the mark: a negative capture
+// prompts for the fixture loop's three facts, a question mark prompts
+// loosely, a positive mark needs only remarks.
+const CAPTURE_REMARKS_HINTS = {
+  positive: 'Remarks',
+  question: 'Suggestions / questions / remarks',
+  negative: 'expected / observed / cause (if known)',
+};
 
 // The pressed mark, as its bare word — null while the form is folded.
 let captureMark = null;
@@ -758,6 +765,9 @@ function renderCaptureMarks() {
     el.setAttribute('aria-pressed', el.dataset.mark === captureMark ? 'true' : 'false');
   }
   if (captureFormEl) captureFormEl.hidden = captureMark === null;
+  if (captureRemarksEl && captureMark !== null) {
+    captureRemarksEl.placeholder = CAPTURE_REMARKS_HINTS[captureMark] || '';
+  }
 }
 
 // Folds the form and clears the mark. Typed note text survives a fold, so
@@ -868,9 +878,7 @@ function assembleAndSaveCapture(mark, note, pageState) {
   });
   DR_LOG.debug('Dynamic Rounding: capture saved.');
   foldCaptureForm();
-  if (captureExpectedEl) captureExpectedEl.value = '';
-  if (captureObservedEl) captureObservedEl.value = '';
-  if (captureCauseEl) captureCauseEl.value = '';
+  if (captureRemarksEl) captureRemarksEl.value = '';
   // The saved flash uses the unsourced-status convention applyNow's delivery
   // callback established: sourced messages (range error, apply blocked)
   // always win the line.
@@ -887,11 +895,7 @@ function assembleAndSaveCapture(mark, note, pageState) {
 function saveCapture() {
   if (captureMark === null) return;
   const mark = captureMark;
-  const note = {
-    expected: captureExpectedEl ? captureExpectedEl.value : '',
-    observed: captureObservedEl ? captureObservedEl.value : '',
-    cause: captureCauseEl ? captureCauseEl.value : '',
-  };
+  const note = captureRemarksEl ? captureRemarksEl.value : '';
   DR_LOG.debug('Dynamic Rounding: finish pressed; pulling capture state.');
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs[0]) {

@@ -65,7 +65,7 @@ const CAPTURE_STYLES = [
   'dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0; }',
   'dt { color: #555; } dd { margin: 0; overflow-wrap: anywhere; }',
   '.cap-note { border-left: 3px solid #3d85c6; padding: 4px 12px; margin: 12px 0; }',
-  '.cap-note p { margin: 2px 0; }',
+  '.cap-note p { margin: 2px 0; white-space: pre-wrap; }',
   '.cap-visual { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }',
   '.cap-page { flex: 1 1 320px; }',
   '.cap-panel { flex: 0 0 260px; border: 1px solid #ccc; border-radius: 8px; padding: 12px; }',
@@ -139,7 +139,6 @@ function captureFilenameFor(opts) {
 
 function renderCaptureHeader(state) {
   const meta = state.meta || {};
-  const note = state.note || {};
   const glyph = CAPTURE_MARK_GLYPHS[state.mark] || '';
   const rows = [
     ['Page', displayValue(meta.url)],
@@ -151,18 +150,14 @@ function renderCaptureHeader(state) {
   ].map(function (pair) {
     return '<dt>' + escapeHtml(pair[0]) + '</dt><dd>' + escapeHtml(pair[1]) + '</dd>';
   }).join('');
-  const noteRows = [
-    ['Expected', note.expected],
-    ['Observed', note.observed],
-    ['Cause', note.cause],
-  ].map(function (pair) {
-    return '<p><b>' + escapeHtml(pair[0]) + ':</b> ' + escapeHtml(displayValue(pair[1])) + '</p>';
-  }).join('');
+  // The note is one free-text field; line breaks the user typed survive
+  // through the pre-wrap rule on .cap-note.
+  const noteRow = '<p><b>Remarks:</b> ' + escapeHtml(displayValue(state.note)) + '</p>';
   return '<header>' +
     '<h1>DynamicRounding capture</h1>' +
     '<p class="cap-mark">' + glyph + ' <span>' + escapeHtml(displayValue(state.mark)) + '</span></p>' +
     '<dl>' + rows + '</dl>' +
-    '<section class="cap-note">' + noteRows + '</section>' +
+    '<section class="cap-note">' + noteRow + '</section>' +
     '</header>';
 }
 

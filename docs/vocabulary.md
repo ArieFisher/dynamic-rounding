@@ -125,7 +125,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | --- | --- |
 | capture | A bug report written as one self-contained HTML file: the mark and note, the focused table's rendering, a likeness of the sidebar, both contexts' log rows, the fixture seed, and the capture state as machine-readable JSON. The file allows no scripts and no remote fetches, so it is safe to attach anywhere. |
 | mark | The verdict a capture carries: positive, question, or negative. One of three buttons in the sidebar's capture section; pressing one opens the note form. |
-| note | The capture's free-text fields: expected, observed, and cause. Blank fields save as blank. |
+| note | The capture's one free-text field, labeled Remarks. Its preview text follows the mark: a negative capture prompts for expected, observed, and cause (if known); a question mark prompts for suggestions, questions, or remarks. A blank note saves as blank. |
 | finish | The explicit gesture that writes the capture file — the "Save capture" button. Nothing saves without that press. |
 | capture state | The plain-value record embedded in the capture: full registry detail for every table, the settings record, the lens preview samples, the sidebar view state, the log rows, the page and extension metadata, and the fixture seed. Carries a one-integer format version so a later tool can read old captures. |
 | log buffer | A per-context list of the last 50 log rows the extension recorded, with a count of rows dropped past the cap. Each row also goes to the console, so devtools output is unchanged. |
