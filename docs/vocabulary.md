@@ -129,6 +129,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | finish | The explicit gesture that writes the capture file — the "Save capture" button. Nothing saves without that press. |
 | capture state | The plain-value record embedded in the capture: full registry detail for every table, the settings record, the lens preview samples, the sidebar view state, the log rows, the page and extension metadata, and the fixture seed. Carries a one-integer format version so a later tool can read old captures. |
 | log buffer | A per-context list of the last 50 log rows the extension recorded, with a count of rows dropped past the cap. Each row also goes to the console, so devtools output is unchanged. |
+| state pull | The one request the sidebar sends for the page-side half of a capture. A failed state pull still saves the capture: the sidebar half is present, and the page half renders as an absence. |
 | fixture seed | The focused table's raw markup, carried verbatim in the capture state — and escaped for reading in the visible file — so a regression fixture can be rebuilt from it. |
 
 ## Working terms
