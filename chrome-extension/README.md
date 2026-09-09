@@ -6,6 +6,14 @@ This extension applies the `ROUND_DYNAMIC` algorithm to tables on any website. E
 
 The extension uses the same offset model as the rest of the project. As of the `2026-05-28` release, the meaning of fractional offsets is sign-aware: `+0.5` rounds toward half of the next-larger order of magnitude, and `-0.5` rounds toward half of the current order. The result is also floored at the value's own order of magnitude so a large number can never collapse to zero. One platform difference: an out-of-range offset does not throw here — the extension falls back to the default instead. See the [Sheets README](../js/README.md#offset-reference) for the full offset reference and parameter table.
 
+## Capture
+
+The sidebar's capture section writes a bug report as one self-contained HTML file. Press one of the three mark buttons (👍 🤔 👎), fill the note — expected, observed, cause — and press "Save capture"; nothing saves without that press. The file lands in the browser's downloads through a plain link download, so the extension needs no extra permission.
+
+One capture holds the mark and note; the focused table rendered with its originals revealed on hover; a likeness of the sidebar as it stood; the log rows of both extension contexts (the extension's own log buffer — the page's console is never read); the focused table's raw markup as the fixture seed; and the whole capture state as machine-readable JSON in a hidden block. The file declares a Content-Security-Policy that forbids scripts and remote fetches, so it is safe to attach anywhere.
+
+The capture records absence honestly. With no table bound, the state says so and the capture still saves. On a locked table (originals lost to a re-injection), cells record no originals and the locked wording appears — values are never reconstructed. A virtualized grid contributes the rows present at capture time, with its frozen max magnitude as part of the evidence.
+
 ## Architecture Notes
 
 ### Safe DOM Text Replacement (The "Wikipedia Problem")
