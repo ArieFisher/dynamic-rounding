@@ -18097,7 +18097,7 @@ function makeIssue251SidebarHarness() {
   const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
 
   eq('capture-state: the state carries its format version', state.captureFormat, 1);
-  eq('capture-state: the settings record travels verbatim',
+  eq('capture-state: the settings record is carried verbatim',
     state.settings, { enabled: true, offsetTop: -0.5 });
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
   eq('capture-state: the focused table is found by index', state.activeTableIndex, 0);
@@ -18234,7 +18234,7 @@ function makeIssue251SidebarHarness() {
       { focused: true, kind: 'native', cellTexts: ['8,584,629', '286'] });
     eq('capture-wire: the fixture seed is the bound table\'s markup',
       response.fixtureSeed, '<table><tr><td>8,584,629</td><td>286</td></tr></table>');
-    eq('capture-wire: the lens preview travels with the capture',
+    eq('capture-wire: the capture carries the lens preview',
       !!response.lensPreview && Array.isArray(response.lensPreview.samples.top), true);
   } finally {
     DR_STORE.setSelectedTable(prevSelected);
@@ -18248,11 +18248,11 @@ function makeIssue251SidebarHarness() {
 // in, one self-contained HTML document out. The safety doctrine (after the
 // model extension's, adapted for string assembly): every dynamic value
 // passes through one escape on its way in; the file declares a CSP that
-// forbids scripts and remote fetches; the full state rides in a hidden pre
-// as escaped JSON (a script-typed island would let an end-tag in a payload
-// break out); and the fixture seed travels twice — visible escaped text for
-// reading, JSON for byte-exact trust. These tests attack the escaping with
-// hostile payloads and round-trip the island.
+// forbids scripts and remote fetches; a hidden pre holds the full state as
+// escaped JSON (a script-typed island would let an end-tag in a payload
+// break out); and the capture carries the fixture seed twice — visible
+// escaped text for reading, JSON for byte-exact trust. These tests attack
+// the escaping with hostile payloads and round-trip the island.
 
 (function captureRenderer() {
   eq('capture-render: the DR_CAPTURE package loads in the content-script bundle',
@@ -18315,8 +18315,8 @@ function makeIssue251SidebarHarness() {
     fixtureSeed: '<table><tr><td>98,765</td></tr></table>',
   }, over || {});
 
-  // Extract and parse the hidden JSON island the way a reader does: take the
-  // pre's text, undo the HTML escaping (ampersand last), JSON.parse.
+  // Extract and parse the hidden JSON island the way a consuming tool does:
+  // take the pre's text, undo the HTML escaping (ampersand last), JSON.parse.
   const islandJson = (docHtml) => {
     const m = docHtml.match(/<pre id="capture-state" hidden>([\s\S]*?)<\/pre>/);
     if (!m) return null;
@@ -18333,7 +18333,7 @@ function makeIssue251SidebarHarness() {
       /img-src data:/.test(html), true);
   eq('capture-render: the file carries no script element at all',
     html.toLowerCase().includes('<script'), false);
-  eq('capture-render: the mark shows as its glyph and travels as its bare word',
+  eq('capture-render: the mark shows as its glyph and is stored as its bare word',
     html.includes('\u{1F44D}') && islandJson(html).mark, 'positive');
   eq('capture-render: header facts are present',
     ['https://www.example.com/prices', '2.1.50', 'test-platform', '2026-09-09T18:00:00.000Z']

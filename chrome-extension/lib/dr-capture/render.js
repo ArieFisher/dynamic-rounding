@@ -26,17 +26,17 @@
  *    script-src 'none', img-src data: — and carries no script element, so
  *    a renderer bug cannot become code execution and a remote reference in
  *    a payload cannot tell its origin server the capture was opened.
- * 3. The full state rides in a hidden pre as escaped JSON. A pre and not a
+ * 3. A hidden pre holds the full state as escaped JSON. A pre and not a
  *    script-typed island: a script element is raw text, so a payload holding
- *    an end-script tag would break out of it. A reader takes the pre's
- *    textContent and JSON.parses it.
- * 4. The fixture seed travels twice: an escaped visible block for reading,
- *    and the JSON copy for byte-exact trust — the HTML parser folds CR and
- *    drops a leading newline in a pre, JSON.stringify does not.
+ *    an end-script tag would break out of it. Extracting the state means
+ *    taking the pre's textContent and parsing it as JSON.
+ * 4. The capture carries the fixture seed twice: an escaped visible block
+ *    for reading, and the JSON copy for byte-exact trust — the HTML parser
+ *    folds CR and drops a leading newline in a pre, JSON.stringify does not.
  *
  * The sidebar likeness is deliberately crude — positions and states, no
  * pixel fidelity. The JSON island carries the precision; the likeness only
- * has to show the reader what stood where. Status wording (the locked
+ * has to show what stood where. Status wording (the locked
  * message) arrives as a value from the caller, so this file holds no copy
  * of text that already lives elsewhere.
  */
@@ -319,8 +319,10 @@ function buildCaptureDocument(input) {
     '</div></section>' +
     renderCaptureLogs(state) +
     renderFixtureSeed(state) +
-    '<footer>The full state rides below in the hidden block with id capture-state, ' +
-    'as JSON escaped for HTML. A reader takes its text content and parses it.</footer>' +
+    '<footer>The hidden block below, id capture-state, holds the full capture state ' +
+    'as JSON, escaped for HTML. To extract the state — by hand, or in a script or an ' +
+    'agent that turns this capture into a regression test — take that block’s text ' +
+    'content and parse it as JSON.</footer>' +
     '</main>\n' +
     '<pre id="capture-state" hidden>' + escapeHtml(JSON.stringify(state, null, 2)) + '</pre>\n' +
     '</body>\n</html>\n';

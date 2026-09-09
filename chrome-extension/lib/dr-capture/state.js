@@ -28,11 +28,11 @@
  * locked flag — the same pairing tableHasUnrestorableCells (ui-toggle.js)
  * reads, produced only by a content-script re-injection — and the serializer
  * never reconstructs a value. A virtualized grid contributes only the rows
- * present in the DOM at capture time; its frozen magnitude travels as part
- * of the evidence.
+ * present in the DOM at capture time; the state carries its frozen
+ * magnitude as part of the evidence.
  *
- * captureFormat is the state's format version, one integer. A future reader
- * of old capture files keys on it.
+ * captureFormat is the state's format version, one integer, so a future
+ * tool that parses capture files can tell old formats apart.
  */
 
 const CAPTURE_FORMAT = 1;

@@ -853,7 +853,7 @@ function assembleAndSaveCapture(mark, note, pageState) {
   state.mark = mark;
   state.note = note;
   state.sidebarView = collectSidebarView();
-  // Provenance is evidence: the two contexts' rows travel separately.
+  // Provenance is evidence: the two contexts' rows stay in separate lists.
   state.log = {
     content: pageState ? pageState.log || null : null,
     sidebar: DR_LOG.snapshot(),
