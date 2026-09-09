@@ -29,6 +29,8 @@
         "lib/dr-simplify/ladder.js",
         "lib/dr-simplify/index.js",
         "lib/dr-capture/state.js",
+        "lib/dr-capture/render.js",
+        "lib/dr-capture/index.js",
         "adapters/messaging.js",
         "app/store.js",
         "ui-toggle.js",

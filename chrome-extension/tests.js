@@ -94,6 +94,8 @@ globalThis.DR_LOG = DR_LOG;
 // wire-response composer for the capture test suites.
 globalThis.collectCaptureState = collectCaptureState;
 globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
+// Expose the lib/dr-capture package bundle, mirroring DR_NUMBER above.
+globalThis.DR_CAPTURE = DR_CAPTURE;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
@@ -1876,7 +1878,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
       'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
       'lib/dr-table/detect.js', 'lib/dr-table/index.js',
       'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
-      'lib/dr-capture/state.js',
+      'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
+      'lib/dr-capture/index.js',
       'adapters/messaging.js', 'app/store.js',
       'ui-toggle.js', 'content.js',
     ]), true);
@@ -13656,10 +13659,10 @@ function fireMouseClick(buttonEl, fn) {
   // raising the count from 9 to 11. Sprint app-model-selection then added
   // adapters/messaging.js and app/store.js, raising the count from 11 to 13.
   // The capture feature then added the log buffer (lib/dr-log/index.js) and
-  // the capture state serializer (lib/dr-capture/state.js), raising the
-  // count from 13 to 15.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 15 files today',
-    manifest.content_scripts[0].js.length, 15);
+  // the three-file lib/dr-capture package (state.js, render.js, index.js),
+  // raising the count from 13 to 17.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 17 files today',
+    manifest.content_scripts[0].js.length, 17);
 })();
 
 // ---------------------------------------------------------------------------
@@ -18237,6 +18240,183 @@ function makeIssue251SidebarHarness() {
     DR_STORE.setSelectedTable(prevSelected);
     DR_STORE.unregisterTable(table);
   }
+})();
+
+// --- lib/dr-capture: the capture file renderer ---
+//
+// buildCaptureDocument() is a pure string renderer: the whole capture state
+// in, one self-contained HTML document out. The safety doctrine (after the
+// model extension's, adapted for string assembly): every dynamic value
+// passes through one escape on its way in; the file declares a CSP that
+// forbids scripts and remote fetches; the full state rides in a hidden pre
+// as escaped JSON (a script-typed island would let an end-tag in a payload
+// break out); and the fixture seed travels twice — visible escaped text for
+// reading, JSON for byte-exact trust. These tests attack the escaping with
+// hostile payloads and round-trip the island.
+
+(function captureRenderer() {
+  eq('capture-render: the DR_CAPTURE package loads in the content-script bundle',
+    typeof globalThis.DR_CAPTURE, 'object');
+  eq('capture-render: manifest loads the dr-capture package whole and in order',
+    contentScriptFiles.indexOf('lib/dr-capture/state.js') !== -1 &&
+      contentScriptFiles.indexOf('lib/dr-capture/render.js') ===
+        contentScriptFiles.indexOf('lib/dr-capture/state.js') + 1 &&
+      contentScriptFiles.indexOf('lib/dr-capture/index.js') ===
+        contentScriptFiles.indexOf('lib/dr-capture/render.js') + 1,
+    true);
+  const sidebarHtmlForCapture = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  eq('capture-render: sidebar.html loads the dr-capture package before sidebar.js',
+    ['lib/dr-capture/state.js', 'lib/dr-capture/render.js', 'lib/dr-capture/index.js']
+      .every((f) => sidebarHtmlForCapture.indexOf(f) !== -1 &&
+        sidebarHtmlForCapture.indexOf(f) < sidebarHtmlForCapture.indexOf('"sidebar.js"')),
+    true);
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+
+  const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
+  const filenameFor = DR_CAPTURE.filenameFor;
+  const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
+
+  const makeState = (over) => Object.assign({
+    captureFormat: 1,
+    meta: {
+      url: 'https://www.example.com/prices', title: 'Prices',
+      version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
+    },
+    mark: 'positive',
+    note: { expected: 'rounded to 99,000', observed: 'stayed 98,765', cause: 'unknown' },
+    settings: { enabled: true },
+    activeTableIndex: 0,
+    tables: [{
+      kind: 'native', appliedFlag: 'simplified', lastRoundOptions: { offsetTop: -0.5 },
+      maxMagnitude: null, locked: false, rowCount: 2, columnCount: 1,
+      cells: [
+        { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null },
+        { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' },
+      ],
+    }],
+    lensPreview: { samples: { top: [{ original: '98,765', num: 98765 }], bottom: [] }, maxMag: 4 },
+    sidebarView: {
+      enabled: true,
+      switches: { simplifyMixedCells: true, simplifyDates: false },
+      dateGranularity: 'year', timeGranularity: 'hour', rangeExpr: '',
+      stops: [-2, -1.5, -1, -0.5, -0.25, 0, 0.25, 0.5, 1],
+      topVal: -0.5, botVal: -0.5, coupled: true,
+      status: '', noTable: false, locked: false,
+      lensPreview: { top: ['98,765'], bottom: [] },
+    },
+    log: {
+      content: {
+        entries: [{ at: '2026-09-09T18:00:00.000Z', level: 'debug', text: 'apply ran' }],
+        dropped: 0, limit: 50,
+      },
+      sidebar: { entries: [], dropped: 0, limit: 50 },
+    },
+    page: { url: 'https://www.example.com/prices', title: 'Prices' },
+    fixtureSeed: '<table><tr><td>98,765</td></tr></table>',
+  }, over || {});
+
+  // Extract and parse the hidden JSON island the way a reader does: take the
+  // pre's text, undo the HTML escaping (ampersand last), JSON.parse.
+  const islandJson = (docHtml) => {
+    const m = docHtml.match(/<pre id="capture-state" hidden>([\s\S]*?)<\/pre>/);
+    if (!m) return null;
+    return JSON.parse(m[1]
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&'));
+  };
+
+  const html = buildCaptureDocument({ state: makeState(), lockedStatusText: LOCKED_TEXT });
+
+  eq('capture-render: the CSP forbids scripts and remote fetches',
+    /http-equiv="Content-Security-Policy"[^>]*script-src 'none'/.test(html) &&
+      /img-src data:/.test(html), true);
+  eq('capture-render: the file carries no script element at all',
+    html.toLowerCase().includes('<script'), false);
+  eq('capture-render: the mark shows as its glyph and travels as its bare word',
+    html.includes('\u{1F44D}') && islandJson(html).mark, 'positive');
+  eq('capture-render: header facts are present',
+    ['https://www.example.com/prices', '2.1.50', 'test-platform', '2026-09-09T18:00:00.000Z']
+      .every((s) => html.includes(s)), true);
+  eq('capture-render: the note fields render',
+    html.includes('rounded to 99,000') && html.includes('stayed 98,765'), true);
+  eq('capture-render: a simplified cell shows its value with the original on hover',
+    /<td[^>]*title="Original: 98,765"[^>]*>99,000<\/td>/.test(html), true);
+  eq('capture-render: the island round-trips the whole state',
+    islandJson(html).tables[0].cells[1],
+    { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' });
+
+  // Hostile payloads: cell text and title attribute.
+  const hostile = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: null,
+        maxMagnitude: null, locked: false, rowCount: 1, columnCount: 1,
+        cells: [{
+          row: 0, col: 0, role: 'td', isOutside: false,
+          text: '"><img src=x onerror=alert(1)>',
+          original: 'a"b<c>&d\'e',
+        }],
+      }],
+    }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: hostile cell text appears only escaped',
+    hostile.includes('<img'), false);
+  eq('capture-render: hostile cell text is still readable in its escaped form',
+    hostile.includes('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;'), true);
+  eq('capture-render: a hostile original cannot break out of the title attribute',
+    /title="Original: a&quot;b&lt;c&gt;&amp;d&#39;e"/.test(hostile), true);
+
+  // Hostile fixture seed: an end-tag for the island's own pre plus a script
+  // element, with a carriage return JSON must carry byte-exact.
+  const hostileSeed = '</pre><script>alert(1)</script>\r\n<table><tr><td>1</td></tr></table>';
+  const seeded = buildCaptureDocument({
+    state: makeState({ fixtureSeed: hostileSeed }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: a hostile seed cannot break out of the island or add a script',
+    seeded.toLowerCase().includes('<script'), false);
+  eq('capture-render: the island returns the hostile seed byte-exact',
+    islandJson(seeded).fixtureSeed, hostileSeed);
+
+  // Locked table: the wording arrives as a value (no third copy) and renders.
+  const locked = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: null,
+        maxMagnitude: null, locked: true, rowCount: 1, columnCount: 1,
+        cells: [{ row: 0, col: 0, role: 'td', isOutside: false, text: '99,000', original: null }],
+      }],
+    }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: a locked table renders the locked wording passed in as a value',
+    locked.includes('This table&#39;s original values are no longer available'), true);
+
+  // Console section: both contexts labeled; an empty buffer is a finding.
+  eq('capture-render: both log sections render, and an empty one says so',
+    html.includes('Content script') && html.includes('Sidebar') &&
+      html.includes('Nothing was logged.'), true);
+
+  // No table bound: the capture stays honest instead of refusing.
+  const unbound = buildCaptureDocument({
+    state: makeState({ activeTableIndex: null, tables: [], fixtureSeed: null }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: an unbound capture says no table was bound',
+    unbound.includes('No table was bound'), true);
+  eq('capture-render: an unbound capture says it carries no fixture seed',
+    unbound.includes('No fixture seed'), true);
+
+  // Filename: date first (sorts beside fixtures), time last (a second
+  // capture is a new file), host slug in between.
+  eq('capture-render: the filename is date-first, host-slugged, time-last',
+    filenameFor({ at: new Date(2026, 8, 9, 14, 5, 6), url: 'https://www.example.com/prices' }),
+    'dr-capture-2026-09-09-example-com-140506.html');
+  eq('capture-render: a capture with no page url gets the no-source slug',
+    filenameFor({ at: new Date(2026, 8, 9, 14, 5, 6), url: null }),
+    'dr-capture-2026-09-09-no-source-140506.html');
 })();
 
 // --- lib/dr-log: the log buffer ---
