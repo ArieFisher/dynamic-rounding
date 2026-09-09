@@ -254,6 +254,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     return;
   }
+
+  if (request.action === 'GET_CAPTURE_STATE') {
+    sendResponse(buildCaptureStateResponse());
+    return;
+  }
 });
 
 window.addEventListener('pagehide', () => {
@@ -733,6 +738,34 @@ function extractPreviewSamples(table) {
     samples: { top: top.map(toRow), bottom: bottom.map(toRow) },
     maxMag,
   };
+}
+
+// --- Capture state (consumed by sidebar via the GET_CAPTURE_STATE pull) ---
+
+// The whole page-side half of a capture, in one response: the serialized
+// registry (lib/dr-capture/state.js), plus what only this context holds —
+// the page's own address and title, the lens preview for the focused table,
+// and this context's log rows. Composed in a named function so the suite
+// drives it directly (the top-level onMessage listener is a no-op stub
+// there); the listener branch below only relays it.
+//
+// The cell-count row is recorded BEFORE the log snapshot is taken, so an
+// oversized capture carries its own size evidence inside itself.
+function buildCaptureStateResponse() {
+  const state = collectCaptureState();
+  const selected = DR_STORE.getSelectedTable();
+  const cellCounts = state.tables.map(function (t) { return t.cells.length; });
+  DR_LOG.debug('Dynamic Rounding: capture state collected (' + state.tables.length +
+    ' table(s), cells per table: [' + cellCounts.join(', ') + ']).');
+  return Object.assign({
+    page: {
+      url: typeof location !== 'undefined' ? location.href : null,
+      title: (typeof document !== 'undefined' && typeof document.title === 'string')
+        ? document.title : null,
+    },
+    lensPreview: selected ? extractPreviewSamples(selected) : null,
+    log: DR_LOG.snapshot(),
+  }, state);
 }
 
 /**

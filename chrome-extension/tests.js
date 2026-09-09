@@ -90,6 +90,10 @@ globalThis.DR_DEFAULTS = DR_DEFAULTS;
 globalThis.DR_NUMBER = DR_NUMBER;
 // Expose the log buffer (lib/dr-log) for the dr-log test suite.
 globalThis.DR_LOG = DR_LOG;
+// Expose the capture state serializer (lib/dr-capture) and its content.js
+// wire-response composer for the capture test suites.
+globalThis.collectCaptureState = collectCaptureState;
+globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
@@ -1872,6 +1876,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
       'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
       'lib/dr-table/detect.js', 'lib/dr-table/index.js',
       'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
+      'lib/dr-capture/state.js',
       'adapters/messaging.js', 'app/store.js',
       'ui-toggle.js', 'content.js',
     ]), true);
@@ -13650,10 +13655,11 @@ function fireMouseClick(buttonEl, fn) {
   // then added the two-file lib/dr-simplify package (ladder.js, index.js),
   // raising the count from 9 to 11. Sprint app-model-selection then added
   // adapters/messaging.js and app/store.js, raising the count from 11 to 13.
-  // The capture feature then added the log buffer (lib/dr-log/index.js),
-  // raising the count from 13 to 14.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 14 files today',
-    manifest.content_scripts[0].js.length, 14);
+  // The capture feature then added the log buffer (lib/dr-log/index.js) and
+  // the capture state serializer (lib/dr-capture/state.js), raising the
+  // count from 13 to 15.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 15 files today',
+    manifest.content_scripts[0].js.length, 15);
 })();
 
 // ---------------------------------------------------------------------------
@@ -18011,6 +18017,226 @@ function makeIssue251SidebarHarness() {
   eq('capture-reads: a cell with no stored original reads back undefined',
     has ? DR_STORE.getTableOriginalText(table, {}) : null, undefined);
   DR_STORE.unregisterTable(table);
+})();
+
+// --- lib/dr-capture: the capture state serializer ---
+//
+// collectCaptureState() turns the registry into the plain-value capture
+// state: every registered table in full detail, plus the focused table's raw
+// markup as the fixture seed. Dependencies arrive as parameters with working
+// defaults (deps.store, deps.adapterFor), so these tests drive the function
+// with stand-ins and no DOM. Locked honesty is pinned here: a cell wearing
+// the rounded marker with no stored original serializes as original: null
+// and flips the table's locked flag — never a reconstructed value.
+
+(function captureStateSerializer() {
+  eq('capture-state: collectCaptureState loads in the content-script bundle',
+    typeof globalThis.collectCaptureState, 'function');
+  if (typeof globalThis.collectCaptureState !== 'function') return;
+
+  const markerClassList = (marked) => ({ contains: (c) => marked && c === 'dr-ext-rounded' });
+  const makeCellEl = (marked) => ({ classList: markerClassList(marked) });
+
+  // A fake store: tables and per-cell originals handed in as Maps.
+  const makeFakeStore = (tables, opts) => ({
+    getRegisteredTables: () => tables,
+    getSelectedTable: () => (opts && opts.selected) || null,
+    getSettings: () => ({ enabled: true, offsetTop: -0.5 }),
+    getTableAppliedFlag: (t) => (opts && opts.flags && opts.flags.get(t)) || 'original',
+    getTableRoundOptions: (t) => (opts && opts.roundOptions && opts.roundOptions.get(t)) || null,
+    getTableMaxMagnitude: (t) => {
+      const m = opts && opts.maxMags && opts.maxMags.get(t);
+      return m === undefined ? null : m;
+    },
+    getTableOriginalText: (t, cellEl) =>
+      opts && opts.originals ? opts.originals.get(cellEl) : undefined,
+  });
+
+  // A fake adapter factory: each table object carries its own row spec.
+  const fakeAdapterFor = (table) => ({
+    isVirtualized: () => !!table._virtualized,
+    getRows: () => table._rows.map((row) => ({
+      isOutside: !!row.isOutside,
+      getCells: () => row.cells.map((cell) => ({
+        el: cell.el,
+        tagName: cell.tagName || 'TD',
+        getDisplayedText: () => cell.text,
+      })),
+    })),
+  });
+
+  // Table A: native, simplified, one header row + one data row (ragged).
+  const a1 = makeCellEl(true);
+  const tableA = {
+    outerHTML: '<table><tr><td>99,000</td></tr></table>',
+    _rows: [
+      { cells: [{ el: makeCellEl(false), tagName: 'TH', text: 'Amount' }] },
+      { cells: [
+        { el: a1, text: '99,000' },
+        { el: makeCellEl(false), text: 'n/a' },
+      ] },
+      { isOutside: true, cells: [{ el: makeCellEl(false), text: 'Total' }] },
+    ],
+  };
+  // Table B: virtualized grid, untouched.
+  const tableB = {
+    _virtualized: true,
+    _rows: [{ cells: [{ el: makeCellEl(false), text: '42' }] }],
+  };
+
+  const originals = new Map([[a1, '98,765']]);
+  const flags = new Map([[tableA, 'simplified']]);
+  const roundOptions = new Map([[tableA, { offsetTop: -1, enabled: true }]]);
+  const maxMags = new Map([[tableB, 4]]);
+  const store = makeFakeStore([tableA, tableB],
+    { selected: tableA, originals, flags, roundOptions, maxMags });
+
+  const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
+
+  eq('capture-state: the state carries its format version', state.captureFormat, 1);
+  eq('capture-state: the settings record travels verbatim',
+    state.settings, { enabled: true, offsetTop: -0.5 });
+  eq('capture-state: every registered table is serialized', state.tables.length, 2);
+  eq('capture-state: the focused table is found by index', state.activeTableIndex, 0);
+  eq('capture-state: the fixture seed is the focused table\'s raw markup verbatim',
+    state.fixtureSeed, '<table><tr><td>99,000</td></tr></table>');
+
+  const recA = state.tables[0];
+  eq('capture-state: per-table detail (kind, appliedFlag, lastRoundOptions, maxMagnitude, counts)',
+    {
+      kind: recA.kind, appliedFlag: recA.appliedFlag,
+      lastRoundOptions: recA.lastRoundOptions, maxMagnitude: recA.maxMagnitude,
+      rowCount: recA.rowCount, columnCount: recA.columnCount,
+    },
+    {
+      kind: 'native', appliedFlag: 'simplified',
+      lastRoundOptions: { offsetTop: -1, enabled: true }, maxMagnitude: null,
+      rowCount: 3, columnCount: 2,
+    });
+  eq('capture-state: a header cell serializes with role th',
+    recA.cells[0], { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null });
+  eq('capture-state: a simplified cell carries displayed text AND its original',
+    recA.cells[1], { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' });
+  eq('capture-state: a cell with no stored original serializes original: null',
+    recA.cells[2].original, null);
+  eq('capture-state: an outside row keeps its flag',
+    recA.cells[3].isOutside, true);
+  eq('capture-state: a marked cell WITH its original does not lock the table',
+    recA.locked, false);
+
+  const recB = state.tables[1];
+  eq('capture-state: a virtualized grid serializes as kind grid with its frozen magnitude',
+    { kind: recB.kind, maxMagnitude: recB.maxMagnitude }, { kind: 'grid', maxMagnitude: 4 });
+
+  // Locked honesty: the marker with no original behind it.
+  const lockedCell = makeCellEl(true);
+  const tableL = { _rows: [{ cells: [{ el: lockedCell, text: '99,000' }] }] };
+  const lockedState = collectCaptureState({
+    store: makeFakeStore([tableL], {}),
+    adapterFor: fakeAdapterFor,
+  });
+  eq('capture-state: a rounded marker with no stored original locks the table and stays null',
+    { locked: lockedState.tables[0].locked, original: lockedState.tables[0].cells[0].original },
+    { locked: true, original: null });
+
+  // Empty registry: an honest nothing.
+  const emptyState = collectCaptureState({
+    store: makeFakeStore([], {}),
+    adapterFor: fakeAdapterFor,
+  });
+  eq('capture-state: an empty registry serializes as no tables, no focus, no seed',
+    { tables: emptyState.tables, activeTableIndex: emptyState.activeTableIndex, fixtureSeed: emptyState.fixtureSeed },
+    { tables: [], activeTableIndex: null, fixtureSeed: null });
+
+  // A capture is a bug report: one table whose walk throws must not take
+  // the whole capture down. It serializes as an error record instead.
+  const throwingAdapterFor = () => ({
+    isVirtualized: () => false,
+    getRows: () => { throw new Error('hostile walk'); },
+  });
+  const errState = collectCaptureState({
+    store: makeFakeStore([{}, tableB], {}),
+    adapterFor: (t) => (t === tableB ? fakeAdapterFor(t) : throwingAdapterFor()),
+  });
+  eq('capture-state: a table whose walk throws serializes as an error record',
+    {
+      kind: errState.tables[0].kind,
+      cells: errState.tables[0].cells,
+      hasError: /hostile walk/.test(errState.tables[0].error),
+    },
+    { kind: 'unknown', cells: [], hasError: true });
+  eq('capture-state: the tables after a throwing one still serialize in full',
+    errState.tables[1].cells.length, 1);
+})();
+
+// --- content.js: the GET_CAPTURE_STATE wire action ---
+//
+// The sidebar pulls the whole page-side half of a capture in one request.
+// The response is composed by buildCaptureStateResponse() — a named function
+// the suite drives directly, because the top-level onMessage listener is a
+// no-op stub here (the established equivalent-path pattern, see the
+// CLOSE_SIDEBAR note above). A source assertion pins that the listener
+// branch exists and routes through it.
+
+(function captureWireAction() {
+  eq('capture-wire: buildCaptureStateResponse loads in the content-script bundle',
+    typeof globalThis.buildCaptureStateResponse, 'function');
+  eq('capture-wire: the listener answers GET_CAPTURE_STATE through buildCaptureStateResponse',
+    /GET_CAPTURE_STATE'[\s\S]{0,200}buildCaptureStateResponse\(\)/.test(sourceByName('content.js') || ''),
+    true);
+  if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
+
+  // The shared DR_STORE still holds stub tables registered by earlier test
+  // sections (the suite never unregisters them), so these assertions are
+  // relative: no absolute table counts, and the focus assertions pin MY
+  // table through activeTableIndex.
+  const prevSelected = DR_STORE.getSelectedTable();
+
+  // With no table bound: no lens preview, no seed, no focus — and the page
+  // field and log snapshot still present.
+  DR_STORE.setSelectedTable(null);
+  const unboundResponse = buildCaptureStateResponse();
+  eq('capture-wire: no table bound still answers with an honest unfocused state',
+    {
+      captureFormat: unboundResponse.captureFormat,
+      activeTableIndex: unboundResponse.activeTableIndex,
+      fixtureSeed: unboundResponse.fixtureSeed,
+      lensPreview: unboundResponse.lensPreview,
+      tablesIsArray: Array.isArray(unboundResponse.tables),
+    },
+    { captureFormat: 1, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+  eq('capture-wire: the response carries this context\'s log snapshot',
+    Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
+  eq('capture-wire: collecting logs its own row, and that row lands in the capture',
+    /capture state collected/.test(unboundResponse.log.entries.slice(-1)[0].text), true);
+  eq('capture-wire: the page field exists even where location does not',
+    'url' in unboundResponse.page && 'title' in unboundResponse.page, true);
+
+  // With a real stub table registered and selected.
+  const table = makeToggleTable([
+    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
+  ]);
+  table.outerHTML = '<table><tr><td>8,584,629</td><td>286</td></tr></table>';
+  DR_STORE.registerTable(table);
+  DR_STORE.setSelectedTable(table);
+  try {
+    const response = buildCaptureStateResponse();
+    const mine = response.tables[response.activeTableIndex];
+    eq('capture-wire: the bound table serializes in full and is the focus',
+      {
+        focused: response.activeTableIndex !== null,
+        kind: mine.kind,
+        cellTexts: mine.cells.map((c) => c.text),
+      },
+      { focused: true, kind: 'native', cellTexts: ['8,584,629', '286'] });
+    eq('capture-wire: the fixture seed is the bound table\'s markup',
+      response.fixtureSeed, '<table><tr><td>8,584,629</td><td>286</td></tr></table>');
+    eq('capture-wire: the lens preview travels with the capture',
+      !!response.lensPreview && Array.isArray(response.lensPreview.samples.top), true);
+  } finally {
+    DR_STORE.setSelectedTable(prevSelected);
+    DR_STORE.unregisterTable(table);
+  }
 })();
 
 // --- lib/dr-log: the log buffer ---
