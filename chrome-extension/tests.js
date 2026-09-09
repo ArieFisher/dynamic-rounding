@@ -18349,6 +18349,19 @@ function makeIssue251SidebarHarness() {
     html.includes('rounded to 99,000') && html.includes('stayed 98,765'), true);
   eq('capture-render: a simplified cell shows its value with the original on hover',
     /<td[^>]*title="Original: 98,765"[^>]*>99,000<\/td>/.test(html), true);
+  eq('capture-render: the focused table renders a second time with the originals',
+    /with the originals/.test(html) &&
+      /<td[^>]*>98,765<\/td>/.test(html), true);
+  eq('capture-render: the likeness shows both thumbs when the lens control is coupled',
+    (html.match(/class="cap-thumb/g) || []).length, 2);
+  eq('capture-render: the coupled heading names the shared value',
+    html.includes('Lens control (coupled, both at -0.5)'), true);
+  eq('capture-render: the registry section lists every table with the focused one marked',
+    /<h2>Registry<\/h2>/.test(html) &&
+      /native[\s\S]{0,120}focused/.test(html), true);
+  eq('capture-render: the footer names the state block without a how-to sentence',
+    html.includes('holds the full capture state') &&
+      !html.includes('To extract the state'), true);
   eq('capture-render: the island round-trips the whole state',
     islandJson(html).tables[0].cells[1],
     { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' });

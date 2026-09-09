@@ -76,9 +76,10 @@ const CAPTURE_STYLES = [
   '.cap-locked, .cap-empty { color: #8a6d3b; background: #fcf8e3; padding: 6px 10px; border-radius: 4px; margin: 8px 0; }',
   '.cap-switch { display: flex; justify-content: space-between; margin: 2px 0; }',
   '.cap-switch b { font-weight: 600; }',
-  '.cap-rail { position: relative; height: 6px; background: #ddd; border-radius: 3px; margin: 18px 4px; }',
-  '.cap-thumb { position: absolute; top: -5px; width: 16px; height: 16px; border-radius: 50%; background: #3d85c6; transform: translateX(-50%); }',
-  '.cap-thumb.cap-thumb-bot { background: #9fc5e8; }',
+  '.cap-rail { position: relative; height: 6px; background: #ddd; border-radius: 3px; margin: 18px 4px 22px; }',
+  '.cap-thumb { position: absolute; top: -5px; width: 16px; height: 16px; border-radius: 50%; background: #1a73e8; transform: translateX(-50%); z-index: 1; }',
+  '.cap-thumb.cap-thumb-bot { top: 6px; width: 12px; height: 12px; background: #b3623d; z-index: 0; }',
+  '.cap-thumb.cap-thumb-bot.cap-coupled { background: #c48a6a; }',
   '.cap-band { color: #555; margin: 2px 0; }',
   '.cap-status { min-height: 1.2em; color: #8a6d3b; }',
   '.cap-log { font: 12px/1.5 ui-monospace, monospace; margin: 4px 0; padding-left: 0; list-style: none; }',
@@ -165,17 +166,14 @@ function renderCaptureHeader(state) {
     '</header>';
 }
 
-// The focused table, rebuilt as a real table of escaped text — never cloned
-// markup. A simplified cell (its original differs from what it shows) gets
+// One rendering of the focused table's cells, rebuilt as a real table of
+// escaped text — never cloned markup. mode 'displayed' shows what the screen
+// showed; a simplified cell (its original differs from what it shows) gets
 // the original in its title, so hover reveals it the way the live page does.
-function renderFocusedTable(state, lockedStatusText) {
-  const table = state.activeTableIndex === null || state.activeTableIndex === undefined
-    ? null
-    : state.tables[state.activeTableIndex];
-  if (!table) {
-    return '<p class="cap-empty">No table was bound when this capture was taken. ' +
-      'The state below records everything the extension had.</p>';
-  }
+// mode 'originals' shows the originals themselves; a cell with no stored
+// original shows its displayed text, which for an unchanged cell IS the
+// original.
+function renderCapTable(table, mode) {
   const byRow = [];
   for (let i = 0; i < table.cells.length; i++) {
     const cell = table.cells[i];
@@ -185,6 +183,10 @@ function renderFocusedTable(state, lockedStatusText) {
   const rowsHtml = byRow.map(function (rowCells) {
     const cellsHtml = (rowCells || []).map(function (cell) {
       const tag = cell.role === 'th' ? 'th' : 'td';
+      if (mode === 'originals') {
+        const value = cell.original !== null ? cell.original : cell.text;
+        return '<' + tag + '>' + escapeHtml(value) + '</' + tag + '>';
+      }
       const simplified = cell.original !== null && cell.original !== cell.text;
       const titleAttr = simplified
         ? ' class="cap-simplified" title="Original: ' + escapeHtml(cell.original) + '"'
@@ -193,6 +195,20 @@ function renderFocusedTable(state, lockedStatusText) {
     }).join('');
     return '<tr>' + cellsHtml + '</tr>';
   }).join('');
+  return '<table class="cap-table">' + rowsHtml + '</table>';
+}
+
+// The focused table twice: as displayed, then with the originals, so both
+// forms are readable without hovering. The hover reveal on the displayed
+// copy stays for cell-by-cell comparison.
+function renderFocusedTable(state, lockedStatusText) {
+  const table = state.activeTableIndex === null || state.activeTableIndex === undefined
+    ? null
+    : state.tables[state.activeTableIndex];
+  if (!table) {
+    return '<p class="cap-empty">No table was bound when this capture was taken. ' +
+      'The state below records everything the extension had.</p>';
+  }
   const lockedHtml = table.locked
     ? '<p class="cap-locked">' + escapeHtml(lockedStatusText || '') + '</p>'
     : '';
@@ -202,8 +218,28 @@ function renderFocusedTable(state, lockedStatusText) {
     escapeHtml(table.appliedFlag === 'simplified' ? 'simplified values' : 'original values');
   return '<h3>' + caption + '</h3>' +
     lockedHtml +
-    '<table class="cap-table">' + rowsHtml + '</table>' +
-    '<p class="cap-band">Hover a dotted cell to see its original.</p>';
+    renderCapTable(table, 'displayed') +
+    '<p class="cap-band">Hover a dotted cell to see its original.</p>' +
+    '<h3>The same table, with the originals</h3>' +
+    renderCapTable(table, 'originals');
+}
+
+// Every table the registry held, one line each, the focused one marked. The
+// full per-cell detail sits in the JSON island; this list shows at a glance
+// what was found.
+function renderRegistrySection(state) {
+  const rows = (state.tables || []).map(function (table, index) {
+    const focused = index === state.activeTableIndex;
+    const label = table.kind === 'unknown'
+      ? 'serialization failed: ' + (table.error || '')
+      : table.kind + ', ' + table.rowCount + ' row(s) × ' + table.columnCount +
+        ' column(s), form: ' + (table.appliedFlag === 'simplified' ? 'simplified' : 'raw') +
+        (table.locked ? ', locked' : '');
+    return '<div class="cap-switch"><span>#' + (index + 1) + ' — ' + escapeHtml(label) +
+      '</span><b>' + (focused ? 'focused' : '') + '</b></div>';
+  }).join('');
+  const body = rows || '<p class="cap-empty">The registry held no tables.</p>';
+  return '<section><h2>Registry</h2>' + body + '</section>';
 }
 
 // The sidebar likeness: positions and states from plain values, rendered
@@ -229,10 +265,12 @@ function renderSidebarLikeness(state, lockedStatusText) {
     const idx = stops.indexOf(value);
     return idx === -1 ? 50 : (idx / (stops.length - 1)) * 100;
   };
+  // Both thumbs always render, matching the live control: coupled shows the
+  // brown thumb tucked under the blue one at the same stop.
   const thumbs =
     '<span class="cap-thumb" style="left: ' + pct(view.topVal) + '%"></span>' +
-    (view.coupled ? '' :
-      '<span class="cap-thumb cap-thumb-bot" style="left: ' + pct(view.botVal) + '%"></span>');
+    '<span class="cap-thumb cap-thumb-bot' + (view.coupled ? ' cap-coupled' : '') +
+      '" style="left: ' + pct(view.coupled ? view.topVal : view.botVal) + '%"></span>';
   const lens = view.lensPreview || { top: [], bottom: [] };
   const bandRows = function (rows) {
     return (rows || []).map(function (row) {
@@ -247,8 +285,10 @@ function renderSidebarLikeness(state, lockedStatusText) {
     '<div class="cap-switch"><span>Dates</span><b>' + escapeHtml(displayValue(view.dateGranularity)) + '</b></div>' +
     '<div class="cap-switch"><span>Times</span><b>' + escapeHtml(displayValue(view.timeGranularity)) + '</b></div>' +
     '<h3>Lens control (' +
-      (view.coupled ? 'coupled' : 'top ' + escapeHtml(displayValue(view.topVal)) +
-        ', other ' + escapeHtml(displayValue(view.botVal))) +
+      (view.coupled
+        ? 'coupled, both at ' + escapeHtml(displayValue(view.topVal))
+        : 'top ' + escapeHtml(displayValue(view.topVal)) +
+          ', other ' + escapeHtml(displayValue(view.botVal))) +
     ')</h3>' +
     '<div class="cap-rail">' + thumbs + '</div>' +
     '<h3>Lens preview</h3>' +
@@ -322,12 +362,11 @@ function buildCaptureDocument(input) {
     '<div class="cap-page">' + renderFocusedTable(state, lockedStatusText) + '</div>' +
     renderSidebarLikeness(state, lockedStatusText) +
     '</div></section>' +
+    renderRegistrySection(state) +
     renderCaptureLogs(state) +
     renderFixtureSeed(state) +
     '<footer>The hidden block below, id capture-state, holds the full capture state ' +
-    'as JSON, escaped for HTML. To extract the state — by hand, or in a script or an ' +
-    'agent that turns this capture into a regression test — take that block’s text ' +
-    'content and parse it as JSON.</footer>' +
+    'as JSON, escaped for HTML.</footer>' +
     '</main>\n' +
     '<pre id="capture-state" hidden>' + escapeHtml(JSON.stringify(state, null, 2)) + '</pre>\n' +
     '</body>\n</html>\n';
