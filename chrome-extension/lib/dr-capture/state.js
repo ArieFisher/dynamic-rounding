@@ -72,6 +72,10 @@ function collectCaptureState(deps) {
           isOutside,
           text: cellObj.getDisplayedText(),
           original,
+          // Per cell, so the renderer can tell a lost original (marker,
+          // original: null) from a cell that was never rounded (no marker,
+          // original: null) without repeating the pairing logic.
+          wearsMarker,
         });
       }
     }
