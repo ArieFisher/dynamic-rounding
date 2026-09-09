@@ -397,16 +397,18 @@ class GridAdapter {
         tn.nodeValue = s;
         if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
       },
-      // The displayed text: what the screen shows right now — always the
-      // live text node, never the originals port. On a rounded grid cell
+      // The displayed text: what the screen shows right now — the cell's
+      // whole live text, never the originals port. On a rounded grid cell
       // getText() above answers with the ORIGINAL (the engine's contract:
       // classification must see pre-round text), so a consumer that needs
       // "as displayed" — the capture's state serializer — reads this one.
+      // The whole text, not findCellTextNode's one node: a cell that builds
+      // its text from several pieces (a number and a unit in separate
+      // nodes) displays all of them, matching the native read.
       // Declared after setText so the GR3b/GR6j source guards' fixed scan
       // window over _makeCellObj still covers the write path.
       getDisplayedText() {
-        const tn = findCellTextNode(cellEl);
-        return tn ? tn.nodeValue : (cellEl.textContent || '');
+        return cellEl.textContent || '';
       },
     };
   }

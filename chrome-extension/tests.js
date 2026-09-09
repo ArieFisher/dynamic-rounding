@@ -17984,7 +17984,9 @@ function makeIssue251SidebarHarness() {
     nodeType: 1,
     childNodes: [{ nodeType: 3, nodeValue: text }],
     classList: { add() {}, contains() { return false; } },
-    textContent: text,
+    // Like the DOM: textContent derives from the child nodes, so a setText
+    // patch through nodeValue shows up in the whole-cell read.
+    get textContent() { return this.childNodes[0].nodeValue; },
   });
   const adapter = new GridAdapter({}, { originalsPort: makePort() });
 
@@ -18003,6 +18005,37 @@ function makeIssue251SidebarHarness() {
     typeof rounded.getDisplayedText === 'function'
       ? { engine: rounded.getText(), displayed: rounded.getDisplayedText() } : null,
     { engine: '98,765', displayed: '99,000' });
+})();
+
+// A grid cell that builds its text from several pieces — a number and a unit
+// in separate nodes — displays all of them. findCellTextNode answers with one
+// deepest text node (the write path's patch target); the displayed-text read
+// answers with the cell's whole text, matching the native read. Regression
+// for #303: "1,234<span>%</span>" recorded text: "%".
+(function captureDisplayedTextReadsWholeCell() {
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+  const textNode = (text) => ({ nodeType: 3, nodeValue: text });
+  const span = (text) => ({ nodeType: 1, childNodes: [textNode(text)] });
+  const makePiecedCellEl = (children, wholeText) => ({
+    nodeType: 1,
+    childNodes: children,
+    classList: { add() {}, contains() { return false; } },
+    textContent: wholeText,
+  });
+
+  const numberThenUnit = adapter._makeCellObj(
+    makePiecedCellEl([textNode('1,234'), span('%')], '1,234%'));
+  eq('capture-reads: a grid cell of number-then-unit pieces displays the whole text',
+    numberThenUnit.getDisplayedText(), '1,234%');
+
+  const unitThenNumber = adapter._makeCellObj(
+    makePiecedCellEl([span('$'), textNode('1,234')], '$1,234'));
+  eq('capture-reads: a grid cell of unit-then-number pieces displays the whole text',
+    unitThenNumber.getDisplayedText(), '$1,234');
 })();
 
 (function capturePlainOriginalTextRead() {
@@ -18117,9 +18150,11 @@ function makeIssue251SidebarHarness() {
       rowCount: 3, columnCount: 2,
     });
   eq('capture-state: a header cell serializes with role th',
-    recA.cells[0], { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null });
+    recA.cells[0],
+    { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null, wearsMarker: false });
   eq('capture-state: a simplified cell carries displayed text AND its original',
-    recA.cells[1], { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' });
+    recA.cells[1],
+    { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765', wearsMarker: true });
   eq('capture-state: a cell with no stored original serializes original: null',
     recA.cells[2].original, null);
   eq('capture-state: an outside row keeps its flag',
@@ -18170,6 +18205,57 @@ function makeIssue251SidebarHarness() {
     { kind: 'unknown', cells: [], hasError: true });
   eq('capture-state: the tables after a throwing one still serialize in full',
     errState.tables[1].cells.length, 1);
+})();
+
+// The per-cell marker flag reaches the cell record (#304). The serializer
+// already reads the rounded marker to compute the locked pairing; the
+// renderer needs it per cell to tell a lost original (marker, original: null)
+// from a cell that was never rounded (no marker, original: null).
+(function captureStateCarriesMarkerFlag() {
+  if (typeof globalThis.collectCaptureState !== 'function') return;
+
+  const markerClassList = (marked) => ({ contains: (c) => marked && c === 'dr-ext-rounded' });
+  const makeCellEl = (marked) => ({ classList: markerClassList(marked) });
+
+  const marked = makeCellEl(true);
+  const unmarked = makeCellEl(false);
+  const lost = makeCellEl(true);
+  const table = { _rows: [{ cells: [
+    { el: marked, text: '99,000' },
+    { el: unmarked, text: 'Amount' },
+    { el: lost, text: '99,000' },
+  ] }] };
+  const store = {
+    getRegisteredTables: () => [table],
+    getSelectedTable: () => null,
+    getSettings: () => ({}),
+    getTableAppliedFlag: () => 'simplified',
+    getTableRoundOptions: () => null,
+    getTableMaxMagnitude: () => null,
+    getTableOriginalText: (t, cellEl) => (cellEl === marked ? '98,765' : undefined),
+  };
+  const adapterFor = () => ({
+    isVirtualized: () => false,
+    getRows: () => table._rows.map((row) => ({
+      isOutside: false,
+      getCells: () => row.cells.map((cell) => ({
+        el: cell.el,
+        tagName: 'TD',
+        getDisplayedText: () => cell.text,
+      })),
+    })),
+  });
+
+  const cells = collectCaptureState({ store, adapterFor }).tables[0].cells;
+  eq('capture-state: a marked cell record carries wearsMarker true beside its original',
+    { wearsMarker: cells[0].wearsMarker, original: cells[0].original },
+    { wearsMarker: true, original: '98,765' });
+  eq('capture-state: an unmarked cell record carries wearsMarker false',
+    { wearsMarker: cells[1].wearsMarker, original: cells[1].original },
+    { wearsMarker: false, original: null });
+  eq('capture-state: a lost original keeps the locked pairing readable per cell',
+    { wearsMarker: cells[2].wearsMarker, original: cells[2].original },
+    { wearsMarker: true, original: null });
 })();
 
 // --- content.js: the GET_CAPTURE_STATE wire action ---
@@ -18437,6 +18523,106 @@ function makeIssue251SidebarHarness() {
   eq('capture-render: a capture with no page url gets the no-source slug',
     filenameFor({ at: new Date(2026, 8, 9, 14, 5, 6), url: null }),
     'dr-capture-2026-09-09-no-source-140506.html');
+})();
+
+// --- lib/dr-capture: the renderer keeps the state's absences (#304) ---
+//
+// The state records three kinds of absence honestly; the page a human reads
+// must present each as an absence, never as something it is not: a lost
+// original never becomes a substituted value, an error record never becomes
+// an empty table, a missing log snapshot never becomes an empty buffer. The
+// glyph lookup resolves only the three mark words, so a hostile mark cannot
+// pull a prototype property into the document.
+(function captureRendererAbsenceHonesty() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
+  const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
+
+  const makeState = (over) => Object.assign({
+    captureFormat: 1,
+    meta: { url: 'https://www.example.com/prices', title: 'Prices',
+      version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
+    mark: 'negative',
+    note: '',
+    settings: { enabled: true },
+    activeTableIndex: 0,
+    tables: [],
+    lensPreview: null,
+    sidebarView: null,
+    log: {
+      content: { entries: [], dropped: 0, limit: 50 },
+      sidebar: { entries: [], dropped: 0, limit: 50 },
+    },
+    page: { url: 'https://www.example.com/prices', title: 'Prices' },
+    fixtureSeed: null,
+  }, over || {});
+
+  // A locked table: the marker with no original behind it. The originals view
+  // renders the absence, never the displayed (rounded) value.
+  const locked = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: null,
+        maxMagnitude: null, locked: true, rowCount: 1, columnCount: 2,
+        cells: [
+          { row: 0, col: 0, role: 'td', isOutside: false,
+            text: '99,000', original: null, wearsMarker: true },
+          { row: 0, col: 1, role: 'td', isOutside: false,
+            text: 'n/a', original: null, wearsMarker: false },
+        ],
+      }],
+    }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  // The originals table alone: from its heading to its closing tag. The JSON
+  // island later in the document carries the displayed value by design.
+  const originalsTable = (locked.split('with the originals')[1] || '').split('</table>')[0];
+  eq('capture-render: a lost original renders as lost, never as the displayed value',
+    /original lost/.test(originalsTable) && !originalsTable.includes('99,000'), true);
+  eq('capture-render: a never-rounded cell still shows its text in the originals view',
+    originalsTable.includes('n/a'), true);
+
+  // A focused error record: a failure notice, not an empty table.
+  const failed = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'unknown', appliedFlag: null, lastRoundOptions: null,
+        maxMagnitude: null, locked: false, rowCount: null, columnCount: null,
+        cells: [], error: 'hostile walk',
+      }],
+    }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  const focusedHalf = failed.split('<h2>Registry')[0];
+  eq('capture-render: a focused error record renders as a failure notice with its error text',
+    /serialization[\s\S]{0,40}failed/i.test(focusedHalf) && focusedHalf.includes('hostile walk'),
+    true);
+  eq('capture-render: a focused error record renders no table and no null counts',
+    failed.includes('<table class="cap-table">') || failed.includes('null row(s)'), false);
+
+  // A missing log snapshot (the state pull failed) is distinct from an empty
+  // buffer: the sidebar half here IS an empty buffer and keeps its sentence.
+  const pullFailed = buildCaptureDocument({
+    state: makeState({
+      log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
+    }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: a missing log snapshot renders as a failed state pull',
+    pullFailed.includes('state pull failed'), true);
+  eq('capture-render: an empty buffer keeps its own sentence beside a failed pull',
+    pullFailed.includes('Nothing was logged.'), true);
+
+  // The glyph lookup resolves only the three mark words: a prototype property
+  // name must not reach the document as a glyph.
+  const hostileMark = buildCaptureDocument({
+    state: makeState({ mark: 'constructor' }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: a mark outside the three words resolves no glyph',
+    hostileMark.includes('[native code]'), false);
+  eq('capture-render: the hostile mark word still renders escaped as text',
+    hostileMark.includes('<span>constructor</span>'), true);
 })();
 
 // --- sidebar: the capture section and its glue ---
