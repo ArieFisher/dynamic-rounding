@@ -304,7 +304,12 @@ function buildCaptureDocument(input) {
   const state = input.state;
   const lockedStatusText = input.lockedStatusText;
   const meta = state.meta || {};
-  return '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
+  // data-dr-capture is the capture marker: a saved capture holds a real
+  // table, and with file access enabled Chrome injects this extension's own
+  // content scripts into the opened file. The controller reads this marker
+  // and stands down (see content.js's IS_CAPTURE_PAGE), so a capture always
+  // shows what was captured, never what the extension would do to it.
+  return '<!DOCTYPE html>\n<html lang="en" data-dr-capture="1">\n<head>\n' +
     '<meta charset="utf-8">\n' +
     '<meta http-equiv="Content-Security-Policy" content="' + CAPTURE_CSP + '">\n' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +

@@ -14,6 +14,8 @@ One capture holds the mark and note; the focused table rendered with its origina
 
 The capture records absence honestly. With no table bound, the state says so and the capture still saves. On a locked table (originals lost to a re-injection), cells record no originals and the locked wording appears — values are never reconstructed. A virtualized grid contributes the rows present at capture time, with its frozen max magnitude as part of the evidence.
 
+A capture page is exempt from the extension's own detection. The saved file is itself a page with a real table, and with file access enabled the content script runs on it; the file therefore carries a capture marker (a page attribute on its document element), and the content script stands down on any page carrying it — no controls, no selection, no rounding. A capture shows what was captured, never what the extension would do to it.
+
 ## Architecture Notes
 
 ### Safe DOM Text Replacement (The "Wikipedia Problem")

@@ -18331,6 +18331,13 @@ function makeIssue251SidebarHarness() {
   eq('capture-render: the CSP forbids scripts and remote fetches',
     /http-equiv="Content-Security-Policy"[^>]*script-src 'none'/.test(html) &&
       /img-src data:/.test(html), true);
+  // The capture is itself a page with a real table, and with file access
+  // enabled Chrome injects the extension's content scripts into it. The
+  // document element carries the capture marker so the content script
+  // stands down on capture pages — otherwise the extension rounds the
+  // capture's own table and the file misreports the evidence it holds.
+  eq('capture-render: the document element carries the capture marker',
+    /<html lang="en" data-dr-capture="1">/.test(html), true);
   eq('capture-render: the file carries no script element at all',
     html.toLowerCase().includes('<script'), false);
   eq('capture-render: the mark shows as its glyph and is stored as its bare word',
@@ -18457,6 +18464,27 @@ function makeIssue251SidebarHarness() {
     /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
   eq('capture-ui: a failed state pull still saves and records the failure',
     /DR_LOG\.warn\([^)]*pull failed/.test(sidebarJsSrc), true);
+})();
+
+// --- content.js: the extension stands down on capture pages ---
+//
+// A saved capture holds a real table; opened with file access enabled, the
+// content script runs on it like on any page. The renderer stamps
+// data-dr-capture on the document element, and the controller gates its two
+// entry points on that marker — the contextmenu handler (selection and the
+// menu path) and the load-time scan with its added-node observer (pillboxes
+// and registration). With neither, no table on a capture page is ever
+// selected, registered, or rounded. Source-text assertions, matching the
+// suite's style for load-time wiring the harness cannot re-run.
+
+(function captureMarkerStandDown() {
+  const src = sourceByName('content.js') || '';
+  eq('capture-marker: the controller reads the capture marker once',
+    /const IS_CAPTURE_PAGE = [\s\S]{0,220}drCapture/.test(src), true);
+  eq('capture-marker: the contextmenu handler stands down on a capture page',
+    /contextmenu[\s\S]{0,120}if \(IS_CAPTURE_PAGE\) return;/.test(src), true);
+  eq('capture-marker: the load-time scan and observer stand down on a capture page',
+    /typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE/.test(src), true);
 })();
 
 // --- lib/dr-log: the log buffer ---

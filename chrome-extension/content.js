@@ -18,6 +18,18 @@
 // It is shared with sidebar.js so the sidebar UI's initial state and the
 // right-click toggle's fallback options come from a single source.
 
+// The capture marker: a saved capture (lib/dr-capture/render.js) stamps
+// data-dr-capture on its document element, because the capture is itself a
+// page with a real table and — with file access enabled — Chrome injects
+// this content script into it. On such a page the controller stands down:
+// no contextmenu selection, no load-time scan, no observer, so no table in
+// a capture is ever registered, selected, or rounded. A capture must show
+// what was captured, never what this extension would do to it. Page rules
+// cannot enforce this (a page's Content-Security-Policy does not apply to
+// an extension's injected code), so the guard sits here.
+const IS_CAPTURE_PAGE = !!(typeof document !== 'undefined' && document.documentElement &&
+  document.documentElement.dataset && document.documentElement.dataset.drCapture !== undefined);
+
 let lastRightClickedElement = null;
 // The selected table (may hold a <table> element OR a div-based grid root —
 // any element carrying class dr-ext-grid or returned by findTargetTable's
@@ -145,6 +157,7 @@ function markAndToggleIfNewGrid(found) {
 // the controller is exactly where "have we found this" ought to answer from
 // the registry rather than the dr-ext-grid marker class.
 document.addEventListener('contextmenu', (event) => {
+  if (IS_CAPTURE_PAGE) return;
   lastRightClickedElement = event.target;
   const found = findTargetTable(event.target, { isSeen: DR_STORE.hasTable });
   if (found) {
@@ -343,7 +356,7 @@ function injectTogglesForAddedNode(node) {
   }
 }
 
-if (typeof MutationObserver !== 'undefined') {
+if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
   ensureScrollResizeListeners();
 
   // MutationObserver to watch for dynamically added/removed tables and grids
