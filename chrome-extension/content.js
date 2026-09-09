@@ -150,6 +150,7 @@ document.addEventListener('contextmenu', (event) => {
   if (found) {
     const table = markAndToggleIfNewGrid(found);
     DR_STORE.setSelectedTable(table);
+    DR_LOG.debug("Dynamic Rounding: table activated by right-click.");
     flashTargetedTable(table);
     try {
       chrome.runtime.sendMessage({ action: ACTION_TABLE_ACTIVATED });
@@ -198,7 +199,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // record (#272) — panel open or closed alike.
         DR_BUS.publish('intent:toggleTable', { table: markAndToggleIfNewGrid(found) });
       } else {
-        console.debug("Dynamic Rounding: No table found at right-click location.");
+        DR_LOG.debug("Dynamic Rounding: No table found at right-click location.");
       }
     }
     return;
@@ -220,7 +221,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // sidebar may not be open yet; harmless
       }
     } else {
-      console.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
+      DR_LOG.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
     }
     return;
   }
@@ -278,16 +279,20 @@ function applySidebarRounding(table, options) {
     // sidebar why nothing changed and stop. APPLY_OK below clears the
     // notice once an apply works again (a table switch, or the site
     // re-rendered the table with fresh cells).
+    DR_LOG.warn("Dynamic Rounding: apply blocked; " + unrestorableCount + " cell(s) unrestorable.");
     chrome.runtime.sendMessage({ action: 'APPLY_BLOCKED', count: unrestorableCount });
     return;
   }
   chrome.runtime.sendMessage({ action: 'APPLY_OK' });
   if (opts.enabled !== false) {
-    sendRangeStatusMessage(roundTable(table, opts));
+    const result = roundTable(table, opts);
+    sendRangeStatusMessage(result);
+    DR_LOG.debug("Dynamic Rounding: apply ran (applied=" + result.applied + ", rangeStatus=" + result.rangeStatus + ").");
     if (table.querySelector('.dr-ext-rounded')) {
       chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
     }
   } else {
+    DR_LOG.debug("Dynamic Rounding: apply ran with rounding off; table reset.");
     chrome.runtime.sendMessage({ action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' });
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
@@ -377,6 +382,7 @@ if (typeof MutationObserver !== 'undefined') {
           }
           trackedTables.delete(table);
           DR_STORE.unregisterTable(table);
+          DR_LOG.debug("Dynamic Rounding: removed table unregistered.");
         }
       }
     }
@@ -944,6 +950,8 @@ function reapplyGridRounding(wrapperEl) {
     return;
   }
 
+  DR_LOG.debug("Dynamic Rounding: grid re-apply fired.");
+
   // Delegate to the single shared classify+compute function, with the
   // frozen magnitude basis so scrolling cannot shift the rounding basis.
   // targetValue is null for excluded/out-of-range/skip cells (leave untouched).
@@ -1242,6 +1250,7 @@ function toggleOriginalValues(table) {
   const showingOriginal = DR_STORE.getTableAppliedFlag(table) !== 'simplified';
 
   if (showingOriginal) {
+    DR_LOG.debug("Dynamic Rounding: toggle back to simplified with last-used options.");
     // Re-run the pipeline with the last-used options so the rounded view
     // reflects current parameters rather than a stale cached value.
     const opts = DR_STORE.getTableRoundOptions(table) || DR_DEFAULTS;
@@ -1259,6 +1268,7 @@ function toggleOriginalValues(table) {
     }
     sendRangeStatusMessage(roundTable(table, opts));
   } else {
+    DR_LOG.debug("Dynamic Rounding: toggle to originals.");
     // Set the flag BEFORE mutating cells. Restoring grid cells writes their
     // text nodes, which fire characterData mutations the grid's re-apply
     // observer is listening for; setting the flag first guarantees the

@@ -653,7 +653,9 @@ function replaceTextPreservingHTML(cell, originalText, newText) {
   }
   
   // Removed absolute innerText fallback to completely eliminate risk of breaking column widths or DOM structures
-  console.debug("Dynamic Rounding: Skipped complex multi-node cell replacement to preserve layout.");
+  // lib/dr-table also runs standalone (test sandboxes evaluate this file
+  // alone), so the row routes through DR_LOG only when dr-log is loaded.
+  (typeof DR_LOG !== 'undefined' ? DR_LOG : console).debug("Dynamic Rounding: Skipped complex multi-node cell replacement to preserve layout.");
 }
 
 /**

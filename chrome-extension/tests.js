@@ -30,6 +30,15 @@ global.window = {
 };
 global.NodeFilter = { SHOW_TEXT: 4 };
 
+// DR_LOG (lib/dr-log) forwards every row to the real console so devtools
+// output is unchanged; in this suite that forwarding would print a row for
+// every instrumented call site straight into the test report. Mute the two
+// forwarded levels the content scripts use. The dr-log forwarding test
+// installs its own console.debug spy and puts this mute back. The report at
+// the bottom prints through console.log, which stays untouched.
+console.debug = () => {};
+console.warn = () => {};
+
 // Stub observer constructors BEFORE eval so that content.js module-level code
 // (guarded by `typeof MutationObserver !== 'undefined'`) sees them and runs
 // the initialisation block. The stubs are no-ops; tests never exercise the
@@ -79,6 +88,8 @@ const allContentSrc = contentScriptBundle;
 eval(contentScriptBundle + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
 globalThis.DR_NUMBER = DR_NUMBER;
+// Expose the log buffer (lib/dr-log) for the dr-log test suite.
+globalThis.DR_LOG = DR_LOG;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
@@ -1853,9 +1864,10 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'defaults.js',
+      'lib/dr-log/index.js',
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
       'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
       'lib/dr-table/detect.js', 'lib/dr-table/index.js',
@@ -4671,7 +4683,7 @@ function withReactiveCreateTreeWalker(fn) {
 (function previewBand_manifestLoadsRoundingJs() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   eq('manifest content_scripts loads lib/dr-number/rounding.js between defaults.js and content.js',
-    manifest.content_scripts[0].js[1], 'lib/dr-number/rounding.js');
+    manifest.content_scripts[0].js[2], 'lib/dr-number/rounding.js');
 })();
 
 // The extracted layers (the lib/dr-number package: rounding.js, core.js,
@@ -13638,8 +13650,10 @@ function fireMouseClick(buttonEl, fn) {
   // then added the two-file lib/dr-simplify package (ladder.js, index.js),
   // raising the count from 9 to 11. Sprint app-model-selection then added
   // adapters/messaging.js and app/store.js, raising the count from 11 to 13.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 13 files today',
-    manifest.content_scripts[0].js.length, 13);
+  // The capture feature then added the log buffer (lib/dr-log/index.js),
+  // raising the count from 13 to 14.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 14 files today',
+    manifest.content_scripts[0].js.length, 14);
 })();
 
 // ---------------------------------------------------------------------------
@@ -17926,6 +17940,112 @@ function makeIssue251SidebarHarness() {
   } finally {
     h.restore();
   }
+})();
+
+// --- lib/dr-log: the log buffer ---
+//
+// DR_LOG holds the last 50 rows the extension records, one instance per
+// context (content script and sidebar each evaluate the file separately).
+// Every capture carries a snapshot of this buffer, so these tests pin the
+// row shape, the cap, the drop counter, the console forwarding, and the
+// snapshot's copy semantics. The buffer is a singleton shared with every
+// other test in this file, so all assertions here are relative (last row,
+// before/after counts) — and the cap test runs last because it fills it.
+
+(function drLogBuffer() {
+  eq('dr-log: DR_LOG loads in the content-script bundle',
+    typeof globalThis.DR_LOG, 'object');
+  eq('dr-log: manifest loads lib/dr-log/index.js directly after defaults.js',
+    contentScriptFiles[1], 'lib/dr-log/index.js');
+  const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  eq('dr-log: sidebar.html loads lib/dr-log/index.js before sidebar.js',
+    sidebarHtml.indexOf('lib/dr-log/index.js') !== -1 &&
+      sidebarHtml.indexOf('lib/dr-log/index.js') < sidebarHtml.indexOf('sidebar.js'),
+    true);
+  if (typeof globalThis.DR_LOG !== 'object') return;
+  const LOG = globalThis.DR_LOG;
+
+  LOG.debug('row shape probe');
+  let snap = LOG.snapshot();
+  const last = snap.entries[snap.entries.length - 1];
+  eq('dr-log: a row holds its level and text',
+    { level: last.level, text: last.text },
+    { level: 'debug', text: 'row shape probe' });
+  eq('dr-log: a row\'s timestamp parses as a date',
+    isNaN(Date.parse(last.at)), false);
+  eq('dr-log: the snapshot reports the row cap', snap.limit, 50);
+
+  // console.info and console.error are not muted by the harness (only debug
+  // and warn are); spy them for the duration of these three calls so the
+  // forwarded rows stay out of the test report.
+  const origInfo = console.info;
+  const origError = console.error;
+  console.info = () => {};
+  console.error = () => {};
+  LOG.info('info probe');
+  LOG.warn('warn probe');
+  LOG.error('error probe');
+  console.info = origInfo;
+  console.error = origError;
+  eq('dr-log: info, warn, and error rows carry their level',
+    LOG.snapshot().entries.slice(-3).map((e) => e.level),
+    ['info', 'warn', 'error']);
+
+  LOG.debug(42);
+  eq('dr-log: non-string text is stored as a string',
+    LOG.snapshot().entries.slice(-1)[0].text, '42');
+
+  // Forwarding: a row still reaches the console (devtools behavior is
+  // unchanged). The harness mutes console.debug/console.warn globally; this
+  // test installs its own spy and puts the mute back.
+  const origDebug = console.debug;
+  let forwarded = null;
+  console.debug = (msg) => { forwarded = msg; };
+  LOG.debug('forwarding probe');
+  console.debug = origDebug;
+  eq('dr-log: a row forwards to the console', forwarded, 'forwarding probe');
+
+  const snapA = LOG.snapshot();
+  snapA.entries[snapA.entries.length - 1].text = 'mutated';
+  eq('dr-log: snapshot rows are copies, so mutating one never reaches the buffer',
+    LOG.snapshot().entries.slice(-1)[0].text, 'forwarding probe');
+
+  LOG.debug('x'.repeat(3000));
+  eq('dr-log: a long row is cut at 2000 characters',
+    LOG.snapshot().entries.slice(-1)[0].text.length, 2000);
+
+  // The 50-row cap and the drop counter — last in this section because it
+  // fills the shared buffer.
+  const droppedBefore = LOG.snapshot().dropped;
+  for (let i = 0; i < 55; i++) LOG.debug('cap probe ' + i);
+  snap = LOG.snapshot();
+  eq('dr-log: the buffer holds at most 50 rows', snap.entries.length, 50);
+  eq('dr-log: rows dropped past the cap are counted',
+    snap.dropped >= droppedBefore + 5, true);
+  eq('dr-log: the newest row survives the cap',
+    snap.entries[snap.entries.length - 1].text, 'cap probe 54');
+})();
+
+// --- lib/dr-log: call sites route through the buffer ---
+//
+// The extension's own console.debug call sites (two in content.js, one in
+// detect.js) route through DR_LOG so their rows land in the capture. A
+// direct console.debug row is invisible to the capture, so none may remain
+// in the content scripts. detect.js is also evaluated standalone in vm
+// sandboxes elsewhere in this suite, so its call site guards on DR_LOG's
+// presence instead of assuming the load order.
+
+(function drLogCallSites() {
+  eq('dr-log: content.js keeps no direct console.debug call',
+    /console\.debug\(/.test(sourceByName('content.js') || ''), false);
+  eq('dr-log: detect.js keeps no direct console.debug call',
+    /console\.debug\(/.test(detectCode || ''), false);
+  eq('dr-log: registration logs a row (ui-toggle.js)',
+    /DR_LOG\.debug\([^)]*egistered/.test(uiToggleCode || ''), true);
+  eq('dr-log: a blocked apply logs a warn row (content.js)',
+    /DR_LOG\.warn\([^)]*locked/.test(sourceByName('content.js') || ''), true);
+  eq('dr-log: a table turning locked logs a warn row (ui-toggle.js)',
+    /DR_LOG\.warn\([^)]*ocked/.test(uiToggleCode || ''), true);
 })();
 
 // --- Report ---

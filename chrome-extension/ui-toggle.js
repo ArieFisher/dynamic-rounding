@@ -86,7 +86,11 @@ function syncSwitchForTable(table) {
   if (!button) return;
   if (tableHasUnrestorableCells(table)) {
     // The screen shows simplified text (pressed) and no control here can
-    // change that (disabled) — see tableHasUnrestorableCells.
+    // change that (disabled) — see tableHasUnrestorableCells. Log the
+    // transition only, not every sync of an already-locked pill.
+    if (!button.classList.contains('dr-ext-morph-locked')) {
+      DR_LOG.warn("Dynamic Rounding: table locked; its original values are no longer available.");
+    }
     button.setAttribute('aria-pressed', 'true');
     button.setAttribute('aria-disabled', 'true');
     button.classList.add('dr-ext-morph-locked');
@@ -307,6 +311,8 @@ function createToggleForTable(table) {
   tableToggles.set(table, button);
   trackedTables.add(table);
   DR_STORE.registerTable(table);
+  DR_LOG.debug("Dynamic Rounding: registered " +
+    (table.tagName === 'TABLE' ? 'native table' : 'grid') + ".");
 
   // Render the initial state through the same sync every later state change
   // uses. On a fresh table this keeps aria-pressed 'false' exactly as set
