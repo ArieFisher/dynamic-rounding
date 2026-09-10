@@ -96,6 +96,9 @@ globalThis.collectCaptureState = collectCaptureState;
 globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
 // Expose the lib/dr-capture package bundle, mirroring DR_NUMBER above.
 globalThis.DR_CAPTURE = DR_CAPTURE;
+// Expose the renderer's glyph map so the glyph pin can compare it against
+// the sidebar's buttons.
+globalThis.CAPTURE_MARK_GLYPHS = CAPTURE_MARK_GLYPHS;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
@@ -1696,6 +1699,114 @@ function withLinkCreateTreeWalker(fn) {
     eq('era-round: control 1,050,000,000 still rounds',
       cells[1].classList.contains('dr-ext-rounded'), true);
   });
+})();
+
+// --- 3c. A silently failed extracted patch records nothing (#301) ---
+//
+// The patch step skips silently when the number is not at its flat-text
+// position in the live nodes (the text moved between classification and
+// patching). The write path records a cell as simplified only when a patch
+// confirmed a change: no stored original, no hover text, no marker, no
+// simplified flag — and a log row states the failure so a capture shows it
+// instead of a false success.
+
+(function extractedPatchOptsFor() {
+  globalThis.EXTRACTED_PATCH_OPTS = {
+    enabled: true, simplifyMixedCells: true, simplifyDates: false, simplifyTimes: false,
+    simplifyFirstRow: true, simplifyFirstColumn: true,
+    simplifyMixedPercent: true, simplifyMixedCurrency: true,
+    offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+    rangeExpr: '',
+  };
+})();
+
+(function failedExtractedPatchRecordsNothing() {
+  // The walker's one text node does not hold the extracted number at its
+  // expected position, so every patch skips.
+  global.document.createTreeWalker = function () {
+    let done = false;
+    return {
+      nextNode: function () {
+        if (done) return null;
+        done = true;
+        return { nodeValue: 'Cost: [moved text] per month' };
+      },
+    };
+  };
+  const table = makeMockTable([[
+    { tag: 'td', text: 'Cost: 123,456 per month' },
+  ]]);
+  try {
+    roundTable(table, EXTRACTED_PATCH_OPTS);
+    const cell = table.rows[0].cells[0];
+    eq('patch-honesty: a cell whose patches all skip gets no marker',
+      cell.classList.contains('dr-ext-rounded'), false);
+    eq('patch-honesty: a cell whose patches all skip gets no hover text',
+      cell.title, '');
+    eq('patch-honesty: a cell whose patches all skip stores no original',
+      DR_STORE.getTableOriginalText(table, cell), undefined);
+    eq('patch-honesty: a table whose only change failed keeps form original',
+      DR_STORE.getTableAppliedFlag(table), 'original');
+    eq('patch-honesty: the failure leaves a warn row naming the patch step',
+      DR_LOG.snapshot().entries.some(
+        (row) => row.level === 'warn' && /extracted-cell patch/.test(row.text)),
+      true);
+  } finally {
+    delete global.document.createTreeWalker;
+    DR_STORE.unregisterTable(table);
+  }
+})();
+
+// Control: the same cell with its number where the patch expects it still
+// records in full — the honesty gate never blocks a confirmed change.
+(function landedExtractedPatchStillRecords() {
+  const table = makeMockTable([[
+    { tag: 'td', text: 'Cost: 123,456 per month' },
+  ]]);
+  try {
+    withCreateTreeWalker(function () {
+      roundTable(table, EXTRACTED_PATCH_OPTS);
+    });
+    const cell = table.rows[0].cells[0];
+    eq('patch-honesty: a landed patch changes the cell text',
+      cell.innerText.includes('123,456'), false);
+    eq('patch-honesty: a landed patch stamps the marker and hover text',
+      cell.classList.contains('dr-ext-rounded') &&
+        cell.title === 'Original: Cost: 123,456 per month',
+      true);
+    eq('patch-honesty: a landed patch stores the original',
+      DR_STORE.getTableOriginalText(table, cell), 'Cost: 123,456 per month');
+    eq('patch-honesty: a landed patch flips the form',
+      DR_STORE.getTableAppliedFlag(table), 'simplified');
+  } finally {
+    DR_STORE.unregisterTable(table);
+  }
+})();
+
+// The patch step reports what it did: the landed count is the write path's
+// only evidence that the screen changed.
+(function applyExtractedPatchesReturnsLandedCount() {
+  global.document.createTreeWalker = function () {
+    let done = false;
+    return {
+      nextNode: function () {
+        if (done) return null;
+        done = true;
+        return { nodeValue: 'A 100 B 200' };
+      },
+    };
+  };
+  try {
+    const landed = applyExtractedPatches({}, [
+      { index: 2, numStr: '100', newNum: '90' },
+      { index: 8, numStr: '999', newNum: '1,000' },
+    ]);
+    eq('patch-honesty: applyExtractedPatches returns the landed count', landed, 1);
+    eq('patch-honesty: an empty patch list lands zero patches',
+      applyExtractedPatches({}, []), 0);
+  } finally {
+    delete global.document.createTreeWalker;
+  }
 })();
 
 // --- 4. Spec-scope guards ---
@@ -18674,6 +18785,81 @@ function makeIssue251SidebarHarness() {
     /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
   eq('capture-ui: a failed state pull still saves and records the failure',
     /DR_LOG\.warn\([^)]*pull failed/.test(sidebarJsSrc), true);
+})();
+
+// --- capture follow-ups: the pull guard, the glyph pin, the header line ---
+
+// #305: the serializer guards per table; the response composer's
+// lens-preview step is the one step after it that walks the bound table.
+// Unguarded, a throw there discards the whole page-side half — the
+// serialized registry, the fixture seed, and the log rows.
+(function capturePullSurvivesThrowingPreview() {
+  if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
+  const prevSelected = DR_STORE.getSelectedTable();
+  const throwing = {
+    get rows() { throw new Error('hostile preview walk'); },
+  };
+  DR_STORE.registerTable(throwing);
+  DR_STORE.setSelectedTable(throwing);
+  let response = null;
+  let threw = false;
+  try {
+    response = buildCaptureStateResponse();
+  } catch (e) {
+    threw = true;
+  } finally {
+    DR_STORE.setSelectedTable(prevSelected);
+    DR_STORE.unregisterTable(throwing);
+  }
+  eq('capture-wire: a throwing lens preview keeps the page-side half',
+    {
+      threw,
+      tablesIsArray: !!response && Array.isArray(response.tables),
+      lensPreview: response ? response.lensPreview : 'response lost',
+      hasLog: !!(response && response.log),
+    },
+    { threw: false, tablesIsArray: true, lensPreview: null, hasLog: true });
+  eq('capture-wire: the discarded lens preview leaves a warn row',
+    DR_LOG.snapshot().entries.some(
+      (row) => row.level === 'warn' && /lens preview/.test(row.text)),
+    true);
+})();
+
+// #308: the mark glyphs live in two machine copies — the sidebar's buttons
+// and the renderer's map — and one copy cannot read the other (static
+// markup against a content-script constant). This pin holds them together:
+// a glyph change that lands in one place fails here, naming the other.
+(function captureGlyphCopiesMatch() {
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const buttonGlyphs = {};
+  const buttonRe = /data-mark="([a-z]+)"[^>]*>([^<]+)</g;
+  let m;
+  while ((m = buttonRe.exec(sidebarHtmlSrc)) !== null) {
+    buttonGlyphs[m[1]] = m[2].replace(/&#(\d+);/g,
+      (_, code) => String.fromCodePoint(Number(code)));
+  }
+  eq('capture-glyphs: the sidebar buttons and the renderer map carry the same three glyphs',
+    buttonGlyphs, CAPTURE_MARK_GLYPHS);
+})();
+
+// #310: the file says what it holds where the person about to attach it
+// reads it — the safe-to-attach claim covers script safety only.
+(function captureHeaderStatesContents() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const html = DR_CAPTURE.buildCaptureDocument({
+    state: {
+      captureFormat: 1,
+      meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
+      mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+      tables: [], lensPreview: null, sidebarView: null,
+      log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
+    },
+    lockedStatusText: '',
+  });
+  eq('capture-header: the header says what the file holds',
+    html.includes('table contents') &&
+      html.includes('Share it as you would share the page.'),
+    true);
 })();
 
 // --- content.js: the extension stands down on capture pages ---
