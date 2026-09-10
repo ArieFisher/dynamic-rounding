@@ -18742,6 +18742,49 @@ function makeIssue251SidebarHarness() {
     hostileMark.includes('<span>constructor</span>'), true);
 })();
 
+// --- lib/dr-capture: the size warning (#306) ---
+//
+// A capture has no size bound — the full-detail default is deliberate — so
+// the form shows an estimate before the save when the pulled state is
+// large. The estimate reads the serialized state's length; the file runs
+// about four times that, because it carries the same content about four
+// times (two table renderings, the JSON island, the visible seed).
+
+(function captureSizeWarningHelper() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const sizeWarning = DR_CAPTURE.sizeWarning;
+  const has = typeof sizeWarning === 'function';
+
+  const small = { tables: [{ cells: [{ text: '99,000' }] }] };
+  eq('capture-size: an ordinary state gets no warning',
+    has ? sizeWarning(small) : 'missing', null);
+
+  // 2,000,000 serialized characters estimate an 8 MB file.
+  const big = { filler: 'x'.repeat(2 * 1000 * 1000) };
+  eq('capture-size: a large state gets a warning that says the estimated size',
+    has ? sizeWarning(big) : 'missing',
+    'This capture will be large: about 8 MB.');
+
+  // Just under the threshold (a 4 MB estimate): still no warning.
+  const nearlyBig = { filler: 'x'.repeat(999 * 1000) };
+  eq('capture-size: a state just under the threshold gets no warning',
+    has ? sizeWarning(nearlyBig) : 'missing', null);
+})();
+
+(function captureSizeNoteGlue() {
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  eq('capture-size: the form holds a hidden size note',
+    /<div[^>]*id="captureSizeNote"[^>]*hidden/.test(sidebarHtmlSrc), true);
+  eq('capture-size: opening the form measures the pulled state through the package helper',
+    sidebarJsSrc.includes('DR_CAPTURE.sizeWarning(') &&
+      sidebarJsSrc.includes('captureSizeNote'), true);
+  eq('capture-size: a failed save reports on the status line and is logged',
+    sidebarJsSrc.includes('Capture failed') &&
+      /DR_LOG\.warn\([^)]*save failed/.test(sidebarJsSrc), true);
+})();
+
 // --- sidebar: the capture section and its glue ---
 //
 // The suite never executes sidebar.js (it is asserted as source text — the
