@@ -96,6 +96,9 @@ globalThis.collectCaptureState = collectCaptureState;
 globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
 // Expose the lib/dr-capture package bundle, mirroring DR_NUMBER above.
 globalThis.DR_CAPTURE = DR_CAPTURE;
+// Expose the renderer's glyph map so the glyph pin can compare it against
+// the sidebar's buttons.
+globalThis.CAPTURE_MARK_GLYPHS = CAPTURE_MARK_GLYPHS;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
@@ -18776,6 +18779,81 @@ function makeIssue251SidebarHarness() {
     /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
   eq('capture-ui: a failed state pull still saves and records the failure',
     /DR_LOG\.warn\([^)]*pull failed/.test(sidebarJsSrc), true);
+})();
+
+// --- capture follow-ups: the pull guard, the glyph pin, the header line ---
+
+// #305: the serializer guards per table; the response composer's
+// lens-preview step is the one step after it that walks the bound table.
+// Unguarded, a throw there discards the whole page-side half — the
+// serialized registry, the fixture seed, and the log rows.
+(function capturePullSurvivesThrowingPreview() {
+  if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
+  const prevSelected = DR_STORE.getSelectedTable();
+  const throwing = {
+    get rows() { throw new Error('hostile preview walk'); },
+  };
+  DR_STORE.registerTable(throwing);
+  DR_STORE.setSelectedTable(throwing);
+  let response = null;
+  let threw = false;
+  try {
+    response = buildCaptureStateResponse();
+  } catch (e) {
+    threw = true;
+  } finally {
+    DR_STORE.setSelectedTable(prevSelected);
+    DR_STORE.unregisterTable(throwing);
+  }
+  eq('capture-wire: a throwing lens preview keeps the page-side half',
+    {
+      threw,
+      tablesIsArray: !!response && Array.isArray(response.tables),
+      lensPreview: response ? response.lensPreview : 'response lost',
+      hasLog: !!(response && response.log),
+    },
+    { threw: false, tablesIsArray: true, lensPreview: null, hasLog: true });
+  eq('capture-wire: the discarded lens preview leaves a warn row',
+    DR_LOG.snapshot().entries.some(
+      (row) => row.level === 'warn' && /lens preview/.test(row.text)),
+    true);
+})();
+
+// #308: the mark glyphs live in two machine copies — the sidebar's buttons
+// and the renderer's map — and one copy cannot read the other (static
+// markup against a content-script constant). This pin holds them together:
+// a glyph change that lands in one place fails here, naming the other.
+(function captureGlyphCopiesMatch() {
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const buttonGlyphs = {};
+  const buttonRe = /data-mark="([a-z]+)"[^>]*>([^<]+)</g;
+  let m;
+  while ((m = buttonRe.exec(sidebarHtmlSrc)) !== null) {
+    buttonGlyphs[m[1]] = m[2].replace(/&#(\d+);/g,
+      (_, code) => String.fromCodePoint(Number(code)));
+  }
+  eq('capture-glyphs: the sidebar buttons and the renderer map carry the same three glyphs',
+    buttonGlyphs, CAPTURE_MARK_GLYPHS);
+})();
+
+// #310: the file says what it holds where the person about to attach it
+// reads it — the safe-to-attach claim covers script safety only.
+(function captureHeaderStatesContents() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const html = DR_CAPTURE.buildCaptureDocument({
+    state: {
+      captureFormat: 1,
+      meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
+      mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+      tables: [], lensPreview: null, sidebarView: null,
+      log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
+    },
+    lockedStatusText: '',
+  });
+  eq('capture-header: the header says what the file holds',
+    html.includes('table contents') &&
+      html.includes('Share it as you would share the page.'),
+    true);
 })();
 
 // --- content.js: the extension stands down on capture pages ---
