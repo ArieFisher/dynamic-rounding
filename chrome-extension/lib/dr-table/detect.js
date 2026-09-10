@@ -689,11 +689,15 @@ function replaceTextPreservingHTML(cell, originalText, newText) {
  * by changes at higher positions. Only the specific text node containing each
  * number is touched; <sup>, <a>, and all other surrounding nodes are left intact.
  *
- * Fails silently (skips the patch) if the node cannot be found or if numStr is
- * not present at the expected position — same behaviour as the old fallback.
+ * A patch is skipped when its node cannot be found or numStr is not at the
+ * expected position. Returns the number of patches that landed: the caller
+ * records the cell as simplified only on a count above zero, because a
+ * skipped patch leaves the screen unchanged.
+ *
+ * @returns {number} how many patches landed
  */
 function applyExtractedPatches(cell, patches) {
-  if (!patches || patches.length === 0) return;
+  if (!patches || patches.length === 0) return 0;
   const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
   const nodePositions = [];
   let flatLen = 0;
@@ -703,6 +707,7 @@ function applyExtractedPatches(cell, patches) {
     flatLen += node.nodeValue.length;
   }
   const sorted = [...patches].sort((a, b) => b.index - a.index);
+  let landed = 0;
   for (const { index, numStr, newNum } of sorted) {
     const pos = nodePositions.find(
       p => p.start <= index && index < p.start + p.node.nodeValue.length
@@ -712,7 +717,9 @@ function applyExtractedPatches(cell, patches) {
     const v = pos.node.nodeValue;
     if (v.substring(i, i + numStr.length) !== numStr) continue;
     pos.node.nodeValue = v.substring(0, i) + newNum + v.substring(i + numStr.length);
+    landed++;
   }
+  return landed;
 }
 
 // --- Table/grid detection predicates ---

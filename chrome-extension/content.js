@@ -1238,20 +1238,30 @@ function roundTable(table, options) {
           if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
         }
         if (patches.length === 0) continue;
-        // Stash the pristine HTML, superscript ranges, and the surviving
-        // (link-filtered) match indices — measured against the pre-round
-        // text, BEFORE applyExtractedPatches shortens it — in the registry
-        // instead of four separate dataset attributes. collectNumericCells
-        // reads this record back instead of re-measuring the (now-rounded,
-        // differently-offset) live element against stored original text. See
-        // finalizeExtractedDecision and collectNumericCells for the read side.
-        DR_STORE.setTableOriginal(table, cell, {
+        // Measure the pristine HTML, superscript ranges, and the surviving
+        // (link-filtered) match indices against the pre-round text, BEFORE
+        // applyExtractedPatches shortens it — but store the record only after
+        // a patch confirms the cell changed. The registry record replaces
+        // four separate dataset attributes; collectNumericCells reads it back
+        // instead of re-measuring the (now-rounded, differently-offset) live
+        // element against stored original text. See finalizeExtractedDecision
+        // and collectNumericCells for the read side.
+        const originalRecord = {
           html: cell.innerHTML,
           value: originalValue,
           supRanges: getSuperscriptRanges(cell),
           linkFilteredIdx: info.matches.map((m) => m.index),
-        });
-        applyExtractedPatches(cell, patches);
+        };
+        const landed = applyExtractedPatches(cell, patches);
+        if (landed < patches.length) {
+          DR_LOG.warn('Dynamic Rounding: ' + (patches.length - landed) + ' of ' +
+            patches.length + ' extracted-cell patches did not land.');
+        }
+        // Record only a confirmed change: with every patch skipped the screen
+        // keeps its text, and storing the original, the hover text, or the
+        // marker would record a simplification that never happened.
+        if (landed === 0) continue;
+        DR_STORE.setTableOriginal(table, cell, originalRecord);
         cell.title = `Original: ${originalValue}`;
         cell.classList.add('dr-ext-rounded');
         appliedAny = true;
