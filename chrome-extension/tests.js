@@ -18172,7 +18172,7 @@ function makeIssue251SidebarHarness() {
     errState.tables[1].cells.length, 1);
 })();
 
-// --- content.js: the GET_CAPTURE_STATE wire action ---
+// --- content.js: the GET_CAPTURE_STATE cross-context topic ---
 //
 // The sidebar pulls the whole page-side half of a capture in one request.
 // The response is composed by buildCaptureStateResponse() — a named function

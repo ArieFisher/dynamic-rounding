@@ -177,6 +177,7 @@ and a row with no pattern is left to the human sweep.
 | load-time scan | proactive scan | The load-time scan finds native tables first, then elements with a grid role. | `\bproactive scan` |
 | dataset | range (the set of values; "range expression" stays) | In set-aware simplification the max magnitude comes from the dataset. | `\bentire range\|\bwhole range\|\binput range` |
 | form | state (of a table's raw/simplified values) | A table's form is raw or simplified. | — |
+| cross-context topic | wire action | A cross-context topic carries plain-value data only. | `\bwire action` |
 
 ### Writing a pattern
 
