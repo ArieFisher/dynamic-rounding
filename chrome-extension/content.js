@@ -770,13 +770,27 @@ function buildCaptureStateResponse() {
   const cellCounts = state.tables.map(function (t) { return t.cells.length; });
   DR_LOG.debug('Dynamic Rounding: capture state collected (' + state.tables.length +
     ' table(s), cells per table: [' + cellCounts.join(', ') + ']).');
+  // The serializer guards per table; this walk of the bound table is the one
+  // step after it that can throw, and an unguarded throw here would discard
+  // the whole page-side half — the serialized registry, the fixture seed,
+  // and the log rows. On a throw: null, a warn row (taken into the snapshot
+  // below), and the rest of the response stands.
+  let lensPreview = null;
+  if (selected) {
+    try {
+      lensPreview = extractPreviewSamples(selected);
+    } catch (e) {
+      DR_LOG.warn('Dynamic Rounding: lens preview extraction failed during capture (' +
+        String(e && e.message ? e.message : e) + ').');
+    }
+  }
   return Object.assign({
     page: {
       url: typeof location !== 'undefined' ? location.href : null,
       title: (typeof document !== 'undefined' && typeof document.title === 'string')
         ? document.title : null,
     },
-    lensPreview: selected ? extractPreviewSamples(selected) : null,
+    lensPreview: lensPreview,
     log: DR_LOG.snapshot(),
   }, state);
 }

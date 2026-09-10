@@ -158,10 +158,16 @@ function renderCaptureHeader(state) {
   // The note is one free-text field; line breaks the user typed survive
   // through the pre-wrap rule on .cap-note.
   const noteRow = '<p><b>Remarks:</b> ' + escapeHtml(displayValue(state.note)) + '</p>';
+  // What the file holds, stated where the person about to attach it reads
+  // it: the script-free CSP makes the file safe to open, and this line
+  // covers the other half — the values it carries.
+  const holdsRow = '<p class="cap-band">This capture holds the page’s table contents, ' +
+    'its address and title, and browser details. Share it as you would share the page.</p>';
   return '<header>' +
     '<h1>DynamicRounding capture</h1>' +
     '<p class="cap-mark">' + glyph + ' <span>' + escapeHtml(displayValue(state.mark)) + '</span></p>' +
     '<dl>' + rows + '</dl>' +
+    holdsRow +
     '<section class="cap-note">' + noteRow + '</section>' +
     '</header>';
 }
