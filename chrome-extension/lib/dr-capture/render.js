@@ -10,7 +10,7 @@
  *
  * buildCaptureDocument() turns one capture state into one self-contained
  * HTML document — a string in, a string out, no browser API touched. The
- * document reads as a report: the mark and note on top, the focused table
+ * document reads as a report: the mark and note on top, the bound table
  * beside a likeness of the sidebar, the log rows of both contexts, the
  * fixture seed as readable text, and the whole state as machine-readable
  * JSON at the bottom.
@@ -172,7 +172,7 @@ function renderCaptureHeader(state) {
     '</header>';
 }
 
-// One rendering of the focused table's cells, rebuilt as a real table of
+// One rendering of the bound table's cells, rebuilt as a real table of
 // escaped text — never cloned markup. mode 'displayed' shows what the screen
 // showed; a simplified cell (its original differs from what it shows) gets
 // the original in its title, so hover reveals it the way the live page does.
@@ -208,10 +208,10 @@ function renderCapTable(table, mode) {
   return '<table class="cap-table">' + rowsHtml + '</table>';
 }
 
-// The focused table twice: as displayed, then with the originals, so both
+// The bound table twice: as displayed, then with the originals, so both
 // forms are readable without hovering. The hover reveal on the displayed
 // copy stays for cell-by-cell comparison.
-function renderFocusedTable(state, lockedStatusText) {
+function renderBoundTable(state, lockedStatusText) {
   const table = state.activeTableIndex === null || state.activeTableIndex === undefined
     ? null
     : state.tables[state.activeTableIndex];
@@ -239,22 +239,26 @@ function renderFocusedTable(state, lockedStatusText) {
     renderCapTable(table, 'displayed') +
     '<p class="cap-band">Hover a dotted cell to see its original.</p>' +
     '<h3>The same table, with the originals</h3>' +
-    renderCapTable(table, 'originals');
+    renderCapTable(table, 'originals') +
+    // The state records no cell spans, so both renderings and the JSON place
+    // every cell in its own slot (#309's named limit).
+    '<p class="cap-band">Cell spans are not recorded: merged cells render ' +
+    'unmerged here and in the state below.</p>';
 }
 
-// Every table the registry held, one line each, the focused one marked. The
+// Every table the registry held, one line each, the bound one marked. The
 // full per-cell detail sits in the JSON island; this list shows at a glance
 // what was found.
 function renderRegistrySection(state) {
   const rows = (state.tables || []).map(function (table, index) {
-    const focused = index === state.activeTableIndex;
+    const bound = index === state.activeTableIndex;
     const label = table.kind === 'unknown'
       ? 'serialization failed: ' + (table.error || '')
       : table.kind + ', ' + table.rowCount + ' row(s) × ' + table.columnCount +
         ' column(s), form: ' + (table.appliedFlag === 'simplified' ? 'simplified' : 'raw') +
         (table.locked ? ', locked' : '');
     return '<div class="cap-switch"><span>#' + (index + 1) + ' — ' + escapeHtml(label) +
-      '</span><b>' + (focused ? 'focused' : '') + '</b></div>';
+      '</span><b>' + (bound ? 'bound' : '') + '</b></div>';
   }).join('');
   const body = rows || '<p class="cap-empty">The registry held no tables.</p>';
   return '<section><h2>Registry</h2>' + body + '</section>';
@@ -353,8 +357,8 @@ function renderFixtureSeed(state) {
       '<p class="cap-empty">No fixture seed: no table was bound.</p></section>';
   }
   return '<section><h2>Fixture seed</h2>' +
-    '<p class="cap-band">The focused table’s raw markup, escaped here for reading. ' +
-    'The JSON below carries it byte-exact.</p>' +
+    '<p class="cap-band">The bound table’s markup as it stood at capture time, ' +
+    'escaped here for reading. The JSON below carries it byte-exact.</p>' +
     '<pre class="cap-seed">' + escapeHtml(state.fixtureSeed) + '</pre></section>';
 }
 
@@ -383,7 +387,7 @@ function buildCaptureDocument(input) {
     renderCaptureHeader(state) +
     '<main>' +
     '<section><h2>What the extension saw</h2><div class="cap-visual">' +
-    '<div class="cap-page">' + renderFocusedTable(state, lockedStatusText) + '</div>' +
+    '<div class="cap-page">' + renderBoundTable(state, lockedStatusText) + '</div>' +
     renderSidebarLikeness(state, lockedStatusText) +
     '</div></section>' +
     renderRegistrySection(state) +

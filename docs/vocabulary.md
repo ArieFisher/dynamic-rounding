@@ -123,14 +123,15 @@ One term per concept, across every platform and every document. Use the [Retired
 
 | Term | Meaning |
 | --- | --- |
-| capture | A bug report written as one self-contained HTML file: the mark and note, the focused table's rendering, a likeness of the sidebar, both contexts' log rows, the fixture seed, and the capture state as machine-readable JSON. The file allows no scripts and no remote fetches, so it is safe to attach anywhere. |
+| capture | A bug report written as one self-contained HTML file: the mark and note, the bound table's rendering, a likeness of the sidebar, both contexts' log rows, the fixture seed, and the capture state as machine-readable JSON. The file allows no scripts and no remote fetches, so it is safe to attach anywhere. |
 | mark | The verdict a capture carries: positive, question, or negative. One of three buttons in the sidebar's capture section; pressing one opens the note form. |
 | note | The capture's one free-text field, labeled Remarks. Its preview text follows the mark: a negative capture prompts for expected, observed, and cause (if known); a question mark prompts for suggestions, questions, or remarks. A blank note saves as blank. |
 | finish | The explicit gesture that writes the capture file — the "Save capture" button. Nothing saves without that press. |
 | capture state | The plain-value record embedded in the capture: full registry detail for every table, the settings record, the lens preview samples, the sidebar view state, the log rows, the page and extension metadata, and the fixture seed. Carries a one-integer format version so a later tool can read old captures. |
 | log buffer | A per-context list of the last 50 log rows the extension recorded, with a count of rows dropped past the cap. Each row also goes to the console, so devtools output is unchanged. |
 | state pull | The one request the sidebar sends for the page-side half of a capture. A failed state pull still saves the capture: the sidebar half is present, and the page half renders as an absence. |
-| fixture seed | The focused table's raw markup, carried verbatim in the capture state — and escaped for reading in the visible file — so a regression fixture can be rebuilt from it. |
+| fixture seed | The bound table's markup as it stood at capture time — form included, so a seed taken from a simplified table rebuilds in simplified form. Carried verbatim in the capture state, and escaped for reading in the visible file, so a regression fixture can be rebuilt from it. |
+| capture marker | The page attribute the saved capture carries on its document element. The content script stands down on any page carrying it, so a capture shows what was captured, never what the extension would do to it. |
 
 ## Working terms
 
@@ -159,7 +160,7 @@ and a row with no pattern is left to the human sweep.
 | active | selected | The active table is the one the right-click menu acts on. | `selected table` |
 | step | base | An offset of -0.5 on a magnitude-7 value gives a step of 5,000,000. | `rounding base\b\|\bbase unit\b\|nearest base\b` |
 | application model | store, app store | The registry exists only in the application model; every other component reads it from there. | `\bapp store\b\|\b(state\|panel\|settings\|table) store\b` |
-| bound | linked | The sidebar's controls read from the bound table. | `\blinked (table\|state\|cell\|range)\b\|is linked to the (table\|sidebar\|panel\|switch\|pillbox\|state)\b` |
+| bound | linked; focused (the capture's table) | The sidebar's controls read from the bound table. | `\blinked (table\|state\|cell\|range)\b\|is linked to the (table\|sidebar\|panel\|switch\|pillbox\|state)\b\|\bfocused (table\|one\|error record)\b` |
 | pillbox | table toggle, pill, toggle (the control) | Only data tables get a pillbox. | `\btable toggle\|\bpill\b` |
 | originals | undo state, raw values ("raw form" stays) | Restore puts the originals back into the cells. | `\bundo state` |
 | never used (of code) | dead | No caller reaches the helper, so it is never used. | `\bdead code` |
