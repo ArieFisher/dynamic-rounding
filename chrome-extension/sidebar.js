@@ -747,6 +747,7 @@ const captureMarkEls = Array.from(document.querySelectorAll('.capture-mark'));
 const captureRemarksEl = document.getElementById('captureRemarks');
 const captureSaveEl = document.getElementById('captureSave');
 const captureCancelEl = document.getElementById('captureCancel');
+const captureSizeNoteEl = document.getElementById('captureSizeNote');
 
 // The one note field's preview text follows the mark: a negative capture
 // prompts for the fixture loop's three facts, a question mark prompts
@@ -777,12 +778,35 @@ function foldCaptureForm() {
   renderCaptureMarks();
 }
 
+// Opening the form pulls the capture state once, only to measure it: a
+// heavy page renders a file in the tens of megabytes, and the person about
+// to press finish reads the size estimate before the save, not after. The
+// finish press pulls fresh; this response is never reused. A failed pull
+// here shows no note — finish logs its own pull failure.
+function refreshCaptureSizeNote() {
+  if (!captureSizeNoteEl) return;
+  captureSizeNoteEl.hidden = true;
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs[0]) return;
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'GET_CAPTURE_STATE' }, (response) => {
+      if (chrome.runtime.lastError || !response) return;
+      const warning = DR_CAPTURE.sizeWarning(response);
+      // The mark re-check drops a response that lands after the form folded.
+      if (warning !== null && captureMark !== null) {
+        captureSizeNoteEl.textContent = warning;
+        captureSizeNoteEl.hidden = false;
+      }
+    });
+  });
+}
+
 for (const el of captureMarkEls) {
   el.addEventListener('click', () => {
     // Re-pressing the lit mark folds the form (same-mark toggle).
     captureMark = el.dataset.mark === captureMark ? null : el.dataset.mark;
     if (captureMark !== null) {
       DR_LOG.debug('Dynamic Rounding: capture form opened (' + captureMark + ').');
+      refreshCaptureSizeNote();
     }
     renderCaptureMarks();
   });
@@ -868,14 +892,27 @@ function assembleAndSaveCapture(mark, note, pageState) {
     content: pageState ? pageState.log || null : null,
     sidebar: DR_LOG.snapshot(),
   };
-  const html = DR_CAPTURE.buildCaptureDocument({
-    state: state,
-    lockedStatusText: APPLY_BLOCKED_STATUS_MSG,
-  });
-  saveCaptureFile({
-    filename: DR_CAPTURE.filenameFor({ at: at, url: state.meta.url }),
-    html: html,
-  });
+  // A failure while building or saving the file used to surface as the
+  // finish button doing nothing. It now reports on the status line and is
+  // logged; the form stays open with the typed note, so a retry costs
+  // nothing.
+  try {
+    const html = DR_CAPTURE.buildCaptureDocument({
+      state: state,
+      lockedStatusText: APPLY_BLOCKED_STATUS_MSG,
+    });
+    saveCaptureFile({
+      filename: DR_CAPTURE.filenameFor({ at: at, url: state.meta.url }),
+      html: html,
+    });
+  } catch (e) {
+    DR_LOG.warn('Dynamic Rounding: capture save failed (' +
+      (e && e.message ? e.message : e) + ').');
+    if (!statusEl.dataset.source) {
+      statusEl.textContent = 'Capture failed; nothing was saved.';
+    }
+    return;
+  }
   DR_LOG.debug('Dynamic Rounding: capture saved.');
   foldCaptureForm();
   if (captureRemarksEl) captureRemarksEl.value = '';

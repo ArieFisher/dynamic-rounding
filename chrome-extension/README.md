@@ -8,7 +8,7 @@ The extension uses the same offset model as the rest of the project. As of the `
 
 ## Capture
 
-The sidebar's capture section writes a bug report as one self-contained HTML file. Press one of the three mark buttons (👍 🤔 👎), write the remarks — the box's preview text follows the mark, and a negative capture prompts for expected, observed, and cause — and press "Save capture"; nothing saves without that press. The file lands in the browser's downloads through a plain link download, so the extension needs no extra permission.
+The sidebar's capture section writes a bug report as one self-contained HTML file. Press one of the three mark buttons (👍 🤔 👎), write the remarks — the box's preview text follows the mark, and a negative capture prompts for expected, observed, and cause — and press "Save capture"; nothing saves without that press. The file lands in the browser's downloads through a plain link download, so the extension needs no extra permission. On a heavy page, the form shows the estimated size of the file before the save, and a failed save reports on the status line.
 
 One capture holds the mark and note; the focused table rendered twice — as displayed, with originals revealed on hover, and again with the originals themselves; a likeness of the sidebar as it stood; a registry list of every table found, the focused one marked; the log rows of both extension contexts (the extension's own log buffer — the page's console is never read); the focused table's raw markup as the fixture seed; and the whole capture state as machine-readable JSON in a hidden block. The file declares a Content-Security-Policy that forbids scripts and remote fetches, so it is safe to attach anywhere.
 

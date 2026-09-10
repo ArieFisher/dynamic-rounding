@@ -136,6 +136,38 @@ function captureFilenameFor(opts) {
   return 'dr-capture-' + date + '-' + captureHostSlug(opts.url) + '-' + time + '.html';
 }
 
+/* -------------------------------------------------------------- size note */
+
+// The saved file carries the same content about four times — the two table
+// renderings, the JSON island, and the visible seed — so the serialized
+// state's length times this factor estimates the file's size before any
+// file exists.
+const CAPTURE_FILE_CHARS_PER_STATE_CHAR = 4;
+// Estimates at or above this many characters (about 4 MB) get a size
+// warning on the capture form. The full-detail default stays: the warning
+// informs the save, it never blocks it.
+const CAPTURE_SIZE_WARN_CHARS = 4 * 1000 * 1000;
+
+/**
+ * A size warning for the capture form: null for an ordinary state, one
+ * sentence with the estimated file size for a large one. The caller passes
+ * the same pulled state the file would be built from.
+ * @param {object} state
+ * @returns {string|null}
+ */
+function captureSizeWarning(state) {
+  let length;
+  try {
+    length = JSON.stringify(state).length;
+  } catch (e) {
+    return null;
+  }
+  const estimate = length * CAPTURE_FILE_CHARS_PER_STATE_CHAR;
+  if (estimate < CAPTURE_SIZE_WARN_CHARS) return null;
+  return 'This capture will be large: about ' +
+    Math.round(estimate / (1000 * 1000)) + ' MB.';
+}
+
 /* --------------------------------------------------------------- sections */
 
 function renderCaptureHeader(state) {
