@@ -1698,6 +1698,114 @@ function withLinkCreateTreeWalker(fn) {
   });
 })();
 
+// --- 3c. A silently failed extracted patch records nothing (#301) ---
+//
+// The patch step skips silently when the number is not at its flat-text
+// position in the live nodes (the text moved between classification and
+// patching). The write path records a cell as simplified only when a patch
+// confirmed a change: no stored original, no hover text, no marker, no
+// simplified flag — and a log row states the failure so a capture shows it
+// instead of a false success.
+
+(function extractedPatchOptsFor() {
+  globalThis.EXTRACTED_PATCH_OPTS = {
+    enabled: true, simplifyMixedCells: true, simplifyDates: false, simplifyTimes: false,
+    simplifyFirstRow: true, simplifyFirstColumn: true,
+    simplifyMixedPercent: true, simplifyMixedCurrency: true,
+    offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+    rangeExpr: '',
+  };
+})();
+
+(function failedExtractedPatchRecordsNothing() {
+  // The walker's one text node does not hold the extracted number at its
+  // expected position, so every patch skips.
+  global.document.createTreeWalker = function () {
+    let done = false;
+    return {
+      nextNode: function () {
+        if (done) return null;
+        done = true;
+        return { nodeValue: 'Cost: [moved text] per month' };
+      },
+    };
+  };
+  const table = makeMockTable([[
+    { tag: 'td', text: 'Cost: 123,456 per month' },
+  ]]);
+  try {
+    roundTable(table, EXTRACTED_PATCH_OPTS);
+    const cell = table.rows[0].cells[0];
+    eq('patch-honesty: a cell whose patches all skip gets no marker',
+      cell.classList.contains('dr-ext-rounded'), false);
+    eq('patch-honesty: a cell whose patches all skip gets no hover text',
+      cell.title, '');
+    eq('patch-honesty: a cell whose patches all skip stores no original',
+      DR_STORE.getTableOriginalText(table, cell), undefined);
+    eq('patch-honesty: a table whose only change failed keeps form original',
+      DR_STORE.getTableAppliedFlag(table), 'original');
+    eq('patch-honesty: the failure leaves a warn row naming the patch step',
+      DR_LOG.snapshot().entries.some(
+        (row) => row.level === 'warn' && /extracted-cell patch/.test(row.text)),
+      true);
+  } finally {
+    delete global.document.createTreeWalker;
+    DR_STORE.unregisterTable(table);
+  }
+})();
+
+// Control: the same cell with its number where the patch expects it still
+// records in full — the honesty gate never blocks a confirmed change.
+(function landedExtractedPatchStillRecords() {
+  const table = makeMockTable([[
+    { tag: 'td', text: 'Cost: 123,456 per month' },
+  ]]);
+  try {
+    withCreateTreeWalker(function () {
+      roundTable(table, EXTRACTED_PATCH_OPTS);
+    });
+    const cell = table.rows[0].cells[0];
+    eq('patch-honesty: a landed patch changes the cell text',
+      cell.innerText.includes('123,456'), false);
+    eq('patch-honesty: a landed patch stamps the marker and hover text',
+      cell.classList.contains('dr-ext-rounded') &&
+        cell.title === 'Original: Cost: 123,456 per month',
+      true);
+    eq('patch-honesty: a landed patch stores the original',
+      DR_STORE.getTableOriginalText(table, cell), 'Cost: 123,456 per month');
+    eq('patch-honesty: a landed patch flips the form',
+      DR_STORE.getTableAppliedFlag(table), 'simplified');
+  } finally {
+    DR_STORE.unregisterTable(table);
+  }
+})();
+
+// The patch step reports what it did: the landed count is the write path's
+// only evidence that the screen changed.
+(function applyExtractedPatchesReturnsLandedCount() {
+  global.document.createTreeWalker = function () {
+    let done = false;
+    return {
+      nextNode: function () {
+        if (done) return null;
+        done = true;
+        return { nodeValue: 'A 100 B 200' };
+      },
+    };
+  };
+  try {
+    const landed = applyExtractedPatches({}, [
+      { index: 2, numStr: '100', newNum: '90' },
+      { index: 8, numStr: '999', newNum: '1,000' },
+    ]);
+    eq('patch-honesty: applyExtractedPatches returns the landed count', landed, 1);
+    eq('patch-honesty: an empty patch list lands zero patches',
+      applyExtractedPatches({}, []), 0);
+  } finally {
+    delete global.document.createTreeWalker;
+  }
+})();
+
 // --- 4. Spec-scope guards ---
 
 (function quoteScopeGuards() {
