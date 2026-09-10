@@ -73,6 +73,7 @@ const CAPTURE_STYLES = [
   '.cap-table th, .cap-table td { border: 1px solid #bbb; padding: 4px 10px; text-align: right; }',
   '.cap-table th { background: #f2f2f2; }',
   '.cap-simplified { text-decoration: underline dotted #3d85c6; cursor: help; }',
+  '.cap-lost { color: #8a6d3b; font-style: italic; }',
   '.cap-locked, .cap-empty { color: #8a6d3b; background: #fcf8e3; padding: 6px 10px; border-radius: 4px; margin: 8px 0; }',
   '.cap-switch { display: flex; justify-content: space-between; margin: 2px 0; }',
   '.cap-switch b { font-weight: 600; }',
@@ -139,7 +140,11 @@ function captureFilenameFor(opts) {
 
 function renderCaptureHeader(state) {
   const meta = state.meta || {};
-  const glyph = CAPTURE_MARK_GLYPHS[state.mark] || '';
+  // Own-property guard: only the three mark words resolve a glyph. A bare
+  // lookup would resolve prototype property names too, and the glyph is
+  // interpolated as markup.
+  const glyph = Object.prototype.hasOwnProperty.call(CAPTURE_MARK_GLYPHS, state.mark)
+    ? CAPTURE_MARK_GLYPHS[state.mark] : '';
   const rows = [
     ['Page', displayValue(meta.url)],
     ['Title', displayValue(meta.title)],
@@ -171,9 +176,10 @@ function renderCaptureHeader(state) {
 // escaped text — never cloned markup. mode 'displayed' shows what the screen
 // showed; a simplified cell (its original differs from what it shows) gets
 // the original in its title, so hover reveals it the way the live page does.
-// mode 'originals' shows the originals themselves; a cell with no stored
-// original shows its displayed text, which for an unchanged cell IS the
-// original.
+// mode 'originals' shows the originals themselves. A cell with no stored
+// original splits on the rounded marker: with the marker the original is
+// lost and renders as that absence, never a substituted value; without it
+// the cell was never rounded, so its displayed text IS the original.
 function renderCapTable(table, mode) {
   const byRow = [];
   for (let i = 0; i < table.cells.length; i++) {
@@ -185,6 +191,9 @@ function renderCapTable(table, mode) {
     const cellsHtml = (rowCells || []).map(function (cell) {
       const tag = cell.role === 'th' ? 'th' : 'td';
       if (mode === 'originals') {
+        if (cell.original === null && cell.wearsMarker) {
+          return '<' + tag + ' class="cap-lost">original lost</' + tag + '>';
+        }
         const value = cell.original !== null ? cell.original : cell.text;
         return '<' + tag + '>' + escapeHtml(value) + '</' + tag + '>';
       }
@@ -209,6 +218,14 @@ function renderFocusedTable(state, lockedStatusText) {
   if (!table) {
     return '<p class="cap-empty">No table was bound when this capture was taken. ' +
       'The state below records everything the extension had.</p>';
+  }
+  // An error record holds a failure, not cells; rendering it through the
+  // table path would caption null counts over an empty table and read as a
+  // finding about the page. The failure is the finding.
+  if (table.kind === 'unknown') {
+    return '<p class="cap-empty">Serialization of this table failed: ' +
+      escapeHtml(table.error || '') +
+      '. The state below records everything the extension had.</p>';
   }
   const lockedHtml = table.locked
     ? '<p class="cap-locked">' + escapeHtml(lockedStatusText || '') + '</p>'
@@ -301,10 +318,16 @@ function renderSidebarLikeness(state, lockedStatusText) {
 }
 
 // Both contexts' log rows, labeled by provenance. An empty buffer is a
-// finding, so it renders as a sentence, never as a missing section.
+// finding, so it renders as a sentence, never as a missing section — and a
+// missing snapshot is a different finding: the state pull for that context
+// failed, so no buffer arrived at all.
 function renderCaptureLogs(state) {
   const log = state.log || {};
   const section = function (label, snap) {
+    if (!snap) {
+      return '<h3>' + escapeHtml(label) + '</h3>' +
+        '<p class="cap-empty">The page state pull failed; no log snapshot arrived.</p>';
+    }
     const rows = snap && Array.isArray(snap.entries) ? snap.entries : [];
     const dropped = snap && snap.dropped ? '<li>(' + escapeHtml(String(snap.dropped)) +
       ' earlier row(s) dropped past the cap)</li>' : '';
