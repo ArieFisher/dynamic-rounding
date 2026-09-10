@@ -96,6 +96,9 @@ globalThis.collectCaptureState = collectCaptureState;
 globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
 // Expose the lib/dr-capture package bundle, mirroring DR_NUMBER above.
 globalThis.DR_CAPTURE = DR_CAPTURE;
+// Expose the renderer's glyph map so the glyph pin can compare it against
+// the sidebar's buttons.
+globalThis.CAPTURE_MARK_GLYPHS = CAPTURE_MARK_GLYPHS;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
@@ -18166,7 +18169,7 @@ function makeIssue251SidebarHarness() {
 // --- lib/dr-capture: the capture state serializer ---
 //
 // collectCaptureState() turns the registry into the plain-value capture
-// state: every registered table in full detail, plus the focused table's raw
+// state: every registered table in full detail, plus the bound table's raw
 // markup as the fixture seed. Dependencies arrive as parameters with working
 // defaults (deps.store, deps.adapterFor), so these tests drive the function
 // with stand-ins and no DOM. Locked honesty is pinned here: a cell wearing
@@ -18241,8 +18244,8 @@ function makeIssue251SidebarHarness() {
   eq('capture-state: the settings record is carried verbatim',
     state.settings, { enabled: true, offsetTop: -0.5 });
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
-  eq('capture-state: the focused table is found by index', state.activeTableIndex, 0);
-  eq('capture-state: the fixture seed is the focused table\'s raw markup verbatim',
+  eq('capture-state: the bound table is found by index', state.activeTableIndex, 0);
+  eq('capture-state: the fixture seed is the bound table\'s markup at capture time, verbatim',
     state.fixtureSeed, '<table><tr><td>99,000</td></tr></table>');
 
   const recA = state.tables[0];
@@ -18393,7 +18396,7 @@ function makeIssue251SidebarHarness() {
   // field and log snapshot still present.
   DR_STORE.setSelectedTable(null);
   const unboundResponse = buildCaptureStateResponse();
-  eq('capture-wire: no table bound still answers with an honest unfocused state',
+  eq('capture-wire: no table bound still answers with an honest unbound state',
     {
       captureFormat: unboundResponse.captureFormat,
       activeTableIndex: unboundResponse.activeTableIndex,
@@ -18421,11 +18424,11 @@ function makeIssue251SidebarHarness() {
     const mine = response.tables[response.activeTableIndex];
     eq('capture-wire: the bound table serializes in full and is the focus',
       {
-        focused: response.activeTableIndex !== null,
+        bound: response.activeTableIndex !== null,
         kind: mine.kind,
         cellTexts: mine.cells.map((c) => c.text),
       },
-      { focused: true, kind: 'native', cellTexts: ['8,584,629', '286'] });
+      { bound: true, kind: 'native', cellTexts: ['8,584,629', '286'] });
     eq('capture-wire: the fixture seed is the bound table\'s markup',
       response.fixtureSeed, '<table><tr><td>8,584,629</td><td>286</td></tr></table>');
     eq('capture-wire: the capture carries the lens preview',
@@ -18543,16 +18546,22 @@ function makeIssue251SidebarHarness() {
     html.includes('Remarks:') && html.includes('rounded to 99,000'), true);
   eq('capture-render: a simplified cell shows its value with the original on hover',
     /<td[^>]*title="Original: 98,765"[^>]*>99,000<\/td>/.test(html), true);
-  eq('capture-render: the focused table renders a second time with the originals',
+  eq('capture-render: the bound table renders a second time with the originals',
     /with the originals/.test(html) &&
       /<td[^>]*>98,765<\/td>/.test(html), true);
+  eq('capture-render: the table renderings state the span limit',
+    html.includes('merged cells render unmerged'), true);
   eq('capture-render: the likeness shows both thumbs when the lens control is coupled',
     (html.match(/class="cap-thumb/g) || []).length, 2);
   eq('capture-render: the coupled heading names the shared value',
     html.includes('Lens control (coupled, both at -0.5)'), true);
-  eq('capture-render: the registry section lists every table with the focused one marked',
+  eq('capture-render: the registry section lists every table with the bound one marked',
     /<h2>Registry<\/h2>/.test(html) &&
-      /native[\s\S]{0,120}focused/.test(html), true);
+      /native[\s\S]{0,120}bound/.test(html), true);
+  eq('capture-render: the retired word for the bound table never renders',
+    /<b>focused<\/b>/.test(html) || /focused table/.test(html), false);
+  eq('capture-render: the seed intro names the bound table and capture time',
+    html.includes('bound table’s markup as it stood at capture time'), true);
   eq('capture-render: the footer names the state block without a how-to sentence',
     html.includes('holds the full capture state') &&
       !html.includes('To extract the state'), true);
@@ -18690,7 +18699,7 @@ function makeIssue251SidebarHarness() {
   eq('capture-render: a never-rounded cell still shows its text in the originals view',
     originalsTable.includes('n/a'), true);
 
-  // A focused error record: a failure notice, not an empty table.
+  // An error record on the bound table: a failure notice, not an empty table.
   const failed = buildCaptureDocument({
     state: makeState({
       tables: [{
@@ -18701,11 +18710,11 @@ function makeIssue251SidebarHarness() {
     }),
     lockedStatusText: LOCKED_TEXT,
   });
-  const focusedHalf = failed.split('<h2>Registry')[0];
-  eq('capture-render: a focused error record renders as a failure notice with its error text',
-    /serialization[\s\S]{0,40}failed/i.test(focusedHalf) && focusedHalf.includes('hostile walk'),
+  const boundHalf = failed.split('<h2>Registry')[0];
+  eq('capture-render: an error record on the bound table renders as a failure notice with its error text',
+    /serialization[\s\S]{0,40}failed/i.test(boundHalf) && boundHalf.includes('hostile walk'),
     true);
-  eq('capture-render: a focused error record renders no table and no null counts',
+  eq('capture-render: an error record on the bound table renders no table and no null counts',
     failed.includes('<table class="cap-table">') || failed.includes('null row(s)'), false);
 
   // A missing log snapshot (the state pull failed) is distinct from an empty
@@ -18819,6 +18828,81 @@ function makeIssue251SidebarHarness() {
     /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
   eq('capture-ui: a failed state pull still saves and records the failure',
     /DR_LOG\.warn\([^)]*pull failed/.test(sidebarJsSrc), true);
+})();
+
+// --- capture follow-ups: the pull guard, the glyph pin, the header line ---
+
+// #305: the serializer guards per table; the response composer's
+// lens-preview step is the one step after it that walks the bound table.
+// Unguarded, a throw there discards the whole page-side half — the
+// serialized registry, the fixture seed, and the log rows.
+(function capturePullSurvivesThrowingPreview() {
+  if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
+  const prevSelected = DR_STORE.getSelectedTable();
+  const throwing = {
+    get rows() { throw new Error('hostile preview walk'); },
+  };
+  DR_STORE.registerTable(throwing);
+  DR_STORE.setSelectedTable(throwing);
+  let response = null;
+  let threw = false;
+  try {
+    response = buildCaptureStateResponse();
+  } catch (e) {
+    threw = true;
+  } finally {
+    DR_STORE.setSelectedTable(prevSelected);
+    DR_STORE.unregisterTable(throwing);
+  }
+  eq('capture-wire: a throwing lens preview keeps the page-side half',
+    {
+      threw,
+      tablesIsArray: !!response && Array.isArray(response.tables),
+      lensPreview: response ? response.lensPreview : 'response lost',
+      hasLog: !!(response && response.log),
+    },
+    { threw: false, tablesIsArray: true, lensPreview: null, hasLog: true });
+  eq('capture-wire: the discarded lens preview leaves a warn row',
+    DR_LOG.snapshot().entries.some(
+      (row) => row.level === 'warn' && /lens preview/.test(row.text)),
+    true);
+})();
+
+// #308: the mark glyphs live in two machine copies — the sidebar's buttons
+// and the renderer's map — and one copy cannot read the other (static
+// markup against a content-script constant). This pin holds them together:
+// a glyph change that lands in one place fails here, naming the other.
+(function captureGlyphCopiesMatch() {
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const buttonGlyphs = {};
+  const buttonRe = /data-mark="([a-z]+)"[^>]*>([^<]+)</g;
+  let m;
+  while ((m = buttonRe.exec(sidebarHtmlSrc)) !== null) {
+    buttonGlyphs[m[1]] = m[2].replace(/&#(\d+);/g,
+      (_, code) => String.fromCodePoint(Number(code)));
+  }
+  eq('capture-glyphs: the sidebar buttons and the renderer map carry the same three glyphs',
+    buttonGlyphs, CAPTURE_MARK_GLYPHS);
+})();
+
+// #310: the file says what it holds where the person about to attach it
+// reads it — the safe-to-attach claim covers script safety only.
+(function captureHeaderStatesContents() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const html = DR_CAPTURE.buildCaptureDocument({
+    state: {
+      captureFormat: 1,
+      meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
+      mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+      tables: [], lensPreview: null, sidebarView: null,
+      log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
+    },
+    lockedStatusText: '',
+  });
+  eq('capture-header: the header says what the file holds',
+    html.includes('table contents') &&
+      html.includes('Share it as you would share the page.'),
+    true);
 })();
 
 // --- content.js: the extension stands down on capture pages ---

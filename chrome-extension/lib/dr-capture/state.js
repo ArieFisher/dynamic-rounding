@@ -12,8 +12,9 @@
  * plain-value capture state: for every registered table, its kind, applied
  * flag, last-used rounding options, frozen magnitude, locked state, row and
  * column counts, and every present cell's position, role, displayed text,
- * and original. The focused table also contributes its raw markup verbatim —
- * the fixture seed, the one piece of markup a capture carries.
+ * and original. The bound table also contributes its markup as it stood at
+ * capture time, verbatim — the fixture seed, the one piece of markup a
+ * capture carries.
  *
  * Dependencies arrive as parameters with working defaults, the same pattern
  * as GridAdapter's originals port: deps.store is the application model,
