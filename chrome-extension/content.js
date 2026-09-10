@@ -1075,11 +1075,21 @@ function roundTable(table, options) {
     const { results: cellTargets, maxMag } = computeGridRoundedValues(table, opts);
     DR_STORE.setTableMaxMagnitude(table, maxMag);
     let appliedAny = false;
+    let skippedWrites = 0;
     for (const { cellObj, targetValue } of cellTargets) {
       // null means "leave unchanged" — excluded, out-of-range, or no change needed.
       if (targetValue === null) continue;
-      cellObj.setText(targetValue);
-      appliedAny = true;
+      // setText reports whether the write landed; a cell with no text piece
+      // skips, and a skipped write never counts toward the form — the same
+      // rule as the extracted-cell path (#301, #315).
+      if (cellObj.setText(targetValue) === true) {
+        appliedAny = true;
+      } else {
+        skippedWrites++;
+      }
+    }
+    if (skippedWrites > 0) {
+      DR_LOG.warn('Dynamic Rounding: ' + skippedWrites + ' grid cell write(s) did not land.');
     }
     DR_STORE.setTableAppliedFlag(table, appliedAny ? 'simplified' : 'original');
     syncSwitchForTable(table);

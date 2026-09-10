@@ -388,7 +388,9 @@ class GridAdapter {
       },
       setText(s) {
         const tn = findCellTextNode(cellEl);
-        if (tn === null) return; // no-op: cell has no text node to patch
+        // No text node to patch: the write skips, and the caller reads the
+        // false so a skipped write never counts toward the table's form.
+        if (tn === null) return false;
         // Store the original value once, through the port.
         if (!port.has(cellEl)) {
           port.set(cellEl, tn.nodeValue);
@@ -396,6 +398,7 @@ class GridAdapter {
         // Patch in place — NEVER replace the node (preserves React fiber identity).
         tn.nodeValue = s;
         if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
+        return true;
       },
       // The displayed text: what the screen shows right now — the cell's
       // whole live text, never the originals port. On a rounded grid cell

@@ -8604,6 +8604,62 @@ function makeE2EGridWrapper(rowData) {
 })();
 
 // ---------------------------------------------------------------------------
+// Grid form honesty (#315): the per-cell write reports whether it landed,
+// and the table's form counts confirmed writes — the same rule as the
+// extracted-cell fix (#301). A grid cell can classify as roundable through
+// the whole-text fallback yet hold no text piece for the nodeValue write to
+// patch; such a write skips, and a skipped write must not flip the form.
+// ---------------------------------------------------------------------------
+
+(function gridSetTextReportsLanded() {
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+
+  const withNode = adapter._makeCellObj(makeGridCellWithTextNode('8584629'));
+  eq('grid-honesty: setText reports true when the write lands',
+    withNode.setText('8,500,000'), true);
+
+  const bareEl = makeElementNode('', []);
+  bareEl.textContent = '8584629';
+  const bare = adapter._makeCellObj(bareEl);
+  eq('grid-honesty: setText reports false when the cell has no text piece',
+    bare.setText('8,500,000'), false);
+  eq('grid-honesty: a skipped write adds no marker',
+    bareEl.classList.contains('dr-ext-rounded'), false);
+})();
+
+(function e2e_gridFormCountsConfirmedWrites() {
+  const grid = makeE2EGridWrapper([
+    ['8584629', '286'],
+  ]);
+  // Strip every cell's text pieces while keeping the text readable through
+  // the whole-text fallback: classification still computes targets, and the
+  // nodeValue write has nothing to patch — every write skips.
+  for (const cell of grid.cellEls) {
+    cell.textContent = cell.childNodes[0] ? cell.childNodes[0].nodeValue : '';
+    cell.childNodes = [];
+    cell.children = [];
+  }
+  try {
+    const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+    roundTable(grid.wrapperEl, opts);
+    eq('grid-honesty: a write with no text piece adds no marker through roundTable',
+      grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
+    eq('grid-honesty: a grid whose every write skipped keeps form original',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
+    eq('grid-honesty: the skipped writes leave a warn row',
+      DR_LOG.snapshot().entries.some(
+        (row) => row.level === 'warn' && /grid cell write/.test(row.text)),
+      true);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// ---------------------------------------------------------------------------
 // E2E-GR2: resetTable after roundTable — Text node restored in place, class
 // removed, drOriginal cleared, childNodes.length still unchanged.
 // ---------------------------------------------------------------------------
