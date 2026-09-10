@@ -757,7 +757,7 @@ function extractPreviewSamples(table) {
 
 // The whole page-side half of a capture, in one response: the serialized
 // registry (lib/dr-capture/state.js), plus what only this context holds —
-// the page's own address and title, the lens preview for the focused table,
+// the page's own address and title, the lens preview for the bound table,
 // and this context's log rows. Composed in a named function so the suite
 // drives it directly (the top-level onMessage listener is a no-op stub
 // there); the listener branch below only relays it.
