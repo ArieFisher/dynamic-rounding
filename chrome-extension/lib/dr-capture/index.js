@@ -16,5 +16,6 @@ const DR_CAPTURE = {
   // render.js
   buildCaptureDocument,
   filenameFor: captureFilenameFor,
+  sizeWarning: captureSizeWarning,
   escapeHtml,
 };
