@@ -5,7 +5,7 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
-importScripts('defaults.js');
+importScripts('constants.js');
 
 let sidebarTabId = null;
 

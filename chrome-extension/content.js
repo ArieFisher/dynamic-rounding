@@ -14,7 +14,7 @@
 // rounding.js, loaded by manifest content_scripts ahead of this file. The
 // sidebar loads rounding.js separately via a script tag in sidebar.html.
 
-// DR_DEFAULTS is loaded from defaults.js (declared first in manifest content_scripts).
+// DR_DEFAULTS is loaded from constants.js (declared first in manifest content_scripts).
 // It is shared with sidebar.js so the sidebar UI's initial state and the
 // right-click toggle's fallback options come from a single source.
 

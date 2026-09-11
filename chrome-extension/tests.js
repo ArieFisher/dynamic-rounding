@@ -79,7 +79,7 @@ const coreCode = sourceByName('lib/dr-number/core.js');
 const parsingCode = sourceByName('lib/dr-number/parsing.js');
 const detectCode = sourceByName('lib/dr-table/detect.js');
 const ladderCode = sourceByName('lib/dr-simplify/ladder.js');
-const constantsCode = sourceByName('defaults.js');
+const constantsCode = sourceByName('constants.js');
 // background.js pulls the constants file in with importScripts, which Node has no
 // equivalent for, and several sections below eval a whole context file on its
 // own. Stub the loader and put the same names on the global, so those sites
@@ -1856,7 +1856,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     return;
   }
 
-  // AC1/AC2: Sidebar UI defaults now live in defaults.js (single source of
+  // AC1/AC2: Sidebar UI defaults now live in constants.js (single source of
   // truth shared with content.js). The HTML must NOT hard-code checked /
   // selected attributes — they would shadow the JS-applied defaults.
   eq('sidebar-defaults: simplifyMixedCells default is true in DR_DEFAULTS',
@@ -1873,13 +1873,13 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /<input[^>]*checked/i.test(sidebarHtml), false);
   eq('sidebar-defaults: sidebar.html does not hard-code "selected" options',
     /<option[^>]*selected/i.test(sidebarHtml), false);
-  eq('sidebar-defaults: sidebar.html loads defaults.js before sidebar.js',
-    /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
+  eq('sidebar-defaults: sidebar.html loads constants.js before sidebar.js',
+    /constants\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
   eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
-      'defaults.js',
+      'constants.js',
       'lib/dr-log/index.js',
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
       'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
@@ -4697,13 +4697,13 @@ function withReactiveCreateTreeWalker(fn) {
 
 (function previewBand_manifestLoadsRoundingJs() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('manifest content_scripts loads lib/dr-number/rounding.js between defaults.js and content.js',
+  eq('manifest content_scripts loads lib/dr-number/rounding.js between constants.js and content.js',
     manifest.content_scripts[0].js[2], 'lib/dr-number/rounding.js');
 })();
 
 // The extracted layers (the lib/dr-number package: rounding.js, core.js,
 // parsing.js, index.js; the lib/dr-table package: detect.js, index.js; plus
-// ui-toggle.js) must all load AFTER defaults.js and BEFORE content.js —
+// ui-toggle.js) must all load AFTER constants.js and BEFORE content.js —
 // content.js runs last because it holds the only load-time-executing code
 // (listeners and the MutationObserver wiring). This ordering is duplicated in
 // three places (manifest content_scripts, sidebar.html, and this harness's
@@ -6234,18 +6234,17 @@ const supTestOpts = {
     /function updateDisabledState\b/.test(sidebarSrc), true);
 })();
 
-// --- Old keys (excludeDates / excludeTimes) must be absent from content.js and defaults.js ---
+// --- Old keys (excludeDates / excludeTimes) must be absent from content.js and constants.js ---
 // These were renamed to simplifyDates/simplifyTimes in this sprint.
 // If the old names are still present as property assignments or conditions, the
 // inversion is incomplete and rounding behaviour would be controlled by the wrong key.
 (function invertPills_oldKeysAbsent() {
   const contentSrc = sourceByName('content.js');
-  const defaultsSrc = sourceByName('defaults.js');
   // Sprint merge-ladder moved the simplifyDates/simplifyTimes option reads
   // (and every other classification-ladder rule) out of content.js and into
   // lib/dr-simplify/ladder.js; content.js now only calls classifyCell.
   const ladderSrc = sourceByName('lib/dr-simplify/ladder.js');
-  if (contentSrc === null || defaultsSrc === null || ladderSrc === null) {
+  if (contentSrc === null || constantsCode === null || ladderSrc === null) {
     eq('invert-pills regression: source files present in manifest', false, true);
     return;
   }
@@ -6256,10 +6255,10 @@ const supTestOpts = {
     /\bexcludeDates\b/.test(contentSrc), false);
   eq('invert-pills regression: content.js does not reference excludeTimes',
     /\bexcludeTimes\b/.test(contentSrc), false);
-  eq('invert-pills regression: defaults.js does not reference excludeDates',
-    /\bexcludeDates\b/.test(defaultsSrc), false);
-  eq('invert-pills regression: defaults.js does not reference excludeTimes',
-    /\bexcludeTimes\b/.test(defaultsSrc), false);
+  eq('invert-pills regression: constants.js does not reference excludeDates',
+    /\bexcludeDates\b/.test(constantsCode), false);
+  eq('invert-pills regression: constants.js does not reference excludeTimes',
+    /\bexcludeTimes\b/.test(constantsCode), false);
   eq('invert-pills regression: sidebar.js does not reference excludeDates',
     /\bexcludeDates\b/.test(sidebarSrc), false);
   eq('invert-pills regression: sidebar.js does not reference excludeTimes',
@@ -6276,10 +6275,10 @@ const supTestOpts = {
     /\bsimplifyDates\b/.test(ladderSrc), true);
   eq('invert-pills regression: lib/dr-simplify/ladder.js references simplifyTimes',
     /\bsimplifyTimes\b/.test(ladderSrc), true);
-  eq('invert-pills regression: defaults.js references simplifyDates',
-    /\bsimplifyDates\b/.test(defaultsSrc), true);
-  eq('invert-pills regression: defaults.js references simplifyTimes',
-    /\bsimplifyTimes\b/.test(defaultsSrc), true);
+  eq('invert-pills regression: constants.js references simplifyDates',
+    /\bsimplifyDates\b/.test(constantsCode), true);
+  eq('invert-pills regression: constants.js references simplifyTimes',
+    /\bsimplifyTimes\b/.test(constantsCode), true);
   eq('invert-pills regression: sidebar.js references simplifyDates',
     /\bsimplifyDates\b/.test(sidebarSrc), true);
   eq('invert-pills regression: sidebar.js references simplifyTimes',
@@ -6563,7 +6562,7 @@ const supTestOpts = {
   // Content-script entries are manifest-driven (guarded, no crash on a
   // rename); the other files are not content scripts, so they keep direct
   // reads by their own fixed names.
-  const contentScriptFileNames = ['defaults.js', 'content.js'];
+  const contentScriptFileNames = ['constants.js', 'content.js'];
   const directReadFileNames = ['sidebar.html', 'sidebar.js', 'tests.js'];
   const oldKeys = [
     'include' + 'Words',
@@ -11771,11 +11770,9 @@ function fireMouseClick(buttonEl, fn) {
 
   let capturedOnMessageHandler = null;
   global.chrome.runtime.onMessage.addListener = (fn) => { capturedOnMessageHandler = fn; };
-
-  const defaultsSrcForFlash = sourceByName('defaults.js');
   const roundingSrcForFlash = sourceByName('lib/dr-number/rounding.js');
   const coreSrcForFlash = sourceByName('lib/dr-number/core.js');
-  if (defaultsSrcForFlash === null || roundingSrcForFlash === null || coreSrcForFlash === null) {
+  if (constantsCode === null || roundingSrcForFlash === null || coreSrcForFlash === null) {
     eq('table-activation AC2 live: source files (defaults/rounding/core) present in manifest',
       false, true);
     global.document = savedDoc;
@@ -11787,7 +11784,7 @@ function fireMouseClick(buttonEl, fn) {
   try {
     const dir = path.join(__dirname);
     eval(
-      defaultsSrcForFlash + '\n' +
+      constantsCode + '\n' +
       roundingSrcForFlash + '\n' +
       coreSrcForFlash     + '\n' +
       fs.readFileSync(path.join(dir, 'sidebar.js'), 'utf8')
@@ -13571,7 +13568,7 @@ function fireMouseClick(buttonEl, fn) {
 // ---------------------------------------------------------------------------
 (function manifestDrivenSourceLoading() {
   const CONTENT_SCRIPT_FILES = [
-    'defaults.js',
+    'constants.js',
     'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
     'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
     'lib/dr-table/detect.js', 'lib/dr-table/index.js',
@@ -13730,14 +13727,14 @@ function fireMouseClick(buttonEl, fn) {
 })();
 
 (function libPathsLoadBeforeNonLibContentScripts() {
-  // defaults.js is the one deliberate exception: it declares every shared
+  // constants.js is the one deliberate exception: it declares every shared
   // constant (the settings defaults and the cross-context topic names) and
   // loads first, ahead of the lib/dr-number package itself. Every OTHER
   // non-lib content script (ui-toggle.js, content.js — the DOM/UI consumers)
   // must load after every lib/ path.
   const js = manifest.content_scripts[0].js;
   const isLib = (f) => f.startsWith('lib/');
-  const isConsumer = (f) => !isLib(f) && f !== 'defaults.js';
+  const isConsumer = (f) => !isLib(f) && f !== 'constants.js';
   const lastLibIndex = js.reduce((last, f, i) => (isLib(f) ? i : last), -1);
   const firstConsumerIndex = js.findIndex(isConsumer);
   eq('manifest: at least one lib/ content script is listed',
@@ -15447,10 +15444,9 @@ const LADDER_OPTS = {
 // setTableBound(false); a successful delivery must clear #status.
 // ---------------------------------------------------------------------------
 (function appModelSettings_settingsPublish_deliveryFeedback_behavioral() {
-  const defaultsSrc = sourceByName('defaults.js');
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (defaultsSrc === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
     eq('settings publish delivery: source files (defaults/rounding/core/messaging) present in manifest',
       false, true);
     return;
@@ -15545,7 +15541,7 @@ const LADDER_OPTS = {
   try {
     try {
       eval(
-        defaultsSrc + '\n' +
+        constantsCode + '\n' +
         roundingSrc + '\n' +
         coreSrc + '\n' +
         messagingCode + '\n' +
@@ -15612,10 +15608,9 @@ const LADDER_OPTS = {
 //     behavior the delivery-feedback test above pins is preserved).
 // ---------------------------------------------------------------------------
 (function sidebarApplyBlocked_noticeLifecycle() {
-  const defaultsSrc = sourceByName('defaults.js');
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (defaultsSrc === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
     eq('apply-blocked notice: source files (defaults/rounding/core/messaging) present in manifest',
       false, true);
     return;
@@ -15691,7 +15686,7 @@ const LADDER_OPTS = {
   try {
     try {
       eval(
-        defaultsSrc + '\n' +
+        constantsCode + '\n' +
         roundingSrc + '\n' +
         coreSrc + '\n' +
         messagingCode + '\n' +
@@ -16014,10 +16009,9 @@ const LADDER_OPTS = {
 // way: a pulled enabled:false must survive the reopen.
 // ---------------------------------------------------------------------------
 (function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
-  const defaultsSrc = sourceByName('defaults.js');
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (defaultsSrc === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
     eq('reopen-bound: source files (defaults/rounding/core/messaging) present in manifest',
       false, true);
     return;
@@ -16108,7 +16102,7 @@ const LADDER_OPTS = {
   try {
     try {
       eval(
-        defaultsSrc + '\n' +
+        constantsCode + '\n' +
         roundingSrc + '\n' +
         coreSrc + '\n' +
         messagingCode + '\n' +
@@ -16146,10 +16140,9 @@ const LADDER_OPTS = {
 // test and asserts the panel snapped back to the model.
 // ---------------------------------------------------------------------------
 function makeIssue251SidebarHarness() {
-  const defaultsSrc = sourceByName('defaults.js');
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (defaultsSrc === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
+  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
     return null;
   }
 
@@ -16246,7 +16239,7 @@ function makeIssue251SidebarHarness() {
   let evalError = null;
   try {
     eval(
-      defaultsSrc + '\n' +
+      constantsCode + '\n' +
       roundingSrc + '\n' +
       coreSrc + '\n' +
       messagingCode + '\n' +
@@ -18526,7 +18519,7 @@ function makeIssue251SidebarHarness() {
 (function drLogBuffer() {
   eq('dr-log: DR_LOG loads in the content-script bundle',
     typeof globalThis.DR_LOG, 'object');
-  eq('dr-log: manifest loads lib/dr-log/index.js directly after defaults.js',
+  eq('dr-log: manifest loads lib/dr-log/index.js directly after constants.js',
     contentScriptFiles[1], 'lib/dr-log/index.js');
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('dr-log: sidebar.html loads lib/dr-log/index.js before sidebar.js',
@@ -18620,7 +18613,7 @@ function makeIssue251SidebarHarness() {
 })();
 
 // ---------------------------------------------------------------------------
-// defaults.js — the one declaration of every cross-context topic name.
+// constants.js — the one declaration of every cross-context topic name.
 //
 // The point of the file is that a mistyped name fails at the read instead of
 // travelling as text no listener matches. These pin the guard itself and the

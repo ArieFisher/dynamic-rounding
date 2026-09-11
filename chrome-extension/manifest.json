@@ -18,7 +18,7 @@
         "<all_urls>"
       ],
       "js": [
-        "defaults.js",
+        "constants.js",
         "lib/dr-log/index.js",
         "lib/dr-number/rounding.js",
         "lib/dr-number/core.js",

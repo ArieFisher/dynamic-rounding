@@ -10,7 +10,7 @@
  *
  * DR_LOG holds the last 50 rows the extension records in this context. Each
  * context evaluates this file separately — the content script loads it from
- * the manifest (directly after defaults.js, so every later file can log),
+ * the manifest (directly after constants.js, so every later file can log),
  * the sidebar loads it from a script tag — so each holds its own buffer, and
  * a capture carries each buffer's snapshot labeled by its context.
  *
