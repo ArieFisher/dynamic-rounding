@@ -19,6 +19,7 @@
       ],
       "js": [
         "defaults.js",
+        "messages.js",
         "lib/dr-log/index.js",
         "lib/dr-number/rounding.js",
         "lib/dr-number/core.js",
