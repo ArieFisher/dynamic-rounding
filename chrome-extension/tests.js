@@ -79,13 +79,13 @@ const coreCode = sourceByName('lib/dr-number/core.js');
 const parsingCode = sourceByName('lib/dr-number/parsing.js');
 const detectCode = sourceByName('lib/dr-table/detect.js');
 const ladderCode = sourceByName('lib/dr-simplify/ladder.js');
-const messagesCode = sourceByName('messages.js');
+const crossContextTopicsCode = sourceByName('cross-context-topics.js');
 // background.js pulls the name list in with importScripts, which Node has no
 // equivalent for, and several sections below eval a whole context file on its
 // own. Stub the loader and put the same names on the global, so those sites
-// resolve DR_MSG exactly as the browser does.
+// resolve DR_CROSS_CONTEXT_TOPICS exactly as the browser does.
 global.importScripts = () => {};
-eval(messagesCode + '\nglobal.DR_MSG = DR_MSG;');
+eval(crossContextTopicsCode + '\nglobal.DR_CROSS_CONTEXT_TOPICS = DR_CROSS_CONTEXT_TOPICS;');
 const messagingCode = sourceByName('adapters/messaging.js');
 const storeCode = sourceByName('app/store.js');
 const uiToggleCode = sourceByName('ui-toggle.js');
@@ -1877,10 +1877,10 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, message names, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, cross-context topic names, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'defaults.js',
-      'messages.js',
+      'cross-context-topics.js',
       'lib/dr-log/index.js',
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
       'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
@@ -1968,7 +1968,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /GET_SETTINGS[\s\S]{0,200}sendResponse\([^)]*DR_STORE\.getSettings\(\)/.test(contentSrc), true);
 
   eq('pull (inverted): sidebar.js pulls settings via chrome.tabs.sendMessage GET_SETTINGS on open',
-    /chrome\.tabs\.sendMessage\([^,]*,\s*\{\s*action:\s*DR_MSG\.GET_SETTINGS/.test(sidebarSrc), true);
+    /chrome\.tabs\.sendMessage\([^,]*,\s*\{\s*action:\s*DR_CROSS_CONTEXT_TOPICS\.GET_SETTINGS/.test(sidebarSrc), true);
 
   // --- Unified rounding path: drop data-rounded-value, cache innerHTML ---
 
@@ -3621,7 +3621,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // extracted layers (core/parsing/detect/ui-toggle), so eval them in the
   // same order the manifest loads them before content.js.
   vm.runInContext(
-    messagesCode + '\n' + patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
+    crossContextTopicsCode + '\n' + patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
     detectCode + '\n' + messagingCode + '\n' + storeCode + '\n' +
     uiToggleCode + '\n' + contentSrc +
     '\nthis.__roundWithOffset = roundWithOffset;', ctx);
@@ -5574,7 +5574,7 @@ function fireTouchSecondTap(buttonEl) {
   // #251) instead of resetting the controls to the shipped defaults. The
   // handler block is isolated up to the next `} else if` so the negative
   // pins below cover the whole handler, not a fixed character window.
-  const switchHandlerMatch = sidebarSrc.match(/=== DR_MSG\.TABLE_SWITCHED\)\s*\{([\s\S]*?)\n  \} else if/);
+  const switchHandlerMatch = sidebarSrc.match(/=== DR_CROSS_CONTEXT_TOPICS\.TABLE_SWITCHED\)\s*\{([\s\S]*?)\n  \} else if/);
   const switchHandlerBlock = switchHandlerMatch ? switchHandlerMatch[1] : '';
   eq('rebind source: sidebar.js TABLE_SWITCHED handler block was isolated (sanity check on the scan itself)',
     switchHandlerBlock.length > 0, true);
@@ -11019,7 +11019,7 @@ function fireMouseClick(buttonEl, fn) {
   // Verify sidebar.js source contains the TABLE_TOGGLE_STATE handler that sets enabledEl.checked.
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   eq("AC1 part-B: sidebar.js handles 'TABLE_TOGGLE_STATE'",
-    sidebarSrc.includes('request.action === DR_MSG.TABLE_TOGGLE_STATE'), true);
+    sidebarSrc.includes('request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE'), true);
   eq('AC1 part-B: sidebar.js sets enabledEl.checked = request.enabled',
     sidebarSrc.includes('enabledEl.checked = request.enabled'), true);
   eq('AC1 part-B: sidebar.js calls updateDisabledState() after setting checked',
@@ -11235,7 +11235,7 @@ function fireMouseClick(buttonEl, fn) {
 
   // The handler must exist.
   eq("AC4 static: background.js contains TABLE_TOGGLE_STATE handler",
-    bgSrc.includes('request.action === DR_MSG.TABLE_TOGGLE_STATE'), true);
+    bgSrc.includes('request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE'), true);
 
   // The relay must be guarded by sidebarTabId !== null.
   eq("AC4 static: relay is guarded by sidebarTabId !== null",
@@ -11243,7 +11243,7 @@ function fireMouseClick(buttonEl, fn) {
 
   // The relay call must be inside the handler block (it sends the same message).
   eq("AC4 static: relay calls chrome.runtime.sendMessage with TABLE_TOGGLE_STATE",
-    bgSrc.includes('action: DR_MSG.TABLE_TOGGLE_STATE'), true);
+    bgSrc.includes('action: DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE'), true);
 })();
 
 (function pillbox_AC4_background_nullSidebarTabId_noRelay_logic() {
@@ -11384,7 +11384,7 @@ function fireMouseClick(buttonEl, fn) {
 
   // AC4 (source): content.js reaches the panel directly, without the background.
   eq('table-activation AC4 source: content.js sends TABLE_ACTIVATED via runtime.sendMessage',
-    /chrome\.runtime\.sendMessage\s*\(\s*\{\s*action:\s*DR_MSG\.TABLE_ACTIVATED/.test(contentSrc),
+    /chrome\.runtime\.sendMessage\s*\(\s*\{\s*action:\s*DR_CROSS_CONTEXT_TOPICS\.TABLE_ACTIVATED/.test(contentSrc),
     true);
 })();
 
@@ -13669,7 +13669,7 @@ function fireMouseClick(buttonEl, fn) {
   // The capture feature then added the log buffer (lib/dr-log/index.js) and
   // the three-file lib/dr-capture package (state.js, render.js, index.js),
   // raising the count from 13 to 17. The cross-context topic name list
-  // (messages.js) then raised it from 17 to 18.
+  // (cross-context-topics.js) then raised it from 17 to 18.
   eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 18 files today',
     manifest.content_scripts[0].js.length, 18);
 })();
@@ -13732,14 +13732,14 @@ function fireMouseClick(buttonEl, fn) {
 })();
 
 (function libPathsLoadBeforeNonLibContentScripts() {
-  // defaults.js and messages.js are the deliberate exceptions: they declare
+  // defaults.js and cross-context-topics.js are the deliberate exceptions: they declare
   // shared constants (the settings defaults and the cross-context topic names)
   // and load first, ahead of the lib/dr-number package itself. Every OTHER
   // non-lib content script (ui-toggle.js, content.js — the DOM/UI consumers)
   // must load after every lib/ path.
   const js = manifest.content_scripts[0].js;
   const isLib = (f) => f.startsWith('lib/');
-  const isConsumer = (f) => !isLib(f) && f !== 'defaults.js' && f !== 'messages.js';
+  const isConsumer = (f) => !isLib(f) && f !== 'defaults.js' && f !== 'cross-context-topics.js';
   const lastLibIndex = js.reduce((last, f, i) => (isLib(f) ? i : last), -1);
   const firstConsumerIndex = js.findIndex(isConsumer);
   eq('manifest: at least one lib/ content script is listed',
@@ -15412,7 +15412,7 @@ const LADDER_OPTS = {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(messagesCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
+  vm.runInContext(crossContextTopicsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
 
   sandbox.__DR_BUS.publish('intent:settingsChanged', { settings: { offsetTop: -2, rangeExpr: 'A1:B2' } });
 
@@ -15547,7 +15547,7 @@ const LADDER_OPTS = {
   try {
     try {
       eval(
-        messagesCode + '\n' +
+        crossContextTopicsCode + '\n' +
         defaultsSrc + '\n' +
         roundingSrc + '\n' +
         coreSrc + '\n' +
@@ -15694,7 +15694,7 @@ const LADDER_OPTS = {
   try {
     try {
       eval(
-        messagesCode + '\n' +
+        crossContextTopicsCode + '\n' +
         defaultsSrc + '\n' +
         roundingSrc + '\n' +
         coreSrc + '\n' +
@@ -16112,7 +16112,7 @@ const LADDER_OPTS = {
   try {
     try {
       eval(
-        messagesCode + '\n' +
+        crossContextTopicsCode + '\n' +
         defaultsSrc + '\n' +
         roundingSrc + '\n' +
         coreSrc + '\n' +
@@ -16251,7 +16251,7 @@ function makeIssue251SidebarHarness() {
   let evalError = null;
   try {
     eval(
-      messagesCode + '\n' +
+      crossContextTopicsCode + '\n' +
       defaultsSrc + '\n' +
       roundingSrc + '\n' +
       coreSrc + '\n' +
@@ -18481,7 +18481,7 @@ function makeIssue251SidebarHarness() {
       /placeholder/.test(sidebarJsSrc),
     true);
   eq('capture-ui: the glue pulls the capture state over GET_CAPTURE_STATE',
-    sidebarJsSrc.includes('action: DR_MSG.GET_CAPTURE_STATE'), true);
+    sidebarJsSrc.includes('action: DR_CROSS_CONTEXT_TOPICS.GET_CAPTURE_STATE'), true);
   eq('capture-ui: exactly one save path creates the blob URL',
     (sidebarJsSrc.match(/createObjectURL/g) || []).length, 1);
   eq('capture-ui: nothing saves without a pressed mark',
@@ -18626,7 +18626,7 @@ function makeIssue251SidebarHarness() {
 })();
 
 // ---------------------------------------------------------------------------
-// messages.js — the one declaration of every cross-context topic name.
+// cross-context-topics.js — the one declaration of every cross-context topic name.
 //
 // The point of the file is that a mistyped name fails at the read instead of
 // travelling as text no listener matches. These pin the guard itself and the
@@ -18635,25 +18635,25 @@ function makeIssue251SidebarHarness() {
 // ---------------------------------------------------------------------------
 
 (function crossContextTopicNames() {
-  eq('messages: DR_MSG loads in the content-script bundle',
-    typeof globalThis.DR_MSG, 'object');
-  eq('messages: eighteen names are declared',
-    Object.keys(globalThis.DR_MSG).length, 18);
-  eq('messages: every value equals its own field name',
-    Object.keys(globalThis.DR_MSG).every((k) => globalThis.DR_MSG[k] === k), true);
+  eq('cross-context topics: DR_CROSS_CONTEXT_TOPICS loads in the content-script bundle',
+    typeof globalThis.DR_CROSS_CONTEXT_TOPICS, 'object');
+  eq('cross-context topics: eighteen names are declared',
+    Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).length, 18);
+  eq('cross-context topics: every value equals its own field name',
+    Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).every((k) => globalThis.DR_CROSS_CONTEXT_TOPICS[k] === k), true);
 
   let threw = false;
-  try { void globalThis.DR_MSG.TABEL_TOGGLE_STATE; } catch (e) { threw = true; }
-  eq('messages: reading a misspelled name throws instead of returning undefined',
+  try { void globalThis.DR_CROSS_CONTEXT_TOPICS.TABEL_TOGGLE_STATE; } catch (e) { threw = true; }
+  eq('cross-context topics: reading a misspelled name throws instead of returning undefined',
     threw, true);
 
-  eq('messages: the list is frozen',
-    Object.isFrozen(globalThis.DR_MSG), true);
+  eq('cross-context topics: the list is frozen',
+    Object.isFrozen(globalThis.DR_CROSS_CONTEXT_TOPICS), true);
 
   // No context file declares a name of its own. A quoted all-caps literal in
   // an action position is exactly the duplicate this file removed, so catch a
   // new one at the commit rather than at a silent miss in the browser.
-  const declaredNames = new Set(Object.keys(globalThis.DR_MSG));
+  const declaredNames = new Set(Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS));
   const contextFiles = {
     'content.js': sourceByName('content.js') || '',
     'sidebar.js': fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8'),
@@ -18662,7 +18662,7 @@ function makeIssue251SidebarHarness() {
   };
   for (const [name, src] of Object.entries(contextFiles)) {
     const literals = (src.match(/action(?::|\s*===)\s*['"][A-Z][A-Z_]*['"]/g) || []);
-    eq(`messages: ${name} carries no quoted action literal of its own`,
+    eq(`cross-context topics: ${name} carries no quoted action literal of its own`,
       literals, []);
   }
 
@@ -18670,8 +18670,8 @@ function makeIssue251SidebarHarness() {
   // file. A name left behind after its last use is clutter the next reader
   // has to rule out.
   const allContextSrc = Object.values(contextFiles).join('\n');
-  const unused = [...declaredNames].filter((n) => !allContextSrc.includes('DR_MSG.' + n));
-  eq('messages: every declared name is used by at least one context file',
+  const unused = [...declaredNames].filter((n) => !allContextSrc.includes('DR_CROSS_CONTEXT_TOPICS.' + n));
+  eq('cross-context topics: every declared name is used by at least one context file',
     unused, []);
 })();
 

@@ -15,7 +15,7 @@
  * importScripts at the top of background.js.
  */
 
-const DR_MSG = (function () {
+const DR_CROSS_CONTEXT_TOPICS = (function () {
   const NAMES = {
     APPLY_BLOCKED: 'APPLY_BLOCKED',
     APPLY_OK: 'APPLY_OK',
@@ -44,7 +44,7 @@ const DR_MSG = (function () {
   return new Proxy(Object.freeze(NAMES), {
     get(target, key) {
       if (typeof key === 'symbol' || key in target) return target[key];
-      throw new Error('DR_MSG: unknown cross-context topic "' + String(key) + '"');
+      throw new Error('DR_CROSS_CONTEXT_TOPICS: unknown cross-context topic "' + String(key) + '"');
     },
   });
 })();

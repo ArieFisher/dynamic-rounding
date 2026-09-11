@@ -376,7 +376,7 @@ function renderPreviewBands() {
 function fetchPreviewSamples() {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (!tabs[0]) return;
-    chrome.tabs.sendMessage(tabs[0].id, { action: DR_MSG.GET_PREVIEW_SAMPLES }, (response) => {
+    chrome.tabs.sendMessage(tabs[0].id, { action: DR_CROSS_CONTEXT_TOPICS.GET_PREVIEW_SAMPLES }, (response) => {
       if (chrome.runtime.lastError || !response) {
         cachedSamples = null;
         cachedMaxMag = null;
@@ -587,21 +587,21 @@ function flashSidebarContainer() {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === DR_MSG.TABLE_ACTIVATED) {
+  if (request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_ACTIVATED) {
     flashSidebarContainer();
-  } else if (request.action === DR_MSG.CLOSE_SIDEBAR) {
+  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.CLOSE_SIDEBAR) {
     window.close();
-  } else if (request.action === DR_MSG.RANGE_ERROR) {
+  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.RANGE_ERROR) {
     statusEl.textContent = request.error || 'Invalid range expression.';
     statusEl.dataset.source = 'range';
     if (rangeExprEl) rangeExprEl.classList.add('invalid');
-  } else if (request.action === DR_MSG.RANGE_OK) {
+  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.RANGE_OK) {
     if (rangeExprEl) rangeExprEl.classList.remove('invalid');
     if (statusEl.dataset.source === 'range') {
       statusEl.textContent = '';
       delete statusEl.dataset.source;
     }
-  } else if (request.action === DR_MSG.APPLY_BLOCKED) {
+  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.APPLY_BLOCKED) {
     DR_LOG.warn('Dynamic Rounding: apply blocked received; panel locked.');
     statusEl.textContent = APPLY_BLOCKED_STATUS_MSG;
     statusEl.dataset.source = 'blocked';
@@ -617,18 +617,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     enabledEl.checked = true;
     enabledEl.disabled = true;
     updateDisabledState();
-  } else if (request.action === DR_MSG.APPLY_OK) {
+  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.APPLY_OK) {
     if (statusEl.dataset.source === 'blocked') {
       statusEl.textContent = '';
       delete statusEl.dataset.source;
     }
     liftLockAndRestoreEnabled();
-  } else if (request.action === DR_MSG.PREVIEW_SAMPLES_CHANGED) {
+  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.PREVIEW_SAMPLES_CHANGED) {
     // Stale view: re-read the model's settings, then the previews (the pull
     // chain ends in fetchPreviewSamples). A bare preview fetch here used to
     // reset the main toggle to the shipped default (issue #251).
     pullSettingsAndApplyToUI();
-  } else if (request.action === DR_MSG.TABLE_SWITCHED) {
+  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_SWITCHED) {
     DR_LOG.debug('Dynamic Rounding: table switch received.');
     // A table switch: the lock, if any, belonged to the previous table.
     // The switch apply on the content side runs after this message is
@@ -644,7 +644,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } catch (e) {
       // sidebar may be in teardown; harmless
     }
-  } else if (request.action === DR_MSG.TABLE_TOGGLE_STATE) {
+  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE) {
     // The message reports the record (issue #272). Under the #262 lock the
     // forced ON is display-only, so the record's value goes to the stash;
     // the lift puts it on the switch.
@@ -659,7 +659,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 window.addEventListener('unload', () => {
   try {
-    chrome.runtime.sendMessage({ action: DR_MSG.SIDEBAR_CLOSED });
+    chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.SIDEBAR_CLOSED });
   } catch (e) {
     // extension context may already be gone
   }
@@ -724,7 +724,7 @@ function pullSettingsAndApplyToUI() {
       fetchPreviewSamples();
       return;
     }
-    chrome.tabs.sendMessage(tabs[0].id, { action: DR_MSG.GET_SETTINGS }, (response) => {
+    chrome.tabs.sendMessage(tabs[0].id, { action: DR_CROSS_CONTEXT_TOPICS.GET_SETTINGS }, (response) => {
       if (chrome.runtime.lastError || !response || !response.settings) {
         applyDefaultsToUI();
         fetchPreviewSamples();
@@ -903,7 +903,7 @@ function saveCapture() {
       assembleAndSaveCapture(mark, note, null);
       return;
     }
-    chrome.tabs.sendMessage(tabs[0].id, { action: DR_MSG.GET_CAPTURE_STATE }, (response) => {
+    chrome.tabs.sendMessage(tabs[0].id, { action: DR_CROSS_CONTEXT_TOPICS.GET_CAPTURE_STATE }, (response) => {
       if (chrome.runtime.lastError || !response) {
         DR_LOG.warn('Dynamic Rounding: capture state pull failed (' +
           (chrome.runtime.lastError ? chrome.runtime.lastError.message : 'no response') + ').');
