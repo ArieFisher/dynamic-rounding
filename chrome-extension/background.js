@@ -5,7 +5,7 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
-importScripts('cross-context-topics.js');
+importScripts('defaults.js');
 
 let sidebarTabId = null;
 

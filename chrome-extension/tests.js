@@ -79,13 +79,13 @@ const coreCode = sourceByName('lib/dr-number/core.js');
 const parsingCode = sourceByName('lib/dr-number/parsing.js');
 const detectCode = sourceByName('lib/dr-table/detect.js');
 const ladderCode = sourceByName('lib/dr-simplify/ladder.js');
-const crossContextTopicsCode = sourceByName('cross-context-topics.js');
-// background.js pulls the name list in with importScripts, which Node has no
+const constantsCode = sourceByName('defaults.js');
+// background.js pulls the constants file in with importScripts, which Node has no
 // equivalent for, and several sections below eval a whole context file on its
 // own. Stub the loader and put the same names on the global, so those sites
 // resolve DR_CROSS_CONTEXT_TOPICS exactly as the browser does.
 global.importScripts = () => {};
-eval(crossContextTopicsCode + '\nglobal.DR_CROSS_CONTEXT_TOPICS = DR_CROSS_CONTEXT_TOPICS;');
+eval(constantsCode + '\nglobal.DR_CROSS_CONTEXT_TOPICS = DR_CROSS_CONTEXT_TOPICS;');
 const messagingCode = sourceByName('adapters/messaging.js');
 const storeCode = sourceByName('app/store.js');
 const uiToggleCode = sourceByName('ui-toggle.js');
@@ -1877,10 +1877,9 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /defaults\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, cross-context topic names, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'defaults.js',
-      'cross-context-topics.js',
       'lib/dr-log/index.js',
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
       'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
@@ -3621,7 +3620,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // extracted layers (core/parsing/detect/ui-toggle), so eval them in the
   // same order the manifest loads them before content.js.
   vm.runInContext(
-    crossContextTopicsCode + '\n' + patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
+    constantsCode + '\n' + patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
     detectCode + '\n' + messagingCode + '\n' + storeCode + '\n' +
     uiToggleCode + '\n' + contentSrc +
     '\nthis.__roundWithOffset = roundWithOffset;', ctx);
@@ -4698,8 +4697,8 @@ function withReactiveCreateTreeWalker(fn) {
 
 (function previewBand_manifestLoadsRoundingJs() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('manifest content_scripts loads lib/dr-number/rounding.js between the constants files and content.js',
-    manifest.content_scripts[0].js[3], 'lib/dr-number/rounding.js');
+  eq('manifest content_scripts loads lib/dr-number/rounding.js between defaults.js and content.js',
+    manifest.content_scripts[0].js[2], 'lib/dr-number/rounding.js');
 })();
 
 // The extracted layers (the lib/dr-number package: rounding.js, core.js,
@@ -13668,10 +13667,9 @@ function fireMouseClick(buttonEl, fn) {
   // adapters/messaging.js and app/store.js, raising the count from 11 to 13.
   // The capture feature then added the log buffer (lib/dr-log/index.js) and
   // the three-file lib/dr-capture package (state.js, render.js, index.js),
-  // raising the count from 13 to 17. The cross-context topic name list
-  // (cross-context-topics.js) then raised it from 17 to 18.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 18 files today',
-    manifest.content_scripts[0].js.length, 18);
+  // raising the count from 13 to 17.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 17 files today',
+    manifest.content_scripts[0].js.length, 17);
 })();
 
 // ---------------------------------------------------------------------------
@@ -13732,14 +13730,14 @@ function fireMouseClick(buttonEl, fn) {
 })();
 
 (function libPathsLoadBeforeNonLibContentScripts() {
-  // defaults.js and cross-context-topics.js are the deliberate exceptions: they declare
-  // shared constants (the settings defaults and the cross-context topic names)
-  // and load first, ahead of the lib/dr-number package itself. Every OTHER
+  // defaults.js is the one deliberate exception: it declares every shared
+  // constant (the settings defaults and the cross-context topic names) and
+  // loads first, ahead of the lib/dr-number package itself. Every OTHER
   // non-lib content script (ui-toggle.js, content.js — the DOM/UI consumers)
   // must load after every lib/ path.
   const js = manifest.content_scripts[0].js;
   const isLib = (f) => f.startsWith('lib/');
-  const isConsumer = (f) => !isLib(f) && f !== 'defaults.js' && f !== 'cross-context-topics.js';
+  const isConsumer = (f) => !isLib(f) && f !== 'defaults.js';
   const lastLibIndex = js.reduce((last, f, i) => (isLib(f) ? i : last), -1);
   const firstConsumerIndex = js.findIndex(isConsumer);
   eq('manifest: at least one lib/ content script is listed',
@@ -15412,7 +15410,7 @@ const LADDER_OPTS = {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(crossContextTopicsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
+  vm.runInContext(constantsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
 
   sandbox.__DR_BUS.publish('intent:settingsChanged', { settings: { offsetTop: -2, rangeExpr: 'A1:B2' } });
 
@@ -15547,7 +15545,6 @@ const LADDER_OPTS = {
   try {
     try {
       eval(
-        crossContextTopicsCode + '\n' +
         defaultsSrc + '\n' +
         roundingSrc + '\n' +
         coreSrc + '\n' +
@@ -15694,7 +15691,6 @@ const LADDER_OPTS = {
   try {
     try {
       eval(
-        crossContextTopicsCode + '\n' +
         defaultsSrc + '\n' +
         roundingSrc + '\n' +
         coreSrc + '\n' +
@@ -16112,7 +16108,6 @@ const LADDER_OPTS = {
   try {
     try {
       eval(
-        crossContextTopicsCode + '\n' +
         defaultsSrc + '\n' +
         roundingSrc + '\n' +
         coreSrc + '\n' +
@@ -16251,7 +16246,6 @@ function makeIssue251SidebarHarness() {
   let evalError = null;
   try {
     eval(
-      crossContextTopicsCode + '\n' +
       defaultsSrc + '\n' +
       roundingSrc + '\n' +
       coreSrc + '\n' +
@@ -18532,8 +18526,8 @@ function makeIssue251SidebarHarness() {
 (function drLogBuffer() {
   eq('dr-log: DR_LOG loads in the content-script bundle',
     typeof globalThis.DR_LOG, 'object');
-  eq('dr-log: manifest loads lib/dr-log/index.js directly after the constants files',
-    contentScriptFiles[2], 'lib/dr-log/index.js');
+  eq('dr-log: manifest loads lib/dr-log/index.js directly after defaults.js',
+    contentScriptFiles[1], 'lib/dr-log/index.js');
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('dr-log: sidebar.html loads lib/dr-log/index.js before sidebar.js',
     sidebarHtml.indexOf('lib/dr-log/index.js') !== -1 &&
@@ -18626,7 +18620,7 @@ function makeIssue251SidebarHarness() {
 })();
 
 // ---------------------------------------------------------------------------
-// cross-context-topics.js — the one declaration of every cross-context topic name.
+// defaults.js — the one declaration of every cross-context topic name.
 //
 // The point of the file is that a mistyped name fails at the read instead of
 // travelling as text no listener matches. These pin the guard itself and the
