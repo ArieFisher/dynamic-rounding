@@ -388,7 +388,9 @@ class GridAdapter {
       },
       setText(s) {
         const tn = findCellTextNode(cellEl);
-        if (tn === null) return; // no-op: cell has no text node to patch
+        // No text node to patch: the write skips, and the caller reads the
+        // false so a skipped write never counts toward the table's form.
+        if (tn === null) return false;
         // Store the original value once, through the port.
         if (!port.has(cellEl)) {
           port.set(cellEl, tn.nodeValue);
@@ -396,17 +398,20 @@ class GridAdapter {
         // Patch in place — NEVER replace the node (preserves React fiber identity).
         tn.nodeValue = s;
         if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
+        return true;
       },
-      // The displayed text: what the screen shows right now — always the
-      // live text node, never the originals port. On a rounded grid cell
+      // The displayed text: what the screen shows right now — the cell's
+      // whole live text, never the originals port. On a rounded grid cell
       // getText() above answers with the ORIGINAL (the engine's contract:
       // classification must see pre-round text), so a consumer that needs
       // "as displayed" — the capture's state serializer — reads this one.
+      // The whole text, not findCellTextNode's one node: a cell that builds
+      // its text from several pieces (a number and a unit in separate
+      // nodes) displays all of them, matching the native read.
       // Declared after setText so the GR3b/GR6j source guards' fixed scan
       // window over _makeCellObj still covers the write path.
       getDisplayedText() {
-        const tn = findCellTextNode(cellEl);
-        return tn ? tn.nodeValue : (cellEl.textContent || '');
+        return cellEl.textContent || '';
       },
     };
   }
@@ -687,11 +692,15 @@ function replaceTextPreservingHTML(cell, originalText, newText) {
  * by changes at higher positions. Only the specific text node containing each
  * number is touched; <sup>, <a>, and all other surrounding nodes are left intact.
  *
- * Fails silently (skips the patch) if the node cannot be found or if numStr is
- * not present at the expected position — same behaviour as the old fallback.
+ * A patch is skipped when its node cannot be found or numStr is not at the
+ * expected position. Returns the number of patches that landed: the caller
+ * records the cell as simplified only on a count above zero, because a
+ * skipped patch leaves the screen unchanged.
+ *
+ * @returns {number} how many patches landed
  */
 function applyExtractedPatches(cell, patches) {
-  if (!patches || patches.length === 0) return;
+  if (!patches || patches.length === 0) return 0;
   const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
   const nodePositions = [];
   let flatLen = 0;
@@ -701,6 +710,7 @@ function applyExtractedPatches(cell, patches) {
     flatLen += node.nodeValue.length;
   }
   const sorted = [...patches].sort((a, b) => b.index - a.index);
+  let landed = 0;
   for (const { index, numStr, newNum } of sorted) {
     const pos = nodePositions.find(
       p => p.start <= index && index < p.start + p.node.nodeValue.length
@@ -710,7 +720,9 @@ function applyExtractedPatches(cell, patches) {
     const v = pos.node.nodeValue;
     if (v.substring(i, i + numStr.length) !== numStr) continue;
     pos.node.nodeValue = v.substring(0, i) + newNum + v.substring(i + numStr.length);
+    landed++;
   }
+  return landed;
 }
 
 // --- Table/grid detection predicates ---

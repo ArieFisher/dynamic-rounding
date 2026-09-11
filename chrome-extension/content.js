@@ -756,7 +756,7 @@ function extractPreviewSamples(table) {
 
 // The whole page-side half of a capture, in one response: the serialized
 // registry (lib/dr-capture/state.js), plus what only this context holds —
-// the page's own address and title, the lens preview for the focused table,
+// the page's own address and title, the lens preview for the bound table,
 // and this context's log rows. Composed in a named function so the suite
 // drives it directly (the top-level onMessage listener is a no-op stub
 // there); the listener branch below only relays it.
@@ -769,13 +769,27 @@ function buildCaptureStateResponse() {
   const cellCounts = state.tables.map(function (t) { return t.cells.length; });
   DR_LOG.debug('Dynamic Rounding: capture state collected (' + state.tables.length +
     ' table(s), cells per table: [' + cellCounts.join(', ') + ']).');
+  // The serializer guards per table; this walk of the bound table is the one
+  // step after it that can throw, and an unguarded throw here would discard
+  // the whole page-side half — the serialized registry, the fixture seed,
+  // and the log rows. On a throw: null, a warn row (taken into the snapshot
+  // below), and the rest of the response stands.
+  let lensPreview = null;
+  if (selected) {
+    try {
+      lensPreview = extractPreviewSamples(selected);
+    } catch (e) {
+      DR_LOG.warn('Dynamic Rounding: lens preview extraction failed during capture (' +
+        String(e && e.message ? e.message : e) + ').');
+    }
+  }
   return Object.assign({
     page: {
       url: typeof location !== 'undefined' ? location.href : null,
       title: (typeof document !== 'undefined' && typeof document.title === 'string')
         ? document.title : null,
     },
-    lensPreview: selected ? extractPreviewSamples(selected) : null,
+    lensPreview: lensPreview,
     log: DR_LOG.snapshot(),
   }, state);
 }
@@ -1060,11 +1074,21 @@ function roundTable(table, options) {
     const { results: cellTargets, maxMag } = computeGridRoundedValues(table, opts);
     DR_STORE.setTableMaxMagnitude(table, maxMag);
     let appliedAny = false;
+    let skippedWrites = 0;
     for (const { cellObj, targetValue } of cellTargets) {
       // null means "leave unchanged" — excluded, out-of-range, or no change needed.
       if (targetValue === null) continue;
-      cellObj.setText(targetValue);
-      appliedAny = true;
+      // setText reports whether the write landed; a cell with no text piece
+      // skips, and a skipped write never counts toward the form — the same
+      // rule as the extracted-cell path (#301, #315).
+      if (cellObj.setText(targetValue) === true) {
+        appliedAny = true;
+      } else {
+        skippedWrites++;
+      }
+    }
+    if (skippedWrites > 0) {
+      DR_LOG.warn('Dynamic Rounding: ' + skippedWrites + ' grid cell write(s) did not land.');
     }
     DR_STORE.setTableAppliedFlag(table, appliedAny ? 'simplified' : 'original');
     syncSwitchForTable(table);
@@ -1237,20 +1261,30 @@ function roundTable(table, options) {
           if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
         }
         if (patches.length === 0) continue;
-        // Stash the pristine HTML, superscript ranges, and the surviving
-        // (link-filtered) match indices — measured against the pre-round
-        // text, BEFORE applyExtractedPatches shortens it — in the registry
-        // instead of four separate dataset attributes. collectNumericCells
-        // reads this record back instead of re-measuring the (now-rounded,
-        // differently-offset) live element against stored original text. See
-        // finalizeExtractedDecision and collectNumericCells for the read side.
-        DR_STORE.setTableOriginal(table, cell, {
+        // Measure the pristine HTML, superscript ranges, and the surviving
+        // (link-filtered) match indices against the pre-round text, BEFORE
+        // applyExtractedPatches shortens it — but store the record only after
+        // a patch confirms the cell changed. The registry record replaces
+        // four separate dataset attributes; collectNumericCells reads it back
+        // instead of re-measuring the (now-rounded, differently-offset) live
+        // element against stored original text. See finalizeExtractedDecision
+        // and collectNumericCells for the read side.
+        const originalRecord = {
           html: cell.innerHTML,
           value: originalValue,
           supRanges: getSuperscriptRanges(cell),
           linkFilteredIdx: info.matches.map((m) => m.index),
-        });
-        applyExtractedPatches(cell, patches);
+        };
+        const landed = applyExtractedPatches(cell, patches);
+        if (landed < patches.length) {
+          DR_LOG.warn('Dynamic Rounding: ' + (patches.length - landed) + ' of ' +
+            patches.length + ' extracted-cell patches did not land.');
+        }
+        // Record only a confirmed change: with every patch skipped the screen
+        // keeps its text, and storing the original, the hover text, or the
+        // marker would record a simplification that never happened.
+        if (landed === 0) continue;
+        DR_STORE.setTableOriginal(table, cell, originalRecord);
         cell.title = `Original: ${originalValue}`;
         cell.classList.add('dr-ext-rounded');
         appliedAny = true;

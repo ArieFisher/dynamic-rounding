@@ -10,7 +10,7 @@
  *
  * buildCaptureDocument() turns one capture state into one self-contained
  * HTML document — a string in, a string out, no browser API touched. The
- * document reads as a report: the mark and note on top, the focused table
+ * document reads as a report: the mark and note on top, the bound table
  * beside a likeness of the sidebar, the log rows of both contexts, the
  * fixture seed as readable text, and the whole state as machine-readable
  * JSON at the bottom.
@@ -73,6 +73,7 @@ const CAPTURE_STYLES = [
   '.cap-table th, .cap-table td { border: 1px solid #bbb; padding: 4px 10px; text-align: right; }',
   '.cap-table th { background: #f2f2f2; }',
   '.cap-simplified { text-decoration: underline dotted #3d85c6; cursor: help; }',
+  '.cap-lost { color: #8a6d3b; font-style: italic; }',
   '.cap-locked, .cap-empty { color: #8a6d3b; background: #fcf8e3; padding: 6px 10px; border-radius: 4px; margin: 8px 0; }',
   '.cap-switch { display: flex; justify-content: space-between; margin: 2px 0; }',
   '.cap-switch b { font-weight: 600; }',
@@ -135,11 +136,47 @@ function captureFilenameFor(opts) {
   return 'dr-capture-' + date + '-' + captureHostSlug(opts.url) + '-' + time + '.html';
 }
 
+/* -------------------------------------------------------------- size note */
+
+// The saved file carries the same content about four times — the two table
+// renderings, the JSON island, and the visible seed — so the serialized
+// state's length times this factor estimates the file's size before any
+// file exists.
+const CAPTURE_FILE_CHARS_PER_STATE_CHAR = 4;
+// Estimates at or above this many characters (about 4 MB) get a size
+// warning on the capture form. The full-detail default stays: the warning
+// informs the save, it never blocks it.
+const CAPTURE_SIZE_WARN_CHARS = 4 * 1000 * 1000;
+
+/**
+ * A size warning for the capture form: null for an ordinary state, one
+ * sentence with the estimated file size for a large one. The caller passes
+ * the same pulled state the file would be built from.
+ * @param {object} state
+ * @returns {string|null}
+ */
+function captureSizeWarning(state) {
+  let length;
+  try {
+    length = JSON.stringify(state).length;
+  } catch (e) {
+    return null;
+  }
+  const estimate = length * CAPTURE_FILE_CHARS_PER_STATE_CHAR;
+  if (estimate < CAPTURE_SIZE_WARN_CHARS) return null;
+  return 'This capture will be large: about ' +
+    Math.round(estimate / (1000 * 1000)) + ' MB.';
+}
+
 /* --------------------------------------------------------------- sections */
 
 function renderCaptureHeader(state) {
   const meta = state.meta || {};
-  const glyph = CAPTURE_MARK_GLYPHS[state.mark] || '';
+  // Own-property guard: only the three mark words resolve a glyph. A bare
+  // lookup would resolve prototype property names too, and the glyph is
+  // interpolated as markup.
+  const glyph = Object.prototype.hasOwnProperty.call(CAPTURE_MARK_GLYPHS, state.mark)
+    ? CAPTURE_MARK_GLYPHS[state.mark] : '';
   const rows = [
     ['Page', displayValue(meta.url)],
     ['Title', displayValue(meta.title)],
@@ -153,21 +190,28 @@ function renderCaptureHeader(state) {
   // The note is one free-text field; line breaks the user typed survive
   // through the pre-wrap rule on .cap-note.
   const noteRow = '<p><b>Remarks:</b> ' + escapeHtml(displayValue(state.note)) + '</p>';
+  // What the file holds, stated where the person about to attach it reads
+  // it: the script-free CSP makes the file safe to open, and this line
+  // covers the other half — the values it carries.
+  const holdsRow = '<p class="cap-band">This capture holds the page’s table contents, ' +
+    'its address and title, and browser details. Share it as you would share the page.</p>';
   return '<header>' +
     '<h1>DynamicRounding capture</h1>' +
     '<p class="cap-mark">' + glyph + ' <span>' + escapeHtml(displayValue(state.mark)) + '</span></p>' +
     '<dl>' + rows + '</dl>' +
+    holdsRow +
     '<section class="cap-note">' + noteRow + '</section>' +
     '</header>';
 }
 
-// One rendering of the focused table's cells, rebuilt as a real table of
+// One rendering of the bound table's cells, rebuilt as a real table of
 // escaped text — never cloned markup. mode 'displayed' shows what the screen
 // showed; a simplified cell (its original differs from what it shows) gets
 // the original in its title, so hover reveals it the way the live page does.
-// mode 'originals' shows the originals themselves; a cell with no stored
-// original shows its displayed text, which for an unchanged cell IS the
-// original.
+// mode 'originals' shows the originals themselves. A cell with no stored
+// original splits on the rounded marker: with the marker the original is
+// lost and renders as that absence, never a substituted value; without it
+// the cell was never rounded, so its displayed text IS the original.
 function renderCapTable(table, mode) {
   const byRow = [];
   for (let i = 0; i < table.cells.length; i++) {
@@ -179,6 +223,9 @@ function renderCapTable(table, mode) {
     const cellsHtml = (rowCells || []).map(function (cell) {
       const tag = cell.role === 'th' ? 'th' : 'td';
       if (mode === 'originals') {
+        if (cell.original === null && cell.wearsMarker) {
+          return '<' + tag + ' class="cap-lost">original lost</' + tag + '>';
+        }
         const value = cell.original !== null ? cell.original : cell.text;
         return '<' + tag + '>' + escapeHtml(value) + '</' + tag + '>';
       }
@@ -193,16 +240,24 @@ function renderCapTable(table, mode) {
   return '<table class="cap-table">' + rowsHtml + '</table>';
 }
 
-// The focused table twice: as displayed, then with the originals, so both
+// The bound table twice: as displayed, then with the originals, so both
 // forms are readable without hovering. The hover reveal on the displayed
 // copy stays for cell-by-cell comparison.
-function renderFocusedTable(state, lockedStatusText) {
+function renderBoundTable(state, lockedStatusText) {
   const table = state.activeTableIndex === null || state.activeTableIndex === undefined
     ? null
     : state.tables[state.activeTableIndex];
   if (!table) {
     return '<p class="cap-empty">No table was bound when this capture was taken. ' +
       'The state below records everything the extension had.</p>';
+  }
+  // An error record holds a failure, not cells; rendering it through the
+  // table path would caption null counts over an empty table and read as a
+  // finding about the page. The failure is the finding.
+  if (table.kind === 'unknown') {
+    return '<p class="cap-empty">Serialization of this table failed: ' +
+      escapeHtml(table.error || '') +
+      '. The state below records everything the extension had.</p>';
   }
   const lockedHtml = table.locked
     ? '<p class="cap-locked">' + escapeHtml(lockedStatusText || '') + '</p>'
@@ -216,22 +271,26 @@ function renderFocusedTable(state, lockedStatusText) {
     renderCapTable(table, 'displayed') +
     '<p class="cap-band">Hover a dotted cell to see its original.</p>' +
     '<h3>The same table, with the originals</h3>' +
-    renderCapTable(table, 'originals');
+    renderCapTable(table, 'originals') +
+    // The state records no cell spans, so both renderings and the JSON place
+    // every cell in its own slot (#309's named limit).
+    '<p class="cap-band">Cell spans are not recorded: merged cells render ' +
+    'unmerged here and in the state below.</p>';
 }
 
-// Every table the registry held, one line each, the focused one marked. The
+// Every table the registry held, one line each, the bound one marked. The
 // full per-cell detail sits in the JSON island; this list shows at a glance
 // what was found.
 function renderRegistrySection(state) {
   const rows = (state.tables || []).map(function (table, index) {
-    const focused = index === state.activeTableIndex;
+    const bound = index === state.activeTableIndex;
     const label = table.kind === 'unknown'
       ? 'serialization failed: ' + (table.error || '')
       : table.kind + ', ' + table.rowCount + ' row(s) × ' + table.columnCount +
         ' column(s), form: ' + (table.appliedFlag === 'simplified' ? 'simplified' : 'raw') +
         (table.locked ? ', locked' : '');
     return '<div class="cap-switch"><span>#' + (index + 1) + ' — ' + escapeHtml(label) +
-      '</span><b>' + (focused ? 'focused' : '') + '</b></div>';
+      '</span><b>' + (bound ? 'bound' : '') + '</b></div>';
   }).join('');
   const body = rows || '<p class="cap-empty">The registry held no tables.</p>';
   return '<section><h2>Registry</h2>' + body + '</section>';
@@ -295,10 +354,16 @@ function renderSidebarLikeness(state, lockedStatusText) {
 }
 
 // Both contexts' log rows, labeled by provenance. An empty buffer is a
-// finding, so it renders as a sentence, never as a missing section.
+// finding, so it renders as a sentence, never as a missing section — and a
+// missing snapshot is a different finding: the state pull for that context
+// failed, so no buffer arrived at all.
 function renderCaptureLogs(state) {
   const log = state.log || {};
   const section = function (label, snap) {
+    if (!snap) {
+      return '<h3>' + escapeHtml(label) + '</h3>' +
+        '<p class="cap-empty">The page state pull failed; no log snapshot arrived.</p>';
+    }
     const rows = snap && Array.isArray(snap.entries) ? snap.entries : [];
     const dropped = snap && snap.dropped ? '<li>(' + escapeHtml(String(snap.dropped)) +
       ' earlier row(s) dropped past the cap)</li>' : '';
@@ -324,8 +389,8 @@ function renderFixtureSeed(state) {
       '<p class="cap-empty">No fixture seed: no table was bound.</p></section>';
   }
   return '<section><h2>Fixture seed</h2>' +
-    '<p class="cap-band">The focused table’s raw markup, escaped here for reading. ' +
-    'The JSON below carries it byte-exact.</p>' +
+    '<p class="cap-band">The bound table’s markup as it stood at capture time, ' +
+    'escaped here for reading. The JSON below carries it byte-exact.</p>' +
     '<pre class="cap-seed">' + escapeHtml(state.fixtureSeed) + '</pre></section>';
 }
 
@@ -354,7 +419,7 @@ function buildCaptureDocument(input) {
     renderCaptureHeader(state) +
     '<main>' +
     '<section><h2>What the extension saw</h2><div class="cap-visual">' +
-    '<div class="cap-page">' + renderFocusedTable(state, lockedStatusText) + '</div>' +
+    '<div class="cap-page">' + renderBoundTable(state, lockedStatusText) + '</div>' +
     renderSidebarLikeness(state, lockedStatusText) +
     '</div></section>' +
     renderRegistrySection(state) +

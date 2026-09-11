@@ -103,6 +103,9 @@ globalThis.collectCaptureState = collectCaptureState;
 globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
 // Expose the lib/dr-capture package bundle, mirroring DR_NUMBER above.
 globalThis.DR_CAPTURE = DR_CAPTURE;
+// Expose the renderer's glyph map so the glyph pin can compare it against
+// the sidebar's buttons.
+globalThis.CAPTURE_MARK_GLYPHS = CAPTURE_MARK_GLYPHS;
 // Expose toggle infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
@@ -1703,6 +1706,114 @@ function withLinkCreateTreeWalker(fn) {
     eq('era-round: control 1,050,000,000 still rounds',
       cells[1].classList.contains('dr-ext-rounded'), true);
   });
+})();
+
+// --- 3c. A silently failed extracted patch records nothing (#301) ---
+//
+// The patch step skips silently when the number is not at its flat-text
+// position in the live nodes (the text moved between classification and
+// patching). The write path records a cell as simplified only when a patch
+// confirmed a change: no stored original, no hover text, no marker, no
+// simplified flag — and a log row states the failure so a capture shows it
+// instead of a false success.
+
+(function extractedPatchOptsFor() {
+  globalThis.EXTRACTED_PATCH_OPTS = {
+    enabled: true, simplifyMixedCells: true, simplifyDates: false, simplifyTimes: false,
+    simplifyFirstRow: true, simplifyFirstColumn: true,
+    simplifyMixedPercent: true, simplifyMixedCurrency: true,
+    offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+    rangeExpr: '',
+  };
+})();
+
+(function failedExtractedPatchRecordsNothing() {
+  // The walker's one text node does not hold the extracted number at its
+  // expected position, so every patch skips.
+  global.document.createTreeWalker = function () {
+    let done = false;
+    return {
+      nextNode: function () {
+        if (done) return null;
+        done = true;
+        return { nodeValue: 'Cost: [moved text] per month' };
+      },
+    };
+  };
+  const table = makeMockTable([[
+    { tag: 'td', text: 'Cost: 123,456 per month' },
+  ]]);
+  try {
+    roundTable(table, EXTRACTED_PATCH_OPTS);
+    const cell = table.rows[0].cells[0];
+    eq('patch-honesty: a cell whose patches all skip gets no marker',
+      cell.classList.contains('dr-ext-rounded'), false);
+    eq('patch-honesty: a cell whose patches all skip gets no hover text',
+      cell.title, '');
+    eq('patch-honesty: a cell whose patches all skip stores no original',
+      DR_STORE.getTableOriginalText(table, cell), undefined);
+    eq('patch-honesty: a table whose only change failed keeps form original',
+      DR_STORE.getTableAppliedFlag(table), 'original');
+    eq('patch-honesty: the failure leaves a warn row naming the patch step',
+      DR_LOG.snapshot().entries.some(
+        (row) => row.level === 'warn' && /extracted-cell patch/.test(row.text)),
+      true);
+  } finally {
+    delete global.document.createTreeWalker;
+    DR_STORE.unregisterTable(table);
+  }
+})();
+
+// Control: the same cell with its number where the patch expects it still
+// records in full — the honesty gate never blocks a confirmed change.
+(function landedExtractedPatchStillRecords() {
+  const table = makeMockTable([[
+    { tag: 'td', text: 'Cost: 123,456 per month' },
+  ]]);
+  try {
+    withCreateTreeWalker(function () {
+      roundTable(table, EXTRACTED_PATCH_OPTS);
+    });
+    const cell = table.rows[0].cells[0];
+    eq('patch-honesty: a landed patch changes the cell text',
+      cell.innerText.includes('123,456'), false);
+    eq('patch-honesty: a landed patch stamps the marker and hover text',
+      cell.classList.contains('dr-ext-rounded') &&
+        cell.title === 'Original: Cost: 123,456 per month',
+      true);
+    eq('patch-honesty: a landed patch stores the original',
+      DR_STORE.getTableOriginalText(table, cell), 'Cost: 123,456 per month');
+    eq('patch-honesty: a landed patch flips the form',
+      DR_STORE.getTableAppliedFlag(table), 'simplified');
+  } finally {
+    DR_STORE.unregisterTable(table);
+  }
+})();
+
+// The patch step reports what it did: the landed count is the write path's
+// only evidence that the screen changed.
+(function applyExtractedPatchesReturnsLandedCount() {
+  global.document.createTreeWalker = function () {
+    let done = false;
+    return {
+      nextNode: function () {
+        if (done) return null;
+        done = true;
+        return { nodeValue: 'A 100 B 200' };
+      },
+    };
+  };
+  try {
+    const landed = applyExtractedPatches({}, [
+      { index: 2, numStr: '100', newNum: '90' },
+      { index: 8, numStr: '999', newNum: '1,000' },
+    ]);
+    eq('patch-honesty: applyExtractedPatches returns the landed count', landed, 1);
+    eq('patch-honesty: an empty patch list lands zero patches',
+      applyExtractedPatches({}, []), 0);
+  } finally {
+    delete global.document.createTreeWalker;
+  }
 })();
 
 // --- 4. Spec-scope guards ---
@@ -8496,6 +8607,62 @@ function makeE2EGridWrapper(rowData) {
   // which records a { html, value, ... } record instead of a plain string).
   eq('E2E-GR1: cell[0] dataset.originalHtml is NOT set on a grid cell',
     cell0.dataset.originalHtml, undefined);
+})();
+
+// ---------------------------------------------------------------------------
+// Grid form honesty (#315): the per-cell write reports whether it landed,
+// and the table's form counts confirmed writes — the same rule as the
+// extracted-cell fix (#301). A grid cell can classify as roundable through
+// the whole-text fallback yet hold no text piece for the nodeValue write to
+// patch; such a write skips, and a skipped write must not flip the form.
+// ---------------------------------------------------------------------------
+
+(function gridSetTextReportsLanded() {
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+
+  const withNode = adapter._makeCellObj(makeGridCellWithTextNode('8584629'));
+  eq('grid-honesty: setText reports true when the write lands',
+    withNode.setText('8,500,000'), true);
+
+  const bareEl = makeElementNode('', []);
+  bareEl.textContent = '8584629';
+  const bare = adapter._makeCellObj(bareEl);
+  eq('grid-honesty: setText reports false when the cell has no text piece',
+    bare.setText('8,500,000'), false);
+  eq('grid-honesty: a skipped write adds no marker',
+    bareEl.classList.contains('dr-ext-rounded'), false);
+})();
+
+(function e2e_gridFormCountsConfirmedWrites() {
+  const grid = makeE2EGridWrapper([
+    ['8584629', '286'],
+  ]);
+  // Strip every cell's text pieces while keeping the text readable through
+  // the whole-text fallback: classification still computes targets, and the
+  // nodeValue write has nothing to patch — every write skips.
+  for (const cell of grid.cellEls) {
+    cell.textContent = cell.childNodes[0] ? cell.childNodes[0].nodeValue : '';
+    cell.childNodes = [];
+    cell.children = [];
+  }
+  try {
+    const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+    roundTable(grid.wrapperEl, opts);
+    eq('grid-honesty: a write with no text piece adds no marker through roundTable',
+      grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
+    eq('grid-honesty: a grid whose every write skipped keeps form original',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
+    eq('grid-honesty: the skipped writes leave a warn row',
+      DR_LOG.snapshot().entries.some(
+        (row) => row.level === 'warn' && /grid cell write/.test(row.text)),
+      true);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
 })();
 
 // ---------------------------------------------------------------------------
@@ -17985,7 +18152,9 @@ function makeIssue251SidebarHarness() {
     nodeType: 1,
     childNodes: [{ nodeType: 3, nodeValue: text }],
     classList: { add() {}, contains() { return false; } },
-    textContent: text,
+    // Like the DOM: textContent derives from the child nodes, so a setText
+    // patch through nodeValue shows up in the whole-cell read.
+    get textContent() { return this.childNodes[0].nodeValue; },
   });
   const adapter = new GridAdapter({}, { originalsPort: makePort() });
 
@@ -18004,6 +18173,37 @@ function makeIssue251SidebarHarness() {
     typeof rounded.getDisplayedText === 'function'
       ? { engine: rounded.getText(), displayed: rounded.getDisplayedText() } : null,
     { engine: '98,765', displayed: '99,000' });
+})();
+
+// A grid cell that builds its text from several pieces — a number and a unit
+// in separate nodes — displays all of them. findCellTextNode answers with one
+// deepest text node (the write path's patch target); the displayed-text read
+// answers with the cell's whole text, matching the native read. Regression
+// for #303: "1,234<span>%</span>" recorded text: "%".
+(function captureDisplayedTextReadsWholeCell() {
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+  const textNode = (text) => ({ nodeType: 3, nodeValue: text });
+  const span = (text) => ({ nodeType: 1, childNodes: [textNode(text)] });
+  const makePiecedCellEl = (children, wholeText) => ({
+    nodeType: 1,
+    childNodes: children,
+    classList: { add() {}, contains() { return false; } },
+    textContent: wholeText,
+  });
+
+  const numberThenUnit = adapter._makeCellObj(
+    makePiecedCellEl([textNode('1,234'), span('%')], '1,234%'));
+  eq('capture-reads: a grid cell of number-then-unit pieces displays the whole text',
+    numberThenUnit.getDisplayedText(), '1,234%');
+
+  const unitThenNumber = adapter._makeCellObj(
+    makePiecedCellEl([span('$'), textNode('1,234')], '$1,234'));
+  eq('capture-reads: a grid cell of unit-then-number pieces displays the whole text',
+    unitThenNumber.getDisplayedText(), '$1,234');
 })();
 
 (function capturePlainOriginalTextRead() {
@@ -18026,7 +18226,7 @@ function makeIssue251SidebarHarness() {
 // --- lib/dr-capture: the capture state serializer ---
 //
 // collectCaptureState() turns the registry into the plain-value capture
-// state: every registered table in full detail, plus the focused table's raw
+// state: every registered table in full detail, plus the bound table's raw
 // markup as the fixture seed. Dependencies arrive as parameters with working
 // defaults (deps.store, deps.adapterFor), so these tests drive the function
 // with stand-ins and no DOM. Locked honesty is pinned here: a cell wearing
@@ -18101,8 +18301,8 @@ function makeIssue251SidebarHarness() {
   eq('capture-state: the settings record is carried verbatim',
     state.settings, { enabled: true, offsetTop: -0.5 });
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
-  eq('capture-state: the focused table is found by index', state.activeTableIndex, 0);
-  eq('capture-state: the fixture seed is the focused table\'s raw markup verbatim',
+  eq('capture-state: the bound table is found by index', state.activeTableIndex, 0);
+  eq('capture-state: the fixture seed is the bound table\'s markup at capture time, verbatim',
     state.fixtureSeed, '<table><tr><td>99,000</td></tr></table>');
 
   const recA = state.tables[0];
@@ -18118,9 +18318,11 @@ function makeIssue251SidebarHarness() {
       rowCount: 3, columnCount: 2,
     });
   eq('capture-state: a header cell serializes with role th',
-    recA.cells[0], { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null });
+    recA.cells[0],
+    { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null, wearsMarker: false });
   eq('capture-state: a simplified cell carries displayed text AND its original',
-    recA.cells[1], { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' });
+    recA.cells[1],
+    { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765', wearsMarker: true });
   eq('capture-state: a cell with no stored original serializes original: null',
     recA.cells[2].original, null);
   eq('capture-state: an outside row keeps its flag',
@@ -18173,6 +18375,57 @@ function makeIssue251SidebarHarness() {
     errState.tables[1].cells.length, 1);
 })();
 
+// The per-cell marker flag reaches the cell record (#304). The serializer
+// already reads the rounded marker to compute the locked pairing; the
+// renderer needs it per cell to tell a lost original (marker, original: null)
+// from a cell that was never rounded (no marker, original: null).
+(function captureStateCarriesMarkerFlag() {
+  if (typeof globalThis.collectCaptureState !== 'function') return;
+
+  const markerClassList = (marked) => ({ contains: (c) => marked && c === 'dr-ext-rounded' });
+  const makeCellEl = (marked) => ({ classList: markerClassList(marked) });
+
+  const marked = makeCellEl(true);
+  const unmarked = makeCellEl(false);
+  const lost = makeCellEl(true);
+  const table = { _rows: [{ cells: [
+    { el: marked, text: '99,000' },
+    { el: unmarked, text: 'Amount' },
+    { el: lost, text: '99,000' },
+  ] }] };
+  const store = {
+    getRegisteredTables: () => [table],
+    getSelectedTable: () => null,
+    getSettings: () => ({}),
+    getTableAppliedFlag: () => 'simplified',
+    getTableRoundOptions: () => null,
+    getTableMaxMagnitude: () => null,
+    getTableOriginalText: (t, cellEl) => (cellEl === marked ? '98,765' : undefined),
+  };
+  const adapterFor = () => ({
+    isVirtualized: () => false,
+    getRows: () => table._rows.map((row) => ({
+      isOutside: false,
+      getCells: () => row.cells.map((cell) => ({
+        el: cell.el,
+        tagName: 'TD',
+        getDisplayedText: () => cell.text,
+      })),
+    })),
+  });
+
+  const cells = collectCaptureState({ store, adapterFor }).tables[0].cells;
+  eq('capture-state: a marked cell record carries wearsMarker true beside its original',
+    { wearsMarker: cells[0].wearsMarker, original: cells[0].original },
+    { wearsMarker: true, original: '98,765' });
+  eq('capture-state: an unmarked cell record carries wearsMarker false',
+    { wearsMarker: cells[1].wearsMarker, original: cells[1].original },
+    { wearsMarker: false, original: null });
+  eq('capture-state: a lost original keeps the locked pairing readable per cell',
+    { wearsMarker: cells[2].wearsMarker, original: cells[2].original },
+    { wearsMarker: true, original: null });
+})();
+
 // --- content.js: the GET_CAPTURE_STATE cross-context topic ---
 //
 // The sidebar pulls the whole page-side half of a capture in one request.
@@ -18200,7 +18453,7 @@ function makeIssue251SidebarHarness() {
   // field and log snapshot still present.
   DR_STORE.setSelectedTable(null);
   const unboundResponse = buildCaptureStateResponse();
-  eq('capture-wire: no table bound still answers with an honest unfocused state',
+  eq('capture-wire: no table bound still answers with an honest unbound state',
     {
       captureFormat: unboundResponse.captureFormat,
       activeTableIndex: unboundResponse.activeTableIndex,
@@ -18228,11 +18481,11 @@ function makeIssue251SidebarHarness() {
     const mine = response.tables[response.activeTableIndex];
     eq('capture-wire: the bound table serializes in full and is the focus',
       {
-        focused: response.activeTableIndex !== null,
+        bound: response.activeTableIndex !== null,
         kind: mine.kind,
         cellTexts: mine.cells.map((c) => c.text),
       },
-      { focused: true, kind: 'native', cellTexts: ['8,584,629', '286'] });
+      { bound: true, kind: 'native', cellTexts: ['8,584,629', '286'] });
     eq('capture-wire: the fixture seed is the bound table\'s markup',
       response.fixtureSeed, '<table><tr><td>8,584,629</td><td>286</td></tr></table>');
     eq('capture-wire: the capture carries the lens preview',
@@ -18350,16 +18603,22 @@ function makeIssue251SidebarHarness() {
     html.includes('Remarks:') && html.includes('rounded to 99,000'), true);
   eq('capture-render: a simplified cell shows its value with the original on hover',
     /<td[^>]*title="Original: 98,765"[^>]*>99,000<\/td>/.test(html), true);
-  eq('capture-render: the focused table renders a second time with the originals',
+  eq('capture-render: the bound table renders a second time with the originals',
     /with the originals/.test(html) &&
       /<td[^>]*>98,765<\/td>/.test(html), true);
+  eq('capture-render: the table renderings state the span limit',
+    html.includes('merged cells render unmerged'), true);
   eq('capture-render: the likeness shows both thumbs when the lens control is coupled',
     (html.match(/class="cap-thumb/g) || []).length, 2);
   eq('capture-render: the coupled heading names the shared value',
     html.includes('Lens control (coupled, both at -0.5)'), true);
-  eq('capture-render: the registry section lists every table with the focused one marked',
+  eq('capture-render: the registry section lists every table with the bound one marked',
     /<h2>Registry<\/h2>/.test(html) &&
-      /native[\s\S]{0,120}focused/.test(html), true);
+      /native[\s\S]{0,120}bound/.test(html), true);
+  eq('capture-render: the retired word for the bound table never renders',
+    /<b>focused<\/b>/.test(html) || /focused table/.test(html), false);
+  eq('capture-render: the seed intro names the bound table and capture time',
+    html.includes('bound table’s markup as it stood at capture time'), true);
   eq('capture-render: the footer names the state block without a how-to sentence',
     html.includes('holds the full capture state') &&
       !html.includes('To extract the state'), true);
@@ -18440,6 +18699,149 @@ function makeIssue251SidebarHarness() {
     'dr-capture-2026-09-09-no-source-140506.html');
 })();
 
+// --- lib/dr-capture: the renderer keeps the state's absences (#304) ---
+//
+// The state records three kinds of absence honestly; the page a human reads
+// must present each as an absence, never as something it is not: a lost
+// original never becomes a substituted value, an error record never becomes
+// an empty table, a missing log snapshot never becomes an empty buffer. The
+// glyph lookup resolves only the three mark words, so a hostile mark cannot
+// pull a prototype property into the document.
+(function captureRendererAbsenceHonesty() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
+  const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
+
+  const makeState = (over) => Object.assign({
+    captureFormat: 1,
+    meta: { url: 'https://www.example.com/prices', title: 'Prices',
+      version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
+    mark: 'negative',
+    note: '',
+    settings: { enabled: true },
+    activeTableIndex: 0,
+    tables: [],
+    lensPreview: null,
+    sidebarView: null,
+    log: {
+      content: { entries: [], dropped: 0, limit: 50 },
+      sidebar: { entries: [], dropped: 0, limit: 50 },
+    },
+    page: { url: 'https://www.example.com/prices', title: 'Prices' },
+    fixtureSeed: null,
+  }, over || {});
+
+  // A locked table: the marker with no original behind it. The originals view
+  // renders the absence, never the displayed (rounded) value.
+  const locked = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: null,
+        maxMagnitude: null, locked: true, rowCount: 1, columnCount: 2,
+        cells: [
+          { row: 0, col: 0, role: 'td', isOutside: false,
+            text: '99,000', original: null, wearsMarker: true },
+          { row: 0, col: 1, role: 'td', isOutside: false,
+            text: 'n/a', original: null, wearsMarker: false },
+        ],
+      }],
+    }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  // The originals table alone: from its heading to its closing tag. The JSON
+  // island later in the document carries the displayed value by design.
+  const originalsTable = (locked.split('with the originals')[1] || '').split('</table>')[0];
+  eq('capture-render: a lost original renders as lost, never as the displayed value',
+    /original lost/.test(originalsTable) && !originalsTable.includes('99,000'), true);
+  eq('capture-render: a never-rounded cell still shows its text in the originals view',
+    originalsTable.includes('n/a'), true);
+
+  // An error record on the bound table: a failure notice, not an empty table.
+  const failed = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'unknown', appliedFlag: null, lastRoundOptions: null,
+        maxMagnitude: null, locked: false, rowCount: null, columnCount: null,
+        cells: [], error: 'hostile walk',
+      }],
+    }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  const boundHalf = failed.split('<h2>Registry')[0];
+  eq('capture-render: an error record on the bound table renders as a failure notice with its error text',
+    /serialization[\s\S]{0,40}failed/i.test(boundHalf) && boundHalf.includes('hostile walk'),
+    true);
+  eq('capture-render: an error record on the bound table renders no table and no null counts',
+    failed.includes('<table class="cap-table">') || failed.includes('null row(s)'), false);
+
+  // A missing log snapshot (the state pull failed) is distinct from an empty
+  // buffer: the sidebar half here IS an empty buffer and keeps its sentence.
+  const pullFailed = buildCaptureDocument({
+    state: makeState({
+      log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
+    }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: a missing log snapshot renders as a failed state pull',
+    pullFailed.includes('state pull failed'), true);
+  eq('capture-render: an empty buffer keeps its own sentence beside a failed pull',
+    pullFailed.includes('Nothing was logged.'), true);
+
+  // The glyph lookup resolves only the three mark words: a prototype property
+  // name must not reach the document as a glyph.
+  const hostileMark = buildCaptureDocument({
+    state: makeState({ mark: 'constructor' }),
+    lockedStatusText: LOCKED_TEXT,
+  });
+  eq('capture-render: a mark outside the three words resolves no glyph',
+    hostileMark.includes('[native code]'), false);
+  eq('capture-render: the hostile mark word still renders escaped as text',
+    hostileMark.includes('<span>constructor</span>'), true);
+})();
+
+// --- lib/dr-capture: the size warning (#306) ---
+//
+// A capture has no size bound — the full-detail default is deliberate — so
+// the form shows an estimate before the save when the pulled state is
+// large. The estimate reads the serialized state's length; the file runs
+// about four times that, because it carries the same content about four
+// times (two table renderings, the JSON island, the visible seed).
+
+(function captureSizeWarningHelper() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const sizeWarning = DR_CAPTURE.sizeWarning;
+  const has = typeof sizeWarning === 'function';
+
+  const small = { tables: [{ cells: [{ text: '99,000' }] }] };
+  eq('capture-size: an ordinary state gets no warning',
+    has ? sizeWarning(small) : 'missing', null);
+
+  // 2,000,000 serialized characters estimate an 8 MB file.
+  const big = { filler: 'x'.repeat(2 * 1000 * 1000) };
+  eq('capture-size: a large state gets a warning that says the estimated size',
+    has ? sizeWarning(big) : 'missing',
+    'This capture will be large: about 8 MB.');
+
+  // Just under the threshold (a 4 MB estimate): still no warning.
+  const nearlyBig = { filler: 'x'.repeat(999 * 1000) };
+  eq('capture-size: a state just under the threshold gets no warning',
+    has ? sizeWarning(nearlyBig) : 'missing', null);
+})();
+
+(function captureSizeNoteGlue() {
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+
+  eq('capture-size: the form holds a hidden size note',
+    /<div[^>]*id="captureSizeNote"[^>]*hidden/.test(sidebarHtmlSrc), true);
+  eq('capture-size: opening the form measures the pulled state through the package helper',
+    sidebarJsSrc.includes('DR_CAPTURE.sizeWarning(') &&
+      sidebarJsSrc.includes('captureSizeNote'), true);
+  eq('capture-size: a failed save reports on the status line and is logged',
+    sidebarJsSrc.includes('Capture failed') &&
+      /DR_LOG\.warn\([^)]*save failed/.test(sidebarJsSrc), true);
+})();
+
 // --- sidebar: the capture section and its glue ---
 //
 // The suite never executes sidebar.js (it is asserted as source text — the
@@ -18483,6 +18885,81 @@ function makeIssue251SidebarHarness() {
     /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
   eq('capture-ui: a failed state pull still saves and records the failure',
     /DR_LOG\.warn\([^)]*pull failed/.test(sidebarJsSrc), true);
+})();
+
+// --- capture follow-ups: the pull guard, the glyph pin, the header line ---
+
+// #305: the serializer guards per table; the response composer's
+// lens-preview step is the one step after it that walks the bound table.
+// Unguarded, a throw there discards the whole page-side half — the
+// serialized registry, the fixture seed, and the log rows.
+(function capturePullSurvivesThrowingPreview() {
+  if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
+  const prevSelected = DR_STORE.getSelectedTable();
+  const throwing = {
+    get rows() { throw new Error('hostile preview walk'); },
+  };
+  DR_STORE.registerTable(throwing);
+  DR_STORE.setSelectedTable(throwing);
+  let response = null;
+  let threw = false;
+  try {
+    response = buildCaptureStateResponse();
+  } catch (e) {
+    threw = true;
+  } finally {
+    DR_STORE.setSelectedTable(prevSelected);
+    DR_STORE.unregisterTable(throwing);
+  }
+  eq('capture-wire: a throwing lens preview keeps the page-side half',
+    {
+      threw,
+      tablesIsArray: !!response && Array.isArray(response.tables),
+      lensPreview: response ? response.lensPreview : 'response lost',
+      hasLog: !!(response && response.log),
+    },
+    { threw: false, tablesIsArray: true, lensPreview: null, hasLog: true });
+  eq('capture-wire: the discarded lens preview leaves a warn row',
+    DR_LOG.snapshot().entries.some(
+      (row) => row.level === 'warn' && /lens preview/.test(row.text)),
+    true);
+})();
+
+// #308: the mark glyphs live in two machine copies — the sidebar's buttons
+// and the renderer's map — and one copy cannot read the other (static
+// markup against a content-script constant). This pin holds them together:
+// a glyph change that lands in one place fails here, naming the other.
+(function captureGlyphCopiesMatch() {
+  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const buttonGlyphs = {};
+  const buttonRe = /data-mark="([a-z]+)"[^>]*>([^<]+)</g;
+  let m;
+  while ((m = buttonRe.exec(sidebarHtmlSrc)) !== null) {
+    buttonGlyphs[m[1]] = m[2].replace(/&#(\d+);/g,
+      (_, code) => String.fromCodePoint(Number(code)));
+  }
+  eq('capture-glyphs: the sidebar buttons and the renderer map carry the same three glyphs',
+    buttonGlyphs, CAPTURE_MARK_GLYPHS);
+})();
+
+// #310: the file says what it holds where the person about to attach it
+// reads it — the safe-to-attach claim covers script safety only.
+(function captureHeaderStatesContents() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const html = DR_CAPTURE.buildCaptureDocument({
+    state: {
+      captureFormat: 1,
+      meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
+      mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+      tables: [], lensPreview: null, sidebarView: null,
+      log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
+    },
+    lockedStatusText: '',
+  });
+  eq('capture-header: the header says what the file holds',
+    html.includes('table contents') &&
+      html.includes('Share it as you would share the page.'),
+    true);
 })();
 
 // --- content.js: the extension stands down on capture pages ---
