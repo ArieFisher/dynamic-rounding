@@ -67,10 +67,23 @@ const DR_CROSS_CONTEXT_TOPICS = (function () {
   // puts undefined on the wire and reproduces the silent miss this list
   // exists to remove. The proxy turns that read into an error on the spot,
   // matching how the event bus already rejects an unknown topic name.
+  //
+  // Only a key SHAPED like a topic name throws. The language reads fields of
+  // its own off any object it is handed — toJSON when serializing, then when
+  // resolving, and others — and a guard that threw on those would break
+  // ordinary use of the list for no gain. Every realistic typo of a declared
+  // name is still upper case, so it still throws; an allowlist of the
+  // language's own field names would instead have to grow every time one is
+  // missed.
+  const TOPIC_SHAPED = /^[A-Z][A-Z0-9_]*$/;
+
   return new Proxy(Object.freeze(NAMES), {
     get(target, key) {
       if (typeof key === 'symbol' || key in target) return target[key];
-      throw new Error('DR_CROSS_CONTEXT_TOPICS: unknown cross-context topic "' + String(key) + '"');
+      if (TOPIC_SHAPED.test(key)) {
+        throw new Error('DR_CROSS_CONTEXT_TOPICS: unknown cross-context topic "' + String(key) + '"');
+      }
+      return undefined;
     },
   });
 })();

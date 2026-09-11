@@ -18629,10 +18629,25 @@ function makeIssue251SidebarHarness() {
   eq('cross-context topics: every value equals its own field name',
     Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).every((k) => globalThis.DR_CROSS_CONTEXT_TOPICS[k] === k), true);
 
-  let threw = false;
-  try { void globalThis.DR_CROSS_CONTEXT_TOPICS.TABEL_TOGGLE_STATE; } catch (e) { threw = true; }
+  const readThrows = (key) => {
+    try { void globalThis.DR_CROSS_CONTEXT_TOPICS[key]; return false; } catch (e) { return true; }
+  };
   eq('cross-context topics: reading a misspelled name throws instead of returning undefined',
-    threw, true);
+    readThrows('TABEL_TOGGLE_STATE'), true);
+  eq('cross-context topics: a truncated name throws too',
+    readThrows('TABLE_TOGGLE_STAT'), true);
+
+  // The language reads fields of its own off any object it is handed. A guard
+  // that threw on those would break ordinary use of the list — serializing it
+  // for a log row or a capture would crash — so only a key shaped like a topic
+  // name throws.
+  eq('cross-context topics: a field the language probes for returns undefined, not an error',
+    [readThrows('toJSON'), readThrows('then'), readThrows('inspect')], [false, false, false]);
+
+  let serialized = null;
+  try { serialized = JSON.parse(JSON.stringify(globalThis.DR_CROSS_CONTEXT_TOPICS)); } catch (e) { /* left null */ }
+  eq('cross-context topics: the list serializes to JSON with every name intact',
+    serialized && Object.keys(serialized).length, 18);
 
   eq('cross-context topics: the list is frozen',
     Object.isFrozen(globalThis.DR_CROSS_CONTEXT_TOPICS), true);
