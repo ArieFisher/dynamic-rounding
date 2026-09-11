@@ -5,6 +5,8 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
+importScripts('constants.js');
+
 let sidebarTabId = null;
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -22,7 +24,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "dr-action") {
-    chrome.tabs.sendMessage(tab.id, { action: "MENU_CLICKED" });
+    chrome.tabs.sendMessage(tab.id, { action: DR_CROSS_CONTEXT_TOPICS.MENU_CLICKED });
     return;
   }
 
@@ -35,7 +37,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       console.warn("Dynamic Rounding: failed to open side panel", e);
     }
     sidebarTabId = tab.id;
-    chrome.tabs.sendMessage(tab.id, { action: "SIDEBAR_OPENED" });
+    chrome.tabs.sendMessage(tab.id, { action: DR_CROSS_CONTEXT_TOPICS.SIDEBAR_OPENED });
   }
 });
 
@@ -43,9 +45,9 @@ function closeSidebarIfOpen() {
   // The side panel is an extension page and hears the broadcast. A content
   // script does not: it is reachable only through its tab. Both need telling,
   // or content.js keeps sidebarOpen set for the rest of the tab's life.
-  chrome.runtime.sendMessage({ action: "CLOSE_SIDEBAR" }).catch(() => {});
+  chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.CLOSE_SIDEBAR }).catch(() => {});
   if (sidebarTabId !== null) {
-    chrome.tabs.sendMessage(sidebarTabId, { action: "CLOSE_SIDEBAR" }).catch(() => {});
+    chrome.tabs.sendMessage(sidebarTabId, { action: DR_CROSS_CONTEXT_TOPICS.CLOSE_SIDEBAR }).catch(() => {});
   }
   sidebarTabId = null;
 }
@@ -69,26 +71,26 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 });
 
 chrome.runtime.onMessage.addListener((request, sender) => {
-  if (request.action === "UPDATE_MENU_LABEL") {
+  if (request.action === DR_CROSS_CONTEXT_TOPICS.UPDATE_MENU_LABEL) {
     chrome.contextMenus.update("dr-action", { title: request.title });
     return;
   }
 
-  if (request.action === "PAGE_UNLOADED") {
+  if (request.action === DR_CROSS_CONTEXT_TOPICS.PAGE_UNLOADED) {
     if (sender.tab && sender.tab.id === sidebarTabId) {
       closeSidebarIfOpen();
     }
     return;
   }
 
-  if (request.action === "SIDEBAR_CLOSED") {
+  if (request.action === DR_CROSS_CONTEXT_TOPICS.SIDEBAR_CLOSED) {
     sidebarTabId = null;
     return;
   }
 
-  if (request.action === "TABLE_TOGGLE_STATE") {
+  if (request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE) {
     if (sidebarTabId !== null) {
-      chrome.runtime.sendMessage({ action: 'TABLE_TOGGLE_STATE', enabled: request.enabled });
+      chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE, enabled: request.enabled });
     }
     return;
   }

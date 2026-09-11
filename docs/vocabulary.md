@@ -100,17 +100,23 @@ One term per concept, across every platform and every document. Use the [Retired
 
 | Term | Meaning |
 | --- | --- |
-| content script | The extension code Chrome injects into each web page. |
+| context | One running, isolated instance of extension code, with its own memory. No context reads another context's variables and no context calls another context's functions; messages are the only route in or out. <br><br>Three kinds run: the **content script**, the **sidebar**, and the **service worker**. The running count is larger than three — the content script runs a separate context in every tab. |
+| content script | The extension code Chrome injects into each web page. One context per tab. |
 | re-injection | Installing the content scripts into tabs that are already open. |
-| sidebar | The extension's control panel page. |
+| sidebar | The extension's control panel page. Its own context. |
+| service worker | The extension's background context. One instance for the whole browser, common to every tab. It creates the right-click menu items, opens the sidebar, and records which tab the sidebar was opened for. Chrome shuts it down after an idle period and starts it again on the next message, so a restart begins with its variables empty. |
 | component | One part of the extension with one job and a boundary: it reaches other parts only through defined channels — topics or calls — and its insides can change without any other part changing. <br><br>e.g. The sidebar view, the controller, and the application model |
 | application model | The one component that holds **application state**. Every other component reads from it or requests a change; none keeps its own copy.<br><br>- Application settings: whether the sidebar is open, the current settings, etc.<br>- Current page state: registry, the active table, etc. |
 | settings record | The application model's one settings object for the page: the on/off value and every simplification option. <br><br>Every writer goes through it — the switch, a toggle on the active table (sidebar open or closed), any logic. The active table is re-simplified from its changes; the write causes the view change, never the reverse. |
 | registry | The application model's list of the tables found on the current page, with the details held for each (e.g. number of columns, etc.) |
 | handle | An opaque key standing for a live table on the page, like a coat-check ticket. The caller holds it and passes it back to act on that table. A **dead handle** stands for a table no longer in the page. |
 | contract | An agreement between components about names and values: which settings exist, what each is called, and what its default is. A contract marks what must not change in one component alone. |
-| event bus | A component that carries **messages** between components on named **topics**. <br><br>A publisher sends to a named topic; every subscriber to that topic receives it.<br><br>Publisher and subscribers hold no reference to each other. |
-| topic | One named 'channel' on the event bus. Multiple components can publish to it, and multiple subscribers can read from it. |
+| event bus | A component that carries **messages** between components on named **topics**, within one **context**. <br><br>A publisher sends to a named topic; every subscriber to that topic receives it.<br><br>Publisher and subscribers hold no reference to each other.<br><br>Delivery is immediate: the publishing line continues once every subscriber finishes. A topic can carry a live page element. |
+| topic | One named 'channel' on the event bus, within one **context**. Multiple components can publish to it, and multiple subscribers can read from it. <br><br>Every topic is recorded on one shared list. Publishing a name that is not on the list fails at that moment. |
+| publish | Send a message on a named topic. |
+| publisher | The component that publishes on a topic. It holds no reference to any subscriber. |
+| subscriber | A component registered to receive one topic. A topic has zero or more. |
+| cross-context topic | A named message published from one context to another, carried by Chrome's messaging rather than by the event bus. <br><br>Same shape as a topic: the publisher supplies a name rather than a destination, and holds no reference to any subscriber. Three differences:<br>- It returns immediately, and a reply, where there is one, arrives later.<br>- It carries **plain-value** data only, never a live page element.<br>- It goes only to other contexts, never back into the publishing context. |
 | intent topic | A topic carrying **what the user did** ("toggle this table"). A request with no authority — the controller subscriber determines what actually changes. |
 | state-change topic | A topic carrying what changed in the application model.  |
 | plain-value | Data made only of text, numbers, booleans, and plain lists and objects — no live page elements, no functions. |
@@ -173,6 +179,7 @@ and a row with no pattern is left to the human sweep.
 | load-time scan | proactive scan | The load-time scan finds native tables first, then elements with a grid role. | `\bproactive scan` |
 | dataset | range (the set of values; "range expression" stays) | In set-aware simplification the max magnitude comes from the dataset. | `\bentire range\|\bwhole range\|\binput range` |
 | form | state (of a table's raw/simplified values) | A table's form is raw or simplified. | — |
+| cross-context topic | wire action | A cross-context topic carries plain-value data only. | `\bwire action` |
 
 ### Writing a pattern
 

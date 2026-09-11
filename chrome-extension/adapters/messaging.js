@@ -92,7 +92,7 @@ const DR_BUS = (function () {
     // from the model) on every settings change. wireAction reuses
     // APPLY_SIDEBAR_SETTINGS, the message name content.js already handles,
     // so the wire format is unchanged — only the sender's code path is.
-    'intent:settingsChanged': { family: INTENT, wireAction: 'APPLY_SIDEBAR_SETTINGS' },
+    'intent:settingsChanged': { family: INTENT, wireAction: DR_CROSS_CONTEXT_TOPICS.APPLY_SIDEBAR_SETTINGS },
     // Published by the model (app/store.js) after every settings change,
     // regardless of source. The controller subscribes to apply the new
     // value to the selected table — this is the bus's first state-change
