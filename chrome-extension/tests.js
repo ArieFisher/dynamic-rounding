@@ -17936,7 +17936,7 @@ function makeIssue251SidebarHarness() {
 // ordinary sidebar close. Once the value went stale, a press on a second
 // table silently became "move the sidebar here" for the rest of the page's
 // life. With the settings record's on/off value at off, such a press changed
-// no numbers at all, so the control read as intermittent (#241).
+// no numbers at all, so the pillbox read as intermittent (#241).
 //
 // The rule now: a press makes the pressed table active and flips its form
 // from what the screen shows, writing the settings record once.
