@@ -101,11 +101,14 @@ One term per concept, across every platform and every document. Use the [Retired
 | Term | Meaning |
 | --- | --- |
 | context | One running, isolated instance of extension code, with its own memory. No context reads another context's variables and no context calls another context's functions; messages are the only route in or out. <br><br>Three kinds run: the **content script**, the **sidebar**, and the **service worker**. The running count is larger than three — the content script runs a separate context in every tab. |
+| tab | One browser tab. The content script runs one context in each tab, so the application state of a page belongs to that tab alone and reaches no other tab. The service worker is common to every tab, and the sidebar opens for one tab at a time. |
 | content script | The extension code Chrome injects into each web page. One context per tab. |
 | re-injection | Installing the content scripts into tabs that are already open. |
 | sidebar | The extension's control panel page. Its own context. |
 | service worker | The extension's background context. One instance for the whole browser, common to every tab. It creates the right-click menu items, opens the sidebar, and records which tab the sidebar was opened for. Chrome shuts it down after an idle period and starts it again on the next message, so a restart begins with its variables empty. |
 | component | One part of the extension with one job and a boundary: it reaches other parts only through defined channels — topics or calls — and its insides can change without any other part changing. <br><br>e.g. The sidebar view, the controller, and the application model |
+| view | A component that draws application state on a screen and publishes a user gesture as an intent topic. It holds no application state of its own beyond what the drawing needs. <br><br>e.g. the pillbox, the sidebar's controls |
+| controller | The one component that subscribes to every intent topic and turns each one into a write to the application model or a simplification of a table. |
 | application model | The one component that holds **application state**. Every other component reads from it or requests a change; none keeps its own copy.<br><br>- Application settings: whether the sidebar is open, the current settings, etc.<br>- Current page state: registry, the active table, etc. |
 | settings record | The application model's one settings object for the page: the on/off value and every simplification option. <br><br>Every writer goes through it — the switch, a toggle on the active table (sidebar open or closed), any logic. The active table is re-simplified from its changes; the write causes the view change, never the reverse. |
 | registry | The application model's list of the tables found on the current page, with the details held for each (e.g. number of columns, etc.) |
@@ -122,6 +125,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | plain-value | Data made only of text, numbers, booleans, and plain lists and objects — no live page elements, no functions. |
 | snapshot | A plain-value copy of a table and its metadata:<br>- each cell's text, position, and role <br>- the table's kind and its row and column counts. <br><br>Snapshot is at one moment and it does not update itself.  |
 | port | The abstractions of services used by the business logic (e.g. if the database gets changed, the abstraction keeps that out of the logic.). |
+| adapter | A component that presents one shape of thing through a shared interface, so a caller works against the interface and never against the shape. <br><br>e.g. the native-table adapter and the grid adapter both present rows and cells, over markup that has nothing in common |
 | marker class | A CSS class the extension adds to page elements it has processed so the extension can easily target that element later. |
 | page attribute | A named value written onto an HTML element in the page. |
 
@@ -180,6 +184,8 @@ and a row with no pattern is left to the human sweep.
 | dataset | range (the set of values; "range expression" stays) | In set-aware simplification the max magnitude comes from the dataset. | `\bentire range\|\bwhole range\|\binput range` |
 | form | state (of a table's raw/simplified values) | A table's form is raw or simplified. | — |
 | cross-context topic | wire action | A cross-context topic carries plain-value data only. | `\bwire action` |
+| sidebar | panel | Chrome opens the sidebar as a side panel. | `\bthe panel\b\|\bpanel is open\b\|\bpanel open\b\|\bpanel state\b` |
+| publish | report | A view publishes an intent; the application model publishes a state change. | — |
 
 ### Writing a pattern
 
@@ -198,8 +204,12 @@ trusting the gate.
 
 Rejected, each for blocking real prose this repo writes: "a base of 10" (number
 bases, next to log10), "the extension store" and "publish to the store" (the
-Chrome Web Store), and a bare "is linked to the" (an issue linked to a PR).
+Chrome Web Store), a bare "is linked to the" (an issue linked to a PR), and a
+bare "panel's" (Chrome's own side panel, whose close event this repository
+describes).
 
-Two rows have no pattern on purpose. "record" reads the same in its retired sense
-and in "historical record", a term these conventions lean on. "state" keeps
-senses this vocabulary defines, among them a locked table's state.
+Three rows have no pattern on purpose. "record" reads the same in its retired
+sense and in "historical record", a term these conventions lean on. "state"
+keeps senses this vocabulary defines, among them a locked table's state.
+"report" carries the capture section's own phrasing — a capture is a bug report
+— so any pattern sparing that phrase would catch almost nothing.
