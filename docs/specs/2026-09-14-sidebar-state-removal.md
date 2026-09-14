@@ -1,7 +1,7 @@
 # The extension stops tracking whether the sidebar is open
 
 - **Date:** 2026-09-14
-- **Status:** approved design, implementation pending
+- **Status:** approved design. Part one shipped (#334). Parts two and three pending; part two's design changes — see the addendum at the foot of this document.
 - **Review:** two independent passes, each returning BLOCK; this document carries their findings
 - **Opens:** #328 (one settings record cannot describe two simplified tables)
 - **Closes on landing:** #241
@@ -152,3 +152,44 @@ Three pull requests, each leaving the extension fully working.
 - `docs/vocabulary.md` — the **application model** entry drops whether the sidebar is open from its list of application state. The retirements and the four new terms land ahead of the code, in this branch.
 - `docs/design.md` — the State ownership subsection drops whether the sidebar is open, the service worker's held fact, and the two marker-class reads part one retires; the messages paragraph drops the close topic and the second active-table topic; the decisions list gains the press's one write.
 - `chrome-extension/README.md` — the description of what a pillbox press does, against the one merged path.
+
+---
+
+## Addendum, 2026-09-14 evening: the open questions, answered
+
+This section records what hand tests found after part one landed. It adds to the document above; it changes none of it. Part one shipped as approved (#334). Part two's design changes, and this addendum is where that starts.
+
+### Part one shipped
+
+Merged as #334, with two decisions the approved design does not carry, both recorded in its commit and its pull request body: the on/off send to the sidebar goes only on a press that did not move the active table, and the restore step's keep-the-markers mode stays unreachable rather than removed (#332). Two further findings routed to issues: #333 for suite clutter the retirement left, #336 for a README sentence describing a control the sidebar does not show.
+
+### Finding 1: the sidebar is a global panel, so closing it by tab is unavailable
+
+The manifest registers the sidebar with a default path, which enables it on every tab. Nothing narrows it to one tab. Chrome's reference states the consequence directly: the close call's tab form closes a tab-specific sidebar, and where only the global sidebar is open the call rejects.
+
+A hand test confirms it. Calling the close with the tab the sidebar was opened for rejects with "No active tab-specific side panel for tabId". The control call, with a tab number no tab ever held, rejects with "No tab with id" instead, so Chrome separates the two failures and the first one is the documented case, not a missing tab.
+
+Part two's plan was for the service worker to close the sidebar by naming a tab. That call does not reach this sidebar. Two routes, and the choice is a product one:
+
+- **Close by window.** One call, no other change. A window's sidebar covers every tab in it, so closing it for one tab closes it for all of them.
+- **Make the sidebar tab-specific.** Declare the sidebar for a tab before opening it, and disable it elsewhere. This matches the product as it already behaves — one bound table, in one tab — and it makes the tab form of the close work. It adds code and adds states.
+
+### Finding 2: Chrome does not hide the sidebar on a tab switch
+
+The first open question above asked whether Chrome hides a tab-specific sidebar by itself when the user switches tabs. It does not hide this one, because this one is global and a global sidebar shows on every tab by design.
+
+What looked like Chrome hiding it is the extension closing it. The evidence is an asymmetry between the two ways to open the sidebar. Opened through the right-click menu item, it disappears on a tab switch and does not return. Opened through Chrome's own extension menu, it survives every switch.
+
+The cause: the service worker records the tab only when its own menu item opens the sidebar, and all three close triggers are gated on that record. A sidebar Chrome opened leaves the record empty, so no trigger fires.
+
+This reverses the assumption part two rested on. The service worker does have to close the sidebar itself, if closing on a tab switch is behavior worth keeping.
+
+### Finding 3: a new product question
+
+Opened through Chrome's extension menu, the sidebar already survives tab switches, and nothing about the extension breaks. Two users of the same build therefore get different behavior depending on which entry point they used.
+
+Whether the sidebar should close on a tab switch at all is now an open product question, and part two's shape depends on the answer. Closing is not free: it costs the sidebar's controls and its capture form, which the user then rebuilds by reopening.
+
+### What part two still waits on
+
+The platform questions are settled. Part two still follows the messaging design's second pull request, or retires the on/off relay itself, for the reason the approved text gives. The two routes under Finding 1 and the question under Finding 3 are decisions for the product manager, not findings.
