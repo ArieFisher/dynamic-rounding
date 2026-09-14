@@ -530,7 +530,7 @@ function updateDisabledState() {
 // chrome.runtime.lastError (no content script on the tab — delivery failed)
 // unbind the sidebar UI; on success, clear any stale #status message.
 function applyNow() {
-  DR_BUS.publish('intent:settingsChanged', { settings: currentSettings() }, {
+  DR_BUS.publish('request:applySettings', { settings: currentSettings() }, {
     onDelivery: function () {
       if (chrome.runtime.lastError) {
         setTableBound(false);

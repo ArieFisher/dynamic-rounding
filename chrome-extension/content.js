@@ -243,7 +243,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return;
   }
 
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.APPLY_SIDEBAR_SETTINGS) {
+  if (request.action === 'request:applySettings') {
     // Record it; the state-change subscriber above applies it to the table.
     DR_STORE.setSettings(request.settings || DR_DEFAULTS);
     sendResponse({ ok: true });
