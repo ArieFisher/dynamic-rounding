@@ -119,6 +119,9 @@ One term per concept, across every platform and every document. Use the [Retired
 | publish | Send a message on a named topic. |
 | publisher | The component that publishes on a topic. It holds no reference to any subscriber. |
 | subscriber | A component registered to receive one topic. A topic has zero or more. |
+| request topic | A **topic** whose one **responder** returns a **plain-value** answer to the publisher. The absence of a responder reaches the publisher immediately, with no waiting period. |
+| responder | The one function a **context** registers to answer a **request topic**. Exactly one per request topic; a second registration fails at that moment. |
+| route | A **topic**'s record of which carrier reaches its audience: the extension's pages, one tab's content script, or neither, meaning the publishing **context** alone. A route states carrier choice, never subscriber identity. |
 | cross-context topic | A named message published from one context to another, carried by Chrome's messaging rather than by the event bus. <br><br>Same shape as a topic: the publisher supplies a name rather than a destination, and holds no reference to any subscriber. Three differences:<br>- It returns immediately, and a reply, where there is one, arrives later.<br>- It carries **plain-value** data only, never a live page element.<br>- It goes only to other contexts, never back into the publishing context. |
 | intent topic | A topic carrying **what the user did** ("toggle this table"). A request with no authority — the controller subscriber determines what actually changes. |
 | state-change topic | A topic carrying what changed in the application model.  |
