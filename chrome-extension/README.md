@@ -2,6 +2,16 @@
 
 This extension applies the `ROUND_DYNAMIC` algorithm to tables on any website. Every data table it finds gets an on-page on/off control (the pillbox); a right-click context menu toggles the active table; and a side panel (the sidebar) holds the full settings — offsets, date and time handling, exclusions, a range expression — with a lens preview showing sample values before and after. Dates simplify to the year by default; times are opt-in.
 
+## What a pillbox press does
+
+A press makes the pressed table the active one and flips its form from what the screen shows: a raw table simplifies, a simplified table goes back to its original values. It writes the settings record once, and the settings record's change is what reaches the table, so the pillbox, the sidebar's switch, and the right-click menu item all act through one path.
+
+Two consequences follow. Turning simplification on uses the settings record's current values, which a sidebar session may have changed since the last press. Turning it off resets the table: the simplified markers and the stored originals go, and a later press simplifies again from scratch.
+
+A press that moves the active table also clears the range expression. An expression states rows and columns by position, so it describes the table someone wrote it for, and carrying it to a second table would address different data there. A press on the table that is already active keeps the expression.
+
+A press on a locked table publishes nothing. A table locks when its original values are lost, which happens when a content script re-injection empties the registry. The right-click menu item is the one way to act on such a table.
+
 ## Offset semantics
 
 The extension uses the same offset model as the rest of the project. As of the `2026-05-28` release, the meaning of fractional offsets is sign-aware: `+0.5` rounds toward half of the next-larger order of magnitude, and `-0.5` rounds toward half of the current order. The result is also floored at the value's own order of magnitude so a large number can never collapse to zero. One platform difference: an out-of-range offset does not throw here — the extension falls back to the default instead. See the [Sheets README](../js/README.md#offset-reference) for the full offset reference and parameter table.

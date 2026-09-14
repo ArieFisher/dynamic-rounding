@@ -92,9 +92,9 @@ One term per concept, across every platform and every document. Use the [Retired
 | locked | The state of a table's controls when the application will not apply simplify settings to it. <br><br>e.g. when its originals are unrestorable, changes do not apply. |
 | stash | The sidebar's held copy of the settings record's on/off while the bound table is locked. <br><br>The switch's forced "on" is display only: a save made under the lock carries the stashed value, a settings-record change landing under the lock updates it, and lifting the lock puts it back on the switch. |
 | bound | The sidebar's association with one table: the table its controls read from and write to. |
-| active | The table user actions target. <br>The most recently right-clicked table, and, while the sidebar is open, the bound table. |
-| activate | Make a table active: right-click it, or bind it while the sidebar is open. |
-| range expression | An A1-style expression limiting which cells change. Blank means the whole table. |
+| active | The table user actions target. <br>The most recently right-clicked table, or the most recent table whose pillbox was pressed. The sidebar binds the active table. |
+| activate | Make a table active: right-click it, or press its pillbox. |
+| range expression | An A1-style expression limiting which cells change. Blank means the whole table. <br><br>It states rows and columns by position, so it describes the table it was written for. A press that moves the active table therefore clears it. |
 
 ## Parts of the extension
 
@@ -109,7 +109,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | component | One part of the extension with one job and a boundary: it reaches other parts only through defined channels — topics or calls — and its insides can change without any other part changing. <br><br>e.g. The sidebar view, the controller, and the application model |
 | view | A component that draws application state on a screen and publishes a user gesture as an intent topic. <br><br>e.g. the pillbox, the sidebar's controls <br><br>A view holds no application state of record. The sidebar is the standing exception: its controls carry working values until a publish, and it stashes the on/off value while a table is locked. |
 | controller | The one component that subscribes to the intent topics and turns each one into a write to the application model or a simplification of a table. |
-| application model | The one component that holds **application state**. Every other component reads from it or requests a change; none keeps its own copy.<br><br>- Application settings: whether the sidebar is open, the current settings, etc.<br>- Current page state: registry, the active table, etc. |
+| application model | The one component that holds **application state**. Every other component reads from it or requests a change; none keeps its own copy.<br><br>- Application settings: the settings record.<br>- Current page state: registry, the active table, etc. |
 | settings record | The application model's one settings object for the page: the on/off value and every simplification option. <br><br>Every writer goes through it — the switch, a toggle on the active table (sidebar open or closed), any logic. The active table is re-simplified from its changes; the write causes the view change, never the reverse. |
 | registry | The application model's list of the tables found on the current page, with the details held for each (e.g. number of columns, etc.) |
 | handle | An opaque key standing for a live table on the page, like a coat-check ticket. The caller holds it and passes it back to act on that table. A **dead handle** stands for a table no longer in the page. |

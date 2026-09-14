@@ -264,20 +264,20 @@ function createToggleForTable(table) {
     }, TOUCH_AUTOCOLLAPSE_MS);
   }
 
-  // Click handler: mouse/keyboard → immediate toggle; touch/pen → two-tap
-  // expand-then-toggle. Once a tap/click actually commits to a toggle, this
-  // view reports the intent and stops — it calls no content.js function
-  // itself. The controller (content.js) is the sole subscriber to
-  // intent:toggleTable; it decides whether the selection rebinds, runs the
-  // toggle, and sends whatever sidebar messaging that implies. This view
-  // keeps only the expand/collapse interaction state (view-transient), never
-  // the toggle logic.
+  // Click handler: mouse/keyboard → immediate press; touch/pen → two-tap
+  // expand-then-press. Once a tap or click commits to a press, this view
+  // publishes the intent and stops. It calls no content.js function itself.
+  // The controller (content.js) is the sole subscriber to intent:toggleTable,
+  // and it runs the one press path: make the pressed table active, flip its
+  // form, write the settings record, and send whatever sidebar messaging
+  // that implies. This view keeps only the expand/collapse interaction state
+  // (view-transient), never the press logic.
   button.addEventListener('click', (e) => {
     e.stopPropagation();
-    // A locked pill (aria-disabled — see syncSwitchForTable) reports
-    // nothing: no expand, no intent. The controller guards the intent too
-    // (toggleOriginalValues), but the view must not animate an interaction
-    // it will not honor.
+    // A locked pillbox (aria-disabled — see syncSwitchForTable) publishes
+    // nothing: no expand, no intent. The controller's apply blocks a locked
+    // table as well. The view stops here so it never animates an interaction
+    // the apply then blocks.
     if (button.getAttribute('aria-disabled') === 'true') return;
     const pType = button.dataset.pointerType;
     if (pType === 'touch' || pType === 'pen') {

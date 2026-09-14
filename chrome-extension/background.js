@@ -42,13 +42,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 function closeSidebarIfOpen() {
-  // The side panel is an extension page and hears the broadcast. A content
-  // script does not: it is reachable only through its tab. Both need telling,
-  // or content.js keeps sidebarOpen set for the rest of the tab's life.
+  // One leg, aimed at the sidebar page: the broadcast reaches every extension
+  // page, and the sidebar closes itself on it. A second leg used to go to the
+  // content script through its tab, so the page could clear its own copy of
+  // "the sidebar is open" — the 2026-09-14 sidebar-state-removal design
+  // retired that copy along with everything that read it (#241), and the
+  // content script has no handler for this message now.
   chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.CLOSE_SIDEBAR }).catch(() => {});
-  if (sidebarTabId !== null) {
-    chrome.tabs.sendMessage(sidebarTabId, { action: DR_CROSS_CONTEXT_TOPICS.CLOSE_SIDEBAR }).catch(() => {});
-  }
   sidebarTabId = null;
 }
 

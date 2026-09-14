@@ -87,7 +87,6 @@ const DR_BUS = (function () {
     'intent:selectTable': { family: INTENT, wireAction: null },
     'intent:toggleTable': { family: INTENT, wireAction: null },
     'state:selectedTableChanged': { family: STATE_CHANGE, wireAction: null },
-    'state:sidebarOpenChanged': { family: STATE_CHANGE, wireAction: null },
     // Published by the sidebar's controls (a different extension context
     // from the model) on every settings change. wireAction reuses
     // APPLY_SIDEBAR_SETTINGS, the message name content.js already handles,

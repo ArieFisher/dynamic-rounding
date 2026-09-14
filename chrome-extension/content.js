@@ -31,14 +31,17 @@ const IS_CAPTURE_PAGE = !!(typeof document !== 'undefined' && document.documentE
   document.documentElement.dataset && document.documentElement.dataset.drCapture !== undefined);
 
 let lastRightClickedElement = null;
-// The selected table (may hold a <table> element OR a div-based grid root —
-// any element carrying class dr-ext-grid or returned by findTargetTable's
-// .handle — so all callers that previously assumed HTMLTableElement must
-// tolerate any Element) and the sidebar-open flag live in DR_STORE now, not
-// as file-level bindings here. ui-toggle.js used to assign the selected
+// The active table lives in DR_STORE now, not as a file-level binding here.
+// It may hold a <table> element or a div-based grid root — any element
+// carrying class dr-ext-grid or returned by findTargetTable's .handle — so
+// every caller that once assumed HTMLTableElement must tolerate any Element.
+// A second field beside it held whether the sidebar stood open until the
+// 2026-09-14 sidebar-state-removal design retired it (#241).
+// ui-toggle.js used to assign the active
 // table directly into this file's `let lastRightClickedTable`; it now
 // publishes an intent instead (see the DR_BUS.subscribe call below), and
-// every read/write in this file goes through DR_STORE's getters/setters.
+// every read and write in this file goes through DR_STORE's getters and
+// setters.
 
 // The controller is the sole subscriber to intent topics. ui-toggle.js
 // publishes 'intent:selectTable' instead of writing this file's variables
@@ -63,70 +66,86 @@ DR_BUS.subscribe('state:settingsChanged', ({ settings }) => {
 
 // ui-toggle.js's click handler reports every committed toggle activation
 // (an immediate mouse/keyboard click, or the second tap of a touch/pen
-// two-tap) as this one intent instead of calling runToggleAction or
-// toggleOriginalValues itself. This is where that intent turns into one of
-// three controller actions: a click on a DIFFERENT table while the sidebar
-// is open connects that table and syncs it to the model (the rebind
-// branch, with its TABLE_SWITCHED message); a click on the CONNECTED table
-// writes the flipped enabled into the model, whose state-change subscriber
-// runs the apply (issue #272); every other click runs the plain toggle.
-// All of it used to live inline in the view's click handler.
+// two-tap) as this one intent. The menu toggle reports the same intent from
+// its MENU_CLICKED listener below. This is where that intent turns into one
+// controller action, and there is exactly one.
+//
+// Three branches used to live here (2026-09-14 spec, part one). The first
+// read the application model's copy of whether the sidebar stood open, to
+// determine whether a press on a different table meant "rebind the sidebar"
+// or "turn this table on", and it was the extension's only reader of that
+// value. The page could not keep the value true to the sidebar: the service
+// worker lost the tab number it needed to send the correction, both on an
+// idle restart and on an ordinary close, so a press on a second table
+// silently became a rebind for the rest of the page's life (#241). The
+// value, its model field, and its state-change topic are all gone, and this
+// path reads nothing about the sidebar.
+//
+// The rules, in the order they matter:
+//
+//   1. The flip direction comes from the screen BEFORE any write. The
+//      settings write below publishes, and that publish applies to the
+//      active table, so a direction read afterward would read our own
+//      output: a press on a raw table would simplify it, then read
+//      "simplified" and write off, and the second apply would reset it —
+//      the press would land back where it started.
+//   2. Activation precedes the write, so the sidebar receives the new
+//      active table before any APPLY_BLOCKED/APPLY_OK for it. The existing
+//      suite pins that order.
+//   3. Exactly one settings write per press. It carries the flipped enabled
+//      and, where the press moved the active table, the cleared range
+//      expression (see below). The state-change subscriber above runs the
+//      single apply.
+//
+// The range expression states rows and columns by position, so it describes
+// the table it was written for. Carrying it to a second table addresses
+// different data, and an expression the parser rejects would stop the press
+// before any cell changed, with RANGE_ERROR reaching a sidebar that may
+// stand closed. A press that moves the active table therefore clears it. A
+// press on the table that is already active keeps it: that table is the one
+// the expression describes. #328 replaces the clear with a per-table
+// expression.
 DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
-  if (DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()) {
-    // Report the intent instead of writing DR_STORE directly here — one
-    // intent (select) stays the single place a table becomes "selected",
-    // even when a second intent (toggle) is what triggered it.
+  // Rule 1: read the screen first.
+  const nextEnabled = !isTableRounded(table);
+  const moved = table !== DR_STORE.getSelectedTable();
+
+  if (moved) {
+    // Rule 2. Reported as an intent rather than written here, so one intent
+    // stays the single place a table becomes active even when a second
+    // intent (toggle) is what triggered it.
     DR_BUS.publish('intent:selectTable', { table });
     try {
-      // TABLE_SWITCHED goes out before the apply below, so the sidebar
-      // lifts the PREVIOUS table's lock before this table's own
-      // APPLY_BLOCKED/APPLY_OK lands. The sidebar's handler re-reads the
-      // model's settings, and that pull chain ends in the preview fetch,
-      // so no separate PREVIEW_SAMPLES_CHANGED send is needed.
       chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.TABLE_SWITCHED });
     } catch (e) {
       // sidebar may be torn down; harmless
     }
-    // With the sidebar open, a click on a different table connects that
-    // table and syncs it to the model — the same apply a sidebar reopen
-    // runs (see SIDEBAR_OPENED) — instead of toggling it with the shipped
-    // defaults, so the table always matches what the panel is about to
-    // show (issue #251). applySidebarRounding sends the apply and range
-    // messages and syncs the on-page toggle itself. No TABLE_TOGGLE_STATE
-    // here: the panel redraws from the model pull.
-    applySidebarRounding(table, DR_STORE.getSettings());
-    return;
   }
-  if (table === DR_STORE.getSelectedTable()) {
-    // Issue #272: a toggle on the CONNECTED table writes the record and lets
-    // the state-change subscriber above run the same applySidebarRounding a
-    // panel switch flip runs — one flow for "toggle the connected table" no
-    // matter which control starts it, and the record stays the single
-    // source. No panel-state read here: the record write and the apply that
-    // follows work the same with the panel closed, and gating this branch on
-    // visibility was the coupling that let a closed-panel toggle change the
-    // page while the record went stale. The flip direction reads the table
-    // (what the user sees), so the click always means "change what is in
-    // front of me" even if record and table had drifted apart.
-    // TABLE_TOGGLE_STATE reports the record's new value unconditionally —
-    // with the panel closed no panel page exists to receive it (background
-    // additionally gates its relay), and while the #262 lock holds, the
-    // open panel routes it to its stash instead of the forced-ON switch.
-    const nextEnabled = !isTableRounded(table);
-    DR_STORE.setSettings(Object.assign({}, DR_STORE.getSettings(), { enabled: nextEnabled }));
+
+  // Rule 3: one write. A moved press clears the range expression in the
+  // same write, so the clear cannot apply on its own.
+  const patch = { enabled: nextEnabled };
+  if (moved) patch.rangeExpr = '';
+  DR_STORE.setSettings(Object.assign({}, DR_STORE.getSettings(), patch));
+
+  // The sidebar receives the new value once. A moved press already sent
+  // TABLE_SWITCHED, and the sidebar's handler for it re-reads the settings
+  // record, so a send here would be a second delivery of the same fact. On a
+  // locked table it would carry a value the apply then blocks. An unmoved
+  // press sends no TABLE_SWITCHED, which leaves this the only path. With the
+  // sidebar closed no page receives either send; while the #262 lock holds,
+  // the open sidebar routes this one to its stash instead of the forced-ON
+  // switch.
+  if (!moved) {
     try {
       chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE, enabled: nextEnabled });
     } catch (e) {
       // sidebar may be torn down; harmless
     }
-    return;
   }
-  runToggleAction(table);
-  syncSwitchForTable(table);
 });
 
-// The options used for the most recent roundTable() run (consulted by
-// toggleOriginalValues() when re-running the pipeline), the frozen grid
+// The options used for the most recent roundTable() run, the frozen grid
 // magnitude basis, the simplified/original flag, and every cell's pre-round
 // original now live in DR_STORE's per-table registry entry (app/store.js) —
 // not a file-level WeakMap here.
@@ -185,30 +204,17 @@ function sendRangeStatusMessage(result) {
   }
 }
 
-function runToggleAction(table) {
-  ensureHighlightStyleInjected();
-  if (!table.querySelector('.dr-ext-rounded')) {
-    sendRangeStatusMessage(roundTable(table));
-    chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.UPDATE_MENU_LABEL, title: 'Toggle readable data' });
-  } else {
-    toggleOriginalValues(table);
-    chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.UPDATE_MENU_LABEL, title: 'Toggle readable data' });
-  }
-  // Context menu has no range expression → whole-table pulse (ranges null).
-  flashRangePulse(table, null);
-}
-
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === DR_CROSS_CONTEXT_TOPICS.MENU_CLICKED) {
     if (lastRightClickedElement) {
       const found = findTargetTable(lastRightClickedElement, { isSeen: DR_STORE.hasTable });
       if (found) {
-        // Issue #275: report the intent instead of calling runToggleAction
-        // directly, so the menu item runs the same controller branches a
-        // pill click runs. The right-click that opened this menu already
-        // connected the table (the contextmenu handler's setSelectedTable),
-        // so this lands in the connected-table branch and writes the
-        // record (#272) — panel open or closed alike.
+        // Issue #275: the menu item reports the same intent a pillbox
+        // press reports, so both run the one controller path above. The
+        // right-click that opened this menu already made the table active
+        // (the contextmenu handler's setSelectedTable), so the press lands
+        // as an unmoved one: it flips the settings record's on/off value
+        // and keeps the range expression.
         DR_BUS.publish('intent:toggleTable', { table: markAndToggleIfNewGrid(found) });
       } else {
         DR_LOG.debug("Dynamic Rounding: No table found at right-click location.");
@@ -218,7 +224,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === DR_CROSS_CONTEXT_TOPICS.SIDEBAR_OPENED) {
-    DR_STORE.setSidebarOpen(true);
     // Reconnect: pull the model's own selection and settings — the sidebar
     // may be reopening after a close, and DR_STORE owns both of record.
     const selected = DR_STORE.getSelectedTable();
@@ -235,11 +240,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else {
       DR_LOG.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
     }
-    return;
-  }
-
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.CLOSE_SIDEBAR) {
-    DR_STORE.setSidebarOpen(false);
     return;
   }
 
@@ -286,8 +286,7 @@ function applySidebarRounding(table, options) {
   ensureHighlightStyleInjected();
   const unrestorableCount = resetTable(table);
   if (unrestorableCount > 0) {
-    // Same refusal as toggleOriginalValues' guard: at least one cell's
-    // registry original is gone (a content-script re-injection — see
+    // The refusal case: at least one cell's registry original is gone (a content-script re-injection — see
     // restoreTable's KNOWN ACCEPTED COST doc). Running roundTable now would
     // round the already-rounded text, stamp a false "Original: ..." title
     // over the one attribute that still holds the truth, and record the
@@ -445,12 +444,17 @@ function registryOriginalsPort(table) {
 // exactly one restore path regardless of which write model applies
 // underneath.
 //
-// keepEntry: false (resetTable's full teardown, and the "toggle back to
-// rounded" re-round) clears the dr-ext-rounded marker and the stored
-// original per cell — a genuinely fresh state. true (toggleOriginalValues'
-// "peek at originals" toggle) restores the display but keeps both, so the
-// very next toggle can find these same cells again — see toggleOriginalValues
-// for why the class must survive a peek.
+// keepEntry: false (resetTable's full teardown) clears the dr-ext-rounded
+// marker and the stored original per cell — a genuinely fresh state. true
+// restores the display and keeps both, so a later pass finds these same
+// cells again.
+//
+// NO CALLER PASSES true TODAY. The form flip that showed a table's originals
+// while keeping its markers was the only one, and the 2026-09-14 sidebar-
+// state-removal design retired it: a press that turns simplification off now
+// resets the table outright. The branch stays because removing it changes
+// this function's signature and its one caller's call, which is its own
+// change rather than part of this one; #332 carries it.
 //
 // KNOWN ACCEPTED COST: registry-held originals do not survive Chrome
 // re-injecting the content script, which page attributes did (a reload of
@@ -465,8 +469,8 @@ function registryOriginalsPort(table) {
 // of those for a cell that was NOT actually restored would claim a recovery
 // that did not happen and destroy data that was still recoverable by eye
 // even though the registry could no longer recover it programmatically.
-// Returns the count of cells left unrestored, so callers (resetTable,
-// toggleOriginalValues) can tell a genuine restore from a no-op one.
+// Returns the count of cells left unrestored, so a caller can tell a
+// genuine restore from a no-op one.
 function restoreTable(table, keepEntry) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
   if (roundedCells.length === 0) return 0;
@@ -998,9 +1002,9 @@ function reapplyGridRounding(wrapperEl) {
   }
 
   // Bail without writing while the table is showing originals (DR_STORE's
-  // appliedFlag, set by toggleOriginalValues before it restores cells) —
-  // otherwise this re-apply would fight the toggle. Reconnect so a later
-  // toggle back to rounded still triggers re-applies.
+  // appliedFlag, set by the restore path before it rewrites cells) —
+  // otherwise this re-apply would fight it. Reconnect so a later press back
+  // to simplified still triggers re-applies.
   if (DR_STORE.getTableAppliedFlag(wrapperEl) !== 'simplified') {
     if (observer) {
       const scrollContainer = new GridAdapter(wrapperEl)._getScrollContainer();
@@ -1309,58 +1313,6 @@ function roundTable(table, options) {
   DR_STORE.setTableAppliedFlag(table, appliedAny ? 'simplified' : 'original');
   syncSwitchForTable(table);
   return { applied: true, rangeStatus: 'ok' };
-}
-
-function toggleOriginalValues(table) {
-  const roundedCells = table.querySelectorAll('.dr-ext-rounded');
-  if (roundedCells.length === 0) return;
-
-  if (tableHasUnrestorableCells(table)) {
-    // Locked table (issue #262): rounded markers with no registry originals
-    // behind them. Both branches below no-op on such cells while flipping
-    // appliedFlag, which made the pill oscillate between states the screen
-    // never leaves. Pin the flag to the truthful state — the screen shows
-    // simplified text — and re-render the (locked) pill instead.
-    DR_STORE.setTableAppliedFlag(table, 'simplified');
-    syncSwitchForTable(table);
-    return;
-  }
-
-  const showingOriginal = DR_STORE.getTableAppliedFlag(table) !== 'simplified';
-
-  if (showingOriginal) {
-    DR_LOG.debug("Dynamic Rounding: toggle back to simplified with last-used options.");
-    // Re-run the pipeline with the last-used options so the rounded view
-    // reflects current parameters rather than a stale cached value.
-    const opts = DR_STORE.getTableRoundOptions(table) || DR_DEFAULTS;
-    const unrestorableCount = resetTable(table);
-    if (unrestorableCount > 0) {
-      // At least one cell has no registry original to restore (e.g. a
-      // content-script re-injection wiped the registry — see restoreTable's
-      // KNOWN ACCEPTED COST doc). resetTable already left that cell's
-      // marker, title, and text untouched and set appliedFlag to
-      // 'simplified' to match what the screen actually shows. Re-running
-      // roundTable here would round already-rounded text and stamp a false
-      // "Original: ..." title over the one attribute that still held the
-      // truth, so stop instead of taking the re-round branch.
-      return;
-    }
-    sendRangeStatusMessage(roundTable(table, opts));
-  } else {
-    DR_LOG.debug("Dynamic Rounding: toggle to originals.");
-    // Set the flag BEFORE mutating cells. Restoring grid cells writes their
-    // text nodes, which fire characterData mutations the grid's re-apply
-    // observer is listening for; setting the flag first guarantees the
-    // debounced reapplyGridRounding (and its showing-original guard) sees
-    // the toggled state and leaves the originals in place instead of
-    // re-rounding.
-    DR_STORE.setTableAppliedFlag(table, 'original');
-    // keepEntry: true — restore the display but keep the dr-ext-rounded
-    // marker and the registry's stored originals, so the next toggle finds
-    // these same cells again (see restoreTable's doc for why).
-    restoreTable(table, true);
-  }
-  syncSwitchForTable(table);
 }
 
 // findMaxMagnitude and toNumber (plus DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP,
