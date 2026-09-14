@@ -119,8 +119,6 @@ globalThis.isTableRounded = isTableRounded;
 globalThis.syncSwitchForTable = syncSwitchForTable;
 globalThis.positionToggle = positionToggle;
 globalThis.createToggleForTable = createToggleForTable;
-globalThis.runToggleAction = runToggleAction;
-globalThis.toggleOriginalValues = toggleOriginalValues;
 globalThis.injectTableToggles = injectTableToggles;
 globalThis.injectTogglesForAddedNode = injectTogglesForAddedNode;
 globalThis.isDataTable = isDataTable;
@@ -149,17 +147,15 @@ Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   set(v) { _globalTapCollapseAdded = v; },
   configurable: true,
 });
-// sidebarOpen and lastRightClickedTable no longer exist as bindings in
-// content.js (sprint app-model-selection moved both into DR_STORE) — these
-// two shims keep every existing sidebar-rebind test working unmodified by
-// proxying the old names onto the store's getter/setter pair, exactly like
-// the toggleStyleInjected/_globalTapCollapseAdded shims above proxy onto
-// their own file-level lets.
-Object.defineProperty(globalThis, 'sidebarOpen', {
-  get() { return DR_STORE.isSidebarOpen(); },
-  set(v) { DR_STORE.setSidebarOpen(v); },
-  configurable: true,
-});
+// lastRightClickedTable no longer exists as a binding in content.js (sprint
+// app-model-selection moved it into DR_STORE) — this shim keeps every
+// existing test working unmodified by proxying the old name onto the
+// store's getter/setter pair, exactly like the toggleStyleInjected/
+// _globalTapCollapseAdded shims above proxy onto their own file-level lets.
+//
+// A second shim proxied a sidebarOpen field beside it. The 2026-09-14
+// sidebar-state-removal design retired that field (#241), so the shim and
+// every assignment to it are gone from this file.
 Object.defineProperty(globalThis, 'lastRightClickedTable', {
   get() { return DR_STORE.getSelectedTable(); },
   set(v) { DR_STORE.setSelectedTable(v); },
@@ -207,6 +203,12 @@ globalThis.markAndToggleIfNewGrid = markAndToggleIfNewGrid;
 // silently diverge from what the real call sites do.
 globalThis.registryOriginalsPort = registryOriginalsPort;
 globalThis.restoreTable = restoreTable;
+// resetTable is the one way off simplified since the 2026-09-14 sidebar-
+// state-removal design retired the form flip that kept a table's markers
+// (#241). Tests that used to reach the original values through that flip
+// call this instead.
+globalThis.resetTable = resetTable;
+globalThis.applySidebarRounding = applySidebarRounding;
 `);
 
 let passed = 0;
@@ -2101,10 +2103,10 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   eq('registry: round options are recorded via DR_STORE.setTableRoundOptions',
     /DR_STORE\.setTableRoundOptions\(table,\s*opts\)/.test(contentSrc), true);
 
-  eq('unified: toggleOriginalValues calls roundTable for original→rounded path',
-    // Window sized for the locked-table guard (issue #262) that now sits
-    // between the function head and the re-round call.
-    /function toggleOriginalValues[\s\S]{0,2200}roundTable\(/.test(contentSrc), true);
+  eq('unified: the apply re-runs roundTable rather than replaying a cached value',
+    // Window sized for the locked-table refusal (issue #262) that sits
+    // between the function head and the round call.
+    /function applySidebarRounding[\s\S]{0,2200}roundTable\(/.test(contentSrc), true);
 
   // --- Display simplification: "35.0" → "35" when value unchanged but format would ---
 
@@ -2345,7 +2347,7 @@ function makeMockButton() {
 })();
 
 // --- AC5: isTableRounded returns false when appliedFlag !== 'simplified' ---
-// (toggleOriginalValues sets this; the table still has rounded cells but is showing originals)
+// (the restore path sets this before it rewrites cells)
 
 (function atToggle_isTableRounded_showingOriginal() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
@@ -2355,22 +2357,26 @@ function makeMockButton() {
     isTableRounded(table), false);
 })();
 
-// --- AC5: isTableRounded after toggleOriginalValues restores originals ---
-// After toggleOriginalValues flips to showing originals, isTableRounded must be false.
+// --- AC5: isTableRounded after the reset restores originals ---
+// A form flip used to take a table back to its original values while keeping
+// its simplified markers and stored originals in place. The 2026-09-14
+// sidebar-state-removal design retired that flip (#241): turning
+// simplification off resets the table outright. This pins the reset against
+// the same three observables the flip was pinned against, plus the two the
+// flip left behind — the marker and the stored original.
 
-(function atToggle_isTableRounded_afterToggleOff() {
+(function atToggle_isTableRounded_afterReset() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   // Simulate a post-roundTable state: cell has rounded class + a registry
   // original record (app-model-registry sprint — this used to be
   // cell.dataset.originalHtml), and the registry's appliedFlag is
-  // 'simplified' so toggleOriginalValues reads it as currently-rounded and
-  // takes the "hide" branch.
+  // 'simplified'.
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
   DR_STORE.setTableOriginal(table, cell, { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
   cell.innerHTML = '1,000';
-  // Also need to stub innerHTML setter so toggleOriginalValues can restore it
+  // Also need to stub the innerHTML setter so the restore can write it
   Object.defineProperty(cell, 'innerHTML', {
     get() { return this._html !== undefined ? this._html : cell.textContent; },
     set(v) { this._html = v; },
@@ -2380,13 +2386,16 @@ function makeMockButton() {
   // Inject toggle entry (proper button stub) so syncSwitchForTable doesn't crash
   injectToggleEntry(table);
 
-  // Calling toggleOriginalValues (showingOriginal=false path) sets appliedFlag='original'
-  toggleOriginalValues(table);
+  resetTable(table);
 
-  eq('auto-table-toggle: after toggleOriginalValues, isTableRounded is false',
+  eq('auto-table-toggle: after the reset, isTableRounded is false',
     isTableRounded(table), false);
-  eq('auto-table-toggle: after toggleOriginalValues, appliedFlag is "original"',
+  eq('auto-table-toggle: after the reset, appliedFlag is "original"',
     DR_STORE.getTableAppliedFlag(table), 'original');
+  eq('auto-table-toggle: the reset clears the simplified marker, where the form flip kept it',
+    cell.classList.contains('dr-ext-rounded'), false);
+  eq('auto-table-toggle: the reset clears the stored original, where the form flip kept it',
+    DR_STORE.hasTableOriginal(table, cell), false);
 })();
 
 // --- AC6: syncSwitchForTable sets aria-pressed on the button to match isTableRounded ---
@@ -2659,12 +2668,15 @@ function makeMockButton() {
     top, expectedTop);
 })();
 
-// --- AC3 / AC4: runToggleAction semantics ---
-// runToggleAction calls roundTable when no .dr-ext-rounded cells exist,
-// and toggleOriginalValues when .dr-ext-rounded cells exist.
-// We verify the outcome on table.dataset rather than inspecting private calls.
+// --- AC3 / AC4: the two directions of a press ---
+// A press on a raw table simplifies it; a press on a simplified table resets
+// it. These two ran against a plain-toggle helper that chose between the
+// directions itself; the 2026-09-14 sidebar-state-removal design retired the
+// helper along with the third press path it served (#241), so each direction
+// is driven here through the call the surviving path makes.
+// We verify the outcome on the table rather than inspecting private calls.
 
-(function atToggle_runToggleAction_onFreshTable() {
+(function atToggle_press_onFreshTable() {
   // Use withCreateTreeWalker so roundTable can traverse cells.
   withCreateTreeWalker(function() {
     // Two-row table: row 0 is the header (excluded by default: DR_DEFAULTS.simplifyFirstRow=false),
@@ -2678,19 +2690,19 @@ function makeMockButton() {
     // Register a checkbox so syncSwitchForTable doesn't crash
     const input = injectToggleEntry(table);
 
-    runToggleAction(table);
+    applySidebarRounding(table, Object.assign({}, DR_DEFAULTS, { enabled: true }));
 
-    // After runToggleAction on a fresh table, at least one cell should be rounded
+    // After a press turning simplification on, at least one cell is simplified
     const hasRounded = table._cells.some(c => c.classList.contains('dr-ext-rounded'));
-    eq('auto-table-toggle: runToggleAction on fresh table rounds cells (AC3)',
+    eq('auto-table-toggle: a press on a raw table simplifies its cells (AC3)',
       hasRounded, true);
-    // aria-pressed should now reflect the rounded state
-    eq('auto-table-toggle: aria-pressed="true" after rounding via runToggleAction',
+    // aria-pressed should now reflect the simplified state
+    eq('auto-table-toggle: aria-pressed="true" after a press turns simplification on',
       input.getAttribute('aria-pressed'), 'true');
   });
 })();
 
-(function atToggle_runToggleAction_toggleOffRestoresOriginal() {
+(function atToggle_press_offRestoresOriginal() {
   // Simulate a table that is already rounded: has .dr-ext-rounded cells.
   const table = makeToggleTable([{ tag: 'td', text: '8,500,000' }]);
   const cell = table._cells[0];
@@ -2708,13 +2720,13 @@ function makeMockButton() {
 
   const input = injectToggleEntry(table);
 
-  runToggleAction(table);
+  resetTable(table);
 
-  // After toggling off: appliedFlag must be 'original' (AC4)
-  eq('auto-table-toggle: runToggleAction on rounded table sets appliedFlag=original (AC4)',
+  // After turning simplification off: appliedFlag must be 'original' (AC4)
+  eq('auto-table-toggle: a press on a simplified table sets appliedFlag=original (AC4)',
     DR_STORE.getTableAppliedFlag(table), 'original');
-  // aria-pressed should be "false" — table is now showing originals, not rounded
-  eq('auto-table-toggle: aria-pressed="false" after toggle-off via runToggleAction',
+  // aria-pressed should be "false" — the table shows its original values
+  eq('auto-table-toggle: aria-pressed="false" after a press turns simplification off',
     input.getAttribute('aria-pressed'), 'false');
 })();
 
@@ -2747,7 +2759,7 @@ function makeMockButton() {
     eq('auto-table-toggle: isTableRounded after roundTable matches .dr-ext-rounded presence',
       afterRound, expectedAfterRound);
 
-    // 3. After toggleOriginalValues → false
+    // 3. After the reset → false
     if (table.querySelector('.dr-ext-rounded')) {
       // Set up innerHTML writability on rounded cells
       table.querySelectorAll('.dr-ext-rounded').forEach(cell => {
@@ -2759,8 +2771,8 @@ function makeMockButton() {
           });
         }
       });
-      toggleOriginalValues(table);
-      eq('auto-table-toggle: isTableRounded is false after toggleOriginalValues (AC5)',
+      resetTable(table);
+      eq('auto-table-toggle: isTableRounded is false after the reset (AC5)',
         isTableRounded(table), false);
     }
   });
@@ -2777,8 +2789,8 @@ function makeMockButton() {
     typeof positionToggle, 'function');
   eq('auto-table-toggle: createToggleForTable is defined',
     typeof createToggleForTable, 'function');
-  eq('auto-table-toggle: runToggleAction is defined',
-    typeof runToggleAction, 'function');
+  eq('auto-table-toggle: resetTable is defined',
+    typeof resetTable, 'function');
   eq('auto-table-toggle: tableToggles WeakMap is defined',
     tableToggles instanceof WeakMap, true);
   eq('auto-table-toggle: trackedTables Set is defined',
@@ -5090,8 +5102,8 @@ function withReactiveCreateTreeWalker(fn) {
 // then return { buttonEl, sentMessages } so callers can dispatch events and
 // inspect chrome.runtime.sendMessage calls.
 //
-// The caller is responsible for resetting sidebarOpen / lastRightClickedTable
-// before and after each sub-test, and for restoring chrome.runtime.sendMessage.
+// The caller is responsible for resetting lastRightClickedTable before and
+// after each sub-test, and for restoring chrome.runtime.sendMessage.
 
 function createToggleWithSpies(table) {
   const appendedToBody = [];
@@ -5204,7 +5216,6 @@ function fireTouchSecondTap(buttonEl) {
   global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
 
   // Set module state: sidebar open, bound to tableA
-  sidebarOpen = true;
   lastRightClickedTable = tableA;
 
   // Create toggle for tableB and click it (mouse path)
@@ -5217,7 +5228,6 @@ function fireTouchSecondTap(buttonEl) {
 
   // Restore
   global.chrome.runtime.sendMessage = origSendMessage;
-  sidebarOpen = false;
   lastRightClickedTable = null;
 
   // 1a. lastRightClickedTable must now be tableB
@@ -5265,7 +5275,6 @@ function fireTouchSecondTap(buttonEl) {
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
 
-  sidebarOpen = true;
   lastRightClickedTable = tableA;
 
   const buttonB = createToggleWithSpies(tableB);
@@ -5276,7 +5285,6 @@ function fireTouchSecondTap(buttonEl) {
   const hasRounded_touch = tableB._cells.some(c => c.classList.contains('dr-ext-rounded'));
 
   global.chrome.runtime.sendMessage = origSendMessage;
-  sidebarOpen = false;
   lastRightClickedTable = null;
 
   eq('rebind AC1 touch: lastRightClickedTable rebound to tableB',
@@ -5309,14 +5317,12 @@ function fireTouchSecondTap(buttonEl) {
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
 
-  sidebarOpen = true;
   lastRightClickedTable = tableA;
 
   const buttonA = createToggleWithSpies(tableA);
   fireMouseClick(buttonA);
 
   global.chrome.runtime.sendMessage = origSendMessage;
-  sidebarOpen = false;
   lastRightClickedTable = null;
 
   // Same-table guard: the switch message must NOT be dispatched
@@ -5340,14 +5346,12 @@ function fireTouchSecondTap(buttonEl) {
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
 
-  sidebarOpen = true;
   lastRightClickedTable = tableA;
 
   const buttonA = createToggleWithSpies(tableA);
   fireTouchSecondTap(buttonA);
 
   global.chrome.runtime.sendMessage = origSendMessage;
-  sidebarOpen = false;
   lastRightClickedTable = null;
 
   const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
@@ -5377,7 +5381,6 @@ function fireTouchSecondTap(buttonEl) {
   global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
 
   // Sidebar is CLOSED, lastRightClickedTable is tableA (different from tableB)
-  sidebarOpen = false;
   lastRightClickedTable = tableA;
 
   const buttonB = createToggleWithSpies(tableB);
@@ -5387,8 +5390,8 @@ function fireTouchSecondTap(buttonEl) {
   lastRightClickedTable = null;
 
   const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
-  eq('rebind AC3 mouse: TABLE_SWITCHED NOT dispatched when sidebar closed',
-    switchCalls.length, 0);
+  eq('press on a different table reports the switch with the sidebar closed (part one: nothing reads that state)',
+    switchCalls.length, 1);
 })();
 
 // ---------------------------------------------------------------------------
@@ -5412,7 +5415,6 @@ function fireTouchSecondTap(buttonEl) {
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
 
-  sidebarOpen = false;
   lastRightClickedTable = tableA;
 
   const buttonB = createToggleWithSpies(tableB);
@@ -5422,21 +5424,23 @@ function fireTouchSecondTap(buttonEl) {
   lastRightClickedTable = null;
 
   const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
-  eq('rebind AC3 touch: TABLE_SWITCHED NOT dispatched when sidebar closed',
-    switchCalls.length, 0);
+  eq('second tap on a different table reports the switch with the sidebar closed (part one: nothing reads that state)',
+    switchCalls.length, 1);
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: CLOSE_SIDEBAR flips sidebarOpen back to false; subsequent different-table
-//      click does NOT dispatch TABLE_SWITCHED.
+// AC4: closing the sidebar leaves a later press unchanged.
 //
-// Because chrome.runtime.onMessage.addListener is a no-op stub, we deliver
-// SIDEBAR_OPENED / CLOSE_SIDEBAR by setting sidebarOpen directly via the
-// exposed getter/setter — this is equivalent to the message path and tests
-// the same observable behavior (sidebarOpen flag drives the guard).
+// This used to pin the opposite: the close flipped a page-held flag to false
+// and the flag gated the switch. The 2026-09-14 sidebar-state-removal design
+// retired both the flag and the gate (#241), and the close message stops at
+// the sidebar page — the content script has no handler for it. The pin that
+// carries weight now is that a press after a close behaves exactly like a
+// press before one, which is the defect's own cure: a page whose flag went
+// stale used to take the rebind path forever.
 // ---------------------------------------------------------------------------
 
-(function sidebarRebind_AC4_closeSidebarFlipsFlag() {
+(function sidebarRebind_AC4_closeChangesNothingForALaterPress() {
   const tableA = makeToggleTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
@@ -5449,18 +5453,16 @@ function fireTouchSecondTap(buttonEl) {
   ]);
   tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  // Step 1: open sidebar (set flag as the SIDEBAR_OPENED handler would)
-  sidebarOpen = true;
   lastRightClickedTable = tableA;
 
-  // Step 2: close sidebar (set flag as the CLOSE_SIDEBAR handler would)
-  sidebarOpen = false;
+  // The close reaches the sidebar page alone now, so there is nothing to
+  // deliver here — the content script registers no branch for it. That
+  // absence is asserted at the source, next to the other retirements.
+  eq('rebind AC4: the content script registers no branch for the close message',
+    /CLOSE_SIDEBAR/.test(sourceByName('content.js') || ''), false);
 
-  // Step 3: verify flag is false
-  eq('rebind AC4: sidebarOpen is false after CLOSE_SIDEBAR',
-    sidebarOpen, false);
-
-  // Step 4: click a different table; no RESET should be dispatched
+  // A press on a different table afterwards: the switch goes out, exactly as
+  // it would have before the close.
   const sentMessages = [];
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
@@ -5472,8 +5474,8 @@ function fireTouchSecondTap(buttonEl) {
   lastRightClickedTable = null;
 
   const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
-  eq('rebind AC4: after CLOSE_SIDEBAR, different-table click does NOT dispatch TABLE_SWITCHED',
-    switchCalls.length, 0);
+  eq('after CLOSE_SIDEBAR, a press on a different table still reports the switch (part one: nothing reads that state)',
+    switchCalls.length, 1);
 })();
 
 // ---------------------------------------------------------------------------
@@ -5506,7 +5508,6 @@ function fireTouchSecondTap(buttonEl) {
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = () => {};
 
-  sidebarOpen = true;
   lastRightClickedTable = tableA;
 
   const buttonB = createToggleWithSpies(tableB);
@@ -5516,7 +5517,6 @@ function fireTouchSecondTap(buttonEl) {
   const usedOpts = DR_STORE.getTableRoundOptions(tableB);
 
   global.chrome.runtime.sendMessage = origSendMessage;
-  sidebarOpen = false;
   lastRightClickedTable = null;
   DR_STORE.setSettings(savedSettings);
 
@@ -5547,7 +5547,6 @@ function fireTouchSecondTap(buttonEl) {
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = () => {};
 
-  sidebarOpen = true;
   lastRightClickedTable = tableA;
 
   const buttonB = createToggleWithSpies(tableB);
@@ -5557,14 +5556,13 @@ function fireTouchSecondTap(buttonEl) {
   const flag = DR_STORE.getTableAppliedFlag(tableB);
 
   global.chrome.runtime.sendMessage = origSendMessage;
-  sidebarOpen = false;
   lastRightClickedTable = null;
   DR_STORE.setSettings(savedSettings);
 
-  eq('sync-on-switch: a model holding enabled:false leaves the clicked table unrounded',
-    rounded, false);
-  eq('sync-on-switch: the clicked table\'s applied flag stays original under enabled:false',
-    flag, 'original');
+  eq('press on a different table simplifies it even where the settings record stands at off (part one: the flip reads the screen)',
+    rounded, true);
+  eq('press on a different table sets its form to simplified where the record stood at off (part one: the flip reads the screen)',
+    flag, 'simplified');
 })();
 
 // Switching onto a LOCKED table (issue #262): the clicked table carries a
@@ -5597,13 +5595,11 @@ function fireTouchSecondTap(buttonEl) {
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
 
-  sidebarOpen = true;
   lastRightClickedTable = tableA;
 
   DR_BUS.publish('intent:toggleTable', { table: tableB });
 
   global.chrome.runtime.sendMessage = origSendMessage;
-  sidebarOpen = false;
   lastRightClickedTable = null;
 
   eq('locked-switch: the sequence is TABLE_SWITCHED then APPLY_BLOCKED, nothing else',
@@ -5622,38 +5618,53 @@ function fireTouchSecondTap(buttonEl) {
 (function sidebarRebind_sourceLevel() {
   // Click-handler rebind logic now spans content.js + ui-toggle.js (Phase 2);
   // scan the combined content-script source. Sprint app-model-selection moved
-  // the sidebarOpen flag and the selected-table reference into DR_STORE
-  // (app/store.js) — ui-toggle.js reports an intent instead of writing
-  // content.js's variables directly, and content.js's own writes go through
-  // DR_STORE's setters instead of a bare assignment. These assertions were
-  // updated in that sprint to check the new structure instead of the old
-  // direct-assignment one.
+  // the active-table reference into DR_STORE (app/store.js) — ui-toggle.js
+  // publishes an intent instead of writing content.js's variables directly, and
+  // content.js's own writes go through DR_STORE's setters instead of a bare
+  // assignment. These assertions were updated in that sprint to check the new
+  // structure instead of the old direct-assignment one.
   const contentSrc = allContentSrc;
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const storeSrc = sourceByName('app/store.js') || '';
 
-  // app/store.js: sidebarOpen flag is declared as a module-level let, closed
-  // over by DR_STORE — content.js no longer declares it itself.
-  eq('rebind source: app/store.js declares let sidebarOpen = false',
-    /let\s+sidebarOpen\s*=\s*false/.test(storeSrc), true);
-  eq('rebind source: content.js no longer declares sidebarOpen itself',
-    /let\s+sidebarOpen\b/.test(sourceByName('content.js') || ''), false);
+  // Whether the sidebar is open: retired by the 2026-09-14 sidebar-state-
+  // removal design (#241). These four scans pinned the field, the two
+  // handler calls that wrote it, and the one guard that read it; each now
+  // pins its absence, in the same place, so a reintroduction anywhere in the
+  // extension fails here rather than at some later symptom.
+  //
+  // Scanning for the NAMES rather than for a shape is deliberate: the defect
+  // was a page-held copy of a fact only another context could correct, and
+  // any spelling of that copy brings the defect back. The scan therefore
+  // covers the whole extension, service worker and sidebar included, not
+  // just the content script.
+  const SIDEBAR_STATE_NAMES = /sidebarOpen|isSidebarOpen|setSidebarOpen|state:sidebarOpenChanged/;
+  eq('sidebar-state removal: app/store.js declares no sidebar-open field',
+    SIDEBAR_STATE_NAMES.test(storeSrc), false);
+  eq('sidebar-state removal: the content-script stack names no sidebar-open value',
+    SIDEBAR_STATE_NAMES.test(contentSrc), false);
+  eq('sidebar-state removal: sidebar.js names no sidebar-open value',
+    SIDEBAR_STATE_NAMES.test(sidebarSrc), false);
+  eq('sidebar-state removal: background.js names no sidebar-open value',
+    SIDEBAR_STATE_NAMES.test(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8')), false);
+  eq('sidebar-state removal: the bus registers no sidebar-open topic',
+    Object.prototype.hasOwnProperty.call(DR_BUS.TOPICS, 'state:sidebarOpenChanged'), false);
 
-  // content.js: SIDEBAR_OPENED handler sets sidebarOpen via DR_STORE
-  eq('rebind source: content.js SIDEBAR_OPENED calls DR_STORE.setSidebarOpen(true)',
-    /SIDEBAR_OPENED[\s\S]{0,200}DR_STORE\.setSidebarOpen\(true\)/.test(contentSrc), true);
+  // SIDEBAR_OPENED survives — it still triggers the reconnect apply — but it
+  // records nothing about the sidebar. CLOSE_SIDEBAR goes to the sidebar page
+  // alone, so the content script carries no branch for it at all.
+  eq('sidebar-state removal: SIDEBAR_OPENED still runs the reconnect apply',
+    /SIDEBAR_OPENED[\s\S]{0,400}applySidebarRounding/.test(contentSrc), true);
+  // constants.js declares the action name and rides in the same bundle, so
+  // this one reads content.js alone: the claim is about the handler list.
+  eq('sidebar-state removal: content.js registers no branch for the close message',
+    /CLOSE_SIDEBAR/.test(sourceByName('content.js') || ''), false);
 
-  // content.js: CLOSE_SIDEBAR handler sets sidebarOpen via DR_STORE
-  eq('rebind source: content.js CLOSE_SIDEBAR calls DR_STORE.setSidebarOpen(false)',
-    /CLOSE_SIDEBAR[\s\S]{0,100}DR_STORE\.setSidebarOpen\(false\)/.test(contentSrc), true);
-
-  // content.js's intent:toggleTable handler (sprint toggle-split moved this
-  // out of ui-toggle.js's two click branches into the one controller
-  // subscriber both branches now report to) contains the rebind precondition,
-  // reading the store instead of raw variables.
-  eq('rebind source: the intent:toggleTable handler guards on DR_STORE.isSidebarOpen() && DR_STORE.getSelectedTable() && table !== DR_STORE.getSelectedTable()',
-    /DR_STORE\.isSidebarOpen\(\)\s*&&\s*DR_STORE\.getSelectedTable\(\)\s*&&\s*table\s*!==\s*DR_STORE\.getSelectedTable\(\)/.test(contentSrc),
-    true);
+  // The merged press path: one settings write, and no read of any sidebar
+  // value. The behavioral pins live in the part-one block further down; this
+  // one holds the line at the source, so a reintroduced guard fails here.
+  eq('sidebar-state removal: the intent:toggleTable handler reads the screen for its flip direction',
+    /intent:toggleTable'[\s\S]{0,600}!isTableRounded\(table\)/.test(contentSrc), true);
 
   // content.js: sprint toggle-split consolidated the mouse and touch click
   // branches' controller logic (which used to each carry their own switch
@@ -9158,14 +9169,23 @@ function flushTimers(pendingTimers) {
 })();
 
 // ---------------------------------------------------------------------------
-// GV5b (Regression #cstif9): Per-table toggle → show originals on a virtualized
-// grid. toggleOriginalValues restores pristine values; the still-connected grid
-// re-apply observer must NOT re-round them. Before the fix, the observer saw the
-// restore writes' characterData mutations and re-rounded the cells ~100ms later,
-// making them flash original then snap back to rounded and leaving the toggle
-// state (drShowingOriginal='true') disconnected from the DOM.
+// GV5b (Regression #cstif9): a press turning simplification off on a
+// virtualized grid restores pristine values; a grid re-apply observer must NOT
+// re-round them. Before the fix, the observer saw the restore writes'
+// characterData mutations and re-rounded the cells ~100ms later, making them
+// flash original then snap back to simplified and leaving the recorded form
+// disconnected from the DOM.
+//
+// The off direction used to be a form flip that kept the grid's markers and
+// left its observer connected, and the appliedFlag guard inside the re-apply
+// was what held the line. The 2026-09-14 sidebar-state-removal design retired
+// that flip (#241): off is a reset, which disconnects the observer and clears
+// the stored options. The regression is therefore blocked twice over, and this
+// test drives a mutation through anyway — the stub calls the callback whether
+// or not the observer was disconnected, so the re-apply's own bail is still
+// what the assertions read.
 // ---------------------------------------------------------------------------
-(function gv5b_toggleOriginal_observerDoesNotReRound() {
+(function gv5b_pressOff_observerDoesNotReRound() {
   let ctx;
   try {
     ctx = setupVirtGrid([
@@ -9179,11 +9199,11 @@ function flushTimers(pendingTimers) {
     eq('GV5b (pre): cell[0] is rounded after roundTable',
       grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
 
-    // User clicks the per-table pillbox toggle to show original values.
-    toggleOriginalValues(grid.wrapperEl);
+    // The user presses the grid's pillbox to turn simplification off.
+    resetTable(grid.wrapperEl);
 
     // Flag must be set and originals restored.
-    eq('GV5b: appliedFlag is "original" after toggleOriginalValues',
+    eq('GV5b: appliedFlag is "original" after the press turns simplification off',
       DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
     eq('GV5b: cell[0] text node restored to original',
       grid.cellEls[0].childNodes[0].nodeValue, '8584629');
@@ -9200,11 +9220,15 @@ function flushTimers(pendingTimers) {
     eq('GV5b: cell[1] still original after observer fires (no re-round)',
       grid.cellEls[1].childNodes[0].nodeValue, '100');
 
-    // Toggling back on must re-round (resetTable + roundTable path).
-    toggleOriginalValues(grid.wrapperEl);
-    eq('GV5b: appliedFlag is "simplified" after toggling back on',
+    // A press back on runs the apply, which re-simplifies from the settings
+    // record. setupVirtGrid rounds with the first row and column included; the
+    // settings record here carries the same, so the re-simplify reaches the
+    // same cells.
+    applySidebarRounding(grid.wrapperEl, Object.assign(
+      {}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true, enabled: true }));
+    eq('GV5b: appliedFlag is "simplified" after the press turns simplification back on',
       DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'simplified');
-    eq('GV5b: cell[0] re-rounded after toggling back on',
+    eq('GV5b: cell[0] re-simplified after the press turns simplification back on',
       grid.cellEls[0].childNodes[0].nodeValue !== '8584629', true);
 
   } finally {
@@ -11137,7 +11161,7 @@ function fireMouseClick(buttonEl, fn) {
 //
 // Unit test strategy:
 //   Part A — ui-toggle.js guard: verify TABLE_TOGGLE_STATE is sent when
-//     sidebarOpen=true AND lastRightClickedTable === table.
+//     the pressed table is the active one.
 //   Part B — sidebar.js handler (static): verify the source includes the
 //     TABLE_TOGGLE_STATE branch that sets enabledEl.checked.
 //   Note: actually exercising sidebar.js in Node requires eval'ing it, which
@@ -11145,14 +11169,13 @@ function fireMouseClick(buttonEl, fn) {
 //   static analysis plus the integration guard in Part A.
 // ---------------------------------------------------------------------------
 
-(function pillbox_AC1_partA_sendMessageWhenSidebarOpen() {
+(function pillbox_AC1_partA_sendMessageOnActiveTable() {
   // Capture sendMessage calls.
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
-  // Set state: sidebarOpen=true, lastRightClickedTable will be the table we create.
-  sidebarOpen = false; // reset first
+  // Set state: the table we create below becomes the active one.
   lastRightClickedTable = null;
 
   const { table, buttonEl } = makeRealToggleButton([
@@ -11160,20 +11183,18 @@ function fireMouseClick(buttonEl, fn) {
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
 
-  // Establish lastRightClickedTable = this table and sidebarOpen = true.
+  // Establish this table as the active one, so the press is an unmoved one.
   lastRightClickedTable = table;
-  sidebarOpen = true;
 
   // Click should run runToggleAction (rounds the table) then send TABLE_TOGGLE_STATE.
   fireMouseClick(buttonEl);
 
   global.chrome.runtime.sendMessage = origSend;
   // Reset global state
-  sidebarOpen = false;
   lastRightClickedTable = null;
 
   const toggleMsg = sent.find(m => m.action === 'TABLE_TOGGLE_STATE');
-  eq('AC1 part-A: TABLE_TOGGLE_STATE sent when sidebarOpen=true and table===lastRightClickedTable',
+  eq('AC1 part-A: TABLE_TOGGLE_STATE sent when the pressed table is the active one',
     toggleMsg !== undefined, true);
   // After click on a fresh table, it becomes rounded → enabled should be true.
   eq('AC1 part-A: TABLE_TOGGLE_STATE.enabled reflects new rounded state (true after first click)',
@@ -11197,7 +11218,7 @@ function fireMouseClick(buttonEl, fn) {
 //
 // The sidebar-to-table path goes through content.js's APPLY_SIDEBAR_SETTINGS
 // message handler. We test: (a) static guard the handler exists, (b) dynamic
-// guard that runToggleAction still rounds/unrounds a table correctly.
+// guard that a press still takes a table through the full round trip.
 // ---------------------------------------------------------------------------
 
 (function pillbox_AC2_sidebarToTablePath_regression() {
@@ -11216,9 +11237,11 @@ function fireMouseClick(buttonEl, fn) {
   eq('AC2 regression: sidebar.js still references enabledEl',
     sidebarSrc.includes('enabledEl'), true);
 
-  // Dynamic guard: runToggleAction can still round a table (pill-click path is
-  // intact). DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn), so
-  // only [row1, col1] is processed. Use 12,345 which rounds to 10,000 (changes).
+  // Dynamic guard: a press still takes a table on and back off. This ran
+  // against a plain-toggle helper until the 2026-09-14 sidebar-state-removal
+  // design retired it (#241); the press itself is the path now, so the intent
+  // drives it. DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn),
+  // so only [row1, col1] is processed. Use 12,345, which rounds to 10,000.
   const table = makeToggleTable([
     [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
     [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
@@ -11226,17 +11249,28 @@ function fireMouseClick(buttonEl, fn) {
   table._cells.forEach(c => { c.querySelectorAll = () => []; });
   injectToggleEntry(table);
 
-  const wasRounded = isTableRounded(table);
-  withCreateTreeWalker(function() { runToggleAction(table); });
-  const isNowRounded = isTableRounded(table);
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedSettings = DR_STORE.getSettings();
+  try {
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    DR_STORE.setSelectedTable(table);
 
-  eq('AC2 regression: runToggleAction transitions a fresh table to rounded state',
-    !wasRounded && isNowRounded, true);
+    const wasRounded = isTableRounded(table);
+    withCreateTreeWalker(function() { DR_BUS.publish('intent:toggleTable', { table }); });
+    const isNowRounded = isTableRounded(table);
 
-  // Calling again reverts to original-showing state (toggleOriginalValues).
-  withCreateTreeWalker(function() { runToggleAction(table); });
-  eq('AC2 regression: runToggleAction again transitions back (showing originals)',
-    isTableRounded(table), false);
+    eq('AC2 regression: a press takes a raw table to simplified',
+      !wasRounded && isNowRounded, true);
+
+    withCreateTreeWalker(function() { DR_BUS.publish('intent:toggleTable', { table }); });
+    eq('AC2 regression: a second press takes it back to its original values',
+      isTableRounded(table), false);
+  } finally {
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(savedSettings);
+    DR_STORE.setSelectedTable(savedSelected);
+  }
 })();
 
 // ---------------------------------------------------------------------------
@@ -11261,7 +11295,6 @@ function fireMouseClick(buttonEl, fn) {
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
-  sidebarOpen = true;
 
   const { table: tableA, buttonEl: buttonA } = makeRealToggleButton([
     [{ tag: 'td', text: 'ColA' },      { tag: 'td', text: 'ColB' }],
@@ -11282,7 +11315,6 @@ function fireMouseClick(buttonEl, fn) {
   const lrc = lastRightClickedTable;
 
   global.chrome.runtime.sendMessage = origSend;
-  sidebarOpen = false;
   lastRightClickedTable = null;
 
   // Implementation reassigns lastRightClickedTable to the clicked table.
@@ -11309,7 +11341,6 @@ function fireMouseClick(buttonEl, fn) {
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
-  sidebarOpen = true;
   lastRightClickedTable = null; // explicitly null
 
   const { table, buttonEl } = makeRealToggleButton([
@@ -11321,7 +11352,6 @@ function fireMouseClick(buttonEl, fn) {
   fireMouseClick(buttonEl);
 
   global.chrome.runtime.sendMessage = origSend;
-  sidebarOpen = false;
   lastRightClickedTable = null;
 
   const toggleMsgs = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
@@ -11336,7 +11366,6 @@ function fireMouseClick(buttonEl, fn) {
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
-  sidebarOpen = true;
   lastRightClickedTable = null; // explicitly null
 
   const { table, buttonEl } = makeRealToggleButton([
@@ -11348,20 +11377,19 @@ function fireMouseClick(buttonEl, fn) {
   fireMouseClick(buttonEl);
 
   global.chrome.runtime.sendMessage = origSend;
-  sidebarOpen = false;
 
   const toggleMsgs = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
   eq('AC3 corollary: null lastRightClickedTable means TABLE_TOGGLE_STATE is NOT sent',
     toggleMsgs.length, 0);
 })();
 
-// AC3 corollary 2: sidebarOpen=false → no message even if table matches.
+// AC3 corollary 2: a press on the active table publishes the settings
+// record's new value, whatever the sidebar is doing. Nothing here reads that.
 (function pillbox_AC3_sidebarClosed_noMessage() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
-  sidebarOpen = false; // sidebar closed
   const { table, buttonEl } = makeRealToggleButton([
     [{ tag: 'td', text: 'ColA' },      { tag: 'td', text: 'ColB' }],
     [{ tag: 'td', text: '3,000,000' }, { tag: 'td', text: '100' }],
@@ -11380,7 +11408,7 @@ function fireMouseClick(buttonEl, fn) {
   // "No spurious sidebar update" still holds because a closed sidebar has no
   // page to receive the message; background additionally gates its relay on
   // sidebarTabId (AC4 below).
-  eq('AC3 corollary 2: sidebarOpen=false, table matches → the record is still reported once (no panel page exists to receive it)',
+  eq('AC3 corollary 2: a press on the active table publishes the settings record once (a closed sidebar has no page to receive it)',
     toggleMsgs.length, 1);
 })();
 
@@ -13613,10 +13641,12 @@ function fireMouseClick(buttonEl, fn) {
 // is reachable only through chrome.tabs.sendMessage(tabId, ...). Two rules
 // follow, and both are asserted at runtime rather than by source regex:
 //
-//   1. Closing the panel must notify the panel AND the content script. Without
-//      the tab-directed send, content.js never clears sidebarOpen, so the flag
-//      stays true for the rest of the tab's life and every branch that reads it
-//      sees stale state.
+//   1. Closing the sidebar notifies the sidebar page alone. A second send,
+//      aimed at the tab, used to tell the content script to clear its own
+//      copy of "the sidebar is open". The 2026-09-14 sidebar-state-removal
+//      design retired that copy (#241), and the content script registers no
+//      branch for this message, so the tab-directed send would deliver to
+//      nothing.
 //   2. TABLE_ACTIVATED must not be relayed into the tab. content.js already
 //      sends it with runtime.sendMessage, which the panel receives directly.
 //      Relaying it to sidebarTabId delivers it to a content script that has no
@@ -13630,8 +13660,12 @@ function fireMouseClick(buttonEl, fn) {
   // omitted: background.js guards on `chrome.sidePanel && chrome.sidePanel.open`,
   // so with it absent the menu handler never awaits and runs to completion
   // synchronously, letting us assert without async plumbing.
-  // rejectClosePath simulates a tab that is already gone by the time the close
-  // message goes out, which is exactly the onRemoved case.
+  // rejectClosePath simulates a receiving end that is already gone by the time
+  // the close message goes out, which is exactly the onRemoved case. It used
+  // to reject the tab-directed leg; that leg retired with the page's copy of
+  // "the sidebar is open" (#241), so it rejects the broadcast instead. The
+  // broadcast is the one leg left, and the service worker catches its
+  // rejection.
   function loadBackground({ rejectClosePath = false } = {}) {
     const runtimeSends = [];
     const tabSends = [];
@@ -13640,7 +13674,12 @@ function fireMouseClick(buttonEl, fn) {
       runtime: {
         onInstalled: { addListener: () => {} },
         onMessage: { addListener: (fn) => { listeners.message = fn; } },
-        sendMessage: (msg) => { runtimeSends.push(msg); return Promise.resolve(); },
+        sendMessage: (msg) => {
+          runtimeSends.push(msg);
+          return rejectClosePath && msg.action === 'CLOSE_SIDEBAR'
+            ? Promise.reject(new Error('no receiving end'))
+            : Promise.resolve();
+        },
       },
       contextMenus: {
         create: () => {},
@@ -13650,9 +13689,7 @@ function fireMouseClick(buttonEl, fn) {
       tabs: {
         sendMessage: (tabId, msg) => {
           tabSends.push({ tabId, msg });
-          return rejectClosePath && msg.action === 'CLOSE_SIDEBAR'
-            ? Promise.reject(new Error('no receiving end'))
-            : Promise.resolve();
+          return Promise.resolve();
         },
         onUpdated:   { addListener: (fn) => { listeners.updated = fn; } },
         onRemoved:   { addListener: (fn) => { listeners.removed = fn; } },
@@ -13672,38 +13709,42 @@ function fireMouseClick(buttonEl, fn) {
     ctx.listeners.menuClicked({ menuItemId: 'dr-action-sidebar' }, { id: PANEL_TAB });
   }
 
-  // --- Rule 1: closing notifies both the panel and the content script ---
-  (function closeNotifiesBoth() {
+  // --- Rule 1: closing notifies the sidebar page, and nothing else ---
+  (function closeNotifiesTheSidebarOnly() {
     const ctx = loadBackground();
     openPanel(ctx);
-    eq('bg routing: opening the panel sends SIDEBAR_OPENED to that tab',
+    eq('bg routing: opening the sidebar sends SIDEBAR_OPENED to that tab',
       ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.action === 'SIDEBAR_OPENED'),
       true);
 
     ctx.runtimeSends.length = 0;
     ctx.tabSends.length = 0;
 
-    // Activating a different tab closes the panel.
+    // Activating a different tab closes the sidebar.
     ctx.listeners.activated({ tabId: 99 });
 
-    eq('bg routing: CLOSE_SIDEBAR broadcast reaches the panel',
+    eq('bg routing: CLOSE_SIDEBAR broadcast reaches the sidebar page',
       ctx.runtimeSends.some(m => m.action === 'CLOSE_SIDEBAR'), true);
-    eq('bg routing: CLOSE_SIDEBAR is also sent to the content script tab',
-      ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.action === 'CLOSE_SIDEBAR'),
-      true);
+    eq('bg routing: CLOSE_SIDEBAR is not sent into the tab — the content script has no handler for it',
+      ctx.tabSends.some(s => s.msg.action === 'CLOSE_SIDEBAR'),
+      false);
   })();
 
   // The same must hold for the other two close triggers.
   (function closeOnNavigationAndRemoval() {
     const navCtx = loadBackground();
     openPanel(navCtx);
+    navCtx.runtimeSends.length = 0;
     navCtx.tabSends.length = 0;
     navCtx.listeners.updated(PANEL_TAB, { status: 'loading' });
-    eq('bg routing: navigation away sends CLOSE_SIDEBAR to the content script',
-      navCtx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.action === 'CLOSE_SIDEBAR'),
-      true);
+    eq('bg routing: navigating away broadcasts CLOSE_SIDEBAR to the sidebar page',
+      navCtx.runtimeSends.some(m => m.action === 'CLOSE_SIDEBAR'), true);
+    eq('bg routing: navigating away sends nothing into the tab',
+      navCtx.tabSends.some(s => s.msg.action === 'CLOSE_SIDEBAR'), false);
 
-    // A removed tab has no receiving end; the send must not surface an error.
+    // A removed tab: the close must not surface an error. The broadcast is
+    // all that goes out now, and the stub rejects it, so this pins the
+    // service worker's own catch.
     const goneCtx = loadBackground({ rejectClosePath: true });
     openPanel(goneCtx);
     let threw = false;
@@ -14825,8 +14866,14 @@ const LADDER_OPTS = {
 
 // ---------------------------------------------------------------------------
 // Sprint engine-returns-results: pin the exact RANGE_OK/RANGE_ERROR message
-// sequence for one full toggle flow (runToggleAction -> roundTable ->
+// sequence for one full apply (applySidebarRounding -> roundTable ->
 // sendRangeStatusMessage -> chrome.runtime.sendMessage).
+//
+// The flow used to start at a plain-toggle helper, which the 2026-09-14
+// sidebar-state-removal design retired (#241). The apply is the one path to
+// roundTable now, so it drives the flow here. It leads with its own APPLY_OK,
+// which the retired helper never sent; the RANGE_OK/RANGE_ERROR and
+// UPDATE_MENU_LABEL tail is byte-identical to the frozen capture.
 //
 // Before this sprint, roundTable sent RANGE_ERROR/RANGE_OK itself. Now the
 // engine returns { applied, rangeStatus, error } and the controller sends the
@@ -14894,28 +14941,42 @@ const LADDER_OPTS = {
       .map((file) => (file === 'content.js' ? contentSrc : contentScriptSources.get(file)))
       .join('\n');
     vm.runInContext(
-      bundle + '\nthis.__runToggleAction = runToggleAction; this.__DR_DEFAULTS = DR_DEFAULTS;',
+      bundle + '\nthis.__applySidebarRounding = applySidebarRounding; this.__DR_DEFAULTS = DR_DEFAULTS;',
       ctx
     );
 
     // 2x2 so the target cell (row 1, col 1) sits outside DR_DEFAULTS's
     // simplifyFirstRow/simplifyFirstColumn: false exclusion — DR_DEFAULTS
     // (unlike the no-chrome e2e fixture above) is used as-is here, matching
-    // runToggleAction's real call, which passes no per-call options.
+    // the settings record a press carries into the apply.
     const table = makeMockTable([
       [{ tag: 'td', text: 'label' }, { tag: 'td', text: 'header' }],
       [{ tag: 'td', text: 'label' }, { tag: 'td', text: '1,234,567' }],
     ]);
-    // runToggleAction unconditionally ends with flashRangePulse(table, null),
-    // which flashes the whole-table outline via table.classList — a real
-    // <table> element has this; the bare mock from makeMockTable does not.
+    // The apply ends with flashRangePulse, which flashes the whole-table
+    // outline via table.classList — a real <table> element has this; the bare
+    // mock from makeMockTable does not. It also opens with a reset and closes
+    // by checking for a simplified cell, both through the marker-class
+    // selector, so the mock needs a live scan rather than a fixed answer — an
+    // empty list would hide the closing UPDATE_MENU_LABEL.
     table.classList = { add() {}, remove() {} };
+    table.querySelectorAll = (sel) => {
+      if (sel !== '.dr-ext-rounded') return [];
+      const found = [];
+      for (const row of table.rows) {
+        for (const cell of row.cells) {
+          if (cell.classList && cell.classList.contains('dr-ext-rounded')) found.push(cell);
+        }
+      }
+      return found;
+    };
+    table.querySelector = (sel) => table.querySelectorAll(sel)[0] || null;
     if (rangeExprOverride !== undefined) {
       sandbox.__DR_DEFAULTS.rangeExpr = rangeExprOverride;
     }
     let threw = null;
     try {
-      sandbox.__runToggleAction(table);
+      sandbox.__applySidebarRounding(table, sandbox.__DR_DEFAULTS);
     } catch (e) {
       threw = e.message;
     }
@@ -14924,11 +14985,12 @@ const LADDER_OPTS = {
 
   // --- Scenario 1: valid range (default rangeExpr === '') -> rounds, RANGE_OK ---
   const okRun = runFullToggleFlow(undefined);
-  eq('range-status sequence (valid range): runToggleAction does not throw',
+  eq('range-status sequence (valid range): the apply does not throw',
     okRun.threw, null);
-  eq('range-status sequence (valid range): exact message sequence matches parent-branch capture',
+  eq('range-status sequence (valid range): exact message sequence matches parent-branch capture, behind the apply\'s own APPLY_OK',
     okRun.sentMessages,
     [
+      { action: 'APPLY_OK' },
       { action: 'RANGE_OK' },
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
     ]);
@@ -14938,13 +15000,13 @@ const LADDER_OPTS = {
   // --- Scenario 2: invalid range ("1a" matches neither a column letter nor a
   // row number pattern) -> no rounding, RANGE_ERROR with the parse error ---
   const errorRun = runFullToggleFlow('1a');
-  eq('range-status sequence (invalid range): runToggleAction does not throw',
+  eq('range-status sequence (invalid range): the apply does not throw',
     errorRun.threw, null);
-  eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture',
+  eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture, behind the apply\'s own APPLY_OK',
     errorRun.sentMessages,
     [
+      { action: 'APPLY_OK' },
       { action: 'RANGE_ERROR', error: 'Invalid range: "1a"' },
-      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
     ]);
   eq('range-status sequence (invalid range): the cell was NOT rounded',
     errorRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), false);
@@ -14988,7 +15050,7 @@ const LADDER_OPTS = {
     topicNames.every((t) => KNOWN_FAMILIES.includes(topics[t].family)), true);
   eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
     topicNames.slice().sort(),
-    ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged', 'state:sidebarOpenChanged',
+    ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged',
      'intent:settingsChanged', 'state:settingsChanged'].sort());
   eq('DR_BUS.TOPICS: intent:selectTable is in the intent family',
     topics['intent:selectTable'].family, 'intent');
@@ -14999,8 +15061,6 @@ const LADDER_OPTS = {
     topics['intent:toggleTable'].family, 'intent');
   eq('DR_BUS.TOPICS: state:selectedTableChanged is in the state-change family',
     topics['state:selectedTableChanged'].family, 'state-change');
-  eq('DR_BUS.TOPICS: state:sidebarOpenChanged is in the state-change family',
-    topics['state:sidebarOpenChanged'].family, 'state-change');
   eq('DR_BUS.TOPICS: intent:settingsChanged is in the intent family',
     topics['intent:settingsChanged'].family, 'intent');
   eq('DR_BUS.TOPICS: state:settingsChanged is in the state-change family',
@@ -15047,30 +15107,30 @@ const LADDER_OPTS = {
   // model's current snapshot, not depend on a state-change message the
   // sidebar could have missed while it was gone (the bus keeps no history). ---
   const savedSelected = DR_STORE.getSelectedTable();
-  const savedOpen = DR_STORE.isSidebarOpen();
   try {
     const reconnectTable = { __fake: 'table-B' };
     DR_STORE.setSelectedTable(reconnectTable);
-    DR_STORE.setSidebarOpen(true);
-
-    DR_STORE.setSidebarOpen(false); // simulate the sidebar closing
 
     // No message is replayed here on purpose — a reconnecting view pulls,
-    // it does not listen for what it missed.
-    const snapshotWhileClosed = DR_STORE.getSnapshot();
-    eq('reconnect: the selection survives the sidebar closing (read via getSnapshot, not a replayed message)',
-      snapshotWhileClosed.selectedTable, reconnectTable);
-    eq('reconnect: sidebarOpen reflects the close via the store',
-      snapshotWhileClosed.sidebarOpen, false);
-
-    DR_STORE.setSidebarOpen(true); // simulate the sidebar reopening
-    eq('reconnect: sidebarOpen reflects the reopen via the store, independent of message history',
-      DR_STORE.isSidebarOpen(), true);
-    eq('reconnect: selectedTable is unchanged by the reopen — the reopening view pulls it, it is not reset',
+    // it does not listen for what it missed. The store carried a third
+    // field, "the sidebar is open", until the 2026-09-14 sidebar-state-
+    // removal design retired it (#241); what a reopen pulls is the
+    // selection and the settings.
+    const snapshot = DR_STORE.getSnapshot();
+    eq('reconnect: getSnapshot returns the selection to a reconnecting view',
+      snapshot.selectedTable, reconnectTable);
+    eq('reconnect: the snapshot carries the settings alongside the selection',
+      snapshot.settings, DR_STORE.getSettings());
+    eq('reconnect: the snapshot carries no sidebar-open field — the model holds none',
+      Object.prototype.hasOwnProperty.call(snapshot, 'sidebarOpen'), false);
+    eq('reconnect: the model exposes no reader for a sidebar-open value',
+      typeof DR_STORE.isSidebarOpen, 'undefined');
+    eq('reconnect: the model exposes no writer for a sidebar-open value',
+      typeof DR_STORE.setSidebarOpen, 'undefined');
+    eq('reconnect: selectedTable survives for the reopening view to pull',
       DR_STORE.getSelectedTable(), reconnectTable);
   } finally {
     DR_STORE.setSelectedTable(savedSelected);
-    DR_STORE.setSidebarOpen(savedOpen);
   }
 
   // --- (d) no file writes another file's variables: build the list of
@@ -15089,8 +15149,8 @@ const LADDER_OPTS = {
   eq('static scan: content.js still declares its usual top-level bindings (sanity check on the scan itself)',
     contentTopLevelNames.includes('lastRightClickedElement') && contentTopLevelNames.includes('gridObservers'),
     true);
-  eq('static scan: content.js no longer declares lastRightClickedTable or sidebarOpen at top level',
-    contentTopLevelNames.includes('lastRightClickedTable') || contentTopLevelNames.includes('sidebarOpen'),
+  eq('static scan: content.js no longer declares lastRightClickedTable at top level',
+    contentTopLevelNames.includes('lastRightClickedTable'),
     false);
   const crossFileWrites = contentTopLevelNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
@@ -15101,7 +15161,7 @@ const LADDER_OPTS = {
 
   // --- (e) hardening: the scan above only catches writes to content.js's
   // SURVIVING top-level bindings. It has a blind spot — a name that moved OUT
-  // of content.js into DR_STORE (selectedTable, sidebarOpen) is invisible to
+  // of content.js into DR_STORE (selectedTable) is invisible to
   // that scan once it is gone from content.js's own declaration list, so a
   // file that reintroduces a bare assignment to that name (exactly the old
   // anti-pattern this sprint removed) would slip through undetected. Close
@@ -15116,9 +15176,9 @@ const LADDER_OPTS = {
   const storeFieldNames = Array.from(storeSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_STORE');
-  eq('static scan: app/store.js declares its five private fields (sanity check on the scan itself)',
+  eq('static scan: app/store.js declares its four private fields (sanity check on the scan itself)',
     storeFieldNames.slice().sort(),
-    ['registeredTables', 'selectedTable', 'settings', 'sidebarOpen', 'tableRegistry'].sort());
+    ['registeredTables', 'selectedTable', 'settings', 'tableRegistry'].sort());
   const storeFieldWrites = storeFieldNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
     return assignRe.test(uiToggleSrcForScan) || assignRe.test(contentSrcForScan);
@@ -15129,12 +15189,15 @@ const LADDER_OPTS = {
 
 // ---------------------------------------------------------------------------
 // Sprint toggle-split: ui-toggle.js splits into drawing (render from state,
-// hold only view-transient state) and reporting (publish intents on DR_BUS
-// instead of calling the controller directly). The click handler used to
-// call runToggleAction (and, transitively via runToggleAction, could reach
-// toggleOriginalValues) straight from the view; both are content.js
-// controller functions now reached only through the published
-// intent:toggleTable, never called from ui-toggle.js itself.
+// hold only view-transient state) and publishing (intents on DR_BUS in place
+// of calls into the controller). The click handler used to call the
+// controller's plain-toggle helper straight from the view.
+//
+// The forbidden list named that helper and the form-flip helper it reached
+// until the 2026-09-14 sidebar-state-removal design retired both (#241). A
+// list of names that exist nowhere cannot fail, so the list now names the
+// controller entry points that DO exist: a view calling any of these reaches
+// past the intent and around the one press path.
 // ---------------------------------------------------------------------------
 (function toggleSplit_viewCallsNoControllerFunctionDirectly() {
   const uiToggleSrc = sourceByName('ui-toggle.js');
@@ -15142,51 +15205,73 @@ const LADDER_OPTS = {
     eq('toggle-split: ui-toggle.js is present in the manifest', false, true);
     return;
   }
-  // Forbidden list: content.js controller functions a user action used to
-  // reach directly from ui-toggle.js's click handler before this sprint.
-  const FORBIDDEN_CONTROLLER_CALLS = ['runToggleAction', 'toggleOriginalValues'];
+  const FORBIDDEN_CONTROLLER_CALLS = ['applySidebarRounding', 'resetTable', 'roundTable'];
+  // Sanity check on the scan itself: every forbidden name is a real function
+  // in the content-script stack, so the filter below tests something.
+  const missingFromController = FORBIDDEN_CONTROLLER_CALLS.filter(
+    (name) => !new RegExp('function\\s+' + name + '\\s*\\(').test(allContentSrc));
+  eq('toggle-split: every forbidden name is a real controller function (sanity check on the scan itself)',
+    missingFromController, []);
+
   const foundCalls = FORBIDDEN_CONTROLLER_CALLS.filter((name) => {
     const callRe = new RegExp('\\b' + name + '\\s*\\(');
     return callRe.test(uiToggleSrc);
   });
-  eq('toggle-split: ui-toggle.js contains no direct call to runToggleAction/toggleOriginalValues',
+  eq('toggle-split: ui-toggle.js calls no controller function directly',
     foundCalls, []);
 
-  // The click handler reports the toggle activation as an intent instead.
+  // The click handler publishes the press as an intent instead.
   eq('toggle-split: ui-toggle.js publishes intent:toggleTable from the click handler',
     /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiToggleSrc), true);
 })();
 
 // ---------------------------------------------------------------------------
 // Sprint toggle-split: publishing intent:toggleTable is content.js's only
-// path to running the toggle now — prove the wiring end to end (mirrors the
+// path to running a press — prove the wiring end to end (mirrors the
 // intent:selectTable behavioral pin in the app-model-selection block above).
 // ---------------------------------------------------------------------------
-(function toggleSplit_intentToggleTableRunsTheToggle() {
+(function toggleSplit_intentToggleTableRunsThePress() {
   // DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn) — use a
-  // 2x2 table so [row1, col1] is processed (same shape as the pillbox AC2
-  // regression test above, which exercises runToggleAction directly).
+  // 2x2 table so [row1, col1] is processed.
   const table = makeToggleTable([
     [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
     [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
   ]);
   injectToggleEntry(table);
 
-  const wasRounded = isTableRounded(table);
-  withCreateTreeWalker(function () {
-    DR_BUS.publish('intent:toggleTable', { table });
-  });
-  const isNowRounded = isTableRounded(table);
+  // The press writes the settings record and moves the active table now
+  // (2026-09-14 sidebar-state-removal, part one), where the retired
+  // plain-toggle path wrote neither. Both are shared model state, so this
+  // test saves and restores them rather than leaving them for whatever runs
+  // next.
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedSettings = DR_STORE.getSettings();
+  try {
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    DR_STORE.setSelectedTable(table);
 
-  eq('toggle-split: publishing intent:toggleTable runs runToggleAction (table becomes rounded)',
-    !wasRounded && isNowRounded, true);
+    const wasRounded = isTableRounded(table);
+    withCreateTreeWalker(function () {
+      DR_BUS.publish('intent:toggleTable', { table });
+    });
+    const isNowRounded = isTableRounded(table);
 
-  // Toggling again reverts to showing the original (same path, same intent).
-  withCreateTreeWalker(function () {
-    DR_BUS.publish('intent:toggleTable', { table });
-  });
-  eq('toggle-split: publishing intent:toggleTable again toggles back (showing originals)',
-    isTableRounded(table), false);
+    eq('toggle-split: publishing intent:toggleTable runs the press (table becomes simplified)',
+      !wasRounded && isNowRounded, true);
+
+    // A second press takes it back off, through the same path and the same
+    // intent.
+    withCreateTreeWalker(function () {
+      DR_BUS.publish('intent:toggleTable', { table });
+    });
+    eq('toggle-split: publishing intent:toggleTable again takes the table back to its original values',
+      isTableRounded(table), false);
+  } finally {
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(savedSettings);
+    DR_STORE.setSelectedTable(savedSelected);
+  }
 })();
 
 // ---------------------------------------------------------------------------
@@ -15325,66 +15410,54 @@ const LADDER_OPTS = {
 // `git show` at test-run time, matching the rationale in commit 394afa7: a
 // shallow checkout or CI runner may not have the parent ref available.
 // ---------------------------------------------------------------------------
-(function toggleSplit_parentEquivalence_toggleClickGuardMatrix() {
-  // Keyed by `${sidebarOpen}:${sameTable}` — mouse and touch second-tap
-  // produce the identical sequence per guard cell, since both branches ran
-  // (and, post-split, both report to) the same guarded body. That equality
-  // is itself part of what this pin proves: see the per-mode assertions
-  // below, which check mouse and touch against the same expected literal.
-  const PARENT_EXPECTED_SEQUENCES = {
-    // Issue #272 changed this cell's contract deliberately. A pill toggle on
-    // the CONNECTED table now writes the record (DR_STORE.setSettings with
-    // the flipped enabled) and lets the state-change subscriber run the same
-    // applySidebarRounding a panel switch flip runs — so the apply's own
-    // APPLY_OK now leads the sequence, and TABLE_TOGGLE_STATE reports the
-    // record's new enabled. The panel-state decoupling then moved the
-    // 'false:true' cell onto this same sequence; 'false:false' is the one
-    // cell still byte-identical to the frozen parent capture.
-    'true:true': [
+(function toggleSplit_parentEquivalence_toggleClickSequences() {
+  // Keyed by sameTable — mouse and touch second-tap produce the identical
+  // sequence per cell, since both branches publish to the same handler. That
+  // equality is itself part of what this pin proves: see the per-mode
+  // assertions below, which check mouse and touch against the same literal.
+  //
+  // The matrix used to carry a second dimension, whether the sidebar stood
+  // open, and four cells. The 2026-09-14 sidebar-state-removal design
+  // retired the value that dimension varied (#241), and with it the branch
+  // that read it — a press means one thing now, so the two surviving cells
+  // are the whole matrix.
+  const EXPECTED_SEQUENCES = {
+    // A press on the ACTIVE table. Issue #272 put the settings-record write
+    // at the front of this path: the press calls DR_STORE.setSettings with
+    // the flipped enabled, the state-change subscriber runs the apply, and
+    // the apply's own APPLY_OK leads the sequence. TABLE_TOGGLE_STATE then
+    // carries the settings record's new value, because no switch went out to
+    // carry it. Byte-identical to the frozen parent capture for this cell.
+    'true': [
       { action: 'APPLY_OK' },
       { action: 'RANGE_OK' },
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
       { action: 'TABLE_TOGGLE_STATE', enabled: true },
     ],
-    // Issue #251 changed this cell's contract deliberately. A switch with
-    // the sidebar open now syncs the clicked table to the model — the same
-    // applySidebarRounding a sidebar reopen runs — instead of toggling it
-    // with the shipped defaults. TABLE_SWITCHED goes out first so the
-    // sidebar lifts the previous table's lock before the apply's own
-    // APPLY_BLOCKED/APPLY_OK lands; the apply then emits its usual
-    // messages. No PREVIEW_SAMPLES_CHANGED (the sidebar's pull chain ends
-    // in the preview fetch) and no TABLE_TOGGLE_STATE (the panel redraws
-    // from the model pull). The same-table cells moved later — see the
-    // comments on 'true:true' and 'false:true'; only 'false:false' still
-    // matches the frozen parent capture.
-    'true:false': [
+    // A press on a table that is NOT the active one. Issue #251 made this
+    // path sync the pressed table to the settings record in place of
+    // simplifying it with the shipped defaults. The sidebar-state removal
+    // then made it the only meaning such a press has, whatever the sidebar
+    // is doing.
+    //
+    // TABLE_SWITCHED leads so the sidebar lifts the previous table's lock
+    // before this table's own APPLY_BLOCKED/APPLY_OK lands. No
+    // PREVIEW_SAMPLES_CHANGED — the sidebar's pull chain ends in the preview
+    // fetch. No TABLE_TOGGLE_STATE — the switch's own handler re-reads the
+    // settings record, so a send here would deliver one fact twice.
+    'false': [
       { action: 'TABLE_SWITCHED' },
       { action: 'APPLY_OK' },
       { action: 'RANGE_OK' },
       { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
     ],
-    // The panel-state decoupling (issue #272 family) moved this cell too: a
-    // toggle on the CONNECTED table takes the record path with the sidebar
-    // closed as well, so the sequence matches the 'true:true' cell above.
-    // Only the 'false:false' cell keeps the frozen parent capture — the one
-    // remaining direct-toggle case, an unconnected table.
-    'false:true': [
-      { action: 'APPLY_OK' },
-      { action: 'RANGE_OK' },
-      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
-      { action: 'TABLE_TOGGLE_STATE', enabled: true },
-    ],
-    'false:false': [
-      { action: 'RANGE_OK' },
-      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
-    ],
   };
 
-  // sameTable=true reuses the SAME table object for both "who's currently
-  // selected" and "who gets clicked" — the no-rebind cell of the matrix.
-  // sameTable=false selects a different table than the one clicked — the
-  // rebind cell, which the guard must send TABLE_SWITCHED for.
-  function runToggleClickFixture(mode, sidebarOpenValue, sameTable) {
+  // sameTable=true reuses the SAME table object for both "which table is
+  // active" and "which table gets pressed" — the unmoved press. sameTable=
+  // false makes a different table active than the one pressed — the press
+  // that moves the active table, which must publish the switch.
+  function runToggleClickFixture(mode, sameTable) {
     const clicked = makeToggleTable([
       [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
       [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
@@ -15404,7 +15477,6 @@ const LADDER_OPTS = {
     const origSendMessage = global.chrome.runtime.sendMessage;
     global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
 
-    sidebarOpen = sidebarOpenValue;
     lastRightClickedTable = selected;
 
     const buttonEl = createToggleWithSpies(clicked);
@@ -15412,21 +15484,17 @@ const LADDER_OPTS = {
     else fireTouchSecondTap(buttonEl);
 
     global.chrome.runtime.sendMessage = origSendMessage;
-    sidebarOpen = false;
     lastRightClickedTable = null;
 
     return sentMessages;
   }
 
-  for (const sidebarOpenValue of [true, false]) {
-    for (const sameTable of [true, false]) {
-      const key = `${sidebarOpenValue}:${sameTable}`;
-      const expected = PARENT_EXPECTED_SEQUENCES[key];
-      for (const mode of ['mouse', 'touch']) {
-        const seq = runToggleClickFixture(mode, sidebarOpenValue, sameTable);
-        eq(`toggle click guard-matrix (${mode}, sidebarOpen=${sidebarOpenValue}, sameTable=${sameTable}): sendMessage sequence matches the frozen parent sequence`,
-          seq, expected);
-      }
+  for (const sameTable of [true, false]) {
+    const expected = EXPECTED_SEQUENCES[String(sameTable)];
+    for (const mode of ['mouse', 'touch']) {
+      const seq = runToggleClickFixture(mode, sameTable);
+      eq(`toggle click sequence (${mode}, sameTable=${sameTable}): sendMessage sequence matches the frozen literal`,
+        seq, expected);
     }
   }
 })();
@@ -15467,12 +15535,20 @@ const LADDER_OPTS = {
 // must settle without an infinite loop or a stack overflow.
 // ---------------------------------------------------------------------------
 (function appModelSelection_busReentrancy_twoTopicCycleSettles() {
+  // The second topic was state:sidebarOpenChanged until the 2026-09-14
+  // sidebar-state-removal design retired it (#241). state:settingsChanged
+  // takes its place: the controller subscribes to it in production, and that
+  // subscriber applies to whichever table is active, so the fixture clears
+  // the active table first and the production handler no-ops. What the test
+  // measures — the bus's own delivery under a nested publish — is unchanged.
   const TOPIC_A = 'state:selectedTableChanged';
-  const TOPIC_B = 'state:sidebarOpenChanged';
+  const TOPIC_B = 'state:settingsChanged';
+  const savedSelected = DR_STORE.getSelectedTable();
+  DR_STORE.setSelectedTable(null);
   let counter = 0;
 
   const unsubA = DR_BUS.subscribe(TOPIC_A, () => {
-    DR_BUS.publish(TOPIC_B, { sidebarOpen: true }); // A's handler always publishes B
+    DR_BUS.publish(TOPIC_B, { settings: DR_STORE.getSettings() }); // A's handler always publishes B
   });
   const unsubB = DR_BUS.subscribe(TOPIC_B, () => {
     counter++;
@@ -15489,6 +15565,7 @@ const LADDER_OPTS = {
   } finally {
     unsubA();
     unsubB();
+    DR_STORE.setSelectedTable(savedSelected);
   }
 
   eq('DR_BUS reentrancy: a guarded two-topic publish cycle completes without throwing (no infinite loop/stack overflow)',
@@ -15505,9 +15582,11 @@ const LADDER_OPTS = {
 // ---------------------------------------------------------------------------
 (function appModelSettings_busReentrancy_unguardedCycleTerminatesSafely() {
   const TOPIC_A = 'state:selectedTableChanged';
-  const TOPIC_B = 'state:sidebarOpenChanged';
+  const TOPIC_B = 'state:settingsChanged';
+  const savedSelected = DR_STORE.getSelectedTable();
+  DR_STORE.setSelectedTable(null); // see the note on the guarded cycle above
 
-  const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { sidebarOpen: true }); });
+  const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { settings: DR_STORE.getSettings() }); });
   const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, { table: null }); });
 
   let threw = null;
@@ -15518,6 +15597,7 @@ const LADDER_OPTS = {
   } finally {
     unsubA();
     unsubB();
+    DR_STORE.setSelectedTable(savedSelected);
   }
 
   eq('DR_BUS reentrancy (unguarded cycle): publish() throws a catchable error instead of crashing with a real stack overflow',
@@ -16459,6 +16539,15 @@ function makeIssue251SidebarHarness() {
       h.enabledEl.disabled, false);
     eq('switch-pull: the main toggle mirrors the model\'s enabled:false after a switch',
       h.enabledEl.checked, false);
+    // The claim here is that the sidebar MIRRORS the application model. A
+    // press that moves the active table sends TABLE_SWITCHED and then clears
+    // the range expression in its one settings write (2026-09-14 sidebar-
+    // state-removal, part one). The send goes out first, and Chrome delivers
+    // it after the content script's handler returns, so the pull it triggers
+    // reads the cleared expression. What reaches the sidebar through this
+    // path after such a press is therefore blank. This test still holds,
+    // because it asserts the mirroring and the model fixture above is what
+    // it mirrors.
     eq('switch-pull: the range expression mirrors the model after a switch (pull, not defaults reset)',
       h.rangeExprEl.value, 'B2:E8');
   } finally {
@@ -16680,10 +16769,12 @@ function makeIssue251SidebarHarness() {
 // not exist for `git show`.
 // ---------------------------------------------------------------------------
 (function appModelSelection_parentEquivalence_contextmenuSelectionFlow() {
-  const PARENT_EXPECTED_SEQUENCES = {
-    true: [{ action: 'TABLE_ACTIVATED' }],
-    false: [{ action: 'TABLE_ACTIVATED' }],
-  };
+  // One sequence. This ran twice, once with the page's copy of "the sidebar
+  // is open" set each way, and produced the identical sequence both times,
+  // because the contextmenu handler never read that value. The 2026-09-14
+  // sidebar-state-removal design retired the value (#241), so the two runs
+  // collapse into one.
+  const PARENT_EXPECTED_SEQUENCE = [{ action: 'TABLE_ACTIVATED' }];
 
   // Minimal fixture the contextmenu handler's findTargetTable() walk-up
   // recognizes immediately as a table (closest('table') returns itself) —
@@ -16704,10 +16795,10 @@ function makeIssue251SidebarHarness() {
 
   // Evaluates `bundle`, then `postEvalLine` (same eval call, so postEvalLine
   // can still reference the bundle's top-level let/const bindings — e.g.
-  // DR_STORE or the bare `sidebarOpen` — even though those bindings are not
-  // reachable from outside this function once eval() returns), captures the
-  // 'contextmenu' listener the bundle registers, fires it once against a
-  // fresh fixture target, and returns the resulting sendMessage sequence.
+  // DR_STORE — even though those bindings are not reachable from outside
+  // this function once eval() returns), captures the 'contextmenu' listener
+  // the bundle registers, fires it once against a fresh fixture target, and
+  // returns the resulting sendMessage sequence.
   function runContextmenuFixture(bundle, postEvalLine) {
     let capturedHandler = null;
     const sentMessages = [];
@@ -16747,14 +16838,12 @@ function makeIssue251SidebarHarness() {
     }
   }
 
-  for (const sidebarOpenValue of [true, false]) {
-    const headMessages = runContextmenuFixture(contentScriptBundle, `\nDR_STORE.setSidebarOpen(${sidebarOpenValue});`);
+  const headMessages = runContextmenuFixture(contentScriptBundle, '');
 
-    eq(`parent-equivalence: HEAD's contextmenu handler was captured (sidebarOpen=${sidebarOpenValue})`,
-      headMessages !== null, true);
-    eq(`parent-equivalence: contextmenu sendMessage sequence matches the frozen parent sequence (sidebarOpen=${sidebarOpenValue})`,
-      headMessages, PARENT_EXPECTED_SEQUENCES[String(sidebarOpenValue)]);
-  }
+  eq("parent-equivalence: HEAD's contextmenu handler was captured",
+    headMessages !== null, true);
+  eq('parent-equivalence: contextmenu sendMessage sequence matches the frozen parent sequence',
+    headMessages, PARENT_EXPECTED_SEQUENCE);
 })();
 
 // =============================================================================
@@ -16875,9 +16964,15 @@ function makeIssue251SidebarHarness() {
     false);
 })();
 
-// --- (e) Originals survive a full round → show-original → re-round cycle,
-// read back correctly from the registry each time. ---
-(function registrySprint_originalsSurviveToggleCycle() {
+// --- (e) A full simplify → off → simplify cycle returns the cell to the
+// exact original text and then to the exact same simplified text.
+//
+// The off step used to keep the registry's stored original and re-round from
+// it. The 2026-09-14 sidebar-state-removal design retired that form flip
+// (#241): off resets, which clears the record, and the re-simplify reads the
+// restored cell and writes a fresh record. The assertions read what the user
+// sees, which is unchanged. The record's lifetime changes with it. ---
+(function registrySprint_originalsSurviveOffAndOnCycle() {
   withCreateTreeWalker(function () {
     const table = makeToggleTable([
       [{ tag: 'td', text: 'Header' }],
@@ -16906,17 +17001,21 @@ function makeIssue251SidebarHarness() {
     eq('registry cycle: cell rounds away from the original text',
       roundedText !== '8,584,629', true);
 
-    toggleOriginalValues(table); // show original
-    eq('registry cycle: cell shows the exact original text after toggling off',
+    resetTable(table); // the press that turns simplification off
+    eq('registry cycle: cell shows the exact original text after the off press',
       cell.textContent, '8,584,629');
-    eq('registry cycle: isTableRounded is false while showing original',
+    eq('registry cycle: isTableRounded is false while the original text shows',
       isTableRounded(table), false);
+    eq('registry cycle: the off press clears the stored original, where the form flip kept it',
+      DR_STORE.hasTableOriginal(table, cell), false);
 
-    toggleOriginalValues(table); // toggle back to rounded
-    eq('registry cycle: cell is rounded again after toggling back on',
+    roundTable(table, opts); // the press that turns it back on
+    eq('registry cycle: cell is simplified again after the on press',
       cell.textContent, roundedText);
-    eq('registry cycle: isTableRounded is true again after toggling back on',
+    eq('registry cycle: isTableRounded is true again after the on press',
       isTableRounded(table), true);
+    eq('registry cycle: the on press writes a fresh stored original from the restored text',
+      DR_STORE.getTableOriginalText(table, cell), '8,584,629');
   });
 })();
 
@@ -16972,14 +17071,18 @@ function makeIssue251SidebarHarness() {
   }
 })();
 
-// --- (f) continued: a peek-to-original-and-back round trip goes through
-// toggleOriginalValues' resetTable()+roundTable() path, which clears the
-// frozen basis (resetTable sets maxMagnitude back to null) and re-freezes
-// fresh from whatever is visible at the moment of toggling back — it does
-// NOT preserve the basis established by the original round. This is the
-// registry's actual behavior, documented here so a reviewer can judge
-// whether "frozen at first sight" was meant to survive a peek round trip. ---
-(function registrySprint_toggleRoundTripReFreezesRatherThanPreserving() {
+// --- (f) continued: an off-and-back-on round trip clears the frozen basis
+// (resetTable sets maxMagnitude back to null) and re-freezes fresh from
+// whatever is visible at the moment of the second press — it does NOT
+// preserve the basis established by the first round. This is the registry's
+// actual behavior (#257), documented here so a reviewer can judge whether
+// "frozen at first sight" was meant to survive a round trip.
+//
+// The round trip used to run through a form flip that kept the table's
+// markers. The 2026-09-14 sidebar-state-removal design retired that flip
+// (#241) in favor of a reset, and both clear the frozen basis the same way,
+// so the behavior under test is unchanged — only the driver is. ---
+(function registrySprint_offAndOnRoundTripReFreezesRatherThanPreserving() {
   let ctx;
   try {
     const opts = { offsetTop: -1, offsetOther: 0, numTop: 1 };
@@ -16992,27 +17095,32 @@ function makeIssue251SidebarHarness() {
     eq('toggle round trip: DR_STORE holds the frozen basis before any toggle',
       DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 2);
 
-    // Scroll in a magnitude-9 row BEFORE peeking, so the "first sight" the
-    // re-round sees on toggle-back is the magnitude-9 view, not the original
-    // magnitude-2 view.
+    // Scroll in a magnitude-9 row BEFORE the off press, so the "first sight"
+    // the re-round sees on the second press is the magnitude-9 view, not the
+    // original magnitude-2 view.
     const hugeCell = makeGridCellWithTextNode('5000000000');
     const hugeRow = makeElementNode('row', [hugeCell]);
     hugeRow.dataset = { row: '1' };
     hugeRow.children = [hugeCell];
     grid.wrapperEl.children.push(hugeRow);
 
-    toggleOriginalValues(grid.wrapperEl); // peek at originals
-    eq('toggle round trip: peeking to original clears the display back to "555"',
-      cell555.childNodes[0].nodeValue, '555');
+    const applyOpts = Object.assign(
+      {}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true }, opts);
 
-    toggleOriginalValues(grid.wrapperEl); // peek back to rounded
-    eq('toggle round trip: DR_STORE re-freezes from the now-visible magnitude-9 row (9), not the original magnitude-2 basis',
+    applySidebarRounding(grid.wrapperEl, Object.assign({}, applyOpts, { enabled: false }));
+    eq('round trip: the off press clears the display back to "555"',
+      cell555.childNodes[0].nodeValue, '555');
+    eq('round trip: the off press clears the frozen basis',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), null);
+
+    applySidebarRounding(grid.wrapperEl, Object.assign({}, applyOpts, { enabled: true }));
+    eq('round trip: DR_STORE re-freezes from the now-visible magnitude-9 row (9), not the original magnitude-2 basis',
       DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 9);
     // Under the re-frozen (9) basis, current_mag(555)=2, max_mag-current_mag=7
     // >= numTop(1), so 555 now takes offsetOther ("600") — a DIFFERENT
     // rendered value than the original round produced ("560"), purely
-    // because of what happened to be visible at toggle-back time.
-    eq('toggle round trip: 555 renders differently after the round trip than its original round ("600", not "560")',
+    // because of what happened to be visible at the second press.
+    eq('round trip: 555 renders differently after the round trip than its original round ("600", not "560")',
       cell555.childNodes[0].nodeValue, '600');
   } finally {
     if (ctx) {
@@ -17032,7 +17140,6 @@ function makeIssue251SidebarHarness() {
 // peek cycle this sprint's registry model actually has to get right. ---
 (function registrySprint_tableToggleStateAcrossPeekCycle() {
   const savedSelected = DR_STORE.getSelectedTable();
-  const savedOpen = DR_STORE.isSidebarOpen();
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
@@ -17044,7 +17151,6 @@ function makeIssue251SidebarHarness() {
     ]);
     injectToggleEntry(table);
     DR_STORE.setSelectedTable(table);
-    DR_STORE.setSidebarOpen(true);
 
     // makeToggleTableCell gives innerHTML/innerText/textContent as three
     // INDEPENDENT properties. A real <td>'s innerHTML/innerText/textContent
@@ -17081,7 +17187,6 @@ function makeIssue251SidebarHarness() {
   } finally {
     global.chrome.runtime.sendMessage = origSend;
     DR_STORE.setSelectedTable(savedSelected);
-    DR_STORE.setSidebarOpen(savedOpen);
   }
 })();
 
@@ -17237,11 +17342,19 @@ function makeIssue251SidebarHarness() {
   }
 })();
 
-// --- (i) Peek-toggle round trip under grid row recycling: round -> peek to
-// original (keepEntry:true) -> the host virtualization library recycles ONE
-// cell (same row, a genuinely NEW element takes that grid position — the
-// documented "element replaced" pattern, distinct from this extension's own
-// nodeValue-patch-in-place write model) -> peek back to rounded.
+// --- (i) Off-and-on round trip under grid row recycling: round -> off press
+// -> the host virtualization library recycles ONE cell (same row, a
+// genuinely NEW element takes that grid position — the documented "element
+// replaced" pattern, distinct from this extension's own nodeValue-patch-in-
+// place write model) -> on press.
+//
+// The off step used to be a form flip that kept every marker and stored
+// original in place. The 2026-09-14 sidebar-state-removal design retired it
+// (#241): off resets, which restores every cell still in the grid and drops
+// its record. The recycling scenario is unchanged — a brand-new element was
+// never in the registry either way — and the last assertion below moves with
+// the change: the recycled-away cell's record is dropped at the off press
+// rather than surviving until the element is collectible.
 //
 // Uses a live-scanning querySelectorAll (walks wrapper.children -> row
 // .children each call) instead of makeE2EGridWrapper's snapshot list, so
@@ -17249,7 +17362,7 @@ function makeIssue251SidebarHarness() {
 // way a real detached-and-replaced DOM node would be — makeE2EGridWrapper's
 // fixed `allCells` array would otherwise still "see" the old cell and mask
 // the scenario this test exists to exercise. ---
-(function registrySprint_peekRoundTripUnderGridRecycling() {
+(function registrySprint_offAndOnRoundTripUnderGridRecycling() {
   const grid = makeGridWrapper([['87654321', '1234567']]);
   grid.wrapperEl.querySelectorAll = function(sel) {
     if (sel !== '.dr-ext-rounded') return [];
@@ -17274,8 +17387,8 @@ function makeIssue251SidebarHarness() {
   eq('recycling: both cells round on the initial pass (pre-condition)',
     cellA.classList.contains('dr-ext-rounded') && cellSurvivor.classList.contains('dr-ext-rounded'), true);
 
-  toggleOriginalValues(grid.wrapperEl); // peek to original (keepEntry:true)
-  eq('recycling: peek-to-original restores cellA\'s display text',
+  resetTable(grid.wrapperEl); // the press that turns simplification off
+  eq('recycling: the off press restores cellA\'s display text',
     cellA.childNodes[0].nodeValue, '87654321');
 
   // Simulate the host grid recycling row 0's first cell: a brand-new element
@@ -17284,32 +17397,29 @@ function makeIssue251SidebarHarness() {
   const cellB = makeGridCellWithTextNode('99999999');
   grid.rowEls[0].children = [cellB, cellSurvivor];
 
-  toggleOriginalValues(grid.wrapperEl); // peek back to rounded
+  roundTable(grid.wrapperEl, opts); // the press that turns it back on
 
   // Functional correctness: the recycled cell is treated as any other live
-  // cell on the full re-round pass (resetTable + roundTable) toggling back
-  // to rounded runs — it rounds fresh from ITS OWN content, not corrupted
-  // and not skipped. This matches what the parent (dataset-based) branch
-  // would also do on the same scenario: a genuinely new element has no
-  // dataset either, so both designs re-detect it from scratch. FAITHFUL
+  // cell on the re-round — it rounds fresh from ITS OWN content, not
+  // corrupted and not skipped. This matches what the parent (dataset-based)
+  // branch would also do on the same scenario: a genuinely new element has
+  // no dataset either, so both designs re-detect it from scratch. FAITHFUL
   // MATCH, not a regression.
-  eq('recycling: the recycled cell (cellB) is picked up and rounded on peek-back, not skipped',
+  eq('recycling: the recycled cell (cellB) is picked up and rounded on the on press, not skipped',
     cellB.classList.contains('dr-ext-rounded'), true);
   eq('recycling: the recycled cell\'s rounded value differs from its own live text',
     cellB.childNodes[0].nodeValue !== '99999999', true);
-  eq('recycling: the surviving cell also re-rounds correctly on peek-back',
+  eq('recycling: the surviving cell also re-rounds correctly on the on press',
     cellSurvivor.classList.contains('dr-ext-rounded'), true);
 
   // The registry's per-table `originals` is a WeakMap keyed by cell element
-  // (app/store.js). A recycled-away cell that no longer matches the rounded
-  // selector is never visited by restoreTable, so its entry is never deleted
-  // explicitly — the WeakMap makes that safe: once nothing references the
-  // cell, the entry is collectible. This test holds cellA alive by
-  // reference, so its original stays retrievable; a genuinely unreachable
-  // cell's entry is garbage, matching the parent's dataset design where a
-  // detached element's data went away with the node.
-  eq('recycling: a live-referenced recycled cell\'s registry original stays retrievable (WeakMap keeps it while referenced, collects it when not)',
-    DR_STORE.hasTableOriginal(grid.wrapperEl, cellA), true);
+  // (app/store.js). cellA was still in the grid at the off press, so the
+  // restore visited it and dropped its record there — before the recycling
+  // took the element out of the grid. Nothing is keyed to a cell the grid no
+  // longer holds, and a cell the restore never reaches is collectible once
+  // the page stops referencing it.
+  eq('recycling: the off press drops the recycled-away cell\'s registry original',
+    DR_STORE.hasTableOriginal(grid.wrapperEl, cellA), false);
 })();
 
 // --- (j) Content-script re-injection: DR_STORE lives in the content script's
@@ -17584,7 +17694,6 @@ function makeIssue251SidebarHarness() {
     // visibly simplified table. ---
     const stub2 = makeMockButton();
     global.__ri2_tableToggles.set(table2, stub2);
-    global.__ri2_DR_STORE.setSidebarOpen(true);
     sentMessages.length = 0;
 
     global.__ri2_DR_BUS.publish('intent:toggleTable', { table: table2 });
@@ -17641,7 +17750,6 @@ function makeIssue251SidebarHarness() {
 // ---------------------------------------------------------------------------
 (function issue272_sameTablePillToggleWritesRecord() {
   const savedSelected = DR_STORE.getSelectedTable();
-  const savedOpen = DR_STORE.isSidebarOpen();
   const savedSettings = DR_STORE.getSettings();
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
@@ -17659,7 +17767,6 @@ function makeIssue251SidebarHarness() {
     ]);
     injectToggleEntry(table);
     DR_STORE.setSelectedTable(table);
-    DR_STORE.setSidebarOpen(true);
 
     // Same innerHTML/innerText/textContent link as the toggle-state cycle
     // test above — restoreTable writes innerHTML, the re-round reads
@@ -17704,7 +17811,6 @@ function makeIssue251SidebarHarness() {
     DR_STORE.setSelectedTable(null);
     DR_STORE.setSettings(savedSettings);
     DR_STORE.setSelectedTable(savedSelected);
-    DR_STORE.setSidebarOpen(savedOpen);
   }
 })();
 
@@ -17723,7 +17829,6 @@ function makeIssue251SidebarHarness() {
 // ---------------------------------------------------------------------------
 (function closedPanel_connectedTableToggleWritesRecord() {
   const savedSelected = DR_STORE.getSelectedTable();
-  const savedOpen = DR_STORE.isSidebarOpen();
   const savedSettings = DR_STORE.getSettings();
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
@@ -17739,7 +17844,6 @@ function makeIssue251SidebarHarness() {
     ]);
     injectToggleEntry(table);
     DR_STORE.setSelectedTable(table);
-    DR_STORE.setSidebarOpen(false); // the panel is CLOSED throughout
 
     const dataCell = table._cells[3];
     let _text = dataCell.innerHTML;
@@ -17774,48 +17878,283 @@ function makeIssue251SidebarHarness() {
     DR_STORE.setSelectedTable(null);
     DR_STORE.setSettings(savedSettings);
     DR_STORE.setSelectedTable(savedSelected);
-    DR_STORE.setSidebarOpen(savedOpen);
   }
 })();
 
-// The single record governs only the connected table: a closed-panel toggle
-// on some OTHER table keeps the direct path and must not write the record.
-(function closedPanel_unconnectedTableToggleLeavesRecordAlone() {
+// A press on a table that is NOT the active one moves the active table to it
+// and writes the settings record. This pinned the opposite, because a third
+// press path handled that case: the press kept the active table where it was
+// and left the settings record alone. The 2026-09-14 sidebar-state-removal
+// design retired that path (#241). A press means one thing, so it makes the
+// pressed table active and writes the settings record, whatever the sidebar
+// is doing.
+(function pressOnInactiveTableMovesTheActiveTableAndWritesTheRecord() {
   const savedSelected = DR_STORE.getSelectedTable();
-  const savedOpen = DR_STORE.isSidebarOpen();
   const savedSettings = DR_STORE.getSettings();
   try {
     DR_STORE.setSelectedTable(null);
     DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
 
-    const connected = makeToggleTable([
+    const active = makeToggleTable([
       [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
       [{ tag: 'td', text: 'R' }, { tag: 'td', text: '1,000,000' }],
     ]);
-    injectToggleEntry(connected);
+    injectToggleEntry(active);
     const other = makeToggleTable([
       [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
       [{ tag: 'td', text: 'R' }, { tag: 'td', text: '12,345' }],
     ]);
     injectToggleEntry(other);
-    DR_STORE.setSelectedTable(connected);
-    DR_STORE.setSidebarOpen(false);
+    DR_STORE.setSelectedTable(active);
 
     withCreateTreeWalker(function () {
       DR_BUS.publish('intent:toggleTable', { table: other });
     });
-    eq('closed-panel unconnected toggle: the other table toggles directly',
+    eq('press on an inactive table: the pressed table simplifies',
       isTableRounded(other), true);
-    eq('closed-panel unconnected toggle: the record is untouched',
+    eq('press on an inactive table: the settings record follows the press',
       DR_STORE.getSettings().enabled, true);
-    eq('closed-panel unconnected toggle: the connection did not move',
-      DR_STORE.getSelectedTable(), connected);
+    eq('press on an inactive table: the pressed table becomes the active one',
+      DR_STORE.getSelectedTable(), other);
+    eq('press on an inactive table: the table that was active is left as it was',
+      isTableRounded(active), false);
   } finally {
     DR_STORE.setSelectedTable(null);
     DR_STORE.setSettings(savedSettings);
     DR_STORE.setSelectedTable(savedSelected);
-    DR_STORE.setSidebarOpen(savedOpen);
   }
+})();
+
+// ===========================================================================
+// One meaning for a pillbox press (2026-09-14 sidebar-state-removal, part one)
+// ===========================================================================
+//
+// A press made three different things happen, and which one it made happen
+// turned on a value the page could not keep true: whether the sidebar stood
+// open. Only the service worker could correct that value, and the correction
+// needed a tab number the service worker lost on an idle restart and on an
+// ordinary sidebar close. Once the value went stale, a press on a second
+// table silently became "move the sidebar here" for the rest of the page's
+// life. With the settings record's on/off value at off, such a press changed
+// no numbers at all, so the control read as intermittent (#241).
+//
+// The rule now: a press makes the pressed table active and flips its form
+// from what the screen shows, writing the settings record once.
+//
+// A helper, because every case below needs the same three things reset: the
+// settings record, the active table, and the messages a press sends.
+function runPressFixture(setup) {
+  const savedSelected = DR_STORE.getSelectedTable();
+  const savedSettings = DR_STORE.getSettings();
+  const sent = [];
+  const origSend = global.chrome.runtime.sendMessage;
+  global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
+  // Count settings writes at the model's own publish, which is the one place
+  // every write passes through, rather than by wrapping the setter.
+  let settingsWrites = 0;
+  const unsub = DR_BUS.subscribe('state:settingsChanged', () => { settingsWrites++; });
+  // A press that carries a range expression ends in a per-range pulse, which
+  // builds overlay elements. The suite's shared document stub has no
+  // createElement; supply one for the length of the press.
+  const origCreateElement = global.document.createElement;
+  global.document.createElement = () => ({
+    style: {}, classList: { add() {}, remove() {} },
+    appendChild() {}, remove() {}, setAttribute() {},
+    addEventListener() {}, removeEventListener() {},
+  });
+  try {
+    // Clear the active table BEFORE seeding the settings record, so the
+    // seeding write has nothing to apply to.
+    DR_STORE.setSelectedTable(null);
+    return setup({ sent, writes: () => settingsWrites, resetWrites: () => { settingsWrites = 0; } });
+  } finally {
+    unsub();
+    if (origCreateElement === undefined) delete global.document.createElement;
+    else global.document.createElement = origCreateElement;
+    global.chrome.runtime.sendMessage = origSend;
+    DR_STORE.setSelectedTable(null);
+    DR_STORE.setSettings(savedSettings);
+    DR_STORE.setSelectedTable(savedSelected);
+  }
+}
+
+function makePressTable(text) {
+  const table = makeToggleTable([
+    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
+    [{ tag: 'td', text: 'R' }, { tag: 'td', text: text }],
+  ]);
+  table._cells.forEach((c) => {
+    c.querySelectorAll = () => [];
+    // A press that keeps a range expression ends in a per-cell pulse, which
+    // measures each cell in the range; the toggle-table mock has no layout.
+    c.getBoundingClientRect = () => ({ top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 });
+  });
+  injectToggleEntry(table);
+  return table;
+}
+
+// --- The defect's own symptom. The settings record stands at off and the
+// press lands on a table that is not the active one. Before the fix this took
+// the rebind path and applied the settings record, which at off changed no
+// numbers. The user pressed an on/off control and nothing moved. ---
+(function partOne_pressOnInactiveTableSimplifiesEvenWithTheRecordOff() {
+  runPressFixture(({ sent }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const active = makePressTable('1,000,000');
+    const pressed = makePressTable('12,345');
+    DR_STORE.setSelectedTable(active);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
+
+    eq('part one: a press on an inactive table simplifies it with the settings record at off',
+      isTableRounded(pressed), true);
+    eq('part one: the settings record follows that press to on',
+      DR_STORE.getSettings().enabled, true);
+    eq('part one: the press publishes the switch',
+      sent.filter((m) => m.action === 'TABLE_SWITCHED').length, 1);
+  });
+})();
+
+// --- Exactly one settings write per press, and the flip direction comes from
+// the screen as it stood BEFORE that write. A press on a raw table with the
+// settings record already at on is the case that catches a second write: read
+// the direction after a first write and the press simplifies, reads
+// "simplified", writes off, and the second apply returns the table to where
+// it started. ---
+(function partOne_onePressOneWriteReadingTheScreenFirst() {
+  runPressFixture(({ resetWrites, writes }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
+    const active = makePressTable('1,000,000');
+    const pressed = makePressTable('12,345');
+    DR_STORE.setSelectedTable(active);
+    resetWrites();
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
+
+    eq('part one: a press makes exactly one settings write',
+      writes(), 1);
+    eq('part one: a press on a raw table with the settings record at on leaves the table simplified',
+      isTableRounded(pressed), true);
+    eq('part one: the settings record stands at on afterwards',
+      DR_STORE.getSettings().enabled, true);
+  });
+})();
+
+// --- The settings record's change is what applies, and the values it carries
+// are what the table gets. The offset seeded below differs from the shipped
+// default, so a pass run against the defaults fails this. ---
+(function partOne_pressAppliesTheRecordsCurrentValues() {
+  runPressFixture(() => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, {
+      enabled: false, offsetTop: -2, offsetOther: -2,
+    }));
+    const active = makePressTable('1,000,000');
+    const pressed = makePressTable('8,584,629');
+    DR_STORE.setSelectedTable(active);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
+
+    const usedOpts = DR_STORE.getTableRoundOptions(pressed);
+    eq('part one: turning simplification on uses the settings record\'s offset',
+      usedOpts && usedOpts.offsetTop, -2);
+  });
+})();
+
+// --- Turning off resets. The form flip this replaced kept the simplified
+// markers and the stored originals, which left the settings record at off
+// while the table kept its simplified bookkeeping. ---
+(function partOne_pressOffResetsTheTable() {
+  runPressFixture(() => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const table = makePressTable('12,345');
+    DR_STORE.setSelectedTable(table);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
+    eq('part one: the first press simplifies the active table (precondition)',
+      isTableRounded(table), true);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
+
+    eq('part one: after an off press the settings record stands at off',
+      DR_STORE.getSettings().enabled, false);
+    eq('part one: after an off press no cell carries the simplified marker',
+      table._cells.some((c) => c.classList.contains('dr-ext-rounded')), false);
+    eq('part one: after an off press no cell has a stored original',
+      table._cells.some((c) => DR_STORE.hasTableOriginal(table, c)), false);
+  });
+})();
+
+// --- The range expression states rows and columns by position, so it
+// describes the table it was written for. A press that moves the active table
+// clears it; a press on the table that is already active keeps it. ---
+(function partOne_movedPressClearsTheRangeExpression() {
+  runPressFixture(() => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: 'B2' }));
+    const active = makePressTable('1,000,000');
+    const pressed = makePressTable('12,345');
+    DR_STORE.setSelectedTable(active);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
+
+    eq('part one: a press that moves the active table clears the range expression',
+      DR_STORE.getSettings().rangeExpr, '');
+  });
+})();
+
+// --- The same clear must happen where the held expression fails to parse.
+// Without it the press stops before any cell changes and the error reaches a
+// sidebar that may stand closed, which leaves the press looking inert. ---
+(function partOne_movedPressClearsAnUnparsableRangeExpression() {
+  runPressFixture(() => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: '1a' }));
+    const active = makePressTable('1,000,000');
+    const pressed = makePressTable('12,345');
+    DR_STORE.setSelectedTable(active);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
+
+    eq('part one: a moved press clears a range expression the parser rejects',
+      DR_STORE.getSettings().rangeExpr, '');
+    eq('part one: that press simplifies the whole pressed table',
+      isTableRounded(pressed), true);
+  });
+})();
+
+(function partOne_unmovedPressKeepsTheRangeExpression() {
+  runPressFixture(() => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: 'B2' }));
+    const table = makePressTable('12,345');
+    DR_STORE.setSelectedTable(table);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
+
+    eq('part one: a press on the already-active table keeps the range expression',
+      DR_STORE.getSettings().rangeExpr, 'B2');
+  });
+})();
+
+// --- A right-click activation writes no settings, so the numbers on a
+// right-clicked table stay as they are. Today's code satisfies this, and the
+// test stands as a regression guard on the clear's placement: move the clear
+// onto activation and this fails, because every settings write publishes and
+// the controller applies to the active table on every publish. ---
+(function partOne_activationWritesNoSettings() {
+  runPressFixture(({ resetWrites, writes }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true, rangeExpr: 'B2' }));
+    const table = makePressTable('12,345');
+    resetWrites();
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:selectTable', { table }); });
+
+    eq('part one: a right-click activation makes no settings write',
+      writes(), 0);
+    eq('part one: a right-click activation leaves the range expression alone',
+      DR_STORE.getSettings().rangeExpr, 'B2');
+    eq('part one: a right-click activation changes no numbers on the table',
+      isTableRounded(table), false);
+    eq('part one: the activation still moves the active table',
+      DR_STORE.getSelectedTable(), table);
+  });
 })();
 
 // ---------------------------------------------------------------------------
@@ -17909,8 +18248,7 @@ function makeIssue251SidebarHarness() {
     eq('menu-toggle record: the right-click connected the grid',
       store.getSelectedTable(), gridEl);
 
-    // Sidebar open, record on, table showing rounded values.
-    store.setSidebarOpen(true);
+    // The settings record starts at on, the table showing simplified values.
     store.setTableAppliedFlag(gridEl, 'simplified');
     eq('menu-toggle record: precondition — the record starts enabled',
       store.getSettings().enabled, true);

@@ -20,7 +20,6 @@
  *                      lastRightClickedTable; sidebar.js's "bound" language
  *                      (setTableBound) names the same idea from the
  *                      sidebar's side. One field, one name: selectedTable.
- *   - sidebarOpen     Whether the side panel is currently open.
  *   - settings        The current rounding options (the sidebar's
  *                      checkboxes/sliders/range expression, flattened to one
  *                      object). Initialized from DR_DEFAULTS so the model
@@ -30,18 +29,24 @@
  *                      controller applies every new value to the selected
  *                      table by subscribing to the resulting state-change.
  *
- * Reads go through the getters below. The only way to change selectedTable,
- * sidebarOpen, or settings is one of the setter methods, and each setter
- * does exactly two things: update the field, then DR_BUS.publish() the
- * field's whole new value as a state-change. No caller can assign these
- * fields directly — there is nothing to assign; the fields are closed over,
- * not exposed.
+ * A third field, "whether the sidebar is open", lived here until the
+ * 2026-09-14 sidebar-state-removal design retired it. Only the service
+ * worker could correct it, and the correction needed a tab number the
+ * service worker lost on an idle restart and on an ordinary sidebar close,
+ * so the value went stale and stayed stale for the rest of the page's life
+ * (#241). No part of the extension reads such a value now.
  *
- * The table registry (app-model-registry sprint) is a fourth field with a
+ * Reads go through the getters below. The only way to change selectedTable
+ * or settings is one of the setter methods, and each setter does exactly
+ * two things: update the field, then DR_BUS.publish() the field's whole new
+ * value as a state-change. No caller can assign these fields directly —
+ * there is nothing to assign; the fields are closed over, not exposed.
+ *
+ * The table registry (app-model-registry sprint) is a third field with a
  * different shape and a different update contract — see the section below.
  *
  * The store holds no DOM logic and calls no chrome API itself; the one side
- * effect any of the three scalar setters has, beyond updating its own
+ * effect either of the two scalar setters has, beyond updating its own
  * field, is a publish through DR_BUS.
  *
  * Loaded after adapters/messaging.js (DR_BUS) and before ui-toggle.js.
@@ -49,7 +54,6 @@
 
 const DR_STORE = (function () {
   let selectedTable = null;
-  let sidebarOpen = false;
   let settings = Object.assign({}, DR_DEFAULTS);
 
   // --- Table registry ---
@@ -112,9 +116,9 @@ const DR_STORE = (function () {
         // appliedFlag === 'simplified'.
         appliedFlag: 'original',
         // The options object the most recent roundTable() call used —
-        // replaces content.js's tableOptions WeakMap. toggleOriginalValues
-        // reads this to re-round with the same parameters instead of a
-        // stale cached value.
+        // replaces content.js's tableOptions WeakMap. The virtualized-grid
+        // re-apply reads this to re-round scrolled-in rows with the same
+        // parameters instead of a stale cached value.
         lastRoundOptions: null,
         // Virtualized-grid magnitude basis, frozen on first round so a
         // scroll-triggered re-apply cannot shift it. null until roundTable
@@ -131,10 +135,6 @@ const DR_STORE = (function () {
     return selectedTable;
   }
 
-  function isSidebarOpen() {
-    return sidebarOpen;
-  }
-
   // Returns a fresh copy — callers may not mutate the store's internal
   // settings object by mutating what they read.
   function getSettings() {
@@ -146,17 +146,12 @@ const DR_STORE = (function () {
   // missed while it was gone — the bus keeps no history, so a missed
   // publish is gone for good from the bus's point of view.
   function getSnapshot() {
-    return { selectedTable, sidebarOpen, settings: getSettings() };
+    return { selectedTable, settings: getSettings() };
   }
 
   function setSelectedTable(table) {
     selectedTable = table;
     DR_BUS.publish('state:selectedTableChanged', { table: selectedTable });
-  }
-
-  function setSidebarOpen(isOpen) {
-    sidebarOpen = !!isOpen;
-    DR_BUS.publish('state:sidebarOpenChanged', { sidebarOpen });
   }
 
   function setSettings(newSettings) {
@@ -170,9 +165,9 @@ const DR_STORE = (function () {
   // found" or "a cell's original changed" as an event — the DOM itself is
   // the view for a table's contents, and the view already redraws it
   // directly (roundTable/restoreTable write the cells they change). Unlike
-  // selectedTable/sidebarOpen/settings, the registry is per-table storage
-  // consulted synchronously by the controller, not application-level state
-  // a view redraws itself from.
+  // selectedTable/settings, the registry is per-table storage consulted
+  // synchronously by the controller, not application-level state a view
+  // redraws itself from.
 
   // registerTable: the "found" moment as far as the toggle UI is concerned —
   // called once, from ui-toggle.js's createToggleForTable, idempotent so a
@@ -270,11 +265,9 @@ const DR_STORE = (function () {
 
   return {
     getSelectedTable,
-    isSidebarOpen,
     getSettings,
     getSnapshot,
     setSelectedTable,
-    setSidebarOpen,
     setSettings,
     registerTable,
     unregisterTable,
