@@ -19621,6 +19621,47 @@ function makeBusSandbox(opts) {
     e.sent.pages.length + e.sent.tabs.length, 0);
 })();
 
+// --- #325 Task 2: a subscriber learns the sending tab ---
+//
+// The service worker's page-unload handler reads the sending tab's number off
+// Chrome's sender record and acts only when that tab is the one the sidebar
+// was opened for. The bus handed subscribers the payload alone, and a payload
+// cannot carry the number — a content script does not hold its own. Without
+// this argument, moving that topic onto the bus would close the sidebar on a
+// page unload in any tab.
+(function busSubscriberReceivesSenderTab() {
+  const a = makeBusSandbox();
+  const sameContext = [];
+  a.bus.subscribe('state:settingsChanged', (payload, meta) => { sameContext.push(meta); });
+  a.bus.publish('state:settingsChanged', { settings: {} });
+  eq('bus meta: a same-context publish reports no sending tab',
+    sameContext.length === 1 && sameContext[0] && sameContext[0].tabId === null, true);
+
+  const b = makeBusSandbox();
+  const fromTab = [];
+  b.bus.subscribe('state:settingsChanged', (payload, meta) => { fromTab.push(meta); });
+  b.fire({ action: 'state:settingsChanged', settings: {} }, { tab: { id: 77 } });
+  eq('bus meta: a wire message from a content script reports its tab number',
+    fromTab.length === 1 && fromTab[0].tabId === 77, true);
+
+  const c = makeBusSandbox();
+  const fromPage = [];
+  c.bus.subscribe('state:settingsChanged', (payload, meta) => { fromPage.push(meta); });
+  c.fire({ action: 'state:settingsChanged', settings: {} }, {});
+  eq('bus meta: a wire message from an extension page reports no tab number',
+    fromPage.length === 1 && fromPage[0].tabId === null, true);
+
+  // The payload stays exactly what the publisher sent. The tab number rides
+  // beside it, never inside it, so no handler can mistake it for data the
+  // publisher chose.
+  const d = makeBusSandbox();
+  let seenPayload = null;
+  d.bus.subscribe('state:settingsChanged', (payload) => { seenPayload = payload; });
+  d.fire({ action: 'state:settingsChanged', settings: { k: 1 } }, { tab: { id: 5 } });
+  eq('bus meta: the tab number stays out of the payload',
+    seenPayload === null ? null : Object.keys(seenPayload).sort().join(','), 'settings');
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);

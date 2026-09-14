@@ -128,14 +128,30 @@ const DR_BUS = (function () {
     };
   }
 
+  // Chrome attaches a sender record to every arriving message. One fact off it
+  // is load-bearing: which tab a content script sent from, which the service
+  // worker checks against the tab the sidebar was opened for. The bus passes
+  // that one number and keeps Chrome's record out of its own contract. A
+  // same-context publish reports null, and so does a message from an extension
+  // page — neither has a tab.
+  function senderTabId(sender) {
+    return sender && sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : null;
+  }
+
   // Deliver to same-context subscribers only. Used both by publish() below
   // and by the onMessage relay, so a redelivered incoming wire message never
   // triggers another outbound send.
-  function deliverLocally(topic, payload) {
+  //
+  // A handler receives the payload and, beside it, the facts the carrier
+  // supplied rather than the publisher: meta.tabId. It rides beside the
+  // payload, never inside it, so no handler can mistake it for data the
+  // publisher chose to send.
+  function deliverLocally(topic, payload, tabId) {
     const set = subscribers.get(topic);
     if (!set) return;
+    const meta = { tabId: typeof tabId === 'number' ? tabId : null };
     for (const handler of Array.from(set)) {
-      handler(payload);
+      handler(payload, meta);
     }
   }
 
@@ -243,7 +259,7 @@ const DR_BUS = (function () {
           ' while publishing "' + topic + '" — likely an unguarded reentrant publish cycle'
         );
       }
-      deliverLocally(topic, payload);
+      deliverLocally(topic, payload, null);
       const route = TOPICS[topic].route;
       if (!route || typeof chrome === 'undefined' || !chrome.runtime) return;
       relay(topic, payload, route, opts);
@@ -254,13 +270,13 @@ const DR_BUS = (function () {
 
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage &&
       typeof chrome.runtime.onMessage.addListener === 'function') {
-    chrome.runtime.onMessage.addListener((request) => {
+    chrome.runtime.onMessage.addListener((request, sender) => {
       if (!request || typeof request.action !== 'string') return;
       const topic = request.action;
       if (!Object.prototype.hasOwnProperty.call(TOPICS, topic)) return;
       const payload = Object.assign({}, request);
       delete payload.action;
-      deliverLocally(topic, payload);
+      deliverLocally(topic, payload, senderTabId(sender));
     });
   }
 
