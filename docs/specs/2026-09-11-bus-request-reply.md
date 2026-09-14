@@ -11,6 +11,16 @@ The event bus gains a request-reply operation pair and a per-topic route table. 
 
 The bus keeps two verbs because the eighteen topics are two kinds of message. Fifteen carry a fact or a gesture and return nothing. Three are requests: the receiver returns the settings, the lens preview samples, or the capture state to the publisher. A request and a one-way publish stay distinct operations; both travel through the same component and the same table.
 
+## Corrections found during implementation planning
+
+Read against the code on 2026-09-14. Three points in the design above do not hold against the extension as it stands; each is resolved here, and the sections below carry the resolution.
+
+**The sender's tab number.** The service worker's page-unload handler reads the sending tab's number off the record Chrome attaches to every arriving message, and acts only when that tab is the one the sidebar was opened for. The bus hands subscribers the payload alone, and a payload cannot carry the number: a content script does not hold its own tab number. Moved as written, the handler would close the sidebar on a page unload in any tab. Resolution: a subscriber handler receives a second argument carrying the sending tab's number, `null` for a same-context publish and for a message from an extension page.
+
+**The settings-apply topic is a fourth request.** The content script answers it, and the sidebar reads whether anyone answered at all to decide bound versus unbound. The count above of fifteen one-way topics and three requests is therefore fourteen and four. Resolution: the settings apply becomes the fourth request topic, and `opts.onDelivery` retires with it. One reply shape remains, which is the point of the change.
+
+**The `both` route has no users.** The sidebar-state-removal change of 2026-09-14 retired the content-script leg of `CLOSE_SIDEBAR`, leaving it single-carrier. No topic needs two carriers. Resolution: the `both` route value is not built. Three route values ship: `null`, `extension-pages`, and `tab`.
+
 ## Vocabulary
 
 Terms this design adds. They enter `docs/vocabulary.md` in the implementation branch that makes each one real.
@@ -19,7 +29,7 @@ Terms this design adds. They enter `docs/vocabulary.md` in the implementation br
 | --- | --- |
 | request topic | A topic whose one responder returns a plain-value answer to the publisher. The bus reports the absence of a responder to the publisher immediately, with no waiting period. |
 | responder | The one function a context registers to answer a request topic. Exactly one responder per request topic; a second registration fails at that moment. |
-| route | The table's record of which carrier reaches a topic's audience: the extension's pages, one tab's content script, or both. A route states carrier choice, never subscriber identity — publishers and subscribers stay unreferenced to each other. |
+| route | The table's record of which carrier reaches a topic's audience: the extension's pages, one tab's content script, or neither (same-context only). A route states carrier choice, never subscriber identity — publishers and subscribers stay unreferenced to each other. |
 
 ## Current state
 
@@ -41,7 +51,7 @@ Two additions to the bus surface, beside `publish` and `subscribe`:
 The bus's `TOPICS` table becomes the only topic list. Each entry holds:
 
 - `family` — `intent`, `state-change`, or the new third family, `request`. The fifteen one-way topics take `intent` or `state-change` at move time; the assignment names the topic and changes no behavior.
-- `route` — `null` (same-context only), `extension-pages`, `tab`, or `both`. A `request` family entry must carry route `tab`: a request addresses exactly one context, and the table-shape test fails closed on any other pairing.
+- `route` — `null` (same-context only), `extension-pages`, or `tab`. A `request` family entry must carry route `tab`: a request addresses exactly one context, and the table-shape test fails closed on any other pairing.
 
 The `wireAction` field retires: the topic name itself goes on the wire, in the `action` field the transport already uses. The implementation plan records the old-name-to-new-name mapping, one row per topic. `DR_CROSS_CONTEXT_TOPICS` and its misspelling guard retire with it — the bus's own unknown-topic check covers every name. One naming style remains, the bus's `family:name` form.
 
@@ -51,7 +61,6 @@ The route field replaces the bus's capability sniff. Today the bus picks a trans
 
 - `extension-pages` — `chrome.runtime.sendMessage`, reaching the service worker and the open sidebar.
 - `tab` — `chrome.tabs.sendMessage` to one tab's content script. The tab number comes from `opts.tabId` when the caller passes one; otherwise the bus queries the active tab. The two service-worker topics aimed at a specific tab (the menu-click tab, the sidebar's tab) pass `opts.tabId`, because only the service worker holds those numbers. The sidebar's repeated active-tab lookups collapse into the bus.
-- `both` — both carriers, for the one topic that must reach the sidebar page and a tab's content script (`CLOSE_SIDEBAR` today).
 
 ### Delivery order and the depth guard
 
