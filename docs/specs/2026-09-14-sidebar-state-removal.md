@@ -71,6 +71,8 @@ Both of the model's unsubscribed state-change topics end up resolved, by opposit
 
 The existing suite pins the order of two sends on a table switch, the active-table topic ahead of the blocked-apply topic. The merged path preserves that order only where the activation precedes the settings-record write, so the activation goes first.
 
+**Activation publishes on a change of table alone.** The model's active-table setter publishes on every call, with no equality check, so a press on the already-active table would publish the active-table topic and make the sidebar re-read and flash every time. The existing suite pins no switch topic on a same-table press, and that test holds the gate.
+
 ## Platform findings
 
 This section records the platform facts once. Source: Chrome's extension side-panel reference, read 2026-09-14.
