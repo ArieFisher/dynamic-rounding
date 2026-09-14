@@ -268,17 +268,87 @@ const DR_BUS = (function () {
     }
   }
 
+  // A request topic has exactly one responder, in exactly one context. A
+  // second registration is a mistake at the moment it is made, not later when
+  // two answers race, so it throws here.
+  const responders = new Map();
+
+  function assertRequestFamily(topic, verb) {
+    if (TOPICS[topic].family !== REQUEST) {
+      throw new Error('DR_BUS: ' + verb + '() needs a request-family topic; "' +
+        topic + '" is ' + TOPICS[topic].family);
+    }
+  }
+
+  function respond(topic, handler) {
+    assertKnownTopic(topic);
+    assertRequestFamily(topic, 'respond');
+    if (responders.has(topic)) {
+      throw new Error('DR_BUS: topic "' + topic + '" already has a responder');
+    }
+    responders.set(topic, handler);
+    return function unrespond() {
+      if (responders.get(topic) === handler) responders.delete(topic);
+    };
+  }
+
+  // A request addresses exactly one context, the tab's, so it never delivers
+  // to same-context subscribers the way publish() does.
+  //
+  // The callback receives the responder's answer, or undefined when nothing
+  // answered: no tab, no content script on it, or no responder registered
+  // there. The absence arrives immediately, with no waiting period, which is
+  // what drives the sidebar's fallback to shipped defaults and to the unbound
+  // state.
+  //
+  // A context with no chrome.tabs answers undefined rather than throwing the
+  // way a tab-routed publish does. A lost one-way publish is a silent miss;
+  // an unanswered request is a case every asker already handles.
+  function request(topic, payload, callback) {
+    assertKnownTopic(topic);
+    assertRequestFamily(topic, 'request');
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.tabs ||
+        typeof chrome.tabs.sendMessage !== 'function' ||
+        typeof chrome.tabs.query !== 'function') {
+      callback(undefined);
+      return;
+    }
+    sendToTab(Object.assign({ action: topic }, payload), null, callback);
+  }
+
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage &&
       typeof chrome.runtime.onMessage.addListener === 'function') {
-    chrome.runtime.onMessage.addListener((request, sender) => {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (!request || typeof request.action !== 'string') return;
       const topic = request.action;
       if (!Object.prototype.hasOwnProperty.call(TOPICS, topic)) return;
       const payload = Object.assign({}, request);
       delete payload.action;
-      deliverLocally(topic, payload, senderTabId(sender));
+      const tabId = senderTabId(sender);
+      if (TOPICS[topic].family !== REQUEST) {
+        deliverLocally(topic, payload, tabId);
+        return;
+      }
+      const responder = responders.get(topic);
+      // No responder in THIS context: stay silent. Answering undefined would
+      // close the asker's callback on behalf of a context holding no answer.
+      if (!responder) return;
+      // A responder runs on the same depth counter a subscriber does, so a
+      // publish nested under one cannot slip past the guard.
+      publishDepth++;
+      try {
+        if (publishDepth > MAX_PUBLISH_DEPTH) {
+          throw new Error(
+            'DR_BUS: publish depth exceeded ' + MAX_PUBLISH_DEPTH +
+            ' while responding to "' + topic + '" — likely an unguarded reentrant publish cycle'
+          );
+        }
+        sendResponse(responder(payload, { tabId }));
+      } finally {
+        publishDepth--;
+      }
     });
   }
 
-  return { publish, subscribe, TOPICS };
+  return { publish, subscribe, request, respond, TOPICS };
 })();

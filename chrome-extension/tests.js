@@ -19662,6 +19662,157 @@ function makeBusSandbox(opts) {
     seenPayload === null ? null : Object.keys(seenPayload).sort().join(','), 'settings');
 })();
 
+// --- #325 Task 3: request and respond ---
+(function busRequestReplyRoundTrip() {
+  // The asking side: the answer chrome hands back reaches the callback.
+  const a = makeBusSandbox({ reply: { settings: { k: 9 } } });
+  let answer = 'untouched';
+  a.bus.request('request:applySettings', { settings: {} }, (x) => { answer = x; });
+  eq('bus request: the answer reaches the asker',
+    answer && answer.settings ? answer.settings.k : null, 9);
+
+  // The answering side: a responder's return value goes to Chrome's reply
+  // callback, unwrapped.
+  const b = makeBusSandbox();
+  b.bus.respond('request:applySettings', (payload) => ({ echoed: payload.n }));
+  let replied = 'untouched';
+  b.fire({ action: 'request:applySettings', n: 5 }, { tab: { id: 3 } }, (r) => { replied = r; });
+  eq('bus request: the responder\'s return value is what the asker receives',
+    replied && replied.echoed, 5);
+
+  // A responder reads the carrier's facts the same way a subscriber does.
+  const c = makeBusSandbox();
+  let responderMeta = null;
+  c.bus.respond('request:applySettings', (payload, meta) => { responderMeta = meta; return {}; });
+  c.fire({ action: 'request:applySettings' }, { tab: { id: 11 } }, () => {});
+  eq('bus request: a responder receives the sending tab too',
+    responderMeta ? responderMeta.tabId : null, 11);
+})();
+
+(function busRequestAbsentResponder() {
+  // Three ways nothing answers. Each must reach the callback with undefined,
+  // immediately — the sidebar's fallback to shipped defaults and to the
+  // unbound state has always depended on the absence arriving at once, with no
+  // waiting period.
+  const noTab = makeBusSandbox({ noActiveTab: true });
+  let a = 'untouched';
+  let aCalled = false;
+  noTab.bus.request('request:applySettings', {}, (x) => { aCalled = true; a = x; });
+  eq('bus request: no active tab answers undefined', aCalled && a === undefined, true);
+
+  const noScript = makeBusSandbox({ throwOnSend: true });
+  let b = 'untouched';
+  let bCalled = false;
+  noScript.bus.request('request:applySettings', {}, (x) => { bCalled = true; b = x; });
+  eq('bus request: no content script on the tab answers undefined',
+    bCalled && b === undefined, true);
+
+  const noResponder = makeBusSandbox();
+  let c = 'untouched';
+  let cCalled = false;
+  noResponder.bus.request('request:applySettings', {}, (x) => { cCalled = true; c = x; });
+  eq('bus request: no responder registered answers undefined',
+    cCalled && c === undefined, true);
+
+  // A context with no chrome.tabs cannot ask at all. publish() throws there,
+  // because a lost one-way message is a silent miss; request() answers
+  // undefined instead, because the asker already handles an unanswered ask and
+  // that is exactly what this is.
+  const noTabs = makeBusSandbox({ noTabs: true });
+  let d = 'untouched';
+  noTabs.bus.request('request:applySettings', {}, (x) => { d = x; });
+  eq('bus request: a context with no chrome.tabs answers undefined', d, undefined);
+})();
+
+(function busRequestDeliversToOneContextOnly() {
+  // A request addresses exactly one context, the tab's, so it never runs the
+  // publishing context's own subscribers the way publish() does.
+  const s = makeBusSandbox();
+  let localRan = false;
+  s.bus.subscribe('request:applySettings', () => { localRan = true; });
+  s.bus.request('request:applySettings', {}, () => {});
+  eq('bus request: a request does not deliver to same-context subscribers', localRan, false);
+
+  // An arriving request with no responder in THIS context stays silent.
+  // Answering undefined would close the asker's callback on behalf of a
+  // context holding no answer.
+  const t = makeBusSandbox();
+  let answered = false;
+  t.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => { answered = true; });
+  eq('bus request: an arriving request with no local responder sends no reply',
+    answered, false);
+})();
+
+(function busOneResponderPerTopic() {
+  const s = makeBusSandbox();
+  s.bus.respond('request:applySettings', () => 1);
+  let threw = false;
+  try { s.bus.respond('request:applySettings', () => 2); } catch (e) { threw = true; }
+  eq('bus request: a second responder for one topic throws', threw, true);
+})();
+
+(function busRequestFamilyGuards() {
+  const s = makeBusSandbox();
+  let respondThrew = false;
+  try { s.bus.respond('state:settingsChanged', () => 1); } catch (e) { respondThrew = true; }
+  eq('bus request: respond on a non-request topic throws', respondThrew, true);
+
+  let requestThrew = false;
+  try { s.bus.request('state:settingsChanged', {}, () => {}); } catch (e) { requestThrew = true; }
+  eq('bus request: request on a non-request topic throws', requestThrew, true);
+
+  let unknownThrew = false;
+  try { s.bus.respond('not:a:topic', () => 1); } catch (e) { unknownThrew = true; }
+  eq('bus request: respond on an unknown topic throws', unknownThrew, true);
+})();
+
+(function busRequestFamilyImpliesTabRoute() {
+  // A request addresses exactly one context. Any other route on a request
+  // entry is a table mistake, and this fails closed on it.
+  let allTabRouted = true;
+  let requestCount = 0;
+  for (const topic in DR_BUS.TOPICS) {
+    const entry = DR_BUS.TOPICS[topic];
+    if (entry.family !== 'request') continue;
+    requestCount++;
+    if (entry.route !== 'tab') allTabRouted = false;
+  }
+  eq('bus table: at least one request topic exists (fails closed on a lost table)',
+    requestCount > 0, true);
+  eq('bus table: every request-family topic carries route "tab"', allTabRouted, true);
+})();
+
+(function busDepthGuardCoversResponders() {
+  // A responder runs on the same depth counter a subscriber does, so an
+  // unguarded cycle reached through a responder becomes a clear error rather
+  // than a real stack overflow.
+  const s = makeBusSandbox();
+  s.bus.subscribe('state:settingsChanged', () => {
+    s.bus.publish('state:settingsChanged', { settings: {} });
+  });
+  s.bus.respond('request:applySettings', () => {
+    s.bus.publish('state:settingsChanged', { settings: {} });
+    return {};
+  });
+  let message = null;
+  try {
+    s.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
+  } catch (e) {
+    message = e.message;
+  }
+  eq('bus request: the depth guard covers a publish nested under a responder',
+    /depth exceeded/.test(message || ''), true);
+  eq('bus request: the error names the responder\'s topic',
+    /request:applySettings|state:settingsChanged/.test(message || ''), true);
+
+  // The counter unwinds cleanly, so an unrelated publish afterward behaves
+  // normally rather than still reading as deep.
+  const t = makeBusSandbox();
+  let secondThrew = null;
+  try { t.bus.publish('state:settingsChanged', { settings: {} }); } catch (e) { secondThrew = e.message; }
+  eq('bus request: the depth counter recovers after a responder cycle', secondThrew, null);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
