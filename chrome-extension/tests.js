@@ -13296,7 +13296,14 @@ function fireMouseClick(buttonEl, fn) {
   // register first.
   const capturedListeners = [];
   function capturedListener(req, sender, respond) {
-    for (const fn of capturedListeners) fn(req, sender, respond || function () {});
+    // Chrome keeps the reply port open when ANY listener returns true, and
+    // closes it otherwise. Returning nothing here would make the
+    // synchronous-answer assertions below unfalsifiable.
+    let keepOpen = false;
+    for (const fn of capturedListeners) {
+      if (fn(req, sender, respond || function () {}) === true) keepOpen = true;
+    }
+    return keepOpen;
   }
   const captureChrome = {
     runtime: {
@@ -15775,10 +15782,10 @@ const LADDER_OPTS = {
   };
 
   // chrome.tabs.query/sendMessage resolve synchronously so the whole chain —
-  // sidebar.js's applyNow() -> DR_BUS.publish() -> chrome.tabs.sendMessage's
-  // own callback -> sidebar.js's onDelivery — runs deterministically within
-  // one call, with queuedLastError controlling chrome.runtime.lastError at
-  // the moment onDelivery reads it (matching real sendMessage semantics).
+  // sidebar.js's applyNow() -> DR_BUS.request() -> chrome.tabs.sendMessage's
+  // own callback -> the sidebar's answer callback — runs deterministically
+  // within one call, with queuedLastError picking whether the stub answers
+  // with a value or with nothing (matching real sendMessage semantics).
   const sentTabMessages = [];
   let queuedLastError = null;
   const captureChrome = {
@@ -16204,7 +16211,14 @@ const LADDER_OPTS = {
   // register first.
   const capturedListeners = [];
   function capturedListener(req, sender, respond) {
-    for (const fn of capturedListeners) fn(req, sender, respond || function () {});
+    // Chrome keeps the reply port open when ANY listener returns true, and
+    // closes it otherwise. Returning nothing here would make the
+    // synchronous-answer assertions below unfalsifiable.
+    let keepOpen = false;
+    for (const fn of capturedListeners) {
+      if (fn(req, sender, respond || function () {}) === true) keepOpen = true;
+    }
+    return keepOpen;
   }
   const captureChrome = {
     runtime: {
@@ -16693,7 +16707,14 @@ function makeIssue251SidebarHarness() {
   // register first.
   const capturedListeners = [];
   function capturedListener(req, sender, respond) {
-    for (const fn of capturedListeners) fn(req, sender, respond || function () {});
+    // Chrome keeps the reply port open when ANY listener returns true, and
+    // closes it otherwise. Returning nothing here would make the
+    // synchronous-answer assertions below unfalsifiable.
+    let keepOpen = false;
+    for (const fn of capturedListeners) {
+      if (fn(req, sender, respond || function () {}) === true) keepOpen = true;
+    }
+    return keepOpen;
   }
   let wiredDR_STORE = null;
   let wiredExtractPreviewSamples = null;
@@ -18460,7 +18481,7 @@ function makePressTable(text) {
     // Drift the switch on, then lock — the stash captures the drifted on.
     h.enabledEl.checked = true;
     h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
-    // A save whose delivery fails: applyNow's onDelivery sees lastError and
+    // A save whose delivery fails: nothing answers applyNow's request, and it
     // unbinds the panel (setTableBound(false)) — lock and stash both go.
     h.chromeMock.runtime.lastError = { message: 'no receiving end' };
     h.el('dateGranularity').fire('change');
@@ -19826,12 +19847,13 @@ function makeBusSandbox(opts) {
   // A responder runs on the same depth counter a subscriber does, so an
   // unguarded cycle reached through a responder becomes a clear error rather
   // than a real stack overflow.
+  //
+  // The cycle goes responder -> responder, never through publish(). A cycle
+  // that passed through a subscriber would be caught by publish()'s own
+  // counter, and this test would stay green with the listener's guard deleted.
   const s = makeBusSandbox();
-  s.bus.subscribe('state:settingsChanged', () => {
-    s.bus.publish('state:settingsChanged', { settings: {} });
-  });
   s.bus.respond('request:applySettings', () => {
-    s.bus.publish('state:settingsChanged', { settings: {} });
+    s.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
     return {};
   });
   let message = null;
@@ -19840,17 +19862,22 @@ function makeBusSandbox(opts) {
   } catch (e) {
     message = e.message;
   }
-  eq('bus request: the depth guard covers a publish nested under a responder',
+  eq('bus request: the depth guard covers a cycle that runs only through responders',
     /depth exceeded/.test(message || ''), true);
-  eq('bus request: the error names the responder\'s topic',
-    /request:applySettings|state:settingsChanged/.test(message || ''), true);
+  eq('bus request: the error says it happened while responding',
+    /while responding to "request:applySettings"/.test(message || ''), true);
 
-  // The counter unwinds cleanly, so an unrelated publish afterward behaves
-  // normally rather than still reading as deep.
-  const t = makeBusSandbox();
+  // The counter unwinds on the way out, so a later publish on the SAME bus
+  // behaves normally rather than still reading as deep. A fresh bus would
+  // prove nothing here.
   let secondThrew = null;
-  try { t.bus.publish('state:settingsChanged', { settings: {} }); } catch (e) { secondThrew = e.message; }
-  eq('bus request: the depth counter recovers after a responder cycle', secondThrew, null);
+  try {
+    s.bus.publish('intent:selectTable', { table: null });
+  } catch (e) {
+    secondThrew = e.message;
+  }
+  eq('bus request: the depth counter recovers on the same bus after a responder cycle',
+    secondThrew, null);
 })();
 
 // --- #325 Task 5: the settings apply is a request, not a publish ---
