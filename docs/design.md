@@ -213,7 +213,57 @@ The extension is the largest consumer of the algorithm and carries its own compo
 
 Outside the content script: `sidebar.html`/`sidebar.js` (the sidebar, a separate extension page) and `background.js` (the service worker that registers the context menu and opens the side panel).
 
-**State.** The application model holds all application state: the active table, whether the sidebar is open, the settings record, and the registry of tables found on the page. Every read goes through its getters; every write goes through a setter, which publishes the field's whole new value on the bus. No component keeps its own copy, and nothing uses the page as memory.
+### Layers
+
+Four layers, with dependencies pointing inward. An outer layer reads an inner one, and no inner layer reads outward.
+
+| Layer | Contents |
+|-------|----------|
+| Core | Parsing, the offsets, the formatting, the classification ladder, and the capture's state serializer. No Chrome interfaces and no page access. |
+| Adapters | The table adapters, the detection ladder, the event bus, and the capture renderer. Every Chrome interface and every page read or write lives here. |
+| Application model | The page's application state and the table registry. |
+| Shell | Three entry points: the content script, the sidebar, and the service worker. |
+
+Two honest exceptions. The table package sits under `lib/` with the pure packages while reading the page throughout, because detection and the adapters are the page access the core deliberately excludes. And the layering is a convention rather than a rule a tool enforces: this repository has no package file, no build step, and no import statements. Every content script declares globals into one shared scope, loaded in the order the manifest lists, so nothing fails when a layer reaches the wrong way. The suite exercises the core by evaluating every content script in Node behind stubbed page and Chrome interfaces.
+
+### Patterns
+
+| Pattern | Where | Job |
+|---------|-------|-----|
+| Ports and adapters | Whole extension | Keeps the algorithm free of Chrome and the page |
+| Application model with publishing setters | Content script | One place each field changes |
+| Two topic families | Views to controller, model to views | Decoupling without an open event graph |
+| Request and reply | The sidebar's three pulls | One caller, one answer, on demand |
+| Adapter | Native tables and grids | One row-and-cell interface over two markups |
+| Strategy | The number formatting | A new format without touching the walk |
+| Predicate | The classification ladder | A new exclusion without touching the formatting |
+| Registry | The table registry | Per-table storage keyed by the live element |
+
+### State ownership
+
+**The content script holds the model.** Its lifetime matches the page, and it is where the tables are. The application model holds the active table, whether the sidebar is open, the settings record, and the registry. Every read goes through a getter. Every write goes through a setter, and each of the three scalar setters publishes the field's whole new value on the event bus.
+
+**Two shapes, kept apart.** The registry keys per-table storage on the live element: each cell's pre-simplification original, the table's form, its last-used options, and a virtualized grid's frozen magnitude. None of that crosses a context, and none of it is plain-value. What crosses is the settings record and the capture state.
+
+**Derived data is computed, with one deliberate exception.** Column types, the magnitudes, and the dataset's maximum all come from the cell values. On a virtualized grid only the visible rows exist, so the maximum magnitude freezes when simplification is first applied and the registry holds it; recomputing would shift the basis on every scroll.
+
+**Originals are read at simplification, not at discovery.** Reading every cell of every table on a page at load would cost more than it saves, and a re-injected content script starts with an empty registry either way.
+
+**Three places hold state outside the model.** The service worker keeps the tab number the sidebar opened for, and Chrome empties its variables after an idle spell. The sidebar keeps its own control values, its cached lens samples, and its capture mark, and it builds the settings record from its own controls on each change. And two controller branches read a marker class off the page to decide whether a table is simplified, where the model holds that form as a field. The spec dated 2026-09-14 retires the first and the third.
+
+**Nothing persists.** There is no storage permission. The settings record starts as the shipped defaults on every page load and dies with the page, so the model initializes synchronously and the first simplification needs no waiting step. Each tab is independent, and no change crosses tabs.
+
+**One settings record per page.** There are no per-table settings, so the settings record describes the active table and no other. Issue #328 carries that limit.
+
+### Flow
+
+Three producers reach one controller. A pillbox press, a right-click menu item, and the sidebar's controls all publish an intent topic, and the controller in the content script is the sole subscriber. The controller writes the application model, and the model publishes the change.
+
+Redrawing runs two ways today. The sidebar pulls current values on open and redraws from state-change topics. The pillbox is redrawn by direct calls from the controller, and the state-change topics for the active table and for whether the sidebar is open have no subscribers at all. Issue #246 carries the first half of that.
+
+There is no single reduce step and no enumerated action list: the model has one setter per field, and each publishes its own state change.
+
+Tables have no identifier. A topic inside the content script carries the live element, and a cross-context topic carries plain values only, so no message outside the tab addresses a particular table — a cross-context topic that concerns a table means the active one.
 
 **Messages.** The event bus carries two topic families and only two. Intent topics report what the user did (`intent:selectTable`, `intent:toggleTable`, `intent:settingsChanged`) — requests with no authority, consumed by the controller. State-change topics report what the model changed (`state:selectedTableChanged`, `state:sidebarOpenChanged`, `state:settingsChanged`) — views subscribe to redraw. A topic that must cross contexts (the sidebar is not part of the tab's content script) goes as a cross-context topic over `chrome.runtime`/`chrome.tabs` messaging; the publish call is the same either way. The sidebar also pulls state on demand as request/response cross-context topics: the settings record, the lens preview samples, and the capture state. Every cross-context topic name is declared once in `constants.js`, which all three contexts load; reading a name that is not declared there throws at the read, the same way the bus rejects an unknown topic.
 
@@ -222,6 +272,19 @@ Outside the content script: `sidebar.html`/`sidebar.js` (the sidebar, a separate
 **Rounding a table.** The controller walks the adapter's rows, runs the classification ladder per cell, and writes per the adapter's write model: cross-node text replacement on native tables (preserving the markup inside a cell), in-place `nodeValue` patches on grids (framework-owned nodes must keep their identity, so mixed-text cells are skipped on grids). Originals are stored so the table can be restored. On virtualized grids, the re-apply observer — a debounced mutation observer — re-rounds rows that scroll into view and cells a sort redraws, under the frozen max magnitude.
 
 **Capture.** The sidebar's capture section writes a bug report as one inert, self-contained HTML file: the mark and note, the bound table as displayed and again with the originals, a likeness of the sidebar, a registry list of every table found, both contexts' log rows (a per-context log buffer holds the last 50), the fixture seed, and the whole capture state as JSON under a one-integer format version. The content script serializes the registry through the adapters' displayed-text read and the model's plain-original-text read; the sidebar pulls that over one cross-context topic, adds its own view state at finish time, renders the file through the capture package, and saves it with a plain link download — no extra permission. The file forbids scripts and remote fetches through its own Content-Security-Policy, and it records absence honestly: an unbound state, a locked table's lost originals, and a serialization failure all appear as what they are, never as reconstructed values. The file also carries a capture marker on its document element, and the controller stands down on any page carrying it — a page's own policy cannot block an extension's injected code, so without the marker the extension would round the capture's own table when the saved file is opened.
+
+### Reuse across platforms
+
+The algorithm exists three times — the Sheets library, the Python package, and the extension's number package — and one shared case table runs in all three suites, so a change in one platform fails the other two until the three agree. Nothing ships as a package, and no tool guards the boundary, because there is no build step anywhere in this repository. The case table is the whole of the contract that holds the three together.
+
+### Decisions
+
+- **The active table is the last one the user targeted**, by right-click or by a pillbox press. Hovering changes nothing.
+- **Simplification reads the originals.** An apply restores the table first and then simplifies again, so simplifying twice produces two identical passes rather than a correction of the first. The grid re-apply observer depends on that.
+- **The grid path computes before it writes.** One function produces every visible cell's target value and leaves an empty result for a cell it does not change, so the first pass and the scroll re-apply share one path and cannot diverge. The native path interleaves classification, the per-column date pass, and the writes inside the controller.
+- **Grid cells are patched in place.** A framework holds a reference to the text node, so replacing the node tears down the host application on its next redraw.
+- **Two messaging primitives.** A publish that returns nothing, and a request that returns one answer. The approved messaging design moves every cross-context topic onto the event bus under those two.
+- **The service worker is a router and two entry points.** It holds one fact today, the tab number the sidebar opened for, which the 2026-09-14 spec retires.
 
 ## Vocabulary
 
