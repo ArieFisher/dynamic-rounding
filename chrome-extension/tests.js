@@ -13289,11 +13289,19 @@ function fireMouseClick(buttonEl, fn) {
 // message and verify the sendResponse callback fires.
 // -------------------------------------------------------------------------
 (function ac1_applySidebarSettings() {
-  let capturedListener = null;
+  // The content-script bundle registers more than one Chrome listener: the
+  // bus's own, and content.js's. Chrome hands an arriving message to every
+  // one of them, so collect them all and fan out the same way. Keeping only
+  // the last registration would silently skip whichever listener happens to
+  // register first.
+  const capturedListeners = [];
+  function capturedListener(req, sender, respond) {
+    for (const fn of capturedListeners) fn(req, sender, respond || function () {});
+  }
   const captureChrome = {
     runtime: {
       onMessage: {
-        addListener(fn) { capturedListener = fn; }
+        addListener(fn) { capturedListeners.push(fn); }
       },
       sendMessage: () => {},
       lastError: null,
@@ -13332,9 +13340,9 @@ function fireMouseClick(buttonEl, fn) {
   }
 
   eq('AC1: content.js onMessage listener was captured',
-    typeof capturedListener, 'function');
+    capturedListeners.length > 0, true);
 
-  if (typeof capturedListener !== 'function') return;
+  if (capturedListeners.length === 0) return;
 
   // Dispatch request:applySettings and verify sendResponse is called.
   let sendResponseCalledWith = undefined;
@@ -13367,8 +13375,15 @@ function fireMouseClick(buttonEl, fn) {
     eq('AC1-src: source file content.js present in manifest', false, true);
     return;
   }
-  eq('AC1-src: request:applySettings branch contains sendResponse( call',
-    /request:applySettings[\s\S]{0,200}sendResponse\(/.test(contentSrc), true);
+  // The branch became a responder in issue #325. A responder answers by
+  // returning, so the acknowledgement now reads as a return of the answer
+  // rather than a sendResponse call. The behavior it guards is unchanged: the
+  // asker must receive something, because receiving nothing is what unbinds
+  // the sidebar.
+  eq('AC1-src: the request:applySettings responder returns an answer',
+    /DR_BUS\.respond\(\s*'request:applySettings'[\s\S]{0,300}return \{/.test(contentSrc), true);
+  eq('AC1-src: no inline branch answers it any more',
+    /request:applySettings[\s\S]{0,200}sendResponse\(/.test(contentSrc), false);
 })();
 
 // -------------------------------------------------------------------------
@@ -15774,9 +15789,12 @@ const LADDER_OPTS = {
     },
     tabs: {
       query(q, cb) { cb([{ id: 42 }]); },
+      // Chrome hands the callback the responder's value on success, and
+      // nothing (with lastError set) when nobody answered. queuedLastError
+      // picks which, so one stub covers both directions.
       sendMessage(tabId, msg, cb) {
         sentTabMessages.push(msg);
-        if (typeof cb === 'function') cb();
+        if (typeof cb === 'function') cb(queuedLastError ? undefined : { ok: true });
       },
     },
   };
@@ -15928,7 +15946,7 @@ const LADDER_OPTS = {
     },
     tabs: {
       query(q, cb) { cb([{ id: 42 }]); },
-      sendMessage(tabId, msg, cb) { if (typeof cb === 'function') cb(); },
+      sendMessage(tabId, msg, cb) { if (typeof cb === 'function') cb(queuedLastError ? undefined : { ok: true }); },
     },
   };
 
@@ -16179,10 +16197,18 @@ const LADDER_OPTS = {
 // AC1 test above, so this shared-scope DR_STORE is untouched by it.
 // ---------------------------------------------------------------------------
 (function appModelSettings_settingsSurviveSidebarReconnect() {
-  let capturedListener = null;
+  // The content-script bundle registers more than one Chrome listener: the
+  // bus's own, and content.js's. Chrome hands an arriving message to every
+  // one of them, so collect them all and fan out the same way. Keeping only
+  // the last registration would silently skip whichever listener happens to
+  // register first.
+  const capturedListeners = [];
+  function capturedListener(req, sender, respond) {
+    for (const fn of capturedListeners) fn(req, sender, respond || function () {});
+  }
   const captureChrome = {
     runtime: {
-      onMessage: { addListener(fn) { capturedListener = fn; } },
+      onMessage: { addListener(fn) { capturedListeners.push(fn); } },
       sendMessage: () => {},
       lastError: null,
     },
@@ -16214,8 +16240,8 @@ const LADDER_OPTS = {
   }
 
   eq('reconnect: the isolated listener was captured',
-    typeof capturedListener, 'function');
-  if (typeof capturedListener !== 'function') return;
+    capturedListeners.length > 0, true);
+  if (capturedListeners.length === 0) return;
 
   // The sidebar sets a custom value (an "open" session), then — simulated by
   // nothing happening in between — closes and reopens, pulling the model.
@@ -16341,7 +16367,10 @@ const LADDER_OPTS = {
         } else if (msg.action === 'GET_PREVIEW_SAMPLES') {
           cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
-          cb({ ok: true });
+          // The settings apply. Chrome hands back the responder's value on
+          // success and nothing when nobody answered, which is the fact the
+          // sidebar reads to decide bound versus unbound.
+          cb(captureChrome.runtime.lastError ? undefined : { ok: true });
         }
       },
     },
@@ -16479,7 +16508,10 @@ function makeIssue251SidebarHarness() {
         } else if (msg.action === 'GET_PREVIEW_SAMPLES') {
           cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
-          cb({ ok: true });
+          // The settings apply. Chrome hands back the responder's value on
+          // success and nothing when nobody answered, which is the fact the
+          // sidebar reads to decide bound versus unbound.
+          cb(captureChrome.runtime.lastError ? undefined : { ok: true });
         }
       },
     },
@@ -16654,7 +16686,15 @@ function makeIssue251SidebarHarness() {
   const CUSTOM_OFFSET_TOP = -2;
   const CUSTOM_OFFSET_OTHER = 0.25;
 
-  let capturedListener = null;
+  // The content-script bundle registers more than one Chrome listener: the
+  // bus's own, and content.js's. Chrome hands an arriving message to every
+  // one of them, so collect them all and fan out the same way. Keeping only
+  // the last registration would silently skip whichever listener happens to
+  // register first.
+  const capturedListeners = [];
+  function capturedListener(req, sender, respond) {
+    for (const fn of capturedListeners) fn(req, sender, respond || function () {});
+  }
   let wiredDR_STORE = null;
   let wiredExtractPreviewSamples = null;
   let boundTable = null;
@@ -16662,7 +16702,7 @@ function makeIssue251SidebarHarness() {
 
   const captureChrome = {
     runtime: {
-      onMessage: { addListener(fn) { capturedListener = fn; } },
+      onMessage: { addListener(fn) { capturedListeners.push(fn); } },
       sendMessage: () => {},
       lastError: null,
     },
@@ -16702,7 +16742,7 @@ function makeIssue251SidebarHarness() {
         // dynamic/async code (see the AC1 test).
       }
 
-      if (typeof capturedListener !== 'function' || !wiredDR_STORE) return;
+      if (capturedListeners.length === 0 || !wiredDR_STORE) return;
 
       // Bind a table as "selected" — mirrors what the contextmenu handler
       // does for real, so the state:settingsChanged subscriber has
@@ -16731,7 +16771,7 @@ function makeIssue251SidebarHarness() {
   }
 
   eq('wire E2E: content.js onMessage listener was captured',
-    typeof capturedListener, 'function');
+    capturedListeners.length > 0, true);
   eq('wire E2E: request:applySettings was acknowledged',
     ackResponse && ackResponse.ok, true);
   if (!boundTable) return;
@@ -19811,6 +19851,49 @@ function makeBusSandbox(opts) {
   let secondThrew = null;
   try { t.bus.publish('state:settingsChanged', { settings: {} }); } catch (e) { secondThrew = e.message; }
   eq('bus request: the depth counter recovers after a responder cycle', secondThrew, null);
+})();
+
+// --- #325 Task 5: the settings apply is a request, not a publish ---
+//
+// It always carried a reply. The sidebar never read the reply's value, only
+// whether anyone answered, and the bus served that through a second reply
+// shape — a delivery-outcome callback beside the answer path. Two reply shapes
+// in one component is the clutter issue #325 exists to remove.
+(function settingsApplyUsesRequestPath() {
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const contentSrc = sourceByName('content.js');
+  const busSrc = sourceByName('adapters/messaging.js');
+
+  eq('settings apply: the sidebar asks through request()',
+    /DR_BUS\.request\(\s*'request:applySettings'/.test(sidebarSrc), true);
+  eq('settings apply: the sidebar no longer publishes it one-way',
+    /DR_BUS\.publish\(\s*'request:applySettings'/.test(sidebarSrc), false);
+  eq('settings apply: the content script answers through respond()',
+    /DR_BUS\.respond\(\s*'request:applySettings'/.test(contentSrc), true);
+  eq('settings apply: the delivery-outcome callback retires from the bus',
+    busSrc.includes('onDelivery'), false);
+  eq('settings apply: the sidebar keeps no delivery-outcome callback',
+    sidebarSrc.includes('onDelivery'), false);
+
+  // The unbind-on-no-answer rule is the load-bearing one. Drive it through the
+  // bus rather than through the source text: an unanswered request must reach
+  // the callback with nothing, which is what makes the sidebar unbind.
+  const s = makeBusSandbox({ throwOnSend: true });
+  let sawNothing = false;
+  s.bus.request('request:applySettings', { settings: {} }, (answer) => {
+    sawNothing = answer === undefined;
+  });
+  eq('settings apply: an unanswered apply reaches the asker with nothing, which is what unbinds the sidebar',
+    sawNothing, true);
+
+  // And the answered case stays distinguishable from it.
+  const t = makeBusSandbox({ reply: { ok: true } });
+  let sawAnswer = false;
+  t.bus.request('request:applySettings', { settings: {} }, (answer) => {
+    sawAnswer = !!(answer && answer.ok);
+  });
+  eq('settings apply: an answered apply is distinguishable from an unanswered one',
+    sawAnswer, true);
 })();
 
 // --- Report ---
