@@ -101,14 +101,14 @@ One term per concept, across every platform and every document. Use the [Retired
 | Term | Meaning |
 | --- | --- |
 | context | One running, isolated instance of extension code, with its own memory. No context reads another context's variables and no context calls another context's functions; messages are the only route in or out. <br><br>Three kinds run: the **content script**, the **sidebar**, and the **service worker**. The running count is larger than three — the content script runs a separate context in every tab. |
-| tab | One browser tab. The content script runs one context in each tab, so the application state of a page belongs to that tab alone and reaches no other tab. The service worker is common to every tab, and the sidebar opens for one tab at a time. |
+| tab | One browser tab. The content script runs one context in each tab, so the application state of a page belongs to that tab alone and reaches no other tab. The service worker is common to every tab. |
 | content script | The extension code Chrome injects into each web page. One context per tab. |
 | re-injection | Installing the content scripts into tabs that are already open. |
 | sidebar | The extension's control panel page. Its own context. |
 | service worker | The extension's background context. One instance for the whole browser, common to every tab. It creates the right-click menu items, opens the sidebar, and records which tab the sidebar was opened for. Chrome shuts it down after an idle period and starts it again on the next message, so a restart begins with its variables empty. |
 | component | One part of the extension with one job and a boundary: it reaches other parts only through defined channels — topics or calls — and its insides can change without any other part changing. <br><br>e.g. The sidebar view, the controller, and the application model |
-| view | A component that draws application state on a screen and publishes a user gesture as an intent topic. It holds no application state of its own beyond what the drawing needs. <br><br>e.g. the pillbox, the sidebar's controls |
-| controller | The one component that subscribes to every intent topic and turns each one into a write to the application model or a simplification of a table. |
+| view | A component that draws application state on a screen and publishes a user gesture as an intent topic. <br><br>e.g. the pillbox, the sidebar's controls <br><br>A view holds no application state of record. The sidebar is the standing exception: its controls carry working values until a publish, and it stashes the on/off value while a table is locked. |
+| controller | The one component that subscribes to the intent topics and turns each one into a write to the application model or a simplification of a table. |
 | application model | The one component that holds **application state**. Every other component reads from it or requests a change; none keeps its own copy.<br><br>- Application settings: whether the sidebar is open, the current settings, etc.<br>- Current page state: registry, the active table, etc. |
 | settings record | The application model's one settings object for the page: the on/off value and every simplification option. <br><br>Every writer goes through it — the switch, a toggle on the active table (sidebar open or closed), any logic. The active table is re-simplified from its changes; the write causes the view change, never the reverse. |
 | registry | The application model's list of the tables found on the current page, with the details held for each (e.g. number of columns, etc.) |
@@ -125,7 +125,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | plain-value | Data made only of text, numbers, booleans, and plain lists and objects — no live page elements, no functions. |
 | snapshot | A plain-value copy of a table and its metadata:<br>- each cell's text, position, and role <br>- the table's kind and its row and column counts. <br><br>Snapshot is at one moment and it does not update itself.  |
 | port | The abstractions of services used by the business logic (e.g. if the database gets changed, the abstraction keeps that out of the logic.). |
-| adapter | A component that presents one shape of thing through a shared interface, so a caller works against the interface and never against the shape. <br><br>e.g. the native-table adapter and the grid adapter both present rows and cells, over markup that has nothing in common |
+| adapter | A component that presents one shape of thing through a shared interface, so a caller works against the interface and never against the shape. The design doc's **Adapters** layer is where the extension's adapters sit, alongside the other components holding Chrome calls and page access. <br><br>e.g. the native-table adapter and the grid adapter both present rows and cells, over markup with nothing in common |
 | marker class | A CSS class the extension adds to page elements it has processed so the extension can easily target that element later. |
 | page attribute | A named value written onto an HTML element in the page. |
 

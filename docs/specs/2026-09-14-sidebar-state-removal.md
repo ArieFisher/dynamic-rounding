@@ -2,7 +2,7 @@
 
 - **Date:** 2026-09-14
 - **Status:** approved design, implementation pending
-- **Review:** one independent pass returned BLOCK; its findings are folded in below
+- **Review:** two independent passes, each returning BLOCK; this document carries their findings
 - **Opens:** #328 (one settings record cannot describe two simplified tables)
 - **Closes on landing:** #241
 - **Kind:** historical record. This document states the design as approved; the living docs track the system as built.
@@ -37,11 +37,17 @@ Only the first path reads whether the sidebar is open, and it is the only reader
 
 A press makes the pressed table active and flips its form from what the screen shows, writing the settings record. The settings record's change drives the apply. The three paths become one, and the read of whether the sidebar is open loses its last caller.
 
-**A press writes the settings record.** Two visible behaviors follow from that one choice, and both were settled with it: turning on uses the settings record's current values rather than the shipped defaults, and turning off resets the table rather than leaving its markers and stored originals in place for a form flip.
+**A press writes the settings record.** Two visible behaviors follow from that one choice, and one choice settles both: turning on uses the settings record's current values, and turning off resets the table, clearing its markers and its stored originals.
 
-Three reasons. The pillbox, the sidebar's switch, and the right-click menu then all write the settings record and let one apply path run, where two run today. A capture carries the settings record, so a press that bypassed it would make a capture carry values that did not produce the table on the screen. And the form flip back to simplified currently re-applies each table's last-used options rather than the settings record's, so a sidebar change made between an off press and an on press has no effect today; writing through the settings record closes that path.
+Three reasons. The pillbox, the sidebar's switch, and the right-click menu then all write the settings record and let one apply path run, where two run today. A capture carries the settings record, so a press that bypassed it would make a capture carry values that did not produce the table on the screen. And the form flip back to simplified currently re-applies each table's last-used options, so a sidebar change made between an off press and an on press has no effect today; writing through the settings record closes that path.
 
-**Activating a table clears the range expression.** A range expression states rows and columns by position, so it describes the table someone wrote it for. Applying it to a second table addresses different data, and an expression the parser rejects stops the press before any cell changes, with the error reaching a sidebar that may not be open. Activation therefore clears the expression, and a press simplifies the whole table until the user writes a new one. #328 replaces the clear with a per-table expression.
+**A press clears the range expression.** A range expression states rows and columns by position, so it describes the table someone wrote it for. Applying it to a second table addresses different data, and an expression the parser rejects stops the press before any cell changes, with the error reaching a sidebar that may stand closed. A press therefore clears the expression and simplifies the whole table, until the user writes a new expression.
+
+The clear belongs to the press and not to activation, and it travels inside the press's one settings write. Every settings write publishes, and the controller applies to the active table on every publish, so a clear written on its own would apply. Two results follow. A right-click activation would change numbers, where today it changes none. And a press writing twice — the clear, then the flip — would read the screen for its direction after the first write had already changed the screen: a press on a raw table with the on/off value at on simplifies, then the flip reads simplified and writes off, and the second apply resets the table to where it started.
+
+The rule, therefore: a press reads its flip direction before any write, and makes one settings write carrying the cleared expression and the flipped on/off value together. A right-click activation writes no settings.
+
+What that leaves in place: a right-click activation carries the settings record's expression, written for some other table, into the next apply that runs for the newly active table — the apply the sidebar triggers when it opens. The sidebar displays that expression at the same moment, so the cause is on the screen. #328 closes this along with the rest.
 
 Retiring with this part: the page's copy of whether the sidebar is open, the model field behind it, its state-change topic, the close topic's leg to the page, and the code the merge leaves with no caller — the plain-toggle helper, the form-flip helper, and the restore path's keep-the-markers branch.
 
@@ -57,7 +63,7 @@ Retiring with this part: the close topic, the sidebar's self-close handler, the 
 
 ### Part three: one state-change topic for the active table
 
-One topic replaces the two. The publish follows the application model's active-table change rather than sitting in a gesture handler. The state-change topic with no subscribers gains one, and the two hand-written cross-context topics become one.
+One topic replaces the two. The publish follows the application model's active-table change. The state-change topic with no subscribers gains one, and the two hand-written cross-context topics become one.
 
 Both of the model's unsubscribed state-change topics end up resolved, by opposite routes: the active-table one gains its subscriber, and the sidebar-open one retires with the field behind it.
 
@@ -105,7 +111,7 @@ Both belong to part two, and a hand test settles both. Part one proceeds without
 
 - **Hold the tab number across a service-worker restart.** Closes one of the two loss paths. An ordinary close still sends the page nothing, so a second fix follows, and the page still holds a copy that other causes spoil.
 - **Ask instead of hold.** Keep the press paths, and have the page ask at the moment of the press, which preserves today's behavior exactly. Costs an asynchronous press, and widens the approved messaging design's route rule to allow a request aimed at the extension's pages, where two contexts receive it and only one may answer.
-- **Keep the form flip on the way off.** Both paths walk the simplified cells once on the way off, so the saving is bookkeeping rather than work: the form flip keeps the markers and the stored originals. It leaves the settings record standing at off while the table keeps its simplified bookkeeping, and it re-applies each table's last-used options rather than the settings record's.
+- **Keep the form flip on the way off.** Both paths walk the simplified cells once on the way off, so the saving is bookkeeping alone: the form flip keeps the markers and the stored originals. It leaves the settings record standing at off while the table keeps its simplified bookkeeping, and it re-applies each table's last-used options, so a sidebar change made between the two presses has no effect.
 - **Act at the table and leave the settings record alone.** Keeps each table independent and keeps a spoiled settings record from disabling every pillbox. It reopens #272: after such a press the sidebar's switch shows a value for a table whose form disagrees, which is the coupling an earlier change removed. A hybrid that writes only the on/off value and applies the table's own options restores two apply paths and a capture whose settings did not produce the bound table.
 
 ## Testing
@@ -117,15 +123,17 @@ Additions to the extension suite, with Chrome interfaces stubbed as the existing
 - A press writes the settings record, and the settings record's change is what applies to the table.
 - A press turning simplification on uses the settings record's current values.
 - Turning off resets: after an off press no cell carries the simplified marker and no cell has a stored original.
-- Activation clears the range expression, including where the held expression fails to parse.
+- A press clears the range expression, including where the held expression fails to parse.
+- A press makes exactly one settings write, and the flip direction comes from the screen as it stood before that write. A press on a raw table with the on/off value at on leaves the table simplified.
+- A right-click activation writes no settings, so the numbers on a right-clicked table do not change.
 - The close call carries the tab of the event that triggered it, and nothing goes to the page.
 - The close event updates the service worker without the sidebar publishing an unload topic. The observable depends on the first open question's answer.
 - One state-change topic carries the active table, from a right-click and from a press, with the activation ahead of the apply topics.
 - No code reads a held sidebar-open value: the field, its topic, and its reader are all gone.
 
-Existing tests pin the retired behavior and change with part one: the source scan of the sidebar-open guard, the two acceptance tests asserting no switch topic while the sidebar is closed, the sidebar-open topic's place in the topic list and its use as the reentrancy fixture, that topic's round trip, the unconnected-table test asserting the activation stays put, the close topic's routing to the tab, and the two source scans of the sidebar-open setter. The list is the test plan for part one, not a side effect of it.
+Existing tests pin the retired behavior and change with part one. They form part one's test plan: the source scan of the sidebar-open guard, the two acceptance tests asserting no switch topic while the sidebar stands closed, the sidebar-open topic's place in the topic list and its use as the reentrancy fixture, that topic's round trip, the unconnected-table test asserting the activation stays put, the close topic's routing to the tab, the two source scans of the sidebar-open setter, and the switch-pull test asserting that the range expression survives a table switch.
 
-Two candidate tests carry no weight and are therefore left out: that two presses return a table to where it started, which today's third path already satisfies, and that a locked pillbox publishes nothing, which the view already guarantees.
+Two candidate tests carry no weight, so the plan omits them: that two presses return a table to where it started, which today's third path already satisfies, and that a locked pillbox publishes nothing, which the view already guarantees.
 
 ## Sequencing
 
@@ -138,5 +146,5 @@ Three pull requests, each leaving the extension fully working.
 ## Living-doc impact
 
 - `docs/vocabulary.md` — the **application model** entry drops whether the sidebar is open from its list of application state. The retirements and the four new terms land ahead of the code, in this branch.
-- `docs/design.md` — the state paragraph drops the sidebar-open field; the messages paragraph drops the close topic and the second active-table topic.
+- `docs/design.md` — the State ownership subsection drops whether the sidebar is open, the service worker's held fact, and the two marker-class reads part one retires; the messages paragraph drops the close topic and the second active-table topic; the decisions list gains the press's one write.
 - `chrome-extension/README.md` — the description of what a pillbox press does, against the one merged path.
