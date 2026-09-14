@@ -125,7 +125,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | plain-value | Data made only of text, numbers, booleans, and plain lists and objects — no live page elements, no functions. |
 | snapshot | A plain-value copy of a table and its metadata:<br>- each cell's text, position, and role <br>- the table's kind and its row and column counts. <br><br>Snapshot is at one moment and it does not update itself.  |
 | port | The abstractions of services used by the business logic (e.g. if the database gets changed, the abstraction keeps that out of the logic.). |
-| adapter | A component that presents one shape of thing through a shared interface, so a caller works against the interface and never against the shape. The design doc's **Adapters** layer is where the extension's adapters sit, alongside the other components holding Chrome calls and page access. <br><br>e.g. the native-table adapter and the grid adapter both present rows and cells, over markup with nothing in common |
+| adapter | A component that presents one shape of thing through a shared interface, so a caller works against the interface and never against the shape. The design doc groups the extension's adapters into a layer of the same name. <br><br>e.g. the native-table adapter and the grid adapter both present rows and cells, over markup with nothing in common |
 | marker class | A CSS class the extension adds to page elements it has processed so the extension can easily target that element later. |
 | page attribute | A named value written onto an HTML element in the page. |
 

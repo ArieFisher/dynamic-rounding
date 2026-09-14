@@ -41,9 +41,11 @@ A press makes the pressed table active and flips its form from what the screen s
 
 Three reasons. The pillbox, the sidebar's switch, and the right-click menu then all write the settings record and let one apply path run, where two run today. A capture carries the settings record, so a press that bypassed it would make a capture carry values that did not produce the table on the screen. And the form flip back to simplified currently re-applies each table's last-used options, so a sidebar change made between an off press and an on press has no effect today; writing through the settings record closes that path.
 
-**A press clears the range expression.** A range expression states rows and columns by position, so it describes the table someone wrote it for. Applying it to a second table addresses different data, and an expression the parser rejects stops the press before any cell changes, with the error reaching a sidebar that may stand closed. A press therefore clears the expression and simplifies the whole table, until the user writes a new expression.
+**A press that changes the active table clears the range expression.** A range expression states rows and columns by position, so it describes the table someone wrote it for. Carrying it to a second table addresses different data, and an expression the parser rejects stops the press before any cell changes, with the error reaching a sidebar that may stand closed. Such a press therefore clears the expression and simplifies the whole table, until the user writes a new expression.
 
-The clear belongs to the press and not to activation, and it travels inside the press's one settings write. Every settings write publishes, and the controller applies to the active table on every publish, so a clear written on its own would apply. Two results follow. A right-click activation would change numbers, where today it changes none. And a press writing twice — the clear, then the flip — would read the screen for its direction after the first write had already changed the screen: a press on a raw table with the on/off value at on simplifies, then the flip reads simplified and writes off, and the second apply resets the table to where it started.
+A press on the table that is already active keeps the expression. The reason for the clear runs out there: that table is the one the expression describes.
+
+The clear travels inside the press's one settings write, and activation carries no settings write of its own. Every settings write publishes, and the controller applies to the active table on every publish, so a clear written on its own would apply. Two results follow. A right-click activation would change numbers, where today it changes none. And a press writing twice — the clear, then the flip — would read the screen for its direction after the first write had already changed the screen: a press on a raw table with the on/off value at on simplifies, then the flip reads simplified and writes off, and the second apply resets the table to where it started.
 
 The rule, therefore: a press reads its flip direction before any write, and makes one settings write carrying the cleared expression and the flipped on/off value together. A right-click activation writes no settings.
 
@@ -123,9 +125,9 @@ Additions to the extension suite, with Chrome interfaces stubbed as the existing
 - A press writes the settings record, and the settings record's change is what applies to the table.
 - A press turning simplification on uses the settings record's current values.
 - Turning off resets: after an off press no cell carries the simplified marker and no cell has a stored original.
-- A press clears the range expression, including where the held expression fails to parse.
+- A press that changes the active table clears the range expression, including where the held expression fails to parse. A press on the already-active table keeps it.
 - A press makes exactly one settings write, and the flip direction comes from the screen as it stood before that write. A press on a raw table with the on/off value at on leaves the table simplified.
-- A right-click activation writes no settings, so the numbers on a right-clicked table do not change.
+- A right-click activation writes no settings, so the numbers on a right-clicked table stay as they are. Today's code satisfies this, and the test stands as a regression guard on the clear's placement: a clear moved back onto activation breaks it.
 - The close call carries the tab of the event that triggered it, and nothing goes to the page.
 - The close event updates the service worker without the sidebar publishing an unload topic. The observable depends on the first open question's answer.
 - One state-change topic carries the active table, from a right-click and from a press, with the activation ahead of the apply topics.
