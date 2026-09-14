@@ -53,15 +53,23 @@ DR_BUS.subscribe('intent:selectTable', ({ table }) => {
 // The bus's first state-change subscriber (see adapters/messaging.js's depth
 // guard, issue #240): whenever the model's settings change — regardless of
 // source — apply the new value to whichever table is currently selected.
-// The sidebar's own control-change messages are handled directly by the
-// APPLY_SIDEBAR_SETTINGS listener below (DR_STORE.setSettings there is what
-// triggers this subscriber); this also covers any future in-context caller
-// that sets settings without going through that message.
+// The sidebar's settings apply reaches the model through the responder below
+// (its DR_STORE.setSettings is what triggers this subscriber); this also
+// covers any in-context caller that sets settings without going through that
+// request.
 DR_BUS.subscribe('state:settingsChanged', ({ settings }) => {
   const selected = DR_STORE.getSelectedTable();
   if (selected) {
     applySidebarRounding(selected, settings);
   }
+});
+
+// The sidebar's settings apply. Record it; the state-change subscriber above
+// applies it to the table. The answer's only job is to exist: the sidebar
+// reads that someone answered and stays bound.
+DR_BUS.respond('request:applySettings', ({ settings }) => {
+  DR_STORE.setSettings(settings || DR_DEFAULTS);
+  return { ok: true };
 });
 
 // ui-toggle.js's click handler reports every committed toggle activation
@@ -243,12 +251,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return;
   }
 
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.APPLY_SIDEBAR_SETTINGS) {
-    // Record it; the state-change subscriber above applies it to the table.
-    DR_STORE.setSettings(request.settings || DR_DEFAULTS);
-    sendResponse({ ok: true });
-    return;
-  }
 
   if (request.action === DR_CROSS_CONTEXT_TOPICS.GET_SETTINGS) {
     // Inverse of the old sidebar pull: the sidebar asks the model instead.

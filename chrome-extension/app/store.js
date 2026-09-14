@@ -25,7 +25,7 @@
  *                      object). Initialized from DR_DEFAULTS so the model
  *                      always holds a valid value, even before the sidebar
  *                      has ever been opened. The sidebar is the only writer
- *                      (via the intent:settingsChanged bus topic); the
+ *                      (via the request:applySettings bus topic); the
  *                      controller applies every new value to the selected
  *                      table by subscribing to the resulting state-change.
  *

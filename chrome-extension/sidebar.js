@@ -518,30 +518,25 @@ function updateDisabledState() {
   }
 }
 
-// Cross-context: this page and content.js are separate extension contexts,
-// so the settings change is reported as an intent over DR_BUS rather than
-// writing the model directly (mirrors ui-toggle.js's intent:selectTable in
-// the content-script context). DR_BUS relays it to the active tab's content
-// script — the same chrome.tabs.query + chrome.tabs.sendMessage transport
-// this file used directly before this topic existed (see
-// adapters/messaging.js's publish()).
+// Cross-context: this page and content.js are separate extension contexts, so
+// the settings change travels as a request rather than a direct write to the
+// model. The content script records it and answers.
 //
-// onDelivery reproduces sendToActiveTab's old response callback exactly: on
-// chrome.runtime.lastError (no content script on the tab — delivery failed)
-// unbind the sidebar UI; on success, clear any stale #status message.
+// The answer's value is never read — only whether one arrived. Nothing
+// answering means no content script on the tab, which is exactly the unbound
+// state. That is the same fact chrome.runtime.lastError carried before issue
+// #325, reaching the same callback by the bus's one reply path.
+//
+// On an answer, clear only an unsourced stale message (the no-table reminder).
+// A sourced message — a range error, an apply-blocked notice — is cleared by
+// its own topic and must survive this callback: Chrome does not guarantee
+// whether this answer or the content script's status message arrives first.
 function applyNow() {
-  DR_BUS.publish('intent:settingsChanged', { settings: currentSettings() }, {
-    onDelivery: function () {
-      if (chrome.runtime.lastError) {
-        setTableBound(false);
-      } else if (!statusEl.dataset.source) {
-        // Clear only an unsourced stale message (the no-table reminder).
-        // Sourced messages — a range error, an apply-blocked notice — are
-        // cleared by their own OK messages and must survive this callback:
-        // Chrome does not guarantee whether this response callback or the
-        // content script's status message is delivered first.
-        statusEl.textContent = '';
-      }
+  DR_BUS.request('request:applySettings', { settings: currentSettings() }, (answer) => {
+    if (!answer) {
+      setTableBound(false);
+    } else if (!statusEl.dataset.source) {
+      statusEl.textContent = '';
     }
   });
 }

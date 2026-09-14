@@ -11216,21 +11216,21 @@ function fireMouseClick(buttonEl, fn) {
 // AC2: Clicking the sidebar's enabled toggle still updates the table's pill
 //      state (regression guard — existing path unchanged).
 //
-// The sidebar-to-table path goes through content.js's APPLY_SIDEBAR_SETTINGS
+// The sidebar-to-table path goes through content.js's request:applySettings
 // message handler. We test: (a) static guard the handler exists, (b) dynamic
 // guard that a press still takes a table through the full round trip.
 // ---------------------------------------------------------------------------
 
 (function pillbox_AC2_sidebarToTablePath_regression() {
-  // Static guard: content.js must still contain the APPLY_SIDEBAR_SETTINGS
+  // Static guard: content.js must still contain the request:applySettings
   // message handler that triggers rounding when the sidebar changes settings.
   const contentSrc = sourceByName('content.js');
   if (contentSrc === null) {
     eq('AC2 regression: source file content.js present in manifest', false, true);
     return;
   }
-  eq('AC2 regression: content.js still handles APPLY_SIDEBAR_SETTINGS message',
-    contentSrc.includes('APPLY_SIDEBAR_SETTINGS'), true);
+  eq('AC2 regression: content.js still handles request:applySettings message',
+    contentSrc.includes('request:applySettings'), true);
 
   // Static guard: sidebar.js must still have enabledEl wired up.
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
@@ -13275,13 +13275,13 @@ function fireMouseClick(buttonEl, fn) {
 
 // ---------------------------------------------------------------------------
 // Sprint sidebar-preview-and-controls
-// AC1 (Bug #2): APPLY_SIDEBAR_SETTINGS sends a synchronous response
+// AC1 (Bug #2): request:applySettings sends a synchronous response
 // AC2 (Bug #3): formatStrategyHeader re-basing — mag=3 exhaustive table
 // AC3 (Bug #1): embedded-in-text numbers feed maxMag
 // ---------------------------------------------------------------------------
 
 // -------------------------------------------------------------------------
-// AC1: APPLY_SIDEBAR_SETTINGS is acknowledged (sendResponse fires synchronously)
+// AC1: request:applySettings is acknowledged (sendResponse fires synchronously)
 //
 // The content.js onMessage listener was registered at module-eval time against
 // a no-op stub. To capture the real listener we re-eval the full content-script
@@ -13289,11 +13289,26 @@ function fireMouseClick(buttonEl, fn) {
 // message and verify the sendResponse callback fires.
 // -------------------------------------------------------------------------
 (function ac1_applySidebarSettings() {
-  let capturedListener = null;
+  // The content-script bundle registers more than one Chrome listener: the
+  // bus's own, and content.js's. Chrome hands an arriving message to every
+  // one of them, so collect them all and fan out the same way. Keeping only
+  // the last registration would silently skip whichever listener happens to
+  // register first.
+  const capturedListeners = [];
+  function capturedListener(req, sender, respond) {
+    // Chrome keeps the reply port open when ANY listener returns true, and
+    // closes it otherwise. Returning nothing here would make the
+    // synchronous-answer assertions below unfalsifiable.
+    let keepOpen = false;
+    for (const fn of capturedListeners) {
+      if (fn(req, sender, respond || function () {}) === true) keepOpen = true;
+    }
+    return keepOpen;
+  }
   const captureChrome = {
     runtime: {
       onMessage: {
-        addListener(fn) { capturedListener = fn; }
+        addListener(fn) { capturedListeners.push(fn); }
       },
       sendMessage: () => {},
       lastError: null,
@@ -13332,11 +13347,11 @@ function fireMouseClick(buttonEl, fn) {
   }
 
   eq('AC1: content.js onMessage listener was captured',
-    typeof capturedListener, 'function');
+    capturedListeners.length > 0, true);
 
-  if (typeof capturedListener !== 'function') return;
+  if (capturedListeners.length === 0) return;
 
-  // Dispatch APPLY_SIDEBAR_SETTINGS and verify sendResponse is called.
+  // Dispatch request:applySettings and verify sendResponse is called.
   let sendResponseCalledWith = undefined;
   let sendResponseCallCount  = 0;
   function fakeSendResponse(val) {
@@ -13345,12 +13360,12 @@ function fireMouseClick(buttonEl, fn) {
   }
 
   const returnValue = capturedListener(
-    { action: 'APPLY_SIDEBAR_SETTINGS', settings: {} },
+    { action: 'request:applySettings', settings: {} },
     {},
     fakeSendResponse
   );
 
-  eq('AC1: sendResponse was called for APPLY_SIDEBAR_SETTINGS',
+  eq('AC1: sendResponse was called for request:applySettings',
     sendResponseCallCount, 1);
 
   eq('AC1: sendResponse called with {ok:true}',
@@ -13358,7 +13373,7 @@ function fireMouseClick(buttonEl, fn) {
 
   // The branch must NOT return true (that would leave the message port open
   // for an async response that will never arrive).
-  eq('AC1: APPLY_SIDEBAR_SETTINGS branch does NOT return true (synchronous)',
+  eq('AC1: request:applySettings branch does NOT return true (synchronous)',
     returnValue === true, false);
 
   // Source-level belt-and-suspenders: the branch contains a sendResponse( call.
@@ -13367,8 +13382,15 @@ function fireMouseClick(buttonEl, fn) {
     eq('AC1-src: source file content.js present in manifest', false, true);
     return;
   }
-  eq('AC1-src: APPLY_SIDEBAR_SETTINGS branch contains sendResponse( call',
-    /APPLY_SIDEBAR_SETTINGS[\s\S]{0,200}sendResponse\(/.test(contentSrc), true);
+  // The branch became a responder in issue #325. A responder answers by
+  // returning, so the acknowledgement now reads as a return of the answer
+  // rather than a sendResponse call. The behavior it guards is unchanged: the
+  // asker must receive something, because receiving nothing is what unbinds
+  // the sidebar.
+  eq('AC1-src: the request:applySettings responder returns an answer',
+    /DR_BUS\.respond\(\s*'request:applySettings'[\s\S]{0,300}return \{/.test(contentSrc), true);
+  eq('AC1-src: no inline branch answers it any more',
+    /request:applySettings[\s\S]{0,200}sendResponse\(/.test(contentSrc), false);
 })();
 
 // -------------------------------------------------------------------------
@@ -15041,17 +15063,19 @@ const LADDER_OPTS = {
 
   // --- (a) discipline: DR_BUS.TOPICS enumerates every topic with a family,
   // and no topic falls outside the two families. ---
-  const KNOWN_FAMILIES = ['intent', 'state-change'];
+  // Issue #325 added the third family, request: a topic whose one responder
+  // returns an answer to the publisher.
+  const KNOWN_FAMILIES = ['intent', 'state-change', 'request'];
   const topics = DR_BUS.TOPICS;
   const topicNames = Object.keys(topics);
   eq('DR_BUS.TOPICS: at least one topic is registered',
     topicNames.length > 0, true);
-  eq('DR_BUS.TOPICS: every topic belongs to one of the two known families',
+  eq('DR_BUS.TOPICS: every topic belongs to one of the three known families',
     topicNames.every((t) => KNOWN_FAMILIES.includes(topics[t].family)), true);
   eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
     topicNames.slice().sort(),
     ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged',
-     'intent:settingsChanged', 'state:settingsChanged'].sort());
+     'request:applySettings', 'state:settingsChanged'].sort());
   eq('DR_BUS.TOPICS: intent:selectTable is in the intent family',
     topics['intent:selectTable'].family, 'intent');
   // Sprint toggle-split: the toggle view's click handler no longer calls
@@ -15061,14 +15085,18 @@ const LADDER_OPTS = {
     topics['intent:toggleTable'].family, 'intent');
   eq('DR_BUS.TOPICS: state:selectedTableChanged is in the state-change family',
     topics['state:selectedTableChanged'].family, 'state-change');
-  eq('DR_BUS.TOPICS: intent:settingsChanged is in the intent family',
-    topics['intent:settingsChanged'].family, 'intent');
+  // The sidebar's settings apply. It carried the intent family and the
+  // request:applySettings name on the wire until issue #325; the content
+  // script always answered it, and the sidebar always read whether anyone
+  // answered to decide bound versus unbound, so it is a request.
+  eq('DR_BUS.TOPICS: request:applySettings is in the request family',
+    topics['request:applySettings'].family, 'request');
   eq('DR_BUS.TOPICS: state:settingsChanged is in the state-change family',
     topics['state:settingsChanged'].family, 'state-change');
-  eq('DR_BUS.TOPICS: intent:settingsChanged carries the APPLY_SIDEBAR_SETTINGS wireAction (cross-context: sidebar page -> content script)',
-    topics['intent:settingsChanged'].wireAction, 'APPLY_SIDEBAR_SETTINGS');
-  eq('DR_BUS.TOPICS: state:settingsChanged has no wireAction (same-context: model -> controller only)',
-    topics['state:settingsChanged'].wireAction, null);
+  eq('DR_BUS.TOPICS: request:applySettings routes to one tab\'s content script (cross-context: sidebar page -> content script)',
+    topics['request:applySettings'].route, 'tab');
+  eq('DR_BUS.TOPICS: state:settingsChanged has no route (same-context: model -> controller only)',
+    topics['state:settingsChanged'].route, null);
 
   // Publishing to an unregistered topic is rejected rather than silently
   // dropped, so the registry stays authoritative rather than aspirational.
@@ -15656,15 +15684,18 @@ const LADDER_OPTS = {
   vm.createContext(sandbox);
   vm.runInContext(constantsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
 
-  sandbox.__DR_BUS.publish('intent:settingsChanged', { settings: { offsetTop: -2, rangeExpr: 'A1:B2' } });
+  sandbox.__DR_BUS.publish('request:applySettings', { settings: { offsetTop: -2, rangeExpr: 'A1:B2' } });
 
   eq('wire payload: exactly one chrome.tabs.sendMessage call for one publish()',
     sentCalls.length, 1);
   if (sentCalls.length !== 1) return;
 
   const [tabId, msg, callback] = sentCalls[0];
-  eq('wire payload: message action is unchanged (APPLY_SIDEBAR_SETTINGS)',
-    msg.action, 'APPLY_SIDEBAR_SETTINGS');
+  // Issue #325 put the topic name itself on the wire, in the same action field
+  // the transport already used. The name changed; the field and the envelope
+  // shape did not.
+  eq('wire payload: message action is the topic name',
+    msg.action, 'request:applySettings');
   eq('wire payload: message field names are exactly {action, settings} — no extra bus-envelope fields',
     Object.keys(msg).sort(), ['action', 'settings'].sort());
   eq('wire payload: settings payload is nested exactly as sendToActiveTab sent it, unchanged',
@@ -15751,10 +15782,10 @@ const LADDER_OPTS = {
   };
 
   // chrome.tabs.query/sendMessage resolve synchronously so the whole chain —
-  // sidebar.js's applyNow() -> DR_BUS.publish() -> chrome.tabs.sendMessage's
-  // own callback -> sidebar.js's onDelivery — runs deterministically within
-  // one call, with queuedLastError controlling chrome.runtime.lastError at
-  // the moment onDelivery reads it (matching real sendMessage semantics).
+  // sidebar.js's applyNow() -> DR_BUS.request() -> chrome.tabs.sendMessage's
+  // own callback -> the sidebar's answer callback — runs deterministically
+  // within one call, with queuedLastError picking whether the stub answers
+  // with a value or with nothing (matching real sendMessage semantics).
   const sentTabMessages = [];
   let queuedLastError = null;
   const captureChrome = {
@@ -15765,9 +15796,12 @@ const LADDER_OPTS = {
     },
     tabs: {
       query(q, cb) { cb([{ id: 42 }]); },
+      // Chrome hands the callback the responder's value on success, and
+      // nothing (with lastError set) when nobody answered. queuedLastError
+      // picks which, so one stub covers both directions.
       sendMessage(tabId, msg, cb) {
         sentTabMessages.push(msg);
-        if (typeof cb === 'function') cb();
+        if (typeof cb === 'function') cb(queuedLastError ? undefined : { ok: true });
       },
     },
   };
@@ -15813,7 +15847,7 @@ const LADDER_OPTS = {
     sentTabMessages.length = 0;
     enabledChangeHandler();
 
-    eq('settings publish delivery: one APPLY_SIDEBAR_SETTINGS message sent for the change',
+    eq('settings publish delivery: one request:applySettings message sent for the change',
       sentTabMessages.length, 1);
     eq('settings publish delivery: failed delivery adds the no-table class (setTableBound(false) ran)',
       bodyClasses.has('no-table'), true);
@@ -15919,7 +15953,7 @@ const LADDER_OPTS = {
     },
     tabs: {
       query(q, cb) { cb([{ id: 42 }]); },
-      sendMessage(tabId, msg, cb) { if (typeof cb === 'function') cb(); },
+      sendMessage(tabId, msg, cb) { if (typeof cb === 'function') cb(queuedLastError ? undefined : { ok: true }); },
     },
   };
 
@@ -16166,14 +16200,29 @@ const LADDER_OPTS = {
 // ---------------------------------------------------------------------------
 // Sprint app-model-settings, AC5: settings survive a sidebar close and
 // reopen — pulled from the model (GET_SETTINGS), not reset to DR_DEFAULTS.
-// Uses the same isolated-eval capture pattern as the APPLY_SIDEBAR_SETTINGS
+// Uses the same isolated-eval capture pattern as the request:applySettings
 // AC1 test above, so this shared-scope DR_STORE is untouched by it.
 // ---------------------------------------------------------------------------
 (function appModelSettings_settingsSurviveSidebarReconnect() {
-  let capturedListener = null;
+  // The content-script bundle registers more than one Chrome listener: the
+  // bus's own, and content.js's. Chrome hands an arriving message to every
+  // one of them, so collect them all and fan out the same way. Keeping only
+  // the last registration would silently skip whichever listener happens to
+  // register first.
+  const capturedListeners = [];
+  function capturedListener(req, sender, respond) {
+    // Chrome keeps the reply port open when ANY listener returns true, and
+    // closes it otherwise. Returning nothing here would make the
+    // synchronous-answer assertions below unfalsifiable.
+    let keepOpen = false;
+    for (const fn of capturedListeners) {
+      if (fn(req, sender, respond || function () {}) === true) keepOpen = true;
+    }
+    return keepOpen;
+  }
   const captureChrome = {
     runtime: {
-      onMessage: { addListener(fn) { capturedListener = fn; } },
+      onMessage: { addListener(fn) { capturedListeners.push(fn); } },
       sendMessage: () => {},
       lastError: null,
     },
@@ -16205,8 +16254,8 @@ const LADDER_OPTS = {
   }
 
   eq('reconnect: the isolated listener was captured',
-    typeof capturedListener, 'function');
-  if (typeof capturedListener !== 'function') return;
+    capturedListeners.length > 0, true);
+  if (capturedListeners.length === 0) return;
 
   // The sidebar sets a custom value (an "open" session), then — simulated by
   // nothing happening in between — closes and reopens, pulling the model.
@@ -16217,8 +16266,8 @@ const LADDER_OPTS = {
     offsetTop: 0.25, offsetOther: -1.5, numTop: 1, rangeExpr: 'B2:E8',
   };
   let applyResponse = null;
-  capturedListener({ action: 'APPLY_SIDEBAR_SETTINGS', settings: customSettings }, {}, (r) => { applyResponse = r; });
-  eq('reconnect: APPLY_SIDEBAR_SETTINGS was acknowledged before the (simulated) close',
+  capturedListener({ action: 'request:applySettings', settings: customSettings }, {}, (r) => { applyResponse = r; });
+  eq('reconnect: request:applySettings was acknowledged before the (simulated) close',
     applyResponse && applyResponse.ok, true);
 
   // Reopen: exactly what pullSettingsAndApplyToUI's GET_SETTINGS request does.
@@ -16332,7 +16381,10 @@ const LADDER_OPTS = {
         } else if (msg.action === 'GET_PREVIEW_SAMPLES') {
           cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
-          cb({ ok: true });
+          // The settings apply. Chrome hands back the responder's value on
+          // success and nothing when nobody answered, which is the fact the
+          // sidebar reads to decide bound versus unbound.
+          cb(captureChrome.runtime.lastError ? undefined : { ok: true });
         }
       },
     },
@@ -16470,7 +16522,10 @@ function makeIssue251SidebarHarness() {
         } else if (msg.action === 'GET_PREVIEW_SAMPLES') {
           cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
-          cb({ ok: true });
+          // The settings apply. Chrome hands back the responder's value on
+          // success and nothing when nobody answered, which is the fact the
+          // sidebar reads to decide bound versus unbound.
+          cb(captureChrome.runtime.lastError ? undefined : { ok: true });
         }
       },
     },
@@ -16618,7 +16673,7 @@ function makeIssue251SidebarHarness() {
 // directly. appModelSettings_previewAndTableAgreeOnLiveSettings (above) calls
 // DR_STORE.setSettings() straight from the test — it never exercises
 // content.js's own onMessage listener or the state:settingsChanged
-// subscriber, which is the actual code path a real APPLY_SIDEBAR_SETTINGS
+// subscriber, which is the actual code path a real request:applySettings
 // message drives. This test dispatches that message through the captured
 // listener (the AC1 pattern) against a table already bound as "selected",
 // lets the real subscriber call applySidebarRounding, and checks the
@@ -16645,7 +16700,22 @@ function makeIssue251SidebarHarness() {
   const CUSTOM_OFFSET_TOP = -2;
   const CUSTOM_OFFSET_OTHER = 0.25;
 
-  let capturedListener = null;
+  // The content-script bundle registers more than one Chrome listener: the
+  // bus's own, and content.js's. Chrome hands an arriving message to every
+  // one of them, so collect them all and fan out the same way. Keeping only
+  // the last registration would silently skip whichever listener happens to
+  // register first.
+  const capturedListeners = [];
+  function capturedListener(req, sender, respond) {
+    // Chrome keeps the reply port open when ANY listener returns true, and
+    // closes it otherwise. Returning nothing here would make the
+    // synchronous-answer assertions below unfalsifiable.
+    let keepOpen = false;
+    for (const fn of capturedListeners) {
+      if (fn(req, sender, respond || function () {}) === true) keepOpen = true;
+    }
+    return keepOpen;
+  }
   let wiredDR_STORE = null;
   let wiredExtractPreviewSamples = null;
   let boundTable = null;
@@ -16653,7 +16723,7 @@ function makeIssue251SidebarHarness() {
 
   const captureChrome = {
     runtime: {
-      onMessage: { addListener(fn) { capturedListener = fn; } },
+      onMessage: { addListener(fn) { capturedListeners.push(fn); } },
       sendMessage: () => {},
       lastError: null,
     },
@@ -16693,7 +16763,7 @@ function makeIssue251SidebarHarness() {
         // dynamic/async code (see the AC1 test).
       }
 
-      if (typeof capturedListener !== 'function' || !wiredDR_STORE) return;
+      if (capturedListeners.length === 0 || !wiredDR_STORE) return;
 
       // Bind a table as "selected" — mirrors what the contextmenu handler
       // does for real, so the state:settingsChanged subscriber has
@@ -16710,7 +16780,7 @@ function makeIssue251SidebarHarness() {
       // The real wire message, dispatched through the real onMessage
       // listener — not DR_STORE.setSettings() called directly from the test.
       capturedListener(
-        { action: 'APPLY_SIDEBAR_SETTINGS', settings: customSettings },
+        { action: 'request:applySettings', settings: customSettings },
         {},
         (r) => { ackResponse = r; }
       );
@@ -16722,8 +16792,8 @@ function makeIssue251SidebarHarness() {
   }
 
   eq('wire E2E: content.js onMessage listener was captured',
-    typeof capturedListener, 'function');
-  eq('wire E2E: APPLY_SIDEBAR_SETTINGS was acknowledged',
+    capturedListeners.length > 0, true);
+  eq('wire E2E: request:applySettings was acknowledged',
     ackResponse && ackResponse.ok, true);
   if (!boundTable) return;
 
@@ -17610,7 +17680,7 @@ function makeIssue251SidebarHarness() {
     // --- Scenario C (issue #254): the sidebar apply path — the one other
     // resetTable caller. Drives the real wiring end to end: a sidebar
     // settings change lands as DR_STORE.setSettings (the
-    // APPLY_SIDEBAR_SETTINGS listener), whose state:settingsChanged
+    // request:applySettings listener), whose state:settingsChanged
     // subscriber calls applySidebarRounding on the selected table. Before
     // the fix this ran roundTable over the already-rounded text — stamping
     // a false "Original: <rounded value>" title over the surviving truth
@@ -18300,7 +18370,7 @@ function makePressTable(text) {
     // the same applyNow a slider drag ends in.
     h.tabMessages.length = 0;
     h.el('dateGranularity').fire('change');
-    const applyMsg = h.tabMessages.find((m) => m.action === 'APPLY_SIDEBAR_SETTINGS');
+    const applyMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
     eq('lock-save: the save reaches the wire', applyMsg !== undefined, true);
     eq('lock-save: a save under the lock writes the record\'s off — not the forced on',
       applyMsg && applyMsg.settings.enabled, false);
@@ -18383,7 +18453,7 @@ function makePressTable(text) {
     h.dispatch({ action: 'APPLY_BLOCKED', count: 1 }); // re-lock: stash must survive
     h.tabMessages.length = 0;
     h.el('dateGranularity').fire('change');
-    const applyMsg = h.tabMessages.find((m) => m.action === 'APPLY_SIDEBAR_SETTINGS');
+    const applyMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
     eq('re-lock: a save after a second APPLY_BLOCKED still writes the record\'s off',
       applyMsg && applyMsg.settings.enabled, false);
     h.dispatch({ action: 'APPLY_OK' });
@@ -18411,7 +18481,7 @@ function makePressTable(text) {
     // Drift the switch on, then lock — the stash captures the drifted on.
     h.enabledEl.checked = true;
     h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
-    // A save whose delivery fails: applyNow's onDelivery sees lastError and
+    // A save whose delivery fails: nothing answers applyNow's request, and it
     // unbinds the panel (setTableBound(false)) — lock and stash both go.
     h.chromeMock.runtime.lastError = { message: 'no receiving end' };
     h.el('dateGranularity').fire('change');
@@ -19439,8 +19509,11 @@ function makePressTable(text) {
 (function crossContextTopicNames() {
   eq('cross-context topics: DR_CROSS_CONTEXT_TOPICS loads in the content-script bundle',
     typeof globalThis.DR_CROSS_CONTEXT_TOPICS, 'object');
-  eq('cross-context topics: eighteen names are declared',
-    Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).length, 18);
+  // Seventeen, not eighteen: the sidebar's settings apply moved onto the bus
+  // topic table as a request (issue #325). The remaining seventeen retire as
+  // each one moves.
+  eq('cross-context topics: seventeen names are declared',
+    Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).length, 17);
   eq('cross-context topics: every value equals its own field name',
     Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).every((k) => globalThis.DR_CROSS_CONTEXT_TOPICS[k] === k), true);
 
@@ -19462,7 +19535,7 @@ function makePressTable(text) {
   let serialized = null;
   try { serialized = JSON.parse(JSON.stringify(globalThis.DR_CROSS_CONTEXT_TOPICS)); } catch (e) { /* left null */ }
   eq('cross-context topics: the list serializes to JSON with every name intact',
-    serialized && Object.keys(serialized).length, 18);
+    serialized && Object.keys(serialized).length, 17);
 
   eq('cross-context topics: the list is frozen',
     Object.isFrozen(globalThis.DR_CROSS_CONTEXT_TOPICS), true);
@@ -19490,6 +19563,364 @@ function makePressTable(text) {
   const unused = [...declaredNames].filter((n) => !allContextSrc.includes('DR_CROSS_CONTEXT_TOPICS.' + n));
   eq('cross-context topics: every declared name is used by at least one context file',
     unused, []);
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #325 — every cross-context topic on the event bus.
+//
+// A shared sandbox harness for the bus tests below. adapters/messaging.js has
+// no DOM dependency, so it runs in its own vm context with only the Chrome
+// interfaces stubbed. Each call builds a fresh bus, which matters: a responder
+// registration and a subscription both outlive the test that made them, and
+// the one-responder rule would make the second test in a file throw for the
+// first test's registration.
+//
+// opts.noTabs        omit chrome.tabs entirely — the content-script context.
+// opts.noActiveTab   chrome.tabs.query answers with no tabs.
+// opts.throwOnSend   chrome.tabs.sendMessage throws, as it does when the tab
+//                    holds no content script.
+// opts.reply         the value chrome.tabs.sendMessage hands its callback.
+// ---------------------------------------------------------------------------
+function makeBusSandbox(opts) {
+  const options = opts || {};
+  const vm = require('vm');
+  const sent = { pages: [], tabs: [], queries: 0 };
+  let captured = null;
+  const tabs = {
+    query(q, cb) { sent.queries++; cb(options.noActiveTab ? [] : [{ id: 7 }]); },
+    sendMessage(tabId, msg, cb) {
+      sent.tabs.push({ tabId, msg });
+      if (options.throwOnSend) throw new Error('no content script');
+      if (cb) cb(options.reply);
+    },
+  };
+  const sandbox = {
+    chrome: {
+      runtime: {
+        lastError: null,
+        sendMessage(msg, cb) { sent.pages.push(msg); if (cb) cb(undefined); },
+        onMessage: { addListener(fn) { captured = fn; } },
+      },
+    },
+  };
+  if (!options.noTabs) sandbox.chrome.tabs = tabs;
+  vm.createContext(sandbox);
+  vm.runInContext(constantsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
+  return {
+    bus: sandbox.__DR_BUS,
+    sent,
+    // Call the bus's own onMessage listener the way Chrome would.
+    fire(request, sender, sendResponse) {
+      return captured(request, sender || {}, sendResponse || function () {});
+    },
+  };
+}
+
+// --- #325 Task 1: the topic table carries a route ---
+(function busTableCarriesRoute() {
+  const VALID_ROUTES = [null, 'extension-pages', 'tab'];
+  let allHaveFamily = true;
+  let allHaveValidRoute = true;
+  let noWireAction = true;
+  for (const topic in DR_BUS.TOPICS) {
+    const entry = DR_BUS.TOPICS[topic];
+    if (typeof entry.family !== 'string' || entry.family.length === 0) allHaveFamily = false;
+    if (!Object.prototype.hasOwnProperty.call(entry, 'route')) { allHaveValidRoute = false; }
+    else if (VALID_ROUTES.indexOf(entry.route) === -1) { allHaveValidRoute = false; }
+    if (Object.prototype.hasOwnProperty.call(entry, 'wireAction')) noWireAction = false;
+  }
+  eq('bus table: every topic carries a non-empty family', allHaveFamily, true);
+  eq('bus table: every topic carries a route drawn from the three valid values',
+    allHaveValidRoute, true);
+  eq('bus table: the table is not empty (fails closed on a lost table)',
+    Object.keys(DR_BUS.TOPICS).length > 0, true);
+  eq('bus table: no topic carries the retired wireAction field', noWireAction, true);
+})();
+
+// --- #325 Task 1: the route picks the carrier, not the publishing context ---
+(function busRoutePicksCarrier() {
+  // No topic carries the extension-pages route yet — the first arrives when
+  // the service worker moves onto the bus. That carrier's coverage lands with
+  // it. What this pins is the discriminating case available now: the old
+  // transport sniff inferred the carrier from which Chrome interface the
+  // publishing context held, and the route no longer lets it.
+
+  // A tab-routed topic with no explicit tab number: the bus runs the active-tab
+  // lookup the sidebar used to repeat before each of its own sends.
+  const b = makeBusSandbox();
+  b.bus.publish('request:applySettings', { settings: { y: 2 } });
+  eq('bus route: a tab topic queries the active tab once', b.sent.queries, 1);
+  eq('bus route: and sends to that tab', b.sent.tabs.length, 1);
+  eq('bus route: aimed at the tab the query answered with',
+    b.sent.tabs.length === 1 ? b.sent.tabs[0].tabId : null, 7);
+  eq('bus route: the topic name itself is the name on the wire',
+    b.sent.tabs.length === 1 ? b.sent.tabs[0].msg.action : null, 'request:applySettings');
+  eq('bus route: the message carries the payload beside the name, nothing else',
+    b.sent.tabs.length === 1 ? Object.keys(b.sent.tabs[0].msg).sort().join(',') : null,
+    'action,settings');
+
+  // An explicit tab number skips the lookup. Only the service worker holds a
+  // tab number, and it holds it for a tab that may not be the active one.
+  const c = makeBusSandbox();
+  c.bus.publish('request:applySettings', { settings: {} }, { tabId: 42 });
+  eq('bus route: an explicit tab number skips the active-tab lookup', c.sent.queries, 0);
+  eq('bus route: and addresses the tab the caller named',
+    c.sent.tabs.length === 1 ? c.sent.tabs[0].tabId : null, 42);
+
+  // A tab-routed publish from a context with no chrome.tabs cannot reach its
+  // audience. Returning quietly would reproduce the silent miss the topic
+  // table exists to remove.
+  const d = makeBusSandbox({ noTabs: true });
+  let threw = false;
+  try { d.bus.publish('request:applySettings', { settings: {} }); } catch (e) { threw = true; }
+  eq('bus route: a tab topic published where chrome.tabs is absent throws', threw, true);
+
+  // A same-context topic sends nothing either way.
+  const e = makeBusSandbox();
+  e.bus.publish('intent:selectTable', { table: null });
+  eq('bus route: a route-less topic makes no wire send',
+    e.sent.pages.length + e.sent.tabs.length, 0);
+})();
+
+// --- #325 Task 2: a subscriber learns the sending tab ---
+//
+// The service worker's page-unload handler reads the sending tab's number off
+// Chrome's sender record and acts only when that tab is the one the sidebar
+// was opened for. The bus handed subscribers the payload alone, and a payload
+// cannot carry the number — a content script does not hold its own. Without
+// this argument, moving that topic onto the bus would close the sidebar on a
+// page unload in any tab.
+(function busSubscriberReceivesSenderTab() {
+  const a = makeBusSandbox();
+  const sameContext = [];
+  a.bus.subscribe('state:settingsChanged', (payload, meta) => { sameContext.push(meta); });
+  a.bus.publish('state:settingsChanged', { settings: {} });
+  eq('bus meta: a same-context publish reports no sending tab',
+    sameContext.length === 1 && sameContext[0] && sameContext[0].tabId === null, true);
+
+  const b = makeBusSandbox();
+  const fromTab = [];
+  b.bus.subscribe('state:settingsChanged', (payload, meta) => { fromTab.push(meta); });
+  b.fire({ action: 'state:settingsChanged', settings: {} }, { tab: { id: 77 } });
+  eq('bus meta: a wire message from a content script reports its tab number',
+    fromTab.length === 1 && fromTab[0].tabId === 77, true);
+
+  const c = makeBusSandbox();
+  const fromPage = [];
+  c.bus.subscribe('state:settingsChanged', (payload, meta) => { fromPage.push(meta); });
+  c.fire({ action: 'state:settingsChanged', settings: {} }, {});
+  eq('bus meta: a wire message from an extension page reports no tab number',
+    fromPage.length === 1 && fromPage[0].tabId === null, true);
+
+  // The payload stays exactly what the publisher sent. The tab number rides
+  // beside it, never inside it, so no handler can mistake it for data the
+  // publisher chose.
+  const d = makeBusSandbox();
+  let seenPayload = null;
+  d.bus.subscribe('state:settingsChanged', (payload) => { seenPayload = payload; });
+  d.fire({ action: 'state:settingsChanged', settings: { k: 1 } }, { tab: { id: 5 } });
+  eq('bus meta: the tab number stays out of the payload',
+    seenPayload === null ? null : Object.keys(seenPayload).sort().join(','), 'settings');
+})();
+
+// --- #325 Task 3: request and respond ---
+(function busRequestReplyRoundTrip() {
+  // The asking side: the answer chrome hands back reaches the callback.
+  const a = makeBusSandbox({ reply: { settings: { k: 9 } } });
+  let answer = 'untouched';
+  a.bus.request('request:applySettings', { settings: {} }, (x) => { answer = x; });
+  eq('bus request: the answer reaches the asker',
+    answer && answer.settings ? answer.settings.k : null, 9);
+
+  // The answering side: a responder's return value goes to Chrome's reply
+  // callback, unwrapped.
+  const b = makeBusSandbox();
+  b.bus.respond('request:applySettings', (payload) => ({ echoed: payload.n }));
+  let replied = 'untouched';
+  b.fire({ action: 'request:applySettings', n: 5 }, { tab: { id: 3 } }, (r) => { replied = r; });
+  eq('bus request: the responder\'s return value is what the asker receives',
+    replied && replied.echoed, 5);
+
+  // A responder reads the carrier's facts the same way a subscriber does.
+  const c = makeBusSandbox();
+  let responderMeta = null;
+  c.bus.respond('request:applySettings', (payload, meta) => { responderMeta = meta; return {}; });
+  c.fire({ action: 'request:applySettings' }, { tab: { id: 11 } }, () => {});
+  eq('bus request: a responder receives the sending tab too',
+    responderMeta ? responderMeta.tabId : null, 11);
+})();
+
+(function busRequestAbsentResponder() {
+  // Three ways nothing answers. Each must reach the callback with undefined,
+  // immediately — the sidebar's fallback to shipped defaults and to the
+  // unbound state has always depended on the absence arriving at once, with no
+  // waiting period.
+  const noTab = makeBusSandbox({ noActiveTab: true });
+  let a = 'untouched';
+  let aCalled = false;
+  noTab.bus.request('request:applySettings', {}, (x) => { aCalled = true; a = x; });
+  eq('bus request: no active tab answers undefined', aCalled && a === undefined, true);
+
+  const noScript = makeBusSandbox({ throwOnSend: true });
+  let b = 'untouched';
+  let bCalled = false;
+  noScript.bus.request('request:applySettings', {}, (x) => { bCalled = true; b = x; });
+  eq('bus request: no content script on the tab answers undefined',
+    bCalled && b === undefined, true);
+
+  const noResponder = makeBusSandbox();
+  let c = 'untouched';
+  let cCalled = false;
+  noResponder.bus.request('request:applySettings', {}, (x) => { cCalled = true; c = x; });
+  eq('bus request: no responder registered answers undefined',
+    cCalled && c === undefined, true);
+
+  // A context with no chrome.tabs cannot ask at all. publish() throws there,
+  // because a lost one-way message is a silent miss; request() answers
+  // undefined instead, because the asker already handles an unanswered ask and
+  // that is exactly what this is.
+  const noTabs = makeBusSandbox({ noTabs: true });
+  let d = 'untouched';
+  noTabs.bus.request('request:applySettings', {}, (x) => { d = x; });
+  eq('bus request: a context with no chrome.tabs answers undefined', d, undefined);
+})();
+
+(function busRequestDeliversToOneContextOnly() {
+  // A request addresses exactly one context, the tab's, so it never runs the
+  // publishing context's own subscribers the way publish() does.
+  const s = makeBusSandbox();
+  let localRan = false;
+  s.bus.subscribe('request:applySettings', () => { localRan = true; });
+  s.bus.request('request:applySettings', {}, () => {});
+  eq('bus request: a request does not deliver to same-context subscribers', localRan, false);
+
+  // An arriving request with no responder in THIS context stays silent.
+  // Answering undefined would close the asker's callback on behalf of a
+  // context holding no answer.
+  const t = makeBusSandbox();
+  let answered = false;
+  t.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => { answered = true; });
+  eq('bus request: an arriving request with no local responder sends no reply',
+    answered, false);
+})();
+
+(function busOneResponderPerTopic() {
+  const s = makeBusSandbox();
+  s.bus.respond('request:applySettings', () => 1);
+  let threw = false;
+  try { s.bus.respond('request:applySettings', () => 2); } catch (e) { threw = true; }
+  eq('bus request: a second responder for one topic throws', threw, true);
+})();
+
+(function busRequestFamilyGuards() {
+  const s = makeBusSandbox();
+  let respondThrew = false;
+  try { s.bus.respond('state:settingsChanged', () => 1); } catch (e) { respondThrew = true; }
+  eq('bus request: respond on a non-request topic throws', respondThrew, true);
+
+  let requestThrew = false;
+  try { s.bus.request('state:settingsChanged', {}, () => {}); } catch (e) { requestThrew = true; }
+  eq('bus request: request on a non-request topic throws', requestThrew, true);
+
+  let unknownThrew = false;
+  try { s.bus.respond('not:a:topic', () => 1); } catch (e) { unknownThrew = true; }
+  eq('bus request: respond on an unknown topic throws', unknownThrew, true);
+})();
+
+(function busRequestFamilyImpliesTabRoute() {
+  // A request addresses exactly one context. Any other route on a request
+  // entry is a table mistake, and this fails closed on it.
+  let allTabRouted = true;
+  let requestCount = 0;
+  for (const topic in DR_BUS.TOPICS) {
+    const entry = DR_BUS.TOPICS[topic];
+    if (entry.family !== 'request') continue;
+    requestCount++;
+    if (entry.route !== 'tab') allTabRouted = false;
+  }
+  eq('bus table: at least one request topic exists (fails closed on a lost table)',
+    requestCount > 0, true);
+  eq('bus table: every request-family topic carries route "tab"', allTabRouted, true);
+})();
+
+(function busDepthGuardCoversResponders() {
+  // A responder runs on the same depth counter a subscriber does, so an
+  // unguarded cycle reached through a responder becomes a clear error rather
+  // than a real stack overflow.
+  //
+  // The cycle goes responder -> responder, never through publish(). A cycle
+  // that passed through a subscriber would be caught by publish()'s own
+  // counter, and this test would stay green with the listener's guard deleted.
+  const s = makeBusSandbox();
+  s.bus.respond('request:applySettings', () => {
+    s.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
+    return {};
+  });
+  let message = null;
+  try {
+    s.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
+  } catch (e) {
+    message = e.message;
+  }
+  eq('bus request: the depth guard covers a cycle that runs only through responders',
+    /depth exceeded/.test(message || ''), true);
+  eq('bus request: the error says it happened while responding',
+    /while responding to "request:applySettings"/.test(message || ''), true);
+
+  // The counter unwinds on the way out, so a later publish on the SAME bus
+  // behaves normally rather than still reading as deep. A fresh bus would
+  // prove nothing here.
+  let secondThrew = null;
+  try {
+    s.bus.publish('intent:selectTable', { table: null });
+  } catch (e) {
+    secondThrew = e.message;
+  }
+  eq('bus request: the depth counter recovers on the same bus after a responder cycle',
+    secondThrew, null);
+})();
+
+// --- #325 Task 5: the settings apply is a request, not a publish ---
+//
+// It always carried a reply. The sidebar never read the reply's value, only
+// whether anyone answered, and the bus served that through a second reply
+// shape — a delivery-outcome callback beside the answer path. Two reply shapes
+// in one component is the clutter issue #325 exists to remove.
+(function settingsApplyUsesRequestPath() {
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const contentSrc = sourceByName('content.js');
+  const busSrc = sourceByName('adapters/messaging.js');
+
+  eq('settings apply: the sidebar asks through request()',
+    /DR_BUS\.request\(\s*'request:applySettings'/.test(sidebarSrc), true);
+  eq('settings apply: the sidebar no longer publishes it one-way',
+    /DR_BUS\.publish\(\s*'request:applySettings'/.test(sidebarSrc), false);
+  eq('settings apply: the content script answers through respond()',
+    /DR_BUS\.respond\(\s*'request:applySettings'/.test(contentSrc), true);
+  eq('settings apply: the delivery-outcome callback retires from the bus',
+    busSrc.includes('onDelivery'), false);
+  eq('settings apply: the sidebar keeps no delivery-outcome callback',
+    sidebarSrc.includes('onDelivery'), false);
+
+  // The unbind-on-no-answer rule is the load-bearing one. Drive it through the
+  // bus rather than through the source text: an unanswered request must reach
+  // the callback with nothing, which is what makes the sidebar unbind.
+  const s = makeBusSandbox({ throwOnSend: true });
+  let sawNothing = false;
+  s.bus.request('request:applySettings', { settings: {} }, (answer) => {
+    sawNothing = answer === undefined;
+  });
+  eq('settings apply: an unanswered apply reaches the asker with nothing, which is what unbinds the sidebar',
+    sawNothing, true);
+
+  // And the answered case stays distinguishable from it.
+  const t = makeBusSandbox({ reply: { ok: true } });
+  let sawAnswer = false;
+  t.bus.request('request:applySettings', { settings: {} }, (answer) => {
+    sawAnswer = !!(answer && answer.ok);
+  });
+  eq('settings apply: an answered apply is distinguishable from an unanswered one',
+    sawAnswer, true);
 })();
 
 // --- Report ---

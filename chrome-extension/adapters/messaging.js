@@ -6,25 +6,43 @@
  */
 
 /**
- * Typed event bus over chrome.runtime messaging.
+ * Typed event bus over Chrome messaging.
  *
- * Two topic families, and only two — every topic in DR_BUS.TOPICS carries
- * one of these two family tags:
+ * Every topic in DR_BUS.TOPICS carries a family and a route. The family marks
+ * what kind of message it is. The route states which carrier reaches its
+ * audience. Three families:
  *
- *   - 'intent'       Published by views (e.g. ui-toggle.js, sidebar.js) to
- *                     report a user action. The controller in content.js is
- *                     the sole subscriber. Most intent topics stay inside
- *                     the content-script scope (the view and its controller
- *                     share one JS context, so delivery never needs
- *                     chrome.runtime) — but a view running in a different
- *                     extension context (the sidebar is its own page, not
- *                     part of the tab's content script) carries a wireAction
- *                     so the same publish() call reaches the controller
- *                     across contexts too.
- *   - 'state-change' Published by the model (app/store.js) whenever a
- *                     stored field changes. A view subscribes to redraw on
- *                     future changes, or simply reads the store's getters
- *                     directly when it only needs the current value.
+ *   - 'intent'       A gesture: someone did a thing, and a controller
+ *                     determines what changes. Published by a view, such as
+ *                     the pillbox in ui-toggle.js, and never carrying
+ *                     authority of its own.
+ *   - 'state-change' A fact: a field of the application model changed.
+ *                     Published by app/store.js after the write. A subscriber
+ *                     redraws on it, or reads the model's getters directly
+ *                     when it only needs the current value.
+ *   - 'request'      A question: the topic's one responder returns an answer
+ *                     to the publisher. See the request rules below.
+ *
+ * Three routes:
+ *
+ *   - null              Same context only. publish() sends nothing on the wire.
+ *   - 'extension-pages' chrome.runtime.sendMessage, reaching the service
+ *                        worker and the open sidebar. It cannot reach a
+ *                        content script — that is chrome.runtime.sendMessage's
+ *                        own contract.
+ *   - 'tab'             chrome.tabs.sendMessage, reaching one tab's content
+ *                        script. The tab number comes from opts.tabId when the
+ *                        caller passes one, and otherwise from a query for the
+ *                        active tab. A caller passes one where it holds a tab
+ *                        number that is not the active tab's — the service
+ *                        worker will, for the menu-click tab and the
+ *                        sidebar's tab, once its topics move.
+ *
+ * The route replaced a capability sniff: publish() used to test which Chrome
+ * interface existed in the publishing context and infer the carrier from that,
+ * and a topic whose audience did not match the inference had no way to record
+ * the mismatch. A tab-routed publish from a context with no chrome.tabs now
+ * throws, rather than reaching the wrong audience in silence.
  *
  * Delivery rules:
  *   - A state-change publish always carries the field's whole new value,
@@ -43,68 +61,81 @@
  *     Because delivery is synchronous, a handler that itself publishes
  *     (directly, or by way of a store setter) can re-enter publish() before
  *     the original call returns; see the depth guard below.
- *   - A topic MAY also carry a wireAction: the name of an existing
- *     chrome.runtime message action that sidebar.js/background.js/content.js
- *     already understand. When present, publish() additionally relays the
- *     payload as that action's message, over whichever transport reaches
- *     the OTHER context from the one currently publishing:
- *       - From a content script, chrome.runtime.sendMessage() reaches every
- *         extension page (background, the open sidebar) — it cannot reach a
- *         content script (chrome.runtime.sendMessage's own contract).
- *       - From an extension page (the sidebar), chrome.tabs is available
- *         and chrome.runtime.sendMessage cannot reach a content script at
- *         all, so the relay instead queries the active tab and uses
- *         chrome.tabs.sendMessage — the exact transport sidebar.js already
- *         used for its content-script calls before this topic existed.
- *     Symmetrically, an incoming chrome.runtime message whose action
- *     matches a registered wireAction is redelivered here as a same-context
- *     publish (without re-sending it back out), so a cross-context topic
- *     behaves the same as a same-context one from a subscriber's point of
- *     view.
- *   - publish() takes an optional third argument, opts. On the extension-
- *     page relay branch (chrome.tabs.sendMessage), opts.onDelivery, when a
- *     function, is invoked after delivery settles — this is how a caller
- *     (e.g. sidebar.js) reacts to a delivery outcome (chrome.runtime.
- *     lastError on failure) the exact way sendToActiveTab did before this
- *     topic existed. The bus always supplies chrome.tabs.sendMessage its own
- *     callback and touches chrome.runtime.lastError inside it — regardless
- *     of whether the caller passed onDelivery — so a failed delivery never
- *     logs Chrome's "Unchecked runtime.lastError" warning. The bus itself
- *     stays generic: it forwards the outcome, but never inspects it or knows
- *     what a caller does with it.
+ *   - publish() delivers to same-context subscribers first, then sends over
+ *     the topic's route. A subscriber receives the payload and, beside it, a
+ *     second argument holding what the carrier supplied rather than the
+ *     publisher: meta.tabId, the sending tab's number. It is null for a
+ *     same-context publish and for a message from an extension page, neither
+ *     of which has a tab. It travels beside the payload, never inside it, so
+ *     no handler can mistake it for data the publisher supplied.
+ *   - An arriving message whose action names a known topic is redelivered here
+ *     as a same-context publish, without sending it back out, so a topic that
+ *     crossed contexts behaves the same as one that did not from a
+ *     subscriber's point of view. The topic name itself is the name on the
+ *     wire; there is no second naming style.
+ *
+ * Request rules:
+ *   - request(topic, payload, callback) asks, and respond(topic, handler)
+ *     answers. A request addresses exactly one context, the tab's, so it never
+ *     delivers to same-context subscribers the way publish() does. The asking
+ *     side is the publisher, the same term a one-way topic uses.
+ *   - The callback receives the responder's answer, or undefined when nothing
+ *     answered: no tab, no content script on it, or no responder registered
+ *     there. The absence arrives immediately, with no waiting period. The
+ *     sidebar's fallback to shipped defaults and to the unbound state rests on
+ *     that, so the bus consumes chrome.runtime.lastError itself and Chrome
+ *     logs no "Unchecked runtime.lastError" warning.
+ *   - A responder returns its answer synchronously. Every responder in the
+ *     extension is synchronous, and the contract covers only that; an
+ *     asynchronous one needs a design that does not exist yet.
+ *   - One responder per topic. A second registration throws where it is made,
+ *     rather than later when two answers race.
+ *   - An arriving request with no responder in this context sends no reply.
+ *     Answering undefined would close the publisher's callback on behalf of a
+ *     context holding no answer.
+ *
+ * This file registers one Chrome message listener per context it loads in.
+ * The content script and the sidebar page each still register a second one of
+ * their own, which retires as their topics move onto the bus.
  *
  * Loaded after the lib/ packages and before app/store.js — the store
- * publishes through this bus, so the bus must exist first.
+ * publishes through this bus, so the bus must exist first. The content script
+ * and the sidebar page load it; the service worker does not yet.
  */
 
 const DR_BUS = (function () {
   const INTENT = 'intent';
   const STATE_CHANGE = 'state-change';
 
-  // The one place every topic name is enumerated. wireAction: null means the
-  // topic is same-context only.
+  const REQUEST = 'request';
+
+  // A topic's route states which carrier reaches its audience. It names no
+  // subscriber, so publishers and subscribers stay unreferenced to each other.
+  //   null              same-context only; publish sends nothing on the wire
+  //   'extension-pages' chrome.runtime.sendMessage — the service worker and
+  //                     the open sidebar
+  //   'tab'             chrome.tabs.sendMessage — one tab's content script
+  const ROUTE_EXTENSION_PAGES = 'extension-pages';
+  const ROUTE_TAB = 'tab';
+
+  // The one place every topic name is enumerated.
   const TOPICS = {
-    'intent:selectTable': { family: INTENT, wireAction: null },
-    'intent:toggleTable': { family: INTENT, wireAction: null },
-    'state:selectedTableChanged': { family: STATE_CHANGE, wireAction: null },
-    // Published by the sidebar's controls (a different extension context
-    // from the model) on every settings change. wireAction reuses
-    // APPLY_SIDEBAR_SETTINGS, the message name content.js already handles,
-    // so the wire format is unchanged — only the sender's code path is.
-    'intent:settingsChanged': { family: INTENT, wireAction: DR_CROSS_CONTEXT_TOPICS.APPLY_SIDEBAR_SETTINGS },
+    'intent:selectTable': { family: INTENT, route: null },
+    'intent:toggleTable': { family: INTENT, route: null },
+    'state:selectedTableChanged': { family: STATE_CHANGE, route: null },
     // Published by the model (app/store.js) after every settings change,
     // regardless of source. The controller subscribes to apply the new
     // value to the selected table — this is the bus's first state-change
     // subscriber (see the depth guard below, issue #240).
-    'state:settingsChanged': { family: STATE_CHANGE, wireAction: null },
+    'state:settingsChanged': { family: STATE_CHANGE, route: null },
+    // The sidebar's settings apply. A request rather than a one-way publish:
+    // the content script records the settings and answers, and the sidebar
+    // reads whether anyone answered at all to decide bound versus unbound.
+    // The answer's value is never read.
+    'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
   };
 
   const subscribers = new Map(); // topic name -> Set<handler>
-  const wireActionToTopic = new Map();
-  for (const topic in TOPICS) {
-    const wireAction = TOPICS[topic].wireAction;
-    if (wireAction) wireActionToTopic.set(wireAction, topic);
-  }
 
   function assertKnownTopic(topic) {
     if (!Object.prototype.hasOwnProperty.call(TOPICS, topic)) {
@@ -122,14 +153,30 @@ const DR_BUS = (function () {
     };
   }
 
+  // Chrome attaches a sender record to every arriving message. One fact off it
+  // is load-bearing: which tab a content script sent from, which the service
+  // worker checks against the tab the sidebar was opened for. The bus passes
+  // that one number and keeps Chrome's record out of its own contract. A
+  // same-context publish reports null, and so does a message from an extension
+  // page — neither has a tab.
+  function senderTabId(sender) {
+    return sender && sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : null;
+  }
+
   // Deliver to same-context subscribers only. Used both by publish() below
   // and by the onMessage relay, so a redelivered incoming wire message never
   // triggers another outbound send.
-  function deliverLocally(topic, payload) {
+  //
+  // A handler receives the payload and, beside it, the facts the carrier
+  // supplied rather than the publisher: meta.tabId. It travels beside the
+  // payload, never inside it, so no handler can mistake it for data the
+  // publisher supplied.
+  function deliverLocally(topic, payload, tabId) {
     const set = subscribers.get(topic);
     if (!set) return;
+    const meta = { tabId: typeof tabId === 'number' ? tabId : null };
     for (const handler of Array.from(set)) {
-      handler(payload);
+      handler(payload, meta);
     }
   }
 
@@ -146,6 +193,85 @@ const DR_BUS = (function () {
   const MAX_PUBLISH_DEPTH = 20;
   let publishDepth = 0;
 
+  // The route determines the carrier. Before this, publish() tested which
+  // Chrome interface existed in the publishing context and inferred the
+  // carrier from that, and a topic whose audience did not match the inference
+  // had no way to record the mismatch.
+  function relay(topic, payload, route, opts) {
+    const message = Object.assign({ action: topic }, payload);
+    if (route === ROUTE_EXTENSION_PAGES) {
+      sendToExtensionPages(message);
+      return;
+    }
+    sendToTab(message, opts, null);
+  }
+
+  function sendToExtensionPages(message) {
+    if (typeof chrome.runtime.sendMessage !== 'function') return;
+    try {
+      chrome.runtime.sendMessage(message, () => {
+        // Touch lastError purely to consume it: with no extension page open
+        // there is no receiver, and an unread lastError logs Chrome's
+        // "Unchecked runtime.lastError" warning.
+        void chrome.runtime.lastError;
+      });
+    } catch (e) {
+      // extension context may not be available; harmless.
+    }
+  }
+
+  // A tab-routed send needs a tab number. The caller supplies one through
+  // opts.tabId where it holds one — only the service worker does, for the
+  // menu-click tab and the sidebar's tab, neither guaranteed to be active.
+  // Otherwise the bus queries the active tab, which is the lookup the sidebar
+  // repeated before each of its own sends.
+  //
+  // onReply, when given, receives the responder's answer, or undefined when
+  // nothing answered: no tab, no content script on it, or no responder
+  // registered there. The absence arrives immediately, with no waiting period.
+  function sendToTab(message, opts, onReply) {
+    if (!chrome.tabs || typeof chrome.tabs.sendMessage !== 'function' ||
+        typeof chrome.tabs.query !== 'function') {
+      // A tab-routed topic published from a context with no chrome.tabs (a
+      // content script) cannot reach its audience. Returning quietly here
+      // would reproduce the silent miss the topic table exists to remove.
+      throw new Error('DR_BUS: tab-routed topic "' + message.action +
+        '" published from a context with no chrome.tabs');
+    }
+    const deliver = (tabId) => {
+      try {
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+          // Always touch lastError, even on a one-way publish nobody is
+          // waiting on: otherwise a failed delivery logs Chrome's "Unchecked
+          // runtime.lastError" warning. The bus reads it to consume it, and a
+          // failed delivery reaches a publisher as an answer of undefined.
+          void chrome.runtime.lastError;
+          if (onReply) onReply(response);
+        });
+      } catch (e) {
+        // no content script on this tab (or it has not loaded yet); harmless.
+        if (onReply) onReply(undefined);
+      }
+    };
+    const explicitTabId = opts && typeof opts.tabId === 'number' ? opts.tabId : null;
+    if (explicitTabId !== null) {
+      deliver(explicitTabId);
+      return;
+    }
+    try {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (!tabs || !tabs[0]) {
+          if (onReply) onReply(undefined);
+          return;
+        }
+        deliver(tabs[0].id);
+      });
+    } catch (e) {
+      // extension context may not be available; harmless.
+      if (onReply) onReply(undefined);
+    }
+  }
+
   function publish(topic, payload, opts) {
     assertKnownTopic(topic);
     publishDepth++;
@@ -156,59 +282,97 @@ const DR_BUS = (function () {
           ' while publishing "' + topic + '" — likely an unguarded reentrant publish cycle'
         );
       }
-      deliverLocally(topic, payload);
-      const wireAction = TOPICS[topic].wireAction;
-      if (!wireAction || typeof chrome === 'undefined' || !chrome.runtime) return;
-      const onDelivery = opts && typeof opts.onDelivery === 'function' ? opts.onDelivery : null;
-      if (chrome.tabs && typeof chrome.tabs.query === 'function' && typeof chrome.tabs.sendMessage === 'function') {
-        // Extension-page context (the sidebar): chrome.runtime.sendMessage
-        // cannot reach a content script, so relay via the active tab —
-        // the same transport sidebar.js already used for this call.
-        try {
-          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (!tabs || !tabs[0]) return;
-            try {
-              chrome.tabs.sendMessage(tabs[0].id, Object.assign({ action: wireAction }, payload), () => {
-                // Always touch chrome.runtime.lastError, even when the caller
-                // supplied no onDelivery — otherwise a failed delivery logs
-                // Chrome's "Unchecked runtime.lastError" warning. The bus
-                // reads it purely to consume it; interpreting it is the
-                // caller's job via onDelivery, same as sendToActiveTab did.
-                void chrome.runtime.lastError;
-                if (onDelivery) onDelivery();
-              });
-            } catch (e) {
-              // no content script on this tab (or it hasn't loaded yet); harmless.
-            }
-          });
-        } catch (e) {
-          // extension context may not be available; harmless.
-        }
-      } else if (typeof chrome.runtime.sendMessage === 'function') {
-        // Content-script context: broadcast to every extension page
-        // (background, the open sidebar) — unchanged from before this topic.
-        try {
-          chrome.runtime.sendMessage(Object.assign({ action: wireAction }, payload));
-        } catch (e) {
-          // extension context may not be available; harmless.
-        }
-      }
+      deliverLocally(topic, payload, null);
+      const route = TOPICS[topic].route;
+      if (!route || typeof chrome === 'undefined' || !chrome.runtime) return;
+      relay(topic, payload, route, opts);
     } finally {
       publishDepth--;
     }
   }
 
+  // A request topic has exactly one responder, in exactly one context. A
+  // second registration is a mistake at the moment it is made, not later when
+  // two answers race, so it throws here.
+  const responders = new Map();
+
+  function assertRequestFamily(topic, verb) {
+    if (TOPICS[topic].family !== REQUEST) {
+      throw new Error('DR_BUS: ' + verb + '() needs a request-family topic; "' +
+        topic + '" is ' + TOPICS[topic].family);
+    }
+  }
+
+  function respond(topic, handler) {
+    assertKnownTopic(topic);
+    assertRequestFamily(topic, 'respond');
+    if (responders.has(topic)) {
+      throw new Error('DR_BUS: topic "' + topic + '" already has a responder');
+    }
+    responders.set(topic, handler);
+    return function unrespond() {
+      if (responders.get(topic) === handler) responders.delete(topic);
+    };
+  }
+
+  // A request addresses exactly one context, the tab's, so it never delivers
+  // to same-context subscribers the way publish() does.
+  //
+  // The callback receives the responder's answer, or undefined when nothing
+  // answered: no tab, no content script on it, or no responder registered
+  // there. The absence arrives immediately, with no waiting period, which is
+  // what drives the sidebar's fallback to shipped defaults and to the unbound
+  // state.
+  //
+  // A context with no chrome.tabs answers undefined rather than throwing the
+  // way a tab-routed publish does. A lost one-way publish is a silent miss;
+  // an unanswered request is a case every publisher already handles.
+  function request(topic, payload, callback) {
+    assertKnownTopic(topic);
+    assertRequestFamily(topic, 'request');
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.tabs ||
+        typeof chrome.tabs.sendMessage !== 'function' ||
+        typeof chrome.tabs.query !== 'function') {
+      callback(undefined);
+      return;
+    }
+    sendToTab(Object.assign({ action: topic }, payload), null, callback);
+  }
+
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage &&
       typeof chrome.runtime.onMessage.addListener === 'function') {
-    chrome.runtime.onMessage.addListener((request) => {
-      if (!request || wireActionToTopic.size === 0) return;
-      const topic = wireActionToTopic.get(request.action);
-      if (!topic) return;
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (!request || typeof request.action !== 'string') return;
+      const topic = request.action;
+      if (!Object.prototype.hasOwnProperty.call(TOPICS, topic)) return;
       const payload = Object.assign({}, request);
       delete payload.action;
-      deliverLocally(topic, payload);
+      const tabId = senderTabId(sender);
+      if (TOPICS[topic].family !== REQUEST) {
+        deliverLocally(topic, payload, tabId);
+        return;
+      }
+      const responder = responders.get(topic);
+      // No responder in THIS context: stay silent. Answering undefined would
+      // close the publisher's callback on behalf of a context holding no
+      // answer.
+      if (!responder) return;
+      // A responder runs on the same depth counter a subscriber does, so a
+      // publish nested under one cannot slip past the guard.
+      publishDepth++;
+      try {
+        if (publishDepth > MAX_PUBLISH_DEPTH) {
+          throw new Error(
+            'DR_BUS: publish depth exceeded ' + MAX_PUBLISH_DEPTH +
+            ' while responding to "' + topic + '" — likely an unguarded reentrant publish cycle'
+          );
+        }
+        sendResponse(responder(payload, { tabId }));
+      } finally {
+        publishDepth--;
+      }
     });
   }
 
-  return { publish, subscribe, TOPICS };
+  return { publish, subscribe, request, respond, TOPICS };
 })();
