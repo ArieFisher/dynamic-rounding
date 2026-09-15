@@ -155,7 +155,7 @@ contract:
 | --- | --- | --- |
 | `dataTestCellBudget` | 1000 | `GRID_IS_DATA_TABLE_CELL_SAMPLE`, `GRID_IS_DATA_TABLE_ROW_SAMPLE` (D3; lands with data-test-budget) |
 | `nestingDepth` | 1 | new (D2; lands with grid-nesting-rule) |
-| `pendingRetestCap` | see §6 | new (D5; lands with pending-retest) |
+| `pendingRetestCap` | 100 | new (D5; lands with pending-retest) |
 | `gridMinChildren` | 5 | `GRID_MIN_CHILDREN` |
 | `gridWalkDepthCap` | 15 | `GRID_WALK_DEPTH_CAP` |
 | `gridColumnWidthSample` | 10 | `GRID_COL_WIDTH_SAMPLE` |
@@ -529,8 +529,8 @@ flowchart TD
   - The living docs state the rule; the suites pass.
 - **Depends on:** grid-nesting-rule
 - **Complexity:** M
-- **Dev notes:** Constant: `pendingRetestCap` in `DR_TUNING`; start generous
-  (20) and observe (§6). The harness stubs `MutationObserver` as a no-op; the
+- **Dev notes:** Constant: `pendingRetestCap` in `DR_TUNING`, starting at 100
+  (§6). The harness stubs `MutationObserver` as a no-op; the
   re-apply observer tests and the removed-subtree tests already install
   capturing stubs, and the pattern to copy is the debounce in `roundTable`'s
   virtualized branch. Hold the per-root observer, timer, and count in
@@ -704,9 +704,14 @@ flowchart TD
   holds today; the sprint pins the outcome and states the rule in the living
   docs, at cost S, so the next refactor cannot lose a rule only the code
   states.
-- **The re-test cap's value.** D5 bounds a continuously changing pending
-  region. The right number is unknown; the plan starts at 20 and the first
-  live observation on Databricks sets it.
+- **The re-test cap's value.** Resolved 2026-09-15: start at 100. A re-test
+  runs only after a subtree change and the grid redraw delay, so the count
+  grows under sustained churn alone, and each re-test is bounded by the data
+  test budget. At the fastest rate, 100 re-tests span ten seconds and about
+  half a second of processing before the observer drops. A tighter cap
+  reproduces the defect on a slow query whose loading state churns the
+  subtree; a generous cap costs bounded processing on a region that never
+  passes. The first live observation on Databricks sets the lasting value.
 - **Whether a fixed depth is enough.** Carried from the decision record's §6:
   D2 ships depth 1 as one edit in the configuration file; a per-library answer
   belongs in the vendor profile, and no principled rule is adopted yet.
@@ -744,3 +749,5 @@ flowchart TD
   decision record set.
 - 2026-09-15: hidden-cells stays in the stack as the reduced sprint, per the
   product manager.
+- 2026-09-15: The re-test cap starts at 100, per the product manager; §6 holds
+  the reasoning.
