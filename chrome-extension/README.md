@@ -16,7 +16,9 @@ A press on a locked table publishes nothing. A table locks when its original val
 
 The sidebar opens beside one tab and serves that tab for as long as it is open. It acts on what that tab's page reports and drops what any other tab reports, so a table changing in a background tab never moves the sidebar's controls or locks them against a page the user cannot see.
 
-While another tab is in front, the sidebar's controls describe a page the user is not looking at, so they dim and give way to a message. Returning to the tab the sidebar was opened for brings them back, read fresh from that page.
+While another tab is in front, the sidebar's controls describe a page the user is not looking at, so they dim, stop taking input from the mouse and the keyboard alike, and give way to a message. Returning to the tab the sidebar was opened for brings them back, read fresh from that page.
+
+Most tab switches close the sidebar outright instead, because the service worker closes it when the tab it was opened for stops being the front tab. The message is what appears when that close does not happen: the worker forgets which tab the sidebar belongs to after an idle restart, and it never learns it at all when the sidebar is opened from Chrome's own side-panel control rather than the right-click menu item.
 
 ## Offset semantics
 
