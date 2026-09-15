@@ -5,7 +5,10 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
-importScripts('constants.js', 'adapters/messaging.js');
+// The bus, and nothing else. The settings contract in constants.js was loaded
+// here for the shared topic-name list alone, and the bus holds the topic table
+// now; no other constant in that file reaches this context.
+importScripts('adapters/messaging.js');
 
 let sidebarTabId = null;
 

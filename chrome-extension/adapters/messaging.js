@@ -35,8 +35,8 @@
  *                        caller passes one, and otherwise from a query for the
  *                        active tab. A caller passes one where it holds a tab
  *                        number that is not the active tab's — the service
- *                        worker will, for the menu-click tab and the
- *                        sidebar's tab, once its topics move.
+ *                        worker does, for the menu-click tab and the
+ *                        sidebar's tab.
  *
  * The route replaced a capability sniff: publish() used to test which Chrome
  * interface existed in the publishing context and infer the carrier from that,
@@ -99,12 +99,13 @@
  *     context holding no answer.
  *
  * This file registers one Chrome message listener per context it loads in.
- * The content script and the sidebar page each still register a second one of
- * their own, which retires as their topics move onto the bus.
+ * The content script still registers a second one of its own, carrying the
+ * sidebar's three pulls; it retires when those move onto the request path.
  *
- * Loaded after the lib/ packages and before app/store.js — the store
- * publishes through this bus, so the bus must exist first. The content script
- * and the sidebar page load it; the service worker does not yet.
+ * All three contexts load it. In the content script it comes after the lib/
+ * packages and before app/store.js — the store publishes through this bus, so
+ * the bus must exist first. The service worker imports it at the top of
+ * background.js, and the sidebar page loads it before sidebar.js.
  */
 
 const DR_BUS = (function () {

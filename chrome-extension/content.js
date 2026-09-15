@@ -229,8 +229,9 @@ DR_BUS.subscribe('state:sidebarOpened', () => {
   DR_BUS.publish('state:previewSamplesChanged', {});
 });
 
-// The four requests are all that keep a listener of their own here. They retire
-// onto the bus's responder path in the next change.
+// The sidebar's three pulls are all that keep a listener of their own here.
+// They retire onto the bus's responder path in the next change, and the shared
+// name list retires with them.
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === DR_CROSS_CONTEXT_TOPICS.GET_SETTINGS) {
     // Inverse of the old sidebar pull: the sidebar asks the model instead.

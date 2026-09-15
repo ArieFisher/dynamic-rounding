@@ -5459,7 +5459,7 @@ function fireTouchSecondTap(buttonEl) {
   // deliver here — the content script registers no branch for it. That
   // absence is asserted at the source, next to the other retirements.
   eq('rebind AC4: the content script registers no branch for the close message',
-    /CLOSE_SIDEBAR/.test(sourceByName('content.js') || ''), false);
+    /intent:closeSidebar/.test(sourceByName('content.js') || ''), false);
 
   // A press on a different table afterwards: the switch goes out, exactly as
   // it would have before the close.
@@ -5666,10 +5666,10 @@ function fireTouchSecondTap(buttonEl) {
   // alone, so the content script carries no branch for it at all.
   eq('sidebar-state removal: state:sidebarOpened still runs the reconnect apply',
     /state:sidebarOpened[\s\S]{0,400}applySidebarRounding/.test(contentSrc), true);
-  // constants.js declares the action name and rides in the same bundle, so
-  // this one reads content.js alone: the claim is about the handler list.
+  // The topic moved onto the bus (#325), so the needle is its bus name: a
+  // reintroduced subscription in the content script is what this catches.
   eq('sidebar-state removal: content.js registers no branch for the close message',
-    /CLOSE_SIDEBAR/.test(sourceByName('content.js') || ''), false);
+    /intent:closeSidebar/.test(sourceByName('content.js') || ''), false);
 
   // The merged press path: one settings write, and no read of any sidebar
   // value. The behavioral pins live in the part-one block further down; this
@@ -13771,6 +13771,37 @@ function fireMouseClick(buttonEl, fn) {
     eq('bg routing: closing a removed tab does not throw', threw, false);
   })();
 
+  // --- The page-unload guard: only the sidebar's own tab closes it ---
+  //
+  // The plan's first correction. The worker reads the sending tab's number off
+  // the bus's meta argument and acts only when it matches the tab the sidebar
+  // was opened for. Without the number, a page unload in any tab would close
+  // the sidebar. A message from an extension page reports null, which must not
+  // match either, including when the worker holds no tab number at all.
+  (function pageUnloadClosesOnlyItsOwnTab() {
+    const ctx = loadBackground();
+    const closes = () => ctx.runtimeSends.filter(m => m.action === 'intent:closeSidebar').length;
+    const unload = (sender) => ctx.listeners.message(
+      { action: 'state:pageUnloaded' }, sender, () => {});
+
+    // No sidebar open yet: the worker holds no tab number.
+    unload({ tab: { id: 42 } });
+    eq('page unload: a tab unload closes nothing while no sidebar is open', closes(), 0);
+
+    openPanel(ctx);
+    ctx.runtimeSends.length = 0;
+
+    unload({ tab: { id: 99 } });
+    eq('page unload: another tab unloading leaves the sidebar open', closes(), 0);
+
+    unload({});
+    eq('page unload: a message from an extension page carries no tab and closes nothing',
+      closes(), 0);
+
+    unload({ tab: { id: PANEL_TAB } });
+    eq('page unload: the sidebar\'s own tab unloading closes it', closes(), 1);
+  })();
+
   // --- Rule 2: the activation report is not relayed into the tab ---
   (function activatedNotRelayedToTab() {
     const ctx = loadBackground();
@@ -20077,21 +20108,26 @@ function makeBusSandbox(opts) {
 // own send. No topic pairs that way today, and this fails at the commit if one
 // starts to.
 (function noContextPublishesWhatItSubscribes() {
+  // Keyed by context, not by file: the content script's context loads
+  // ui-toggle.js and app/store.js into the same scope as content.js, so a
+  // publish in one and a subscription in another is the same loopback.
   const SOURCES = {
-    'content.js': sourceByName('content.js') || '',
-    'sidebar.js': fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8'),
-    'background.js': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),
+    'the content script': [sourceByName('content.js'), sourceByName('ui-toggle.js'),
+      sourceByName('app/store.js')].map((src) => src || '').join('\n'),
+    'the sidebar': fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8'),
+    'the service worker': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),
   };
   const CROSSING = Object.keys(DR_BUS.TOPICS).filter((t) => DR_BUS.TOPICS[t].route !== null);
   eq('one direction: the scan has cross-context topics to check (fails closed on an empty table)',
     CROSSING.length > 0, true);
   const bothEnds = [];
-  for (const [file, src] of Object.entries(SOURCES)) {
+  const callsWith = (verb, topic) => new RegExp(verb + "\\(\\s*'" + topic + "'");
+  for (const [context, src] of Object.entries(SOURCES)) {
     for (const topic of CROSSING) {
-      const publishes = src.includes("publish('" + topic + "'");
-      const subscribes = src.includes("subscribe('" + topic + "'") ||
-        src.includes("respond('" + topic + "'");
-      if (publishes && subscribes) bothEnds.push(file + ' -> ' + topic);
+      const publishes = callsWith('publish', topic).test(src);
+      const receives = callsWith('subscribe', topic).test(src) ||
+        callsWith('respond', topic).test(src);
+      if (publishes && receives) bothEnds.push(context + ' -> ' + topic);
     }
   }
   eq('one direction: no context both publishes and receives the same crossing topic',
