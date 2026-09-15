@@ -5639,14 +5639,25 @@ function fireTouchSecondTap(buttonEl) {
   // covers the whole extension, service worker and sidebar included, not
   // just the content script.
   const SIDEBAR_STATE_NAMES = /sidebarOpen|isSidebarOpen|setSidebarOpen|state:sidebarOpenChanged/;
+  // The bus topic for "the sidebar was opened" (#325) shares the scan's
+  // prefix and is a different thing: an event that happened, named once, not
+  // a stored answer to "is it open". Its exact spelling is struck from the
+  // source before the scan, so every other name carrying the prefix — a bare
+  // sidebarOpened field included — still fails here.
+  const SIDEBAR_OPENED_TOPIC = /state:sidebarOpened/g;
+  const namesSidebarState = (src) => SIDEBAR_STATE_NAMES.test(src.replace(SIDEBAR_OPENED_TOPIC, ''));
   eq('sidebar-state removal: app/store.js declares no sidebar-open field',
-    SIDEBAR_STATE_NAMES.test(storeSrc), false);
+    namesSidebarState(storeSrc), false);
   eq('sidebar-state removal: the content-script stack names no sidebar-open value',
-    SIDEBAR_STATE_NAMES.test(contentSrc), false);
+    namesSidebarState(contentSrc), false);
   eq('sidebar-state removal: sidebar.js names no sidebar-open value',
-    SIDEBAR_STATE_NAMES.test(sidebarSrc), false);
+    namesSidebarState(sidebarSrc), false);
   eq('sidebar-state removal: background.js names no sidebar-open value',
-    SIDEBAR_STATE_NAMES.test(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8')), false);
+    namesSidebarState(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8')), false);
+  // The struck spelling is the topic name alone: a bare field carrying it
+  // still trips the scan.
+  eq('sidebar-state removal: a reintroduced sidebarOpened field still fails the scan',
+    namesSidebarState('let sidebarOpened = false;'), true);
   eq('sidebar-state removal: the bus registers no sidebar-open topic',
     Object.prototype.hasOwnProperty.call(DR_BUS.TOPICS, 'state:sidebarOpenChanged'), false);
 
@@ -11423,78 +11434,23 @@ function fireMouseClick(buttonEl, fn) {
 //       verify its branching behaviour, confirming the written code is correct.
 // ---------------------------------------------------------------------------
 
-(function pillbox_AC4_background_nullSidebarTabId_noRelay_static() {
+// --- #325 Task 8: the on/off report reaches the sidebar exactly once ---
+//
+// The content script broadcasts the on/off report to every extension page,
+// which already includes the open sidebar. The worker used to receive that
+// broadcast and send it again, so the sidebar redrew twice on one fact, and
+// the worker guarded the re-send on holding a sidebar tab number to keep the
+// second delivery from going out with no sidebar open. The relay is gone, and
+// with it the guard it needed. What replaces both: one publisher, one
+// delivery.
+(function onOffReportDeliveredOnce() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-
-  // The handler must exist.
-  eq("AC4 static: background.js contains TABLE_TOGGLE_STATE handler",
-    bgSrc.includes('request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE'), true);
-
-  // The relay must be guarded by sidebarTabId !== null.
-  eq("AC4 static: relay is guarded by sidebarTabId !== null",
-    bgSrc.includes('sidebarTabId !== null'), true);
-
-  // The relay call must be inside the handler block (it sends the same message).
-  eq("AC4 static: relay calls chrome.runtime.sendMessage with TABLE_TOGGLE_STATE",
-    bgSrc.includes('action: DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE'), true);
-})();
-
-(function pillbox_AC4_background_nullSidebarTabId_noRelay_logic() {
-  // Reproduce the handler logic extracted from background.js to unit-test the guard.
-  // This is equivalent to evaluating the message handler in isolation.
-  const relayCalls = [];
-
-  function simulateBackgroundHandler(request, sidebarTabId) {
-    if (request.action === 'TABLE_TOGGLE_STATE') {
-      if (sidebarTabId !== null) {
-        relayCalls.push({ action: 'TABLE_TOGGLE_STATE', enabled: request.enabled });
-      }
-      return;
-    }
-  }
-
-  // Case A: sidebarTabId is null → no relay.
-  relayCalls.length = 0;
-  simulateBackgroundHandler({ action: 'TABLE_TOGGLE_STATE', enabled: true }, null);
-  eq('AC4 logic: sidebarTabId=null → handler does NOT relay TABLE_TOGGLE_STATE',
-    relayCalls.length, 0);
-
-  // Case B: sidebarTabId is non-null → relay fires.
-  relayCalls.length = 0;
-  simulateBackgroundHandler({ action: 'TABLE_TOGGLE_STATE', enabled: true }, 42);
-  eq('AC4 logic: sidebarTabId=42 → handler DOES relay TABLE_TOGGLE_STATE',
-    relayCalls.length, 1);
-  eq('AC4 logic: relayed message preserves enabled=true',
-    relayCalls[0] && relayCalls[0].enabled, true);
-
-  // Case C: enabled=false is preserved faithfully.
-  relayCalls.length = 0;
-  simulateBackgroundHandler({ action: 'TABLE_TOGGLE_STATE', enabled: false }, 7);
-  eq('AC4 logic: relayed message preserves enabled=false',
-    relayCalls[0] && relayCalls[0].enabled, false);
-
-  // Case D: unrelated action is not intercepted by TABLE_TOGGLE_STATE handler.
-  relayCalls.length = 0;
-  simulateBackgroundHandler({ action: 'SIDEBAR_CLOSED' }, 42);
-  eq('AC4 logic: unrelated action does not trigger TABLE_TOGGLE_STATE relay',
-    relayCalls.length, 0);
-})();
-
-// AC4 adversarial: make sure background.js guard is a strict null check,
-// not a falsy check (sidebarTabId=0 should still relay if 0 were a valid tabId).
-// The spec says "sidebarTabId !== null"; tabId=0 is truthy in !== null.
-(function pillbox_AC4_background_tabIdZero_doesRelay_logic() {
-  const relayCalls = [];
-  function simulateBackgroundHandler(request, sidebarTabId) {
-    if (request.action === 'TABLE_TOGGLE_STATE') {
-      if (sidebarTabId !== null) {
-        relayCalls.push({ action: 'TABLE_TOGGLE_STATE', enabled: request.enabled });
-      }
-    }
-  }
-  simulateBackgroundHandler({ action: 'TABLE_TOGGLE_STATE', enabled: true }, 0);
-  eq('AC4 adversarial: sidebarTabId=0 still relays (strict !== null, not falsy check)',
-    relayCalls.length, 1);
+  eq('one delivery: the worker subscribes to no on/off report',
+    /subscribe\(\s*'state:tableEnabledChanged'/.test(bgSrc), false);
+  eq('one delivery: the worker publishes no on/off report',
+    /publish\(\s*'state:tableEnabledChanged'/.test(bgSrc), false);
+  eq('one delivery: the worker makes no wire send of its own for anything',
+    bgSrc.includes('chrome.runtime.sendMessage'), false);
 })();
 
 // Sprint table-contextmenu-activation
@@ -12015,7 +11971,12 @@ function fireMouseClick(buttonEl, fn) {
   global.window   = savedWindow;
 })();
 
-// AC4 (runtime): background.js relay logic — eval with controllable sidebarTabId.
+// AC4 (runtime): the worker relays no activation report into a tab, whether or
+// not it holds a sidebar tab number. The relay retired before #325; what #325
+// changes is where the claim is read from — the worker holds no message
+// listener of its own now, so the listener under test is the bus's, and the
+// worker's own subscriptions are the only thing that could act on an arriving
+// topic. It subscribes to no activation report, so nothing does.
 (function tableContextmenuActivation_backgroundRelay() {
   const sentTabMessages = [];
   let capturedBgHandler = null;
@@ -12023,9 +11984,10 @@ function fireMouseClick(buttonEl, fn) {
 
   const captureChromeBg = {
     runtime: {
+      lastError: null,
       onInstalled: { addListener: () => {} },
       onMessage:   { addListener: (fn) => { capturedBgHandler = fn; } },
-      sendMessage: () => Promise.resolve(),
+      sendMessage: (msg, cb) => { if (cb) cb(undefined); },
     },
     contextMenus: {
       create: () => {},
@@ -12033,53 +11995,58 @@ function fireMouseClick(buttonEl, fn) {
       onClicked: { addListener: (fn) => { capturedClickHandler = fn; } },
     },
     tabs: {
-      sendMessage(tabId, msg) { sentTabMessages.push({ tabId, msg }); },
+      query(q, cb) { cb([{ id: 1 }]); },
+      sendMessage(tabId, msg, cb) { sentTabMessages.push({ tabId, msg }); if (cb) cb(undefined); },
       onUpdated:   { addListener: () => {} },
       onRemoved:   { addListener: () => {} },
       onActivated: { addListener: () => {} },
     },
-    sidePanel: { open: () => Promise.resolve() },
+    // Omitted deliberately: background.js guards on chrome.sidePanel, so with
+    // it absent the sidebar-open handler never awaits and the tab number is
+    // set by the time the call returns.
   };
 
+  // Every handler call runs while the stub is the global chrome. The bus reads
+  // chrome at send time, not at load time, so a call made after the restore
+  // below would send through the suite's bare default stub and reach nothing.
+  const PANEL_TAB = 99;
+  const result = {};
   const savedChrome = global.chrome;
   global.chrome = captureChromeBg;
   try {
-    eval(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'));
+    eval(messagingCode + '\n' +
+      fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'));
+    result.listenerType = typeof capturedBgHandler;
+    if (result.listenerType === 'function') {
+      // Case A: no sidebar tab number (never opened).
+      sentTabMessages.length = 0;
+      capturedBgHandler({ action: 'state:tableActivated' }, {}, () => {});
+      result.relaysWithNoTabNumber = sentTabMessages.length;
+
+      // Case B: the sidebar was opened, so the worker holds its tab number.
+      // The handler runs to completion synchronously with chrome.sidePanel
+      // absent.
+      sentTabMessages.length = 0;
+      capturedClickHandler({ menuItemId: 'dr-action-sidebar' }, { id: PANEL_TAB });
+      result.sentOpenedReport = sentTabMessages.some(m => m.tabId === PANEL_TAB &&
+        m.msg && m.msg.action === 'state:sidebarOpened');
+
+      sentTabMessages.length = 0;
+      capturedBgHandler({ action: 'state:tableActivated' }, {}, () => {});
+      result.relaysWithTabNumber = sentTabMessages.length;
+    }
   } finally {
     global.chrome = savedChrome;
   }
 
-  eq('table-activation AC4 runtime: background onMessage handler captured',
-    typeof capturedBgHandler, 'function');
-
-  if (typeof capturedBgHandler !== 'function') return;
-
-  // Case A: sidebarTabId is null (never opened) — relay must NOT fire.
-  sentTabMessages.length = 0;
-  capturedBgHandler({ action: 'TABLE_ACTIVATED' }, {});
-
-  eq('table-activation AC4 runtime: no relay when sidebarTabId is null',
-    sentTabMessages.length,
-    0);
-
-  // Case B: sidebarTabId is set (sidebar opened) — relay MUST fire to the sidebar tab.
-  // Drive sidebarTabId via the contextMenus.onClicked async handler (menuItemId=dr-action-sidebar).
-  if (typeof capturedClickHandler === 'function') {
-    const tabId = 99;
-    const clickP = capturedClickHandler({ menuItemId: 'dr-action-sidebar' }, { id: tabId });
-    // The handler is async; wait for it so sidebarTabId is set before we test the relay.
-    Promise.resolve(clickP).then(() => {
-      sentTabMessages.length = 0;
-      capturedBgHandler({ action: 'TABLE_ACTIVATED' }, {});
-      const relayed = sentTabMessages.some(
-        m => m.tabId === tabId && m.msg && m.msg.action === 'TABLE_ACTIVATED'
-      );
-      eq('table-activation AC4 runtime: TABLE_ACTIVATED IS relayed when sidebarTabId is set',
-        relayed, true);
-    }).catch(() => {
-      // If the async path fails in the test environment, fall back to the source test.
-    });
-  }
+  eq('table-activation AC4 runtime: the bus listener is the worker\'s only message listener',
+    result.listenerType, 'function');
+  eq('table-activation AC4 runtime: no relay when the worker holds no sidebar tab number',
+    result.relaysWithNoTabNumber, 0);
+  eq('table-activation AC4 runtime: opening the sidebar sends its report to that tab',
+    result.sentOpenedReport, true);
+  eq('table-activation AC4 runtime: still no relay once the worker holds one',
+    result.relaysWithTabNumber, 0);
 })();
 
 // ---------------------------------------------------------------------------
@@ -13682,25 +13649,35 @@ function fireMouseClick(buttonEl, fn) {
   // omitted: background.js guards on `chrome.sidePanel && chrome.sidePanel.open`,
   // so with it absent the menu handler never awaits and runs to completion
   // synchronously, letting us assert without async plumbing.
-  // rejectClosePath simulates a receiving end that is already gone by the time
-  // the close message goes out, which is exactly the onRemoved case. It used
-  // to reject the tab-directed leg; that leg retired with the page's copy of
-  // "the sidebar is open" (#241), so it rejects the broadcast instead. The
-  // broadcast is the one leg left, and the service worker catches its
-  // rejection.
-  function loadBackground({ rejectClosePath = false } = {}) {
+  //
+  // The worker runs on the bus (#325), so the bus source goes into the same
+  // function scope ahead of it, standing in for the importScripts the browser
+  // runs. The stub's chrome interfaces follow Chrome's callback contract, which
+  // is the one the bus calls: chrome.tabs.query must exist even though every
+  // publish here names its tab, because a tab-routed send with no query
+  // interface throws.
+  //
+  // closeSidebarUnreceived simulates a receiving end that is already gone by
+  // the time the close topic goes out, which is exactly the onRemoved case.
+  // Chrome reports that through chrome.runtime.lastError on the callback, and
+  // the bus consumes it.
+  function loadBackground({ closeSidebarUnreceived = false } = {}) {
     const runtimeSends = [];
     const tabSends = [];
     const listeners = {};
     const chromeStub = {
       runtime: {
+        lastError: null,
         onInstalled: { addListener: () => {} },
         onMessage: { addListener: (fn) => { listeners.message = fn; } },
-        sendMessage: (msg) => {
+        sendMessage: (msg, cb) => {
           runtimeSends.push(msg);
-          return rejectClosePath && msg.action === 'CLOSE_SIDEBAR'
-            ? Promise.reject(new Error('no receiving end'))
-            : Promise.resolve();
+          chromeStub.runtime.lastError =
+            closeSidebarUnreceived && msg.action === 'intent:closeSidebar'
+              ? { message: 'Could not establish connection. Receiving end does not exist.' }
+              : null;
+          if (cb) cb(undefined);
+          chromeStub.runtime.lastError = null;
         },
       },
       contextMenus: {
@@ -13709,16 +13686,17 @@ function fireMouseClick(buttonEl, fn) {
         onClicked: { addListener: (fn) => { listeners.menuClicked = fn; } },
       },
       tabs: {
-        sendMessage: (tabId, msg) => {
+        query: (q, cb) => { cb([{ id: PANEL_TAB }]); },
+        sendMessage: (tabId, msg, cb) => {
           tabSends.push({ tabId, msg });
-          return Promise.resolve();
+          if (cb) cb(undefined);
         },
         onUpdated:   { addListener: (fn) => { listeners.updated = fn; } },
         onRemoved:   { addListener: (fn) => { listeners.removed = fn; } },
         onActivated: { addListener: (fn) => { listeners.activated = fn; } },
       },
     };
-    new Function('chrome', 'console', bgSrc)(
+    new Function('chrome', 'console', messagingCode + '\n' + bgSrc)(
       chromeStub,
       { warn: () => {}, debug: () => {}, log: () => {} }
     );
@@ -13735,8 +13713,8 @@ function fireMouseClick(buttonEl, fn) {
   (function closeNotifiesTheSidebarOnly() {
     const ctx = loadBackground();
     openPanel(ctx);
-    eq('bg routing: opening the sidebar sends SIDEBAR_OPENED to that tab',
-      ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.action === 'SIDEBAR_OPENED'),
+    eq('bg routing: opening the sidebar sends the sidebar-opened report to that tab',
+      ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.action === 'state:sidebarOpened'),
       true);
 
     ctx.runtimeSends.length = 0;
@@ -13745,10 +13723,10 @@ function fireMouseClick(buttonEl, fn) {
     // Activating a different tab closes the sidebar.
     ctx.listeners.activated({ tabId: 99 });
 
-    eq('bg routing: CLOSE_SIDEBAR broadcast reaches the sidebar page',
-      ctx.runtimeSends.some(m => m.action === 'CLOSE_SIDEBAR'), true);
-    eq('bg routing: CLOSE_SIDEBAR is not sent into the tab — the content script has no handler for it',
-      ctx.tabSends.some(s => s.msg.action === 'CLOSE_SIDEBAR'),
+    eq('bg routing: close topic broadcast reaches the sidebar page',
+      ctx.runtimeSends.some(m => m.action === 'intent:closeSidebar'), true);
+    eq('bg routing: close topic is not sent into the tab — the content script has no handler for it',
+      ctx.tabSends.some(s => s.msg.action === 'intent:closeSidebar'),
       false);
   })();
 
@@ -13759,15 +13737,15 @@ function fireMouseClick(buttonEl, fn) {
     navCtx.runtimeSends.length = 0;
     navCtx.tabSends.length = 0;
     navCtx.listeners.updated(PANEL_TAB, { status: 'loading' });
-    eq('bg routing: navigating away broadcasts CLOSE_SIDEBAR to the sidebar page',
-      navCtx.runtimeSends.some(m => m.action === 'CLOSE_SIDEBAR'), true);
+    eq('bg routing: navigating away broadcasts the close topic to the sidebar page',
+      navCtx.runtimeSends.some(m => m.action === 'intent:closeSidebar'), true);
     eq('bg routing: navigating away sends nothing into the tab',
-      navCtx.tabSends.some(s => s.msg.action === 'CLOSE_SIDEBAR'), false);
+      navCtx.tabSends.some(s => s.msg.action === 'intent:closeSidebar'), false);
 
     // A removed tab: the close must not surface an error. The broadcast is
     // all that goes out now, and the stub rejects it, so this pins the
     // service worker's own catch.
-    const goneCtx = loadBackground({ rejectClosePath: true });
+    const goneCtx = loadBackground({ closeSidebarUnreceived: true });
     openPanel(goneCtx);
     let threw = false;
     try {
@@ -13778,16 +13756,16 @@ function fireMouseClick(buttonEl, fn) {
     eq('bg routing: closing a removed tab does not throw', threw, false);
   })();
 
-  // --- Rule 2: TABLE_ACTIVATED is not relayed into the tab ---
+  // --- Rule 2: the activation report is not relayed into the tab ---
   (function activatedNotRelayedToTab() {
     const ctx = loadBackground();
     openPanel(ctx);
     ctx.tabSends.length = 0;
 
-    ctx.listeners.message({ action: 'TABLE_ACTIVATED' }, {});
+    ctx.listeners.message({ action: 'state:tableActivated' }, {});
 
-    eq('bg routing: TABLE_ACTIVATED is not relayed to the content script',
-      ctx.tabSends.filter(s => s.msg.action === 'TABLE_ACTIVATED').length, 0);
+    eq('bg routing: the activation report is not relayed to the content script',
+      ctx.tabSends.filter(s => s.msg.action === 'state:tableActivated').length, 0);
   })();
 })();
 
@@ -15075,7 +15053,29 @@ const LADDER_OPTS = {
   eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
     topicNames.slice().sort(),
     ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged',
-     'request:applySettings', 'state:settingsChanged'].sort());
+     'request:applySettings', 'state:settingsChanged',
+     // The service worker's four, plus the two it receives (#325).
+     'intent:menuClicked', 'state:sidebarOpened', 'intent:closeSidebar',
+     'state:sidebarClosed', 'state:pageUnloaded', 'intent:updateMenuLabel'].sort());
+
+  // The worker's six, each with the family and route the topic table states.
+  // A route is the one fact that determines which contexts a publish reaches,
+  // so a wrong one here delivers to the wrong audience in silence.
+  const WORKER_TOPICS = {
+    'intent:menuClicked': ['intent', 'tab'],
+    'state:sidebarOpened': ['state-change', 'tab'],
+    'intent:closeSidebar': ['intent', 'extension-pages'],
+    'state:sidebarClosed': ['state-change', 'extension-pages'],
+    'state:pageUnloaded': ['state-change', 'extension-pages'],
+    'intent:updateMenuLabel': ['intent', 'extension-pages'],
+  };
+  for (const name of Object.keys(WORKER_TOPICS)) {
+    const [family, route] = WORKER_TOPICS[name];
+    eq('DR_BUS.TOPICS: ' + name + ' is in the ' + family + ' family',
+      topics[name] && topics[name].family, family);
+    eq('DR_BUS.TOPICS: ' + name + ' carries the ' + route + ' route',
+      topics[name] && topics[name].route, route);
+  }
   eq('DR_BUS.TOPICS: intent:selectTable is in the intent family',
     topics['intent:selectTable'].family, 'intent');
   // Sprint toggle-split: the toggle view's click handler no longer calls
@@ -19921,6 +19921,23 @@ function makeBusSandbox(opts) {
   });
   eq('settings apply: an answered apply is distinguishable from an unanswered one',
     sawAnswer, true);
+})();
+
+// --- #325 Task 8: the service worker runs on the bus ---
+(function workerRunsOnBus() {
+  const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
+  eq('worker on bus: importScripts loads the messaging adapter',
+    /importScripts\([^)]*adapters\/messaging\.js/.test(bgSrc), true);
+  eq('worker on bus: no chrome.runtime.onMessage listener of its own',
+    bgSrc.includes('chrome.runtime.onMessage.addListener'), false);
+  eq('worker on bus: no raw chrome.tabs.sendMessage call',
+    bgSrc.includes('chrome.tabs.sendMessage'), false);
+  eq('worker on bus: the menu click publishes with an explicit tab number',
+    /DR_BUS\.publish\(\s*'intent:menuClicked',\s*\{\},\s*\{\s*tabId:/.test(bgSrc), true);
+  eq('worker on bus: the page-unload subscriber reads the sending tab from meta',
+    /subscribe\(\s*'state:pageUnloaded',\s*\([^)]*meta[^)]*\)/.test(bgSrc), true);
+  eq('worker on bus: the duplicate on/off re-send is gone',
+    bgSrc.includes('tableEnabledChanged'), false);
 })();
 
 // --- Report ---

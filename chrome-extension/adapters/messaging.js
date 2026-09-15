@@ -133,6 +133,18 @@ const DR_BUS = (function () {
     // reads whether anyone answered at all to decide bound versus unbound.
     // The answer's value is never read.
     'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
+    // The service worker's four topics. The two it publishes to a tab carry
+    // an explicit tab number: the menu-click tab and the sidebar's tab are
+    // each the worker's to name, and neither is guaranteed to be the active
+    // one at the moment of the send.
+    'intent:menuClicked': { family: INTENT, route: ROUTE_TAB },
+    'state:sidebarOpened': { family: STATE_CHANGE, route: ROUTE_TAB },
+    'intent:closeSidebar': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
+    'state:sidebarClosed': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    // The worker reads meta.tabId on this one, to act only for the tab the
+    // sidebar was opened for.
+    'state:pageUnloaded': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'intent:updateMenuLabel': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
   };
 
   const subscribers = new Map(); // topic name -> Set<handler>
