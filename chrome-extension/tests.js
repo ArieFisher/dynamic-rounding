@@ -15684,9 +15684,13 @@ const LADDER_OPTS = {
   vm.createContext(sandbox);
   vm.runInContext(constantsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
 
-  sandbox.__DR_BUS.publish('request:applySettings', { settings: { offsetTop: -2, rangeExpr: 'A1:B2' } });
+  // The settings apply is a request (#325), so the ask is what puts it on the
+  // wire. Both verbs build the same envelope through the same tab carrier, so
+  // this still pins the shape the old sendToActiveTab sent.
+  sandbox.__DR_BUS.request('request:applySettings',
+    { settings: { offsetTop: -2, rangeExpr: 'A1:B2' } }, () => {});
 
-  eq('wire payload: exactly one chrome.tabs.sendMessage call for one publish()',
+  eq('wire payload: exactly one chrome.tabs.sendMessage call for one ask',
     sentCalls.length, 1);
   if (sentCalls.length !== 1) return;
 
@@ -15708,7 +15712,7 @@ const LADDER_OPTS = {
   // on success. This only pins the MECHANISM — that publish() still passes a
   // callback — not the behavior; see appModelSettings_settingsPublish_
   // deliveryFeedback_behavioral below for the behavioral coverage.
-  eq('wire payload: publish() passes a response callback to chrome.tabs.sendMessage, matching sendToActiveTab\'s delivery-failure handling (regression — see PR notes)',
+  eq('wire payload: the ask passes a response callback to chrome.tabs.sendMessage, matching sendToActiveTab\'s delivery-failure handling (regression — see PR notes)',
     typeof callback, 'function');
 })();
 
@@ -19639,30 +19643,29 @@ function makeBusSandbox(opts) {
 
 // --- #325 Task 1: the route picks the carrier, not the publishing context ---
 (function busRoutePicksCarrier() {
-  // No topic carries the extension-pages route yet — the first arrives when
-  // the service worker moves onto the bus. That carrier's coverage lands with
-  // it. What this pins is the discriminating case available now: the old
-  // transport sniff inferred the carrier from which Chrome interface the
-  // publishing context held, and the route no longer lets it.
+  // The old transport sniff inferred the carrier from which Chrome interface
+  // the publishing context held. The route no longer lets it.
 
   // A tab-routed topic with no explicit tab number: the bus runs the active-tab
-  // lookup the sidebar used to repeat before each of its own sends.
+  // lookup the sidebar used to repeat before each of its own sends. The payload
+  // here is the bus's contract under test, not the topic's production payload —
+  // the menu click carries none.
   const b = makeBusSandbox();
-  b.bus.publish('request:applySettings', { settings: { y: 2 } });
+  b.bus.publish('intent:menuClicked', { probe: 1 });
   eq('bus route: a tab topic queries the active tab once', b.sent.queries, 1);
   eq('bus route: and sends to that tab', b.sent.tabs.length, 1);
   eq('bus route: aimed at the tab the query answered with',
     b.sent.tabs.length === 1 ? b.sent.tabs[0].tabId : null, 7);
   eq('bus route: the topic name itself is the name on the wire',
-    b.sent.tabs.length === 1 ? b.sent.tabs[0].msg.action : null, 'request:applySettings');
+    b.sent.tabs.length === 1 ? b.sent.tabs[0].msg.action : null, 'intent:menuClicked');
   eq('bus route: the message carries the payload beside the name, nothing else',
     b.sent.tabs.length === 1 ? Object.keys(b.sent.tabs[0].msg).sort().join(',') : null,
-    'action,settings');
+    'action,probe');
 
   // An explicit tab number skips the lookup. Only the service worker holds a
   // tab number, and it holds it for a tab that may not be the active one.
   const c = makeBusSandbox();
-  c.bus.publish('request:applySettings', { settings: {} }, { tabId: 42 });
+  c.bus.publish('intent:menuClicked', {}, { tabId: 42 });
   eq('bus route: an explicit tab number skips the active-tab lookup', c.sent.queries, 0);
   eq('bus route: and addresses the tab the caller named',
     c.sent.tabs.length === 1 ? c.sent.tabs[0].tabId : null, 42);
@@ -19672,14 +19675,63 @@ function makeBusSandbox(opts) {
   // table exists to remove.
   const d = makeBusSandbox({ noTabs: true });
   let threw = false;
-  try { d.bus.publish('request:applySettings', { settings: {} }); } catch (e) { threw = true; }
+  try { d.bus.publish('intent:menuClicked', {}); } catch (e) { threw = true; }
   eq('bus route: a tab topic published where chrome.tabs is absent throws', threw, true);
+
+  // The extension-pages route takes the other carrier: the broadcast that
+  // reaches the service worker and the open sidebar, and never a content
+  // script. It needs no tab number, so it runs no active-tab lookup.
+  const f = makeBusSandbox();
+  f.bus.publish('intent:closeSidebar', {});
+  eq('bus route: an extension-pages topic broadcasts once', f.sent.pages.length, 1);
+  eq('bus route: and sends into no tab', f.sent.tabs.length, 0);
+  eq('bus route: and runs no active-tab lookup', f.sent.queries, 0);
+  eq('bus route: the broadcast carries the topic name on the wire',
+    f.sent.pages.length === 1 ? f.sent.pages[0].action : null, 'intent:closeSidebar');
+
+  // An extension-pages publish from a context with no chrome.tabs reaches its
+  // audience: that carrier needs none. This is the case the sniff got wrong —
+  // it read the absent interface as a reason to pick the other carrier.
+  const g = makeBusSandbox({ noTabs: true });
+  g.bus.publish('state:pageUnloaded', {});
+  eq('bus route: an extension-pages topic sends from a context with no chrome.tabs',
+    g.sent.pages.length, 1);
 
   // A same-context topic sends nothing either way.
   const e = makeBusSandbox();
   e.bus.publish('intent:selectTable', { table: null });
   eq('bus route: a route-less topic makes no wire send',
     e.sent.pages.length + e.sent.tabs.length, 0);
+})();
+
+// --- #340: publish() refuses a request topic rather than dropping its answer ---
+//
+// The ask refuses a topic recorded one-way and the answering registration
+// refuses a topic recorded as a question. The one-way send had no matching
+// refusal: handed a question it sent the message, the responder answered, and
+// the answer went nowhere, with nothing logged and nothing failed.
+(function busPublishRefusesRequestTopic() {
+  const a = makeBusSandbox();
+  let message = '';
+  try {
+    a.bus.publish('request:applySettings', { settings: {} });
+  } catch (e) {
+    message = e.message;
+  }
+  eq('one-way guard: publishing a request topic throws', message.length > 0, true);
+  eq('one-way guard: the error names the topic and points at request()',
+    message.includes('request:applySettings') && message.includes('request()'), true);
+  eq('one-way guard: and nothing goes out on either carrier',
+    a.sent.pages.length + a.sent.tabs.length, 0);
+
+  // The two siblings, unchanged: each of the three pairings now refuses.
+  const b = makeBusSandbox();
+  let askThrew = false;
+  try { b.bus.request('intent:menuClicked', {}, () => {}); } catch (e) { askThrew = true; }
+  eq('one-way guard: request() still refuses a one-way topic', askThrew, true);
+  let respondThrew = false;
+  try { b.bus.respond('intent:menuClicked', () => {}); } catch (e) { respondThrew = true; }
+  eq('one-way guard: respond() still refuses a one-way topic', respondThrew, true);
 })();
 
 // --- #325 Task 2: a subscriber learns the sending tab ---

@@ -90,6 +90,10 @@
  *     asynchronous one needs a design that does not exist yet.
  *   - One responder per topic. A second registration throws where it is made,
  *     rather than later when two answers race.
+ *   - Each verb refuses a topic of the wrong family, at the call. publish()
+ *     refuses a request topic, because it has nowhere to put an answer and
+ *     would drop one in silence; request() and respond() each refuse a
+ *     one-way topic, which has no responder to answer them.
  *   - An arriving request with no responder in this context sends no reply.
  *     Answering undefined would close the publisher's callback on behalf of a
  *     context holding no answer.
@@ -286,6 +290,15 @@ const DR_BUS = (function () {
 
   function publish(topic, payload, opts) {
     assertKnownTopic(topic);
+    // A request topic's responder returns an answer, and publish() has nowhere
+    // to put one: it would send the message, the responder would answer, and
+    // the answer would go nowhere, with nothing logged and nothing failed.
+    // request() and respond() each reject a topic of the wrong family already;
+    // this is the third pairing (#340).
+    if (TOPICS[topic].family === REQUEST) {
+      throw new Error('DR_BUS: publish() cannot carry a request-family topic; "' +
+        topic + '" is answered, and publish() discards the answer — use request()');
+    }
     publishDepth++;
     try {
       if (publishDepth > MAX_PUBLISH_DEPTH) {
