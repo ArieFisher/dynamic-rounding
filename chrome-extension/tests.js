@@ -20375,300 +20375,79 @@ function makeBusSandbox(opts) {
       seen, [{ early: false }]);
   })();
 
-  // The bound tab keeps running while it sits in the background, and its
-  // reports still describe the page the sidebar shows.
-  (function backgroundReportsFromTheBoundTab() {
-    const bus = makeBus();
-    const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
-    const boundTab = createBoundTab(tabs, bus);
-    boundTab.resolve(() => {});
-    boundTab.watch(() => {});
-
-    const seen = [];
-    boundTab.subscribe('state:tableEnabledChanged', (payload) => { seen.push(payload); });
-
-    tabs.activate(OTHER_TAB);
-    bus.deliver('state:tableEnabledChanged', { enabled: false }, OWN_TAB);
-    eq('bound tab: a report from the bound tab is acted on while that tab sits in the background',
-      seen, [{ enabled: false }]);
-  })();
-
-  // --- Which tab is in front ---
-  (function frontTabChanges() {
+  // --- Leaving the bound tab ---
+  //
+  // The service worker closes the sidebar when the tab it was opened for
+  // stops being the front tab, and misses two routes: an idle restart empties
+  // the tab number it compares against, and a sidebar opened from Chrome's
+  // own side-panel control never sets it. On those routes the sidebar used to
+  // survive the switch and keep showing controls for a page the user had
+  // left. It closes itself now, so a tab switch has one outcome.
+  (function closesOnSwitchAway() {
     const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
     const boundTab = createBoundTab(tabs, makeBus());
     boundTab.resolve(() => {});
 
-    const changes = [];
-    boundTab.watch((isFront) => { changes.push(isFront); });
+    let closes = 0;
+    boundTab.onSwitchAway(() => { closes++; });
+
+    tabs.activate(OWN_TAB);
+    eq('bound tab: staying on the bound tab does not close the sidebar', closes, 0);
 
     tabs.activate(OTHER_TAB);
-    eq('bound tab: activating another tab reports the bound tab away', changes, [false]);
-
-    // A switch between two other tabs changes nothing the sidebar draws.
-    tabs.activate(99);
-    eq('bound tab: a switch between two other tabs reports nothing new', changes, [false]);
-
-    tabs.activate(OWN_TAB);
-    eq('bound tab: returning to the bound tab reports it in front again',
-      changes, [false, true]);
-
-    tabs.activate(OWN_TAB);
-    eq('bound tab: staying on the bound tab reports nothing new',
-      changes, [false, true]);
+    eq('bound tab: switching to another tab closes the sidebar', closes, 1);
   })();
 
   // A side panel belongs to one browser window, and the activation event
-  // fires for every window. An activation in a second window leaves the
-  // bound tab exactly where it was — still the front tab of its own window —
-  // so treating it as a switch would dim the sidebar against the page the
-  // user is looking at.
+  // fires for every window. An activation in a second window leaves the bound
+  // tab where it was — still the front tab of its own window — so closing on
+  // it would take the sidebar away from a user who never left its page.
   (function activationInAnotherWindow() {
     const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
     const boundTab = createBoundTab(tabs, makeBus());
     boundTab.resolve(() => {});
 
-    const changes = [];
-    boundTab.watch((isFront) => { changes.push(isFront); });
+    let closes = 0;
+    boundTab.onSwitchAway(() => { closes++; });
 
     tabs.activate(OTHER_TAB, OTHER_WINDOW);
-    eq('bound tab: an activation in another window leaves the bound tab in front',
-      changes, []);
+    eq('bound tab: an activation in another window does not close the sidebar', closes, 0);
 
     tabs.activate(OTHER_TAB, OWN_WINDOW);
-    eq('bound tab: an activation in the bound tab\'s own window marks it away',
-      changes, [false]);
+    eq('bound tab: an activation in the bound tab\'s own window closes it', closes, 1);
   })();
 
-  // The bound tab's number reached in another window is a different tab.
-  (function activationInAnotherWindowWhileAway() {
-    const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
+  // With no tab recorded there is nothing to have left, and closing on the
+  // next switch would take the sidebar away for a reason it cannot state.
+  (function noBoundTabNeverCloses() {
+    const tabs = makeTabs([]);
     const boundTab = createBoundTab(tabs, makeBus());
     boundTab.resolve(() => {});
 
-    const changes = [];
-    boundTab.watch((isFront) => { changes.push(isFront); });
+    let closes = 0;
+    boundTab.onSwitchAway(() => { closes++; });
 
-    tabs.activate(OTHER_TAB, OWN_WINDOW);
-    tabs.activate(OWN_TAB, OTHER_WINDOW);
-    eq('bound tab: the bound tab\'s number reached in another window does not bring it back',
-      changes, [false]);
+    tabs.activate(OTHER_TAB);
+    eq('bound tab: with no tab recorded a switch does not close the sidebar', closes, 0);
   })();
 
-  // A tabs interface with no activation event must not throw, and the sidebar
-  // then stays where it was: no switch is ever reported, so its controls are
-  // never put away. That is its behavior before this change.
-  (function watchWithNoActivationEvent() {
+  // A tabs interface with no activation event must not throw. The sidebar
+  // then never closes itself, which is its behavior before this change.
+  (function noActivationEvent() {
     const bus = makeBus();
     const boundTab = createBoundTab({ query: (q, cb) => cb([{ id: OWN_TAB }]) }, bus);
     boundTab.resolve(() => {});
-    const changes = [];
-    let threw = false;
-    try { boundTab.watch((isFront) => { changes.push(isFront); }); } catch (e) { threw = true; }
-    eq('bound tab: a tabs interface with no activation event does not throw', threw, false);
-    eq('bound tab: without an activation event no switch is ever reported', changes, []);
 
-    // Reports still reach the sidebar; only the front-tab half is missing.
+    let threw = false;
+    try { boundTab.onSwitchAway(() => {}); } catch (e) { threw = true; }
+    eq('bound tab: a tabs interface with no activation event does not throw', threw, false);
+
+    // Reports still reach the sidebar; only the self-close is missing.
     const seen = [];
     boundTab.subscribe('state:applyOk', () => { seen.push('report'); });
     bus.deliver('state:applyOk', {}, OWN_TAB);
     eq('bound tab: reports still reach the sidebar with no activation event',
       seen, ['report']);
-  })();
-
-  // --- What the sidebar shows while its tab is not the one in front ---
-  //
-  // createAwayView takes the page elements it writes, so this drives the real
-  // source against stubs. The wiring that calls it is pinned separately, at
-  // the end of this file.
-  (function awayViewSection() {
-    const viewFactory = sidebarSrc.match(/function createAwayView\([\s\S]*?\n\}/);
-    eq('bound tab: createAwayView extracted from sidebar.js', !!viewFactory, true);
-    if (!viewFactory) return;
-
-    const createAwayView = (new Function('return ' + viewFactory[0] + ';'))();
-
-    function makeEls() {
-      const classes = new Set();
-      // Stand-ins for the parts of the sidebar that describe the bound page.
-      // The count is what the assertions read; which parts they are is the
-      // sidebar's own selector, checked against the stylesheet below.
-      const controls = [{}, {}, {}].map(() => ({
-        attrs: new Set(),
-        setAttribute(name) { this.attrs.add(name); },
-        removeAttribute(name) { this.attrs.delete(name); },
-      }));
-      return {
-        body: {
-          classList: {
-            add: (c) => classes.add(c),
-            remove: (c) => classes.delete(c),
-            contains: (c) => classes.has(c),
-          },
-          querySelectorAll: () => controls,
-        },
-        status: { textContent: '', dataset: {} },
-        has: (c) => classes.has(c),
-        controlCount: () => controls.length,
-        inertCount: () => controls.filter((c) => c.attrs.has('inert')).length,
-      };
-    }
-
-    const AWAY_CLASS = 'tab-away';
-
-    (function goingAway() {
-      const els = makeEls();
-      const view = createAwayView(els.body, els.status);
-      els.status.textContent = 'Right-click a table to connect it here.';
-
-      view.show();
-      eq('away view: showing marks the sidebar as away', els.has(AWAY_CLASS), true);
-      eq('away view: showing replaces the message with the away message',
-        els.status.textContent.length > 0 &&
-        els.status.textContent !== 'Right-click a table to connect it here.', true);
-      eq('away view: the away message is tagged with its own source',
-        els.status.dataset.source, 'tab-away');
-    })();
-
-    (function comingBack() {
-      const els = makeEls();
-      const view = createAwayView(els.body, els.status);
-      els.status.textContent = 'This table\'s original values are no longer available.';
-      els.status.dataset.source = 'blocked';
-
-      view.show();
-      view.hide();
-
-      eq('away view: coming back clears the away mark', els.has(AWAY_CLASS), false);
-      eq('away view: coming back puts back the message that was showing',
-        els.status.textContent, 'This table\'s original values are no longer available.');
-      eq('away view: coming back puts back that message\'s source',
-        els.status.dataset.source, 'blocked');
-    })();
-
-    // A message with no source tag goes back the same way, tag and all.
-    (function comingBackToAnUntaggedMessage() {
-      const els = makeEls();
-      const view = createAwayView(els.body, els.status);
-      els.status.textContent = 'Capture saved.';
-
-      view.show();
-      view.hide();
-
-      eq('away view: an untagged message comes back untagged',
-        els.status.textContent, 'Capture saved.');
-      eq('away view: an untagged message comes back with no source',
-        'source' in els.status.dataset, false);
-    })();
-
-    // A second show() must not overwrite what the first one stashed, or the
-    // away message itself would come back as the sidebar's message.
-    (function showingTwice() {
-      const els = makeEls();
-      const view = createAwayView(els.body, els.status);
-      els.status.textContent = 'Right-click a table to connect it here.';
-
-      view.show();
-      view.show();
-      view.hide();
-
-      eq('away view: a second showing keeps the first one\'s stashed message',
-        els.status.textContent, 'Right-click a table to connect it here.');
-    })();
-
-    // Coming back without having gone away leaves the sidebar alone.
-    (function hideWithoutShow() {
-      const els = makeEls();
-      const view = createAwayView(els.body, els.status);
-      els.status.textContent = 'Right-click a table to connect it here.';
-
-      view.hide();
-
-      eq('away view: coming back without having gone away leaves the message alone',
-        els.status.textContent, 'Right-click a table to connect it here.');
-      eq('away view: coming back without having gone away leaves the mark off',
-        els.has(AWAY_CLASS), false);
-    })();
-
-    // Dimming is a mouse-only guard: pointer-events leaves the tab order
-    // alone, so the slider thumbs (tabindex 0, with key handlers) and every
-    // checkbox stay reachable by keyboard. Tab and an arrow key would publish
-    // the settings record while the sidebar is away. The inert attribute is
-    // what takes the controls out of the tab order.
-    (function awayBlocksKeyboardInput() {
-      const els = makeEls();
-      const view = createAwayView(els.body, els.status);
-
-      view.show();
-      eq('away view: showing makes the controls inert',
-        els.inertCount(), els.controlCount());
-
-      view.hide();
-      eq('away view: coming back lifts the inert attribute',
-        els.inertCount(), 0);
-    })();
-
-    // A second showing must not leave the attribute behind on the return.
-    (function showingTwiceThenComingBack() {
-      const els = makeEls();
-      const view = createAwayView(els.body, els.status);
-
-      view.show();
-      view.show();
-      view.hide();
-
-      eq('away view: a second showing still lifts the inert attribute on the return',
-        els.inertCount(), 0);
-    })();
-
-    // The stylesheet dims the same parts the sidebar makes inert. The
-    // selector lives in sidebar.js; this reads it from there and checks the
-    // stylesheet's away rules name the same parts, so the two cannot drift.
-    (function inertAndDimmedPartsAgree() {
-      const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-      const selectorMatch = sidebarSrc.match(/const AWAY_INERT_SELECTOR = '([^']+)'/);
-      const classMatch = sidebarSrc.match(/const TAB_AWAY_CLASS = '([^']+)'/);
-
-      eq('away view: the inert selector is readable from sidebar.js (fails closed on a rename)',
-        !!selectorMatch && !!classMatch, true);
-      if (!selectorMatch || !classMatch) return;
-
-      const parts = selectorMatch[1].split(',').map((s) => s.trim()).filter(Boolean);
-      eq('away view: the inert selector names parts to check (fails closed on an empty list)',
-        parts.length > 0, true);
-
-      const missing = parts.filter((part) =>
-        !new RegExp('body\\.' + classMatch[1] + '\\s+' +
-          part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')).test(sidebarHtml));
-      eq('away view: every part the sidebar makes inert is also dimmed by the stylesheet',
-        missing, []);
-    })();
-  })();
-
-  // --- The away state has a stylesheet to match ---
-  //
-  // The class name is written in two files, and nothing else reports a
-  // mismatch: the sidebar adds the class and the stylesheet dims on it. These
-  // read the class out of the sidebar's own source rather than restating it.
-  (function awayStateIsStyled() {
-    const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-    const classMatch = sidebarSrc.match(/const TAB_AWAY_CLASS = '([^']+)'/);
-
-    eq('away view: the away class name is readable from sidebar.js (fails closed on a rename)',
-      !!classMatch, true);
-    if (!classMatch) return;
-    const awayClass = classMatch[1];
-
-    eq('away view: the stylesheet dims the settings area while away',
-      new RegExp('body\\.' + awayClass + '\\s+#optionsSection').test(sidebarHtml), true);
-    eq('away view: the stylesheet dims the capture section while away',
-      new RegExp('body\\.' + awayClass + '\\s+#captureSection').test(sidebarHtml), true);
-    eq('away view: the stylesheet dims the main switch while away',
-      new RegExp('body\\.' + awayClass + '\\s+\\.title-row \\.switch').test(sidebarHtml), true);
-    eq('away view: the away rules stop input reaching the dimmed controls',
-      /pointer-events:\s*none/.test(
-        (sidebarHtml.match(new RegExp('body\\.' + awayClass + '[\\s\\S]*?\\}', 'g')) || []).join('')),
-      true);
   })();
 
   // --- Every content-script report goes through the gate ---
@@ -20701,17 +20480,17 @@ function makeBusSandbox(opts) {
   })();
 })();
 
-// --- The away view is wired to the activation event (issue #343) ------------
+// --- The sidebar's one-tab rule, driven end to end (issue #343) -------------
 //
-// The two sections above drive the units directly, so they pass whether or
-// not the sidebar ever calls them. This one evaluates the whole sidebar
-// against stubs, captures the activation listener it registers, and drives
-// the real path from a tab switch through to the page elements.
-(function awayViewWiringSection() {
+// The section above drives the unit directly, so it passes whether or not the
+// sidebar ever calls it. This one evaluates the whole sidebar against stubs,
+// captures the message listener and the activation listener it registers, and
+// drives a report and a tab switch through the real path.
+(function boundTabWiringSection() {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const coreSrc = sourceByName('lib/dr-number/core.js');
   if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
-    eq('away wiring: source files present in manifest', false, true);
+    eq('bound tab wiring: source files present in manifest', false, true);
     return;
   }
 
@@ -20757,10 +20536,11 @@ function makeBusSandbox(opts) {
   };
 
   let activationListener = null;
+  let messageListener = null;
   const settingsReads = [];
   const captureChrome = {
     runtime: {
-      onMessage: { addListener() {} },
+      onMessage: { addListener(fn) { messageListener = fn; } },
       sendMessage() {},
       lastError: null,
     },
@@ -20778,12 +20558,17 @@ function makeBusSandbox(opts) {
     },
   };
 
+  let closes = 0;
   const savedDoc = global.document;
   const savedChrome = global.chrome;
   const savedWindow = global.window;
   global.document = captureDoc;
   global.chrome = captureChrome;
-  global.window = { addEventListener() {}, close() {}, getComputedStyle: () => ({ display: 'block' }) };
+  global.window = {
+    addEventListener() {},
+    close() { closes++; },
+    getComputedStyle: () => ({ display: 'block' }),
+  };
 
   let evalError = null;
   try {
@@ -20799,50 +20584,40 @@ function makeBusSandbox(opts) {
   }
 
   try {
-    eq('away wiring: the sidebar evaluated without error',
+    eq('bound tab wiring: the sidebar evaluated without error',
       evalError === null ? 'none' : evalError.message, 'none');
-    eq('away wiring: the sidebar registered an activation listener',
+    eq('bound tab wiring: the sidebar registered a message listener',
+      typeof messageListener, 'function');
+    eq('bound tab wiring: the sidebar registered an activation listener',
       typeof activationListener, 'function');
-    if (typeof activationListener !== 'function') return;
+    if (typeof messageListener !== 'function' || typeof activationListener !== 'function') return;
 
-    eq('away wiring: the sidebar is not marked away before any switch',
-      bodyClasses.has('tab-away'), false);
+    eq('bound tab wiring: the opening read reached the bound tab',
+      settingsReads.length > 0, true);
 
-    const readsBeforeLeaving = settingsReads.length;
-    eq('away wiring: the opening read reached the bound tab', readsBeforeLeaving > 0, true);
+    // A locked-table report from another tab must not reach the controls.
+    // The lock is the loudest of the eight reports: it writes the status and
+    // stops the sidebar accepting input.
+    messageListener({ action: 'state:applyBlocked' }, { tab: { id: OTHER_TAB } }, () => {});
+    eq('bound tab wiring: a lock reported by another tab does not lock the sidebar',
+      bodyClasses.has('table-locked'), false);
 
-    // Switching to another tab in the same window marks the sidebar away and
-    // puts the reason on screen.
+    // The same report from the bound tab does reach them.
+    messageListener({ action: 'state:applyBlocked' }, { tab: { id: BOUND_TAB } }, () => {});
+    eq('bound tab wiring: a lock reported by the bound tab locks the sidebar',
+      bodyClasses.has('table-locked'), true);
+
+    // Switching to another tab in the sidebar's own window closes it.
+    eq('bound tab wiring: the sidebar is open before any switch', closes, 0);
     activationListener({ tabId: OTHER_TAB, windowId: BOUND_WINDOW });
-    eq('away wiring: a switch away marks the sidebar away',
-      bodyClasses.has('tab-away'), true);
-    eq('away wiring: a switch away tags the status with the away source',
-      statusEl.dataset.source, 'tab-away');
-    eq('away wiring: a switch away puts a message on screen',
-      statusEl.textContent.length > 0, true);
-    eq('away wiring: a switch away sends nothing to the page',
-      settingsReads.length, readsBeforeLeaving);
-
-    // Coming back clears the away state and re-reads the page.
-    activationListener({ tabId: BOUND_TAB, windowId: BOUND_WINDOW });
-    eq('away wiring: coming back clears the away mark',
-      bodyClasses.has('tab-away'), false);
-    eq('away wiring: coming back clears the away source tag',
-      'source' in statusEl.dataset && statusEl.dataset.source === 'tab-away', false);
-    eq('away wiring: coming back re-reads the page',
-      settingsReads.length > readsBeforeLeaving, true);
-
-    // An activation in another window is not a switch: the bound tab is
-    // still the front tab of its own window.
-    activationListener({ tabId: OTHER_TAB, windowId: BOUND_WINDOW + 1 });
-    eq('away wiring: an activation in another window leaves the sidebar alone',
-      bodyClasses.has('tab-away'), false);
+    eq('bound tab wiring: switching to another tab closes the sidebar', closes, 1);
   } finally {
     global.document = savedDoc;
     global.chrome = savedChrome;
     global.window = savedWindow;
   }
 })();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);

@@ -36,7 +36,6 @@ const APPLY_BLOCKED_STATUS_MSG = 'This table\'s original values are no longer av
 function createBoundTab(tabsApi, bus) {
   let boundTabId = null;
   let boundWindowId = null;
-  let isFront = true;
 
   // A report belongs to the bound tab only when the two numbers match. A
   // report carrying no tab came from an extension page rather than a content
@@ -48,19 +47,14 @@ function createBoundTab(tabsApi, bus) {
     return boundTabId !== null && !!meta && meta.tabId === boundTabId;
   }
 
-  function setFront(nextIsFront, onChange) {
-    if (nextIsFront === isFront) return;
-    isFront = nextIsFront;
-    onChange(isFront);
-  }
-
   return {
     // Record the tab the sidebar was opened for, and the window holding it,
-    // then run onReady. The order is load-bearing: the read reaches the page,
-    // the page reports back, and a report arriving before the tab number
-    // exists has nothing to be compared against. No tab to bind to leaves the
-    // numbers unset and still runs the read, which falls to the unbound state
-    // on its own when nothing answers it.
+    // then run onReady. The order
+    // is load-bearing: the read reaches the page, the page reports back, and
+    // a report arriving before the tab number exists has nothing to be
+    // compared against. No tab to bind to leaves the number unset and still
+    // runs the read, which falls to the unbound state on its own when nothing
+    // answers it.
     resolve(onReady) {
       if (!tabsApi || typeof tabsApi.query !== 'function') {
         onReady();
@@ -99,96 +93,36 @@ function createBoundTab(tabsApi, bus) {
       });
     },
 
-    // Report a change in whether the bound tab is the one in front.
+    // Close the sidebar when the tab it was opened for stops being the one in
+    // front. The service worker closes it on the ordinary route and misses
+    // two: an idle restart empties the tab number it compares against, and a
+    // sidebar opened from Chrome's own side-panel control never sets it. On
+    // those routes the sidebar survived the switch and kept showing controls
+    // for a page the user had left. Closing here gives a tab switch one
+    // outcome, whichever route it takes.
     //
     // A side panel belongs to one browser window, and the activation event
-    // fires for every window. An activation in another window says nothing
-    // about which tab is in front of this one — the bound tab is still its
-    // own window's front tab — so it is passed over rather than read as a
-    // switch. A tabs interface reporting no window leaves the comparison on
-    // the tab alone.
+    // fires for every window. An activation in another window leaves the
+    // bound tab where it was — still the front tab of its own window — so it
+    // is passed over. A tabs interface reporting no window leaves the
+    // comparison on the tab alone.
     //
-    // A switch between two other tabs changes nothing the sidebar draws, so
-    // onChange runs on a change of state and not on every activation. A tabs
-    // interface with no activation event leaves the sidebar in its front
-    // state, which is its behavior before this change.
-    watch(onChange) {
+    // With no tab recorded there is nothing to have left, so nothing closes.
+    onSwitchAway(onLeft) {
       if (!tabsApi || !tabsApi.onActivated ||
           typeof tabsApi.onActivated.addListener !== 'function') return;
       tabsApi.onActivated.addListener((activeInfo) => {
-        if (!activeInfo) return;
+        if (!activeInfo || boundTabId === null) return;
         if (boundWindowId !== null && activeInfo.windowId !== boundWindowId) return;
-        setFront(activeInfo.tabId === boundTabId, onChange);
+        if (activeInfo.tabId === boundTabId) return;
+        onLeft();
       });
     },
-
   };
 }
 
-// The sidebar's controls describe one page. While the bound tab is not the
-// one in front, they describe a page the user is not looking at, so they give
-// way to a message and the settings area dims (see sidebar.html's tab-away
-// rules). Whatever message the sidebar was already showing goes to the stash
-// and comes back on the return, so a locked table's explanation survives a
-// tab switch rather than being cleared by one.
-//
-// The two page elements arrive as parameters so this runs in the suite
-// against stubs.
-function createAwayView(bodyEl, statusEl) {
-  const TAB_AWAY_CLASS = 'tab-away';
-  const TAB_AWAY_STATUS_MSG =
-    'These settings belong to another tab. Switch back to that tab to continue.';
-  const TAB_AWAY_SOURCE = 'tab-away';
-
-  // The parts of the sidebar that describe the bound page. Dimming them is a
-  // mouse-only guard: pointer-events leaves the tab order alone, so a key
-  // press still reaches a slider thumb or a checkbox and publishes the
-  // settings record. The inert attribute takes them out of the tab order and
-  // out of the accessibility tree, so neither kind of input reaches them.
-  // The stylesheet dims these same parts on the away class (see
-  // sidebar.html); the suite reads this selector and checks the two agree.
-  const AWAY_INERT_SELECTOR = '#optionsSection, #captureSection, .title-row .switch';
-
-  let isAway = false;
-  let stashedText = null;
-  let stashedSource = null;
-
-  function eachControl(apply) {
-    if (!bodyEl || typeof bodyEl.querySelectorAll !== 'function') return;
-    for (const el of Array.from(bodyEl.querySelectorAll(AWAY_INERT_SELECTOR))) apply(el);
-  }
-
-  return {
-    // A second call while already away would stash the away message itself,
-    // and the return would then put that message back as the sidebar's own.
-    show() {
-      if (isAway) return;
-      isAway = true;
-      stashedText = statusEl.textContent;
-      stashedSource = 'source' in statusEl.dataset ? statusEl.dataset.source : null;
-      bodyEl.classList.add(TAB_AWAY_CLASS);
-      eachControl((el) => el.setAttribute('inert', ''));
-      statusEl.textContent = TAB_AWAY_STATUS_MSG;
-      statusEl.dataset.source = TAB_AWAY_SOURCE;
-    },
-
-    hide() {
-      if (!isAway) return;
-      isAway = false;
-      bodyEl.classList.remove(TAB_AWAY_CLASS);
-      eachControl((el) => el.removeAttribute('inert'));
-      statusEl.textContent = stashedText === null ? '' : stashedText;
-      if (stashedSource === null) delete statusEl.dataset.source;
-      else statusEl.dataset.source = stashedSource;
-      stashedText = null;
-      stashedSource = null;
-    },
-  };
-}
-
-// The two units above, wired to the real tabs interface and the real bus.
+// The unit above, wired to the real tabs interface and the real bus.
 const boundTab = createBoundTab(chrome.tabs, DR_BUS);
-const awayView = createAwayView(document.body, statusEl);
 
 // Issue #272: while the #262 lock forces the main toggle ON, the record's
 // real enabled lives here — the forced ON is display-only. Captured when the
@@ -1130,22 +1064,11 @@ if (rangeExprEl) rangeExprEl.value = '';
 // returns nulls and the bands render the prompt.
 boundTab.resolve(() => {
   pullSettingsAndApplyToUI();
-  // Watching starts here for the same reason: an activation arriving before
-  // the tab number exists would compare against nothing and read as away.
-  boundTab.watch((isFront) => {
-    if (!isFront) {
-      awayView.show();
-      return;
-    }
-    awayView.hide();
-    // The page may have changed while the sidebar was away, so the controls
-    // come back from a fresh read rather than from what they held.
-    try {
-      pullSettingsAndApplyToUI();
-    } catch (e) {
-      // sidebar may be in teardown; harmless
-    }
-  });
+  // Registered here for the same reason the read runs here: an activation
+  // arriving before the tab number exists would have nothing to compare
+  // against. The service worker closes the sidebar on most tab switches; this
+  // covers the switches it misses, so every switch ends the same way.
+  boundTab.onSwitchAway(() => { window.close(); });
 });
 
 updateDisabledState();

@@ -102,8 +102,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | --- | --- |
 | context | One running, isolated instance of extension code, with its own memory. No context reads another context's variables and no context calls another context's functions; messages are the only route in or out. <br><br>Three kinds run: the **content script**, the **sidebar**, and the **service worker**. The running count is larger than three — the content script runs a separate context in every tab. |
 | tab | One browser tab. The content script runs one context in each tab, so the application state of a page belongs to that tab alone and reaches no other tab. The service worker is common to every tab. |
-| bound tab | The tab the sidebar was opened for. The sidebar serves that tab alone: it acts on reports from that tab and drops reports from every other one, and it shows a message in place of its controls while another tab is in front. A separate fact from the tab number the service worker holds, which answers which tab to close the sidebar for. |
-| away state | What the sidebar shows while its bound tab is not the tab in front: the controls that describe that page dim, stop taking input from the mouse and the keyboard, and give way to a message; the message the sidebar was showing comes back on the return. |
+| bound tab | The tab the sidebar was opened for. The sidebar serves that tab alone: it acts on reports from that tab and drops reports from every other one, and it closes itself when that tab stops being the tab in front. A separate fact from the tab number the service worker holds, which answers which tab to close the sidebar for. |
 | content script | The extension code Chrome injects into each web page. One context per tab. |
 | re-injection | Installing the content scripts into tabs that are already open. |
 | sidebar | The extension's control panel page. Its own context. |
