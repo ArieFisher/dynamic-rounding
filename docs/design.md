@@ -226,7 +226,7 @@ Four layers. The dependency direction is the design intent, and two places break
 
 The number package and the classification ladder stay inside the core. The ladder takes plain cell values and returns its decision as data, and the two checks that need the page — a whole-cell link, and the superscript spans — arrive as plain values the caller computed. The capture's renderer takes the capture state and returns the file as a string.
 
-Two breaks, both worth stating plainly. The capture's state serializer sits beside the pure packages while reading the page and calling both the application model and the adapter factory, so the innermost layer reaches up two layers. And the controller, both views, and the service worker all hold Chrome calls of their own, with the controller and the views writing the page directly, so the adapters layer concentrates page access without holding all of it.
+Two breaks, both worth stating plainly. The capture's state serializer sits beside the pure packages while reading the page and calling both the application model and the adapter factory, so the innermost layer reaches up two layers. And the service worker holds the Chrome calls for its right-click menu items and the side panel's lifetime, while the controller and both views write the page directly, so the adapters layer concentrates page access without holding all of it. Messaging is no longer one of the breaks: every context reaches Chrome's messaging through the event bus alone, except the sidebar's three pulls.
 
 No tool enforces the direction. The extension has no build step and no import statements: every content script declares globals into one shared scope, loaded in the order the manifest lists. The suite exercises the core by evaluating every content script in Node behind stubbed page and Chrome interfaces.
 
@@ -236,11 +236,11 @@ No tool enforces the direction. The extension has no build step and no import st
 |---------|-------|-----|
 | Ports and adapters | Whole extension | Keeps the algorithm free of Chrome and the page |
 | Application model with publishing setters | Content script | One place each field changes |
-| Intent and state-change topics | Views to the controller, and the model to the controller | Decoupling without an open event graph |
+| Intent and state-change topics | Views to the controller, the model to the controller, and the content script to the sidebar | Decoupling without an open event graph |
 | Table adapter | Native tables and grids | One row-and-cell interface over two markups |
 | Predicate | The classification ladder | A new exclusion without touching the formatting |
 | Registry | The table registry | Per-table storage keyed by the live element |
-| Request and reply | The sidebar's three pulls | One caller, one answer, on demand. Raw Chrome messaging today; the approved messaging design moves it onto the event bus. |
+| Request and reply | The sidebar's settings apply and its three pulls | One caller, one answer, on demand. The settings apply runs on the event bus; the three pulls use raw Chrome messaging until the messaging refactor's last change. |
 
 ### State ownership
 
@@ -260,17 +260,17 @@ No tool enforces the direction. The extension has no build step and no import st
 
 ### Flow
 
-Three producers reach one controller. A pillbox press publishes an intent topic directly. The right-click menu item and the sidebar's controls each publish a cross-context topic, and a raw listener inside the controller turns the menu item's into an intent topic; the sidebar's settings intent exists but has no subscriber, so its raw listener does that work instead. The controller writes the application model, and the model publishes the change.
+Three producers reach one controller, and all three publish on the event bus. A pillbox press publishes an intent topic. The right-click menu item publishes an intent topic from the service worker, which the controller subscribes to in the tab the click happened in. The sidebar's controls publish a request, which the controller answers. The controller writes the application model, and the model publishes the change.
 
-Redrawing runs two ways. Direct calls from the controller redraw the pillbox. The sidebar pulls current values when it opens and redraws from hand-sent cross-context topics; no state-change topic reaches it, because no state-change topic carries a cross-context name. The state-change topic for the active table has no subscriber at all; the third part of the 2026-09-14 spec gives it one.
+Redrawing runs two ways. Direct calls from the controller redraw the pillbox. The sidebar pulls current values when it opens, and after that redraws on the state-change topics it subscribes to. The state-change topic for the active table has no subscriber at all; the third part of the 2026-09-14 spec gives it one.
 
 There is no single reduce step and no enumerated action list. The model has one setter per field, and each publishes its own state change.
 
 Tables carry no identifier. A topic inside the content script carries the live element, and a cross-context topic carries plain values only, so no message outside the tab addresses a particular table: a cross-context topic concerning a table means the active one.
 
-**Messages.** The event bus carries three topic families. Intent topics carry what the user did (`intent:selectTable`, `intent:toggleTable`) — requests with no authority, for the controller to act on. State-change topics carry what the model changed (`state:selectedTableChanged`, `state:settingsChanged`); the controller subscribes to one of the two, and no view subscribes to either. Request topics carry a question whose one responder returns an answer; the sidebar's settings apply (`request:applySettings`) is the first, and the three remaining pulls join it as the messaging refactor proceeds. Each topic also carries a route stating which carrier reaches its audience: the extension's pages, one tab's content script, or neither, meaning the publishing context alone. The publish call is the same whichever route a topic carries.
+**Messages.** The event bus carries three topic families, and its own topic table is the one place a topic name is written. Intent topics carry what the user did (`intent:toggleTable`, `intent:menuClicked`) — requests with no authority, for the controller to act on. State-change topics carry what changed (`state:settingsChanged`, `state:applyBlocked`); the controller subscribes to one, and the sidebar to eight. Request topics carry a question whose one responder returns an answer; the sidebar's settings apply (`request:applySettings`) is the only one so far, and the three remaining pulls join it in the messaging refactor's last change. Each topic also carries a route stating which carrier reaches its audience: the extension's pages, one tab's content script, or neither, meaning the publishing context alone. The publish call is the same whichever route a topic carries, which is the point of the route: a caller states the topic, never the carrier.
 
-The seventeen cross-context topics that have not moved yet still travel as raw `chrome.runtime`/`chrome.tabs` messages, and their names are declared once in `constants.js`, which all three contexts load; reading a name that is not declared there throws at the read, the same way the bus rejects an unknown topic. That list retires as the last of them moves.
+Three cross-context topics have not moved: the sidebar's pulls for the settings, the lens samples, and the capture state. They still travel as raw `chrome.tabs` messages, and their names are declared once in `constants.js`, which all three contexts load; reading a name that is not declared there throws at the read, the same way the bus rejects an unknown topic. That list retires when those three move.
 
 **Detection.** The load-time scan makes two passes: native `<table>` elements (minus accessibility artifacts), then elements marked `role="grid"` or `role="table"`. Unmarked grids wait for a right-click, which runs the geometry probe — a cheap-first ladder ending in a column-width sample, short-circuited by an ARIA role or a known vendor class (`dg--`, `ag-`). Whatever passes then faces the data test (at least two rows, a row with two or more cells, one cell that parses as a number — sampled per row on virtualized grids). Only a data table enters the registry and gets a pillbox.
 
@@ -289,7 +289,7 @@ The algorithm exists three times — the Sheets library, the Python package, and
 - **An apply restores the table before simplifying it again**, so a settings change produces a fresh pass. The grid's re-apply observer takes a different route: it recomputes under the frozen magnitude and writes each cell whose text differs, reading the originals through the adapter's port.
 - **The grid path computes before it writes.** One function produces every visible cell's target value and leaves an empty result for a cell it does not change, so the first pass and the scroll re-apply share one path and cannot diverge. The native path runs in phases — classify every cell, resolve ambiguous dates per column, find the maximum magnitude — and then computes and writes each value in one loop inside the controller.
 - **The extension patches a grid cell's text node in place.** A framework holds a reference to that node, so replacing it tears down the host application on its next redraw.
-- **Two messaging primitives are the target.** A publish that returns nothing, and a request that returns one answer. The event bus carries the publish today, while the sidebar's three pulls use raw Chrome messaging; the approved messaging design moves every cross-context topic onto the bus under the two.
+- **Two messaging primitives are the target.** A publish that returns nothing, and a request that returns one answer. The event bus carries both today, and every cross-context topic but the sidebar's three pulls, which the messaging refactor's last change moves.
 - **The service worker is a router and two entry points.** It holds one fact today, the tab number the sidebar opened for, which the 2026-09-14 spec retires.
 
 ## Vocabulary
