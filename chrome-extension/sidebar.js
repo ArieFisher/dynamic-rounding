@@ -35,6 +35,7 @@ const APPLY_BLOCKED_STATUS_MSG = 'This table\'s original values are no longer av
 // runs in the suite with stubs, without the sidebar's page elements.
 function createBoundTab(tabsApi, bus) {
   let boundTabId = null;
+  let boundWindowId = null;
   let isFront = true;
 
   // A report belongs to the bound tab only when the two numbers match. A
@@ -54,23 +55,35 @@ function createBoundTab(tabsApi, bus) {
   }
 
   return {
-    // Record the tab the sidebar was opened for, then run onReady. The order
-    // is load-bearing: the sidebar's opening read publishes work that comes
-    // back as reports, and a report arriving before this number exists has
-    // nothing to compare against. No tab to bind to leaves the number unset
-    // and still runs the read, which falls to the unbound state on its own
-    // when nothing answers it.
+    // Record the tab the sidebar was opened for, and the window holding it,
+    // then run onReady. The order is load-bearing: the read reaches the page,
+    // the page reports back, and a report arriving before the tab number
+    // exists has nothing to be compared against. No tab to bind to leaves the
+    // numbers unset and still runs the read, which falls to the unbound state
+    // on its own when nothing answers it.
     resolve(onReady) {
       if (!tabsApi || typeof tabsApi.query !== 'function') {
         onReady();
         return;
       }
+      // The catch covers a query that throws before answering. Once it has
+      // answered, a throw from the read itself is the read's own, and running
+      // the read a second time would send its messages twice.
+      let answered = false;
       try {
         tabsApi.query({ active: true, currentWindow: true }, (tabs) => {
-          if (tabs && tabs[0] && typeof tabs[0].id === 'number') boundTabId = tabs[0].id;
+          answered = true;
+          if (tabs && tabs[0] && typeof tabs[0].id === 'number') {
+            boundTabId = tabs[0].id;
+            if (typeof tabs[0].windowId === 'number') boundWindowId = tabs[0].windowId;
+          }
           onReady();
         });
       } catch (e) {
+        // A throw after the query answered came from the read, not from the
+        // query, so it belongs to the read and travels on. Swallowing it here
+        // would hide a broken read behind a working tab lookup.
+        if (answered) throw e;
         // extension context may not be available; harmless.
         onReady();
       }
@@ -86,21 +99,29 @@ function createBoundTab(tabsApi, bus) {
       });
     },
 
-    // Report a change in whether the bound tab is the one in front. A switch
-    // between two other tabs changes nothing the sidebar draws, so onChange
-    // runs on a change of state and not on every switch. A tabs interface
-    // with no activation event leaves the sidebar in its front state, which
-    // is its behavior before this change.
+    // Report a change in whether the bound tab is the one in front.
+    //
+    // A side panel belongs to one browser window, and the activation event
+    // fires for every window. An activation in another window says nothing
+    // about which tab is in front of this one — the bound tab is still its
+    // own window's front tab — so it is passed over rather than read as a
+    // switch. A tabs interface reporting no window leaves the comparison on
+    // the tab alone.
+    //
+    // A switch between two other tabs changes nothing the sidebar draws, so
+    // onChange runs on a change of state and not on every activation. A tabs
+    // interface with no activation event leaves the sidebar in its front
+    // state, which is its behavior before this change.
     watch(onChange) {
       if (!tabsApi || !tabsApi.onActivated ||
           typeof tabsApi.onActivated.addListener !== 'function') return;
       tabsApi.onActivated.addListener((activeInfo) => {
-        setFront(!!activeInfo && activeInfo.tabId === boundTabId, onChange);
+        if (!activeInfo) return;
+        if (boundWindowId !== null && activeInfo.windowId !== boundWindowId) return;
+        setFront(activeInfo.tabId === boundTabId, onChange);
       });
     },
 
-    id() { return boundTabId; },
-    isFront() { return isFront; },
   };
 }
 
@@ -119,9 +140,23 @@ function createAwayView(bodyEl, statusEl) {
     'These settings belong to another tab. Switch back to that tab to continue.';
   const TAB_AWAY_SOURCE = 'tab-away';
 
+  // The parts of the sidebar that describe the bound page. Dimming them is a
+  // mouse-only guard: pointer-events leaves the tab order alone, so a key
+  // press still reaches a slider thumb or a checkbox and publishes the
+  // settings record. The inert attribute takes them out of the tab order and
+  // out of the accessibility tree, so neither kind of input reaches them.
+  // The stylesheet dims these same parts on the away class (see
+  // sidebar.html); the suite reads this selector and checks the two agree.
+  const AWAY_INERT_SELECTOR = '#optionsSection, #captureSection, .title-row .switch';
+
   let isAway = false;
   let stashedText = null;
   let stashedSource = null;
+
+  function eachControl(apply) {
+    if (!bodyEl || typeof bodyEl.querySelectorAll !== 'function') return;
+    for (const el of Array.from(bodyEl.querySelectorAll(AWAY_INERT_SELECTOR))) apply(el);
+  }
 
   return {
     // A second call while already away would stash the away message itself,
@@ -132,6 +167,7 @@ function createAwayView(bodyEl, statusEl) {
       stashedText = statusEl.textContent;
       stashedSource = 'source' in statusEl.dataset ? statusEl.dataset.source : null;
       bodyEl.classList.add(TAB_AWAY_CLASS);
+      eachControl((el) => el.setAttribute('inert', ''));
       statusEl.textContent = TAB_AWAY_STATUS_MSG;
       statusEl.dataset.source = TAB_AWAY_SOURCE;
     },
@@ -140,6 +176,7 @@ function createAwayView(bodyEl, statusEl) {
       if (!isAway) return;
       isAway = false;
       bodyEl.classList.remove(TAB_AWAY_CLASS);
+      eachControl((el) => el.removeAttribute('inert'));
       statusEl.textContent = stashedText === null ? '' : stashedText;
       if (stashedSource === null) delete statusEl.dataset.source;
       else statusEl.dataset.source = stashedSource;
