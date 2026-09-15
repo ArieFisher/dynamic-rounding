@@ -13788,6 +13788,14 @@ function fireMouseClick(buttonEl, fn) {
     unload({ tab: { id: 42 } });
     eq('page unload: a tab unload closes nothing while no sidebar is open', closes(), 0);
 
+    // The case that isolates the null clause. An extension page reports no
+    // tab, and the worker holding no tab number reports none either, so a
+    // guard comparing the two alone would match nothing against nothing and
+    // broadcast the close. An idle restart reaches this state: Chrome clears
+    // the worker's variables while the panel stays open.
+    unload({});
+    eq('page unload: an extension page closes nothing while no sidebar is open', closes(), 0);
+
     openPanel(ctx);
     ctx.runtimeSends.length = 0;
 
