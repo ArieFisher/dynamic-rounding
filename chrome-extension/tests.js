@@ -80,12 +80,10 @@ const parsingCode = sourceByName('lib/dr-number/parsing.js');
 const detectCode = sourceByName('lib/dr-table/detect.js');
 const ladderCode = sourceByName('lib/dr-simplify/ladder.js');
 const constantsCode = sourceByName('constants.js');
-// background.js pulls the constants file in with importScripts, which Node has no
+// background.js pulls its files in with importScripts, which Node has no
 // equivalent for, and several sections below eval a whole context file on its
-// own. Stub the loader and put the same names on the global, so those sites
-// resolve DR_CROSS_CONTEXT_TOPICS exactly as the browser does.
+// own. Stub the loader so those sites load.
 global.importScripts = () => {};
-eval(constantsCode + '\nglobal.DR_CROSS_CONTEXT_TOPICS = DR_CROSS_CONTEXT_TOPICS;');
 const messagingCode = sourceByName('adapters/messaging.js');
 const storeCode = sourceByName('app/store.js');
 const uiToggleCode = sourceByName('ui-toggle.js');
@@ -2076,11 +2074,11 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   eq('pull (inverted): sidebar.js no longer handles GET_SIDEBAR_SETTINGS',
     /GET_SIDEBAR_SETTINGS/.test(sidebarSrc), false);
 
-  eq('pull (inverted): content.js handles GET_SETTINGS and responds with the model\'s settings',
-    /GET_SETTINGS[\s\S]{0,200}sendResponse\([^)]*DR_STORE\.getSettings\(\)/.test(contentSrc), true);
+  eq('pull (inverted): content.js answers request:settings with the model\'s settings',
+    /respond\('request:settings'[\s\S]{0,200}DR_STORE\.getSettings\(\)/.test(contentSrc), true);
 
-  eq('pull (inverted): sidebar.js pulls settings via chrome.tabs.sendMessage GET_SETTINGS on open',
-    /chrome\.tabs\.sendMessage\([^,]*,\s*\{\s*action:\s*DR_CROSS_CONTEXT_TOPICS\.GET_SETTINGS/.test(sidebarSrc), true);
+  eq('pull (inverted): sidebar.js asks request:settings on open',
+    /DR_BUS\.request\('request:settings'/.test(sidebarSrc), true);
 
   // --- Unified rounding path: drop data-rounded-value, cache innerHTML ---
 
@@ -11745,7 +11743,7 @@ function fireMouseClick(buttonEl, fn) {
     eval(contentScriptBundle);
 
     eq('double-invocation: contextmenu handler was captured', typeof contextmenuHandler, 'function');
-    eq('double-invocation: both message listeners were captured', messageListeners.length, 2);
+    eq('double-invocation: the bus registered its message listener', messageListeners.length, 1);
     if (typeof contextmenuHandler !== 'function' || messageListeners.length === 0) return;
 
     // --- First right-click: new grid discovered via walk-up -> marked + widget built ---
@@ -12899,9 +12897,9 @@ function fireMouseClick(buttonEl, fn) {
   eq('no-table AC1: setTableBound(false) called at module level (init)',
     /setTableBound\(false\)/.test(sidebarSrc), true);
 
-  // AC2 (static): setTableBound(true) path exists (response.samples !== null branch).
-  eq('no-table AC2: setTableBound called with response.samples !== null',
-    /setTableBound\(response\.samples\s*!==\s*null\)/.test(sidebarSrc), true);
+  // AC2 (static): setTableBound(true) path exists (answer.samples !== null branch).
+  eq('no-table AC2: setTableBound called with answer.samples !== null',
+    /setTableBound\(answer\.samples\s*!==\s*null\)/.test(sidebarSrc), true);
 
   // AC2 gap check: the sidebar handles state:previewSamplesChanged by calling
   // pullSettingsAndApplyToUI() (issue #251: every refresh re-reads the
@@ -13271,11 +13269,10 @@ function fireMouseClick(buttonEl, fn) {
 // message and verify the sendResponse callback fires.
 // -------------------------------------------------------------------------
 (function ac1_applySidebarSettings() {
-  // The content-script bundle registers more than one Chrome listener: the
-  // bus's own, and content.js's. Chrome hands an arriving message to every
-  // one of them, so collect them all and fan out the same way. Keeping only
-  // the last registration would silently skip whichever listener happens to
-  // register first.
+  // Chrome hands an arriving message to every registered listener, so collect
+  // them all and fan out the same way. The bundle registers one today, the
+  // bus's; keeping only the last registration would silently skip whichever
+  // listener registers first should a second one ever appear.
   const capturedListeners = [];
   function capturedListener(req, sender, respond) {
     // Chrome keeps the reply port open when ANY listener returns true, and
@@ -14839,10 +14836,12 @@ const LADDER_OPTS = {
     return;
   }
 
-  const NEEDLE = 'chrome.runtime.onMessage.addListener(';
-  eq('no-chrome e2e: exactly one top-level onMessage.addListener call site to neutralize',
-    contentSrc.split(NEEDLE).length - 1, 1);
-  const noChromeContentSrc = contentSrc.replace(NEEDLE, '(function(){}).call(null,');
+  eq('no-chrome e2e: content.js registers no Chrome message listener of its own',
+    contentSrc.split('chrome.runtime.onMessage.addListener(').length - 1, 0);
+  // No patch needed: every remaining chrome.* reference in content.js sits
+  // inside a function body this test never calls. Loading the file unpatched
+  // is a stronger check than loading a patched copy.
+  const noChromeContentSrc = contentSrc;
 
   // Sandbox has NO `chrome` property whatsoever — only the DOM/browser
   // primitives the engine's non-controller code paths actually touch
@@ -15107,7 +15106,10 @@ const LADDER_OPTS = {
   eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
     topicNames.slice().sort(),
     ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged',
-     'request:applySettings', 'state:settingsChanged',
+     'state:settingsChanged',
+     // The sidebar's four requests, each answered by the tab's content script.
+     'request:applySettings', 'request:settings', 'request:previewSamples',
+     'request:captureState',
      // The service worker's four, plus the two it receives (#325).
      'intent:menuClicked', 'state:sidebarOpened', 'intent:closeSidebar',
      'state:sidebarClosed', 'state:pageUnloaded', 'intent:updateMenuLabel',
@@ -16271,16 +16273,15 @@ const LADDER_OPTS = {
 
 // ---------------------------------------------------------------------------
 // Sprint app-model-settings, AC5: settings survive a sidebar close and
-// reopen — pulled from the model (GET_SETTINGS), not reset to DR_DEFAULTS.
+// reopen — pulled from the model (request:settings), not reset to DR_DEFAULTS.
 // Uses the same isolated-eval capture pattern as the request:applySettings
 // AC1 test above, so this shared-scope DR_STORE is untouched by it.
 // ---------------------------------------------------------------------------
 (function appModelSettings_settingsSurviveSidebarReconnect() {
-  // The content-script bundle registers more than one Chrome listener: the
-  // bus's own, and content.js's. Chrome hands an arriving message to every
-  // one of them, so collect them all and fan out the same way. Keeping only
-  // the last registration would silently skip whichever listener happens to
-  // register first.
+  // Chrome hands an arriving message to every registered listener, so collect
+  // them all and fan out the same way. The bundle registers one today, the
+  // bus's; keeping only the last registration would silently skip whichever
+  // listener registers first should a second one ever appear.
   const capturedListeners = [];
   function capturedListener(req, sender, respond) {
     // Chrome keeps the reply port open when ANY listener returns true, and
@@ -16342,11 +16343,11 @@ const LADDER_OPTS = {
   eq('reconnect: request:applySettings was acknowledged before the (simulated) close',
     applyResponse && applyResponse.ok, true);
 
-  // Reopen: exactly what pullSettingsAndApplyToUI's GET_SETTINGS request does.
+  // Reopen: exactly what pullSettingsAndApplyToUI's request:settings does.
   let getResponse = null;
-  capturedListener({ action: 'GET_SETTINGS' }, {}, (r) => { getResponse = r; });
+  capturedListener({ action: 'request:settings' }, {}, (r) => { getResponse = r; });
 
-  eq('reconnect: GET_SETTINGS returns a settings object',
+  eq('reconnect: request:settings returns a settings object',
     !!(getResponse && getResponse.settings), true);
   eq('reconnect: offsetTop survives the close/reopen',
     getResponse.settings.offsetTop, 0.25);
@@ -16368,7 +16369,7 @@ const LADDER_OPTS = {
 // The bug (as found): pullSettingsAndApplyToUI applied the pulled settings
 // (correctly setting enabledEl.checked = false), then called
 // fetchPreviewSamples(), whose response callback called setTableBound(true)
-// once GET_PREVIEW_SAMPLES resolved with a bound table — and setTableBound's
+// once request:previewSamples resolved with a bound table — and setTableBound's
 // bound branch unconditionally did `enabledEl.checked = DR_DEFAULTS.enabled
 // !== false`, which is true, clobbering the pulled false. Sprint 9 patched
 // it by threading the pulled settings through fetchPreviewSamples; issue
@@ -16431,8 +16432,8 @@ const LADDER_OPTS = {
     createElement() { return makeEl(); },
   };
 
-  // The model holds enabled:false. GET_SETTINGS returns that pulled settings
-  // object; GET_PREVIEW_SAMPLES returns a non-null samples object, i.e. the
+  // The model holds enabled:false. request:settings returns that pulled settings
+  // object; request:previewSamples returns a non-null samples object, i.e. the
   // reopen landed on a table that is bound (the reviewer's reachable end
   // state). Both resolve synchronously so the whole
   // pullSettingsAndApplyToUI() -> fetchPreviewSamples() chain — including
@@ -16448,9 +16449,9 @@ const LADDER_OPTS = {
     tabs: {
       query(q, cb) { cb([{ id: 42 }]); },
       sendMessage(tabId, msg, cb) {
-        if (msg.action === 'GET_SETTINGS') {
+        if (msg.action === 'request:settings') {
           cb({ settings: pulledSettings });
-        } else if (msg.action === 'GET_PREVIEW_SAMPLES') {
+        } else if (msg.action === 'request:previewSamples') {
           cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
           // The settings apply. Chrome hands back the responder's value on
@@ -16589,9 +16590,9 @@ function makeIssue251SidebarHarness() {
       query(q, cb) { cb([{ id: 42 }]); },
       sendMessage(tabId, msg, cb) {
         tabMessages.push(msg);
-        if (msg.action === 'GET_SETTINGS') {
+        if (msg.action === 'request:settings') {
           cb({ settings: modelSettings });
-        } else if (msg.action === 'GET_PREVIEW_SAMPLES') {
+        } else if (msg.action === 'request:previewSamples') {
           cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
           // The settings apply. Chrome hands back the responder's value on
@@ -16772,11 +16773,10 @@ function makeIssue251SidebarHarness() {
   const CUSTOM_OFFSET_TOP = -2;
   const CUSTOM_OFFSET_OTHER = 0.25;
 
-  // The content-script bundle registers more than one Chrome listener: the
-  // bus's own, and content.js's. Chrome hands an arriving message to every
-  // one of them, so collect them all and fan out the same way. Keeping only
-  // the last registration would silently skip whichever listener happens to
-  // register first.
+  // Chrome hands an arriving message to every registered listener, so collect
+  // them all and fan out the same way. The bundle registers one today, the
+  // bus's; keeping only the last registration would silently skip whichever
+  // listener registers first should a second one ever appear.
   const capturedListeners = [];
   function capturedListener(req, sender, respond) {
     // Chrome keeps the reply port open when ANY listener returns true, and
@@ -18384,7 +18384,7 @@ function makePressTable(text) {
     const store = global.__i275_DR_STORE;
 
     eq('menu-toggle record: contextmenu handler was captured', typeof contextmenuHandler, 'function');
-    eq('menu-toggle record: both message listeners were captured', messageListeners.length, 2);
+    eq('menu-toggle record: the bus registered its message listener', messageListeners.length, 1);
     if (typeof contextmenuHandler !== 'function' || messageListeners.length === 0) return;
 
     // The right-click that opens the menu: discovers, marks, and CONNECTS
@@ -18909,20 +18909,20 @@ function makePressTable(text) {
     { wearsMarker: true, original: null });
 })();
 
-// --- content.js: the GET_CAPTURE_STATE cross-context topic ---
+// --- content.js: the request:captureState topic ---
 //
-// The sidebar pulls the whole page-side half of a capture in one request.
-// The response is composed by buildCaptureStateResponse() — a named function
-// the suite drives directly, because the top-level onMessage listener is a
-// no-op stub here (the established equivalent-path pattern, see the
-// CLOSE_SIDEBAR note above). A source assertion pins that the listener
-// branch exists and routes through it.
+// The sidebar asks for the whole page-side half of a capture in one request.
+// The answer is composed by buildCaptureStateResponse() — a named function
+// the suite drives directly, because the bus's own listener is a no-op stub
+// here (the established equivalent-path pattern, see the intent:closeSidebar
+// note above). A source assertion pins that the responder exists and routes
+// through it.
 
 (function captureWireAction() {
   eq('capture-wire: buildCaptureStateResponse loads in the content-script bundle',
     typeof globalThis.buildCaptureStateResponse, 'function');
-  eq('capture-wire: the listener answers GET_CAPTURE_STATE through buildCaptureStateResponse',
-    /GET_CAPTURE_STATE[\s\S]{0,200}buildCaptureStateResponse\(\)/.test(sourceByName('content.js') || ''),
+  eq('capture-wire: the responder answers request:captureState through buildCaptureStateResponse',
+    /respond\('request:captureState'[\s\S]{0,200}buildCaptureStateResponse\(\)/.test(sourceByName('content.js') || ''),
     true);
   if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
 
@@ -19352,8 +19352,8 @@ function makePressTable(text) {
       .every((hint) => sidebarJsSrc.includes(hint)) &&
       /placeholder/.test(sidebarJsSrc),
     true);
-  eq('capture-ui: the glue pulls the capture state over GET_CAPTURE_STATE',
-    sidebarJsSrc.includes('action: DR_CROSS_CONTEXT_TOPICS.GET_CAPTURE_STATE'), true);
+  eq('capture-ui: the glue asks for the capture state over request:captureState',
+    sidebarJsSrc.includes("DR_BUS.request('request:captureState'"), true);
   eq('capture-ui: exactly one save path creates the blob URL',
     (sidebarJsSrc.match(/createObjectURL/g) || []).length, 1);
   eq('capture-ui: nothing saves without a pressed mark',
@@ -19366,8 +19366,8 @@ function makePressTable(text) {
     /DR_CAPTURE\.filenameFor\(/.test(sidebarJsSrc), true);
   eq('capture-ui: the sidebar\'s own log snapshot travels beside the content script\'s',
     /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
-  eq('capture-ui: a failed state pull still saves and records the failure',
-    /DR_LOG\.warn\([^)]*pull failed/.test(sidebarJsSrc), true);
+  eq('capture-ui: an unanswered state request still saves and records the failure',
+    /DR_LOG\.warn\([^)]*went unanswered/.test(sidebarJsSrc), true);
 })();
 
 // --- capture follow-ups: the pull guard, the glyph pin, the header line ---
@@ -19573,70 +19573,40 @@ function makePressTable(text) {
 })();
 
 // ---------------------------------------------------------------------------
-// constants.js — the one declaration of every cross-context topic name.
+// The bus's topic table is the one declaration of every topic name.
 //
-// The point of the file is that a mistyped name fails at the read instead of
-// travelling as text no listener matches. These pin the guard itself and the
-// rule that keeps the list the only declaration: no context file may carry a
-// quoted action literal of its own.
+// A name written out again at a call site is the defect the shared list was
+// built to remove: one mistyped character produced a message no listener
+// matched, with no error and no log row. The list retired into the bus's
+// table, and the bus builds every wire message itself, so no context file
+// needs a name of its own. These pin both halves.
 // ---------------------------------------------------------------------------
 
-(function crossContextTopicNames() {
-  eq('cross-context topics: DR_CROSS_CONTEXT_TOPICS loads in the content-script bundle',
-    typeof globalThis.DR_CROSS_CONTEXT_TOPICS, 'object');
-  // Three, from eighteen: fifteen names moved onto the bus's topic table
-  // (issue #325). The three left are the sidebar's pulls, which move next and
-  // retire this list with them.
-  eq('cross-context topics: three names are declared',
-    Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).length, 3);
-  eq('cross-context topics: every value equals its own field name',
-    Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).every((k) => globalThis.DR_CROSS_CONTEXT_TOPICS[k] === k), true);
-
-  const readThrows = (key) => {
-    try { void globalThis.DR_CROSS_CONTEXT_TOPICS[key]; return false; } catch (e) { return true; }
-  };
-  eq('cross-context topics: reading a misspelled name throws instead of returning undefined',
-    readThrows('TABEL_TOGGLE_STATE'), true);
-  eq('cross-context topics: a truncated name throws too',
-    readThrows('TABLE_TOGGLE_STAT'), true);
-
-  // The language reads fields of its own off any object it is handed. A guard
-  // that threw on those would break ordinary use of the list — serializing it
-  // for a log row or a capture would crash — so only a key shaped like a topic
-  // name throws.
-  eq('cross-context topics: a field the language probes for returns undefined, not an error',
-    [readThrows('toJSON'), readThrows('then'), readThrows('inspect')], [false, false, false]);
-
-  let serialized = null;
-  try { serialized = JSON.parse(JSON.stringify(globalThis.DR_CROSS_CONTEXT_TOPICS)); } catch (e) { /* left null */ }
-  eq('cross-context topics: the list serializes to JSON with every name intact',
-    serialized && Object.keys(serialized).length, 3);
-
-  eq('cross-context topics: the list is frozen',
-    Object.isFrozen(globalThis.DR_CROSS_CONTEXT_TOPICS), true);
-
-  // No context file declares a name of its own. A quoted all-caps literal in
-  // an action position is exactly the duplicate this file removed, so catch a
-  // new one at the commit rather than at a silent miss in the browser.
-  const declaredNames = new Set(Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS));
+(function theBusHoldsEveryTopicName() {
   const contextFiles = {
     'content.js': sourceByName('content.js') || '',
+    'ui-toggle.js': uiToggleCode || '',
+    'app/store.js': storeCode || '',
     'sidebar.js': fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8'),
     'background.js': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),
-    'adapters/messaging.js': messagingCode || '',
   };
+
+  // The bus is the only file that puts an action field on a message. A
+  // context file writing one is reaching around the topic table.
   for (const [name, src] of Object.entries(contextFiles)) {
-    const literals = (src.match(/action(?::|\s*===)\s*['"][A-Z][A-Z_]*['"]/g) || []);
-    eq(`cross-context topics: ${name} carries no quoted action literal of its own`,
-      literals, []);
+    const literals = (src.match(/action(?::|\s*===)\s*['"][A-Za-z][A-Za-z0-9_:]*['"]/g) || []);
+    eq(`one topic list: ${name} builds no wire message of its own`, literals, []);
   }
 
-  // Every name in the list is reachable: it appears in at least one context
+  // Every name in the table is reachable: it appears in at least one context
   // file. A name left behind after its last use is clutter the next reader
   // has to rule out.
   const allContextSrc = Object.values(contextFiles).join('\n');
-  const unused = [...declaredNames].filter((n) => !allContextSrc.includes('DR_CROSS_CONTEXT_TOPICS.' + n));
-  eq('cross-context topics: every declared name is used by at least one context file',
+  const declared = Object.keys(DR_BUS.TOPICS);
+  eq('one topic list: the scan has topics to check (fails closed on an empty table)',
+    declared.length > 0, true);
+  const unused = declared.filter((topic) => !allContextSrc.includes("'" + topic + "'"));
+  eq('one topic list: every declared topic is used by at least one context file',
     unused, []);
 })();
 
@@ -20071,7 +20041,7 @@ function makeBusSandbox(opts) {
     contentSrc.includes('chrome.runtime.sendMessage'), false);
   // The four requests keep their inline branches until the next change, so the
   // old list survives here — and nothing but those four names is read from it.
-  const REQUEST_NAMES = ['GET_SETTINGS', 'GET_PREVIEW_SAMPLES', 'GET_CAPTURE_STATE'];
+  const REQUEST_NAMES = ['request:settings', 'request:previewSamples', 'request:captureState'];
   const oldNamesRead = (contentSrc.match(/DR_CROSS_CONTEXT_TOPICS\.([A-Z_]+)/g) || [])
     .map((m) => m.split('.')[1]);
   eq('content on bus: the old list is read for the request names alone',
@@ -20105,6 +20075,106 @@ function makeBusSandbox(opts) {
   }
   eq('sidebar on bus: the unload report publishes through the bus',
     /DR_BUS\.publish\(\s*'state:sidebarClosed'/.test(sidebarSrc), true);
+})();
+
+// --- #325 Task 12: one mechanism, one topic list ---
+//
+// The end state of the move. Two delivery mechanisms carried the eighteen
+// cross-context topics; one carries all of them now. These pin the four facts
+// that make that true, so a new raw send or a second listener fails here
+// rather than reintroducing the split.
+(function oneMechanismRemains() {
+  const contentSrc = sourceByName('content.js');
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
+  const constantsSrc = sourceByName('constants.js');
+
+  eq('one mechanism: the constants file holds no cross-context topic list',
+    constantsSrc.includes('DR_CROSS_CONTEXT_TOPICS'), false);
+  eq('one mechanism: the content script holds no Chrome message listener',
+    contentSrc.includes('chrome.runtime.onMessage.addListener'), false);
+  eq('one mechanism: the sidebar makes no raw tab send',
+    sidebarSrc.includes('chrome.tabs.sendMessage'), false);
+  eq('one mechanism: the sidebar runs no active-tab lookup of its own',
+    sidebarSrc.includes('chrome.tabs.query'), false);
+  eq('one mechanism: the worker holds no Chrome message listener',
+    bgSrc.includes('chrome.runtime.onMessage.addListener'), false);
+
+  for (const topic of ['request:settings', 'request:previewSamples', 'request:captureState']) {
+    eq('one mechanism: the content script answers ' + topic,
+      contentSrc.includes("respond('" + topic + "'"), true);
+    eq('one mechanism: the sidebar asks ' + topic,
+      sidebarSrc.includes("request('" + topic + "'"), true);
+  }
+
+  // Every topic name follows the bus's one naming style.
+  let allNamed = true;
+  for (const topic in DR_BUS.TOPICS) {
+    if (!/^(intent|state|request):[a-z][A-Za-z]*$/.test(topic)) allNamed = false;
+  }
+  eq('one mechanism: every topic name follows the family:name style', allNamed, true);
+  eq('one mechanism: the table holds all eighteen cross-context topics plus the four same-context ones',
+    Object.keys(DR_BUS.TOPICS).length, 22);
+})();
+
+// --- #325 Task 12: the moved responders answer through the bus ---
+//
+// The preview-samples branch carries a rule the source assertions above
+// cannot see: with no table selected it answers a pair of nulls rather than
+// nothing, because the sidebar reads a null samples field as the unbound
+// state. This drives the content script's own bus listener the way Chrome
+// does, in an isolated eval so the shared-scope model stays untouched.
+(function movedRespondersAnswerThroughTheBus() {
+  const capturedListeners = [];
+  function fire(message) {
+    let answer;
+    for (const fn of capturedListeners) fn(message, {}, (r) => { answer = r; });
+    return answer;
+  }
+
+  const saved = { chrome: global.chrome, document: global.document, window: global.window };
+  global.chrome = {
+    runtime: {
+      onMessage: { addListener(fn) { capturedListeners.push(fn); } },
+      sendMessage: () => {},
+      lastError: null,
+    },
+  };
+  global.document = {
+    addEventListener: () => {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild: () => {}, observe: () => {} },
+  };
+  global.window = {
+    addEventListener: () => {},
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+  };
+  try {
+    eval(contentScriptBundle);
+  } catch (e) {
+    // Module-level code may fail in the stub environment; the bus's listener
+    // registers before any dynamic code runs.
+  } finally {
+    global.chrome = saved.chrome;
+    global.document = saved.document;
+    global.window = saved.window;
+  }
+
+  eq('moved responders: the bus listener was captured', capturedListeners.length, 1);
+  if (capturedListeners.length === 0) return;
+
+  // Nothing has been right-clicked in this isolated model.
+  eq('moved responders: no selected table answers a pair of nulls, not nothing',
+    fire({ action: 'request:previewSamples' }), { samples: null, maxMag: null });
+
+  const captureAnswer = fire({ action: 'request:captureState' });
+  eq('moved responders: the capture state answers an object',
+    captureAnswer !== null && typeof captureAnswer === 'object', true);
+
+  const settingsAnswer = fire({ action: 'request:settings' });
+  eq('moved responders: the settings answer carries the model\'s record',
+    !!(settingsAnswer && settingsAnswer.settings), true);
 })();
 
 // --- #325: a moved topic is deliverable inside the context that publishes it ---

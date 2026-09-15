@@ -229,32 +229,21 @@ DR_BUS.subscribe('state:sidebarOpened', () => {
   DR_BUS.publish('state:previewSamplesChanged', {});
 });
 
-// The sidebar's three pulls are all that keep a listener of their own here.
-// They retire onto the bus's responder path in the next change, and the shared
-// name list retires with them.
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.GET_SETTINGS) {
-    // Inverse of the old sidebar pull: the sidebar asks the model instead.
-    sendResponse({ settings: DR_STORE.getSettings() });
-    return;
-  }
+// The sidebar's three reads of the model. Each answers from the tab's own
+// copy — the sidebar holds none of its own, so a close and reopen loses
+// nothing.
+DR_BUS.respond('request:settings', () => ({ settings: DR_STORE.getSettings() }));
 
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.GET_PREVIEW_SAMPLES) {
-    const selected = DR_STORE.getSelectedTable();
-    if (selected) {
-      const payload = extractPreviewSamples(selected);
-      sendResponse(payload);
-    } else {
-      sendResponse({ samples: null, maxMag: null });
-    }
-    return;
-  }
-
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.GET_CAPTURE_STATE) {
-    sendResponse(buildCaptureStateResponse());
-    return;
-  }
+// No selected table answers nulls rather than nothing: the sidebar reads a
+// null samples field as the unbound state, and an unanswered request reaches
+// it as that same unbound state by a different path.
+DR_BUS.respond('request:previewSamples', () => {
+  const selected = DR_STORE.getSelectedTable();
+  if (!selected) return { samples: null, maxMag: null };
+  return extractPreviewSamples(selected);
 });
+
+DR_BUS.respond('request:captureState', () => buildCaptureStateResponse());
 
 window.addEventListener('pagehide', () => {
   DR_BUS.publish('state:pageUnloaded', {});
@@ -735,7 +724,7 @@ function extractPreviewSamples(table) {
   };
 }
 
-// --- Capture state (consumed by sidebar via the GET_CAPTURE_STATE pull) ---
+// --- Capture state (consumed by the sidebar over request:captureState) ---
 
 // The whole page-side half of a capture, in one response: the serialized
 // registry (lib/dr-capture/state.js), plus what only this context holds —
