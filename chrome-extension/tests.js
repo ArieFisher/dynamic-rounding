@@ -20456,7 +20456,7 @@ function makeBusSandbox(opts) {
   // it, the content script publishes it, and the sidebar subscribes it. A
   // topic added later joins this check with no edit here. The count assertion
   // makes the scan fail closed, so a regex that matches nothing cannot read
-
+  // as a pass.
   (function everyContentReportIsGated() {
     const contentSrc = sourceByName('content.js');
     eq('bound tab: the content script source is readable (fails closed on a rename)',
@@ -20537,6 +20537,8 @@ function makeBusSandbox(opts) {
 
   let activationListener = null;
   let messageListener = null;
+  let pendingLookup = null;
+  let queryCalls = 0;
   const settingsReads = [];
   const captureChrome = {
     runtime: {
@@ -20545,10 +20547,22 @@ function makeBusSandbox(opts) {
       lastError: null,
     },
     tabs: {
-      query(q, cb) { cb([{ id: BOUND_TAB, windowId: BOUND_WINDOW }]); },
+      // The sidebar's own tab lookup is the first query, and Chrome answers
+      // it on a later task. Holding its answer here is what lets the
+      // assertions below see the sidebar between opening and binding. Every
+      // later query is the bus finding a tab for one of the sidebar's reads,
+      // and answers at once.
+      query(q, cb) {
+        queryCalls++;
+        if (queryCalls === 1) {
+          pendingLookup = cb;
+          return;
+        }
+        cb([{ id: BOUND_TAB, windowId: BOUND_WINDOW }]);
+      },
       sendMessage(tabId, msg, cb) {
         if (msg.action === 'request:settings') {
-          settingsReads.push(msg.action);
+          settingsReads.push(tabId);
           cb({ settings: Object.assign({}, DR_DEFAULTS) });
           return;
         }
@@ -20588,12 +20602,25 @@ function makeBusSandbox(opts) {
       evalError === null ? 'none' : evalError.message, 'none');
     eq('bound tab wiring: the sidebar registered a message listener',
       typeof messageListener, 'function');
+    if (typeof messageListener !== 'function') return;
+
+    // Between opening and binding. Nothing may go out to a page yet: the
+    // sidebar has no tab to compare an answer or a report against, and an
+    // activation arriving now would have nothing to compare either.
+    eq('bound tab wiring: the sidebar asked which tab it was opened for',
+      queryCalls, 1);
+    eq('bound tab wiring: no read goes out before the tab lookup answers',
+      settingsReads, []);
+    eq('bound tab wiring: no activation is watched before the tab lookup answers',
+      activationListener, null);
+
+    pendingLookup([{ id: BOUND_TAB, windowId: BOUND_WINDOW }]);
+
+    eq('bound tab wiring: the opening read goes to the bound tab once the lookup answers',
+      settingsReads, [BOUND_TAB]);
     eq('bound tab wiring: the sidebar registered an activation listener',
       typeof activationListener, 'function');
-    if (typeof messageListener !== 'function' || typeof activationListener !== 'function') return;
-
-    eq('bound tab wiring: the opening read reached the bound tab',
-      settingsReads.length > 0, true);
+    if (typeof activationListener !== 'function') return;
 
     // A locked-table report from another tab must not reach the controls.
     // The lock is the loudest of the eight reports: it writes the status and
