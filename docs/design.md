@@ -200,7 +200,7 @@ The extension is the largest consumer of the algorithm and carries its own compo
 
 | Package | Job |
 |---------|-----|
-| `constants.js` | Every shared constant, loaded by all three contexts: the settings contract (each option's name and default) and every cross-context topic name |
+| `constants.js` | The settings contract, loaded by all three contexts: each option's name and its default |
 | `lib/dr-log/` | The log buffer: the last 50 log rows per context, snapshot into every capture |
 | `lib/dr-number/` | Rounding, parsing, and formatting — the algorithm itself, plus dates and times |
 | `lib/dr-table/` | Detection and the table adapters (`NativeTableAdapter`, `GridAdapter`) |
@@ -226,7 +226,7 @@ Four layers. The dependency direction is the design intent, and two places break
 
 The number package and the classification ladder stay inside the core. The ladder takes plain cell values and returns its decision as data, and the two checks that need the page — a whole-cell link, and the superscript spans — arrive as plain values the caller computed. The capture's renderer takes the capture state and returns the file as a string.
 
-Two breaks, both worth stating plainly. The capture's state serializer sits beside the pure packages while reading the page and calling both the application model and the adapter factory, so the innermost layer reaches up two layers. And the service worker holds the Chrome calls for its right-click menu items and the side panel's lifetime, while the controller and both views write the page directly, so the adapters layer concentrates page access without holding all of it. Messaging is no longer one of the breaks: every context reaches Chrome's messaging through the event bus alone, except the sidebar's three pulls.
+Two breaks, both worth stating plainly. The capture's state serializer sits beside the pure packages while reading the page and calling both the application model and the adapter factory, so the innermost layer reaches up two layers. And the service worker holds the Chrome calls for its right-click menu items and the side panel's lifetime, while the controller and both views write the page directly, so the adapters layer concentrates page access without holding all of it. Messaging is no longer one of the breaks: every context reaches Chrome's messaging through the event bus alone.
 
 No tool enforces the direction. The extension has no build step and no import statements: every content script declares globals into one shared scope, loaded in the order the manifest lists. The suite exercises the core by evaluating every content script in Node behind stubbed page and Chrome interfaces.
 
@@ -240,7 +240,7 @@ No tool enforces the direction. The extension has no build step and no import st
 | Table adapter | Native tables and grids | One row-and-cell interface over two markups |
 | Predicate | The classification ladder | A new exclusion without touching the formatting |
 | Registry | The table registry | Per-table storage keyed by the live element |
-| Request and reply | The sidebar's settings apply and its three pulls | One caller, one answer, on demand. The settings apply runs on the event bus; the three pulls use raw Chrome messaging until the messaging refactor's last change. |
+| Request and reply | The sidebar's four requests | One caller, one answer, on demand, on the event bus |
 
 ### State ownership
 
@@ -289,7 +289,7 @@ The algorithm exists three times — the Sheets library, the Python package, and
 - **An apply restores the table before simplifying it again**, so a settings change produces a fresh pass. The grid's re-apply observer takes a different route: it recomputes under the frozen magnitude and writes each cell whose text differs, reading the originals through the adapter's port.
 - **The grid path computes before it writes.** One function produces every visible cell's target value and leaves an empty result for a cell it does not change, so the first pass and the scroll re-apply share one path and cannot diverge. The native path runs in phases — classify every cell, resolve ambiguous dates per column, find the maximum magnitude — and then computes and writes each value in one loop inside the controller.
 - **The extension patches a grid cell's text node in place.** A framework holds a reference to that node, so replacing it tears down the host application on its next redraw.
-- **Two messaging primitives are the target.** A publish that returns nothing, and a request that returns one answer. The event bus carries both today, and every cross-context topic but the sidebar's three pulls, which the messaging refactor's last change moves.
+- **Two messaging primitives carry every message.** A publish that returns nothing, and a request that returns one answer. Both run on the event bus, and so does every topic. A topic's route determines which contexts a publish reaches: the extension's pages, one tab's content script, or neither, meaning the publishing context alone.
 - **The service worker is a router and two entry points.** It holds one fact today, the tab number the sidebar opened for, which the 2026-09-14 spec retires.
 
 ## Vocabulary
