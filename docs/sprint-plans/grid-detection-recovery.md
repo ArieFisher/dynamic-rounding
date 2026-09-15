@@ -70,26 +70,42 @@ automatic route missed. An identification enters the registry. The registry
 therefore holds every table the extension knows, whatever route found it, and
 stays the single record of that.
 
-### D2 — When qualifying elements nest, keep the outermost
+### D2 — A configured nesting depth selects the table, default 1
 
-One rule, no vendor-specific branches. On Databricks the outermost qualifying
-element is the wrapper, so the wrapper is the table and both panes are its parts.
+Qualifying elements that nest form a containment chain. A configured depth
+indexes it: 0 is the outermost, 1 the first inner layer, 2 the next, and so on.
+The shipped default is 1.
 
-**Accepted cost, recorded deliberately.** The pinned pane holds the row-number
-gutter, and its cells become the table's leading column. The first-column
-exclusion then protects the row numbers, which never needed protecting, and the
-identifier column beside them becomes reachable by simplification and
-unprotectable except through a range expression. Range expressions address the
-gutter as the first column, which does not match the spreadsheet model the
-product borrows elsewhere.
+On Databricks the chain is two long, the wrapper and then the scrolling pane,
+because the pinned pane fails the data test and drops out. Depth 1 therefore
+makes the scrolling pane the table.
 
-The alternative, binding the scrolling pane, avoids both effects on Databricks
-and drops genuinely frozen data columns on any grid whose pinned pane holds real
-data. Simplicity wins for now. Revisit once a principled test for the right
-level exists (§6).
+Two edge rules complete the setting:
 
-This decision keeps the canon accurate: the vocabulary already defines a pinned
-pane's cells as the table's first columns.
+- A depth holding more than one qualifying element falls back outward to the
+  nearest depth holding exactly one. A wrapper holding two sibling panes that
+  both pass the data test is ambiguous at depth 1; the outer choice is not.
+  This keeps one pillbox per grid in every case.
+- A chain shorter than the configured depth clamps to its innermost element.
+
+**Why the first inner layer.** The pinned pane holds the row-number gutter.
+Excluding it keeps the row numbers out of the table, lands the first-column
+exclusion on the identifier column beside them, and makes a range expression
+address the first data column as column A, matching the spreadsheet model the
+product borrows elsewhere. The first-column exclusion is the only positional
+protection a user has, and no second-column equivalent exists.
+
+**Accepted cost.** On a grid library whose pinned pane holds real data, a column
+the user froze, depth 1 drops that column from the table and it goes
+unsimplified. The failure is under-reaching, never a wrong value written.
+
+**Why a setting rather than a fixed rule.** No principled test for the right
+level exists yet (§6). A number in the configuration file turns a revisit into
+one edit, and leaves room for deeper nesting should a grid library present it.
+
+**Docs impact.** The vocabulary defines a pinned pane's cells as the table's
+first columns. That holds only where the configured depth selects the wrapper,
+so the entry becomes conditional. The nesting sprint carries the edit.
 
 ### D3 — One data test budget, 1000 cells, any shape
 
@@ -128,6 +144,7 @@ Values that move, with their current settings:
 | Value | Current | Governs |
 | --- | --- | --- |
 | data test budget | 10 rows by 10 cells | replaced by D3's 1000 |
+| nesting depth | new, see D2 | which layer of a containment chain is the table |
 | minimum repeated rows | 5 | the geometry probe's child-count gate |
 | ancestors walked from a click | 15 | how far up right-click searches |
 | column-width sample | 10 rows | the geometry probe's alignment sample |
@@ -203,9 +220,14 @@ One line each, recorded so a fresh session does not retry them.
   Coincidental: Databricks' pinned pane fails because it is one column, not
   because it holds row numbers. A single frozen identifier column would fail for
   the same wrong reason.
-- **Bind the scrolling pane (the inner table).** Correct for Databricks, and it
-  requires a vendor-specific branch or a content signature that does not exist
-  yet. Deferred to §6.
+- **Register both the wrapper and the scrolling pane.** Their pillboxes anchor
+  to the same corner and overlap exactly, so the user sees one control with no
+  way to tell which of the two tables it acts on. The shared cells would also
+  sit under two registrations, each holding its own originals, so a second pass
+  records an already-simplified value as an original.
+- **Hard-code the chosen layer.** The containment chain has to be computed
+  either way, so a configured depth costs little more and turns a revisit into
+  one edit (D2).
 - **Re-test by walking up from every added node.** Fires on every insertion on
   every page, including pages holding no grid, and never stops. D5 attaches the
   cost to the unresolved case and removes it on resolution.
@@ -221,7 +243,8 @@ that drives it, so parallel branches would conflict.
 1. **detection-constants** — move the tuning values and two lists into the
    configuration file; replace the two-number grid cap with D3's single budget.
    _Branch from:_ `main`.
-2. **grid-nesting-rule** — register only the outermost qualifying element.
+2. **grid-nesting-rule** — one registration per grid, at the configured
+   nesting depth.
    _Depends on:_ detection-constants.
 3. **pending-retest** — watch a failed qualifying element and register it when
    its data test passes. _Depends on:_ grid-nesting-rule.
@@ -238,7 +261,7 @@ that drives it, so parallel branches would conflict.
 flowchart TD
     base[main]
     s1["detection-constants<br/>config block + one 1000-cell budget"]
-    s2["grid-nesting-rule<br/>outermost qualifying element wins"]
+    s2["grid-nesting-rule<br/>one registration at the configured depth"]
     s3["pending-retest<br/>watch a failed element until it passes"]
     s4["right-click-registers<br/>nominate, test, register"]
     s5["shape-fingerprint<br/>re-validate before every action"]
@@ -284,15 +307,22 @@ the window before a pending table passes.
 
 ### grid-nesting-rule
 
-- **Goal:** one registration per grid, the outermost qualifying element.
+- **Goal:** one registration per grid, at the configured nesting depth.
 - **Branch:** `fix/grid-nesting-rule` off `main` after detection-constants.
 - **Scope:** the load-time scan's ARIA pass, the added-node pass, and the
-  right-click resolution all skip a qualifying element enclosed by one already
-  registered.
+  right-click resolution share one step that builds the containment chain of
+  qualifying elements, applies D2's depth and its two edge rules, and registers
+  the single element that results.
 - **Tests:** a Databricks-shaped fixture registers exactly one table, the
-  wrapper; its row list stitches the pinned column as the leading column; two
-  sibling grids under one non-qualifying parent still register separately.
-- **Acceptance:** one pillbox on a Databricks-shaped grid.
+  scrolling pane, whose first column is the identifier column; the same fixture
+  at depth 0 registers the wrapper with the gutter as its first column; a chain
+  whose depth 1 holds two qualifying siblings falls back to the wrapper; a chain
+  shorter than the depth clamps to its innermost element; two sibling grids
+  under one non-qualifying parent still register separately.
+- **Acceptance:** one pillbox on a Databricks-shaped grid, and a range
+  expression addressing the identifier column as column A.
+- **Docs:** amend the pinned-pane entry in `docs/vocabulary.md` per D2's docs
+  impact, as its own `docs:` commit.
 - **Fixture note:** synthetic and minimized, per the regression-fixture
   convention. The capture that prompted this plan carries a usable shape; rebuild
   it with invented values.
@@ -381,12 +411,13 @@ the window before a pending table passes.
 
 ## 6. Open questions
 
-- **A principled test for the right level.** D2 takes the outermost qualifying
-  element for simplicity and accepts the gutter as the leading column. Two
-  candidates for a better rule, neither adopted: recording in each vendor profile
-  what that library's pinned pane holds, or a content signature for a gutter
-  column, such as consecutive integers from 1 under a blank header. Revisit with
-  usage.
+- **Whether a fixed depth is enough.** D2 ships depth 1 and makes the choice one
+  edit, so the next move is to observe rather than to design. A single global
+  depth cannot express one answer for one grid library and another for the next;
+  that belongs in the vendor profile. Two candidates for a principled rule,
+  neither adopted: recording in each vendor profile what that library's pinned
+  pane holds, or a content signature for a gutter column, such as consecutive
+  integers from 1 under a blank header.
 - **The re-test cap's value.** D5 bounds a continuously changing pending region.
   The right number is unknown; start generous and observe.
 
