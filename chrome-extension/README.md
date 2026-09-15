@@ -12,6 +12,12 @@ A press that moves the active table also clears the range expression. An express
 
 A press on a locked table publishes nothing. A table locks when its original values are lost, which happens when a content script re-injection empties the registry. The right-click menu item is the one way to act on such a table.
 
+## The sidebar serves one tab
+
+The sidebar opens beside one tab and serves that tab for as long as it is open. It acts on what that tab's page reports and drops what any other tab reports, so a table changing in a background tab never moves the sidebar's controls or locks them against a page the user cannot see.
+
+A tab switch closes the sidebar. The service worker closes it whenever the user leaves the tab it was opened for, and the sidebar closes itself on the switches the worker misses: an idle restart empties the tab number the worker compares against, and a sidebar opened from Chrome's own side-panel control never sets it. Those switches used to leave the sidebar open, showing controls for a page the user had left.
+
 ## Offset semantics
 
 The extension uses the same offset model as the rest of the project. As of the `2026-05-28` release, the meaning of fractional offsets is sign-aware: `+0.5` rounds toward half of the next-larger order of magnitude, and `-0.5` rounds toward half of the current order. The result is also floored at the value's own order of magnitude so a large number can never collapse to zero. One platform difference: an out-of-range offset does not throw here — the extension falls back to the default instead. See the [Sheets README](../js/README.md#offset-reference) for the full offset reference and parameter table.

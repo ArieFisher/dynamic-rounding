@@ -16,6 +16,113 @@ const NO_TABLE_STATUS_MSG = 'Right-click a table to connect it here.';
 // APPLY_BLOCKED message — see content.js's applySidebarRounding guard).
 const APPLY_BLOCKED_STATUS_MSG = 'This table\'s original values are no longer available. Reload the page, then apply settings again.';
 
+
+// ---- The sidebar serves one tab (issue #343) ----
+//
+// A content script reports by broadcast, because the sidebar is an extension
+// page and a broadcast is what reaches one. A broadcast names no tab, so the
+// sidebar acted on every report it received: a background tab re-simplifying
+// its rows redrew the sidebar, and a blocked apply there locked it against a
+// table the user could not see, under a notice naming no page.
+//
+// The bound tab is the tab the sidebar was opened for, and the sidebar serves
+// that tab alone. It is a second, separate fact from the tab number the
+// service worker holds, not one fact stored twice: the worker's answers which
+// tab to close the sidebar for, and this one answers which tab the sidebar is
+// showing.
+//
+// The tabs interface and the bus arrive as parameters so the whole concern
+// runs in the suite with stubs, without the sidebar's page elements.
+function createBoundTab(tabsApi, bus) {
+  let boundTabId = null;
+  let boundWindowId = null;
+
+  // A report belongs to the bound tab only when the two numbers match. A
+  // report carrying no tab came from an extension page rather than a content
+  // script, and belongs to no tab at all. Before the lookup answers there is
+  // nothing to compare against, so a report arriving in that window is
+  // dropped; resolve() runs the sidebar's opening read afterwards, and that
+  // read carries the current truth.
+  function ownsReport(meta) {
+    return boundTabId !== null && !!meta && meta.tabId === boundTabId;
+  }
+
+  return {
+    // Record the tab the sidebar was opened for, and the window holding it,
+    // then run onReady. The order is load-bearing: the read reaches the page,
+    // the page reports back, and a report arriving before the tab number
+    // exists has nothing to be compared against. No tab to bind to leaves the
+    // number unset and still runs the read, which falls to the unbound state
+    // on its own when nothing answers it.
+    resolve(onReady) {
+      if (!tabsApi || typeof tabsApi.query !== 'function') {
+        onReady();
+        return;
+      }
+      // The catch covers a query that throws before answering. Once it has
+      // answered, a throw from the read itself is the read's own, and running
+      // the read a second time would send its messages twice.
+      let answered = false;
+      try {
+        tabsApi.query({ active: true, currentWindow: true }, (tabs) => {
+          answered = true;
+          if (tabs && tabs[0] && typeof tabs[0].id === 'number') {
+            boundTabId = tabs[0].id;
+            if (typeof tabs[0].windowId === 'number') boundWindowId = tabs[0].windowId;
+          }
+          onReady();
+        });
+      } catch (e) {
+        // A throw after the query answered came from the read, not from the
+        // query, so it belongs to the read and travels on. Swallowing it here
+        // would hide a broken read behind a working tab lookup.
+        if (answered) throw e;
+        // extension context may not be available; harmless.
+        onReady();
+      }
+    },
+
+    // Subscribe to one of the content script's reports. Every such report
+    // passes through here, so the comparison lives in one place rather than
+    // at each of the eight subscriptions.
+    subscribe(topic, handler) {
+      return bus.subscribe(topic, (payload, meta) => {
+        if (!ownsReport(meta)) return;
+        handler(payload, meta);
+      });
+    },
+
+    // Close the sidebar when the tab it was opened for stops being the one in
+    // front. The service worker closes it on the ordinary route and misses
+    // two: an idle restart empties the tab number it compares against, and a
+    // sidebar opened from Chrome's own side-panel control never sets it. On
+    // those routes the sidebar survived the switch and kept showing controls
+    // for a page the user had left. Closing here gives a tab switch one
+    // outcome, whichever route it takes.
+    //
+    // A side panel belongs to one browser window, and the activation event
+    // fires for every window. An activation in another window leaves the
+    // bound tab where it was — still the front tab of its own window — so it
+    // is passed over. A tabs interface reporting no window leaves the
+    // comparison on the tab alone.
+    //
+    // With no tab recorded there is nothing to have left, so nothing closes.
+    onSwitchAway(onLeft) {
+      if (!tabsApi || !tabsApi.onActivated ||
+          typeof tabsApi.onActivated.addListener !== 'function') return;
+      tabsApi.onActivated.addListener((activeInfo) => {
+        if (!activeInfo || boundTabId === null) return;
+        if (boundWindowId !== null && activeInfo.windowId !== boundWindowId) return;
+        if (activeInfo.tabId === boundTabId) return;
+        onLeft();
+      });
+    },
+  };
+}
+
+// The unit above, wired to the real tabs interface and the real bus.
+const boundTab = createBoundTab(chrome.tabs, DR_BUS);
+
 // Issue #272: while the #262 lock forces the main toggle ON, the record's
 // real enabled lives here — the forced ON is display-only. Captured when the
 // lock engages, updated by any record value landing under the lock (a pull,
@@ -578,7 +685,7 @@ function flashSidebarContainer() {
   }, { once: true });
 }
 
-DR_BUS.subscribe('state:tableActivated', () => {
+boundTab.subscribe('state:tableActivated', () => {
   flashSidebarContainer();
 });
 
@@ -586,13 +693,13 @@ DR_BUS.subscribe('intent:closeSidebar', () => {
   window.close();
 });
 
-DR_BUS.subscribe('state:rangeError', ({ error }) => {
+boundTab.subscribe('state:rangeError', ({ error }) => {
   statusEl.textContent = error || 'Invalid range expression.';
   statusEl.dataset.source = 'range';
   if (rangeExprEl) rangeExprEl.classList.add('invalid');
 });
 
-DR_BUS.subscribe('state:rangeOk', () => {
+boundTab.subscribe('state:rangeOk', () => {
   if (rangeExprEl) rangeExprEl.classList.remove('invalid');
   if (statusEl.dataset.source === 'range') {
     statusEl.textContent = '';
@@ -600,7 +707,7 @@ DR_BUS.subscribe('state:rangeOk', () => {
   }
 });
 
-DR_BUS.subscribe('state:applyBlocked', () => {
+boundTab.subscribe('state:applyBlocked', () => {
   DR_LOG.warn('Dynamic Rounding: apply blocked received; panel locked.');
   statusEl.textContent = APPLY_BLOCKED_STATUS_MSG;
   statusEl.dataset.source = 'blocked';
@@ -618,7 +725,7 @@ DR_BUS.subscribe('state:applyBlocked', () => {
   updateDisabledState();
 });
 
-DR_BUS.subscribe('state:applyOk', () => {
+boundTab.subscribe('state:applyOk', () => {
   if (statusEl.dataset.source === 'blocked') {
     statusEl.textContent = '';
     delete statusEl.dataset.source;
@@ -626,14 +733,14 @@ DR_BUS.subscribe('state:applyOk', () => {
   liftLockAndRestoreEnabled();
 });
 
-DR_BUS.subscribe('state:previewSamplesChanged', () => {
+boundTab.subscribe('state:previewSamplesChanged', () => {
   // Stale view: re-read the model's settings, then the previews (the pull
   // chain ends in fetchPreviewSamples). A bare preview fetch here used to
   // reset the main toggle to the shipped default (issue #251).
   pullSettingsAndApplyToUI();
 });
 
-DR_BUS.subscribe('state:tableSwitched', () => {
+boundTab.subscribe('state:tableSwitched', () => {
   DR_LOG.debug('Dynamic Rounding: table switch received.');
   // A table switch: the lock, if any, belonged to the previous table.
   // The switch apply on the content side runs after this message is
@@ -651,7 +758,7 @@ DR_BUS.subscribe('state:tableSwitched', () => {
   }
 });
 
-DR_BUS.subscribe('state:tableEnabledChanged', ({ enabled }) => {
+boundTab.subscribe('state:tableEnabledChanged', ({ enabled }) => {
   // The report carries the record (issue #272). Under the #262 lock the
   // forced ON is display-only, so the record's value goes to the stash;
   // the lift puts it on the switch.
@@ -946,9 +1053,21 @@ setTableBound(false);
 // from the model) resolves.
 if (rangeExprEl) rangeExprEl.value = '';
 
+// Record the tab this sidebar was opened for, then make the opening read.
+// The order is load-bearing: the read reaches the page, the page reports
+// back, and a report arriving before the tab number exists has nothing to be
+// compared against and is dropped.
+//
 // Pulls live settings, then (see above) pulls preview samples for whichever
 // table the user has right-clicked. If no table was targeted, content.js
 // returns nulls and the bands render the prompt.
-pullSettingsAndApplyToUI();
+boundTab.resolve(() => {
+  pullSettingsAndApplyToUI();
+  // Registered here for the same reason the read runs here: an activation
+  // arriving before the tab number exists would have nothing to compare
+  // against. The service worker closes the sidebar on most tab switches; this
+  // covers the switches it misses, so every switch ends the same way.
+  boundTab.onSwitchAway(() => { window.close(); });
+});
 
 updateDisabledState();
