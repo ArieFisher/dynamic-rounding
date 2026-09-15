@@ -700,11 +700,10 @@ flowchart TD
 
 ## 6. Open Questions
 
-- **Keep or strike hidden-cells.** §3.7 shows D6 holds today. The sprint as
-  defined pins the outcome and states the rule in the living docs, at cost S.
-  Recommendation: keep it; a rule that only the code states is a rule the next
-  refactor loses. The alternative is to strike the sprint and record the
-  finding in the Decisions Log alone.
+- **Keep or strike hidden-cells.** Resolved 2026-09-15: keep. §3.7 shows D6
+  holds today; the sprint pins the outcome and states the rule in the living
+  docs, at cost S, so the next refactor cannot lose a rule only the code
+  states.
 - **The re-test cap's value.** D5 bounds a continuously changing pending
   region. The right number is unknown; the plan starts at 20 and the first
   live observation on Databricks sets it.
@@ -743,3 +742,5 @@ flowchart TD
   chain root, nesting depth, pending table, shape fingerprint) enter
   `docs/vocabulary.md` with the sprint that makes each real, the precedent the
   decision record set.
+- 2026-09-15: hidden-cells stays in the stack as the reduced sprint, per the
+  product manager.
