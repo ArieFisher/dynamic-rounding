@@ -374,20 +374,17 @@ function renderPreviewBands() {
 // leaves it to the settings apply that ran before this call (issue #251),
 // so no pulled value needs threading back in after the bind resolves.
 function fetchPreviewSamples() {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (!tabs[0]) return;
-    chrome.tabs.sendMessage(tabs[0].id, { action: DR_CROSS_CONTEXT_TOPICS.GET_PREVIEW_SAMPLES }, (response) => {
-      if (chrome.runtime.lastError || !response) {
-        cachedSamples = null;
-        cachedMaxMag = null;
-        setTableBound(false);
-      } else {
-        cachedSamples = response.samples;
-        cachedMaxMag = response.maxMag;
-        setTableBound(response.samples !== null);
-      }
-      renderPreviewBands();
-    });
+  DR_BUS.request('request:previewSamples', {}, (answer) => {
+    if (!answer) {
+      cachedSamples = null;
+      cachedMaxMag = null;
+      setTableBound(false);
+    } else {
+      cachedSamples = answer.samples;
+      cachedMaxMag = answer.maxMag;
+      setTableBound(answer.samples !== null);
+    }
+    renderPreviewBands();
   });
 }
 
@@ -723,21 +720,13 @@ function applyDefaultsToUI() {
 // the last word — racing it against this pull could let a pulled "enabled:
 // true" win the UI over an actual no-table state.
 function pullSettingsAndApplyToUI() {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (!tabs[0]) {
+  DR_BUS.request('request:settings', {}, (answer) => {
+    if (!answer || !answer.settings) {
       applyDefaultsToUI();
-      fetchPreviewSamples();
-      return;
+    } else {
+      applySettingsToUI(answer.settings);
     }
-    chrome.tabs.sendMessage(tabs[0].id, { action: DR_CROSS_CONTEXT_TOPICS.GET_SETTINGS }, (response) => {
-      if (chrome.runtime.lastError || !response || !response.settings) {
-        applyDefaultsToUI();
-        fetchPreviewSamples();
-      } else {
-        applySettingsToUI(response.settings);
-        fetchPreviewSamples();
-      }
-    });
+    fetchPreviewSamples();
   });
 }
 
@@ -791,17 +780,14 @@ function foldCaptureForm() {
 function refreshCaptureSizeNote() {
   if (!captureSizeNoteEl) return;
   captureSizeNoteEl.hidden = true;
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (!tabs[0]) return;
-    chrome.tabs.sendMessage(tabs[0].id, { action: DR_CROSS_CONTEXT_TOPICS.GET_CAPTURE_STATE }, (response) => {
-      if (chrome.runtime.lastError || !response) return;
-      const warning = DR_CAPTURE.sizeWarning(response);
-      // The mark re-check drops a response that lands after the form folded.
-      if (warning !== null && captureMark !== null) {
-        captureSizeNoteEl.textContent = warning;
-        captureSizeNoteEl.hidden = false;
-      }
-    });
+  DR_BUS.request('request:captureState', {}, (answer) => {
+    if (!answer) return;
+    const warning = DR_CAPTURE.sizeWarning(answer);
+    // The mark re-check drops an answer that lands after the form folded.
+    if (warning !== null && captureMark !== null) {
+      captureSizeNoteEl.textContent = warning;
+      captureSizeNoteEl.hidden = false;
+    }
   });
 }
 
@@ -866,7 +852,7 @@ function collectSidebarView() {
   };
 }
 
-// One capture state from the page's half (the GET_CAPTURE_STATE response,
+// One capture state from the page's half (the request:captureState answer,
 // or null when the pull failed) and this page's half. CAPTURE_FORMAT comes
 // from lib/dr-capture/state.js, loaded by this page too, so the fallback
 // carries the same version the serializer stamps.
@@ -938,22 +924,14 @@ function saveCapture() {
   if (captureMark === null) return;
   const mark = captureMark;
   const note = captureRemarksEl ? captureRemarksEl.value : '';
-  DR_LOG.debug('Dynamic Rounding: finish pressed; pulling capture state.');
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (!tabs[0]) {
-      DR_LOG.warn('Dynamic Rounding: capture state pull failed (no active tab).');
+  DR_LOG.debug('Dynamic Rounding: finish pressed; asking for capture state.');
+  DR_BUS.request('request:captureState', {}, (answer) => {
+    if (!answer) {
+      DR_LOG.warn('Dynamic Rounding: capture state request went unanswered.');
       assembleAndSaveCapture(mark, note, null);
       return;
     }
-    chrome.tabs.sendMessage(tabs[0].id, { action: DR_CROSS_CONTEXT_TOPICS.GET_CAPTURE_STATE }, (response) => {
-      if (chrome.runtime.lastError || !response) {
-        DR_LOG.warn('Dynamic Rounding: capture state pull failed (' +
-          (chrome.runtime.lastError ? chrome.runtime.lastError.message : 'no response') + ').');
-        assembleAndSaveCapture(mark, note, null);
-      } else {
-        assembleAndSaveCapture(mark, note, response);
-      }
-    });
+    assembleAndSaveCapture(mark, note, answer);
   });
 }
 

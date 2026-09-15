@@ -98,9 +98,8 @@
  *     Answering undefined would close the publisher's callback on behalf of a
  *     context holding no answer.
  *
- * This file registers one Chrome message listener per context it loads in.
- * The content script still registers a second one of its own, carrying the
- * sidebar's three pulls; it retires when those move onto the request path.
+ * This file registers the one Chrome message listener each context has. No
+ * context registers a second one of its own.
  *
  * All three contexts load it. In the content script it comes after the lib/
  * packages and before app/store.js — the store publishes through this bus, so
@@ -133,11 +132,18 @@ const DR_BUS = (function () {
     // value to the selected table — this is the bus's first state-change
     // subscriber (see the depth guard below, issue #240).
     'state:settingsChanged': { family: STATE_CHANGE, route: null },
-    // The sidebar's settings apply. A request rather than a one-way publish:
-    // the content script records the settings and answers, and the sidebar
-    // reads whether anyone answered at all to decide bound versus unbound.
-    // The answer's value is never read.
+    // The sidebar's four requests. Each addresses the tab's content script,
+    // which holds the model.
+    //
+    // The settings apply is a request rather than a one-way publish: the
+    // content script records the settings and answers, and the sidebar reads
+    // whether anyone answered at all to decide bound versus unbound. The
+    // answer's value is never read. The other three read the model: its
+    // settings, the selected table's preview samples, and the capture state.
     'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
+    'request:settings': { family: REQUEST, route: ROUTE_TAB },
+    'request:previewSamples': { family: REQUEST, route: ROUTE_TAB },
+    'request:captureState': { family: REQUEST, route: ROUTE_TAB },
     // The service worker's four topics. The two it publishes to a tab carry
     // an explicit tab number: the menu-click tab and the sidebar's tab are
     // each the worker's to name, and neither is guaranteed to be the active

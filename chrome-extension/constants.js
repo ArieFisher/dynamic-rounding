@@ -10,9 +10,6 @@
  * DR_DEFAULTS is the settings contract: every option's name and its default.
  * Editing a value here changes both the sidebar's initial control state and the
  * right-click toggle's default behavior, so the two stay in lockstep.
- *
- * DR_CROSS_CONTEXT_TOPICS is the last three cross-context topic names not
- * yet on the event bus.
  */
 const DR_DEFAULTS = {
   enabled: true,
@@ -33,48 +30,3 @@ const DR_DEFAULTS = {
   numTop: 1,
   rangeExpr: ''
 };
-
-/**
- * A cross-context topic travels between the extension's three contexts over
- * Chrome messaging. Before this list each name existed only as text, written
- * out again at every publish site and every listener. Nothing compared those
- * copies, so one mistyped character produced a message no listener matched:
- * no error, no log row, and the branch simply never ran. Every publish site
- * and every listener now reads the name from here.
- *
- * Three names are left. The event bus (adapters/messaging.js) holds the topic
- * table now, and it rejects a name that is not in it, which is the same guard
- * this list's proxy makes. The three that remain are the sidebar's pulls,
- * which move onto the bus's request path next; this list retires with them.
- */
-const DR_CROSS_CONTEXT_TOPICS = (function () {
-  const NAMES = {
-    GET_CAPTURE_STATE: 'GET_CAPTURE_STATE',
-    GET_PREVIEW_SAMPLES: 'GET_PREVIEW_SAMPLES',
-    GET_SETTINGS: 'GET_SETTINGS',
-  };
-
-  // Reading a misspelled field off a plain object returns undefined, which
-  // puts undefined on the wire and reproduces the silent miss this list
-  // exists to remove. The proxy turns that read into an error on the spot,
-  // matching how the event bus already rejects an unknown topic name.
-  //
-  // Only a key SHAPED like a topic name throws. The language reads fields of
-  // its own off any object it is handed — toJSON when serializing, then when
-  // resolving, and others — and a guard that threw on those would break
-  // ordinary use of the list for no gain. Every realistic typo of a declared
-  // name is still upper case, so it still throws; an allowlist of the
-  // language's own field names would instead have to grow every time one is
-  // missed.
-  const TOPIC_SHAPED = /^[A-Z][A-Z0-9_]*$/;
-
-  return new Proxy(Object.freeze(NAMES), {
-    get(target, key) {
-      if (typeof key === 'symbol' || key in target) return target[key];
-      if (TOPIC_SHAPED.test(key)) {
-        throw new Error('DR_CROSS_CONTEXT_TOPICS: unknown cross-context topic "' + String(key) + '"');
-      }
-      return undefined;
-    },
-  });
-})();
