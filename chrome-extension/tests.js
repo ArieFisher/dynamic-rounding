@@ -223,6 +223,13 @@ function eq(name, actual, expected) {
   }
 }
 
+// The tab every sidebar harness below binds to. The sidebar records the tab
+// it was opened for and acts only on reports from that tab (issue #343), so
+// a harness's tab-query stub and the sender it dispatches reports from have
+// to name one number. Both read it here so they cannot drift.
+const SIDEBAR_HARNESS_TAB = 42;
+const FROM_SIDEBAR_TAB = { tab: { id: SIDEBAR_HARNESS_TAB } };
+
 // --- extractNumberInText ---
 
 eq('extract: plain comma number',
@@ -5705,7 +5712,7 @@ function fireTouchSecondTap(buttonEl) {
   // defaults. The block is isolated to the subscriber's own body, so the
   // negative pins below cover the whole handler and nothing beyond it.
   const switchHandlerMatch = sidebarSrc.match(
-    /DR_BUS\.subscribe\(\s*'state:tableSwitched'[^)]*\)\s*=>\s*\{([\s\S]*?)\n\}\);/);
+    /boundTab\.subscribe\(\s*'state:tableSwitched'[^)]*\)\s*=>\s*\{([\s\S]*?)\n\}\);/);
   const switchHandlerBlock = switchHandlerMatch ? switchHandlerMatch[1] : '';
   eq('rebind source: sidebar.js state:tableSwitched handler block was isolated (sanity check on the scan itself)',
     switchHandlerBlock.length > 0, true);
@@ -11215,7 +11222,7 @@ function fireMouseClick(buttonEl, fn) {
   // Verify sidebar.js source contains the state:tableEnabledChanged handler that sets enabledEl.checked.
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   eq("AC1 part-B: sidebar.js subscribes to 'state:tableEnabledChanged'",
-    /DR_BUS\.subscribe\(\s*'state:tableEnabledChanged'/.test(sidebarSrc), true);
+    /boundTab\.subscribe\(\s*'state:tableEnabledChanged'/.test(sidebarSrc), true);
   eq('AC1 part-B: sidebar.js puts the reported value on the switch',
     sidebarSrc.includes('enabledEl.checked = enabled'), true);
   eq('AC1 part-B: sidebar.js calls updateDisabledState() after setting checked',
@@ -11867,6 +11874,14 @@ function fireMouseClick(buttonEl, fn) {
       remove(cls) { bodyClasses.delete(cls); },
       add(cls)    { bodyClasses.add(cls); },
       contains(cls) { return bodyClasses.has(cls); },
+      // The sidebar's opening read runs after the tab lookup now, and it
+      // reaches this on the way (issue #343). Without it the eval stops
+      // before the lookup and the sidebar binds to no tab.
+      toggle(cls, force) {
+        if (force === undefined) {
+          if (bodyClasses.has(cls)) bodyClasses.delete(cls); else bodyClasses.add(cls);
+        } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
+      },
     },
     get offsetWidth() { return 0; },
     addEventListener(type, fn, opts) {
@@ -11894,6 +11909,10 @@ function fireMouseClick(buttonEl, fn) {
       querySelectorAll() { return []; },
       getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
       matches()  { return false; },
+      // The sidebar tags its status message with a source and clears the tag
+      // again. Without this the eval stops there, before the tab lookup the
+      // opening read now runs behind (issue #343).
+      dataset: {},
       closest()  { return null; },
     };
     return el;
@@ -11918,6 +11937,14 @@ function fireMouseClick(buttonEl, fn) {
     runtime: {
       onMessage: { addListener: () => {} },
       sendMessage: () => {},
+    },
+    // The sidebar records the tab it was opened for and acts only on reports
+    // from that tab (issue #343), so this harness answers with one. No
+    // sendMessage: the opening read then goes unanswered and the sidebar
+    // falls to its unbound state, which is what this section already assumed.
+    tabs: {
+      query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
+      onActivated: { addListener() {} },
     },
   };
   global.window = {
@@ -11965,7 +11992,7 @@ function fireMouseClick(buttonEl, fn) {
 
   if (typeof capturedOnMessageHandler === 'function') {
     // Invoke the state:tableActivated message and verify the flash class is applied.
-    capturedOnMessageHandler({ action: 'state:tableActivated' }, {}, () => {});
+    capturedOnMessageHandler({ action: 'state:tableActivated' }, FROM_SIDEBAR_TAB, () => {});
 
     eq('table-activation AC2 live: state:tableActivated message adds dr-sidebar-flash to document.body',
       bodyClasses.has('dr-sidebar-flash'),
@@ -15869,7 +15896,7 @@ const LADDER_OPTS = {
       get lastError() { return queuedLastError; },
     },
     tabs: {
-      query(q, cb) { cb([{ id: 42 }]); },
+      query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
       // Chrome hands the callback the responder's value on success, and
       // nothing (with lastError set) when nobody answered. queuedLastError
       // picks which, so one stub covers both directions.
@@ -16026,7 +16053,7 @@ const LADDER_OPTS = {
       get lastError() { return queuedLastError; },
     },
     tabs: {
-      query(q, cb) { cb([{ id: 42 }]); },
+      query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
       sendMessage(tabId, msg, cb) { if (typeof cb === 'function') cb(queuedLastError ? undefined : { ok: true }); },
     },
   };
@@ -16062,7 +16089,7 @@ const LADDER_OPTS = {
     // --- state:applyBlocked shows the notice, tagged with its source. ---
     statusEl.textContent = '';
     delete statusEl.dataset.source;
-    onMessageHandler({ action: 'state:applyBlocked', count: 3 }, {}, () => {});
+    onMessageHandler({ action: 'state:applyBlocked', count: 3 }, FROM_SIDEBAR_TAB, () => {});
     eq('apply-blocked notice: state:applyBlocked sets the user-visible notice in #status',
       statusEl.textContent,
       'This table\'s original values are no longer available. Reload the page, then apply settings again.');
@@ -16076,13 +16103,13 @@ const LADDER_OPTS = {
       'This table\'s original values are no longer available. Reload the page, then apply settings again.');
 
     // --- state:rangeOk does not clear it either (source mismatch). ---
-    onMessageHandler({ action: 'state:rangeOk' }, {}, () => {});
+    onMessageHandler({ action: 'state:rangeOk' }, FROM_SIDEBAR_TAB, () => {});
     eq('apply-blocked notice: state:rangeOk leaves the blocked notice alone',
       statusEl.textContent,
       'This table\'s original values are no longer available. Reload the page, then apply settings again.');
 
     // --- state:applyOk clears it. ---
-    onMessageHandler({ action: 'state:applyOk' }, {}, () => {});
+    onMessageHandler({ action: 'state:applyOk' }, FROM_SIDEBAR_TAB, () => {});
     eq('apply-blocked notice: state:applyOk clears the notice',
       statusEl.textContent, '');
     eq('apply-blocked notice: state:applyOk removes the source tag',
@@ -16090,11 +16117,11 @@ const LADDER_OPTS = {
 
     // --- state:applyOk leaves a range error alone (source mismatch, mirroring
     // state:rangeOk's own guard). ---
-    onMessageHandler({ action: 'state:rangeError', error: 'Invalid range expression.' }, {}, () => {});
-    onMessageHandler({ action: 'state:applyOk' }, {}, () => {});
+    onMessageHandler({ action: 'state:rangeError', error: 'Invalid range expression.' }, FROM_SIDEBAR_TAB, () => {});
+    onMessageHandler({ action: 'state:applyOk' }, FROM_SIDEBAR_TAB, () => {});
     eq('apply-blocked notice: state:applyOk leaves a range error alone',
       statusEl.textContent, 'Invalid range expression.');
-    onMessageHandler({ action: 'state:rangeOk' }, {}, () => {});
+    onMessageHandler({ action: 'state:rangeOk' }, FROM_SIDEBAR_TAB, () => {});
 
     // --- An unsourced stale status still clears on delivery success — the
     // delivery-feedback behavior pinned above is preserved. ---
@@ -16112,7 +16139,7 @@ const LADDER_OPTS = {
     // setTableBound(false)) each lift the lock. ---
     enabledEl.checked = false;
     enabledEl.disabled = false;
-    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, {}, () => {});
+    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, FROM_SIDEBAR_TAB, () => {});
     eq('sidebar lock: state:applyBlocked adds body.table-locked',
       bodyClasses.has('table-locked'), true);
     eq('sidebar lock: state:applyBlocked forces the main toggle ON — the table IS simplified',
@@ -16120,20 +16147,20 @@ const LADDER_OPTS = {
     eq('sidebar lock: state:applyBlocked disables the main toggle',
       enabledEl.disabled, true);
 
-    onMessageHandler({ action: 'state:applyOk' }, {}, () => {});
+    onMessageHandler({ action: 'state:applyOk' }, FROM_SIDEBAR_TAB, () => {});
     eq('sidebar lock: state:applyOk lifts the lock',
       bodyClasses.has('table-locked'), false);
     eq('sidebar lock: state:applyOk re-enables the main toggle',
       enabledEl.disabled, false);
 
-    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, {}, () => {});
-    onMessageHandler({ action: 'state:tableSwitched' }, {}, () => {});
+    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, FROM_SIDEBAR_TAB, () => {});
+    onMessageHandler({ action: 'state:tableSwitched' }, FROM_SIDEBAR_TAB, () => {});
     eq('sidebar lock: a table switch (state:tableSwitched) lifts the lock',
       bodyClasses.has('table-locked'), false);
     eq('sidebar lock: a table switch re-enables the main toggle',
       enabledEl.disabled, false);
 
-    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, {}, () => {});
+    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, FROM_SIDEBAR_TAB, () => {});
     queuedLastError = { message: 'Could not establish connection.' };
     enabledChangeHandler();
     queuedLastError = null;
@@ -16447,7 +16474,7 @@ const LADDER_OPTS = {
       lastError: null,
     },
     tabs: {
-      query(q, cb) { cb([{ id: 42 }]); },
+      query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
       sendMessage(tabId, msg, cb) {
         if (msg.action === 'request:settings') {
           cb({ settings: pulledSettings });
@@ -16587,7 +16614,7 @@ function makeIssue251SidebarHarness() {
       lastError: null,
     },
     tabs: {
-      query(q, cb) { cb([{ id: 42 }]); },
+      query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
       sendMessage(tabId, msg, cb) {
         tabMessages.push(msg);
         if (msg.action === 'request:settings') {
@@ -16628,7 +16655,7 @@ function makeIssue251SidebarHarness() {
     statusEl, enabledEl, rangeExprEl, bodyClasses, evalError, tabMessages,
     chromeMock: captureChrome,
     el(id) { return elsById[id]; },
-    dispatch(msg) { onMessageHandler(msg, {}, () => {}); },
+    dispatch(msg) { onMessageHandler(msg, FROM_SIDEBAR_TAB, () => {}); },
     hasHandler() { return typeof onMessageHandler === 'function'; },
     restore() {
       global.document = savedDoc;
@@ -20205,6 +20232,350 @@ function makeBusSandbox(opts) {
     bothEnds, []);
 })();
 
+
+// --- The sidebar serves one tab (issue #343) --------------------------------
+//
+// A content script reports by broadcast, and a broadcast reaches the sidebar
+// whatever tab it came from. The sidebar acted on every report it received,
+// so a background tab re-simplifying its rows redrew the sidebar and a
+// blocked apply there locked it against a table the user could not see.
+//
+// createBoundTab holds the whole concern and takes its tabs interface and its
+// bus as parameters, so this section drives the real source with stubs
+// instead of scanning it.
+(function boundTabSection() {
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const factory = sidebarSrc.match(/function createBoundTab\([\s\S]*?\n\}/);
+
+  eq('bound tab: createBoundTab extracted from sidebar.js', !!factory, true);
+  if (!factory) return;
+
+  const createBoundTab = (new Function('return ' + factory[0] + ';'))();
+  eq('bound tab: createBoundTab is a function', typeof createBoundTab, 'function');
+
+  // A bus stub recording every subscription, so a test can deliver a report
+  // on a topic with any sending tab it likes.
+  function makeBus() {
+    const handlers = new Map();
+    return {
+      subscribe(topic, handler) {
+        if (!handlers.has(topic)) handlers.set(topic, []);
+        handlers.get(topic).push(handler);
+        return () => {};
+      },
+      // Deliver as the bus does: the payload, and beside it the facts the
+      // carrier supplied rather than the publisher.
+      deliver(topic, payload, tabId) {
+        for (const h of (handlers.get(topic) || [])) h(payload, { tabId });
+      },
+      topicCount() { return handlers.size; },
+    };
+  }
+
+  // A tabs stub. queryResult is what chrome.tabs.query answers with.
+  function makeTabs(queryResult) {
+    const listeners = [];
+    return {
+      query(q, cb) { cb(queryResult); },
+      onActivated: { addListener: (fn) => { listeners.push(fn); } },
+      activate(tabId) { for (const fn of listeners) fn({ tabId }); },
+      listenerCount() { return listeners.length; },
+    };
+  }
+
+  const OWN_TAB = 11;
+  const OTHER_TAB = 12;
+
+  // --- The opening read runs after the tab is recorded, never before ---
+  (function resolveOrdering() {
+    const order = [];
+    const tabs = {
+      query(q, cb) { order.push('query'); cb([{ id: OWN_TAB }]); },
+      onActivated: { addListener: () => {} },
+    };
+    const boundTab = createBoundTab(tabs, makeBus());
+    boundTab.resolve(() => { order.push('opening read'); });
+
+    eq('bound tab: the opening read runs after the tab lookup',
+      order, ['query', 'opening read']);
+    eq('bound tab: resolve records the tab the sidebar was opened for',
+      boundTab.id(), OWN_TAB);
+  })();
+
+  // No tab to bind to: the sidebar still runs its opening read, which falls
+  // to the unbound state on its own when nothing answers.
+  (function resolveWithNoActiveTab() {
+    const boundTab = createBoundTab(makeTabs([]), makeBus());
+    let ran = false;
+    boundTab.resolve(() => { ran = true; });
+
+    eq('bound tab: no active tab leaves the bound tab unrecorded',
+      boundTab.id(), null);
+    eq('bound tab: no active tab still runs the opening read', ran, true);
+  })();
+
+  // --- A report is acted on only when it came from the bound tab ---
+  (function reportsAreFiltered() {
+    const bus = makeBus();
+    const boundTab = createBoundTab(makeTabs([{ id: OWN_TAB }]), bus);
+    boundTab.resolve(() => {});
+
+    const seen = [];
+    boundTab.subscribe('state:applyBlocked', (payload) => { seen.push(payload); });
+
+    bus.deliver('state:applyBlocked', { from: 'own' }, OWN_TAB);
+    eq('bound tab: a report from the bound tab reaches its handler',
+      seen, [{ from: 'own' }]);
+
+    bus.deliver('state:applyBlocked', { from: 'other' }, OTHER_TAB);
+    eq('bound tab: a report from another tab is dropped',
+      seen, [{ from: 'own' }]);
+
+    // An extension page has no tab. Nothing a content script sends looks
+    // like this, and a report that does belongs to no tab at all.
+    bus.deliver('state:applyBlocked', { from: 'an extension page' }, null);
+    eq('bound tab: a report carrying no tab is dropped',
+      seen, [{ from: 'own' }]);
+  })();
+
+  // The window between the sidebar opening and its tab lookup answering.
+  // Nothing can be compared yet, so nothing is acted on; the opening read
+  // that follows carries the current truth.
+  (function reportsBeforeTheTabResolves() {
+    const bus = makeBus();
+    const boundTab = createBoundTab(makeTabs([{ id: OWN_TAB }]), bus);
+    const seen = [];
+    boundTab.subscribe('state:previewSamplesChanged', (payload) => { seen.push(payload); });
+
+    bus.deliver('state:previewSamplesChanged', { early: true }, OWN_TAB);
+    eq('bound tab: a report arriving before the tab lookup answers is dropped',
+      seen, []);
+
+    boundTab.resolve(() => {});
+    bus.deliver('state:previewSamplesChanged', { early: false }, OWN_TAB);
+    eq('bound tab: reports are acted on once the tab lookup has answered',
+      seen, [{ early: false }]);
+  })();
+
+  // The bound tab keeps running while it sits in the background, and its
+  // reports still describe the page the sidebar shows.
+  (function backgroundReportsFromTheBoundTab() {
+    const bus = makeBus();
+    const tabs = makeTabs([{ id: OWN_TAB }]);
+    const boundTab = createBoundTab(tabs, bus);
+    boundTab.resolve(() => {});
+    boundTab.watch(() => {});
+
+    const seen = [];
+    boundTab.subscribe('state:tableEnabledChanged', (payload) => { seen.push(payload); });
+
+    tabs.activate(OTHER_TAB);
+    bus.deliver('state:tableEnabledChanged', { enabled: false }, OWN_TAB);
+    eq('bound tab: a report from the bound tab is acted on while that tab sits in the background',
+      seen, [{ enabled: false }]);
+  })();
+
+  // --- Which tab is in front ---
+  (function frontTabChanges() {
+    const tabs = makeTabs([{ id: OWN_TAB }]);
+    const boundTab = createBoundTab(tabs, makeBus());
+    boundTab.resolve(() => {});
+
+    const changes = [];
+    boundTab.watch((isFront) => { changes.push(isFront); });
+
+    eq('bound tab: the bound tab counts as in front until a switch says otherwise',
+      boundTab.isFront(), true);
+
+    tabs.activate(OTHER_TAB);
+    eq('bound tab: activating another tab reports the bound tab away', changes, [false]);
+    eq('bound tab: the away state is readable', boundTab.isFront(), false);
+
+    // A switch between two other tabs changes nothing the sidebar draws.
+    tabs.activate(99);
+    eq('bound tab: a switch between two other tabs reports nothing new', changes, [false]);
+
+    tabs.activate(OWN_TAB);
+    eq('bound tab: returning to the bound tab reports it in front again',
+      changes, [false, true]);
+    eq('bound tab: the front state is readable again', boundTab.isFront(), true);
+
+    tabs.activate(OWN_TAB);
+    eq('bound tab: staying on the bound tab reports nothing new',
+      changes, [false, true]);
+  })();
+
+  // A tabs interface with no activation event must not throw. The sidebar
+  // then never leaves its front state, which is the behavior before this
+  // change.
+  (function watchWithNoActivationEvent() {
+    const boundTab = createBoundTab({ query: (q, cb) => cb([{ id: OWN_TAB }]) }, makeBus());
+    boundTab.resolve(() => {});
+    let threw = false;
+    try { boundTab.watch(() => {}); } catch (e) { threw = true; }
+    eq('bound tab: a tabs interface with no activation event does not throw', threw, false);
+    eq('bound tab: without an activation event the bound tab stays in front',
+      boundTab.isFront(), true);
+  })();
+
+  // --- Every content-script report goes through the gate ---
+  //
+  // The list is derived, never restated: a topic qualifies when the bus lists
+  // it, the content script publishes it, and the sidebar subscribes it. A
+  // topic added later joins this check with no edit here. The count assertion
+  // makes the scan fail closed, so a regex that matches nothing cannot read
+  // as a pass.
+
+  // --- What the sidebar shows while its tab is not the one in front ---
+  //
+  // createAwayView takes the two page elements it writes, so this drives the
+  // real source against stubs.
+  (function awayViewSection() {
+    const viewFactory = sidebarSrc.match(/function createAwayView\([\s\S]*?\n\}/);
+    eq('bound tab: createAwayView extracted from sidebar.js', !!viewFactory, true);
+    if (!viewFactory) return;
+
+    const createAwayView = (new Function('return ' + viewFactory[0] + ';'))();
+
+    function makeEls() {
+      const classes = new Set();
+      return {
+        body: {
+          classList: {
+            add: (c) => classes.add(c),
+            remove: (c) => classes.delete(c),
+            contains: (c) => classes.has(c),
+          },
+        },
+        status: { textContent: '', dataset: {} },
+        has: (c) => classes.has(c),
+      };
+    }
+
+    const AWAY_CLASS = 'tab-away';
+
+    (function goingAway() {
+      const els = makeEls();
+      const view = createAwayView(els.body, els.status);
+      els.status.textContent = 'Right-click a table to connect it here.';
+
+      view.show();
+      eq('away view: showing marks the sidebar as away', els.has(AWAY_CLASS), true);
+      eq('away view: showing replaces the message with the away message',
+        els.status.textContent.length > 0 &&
+        els.status.textContent !== 'Right-click a table to connect it here.', true);
+      eq('away view: the away message is tagged with its own source',
+        els.status.dataset.source, 'tab-away');
+    })();
+
+    (function comingBack() {
+      const els = makeEls();
+      const view = createAwayView(els.body, els.status);
+      els.status.textContent = 'This table\'s original values are no longer available.';
+      els.status.dataset.source = 'blocked';
+
+      view.show();
+      view.hide();
+
+      eq('away view: coming back clears the away mark', els.has(AWAY_CLASS), false);
+      eq('away view: coming back puts back the message that was showing',
+        els.status.textContent, 'This table\'s original values are no longer available.');
+      eq('away view: coming back puts back that message\'s source',
+        els.status.dataset.source, 'blocked');
+    })();
+
+    // A message with no source tag goes back the same way, tag and all.
+    (function comingBackToAnUntaggedMessage() {
+      const els = makeEls();
+      const view = createAwayView(els.body, els.status);
+      els.status.textContent = 'Capture saved.';
+
+      view.show();
+      view.hide();
+
+      eq('away view: an untagged message comes back untagged',
+        els.status.textContent, 'Capture saved.');
+      eq('away view: an untagged message comes back with no source',
+        'source' in els.status.dataset, false);
+    })();
+
+    // A second show() must not overwrite what the first one stashed, or the
+    // away message itself would come back as the sidebar's message.
+    (function showingTwice() {
+      const els = makeEls();
+      const view = createAwayView(els.body, els.status);
+      els.status.textContent = 'Right-click a table to connect it here.';
+
+      view.show();
+      view.show();
+      view.hide();
+
+      eq('away view: a second showing keeps the first one\'s stashed message',
+        els.status.textContent, 'Right-click a table to connect it here.');
+    })();
+
+    // Coming back without having gone away leaves the sidebar alone.
+    (function hideWithoutShow() {
+      const els = makeEls();
+      const view = createAwayView(els.body, els.status);
+      els.status.textContent = 'Right-click a table to connect it here.';
+
+      view.hide();
+
+      eq('away view: coming back without having gone away leaves the message alone',
+        els.status.textContent, 'Right-click a table to connect it here.');
+      eq('away view: coming back without having gone away leaves the mark off',
+        els.has(AWAY_CLASS), false);
+    })();
+  })();
+
+  // --- The away state has a stylesheet to match ---
+  //
+  // The class name is written in two files, and nothing else reports a
+  // mismatch: the sidebar adds the class and the stylesheet dims on it. These
+  // read the class out of the sidebar's own source rather than restating it.
+  (function awayStateIsStyled() {
+    const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+    const classMatch = sidebarSrc.match(/const TAB_AWAY_CLASS = '([^']+)'/);
+
+    eq('away view: the away class name is readable from sidebar.js (fails closed on a rename)',
+      !!classMatch, true);
+    if (!classMatch) return;
+    const awayClass = classMatch[1];
+
+    eq('away view: the stylesheet dims the settings area while away',
+      new RegExp('body\\.' + awayClass + '\\s+#optionsSection').test(sidebarHtml), true);
+    eq('away view: the stylesheet dims the capture section while away',
+      new RegExp('body\\.' + awayClass + '\\s+#captureSection').test(sidebarHtml), true);
+    eq('away view: the stylesheet dims the main switch while away',
+      new RegExp('body\\.' + awayClass + '\\s+\\.title-row \\.switch').test(sidebarHtml), true);
+    eq('away view: the away rules stop input reaching the dimmed controls',
+      /pointer-events:\s*none/.test(
+        (sidebarHtml.match(new RegExp('body\\.' + awayClass + '[\\s\\S]*?\\}', 'g')) || []).join('')),
+      true);
+  })();
+  (function everyContentReportIsGated() {
+    const contentSrc = sourceByName('content.js');
+    eq('bound tab: the content script source is readable (fails closed on a rename)',
+      typeof contentSrc, 'string');
+    if (typeof contentSrc !== 'string') return;
+    const publishes = (src, topic) => new RegExp("publish\\(\\s*'" + topic + "'").test(src);
+    const gated = (src, topic) => new RegExp("boundTab\\.subscribe\\(\\s*'" + topic + "'").test(src);
+    const ungated = (src, topic) => new RegExp("DR_BUS\\.subscribe\\(\\s*'" + topic + "'").test(src);
+
+    const contentReports = Object.keys(DR_BUS.TOPICS).filter((topic) =>
+      publishes(contentSrc, topic) && (gated(sidebarSrc, topic) || ungated(sidebarSrc, topic)));
+
+    eq('bound tab: the scan found content-script reports the sidebar subscribes (fails closed on an empty list)',
+      contentReports.length > 0, true);
+    eq('bound tab: every content-script report the sidebar subscribes goes through the bound-tab gate',
+      contentReports.filter((topic) => ungated(sidebarSrc, topic)), []);
+
+    // The service worker's close carries no tab, so gating it would drop it.
+    eq('bound tab: the close message stays off the gate',
+      ungated(sidebarSrc, 'intent:closeSidebar'), true);
+  })();
+})();
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);

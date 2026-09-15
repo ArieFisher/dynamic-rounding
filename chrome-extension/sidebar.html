@@ -258,6 +258,22 @@
       font-weight: 500;
       color: #5f6368;
     }
+    /* Away from the bound tab (issue #343): the sidebar was opened for one
+       tab and serves that tab alone, so while another tab is in front its
+       controls describe a page the user is not looking at. They dim and stop
+       accepting input, and #status carries the reason. The capture section
+       dims with them, because a capture reads the page too. */
+    body.tab-away #optionsSection,
+    body.tab-away #captureSection,
+    body.tab-away .title-row .switch {
+      opacity: 0.4;
+      pointer-events: none;
+    }
+    body.tab-away #status {
+      font-size: 13px;
+      font-weight: 500;
+      color: #5f6368;
+    }
     .divider {
       border: none;
       border-top: 1px solid #e8eaed;
