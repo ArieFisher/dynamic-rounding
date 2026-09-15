@@ -1,5 +1,6 @@
 # Sprint Plan: Grid Detection Recovery
 
+**Status:** SUPERSEDED — replaced before execution by [grid-detection-recovery-v2.md](./grid-detection-recovery-v2.md), which carries the same eight decisions in the sprint-plan structure the finalize step parses. No sprint from this file ran.
 **Created:** 2026-09-15
 **Base branch:** main
 **Slug:** grid-detection-recovery
