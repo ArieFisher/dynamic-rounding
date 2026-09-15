@@ -5,7 +5,10 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
-importScripts('constants.js');
+// The bus, and nothing else. The settings contract in constants.js was loaded
+// here for the shared topic-name list alone, and the bus holds the topic table
+// now; no other constant in that file reaches this context.
+importScripts('adapters/messaging.js');
 
 let sidebarTabId = null;
 
@@ -24,7 +27,9 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "dr-action") {
-    chrome.tabs.sendMessage(tab.id, { action: DR_CROSS_CONTEXT_TOPICS.MENU_CLICKED });
+    // The menu-click tab is the one the right-click happened in, which the
+    // bus's active-tab lookup would only find by accident. Name it.
+    DR_BUS.publish('intent:menuClicked', {}, { tabId: tab.id });
     return;
   }
 
@@ -37,7 +42,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       console.warn("Dynamic Rounding: failed to open side panel", e);
     }
     sidebarTabId = tab.id;
-    chrome.tabs.sendMessage(tab.id, { action: DR_CROSS_CONTEXT_TOPICS.SIDEBAR_OPENED });
+    DR_BUS.publish('state:sidebarOpened', {}, { tabId: tab.id });
   }
 });
 
@@ -47,8 +52,8 @@ function closeSidebarIfOpen() {
   // content script through its tab, so the page could clear its own copy of
   // "the sidebar is open" — the 2026-09-14 sidebar-state-removal design
   // retired that copy along with everything that read it (#241), and the
-  // content script has no handler for this message now.
-  chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.CLOSE_SIDEBAR }).catch(() => {});
+  // content script has no subscriber for this topic now.
+  DR_BUS.publish('intent:closeSidebar', {});
   sidebarTabId = null;
 }
 
@@ -70,33 +75,26 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((request, sender) => {
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.UPDATE_MENU_LABEL) {
-    chrome.contextMenus.update("dr-action", { title: request.title });
-    return;
-  }
-
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.PAGE_UNLOADED) {
-    if (sender.tab && sender.tab.id === sidebarTabId) {
-      closeSidebarIfOpen();
-    }
-    return;
-  }
-
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.SIDEBAR_CLOSED) {
-    sidebarTabId = null;
-    return;
-  }
-
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE) {
-    if (sidebarTabId !== null) {
-      chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE, enabled: request.enabled });
-    }
-    return;
-  }
-
-  // TABLE_ACTIVATED needs no relay. content.js sends it with
-  // runtime.sendMessage, which the side panel already receives directly.
-  // Forwarding it to sidebarTabId aimed it at the content script, which has no
-  // handler for that action.
+DR_BUS.subscribe('intent:updateMenuLabel', ({ title }) => {
+  chrome.contextMenus.update("dr-action", { title });
 });
+
+// meta.tabId is the tab the content script sent from. The worker acts only
+// when that tab is the one the sidebar was opened for; without the number,
+// any page unload in any tab would close the sidebar.
+DR_BUS.subscribe('state:pageUnloaded', (payload, meta) => {
+  if (meta.tabId !== null && meta.tabId === sidebarTabId) {
+    closeSidebarIfOpen();
+  }
+});
+
+DR_BUS.subscribe('state:sidebarClosed', () => {
+  sidebarTabId = null;
+});
+
+// The on/off report needs no relay here. The content script's single publish
+// already reaches the sidebar, so the re-send this worker used to make was a
+// second delivery of one fact.
+//
+// The table-activation report needs no relay either. The content script
+// broadcasts it to every extension page, which is where the sidebar reads it.

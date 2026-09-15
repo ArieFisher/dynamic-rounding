@@ -35,8 +35,8 @@
  *                        caller passes one, and otherwise from a query for the
  *                        active tab. A caller passes one where it holds a tab
  *                        number that is not the active tab's — the service
- *                        worker will, for the menu-click tab and the
- *                        sidebar's tab, once its topics move.
+ *                        worker does, for the menu-click tab and the
+ *                        sidebar's tab.
  *
  * The route replaced a capability sniff: publish() used to test which Chrome
  * interface existed in the publishing context and infer the carrier from that,
@@ -90,17 +90,22 @@
  *     asynchronous one needs a design that does not exist yet.
  *   - One responder per topic. A second registration throws where it is made,
  *     rather than later when two answers race.
+ *   - Each verb refuses a topic of the wrong family, at the call. publish()
+ *     refuses a request topic, because it has nowhere to put an answer and
+ *     would drop one in silence; request() and respond() each refuse a
+ *     one-way topic, which has no responder to answer them.
  *   - An arriving request with no responder in this context sends no reply.
  *     Answering undefined would close the publisher's callback on behalf of a
  *     context holding no answer.
  *
  * This file registers one Chrome message listener per context it loads in.
- * The content script and the sidebar page each still register a second one of
- * their own, which retires as their topics move onto the bus.
+ * The content script still registers a second one of its own, carrying the
+ * sidebar's three pulls; it retires when those move onto the request path.
  *
- * Loaded after the lib/ packages and before app/store.js — the store
- * publishes through this bus, so the bus must exist first. The content script
- * and the sidebar page load it; the service worker does not yet.
+ * All three contexts load it. In the content script it comes after the lib/
+ * packages and before app/store.js — the store publishes through this bus, so
+ * the bus must exist first. The service worker imports it at the top of
+ * background.js, and the sidebar page loads it before sidebar.js.
  */
 
 const DR_BUS = (function () {
@@ -133,6 +138,29 @@ const DR_BUS = (function () {
     // reads whether anyone answered at all to decide bound versus unbound.
     // The answer's value is never read.
     'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
+    // The service worker's four topics. The two it publishes to a tab carry
+    // an explicit tab number: the menu-click tab and the sidebar's tab are
+    // each the worker's to name, and neither is guaranteed to be the active
+    // one at the moment of the send.
+    'intent:menuClicked': { family: INTENT, route: ROUTE_TAB },
+    'state:sidebarOpened': { family: STATE_CHANGE, route: ROUTE_TAB },
+    'intent:closeSidebar': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
+    'state:sidebarClosed': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    // The worker reads meta.tabId on this one, to act only for the tab the
+    // sidebar was opened for.
+    'state:pageUnloaded': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'intent:updateMenuLabel': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
+    // The content script's reports to the sidebar. Every one takes the
+    // broadcast carrier: the content script holds no tabs interface, and the
+    // sidebar is an extension page.
+    'state:tableActivated': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:tableSwitched': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:tableEnabledChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:rangeError': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:rangeOk': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:applyBlocked': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:applyOk': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:previewSamplesChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
   };
 
   const subscribers = new Map(); // topic name -> Set<handler>
@@ -274,6 +302,15 @@ const DR_BUS = (function () {
 
   function publish(topic, payload, opts) {
     assertKnownTopic(topic);
+    // A request topic's responder returns an answer, and publish() has nowhere
+    // to put one: it would send the message, the responder would answer, and
+    // the answer would go nowhere, with nothing logged and nothing failed.
+    // request() and respond() each reject a topic of the wrong family already;
+    // this is the third pairing (#340).
+    if (TOPICS[topic].family === REQUEST) {
+      throw new Error('DR_BUS: publish() cannot carry a request-family topic; "' +
+        topic + '" is answered, and publish() discards the answer — use request()');
+    }
     publishDepth++;
     try {
       if (publishDepth > MAX_PUBLISH_DEPTH) {

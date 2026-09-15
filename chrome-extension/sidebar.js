@@ -581,83 +581,93 @@ function flashSidebarContainer() {
   }, { once: true });
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_ACTIVATED) {
-    flashSidebarContainer();
-  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.CLOSE_SIDEBAR) {
-    window.close();
-  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.RANGE_ERROR) {
-    statusEl.textContent = request.error || 'Invalid range expression.';
-    statusEl.dataset.source = 'range';
-    if (rangeExprEl) rangeExprEl.classList.add('invalid');
-  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.RANGE_OK) {
-    if (rangeExprEl) rangeExprEl.classList.remove('invalid');
-    if (statusEl.dataset.source === 'range') {
-      statusEl.textContent = '';
-      delete statusEl.dataset.source;
-    }
-  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.APPLY_BLOCKED) {
-    DR_LOG.warn('Dynamic Rounding: apply blocked received; panel locked.');
-    statusEl.textContent = APPLY_BLOCKED_STATUS_MSG;
-    statusEl.dataset.source = 'blocked';
-    // Issue #262: the connected table is stuck showing simplified values.
-    // Show that truth and stop accepting input: main toggle ON and
-    // disabled, settings area dimmed via body.table-locked (sidebar.html).
-    // The record's enabled goes to the stash first (issue #272) — a re-lock
-    // while already locked keeps the stash, never captures the forced ON.
-    if (!document.body.classList.contains('table-locked')) {
-      lockStashedEnabled = enabledEl.checked;
-    }
-    document.body.classList.add('table-locked');
-    enabledEl.checked = true;
-    enabledEl.disabled = true;
-    updateDisabledState();
-  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.APPLY_OK) {
-    if (statusEl.dataset.source === 'blocked') {
-      statusEl.textContent = '';
-      delete statusEl.dataset.source;
-    }
-    liftLockAndRestoreEnabled();
-  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.PREVIEW_SAMPLES_CHANGED) {
-    // Stale view: re-read the model's settings, then the previews (the pull
-    // chain ends in fetchPreviewSamples). A bare preview fetch here used to
-    // reset the main toggle to the shipped default (issue #251).
+DR_BUS.subscribe('state:tableActivated', () => {
+  flashSidebarContainer();
+});
+
+DR_BUS.subscribe('intent:closeSidebar', () => {
+  window.close();
+});
+
+DR_BUS.subscribe('state:rangeError', ({ error }) => {
+  statusEl.textContent = error || 'Invalid range expression.';
+  statusEl.dataset.source = 'range';
+  if (rangeExprEl) rangeExprEl.classList.add('invalid');
+});
+
+DR_BUS.subscribe('state:rangeOk', () => {
+  if (rangeExprEl) rangeExprEl.classList.remove('invalid');
+  if (statusEl.dataset.source === 'range') {
+    statusEl.textContent = '';
+    delete statusEl.dataset.source;
+  }
+});
+
+DR_BUS.subscribe('state:applyBlocked', () => {
+  DR_LOG.warn('Dynamic Rounding: apply blocked received; panel locked.');
+  statusEl.textContent = APPLY_BLOCKED_STATUS_MSG;
+  statusEl.dataset.source = 'blocked';
+  // Issue #262: the connected table is stuck showing simplified values.
+  // Show that truth and stop accepting input: main toggle ON and
+  // disabled, settings area dimmed via body.table-locked (sidebar.html).
+  // The record's enabled goes to the stash first (issue #272) — a re-lock
+  // while already locked keeps the stash, never captures the forced ON.
+  if (!document.body.classList.contains('table-locked')) {
+    lockStashedEnabled = enabledEl.checked;
+  }
+  document.body.classList.add('table-locked');
+  enabledEl.checked = true;
+  enabledEl.disabled = true;
+  updateDisabledState();
+});
+
+DR_BUS.subscribe('state:applyOk', () => {
+  if (statusEl.dataset.source === 'blocked') {
+    statusEl.textContent = '';
+    delete statusEl.dataset.source;
+  }
+  liftLockAndRestoreEnabled();
+});
+
+DR_BUS.subscribe('state:previewSamplesChanged', () => {
+  // Stale view: re-read the model's settings, then the previews (the pull
+  // chain ends in fetchPreviewSamples). A bare preview fetch here used to
+  // reset the main toggle to the shipped default (issue #251).
+  pullSettingsAndApplyToUI();
+});
+
+DR_BUS.subscribe('state:tableSwitched', () => {
+  DR_LOG.debug('Dynamic Rounding: table switch received.');
+  // A table switch: the lock, if any, belonged to the previous table.
+  // The switch apply on the content side runs after this message is
+  // sent, so its state:applyBlocked re-locks the panel right after this lift
+  // when the new table is stuck. Restoring the stash before the pull
+  // (issue #272) keeps the switch honest in that gap, so a re-lock
+  // captures the record's value, never a leftover forced ON.
+  liftLockAndRestoreEnabled();
+  // The panel mirrors the model's settings on any switch (issue #251); it
+  // does not reset to the shipped defaults.
+  try {
     pullSettingsAndApplyToUI();
-  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_SWITCHED) {
-    DR_LOG.debug('Dynamic Rounding: table switch received.');
-    // A table switch: the lock, if any, belonged to the previous table.
-    // The switch apply on the content side runs after this message is
-    // sent, so its APPLY_BLOCKED re-locks the panel right after this lift
-    // when the new table is stuck. Restoring the stash before the pull
-    // (issue #272) keeps the switch honest in that gap, so a re-lock
-    // captures the record's value, never a leftover forced ON.
-    liftLockAndRestoreEnabled();
-    // The panel mirrors the model's settings on any switch (issue #251); it
-    // does not reset to the shipped defaults.
-    try {
-      pullSettingsAndApplyToUI();
-    } catch (e) {
-      // sidebar may be in teardown; harmless
-    }
-  } else if (request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE) {
-    // The message reports the record (issue #272). Under the #262 lock the
-    // forced ON is display-only, so the record's value goes to the stash;
-    // the lift puts it on the switch.
-    if (document.body.classList.contains('table-locked')) {
-      lockStashedEnabled = request.enabled;
-    } else {
-      enabledEl.checked = request.enabled;
-      updateDisabledState();
-    }
+  } catch (e) {
+    // sidebar may be in teardown; harmless
+  }
+});
+
+DR_BUS.subscribe('state:tableEnabledChanged', ({ enabled }) => {
+  // The report carries the record (issue #272). Under the #262 lock the
+  // forced ON is display-only, so the record's value goes to the stash;
+  // the lift puts it on the switch.
+  if (document.body.classList.contains('table-locked')) {
+    lockStashedEnabled = enabled;
+  } else {
+    enabledEl.checked = enabled;
+    updateDisabledState();
   }
 });
 
 window.addEventListener('unload', () => {
-  try {
-    chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.SIDEBAR_CLOSED });
-  } catch (e) {
-    // extension context may already be gone
-  }
+  DR_BUS.publish('state:sidebarClosed', {});
 });
 
 // Populate every control from a settings object. DR_DEFAULTS and a pulled
