@@ -123,11 +123,7 @@ DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
     // stays the single place a table becomes active even when a second
     // intent (toggle) is what triggered it.
     DR_BUS.publish('intent:selectTable', { table });
-    try {
-      chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.TABLE_SWITCHED });
-    } catch (e) {
-      // sidebar may be torn down; harmless
-    }
+    DR_BUS.publish('state:tableSwitched', {});
   }
 
   // Rule 3: one write. A moved press clears the range expression in the
@@ -145,11 +141,7 @@ DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
   // the open sidebar routes this one to its stash instead of the forced-ON
   // switch.
   if (!moved) {
-    try {
-      chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE, enabled: nextEnabled });
-    } catch (e) {
-      // sidebar may be torn down; harmless
-    }
+    DR_BUS.publish('state:tableEnabledChanged', { enabled: nextEnabled });
   }
 });
 
@@ -191,11 +183,7 @@ document.addEventListener('contextmenu', (event) => {
     DR_STORE.setSelectedTable(table);
     DR_LOG.debug("Dynamic Rounding: table activated by right-click.");
     flashTargetedTable(table);
-    try {
-      chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.TABLE_ACTIVATED });
-    } catch (e) {
-      // extension context may not be available; harmless
-    }
+    DR_BUS.publish('state:tableActivated', {});
   }
 }, true);
 
@@ -206,52 +194,44 @@ document.addEventListener('contextmenu', (event) => {
 // so observable messaging is unchanged.
 function sendRangeStatusMessage(result) {
   if (result.rangeStatus === 'error') {
-    chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.RANGE_ERROR, error: result.error });
+    DR_BUS.publish('state:rangeError', { error: result.error });
   } else {
-    chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.RANGE_OK });
+    DR_BUS.publish('state:rangeOk', {});
   }
 }
 
+// The menu item reports the same intent a pillbox press reports, so both run
+// the one controller path above (issue #275). The right-click that opened the
+// menu already made the table active (the contextmenu handler's
+// setSelectedTable), so the press lands as an unmoved one: it flips the
+// settings record's on/off value and keeps the range expression.
+DR_BUS.subscribe('intent:menuClicked', () => {
+  if (!lastRightClickedElement) return;
+  const found = findTargetTable(lastRightClickedElement, { isSeen: DR_STORE.hasTable });
+  if (!found) {
+    DR_LOG.debug("Dynamic Rounding: No table found at right-click location.");
+    return;
+  }
+  DR_BUS.publish('intent:toggleTable', { table: markAndToggleIfNewGrid(found) });
+});
+
+// Reconnect: pull the model's own selection and settings — the sidebar may be
+// reopening after a close, and DR_STORE owns both of record.
+DR_BUS.subscribe('state:sidebarOpened', () => {
+  const selected = DR_STORE.getSelectedTable();
+  if (!selected) {
+    DR_LOG.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
+    return;
+  }
+  applySidebarRounding(selected, DR_STORE.getSettings());
+  // Tell the sidebar its view is stale; it re-reads the model's settings and
+  // re-asks for preview samples against the now-current targeted table.
+  DR_BUS.publish('state:previewSamplesChanged', {});
+});
+
+// The four requests are all that keep a listener of their own here. They retire
+// onto the bus's responder path in the next change.
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.MENU_CLICKED) {
-    if (lastRightClickedElement) {
-      const found = findTargetTable(lastRightClickedElement, { isSeen: DR_STORE.hasTable });
-      if (found) {
-        // Issue #275: the menu item reports the same intent a pillbox
-        // press reports, so both run the one controller path above. The
-        // right-click that opened this menu already made the table active
-        // (the contextmenu handler's setSelectedTable), so the press lands
-        // as an unmoved one: it flips the settings record's on/off value
-        // and keeps the range expression.
-        DR_BUS.publish('intent:toggleTable', { table: markAndToggleIfNewGrid(found) });
-      } else {
-        DR_LOG.debug("Dynamic Rounding: No table found at right-click location.");
-      }
-    }
-    return;
-  }
-
-  if (request.action === DR_CROSS_CONTEXT_TOPICS.SIDEBAR_OPENED) {
-    // Reconnect: pull the model's own selection and settings — the sidebar
-    // may be reopening after a close, and DR_STORE owns both of record.
-    const selected = DR_STORE.getSelectedTable();
-    if (selected) {
-      applySidebarRounding(selected, DR_STORE.getSettings());
-      // Tell the sidebar its view is stale; it re-reads the model's settings
-      // and re-pulls GET_PREVIEW_SAMPLES against the now-current targeted
-      // table.
-      try {
-        chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.PREVIEW_SAMPLES_CHANGED });
-      } catch (e) {
-        // sidebar may not be open yet; harmless
-      }
-    } else {
-      DR_LOG.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
-    }
-    return;
-  }
-
-
   if (request.action === DR_CROSS_CONTEXT_TOPICS.GET_SETTINGS) {
     // Inverse of the old sidebar pull: the sidebar asks the model instead.
     sendResponse({ settings: DR_STORE.getSettings() });
@@ -276,11 +256,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 window.addEventListener('pagehide', () => {
-  try {
-    chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.PAGE_UNLOADED });
-  } catch (e) {
-    // extension context may already be gone
-  }
+  DR_BUS.publish('state:pageUnloaded', {});
 });
 
 function applySidebarRounding(table, options) {
@@ -298,20 +274,20 @@ function applySidebarRounding(table, options) {
     // notice once an apply works again (a table switch, or the site
     // re-rendered the table with fresh cells).
     DR_LOG.warn("Dynamic Rounding: apply blocked; " + unrestorableCount + " cell(s) unrestorable.");
-    chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.APPLY_BLOCKED, count: unrestorableCount });
+    DR_BUS.publish('state:applyBlocked', { count: unrestorableCount });
     return;
   }
-  chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.APPLY_OK });
+  DR_BUS.publish('state:applyOk', {});
   if (opts.enabled !== false) {
     const result = roundTable(table, opts);
     sendRangeStatusMessage(result);
     DR_LOG.debug("Dynamic Rounding: apply ran (applied=" + result.applied + ", rangeStatus=" + result.rangeStatus + ").");
     if (table.querySelector('.dr-ext-rounded')) {
-      chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.UPDATE_MENU_LABEL, title: 'Toggle readable data' });
+      DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle readable data' });
     }
   } else {
     DR_LOG.debug("Dynamic Rounding: apply ran with rounding off; table reset.");
-    chrome.runtime.sendMessage({ action: DR_CROSS_CONTEXT_TOPICS.UPDATE_MENU_LABEL, title: 'Toggle readable data' });
+    DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle readable data' });
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   flashRangePulse(table, rangeParse.error ? null : rangeParse.ranges);

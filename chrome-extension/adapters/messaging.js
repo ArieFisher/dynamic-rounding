@@ -149,6 +149,17 @@ const DR_BUS = (function () {
     // sidebar was opened for.
     'state:pageUnloaded': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'intent:updateMenuLabel': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
+    // The content script's reports to the sidebar. Every one takes the
+    // broadcast carrier: the content script holds no tabs interface, and the
+    // sidebar is an extension page.
+    'state:tableActivated': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:tableSwitched': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:tableEnabledChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:rangeError': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:rangeOk': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:applyBlocked': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:applyOk': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
+    'state:previewSamplesChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
   };
 
   const subscribers = new Map(); // topic name -> Set<handler>

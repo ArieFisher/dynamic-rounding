@@ -2067,11 +2067,11 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     setTimeoutCalls.every((call) => !/attempt|GET_SIDEBAR_SETTINGS|requestSidebarSettingsAndApply/.test(call)),
     true);
 
-  eq('pull (inverted): content.js no longer applies defaults on SIDEBAR_OPENED',
-    /SIDEBAR_OPENED[\s\S]{0,200}applySidebarRounding\([^)]*DR_DEFAULTS/.test(contentSrc), false);
+  eq('pull (inverted): content.js no longer applies defaults on state:sidebarOpened',
+    /state:sidebarOpened[\s\S]{0,200}applySidebarRounding\([^)]*DR_DEFAULTS/.test(contentSrc), false);
 
-  eq('pull (inverted): content.js applies the model\'s own settings on SIDEBAR_OPENED',
-    /SIDEBAR_OPENED[\s\S]{0,400}applySidebarRounding\([^)]*DR_STORE\.getSettings\(\)/.test(contentSrc), true);
+  eq('pull (inverted): content.js applies the model\'s own settings on state:sidebarOpened',
+    /state:sidebarOpened[\s\S]{0,400}applySidebarRounding\([^)]*DR_STORE\.getSettings\(\)/.test(contentSrc), true);
 
   eq('pull (inverted): sidebar.js no longer handles GET_SIDEBAR_SETTINGS',
     /GET_SIDEBAR_SETTINGS/.test(sidebarSrc), false);
@@ -5234,19 +5234,19 @@ function fireTouchSecondTap(buttonEl) {
   eq('rebind AC1 mouse: lastRightClickedTable rebound to tableB',
     reboundToB_mouse, true);
 
-  // 1b. TABLE_SWITCHED dispatched exactly once. Issue #251 renamed the
+  // 1b. state:tableSwitched dispatched exactly once. Issue #251 renamed the
   // switch message from RESET_SIDEBAR_TO_DEFAULTS: the sidebar's handler now
   // pulls the model's settings, and the old name described the defaults
   // reset that fix removed.
-  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
-  eq('rebind AC1 mouse: TABLE_SWITCHED dispatched exactly once',
+  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
+  eq('rebind AC1 mouse: state:tableSwitched dispatched exactly once',
     switchCalls.length, 1);
 
-  // 1c. PREVIEW_SAMPLES_CHANGED NOT dispatched — the TABLE_SWITCHED pull
+  // 1c. state:previewSamplesChanged NOT dispatched — the state:tableSwitched pull
   // chain already ends in the preview fetch; a second trigger would be a
   // duplicate round-trip.
-  const previewCalls = sentMessages.filter(m => m.action === 'PREVIEW_SAMPLES_CHANGED');
-  eq('rebind AC1 mouse: PREVIEW_SAMPLES_CHANGED not dispatched on a switch',
+  const previewCalls = sentMessages.filter(m => m.action === 'state:previewSamplesChanged');
+  eq('rebind AC1 mouse: state:previewSamplesChanged not dispatched on a switch',
     previewCalls.length, 0);
 
   // 1d. The switch apply rounds tableB (the model's enabled is on)
@@ -5290,12 +5290,12 @@ function fireTouchSecondTap(buttonEl) {
   eq('rebind AC1 touch: lastRightClickedTable rebound to tableB',
     reboundToB_touch, true);
 
-  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
-  eq('rebind AC1 touch: TABLE_SWITCHED dispatched exactly once',
+  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
+  eq('rebind AC1 touch: state:tableSwitched dispatched exactly once',
     switchCalls.length, 1);
 
-  const previewCalls = sentMessages.filter(m => m.action === 'PREVIEW_SAMPLES_CHANGED');
-  eq('rebind AC1 touch: PREVIEW_SAMPLES_CHANGED not dispatched on a switch',
+  const previewCalls = sentMessages.filter(m => m.action === 'state:previewSamplesChanged');
+  eq('rebind AC1 touch: state:previewSamplesChanged not dispatched on a switch',
     previewCalls.length, 0);
 
   eq('rebind AC1 touch: the switch apply rounded tableB',
@@ -5326,8 +5326,8 @@ function fireTouchSecondTap(buttonEl) {
   lastRightClickedTable = null;
 
   // Same-table guard: the switch message must NOT be dispatched
-  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
-  eq('rebind AC2 mouse: TABLE_SWITCHED NOT dispatched for same-table click',
+  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
+  eq('rebind AC2 mouse: state:tableSwitched NOT dispatched for same-table click',
     switchCalls.length, 0);
 })();
 
@@ -5354,8 +5354,8 @@ function fireTouchSecondTap(buttonEl) {
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
-  eq('rebind AC2 touch: TABLE_SWITCHED NOT dispatched for same-table click',
+  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
+  eq('rebind AC2 touch: state:tableSwitched NOT dispatched for same-table click',
     switchCalls.length, 0);
 })();
 
@@ -5389,7 +5389,7 @@ function fireTouchSecondTap(buttonEl) {
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
+  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
   eq('press on a different table reports the switch with the sidebar closed (part one: nothing reads that state)',
     switchCalls.length, 1);
 })();
@@ -5423,7 +5423,7 @@ function fireTouchSecondTap(buttonEl) {
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
+  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
   eq('second tap on a different table reports the switch with the sidebar closed (part one: nothing reads that state)',
     switchCalls.length, 1);
 })();
@@ -5473,7 +5473,7 @@ function fireTouchSecondTap(buttonEl) {
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  const switchCalls = sentMessages.filter(m => m.action === 'TABLE_SWITCHED');
+  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
   eq('after CLOSE_SIDEBAR, a press on a different table still reports the switch (part one: nothing reads that state)',
     switchCalls.length, 1);
 })();
@@ -5567,9 +5567,9 @@ function fireTouchSecondTap(buttonEl) {
 
 // Switching onto a LOCKED table (issue #262): the clicked table carries a
 // dr-ext-rounded cell with no registry original, so the switch apply's
-// resetTable refuses. The pin here is the ORDER — TABLE_SWITCHED must leave
-// before APPLY_BLOCKED, because the sidebar lifts the PREVIOUS table's lock
-// on TABLE_SWITCHED and the new table's APPLY_BLOCKED must land after that
+// resetTable refuses. The pin here is the ORDER — state:tableSwitched must leave
+// before state:applyBlocked, because the sidebar lifts the PREVIOUS table's lock
+// on state:tableSwitched and the new table's state:applyBlocked must land after that
 // lift to re-lock the panel. A send moved after the apply would leave a
 // stuck table showing an unlocked panel with nothing failing.
 //
@@ -5602,9 +5602,9 @@ function fireTouchSecondTap(buttonEl) {
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  eq('locked-switch: the sequence is TABLE_SWITCHED then APPLY_BLOCKED, nothing else',
-    sentMessages.map(m => m.action), ['TABLE_SWITCHED', 'APPLY_BLOCKED']);
-  eq('locked-switch: APPLY_BLOCKED carries the unrestorable-cell count',
+  eq('locked-switch: the sequence is state:tableSwitched then state:applyBlocked, nothing else',
+    sentMessages.map(m => m.action), ['state:tableSwitched', 'state:applyBlocked']);
+  eq('locked-switch: state:applyBlocked carries the unrestorable-cell count',
     sentMessages[1] && sentMessages[1].count, 1);
 })();
 
@@ -5661,11 +5661,11 @@ function fireTouchSecondTap(buttonEl) {
   eq('sidebar-state removal: the bus registers no sidebar-open topic',
     Object.prototype.hasOwnProperty.call(DR_BUS.TOPICS, 'state:sidebarOpenChanged'), false);
 
-  // SIDEBAR_OPENED survives — it still triggers the reconnect apply — but it
+  // state:sidebarOpened survives — it still triggers the reconnect apply — but it
   // records nothing about the sidebar. CLOSE_SIDEBAR goes to the sidebar page
   // alone, so the content script carries no branch for it at all.
-  eq('sidebar-state removal: SIDEBAR_OPENED still runs the reconnect apply',
-    /SIDEBAR_OPENED[\s\S]{0,400}applySidebarRounding/.test(contentSrc), true);
+  eq('sidebar-state removal: state:sidebarOpened still runs the reconnect apply',
+    /state:sidebarOpened[\s\S]{0,400}applySidebarRounding/.test(contentSrc), true);
   // constants.js declares the action name and rides in the same bundle, so
   // this one reads content.js alone: the claim is about the handler list.
   eq('sidebar-state removal: content.js registers no branch for the close message',
@@ -5681,10 +5681,10 @@ function fireTouchSecondTap(buttonEl) {
   // branches' controller logic (which used to each carry their own switch
   // send) into one intent:toggleTable subscriber in content.js, so the
   // literal now appears once, not per branch. Issue #251 renamed the switch
-  // message from RESET_SIDEBAR_TO_DEFAULTS to TABLE_SWITCHED — the sidebar's
+  // message from RESET_SIDEBAR_TO_DEFAULTS to state:tableSwitched — the sidebar's
   // handler pulls the model's settings instead of resetting to defaults.
-  const switchCount = (contentSrc.match(/TABLE_SWITCHED/g) || []).length;
-  eq('rebind source: TABLE_SWITCHED is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
+  const switchCount = (contentSrc.match(/state:tableSwitched/g) || []).length;
+  eq('rebind source: state:tableSwitched is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
     switchCount >= 1, true);
   eq('rebind source: the RESET_SIDEBAR_TO_DEFAULTS message is gone from the content-script source',
     /RESET_SIDEBAR_TO_DEFAULTS/.test(contentSrc), false);
@@ -5702,25 +5702,26 @@ function fireTouchSecondTap(buttonEl) {
     /\blastRightClickedTable\s*=[^=]/.test(sourceByName('content.js') || ''),
     false);
 
-  // sidebar.js: TABLE_SWITCHED handler re-reads the model's settings (issue
-  // #251) instead of resetting the controls to the shipped defaults. The
-  // handler block is isolated up to the next `} else if` so the negative
-  // pins below cover the whole handler, not a fixed character window.
-  const switchHandlerMatch = sidebarSrc.match(/=== DR_CROSS_CONTEXT_TOPICS\.TABLE_SWITCHED\)\s*\{([\s\S]*?)\n  \} else if/);
+  // sidebar.js: the state:tableSwitched subscriber re-reads the model's
+  // settings (issue #251) instead of resetting the controls to the shipped
+  // defaults. The block is isolated to the subscriber's own body, so the
+  // negative pins below cover the whole handler and nothing beyond it.
+  const switchHandlerMatch = sidebarSrc.match(
+    /DR_BUS\.subscribe\(\s*'state:tableSwitched'[^)]*\)\s*=>\s*\{([\s\S]*?)\n\}\);/);
   const switchHandlerBlock = switchHandlerMatch ? switchHandlerMatch[1] : '';
-  eq('rebind source: sidebar.js TABLE_SWITCHED handler block was isolated (sanity check on the scan itself)',
+  eq('rebind source: sidebar.js state:tableSwitched handler block was isolated (sanity check on the scan itself)',
     switchHandlerBlock.length > 0, true);
-  eq('rebind source: sidebar.js TABLE_SWITCHED handler calls pullSettingsAndApplyToUI()',
+  eq('rebind source: sidebar.js state:tableSwitched handler calls pullSettingsAndApplyToUI()',
     /pullSettingsAndApplyToUI\(\)/.test(switchHandlerBlock), true);
 
-  // sidebar.js: TABLE_SWITCHED handler does NOT reset the controls to the
+  // sidebar.js: state:tableSwitched handler does NOT reset the controls to the
   // shipped defaults — that reset is what desynced the panel from the model.
-  eq('rebind source: sidebar.js TABLE_SWITCHED handler does NOT call applyDefaultsToUI()',
+  eq('rebind source: sidebar.js state:tableSwitched handler does NOT call applyDefaultsToUI()',
     /applyDefaultsToUI\s*\(\)/.test(switchHandlerBlock), false);
 
-  // sidebar.js: TABLE_SWITCHED handler does NOT auto-apply settings
+  // sidebar.js: state:tableSwitched handler does NOT auto-apply settings
   // (must NOT call applyNow() inside the handler)
-  eq('rebind source: sidebar.js TABLE_SWITCHED handler does NOT call applyNow()',
+  eq('rebind source: sidebar.js state:tableSwitched handler does NOT call applyNow()',
     /applyNow\s*\(\)/.test(switchHandlerBlock), false);
 })();
 
@@ -11071,9 +11072,9 @@ function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
 //      state (existing behaviour unchanged — regression guard).
 //
 // AC3: Toggling a table that is NOT lastRightClickedTable does NOT send
-//      TABLE_TOGGLE_STATE (no spurious sidebar update).
+//      state:tableEnabledChanged (no spurious sidebar update).
 //
-// AC4: background.js does NOT relay TABLE_TOGGLE_STATE when sidebarTabId is null.
+// AC4: background.js does NOT relay state:tableEnabledChanged when sidebarTabId is null.
 //
 // AC5: Existing tests pass (covered by running the full suite without --bail).
 // ---------------------------------------------------------------------------
@@ -11167,14 +11168,14 @@ function fireMouseClick(buttonEl, fn) {
 
 // ---------------------------------------------------------------------------
 // AC1: Clicking the table's morph pill while sidebar is open sends
-//      TABLE_TOGGLE_STATE to runtime, and sidebar's onMessage handler for
-//      TABLE_TOGGLE_STATE sets enabledEl.checked = request.enabled.
+//      state:tableEnabledChanged to runtime, and sidebar's onMessage handler for
+//      state:tableEnabledChanged sets enabledEl.checked = request.enabled.
 //
 // Unit test strategy:
-//   Part A — ui-toggle.js guard: verify TABLE_TOGGLE_STATE is sent when
+//   Part A — ui-toggle.js guard: verify state:tableEnabledChanged is sent when
 //     the pressed table is the active one.
 //   Part B — sidebar.js handler (static): verify the source includes the
-//     TABLE_TOGGLE_STATE branch that sets enabledEl.checked.
+//     state:tableEnabledChanged branch that sets enabledEl.checked.
 //   Note: actually exercising sidebar.js in Node requires eval'ing it, which
 //   demands a full sidebar DOM. We test the handler logic indirectly via Part B
 //   static analysis plus the integration guard in Part A.
@@ -11197,28 +11198,28 @@ function fireMouseClick(buttonEl, fn) {
   // Establish this table as the active one, so the press is an unmoved one.
   lastRightClickedTable = table;
 
-  // Click should run runToggleAction (rounds the table) then send TABLE_TOGGLE_STATE.
+  // Click should run runToggleAction (rounds the table) then send state:tableEnabledChanged.
   fireMouseClick(buttonEl);
 
   global.chrome.runtime.sendMessage = origSend;
   // Reset global state
   lastRightClickedTable = null;
 
-  const toggleMsg = sent.find(m => m.action === 'TABLE_TOGGLE_STATE');
-  eq('AC1 part-A: TABLE_TOGGLE_STATE sent when the pressed table is the active one',
+  const toggleMsg = sent.find(m => m.action === 'state:tableEnabledChanged');
+  eq('AC1 part-A: state:tableEnabledChanged sent when the pressed table is the active one',
     toggleMsg !== undefined, true);
   // After click on a fresh table, it becomes rounded → enabled should be true.
-  eq('AC1 part-A: TABLE_TOGGLE_STATE.enabled reflects new rounded state (true after first click)',
+  eq('AC1 part-A: state:tableEnabledChanged.enabled reflects new rounded state (true after first click)',
     toggleMsg && toggleMsg.enabled, true);
 })();
 
 (function pillbox_AC1_partB_sidebarHandlerStaticAnalysis() {
-  // Verify sidebar.js source contains the TABLE_TOGGLE_STATE handler that sets enabledEl.checked.
+  // Verify sidebar.js source contains the state:tableEnabledChanged handler that sets enabledEl.checked.
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  eq("AC1 part-B: sidebar.js handles 'TABLE_TOGGLE_STATE'",
-    sidebarSrc.includes('request.action === DR_CROSS_CONTEXT_TOPICS.TABLE_TOGGLE_STATE'), true);
-  eq('AC1 part-B: sidebar.js sets enabledEl.checked = request.enabled',
-    sidebarSrc.includes('enabledEl.checked = request.enabled'), true);
+  eq("AC1 part-B: sidebar.js subscribes to 'state:tableEnabledChanged'",
+    /DR_BUS\.subscribe\(\s*'state:tableEnabledChanged'/.test(sidebarSrc), true);
+  eq('AC1 part-B: sidebar.js puts the reported value on the switch',
+    sidebarSrc.includes('enabledEl.checked = enabled'), true);
   eq('AC1 part-B: sidebar.js calls updateDisabledState() after setting checked',
     sidebarSrc.includes('updateDisabledState()'), true);
 })();
@@ -11288,13 +11289,13 @@ function fireMouseClick(buttonEl, fn) {
 // AC3: Guard branching on lastRightClickedTable.
 //
 // SPEC says: "Toggling a table that is NOT lastRightClickedTable does not send
-// TABLE_TOGGLE_STATE (no spurious sidebar update)."
+// state:tableEnabledChanged (no spurious sidebar update)."
 //
 // IMPLEMENTATION BEHAVIOUR (found by adversarial test):
 // When table !== lastRightClickedTable, the click handler first reassigns
-// `lastRightClickedTable = table` (and sends TABLE_SWITCHED), then
-// the TABLE_TOGGLE_STATE guard re-checks — and now `table === lastRightClickedTable`
-// is TRUE, so TABLE_TOGGLE_STATE IS sent.
+// `lastRightClickedTable = table` (and sends state:tableSwitched), then
+// the state:tableEnabledChanged guard re-checks — and now `table === lastRightClickedTable`
+// is TRUE, so state:tableEnabledChanged IS sent.
 //
 // This is a gap between the spec (AC3) and the implementation. The test below
 // documents the ACTUAL implementation behaviour so the reviewer can decide
@@ -11321,8 +11322,8 @@ function fireMouseClick(buttonEl, fn) {
 
   fireMouseClick(buttonA);
 
-  const switchMsgs  = sent.filter(m => m.action === 'TABLE_SWITCHED');
-  const toggleMsgs  = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
+  const switchMsgs  = sent.filter(m => m.action === 'state:tableSwitched');
+  const toggleMsgs  = sent.filter(m => m.action === 'state:tableEnabledChanged');
   const lrc = lastRightClickedTable;
 
   global.chrome.runtime.sendMessage = origSend;
@@ -11332,21 +11333,21 @@ function fireMouseClick(buttonEl, fn) {
   eq('AC3 impl: clicking non-lastRightClickedTable reassigns lastRightClickedTable',
     lrc === tableA, true);
 
-  // Implementation sends TABLE_SWITCHED for the table switch.
-  eq('AC3 impl: clicking non-lastRightClickedTable sends TABLE_SWITCHED',
+  // Implementation sends state:tableSwitched for the table switch.
+  eq('AC3 impl: clicking non-lastRightClickedTable sends state:tableSwitched',
     switchMsgs.length >= 1, true);
 
-  // The AC3 spec ("toggling a non-selected table sends no TABLE_TOGGLE_STATE")
+  // The AC3 spec ("toggling a non-selected table sends no state:tableEnabledChanged")
   // is satisfied since issue #251's sync-on-switch: the switch path applies
   // the model to the new table and returns before the same-table
-  // TABLE_TOGGLE_STATE send, and the panel redraws from the model pull that
-  // TABLE_SWITCHED triggers instead.
-  eq('AC3: clicking non-lastRightClickedTable sends NO TABLE_TOGGLE_STATE (panel redraws from the model pull)',
+  // state:tableEnabledChanged send, and the panel redraws from the model pull that
+  // state:tableSwitched triggers instead.
+  eq('AC3: clicking non-lastRightClickedTable sends NO state:tableEnabledChanged (panel redraws from the model pull)',
     toggleMsgs.length, 0);
 })();
 
 // AC3 guard that DOES hold: when lastRightClickedTable is null,
-// the early-exit prevents TABLE_TOGGLE_STATE from being sent.
+// the early-exit prevents state:tableEnabledChanged from being sent.
 (function pillbox_AC3_noLastRightClicked_noMessage() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
@@ -11365,13 +11366,13 @@ function fireMouseClick(buttonEl, fn) {
   global.chrome.runtime.sendMessage = origSend;
   lastRightClickedTable = null;
 
-  const toggleMsgs = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
-  eq('AC3 null-guard: null lastRightClickedTable means TABLE_TOGGLE_STATE is NOT sent',
+  const toggleMsgs = sent.filter(m => m.action === 'state:tableEnabledChanged');
+  eq('AC3 null-guard: null lastRightClickedTable means state:tableEnabledChanged is NOT sent',
     toggleMsgs.length, 0);
 })();
 
 // AC3 corollary: when lastRightClickedTable is null (no table right-clicked),
-// clicking any morph pill also does NOT send TABLE_TOGGLE_STATE.
+// clicking any morph pill also does NOT send state:tableEnabledChanged.
 (function pillbox_AC3_noLastRightClicked_noMessage_corollary() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
@@ -11389,8 +11390,8 @@ function fireMouseClick(buttonEl, fn) {
 
   global.chrome.runtime.sendMessage = origSend;
 
-  const toggleMsgs = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
-  eq('AC3 corollary: null lastRightClickedTable means TABLE_TOGGLE_STATE is NOT sent',
+  const toggleMsgs = sent.filter(m => m.action === 'state:tableEnabledChanged');
+  eq('AC3 corollary: null lastRightClickedTable means state:tableEnabledChanged is NOT sent',
     toggleMsgs.length, 0);
 })();
 
@@ -11412,7 +11413,7 @@ function fireMouseClick(buttonEl, fn) {
   global.chrome.runtime.sendMessage = origSend;
   lastRightClickedTable = null;
 
-  const toggleMsgs = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
+  const toggleMsgs = sent.filter(m => m.action === 'state:tableEnabledChanged');
   // Contract moved with the panel-state decoupling (issue #272 family): a
   // toggle on the CONNECTED table writes the record and reports it even with
   // the sidebar closed — the controller no longer reads panel visibility.
@@ -11424,7 +11425,7 @@ function fireMouseClick(buttonEl, fn) {
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: background.js does NOT relay TABLE_TOGGLE_STATE when sidebarTabId is null.
+// AC4: background.js does NOT relay state:tableEnabledChanged when sidebarTabId is null.
 //
 // background.js runs in a service-worker context without the DOM and module
 // system our harness uses, so we can't eval() it directly alongside the content
@@ -11456,9 +11457,9 @@ function fireMouseClick(buttonEl, fn) {
 // Sprint table-contextmenu-activation
 // ---------------------------------------------------------------------------
 // AC1: Right-clicking a table causes flashTargetedTable to run on that table.
-// AC2: TABLE_ACTIVATED onMessage in sidebar.js calls flashSidebarContainer.
-// AC3: Right-clicking a non-table element produces NO flash and NO TABLE_ACTIVATED send.
-// AC4: background.js does NOT relay TABLE_ACTIVATED when sidebarTabId is null.
+// AC2: state:tableActivated onMessage in sidebar.js calls flashSidebarContainer.
+// AC3: Right-clicking a non-table element produces NO flash and NO state:tableActivated send.
+// AC4: background.js does NOT relay state:tableActivated when sidebarTabId is null.
 // ---------------------------------------------------------------------------
 //
 // Runtime note: the main eval() above registered document.addEventListener with
@@ -11507,16 +11508,16 @@ function fireMouseClick(buttonEl, fn) {
     flashIndex !== -1 && guardIndex !== -1 && flashIndex > guardIndex,
     true);
 
-  // AC3 (source): TABLE_ACTIVATED sendMessage is inside the `if (found)` block,
+  // AC3 (source): state:tableActivated sendMessage is inside the `if (found)` block,
   // meaning a non-table right-click cannot trigger it.
-  const sendMsgIndex = handlerSrc.indexOf('TABLE_ACTIVATED');
-  eq('table-activation AC3 source: TABLE_ACTIVATED send is inside if(found) guard',
+  const sendMsgIndex = handlerSrc.indexOf('state:tableActivated');
+  eq('table-activation AC3 source: state:tableActivated send is inside if(found) guard',
     sendMsgIndex !== -1 && sendMsgIndex > guardIndex,
     true);
 
-  // AC2 (source): sidebar.js TABLE_ACTIVATED handler calls flashSidebarContainer().
-  eq('table-activation AC2 source: sidebar.js TABLE_ACTIVATED handler calls flashSidebarContainer()',
-    /TABLE_ACTIVATED[\s\S]{0,120}flashSidebarContainer\s*\(\s*\)/.test(sidebarSrc),
+  // AC2 (source): sidebar.js state:tableActivated handler calls flashSidebarContainer().
+  eq('table-activation AC2 source: sidebar.js state:tableActivated handler calls flashSidebarContainer()',
+    /state:tableActivated[\s\S]{0,120}flashSidebarContainer\s*\(\s*\)/.test(sidebarSrc),
     true);
 
   // AC2 (source): flashSidebarContainer adds the dr-sidebar-flash class to document.body.
@@ -11524,17 +11525,21 @@ function fireMouseClick(buttonEl, fn) {
     /flashSidebarContainer[\s\S]{0,300}classList\.add\s*\(\s*SIDEBAR_FLASH_CLASS\s*\)/.test(sidebarSrc),
     true);
 
-  // AC4 (source): background.js does not relay TABLE_ACTIVATED at all. The
-  // panel receives it straight from content.js via runtime.sendMessage, so the
-  // old relay only ever delivered it to a content script with no handler.
-  // Runtime coverage lives in backgroundMessageRouting.
-  eq('table-activation AC4 source: background.js does not send TABLE_ACTIVATED',
-    /sendMessage\s*\([^)]*TABLE_ACTIVATED/.test(bgSrc), false);
+  // AC4 (source): the worker neither publishes nor subscribes to the activation
+  // report. The sidebar receives it straight from the content script over the
+  // broadcast carrier, so the old relay only ever delivered it to a content
+  // script with no handler. Runtime coverage lives in backgroundMessageRouting.
+  eq('table-activation AC4 source: the worker does not publish the activation report',
+    /publish\(\s*'state:tableActivated'/.test(bgSrc), false);
+  eq('table-activation AC4 source: the worker does not subscribe to it either',
+    /subscribe\(\s*'state:tableActivated'/.test(bgSrc), false);
 
-  // AC4 (source): content.js reaches the panel directly, without the background.
-  eq('table-activation AC4 source: content.js sends TABLE_ACTIVATED via runtime.sendMessage',
-    /chrome\.runtime\.sendMessage\s*\(\s*\{\s*action:\s*DR_CROSS_CONTEXT_TOPICS\.TABLE_ACTIVATED/.test(contentSrc),
-    true);
+  // AC4 (source): content.js reaches the sidebar directly, without the worker.
+  // The topic's route is what decides that, so the route is the thing to pin.
+  eq('table-activation AC4 source: content.js publishes the activation report',
+    /DR_BUS\.publish\(\s*'state:tableActivated'/.test(contentSrc), true);
+  eq('table-activation AC4 source: and its route reaches every extension page, the sidebar included',
+    DR_BUS.TOPICS['state:tableActivated'].route, 'extension-pages');
 })();
 
 // ---------------------------------------------------------------------------
@@ -11586,7 +11591,7 @@ function fireMouseClick(buttonEl, fn) {
       return;
     }
 
-    // --- AC1: right-clicking a table flashes that table AND sends TABLE_ACTIVATED ---
+    // --- AC1: right-clicking a table flashes that table AND sends state:tableActivated ---
     const flashedClasses = [];
     const mockTable = {
       tagName: 'TABLE',
@@ -11611,11 +11616,11 @@ function fireMouseClick(buttonEl, fn) {
       flashedClasses.includes('dr-ext-target-flash'),
       true);
 
-    eq('table-activation AC1 runtime: TABLE_ACTIVATED sent when right-clicking a table',
-      sentMessages.some(m => m.action === 'TABLE_ACTIVATED'),
+    eq('table-activation AC1 runtime: state:tableActivated sent when right-clicking a table',
+      sentMessages.some(m => m.action === 'state:tableActivated'),
       true);
 
-    // --- AC3: right-clicking a non-table element — no flash, no TABLE_ACTIVATED ---
+    // --- AC3: right-clicking a non-table element — no flash, no state:tableActivated ---
     const nonTableTarget = {
       tagName: 'SPAN',
       classList: { contains() { return false; } },
@@ -11626,8 +11631,8 @@ function fireMouseClick(buttonEl, fn) {
     sentMessages.length = 0;
     capturedHandler({ target: nonTableTarget });
 
-    eq('table-activation AC3 runtime: no TABLE_ACTIVATED sent when right-clicking non-table',
-      sentMessages.some(m => m.action === 'TABLE_ACTIVATED'),
+    eq('table-activation AC3 runtime: no state:tableActivated sent when right-clicking non-table',
+      sentMessages.some(m => m.action === 'state:tableActivated'),
       false);
 
   } finally {
@@ -11649,7 +11654,7 @@ function fireMouseClick(buttonEl, fn) {
 // markAndToggleIfNewGrid marks+builds only when isNew). This test proves the
 // split still reproduces the old guarantee end-to-end: firing the actual
 // captured 'contextmenu' listener twice on the same never-before-seen grid,
-// and then firing the actual captured 'MENU_CLICKED' onMessage listener
+// and then firing the actual captured 'intent:menuClicked' onMessage listener
 // against that same target, builds exactly one toggle widget.
 // ---------------------------------------------------------------------------
 (function doubleInvocation_contextmenuAndMenuClicked_noDuplicateWidget() {
@@ -11704,7 +11709,11 @@ function fireMouseClick(buttonEl, fn) {
   }
 
   let contextmenuHandler = null;
-  let onMessageHandler = null;
+  // Chrome hands an arriving message to every registered listener. The bus
+  // registers one and content.js keeps one for the requests, so a stub that
+  // held only the last registration would drop the bus's.
+  const messageListeners = [];
+  const fireMessage = (msg) => messageListeners.forEach((fn) => fn(msg, {}, () => {}));
   const captureDoc = {
     addEventListener(type, handler) { if (type === 'contextmenu') contextmenuHandler = handler; },
     querySelectorAll: () => [],
@@ -11716,7 +11725,7 @@ function fireMouseClick(buttonEl, fn) {
   const sentMessages = [];
   const captureChrome = {
     runtime: {
-      onMessage: { addListener(fn) { onMessageHandler = fn; } },
+      onMessage: { addListener(fn) { messageListeners.push(fn); } },
       sendMessage(msg) { sentMessages.push(msg); },
     },
   };
@@ -11736,8 +11745,8 @@ function fireMouseClick(buttonEl, fn) {
     eval(contentScriptBundle);
 
     eq('double-invocation: contextmenu handler was captured', typeof contextmenuHandler, 'function');
-    eq('double-invocation: MENU_CLICKED onMessage handler was captured', typeof onMessageHandler, 'function');
-    if (typeof contextmenuHandler !== 'function' || typeof onMessageHandler !== 'function') return;
+    eq('double-invocation: both message listeners were captured', messageListeners.length, 2);
+    if (typeof contextmenuHandler !== 'function' || messageListeners.length === 0) return;
 
     // --- First right-click: new grid discovered via walk-up -> marked + widget built ---
     contextmenuHandler({ target: clickTarget });
@@ -11756,23 +11765,23 @@ function fireMouseClick(buttonEl, fn) {
     eq('double-invocation: second contextmenu on the same grid builds NO second widget',
       buttonCreateCount, 1);
 
-    // --- MENU_CLICKED dispatch against the same last-right-clicked element:
+    // --- intent:menuClicked dispatch against the same last-right-clicked element:
     // must reuse the existing widget too, not build another. ---
     const beforeMenuClick = sentMessages.length;
-    onMessageHandler({ action: 'MENU_CLICKED' }, {}, () => {});
+    fireMessage({ action: 'intent:menuClicked' });
 
-    eq('double-invocation: MENU_CLICKED on an already-marked grid builds NO widget',
+    eq('double-invocation: intent:menuClicked on an already-marked grid builds NO widget',
       buttonCreateCount, 1);
     // Exact sequence, not presence. The right-click above CONNECTED this
     // grid, and the panel-state decoupling (issue #272 family) makes a
     // toggle on the connected table take the record path with the sidebar
-    // closed too: APPLY_OK from the apply, RANGE_OK from the round, then the
-    // record report. No UPDATE_MENU_LABEL here only because this minimal
+    // closed too: state:applyOk from the apply, state:rangeOk from the round, then the
+    // record report. No intent:updateMenuLabel here only because this minimal
     // grid's querySelector always returns null, so the enabled branch's
     // conditional send is skipped — a fixture artifact, not contract.
-    eq('double-invocation: a sidebar-closed MENU_CLICKED on the connected grid takes the record path',
+    eq('double-invocation: a sidebar-closed intent:menuClicked on the connected grid takes the record path',
       sentMessages.slice(beforeMenuClick).map((m) => m.action),
-      ['APPLY_OK', 'RANGE_OK', 'TABLE_TOGGLE_STATE']);
+      ['state:applyOk', 'state:rangeOk', 'state:tableEnabledChanged']);
   } finally {
     global.document = savedDoc;
     global.chrome = savedChrome;
@@ -11934,10 +11943,16 @@ function fireMouseClick(buttonEl, fn) {
 
   try {
     const dir = path.join(__dirname);
+    // The bus goes in the same eval as sidebar.js, so the sidebar's
+    // subscriptions attach to a bus of its own. Without it DR_BUS resolves to
+    // the content-script bundle's global one, and every report the content
+    // script publishes would run a half-built sidebar's handler — a crossing
+    // the browser cannot make, because the two run in separate contexts.
     eval(
       constantsCode + '\n' +
       roundingSrcForFlash + '\n' +
       coreSrcForFlash     + '\n' +
+      messagingCode + '\n' +
       fs.readFileSync(path.join(dir, 'sidebar.js'), 'utf8')
     );
   } catch(e) {
@@ -11951,10 +11966,10 @@ function fireMouseClick(buttonEl, fn) {
     typeof capturedOnMessageHandler, 'function');
 
   if (typeof capturedOnMessageHandler === 'function') {
-    // Invoke the TABLE_ACTIVATED message and verify the flash class is applied.
-    capturedOnMessageHandler({ action: 'TABLE_ACTIVATED' }, {}, () => {});
+    // Invoke the state:tableActivated message and verify the flash class is applied.
+    capturedOnMessageHandler({ action: 'state:tableActivated' }, {}, () => {});
 
-    eq('table-activation AC2 live: TABLE_ACTIVATED message adds dr-sidebar-flash to document.body',
+    eq('table-activation AC2 live: state:tableActivated message adds dr-sidebar-flash to document.body',
       bodyClasses.has('dr-sidebar-flash'),
       true);
 
@@ -12853,7 +12868,7 @@ function fireMouseClick(buttonEl, fn) {
 //
 // AC1 – init state: body gets no-table class, #status reads the prompt message.
 // AC2 – bound state: setTableBound(true) removes no-table; also check that
-//        PREVIEW_SAMPLES_CHANGED triggers the settings pull whose chain ends
+//        state:previewSamplesChanged triggers the settings pull whose chain ends
 //        in fetchPreviewSamples (the only live-rebind path) — note this means
 //        the sidebar does NOT listen for a separate SET_TABLE_BOUND message;
 //        see gap note below.
@@ -12888,22 +12903,22 @@ function fireMouseClick(buttonEl, fn) {
   eq('no-table AC2: setTableBound called with response.samples !== null',
     /setTableBound\(response\.samples\s*!==\s*null\)/.test(sidebarSrc), true);
 
-  // AC2 gap check: the sidebar handles PREVIEW_SAMPLES_CHANGED by calling
+  // AC2 gap check: the sidebar handles state:previewSamplesChanged by calling
   // pullSettingsAndApplyToUI() (issue #251: every refresh re-reads the
   // model's settings first; its chain ends in fetchPreviewSamples, which
   // calls setTableBound inside its callback). There is NO direct
-  // setTableBound call in the PREVIEW_SAMPLES_CHANGED handler, and no
+  // setTableBound call in the state:previewSamplesChanged handler, and no
   // separate runtime message that calls setTableBound(true) synchronously.
   // The sidebar has no push-style binding message. We assert the handler
   // exists and starts the pull chain, then flag the architectural gap as a
   // note.
-  eq('no-table AC2: PREVIEW_SAMPLES_CHANGED handler calls pullSettingsAndApplyToUI',
-    /PREVIEW_SAMPLES_CHANGED[\s\S]{0,300}pullSettingsAndApplyToUI\(\)/.test(sidebarSrc), true);
+  eq('no-table AC2: state:previewSamplesChanged handler calls pullSettingsAndApplyToUI',
+    /state:previewSamplesChanged[\s\S]{0,300}pullSettingsAndApplyToUI\(\)/.test(sidebarSrc), true);
 
   // GAP NOTE: The sidebar does not handle a dedicated "TABLE_BOUND" push message.
-  // If content.js ever fails to send PREVIEW_SAMPLES_CHANGED after a new right-click
+  // If content.js ever fails to send state:previewSamplesChanged after a new right-click
   // (e.g. in error paths), the sidebar state will not update. There is no direct
-  // setTableBound(true) call reachable from PREVIEW_SAMPLES_CHANGED — the binding
+  // setTableBound(true) call reachable from state:previewSamplesChanged — the binding
   // happens inside the fetchPreviewSamples callback only when the tab responds.
   // This gap is architectural and cannot be covered by a unit test without a
   // full browser environment; flagged here for reviewer awareness.
@@ -13028,7 +13043,7 @@ function fireMouseClick(buttonEl, fn) {
     }
 
     // AC2c: setTableBound(true) when status holds a DIFFERENT message → status preserved.
-    // (E.g. a RANGE_ERROR message should not be wiped by a table bind event.)
+    // (E.g. a state:rangeError message should not be wiped by a table bind event.)
     {
       const { statusEl, setTableBound } = makeEnv('Invalid range expression.');
       setTableBound(true);
@@ -13037,7 +13052,7 @@ function fireMouseClick(buttonEl, fn) {
     }
 
     // AC2 gap — live rebind: calling setTableBound(false) then setTableBound(true)
-    // in sequence correctly toggles state (simulates the PREVIEW_SAMPLES_CHANGED
+    // in sequence correctly toggles state (simulates the state:previewSamplesChanged
     // round-trip where fetchPreviewSamples resolves with non-null samples).
     {
       const { classList, statusEl, setTableBound } = makeEnv();
@@ -13108,13 +13123,13 @@ function fireMouseClick(buttonEl, fn) {
 
     // AC2 gap — ADVERSARIAL: verify that the sidebar does NOT have a runtime
     // message handler that directly calls setTableBound(true) when a table is
-    // right-clicked. The only live-rebind path is PREVIEW_SAMPLES_CHANGED →
+    // right-clicked. The only live-rebind path is state:previewSamplesChanged →
     // fetchPreviewSamples → callback. This means if content.js sends no message,
     // the sidebar stays stale. We document this by asserting that no
     // "contextMenus" or "TABLE_BOUND" message handler exists in sidebar.js.
     eq('no-table AC2-gap: sidebar.js has no direct TABLE_BOUND message handler',
       /action\s*===\s*['"]TABLE_BOUND['"]/.test(sidebarSrc), false);
-    // (Gap: the sidebar depends entirely on PREVIEW_SAMPLES_CHANGED being sent
+    // (Gap: the sidebar depends entirely on state:previewSamplesChanged being sent
     // by content.js after every right-click. If content.js omits that message
     // in any code path, the no-table class will not be removed. This cannot be
     // unit-tested in Node without a full browser environment.)
@@ -13636,7 +13651,7 @@ function fireMouseClick(buttonEl, fn) {
 //      design retired that copy (#241), and the content script registers no
 //      branch for this message, so the tab-directed send would deliver to
 //      nothing.
-//   2. TABLE_ACTIVATED must not be relayed into the tab. content.js already
+//   2. state:tableActivated must not be relayed into the tab. content.js already
 //      sends it with runtime.sendMessage, which the panel receives directly.
 //      Relaying it to sidebarTabId delivers it to a content script that has no
 //      handler for that action.
@@ -14865,17 +14880,17 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint engine-returns-results: pin the exact RANGE_OK/RANGE_ERROR message
+// Sprint engine-returns-results: pin the exact state:rangeOk/state:rangeError message
 // sequence for one full apply (applySidebarRounding -> roundTable ->
 // sendRangeStatusMessage -> chrome.runtime.sendMessage).
 //
 // The flow used to start at a plain-toggle helper, which the 2026-09-14
 // sidebar-state-removal design retired (#241). The apply is the one path to
-// roundTable now, so it drives the flow here. It leads with its own APPLY_OK,
-// which the retired helper never sent; the RANGE_OK/RANGE_ERROR and
-// UPDATE_MENU_LABEL tail is byte-identical to the frozen capture.
+// roundTable now, so it drives the flow here. It leads with its own state:applyOk,
+// which the retired helper never sent; the state:rangeOk/state:rangeError and
+// intent:updateMenuLabel tail is byte-identical to the frozen capture.
 //
-// Before this sprint, roundTable sent RANGE_ERROR/RANGE_OK itself. Now the
+// Before this sprint, roundTable sent state:rangeError/state:rangeOk itself. Now the
 // engine returns { applied, rangeStatus, error } and the controller sends the
 // message. The two expected sequences below (one per range-validity branch)
 // were verified byte-for-byte against content.js as it stood at commit
@@ -14958,7 +14973,7 @@ const LADDER_OPTS = {
     // mock from makeMockTable does not. It also opens with a reset and closes
     // by checking for a simplified cell, both through the marker-class
     // selector, so the mock needs a live scan rather than a fixed answer — an
-    // empty list would hide the closing UPDATE_MENU_LABEL.
+    // empty list would hide the closing intent:updateMenuLabel.
     table.classList = { add() {}, remove() {} };
     table.querySelectorAll = (sel) => {
       if (sel !== '.dr-ext-rounded') return [];
@@ -14983,30 +14998,30 @@ const LADDER_OPTS = {
     return { sentMessages, threw, table };
   }
 
-  // --- Scenario 1: valid range (default rangeExpr === '') -> rounds, RANGE_OK ---
+  // --- Scenario 1: valid range (default rangeExpr === '') -> rounds, state:rangeOk ---
   const okRun = runFullToggleFlow(undefined);
   eq('range-status sequence (valid range): the apply does not throw',
     okRun.threw, null);
-  eq('range-status sequence (valid range): exact message sequence matches parent-branch capture, behind the apply\'s own APPLY_OK',
+  eq('range-status sequence (valid range): exact message sequence matches parent-branch capture, behind the apply\'s own state:applyOk',
     okRun.sentMessages,
     [
-      { action: 'APPLY_OK' },
-      { action: 'RANGE_OK' },
-      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+      { action: 'state:applyOk' },
+      { action: 'state:rangeOk' },
+      { action: 'intent:updateMenuLabel', title: 'Toggle readable data' },
     ]);
   eq('range-status sequence (valid range): the cell was actually rounded',
     okRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), true);
 
   // --- Scenario 2: invalid range ("1a" matches neither a column letter nor a
-  // row number pattern) -> no rounding, RANGE_ERROR with the parse error ---
+  // row number pattern) -> no rounding, state:rangeError with the parse error ---
   const errorRun = runFullToggleFlow('1a');
   eq('range-status sequence (invalid range): the apply does not throw',
     errorRun.threw, null);
-  eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture, behind the apply\'s own APPLY_OK',
+  eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture, behind the apply\'s own state:applyOk',
     errorRun.sentMessages,
     [
-      { action: 'APPLY_OK' },
-      { action: 'RANGE_ERROR', error: 'Invalid range: "1a"' },
+      { action: 'state:applyOk' },
+      { action: 'state:rangeError', error: 'Invalid range: "1a"' },
     ]);
   eq('range-status sequence (invalid range): the cell was NOT rounded',
     errorRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), false);
@@ -15056,9 +15071,13 @@ const LADDER_OPTS = {
      'request:applySettings', 'state:settingsChanged',
      // The service worker's four, plus the two it receives (#325).
      'intent:menuClicked', 'state:sidebarOpened', 'intent:closeSidebar',
-     'state:sidebarClosed', 'state:pageUnloaded', 'intent:updateMenuLabel'].sort());
+     'state:sidebarClosed', 'state:pageUnloaded', 'intent:updateMenuLabel',
+     // The content script's eight reports to the sidebar.
+     'state:tableActivated', 'state:tableSwitched', 'state:tableEnabledChanged',
+     'state:rangeError', 'state:rangeOk', 'state:applyBlocked', 'state:applyOk',
+     'state:previewSamplesChanged'].sort());
 
-  // The worker's six, each with the family and route the topic table states.
+  // Every moved topic, each with the family and route the topic table states.
   // A route is the one fact that determines which contexts a publish reaches,
   // so a wrong one here delivers to the wrong audience in silence.
   const WORKER_TOPICS = {
@@ -15068,6 +15087,16 @@ const LADDER_OPTS = {
     'state:sidebarClosed': ['state-change', 'extension-pages'],
     'state:pageUnloaded': ['state-change', 'extension-pages'],
     'intent:updateMenuLabel': ['intent', 'extension-pages'],
+    // The content script's eight reports. Every one broadcasts: the content
+    // script holds no tabs interface, and the sidebar is an extension page.
+    'state:tableActivated': ['state-change', 'extension-pages'],
+    'state:tableSwitched': ['state-change', 'extension-pages'],
+    'state:tableEnabledChanged': ['state-change', 'extension-pages'],
+    'state:rangeError': ['state-change', 'extension-pages'],
+    'state:rangeOk': ['state-change', 'extension-pages'],
+    'state:applyBlocked': ['state-change', 'extension-pages'],
+    'state:applyOk': ['state-change', 'extension-pages'],
+    'state:previewSamplesChanged': ['state-change', 'extension-pages'],
   };
   for (const name of Object.keys(WORKER_TOPICS)) {
     const [family, route] = WORKER_TOPICS[name];
@@ -15453,14 +15482,14 @@ const LADDER_OPTS = {
     // A press on the ACTIVE table. Issue #272 put the settings-record write
     // at the front of this path: the press calls DR_STORE.setSettings with
     // the flipped enabled, the state-change subscriber runs the apply, and
-    // the apply's own APPLY_OK leads the sequence. TABLE_TOGGLE_STATE then
+    // the apply's own state:applyOk leads the sequence. state:tableEnabledChanged then
     // carries the settings record's new value, because no switch went out to
     // carry it. Byte-identical to the frozen parent capture for this cell.
     'true': [
-      { action: 'APPLY_OK' },
-      { action: 'RANGE_OK' },
-      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
-      { action: 'TABLE_TOGGLE_STATE', enabled: true },
+      { action: 'state:applyOk' },
+      { action: 'state:rangeOk' },
+      { action: 'intent:updateMenuLabel', title: 'Toggle readable data' },
+      { action: 'state:tableEnabledChanged', enabled: true },
     ],
     // A press on a table that is NOT the active one. Issue #251 made this
     // path sync the pressed table to the settings record in place of
@@ -15468,16 +15497,16 @@ const LADDER_OPTS = {
     // then made it the only meaning such a press has, whatever the sidebar
     // is doing.
     //
-    // TABLE_SWITCHED leads so the sidebar lifts the previous table's lock
-    // before this table's own APPLY_BLOCKED/APPLY_OK lands. No
-    // PREVIEW_SAMPLES_CHANGED — the sidebar's pull chain ends in the preview
-    // fetch. No TABLE_TOGGLE_STATE — the switch's own handler re-reads the
+    // state:tableSwitched leads so the sidebar lifts the previous table's lock
+    // before this table's own state:applyBlocked/state:applyOk lands. No
+    // state:previewSamplesChanged — the sidebar's pull chain ends in the preview
+    // fetch. No state:tableEnabledChanged — the switch's own handler re-reads the
     // settings record, so a send here would deliver one fact twice.
     'false': [
-      { action: 'TABLE_SWITCHED' },
-      { action: 'APPLY_OK' },
-      { action: 'RANGE_OK' },
-      { action: 'UPDATE_MENU_LABEL', title: 'Toggle readable data' },
+      { action: 'state:tableSwitched' },
+      { action: 'state:applyOk' },
+      { action: 'state:rangeOk' },
+      { action: 'intent:updateMenuLabel', title: 'Toggle readable data' },
     ],
   };
 
@@ -15876,19 +15905,19 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #254 (sidebar side): the APPLY_BLOCKED / APPLY_OK notice lifecycle.
+// Issue #254 (sidebar side): the state:applyBlocked / state:applyOk notice lifecycle.
 // The content script refuses a sidebar apply on a table whose registry
 // originals did not survive re-injection (see the re-injection suite's
-// scenario C) and sends APPLY_BLOCKED; every non-refused apply sends
-// APPLY_OK. This drives sidebar.js's real onMessage handler and applyNow's
+// scenario C) and sends state:applyBlocked; every non-refused apply sends
+// state:applyOk. This drives sidebar.js's real onMessage handler and applyNow's
 // real delivery callback, in the same eval harness as the delivery-feedback
 // test above, and pins:
-//   - APPLY_BLOCKED shows the user-visible notice in #status (source-tagged);
+//   - state:applyBlocked shows the user-visible notice in #status (source-tagged);
 //   - the notice survives applyNow's delivery-success clear — Chrome does
 //     not guarantee whether the response callback or the content script's
 //     status message lands first, so the clear must skip sourced messages;
-//   - APPLY_OK clears the notice, and ONLY the notice (a range error's
-//     source tag is not its to clear), mirroring RANGE_OK;
+//   - state:applyOk clears the notice, and ONLY the notice (a range error's
+//     source tag is not its to clear), mirroring state:rangeOk;
 //   - an unsourced stale status still clears on delivery success (the
 //     behavior the delivery-feedback test above pins is preserved).
 // ---------------------------------------------------------------------------
@@ -15989,11 +16018,11 @@ const LADDER_OPTS = {
       typeof enabledChangeHandler, 'function');
     if (typeof onMessageHandler !== 'function' || typeof enabledChangeHandler !== 'function') return;
 
-    // --- APPLY_BLOCKED shows the notice, tagged with its source. ---
+    // --- state:applyBlocked shows the notice, tagged with its source. ---
     statusEl.textContent = '';
     delete statusEl.dataset.source;
-    onMessageHandler({ action: 'APPLY_BLOCKED', count: 3 }, {}, () => {});
-    eq('apply-blocked notice: APPLY_BLOCKED sets the user-visible notice in #status',
+    onMessageHandler({ action: 'state:applyBlocked', count: 3 }, {}, () => {});
+    eq('apply-blocked notice: state:applyBlocked sets the user-visible notice in #status',
       statusEl.textContent,
       'This table\'s original values are no longer available. Reload the page, then apply settings again.');
     eq('apply-blocked notice: the notice is tagged with its source',
@@ -16005,26 +16034,26 @@ const LADDER_OPTS = {
       statusEl.textContent,
       'This table\'s original values are no longer available. Reload the page, then apply settings again.');
 
-    // --- RANGE_OK does not clear it either (source mismatch). ---
-    onMessageHandler({ action: 'RANGE_OK' }, {}, () => {});
-    eq('apply-blocked notice: RANGE_OK leaves the blocked notice alone',
+    // --- state:rangeOk does not clear it either (source mismatch). ---
+    onMessageHandler({ action: 'state:rangeOk' }, {}, () => {});
+    eq('apply-blocked notice: state:rangeOk leaves the blocked notice alone',
       statusEl.textContent,
       'This table\'s original values are no longer available. Reload the page, then apply settings again.');
 
-    // --- APPLY_OK clears it. ---
-    onMessageHandler({ action: 'APPLY_OK' }, {}, () => {});
-    eq('apply-blocked notice: APPLY_OK clears the notice',
+    // --- state:applyOk clears it. ---
+    onMessageHandler({ action: 'state:applyOk' }, {}, () => {});
+    eq('apply-blocked notice: state:applyOk clears the notice',
       statusEl.textContent, '');
-    eq('apply-blocked notice: APPLY_OK removes the source tag',
+    eq('apply-blocked notice: state:applyOk removes the source tag',
       statusEl.dataset.source, undefined);
 
-    // --- APPLY_OK leaves a range error alone (source mismatch, mirroring
-    // RANGE_OK's own guard). ---
-    onMessageHandler({ action: 'RANGE_ERROR', error: 'Invalid range expression.' }, {}, () => {});
-    onMessageHandler({ action: 'APPLY_OK' }, {}, () => {});
-    eq('apply-blocked notice: APPLY_OK leaves a range error alone',
+    // --- state:applyOk leaves a range error alone (source mismatch, mirroring
+    // state:rangeOk's own guard). ---
+    onMessageHandler({ action: 'state:rangeError', error: 'Invalid range expression.' }, {}, () => {});
+    onMessageHandler({ action: 'state:applyOk' }, {}, () => {});
+    eq('apply-blocked notice: state:applyOk leaves a range error alone',
       statusEl.textContent, 'Invalid range expression.');
-    onMessageHandler({ action: 'RANGE_OK' }, {}, () => {});
+    onMessageHandler({ action: 'state:rangeOk' }, {}, () => {});
 
     // --- An unsourced stale status still clears on delivery success — the
     // delivery-feedback behavior pinned above is preserved. ---
@@ -16034,36 +16063,36 @@ const LADDER_OPTS = {
     eq('apply-blocked notice: an unsourced stale status still clears on delivery success',
       statusEl.textContent, '');
 
-    // --- Issue #262: APPLY_BLOCKED also locks the panel. The connected
+    // --- Issue #262: state:applyBlocked also locks the panel. The connected
     // table is stuck showing simplified values, so the main toggle must
     // show ON (the truth) and stop accepting input, and the settings area
-    // dims via body.table-locked. APPLY_OK, a table switch
-    // (TABLE_SWITCHED), and unbinding (delivery failure →
+    // dims via body.table-locked. state:applyOk, a table switch
+    // (state:tableSwitched), and unbinding (delivery failure →
     // setTableBound(false)) each lift the lock. ---
     enabledEl.checked = false;
     enabledEl.disabled = false;
-    onMessageHandler({ action: 'APPLY_BLOCKED', count: 1 }, {}, () => {});
-    eq('sidebar lock: APPLY_BLOCKED adds body.table-locked',
+    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, {}, () => {});
+    eq('sidebar lock: state:applyBlocked adds body.table-locked',
       bodyClasses.has('table-locked'), true);
-    eq('sidebar lock: APPLY_BLOCKED forces the main toggle ON — the table IS simplified',
+    eq('sidebar lock: state:applyBlocked forces the main toggle ON — the table IS simplified',
       enabledEl.checked, true);
-    eq('sidebar lock: APPLY_BLOCKED disables the main toggle',
+    eq('sidebar lock: state:applyBlocked disables the main toggle',
       enabledEl.disabled, true);
 
-    onMessageHandler({ action: 'APPLY_OK' }, {}, () => {});
-    eq('sidebar lock: APPLY_OK lifts the lock',
+    onMessageHandler({ action: 'state:applyOk' }, {}, () => {});
+    eq('sidebar lock: state:applyOk lifts the lock',
       bodyClasses.has('table-locked'), false);
-    eq('sidebar lock: APPLY_OK re-enables the main toggle',
+    eq('sidebar lock: state:applyOk re-enables the main toggle',
       enabledEl.disabled, false);
 
-    onMessageHandler({ action: 'APPLY_BLOCKED', count: 1 }, {}, () => {});
-    onMessageHandler({ action: 'TABLE_SWITCHED' }, {}, () => {});
-    eq('sidebar lock: a table switch (TABLE_SWITCHED) lifts the lock',
+    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, {}, () => {});
+    onMessageHandler({ action: 'state:tableSwitched' }, {}, () => {});
+    eq('sidebar lock: a table switch (state:tableSwitched) lifts the lock',
       bodyClasses.has('table-locked'), false);
     eq('sidebar lock: a table switch re-enables the main toggle',
       enabledEl.disabled, false);
 
-    onMessageHandler({ action: 'APPLY_BLOCKED', count: 1 }, {}, () => {});
+    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, {}, () => {});
     queuedLastError = { message: 'Could not establish connection.' };
     enabledChangeHandler();
     queuedLastError = null;
@@ -16586,12 +16615,12 @@ function makeIssue251SidebarHarness() {
     // previous table's apply left the panel locked.
     h.enabledEl.checked = true;
     h.rangeExprEl.value = '';
-    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
-    eq('switch-pull: precondition — the previous table\'s APPLY_BLOCKED locked the panel',
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    eq('switch-pull: precondition — the previous table\'s state:applyBlocked locked the panel',
       h.bodyClasses.has('table-locked'), true);
 
     // The switch message: lift the lock, re-read the model.
-    h.dispatch({ action: 'TABLE_SWITCHED' });
+    h.dispatch({ action: 'state:tableSwitched' });
     eq('switch-pull: a table switch lifts the lock',
       h.bodyClasses.has('table-locked'), false);
     eq('switch-pull: a table switch re-enables the main toggle',
@@ -16599,7 +16628,7 @@ function makeIssue251SidebarHarness() {
     eq('switch-pull: the main toggle mirrors the model\'s enabled:false after a switch',
       h.enabledEl.checked, false);
     // The claim here is that the sidebar MIRRORS the application model. A
-    // press that moves the active table sends TABLE_SWITCHED and then clears
+    // press that moves the active table sends state:tableSwitched and then clears
     // the range expression in its one settings write (2026-09-14 sidebar-
     // state-removal, part one). The send goes out first, and Chrome delivers
     // it after the content script's handler returns, so the pull it triggers
@@ -16630,7 +16659,7 @@ function makeIssue251SidebarHarness() {
     // preview fetch ended in setTableBound(true), which reset the pill to
     // the shipped default (on) — the model says off.
     h.enabledEl.checked = true;
-    h.dispatch({ action: 'PREVIEW_SAMPLES_CHANGED' });
+    h.dispatch({ action: 'state:previewSamplesChanged' });
     eq('refresh-pull: the main toggle mirrors the model\'s enabled:false after a preview refresh',
       h.enabledEl.checked, false);
   } finally {
@@ -16654,13 +16683,13 @@ function makeIssue251SidebarHarness() {
     // table is stuck simplified). A settings pull that resolves while the
     // lock is displayed — a reconnect refresh whose apply just re-blocked —
     // must not write the model's enabled:false over the lock's forced ON.
-    // Ordering here mirrors the wire: APPLY_BLOCKED lands, then the
+    // Ordering here mirrors the wire: state:applyBlocked lands, then the
     // stale-view refresh runs its pull.
-    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
-    eq('lock-vs-pull: precondition — APPLY_BLOCKED locked the panel',
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    eq('lock-vs-pull: precondition — state:applyBlocked locked the panel',
       h.bodyClasses.has('table-locked'), true);
 
-    h.dispatch({ action: 'PREVIEW_SAMPLES_CHANGED' });
+    h.dispatch({ action: 'state:previewSamplesChanged' });
     eq('lock-vs-pull: the pull leaves the locked toggle ON — the table IS simplified',
       h.enabledEl.checked, true);
     eq('lock-vs-pull: the pull leaves the locked toggle disabled',
@@ -16848,7 +16877,7 @@ function makeIssue251SidebarHarness() {
   // because the contextmenu handler never read that value. The 2026-09-14
   // sidebar-state-removal design retired the value (#241), so the two runs
   // collapse into one.
-  const PARENT_EXPECTED_SEQUENCE = [{ action: 'TABLE_ACTIVATED' }];
+  const PARENT_EXPECTED_SEQUENCE = [{ action: 'state:tableActivated' }];
 
   // Minimal fixture the contextmenu handler's findTargetTable() walk-up
   // recognizes immediately as a table (closest('table') returns itself) —
@@ -17205,7 +17234,7 @@ function makeIssue251SidebarHarness() {
   }
 })();
 
-// --- (g) TABLE_TOGGLE_STATE sequence: isTableRounded (claim 4 — now reading
+// --- (g) state:tableEnabledChanged sequence: isTableRounded (claim 4 — now reading
 // DR_STORE's appliedFlag instead of a dr-ext-rounded/dataset.drShowingOriginal
 // pair) must report correctly to the sidebar across a full round -> peek-
 // original -> peek-back cycle, not just a single toggle. The pillbox-sprint
@@ -17251,8 +17280,8 @@ function makeIssue251SidebarHarness() {
       DR_BUS.publish('intent:toggleTable', { table }); // peek back
     });
 
-    const toggleMsgs = sent.filter(m => m.action === 'TABLE_TOGGLE_STATE');
-    eq('toggle-state cycle: exactly one TABLE_TOGGLE_STATE per dispatch (3 total)',
+    const toggleMsgs = sent.filter(m => m.action === 'state:tableEnabledChanged');
+    eq('toggle-state cycle: exactly one state:tableEnabledChanged per dispatch (3 total)',
       toggleMsgs.length, 3);
     eq('toggle-state cycle: enabled sequence is true (rounded), false (peek original), true (peek back)',
       toggleMsgs.map(m => m.enabled), [true, false, true]);
@@ -17711,14 +17740,14 @@ function makeIssue251SidebarHarness() {
       global.__ri2_DR_STORE.getTableAppliedFlag(table3), 'simplified');
     eq('re-injection sidebar apply: the registry records NO original for the unrestorable cell — a rounded value must not become the original of record',
       global.__ri2_DR_STORE.getTableOriginal(table3, dataCell3), undefined);
-    eq('re-injection sidebar apply: exactly one APPLY_BLOCKED notice is sent',
-      sentMessages.filter((m) => m.action === 'APPLY_BLOCKED').length, 1);
-    eq('re-injection sidebar apply: the APPLY_BLOCKED notice carries the unrestorable-cell count',
-      (sentMessages.find((m) => m.action === 'APPLY_BLOCKED') || {}).count, 1);
-    eq('re-injection sidebar apply: no APPLY_OK — the apply was refused',
-      sentMessages.some((m) => m.action === 'APPLY_OK'), false);
-    eq('re-injection sidebar apply: no RANGE_OK/RANGE_ERROR — roundTable never ran',
-      sentMessages.some((m) => m.action === 'RANGE_OK' || m.action === 'RANGE_ERROR'), false);
+    eq('re-injection sidebar apply: exactly one state:applyBlocked notice is sent',
+      sentMessages.filter((m) => m.action === 'state:applyBlocked').length, 1);
+    eq('re-injection sidebar apply: the state:applyBlocked notice carries the unrestorable-cell count',
+      (sentMessages.find((m) => m.action === 'state:applyBlocked') || {}).count, 1);
+    eq('re-injection sidebar apply: no state:applyOk — the apply was refused',
+      sentMessages.some((m) => m.action === 'state:applyOk'), false);
+    eq('re-injection sidebar apply: no state:rangeOk/state:rangeError — roundTable never ran',
+      sentMessages.some((m) => m.action === 'state:rangeOk' || m.action === 'state:rangeError'), false);
 
     // --- Scenario D (issue #262): the on-page pill on a locked table. A
     // table is locked when it shows cells wearing dr-ext-rounded that the
@@ -17764,7 +17793,7 @@ function makeIssue251SidebarHarness() {
     // appliedFlag between 'simplified' and 'original' (both
     // toggleOriginalValues branches no-op on cells without registry
     // records), so the pill toggled visually while the table never changed,
-    // and TABLE_TOGGLE_STATE reported enabled:false to the sidebar under a
+    // and state:tableEnabledChanged reported enabled:false to the sidebar under a
     // visibly simplified table. ---
     const stub2 = makeMockButton();
     global.__ri2_tableToggles.set(table2, stub2);
@@ -17788,24 +17817,24 @@ function makeIssue251SidebarHarness() {
     eq('re-injection toggle clicks: the title still holds the true original',
       dataCell2.title, roundedTitle2);
 
-    const toggleStates = sentMessages.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
-    // Issue #272 changed this contract: TABLE_TOGGLE_STATE reports the RECORD's
+    const toggleStates = sentMessages.filter((m) => m.action === 'state:tableEnabledChanged');
+    // Issue #272 changed this contract: state:tableEnabledChanged reports the RECORD's
     // enabled — the value the click wrote — not the stuck table's display
     // state. The first click is a rebind (table3 was selected) and sends no
     // toggle-state; the second click asks to turn the stuck table off, so the
     // record and the message both go false. The panel guards its own display:
-    // under the #262 lock (this table's APPLY_BLOCKED lands first) the forced
+    // under the #262 lock (this table's state:applyBlocked lands first) the forced
     // ON is display-only and the record's value goes to the lock's stash —
     // pinned by the issue272 sidebar-harness tests below.
-    eq('re-injection toggle clicks: TABLE_TOGGLE_STATE reports the record — off, as the click asked',
+    eq('re-injection toggle clicks: state:tableEnabledChanged reports the record — off, as the click asked',
       toggleStates.map((m) => m.enabled), [false]);
     eq('re-injection toggle clicks: the record holds the user\'s off, even though the stuck table cannot change',
       global.__ri2_DR_STORE.getSettings().enabled, false);
     const actionSeq = sentMessages.map((m) => m.action);
-    eq('re-injection toggle clicks: the blocked click\'s APPLY_BLOCKED precedes its toggle-state — the panel locks before the record value lands in its stash',
-      actionSeq.lastIndexOf('APPLY_BLOCKED') !== -1 &&
-      actionSeq.indexOf('TABLE_TOGGLE_STATE') !== -1 &&
-      actionSeq.lastIndexOf('APPLY_BLOCKED') < actionSeq.indexOf('TABLE_TOGGLE_STATE'), true);
+    eq('re-injection toggle clicks: the blocked click\'s state:applyBlocked precedes its toggle-state — the panel locks before the record value lands in its stash',
+      actionSeq.lastIndexOf('state:applyBlocked') !== -1 &&
+      actionSeq.indexOf('state:tableEnabledChanged') !== -1 &&
+      actionSeq.lastIndexOf('state:applyBlocked') < actionSeq.indexOf('state:tableEnabledChanged'), true);
   } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
@@ -17817,7 +17846,7 @@ function makeIssue251SidebarHarness() {
 // Issue #272, leak 1: a pill toggle on the CONNECTED table must write the
 // record (DR_STORE.settings.enabled), not just the table DOM and the panel's
 // switch. Before the fix, content.js's same-table intent:toggleTable branch
-// ran runToggleAction + TABLE_TOGGLE_STATE and never called setSettings, so
+// ran runToggleAction + state:tableEnabledChanged and never called setSettings, so
 // any later pull — a panel reopen or a table switch — showed the record's
 // stale enabled over the table's truth, and a reopen-style apply silently
 // re-rounded a table the user had toggled off.
@@ -17869,7 +17898,7 @@ function makeIssue251SidebarHarness() {
     eq('leak-1: the record follows the pill — enabled false after toggle-off',
       DR_STORE.getSettings().enabled, false);
 
-    // The reopen path (SIDEBAR_OPENED runs this same apply) must honor the
+    // The reopen path (state:sidebarOpened runs this same apply) must honor the
     // record the pill just wrote — not silently re-round the table.
     withCreateTreeWalker(function () {
       applySidebarRounding(table, DR_STORE.getSettings());
@@ -17877,8 +17906,8 @@ function makeIssue251SidebarHarness() {
     eq('leak-1: a reopen-style apply honors the record — the table stays on originals',
       isTableRounded(table), false);
 
-    const toggleMsgs = sent.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
-    eq('leak-1: one TABLE_TOGGLE_STATE per pill toggle, reporting the record — true then false',
+    const toggleMsgs = sent.filter((m) => m.action === 'state:tableEnabledChanged');
+    eq('leak-1: one state:tableEnabledChanged per pill toggle, reporting the record — true then false',
       toggleMsgs.map((m) => m.enabled), [true, false]);
   } finally {
     global.chrome.runtime.sendMessage = origSend;
@@ -17896,7 +17925,7 @@ function makeIssue251SidebarHarness() {
 // the panel was closed changed the page without changing the record, and
 // the next panel open re-imposed the stale record. The record write and the
 // apply that follows never needed the panel; only the gate did.
-// TABLE_TOGGLE_STATE is sent regardless too: the controller reports the
+// state:tableEnabledChanged is sent regardless too: the controller reports the
 // record; a closed sidebar has no page to receive it, and background.js
 // additionally gates its relay (the AC4 guard), so no delivery decision
 // lives here.
@@ -17936,7 +17965,7 @@ function makeIssue251SidebarHarness() {
     eq('closed-panel toggle: the record follows the connected table with the panel closed',
       DR_STORE.getSettings().enabled, false);
 
-    // The panel-open apply (SIDEBAR_OPENED runs this) must find the record
+    // The panel-open apply (state:sidebarOpened runs this) must find the record
     // already honest — no re-round of a table toggled off while closed.
     withCreateTreeWalker(function () {
       applySidebarRounding(table, DR_STORE.getSettings());
@@ -17944,7 +17973,7 @@ function makeIssue251SidebarHarness() {
     eq('closed-panel toggle: a later panel open honors the record — the table stays on originals',
       isTableRounded(table), false);
 
-    const toggleMsgs = sent.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
+    const toggleMsgs = sent.filter((m) => m.action === 'state:tableEnabledChanged');
     eq('closed-panel toggle: the record is reported regardless of panel state (no panel page exists to receive it)',
       toggleMsgs.map((m) => m.enabled), [true, false]);
   } finally {
@@ -18085,7 +18114,7 @@ function makePressTable(text) {
     eq('part one: the settings record follows that press to on',
       DR_STORE.getSettings().enabled, true);
     eq('part one: the press publishes the switch',
-      sent.filter((m) => m.action === 'TABLE_SWITCHED').length, 1);
+      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
   });
 })();
 
@@ -18236,8 +18265,8 @@ function makePressTable(text) {
 // branch a pill click uses. The right-click that opens the menu already
 // connects the table (the contextmenu handler calls setSelectedTable), so
 // with the sidebar open, "Toggle readable data" on that table must write the
-// record and report it (TABLE_TOGGLE_STATE) — the #272 contract. Before the
-// fix, MENU_CLICKED called runToggleAction directly: the page changed, the
+// record and report it (state:tableEnabledChanged) — the #272 contract. Before the
+// fix, intent:menuClicked called runToggleAction directly: the page changed, the
 // record and the panel both went stale, and the next reopen or switch
 // re-imposed the stale record. Fresh-eval fixture modeled on the
 // double-invocation test above; same minimal grid, real captured handlers.
@@ -18282,7 +18311,10 @@ function makePressTable(text) {
   }
 
   let contextmenuHandler = null;
-  let onMessageHandler = null;
+  // Chrome hands an arriving message to every registered listener: the bus's
+  // and the one content.js keeps for the requests.
+  const messageListeners = [];
+  const fireMessage = (msg) => messageListeners.forEach((fn) => fn(msg, {}, () => {}));
   const captureDoc = {
     addEventListener(type, handler) { if (type === 'contextmenu') contextmenuHandler = handler; },
     querySelectorAll: () => [],
@@ -18294,7 +18326,7 @@ function makePressTable(text) {
   const sentMessages = [];
   const captureChrome = {
     runtime: {
-      onMessage: { addListener(fn) { onMessageHandler = fn; } },
+      onMessage: { addListener(fn) { messageListeners.push(fn); } },
       sendMessage(msg) { sentMessages.push(msg); },
     },
   };
@@ -18313,11 +18345,11 @@ function makePressTable(text) {
     const store = global.__i275_DR_STORE;
 
     eq('menu-toggle record: contextmenu handler was captured', typeof contextmenuHandler, 'function');
-    eq('menu-toggle record: onMessage handler was captured', typeof onMessageHandler, 'function');
-    if (typeof contextmenuHandler !== 'function' || typeof onMessageHandler !== 'function') return;
+    eq('menu-toggle record: both message listeners were captured', messageListeners.length, 2);
+    if (typeof contextmenuHandler !== 'function' || messageListeners.length === 0) return;
 
     // The right-click that opens the menu: discovers, marks, and CONNECTS
-    // the grid — exactly what a real menu use does before MENU_CLICKED.
+    // the grid — exactly what a real menu use does before intent:menuClicked.
     contextmenuHandler({ target: clickTarget });
     eq('menu-toggle record: the right-click connected the grid',
       store.getSelectedTable(), gridEl);
@@ -18328,11 +18360,11 @@ function makePressTable(text) {
       store.getSettings().enabled, true);
 
     sentMessages.length = 0;
-    onMessageHandler({ action: 'MENU_CLICKED' }, {}, () => {});
+    fireMessage({ action: 'intent:menuClicked' });
 
     eq('menu-toggle record: the menu toggle on the connected table writes the record\'s off',
       store.getSettings().enabled, false);
-    const toggleMsgs = sentMessages.filter((m) => m.action === 'TABLE_TOGGLE_STATE');
+    const toggleMsgs = sentMessages.filter((m) => m.action === 'state:tableEnabledChanged');
     eq('menu-toggle record: the menu toggle reports the record to the panel — off',
       toggleMsgs.map((m) => m.enabled), [false]);
   } finally {
@@ -18366,7 +18398,7 @@ function makePressTable(text) {
     // The module-level pull mirrored the model: enabled off.
     eq('lock-save: precondition — the switch mirrors the model\'s off',
       h.enabledEl.checked, false);
-    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
     eq('lock-save: precondition — the lock forces the switch on',
       h.enabledEl.checked, true);
 
@@ -18394,11 +18426,11 @@ function makePressTable(text) {
     eq('lock-lift: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
 
-    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
-    h.dispatch({ action: 'APPLY_OK' });
-    eq('lock-lift: APPLY_OK lifts the lock',
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    h.dispatch({ action: 'state:applyOk' });
+    eq('lock-lift: state:applyOk lifts the lock',
       h.bodyClasses.has('table-locked'), false);
-    eq('lock-lift: APPLY_OK re-enables the switch', h.enabledEl.disabled, false);
+    eq('lock-lift: state:applyOk re-enables the switch', h.enabledEl.disabled, false);
     eq('lock-lift: the switch returns to the record\'s off — the forced ON does not outlive the lock',
       h.enabledEl.checked, false);
   } finally {
@@ -18417,18 +18449,18 @@ function makePressTable(text) {
     eq('locked toggle-state: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
 
-    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
-    h.dispatch({ action: 'TABLE_TOGGLE_STATE', enabled: false });
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    h.dispatch({ action: 'state:tableEnabledChanged', enabled: false });
     eq('locked toggle-state: the switch stays forced on while locked — the record change is display-only',
       h.enabledEl.checked, true);
-    h.dispatch({ action: 'TABLE_TOGGLE_STATE', enabled: true });
-    h.dispatch({ action: 'APPLY_OK' });
+    h.dispatch({ action: 'state:tableEnabledChanged', enabled: true });
+    h.dispatch({ action: 'state:applyOk' });
     eq('locked toggle-state: the lift shows the record\'s latest value (on)',
       h.enabledEl.checked, true);
 
-    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
-    h.dispatch({ action: 'TABLE_TOGGLE_STATE', enabled: false });
-    h.dispatch({ action: 'APPLY_OK' });
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    h.dispatch({ action: 'state:tableEnabledChanged', enabled: false });
+    h.dispatch({ action: 'state:applyOk' });
     eq('locked toggle-state: the lift shows the record\'s latest value (off)',
       h.enabledEl.checked, false);
   } finally {
@@ -18438,7 +18470,7 @@ function makePressTable(text) {
 
 // A re-lock while already locked must keep the stash — never capture the
 // forced ON. The real sequence: a save under the lock re-applies on the
-// content side, the stuck table blocks again, and a second APPLY_BLOCKED
+// content side, the stuck table blocks again, and a second state:applyBlocked
 // lands while the switch is already forced on. Without the engage-guard the
 // stash becomes true and the next save writes the forced ON into the record
 // — leak 2 verbatim, one message later.
@@ -18453,14 +18485,14 @@ function makePressTable(text) {
     eq('re-lock: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
 
-    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 }); // stash = model's off
-    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 }); // re-lock: stash must survive
+    h.dispatch({ action: 'state:applyBlocked', count: 1 }); // stash = model's off
+    h.dispatch({ action: 'state:applyBlocked', count: 1 }); // re-lock: stash must survive
     h.tabMessages.length = 0;
     h.el('dateGranularity').fire('change');
     const applyMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
-    eq('re-lock: a save after a second APPLY_BLOCKED still writes the record\'s off',
+    eq('re-lock: a save after a second state:applyBlocked still writes the record\'s off',
       applyMsg && applyMsg.settings.enabled, false);
-    h.dispatch({ action: 'APPLY_OK' });
+    h.dispatch({ action: 'state:applyOk' });
     eq('re-lock: the lift still shows the record\'s off',
       h.enabledEl.checked, false);
   } finally {
@@ -18470,7 +18502,7 @@ function makePressTable(text) {
 
 // Unbinding while locked (a save whose delivery fails runs setTableBound(false))
 // must drop the stash with the lock. Without the clear, the stash outlives the
-// lock and the next APPLY_OK restores a stale ON over the no-table off.
+// lock and the next state:applyOk restores a stale ON over the no-table off.
 (function issue272_unbindWhileLockedDropsTheStash() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
@@ -18484,7 +18516,7 @@ function makePressTable(text) {
 
     // Drift the switch on, then lock — the stash captures the drifted on.
     h.enabledEl.checked = true;
-    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
     // A save whose delivery fails: nothing answers applyNow's request, and it
     // unbinds the panel (setTableBound(false)) — lock and stash both go.
     h.chromeMock.runtime.lastError = { message: 'no receiving end' };
@@ -18494,8 +18526,8 @@ function makePressTable(text) {
       h.bodyClasses.has('table-locked'), false);
     eq('unbind-locked: the no-table state forces the switch off',
       h.enabledEl.checked, false);
-    h.dispatch({ action: 'APPLY_OK' });
-    eq('unbind-locked: a later APPLY_OK does not resurrect the pre-unbind stash',
+    h.dispatch({ action: 'state:applyOk' });
+    eq('unbind-locked: a later state:applyOk does not resurrect the pre-unbind stash',
       h.enabledEl.checked, false);
   } finally {
     h.restore();
@@ -18515,15 +18547,15 @@ function makePressTable(text) {
 
     // Drift the switch on, then lock — the stash captures the drifted on.
     h.enabledEl.checked = true;
-    h.dispatch({ action: 'APPLY_BLOCKED', count: 1 });
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
     // A pull resolving under the lock reads the model's enabled:false. The
     // display must not change (pinned by the #251 lock-vs-pull test above);
     // the stash must track it so the lift shows the model, not the value
     // stashed at lock time.
-    h.dispatch({ action: 'PREVIEW_SAMPLES_CHANGED' });
+    h.dispatch({ action: 'state:previewSamplesChanged' });
     eq('lock-pull-stash: the pull leaves the locked switch on (display-only)',
       h.enabledEl.checked, true);
-    h.dispatch({ action: 'APPLY_OK' });
+    h.dispatch({ action: 'state:applyOk' });
     eq('lock-pull-stash: the lift shows the model\'s off from the pull, not the pre-lock drift',
       h.enabledEl.checked, false);
   } finally {
@@ -19513,11 +19545,11 @@ function makePressTable(text) {
 (function crossContextTopicNames() {
   eq('cross-context topics: DR_CROSS_CONTEXT_TOPICS loads in the content-script bundle',
     typeof globalThis.DR_CROSS_CONTEXT_TOPICS, 'object');
-  // Seventeen, not eighteen: the sidebar's settings apply moved onto the bus
-  // topic table as a request (issue #325). The remaining seventeen retire as
-  // each one moves.
-  eq('cross-context topics: seventeen names are declared',
-    Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).length, 17);
+  // Three, from eighteen: fifteen names moved onto the bus's topic table
+  // (issue #325). The three left are the sidebar's pulls, which move next and
+  // retire this list with them.
+  eq('cross-context topics: three names are declared',
+    Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).length, 3);
   eq('cross-context topics: every value equals its own field name',
     Object.keys(globalThis.DR_CROSS_CONTEXT_TOPICS).every((k) => globalThis.DR_CROSS_CONTEXT_TOPICS[k] === k), true);
 
@@ -19539,7 +19571,7 @@ function makePressTable(text) {
   let serialized = null;
   try { serialized = JSON.parse(JSON.stringify(globalThis.DR_CROSS_CONTEXT_TOPICS)); } catch (e) { /* left null */ }
   eq('cross-context topics: the list serializes to JSON with every name intact',
-    serialized && Object.keys(serialized).length, 17);
+    serialized && Object.keys(serialized).length, 3);
 
   eq('cross-context topics: the list is frozen',
     Object.isFrozen(globalThis.DR_CROSS_CONTEXT_TOPICS), true);
@@ -19990,6 +20022,80 @@ function makeBusSandbox(opts) {
     /subscribe\(\s*'state:pageUnloaded',\s*\([^)]*meta[^)]*\)/.test(bgSrc), true);
   eq('worker on bus: the duplicate on/off re-send is gone',
     bgSrc.includes('tableEnabledChanged'), false);
+})();
+
+
+// --- #325 Task 9: the content script publishes through the bus ---
+(function contentPublishesThroughBus() {
+  const contentSrc = sourceByName('content.js');
+  eq('content on bus: no raw chrome.runtime.sendMessage call',
+    contentSrc.includes('chrome.runtime.sendMessage'), false);
+  // The four requests keep their inline branches until the next change, so the
+  // old list survives here — and nothing but those four names is read from it.
+  const REQUEST_NAMES = ['GET_SETTINGS', 'GET_PREVIEW_SAMPLES', 'GET_CAPTURE_STATE'];
+  const oldNamesRead = (contentSrc.match(/DR_CROSS_CONTEXT_TOPICS\.([A-Z_]+)/g) || [])
+    .map((m) => m.split('.')[1]);
+  eq('content on bus: the old list is read for the request names alone',
+    oldNamesRead.filter((n) => !REQUEST_NAMES.includes(n)), []);
+  for (const topic of ['state:tableActivated', 'state:tableSwitched',
+      'state:tableEnabledChanged', 'state:rangeError', 'state:rangeOk',
+      'state:applyBlocked', 'state:applyOk', 'state:previewSamplesChanged',
+      'state:pageUnloaded', 'intent:updateMenuLabel']) {
+    eq('content on bus: publishes ' + topic,
+      contentSrc.includes("publish('" + topic + "'"), true);
+  }
+  eq('content on bus: the menu click arrives as a subscription',
+    /DR_BUS\.subscribe\(\s*'intent:menuClicked'/.test(contentSrc), true);
+  eq('content on bus: the sidebar-opened report arrives as a subscription',
+    /DR_BUS\.subscribe\(\s*'state:sidebarOpened'/.test(contentSrc), true);
+  eq('content on bus: the one delivery of the on/off report is this publish',
+    contentSrc.split("publish('state:tableEnabledChanged'").length - 1, 1);
+})();
+
+
+// --- #325 Task 10: the sidebar subscribes instead of listening ---
+(function sidebarSubscribesThroughBus() {
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  eq('sidebar on bus: no chrome.runtime.onMessage listener of its own',
+    sidebarSrc.includes('chrome.runtime.onMessage.addListener'), false);
+  for (const topic of ['state:tableActivated', 'intent:closeSidebar', 'state:rangeError',
+      'state:rangeOk', 'state:applyBlocked', 'state:applyOk',
+      'state:previewSamplesChanged', 'state:tableSwitched', 'state:tableEnabledChanged']) {
+    eq('sidebar on bus: subscribes to ' + topic,
+      sidebarSrc.includes("subscribe('" + topic + "'"), true);
+  }
+  eq('sidebar on bus: the unload report publishes through the bus',
+    /DR_BUS\.publish\(\s*'state:sidebarClosed'/.test(sidebarSrc), true);
+})();
+
+// --- #325: a moved topic is deliverable inside the context that publishes it ---
+//
+// publish() hands the topic to same-context subscribers before it reaches the
+// carrier. Every topic here crosses contexts, so one context publishing a topic
+// it also subscribes to would run its own handler on the way out — a delivery
+// the old inline listeners could not make, because a context never received its
+// own send. No topic pairs that way today, and this fails at the commit if one
+// starts to.
+(function noContextPublishesWhatItSubscribes() {
+  const SOURCES = {
+    'content.js': sourceByName('content.js') || '',
+    'sidebar.js': fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8'),
+    'background.js': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),
+  };
+  const CROSSING = Object.keys(DR_BUS.TOPICS).filter((t) => DR_BUS.TOPICS[t].route !== null);
+  eq('one direction: the scan has cross-context topics to check (fails closed on an empty table)',
+    CROSSING.length > 0, true);
+  const bothEnds = [];
+  for (const [file, src] of Object.entries(SOURCES)) {
+    for (const topic of CROSSING) {
+      const publishes = src.includes("publish('" + topic + "'");
+      const subscribes = src.includes("subscribe('" + topic + "'") ||
+        src.includes("respond('" + topic + "'");
+      if (publishes && subscribes) bothEnds.push(file + ' -> ' + topic);
+    }
+  }
+  eq('one direction: no context both publishes and receives the same crossing topic',
+    bothEnds, []);
 })();
 
 // --- Report ---
