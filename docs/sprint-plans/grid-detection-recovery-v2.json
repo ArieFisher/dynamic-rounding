@@ -1,0 +1,164 @@
+{
+  "title": "Grid detection recovery, revised",
+  "base_branch": "main",
+  "created": "2026-09-15",
+  "source_markdown": "docs/sprint-plans/grid-detection-recovery-v2.md",
+  "repo_conventions": {
+    "version_files": [
+      { "path": "chrome-extension/manifest.json", "format": "dotted integers in `version` key, one to four integers, no pre-release suffix; bumped by the merge-time workflow — sprint branches must not touch it" },
+      { "path": "python/pyproject.toml", "format": "semver in `version` key; bumped by the merge-time workflow — sprint branches must not touch it; no sprint here changes python/" }
+    ],
+    "test_command": "node chrome-extension/tests.js && node js/tests.js && node js/doc-tests.js",
+    "gate_command": "scripts/check-files.sh --staged && scripts/check-vocab.sh --staged",
+    "branch_naming": "refactor/<label>, fix/<label>, chore/<label>, feature/<label> by change type, as each sprint's branch field states; never claude/ or session/",
+    "commit_convention": "Conventional Commits (fix:, refactor:, feat:, docs:, test:); a vocabulary definition lands as its own docs: commit on the sprint branch",
+    "vocabulary": "docs/vocabulary.md is the canon; read it in full before the first tool call, sweep new prose at every commit, and define a new concept on the branch that makes it real",
+    "docs_rule": "A behavior change updates every living doc it invalidates on the same branch; each sprint's dev notes name its docs. Regression fixtures are synthetic and minimized; a raw capture never enters the repository"
+  },
+  "sprints": [
+    {
+      "label": "detection-constants",
+      "branch": "refactor/detection-constants",
+      "goal": "Every detection tuning value and both lists have one home, the tuning block in the configuration file, with no behavior change.",
+      "scope": "Add DR_TUNING to chrome-extension/constants.js with the keys of the plan's §3.2 that have a reader today: gridMinChildren 5, gridWalkDepthCap 15, gridColumnWidthSample 10, gridColumnWidthAgreement 0.8, gridRepetitionShare 0.5, gridRedrawDelayMs 100, offscreenLeftPx -9999, pillboxAutoCollapseMs 3000, gridDisplayValues (the four display values, as an array), vendorProfiles (the two profiles). chrome-extension/lib/dr-table/detect.js, chrome-extension/ui-toggle.js, and chrome-extension/content.js read the block; their local definitions (GRID_MIN_CHILDREN, GRID_WALK_DEPTH_CAP, GRID_COL_WIDTH_SAMPLE, GRID_DISPLAY_VALUES, GRID_REAPPLY_DEBOUNCE_MS, OFFSCREEN_LEFT_PX_THRESHOLD, DEFAULT_VENDOR_PROFILES, TOUCH_AUTOCOLLAPSE_MS) go. The two bare literals in looksLikeGrid (the half share of repeating children, the 0.8 width agreement) become reads of gridRepetitionShare and gridColumnWidthAgreement. gridDisplayValues is an array, so the membership check changes from has to includes. The detection layer's file comment states that the configuration file loads first. chrome-extension/tests.js follows: the globalThis re-exports of the three moved names, the value pin on the off-screen threshold, and every sandbox that evaluates the detection layer on its own prepend the configuration file's source. Living docs: docs/design.md's package table describes constants.js as the settings contract, add the tuning block; docs/vocabulary.md defines tuning block as its own docs: commit.",
+      "out_of_scope": "Any value change; the 10-by-10 data test sample stays until data-test-budget. GRID_ARIA_SELECTOR, the marker class, and the rounded-cell class stay where they are. nestingDepth, pendingRetestCap, and dataTestCellBudget land with their first readers.",
+      "acceptance_criteria": [
+        "Each moved value has exactly one definition in chrome-extension/: a search for each old name and each old literal finds no second copy",
+        "No fallback copy: the detection layer reads DR_TUNING as a bare global with no typeof guard and no local default",
+        "A sandbox that evaluates the configuration file and then the detection layer runs looksLikeGrid, isDataTable, and isPhantomA11yTable with the same results as before the move; a sandbox that evaluates the detection layer alone fails at load",
+        "node chrome-extension/tests.js passes with no assertion removed; the other two suites pass",
+        "docs/design.md's package table and docs/vocabulary.md carry the tuning block"
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Constants: DR_TUNING in chrome-extension/constants.js, keys as in scope. Pitfalls: the suite evaluates the detection layer alone at three sites (a multi-file sandbox near the sidebar tests, the extractFunctionBody reader, and the phantom-table sandbox that carries only a fake document), and two source guards (GR3b, GR6j) scan _makeCellObj by text; removing DEFAULT_VENDOR_PROFILES above it shifts lines, not the scanned text. The configuration file is already loaded by all three contexts (its header says so), so no manifest or sidebar.html change is needed. Keep the ports: opts.vendorProfiles || DR_TUNING.vendorProfiles. Version files are workflow-bumped at merge; do not touch them."
+    },
+    {
+      "label": "data-test-budget",
+      "branch": "fix/data-test-budget",
+      "goal": "The data test spends one budget of 1000 cell reads, in document order, stopping at the first number, on native tables and grids alike.",
+      "scope": "isDataTable in chrome-extension/lib/dr-table/detect.js: one counter across rows and cells replaces the per-row and per-table caps (GRID_IS_DATA_TABLE_CELL_SAMPLE, GRID_IS_DATA_TABLE_ROW_SAMPLE), for both adapters. dataTestCellBudget: 1000 joins the tuning block in chrome-extension/constants.js. Tests for the two new outcomes and the boundary. Living docs: chrome-extension/README.md (the sentence on ten cells in each of ten rows), docs/design.md (the Detection paragraph's per-row sampling), and the data test entry in docs/vocabulary.md.",
+      "out_of_scope": "The numeric probe and which strings count as numbers (#221). looksLikeGrid's own numeric step. Which cells count (hidden-cells). The two-cell pre-check that precedes the numeric search.",
+      "acceptance_criteria": [
+        "A grid whose first number sits in the twelfth column of its first data row passes the data test",
+        "A table holding no number within its first 1000 cells fails; the same table with a number in its thousandth cell passes",
+        "A native table of three rows by two cells with one number still passes",
+        "Every existing detection assertion stays green; the three living docs state the budget"
+      ],
+      "depends_on": ["detection-constants"],
+      "version_bump": "patch",
+      "complexity": "S",
+      "dev_notes": "Constant: dataTestCellBudget in DR_TUNING. The retiring comment above the old caps explains per-row bounds as protection against a wide header; D3 accepts that case, so the comment retires with the caps. Count cell reads, not rows, and count an empty cell as a read. The hasMultipleColumns pre-check walks rows until one holds two cells; leave it. The shipped data test against the Databricks-shaped fixture must still return a pass at six rows by four columns. Version files are workflow-bumped at merge; do not touch them."
+    },
+    {
+      "label": "grid-nesting-rule",
+      "branch": "fix/grid-nesting-rule",
+      "goal": "One registration per grid, at the configured nesting depth, through one nomination step shared by both live scanners.",
+      "scope": "The nomination step of the plan's §3.3 in chrome-extension/lib/dr-table/detect.js, grown inside findTables: from a root, list the qualifying elements (grid or table role, past the accessibility-artifact guard and the native-table guard), build one containment chain per chain root (the outermost qualifying element) from those passing the data test, apply DR_TUNING.nestingDepth and D2's two edge rules (a depth holding more than one element falls back outward to the nearest depth holding exactly one; a chain shorter than the depth clamps to its innermost element), and return the elements to register. The load-time scan's ARIA pass (injectTableToggles in chrome-extension/ui-toggle.js) and the added-node pass (injectTogglesForAddedNode in chrome-extension/content.js) call it and hold no scan of their own; their native-table passes stay. nestingDepth: 1 joins the tuning block. A synthetic Databricks-shaped fixture. Living docs: the pinned pane entry in docs/vocabulary.md becomes conditional on the configured depth; docs/vocabulary.md defines containment chain, chain root, nesting depth, and qualifying element; docs/design.md's Detection paragraph and chrome-extension/README.md's first point under 'Data Grids vs. CSS Layout Grids' state the rule; docs/test-pages/tables.html §13's expectation text and comment describe one pillbox on the scrolling pane.",
+      "out_of_scope": "The geometry probe and its gates. Right-click (right-click-registers). Pending state (pending-retest). Vendor profiles beyond the two shipped. The marker class write (#256).",
+      "acceptance_criteria": [
+        "The Databricks-shaped fixture registers exactly one table, the scrolling pane, whose first column is the identifier column, and a range expression addressing that column addresses it as column A",
+        "The same fixture at depth 0 registers the wrapper with the row-number gutter as its first column",
+        "A chain whose depth 1 holds two qualifying siblings registers the wrapper",
+        "A chain shorter than the configured depth registers its innermost element",
+        "Two sibling grids under one non-qualifying parent register separately",
+        "Both live scanners call the step; neither holds an ARIA pass of its own (#219 closes), and the load-time scan on the fixture builds one pillbox (#270 closes)",
+        "The living docs and the test page state the rule; the suites pass"
+      ],
+      "depends_on": ["detection-constants"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Constant: nestingDepth in DR_TUNING. Keep the detection layer reporting only: the step returns { handle, isNew } entries and the callers register through createToggleForTable, which re-runs the data test; accept the second read. Key chains by chain root and return nothing for a root whose chain already holds a registered table, so a rediscovery is idempotent. The fixture: rebuild docs/test-pages/tables.html §13's shape with invented values, per the regression-fixture convention; for the two-siblings edge rule give the pinned pane a second column so it passes the data test. The pinned pane drops out of the chain because the data test on it alone fails (one column); the plan relies on the chain rule, never on that coincidence, so the depth-0 test pins the wrapper choice directly. Vocabulary definitions land as their own docs: commit. Version files are workflow-bumped at merge; do not touch them."
+    },
+    {
+      "label": "pending-retest",
+      "branch": "fix/pending-retest",
+      "goal": "A grid that arrives empty registers when its rows arrive, without a right-click.",
+      "scope": "D5 with the plan's §3.4 refinement, in chrome-extension/content.js. A chain root whose chain is empty becomes a pending table: one debounced subtree observer on the root (childList, characterData, subtree), with DR_TUNING.gridRedrawDelayMs as the delay. A mutation re-runs the nomination step from the root; a registration clears the pending record and disconnects the observer; a failed re-test counts against DR_TUNING.pendingRetestCap, and reaching the cap drops the observer with a debug log row. The removal branch of the table observer drops a pending root's observer and timer. The pending record and its clearing sit behind the step's outcome, never in a caller. pendingRetestCap: 100 joins the tuning block. Living docs: docs/vocabulary.md defines pending table; docs/design.md's Detection paragraph states that a failed data test leaves a pending table, and its list of state held outside the model gains the pending observers; chrome-extension/README.md's detection point states it.",
+      "out_of_scope": "Right-click (right-click-registers). The fingerprint (shape-fingerprint). The cap's lasting value, which the first live observation on Databricks sets.",
+      "acceptance_criteria": [
+        "A qualifying container inserted empty and then filled registers and gains a pillbox; the Databricks-shaped fixture, inserted as an empty wrapper and filled in a later mutation, registers its scrolling pane alone",
+        "A pending wrapper carries one observer, whatever the number of qualifying elements under it",
+        "A container that never passes stops re-testing at the cap and holds no observer afterwards",
+        "A pending container removed from the page leaves no observer and no timer",
+        "The living docs state the rule; the suites pass"
+      ],
+      "depends_on": ["grid-nesting-rule"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Constant: pendingRetestCap in DR_TUNING, starting at 100 (the plan's §6 holds the reasoning). The harness stubs MutationObserver as a no-op; the re-apply observer tests and the removed-subtree tests already install capturing stubs, and the pattern to copy is the debounce in roundTable's virtualized branch. Hold the per-root observer, timer, and count in WeakMaps beside gridObservers and gridReapplyTimers; the pending record is page-held state outside the model, and the design doc's list of such state must say so. The vocabulary definition lands as its own docs: commit. Version files are workflow-bumped at merge; do not touch them."
+    },
+    {
+      "label": "right-click-registers",
+      "branch": "fix/right-click-registers",
+      "goal": "Right-click nominates, tests, and registers a table the scans missed (D1).",
+      "scope": "findTargetTable in chrome-extension/lib/dr-table/detect.js gains the plan's §3.5 route between the registry check and the geometry probe: walk from the clicked element to the outermost role-bearing ancestor within DR_TUNING.gridWalkDepthCap, run the nomination step from it, and return the element it selects with isNew from the caller's registry check. The controller's right-click handler and menu-click subscriber in chrome-extension/content.js already register a new handle through markAndToggleIfNewGrid; they stay. Tests. Living docs: the load-time scan entry in docs/vocabulary.md gains the sentence that a marked grid the scan missed enters on right-click; docs/design.md's Detection paragraph and chrome-extension/README.md's first detection point state the route.",
+      "out_of_scope": "The geometry probe's gates. Pending state. The toolbar entry point with no prior right-click (#116).",
+      "acceptance_criteria": [
+        "A right-click inside a Databricks-shaped grid that no scan registered registers its scrolling pane and makes it active",
+        "A right-click in the row-number gutter registers the scrolling pane and makes it active",
+        "A right-click inside a role-bearing element that fails the data test registers nothing and leaves no active table",
+        "An already-registered table resolves at the registry route, with the new route never reached",
+        "The reported defect closes with no pending observer present: the test runs without pending-retest's code",
+        "The living docs state the route; the suites pass"
+      ],
+      "depends_on": ["grid-nesting-rule"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "findTargetTable reports only and keeps its { handle, isNew } shape; the data test already runs inside the detection layer, so nomination runs there too, and registration stays with the controller. The route returns the depth-selected element even when the clicked element is a different qualifying element. The registry walk stays ahead of the new route so a registered table never re-nominates. When pending-retest has merged, registration through the step clears the pending record by the plan's §3.4 design; nothing here touches it. Version files are workflow-bumped at merge; do not touch them."
+    },
+    {
+      "label": "shape-fingerprint",
+      "branch": "fix/shape-fingerprint",
+      "goal": "Every action on a registered table first checks that the table's shape still matches the shape recorded at registration (D7).",
+      "scope": "A fingerprint field on the registry entry in chrome-extension/app/store.js with a setter and getter: the column count (the widest drawn row) and the header row's cell texts, recorded in createToggleForTable (chrome-extension/ui-toggle.js) through the adapter. A comparison in chrome-extension/content.js at the two entry points of the plan's §3.6: the press subscriber (intent:toggleTable) before its screen read, and the apply function (applySidebarRounding) before its reset; together these cover an apply, a pillbox press, the menu toggle, and a settings change reaching the active table. On a mismatch: tear the entry down through one function extracted from the removal observer's branch (pillbox, resize observer, grid observer, timer, registry entry), re-run the nomination step from the chain root, register the result, make it active, and publish the table-switched topic. Native tables carry a fingerprint too. Living docs: docs/vocabulary.md defines shape fingerprint, and its registry entry describes the fingerprint in place of the column-count example that matches no field today; docs/design.md's State ownership section lists the fingerprint among the per-table registry fields.",
+      "out_of_scope": "Reads: the lens preview and the capture compare nothing. The re-apply observer's scroll path and the frozen magnitude. Carrying the fingerprint into the capture; neither sprint depends on the other.",
+      "acceptance_criteria": [
+        "Scrolling a virtualized grid, which changes the drawn row count, does not trip the fingerprint",
+        "Changing the column set trips it: the entry is discarded, and a pillbox press afterwards simplifies from a raw state",
+        "A discarded entry's originals never reach the fresh entry",
+        "On a Databricks-shaped grid whose new result makes the pinned pane pass the data test, the fresh registration lands on the wrapper, the wrapper is active, and the old pane holds no pillbox",
+        "A native table's fingerprint trips when its header row's text changes",
+        "The living docs state the field; the suites pass"
+      ],
+      "depends_on": ["grid-nesting-rule"],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "No new tuning value. The header row is the first row the adapter returns (an outside row when row groups exist, the head section on a native table). Keep the fingerprint plain-value. The press subscriber reads isTableRounded before its one settings write; the comparison runs before that read, so a press on a replaced result set reads the fresh entry's raw form and turns simplification on. Extracting the teardown is a one-function refactor inside this sprint's scope; both the removal observer and the mismatch path call it. The vocabulary definition lands as its own docs: commit. Version files are workflow-bumped at merge; do not touch them."
+    },
+    {
+      "label": "hidden-cells",
+      "branch": "chore/hidden-cells",
+      "goal": "D6 holds as a stated, tested rule: the data test and the engine read a hidden cell's text, and a hidden fragment inside a visible cell stays out of the read.",
+      "scope": "Tests in chrome-extension/tests.js on mock native cells whose rendered read (innerText) is empty and whose raw text (textContent) holds a number: the data test passes on a table whose only numbers sit in such cells; roundTable simplifies such a cell and resetTable restores it; the lens preview pool (collectNumericCells) holds it; a visible cell whose rendered read is +2.3% and whose raw text is 700023000+2.3% reads as +2.3%; an accessibility artifact stays excluded. Living docs: the data test entry in docs/vocabulary.md and docs/design.md's Detection paragraph state that hidden cells count; chrome-extension/README.md's data-test sentence states it.",
+      "out_of_scope": "Any change to the adapter's read order. The two link-related reads (isCellWholeLink, filterLinkMatches). Grids, which read raw text already. The capture's displayed-text read, which stays on the rendered read so a capture shows what the screen showed.",
+      "acceptance_criteria": [
+        "The five outcomes in scope hold as assertions that exercise the adapter, the data test, and the engine, with no source-text pin",
+        "The three living docs state the rule",
+        "The suites pass with no source change under chrome-extension/ outside tests.js"
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "S",
+      "dev_notes": "The plan's §3.7 holds the Chromium evidence and the two mechanisms behind it: the HTML specification returns descendant text for an element that is not being rendered, and the adapter's read falls back to textContent when innerText is empty. The harness's mock cells take an explicit innerText, so a mock with an empty rendered read and a numeric raw text models a hidden cell exactly. The branch prefix is chore/ because the sprint changes tests and docs only; if the developer finds a read that misses a hidden cell, that is a finding for the product manager, not a fix to fold in. Version files are workflow-bumped at merge; do not touch them."
+    },
+    {
+      "label": "capture-detection-values",
+      "branch": "feature/capture-detection-values",
+      "goal": "A capture records the tuning block in force (D8).",
+      "scope": "collectCaptureState in chrome-extension/lib/dr-capture/state.js adds a tuning field holding a plain copy of DR_TUNING; CAPTURE_FORMAT becomes 2. The renderer in chrome-extension/lib/dr-capture/render.js gains a section that lists the values, every one through the existing escapeHtml, with the two lists joined for reading. The sidebar's fallback state in assembleAndSaveCapture (chrome-extension/sidebar.js) gains tuning: null so a failed state pull renders the absence. The suite's format pins (captureFormat: 1, five sites in chrome-extension/tests.js) move to 2. Living docs: the capture state entry in docs/vocabulary.md lists the tuning block; chrome-extension/README.md's capture paragraph and docs/design.md's Capture paragraph name it.",
+      "out_of_scope": "The settings half of the capture. A reader for old captures; none exists.",
+      "acceptance_criteria": [
+        "The capture state carries every key of the tuning block with the values in force, and captureFormat is 2",
+        "The rendered file shows the values in its visible half",
+        "A state with no tuning field renders the absence placeholder and the capture still saves",
+        "The living docs name the block; the suites pass"
+      ],
+      "depends_on": ["detection-constants"],
+      "version_bump": "patch",
+      "complexity": "S",
+      "dev_notes": "No new tuning value. CAPTURE_FORMAT lives in the state serializer and the sidebar reads it too. The vendor profiles' selectors are strings that reach the file, so they go through escapeHtml like every other value. Version files are workflow-bumped at merge; do not touch them."
+    }
+  ]
+}
