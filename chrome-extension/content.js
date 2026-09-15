@@ -730,8 +730,8 @@ function extractPreviewSamples(table) {
 // registry (lib/dr-capture/state.js), plus what only this context holds —
 // the page's own address and title, the lens preview for the bound table,
 // and this context's log rows. Composed in a named function so the suite
-// drives it directly (the top-level onMessage listener is a no-op stub
-// there); the listener branch below only relays it.
+// drives it directly (the bus's own message listener is a no-op stub there);
+// the responder above only returns it.
 //
 // The cell-count row is recorded BEFORE the log snapshot is taken, so an
 // oversized capture carries its own size evidence inside itself.

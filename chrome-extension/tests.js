@@ -20039,13 +20039,6 @@ function makeBusSandbox(opts) {
   const contentSrc = sourceByName('content.js');
   eq('content on bus: no raw chrome.runtime.sendMessage call',
     contentSrc.includes('chrome.runtime.sendMessage'), false);
-  // The four requests keep their inline branches until the next change, so the
-  // old list survives here — and nothing but those four names is read from it.
-  const REQUEST_NAMES = ['request:settings', 'request:previewSamples', 'request:captureState'];
-  const oldNamesRead = (contentSrc.match(/DR_CROSS_CONTEXT_TOPICS\.([A-Z_]+)/g) || [])
-    .map((m) => m.split('.')[1]);
-  eq('content on bus: the old list is read for the request names alone',
-    oldNamesRead.filter((n) => !REQUEST_NAMES.includes(n)), []);
   for (const topic of ['state:tableActivated', 'state:tableSwitched',
       'state:tableEnabledChanged', 'state:rangeError', 'state:rangeOk',
       'state:applyBlocked', 'state:applyOk', 'state:previewSamplesChanged',
