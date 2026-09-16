@@ -319,6 +319,41 @@ function injectTogglesForAddedNode(node) {
   });
 }
 
+// Discard one table's registration and every per-table resource the
+// extension holds beside it: the pillbox, the resize observer that keeps the
+// pillbox positioned, a virtualized grid's re-apply observer and its pending
+// debounce timer, the view's tracked-table list, and the registry entry with
+// the cell originals and the form inside it. Two callers reach this: the
+// removal observer, for a table the page took out; and the shape-fingerprint
+// mismatch path, for a table whose shape no longer matches the one the
+// registry recorded. `reason` names which, and reaches the debug row.
+//
+// The grid observer and its timer tear down here so a grid removed from the
+// page cannot re-apply rounding after it leaves.
+function teardownTableEntry(table, reason) {
+  const button = tableToggles.get(table);
+  if (button && button.parentElement) {
+    button.parentElement.removeChild(button);
+  }
+  const ro = tableResizeObservers.get(table);
+  if (ro) {
+    ro.disconnect();
+  }
+  const pendingTimer = gridReapplyTimers.get(table);
+  if (pendingTimer !== undefined) {
+    clearTimeout(pendingTimer);
+    gridReapplyTimers.delete(table);
+  }
+  const gridObs = gridObservers.get(table);
+  if (gridObs) {
+    gridObs.disconnect();
+    gridObservers.delete(table);
+  }
+  trackedTables.delete(table);
+  DR_STORE.unregisterTable(table);
+  DR_LOG.debug("Dynamic Rounding: " + reason + " table unregistered.");
+}
+
 if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
   ensureScrollResizeListeners();
 
@@ -341,29 +376,7 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
           const contained = table === node ||
             (typeof node.contains === 'function' && node.contains(table));
           if (!contained) continue;
-          const button = tableToggles.get(table);
-          if (button && button.parentElement) {
-            button.parentElement.removeChild(button);
-          }
-          const ro = tableResizeObservers.get(table);
-          if (ro) {
-            ro.disconnect();
-          }
-          // Tear down any grid virtualization observer and pending debounce timer
-          // so removed grids don't re-apply rounding after they leave the DOM.
-          const pendingTimer = gridReapplyTimers.get(table);
-          if (pendingTimer !== undefined) {
-            clearTimeout(pendingTimer);
-            gridReapplyTimers.delete(table);
-          }
-          const gridObs = gridObservers.get(table);
-          if (gridObs) {
-            gridObs.disconnect();
-            gridObservers.delete(table);
-          }
-          trackedTables.delete(table);
-          DR_STORE.unregisterTable(table);
-          DR_LOG.debug("Dynamic Rounding: removed table unregistered.");
+          teardownTableEntry(table, 'removed');
         }
       }
     }
