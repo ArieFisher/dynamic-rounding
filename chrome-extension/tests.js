@@ -15301,6 +15301,234 @@ function forgetRegisteredTable(table) {
 })();
 
 // =============================================================================
+// Sprint shape-fingerprint: the reader, the comparison, and the chain-root walk
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.6 and the
+// shape-fingerprint block in §5; decision D7 in
+// docs/sprint-plans/grid-detection-recovery.md; the shape fingerprint row in
+// docs/vocabulary.md.
+// =============================================================================
+//
+// The rule these assertions pin, in the specification's words:
+//   - A shape fingerprint is the column count and the header row's cell
+//     texts, recorded for a table when it enters the registry.
+//   - The column count is the widest row's cell count. The header row is the
+//     first row the adapter returns.
+//   - The row count stays out, because a virtualized grid changes its drawn
+//     row count on every scroll.
+//   - Two fingerprints describe the same shape when the column counts match
+//     and the header texts match element by element.
+//   - The originals port supplies a cell's stored pre-simplification text, so
+//     the extension's own writes to a header cell read as no change.
+//
+// Every expected value below comes from that statement, never from the
+// detection layer's source.
+
+// Replace one fixture row's cells, the way a virtualized grid redraws a row.
+function dgReplaceRowCells(rowEl, cellTexts) {
+  const cellEls = cellTexts.map(makeDgCell);
+  for (const cellEl of cellEls) {
+    cellEl.parentElement = rowEl;
+    cellEl.parentNode = rowEl;
+  }
+  rowEl.childNodes = cellEls;
+  rowEl.children = cellEls;
+}
+
+// Add one cell to the end of a fixture row, the way a wider result set does.
+// The row's existing cell elements stay, so a test can hold one of them across
+// the change.
+function dgAppendRowCell(rowEl, text) {
+  const cellEl = makeDgCell(text);
+  cellEl.parentElement = rowEl;
+  cellEl.parentNode = rowEl;
+  rowEl.childNodes = rowEl.childNodes.concat([cellEl]);
+  rowEl.children = rowEl.children.concat([cellEl]);
+}
+
+// Replace one fixture pane's drawn rows, the way a scroll does.
+function dgReplacePaneRows(paneEl, rowEls) {
+  for (const rowEl of rowEls) {
+    rowEl.parentElement = paneEl;
+    rowEl.parentNode = paneEl;
+  }
+  paneEl.childNodes = rowEls;
+  paneEl.children = rowEls;
+}
+
+// An ARIA grid that groups its data rows, with the header row outside the
+// group. redraw() replaces the group's rows and leaves the header row in
+// place, which is what a scroll of a virtualized grid does.
+function makeScrollingRowgroupGrid(headerTexts, dataRows) {
+  function makeRoleRow(cellTexts) {
+    const cellEls = cellTexts.map(makeGridCellWithTextNode);
+    const row = makeElementNode('g-row', cellEls);
+    row.children = cellEls;
+    row.querySelectorAll = (sel) => (sel === '[role="cell"]' ? cellEls : []);
+    return row;
+  }
+  const headerRow = makeRoleRow(headerTexts);
+  let dataRowEls = dataRows.map(makeRoleRow);
+  const rowgroup = makeElementNode('', []);
+  rowgroup.querySelectorAll = (sel) => (sel === '[role="row"]' ? dataRowEls : []);
+  const wrapperEl = makeElementNode('aria-grid', [headerRow, rowgroup]);
+  wrapperEl.tagName = 'DIV';
+  wrapperEl.matches = (sel) => sel === GRID_ARIA_SELECTOR_TEXT;
+  wrapperEl.querySelector = () => null;
+  wrapperEl.querySelectorAll = function (sel) {
+    if (sel === '[role="rowgroup"]') return [rowgroup];
+    if (sel === '[role="row"]') return [headerRow].concat(dataRowEls);
+    return [];
+  };
+  wrapperEl.getAttribute = (name) => (name === 'role' ? 'grid' : null);
+  wrapperEl.getBoundingClientRect = () => (
+    { top: 20, right: 420, bottom: 260, left: 20, width: 400, height: 240 });
+  return {
+    wrapperEl,
+    headerRow,
+    dataRowEls: () => dataRowEls,
+    redraw(rows) { dataRowEls = rows.map(makeRoleRow); },
+  };
+}
+
+// --- The reader ---
+
+(function shapeFingerprint_theReaderReportsColumnsAndTheFirstRowsTexts() {
+  const grid = makeDatabaseQueryGrid();
+  const reading = readTableFingerprint(grid.scrollPaneEl);
+  eq('fingerprint reader: the reading carries the registered pane\'s column count',
+    reading.columnCount, 3);
+  eq('fingerprint reader: the reading carries the first row\'s cell texts',
+    reading.headerTexts, ['alpha', '7,318,204', '284.51']);
+  eq('fingerprint reader: the reading carries those two fields and no row count',
+    Object.keys(reading).sort(), ['columnCount', 'headerTexts']);
+})();
+
+(function shapeFingerprint_theColumnCountIsTheWidestRowNotTheFirstRow() {
+  const ragged = makeGridWrapper([
+    ['Region', 'Q1'],
+    ['North', '1,482,391', '9,105'],
+    ['South', '918,554'],
+  ]);
+  const reading = readTableFingerprint(ragged.wrapperEl);
+  eq('fingerprint reader: the column count is the widest row\'s cell count',
+    reading.columnCount, 3);
+  eq('fingerprint reader: the header texts stay the first row\'s, narrower than the count',
+    reading.headerTexts, ['Region', 'Q1']);
+})();
+
+(function shapeFingerprint_theHeaderRowIsTheFirstRowTheAdapterReturns() {
+  // A row group with the header row outside it: the adapter returns the
+  // header row first, so the fingerprint reads the header row's texts and
+  // not the first data row's.
+  const g = makeScrollingRowgroupGrid(['Region', 'Q1'], [
+    ['North', '1,482,391'], ['South', '918,554'],
+  ]);
+  eq('fingerprint reader: the header row outside the row group is the header the reading carries',
+    readTableFingerprint(g.wrapperEl).headerTexts, ['Region', 'Q1']);
+})();
+
+(function shapeFingerprint_theOriginalsPortReadsPastTheExtensionsOwnWrites() {
+  const grid = makeDatabaseQueryGrid();
+  const beforeSimplification = readTableFingerprint(grid.scrollPaneEl);
+  const headerCells = grid.scrollRowEls[0].children;
+  const stored = new Map();
+  headerCells.forEach((cellEl) => { stored.set(cellEl, cellEl.childNodes[0].nodeValue); });
+  // What a simplification of the header row leaves on the screen.
+  headerCells.forEach((cellEl) => { cellEl.childNodes[0].nodeValue = '7M'; });
+
+  const throughThePort = readTableFingerprint(grid.scrollPaneEl,
+    { originalText: (cellEl) => stored.get(cellEl) });
+  eq('fingerprint reader: a read through the originals port matches the pre-simplification reading',
+    sameTableFingerprint(beforeSimplification, throughThePort), true);
+  eq('fingerprint reader: the same read without the port carries the simplified texts',
+    sameTableFingerprint(beforeSimplification, readTableFingerprint(grid.scrollPaneEl)), false);
+  eq('fingerprint reader: a port holding nothing for a cell falls back to the cell\'s own text',
+    readTableFingerprint(grid.scrollPaneEl, { originalText: () => undefined }).headerTexts,
+    ['7M', '7M', '7M']);
+})();
+
+// --- The comparison ---
+
+(function shapeFingerprint_theComparisonReadsColumnsAndHeaderTextsAlone() {
+  const base = { columnCount: 3, headerTexts: ['Region', 'Q1', 'Q2'] };
+  eq('fingerprint comparison: two equal readings compare the same',
+    sameTableFingerprint(base, { columnCount: 3, headerTexts: ['Region', 'Q1', 'Q2'] }), true);
+  eq('fingerprint comparison: a different column count compares different',
+    sameTableFingerprint(base, { columnCount: 4, headerTexts: ['Region', 'Q1', 'Q2'] }), false);
+  eq('fingerprint comparison: one differing header text compares different',
+    sameTableFingerprint(base, { columnCount: 3, headerTexts: ['Region', 'Q1', 'Q3'] }), false);
+  eq('fingerprint comparison: a shorter header list compares different',
+    sameTableFingerprint(base, { columnCount: 3, headerTexts: ['Region', 'Q1'] }), false);
+  eq('fingerprint comparison: a missing reading compares different',
+    sameTableFingerprint(base, null), false);
+})();
+
+// The row count plays no part. A virtualized grid changes its drawn row count
+// on every scroll, so a fingerprint carrying the count would report a scroll
+// as a shape change.
+(function shapeFingerprint_theRowCountPlaysNoPartInTheComparison() {
+  const sixRows = makeGridWrapper([
+    ['Region', 'Q1'], ['North', '1,482,391'], ['South', '918,554'],
+    ['East', '55,120'], ['West', '7,314'], ['Inland', '2,905'],
+  ]);
+  const twoRows = makeGridWrapper([['Region', 'Q1'], ['North', '1,482,391']]);
+  eq('fingerprint comparison: a six-row reading and a two-row reading of one shape compare the same',
+    sameTableFingerprint(
+      readTableFingerprint(sixRows.wrapperEl), readTableFingerprint(twoRows.wrapperEl)), true);
+})();
+
+// --- The living docs state the field ---
+//
+// Two doc-pin blocks already stand in this suite (the nesting rule's and the
+// data-test budget's); this one follows them. The vocabulary defines the term
+// and the registry row lists it; the design doc's state-ownership paragraph
+// lists it among the per-table registry fields.
+
+(function shapeFingerprint_theLivingDocsStateTheField() {
+  const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
+  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
+
+  const fingerprintRow = vocabularyMd.split('\n')
+    .find((line) => /^\|\s*shape fingerprint\s*\|/i.test(line)) || '';
+  eq('fingerprint docs: docs/vocabulary.md carries a row for "shape fingerprint"',
+    fingerprintRow !== '', true);
+  eq('fingerprint docs: that row states the column count and the header row',
+    /column count/i.test(fingerprintRow) && /header row/i.test(fingerprintRow), true);
+  eq('fingerprint docs: that row states that the row count stays out',
+    /row count/i.test(fingerprintRow), true);
+
+  const registryRow = vocabularyMd.split('\n')
+    .find((line) => /^\|\s*registry\s*\|/i.test(line)) || '';
+  eq('fingerprint docs: the registry row lists the shape fingerprint among its details',
+    /shape fingerprint/i.test(registryRow), true);
+
+  const stateOwnership = designMd.split('\n')
+    .find((line) => /The registry keys per-table storage on the live element/i.test(line)) || '';
+  eq('fingerprint docs: docs/design.md keeps its per-table registry sentence',
+    stateOwnership !== '', true);
+  eq('fingerprint docs: that sentence lists the shape fingerprint',
+    /shape fingerprint/i.test(stateOwnership), true);
+})();
+
+// --- The chain-root walk the mismatch path re-runs the nomination step from ---
+
+(function shapeFingerprint_theChainRootWalkIsPublic() {
+  const grid = makeDatabaseQueryGrid();
+  eq('fingerprint chain root: the chain root of the scrolling pane is the wrapper',
+    chainRootOf(grid.scrollPaneEl) === grid.wrapperEl, true);
+  eq('fingerprint chain root: the chain root of the wrapper is the wrapper',
+    chainRootOf(grid.wrapperEl) === grid.wrapperEl, true);
+
+  const plain = makeDatabaseQueryGrid({ plainWrapper: true });
+  eq('fingerprint chain root: a plain layer inside the wrapper leaves the chain root the wrapper',
+    chainRootOf(plain.scrollPaneEl) === plain.wrapperEl, true);
+
+  eq('fingerprint chain root: an element in no nest has none',
+    chainRootOf(makeNestingHost([])), null);
+  eq('fingerprint chain root: a missing element has none', chainRootOf(null), null);
+})();
+
+// =============================================================================
 // Sprint merge-ladder: lib/dr-simplify classification ladder
 // =============================================================================
 //
@@ -18460,6 +18688,59 @@ function makeIssue251SidebarHarness() {
     DR_STORE.getTableMaxMagnitude(table), null);
 })();
 
+// --- Sprint shape-fingerprint: the registry's fingerprint field. The entry
+// carries the shape the table had when it registered, and the pillbox view's
+// builder is its one writer. Spec: the shape-fingerprint block in
+// docs/sprint-plans/grid-detection-recovery-v2.md §5, and the shape
+// fingerprint row in docs/vocabulary.md. ---
+(function shapeFingerprint_theRegistryHoldsAFingerprintPerTable() {
+  const table = { tagName: 'TABLE' }; // identity is all that matters here
+
+  eq('fingerprint registry: an unregistered table carries no fingerprint',
+    DR_STORE.getTableFingerprint(table), null);
+
+  DR_STORE.registerTable(table);
+  eq('fingerprint registry: registerTable on its own records no fingerprint',
+    DR_STORE.getTableFingerprint(table), null);
+
+  const recorded = { columnCount: 3, headerTexts: ['Region', 'Q1', 'Q2'] };
+  DR_STORE.setTableFingerprint(table, recorded);
+  eq('fingerprint registry: the recorded fingerprint reads back whole',
+    DR_STORE.getTableFingerprint(table), recorded);
+  eq('fingerprint registry: the recorded fingerprint is plain values',
+    JSON.parse(JSON.stringify(DR_STORE.getTableFingerprint(table))), recorded);
+
+  DR_STORE.unregisterTable(table);
+  eq('fingerprint registry: unregisterTable drops the fingerprint with the entry',
+    DR_STORE.getTableFingerprint(table), null);
+
+  DR_STORE.registerTable(table);
+  eq('fingerprint registry: a re-registration starts with no fingerprint',
+    DR_STORE.getTableFingerprint(table), null);
+  DR_STORE.unregisterTable(table);
+})();
+
+// The pillbox view's builder records the shape after it registers the table,
+// on a grid and on a native table alike.
+(function shapeFingerprint_registrationRecordsTheTablesShape() {
+  const grid = makeDatabaseQueryGrid();
+  withToggleDocumentMock(function () { createToggleForTable(grid.scrollPaneEl); });
+  eq('fingerprint registry: registering a grid records the shape it carried',
+    DR_STORE.getTableFingerprint(grid.scrollPaneEl),
+    { columnCount: 3, headerTexts: ['alpha', '7,318,204', '284.51'] });
+  forgetRegisteredTable(grid.scrollPaneEl);
+
+  const nativeTable = makeToggleTable([
+    [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
+    [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
+  ]);
+  withToggleDocumentMock(function () { createToggleForTable(nativeTable); });
+  eq('fingerprint registry: registering a native table records its header row',
+    DR_STORE.getTableFingerprint(nativeTable),
+    { columnCount: 2, headerTexts: ['Region', 'Q1'] });
+  forgetRegisteredTable(nativeTable);
+})();
+
 // --- (h) WeakMap/Set lockstep, part 2: the removed-node MutationObserver
 // callback must find and unregister a table when the removedNodes entry is
 // an ANCESTOR of the table, not the table itself — the real production
@@ -18565,6 +18846,91 @@ function makeIssue251SidebarHarness() {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+  }
+})();
+
+// --- Sprint shape-fingerprint: the teardown both the removal observer and the
+// mismatch path run. One function discards a table's registration and every
+// per-table resource the extension holds beside it: the pillbox, the resize
+// observer, a virtualized grid's re-apply observer and its pending timer, the
+// view's tracked-table list, and the registry entry. `reason` reaches the
+// debug row. Spec: the shape-fingerprint block in
+// docs/sprint-plans/grid-detection-recovery-v2.md §5. ---
+
+// Register one element the way the page does — through the pillbox view's
+// builder, the one writer of the shape fingerprint — and hand back the list a
+// later teardown records its pillbox removal in. The document mock's body stub
+// carries no removeChild, so the pillbox gets a parent stub of its own.
+function registerFingerprintedTable(table) {
+  withToggleDocumentMock(function () { createToggleForTable(table); });
+  return trackPillboxDetach(table);
+}
+
+function trackPillboxDetach(table) {
+  const removedPillboxes = [];
+  const button = tableToggles.get(table);
+  if (button) {
+    button.parentElement = {
+      removeChild(child) { removedPillboxes.push(child); child.parentElement = null; },
+    };
+  }
+  return removedPillboxes;
+}
+
+// The last ten debug rows, for an assertion that one row landed. The buffer
+// caps at 50 rows and drops from the front, so a fixed index into it drifts.
+function recentLogRows() {
+  return DR_LOG.snapshot().entries.slice(-10).map((row) => row.text);
+}
+
+(function shapeFingerprint_theTeardownDiscardsTheEntryAndEveryResourceBesideIt() {
+  const grid = makeDatabaseQueryGrid();
+  const resizeObservers = [];
+  const savedResizeObserver = global.ResizeObserver;
+  const clearedTimers = [];
+  const savedClearTimeout = global.clearTimeout;
+  let gridObserverDisconnects = 0;
+  global.ResizeObserver = class {
+    constructor() { this.disconnected = false; resizeObservers.push(this); }
+    observe() {}
+    unobserve() {}
+    disconnect() { this.disconnected = true; }
+  };
+  global.clearTimeout = function (id) { clearedTimers.push(id); return savedClearTimeout(id); };
+
+  try {
+    const removedPillboxes = registerFingerprintedTable(grid.scrollPaneEl);
+    gridObservers.set(grid.scrollPaneEl, { disconnect() { gridObserverDisconnects++; } });
+    const pendingTimer = setTimeout(function () {}, 10000);
+    gridReapplyTimers.set(grid.scrollPaneEl, pendingTimer);
+
+    eq('fingerprint teardown: the grid registers and tracks before the teardown (precondition)',
+      DR_STORE.hasTable(grid.scrollPaneEl) && trackedTables.has(grid.scrollPaneEl), true);
+
+    teardownTableEntry(grid.scrollPaneEl, 'replaced');
+
+    eq('fingerprint teardown: the pillbox comes off the page', removedPillboxes.length, 1);
+    eq('fingerprint teardown: the resize observer disconnects',
+      resizeObservers.length === 1 && resizeObservers[0].disconnected, true);
+    eq('fingerprint teardown: the pending re-apply timer is cleared',
+      clearedTimers.includes(pendingTimer), true);
+    eq('fingerprint teardown: the timer record goes with it',
+      gridReapplyTimers.has(grid.scrollPaneEl), false);
+    eq('fingerprint teardown: the grid observer disconnects', gridObserverDisconnects, 1);
+    eq('fingerprint teardown: the grid observer record goes with it',
+      gridObservers.has(grid.scrollPaneEl), false);
+    eq('fingerprint teardown: the view stops tracking the table',
+      trackedTables.has(grid.scrollPaneEl), false);
+    eq('fingerprint teardown: the registry entry is gone',
+      DR_STORE.hasTable(grid.scrollPaneEl), false);
+    eq('fingerprint teardown: the fingerprint goes with the entry',
+      DR_STORE.getTableFingerprint(grid.scrollPaneEl), null);
+    eq('fingerprint teardown: the teardown records a row naming its reason',
+      recentLogRows().some((text) => /replaced table unregistered/.test(text)), true);
+  } finally {
+    global.ResizeObserver = savedResizeObserver;
+    global.clearTimeout = savedClearTimeout;
+    forgetRegisteredTable(grid.scrollPaneEl);
   }
 })();
 
@@ -19322,6 +19688,488 @@ function makePressTable(text) {
       isTableRounded(table), false);
     eq('part one: the activation still moves the active table',
       DR_STORE.getSelectedTable(), table);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint shape-fingerprint: the comparison at the two controller entry points
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.6 and the
+// shape-fingerprint block in §5; decision D7 in
+// docs/sprint-plans/grid-detection-recovery.md.
+// ---------------------------------------------------------------------------
+//
+// The rule these assertions pin, in the specification's words:
+//   - Every action on a registered table compares the table's current shape
+//     against the fingerprint the registry recorded, before it acts.
+//   - A match changes nothing.
+//   - A mismatch discards the entry whole, re-runs the nomination step from
+//     the nest's chain root, registers the result, makes it active, and
+//     publishes the table-switched topic. The fresh registration can land on
+//     a different element than the one the action named.
+//   - Nothing registering stops the action. The active table clears when the
+//     discarded table was the active one.
+//   - A table with no recorded fingerprint compares against nothing and
+//     counts as a match.
+//   - A shape change on a press counts as a move, so the press clears the
+//     range expression in its one settings write.
+//
+// Every expected value below comes from that statement, never from the
+// controller's source.
+
+// --- Criterion: scrolling a virtualized grid, which changes the drawn row
+// count, does not trip the fingerprint. Shape one: a grid that groups its data
+// rows, with the header row outside the group. A scroll replaces the group's
+// rows and leaves the header row alone. ---
+
+(function shapeFingerprint_criterion1a_aRedrawnRowGroupKeepsTheEntry() {
+  runPressFixture(({ sent }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const g = makeScrollingRowgroupGrid(['Region', 'Q1'], [
+      ['North', '1,482,391'], ['South', '918,554'], ['East', '55,120'],
+    ]);
+    registerFingerprintedTable(g.wrapperEl);
+    DR_STORE.setSelectedTable(g.wrapperEl);
+    const recorded = DR_STORE.getTableFingerprint(g.wrapperEl);
+    const scrolledAwayCell = g.dataRowEls()[0].children[1];
+    DR_STORE.setTableOriginal(g.wrapperEl, scrolledAwayCell, '1,482,391');
+
+    // The scroll: a different set of rows, and fewer of them.
+    g.redraw([['West', '7,314'], ['Inland', '2,905']]);
+
+    sent.length = 0;
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: g.wrapperEl });
+    });
+
+    eq('fingerprint scroll: a redrawn row group leaves the recorded fingerprint in place',
+      DR_STORE.getTableFingerprint(g.wrapperEl) === recorded, true);
+    eq('fingerprint scroll: a redrawn row group publishes no table switch',
+      sent.filter((m) => m.action === 'state:tableSwitched').length, 0);
+    eq('fingerprint scroll: a redrawn row group keeps the entry\'s originals',
+      DR_STORE.hasTableOriginal(g.wrapperEl, scrolledAwayCell), true);
+
+    forgetRegisteredTable(g.wrapperEl);
+  });
+})();
+
+// Shape two: a database query grid groups no rows, so its first row is a data
+// row and a scroll redraws it. The criterion covers this shape too.
+
+(function shapeFingerprint_criterion1b_aRedrawnGrouplessPaneKeepsTheEntry() {
+  runPressFixture(({ sent }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+    const recorded = DR_STORE.getTableFingerprint(grid.scrollPaneEl);
+    const scrolledAwayCell = grid.scrollRowEls[0].children[1];
+    DR_STORE.setTableOriginal(grid.scrollPaneEl, scrolledAwayCell, '7,318,204');
+
+    // The scroll: the pane draws a different, shorter set of rows at the same
+    // column count.
+    dgReplacePaneRows(grid.scrollPaneEl, [
+      makeDgRow(6, ['golf', '44,190', '12.08']),
+      makeDgRow(7, ['hotel', '9,715', '4.33']),
+    ]);
+
+    sent.length = 0;
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+
+    eq('fingerprint scroll: a redrawn groupless pane leaves the recorded fingerprint in place',
+      DR_STORE.getTableFingerprint(grid.scrollPaneEl) === recorded, true);
+    eq('fingerprint scroll: a redrawn groupless pane publishes no table switch',
+      sent.filter((m) => m.action === 'state:tableSwitched').length, 0);
+    eq('fingerprint scroll: a redrawn groupless pane keeps the entry\'s originals',
+      DR_STORE.hasTableOriginal(grid.scrollPaneEl, scrolledAwayCell), true);
+
+    forgetRegisteredTable(grid.scrollPaneEl);
+  });
+})();
+
+// --- Criterion: changing the column set trips the fingerprint. The entry is
+// discarded, and a pillbox press afterwards simplifies from a raw state. ---
+
+// Shape one: the page redraws its rows one column wider, so every cell of the
+// new result set is a fresh element carrying raw text.
+
+(function shapeFingerprint_criterion2_aRedrawnWiderResultSetPressesFromRaw() {
+  runPressFixture(({ sent }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const grid = makeDatabaseQueryGrid();
+    const removedPillboxes = registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+    const countCell = grid.scrollRowEls[1].children[1];
+
+    // The first press simplifies, so the entry holds originals and a
+    // simplified form before the page changes anything.
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+    eq('fingerprint column change: the first press simplifies the pane (precondition)',
+      isTableRounded(grid.scrollPaneEl), true);
+    eq('fingerprint column change: that press stored originals (precondition)',
+      DR_STORE.hasTableOriginal(grid.scrollPaneEl, countCell), true);
+
+    // The page returns a result set one column wider.
+    const measures = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+    const counts = ['7,318,204', '551,077', '2,140,663', '73,915', '10,428', '3,906'];
+    const rates = ['284.51', '31.77', '58.02', '7.44', '2.19', '0.63'];
+    const added = ['6,204,118', '412,905', '88,340', '9,127', '1,006', '771'];
+    grid.scrollRowEls.forEach((rowEl, i) =>
+      dgReplaceRowCells(rowEl, [measures[i], counts[i], rates[i], added[i]]));
+    const addedCell = grid.scrollRowEls[1].children[3];
+
+    sent.length = 0;
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+
+    eq('fingerprint column change: the discard takes the old pillbox off the page',
+      removedPillboxes.length, 1);
+    eq('fingerprint column change: the pane registers fresh',
+      DR_STORE.hasTable(grid.scrollPaneEl), true);
+    eq('fingerprint column change: the fresh registration records the new column count',
+      DR_STORE.getTableFingerprint(grid.scrollPaneEl).columnCount, 4);
+    eq('fingerprint column change: the press after the change turns simplification on',
+      DR_STORE.getSettings().enabled, true);
+    eq('fingerprint column change: the press reports no apply block',
+      sent.filter((m) => m.action === 'state:applyBlocked').length, 0);
+    eq('fingerprint column change: the fresh entry\'s form is simplified',
+      isTableRounded(grid.scrollPaneEl), true);
+    eq('fingerprint column change: the fresh entry\'s originals carry the new column\'s text',
+      DR_STORE.getTableOriginalText(grid.scrollPaneEl, addedCell), '412,905');
+
+    forgetRegisteredTable(grid.scrollPaneEl);
+  });
+})();
+
+// Shape two: the page adds one cell to every row and leaves the rows' other
+// cells in place. Those cells still carry the extension's own simplified text
+// and its marker class, and the discard drops the originals that back them.
+
+(function shapeFingerprint_criterion2_anAddedColumnOverSurvivingCellsPressesFromRaw() {
+  runPressFixture(({ sent }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+    const countCell = grid.scrollRowEls[1].children[1];
+
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+    eq('fingerprint added column: the first press simplifies the pane (precondition)',
+      isTableRounded(grid.scrollPaneEl), true);
+
+    const added = ['6,204,118', '412,905', '88,340', '9,127', '1,006', '771'];
+    grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, added[i]));
+    const addedCell = grid.scrollRowEls[1].children[3];
+
+    sent.length = 0;
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+
+    eq('fingerprint added column: the pane registers fresh',
+      DR_STORE.hasTable(grid.scrollPaneEl), true);
+    eq('fingerprint added column: the press reports no apply block',
+      sent.filter((m) => m.action === 'state:applyBlocked').length, 0);
+    eq('fingerprint added column: the fresh entry\'s originals carry the new column\'s text',
+      DR_STORE.getTableOriginalText(grid.scrollPaneEl, addedCell), '412,905');
+    eq('fingerprint added column: the fresh entry\'s originals carry a surviving cell\'s text',
+      DR_STORE.hasTableOriginal(grid.scrollPaneEl, countCell), true);
+
+    forgetRegisteredTable(grid.scrollPaneEl);
+  });
+})();
+
+// --- Criterion: a discarded entry's originals never reach the fresh entry. ---
+
+(function shapeFingerprint_criterion3_aDiscardedEntrysOriginalsStayBehind() {
+  runPressFixture(() => {
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+    const sentinelCell = grid.scrollRowEls[2].children[1];
+    DR_STORE.setTableOriginal(grid.scrollPaneEl, sentinelCell, '2,140,663');
+    DR_STORE.setTableAppliedFlag(grid.scrollPaneEl, 'simplified');
+    eq('fingerprint originals: the entry holds the sentinel original (precondition)',
+      DR_STORE.hasTableOriginal(grid.scrollPaneEl, sentinelCell), true);
+
+    grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 1000)));
+
+    let outcome = null;
+    withToggleDocumentMock(function () { outcome = revalidateTableShape(grid.scrollPaneEl); });
+
+    eq('fingerprint originals: the check reports a switch', outcome.switched, true);
+    eq('fingerprint originals: the fresh registration lands on the same pane',
+      outcome.table === grid.scrollPaneEl, true);
+    eq('fingerprint originals: the sentinel original does not reach the fresh entry',
+      DR_STORE.hasTableOriginal(grid.scrollPaneEl, sentinelCell), false);
+    eq('fingerprint originals: the fresh entry holds an original for no cell of the grid',
+      grid.scrollRowEls.some((rowEl) =>
+        rowEl.children.some((cellEl) => DR_STORE.hasTableOriginal(grid.scrollPaneEl, cellEl))),
+      false);
+    eq('fingerprint originals: the fresh entry\'s form is raw',
+      isTableRounded(grid.scrollPaneEl), false);
+
+    forgetRegisteredTable(grid.scrollPaneEl);
+  });
+})();
+
+// --- Criterion: on a database query grid whose new result makes the pinned
+// pane pass the data test, the fresh registration lands on the wrapper, the
+// wrapper is active, and the old pane holds no pillbox. ---
+
+(function shapeFingerprint_criterion4_aNewResultSetMovesTheRegistrationOutward() {
+  runPressFixture(({ sent }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const grid = makeDatabaseQueryGrid();
+    withToggleDocumentMock(function () { injectTogglesForAddedNode(grid.wrapperEl); });
+    eq('fingerprint move: the page registers the scrolling pane alone (precondition)',
+      [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_STORE.hasTable(el)),
+      [false, false, true]);
+    const removedPillboxes = trackPillboxDetach(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+
+    // The new result set: the pinned pane gains a second column, which makes
+    // it pass the data test, and the scrolling pane comes back two columns
+    // wide. Two elements then sit at the configured depth, and the edge rule
+    // falls back outward to the wrapper.
+    const labels = ['north', 'south', 'east', 'west', 'inland', 'coastal'];
+    const measures = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+    const counts = ['7,318,204', '551,077', '2,140,663', '73,915', '10,428', '3,906'];
+    grid.pinnedRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, labels[i]));
+    grid.scrollRowEls.forEach((rowEl, i) => dgReplaceRowCells(rowEl, [measures[i], counts[i]]));
+
+    sent.length = 0;
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+
+    eq('fingerprint move: the fresh registration lands on the wrapper',
+      DR_STORE.hasTable(grid.wrapperEl), true);
+    eq('fingerprint move: the wrapper becomes the active table',
+      DR_STORE.getSelectedTable() === grid.wrapperEl, true);
+    eq('fingerprint move: the discarded pane holds no registry entry',
+      DR_STORE.hasTable(grid.scrollPaneEl), false);
+    eq('fingerprint move: the discarded pane\'s pillbox comes off the page',
+      removedPillboxes.length, 1);
+    eq('fingerprint move: the wrapper carries a pillbox',
+      tableToggles.has(grid.wrapperEl), true);
+    eq('fingerprint move: the move publishes one table switch',
+      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
+
+    forgetRegisteredTable(grid.wrapperEl);
+  });
+})();
+
+// --- Criterion: a native table's fingerprint trips when its header row's text
+// changes, and holds when a data cell's text changes. ---
+
+(function shapeFingerprint_criterion5_aNativeTablesHeaderTextTripsTheFingerprint() {
+  runPressFixture(() => {
+    const table = makeToggleTable([
+      [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
+      [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
+    ]);
+    const removedPillboxes = registerFingerprintedTable(table);
+    DR_STORE.setSelectedTable(table);
+    eq('fingerprint native: registration records the header row (precondition)',
+      DR_STORE.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q1'] });
+
+    // A data cell's text changes and the header row's does not.
+    table.rows[1].cells[1].innerText = '918,554';
+    table.rows[1].cells[1].textContent = '918,554';
+    let held = null;
+    withToggleDocumentMock(function () { held = revalidateTableShape(table); });
+    eq('fingerprint native: a data cell change reports no switch', held.switched, false);
+    eq('fingerprint native: a data cell change returns the same table',
+      held.table === table, true);
+    eq('fingerprint native: a data cell change takes no pillbox off the page',
+      removedPillboxes.length, 0);
+
+    // The header row's text changes.
+    table.rows[0].cells[1].innerText = 'Q2';
+    table.rows[0].cells[1].textContent = 'Q2';
+    let switched = null;
+    withToggleDocumentMock(function () { switched = revalidateTableShape(table); });
+    eq('fingerprint native: a header text change reports a switch', switched.switched, true);
+    eq('fingerprint native: the native table registers fresh', switched.table === table, true);
+    eq('fingerprint native: the discard takes the old pillbox off the page',
+      removedPillboxes.length, 1);
+    eq('fingerprint native: the fresh fingerprint carries the new header text',
+      DR_STORE.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q2'] });
+
+    forgetRegisteredTable(table);
+  });
+})();
+
+// --- A table with no recorded fingerprint compares against nothing. Only a
+// first write through the registry's setters creates such an entry. ---
+
+(function shapeFingerprint_anUnrecordedFingerprintCountsAsAMatch() {
+  runPressFixture(() => {
+    const table = makeToggleTable([
+      [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
+      [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
+    ]);
+    const cell = table.rows[1].cells[1];
+    DR_STORE.setTableOriginal(table, cell,
+      { html: '1,482,391', value: '1,482,391', supRanges: null, linkFilteredIdx: null });
+    eq('fingerprint unrecorded: the entry carries no fingerprint (precondition)',
+      DR_STORE.getTableFingerprint(table), null);
+
+    const outcome = revalidateTableShape(table);
+    eq('fingerprint unrecorded: the check reports no switch', outcome.switched, false);
+    eq('fingerprint unrecorded: the check returns the same table', outcome.table === table, true);
+    eq('fingerprint unrecorded: the entry\'s originals stay',
+      DR_STORE.hasTableOriginal(table, cell), true);
+    DR_STORE.unregisterTable(table);
+  });
+})();
+
+// --- Nothing registering stops the action. The whole nest fails the data test
+// after the change, so the recovery registers no element. ---
+
+(function shapeFingerprint_nothingRegisteringStopsThePressAndClearsTheActiveTable() {
+  runPressFixture(({ writes, resetWrites }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+
+    // The page returns a result set holding no number anywhere.
+    const words = ['november', 'oscar', 'papa', 'quebec', 'romeo', 'sierra'];
+    grid.pinnedRowEls.forEach((rowEl, i) => dgReplaceRowCells(rowEl, [words[i]]));
+    grid.scrollRowEls.forEach((rowEl, i) =>
+      dgReplaceRowCells(rowEl, [words[i], 'none', 'none']));
+
+    resetWrites();
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+
+    eq('fingerprint recovery: no element of the nest holds a registry entry',
+      [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_STORE.hasTable(el)),
+      [false, false, false]);
+    eq('fingerprint recovery: the discarded table was active, so the active table clears',
+      DR_STORE.getSelectedTable(), null);
+    eq('fingerprint recovery: the press stops, so it makes no settings write', writes(), 0);
+    eq('fingerprint recovery: the empty recovery records a debug row',
+      recentLogRows().some((text) => /no table registered after the shape change/.test(text)),
+      true);
+  });
+})();
+
+(function shapeFingerprint_nothingRegisteringLeavesAnotherActiveTableAlone() {
+  runPressFixture(() => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const other = makePressTable('1,000,000');
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(other);
+
+    const words = ['november', 'oscar', 'papa', 'quebec', 'romeo', 'sierra'];
+    grid.pinnedRowEls.forEach((rowEl, i) => dgReplaceRowCells(rowEl, [words[i]]));
+    grid.scrollRowEls.forEach((rowEl, i) =>
+      dgReplaceRowCells(rowEl, [words[i], 'none', 'none']));
+
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+
+    eq('fingerprint recovery: a discarded table that was not active leaves the active table alone',
+      DR_STORE.getSelectedTable() === other, true);
+  });
+})();
+
+// --- A shape change on a press counts as a move: the range expression states
+// rows and columns by position, so it describes a shape that is gone. ---
+
+(function shapeFingerprint_aShapeChangeOnAPressCountsAsAMove() {
+  runPressFixture(({ sent, writes, resetWrites }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: 'B2' }));
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+    grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 101)));
+
+    sent.length = 0;
+    resetWrites();
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+
+    eq('fingerprint move: a shape change clears the range expression',
+      DR_STORE.getSettings().rangeExpr, '');
+    eq('fingerprint move: a shape change still makes exactly one settings write', writes(), 1);
+    eq('fingerprint move: a shape change publishes the table switch once',
+      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
+    eq('fingerprint move: a shape change publishes no enabled-changed report',
+      sent.filter((m) => m.action === 'state:tableEnabledChanged').length, 0);
+
+    forgetRegisteredTable(grid.scrollPaneEl);
+  });
+})();
+
+// --- The second entry point: the apply. The shape check runs before the
+// reset, so a locked table whose content the page replaced registers fresh and
+// the apply proceeds. ---
+
+(function shapeFingerprint_aLockedTableWhoseShapeChangedRegistersFresh() {
+  runPressFixture(({ sent }) => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
+    const table = makeToggleTable([
+      [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
+      [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
+    ]);
+    // The unrestorable pairing: a cell wearing the simplified marker that the
+    // registry holds no original for.
+    table._cells[3].classList.add('dr-ext-rounded');
+    const removedPillboxes = registerFingerprintedTable(table);
+    DR_STORE.setSelectedTable(table);
+
+    sent.length = 0;
+    withCreateTreeWalker(function () {
+      withToggleDocumentMock(function () {
+        applySidebarRounding(table, DR_STORE.getSettings());
+      });
+    });
+    eq('fingerprint lock: the locked table blocks the apply before the change (precondition)',
+      sent.filter((m) => m.action === 'state:applyBlocked').length, 1);
+
+    // The page replaces the result: fresh cells, and a different header text.
+    const replacement = makeToggleTable([
+      [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q2' }],
+      [{ tag: 'td', text: 'South' }, { tag: 'td', text: '918,554' }],
+    ]);
+    table.rows = replacement.rows;
+    table._cells = replacement._cells;
+
+    sent.length = 0;
+    withCreateTreeWalker(function () {
+      withToggleDocumentMock(function () {
+        applySidebarRounding(table, DR_STORE.getSettings());
+      });
+    });
+
+    eq('fingerprint lock: the replaced table publishes no apply block',
+      sent.filter((m) => m.action === 'state:applyBlocked').length, 0);
+    eq('fingerprint lock: the replaced table registers fresh',
+      DR_STORE.hasTable(table), true);
+    eq('fingerprint lock: the fresh fingerprint carries the new header text',
+      DR_STORE.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q2'] });
+    eq('fingerprint lock: the discard takes the old pillbox off the page',
+      removedPillboxes.length, 1);
+    eq('fingerprint lock: the apply reports success',
+      sent.filter((m) => m.action === 'state:applyOk').length, 1);
+    eq('fingerprint lock: the apply publishes one table switch',
+      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
+
+    forgetRegisteredTable(table);
   });
 })();
 
