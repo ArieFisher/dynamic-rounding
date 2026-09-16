@@ -306,9 +306,9 @@ function applySidebarRounding(table, options) {
 // a caller. The step reports; this is where a report becomes a registration
 // or a watch.
 //
-// The step's results hold grids alone (findTables' pass 1 covers native
-// <table> elements, and the two guards keep a native table out of a nest), so
-// no tagName check sits here.
+// The step's results hold grids alone: each scanner's own pass 1 covers native
+// <table> elements, and the nomination step's two guards keep a native table
+// out of a nest. So no tagName check sits here.
 function consumeNominations(results) {
   for (const result of results) consumeNomination(result);
 }
