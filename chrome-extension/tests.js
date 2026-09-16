@@ -18927,6 +18927,130 @@ function makeIssue251SidebarHarness() {
   }
 })();
 
+// --- Sprint pending-retest, criterion 4: a pending container removed from the
+// page leaves no observer and no timer.
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md, the pending-retest
+// block in §5 — "The removal branch of the table observer drops a pending
+// root's observer and timer."
+//
+// A pending table holds no registry entry, so the registry sweep above passes
+// over it; the pending sweep is the only thing that reaches it. The real
+// `_tableObserver` callback runs here, captured the same way the ancestor-
+// removal case above captures it: the content-script bundle is re-evaluated
+// with a capturing MutationObserver installed first, so the observer under
+// test is the production one and not a re-implementation of its steps. ---
+(function pendingRetest_AC4_removalDropsTheObserverAndTheTimer() {
+  const capturedInstances = [];
+  class CapturingRemovalMO {
+    constructor(cb) { this._cb = cb; this.disconnectCount = 0; capturedInstances.push(this); }
+    observe(target, options) { this._target = target; this._options = options; }
+    disconnect() { this.disconnectCount++; }
+  }
+
+  const timers = [];
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild() {} },
+  };
+  const captureChrome = { runtime: { onMessage: { addListener() {} }, sendMessage() {} } };
+  const saved = {
+    document: global.document, chrome: global.chrome, window: global.window,
+    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    Node: global.Node, NodeFilter: global.NodeFilter,
+    setTimeout: global.setTimeout, clearTimeout: global.clearTimeout,
+  };
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
+  global.MutationObserver = CapturingRemovalMO;
+  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  global.Node = { ELEMENT_NODE: 1 };
+  global.NodeFilter = { SHOW_TEXT: 4 };
+  global.setTimeout = function (callback, ms) {
+    timers.push({ callback, ms, cancelled: false });
+    return timers.length - 1;
+  };
+  global.clearTimeout = function (id) {
+    if (id !== undefined && id !== null && timers[id]) timers[id].cancelled = true;
+  };
+
+  try {
+    eval(contentScriptBundle + `
+      globalThis.__pending_pendingRoots = pendingRoots;
+      globalThis.__pending_pendingObservers = pendingObservers;
+      globalThis.__pending_pendingRetestTimers = pendingRetestTimers;
+      globalThis.__pending_holdPendingTable = holdPendingTable;
+    `);
+
+    eq('pending AC4: exactly one observer stands after the load (the table observer)',
+      capturedInstances.length, 1);
+    const tableObserver = capturedInstances[0];
+    const freshPendingRoots = global.__pending_pendingRoots;
+    const holdPending = global.__pending_holdPendingTable;
+
+    // Case 1: the removed node is an ancestor of the pending root.
+    const root = { nodeType: 1, tagName: 'DIV' };
+    holdPending(root);
+    eq('pending AC4 (pre): the root is held as a pending table',
+      freshPendingRoots.has(root), true);
+    eq('pending AC4 (pre): holding the root builds one more observer',
+      capturedInstances.length, 2);
+    const pendingObserver = capturedInstances[1];
+
+    // One mutation on the subtree schedules the debounced re-test.
+    pendingObserver._cb([], pendingObserver);
+    eq('pending AC4 (pre): the mutation schedules one re-test timer',
+      timers.filter((t) => !t.cancelled).length, 1);
+
+    const ancestor = { nodeType: 1, contains: (el) => el === root };
+    tableObserver._cb([{ addedNodes: [], removedNodes: [ancestor] }]);
+
+    eq('pending AC4: removing an ancestor disconnects the pending observer',
+      pendingObserver.disconnectCount, 1);
+    eq('pending AC4: removing an ancestor cancels the scheduled re-test timer',
+      timers.filter((t) => !t.cancelled).length, 0);
+    eq('pending AC4: removing an ancestor drops the pending root',
+      freshPendingRoots.has(root), false);
+    eq('pending AC4: no pending root remains after the ancestor removal',
+      freshPendingRoots.size, 0);
+
+    // Case 2: the removed node is the pending root itself.
+    const rootItself = { nodeType: 1, tagName: 'DIV' };
+    holdPending(rootItself);
+    const secondObserver = capturedInstances[2];
+    secondObserver._cb([], secondObserver);
+    const scheduledForSecond = timers.filter((t) => !t.cancelled).length;
+    eq('pending AC4 (pre): the second root schedules one re-test timer',
+      scheduledForSecond, 1);
+
+    tableObserver._cb([{ addedNodes: [], removedNodes: [rootItself] }]);
+
+    eq('pending AC4: removing the pending root itself disconnects its observer',
+      secondObserver.disconnectCount, 1);
+    eq('pending AC4: removing the pending root itself cancels its re-test timer',
+      timers.filter((t) => !t.cancelled).length, 0);
+    eq('pending AC4: removing the pending root itself drops the pending root',
+      freshPendingRoots.has(rootItself), false);
+    eq('pending AC4: the pending observer map holds nothing for either root',
+      [global.__pending_pendingObservers.has(root),
+        global.__pending_pendingObservers.has(rootItself)], [false, false]);
+    eq('pending AC4: the pending timer map holds nothing for either root',
+      [global.__pending_pendingRetestTimers.has(root),
+        global.__pending_pendingRetestTimers.has(rootItself)], [false, false]);
+  } finally {
+    global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
+    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+    global.setTimeout = saved.setTimeout; global.clearTimeout = saved.clearTimeout;
+    delete global.__pending_pendingRoots;
+    delete global.__pending_pendingObservers;
+    delete global.__pending_pendingRetestTimers;
+    delete global.__pending_holdPendingTable;
+  }
+})();
+
 // --- (i) Off-and-on round trip under grid row recycling: round -> off press
 // -> the host virtualization library recycles ONE cell (same row, a
 // genuinely NEW element takes that grid position — the documented "element
