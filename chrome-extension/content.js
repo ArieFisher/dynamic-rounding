@@ -398,6 +398,23 @@ function revalidateTableShape(table) {
   }
 
   DR_LOG.debug("Dynamic Rounding: table shape changed; re-running detection.");
+
+  // The order is restore, tear down, re-nominate, register, activate,
+  // publish.
+  //
+  // The restore runs first, against the old entry while it still holds the
+  // originals. A page that widens a table and leaves the rest of each row in
+  // place leaves the extension's own simplified text on those surviving
+  // cells, with its marker class on them. Discarding the entry first would
+  // drop the originals behind that text: the fresh registration would read
+  // the simplified values as the cells' own, the apply would report every
+  // one of them unrestorable, and the table would stand locked with no route
+  // back. Restoring first puts raw text in every surviving cell, so the
+  // fresh registration records its fingerprint over raw text and simplifies
+  // from there. A cell whose original is gone stays as it is, the same as
+  // any other restore. The originals go back into the cells and nowhere
+  // else, so none of them reaches the fresh entry.
+  resetTable(table);
   teardownTableEntry(table, 'replaced');
 
   // findTables on a <table> root returns that table in pass 1, so one call
