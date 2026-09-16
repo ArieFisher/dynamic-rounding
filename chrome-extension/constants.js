@@ -71,6 +71,11 @@ const DR_TUNING = {
   ],
   // --- Virtualized-grid redraw (content.js) ---
   gridRedrawDelayMs: 100,
+  // --- Pending tables (content.js) ---
+  // Failed re-tests a pending table takes before its subtree observer drops.
+  // A re-test runs only after a subtree change and the redraw delay above, so
+  // the count grows under sustained churn alone.
+  pendingRetestCap: 100,
   // --- Accessibility artifact check (lib/dr-table/detect.js: isPhantomA11yTable) ---
   offscreenLeftPx: -9999,
   // --- Pillbox view (ui-toggle.js) ---

@@ -14554,11 +14554,13 @@ function fireMouseClick(buttonEl, fn) {
 // hand-copied from origin/main's lib/dr-table/detect.js (read via
 // `git show origin/main:chrome-extension/lib/dr-table/detect.js`) and the
 // design doc's key table; the detection-constants sprint moved them and
-// changed none of them. Two keys have no pre-move value: nestingDepth, the
-// nomination step's configured depth from the grid-nesting-rule sprint, and
+// changed none of them. Three keys have no pre-move value: nestingDepth, the
+// nomination step's configured depth from the grid-nesting-rule sprint;
 // dataTestCellBudget, the data test's cell budget from the data-test-budget
-// sprint. Key order matches constants.js's DR_TUNING declaration, so the
-// JSON.stringify-based eq() comparison below is not order-sensitive noise.
+// sprint; and pendingRetestCap, a pending table's re-test cap from the
+// pending-retest sprint. Key order matches constants.js's DR_TUNING
+// declaration, so the JSON.stringify-based eq() comparison below is not
+// order-sensitive noise.
 const PRE_MOVE_TUNING = {
   nestingDepth: 1,
   gridMinChildren: 5,
@@ -14583,6 +14585,7 @@ const PRE_MOVE_TUNING = {
     },
   ],
   gridRedrawDelayMs: 100,
+  pendingRetestCap: 100,
   offscreenLeftPx: -9999,
   pillboxAutoCollapseMs: 3000,
 };
@@ -14712,9 +14715,9 @@ const PRE_MOVE_TUNING = {
   );
 
   eq('tuning block: the combined sandbox does not throw', sandbox.threw, null);
-  eq('tuning block: DR_TUNING exposes exactly twelve keys, the ten pre-move keys plus nestingDepth and dataTestCellBudget',
+  eq('tuning block: DR_TUNING exposes exactly thirteen keys, the ten pre-move keys plus nestingDepth, dataTestCellBudget, and pendingRetestCap',
     sandbox.outcomes.tuningKeys, Object.keys(PRE_MOVE_TUNING).sort());
-  eq('tuning block: DR_TUNING carries every pre-move value unchanged, plus nestingDepth at 1 and dataTestCellBudget at 1000',
+  eq('tuning block: DR_TUNING carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, and pendingRetestCap at 100',
     sandbox.outcomes.tuning, PRE_MOVE_TUNING);
   eq('tuning block: looksLikeGrid rejects 4 children (below gridMinChildren)',
     sandbox.outcomes.minChildrenBelowFails, false);
@@ -15092,10 +15095,13 @@ function forgetRegisteredTable(table) {
     addedNodePassSrc !== null &&
       (addedNodePassSrc.includes('GRID_ARIA_SELECTOR') || addedNodePassSrc.includes('role="grid"')),
     false);
+  // The step's page-wide entry point is nominateNests; findTables composes it
+  // and keeps the 'selected' outcomes. Both scanners need the other outcomes
+  // too, so both call nominateNests directly.
   eq('nesting AC6: the load-time scan calls the nomination step',
-    loadTimeScanSrc !== null && /findTables\s*\(/.test(loadTimeScanSrc), true);
+    loadTimeScanSrc !== null && /nominateNests\s*\(/.test(loadTimeScanSrc), true);
   eq('nesting AC6: the added-node pass calls the nomination step',
-    addedNodePassSrc !== null && /findTables\s*\(/.test(addedNodePassSrc), true);
+    addedNodePassSrc !== null && /nominateNests\s*\(/.test(addedNodePassSrc), true);
 })();
 
 (function gridNesting_AC6_loadTimeScanBuildsOnePillbox() {
