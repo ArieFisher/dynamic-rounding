@@ -8068,7 +8068,7 @@ function makeGridWrapper(rowData, opts) {
 }
 
 // ---------------------------------------------------------------------------
-// A synthetic Databricks-shaped vendor grid.
+// A synthetic database-query-shaped vendor grid.
 //
 // The shape rebuilds docs/test-pages/tables.html §13 with invented values, per
 // the repository's regression-fixture convention: a role="table" wrapper
@@ -8158,7 +8158,7 @@ function makeDgRow(rowIndex, cellTexts) {
 }
 
 /**
- * Build the synthetic Databricks-shaped grid.
+ * Build the synthetic database-query-shaped grid.
  *
  * Three parameters cover the cases the nesting rule turns on:
  *   - pinnedColumns: cells in each pinned row. One column fails the data test,
@@ -8176,7 +8176,7 @@ function makeDgRow(rowIndex, cellTexts) {
  * @returns {{wrapperEl: object, paneParentEl: object|null, pinnedPaneEl: object,
  *            scrollPaneEl: object, pinnedRowEls: object[], scrollRowEls: object[]}}
  */
-function makeDatabricksGrid(opts) {
+function makeDatabaseQueryGrid(opts) {
   const options = opts || {};
   const pinnedColumns = options.pinnedColumns === undefined ? 1 : options.pinnedColumns;
   const rowCount = options.rows === undefined ? 6 : options.rows;
@@ -14908,10 +14908,10 @@ function forgetRegisteredTable(table) {
   trackedTables.delete(table);
 }
 
-// --- AC1: the Databricks shape registers the scrolling pane alone ---
+// --- AC1: the database query shape registers the scrolling pane alone ---
 
-(function gridNesting_AC1_databricksShapeRegistersTheScrollingPane() {
-  const grid = makeDatabricksGrid();
+(function gridNesting_AC1_databaseQueryShapeRegistersTheScrollingPane() {
+  const grid = makeDatabaseQueryGrid();
 
   // The data test is what drops the one-column pinned pane from the chain.
   eq('nesting AC1: the one-column pinned pane fails the data test',
@@ -14956,7 +14956,7 @@ function forgetRegisteredTable(table) {
 (function gridNesting_AC1_rangeExpressionAddressesTheIdentifierColumnAsA() {
   const rangeOpts = { simplifyFirstRow: true, simplifyFirstColumn: true };
 
-  const gridA = makeDatabricksGrid();
+  const gridA = makeDatabaseQueryGrid();
   const countsBeforeA = dgColumnTexts(gridA.scrollRowEls, 1);
   const ratesBeforeA = dgColumnTexts(gridA.scrollRowEls, 2);
   roundTable(gridA.scrollPaneEl,
@@ -14968,7 +14968,7 @@ function forgetRegisteredTable(table) {
   eq('nesting AC1: a range expression naming column A rounds no cell of the identifier column',
     gridA.scrollRowEls.some((rowEl) => rowEl.children[0].classList.contains('dr-ext-rounded')), false);
 
-  const gridB = makeDatabricksGrid();
+  const gridB = makeDatabaseQueryGrid();
   const identifiersBeforeB = dgColumnTexts(gridB.scrollRowEls, 0);
   const countsBeforeB = dgColumnTexts(gridB.scrollRowEls, 1);
   const ratesBeforeB = dgColumnTexts(gridB.scrollRowEls, 2);
@@ -14989,7 +14989,7 @@ function forgetRegisteredTable(table) {
 // --- AC2: depth 0 registers the wrapper, gutter first ---
 
 (function gridNesting_AC2_depthZeroRegistersTheWrapper() {
-  const grid = makeDatabricksGrid();
+  const grid = makeDatabaseQueryGrid();
   const results = findTables(makeNestingHost([grid.wrapperEl]), { nestingDepth: 0 });
   eq('nesting AC2: depth 0 reports one table', results.length, 1);
   eq('nesting AC2: depth 0 reports the wrapper',
@@ -15003,7 +15003,7 @@ function forgetRegisteredTable(table) {
 // --- AC3: two qualifying siblings at the configured depth fall back outward ---
 
 (function gridNesting_AC3_crowdedDepthFallsBackToTheWrapper() {
-  const grid = makeDatabricksGrid({ pinnedColumns: 2 });
+  const grid = makeDatabaseQueryGrid({ pinnedColumns: 2 });
   eq('nesting AC3: a two-column pinned pane passes the data test',
     isDataTable(grid.pinnedPaneEl), true);
 
@@ -15024,7 +15024,7 @@ function forgetRegisteredTable(table) {
   eq('nesting AC4: a one-element chain at the shipped depth reports itself',
     loneResults[0] && loneResults[0].handle === lone, true);
 
-  const grid = makeDatabricksGrid();
+  const grid = makeDatabaseQueryGrid();
   const deepResults = findTables(makeNestingHost([grid.wrapperEl]), { nestingDepth: 5 });
   eq('nesting AC4: a depth past the chain reports one table', deepResults.length, 1);
   eq('nesting AC4: a depth past the chain clamps to the scrolling pane',
@@ -15039,7 +15039,7 @@ function forgetRegisteredTable(table) {
 // leave the shipped depth empty, and fall back outward to the wrapper.
 
 (function gridNesting_aPlainElementBetweenQualifyingElementsAddsNoDepth() {
-  const grid = makeDatabricksGrid({ plainWrapper: true });
+  const grid = makeDatabaseQueryGrid({ plainWrapper: true });
   const host = makeNestingHost([grid.wrapperEl]);
 
   eq('nesting: the plain layer sits between the wrapper and the two panes',
@@ -15065,8 +15065,8 @@ function forgetRegisteredTable(table) {
 // --- AC5: two nests under one plain parent report separately ---
 
 (function gridNesting_AC5_siblingNestsReportSeparately() {
-  const first = makeDatabricksGrid();
-  const second = makeDatabricksGrid();
+  const first = makeDatabaseQueryGrid();
+  const second = makeDatabaseQueryGrid();
   const results = findTables(makeNestingHost([first.wrapperEl, second.wrapperEl]));
   eq('nesting AC5: two nests under one plain parent report two tables', results.length, 2);
   eq('nesting AC5: each nest reports its own scrolling pane',
@@ -15099,7 +15099,7 @@ function forgetRegisteredTable(table) {
 })();
 
 (function gridNesting_AC6_loadTimeScanBuildsOnePillbox() {
-  const grid = makeDatabricksGrid();
+  const grid = makeDatabaseQueryGrid();
   const before = DR_STORE.getRegisteredTables().length;
 
   withToggleDocumentMock(function () {
@@ -15128,7 +15128,7 @@ function forgetRegisteredTable(table) {
 })();
 
 (function gridNesting_AC6_addedNodePassBuildsOnePillbox() {
-  const grid = makeDatabricksGrid();
+  const grid = makeDatabaseQueryGrid();
   const before = DR_STORE.getRegisteredTables().length;
 
   withToggleDocumentMock(function () {
@@ -15201,7 +15201,7 @@ function forgetRegisteredTable(table) {
 // --- Adversarial: a rediscovery reports nothing for a registered nest ---
 
 (function gridNesting_rediscoveryIsIdempotent() {
-  const grid = makeDatabricksGrid();
+  const grid = makeDatabaseQueryGrid();
   eq('nesting: a nest whose scrolling pane is registered reports nothing',
     findTables(grid.wrapperEl, { isSeen: (el) => el === grid.scrollPaneEl }).length, 0);
   eq('nesting: a nest whose wrapper is registered reports nothing',
@@ -15218,7 +15218,7 @@ function forgetRegisteredTable(table) {
 (function gridNesting_theDepthPortReadsZeroAsADepth() {
   eq('nesting: the tuning block ships a nesting depth of 1', DR_TUNING.nestingDepth, 1);
 
-  const grid = makeDatabricksGrid();
+  const grid = makeDatabaseQueryGrid();
   const host = makeNestingHost([grid.wrapperEl]);
   eq('nesting: the shipped depth reports the scrolling pane',
     findTables(host).map((r) => r.handle === grid.scrollPaneEl), [true]);
@@ -15229,7 +15229,7 @@ function forgetRegisteredTable(table) {
 // --- Adversarial: an empty wrapper reports nothing and throws nothing ---
 
 (function gridNesting_anEmptyWrapperReportsNothing() {
-  const grid = makeDatabricksGrid({ rows: 0 });
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
   let caught = null;
   let results = null;
   try {
@@ -15245,7 +15245,7 @@ function forgetRegisteredTable(table) {
 
 (function gridNesting_pass1StillReportsNativeTablesBesideTheNest() {
   const nativeTable = makePass1DataTable();
-  const grid = makeDatabricksGrid();
+  const grid = makeDatabaseQueryGrid();
   const root = {
     tagName: 'BODY',
     querySelectorAll(sel) {
@@ -15271,7 +15271,7 @@ function forgetRegisteredTable(table) {
 // --- Adversarial: the step reports and registers nothing ---
 
 (function gridNesting_theStepReportsAndRegistersNothing() {
-  const grid = makeDatabricksGrid();
+  const grid = makeDatabaseQueryGrid();
   const nestElements = [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl];
   const before = DR_STORE.getRegisteredTables().length;
 
