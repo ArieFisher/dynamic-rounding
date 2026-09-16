@@ -916,19 +916,21 @@
 
   <section>
     <h2>13. Pinned-pane vendor grid</h2>
-    <p class="expect">Expect: pillbox at load on the wrapper. The pinned row
-      numbers stitch in as column A, so the first-column default protects
-      them; the orders row is the grid's first row and holds under the
-      first-row default.</p>
+    <p class="expect">Expect: one pillbox at load, on the scrolling pane. Its
+      first column is the identifier column, so the first-column default
+      protects it, and the pinned row numbers stay outside the table. The
+      orders row is the pane's first row and holds under the first-row
+      default.</p>
 
     <!--
       Databricks-shaped DOM: a role="table" wrapper holding a pinned pane of row
-      numbers next to a scrollable data pane, all in dg-prefixed classes with no
+      numbers next to a scrolling data pane, all in dg-prefixed classes with no
       role="row" on the rows. Row discovery falls through to the vendor row
       class, cells to the vendor cell class, and rows pair across panes by their
-      data-row key, pinned cells first. The scrollable pane is its own ARIA
-      root, so it currently also grows a second pillbox of its own; the pinned
-      pane alone is a single column and fails the data test.
+      data-row key, pinned cells first. The wrapper and the scrolling pane form
+      a containment chain: the pinned pane alone is a single column and fails
+      the data test, so it drops out, and the configured nesting depth of 1
+      takes the scrolling pane.
     -->
     <div class="dg--table-wrapper" role="table" aria-label="Query results">
       <div class="dg--grid-container dg--pinned-grid" role="grid">
