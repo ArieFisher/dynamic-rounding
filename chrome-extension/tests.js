@@ -7197,13 +7197,13 @@ function withGridComputedStyle(targetEl, displayVal, fn) {
   });
 })();
 
-// LG3: Pass — Databricks shape (library class "dg--" short-circuits geometry probe)
+// LG3: Pass — database query shape (library class "dg--" short-circuits geometry probe)
 // The wrapper contains a pinned pane and a scroll pane as children, but for
 // looksLikeGrid we test the wrapper itself: it has ≥5 row-like children,
 // repetitive structure, numeric content, and the "dg--" class which short-circuits
 // before the geometry probe. Column-0 widths are deliberately non-uniform so that
 // if the geometry probe ran it would fail — proving the short-circuit works.
-(function looksLikeGrid_pass_databricksClass() {
+(function looksLikeGrid_pass_databaseQueryClass() {
   const rows = [
     makeGridRow([{text:'Header',width:10},{text:'0'}], 'dg--row', 20),
     makeGridRow([{text:'Foo',width:20},{text:'1234.56'}], 'dg--row', 20),
@@ -7213,7 +7213,7 @@ function withGridComputedStyle(targetEl, displayVal, fn) {
   ];
   const container = makeGridContainer(rows, 'flex', null, 'dg--table-wrapper');
   withGridComputedStyle(container, 'flex', function() {
-    eq('looksLikeGrid: pass — Databricks "dg--" class short-circuits geometry probe',
+    eq('looksLikeGrid: pass — database query "dg--" class short-circuits geometry probe',
       looksLikeGrid(container), true);
   });
 })();
@@ -14415,7 +14415,7 @@ const PRE_MOVE_TUNING = {
   dataTestCellBudget: 1000,
   vendorProfiles: [
     {
-      name: 'databricks',
+      name: 'database-query',
       classToken: 'dg--',
       scrollContainerSelectors: ['.dg--grid-scroll-container', '.dg--grid-container'],
       pinnedPaneSelectors: ['.dg--pinned-grid'],
@@ -14583,7 +14583,7 @@ const PRE_MOVE_TUNING = {
     sandbox.outcomes.displayInlineFlexPasses, true);
   eq('tuning block: looksLikeGrid rejects display:block (not in gridDisplayValues)',
     sandbox.outcomes.displayBlockFails, false);
-  eq('tuning block: looksLikeGrid short-circuits ACCEPT for the default databricks vendorProfiles class token',
+  eq('tuning block: looksLikeGrid short-circuits ACCEPT for the default database-query vendorProfiles class token',
     sandbox.outcomes.vendorClassShortCircuitsAccept, true);
   eq('tuning block: looksLikeGrid still runs the width-agreement step with no vendor class',
     sandbox.outcomes.noVendorClassFailsWidthCheck, false);

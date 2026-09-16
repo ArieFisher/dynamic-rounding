@@ -55,7 +55,7 @@ const DR_TUNING = {
   // --- Vendor grids (lib/dr-table/detect.js: GridAdapter) ---
   vendorProfiles: [
     {
-      name: 'databricks',
+      name: 'database-query',
       classToken: 'dg--',
       scrollContainerSelectors: ['.dg--grid-scroll-container', '.dg--grid-container'],
       pinnedPaneSelectors: ['.dg--pinned-grid'],
