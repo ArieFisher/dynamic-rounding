@@ -1092,14 +1092,48 @@ function isDataTable(table, opts = {}) {
 function readTableFingerprint(el, opts = {}) {
   const adapter = makeAdapter(el, opts);
   const rows = adapter.getRows();
+  const readsHeader = rows.length > 0 && _hasHeaderRow(el, adapter, rows[0]);
   let columnCount = 0;
-  let headerTexts = [];
+  let headerTexts = null;
   for (let i = 0; i < rows.length; i++) {
     const cells = rows[i].getCells();
     if (cells.length > columnCount) columnCount = cells.length;
-    if (i === 0) headerTexts = cells.map((cellObj) => _fingerprintCellText(cellObj, opts));
+    if (i === 0 && readsHeader) {
+      headerTexts = cells.map((cellObj) => _fingerprintCellText(cellObj, opts));
+    }
   }
   return { columnCount, headerTexts };
+}
+
+/**
+ * Whether the first row the adapter returns is a header row, which is what
+ * decides whether the fingerprint carries header texts at all.
+ *
+ * On a grid the answer is the adapter's own outside-row mark: a grid that
+ * groups its data rows puts its header row outside every group, and the
+ * adapter marks that row isOutside. A grid that groups nothing — the shape a
+ * database query grid takes — has a data row first, and a scroll redraws it,
+ * so its text describes the rows on the screen rather than the table.
+ *
+ * On a native table the adapter's isOutside marks the footer section alone,
+ * so the head section is read from the row itself: the row sits in a THEAD,
+ * or it holds header cells and no data cell. The second form covers a table
+ * written with a leading row of <th> and no explicit head section, which the
+ * simplification engine already treats as a header row by skipping every <th>
+ * cell it holds.
+ *
+ * @param {Element} el
+ * @param {NativeTableAdapter|GridAdapter} adapter
+ * @param {{isOutside: boolean, getCells(): object[]}} firstRow
+ * @returns {boolean}
+ */
+function _hasHeaderRow(el, adapter, firstRow) {
+  if (!(adapter instanceof NativeTableAdapter)) return firstRow.isOutside === true;
+  const rowEl = el.rows && el.rows[0];
+  const parent = rowEl && (rowEl.parentElement || rowEl.parentNode);
+  if (parent && parent.tagName === 'THEAD') return true;
+  const cells = firstRow.getCells();
+  return cells.length > 0 && cells.every((cellObj) => cellObj.tagName === 'TH');
 }
 
 /**
@@ -1133,8 +1167,12 @@ function _fingerprintCellText(cellObj, opts) {
 function sameTableFingerprint(a, b) {
   if (!a || !b) return false;
   if (a.columnCount !== b.columnCount) return false;
-  const left = a.headerTexts || [];
-  const right = b.headerTexts || [];
+  const left = a.headerTexts;
+  const right = b.headerTexts;
+  // Two readings that found no header row compare on the column count alone.
+  // A reading that found one against a reading that did not is a difference:
+  // the table gained or lost its header row.
+  if (left === null || right === null) return left === right;
   if (left.length !== right.length) return false;
   for (let i = 0; i < left.length; i++) {
     if (left[i] !== right[i]) return false;
