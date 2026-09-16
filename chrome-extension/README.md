@@ -26,7 +26,7 @@ The extension uses the same offset model as the rest of the project. As of the `
 
 The sidebar's capture section writes a bug report as one self-contained HTML file. Press one of the three mark buttons (👍 🤔 👎), write the remarks — the box's preview text follows the mark, and a negative capture prompts for expected, observed, and cause — and press "Save capture"; nothing saves without that press. The file lands in the browser's downloads through a plain link download, so the extension needs no extra permission. On a heavy page, the form shows the estimated size of the file before the save, and a failed save reports on the status line.
 
-One capture holds the mark and note; the bound table rendered twice — as displayed, with originals revealed on hover, and again with the originals themselves; a likeness of the sidebar as it stood; a registry list of every table found, the bound one marked; the log rows of both extension contexts (the extension's own log buffer — the page's console is never read); the bound table's markup as it stood at capture time, as the fixture seed; and the whole capture state as machine-readable JSON in a hidden block. The file declares a Content-Security-Policy that forbids scripts and remote fetches, so it is safe to attach anywhere.
+One capture holds the mark and note; the bound table rendered twice — as displayed, with originals revealed on hover, and again with the originals themselves; a likeness of the sidebar as it stood; a registry list of every table found, the bound one marked; the tuning block in force at capture time; the log rows of both extension contexts (the extension's own log buffer — the page's console is never read); the bound table's markup as it stood at capture time, as the fixture seed; and the whole capture state as machine-readable JSON in a hidden block. The file declares a Content-Security-Policy that forbids scripts and remote fetches, so it is safe to attach anywhere.
 
 The capture records absence honestly. With no table bound, the state says so and the capture still saves. On a locked table (originals lost to a re-injection), cells record no originals and the locked wording appears — values are never reconstructed. A virtualized grid contributes the rows present at capture time, with its frozen max magnitude as part of the evidence.
 
@@ -77,7 +77,7 @@ Row discovery uses a grid's row groups (`role="rowgroup"`, the ARIA analog of `<
 
 A row outside every row group — or, on a native table, a `<tfoot>` row — is an outside row: it rounds like any other row, but its values stay out of the dataset. They never feed the max magnitude or the lens preview.
 
-On virtualized grids, the max magnitude freezes when simplification is first applied (the magnitude freeze), and the data test samples a bounded ten cells in each of ten rows, so a wide header row cannot exhaust the sample.
+On virtualized grids, the max magnitude freezes when simplification is first applied (the magnitude freeze). The data test spends one budget of 1000 cell reads, in document order, stopping at the first number; the budget applies on native tables and grids alike.
 
 On a native table, the data test and rounding share one cell read: the cell's rendered text, falling back to its raw text when the rendered text is empty. A hidden cell rounds like any other cell, and its raw text counts toward the test; a hidden fragment inside a visible cell — the hidden sort key above — stays out, because that cell's rendered text is not empty and the fallback never runs.
 

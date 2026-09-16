@@ -52,6 +52,8 @@ const DR_TUNING = {
   gridColumnWidthAgreement: 0.8,
   gridRepetitionShare: 0.5,
   gridDisplayValues: ['grid', 'flex', 'inline-grid', 'inline-flex'],
+  // --- Data test (lib/dr-table/detect.js: isDataTable) ---
+  dataTestCellBudget: 1000,
   // --- Vendor grids (lib/dr-table/detect.js: GridAdapter) ---
   vendorProfiles: [
     {

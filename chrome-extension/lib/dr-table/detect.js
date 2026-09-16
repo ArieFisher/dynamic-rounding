@@ -32,8 +32,9 @@
  *
  * Every tuning value this file reads — the child-count floor, the walk-depth
  * cap, the column-width sample size and agreement threshold, the repetition
- * share, the off-screen threshold, and the vendor and display-value lookup
- * lists — lives in DR_TUNING (constants.js). The content script loads
+ * share, the data test's cell budget, the off-screen threshold, and the
+ * vendor and display-value lookup lists — lives in DR_TUNING (constants.js).
+ * The content script loads
  * constants.js before this file, so this file reads DR_TUNING as a bare
  * global with no local fallback copy of any of those values.
  * GRID_VENDOR_PROFILES below reads DR_TUNING at the top level, so a missing
@@ -901,13 +902,6 @@ function findTargetTable(el, opts = {}) {
   return null;
 }
 
-/** Maximum cells sampled PER ROW when probing isDataTable for virtual grids. */
-const GRID_IS_DATA_TABLE_CELL_SAMPLE = 10;
-/** Maximum rows sampled when probing isDataTable for virtual grids. Per-row
- * bounds (not one shared budget) so a wide header row of text labels cannot
- * exhaust the sample before the scan reaches a data row — the row universe
- * starts at the header now that rowgroups no longer trim the row list. */
-const GRID_IS_DATA_TABLE_ROW_SAMPLE = 10;
 // Left-offset threshold (px) below which an element is treated as
 // deliberately off-screen hidden: DR_TUNING.offscreenLeftPx.
 
@@ -1047,16 +1041,17 @@ function isDataTable(table, opts = {}) {
     }
   }
   if (!hasMultipleColumns) return false;
-  // For virtual grids, bound the scan per row (rows × cells-per-row) to avoid
-  // probing potentially hundreds of rows. The bounds are per row, not one
-  // shared cell budget, so a header row of text labels gets its own allotment
-  // and cannot starve the data rows below it. For native tables the loop is
-  // cheap and unbounded.
-  const maxRows = adapter.isVirtualized() ? GRID_IS_DATA_TABLE_ROW_SAMPLE : Infinity;
-  const maxCellsPerRow = adapter.isVirtualized() ? GRID_IS_DATA_TABLE_CELL_SAMPLE : Infinity;
-  for (let i = 0; i < rows.length && i < maxRows; i++) {
+  // The scan spends one budget of DR_TUNING.dataTestCellBudget cell reads,
+  // counted across every row and cell in document order, on native tables
+  // and grids alike. An empty cell counts as a read. The scan returns true
+  // at the first cell that parses as a finite number, and returns false once
+  // it has spent the budget with no number found.
+  let cellsRead = 0;
+  for (let i = 0; i < rows.length; i++) {
     const cells = rows[i].getCells();
-    for (let j = 0; j < cells.length && j < maxCellsPerRow; j++) {
+    for (let j = 0; j < cells.length; j++) {
+      if (cellsRead >= DR_TUNING.dataTestCellBudget) return false;
+      cellsRead++;
       const text = cells[j].getText().trim();
       if (text === '') continue;
       const parsed = numericProbe.parse(text);
