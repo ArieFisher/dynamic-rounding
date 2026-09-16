@@ -8160,22 +8160,27 @@ function makeDgRow(rowIndex, cellTexts) {
 /**
  * Build the synthetic Databricks-shaped grid.
  *
- * Two parameters cover the cases the nesting rule turns on:
+ * Three parameters cover the cases the nesting rule turns on:
  *   - pinnedColumns: cells in each pinned row. One column fails the data test,
  *     so the pinned pane drops out of the containment chain and depth 1 holds
  *     the scrolling pane alone. Two columns pass it, which puts two elements
  *     at depth 1.
  *   - rows: row pairs across the two panes. Zero builds an empty wrapper, the
  *     shape a later sprint retests once its rows arrive.
+ *   - plainWrapper: puts one role-less div between the wrapper and the two
+ *     panes. A nesting depth counts qualifying elements, so the extra layer
+ *     leaves both panes at depth 1. `paneParentEl` in the result is that div,
+ *     and null when the flag is false.
  *
- * @param {{pinnedColumns?: number, rows?: number}} [opts]
- * @returns {{wrapperEl: object, pinnedPaneEl: object, scrollPaneEl: object,
- *            pinnedRowEls: object[], scrollRowEls: object[]}}
+ * @param {{pinnedColumns?: number, rows?: number, plainWrapper?: boolean}} [opts]
+ * @returns {{wrapperEl: object, paneParentEl: object|null, pinnedPaneEl: object,
+ *            scrollPaneEl: object, pinnedRowEls: object[], scrollRowEls: object[]}}
  */
 function makeDatabricksGrid(opts) {
   const options = opts || {};
   const pinnedColumns = options.pinnedColumns === undefined ? 1 : options.pinnedColumns;
   const rowCount = options.rows === undefined ? 6 : options.rows;
+  const plainWrapper = !!options.plainWrapper;
 
   // Invented values. The identifier column names a measure; the two numeric
   // columns hold a count and a rate, one order of magnitude apart so a
@@ -8203,9 +8208,15 @@ function makeDatabricksGrid(opts) {
 
   const pinnedPaneEl = makeDgNode('DIV', 'dg--grid-container dg--pinned-grid', 'grid', pinnedRowEls);
   const scrollPaneEl = makeDgNode('DIV', 'dg--grid-container dg--grid-scroll-container', 'grid', scrollRowEls);
-  const wrapperEl = makeDgNode('DIV', 'dg--table-wrapper', 'table', [pinnedPaneEl, scrollPaneEl]);
+  // makeDgNode links each element child back to its parent, so building the
+  // plain layer first and the wrapper around it wires both directions.
+  const paneParentEl = plainWrapper
+    ? makeDgNode('DIV', 'dg--pane-row', null, [pinnedPaneEl, scrollPaneEl])
+    : null;
+  const wrapperEl = makeDgNode('DIV', 'dg--table-wrapper', 'table',
+    paneParentEl ? [paneParentEl] : [pinnedPaneEl, scrollPaneEl]);
 
-  return { wrapperEl, pinnedPaneEl, scrollPaneEl, pinnedRowEls, scrollRowEls };
+  return { wrapperEl, paneParentEl, pinnedPaneEl, scrollPaneEl, pinnedRowEls, scrollRowEls };
 }
 
 // ---------------------------------------------------------------------------
@@ -15018,6 +15029,37 @@ function forgetRegisteredTable(table) {
   eq('nesting AC4: a depth past the chain reports one table', deepResults.length, 1);
   eq('nesting AC4: a depth past the chain clamps to the scrolling pane',
     deepResults[0] && deepResults[0].handle === grid.scrollPaneEl, true);
+})();
+
+// --- Adversarial: a plain element between two qualifying elements adds no depth ---
+//
+// A nesting depth counts qualifying elements, so a role-less div between the
+// wrapper and the two panes leaves both panes at depth 1 and the chain two
+// long. A count of every ancestor instead would file the panes at depth 2,
+// leave the shipped depth empty, and fall back outward to the wrapper.
+
+(function gridNesting_aPlainElementBetweenQualifyingElementsAddsNoDepth() {
+  const grid = makeDatabricksGrid({ plainWrapper: true });
+  const host = makeNestingHost([grid.wrapperEl]);
+
+  eq('nesting: the plain layer sits between the wrapper and the two panes',
+    grid.paneParentEl !== null &&
+      grid.scrollPaneEl.parentElement === grid.paneParentEl &&
+      grid.pinnedPaneEl.parentElement === grid.paneParentEl &&
+      grid.paneParentEl.parentElement === grid.wrapperEl,
+    true);
+  eq('nesting: the plain layer carries no grid or table role',
+    grid.paneParentEl.matches(GRID_ARIA_SELECTOR_TEXT), false);
+
+  const shipped = findTables(host);
+  eq('nesting: a plain layer inside the wrapper still reports one table', shipped.length, 1);
+  eq('nesting: the shipped depth reports the scrolling pane past the plain layer',
+    shipped[0] && shipped[0].handle === grid.scrollPaneEl, true);
+
+  eq('nesting: depth 0 past the plain layer reports the wrapper',
+    findTables(host, { nestingDepth: 0 }).map((r) => r.handle === grid.wrapperEl), [true]);
+  eq('nesting: depth 2 past the plain layer clamps to the scrolling pane',
+    findTables(host, { nestingDepth: 2 }).map((r) => r.handle === grid.scrollPaneEl), [true]);
 })();
 
 // --- AC5: two nests under one plain parent report separately ---
