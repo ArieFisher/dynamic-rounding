@@ -19742,9 +19742,6 @@ function makePressTable(text) {
 //
 // The capture state gains a tuning field: a plain copy of DR_TUNING taken at
 // capture time, so a capture shows the detection values that were in force.
-// These tests are adversarial against the developer's implementation, not
-// corroborating: each one is derived from the sprint's acceptance criteria,
-// never from reading render.js or state.js first.
 
 // Criterion 1: collectCaptureState carries every key of the tuning block,
 // the format version moves to 2, and the copy is plain and detached — a
@@ -19835,8 +19832,8 @@ function makePressTable(text) {
   // Hostile half: a profile name and a selector each carrying <script>, a
   // double quote, and an ampersand must reach the visible half escaped only.
   const hostileTuning = {
-    exampleScalarSetting: 1,
-    exampleDisplayValues: [],
+    exampleScalarSetting: 'one<script>alert(3)</script>"&',
+    exampleDisplayValues: ['.list<script>alert(4)</script>"&item'],
     exampleVendorProfiles: [{
       name: 'north<script>alert(1)</script>"&vendor',
       classToken: 'nv--',

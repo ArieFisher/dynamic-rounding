@@ -39,9 +39,8 @@
  * and the state shares no live object with it.
  *
  * captureFormat is the state's format version, one integer, so a future
- * tool that parses capture files can tell old formats apart. It moves to 2
- * with this file's change: the tuning field widens the state shape beyond
- * what format 1 described.
+ * tool that parses capture files can tell old formats apart. Format 2 adds
+ * the tuning field.
  */
 
 const CAPTURE_FORMAT = 2;
