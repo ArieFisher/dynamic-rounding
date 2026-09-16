@@ -10923,6 +10923,128 @@ function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
     isDataTable(g.wrapperEl), true);
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint data-test-budget: the data test spends one budget of
+// DR_TUNING.dataTestCellBudget cell reads, walked in document order and
+// stopped at the first number, on native tables and grids alike. It replaces
+// the retired per-row sample on grids and the retired unbounded scan on
+// native tables. isDataTable and DR_TUNING.dataTestCellBudget live in
+// chrome-extension/lib/dr-table/detect.js and chrome-extension/constants.js.
+// ---------------------------------------------------------------------------
+
+// AC1: a grid whose first data row leads with eleven text cells before its
+// first number. Under the retired ten-cell-per-row sample this grid failed
+// the data test, because the sample never reached the twelfth cell. The
+// budget walks every cell in document order, so the number still falls
+// inside it.
+(function dataTestBudget_grid_numberInTwelfthColumnPasses() {
+  const header = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+  const firstDataRow = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', '42'];
+  const g = makeRowgroupRoleGrid(header, [firstDataRow], null);
+  eq('data test: a grid whose first number sits in the twelfth column of its first data row passes',
+    isDataTable(g.wrapperEl), true);
+})();
+
+// Helper: a native table of `rows` by `cols` cells, with a number placed at
+// the given one-based position in document order (row by row, left to
+// right), or no number at all when numberPosition is null. Every other cell
+// is empty, so the fixture also exercises the rule that an empty cell counts
+// as a read.
+function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
+  const spec = [];
+  for (let r = 0; r < rows; r++) {
+    const rowSpec = [];
+    for (let c = 0; c < cols; c++) {
+      const position = r * cols + c + 1;
+      rowSpec.push({ tag: 'td', text: (position === numberPosition) ? '42' : '' });
+    }
+    spec.push(rowSpec);
+  }
+  return spec;
+}
+
+// AC2: a native table large enough to cross the budget. The budget reads
+// cells in document order, header row included, and stops at the first
+// number. A table with no number inside the budget fails; the same table
+// with a number at the budget-th cell passes; the same table with its only
+// number one cell past the budget fails.
+(function dataTestBudget_nativeTable_boundary() {
+  const budget = DR_TUNING.dataTestCellBudget;
+  const cols = 101;
+  const rows = Math.ceil((budget + 1) / cols);
+
+  eq('data test: DR_TUNING.dataTestCellBudget is 1000',
+    budget, 1000);
+
+  const noNumberTable = makeNativeTableEl(buildBudgetTableRowsSpec(rows, cols, null));
+  eq('data test: a native table holding no number within the budget of cell reads fails',
+    isDataTable(noNumberTable), false);
+
+  const atBudgetTable = makeNativeTableEl(buildBudgetTableRowsSpec(rows, cols, budget));
+  eq('data test: the same table with a number at the budget-th cell passes',
+    isDataTable(atBudgetTable), true);
+
+  const pastBudgetTable = makeNativeTableEl(buildBudgetTableRowsSpec(rows, cols, budget + 1));
+  eq('data test: the same table with its only number one cell past the budget fails',
+    isDataTable(pastBudgetTable), false);
+})();
+
+// AC3: a native table of three rows by two cells with one number still
+// passes. The budget does not disturb a table well inside it.
+(function dataTestBudget_smallNativeTablePasses() {
+  const table = makeNativeTableEl([
+    [{ tag: 'td', text: 'Name' }, { tag: 'td', text: 'Role' }],
+    [{ tag: 'td', text: 'Alice' }, { tag: 'td', text: 'Eng' }],
+    [{ tag: 'td', text: 'Bob' }, { tag: 'td', text: '42' }],
+  ]);
+  eq('data test: a three-row, two-cell native table with one number passes',
+    isDataTable(table), true);
+})();
+
+// AC5: the retired rule left native tables unbounded, so a number far past
+// 1000 cells would have passed. The budget applies to native tables and
+// grids alike, so this table fails.
+(function dataTestBudget_nativeTable_farPastBudgetFails() {
+  const budget = DR_TUNING.dataTestCellBudget;
+  const cols = 100;
+  const rows = Math.ceil((budget * 3) / cols);
+  const totalCells = rows * cols;
+  const table = makeNativeTableEl(buildBudgetTableRowsSpec(rows, cols, totalCells));
+  eq('data test: a native table whose only number sits far past the cell budget fails',
+    isDataTable(table), false);
+})();
+
+// Source guard: the retired per-row and per-grid sample constants carry no
+// definition anywhere in the detection layer.
+(function dataTestBudget_retiredSampleConstantsGone() {
+  const retiredNames = ['GRID_IS_DATA_TABLE_CELL_SAMPLE', 'GRID_IS_DATA_TABLE_ROW_SAMPLE'];
+  for (const name of retiredNames) {
+    const definitionPattern = new RegExp(`\\b(const|let|var)\\s+${name}\\b`);
+    eq(`data test: the detection layer carries no definition of the retired ${name}`,
+      definitionPattern.test(detectCode || ''), false);
+  }
+})();
+
+// AC4: the three living docs each state the 1000-cell budget, per AGENTS.md's
+// rule that a behavior-invalidating change updates every living doc it
+// invalidates in the same branch.
+(function dataTestBudget_livingDocsStateTheBudget() {
+  const readmeMd = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
+  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
+  const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
+  // Loose enough to survive a rewording, tight enough to fail if the budget
+  // sentence is dropped: the digits 1000 must sit within 80 characters of
+  // either "data test" or "cell read(s)".
+  const statesBudget = (text) =>
+    /1000[\s\S]{0,80}(data test|cell reads?)|(data test|cell reads?)[\s\S]{0,80}1000/i.test(text);
+  eq('living docs: chrome-extension/README.md states the 1000-cell budget',
+    statesBudget(readmeMd), true);
+  eq('living docs: docs/design.md states the 1000-cell budget',
+    statesBudget(designMd), true);
+  eq('living docs: docs/vocabulary.md states the 1000-cell budget',
+    statesBudget(vocabularyMd), true);
+})();
+
 // Behavior: the header row holds because it is the literal first row; the
 // first data row and the summary row round. The first column still holds.
 (function gridRowUniverse_headerHolds_dataAndSummaryRound() {
