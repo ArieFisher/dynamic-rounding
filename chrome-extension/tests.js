@@ -7828,6 +7828,38 @@ function makeCountingNumericProbe() {
     findTargetTable(noNumber.children[0].children[0], { isSeen: () => false }), null);
 })();
 
+// --- AC3: an empty nomination falls through to the geometry probe ---
+//
+// The two cases above resolve nothing because the geometry probe rejects them
+// as well, so they say nothing about which step produced the null. This case
+// separates the two steps: six rows of one numeric cell each fail the data
+// test at the two-cell gate, which leaves the nomination empty, and clear the
+// geometry probe's ladder (six repeated children sharing a class, a flex
+// display, a numeric cell, and a grid role short-circuiting the column-width
+// sample). The route therefore has to hand the element on rather than end the
+// resolution, and the layout counter records the probe producing the answer.
+
+(function rightClickRegisters_AC3_anEmptyNominationFallsThroughToTheGeometryProbe() {
+  const nest = makeRoleBearingNest(
+    [0, 1, 2, 3, 4, 5].map((i) => makeDgRow(i, ['4,281,905'])));
+  const styleProbe = makeCountingStyleProbe();
+
+  eq('findTargetTable AC3: a single-column nest fails the data test, so the nomination is empty',
+    isDataTable(nest), false);
+  eq('findTargetTable AC3: the clicked cell still sits in that nest',
+    chainRootOf(nest.children[0].children[0]) === nest, true);
+
+  const result = findTargetTable(nest.children[0].children[0],
+    { isSeen: () => false, styleProbe });
+
+  eq('findTargetTable AC3: an empty nomination falls through and the probe resolves the nest',
+    result !== null && result.handle === nest, true);
+  eq('findTargetTable AC3: the fall-through resolution reports isNew',
+    result !== null && result.isNew, true);
+  eq('findTargetTable AC3: the fall-through resolution reads layout, so the geometry probe produced it',
+    styleProbe.calls > 0, true);
+})();
+
 // --- AC4: a registered table resolves at the registry route ---
 //
 // The proof that the nomination step never ran goes through the ports the
