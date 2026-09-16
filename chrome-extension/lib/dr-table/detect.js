@@ -1067,11 +1067,141 @@ function isDataTable(table, opts = {}) {
 }
 
 /**
- * Scan `root` for native <table> elements and ARIA grid roots ([role="grid"]
- * or [role="table"]), mirroring the two-pass order the toggle scanners use
- * (native tables first, then a cheap ARIA pass for div-based grids whose
- * table descendants — if any — are all accessibility artifacts already
- * dropped by tableFilter).
+ * The two guards the ARIA pass applies to an element carrying a grid or table
+ * role, before the data test runs on it: the element is not a native table,
+ * and it holds no native table that tableFilter keeps (pass 1 owns that one).
+ * An element carrying the role and passing both guards is a qualifying
+ * element.
+ *
+ * @param {Element} el
+ * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {object} opts
+ * @returns {boolean}
+ */
+function _passesAriaGuards(el, tableFilter, opts) {
+  if (!el || el.tagName === 'TABLE') return false;
+  const nestedTables = typeof el.querySelectorAll === 'function' ? Array.from(el.querySelectorAll('table')) : [];
+  return !nestedTables.some((t) => !tableFilter(t, opts));
+}
+
+/**
+ * Whether an ancestor is a qualifying element. An ancestor carries no other
+ * evidence of its role, so the role read goes through `matches`; an element
+ * stub with no `matches` is treated as not qualifying, which makes the
+ * element below it its own chain root.
+ *
+ * @param {Element} el
+ * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {object} opts
+ * @returns {boolean}
+ */
+function _isQualifyingAncestor(el, tableFilter, opts) {
+  if (!el || typeof el.matches !== 'function') return false;
+  let carriesRole = false;
+  try { carriesRole = !!el.matches(GRID_ARIA_SELECTOR); } catch (e) { return false; }
+  if (!carriesRole) return false;
+  return _passesAriaGuards(el, tableFilter, opts);
+}
+
+/**
+ * Walk up from `el` to its chain root: the outermost qualifying ancestor of
+ * the nest `el` sits in. The walk is bounded by DR_TUNING.gridWalkDepthCap DOM
+ * levels and stops at the document body, and it continues past an ancestor
+ * that carries no role, because a nest may put a plain wrapper between two
+ * qualifying elements. An element with no parent is its own chain root.
+ *
+ * @param {Element} el
+ * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {object} opts
+ * @returns {Element}
+ */
+function _chainRootOf(el, tableFilter, opts) {
+  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
+  const docBody = doc && doc.body;
+  let chainRoot = el;
+  let current = el.parentElement || el.parentNode || null;
+  let depth = 0;
+  while (current && current !== docBody && depth < DR_TUNING.gridWalkDepthCap) {
+    if (_isQualifyingAncestor(current, tableFilter, opts)) chainRoot = current;
+    current = current.parentElement || current.parentNode || null;
+    depth++;
+  }
+  return chainRoot;
+}
+
+/**
+ * The nesting depth of `el` inside the chain `chainRoot` heads: the count of
+ * qualifying ancestors from `el` up to and including `chainRoot`. The chain
+ * root itself sits at depth 0, an element directly under it at depth 1.
+ * Returns -1 when the walk leaves the nest without reaching the chain root,
+ * so the caller drops the element rather than filing it at a wrong depth.
+ *
+ * @param {Element} el
+ * @param {Element} chainRoot
+ * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {object} opts
+ * @returns {number}
+ */
+function _depthInChain(el, chainRoot, tableFilter, opts) {
+  if (el === chainRoot) return 0;
+  let count = 0;
+  let current = el.parentElement || el.parentNode || null;
+  let steps = 0;
+  while (current && steps < DR_TUNING.gridWalkDepthCap) {
+    if (current === chainRoot) return count + 1;
+    if (_isQualifyingAncestor(current, tableFilter, opts)) count++;
+    current = current.parentElement || current.parentNode || null;
+    steps++;
+  }
+  return -1;
+}
+
+/**
+ * Apply the configured nesting depth to one containment chain and return the
+ * element to register, or null.
+ *
+ * `byDepth` maps a nesting depth to the chain's elements at that depth — the
+ * qualifying elements that passed the data test, and those alone. Two edge
+ * rules complete the selection (decision D2):
+ *   - A chain shorter than the configured depth clamps to its deepest depth.
+ *   - A depth holding more than one element falls back outward to the nearest
+ *     shallower depth holding exactly one.
+ * A chain where no depth from the clamped one outward holds exactly one
+ * element returns null, which registers nothing for that nest.
+ *
+ * @param {Map<number, Element[]>} byDepth
+ * @param {number} configuredDepth
+ * @returns {Element|null}
+ */
+function _selectAtNestingDepth(byDepth, configuredDepth) {
+  if (byDepth.size === 0) return null;
+  const deepest = Math.max(...byDepth.keys());
+  for (let depth = Math.min(configuredDepth, deepest); depth >= 0; depth--) {
+    const atDepth = byDepth.get(depth) || [];
+    if (atDepth.length === 1) return atDepth[0];
+  }
+  return null;
+}
+
+/**
+ * Scan `root` for native <table> elements (pass 1), then run the nomination
+ * step over the elements carrying a grid or table role (pass 2).
+ *
+ * The nomination step returns one element per nest. From `root` it lists the
+ * qualifying elements — `root` itself when it carries the role, plus every
+ * descendant carrying it, each past the two guards in _passesAriaGuards. It
+ * walks each one up to its chain root and evaluates every chain root once. A
+ * chain root whose nest already holds a registered element returns nothing, so
+ * a rediscovery is idempotent. The chain is the nest's qualifying elements
+ * that pass the data test, grouped by nesting depth, and
+ * _selectAtNestingDepth applies DR_TUNING.nestingDepth with decision D2's two
+ * edge rules. A chain root can sit outside `root` — an added node inside a
+ * wrapper already in the page — which is what makes a rediscovery re-evaluate
+ * the whole nest.
+ *
+ * The configured depth reads through a port in the style of opts.vendorProfiles:
+ * opts.nestingDepth when the caller supplies one, DR_TUNING.nestingDepth
+ * otherwise. Zero is a legal depth, so the override check is a nullish check.
  *
  * REPORTS only — like findTargetTable, this never writes the dr-ext-grid
  * marker class and never builds a toggle widget. Each result is
@@ -1079,11 +1209,14 @@ function isDataTable(table, opts = {}) {
  * "have I already handled this element" check — e.g. DR_STORE.hasTable,
  * for both native tables and grid roots alike). Without opts.isSeen every
  * result reports isNew: true, since detection keeps no registry of its own.
+ * Both live scanners (ui-toggle.js's load-time scan and content.js's
+ * added-node pass) reach the grids on a page through this function.
  *
  * @param {Element|Document} root
  * @param {{
  *   tableFilter?: (table: Element) => boolean,
  *   isSeen?: (handle: Element) => boolean,
+ *   nestingDepth?: number, doc?: Document,
  *   styleProbe?: object, numericProbe?: object, vendorProfiles?: object[],
  * }} [opts]
  * @returns {{handle: Element, isNew: boolean}[]}
@@ -1092,6 +1225,7 @@ function findTables(root, opts = {}) {
   if (!root || typeof root.querySelectorAll !== 'function') return [];
   const tableFilter = opts.tableFilter || isPhantomA11yTable;
   const isSeen = opts.isSeen || (() => false);
+  const configuredDepth = opts.nestingDepth ?? DR_TUNING.nestingDepth;
   const results = [];
 
   // Pass 1: native <table> elements; tableFilter drops accessibility artifacts.
@@ -1101,18 +1235,42 @@ function findTables(root, opts = {}) {
     results.push({ handle: table, isNew: !isSeen(table) });
   }
 
-  // Pass 2: cheap ARIA pass for div-based grid roots. Skip a root already
-  // covered by pass 1, and skip a grid root whose only table descendants are
-  // accessibility artifacts pass 1 dropped (so a grid that embeds nothing but
-  // a phantom a11y table is still found here).
-  const rootIsAriaRoot = root.tagName !== 'TABLE' && typeof root.matches === 'function' && root.matches(GRID_ARIA_SELECTOR);
-  const ariaCandidates = (rootIsAriaRoot ? [root] : []).concat(Array.from(root.querySelectorAll(GRID_ARIA_SELECTOR)));
-  for (const el of ariaCandidates) {
-    if (el.tagName === 'TABLE') continue;
-    if (results.some((r) => r.handle === el)) continue;
-    const nestedTables = typeof el.querySelectorAll === 'function' ? Array.from(el.querySelectorAll('table')) : [];
-    if (nestedTables.some((t) => !tableFilter(t, opts))) continue; // a real native table inside — pass 1 owns it
-    results.push({ handle: el, isNew: !isSeen(el) });
+  // Pass 2, step 1: the qualifying elements under `root`, `root` itself
+  // included when it carries the role.
+  const rootCarriesRole = root.tagName !== 'TABLE' && typeof root.matches === 'function' && root.matches(GRID_ARIA_SELECTOR);
+  const roleBearing = (rootCarriesRole ? [root] : []).concat(Array.from(root.querySelectorAll(GRID_ARIA_SELECTOR)));
+  const qualifying = roleBearing.filter((el) => _passesAriaGuards(el, tableFilter, opts));
+
+  // Steps 2 and 3: one chain root per nest, each evaluated once.
+  const chainRoots = [];
+  for (const el of qualifying) {
+    const chainRoot = _chainRootOf(el, tableFilter, opts);
+    if (!chainRoots.includes(chainRoot)) chainRoots.push(chainRoot);
+  }
+
+  for (const chainRoot of chainRoots) {
+    const nested = typeof chainRoot.querySelectorAll === 'function'
+      ? Array.from(chainRoot.querySelectorAll(GRID_ARIA_SELECTOR)) : [];
+    const nest = [chainRoot].concat(nested)
+      .filter((el) => _passesAriaGuards(el, tableFilter, opts));
+    // A nest holding a registered element returns nothing: the scan already
+    // ran over it, and a second registration would put a second pillbox on
+    // one grid.
+    if (nest.some((el) => isSeen(el))) continue;
+
+    // Step 4: the chain — the nest's elements that pass the data test, by depth.
+    const byDepth = new Map();
+    for (const el of nest) {
+      if (!isDataTable(el, opts)) continue;
+      const depth = _depthInChain(el, chainRoot, tableFilter, opts);
+      if (depth < 0) continue;
+      if (!byDepth.has(depth)) byDepth.set(depth, []);
+      byDepth.get(depth).push(el);
+    }
+
+    // Step 5: the configured depth and its two edge rules.
+    const selected = _selectAtNestingDepth(byDepth, configuredDepth);
+    if (selected) results.push({ handle: selected, isNew: !isSeen(selected) });
   }
 
   return results;

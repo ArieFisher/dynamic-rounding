@@ -14269,12 +14269,16 @@ function fireMouseClick(buttonEl, fn) {
   }
 })();
 
-// The pre-move values, hand-copied from origin/main's lib/dr-table/detect.js
-// (read via `git show origin/main:chrome-extension/lib/dr-table/detect.js`)
-// and the design doc's key table. The sprint moves these values; it changes
-// none of them. Key order matches constants.js's DR_TUNING declaration, so
-// the JSON.stringify-based eq() comparison below is not order-sensitive noise.
+// The tuning block's expected contents. Ten values are the pre-move ones,
+// hand-copied from origin/main's lib/dr-table/detect.js (read via
+// `git show origin/main:chrome-extension/lib/dr-table/detect.js`) and the
+// design doc's key table; the detection-constants sprint moved them and
+// changed none of them. The eleventh, nestingDepth, has no pre-move value:
+// the grid-nesting-rule sprint adds it as the nomination step's configured
+// depth. Key order matches constants.js's DR_TUNING declaration, so the
+// JSON.stringify-based eq() comparison below is not order-sensitive noise.
 const PRE_MOVE_TUNING = {
+  nestingDepth: 1,
   gridMinChildren: 5,
   gridWalkDepthCap: 15,
   gridColumnWidthSample: 10,
@@ -14425,9 +14429,9 @@ const PRE_MOVE_TUNING = {
   );
 
   eq('tuning block: the combined sandbox does not throw', sandbox.threw, null);
-  eq('tuning block: DR_TUNING exposes exactly the ten pre-move keys',
+  eq('tuning block: DR_TUNING exposes exactly the eleven expected keys',
     sandbox.outcomes.tuningKeys, Object.keys(PRE_MOVE_TUNING).sort());
-  eq('tuning block: DR_TUNING carries every pre-move value unchanged',
+  eq('tuning block: DR_TUNING carries every expected value unchanged',
     sandbox.outcomes.tuning, PRE_MOVE_TUNING);
   eq('tuning block: looksLikeGrid rejects 4 children (below gridMinChildren)',
     sandbox.outcomes.minChildrenBelowFails, false);
