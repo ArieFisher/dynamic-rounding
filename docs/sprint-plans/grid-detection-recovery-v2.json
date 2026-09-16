@@ -13,7 +13,11 @@
     "branch_naming": "refactor/<label>, fix/<label>, chore/<label>, feature/<label> by change type, as each sprint's branch field states; never claude/ or session/",
     "commit_convention": "Conventional Commits (fix:, refactor:, feat:, docs:, test:); a vocabulary definition lands as its own docs: commit on the sprint branch",
     "vocabulary": "docs/vocabulary.md is the canon; read it in full before the first tool call, sweep new prose at every commit, and define a new concept on the branch that makes it real",
-    "docs_rule": "A behavior change updates every living doc it invalidates on the same branch; each sprint's dev notes name its docs. Regression fixtures are synthetic and minimized; a raw capture never enters the repository"
+    "docs_rule": "A behavior change updates every living doc it invalidates on the same branch; each sprint's dev notes name its docs. Regression fixtures are synthetic and minimized; a raw capture never enters the repository",
+    "dependent_policy": "after-merge",
+    "version_bump_policy": "merge-workflow",
+    "base_branch_writes": "pull-request",
+    "pr_template": "AGENTS.md, section Pull requests"
   },
   "sprints": [
     {
