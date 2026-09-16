@@ -36,6 +36,9 @@
  * display-value lookup lists — lives in DR_TUNING (constants.js). Every
  * context loads constants.js before this file, so this file reads DR_TUNING
  * as a bare global: there is no local fallback copy of any of those values.
+ * GRID_VENDOR_PROFILES below reads DR_TUNING at the top level, so a missing
+ * block fails at load — before any function in this file runs — rather than
+ * on first call.
  */
 
 // Grid detection constants
@@ -91,11 +94,14 @@ const DEFAULT_NUMERIC_PROBE = {
   },
 };
 
-// VendorProfiles: known third-party grid libraries, read from
-// DR_TUNING.vendorProfiles. `classToken` short-circuits looksLikeGrid's
-// geometry probe; `scrollContainerSelectors` / `pinnedPaneSelectors` resolve
-// GridAdapter's scroll and pinned panes. A consumer may pass a custom list
-// via opts.vendorProfiles.
+// VendorProfiles: known third-party grid libraries. `classToken` short-
+// circuits looksLikeGrid's geometry probe; `scrollContainerSelectors` /
+// `pinnedPaneSelectors` resolve GridAdapter's scroll and pinned panes. A
+// consumer may pass a custom list via opts.vendorProfiles.
+//
+// Read here, at load, rather than inside GridAdapter or looksLikeGrid: a
+// missing DR_TUNING block then fails at load, before either function runs.
+const GRID_VENDOR_PROFILES = DR_TUNING.vendorProfiles;
 
 // --- TableAdapter abstraction ---
 // Two adapter classes provide a uniform row/cell interface over both native
@@ -197,7 +203,7 @@ const DEFAULT_ORIGINALS_PORT = makeDefaultOriginalsPort();
 class GridAdapter {
   constructor(el, opts = {}) {
     this.el = el;
-    this.vendorProfiles = opts.vendorProfiles || DR_TUNING.vendorProfiles;
+    this.vendorProfiles = opts.vendorProfiles || GRID_VENDOR_PROFILES;
     this.originalsPort = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
   }
   getElement() { return this.el; }
@@ -722,7 +728,7 @@ function applyExtractedPatches(cell, patches) {
  * Short-circuit ACCEPT (skip step 6) when el carries:
  *   - role="grid" or role="table"  (ARIA)
  *   - a class matching one of opts.vendorProfiles' classToken (default:
- *     DR_TUNING.vendorProfiles — "dg--" or "ag-")
+ *     GRID_VENDOR_PROFILES — "dg--" or "ag-")
  *
  * @param {Element} el
  * @param {{styleProbe?: object, numericProbe?: object, vendorProfiles?: object[]}} [opts]
@@ -732,7 +738,7 @@ function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   const numericProbe = opts.numericProbe || DEFAULT_NUMERIC_PROBE;
-  const vendorProfiles = opts.vendorProfiles || DR_TUNING.vendorProfiles;
+  const vendorProfiles = opts.vendorProfiles || GRID_VENDOR_PROFILES;
 
   // --- Step 1: Child count ≥ DR_TUNING.gridMinChildren ---
   const children = Array.from(el.children);
