@@ -11188,6 +11188,125 @@ function fillDatabaseQueryGrid(grid) {
   });
 })();
 
+// --- Adversarial: a re-test that finds the nest registered ends the record ---
+//
+// The vocabulary row states the rule: a re-test that finds the nest already
+// registered ends the pending table, as does one that finds its configured
+// depth crowded. The registration here goes through the pillbox builder
+// directly, which is the route a right-click takes today — the pending record
+// stands until the next re-test, and that re-test is what drops it. Without
+// this the record outlives the registration: a live observer on a subtree the
+// extension already registered, re-testing until it reaches the cap.
+
+(function pendingRetest_aRegisteredRetestEndsThePendingRecord() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+  const before = DR_STORE.getRegisteredTables().length;
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(grid.wrapperEl);
+    });
+
+    eq('pending registered: the empty wrapper is held as a pending table',
+      pendingRoots.has(grid.wrapperEl), true);
+    eq('pending registered: the empty wrapper carries one observer', observers.length, 1);
+
+    // The rows arrive, and another route registers the scrolling pane before
+    // the re-test runs.
+    fillDatabaseQueryGrid(grid);
+    withToggleDocumentMock(function () {
+      createToggleForTable(grid.scrollPaneEl);
+    });
+    eq('pending registered: the other route registered the scrolling pane',
+      DR_STORE.hasTable(grid.scrollPaneEl), true);
+    eq('pending registered: the pending record still stands before the re-test',
+      pendingRoots.has(grid.wrapperEl), true);
+
+    withToggleDocumentMock(function () {
+      if (observers[0]) observers[0].trigger();
+      eq('pending registered: one mutation schedules one re-test',
+        runPendingRetestTimers(timers), 1);
+    });
+
+    eq('pending registered: a re-test over a registered nest drops the pending root',
+      pendingRoots.has(grid.wrapperEl), false);
+    eq('pending registered: a re-test over a registered nest disconnects the observer',
+      observers[0] && observers[0].disconnectCount, 1);
+    eq('pending registered: the observer map holds nothing for the wrapper',
+      pendingObservers.has(grid.wrapperEl), false);
+    eq('pending registered: the failed-re-test count map holds nothing for the wrapper',
+      pendingRetestCounts.has(grid.wrapperEl), false);
+    eq('pending registered: the debounce timer map holds nothing for the wrapper',
+      pendingRetestTimers.has(grid.wrapperEl), false);
+    eq('pending registered: the nest holds one registry entry in all',
+      DR_STORE.getRegisteredTables().length - before, 1);
+    eq('pending registered: the re-test puts no second pillbox on the nest',
+      [tableToggles.has(grid.wrapperEl), tableToggles.has(grid.pinnedPaneEl)], [false, false]);
+    eq('pending registered: no pending root remains', pendingRoots.size, 0);
+  });
+
+  forgetRegisteredTable(grid.scrollPaneEl);
+})();
+
+// --- Adversarial: a re-test that finds the depth crowded ends the record ---
+//
+// A crowded nest registers nothing, by the product decision in issue #373, and
+// it registers nothing on every later re-test for the same reason. Holding the
+// record would leave an observer re-testing a shape whose answer cannot change
+// until the page rebuilds it.
+
+(function pendingRetest_aCrowdedRetestEndsThePendingRecord() {
+  const rootEl = makeDgNode('DIV', 'crowded-pending-root', 'table', []);
+  const nest = makeCrowdedNest();
+  const before = DR_STORE.getRegisteredTables().length;
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(rootEl);
+    });
+
+    eq('pending crowded: the empty root is held as a pending table',
+      pendingRoots.has(rootEl), true);
+    eq('pending crowded: the empty root carries one observer', observers.length, 1);
+
+    // The page draws a row group of text rows and two panes that each pass the
+    // data test, which puts two elements at the configured depth.
+    nest.rootEl.children.slice().forEach((child) => appendDgChild(rootEl, child));
+    eq('pending crowded: the filled root still fails the data test',
+      isDataTable(rootEl), false);
+    eq('pending crowded: both panes pass the data test',
+      [nest.paneAEl, nest.paneBEl].map(isDataTable), [true, true]);
+    eq('pending crowded: the filled nest reports the crowded outcome',
+      nominateNest(rootEl).outcome, 'crowded');
+
+    withToggleDocumentMock(function () {
+      if (observers[0]) observers[0].trigger();
+      eq('pending crowded: one mutation schedules one re-test',
+        runPendingRetestTimers(timers), 1);
+    });
+
+    eq('pending crowded: a crowded re-test drops the pending root',
+      pendingRoots.has(rootEl), false);
+    eq('pending crowded: a crowded re-test disconnects the observer',
+      observers[0] && observers[0].disconnectCount, 1);
+    eq('pending crowded: the observer map holds nothing for the root',
+      pendingObservers.has(rootEl), false);
+    eq('pending crowded: the failed-re-test count map holds nothing for the root',
+      pendingRetestCounts.has(rootEl), false);
+    eq('pending crowded: the debounce timer map holds nothing for the root',
+      pendingRetestTimers.has(rootEl), false);
+    eq('pending crowded: a crowded nest registers no element',
+      [rootEl, nest.paneAEl, nest.paneBEl].map((el) => DR_STORE.hasTable(el)),
+      [false, false, false]);
+    eq('pending crowded: a crowded nest gains no pillbox',
+      [rootEl, nest.paneAEl, nest.paneBEl].map((el) => tableToggles.has(el)),
+      [false, false, false]);
+    eq('pending crowded: a crowded nest adds no registry entry',
+      DR_STORE.getRegisteredTables().length - before, 0);
+    eq('pending crowded: no pending root remains', pendingRoots.size, 0);
+  });
+})();
+
 // --- Adversarial: the debounce collapses a burst of mutations into one re-test ---
 
 (function pendingRetest_twoMutationsInsideTheDelayScheduleOneRetest() {
