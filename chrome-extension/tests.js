@@ -7749,6 +7749,27 @@ function makeCountingNumericProbe() {
       .map((el) => DR_STORE.hasTable(el)), [false, false, false]);
 })();
 
+// --- AC1: a click on the nest's own layers resolves the scrolling pane ---
+//
+// A right-click inside the grid lands on whatever sits under the pointer, and
+// the gaps between the panes belong to the nest's plain layers. The geometry
+// probe walks ancestors of the clicked element and stops at the first one that
+// fails its row-count gate, so a click on a layer whose only child is another
+// layer resolves nothing through it. The nomination step runs from the chain
+// root instead, which covers every layer of the nest.
+
+(function rightClickRegisters_AC1_aClickOnTheNestsOwnLayersResolvesTheScrollingPane() {
+  const plain = makeDatabaseQueryGrid({ plainWrapper: true });
+  const paneRowResult = findTargetTable(plain.paneParentEl, { isSeen: () => false });
+  eq('findTargetTable AC1: a click on the plain layer between the panes resolves the scrolling pane',
+    paneRowResult !== null && paneRowResult.handle === plain.scrollPaneEl, true);
+
+  const grid = makeDatabaseQueryGrid();
+  const wrapperResult = findTargetTable(grid.wrapperEl, { isSeen: () => false });
+  eq('findTargetTable AC1: a click on the wrapper itself resolves the scrolling pane',
+    wrapperResult !== null && wrapperResult.handle === grid.scrollPaneEl, true);
+})();
+
 // --- AC2: a click in the row-number gutter resolves the scrolling pane ---
 
 (function rightClickRegisters_AC2_aClickInTheRowNumberGutterResolvesTheScrollingPane() {
@@ -12500,6 +12521,29 @@ function withRightClickSandbox(run) {
         .map((el) => el.classList.contains('dr-ext-grid')), [false, false, true]);
     eq('right-click AC1 runtime: the click reports the table as activated',
       ctx.sentMessages.some((m) => m.action === 'state:tableActivated'), true);
+  });
+})();
+
+// --- AC1: a right-click on the nest's own layers registers the scrolling pane ---
+
+(function rightClickRegisters_AC1_runtime_aClickOnAPlainLayerRegistersTheScrollingPane() {
+  withRightClickSandbox(function (ctx) {
+    const plain = makeDatabaseQueryGrid({ plainWrapper: true });
+
+    eq('right-click AC1 runtime: the contextmenu handler was captured (plain layer)',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: plain.paneParentEl });
+
+    eq('right-click AC1 runtime: a click on the plain layer between the panes registers the scrolling pane',
+      ctx.store.hasTable(plain.scrollPaneEl), true);
+    eq('right-click AC1 runtime: that click makes the scrolling pane active',
+      ctx.store.getSelectedTable() === plain.scrollPaneEl, true);
+    eq('right-click AC1 runtime: that click puts a pillbox on the scrolling pane',
+      ctx.tableToggles.has(plain.scrollPaneEl), true);
+    eq('right-click AC1 runtime: that click puts no pillbox on the plain layer or the wrapper',
+      [plain.paneParentEl, plain.wrapperEl].map((el) => ctx.tableToggles.has(el)), [false, false]);
   });
 })();
 
