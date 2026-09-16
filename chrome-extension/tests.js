@@ -2182,7 +2182,7 @@ global.Node = { ELEMENT_NODE: 1 };
 // --- Helpers ---
 
 /**
- * Build a minimal table DOM stub that isTableRounded, toggleOriginalValues, and
+ * Build a minimal table DOM stub that isTableRounded, restoreTable, and
  * roundTable can consume. Returns an object that looks like a real HTMLTableElement
  * for the purposes of these functions.
  *
@@ -2235,14 +2235,14 @@ function makeToggleTable(rowsOrCells, extra) {
     },
     // offsetWidth access in flashTargetedTable triggers reflow; just ignore it
     get offsetWidth() { return 0; },
-    // querySelector('.dr-ext-rounded') — used by isTableRounded and runToggleAction
+    // querySelector('.dr-ext-rounded') — used by applySidebarRounding's menu-label check
     querySelector(sel) {
       if (sel === '.dr-ext-rounded') {
         return this._cells.find(c => c.classList.contains('dr-ext-rounded')) || null;
       }
       return null;
     },
-    // querySelectorAll('.dr-ext-rounded') — used by toggleOriginalValues / resetTable
+    // querySelectorAll('.dr-ext-rounded') — used by restoreTable / resetTable
     querySelectorAll(sel) {
       if (sel === '.dr-ext-rounded') {
         return this._cells.filter(c => c.classList.contains('dr-ext-rounded'));
@@ -3020,11 +3020,8 @@ function makeMockButton() {
   // Simulate pointerdown with mouse type
   buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', stopPropagation() {} });
 
-  // Mark a cell as rounded so runToggleAction will call syncSwitchForTable → aria-pressed="true"
-  // Since runToggleAction internally checks querySelector('.dr-ext-rounded'), we pre-mark the cell.
-  // But runToggleAction first resets (calls toggleOriginalValues or roundTable).
-  // Simplest approach: verify aria-pressed transitions by actually calling via click.
-  // Pre-condition: table has rounded cells → click should toggleOriginalValues.
+  // Pre-condition: the table shows rounded cells, so the press restores the
+  // originals and syncSwitchForTable ends at aria-pressed="false".
   table._cells[0].classList.add('dr-ext-rounded');
   const cell = table._cells[0];
   let htmlVal = cell.innerHTML || '50000';
@@ -3814,7 +3811,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 })();
 
 // --- Mouse click toggles state ---
-// Spec (§3.4 + AC): pointerType 'mouse'/'': runToggleAction called, aria-pressed updates.
+// Spec (§3.4 + AC): pointerType 'mouse'/'': intent:toggleTable published, aria-pressed updates.
 // We create a real button via createToggleForTable (with DOM stubs).
 
 (function morphAC_mouseClick_togglesState() {
@@ -3857,7 +3854,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  // Fresh (not rounded) table — click via mouse should call runToggleAction → round it
+  // Fresh (not rounded) table — a mouse click publishes intent:toggleTable → rounds it
   const table = makeToggleTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
@@ -3980,7 +3977,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 })();
 
 // --- Touch second tap toggles and refreshes expansion ---
-// Spec (AC): second tap on already-expanded → calls runToggleAction, updates aria-pressed
+// Spec (AC): second tap on already-expanded → publishes intent:toggleTable, updates aria-pressed
 
 (function morphAC_touchSecondTap_togglesState() {
   const appendedToBody = [];
@@ -7962,7 +7959,7 @@ function makeElementNode(className, childNodes) {
     childNodes: kids,
     children: kids.filter(n => n.nodeType === 1),
     dataset: {},
-    // Real DOM elements expose removeAttribute; toggleOriginalValues calls it on
+    // Real DOM elements expose removeAttribute; restoreTable calls it on
     // every restored cell (to drop the rounding tooltip). No-op in the stub.
     removeAttribute() {},
     classList: (() => {
@@ -11203,7 +11200,7 @@ function fireMouseClick(buttonEl, fn) {
   // Establish this table as the active one, so the press is an unmoved one.
   lastRightClickedTable = table;
 
-  // Click should run runToggleAction (rounds the table) then send state:tableEnabledChanged.
+  // Click should publish intent:toggleTable (rounding the table) then send state:tableEnabledChanged.
   fireMouseClick(buttonEl);
 
   global.chrome.runtime.sendMessage = origSend;
@@ -11686,7 +11683,7 @@ function fireMouseClick(buttonEl, fn) {
   const gridEl = {
     nodeType: 1, tagName: 'DIV', className: 'grid-wrapper', children: rows,
     classList: gridClassList, parentElement: null, parentNode: null,
-    // runToggleAction calls table.querySelector(...) directly, with no `&&`
+    // applySidebarRounding calls table.querySelector(...) directly, with no `&&`
     // guard, so this must exist (returning "not already rounded"), and
     // syncSwitchForTable's lock check scans querySelectorAll the same way
     // (returning "no rounded cells").
@@ -15175,9 +15172,9 @@ const LADDER_OPTS = {
   }
   eq('DR_BUS.TOPICS: intent:selectTable is in the intent family',
     topics['intent:selectTable'].family, 'intent');
-  // Sprint toggle-split: the toggle view's click handler no longer calls
-  // runToggleAction directly — it reports intent:toggleTable, and content.js
-  // (the sole subscriber) decides what a committed toggle does.
+  // Sprint toggle-split: the toggle view's click handler changes no table
+  // itself — it publishes intent:toggleTable, and content.js (the sole
+  // subscriber) determines what a committed toggle does.
   eq('DR_BUS.TOPICS: intent:toggleTable is in the intent family',
     topics['intent:toggleTable'].family, 'intent');
   eq('DR_BUS.TOPICS: state:selectedTableChanged is in the state-change family',
@@ -17608,8 +17605,8 @@ function makeIssue251SidebarHarness() {
 // the sprint did NOT accept: an unrestorable cell must be left exactly as
 // found — marker, title, and text untouched — instead of resetTable
 // stripping the marker and title off a cell it could not actually restore,
-// and instead of toggleOriginalValues then re-running roundTable over
-// already-rounded text and stamping a FALSE "Original: ..." title over the
+// and instead of a restore followed by a re-run of roundTable over
+// already-rounded text, stamping a FALSE "Original: ..." title over the
 // one attribute that still held the truth. Scenario A drives resetTable
 // directly (the "reset" recovery action); scenario B drives the actual
 // toggle-click wiring end to end. ---
@@ -17696,8 +17693,8 @@ function makeIssue251SidebarHarness() {
   try {
     // --- Instance 1: the content script as originally injected. Rounds
     // both fixture tables directly (bypassing detection/UI wiring,
-    // irrelevant to this mechanism) with DR_DEFAULTS, same as
-    // runToggleAction's fresh-round path. ---
+    // irrelevant to this mechanism) with DR_DEFAULTS, same as the apply
+    // path's fresh round. ---
     eval(contentScriptBundle + `
       globalThis.__ri1_roundTable = roundTable;
       globalThis.__ri1_isTableRounded = isTableRounded;
@@ -17763,8 +17760,8 @@ function makeIssue251SidebarHarness() {
     // --- Scenario B: the toggle-click path (not covered before this fix) —
     // drives the exact wiring a real click on the toggle switch uses
     // (ui-toggle.js's click handler publishes this same intent), end to
-    // end through content.js's intent:toggleTable subscriber,
-    // runToggleAction, and toggleOriginalValues. One click on a
+    // end through content.js's intent:toggleTable subscriber, the settings
+    // write it makes, and the apply that follows. One click on a
     // re-injected, already-rounded table must not double-round the text or
     // stamp a false title over it. ---
     global.__ri2_DR_BUS.publish('intent:toggleTable', { table: table2 });
@@ -17855,12 +17852,12 @@ function makeIssue251SidebarHarness() {
       stub6.classList.contains('dr-ext-morph-locked'), false);
 
     // --- Scenario E (issue #262): toggle clicks on a locked table must not
-    // oscillate the pill. Before the fix, alternating clicks flipped
-    // appliedFlag between 'simplified' and 'original' (both
-    // toggleOriginalValues branches no-op on cells without registry
-    // records), so the pill toggled visually while the table never changed,
-    // and state:tableEnabledChanged reported enabled:false to the sidebar under a
-    // visibly simplified table. ---
+    // oscillate the pillbox. Before the fix, alternating clicks flipped
+    // appliedFlag between 'simplified' and 'original' (both restore branches
+    // no-op on cells without registry records), so the pillbox toggled
+    // visually while the table never changed, and state:tableEnabledChanged
+    // carried enabled:false to the sidebar under a visibly simplified
+    // table. ---
     const stub2 = makeMockButton();
     global.__ri2_tableToggles.set(table2, stub2);
     sentMessages.length = 0;
@@ -17909,13 +17906,22 @@ function makeIssue251SidebarHarness() {
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #272, leak 1: a pill toggle on the CONNECTED table must write the
-// record (DR_STORE.settings.enabled), not just the table DOM and the panel's
-// switch. Before the fix, content.js's same-table intent:toggleTable branch
-// ran runToggleAction + state:tableEnabledChanged and never called setSettings, so
-// any later pull — a panel reopen or a table switch — showed the record's
-// stale enabled over the table's truth, and a reopen-style apply silently
-// re-rounded a table the user had toggled off.
+// A pillbox press on the active table writes the settings record
+// (DR_STORE.settings.enabled), not just the table's cells and the sidebar's
+// switch. Issue #272, leak 1: content.js's same-table intent:toggleTable
+// branch used to simplify the table and send state:tableEnabledChanged
+// without calling setSettings, so any later pull (a sidebar reopen or a table
+// switch) showed the record's stale enabled over the table's truth, and a
+// reopen-style apply silently re-rounded a table the user had toggled off.
+//
+// One press path covers the sidebar open and the sidebar closed alike. An
+// earlier gate read sidebar visibility to pick between the record path and a
+// direct one, so a press made with the sidebar closed changed the page without
+// changing the record, and the next open re-imposed the stale record. The
+// 2026-09-14 sidebar-state-removal design retired that gate, so this one test
+// covers both cases. state:tableEnabledChanged goes out either way: the
+// controller publishes the record, a closed sidebar has no page to receive it,
+// and background.js gates its own relay (the AC4 guard).
 // ---------------------------------------------------------------------------
 (function issue272_sameTablePillToggleWritesRecord() {
   const savedSelected = DR_STORE.getSelectedTable();
@@ -17974,73 +17980,6 @@ function makeIssue251SidebarHarness() {
 
     const toggleMsgs = sent.filter((m) => m.action === 'state:tableEnabledChanged');
     eq('leak-1: one state:tableEnabledChanged per pill toggle, reporting the record — true then false',
-      toggleMsgs.map((m) => m.enabled), [true, false]);
-  } finally {
-    global.chrome.runtime.sendMessage = origSend;
-    DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(savedSettings);
-    DR_STORE.setSelectedTable(savedSelected);
-  }
-})();
-
-// ---------------------------------------------------------------------------
-// Decoupling the toggle from the panel's state: a toggle on the CONNECTED
-// table writes the record whether the panel is open or not. The old gate
-// read panel visibility to pick between the record path and the direct
-// path — controller logic coupled to view state — so a toggle made while
-// the panel was closed changed the page without changing the record, and
-// the next panel open re-imposed the stale record. The record write and the
-// apply that follows never needed the panel; only the gate did.
-// state:tableEnabledChanged is sent regardless too: the controller reports the
-// record; a closed sidebar has no page to receive it, and background.js
-// additionally gates its relay (the AC4 guard), so no delivery decision
-// lives here.
-// ---------------------------------------------------------------------------
-(function closedPanel_connectedTableToggleWritesRecord() {
-  const savedSelected = DR_STORE.getSelectedTable();
-  const savedSettings = DR_STORE.getSettings();
-  const sent = [];
-  const origSend = global.chrome.runtime.sendMessage;
-  global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
-
-  try {
-    DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
-
-    const table = makeToggleTable([
-      [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
-      [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
-    ]);
-    injectToggleEntry(table);
-    DR_STORE.setSelectedTable(table);
-
-    const dataCell = table._cells[3];
-    let _text = dataCell.innerHTML;
-    Object.defineProperties(dataCell, {
-      innerHTML: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
-      innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
-      textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
-    });
-
-    withCreateTreeWalker(function () {
-      DR_BUS.publish('intent:toggleTable', { table }); // on
-      DR_BUS.publish('intent:toggleTable', { table }); // off
-    });
-    eq('closed-panel toggle: the table shows originals after on-then-off',
-      isTableRounded(table), false);
-    eq('closed-panel toggle: the record follows the connected table with the panel closed',
-      DR_STORE.getSettings().enabled, false);
-
-    // The panel-open apply (state:sidebarOpened runs this) must find the record
-    // already honest — no re-round of a table toggled off while closed.
-    withCreateTreeWalker(function () {
-      applySidebarRounding(table, DR_STORE.getSettings());
-    });
-    eq('closed-panel toggle: a later panel open honors the record — the table stays on originals',
-      isTableRounded(table), false);
-
-    const toggleMsgs = sent.filter((m) => m.action === 'state:tableEnabledChanged');
-    eq('closed-panel toggle: the record is reported regardless of panel state (no panel page exists to receive it)',
       toggleMsgs.map((m) => m.enabled), [true, false]);
   } finally {
     global.chrome.runtime.sendMessage = origSend;
@@ -18332,8 +18271,8 @@ function makePressTable(text) {
 // connects the table (the contextmenu handler calls setSelectedTable), so
 // with the sidebar open, "Toggle readable data" on that table must write the
 // record and report it (state:tableEnabledChanged) — the #272 contract. Before the
-// fix, intent:menuClicked called runToggleAction directly: the page changed, the
-// record and the panel both went stale, and the next reopen or switch
+// fix, intent:menuClicked simplified the table directly: the page changed,
+// the settings record and the sidebar both went stale, and the next reopen or switch
 // re-imposed the stale record. Fresh-eval fixture modeled on the
 // double-invocation test above; same minimal grid, real captured handlers.
 // ---------------------------------------------------------------------------
