@@ -7862,12 +7862,13 @@ function makeCountingNumericProbe() {
 
 // --- AC4: a registered table resolves at the registry route ---
 //
-// The proof that the nomination step never ran goes through the ports the
-// resolver takes, not through the source text: opts.isSeen records every
-// element the registry walk asked about, and opts.numericProbe counts the
-// data-test reads the nomination step would spend. The last pair of
-// assertions runs the same click with nothing registered, so the zero count
-// above stands for "the step did not run" rather than "the probe is inert".
+// The proof goes through the ports the resolver takes, not through the
+// source text: opts.numericProbe counts the data-test reads the nomination
+// step would spend, so a zero count shows the step spent none, and
+// opts.isSeen records the elements the resolver asked the registry about.
+// The last pair of assertions runs the same click with nothing registered,
+// so the zero count above stands for "the step spent no read" rather than
+// "the probe is inert".
 
 (function rightClickRegisters_AC4_aRegisteredTableResolvesAtTheRegistryRoute() {
   const grid = makeDatabaseQueryGrid();
@@ -7888,7 +7889,7 @@ function makeCountingNumericProbe() {
     registryProbe.calls, 0);
   eq('findTargetTable AC4: the registry walk stops at the scrolling pane',
     asked.length > 0 && asked[asked.length - 1] === grid.scrollPaneEl, true);
-  eq('findTargetTable AC4: the registry walk never reaches the wrapper',
+  eq('findTargetTable AC4: no step asks the registry about the wrapper',
     asked.includes(grid.wrapperEl), false);
 
   const freshProbe = makeCountingNumericProbe();

@@ -833,9 +833,9 @@ function looksLikeGrid(el, opts = {}) {
  * this element already been found" is opts.isSeen, a caller-supplied check
  * (e.g. the app model's table registry), following the same contract
  * findTables (below) already uses. Without opts.isSeen, step 2 is a no-op
- * and cases 3 and 4 report isNew: true throughout — this function keeps no
- * registry of its own, so with nothing to consult it cannot claim to have
- * seen anything before.
+ * and cases 3 and 4 report isNew: true throughout: this function keeps no
+ * registry of its own, so without opts.isSeen every result reports isNew:
+ * true.
  *
  * It returns { handle, isNew }, where `handle` is the resolved element and
  * `isNew` tells the caller whether this is the first time resolution has
@@ -880,8 +880,9 @@ function findTargetTable(el, opts = {}) {
   // The step applies the configured nesting depth to the whole nest, so the
   // element it selects can be a sibling of the clicked element: a click in a
   // vendor grid's row-number gutter resolves the scrolling pane beside it.
-  // The step's pass 1 reports native tables, which step 1 above already
-  // covers, so the first result that is not a native table is the nomination.
+  // Pass 1 of the step returns nothing here: a qualifying chain root holds no
+  // native table other than accessibility artifacts, so the step's one result
+  // is the nomination.
   //
   // The step returns nothing for a nest whose chain is empty, for a depth
   // holding more than one element, and for a nest already holding a registered
@@ -890,8 +891,7 @@ function findTargetTable(el, opts = {}) {
   // registered nest.
   const chainRoot = chainRootOf(el, opts);
   if (chainRoot) {
-    const nominated = findTables(chainRoot, { ...opts, isSeen })
-      .find((result) => result.handle.tagName !== 'TABLE');
+    const nominated = findTables(chainRoot, { ...opts, isSeen })[0];
     if (nominated) return { handle: nominated.handle, isNew: !isSeen(nominated.handle) };
   }
 
