@@ -1089,7 +1089,7 @@ function roundTable(table, options) {
 
         const timerId = setTimeout(() => {
           reapplyGridRounding(wrapperEl);
-        }, GRID_REAPPLY_DEBOUNCE_MS);
+        }, DR_TUNING.gridRedrawDelayMs);
 
         gridReapplyTimers.set(wrapperEl, timerId);
       });
