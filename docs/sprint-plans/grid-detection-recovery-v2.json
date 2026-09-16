@@ -13,7 +13,11 @@
     "branch_naming": "refactor/<label>, fix/<label>, chore/<label>, feature/<label> by change type, as each sprint's branch field states; never claude/ or session/",
     "commit_convention": "Conventional Commits (fix:, refactor:, feat:, docs:, test:); a vocabulary definition lands as its own docs: commit on the sprint branch",
     "vocabulary": "docs/vocabulary.md is the canon; read it in full before the first tool call, sweep new prose at every commit, and define a new concept on the branch that makes it real",
-    "docs_rule": "A behavior change updates every living doc it invalidates on the same branch; each sprint's dev notes name its docs. Regression fixtures are synthetic and minimized; a raw capture never enters the repository"
+    "docs_rule": "A behavior change updates every living doc it invalidates on the same branch; each sprint's dev notes name its docs. Regression fixtures are synthetic and minimized; a raw capture never enters the repository",
+    "dependent_policy": "after-merge",
+    "version_bump_policy": "merge-workflow",
+    "base_branch_writes": "pull-request",
+    "pr_template": "AGENTS.md, section Pull requests"
   },
   "sprints": [
     {
@@ -32,7 +36,7 @@
       "depends_on": [],
       "version_bump": "patch",
       "complexity": "M",
-      "dev_notes": "Constants: DR_TUNING in chrome-extension/constants.js, keys as in scope. Pitfalls: the suite evaluates the detection layer alone at three sites (a multi-file sandbox near the sidebar tests, the extractFunctionBody reader, and the phantom-table sandbox that carries only a fake document), and two source guards (GR3b, GR6j) scan _makeCellObj by text; removing DEFAULT_VENDOR_PROFILES above it shifts lines, not the scanned text. The configuration file is already loaded by all three contexts (its header says so), so no manifest or sidebar.html change is needed. Keep the ports: opts.vendorProfiles || DR_TUNING.vendorProfiles. Version files are workflow-bumped at merge; do not touch them."
+      "dev_notes": "Constants: DR_TUNING in chrome-extension/constants.js, keys as in scope. Pitfalls: the suite evaluates the detection layer alone at three sites (a multi-file sandbox near the sidebar tests, the extractFunctionBody reader, and the phantom-table sandbox that carries only a fake document), and two source guards (GR3b, GR6j) scan _makeCellObj by text; removing DEFAULT_VENDOR_PROFILES above it shifts lines, not the scanned text. The configuration file is already loaded by all three contexts (its header says so), so no manifest or sidebar.html change is needed. Keep the ports: opts.vendorProfiles || DR_TUNING.vendorProfiles."
     },
     {
       "label": "data-test-budget",
@@ -49,7 +53,7 @@
       "depends_on": ["detection-constants"],
       "version_bump": "patch",
       "complexity": "S",
-      "dev_notes": "Constant: dataTestCellBudget in DR_TUNING. The retiring comment above the old caps explains per-row bounds as protection against a wide header; D3 accepts that case, so the comment retires with the caps. Count cell reads, not rows, and count an empty cell as a read. The hasMultipleColumns pre-check walks rows until one holds two cells; leave it. The shipped data test against the Databricks-shaped fixture must still return a pass at six rows by four columns. Version files are workflow-bumped at merge; do not touch them."
+      "dev_notes": "Constant: dataTestCellBudget in DR_TUNING. The retiring comment above the old caps explains per-row bounds as protection against a wide header; D3 accepts that case, so the comment retires with the caps. Count cell reads, not rows, and count an empty cell as a read. The hasMultipleColumns pre-check walks rows until one holds two cells; leave it. The shipped data test against the Databricks-shaped fixture must still return a pass at six rows by four columns."
     },
     {
       "label": "grid-nesting-rule",
@@ -69,7 +73,7 @@
       "depends_on": ["detection-constants"],
       "version_bump": "patch",
       "complexity": "M",
-      "dev_notes": "Constant: nestingDepth in DR_TUNING. Keep the detection layer reporting only: the step returns { handle, isNew } entries and the callers register through createToggleForTable, which re-runs the data test; accept the second read. Key chains by chain root and return nothing for a root whose chain already holds a registered table, so a rediscovery is idempotent. The fixture: rebuild docs/test-pages/tables.html §13's shape with invented values, per the regression-fixture convention; for the two-siblings edge rule give the pinned pane a second column so it passes the data test. The pinned pane drops out of the chain because the data test on it alone fails (one column); the plan relies on the chain rule, never on that coincidence, so the depth-0 test pins the wrapper choice directly. Vocabulary definitions land as their own docs: commit. Version files are workflow-bumped at merge; do not touch them."
+      "dev_notes": "Constant: nestingDepth in DR_TUNING. Keep the detection layer reporting only: the step returns { handle, isNew } entries and the callers register through createToggleForTable, which re-runs the data test; accept the second read. Key chains by chain root and return nothing for a root whose chain already holds a registered table, so a rediscovery is idempotent. The fixture: rebuild docs/test-pages/tables.html §13's shape with invented values, per the regression-fixture convention; for the two-siblings edge rule give the pinned pane a second column so it passes the data test. The pinned pane drops out of the chain because the data test on it alone fails (one column); the plan relies on the chain rule, never on that coincidence, so the depth-0 test pins the wrapper choice directly. Vocabulary definitions land as their own docs: commit."
     },
     {
       "label": "pending-retest",
@@ -87,7 +91,7 @@
       "depends_on": ["grid-nesting-rule"],
       "version_bump": "patch",
       "complexity": "M",
-      "dev_notes": "Constant: pendingRetestCap in DR_TUNING, starting at 100 (the plan's §6 holds the reasoning). The harness stubs MutationObserver as a no-op; the re-apply observer tests and the removed-subtree tests already install capturing stubs, and the pattern to copy is the debounce in roundTable's virtualized branch. Hold the per-root observer, timer, and count in WeakMaps beside gridObservers and gridReapplyTimers; the pending record is page-held state outside the model, and the design doc's list of such state must say so. The vocabulary definition lands as its own docs: commit. Version files are workflow-bumped at merge; do not touch them."
+      "dev_notes": "Constant: pendingRetestCap in DR_TUNING, starting at 100 (the plan's §6 holds the reasoning). The harness stubs MutationObserver as a no-op; the re-apply observer tests and the removed-subtree tests already install capturing stubs, and the pattern to copy is the debounce in roundTable's virtualized branch. Hold the per-root observer, timer, and count in WeakMaps beside gridObservers and gridReapplyTimers; the pending record is page-held state outside the model, and the design doc's list of such state must say so. The vocabulary definition lands as its own docs: commit."
     },
     {
       "label": "right-click-registers",
@@ -106,7 +110,7 @@
       "depends_on": ["grid-nesting-rule"],
       "version_bump": "patch",
       "complexity": "M",
-      "dev_notes": "findTargetTable reports only and keeps its { handle, isNew } shape; the data test already runs inside the detection layer, so nomination runs there too, and registration stays with the controller. The route returns the depth-selected element even when the clicked element is a different qualifying element. The registry walk stays ahead of the new route so a registered table never re-nominates. When pending-retest has merged, registration through the step clears the pending record by the plan's §3.4 design; nothing here touches it. Version files are workflow-bumped at merge; do not touch them."
+      "dev_notes": "findTargetTable reports only and keeps its { handle, isNew } shape; the data test already runs inside the detection layer, so nomination runs there too, and registration stays with the controller. The route returns the depth-selected element even when the clicked element is a different qualifying element. The registry walk stays ahead of the new route so a registered table never re-nominates. When pending-retest has merged, registration through the step clears the pending record by the plan's §3.4 design; nothing here touches it."
     },
     {
       "label": "shape-fingerprint",
@@ -125,7 +129,7 @@
       "depends_on": ["grid-nesting-rule"],
       "version_bump": "patch",
       "complexity": "L",
-      "dev_notes": "No new tuning value. The header row is the first row the adapter returns (an outside row when row groups exist, the head section on a native table). Keep the fingerprint plain-value. The press subscriber reads isTableRounded before its one settings write; the comparison runs before that read, so a press on a replaced result set reads the fresh entry's raw form and turns simplification on. Extracting the teardown is a one-function refactor inside this sprint's scope; both the removal observer and the mismatch path call it. The vocabulary definition lands as its own docs: commit. Version files are workflow-bumped at merge; do not touch them."
+      "dev_notes": "No new tuning value. The header row is the first row the adapter returns (an outside row when row groups exist, the head section on a native table). Keep the fingerprint plain-value. The press subscriber reads isTableRounded before its one settings write; the comparison runs before that read, so a press on a replaced result set reads the fresh entry's raw form and turns simplification on. Extracting the teardown is a one-function refactor inside this sprint's scope; both the removal observer and the mismatch path call it. The vocabulary definition lands as its own docs: commit."
     },
     {
       "label": "hidden-cells",
@@ -141,7 +145,7 @@
       "depends_on": [],
       "version_bump": "patch",
       "complexity": "S",
-      "dev_notes": "The plan's §3.7 holds the Chromium evidence and the two mechanisms behind it: the HTML specification returns descendant text for an element that is not being rendered, and the adapter's read falls back to textContent when innerText is empty. The harness's mock cells take an explicit innerText, so a mock with an empty rendered read and a numeric raw text models a hidden cell exactly. The branch prefix is chore/ because the sprint changes tests and docs only; if the developer finds a read that misses a hidden cell, that is a finding for the product manager, not a fix to fold in. Version files are workflow-bumped at merge; do not touch them."
+      "dev_notes": "The plan's §3.7 holds the Chromium evidence and the two mechanisms behind it: the HTML specification returns descendant text for an element that is not being rendered, and the adapter's read falls back to textContent when innerText is empty. The harness's mock cells take an explicit innerText, so a mock with an empty rendered read and a numeric raw text models a hidden cell exactly. The branch prefix is chore/ because the sprint changes tests and docs only; if the developer finds a read that misses a hidden cell, that is a finding for the product manager, not a fix to fold in."
     },
     {
       "label": "capture-detection-values",
@@ -158,7 +162,7 @@
       "depends_on": ["detection-constants"],
       "version_bump": "patch",
       "complexity": "S",
-      "dev_notes": "No new tuning value. CAPTURE_FORMAT lives in the state serializer and the sidebar reads it too. The vendor profiles' selectors are strings that reach the file, so they go through escapeHtml like every other value. Version files are workflow-bumped at merge; do not touch them."
+      "dev_notes": "No new tuning value. CAPTURE_FORMAT lives in the state serializer and the sidebar reads it too. The vendor profiles' selectors are strings that reach the file, so they go through escapeHtml like every other value."
     }
   ]
 }

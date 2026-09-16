@@ -123,7 +123,15 @@ probe), and #120 (extracted cells on grids) stay open; §7 lists them.
 - **Commit convention:** Conventional Commits (`fix:`, `refactor:`, `feat:`,
   `docs:`, `test:`, `chore(version):` in the log). A vocabulary definition lands
   as its own `docs:` commit on the sprint branch.
-- **PR template:** none.
+- **PR template:** none as a file; `AGENTS.md`, section Pull requests, states the
+  body rules.
+- **Dependent policy:** `after-merge`. CI runs only on pull requests based on
+  `main`, so a dependent sprint branches from `main` after its parent merges,
+  and a run stops at each wave boundary.
+- **Version bump policy:** `merge-workflow`. The workflow below bumps at merge;
+  a sprint branch never touches a version file.
+- **Base branch writes:** `pull-request`. Nothing lands on `main` without a
+  pull request; the run log arrives through one.
 - **Version-bump workflow:** detected at `.github/workflows/bump-version.yml`
   (`pull_request` closed on `main`, gated on `merged == true`, bumps both
   version files and merges its own pull request).
@@ -751,3 +759,7 @@ flowchart TD
   product manager.
 - 2026-09-15: The re-test cap starts at 100, per the product manager; §6 holds
   the reasoning.
+- 2026-09-16: The conventions state the three execution policies the
+  sprint-stack skill reads (dependents after merge, bumps by the merge
+  workflow, base-branch writes through a pull request) and point the pull
+  request body at the conventions file. The handoff JSON carries the same keys.
