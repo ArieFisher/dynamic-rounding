@@ -14269,11 +14269,13 @@ function fireMouseClick(buttonEl, fn) {
   }
 })();
 
-// The pre-move values, hand-copied from origin/main's lib/dr-table/detect.js
+// Ten pre-move values, hand-copied from origin/main's lib/dr-table/detect.js
 // (read via `git show origin/main:chrome-extension/lib/dr-table/detect.js`)
-// and the design doc's key table. The sprint moves these values; it changes
-// none of them. Key order matches constants.js's DR_TUNING declaration, so
-// the JSON.stringify-based eq() comparison below is not order-sensitive noise.
+// and the design doc's key table, unchanged by the move. The eleventh key,
+// dataTestCellBudget, is new: the data-test-budget sprint adds it straight to
+// its final position, so it is not a moved value, only a pinned one. Key
+// order matches constants.js's DR_TUNING declaration, so the
+// JSON.stringify-based eq() comparison below is not order-sensitive noise.
 const PRE_MOVE_TUNING = {
   gridMinChildren: 5,
   gridWalkDepthCap: 15,
@@ -14281,6 +14283,7 @@ const PRE_MOVE_TUNING = {
   gridColumnWidthAgreement: 0.8,
   gridRepetitionShare: 0.5,
   gridDisplayValues: ['grid', 'flex', 'inline-grid', 'inline-flex'],
+  dataTestCellBudget: 1000,
   vendorProfiles: [
     {
       name: 'databricks',
@@ -14425,9 +14428,9 @@ const PRE_MOVE_TUNING = {
   );
 
   eq('tuning block: the combined sandbox does not throw', sandbox.threw, null);
-  eq('tuning block: DR_TUNING exposes exactly the ten pre-move keys',
+  eq('tuning block: DR_TUNING exposes exactly eleven keys, the ten pre-move keys plus dataTestCellBudget',
     sandbox.outcomes.tuningKeys, Object.keys(PRE_MOVE_TUNING).sort());
-  eq('tuning block: DR_TUNING carries every pre-move value unchanged',
+  eq('tuning block: DR_TUNING carries every pre-move value unchanged, plus dataTestCellBudget at 1000',
     sandbox.outcomes.tuning, PRE_MOVE_TUNING);
   eq('tuning block: looksLikeGrid rejects 4 children (below gridMinChildren)',
     sandbox.outcomes.minChildrenBelowFails, false);
