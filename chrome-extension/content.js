@@ -284,11 +284,17 @@ function applySidebarRounding(table, options) {
   syncSwitchForTable(table);
 }
 
-// Detect and attach toggles for tables/grids inside (or equal to) a node added
-// to the DOM. Mirrors injectTableToggles' two passes, including the phantom
-// a11y-table filtering required by issue #128 so dynamically-rendered SPA grids
-// (e.g. Kaggle's Data Explorer) are auto-detected and off-screen chart a11y
-// tables are not. Extracted as a named function so the detection is unit-testable
+// Detect and attach toggles for tables and grids inside (or equal to) a node
+// added to the page. Pass 1 covers native <table> elements, skipping the
+// accessibility artifacts issue #128 calls out, so a dynamically rendered
+// single-page-application grid is found and an off-screen chart fallback is
+// not. Pass 2 hands the grids to the nomination step in the detection layer
+// (findTables), which lists the added node itself when it carries a grid or
+// table role, walks out to the node's chain root, and returns one element per
+// nest at the configured nesting depth — the same step the load-time scan
+// runs. The walk out matters here: a node added inside a wrapper already in
+// the page re-evaluates the whole nest rather than registering itself.
+// Extracted as a named function so the detection is unit-testable
 // independently of the live MutationObserver wiring below.
 function injectTogglesForAddedNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
@@ -302,24 +308,15 @@ function injectTogglesForAddedNode(node) {
         createToggleForTable(table);
       }
     });
-    // Pass 2: cheap ARIA pass for added nodes — mirror injectTableToggles Pass 2.
-    // A grid that only embeds phantom a11y tables must still be detected.
-    node.querySelectorAll(GRID_ARIA_SELECTOR).forEach(el => {
-      if (DR_STORE.hasTable(el)) return;
-      if (el.tagName === 'TABLE') return;
-      if (Array.from(el.querySelectorAll('table')).some(t => !isPhantomA11yTable(t))) return;
-      el.classList.add('dr-ext-grid');
-      createToggleForTable(el);
-    });
   }
-  // The added node itself may be a [role="grid"/"table"] non-table element.
-  if (node.tagName !== 'TABLE' && typeof node.matches === 'function' &&
-      node.matches(GRID_ARIA_SELECTOR) && !DR_STORE.hasTable(node)) {
-    if (!Array.from(node.querySelectorAll('table')).some(t => !isPhantomA11yTable(t))) {
-      node.classList.add('dr-ext-grid');
-      createToggleForTable(node);
-    }
-  }
+  // Pass 2: the nomination step. Its native results repeat pass 1's above and
+  // come back with isNew false, so the two guards below leave them alone.
+  findTables(node, { isSeen: DR_STORE.hasTable }).forEach(({ handle, isNew }) => {
+    if (!isNew) return;
+    if (handle.tagName === 'TABLE') return;
+    handle.classList.add('dr-ext-grid');
+    createToggleForTable(handle);
+  });
 }
 
 if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {

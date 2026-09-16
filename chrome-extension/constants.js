@@ -43,6 +43,8 @@ const DR_DEFAULTS = {
  * as a bare global, with no fallback copy of any value in any of the three.
  */
 const DR_TUNING = {
+  // --- Nomination step (lib/dr-table/detect.js: findTables) ---
+  nestingDepth: 1,
   // --- Grid geometry probe (lib/dr-table/detect.js: looksLikeGrid) ---
   gridMinChildren: 5,
   gridWalkDepthCap: 15,
@@ -55,7 +57,7 @@ const DR_TUNING = {
   // --- Vendor grids (lib/dr-table/detect.js: GridAdapter) ---
   vendorProfiles: [
     {
-      name: 'databricks',
+      name: 'database-query',
       classToken: 'dg--',
       scrollContainerSelectors: ['.dg--grid-scroll-container', '.dg--grid-container'],
       pinnedPaneSelectors: ['.dg--pinned-grid'],

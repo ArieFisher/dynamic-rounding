@@ -61,7 +61,7 @@ This guarantees that the structural HTML elements (like the spans dictating widt
 
 Not every "table" on the modern web is an HTML `<table>`. Many data-heavy apps render results as a **data grid** — a tabular UI built from plain `<div>` containers, usually **virtualized** (only the visible rows exist in the DOM; nodes are recycled as you scroll). Real-world examples:
 
-- **Databricks SQL** — components prefixed `dg--` (`.dg--virtual-row`, `.dg--cell`).
+- **Database query result grids** — components prefixed `dg--` (`.dg--virtual-row`, `.dg--cell`).
 - **AG Grid** (financial dashboards) — `.ag-center-cols-viewport` + a pinned `.ag-pinned-left-cols-container`.
 - **AWS Console** — the **Cloudscape** design system (`awsui` / `.awsui-table-wrapper`).
 - **Azure Data Studio / VS Code** — SlickGrid / Monaco grid (`monaco-workbench`).
@@ -91,7 +91,7 @@ Because virtualized grids recycle rows on scroll and rewrite cells in place on s
 
 A `display: grid` / `flex` container is not necessarily a *data* grid — it might be a nav menu, a card layout, or a photo gallery. The extension deliberately gives these no pillbox and no rounding. Two things keep them out:
 
-1. **Detection runs on demand, narrowly.** The load-time scan makes two passes: every native `<table>` (minus accessibility artifacts — hidden tables that exist for screen readers or as a chart's fallback), then every element marked `role="grid"` or `role="table"`. An unmarked `<div>` structure is only ever evaluated when you **right-click inside it** (`findTargetTable` walks up calling `looksLikeGrid`); a known vendor class (`dg--`, `ag-`) only short-circuits that probe's geometry step, it does not get scanned at load time on its own.
+1. **Detection runs on demand, narrowly.** The load-time scan makes two passes: every native `<table>` (minus accessibility artifacts — hidden tables that exist for screen readers or as a chart's fallback), then the nomination step over the elements marked `role="grid"` or `role="table"`. The step registers one table per nest of role-bearing elements: it builds a containment chain from the nested elements that pass the data test and takes the element at the configured nesting depth (`nestingDepth` in the tuning block, 1 today — the first inner layer, so a vendor grid's scrolling pane registers and its pinned row-number gutter stays outside the table). A depth holding more than one element falls back outward to the nearest shallower depth holding exactly one. A chain shorter than the configured depth clamps to its innermost element. The pass that watches for nodes added later runs the same step. An unmarked `<div>` structure is only ever evaluated when you **right-click inside it** (`findTargetTable` walks up calling `looksLikeGrid`); a known vendor class (`dg--`, `ag-`) only short-circuits that probe's geometry step, it does not get scanned at load time on its own.
 2. **`looksLikeGrid` (`lib/dr-table/detect.js`) applies a cheap-first ladder**, and a layout grid fails at least one rung:
    - ≥ N repetitive children sharing a class or child-shape (rejects ad-hoc layouts);
    - a consistent modal cell count across rows;
