@@ -11001,8 +11001,8 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
     isDataTable(table), true);
 })();
 
-// AC5: the retired rule left native tables unbounded, so a number far past
-// 1000 cells would have passed. The budget applies to native tables and
+// Goal, native tables: the retired rule left native tables unbounded, so a
+// number far past 1000 cells would have passed. The budget applies to native tables and
 // grids alike, so this table fails.
 (function dataTestBudget_nativeTable_farPastBudgetFails() {
   const budget = DR_TUNING.dataTestCellBudget;
@@ -11017,11 +11017,15 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
 // Source guard: the retired per-row and per-grid sample constants carry no
 // definition anywhere in the detection layer.
 (function dataTestBudget_retiredSampleConstantsGone() {
+  if (detectCode === null) {
+    eq('data test: source file lib/dr-table/detect.js present in manifest', false, true);
+    return;
+  }
   const retiredNames = ['GRID_IS_DATA_TABLE_CELL_SAMPLE', 'GRID_IS_DATA_TABLE_ROW_SAMPLE'];
   for (const name of retiredNames) {
     const definitionPattern = new RegExp(`\\b(const|let|var)\\s+${name}\\b`);
     eq(`data test: the detection layer carries no definition of the retired ${name}`,
-      definitionPattern.test(detectCode || ''), false);
+      definitionPattern.test(detectCode), false);
   }
 })();
 
@@ -11032,9 +11036,9 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
   const readmeMd = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  // Loose enough to survive a rewording, tight enough to fail if the budget
-  // sentence is dropped: the digits 1000 must sit within 80 characters of
-  // either "data test" or "cell read(s)".
+  // The pattern matches a reworded sentence and fails on a sentence with no
+  // budget: the digits 1000 must sit within 80 characters of either
+  // "data test" or "cell read(s)".
   const statesBudget = (text) =>
     /1000[\s\S]{0,80}(data test|cell reads?)|(data test|cell reads?)[\s\S]{0,80}1000/i.test(text);
   eq('living docs: chrome-extension/README.md states the 1000-cell budget',

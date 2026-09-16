@@ -1043,9 +1043,9 @@ function isDataTable(table, opts = {}) {
   if (!hasMultipleColumns) return false;
   // The scan spends one budget of DR_TUNING.dataTestCellBudget cell reads,
   // counted across every row and cell in document order, on native tables
-  // and grids alike. An empty cell counts as a read. The scan stops at the
-  // first cell that parses as a finite number, and it stops once the budget
-  // is spent even when no number turned up.
+  // and grids alike. An empty cell counts as a read. The scan returns true
+  // at the first cell that parses as a finite number, and returns false once
+  // it has spent the budget with no number found.
   let cellsRead = 0;
   for (let i = 0; i < rows.length; i++) {
     const cells = rows[i].getCells();
