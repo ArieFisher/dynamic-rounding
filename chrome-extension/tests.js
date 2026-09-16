@@ -8068,6 +8068,158 @@ function makeGridWrapper(rowData, opts) {
 }
 
 // ---------------------------------------------------------------------------
+// A synthetic database-query-shaped vendor grid.
+//
+// The shape rebuilds docs/test-pages/tables.html §13 with invented values, per
+// the repository's regression-fixture convention: a role="table" wrapper
+// holding a pinned pane of leading columns beside a scrolling pane of data,
+// all under dg-- classes, with rows paired across the panes by data-row. The
+// nomination step, the two adapters, and the pillbox builder all read these
+// nodes, so each one answers the selector queries, the role read, the class
+// list, the parent link, and the text reads those three make.
+// ---------------------------------------------------------------------------
+
+// Match one node against the selector forms this file's fixtures are queried
+// with: a comma-separated list whose parts are an attribute selector on role,
+// a single class, or a tag name.
+function dgNodeMatches(node, selector) {
+  return String(selector).split(',').map((part) => part.trim()).filter(Boolean).some((part) => {
+    const roleMatch = /^\[role="([^"]+)"\]$/.exec(part);
+    if (roleMatch) return node.getAttribute('role') === roleMatch[1];
+    if (part.charAt(0) === '.') return node.classList.contains(part.slice(1));
+    return String(node.tagName).toUpperCase() === part.toUpperCase();
+  });
+}
+
+// Every element descendant of `node`, in document order, that matches.
+function dgDescendantsMatching(node, selector) {
+  const found = [];
+  (function visit(current) {
+    for (const child of current.children) {
+      if (dgNodeMatches(child, selector)) found.push(child);
+      visit(child);
+    }
+  })(node);
+  return found;
+}
+
+// One element node of the fixture. `childNodes` holds text nodes for a cell
+// and element nodes everywhere else; `children` is the element half, which is
+// what the adapters walk when a selector finds nothing.
+function makeDgNode(tagName, className, role, childNodes) {
+  const classes = new Set(String(className || '').split(/\s+/).filter(Boolean));
+  const kids = childNodes || [];
+  const node = {
+    nodeType: 1,
+    tagName: tagName,
+    childNodes: kids,
+    children: kids.filter((child) => child.nodeType === 1),
+    dataset: {},
+    parentElement: null,
+    parentNode: null,
+    style: {},
+    textContent: '',
+    innerText: '',
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      contains(name) { return classes.has(name); },
+    },
+    getAttribute(name) { return name === 'role' ? (role || null) : null; },
+    removeAttribute() {},
+    matches(selector) { return dgNodeMatches(node, selector); },
+    querySelector(selector) { return dgDescendantsMatching(node, selector)[0] || null; },
+    querySelectorAll(selector) { return dgDescendantsMatching(node, selector); },
+    getBoundingClientRect() { return { top: 20, right: 420, bottom: 260, left: 20, width: 400, height: 240 }; },
+  };
+  Object.defineProperty(node, 'className', {
+    get() { return Array.from(classes).join(' '); },
+    configurable: true,
+  });
+  for (const child of node.children) {
+    child.parentElement = node;
+  }
+  return node;
+}
+
+// One dg--cell wrapping a single text node, the shape the grid write path
+// patches in place.
+function makeDgCell(text) {
+  const cell = makeDgNode('DIV', 'dg--cell', null, [makeTextNode(text)]);
+  cell.textContent = text;
+  cell.innerText = text;
+  return cell;
+}
+
+function makeDgRow(rowIndex, cellTexts) {
+  const row = makeDgNode('DIV', 'dg--virtual-row', null, cellTexts.map(makeDgCell));
+  row.dataset = { row: String(rowIndex) };
+  return row;
+}
+
+/**
+ * Build the synthetic database-query-shaped grid.
+ *
+ * Three parameters cover the cases the nesting rule turns on:
+ *   - pinnedColumns: cells in each pinned row. One column fails the data test,
+ *     so the pinned pane drops out of the containment chain and depth 1 holds
+ *     the scrolling pane alone. Two columns pass it, which puts two elements
+ *     at depth 1.
+ *   - rows: row pairs across the two panes. Zero builds an empty wrapper, the
+ *     shape a later sprint retests once its rows arrive.
+ *   - plainWrapper: puts one role-less div between the wrapper and the two
+ *     panes. A nesting depth counts qualifying elements, so the extra layer
+ *     leaves both panes at depth 1. `paneParentEl` in the result is that div,
+ *     and null when the flag is false.
+ *
+ * @param {{pinnedColumns?: number, rows?: number, plainWrapper?: boolean}} [opts]
+ * @returns {{wrapperEl: object, paneParentEl: object|null, pinnedPaneEl: object,
+ *            scrollPaneEl: object, pinnedRowEls: object[], scrollRowEls: object[]}}
+ */
+function makeDatabaseQueryGrid(opts) {
+  const options = opts || {};
+  const pinnedColumns = options.pinnedColumns === undefined ? 1 : options.pinnedColumns;
+  const rowCount = options.rows === undefined ? 6 : options.rows;
+  const plainWrapper = !!options.plainWrapper;
+
+  // Invented values. The identifier column names a measure; the two numeric
+  // columns hold a count and a rate, one order of magnitude apart so a
+  // set-aware pass has something to separate.
+  const measures = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+  const counts = ['7,318,204', '551,077', '2,140,663', '73,915', '10,428', '3,906'];
+  const rates = ['284.51', '31.77', '58.02', '7.44', '2.19', '0.63'];
+  // The pinned pane's leading column is the row-number gutter; a second
+  // pinned column holds a short label so the pane passes the data test only
+  // when the caller sets two pinned columns.
+  const gutterLabels = ['north', 'south', 'east', 'west', 'inland', 'coastal'];
+
+  const pinnedRowEls = [];
+  const scrollRowEls = [];
+  for (let i = 0; i < rowCount; i++) {
+    const pinnedTexts = [String(i + 1)];
+    for (let c = 1; c < pinnedColumns; c++) pinnedTexts.push(gutterLabels[i % gutterLabels.length]);
+    pinnedRowEls.push(makeDgRow(i, pinnedTexts));
+    scrollRowEls.push(makeDgRow(i, [
+      measures[i % measures.length],
+      counts[i % counts.length],
+      rates[i % rates.length],
+    ]));
+  }
+
+  const pinnedPaneEl = makeDgNode('DIV', 'dg--grid-container dg--pinned-grid', 'grid', pinnedRowEls);
+  const scrollPaneEl = makeDgNode('DIV', 'dg--grid-container dg--grid-scroll-container', 'grid', scrollRowEls);
+  // makeDgNode links each element child back to its parent, so building the
+  // plain layer first and the wrapper around it wires both directions.
+  const paneParentEl = plainWrapper
+    ? makeDgNode('DIV', 'dg--pane-row', null, [pinnedPaneEl, scrollPaneEl])
+    : null;
+  const wrapperEl = makeDgNode('DIV', 'dg--table-wrapper', 'table',
+    paneParentEl ? [paneParentEl] : [pinnedPaneEl, scrollPaneEl]);
+
+  return { wrapperEl, paneParentEl, pinnedPaneEl, scrollPaneEl, pinnedRowEls, scrollRowEls };
+}
+
+// ---------------------------------------------------------------------------
 // GR1: Unlabelled variable-row-height grid — structural extraction + nodeValue rounding
 // The headline test: no ARIA roles, no dg-- classes. GridAdapter must fall back
 // to direct children as rows and direct row-children as cells.
@@ -14398,14 +14550,17 @@ function fireMouseClick(buttonEl, fn) {
   }
 })();
 
-// Ten pre-move values, hand-copied from origin/main's lib/dr-table/detect.js
-// (read via `git show origin/main:chrome-extension/lib/dr-table/detect.js`)
-// and the design doc's key table, unchanged by the move. The eleventh key,
-// dataTestCellBudget, is new: the data-test-budget sprint adds it straight to
-// its final position, so it is not a moved value, only a pinned one. Key
-// order matches constants.js's DR_TUNING declaration, so the
+// The tuning block's expected contents. Ten values are the pre-move ones,
+// hand-copied from origin/main's lib/dr-table/detect.js (read via
+// `git show origin/main:chrome-extension/lib/dr-table/detect.js`) and the
+// design doc's key table; the detection-constants sprint moved them and
+// changed none of them. Two keys have no pre-move value: nestingDepth, the
+// nomination step's configured depth from the grid-nesting-rule sprint, and
+// dataTestCellBudget, the data test's cell budget from the data-test-budget
+// sprint. Key order matches constants.js's DR_TUNING declaration, so the
 // JSON.stringify-based eq() comparison below is not order-sensitive noise.
 const PRE_MOVE_TUNING = {
+  nestingDepth: 1,
   gridMinChildren: 5,
   gridWalkDepthCap: 15,
   gridColumnWidthSample: 10,
@@ -14557,9 +14712,9 @@ const PRE_MOVE_TUNING = {
   );
 
   eq('tuning block: the combined sandbox does not throw', sandbox.threw, null);
-  eq('tuning block: DR_TUNING exposes exactly eleven keys, the ten pre-move keys plus dataTestCellBudget',
+  eq('tuning block: DR_TUNING exposes exactly twelve keys, the ten pre-move keys plus nestingDepth and dataTestCellBudget',
     sandbox.outcomes.tuningKeys, Object.keys(PRE_MOVE_TUNING).sort());
-  eq('tuning block: DR_TUNING carries every pre-move value unchanged, plus dataTestCellBudget at 1000',
+  eq('tuning block: DR_TUNING carries every pre-move value unchanged, plus nestingDepth at 1 and dataTestCellBudget at 1000',
     sandbox.outcomes.tuning, PRE_MOVE_TUNING);
   eq('tuning block: looksLikeGrid rejects 4 children (below gridMinChildren)',
     sandbox.outcomes.minChildrenBelowFails, false);
@@ -14694,6 +14849,440 @@ const PRE_MOVE_TUNING = {
     findTables(root).length, 0);
   eq('findTables: a pass-through tableFilter keeps the phantom a11y table',
     findTables(root, { tableFilter: () => false }).length, 1);
+})();
+
+// =============================================================================
+// Sprint grid-nesting-rule: one registration per grid, at the configured depth
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.3 and the
+// grid-nesting-rule block in §5; decision D2 in
+// docs/sprint-plans/grid-detection-recovery.md.
+// =============================================================================
+//
+// The rule these assertions pin, in the specification's words:
+//   - A qualifying element carries a grid or table role, is not a native
+//     table, and holds no native table the accessibility-artifact guard keeps.
+//   - A chain root is a qualifying element with no qualifying ancestor. A
+//     containment chain is the chain root and the qualifying elements nested
+//     under it that pass the data test, grouped by nesting depth; the root
+//     sits at depth 0.
+//   - The step selects the elements at the configured nesting depth. A depth
+//     holding more than one element falls back outward to the nearest
+//     shallower depth holding exactly one. A chain shorter than the configured
+//     depth clamps to its innermost element. An empty chain registers nothing.
+//     A nest holding a registered element registers nothing more.
+//   - The step reports and registers nothing. Both live scanners run it.
+//
+// Every expected value below comes from that statement, never from the
+// detection layer's source.
+
+// The selector text the load-time scan's fixtures answer, spelled the way the
+// scanner suites above spell it.
+const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
+
+// A plain parent carrying no grid or table role: a nest boundary that
+// qualifies nothing of its own, so each grid under it heads its own chain.
+function makeNestingHost(children) {
+  return makeDgNode('DIV', 'nesting-host', null, children);
+}
+
+// A lone grid: one role="grid" element with numeric rows and no qualifying
+// element under it, so its containment chain is one element long.
+function makeLoneGrid() {
+  return makeDgNode('DIV', 'lone-grid', 'grid', [
+    makeDgRow(0, ['north', '4,281,905', '17.40']),
+    makeDgRow(1, ['south', '622,148', '9.05']),
+    makeDgRow(2, ['east', '58,730', '3.62']),
+  ]);
+}
+
+// The live text of one column across a list of fixture rows.
+function dgColumnTexts(rowEls, columnIndex) {
+  return rowEls.map((rowEl) => rowEl.children[columnIndex].childNodes[0].nodeValue);
+}
+
+// Drop a registration and the pillbox bookkeeping that goes with it, so a
+// later case counts its own registrations alone.
+function forgetRegisteredTable(table) {
+  DR_STORE.unregisterTable(table);
+  tableToggles.delete(table);
+  trackedTables.delete(table);
+}
+
+// --- AC1: the database query shape registers the scrolling pane alone ---
+
+(function gridNesting_AC1_databaseQueryShapeRegistersTheScrollingPane() {
+  const grid = makeDatabaseQueryGrid();
+
+  // The data test is what drops the one-column pinned pane from the chain.
+  eq('nesting AC1: the one-column pinned pane fails the data test',
+    isDataTable(grid.pinnedPaneEl), false);
+  eq('nesting AC1: the wrapper passes the data test, so depth drops it, not the test',
+    isDataTable(grid.wrapperEl), true);
+  eq('nesting AC1: the scrolling pane passes the data test',
+    isDataTable(grid.scrollPaneEl), true);
+
+  const fromHost = findTables(makeNestingHost([grid.wrapperEl]));
+  eq('nesting AC1: a root holding the nest reports one table', fromHost.length, 1);
+  eq('nesting AC1: the reported table is the scrolling pane',
+    fromHost[0] && fromHost[0].handle === grid.scrollPaneEl, true);
+  eq('nesting AC1: with no registry supplied the result reports isNew',
+    fromHost[0] && fromHost[0].isNew, true);
+
+  const fromWrapper = findTables(grid.wrapperEl);
+  eq('nesting AC1: the chain root as root reports one table', fromWrapper.length, 1);
+  eq('nesting AC1: the chain root as root reports the scrolling pane',
+    fromWrapper[0] && fromWrapper[0].handle === grid.scrollPaneEl, true);
+
+  // The registered element read through the grid adapter: its first column is
+  // the identifier column, not the pinned pane's row-number gutter.
+  const rows = makeAdapter(grid.scrollPaneEl).getRows();
+  eq('nesting AC1: the scrolling pane reads six rows', rows.length, 6);
+  eq('nesting AC1: row 0 cell 0 of the registered element is the identifier text',
+    rows[0].getCells()[0].getText(), 'alpha');
+  eq('nesting AC1: row 0 cell 0 of the registered element is no row number',
+    /^\d+$/.test(rows[0].getCells()[0].getText()), false);
+})();
+
+// --- AC1: a range expression addresses the identifier column as column A ---
+//
+// Mechanism: roundTable runs twice on two fresh copies of the fixture, once
+// with a range expression naming column A and once naming column B. Column A
+// holds the identifier text and no number, so naming it leaves every numeric
+// cell alone; naming column B changes the count column and leaves the rate
+// column alone. The pair places the identifier column at A and the first
+// numeric column at B. Both runs simplify the first row and the first column
+// so the positional exclusions cannot stand in for the range.
+
+(function gridNesting_AC1_rangeExpressionAddressesTheIdentifierColumnAsA() {
+  const rangeOpts = { simplifyFirstRow: true, simplifyFirstColumn: true };
+
+  const gridA = makeDatabaseQueryGrid();
+  const countsBeforeA = dgColumnTexts(gridA.scrollRowEls, 1);
+  const ratesBeforeA = dgColumnTexts(gridA.scrollRowEls, 2);
+  roundTable(gridA.scrollPaneEl,
+    Object.assign({}, DR_DEFAULTS, rangeOpts, { rangeExpr: 'A1:A6' }));
+  eq('nesting AC1: a range expression naming column A leaves the count column unchanged',
+    dgColumnTexts(gridA.scrollRowEls, 1), countsBeforeA);
+  eq('nesting AC1: a range expression naming column A leaves the rate column unchanged',
+    dgColumnTexts(gridA.scrollRowEls, 2), ratesBeforeA);
+  eq('nesting AC1: a range expression naming column A rounds no cell of the identifier column',
+    gridA.scrollRowEls.some((rowEl) => rowEl.children[0].classList.contains('dr-ext-rounded')), false);
+
+  const gridB = makeDatabaseQueryGrid();
+  const identifiersBeforeB = dgColumnTexts(gridB.scrollRowEls, 0);
+  const countsBeforeB = dgColumnTexts(gridB.scrollRowEls, 1);
+  const ratesBeforeB = dgColumnTexts(gridB.scrollRowEls, 2);
+  roundTable(gridB.scrollPaneEl,
+    Object.assign({}, DR_DEFAULTS, rangeOpts, { rangeExpr: 'B1:B6' }));
+  const countsAfterB = dgColumnTexts(gridB.scrollRowEls, 1);
+  eq('nesting AC1: a range expression naming column B changes every cell of the count column',
+    countsAfterB.every((text, i) => text !== countsBeforeB[i]), true);
+  eq('nesting AC1: a range expression naming column B leaves the rate column unchanged',
+    dgColumnTexts(gridB.scrollRowEls, 2), ratesBeforeB);
+  eq('nesting AC1: a range expression naming column B leaves the identifier column unchanged',
+    dgColumnTexts(gridB.scrollRowEls, 0), identifiersBeforeB);
+
+  forgetRegisteredTable(gridA.scrollPaneEl);
+  forgetRegisteredTable(gridB.scrollPaneEl);
+})();
+
+// --- AC2: depth 0 registers the wrapper, gutter first ---
+
+(function gridNesting_AC2_depthZeroRegistersTheWrapper() {
+  const grid = makeDatabaseQueryGrid();
+  const results = findTables(makeNestingHost([grid.wrapperEl]), { nestingDepth: 0 });
+  eq('nesting AC2: depth 0 reports one table', results.length, 1);
+  eq('nesting AC2: depth 0 reports the wrapper',
+    results[0] && results[0].handle === grid.wrapperEl, true);
+
+  const rows = makeAdapter(grid.wrapperEl).getRows();
+  eq('nesting AC2: the wrapper stitches the pinned cells first, so row 0 cell 0 is a row number',
+    rows[0].getCells()[0].getText(), '1');
+})();
+
+// --- AC3: two qualifying siblings at the configured depth fall back outward ---
+
+(function gridNesting_AC3_crowdedDepthFallsBackToTheWrapper() {
+  const grid = makeDatabaseQueryGrid({ pinnedColumns: 2 });
+  eq('nesting AC3: a two-column pinned pane passes the data test',
+    isDataTable(grid.pinnedPaneEl), true);
+
+  const results = findTables(makeNestingHost([grid.wrapperEl]));
+  eq('nesting AC3: a depth holding two elements still reports one table', results.length, 1);
+  eq('nesting AC3: the fall-back outward lands on the wrapper',
+    results[0] && results[0].handle === grid.wrapperEl, true);
+})();
+
+// --- AC4: a chain shorter than the configured depth clamps to its innermost ---
+
+(function gridNesting_AC4_shortChainClampsToItsInnermostElement() {
+  const lone = makeLoneGrid();
+  eq('nesting AC4: the lone grid passes the data test', isDataTable(lone), true);
+  const loneResults = findTables(makeNestingHost([lone]));
+  eq('nesting AC4: a one-element chain at the shipped depth reports one table',
+    loneResults.length, 1);
+  eq('nesting AC4: a one-element chain at the shipped depth reports itself',
+    loneResults[0] && loneResults[0].handle === lone, true);
+
+  const grid = makeDatabaseQueryGrid();
+  const deepResults = findTables(makeNestingHost([grid.wrapperEl]), { nestingDepth: 5 });
+  eq('nesting AC4: a depth past the chain reports one table', deepResults.length, 1);
+  eq('nesting AC4: a depth past the chain clamps to the scrolling pane',
+    deepResults[0] && deepResults[0].handle === grid.scrollPaneEl, true);
+})();
+
+// --- Adversarial: a plain element between two qualifying elements adds no depth ---
+//
+// A nesting depth counts qualifying elements, so a role-less div between the
+// wrapper and the two panes leaves both panes at depth 1 and the chain two
+// long. A count of every ancestor instead would file the panes at depth 2,
+// leave the shipped depth empty, and fall back outward to the wrapper.
+
+(function gridNesting_aPlainElementBetweenQualifyingElementsAddsNoDepth() {
+  const grid = makeDatabaseQueryGrid({ plainWrapper: true });
+  const host = makeNestingHost([grid.wrapperEl]);
+
+  eq('nesting: the plain layer sits between the wrapper and the two panes',
+    grid.paneParentEl !== null &&
+      grid.scrollPaneEl.parentElement === grid.paneParentEl &&
+      grid.pinnedPaneEl.parentElement === grid.paneParentEl &&
+      grid.paneParentEl.parentElement === grid.wrapperEl,
+    true);
+  eq('nesting: the plain layer carries no grid or table role',
+    grid.paneParentEl.matches(GRID_ARIA_SELECTOR_TEXT), false);
+
+  const shipped = findTables(host);
+  eq('nesting: a plain layer inside the wrapper still reports one table', shipped.length, 1);
+  eq('nesting: the shipped depth reports the scrolling pane past the plain layer',
+    shipped[0] && shipped[0].handle === grid.scrollPaneEl, true);
+
+  eq('nesting: depth 0 past the plain layer reports the wrapper',
+    findTables(host, { nestingDepth: 0 }).map((r) => r.handle === grid.wrapperEl), [true]);
+  eq('nesting: depth 2 past the plain layer clamps to the scrolling pane',
+    findTables(host, { nestingDepth: 2 }).map((r) => r.handle === grid.scrollPaneEl), [true]);
+})();
+
+// --- AC5: two nests under one plain parent report separately ---
+
+(function gridNesting_AC5_siblingNestsReportSeparately() {
+  const first = makeDatabaseQueryGrid();
+  const second = makeDatabaseQueryGrid();
+  const results = findTables(makeNestingHost([first.wrapperEl, second.wrapperEl]));
+  eq('nesting AC5: two nests under one plain parent report two tables', results.length, 2);
+  eq('nesting AC5: each nest reports its own scrolling pane',
+    results.map((r) => r.handle === first.scrollPaneEl || r.handle === second.scrollPaneEl),
+    [true, true]);
+  eq('nesting AC5: the two reported tables are different elements',
+    results.length === 2 && results[0].handle !== results[1].handle, true);
+})();
+
+// --- AC6: both live scanners run the step and hold no ARIA pass of their own ---
+
+(function gridNesting_AC6_neitherLiveScannerHoldsAnAriaPass() {
+  const loadTimeScanSrc = sourceByName('ui-toggle.js');
+  const addedNodePassSrc = sourceByName('content.js');
+
+  eq('nesting AC6: the pillbox view is listed in the manifest', loadTimeScanSrc !== null, true);
+  eq('nesting AC6: the controller is listed in the manifest', addedNodePassSrc !== null, true);
+  eq('nesting AC6: the load-time scan names no grid or table role selector',
+    loadTimeScanSrc !== null &&
+      (loadTimeScanSrc.includes('GRID_ARIA_SELECTOR') || loadTimeScanSrc.includes('role="grid"')),
+    false);
+  eq('nesting AC6: the added-node pass names no grid or table role selector',
+    addedNodePassSrc !== null &&
+      (addedNodePassSrc.includes('GRID_ARIA_SELECTOR') || addedNodePassSrc.includes('role="grid"')),
+    false);
+  eq('nesting AC6: the load-time scan calls the nomination step',
+    loadTimeScanSrc !== null && /findTables\s*\(/.test(loadTimeScanSrc), true);
+  eq('nesting AC6: the added-node pass calls the nomination step',
+    addedNodePassSrc !== null && /findTables\s*\(/.test(addedNodePassSrc), true);
+})();
+
+(function gridNesting_AC6_loadTimeScanBuildsOnePillbox() {
+  const grid = makeDatabaseQueryGrid();
+  const before = DR_STORE.getRegisteredTables().length;
+
+  withToggleDocumentMock(function () {
+    // What a page holding the fixture hands the two passes: no native table,
+    // and the three role-bearing elements in document order.
+    global.document.querySelectorAll = function (sel) {
+      if (sel === 'table') return [];
+      if (sel === GRID_ARIA_SELECTOR_TEXT) {
+        return [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl];
+      }
+      return [];
+    };
+    injectTableToggles();
+  });
+
+  const added = DR_STORE.getRegisteredTables().slice(before);
+  eq('nesting AC6: the load-time scan on the fixture adds one registry entry', added.length, 1);
+  eq('nesting AC6: the registered element is the scrolling pane',
+    added.length === 1 && added[0] === grid.scrollPaneEl, true);
+  eq('nesting AC6: the scrolling pane carries one pillbox',
+    tableToggles.has(grid.scrollPaneEl), true);
+  eq('nesting AC6: the wrapper carries no pillbox', tableToggles.has(grid.wrapperEl), false);
+  eq('nesting AC6: the pinned pane carries no pillbox', tableToggles.has(grid.pinnedPaneEl), false);
+
+  forgetRegisteredTable(grid.scrollPaneEl);
+})();
+
+(function gridNesting_AC6_addedNodePassBuildsOnePillbox() {
+  const grid = makeDatabaseQueryGrid();
+  const before = DR_STORE.getRegisteredTables().length;
+
+  withToggleDocumentMock(function () {
+    injectTogglesForAddedNode(grid.wrapperEl);
+  });
+
+  const added = DR_STORE.getRegisteredTables().slice(before);
+  eq('nesting AC6: the added-node pass on the fixture adds one registry entry', added.length, 1);
+  eq('nesting AC6: the added-node pass registers the scrolling pane',
+    added.length === 1 && added[0] === grid.scrollPaneEl, true);
+  eq('nesting AC6: the added-node pass puts one pillbox on the scrolling pane',
+    tableToggles.has(grid.scrollPaneEl), true);
+  eq('nesting AC6: the added-node pass puts no pillbox on the wrapper',
+    tableToggles.has(grid.wrapperEl), false);
+  eq('nesting AC6: the added-node pass puts no pillbox on the pinned pane',
+    tableToggles.has(grid.pinnedPaneEl), false);
+
+  // A node added inside a nest that already holds a registered element adds
+  // no second registration.
+  const beforeRediscovery = DR_STORE.getRegisteredTables().length;
+  withToggleDocumentMock(function () {
+    injectTogglesForAddedNode(grid.scrollPaneEl);
+  });
+  eq('nesting AC6: a node added inside a registered nest adds no registry entry',
+    DR_STORE.getRegisteredTables().length, beforeRediscovery);
+
+  forgetRegisteredTable(grid.scrollPaneEl);
+})();
+
+// --- AC7: the living docs and the test page state the rule ---
+
+(function gridNesting_AC7_livingDocsAndTheTestPageStateTheRule() {
+  const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
+  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
+  const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
+  const testPage = fs.readFileSync(
+    path.join(__dirname, '..', 'docs', 'test-pages', 'tables.html'), 'utf8');
+
+  for (const term of ['qualifying element', 'chain root', 'containment chain', 'nesting depth']) {
+    eq('nesting AC7: docs/vocabulary.md carries a row for "' + term + '"',
+      new RegExp('^\\|\\s*' + term + '\\s*\\|', 'mi').test(vocabularyMd), true);
+  }
+  const pinnedPaneRow = vocabularyMd.split('\n')
+    .find((line) => /^\|\s*pinned pane\s*\|/i.test(line)) || '';
+  eq('nesting AC7: docs/vocabulary.md keeps a pinned pane row', pinnedPaneRow !== '', true);
+  eq('nesting AC7: the pinned pane row states that the configured depth governs its columns',
+    /depth/i.test(pinnedPaneRow), true);
+
+  eq('nesting AC7: chrome-extension/README.md states the nesting depth',
+    /nesting depth/i.test(extensionReadme), true);
+  eq('nesting AC7: docs/design.md states the nesting depth',
+    /nesting depth/i.test(designMd), true);
+
+  const sectionStart = testPage.indexOf('13. Pinned-pane vendor grid');
+  const nextHeadingAt = testPage.indexOf('<h2>', sectionStart);
+  const section = sectionStart < 0 ? ''
+    : testPage.slice(sectionStart, nextHeadingAt < 0 ? testPage.length : nextHeadingAt);
+  const expectMatch = section.match(/<p class="expect">([\s\S]*?)<\/p>/);
+  const expectText = expectMatch ? expectMatch[1] : '';
+  eq('nesting AC7: the test page holds a pinned-pane vendor grid section', sectionStart >= 0, true);
+  eq('nesting AC7: that section holds an expectation paragraph', expectText !== '', true);
+  eq('nesting AC7: the expectation names the scrolling pane',
+    /scrolling pane/i.test(expectText), true);
+  eq('nesting AC7: the expectation states no pillbox on the wrapper',
+    /pillbox[^.]*wrapper/i.test(expectText), false);
+  eq('nesting AC7: the section states no second pillbox',
+    /second pillbox/i.test(section), false);
+})();
+
+// --- Adversarial: a rediscovery reports nothing for a registered nest ---
+
+(function gridNesting_rediscoveryIsIdempotent() {
+  const grid = makeDatabaseQueryGrid();
+  eq('nesting: a nest whose scrolling pane is registered reports nothing',
+    findTables(grid.wrapperEl, { isSeen: (el) => el === grid.scrollPaneEl }).length, 0);
+  eq('nesting: a nest whose wrapper is registered reports nothing',
+    findTables(grid.wrapperEl, { isSeen: (el) => el === grid.wrapperEl }).length, 0);
+  eq('nesting: a nest whose pinned pane is registered reports nothing',
+    findTables(grid.wrapperEl, { isSeen: (el) => el === grid.pinnedPaneEl }).length, 0);
+  eq('nesting: a nest holding no registered element still reports the scrolling pane',
+    findTables(grid.wrapperEl, { isSeen: () => false }).map((r) => r.handle === grid.scrollPaneEl),
+    [true]);
+})();
+
+// --- Adversarial: the depth port reads zero as a depth ---
+
+(function gridNesting_theDepthPortReadsZeroAsADepth() {
+  eq('nesting: the tuning block ships a nesting depth of 1', DR_TUNING.nestingDepth, 1);
+
+  const grid = makeDatabaseQueryGrid();
+  const host = makeNestingHost([grid.wrapperEl]);
+  eq('nesting: the shipped depth reports the scrolling pane',
+    findTables(host).map((r) => r.handle === grid.scrollPaneEl), [true]);
+  eq('nesting: an override of zero reports the wrapper, so zero reads as a depth',
+    findTables(host, { nestingDepth: 0 }).map((r) => r.handle === grid.wrapperEl), [true]);
+})();
+
+// --- Adversarial: an empty wrapper reports nothing and throws nothing ---
+
+(function gridNesting_anEmptyWrapperReportsNothing() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+  let caught = null;
+  let results = null;
+  try {
+    results = findTables(makeNestingHost([grid.wrapperEl]));
+  } catch (e) {
+    caught = e.message;
+  }
+  eq('nesting: an empty wrapper throws nothing', caught, null);
+  eq('nesting: an empty wrapper reports no table', results && results.length, 0);
+})();
+
+// --- Adversarial: pass 1 is unchanged ---
+
+(function gridNesting_pass1StillReportsNativeTablesBesideTheNest() {
+  const nativeTable = makePass1DataTable();
+  const grid = makeDatabaseQueryGrid();
+  const root = {
+    tagName: 'BODY',
+    querySelectorAll(sel) {
+      if (sel === 'table') return [nativeTable];
+      if (sel === GRID_ARIA_SELECTOR_TEXT) {
+        return [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl];
+      }
+      return [];
+    },
+  };
+
+  eq('nesting: the plain native table is no accessibility artifact (sanity)',
+    isPhantomA11yTable(nativeTable), false);
+  const results = findTables(root);
+  eq('nesting: a root holding one native table and one nest reports two tables',
+    results.length, 2);
+  eq('nesting: pass 1 reports the native table first',
+    results.length === 2 && results[0].handle === nativeTable, true);
+  eq('nesting: pass 2 reports the scrolling pane second',
+    results.length === 2 && results[1].handle === grid.scrollPaneEl, true);
+})();
+
+// --- Adversarial: the step reports and registers nothing ---
+
+(function gridNesting_theStepReportsAndRegistersNothing() {
+  const grid = makeDatabaseQueryGrid();
+  const nestElements = [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl];
+  const before = DR_STORE.getRegisteredTables().length;
+
+  findTables(makeNestingHost([grid.wrapperEl]));
+
+  eq('nesting: the nomination step adds no registry entry',
+    DR_STORE.getRegisteredTables().length, before);
+  eq('nesting: the nomination step registers no element of the nest',
+    nestElements.map((el) => DR_STORE.hasTable(el)), [false, false, false]);
+  eq('nesting: the nomination step writes no grid marker class',
+    nestElements.map((el) => el.classList.contains('dr-ext-grid')), [false, false, false]);
 })();
 
 // =============================================================================
