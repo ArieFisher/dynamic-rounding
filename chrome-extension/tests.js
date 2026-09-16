@@ -15524,8 +15524,8 @@ function makeScrollingRowgroupGrid(headerTexts, dataRows) {
     chainRootOf(plain.scrollPaneEl) === plain.wrapperEl, true);
 
   eq('fingerprint chain root: an element in no nest has none',
-    chainRootOf(makeNestingHost([])), null);
-  eq('fingerprint chain root: a missing element has none', chainRootOf(null), null);
+    chainRootOf(makeNestingHost([])) === null, true);
+  eq('fingerprint chain root: a missing element has none', chainRootOf(null) === null, true);
 })();
 
 // =============================================================================
@@ -20056,7 +20056,7 @@ function makePressTable(text) {
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_STORE.hasTable(el)),
       [false, false, false]);
     eq('fingerprint recovery: the discarded table was active, so the active table clears',
-      DR_STORE.getSelectedTable(), null);
+      DR_STORE.getSelectedTable() === null, true);
     eq('fingerprint recovery: the press stops, so it makes no settings write', writes(), 0);
     eq('fingerprint recovery: the empty recovery records a debug row',
       recentLogRows().some((text) => /no table registered after the shape change/.test(text)),
