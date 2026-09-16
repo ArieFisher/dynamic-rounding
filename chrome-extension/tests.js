@@ -14186,6 +14186,326 @@ function fireMouseClick(buttonEl, fn) {
     sandbox.results && sandbox.results.firstIsNew, true);
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint detection-constants: every detection tuning value and both lookup
+// lists now have one home, the tuning block (DR_TUNING, in the configuration
+// file constants.js), with no behavior change. Four groups of tests:
+//   1. Source scan: none of the eight retired names carries a second
+//      const/let/var definition anywhere the manifest loads, and the two
+//      retired literal forms (the repetition-share division, the bare
+//      column-width-agreement literal) and the retired Set are gone from
+//      the detection layer (lib/dr-table/detect.js).
+//   2. Source scan: the detection layer, the pillbox view (ui-toggle.js),
+//      and the controller (content.js) read DR_TUNING as a bare global —
+//      no typeof guard, no OR-fallback, no reassignment.
+//   3. Behavior: a sandbox that evaluates the configuration file and then
+//      the detection layer carries the ten pre-move values unchanged, and
+//      looksLikeGrid, findTargetTable, isPhantomA11yTable, and isDataTable
+//      behave exactly as the pre-move source did, on fixtures whose outcome
+//      the pre-move values determine.
+//   4. Behavior: a sandbox that evaluates the detection layer alone, with
+//      no configuration file, fails at load with a ReferenceError naming
+//      DR_TUNING — before any function in the file runs.
+// ---------------------------------------------------------------------------
+
+(function tuningBlock_retiredNamesHaveNoSecondDefinition() {
+  const RETIRED_NAMES = [
+    'GRID_MIN_CHILDREN',
+    'GRID_WALK_DEPTH_CAP',
+    'GRID_COL_WIDTH_SAMPLE',
+    'GRID_DISPLAY_VALUES',
+    'GRID_REAPPLY_DEBOUNCE_MS',
+    'OFFSCREEN_LEFT_PX_THRESHOLD',
+    'DEFAULT_VENDOR_PROFILES',
+    'TOUCH_AUTOCOLLAPSE_MS',
+  ];
+  // Every file the manifest loads, plus this suite itself — a retired name
+  // could resurface as a second definition in either.
+  const scannedSources = manifest.content_scripts[0].js
+    .map((file) => sourceByName(file) || '')
+    .concat([fs.readFileSync(path.join(__dirname, 'tests.js'), 'utf8')])
+    .join('\n');
+
+  for (const name of RETIRED_NAMES) {
+    const definitionPattern = new RegExp(`\\b(const|let|var)\\s+${name}\\b`);
+    eq(`tuning block: ${name} carries no const/let/var definition anywhere the manifest loads`,
+      definitionPattern.test(scannedSources), false);
+  }
+})();
+
+(function tuningBlock_retiredLiteralFormsAreGoneFromDetection() {
+  const src = detectCode || '';
+  eq('tuning block: the detection layer no longer computes the repetition floor as children.length / 2',
+    /children\.length\s*\/\s*2/.test(src), false);
+  eq('tuning block: the detection layer no longer compares column-width agreement to a bare 0.8 literal',
+    />=\s*0\.8\b/.test(src), false);
+  eq('tuning block: the detection layer no longer builds a Set of the four display values',
+    /new Set\(\s*\[\s*['"]grid['"]/.test(src), false);
+  eq('tuning block: the detection layer reads the display-value list as DR_TUNING.gridDisplayValues.includes(display), not a Set.has(display)',
+    /DR_TUNING\.gridDisplayValues\.includes\(display\)/.test(src), true);
+})();
+
+(function tuningBlock_noFallbackCopyOfDrTuning() {
+  const filesToScan = {
+    'lib/dr-table/detect.js': detectCode,
+    'ui-toggle.js': uiToggleCode,
+    'content.js': sourceByName('content.js'),
+  };
+  for (const [file, src] of Object.entries(filesToScan)) {
+    if (src === null || src === undefined) {
+      eq(`tuning block: source file ${file} present in manifest`, false, true);
+      continue;
+    }
+    eq(`tuning block: ${file} carries no typeof DR_TUNING guard`,
+      /typeof\s+DR_TUNING\b/.test(src), false);
+    eq(`tuning block: ${file} carries no DR_TUNING || fallback`,
+      /DR_TUNING\s*\|\|/.test(src), false);
+    eq(`tuning block: ${file} carries no window.DR_TUNING read`,
+      /window\.DR_TUNING\b/.test(src), false);
+    eq(`tuning block: ${file} carries no globalThis.DR_TUNING read`,
+      /globalThis\.DR_TUNING\b/.test(src), false);
+    eq(`tuning block: ${file} carries no DR_TUNING reassignment`,
+      /\bDR_TUNING\s*=[^=]/.test(src), false);
+  }
+})();
+
+// The pre-move values, hand-copied from origin/main's lib/dr-table/detect.js
+// (read via `git show origin/main:chrome-extension/lib/dr-table/detect.js`)
+// and the design doc's key table. The sprint moves these values; it changes
+// none of them. Key order matches constants.js's DR_TUNING declaration, so
+// the JSON.stringify-based eq() comparison below is not order-sensitive noise.
+const PRE_MOVE_TUNING = {
+  gridMinChildren: 5,
+  gridWalkDepthCap: 15,
+  gridColumnWidthSample: 10,
+  gridColumnWidthAgreement: 0.8,
+  gridRepetitionShare: 0.5,
+  gridDisplayValues: ['grid', 'flex', 'inline-grid', 'inline-flex'],
+  vendorProfiles: [
+    {
+      name: 'databricks',
+      classToken: 'dg--',
+      scrollContainerSelectors: ['.dg--grid-scroll-container', '.dg--grid-container'],
+      pinnedPaneSelectors: ['.dg--pinned-grid'],
+    },
+    {
+      name: 'ag-grid',
+      classToken: 'ag-',
+      scrollContainerSelectors: ['.ag-center-cols-viewport'],
+      pinnedPaneSelectors: ['.ag-pinned-left-cols-container'],
+    },
+  ],
+  gridRedrawDelayMs: 100,
+  offscreenLeftPx: -9999,
+  pillboxAutoCollapseMs: 3000,
+};
+
+// jsdom-less criterion, extended: the configuration file (constants.js) and
+// the detection layer (lib/dr-table/detect.js) are evaluated together in one
+// vm sandbox with no chrome/window/getComputedStyle at all. DR_TUNING's
+// values are pinned against PRE_MOVE_TUNING above, and looksLikeGrid,
+// findTargetTable, isPhantomA11yTable, and isDataTable run against fixtures
+// whose expected outcome only holds when each moved value is read at its
+// pre-move value — a wrong read (a stale copy, a transposed value, a wrong
+// sample size) flips at least one outcome below.
+(function tuningBlock_sandboxBehaviorMatchesPreMoveValues() {
+  if (constantsCode === null || detectCode === null) {
+    eq('tuning block: source files constants.js and lib/dr-table/detect.js present in manifest', false, true);
+    return;
+  }
+  const vm = require('vm');
+  const sandbox = { outcomes: {}, threw: null };
+  const ctx = vm.createContext(sandbox);
+
+  vm.runInContext(
+    constantsCode + '\n' + detectCode + `
+    try {
+      outcomes.tuningKeys = Object.keys(DR_TUNING).sort();
+      outcomes.tuning = DR_TUNING;
+
+      function makeCell(text, width) { return { textContent: text, offsetWidth: width }; }
+      function makeRow(cls, cells) { return { className: cls, children: cells }; }
+      function makeEl(rows) { return { className: '', children: rows, getAttribute: () => null }; }
+      const gridStyleProbe = {
+        getComputedStyle: () => ({ display: 'grid' }),
+        getOffsetWidth: (el) => (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1,
+      };
+      const uniformRows = () => [0, 1, 2, 3, 4].map(() => makeRow('row', [makeCell('1', 100)]));
+
+      // --- gridMinChildren (step 1): 4 children fails, 5 passes ---
+      const fourRows = [0, 1, 2, 3].map(() => makeRow('row', [makeCell('5', 100)]));
+      const fiveRows = [0, 1, 2, 3, 4].map(() => makeRow('row', [makeCell('5', 100)]));
+      outcomes.minChildrenBelowFails = looksLikeGrid(makeEl(fourRows), { styleProbe: gridStyleProbe });
+      outcomes.minChildrenAtPasses = looksLikeGrid(makeEl(fiveRows), { styleProbe: gridStyleProbe });
+
+      // --- gridRepetitionShare (steps 2/3): a share below the 0.5 floor
+      // fails (3-of-8 sharing either a class or a child count); a share
+      // exactly at the floor passes (5-of-10) ---
+      const belowFloorRows = [
+        makeRow('x', [makeCell('1', 100)]),
+        makeRow('x', [makeCell('1', 100)]),
+        makeRow('x', [makeCell('1', 100)]),
+        makeRow('y1', [makeCell('1', 100), makeCell('2', 100)]),
+        makeRow('y2', [makeCell('1', 100), makeCell('2', 100), makeCell('3', 100)]),
+        makeRow('y3', [makeCell('1', 100), makeCell('2', 100), makeCell('3', 100), makeCell('4', 100)]),
+        makeRow('y4', [makeCell('1', 100), makeCell('2', 100), makeCell('3', 100), makeCell('4', 100), makeCell('5', 100)]),
+        makeRow('y5', [makeCell('1', 100), makeCell('2', 100), makeCell('3', 100), makeCell('4', 100), makeCell('5', 100), makeCell('6', 100)]),
+      ];
+      outcomes.repetitionBelowFloorFails = looksLikeGrid(makeEl(belowFloorRows), { styleProbe: gridStyleProbe });
+
+      const atFloorRows = [0, 1, 2, 3, 4].map(() => makeRow('row-a', [makeCell('10', 50), makeCell('20', 50)]))
+        .concat([0, 1, 2, 3, 4].map(() => makeRow('row-b', [makeCell('1', 50), makeCell('2', 50), makeCell('3', 50)])));
+      outcomes.repetitionAtFloorPasses = looksLikeGrid(makeEl(atFloorRows), { styleProbe: gridStyleProbe });
+
+      // --- gridColumnWidthSample + gridColumnWidthAgreement (step 6): the
+      // sample is bounded to the first 10 of 12 uniform rows; 8-of-10
+      // matching widths (exactly 0.8) passes, 7-of-10 (0.7) fails ---
+      const widthRow = (w) => makeRow('row', [makeCell('1', w)]);
+      const widths8of10 = [100, 100, 100, 100, 100, 100, 100, 100, 999, 999, 999, 999].map(widthRow);
+      const widths7of10 = [100, 100, 100, 100, 100, 100, 100, 999, 999, 999, 100, 100].map(widthRow);
+      outcomes.widthAgreementAtThresholdPasses = looksLikeGrid(makeEl(widths8of10), { styleProbe: gridStyleProbe });
+      outcomes.widthAgreementBelowThresholdFails = looksLikeGrid(makeEl(widths7of10), { styleProbe: gridStyleProbe });
+
+      // --- gridDisplayValues: each of the four values passes, a fifth fails ---
+      const probeForDisplay = (display) => ({ getComputedStyle: () => ({ display }), getOffsetWidth: gridStyleProbe.getOffsetWidth });
+      outcomes.displayGridPasses = looksLikeGrid(makeEl(uniformRows()), { styleProbe: probeForDisplay('grid') });
+      outcomes.displayFlexPasses = looksLikeGrid(makeEl(uniformRows()), { styleProbe: probeForDisplay('flex') });
+      outcomes.displayInlineGridPasses = looksLikeGrid(makeEl(uniformRows()), { styleProbe: probeForDisplay('inline-grid') });
+      outcomes.displayInlineFlexPasses = looksLikeGrid(makeEl(uniformRows()), { styleProbe: probeForDisplay('inline-flex') });
+      outcomes.displayBlockFails = looksLikeGrid(makeEl(uniformRows()), { styleProbe: probeForDisplay('block') });
+
+      // --- vendorProfiles (default, no opts override): a 'dg--' class
+      // short-circuits ACCEPT even when the width-agreement step would
+      // otherwise fail; the same rows with no vendor class do not ---
+      const badWidthRows = [100, 200, 300, 400, 500].map(widthRow);
+      outcomes.vendorClassShortCircuitsAccept = looksLikeGrid(
+        Object.assign(makeEl(badWidthRows), { className: 'dg--outer' }), { styleProbe: gridStyleProbe });
+      outcomes.noVendorClassFailsWidthCheck = looksLikeGrid(
+        Object.assign(makeEl(badWidthRows), { className: '' }), { styleProbe: gridStyleProbe });
+
+      // --- gridWalkDepthCap (findTargetTable step 3): a 20-deep ancestor
+      // chain, every ancestor individually a qualifying grid, is bounded to
+      // the 15th ancestor (label 14, zero-indexed) ---
+      function makeAncestor(label) {
+        return {
+          label,
+          className: '',
+          getAttribute: () => null,
+          nodeType: DR_TABLE_ELEMENT_NODE,
+          children: uniformRows(),
+          parentElement: null,
+        };
+      }
+      const chain = [];
+      for (let i = 0; i < 20; i++) chain.push(makeAncestor(i));
+      for (let i = 0; i < chain.length - 1; i++) chain[i].parentElement = chain[i + 1];
+      const walkResult = findTargetTable({ parentElement: chain[0] }, { styleProbe: gridStyleProbe });
+      outcomes.walkDepthCapLabel = walkResult && walkResult.handle.label;
+
+      // --- offscreenLeftPx (isPhantomA11yTable signal 2): at the threshold
+      // and beyond it counts as off-screen; just inside it does not ---
+      const offscreenTable = (left) => ({ getAttribute: () => null, style: { position: 'static', left: left + 'px' } });
+      outcomes.offscreenAtThresholdIsPhantom = isPhantomA11yTable(offscreenTable(-9999));
+      outcomes.offscreenBeyondThresholdIsPhantom = isPhantomA11yTable(offscreenTable(-10000));
+      outcomes.offscreenInsideThresholdIsNotPhantom = isPhantomA11yTable(offscreenTable(-9998));
+
+      // --- isDataTable: no collateral breakage from the load-order change ---
+      outcomes.isDataTableStillFindsANumericTable = isDataTable({
+        tagName: 'TABLE',
+        rows: [
+          { cells: [{ textContent: 'Name' }, { textContent: '100' }] },
+          { cells: [{ textContent: 'Foo' },  { textContent: '200' }] },
+        ],
+      });
+    } catch (e) {
+      threw = e.message;
+    }
+    `,
+    ctx
+  );
+
+  eq('tuning block: the combined sandbox does not throw', sandbox.threw, null);
+  eq('tuning block: DR_TUNING exposes exactly the ten pre-move keys',
+    sandbox.outcomes.tuningKeys, Object.keys(PRE_MOVE_TUNING).sort());
+  eq('tuning block: DR_TUNING carries every pre-move value unchanged',
+    sandbox.outcomes.tuning, PRE_MOVE_TUNING);
+  eq('tuning block: looksLikeGrid rejects 4 children (below gridMinChildren)',
+    sandbox.outcomes.minChildrenBelowFails, false);
+  eq('tuning block: looksLikeGrid accepts 5 children (at gridMinChildren)',
+    sandbox.outcomes.minChildrenAtPasses, true);
+  eq('tuning block: looksLikeGrid rejects a 3-of-8 share (below gridRepetitionShare)',
+    sandbox.outcomes.repetitionBelowFloorFails, false);
+  eq('tuning block: looksLikeGrid accepts a 5-of-10 share (at gridRepetitionShare)',
+    sandbox.outcomes.repetitionAtFloorPasses, true);
+  eq('tuning block: looksLikeGrid accepts an 8-of-10 sampled-width agreement (at gridColumnWidthAgreement, within gridColumnWidthSample)',
+    sandbox.outcomes.widthAgreementAtThresholdPasses, true);
+  eq('tuning block: looksLikeGrid rejects a 7-of-10 sampled-width agreement (below gridColumnWidthAgreement)',
+    sandbox.outcomes.widthAgreementBelowThresholdFails, false);
+  eq('tuning block: looksLikeGrid accepts display:grid (in gridDisplayValues)',
+    sandbox.outcomes.displayGridPasses, true);
+  eq('tuning block: looksLikeGrid accepts display:flex (in gridDisplayValues)',
+    sandbox.outcomes.displayFlexPasses, true);
+  eq('tuning block: looksLikeGrid accepts display:inline-grid (in gridDisplayValues)',
+    sandbox.outcomes.displayInlineGridPasses, true);
+  eq('tuning block: looksLikeGrid accepts display:inline-flex (in gridDisplayValues)',
+    sandbox.outcomes.displayInlineFlexPasses, true);
+  eq('tuning block: looksLikeGrid rejects display:block (not in gridDisplayValues)',
+    sandbox.outcomes.displayBlockFails, false);
+  eq('tuning block: looksLikeGrid short-circuits ACCEPT for the default databricks vendorProfiles class token',
+    sandbox.outcomes.vendorClassShortCircuitsAccept, true);
+  eq('tuning block: looksLikeGrid still runs the width-agreement step with no vendor class',
+    sandbox.outcomes.noVendorClassFailsWidthCheck, false);
+  eq('tuning block: findTargetTable bounds the ancestor walk to gridWalkDepthCap (15)',
+    sandbox.outcomes.walkDepthCapLabel, 14);
+  eq('tuning block: isPhantomA11yTable treats offscreenLeftPx itself as off-screen',
+    sandbox.outcomes.offscreenAtThresholdIsPhantom, true);
+  eq('tuning block: isPhantomA11yTable treats a value beyond offscreenLeftPx as off-screen',
+    sandbox.outcomes.offscreenBeyondThresholdIsPhantom, true);
+  eq('tuning block: isPhantomA11yTable treats a value inside offscreenLeftPx as on-screen',
+    sandbox.outcomes.offscreenInsideThresholdIsNotPhantom, false);
+  eq('tuning block: isDataTable still finds a plain 2x2 numeric table (no collateral breakage)',
+    sandbox.outcomes.isDataTableStillFindsANumericTable, true);
+})();
+
+// A fresh sandbox with no configuration file: the detection layer reads
+// DR_TUNING as a bare global with no fallback, so evaluating it alone throws
+// a ReferenceError naming DR_TUNING — at load, before any function in the
+// file runs. The try/catch sits outside vm.runInContext, so a caught error
+// here can only have come from evaluating the source itself, never from a
+// function call the script goes on to make.
+(function tuningBlock_detectionFailsClosedWithNoConfigurationFile() {
+  if (detectCode === null) {
+    eq('tuning block: source file lib/dr-table/detect.js present in manifest', false, true);
+    return;
+  }
+  const vm = require('vm');
+  const ctx = vm.createContext({});
+  let caught = null;
+  try {
+    vm.runInContext(detectCode, ctx);
+  } catch (e) {
+    caught = { name: e.name, message: e.message };
+  }
+  eq('tuning block: evaluating the detection layer with no configuration file throws at load',
+    caught !== null, true);
+  eq('tuning block: the load-time failure is a ReferenceError',
+    caught && caught.name, 'ReferenceError');
+  eq('tuning block: the load-time failure names DR_TUNING',
+    !!(caught && /DR_TUNING/.test(caught.message)), true);
+})();
+
+// Living docs: docs/design.md's package table and docs/vocabulary.md both
+// carry the tuning block, per AGENTS.md's rule that a behavior-invalidating
+// change updates every living doc it invalidates in the same branch.
+(function tuningBlock_livingDocsCarryTheTuningBlock() {
+  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
+  const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
+  eq('living docs: docs/design.md carries the tuning block',
+    designMd.includes('tuning block'), true);
+  eq('living docs: docs/vocabulary.md defines the tuning block',
+    vocabularyMd.includes('tuning block'), true);
+})();
+
 // VendorProfiles: a custom list replaces the default, and GridAdapter honors
 // it for scroll-container resolution — proving the port is genuinely
 // pluggable, not just a constant renamed in place.
