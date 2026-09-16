@@ -92,6 +92,7 @@ const uiToggleCode = sourceByName('ui-toggle.js');
 const allContentSrc = contentScriptBundle;
 eval(contentScriptBundle + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
+globalThis.DR_TUNING = DR_TUNING;
 globalThis.DR_NUMBER = DR_NUMBER;
 // Expose the log buffer (lib/dr-log) for the dr-log test suite.
 globalThis.DR_LOG = DR_LOG;
@@ -138,7 +139,7 @@ globalThis.TOGGLE_DOT_OVERLAP_PX = TOGGLE_DOT_OVERLAP_PX;
 globalThis.TOGGLE_DOT_OVERHANG_PX = TOGGLE_DOT_OVERHANG_PX;
 globalThis.TOGGLE_COLOR_ON = TOGGLE_COLOR_ON;
 globalThis.TOGGLE_COLOR_OFF = TOGGLE_COLOR_OFF;
-globalThis.TOUCH_AUTOCOLLAPSE_MS = TOUCH_AUTOCOLLAPSE_MS;
+globalThis.TOUCH_AUTOCOLLAPSE_MS = DR_TUNING.pillboxAutoCollapseMs;
 // _globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
 Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   get() { return _globalTapCollapseAdded; },
@@ -186,10 +187,10 @@ globalThis.reapplyGridRounding = reapplyGridRounding;
 globalThis.computeGridRoundedValues = computeGridRoundedValues;
 globalThis.gridObservers = gridObservers;
 globalThis.gridReapplyTimers = gridReapplyTimers;
-globalThis.GRID_REAPPLY_DEBOUNCE_MS = GRID_REAPPLY_DEBOUNCE_MS;
+globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_TUNING.gridRedrawDelayMs;
 // Expose phantom a11y predicate and its threshold constant for tests
 globalThis.isPhantomA11yTable = isPhantomA11yTable;
-globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = OFFSCREEN_LEFT_PX_THRESHOLD;
+globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_TUNING.offscreenLeftPx;
 // Expose content.js's badge/marker call-site wrapper (sprint extract-dr-table)
 // for direct unit testing.
 globalThis.markAndToggleIfNewGrid = markAndToggleIfNewGrid;
@@ -9645,10 +9646,10 @@ function makeOnScreenTable() {
   return table;
 }
 
-// --- AC: OFFSCREEN_LEFT_PX_THRESHOLD is -9999 ---
+// --- AC: DR_TUNING.offscreenLeftPx is -9999 ---
 (function phantomA11y_threshold_value() {
-  eq('isPhantomA11yTable: OFFSCREEN_LEFT_PX_THRESHOLD === -9999',
-    OFFSCREEN_LEFT_PX_THRESHOLD, -9999);
+  eq('isPhantomA11yTable: DR_TUNING.offscreenLeftPx === -9999',
+    DR_TUNING.offscreenLeftPx, -9999);
 })();
 
 // ---------------------------------------------------------------------------
@@ -14122,14 +14123,15 @@ function fireMouseClick(buttonEl, fn) {
     /^const DR_TABLE\b/m.test(indexSrc), true);
 })();
 
-// jsdom-less criterion: detect.js is evaluated ALONE, in a vm context with no
+// jsdom-less criterion: detect.js is evaluated with its one dependency —
+// constants.js, for DR_TUNING — and nothing else, in a vm context with no
 // `chrome`, no `window`, and no `getComputedStyle` at all, against a minimal
 // fake document holding one plain <table>. Detection must still find the
 // table and must not throw — this is the acceptance bar for "runs under
 // jsdom-style stubs with no Chrome globals."
 (function detectionRunsWithNoChromeGlobals() {
-  if (detectCode === null) {
-    eq('jsdom-less: source file lib/dr-table/detect.js present in manifest', false, true);
+  if (detectCode === null || constantsCode === null) {
+    eq('jsdom-less: source files constants.js and lib/dr-table/detect.js present in manifest', false, true);
     return;
   }
   const vm = require('vm');
@@ -14148,13 +14150,15 @@ function fireMouseClick(buttonEl, fn) {
     },
   };
 
-  // The sandbox carries ONLY fakeDoc/fakeTable and whatever detectCode itself
-  // declares — no window, no getComputedStyle, no chrome, no document global.
+  // The sandbox carries ONLY fakeDoc/fakeTable and whatever constantsCode and
+  // detectCode themselves declare — no window, no getComputedStyle, no
+  // chrome, no document global. constantsCode is plain values only, so
+  // prepending it costs the sandbox no browser dependency.
   const sandbox = { fakeDoc, fakeTable, results: null, threw: null };
   const ctx = vm.createContext(sandbox);
 
   vm.runInContext(
-    detectCode + `
+    constantsCode + '\n' + detectCode + `
     try {
       var found = findTables(fakeDoc);
       results = {

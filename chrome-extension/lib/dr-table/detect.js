@@ -29,21 +29,18 @@
  * parsing, the vendor grid selectors, `document` itself) goes through a
  * small port with a working default, so the functions below run under a
  * plain Node/jsdom-less context with no Chrome globals and no `window`.
+ *
+ * Every tuning value this file reads — the child-count floor, the walk-depth
+ * cap, the column-width sample size and agreement threshold, the repetition
+ * share, the redraw debounce, the off-screen threshold, and the vendor and
+ * display-value lookup lists — lives in DR_TUNING (constants.js). Every
+ * context loads constants.js before this file, so this file reads DR_TUNING
+ * as a bare global: there is no local fallback copy of any of those values.
  */
 
 // Grid detection constants
-/** Minimum number of direct children for an element to be a grid candidate. */
-const GRID_MIN_CHILDREN = 5;
-/** Maximum ancestor depth to walk up during lazy right-click discovery. */
-const GRID_WALK_DEPTH_CAP = 15;
-/** Number of column-0 cells sampled for column-width alignment check. */
-const GRID_COL_WIDTH_SAMPLE = 10;
-/** CSS display values that indicate a grid/flex layout. */
-const GRID_DISPLAY_VALUES = new Set(['grid', 'flex', 'inline-grid', 'inline-flex']);
 /** CSS selector for the cheap load-time ARIA pass. */
 const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
-/** Debounce delay (ms) for the grid virtualization re-apply observer. */
-const GRID_REAPPLY_DEBOUNCE_MS = 100;
 /** Node.ELEMENT_NODE, with a fallback for contexts with no `Node` global (its value, 1, is part of the DOM spec and never changes). */
 const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE) || 1;
 
@@ -94,26 +91,11 @@ const DEFAULT_NUMERIC_PROBE = {
   },
 };
 
-/**
- * VendorProfiles: known third-party grid libraries. `classToken` short-
- * circuits looksLikeGrid's geometry probe; `scrollContainerSelectors` /
- * `pinnedPaneSelectors` resolve GridAdapter's scroll and pinned panes.
- * A consumer may pass a custom list via opts.vendorProfiles.
- */
-const DEFAULT_VENDOR_PROFILES = [
-  {
-    name: 'databricks',
-    classToken: 'dg--',
-    scrollContainerSelectors: ['.dg--grid-scroll-container', '.dg--grid-container'],
-    pinnedPaneSelectors: ['.dg--pinned-grid'],
-  },
-  {
-    name: 'ag-grid',
-    classToken: 'ag-',
-    scrollContainerSelectors: ['.ag-center-cols-viewport'],
-    pinnedPaneSelectors: ['.ag-pinned-left-cols-container'],
-  },
-];
+// VendorProfiles: known third-party grid libraries, read from
+// DR_TUNING.vendorProfiles. `classToken` short-circuits looksLikeGrid's
+// geometry probe; `scrollContainerSelectors` / `pinnedPaneSelectors` resolve
+// GridAdapter's scroll and pinned panes. A consumer may pass a custom list
+// via opts.vendorProfiles.
 
 // --- TableAdapter abstraction ---
 // Two adapter classes provide a uniform row/cell interface over both native
@@ -215,7 +197,7 @@ const DEFAULT_ORIGINALS_PORT = makeDefaultOriginalsPort();
 class GridAdapter {
   constructor(el, opts = {}) {
     this.el = el;
-    this.vendorProfiles = opts.vendorProfiles || DEFAULT_VENDOR_PROFILES;
+    this.vendorProfiles = opts.vendorProfiles || DR_TUNING.vendorProfiles;
     this.originalsPort = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
   }
   getElement() { return this.el; }
@@ -740,7 +722,7 @@ function applyExtractedPatches(cell, patches) {
  * Short-circuit ACCEPT (skip step 6) when el carries:
  *   - role="grid" or role="table"  (ARIA)
  *   - a class matching one of opts.vendorProfiles' classToken (default:
- *     DEFAULT_VENDOR_PROFILES — "dg--" or "ag-")
+ *     DR_TUNING.vendorProfiles — "dg--" or "ag-")
  *
  * @param {Element} el
  * @param {{styleProbe?: object, numericProbe?: object, vendorProfiles?: object[]}} [opts]
@@ -750,11 +732,11 @@ function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   const numericProbe = opts.numericProbe || DEFAULT_NUMERIC_PROBE;
-  const vendorProfiles = opts.vendorProfiles || DEFAULT_VENDOR_PROFILES;
+  const vendorProfiles = opts.vendorProfiles || DR_TUNING.vendorProfiles;
 
-  // --- Step 1: Child count ≥ GRID_MIN_CHILDREN ---
+  // --- Step 1: Child count ≥ DR_TUNING.gridMinChildren ---
   const children = Array.from(el.children);
-  if (children.length < GRID_MIN_CHILDREN) return false;
+  if (children.length < DR_TUNING.gridMinChildren) return false;
 
   // --- Step 2: Repetitive structure — children share class or child shape ---
   // "Share class" = majority of children have the same first className token.
@@ -771,18 +753,21 @@ function looksLikeGrid(el, opts = {}) {
   }
   const maxClassCount = Math.max(...classFreq.values());
   const maxChildCount = Math.max(...childCountFreq.values());
-  // At least half of children must share a class token OR a child count.
-  const repetitive = (maxClassCount >= children.length / 2) || (maxChildCount >= children.length / 2);
+  // At least DR_TUNING.gridRepetitionShare of children must share a class
+  // token OR a child count.
+  const repetitionFloor = children.length * DR_TUNING.gridRepetitionShare;
+  const repetitive = (maxClassCount >= repetitionFloor) || (maxChildCount >= repetitionFloor);
   if (!repetitive) return false;
 
   // --- Step 3: Consistent cell count — candidate rows have equal child counts ---
-  // The modal child count must appear in at least half of the children.
+  // The modal child count must appear in at least DR_TUNING.gridRepetitionShare
+  // of the children.
   let modalChildCount = 0;
   let modalFreq = 0;
   for (const [cc, freq] of childCountFreq) {
     if (freq > modalFreq && cc > 0) { modalFreq = freq; modalChildCount = cc; }
   }
-  if (modalFreq < children.length / 2) return false;
+  if (modalFreq < repetitionFloor) return false;
 
   // Candidate rows: children whose child count equals the modal.
   const candidateRows = children.filter(c => c.children.length === modalChildCount);
@@ -790,7 +775,7 @@ function looksLikeGrid(el, opts = {}) {
   // --- Step 4: Layout — display is grid or flex ---
   const computedForDisplay = styleProbe.getComputedStyle(el);
   const display = (computedForDisplay && computedForDisplay.display) || '';
-  if (!GRID_DISPLAY_VALUES.has(display)) return false;
+  if (!DR_TUNING.gridDisplayValues.includes(display)) return false;
 
   // --- Step 5: Numeric content — ≥ 1 cell parses as a finite number (mandatory) ---
   let hasNumeric = false;
@@ -811,15 +796,16 @@ function looksLikeGrid(el, opts = {}) {
   if (vendorProfiles.some(profile => elClass.includes(profile.classToken))) return true;
 
   // --- Step 6: Column-width alignment — sample offsetWidth of column-0 cells ---
-  // Bounded to GRID_COL_WIDTH_SAMPLE rows; only runs when all prior steps passed.
-  const sample = candidateRows.slice(0, GRID_COL_WIDTH_SAMPLE);
+  // Bounded to DR_TUNING.gridColumnWidthSample rows; only runs when all prior
+  // steps passed.
+  const sample = candidateRows.slice(0, DR_TUNING.gridColumnWidthSample);
   const widths = sample.map(row => row.children[0] ? styleProbe.getOffsetWidth(row.children[0]) : -1)
                        .filter(w => w > 0);
   if (widths.length < 2) return true; // too few rows to measure — benefit of the doubt
   const firstWidth = widths[0];
-  // Accept when ≥ 80 % of sampled widths match the first.
+  // Accept when the sampled-width agreement meets DR_TUNING.gridColumnWidthAgreement.
   const matchCount = widths.filter(w => w === firstWidth).length;
-  return matchCount / widths.length >= 0.8;
+  return matchCount / widths.length >= DR_TUNING.gridColumnWidthAgreement;
 }
 
 /**
@@ -831,7 +817,7 @@ function looksLikeGrid(el, opts = {}) {
  *      opts.isSeen.
  *   3. Walk UP from el calling looksLikeGrid at each ancestor; return the
  *      OUTERMOST match — keep walking while the parent also passes; stop when
- *      the parent fails, is <body>, or depth exceeds GRID_WALK_DEPTH_CAP.
+ *      the parent fails, is <body>, or depth exceeds DR_TUNING.gridWalkDepthCap.
  *
  * REPORTS only — this function never writes the dr-ext-grid marker class and
  * never builds a toggle widget, and it never reads that class either: "has
@@ -873,7 +859,7 @@ function findTargetTable(el, opts = {}) {
   // not a CSS selector.
   let seenCandidate = el;
   let seenDepth = 0;
-  while (seenCandidate && seenCandidate !== docBody && seenDepth < GRID_WALK_DEPTH_CAP) {
+  while (seenCandidate && seenCandidate !== docBody && seenDepth < DR_TUNING.gridWalkDepthCap) {
     if (seenCandidate.nodeType === DR_TABLE_ELEMENT_NODE && isSeen(seenCandidate)) {
       return { handle: seenCandidate, isNew: false };
     }
@@ -886,7 +872,7 @@ function findTargetTable(el, opts = {}) {
   let depth = 0;
   let outermost = null;
 
-  while (current && current !== docBody && depth < GRID_WALK_DEPTH_CAP) {
+  while (current && current !== docBody && depth < DR_TUNING.gridWalkDepthCap) {
     if (current.nodeType !== DR_TABLE_ELEMENT_NODE) {
       current = current.parentElement || current.parentNode;
       depth++;
@@ -917,8 +903,8 @@ const GRID_IS_DATA_TABLE_CELL_SAMPLE = 10;
  * exhaust the sample before the scan reaches a data row — the row universe
  * starts at the header now that rowgroups no longer trim the row list. */
 const GRID_IS_DATA_TABLE_ROW_SAMPLE = 10;
-/** Left-offset threshold (px) below which an element is treated as deliberately off-screen hidden. */
-const OFFSCREEN_LEFT_PX_THRESHOLD = -9999;
+// Left-offset threshold (px) below which an element is treated as
+// deliberately off-screen hidden: DR_TUNING.offscreenLeftPx.
 
 /**
  * Return the nearest *positioned* ancestor of `el` (or `el` itself if it is
@@ -976,7 +962,7 @@ function _parsePx(value) {
  * Returns true when ANY ONE of the following signals holds:
  *   1. The table (or any ancestor) carries aria-hidden="true".
  *   2. The table's nearest positioned ancestor (or the table itself) has an
- *      inline or computed `left` value ≤ OFFSCREEN_LEFT_PX_THRESHOLD px.
+ *      inline or computed `left` value ≤ DR_TUNING.offscreenLeftPx px.
  *      NOTE: In the Node test harness getComputedStyle does not report a
  *      meaningful `left`; this check therefore relies primarily on inline style.
  *   3. The table is inside a nearest positioned ancestor that also contains an
@@ -1016,7 +1002,7 @@ function isPhantomA11yTable(table, opts = {}) {
     const computed = styleProbe.getComputedStyle(checkEl);
     if (computed && computed.left) leftVal = _parsePx(computed.left);
   }
-  if (!isNaN(leftVal) && leftVal <= OFFSCREEN_LEFT_PX_THRESHOLD) return true;
+  if (!isNaN(leftVal) && leftVal <= DR_TUNING.offscreenLeftPx) return true;
 
   // --- Signal 3: nearest positioned ancestor contains a chart-ish <svg> ---
   if (posAncestor) {
