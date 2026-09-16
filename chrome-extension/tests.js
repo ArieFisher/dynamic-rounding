@@ -10582,7 +10582,10 @@ function withToggleDocumentMock(fn) {
   };
 
   global.document.body = {
-    appendChild(child) { child.parentElement = global.document.body; }
+    appendChild(child) { child.parentElement = global.document.body; },
+    // The registry teardown detaches a pillbox through its parent, so the
+    // body stub answers the other half of the pair.
+    removeChild(child) { child.parentElement = null; },
   };
 
   try {
@@ -15309,14 +15312,22 @@ function forgetRegisteredTable(table) {
 // =============================================================================
 //
 // The rule these assertions pin, in the specification's words:
-//   - A shape fingerprint is the column count and the header row's cell
-//     texts, recorded for a table when it enters the registry.
-//   - The column count is the widest row's cell count. The header row is the
-//     first row the adapter returns.
-//   - The row count stays out, because a virtualized grid changes its drawn
-//     row count on every scroll.
+//   - A shape fingerprint is the column count, and the header row's cell
+//     texts where the table has a header row, recorded for a table when it
+//     enters the registry.
+//   - The column count is the widest row's cell count.
+//   - A grid has a header row where it groups its data rows and its first row
+//     sits outside every group. A native table has one where its first row
+//     sits in the head section or holds header cells alone.
+//   - A table with no header row carries the column count alone, because the
+//     first row of a grid that groups nothing is a data row that every scroll
+//     redraws.
+//   - The row count stays out for the same reason: a virtualized grid changes
+//     its drawn row count on every scroll.
 //   - Two fingerprints describe the same shape when the column counts match
-//     and the header texts match element by element.
+//     and the header texts match element by element. Two readings that found
+//     no header row compare on the column count alone, and a reading that
+//     found one against a reading that did not is a difference.
 //   - The originals port supplies a cell's stored pre-simplification text, so
 //     the extension's own writes to a header cell read as no change.
 //
@@ -15343,6 +15354,15 @@ function dgAppendRowCell(rowEl, text) {
   cellEl.parentNode = rowEl;
   rowEl.childNodes = rowEl.childNodes.concat([cellEl]);
   rowEl.children = rowEl.children.concat([cellEl]);
+}
+
+// Narrow one fixture row to a subset of the cell elements it already holds,
+// the way a page that drops a column leaves the rest of the row in place. The
+// kept cells are the same elements, so a test can read what they show.
+function dgKeepRowCells(rowEl, indices) {
+  const kept = indices.map((i) => rowEl.children[i]);
+  rowEl.childNodes = kept;
+  rowEl.children = kept;
 }
 
 // Replace one fixture pane's drawn rows, the way a scroll does.
@@ -15390,61 +15410,116 @@ function makeScrollingRowgroupGrid(headerTexts, dataRows) {
   };
 }
 
+// A native table whose first row sits in a head section. The adapter reads
+// the row's parent, so the section is a parent stub carrying the tag name.
+function makeHeadSectionTable(headerTexts, dataRows) {
+  const table = makeToggleTable(
+    [headerTexts.map((text) => ({ tag: 'td', text }))].concat(
+      dataRows.map((rowTexts) => rowTexts.map((text) => ({ tag: 'td', text })))));
+  table.rows[0].parentElement = { tagName: 'THEAD' };
+  return table;
+}
+
 // --- The reader ---
 
-(function shapeFingerprint_theReaderReportsColumnsAndTheFirstRowsTexts() {
-  const grid = makeDatabaseQueryGrid();
-  const reading = readTableFingerprint(grid.scrollPaneEl);
-  eq('fingerprint reader: the reading carries the registered pane\'s column count',
+(function shapeFingerprint_theReaderReportsColumnsAndTheHeaderRowsTexts() {
+  const g = makeScrollingRowgroupGrid(['Region', 'Q1', 'Q2'], [
+    ['North', '1,482,391', '918,554'], ['South', '55,120', '7,314'],
+  ]);
+  const reading = readTableFingerprint(g.wrapperEl);
+  eq('fingerprint reader: the reading carries the grid\'s column count',
     reading.columnCount, 3);
-  eq('fingerprint reader: the reading carries the first row\'s cell texts',
-    reading.headerTexts, ['alpha', '7,318,204', '284.51']);
+  eq('fingerprint reader: the reading carries the header row\'s cell texts',
+    reading.headerTexts, ['Region', 'Q1', 'Q2']);
   eq('fingerprint reader: the reading carries those two fields and no row count',
     Object.keys(reading).sort(), ['columnCount', 'headerTexts']);
 })();
 
+// A grid that groups no rows has a data row first. Its text describes the rows
+// on the screen rather than the table, so the reading leaves it out.
+(function shapeFingerprint_aGrouplessGridCarriesTheColumnCountAlone() {
+  const grid = makeDatabaseQueryGrid();
+  const reading = readTableFingerprint(grid.scrollPaneEl);
+  eq('fingerprint reader: a groupless grid\'s reading carries its column count',
+    reading.columnCount, 3);
+  eq('fingerprint reader: a groupless grid\'s reading carries no header texts',
+    reading.headerTexts, null);
+})();
+
 (function shapeFingerprint_theColumnCountIsTheWidestRowNotTheFirstRow() {
-  const ragged = makeGridWrapper([
+  const grouped = makeScrollingRowgroupGrid(['Region', 'Q1'], [
+    ['North', '1,482,391', '9,105'], ['South', '918,554'],
+  ]);
+  const groupedReading = readTableFingerprint(grouped.wrapperEl);
+  eq('fingerprint reader: the column count is the widest row\'s cell count',
+    groupedReading.columnCount, 3);
+  eq('fingerprint reader: the header texts stay the header row\'s, narrower than the count',
+    groupedReading.headerTexts, ['Region', 'Q1']);
+
+  const groupless = makeGridWrapper([
     ['Region', 'Q1'],
     ['North', '1,482,391', '9,105'],
     ['South', '918,554'],
   ]);
-  const reading = readTableFingerprint(ragged.wrapperEl);
-  eq('fingerprint reader: the column count is the widest row\'s cell count',
-    reading.columnCount, 3);
-  eq('fingerprint reader: the header texts stay the first row\'s, narrower than the count',
-    reading.headerTexts, ['Region', 'Q1']);
+  const grouplessReading = readTableFingerprint(groupless.wrapperEl);
+  eq('fingerprint reader: a groupless grid\'s widest row still sets the column count',
+    grouplessReading.columnCount, 3);
+  eq('fingerprint reader: a groupless grid carries no header texts whatever its rows',
+    grouplessReading.headerTexts, null);
 })();
 
-(function shapeFingerprint_theHeaderRowIsTheFirstRowTheAdapterReturns() {
-  // A row group with the header row outside it: the adapter returns the
-  // header row first, so the fingerprint reads the header row's texts and
-  // not the first data row's.
-  const g = makeScrollingRowgroupGrid(['Region', 'Q1'], [
-    ['North', '1,482,391'], ['South', '918,554'],
+// The three native-table forms. The adapter's outside-row mark names the
+// footer section on a native table, so the head section is read from the row.
+(function shapeFingerprint_aNativeTablesHeaderRowIsItsHeadSectionOrItsHeaderCells() {
+  const headSection = makeHeadSectionTable(['Region', 'Q1'], [['North', '1,482,391']]);
+  eq('fingerprint reader: a native table whose first row sits in a head section carries header texts',
+    readTableFingerprint(headSection).headerTexts, ['Region', 'Q1']);
+
+  const headerCells = makeToggleTable([
+    [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
+    [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
   ]);
-  eq('fingerprint reader: the header row outside the row group is the header the reading carries',
-    readTableFingerprint(g.wrapperEl).headerTexts, ['Region', 'Q1']);
+  eq('fingerprint reader: a native table whose first row holds header cells alone carries header texts',
+    readTableFingerprint(headerCells).headerTexts, ['Region', 'Q1']);
+
+  const dataFirst = makeToggleTable([
+    [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
+    [{ tag: 'td', text: 'South' }, { tag: 'td', text: '918,554' }],
+  ]);
+  const dataFirstReading = readTableFingerprint(dataFirst);
+  eq('fingerprint reader: a native table whose first row holds data cells carries no header texts',
+    dataFirstReading.headerTexts, null);
+  eq('fingerprint reader: that table still carries its column count',
+    dataFirstReading.columnCount, 2);
+
+  const mixedFirstRow = makeToggleTable([
+    [{ tag: 'th', text: 'Region' }, { tag: 'td', text: 'Q1' }],
+    [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
+  ]);
+  eq('fingerprint reader: a first row holding one data cell beside a header cell carries no header texts',
+    readTableFingerprint(mixedFirstRow).headerTexts, null);
 })();
 
 (function shapeFingerprint_theOriginalsPortReadsPastTheExtensionsOwnWrites() {
-  const grid = makeDatabaseQueryGrid();
-  const beforeSimplification = readTableFingerprint(grid.scrollPaneEl);
-  const headerCells = grid.scrollRowEls[0].children;
+  const g = makeScrollingRowgroupGrid(['Region', 'Q1'], [
+    ['North', '1,482,391'], ['South', '918,554'],
+  ]);
+  const beforeSimplification = readTableFingerprint(g.wrapperEl);
+  const headerCells = g.headerRow.children;
   const stored = new Map();
   headerCells.forEach((cellEl) => { stored.set(cellEl, cellEl.childNodes[0].nodeValue); });
   // What a simplification of the header row leaves on the screen.
   headerCells.forEach((cellEl) => { cellEl.childNodes[0].nodeValue = '7M'; });
 
-  const throughThePort = readTableFingerprint(grid.scrollPaneEl,
+  const throughThePort = readTableFingerprint(g.wrapperEl,
     { originalText: (cellEl) => stored.get(cellEl) });
   eq('fingerprint reader: a read through the originals port matches the pre-simplification reading',
     sameTableFingerprint(beforeSimplification, throughThePort), true);
   eq('fingerprint reader: the same read without the port carries the simplified texts',
-    sameTableFingerprint(beforeSimplification, readTableFingerprint(grid.scrollPaneEl)), false);
+    sameTableFingerprint(beforeSimplification, readTableFingerprint(g.wrapperEl)), false);
   eq('fingerprint reader: a port holding nothing for a cell falls back to the cell\'s own text',
-    readTableFingerprint(grid.scrollPaneEl, { originalText: () => undefined }).headerTexts,
-    ['7M', '7M', '7M']);
+    readTableFingerprint(g.wrapperEl, { originalText: () => undefined }).headerTexts,
+    ['7M', '7M']);
 })();
 
 // --- The comparison ---
@@ -15461,6 +15536,35 @@ function makeScrollingRowgroupGrid(headerTexts, dataRows) {
     sameTableFingerprint(base, { columnCount: 3, headerTexts: ['Region', 'Q1'] }), false);
   eq('fingerprint comparison: a missing reading compares different',
     sameTableFingerprint(base, null), false);
+})();
+
+// A table with no header row compares on the column count alone. A table that
+// gained or lost its header row compares different.
+(function shapeFingerprint_theComparisonReadsTwoHeaderlessReadingsOnTheColumnCount() {
+  const headerless = { columnCount: 3, headerTexts: null };
+  eq('fingerprint comparison: two readings with no header row and one column count compare the same',
+    sameTableFingerprint(headerless, { columnCount: 3, headerTexts: null }), true);
+  eq('fingerprint comparison: two readings with no header row and different column counts compare different',
+    sameTableFingerprint(headerless, { columnCount: 4, headerTexts: null }), false);
+  eq('fingerprint comparison: a reading with a header row against one without compares different',
+    sameTableFingerprint(headerless, { columnCount: 3, headerTexts: ['Region', 'Q1', 'Q2'] }), false);
+  eq('fingerprint comparison: that difference reads the same either way round',
+    sameTableFingerprint({ columnCount: 3, headerTexts: ['Region', 'Q1', 'Q2'] }, headerless), false);
+})();
+
+// The consequence on a groupless grid: a scroll changes the first row's text
+// and the reading holds; a new result set changes the column count and the
+// reading moves.
+(function shapeFingerprint_aGrouplessGridsFirstRowTextIsNoPartOfTheReading() {
+  const grid = makeDatabaseQueryGrid();
+  const before = readTableFingerprint(grid.scrollPaneEl);
+  dgReplaceRowCells(grid.scrollRowEls[0], ['golf', '44,190', '12.08']);
+  eq('fingerprint comparison: a groupless grid\'s first-row text change compares the same',
+    sameTableFingerprint(before, readTableFingerprint(grid.scrollPaneEl)), true);
+
+  dgAppendRowCell(grid.scrollRowEls[0], '3,006');
+  eq('fingerprint comparison: a groupless grid\'s column count change compares different',
+    sameTableFingerprint(before, readTableFingerprint(grid.scrollPaneEl)), false);
 })();
 
 // The row count plays no part. A virtualized grid changes its drawn row count
@@ -15496,6 +15600,12 @@ function makeScrollingRowgroupGrid(headerTexts, dataRows) {
     /column count/i.test(fingerprintRow) && /header row/i.test(fingerprintRow), true);
   eq('fingerprint docs: that row states that the row count stays out',
     /row count/i.test(fingerprintRow), true);
+  eq('fingerprint docs: that row states which grid has a header row',
+    /(row group|groups its data rows|outside row)/i.test(fingerprintRow), true);
+  eq('fingerprint docs: that row states which native table has one',
+    /head section/i.test(fingerprintRow), true);
+  eq('fingerprint docs: that row states what a table with no header row carries',
+    /no header row/i.test(fingerprintRow), true);
 
   const registryRow = vocabularyMd.split('\n')
     .find((line) => /^\|\s*registry\s*\|/i.test(line)) || '';
@@ -15508,6 +15618,8 @@ function makeScrollingRowgroupGrid(headerTexts, dataRows) {
     stateOwnership !== '', true);
   eq('fingerprint docs: that sentence lists the shape fingerprint',
     /shape fingerprint/i.test(stateOwnership), true);
+  eq('fingerprint docs: that sentence states when the fingerprint carries header texts',
+    /header row/i.test(stateOwnership), true);
 })();
 
 // --- The chain-root walk the mismatch path re-runs the nomination step from ---
@@ -18723,11 +18835,20 @@ function makeIssue251SidebarHarness() {
 // The pillbox view's builder records the shape after it registers the table,
 // on a grid and on a native table alike.
 (function shapeFingerprint_registrationRecordsTheTablesShape() {
+  const grouped = makeScrollingRowgroupGrid(['Region', 'Q1'], [
+    ['North', '1,482,391'], ['South', '918,554'],
+  ]);
+  withToggleDocumentMock(function () { createToggleForTable(grouped.wrapperEl); });
+  eq('fingerprint registry: registering a grid with a row group records its header row',
+    DR_STORE.getTableFingerprint(grouped.wrapperEl),
+    { columnCount: 2, headerTexts: ['Region', 'Q1'] });
+  forgetRegisteredTable(grouped.wrapperEl);
+
   const grid = makeDatabaseQueryGrid();
   withToggleDocumentMock(function () { createToggleForTable(grid.scrollPaneEl); });
-  eq('fingerprint registry: registering a grid records the shape it carried',
+  eq('fingerprint registry: registering a groupless grid records its column count alone',
     DR_STORE.getTableFingerprint(grid.scrollPaneEl),
-    { columnCount: 3, headerTexts: ['alpha', '7,318,204', '284.51'] });
+    { columnCount: 3, headerTexts: null });
   forgetRegisteredTable(grid.scrollPaneEl);
 
   const nativeTable = makeToggleTable([
@@ -19753,7 +19874,8 @@ function makePressTable(text) {
 })();
 
 // Shape two: a database query grid groups no rows, so its first row is a data
-// row and a scroll redraws it. The criterion covers this shape too.
+// row. The criterion holds here because the reading leaves that row's text
+// out: the pane's fingerprint is its column count, which a scroll keeps.
 
 (function shapeFingerprint_criterion1b_aRedrawnGrouplessPaneKeepsTheEntry() {
   runPressFixture(({ sent }) => {
@@ -19783,6 +19905,62 @@ function makePressTable(text) {
       sent.filter((m) => m.action === 'state:tableSwitched').length, 0);
     eq('fingerprint scroll: a redrawn groupless pane keeps the entry\'s originals',
       DR_STORE.hasTableOriginal(grid.scrollPaneEl, scrolledAwayCell), true);
+
+    forgetRegisteredTable(grid.scrollPaneEl);
+  });
+})();
+
+// --- What each shape reads on: a grid that groups its data rows compares its
+// header row's texts, and a grid that groups nothing compares its column count
+// alone. ---
+
+(function shapeFingerprint_aGroupedGridsHeaderTextChangeTripsTheCheck() {
+  runPressFixture(() => {
+    const g = makeScrollingRowgroupGrid(['Region', 'Q1'], [
+      ['North', '1,482,391'], ['South', '918,554'],
+    ]);
+    const removedPillboxes = registerFingerprintedTable(g.wrapperEl);
+    DR_STORE.setSelectedTable(g.wrapperEl);
+
+    g.headerRow.children[1].childNodes[0].nodeValue = 'Q2';
+
+    let outcome = null;
+    withToggleDocumentMock(function () { outcome = revalidateTableShape(g.wrapperEl); });
+
+    eq('fingerprint grouped header: a header text change reports a switch',
+      outcome.switched, true);
+    eq('fingerprint grouped header: the grid registers fresh',
+      outcome.table === g.wrapperEl, true);
+    eq('fingerprint grouped header: the discard takes the old pillbox off the page',
+      removedPillboxes.length, 1);
+    eq('fingerprint grouped header: the fresh fingerprint carries the new header text',
+      DR_STORE.getTableFingerprint(g.wrapperEl),
+      { columnCount: 2, headerTexts: ['Region', 'Q2'] });
+
+    forgetRegisteredTable(g.wrapperEl);
+  });
+})();
+
+(function shapeFingerprint_aGrouplessGridsFirstRowTextDoesNotTripTheCheck() {
+  runPressFixture(() => {
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+    const recorded = DR_STORE.getTableFingerprint(grid.scrollPaneEl);
+
+    dgReplaceRowCells(grid.scrollRowEls[0], ['golf', '44,190', '12.08']);
+    let held = null;
+    withToggleDocumentMock(function () { held = revalidateTableShape(grid.scrollPaneEl); });
+    eq('fingerprint groupless: a first-row text change reports no switch', held.switched, false);
+    eq('fingerprint groupless: the recorded fingerprint stays in place',
+      DR_STORE.getTableFingerprint(grid.scrollPaneEl) === recorded, true);
+
+    grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 17)));
+    let switched = null;
+    withToggleDocumentMock(function () { switched = revalidateTableShape(grid.scrollPaneEl); });
+    eq('fingerprint groupless: a column count change reports a switch', switched.switched, true);
+    eq('fingerprint groupless: the fresh fingerprint carries the new column count',
+      DR_STORE.getTableFingerprint(grid.scrollPaneEl).columnCount, 4);
 
     forgetRegisteredTable(grid.scrollPaneEl);
   });
@@ -19878,8 +20056,43 @@ function makePressTable(text) {
       sent.filter((m) => m.action === 'state:applyBlocked').length, 0);
     eq('fingerprint added column: the fresh entry\'s originals carry the new column\'s text',
       DR_STORE.getTableOriginalText(grid.scrollPaneEl, addedCell), '412,905');
-    eq('fingerprint added column: the fresh entry\'s originals carry a surviving cell\'s text',
-      DR_STORE.hasTableOriginal(grid.scrollPaneEl, countCell), true);
+    eq('fingerprint added column: the fresh entry\'s originals carry a surviving cell\'s raw text',
+      DR_STORE.getTableOriginalText(grid.scrollPaneEl, countCell), '551,077');
+
+    forgetRegisteredTable(grid.scrollPaneEl);
+  });
+})();
+
+// The restore runs before the discard, against the old entry while it still
+// holds the originals, so a surviving cell reads raw at the moment the fresh
+// entry records.
+(function shapeFingerprint_theDiscardRestoresTheSurvivingCellsFirst() {
+  runPressFixture(() => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+    const countCell = grid.scrollRowEls[1].children[1];
+    eq('fingerprint restore: the press simplified the count column (precondition)',
+      countCell.childNodes[0].nodeValue !== '551,077', true);
+
+    const added = ['6,204,118', '412,905', '88,340', '9,127', '1,006', '771'];
+    grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, added[i]));
+
+    let outcome = null;
+    withToggleDocumentMock(function () { outcome = revalidateTableShape(grid.scrollPaneEl); });
+
+    eq('fingerprint restore: the check reports a switch', outcome.switched, true);
+    eq('fingerprint restore: a surviving cell reads its raw text once the fresh entry records',
+      countCell.childNodes[0].nodeValue, '551,077');
+    eq('fingerprint restore: that cell carries no simplified marker',
+      countCell.classList.contains('dr-ext-rounded'), false);
+    eq('fingerprint restore: the fresh entry holds no original for that cell',
+      DR_STORE.hasTableOriginal(grid.scrollPaneEl, countCell), false);
 
     forgetRegisteredTable(grid.scrollPaneEl);
   });
@@ -20031,8 +20244,18 @@ function makePressTable(text) {
   });
 })();
 
-// --- Nothing registering stops the action. The whole nest fails the data test
-// after the change, so the recovery registers no element. ---
+// --- Nothing registering stops the action. The page returns a narrower result
+// set holding no number, so the column count trips the check and every element
+// of the nest then fails the data test. ---
+
+// The change: two word-only columns in place of three columns of data, and a
+// single word in each pinned row. The column count moves from three to two.
+function emptyTheDatabaseQueryGridOfNumbers(grid) {
+  const places = ['november', 'oscar', 'papa', 'quebec', 'romeo', 'sierra'];
+  const states = ['pending', 'running', 'queued', 'halted', 'idle', 'done'];
+  grid.pinnedRowEls.forEach((rowEl, i) => dgReplaceRowCells(rowEl, [places[i]]));
+  grid.scrollRowEls.forEach((rowEl, i) => dgReplaceRowCells(rowEl, [places[i], states[i]]));
+}
 
 (function shapeFingerprint_nothingRegisteringStopsThePressAndClearsTheActiveTable() {
   runPressFixture(({ writes, resetWrites }) => {
@@ -20041,11 +20264,7 @@ function makePressTable(text) {
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
 
-    // The page returns a result set holding no number anywhere.
-    const words = ['november', 'oscar', 'papa', 'quebec', 'romeo', 'sierra'];
-    grid.pinnedRowEls.forEach((rowEl, i) => dgReplaceRowCells(rowEl, [words[i]]));
-    grid.scrollRowEls.forEach((rowEl, i) =>
-      dgReplaceRowCells(rowEl, [words[i], 'none', 'none']));
+    emptyTheDatabaseQueryGridOfNumbers(grid);
 
     resetWrites();
     withToggleDocumentMock(function () {
@@ -20072,10 +20291,7 @@ function makePressTable(text) {
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_STORE.setSelectedTable(other);
 
-    const words = ['november', 'oscar', 'papa', 'quebec', 'romeo', 'sierra'];
-    grid.pinnedRowEls.forEach((rowEl, i) => dgReplaceRowCells(rowEl, [words[i]]));
-    grid.scrollRowEls.forEach((rowEl, i) =>
-      dgReplaceRowCells(rowEl, [words[i], 'none', 'none']));
+    emptyTheDatabaseQueryGridOfNumbers(grid);
 
     withToggleDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
@@ -20083,6 +20299,43 @@ function makePressTable(text) {
 
     eq('fingerprint recovery: a discarded table that was not active leaves the active table alone',
       DR_STORE.getSelectedTable() === other, true);
+  });
+})();
+
+// The restore runs before the discard on this path too: the page reads raw
+// after a recovery that registers nothing. The narrowing keeps each row's
+// simplified cell, so the surviving text is the extension's own until the
+// restore puts the original back, and no entry remains to restore from after.
+(function shapeFingerprint_theNothingRegisteringPathLeavesThePageReadingRaw() {
+  runPressFixture(() => {
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+    const countCell = grid.scrollRowEls[1].children[1];
+    eq('fingerprint restore: the press simplified the count column (precondition)',
+      countCell.childNodes[0].nodeValue !== '551,077', true);
+
+    // The page narrows every row to its count cell and empties the pinned
+    // rows, so no row of the nest holds two cells and nothing registers.
+    grid.pinnedRowEls.forEach((rowEl) => dgKeepRowCells(rowEl, []));
+    grid.scrollRowEls.forEach((rowEl) => dgKeepRowCells(rowEl, [1]));
+
+    withToggleDocumentMock(function () {
+      DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
+    });
+
+    eq('fingerprint restore: the nest holds no registry entry after the recovery',
+      [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_STORE.hasTable(el)),
+      [false, false, false]);
+    eq('fingerprint restore: the surviving cell reads its raw text',
+      countCell.childNodes[0].nodeValue, '551,077');
+    eq('fingerprint restore: the surviving cell carries no simplified marker',
+      countCell.classList.contains('dr-ext-rounded'), false);
   });
 })();
 
