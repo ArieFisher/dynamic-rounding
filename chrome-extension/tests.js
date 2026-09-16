@@ -15660,6 +15660,186 @@ function forgetRegisteredTable(table) {
 })();
 
 // =============================================================================
+// Sprint pending-retest: the nomination step reports one nest at a time
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.3 and §3.4.
+// =============================================================================
+//
+// The four outcomes, in the specification's words:
+//   - 'selected'   the step selected an element to register.
+//   - 'empty'      no element of the nest passes the data test, which is the
+//                  pending-table case.
+//   - 'crowded'    a depth holds more than one element and no shallower depth
+//                  holds exactly one, so the nest registers nothing.
+//   - 'registered' the nest already holds an element the caller reports as
+//                  seen, which makes a rediscovery idempotent.
+// The chain size counts the nest elements that passed the data test and filed
+// at a depth; it is zero for 'empty' and for 'registered'.
+//
+// findTables keeps the 'selected' outcomes and drops the other three, so a
+// caller that acts on them reads them here.
+
+// A nest whose chain root fails the data test while two qualifying children
+// pass it: the shape that leaves the configured depth crowded with no
+// shallower depth to fall back to.
+//
+// The root's own row read comes from the row group under it, which holds two
+// rows of text and no number, so the root fails the data test. The two panes
+// sit outside that row group and hold their own rows, so each passes. Both
+// panes carry the table role rather than the grid role, which keeps the grid
+// adapter's scroll-container lookup on the root itself.
+function makeCrowdedNest() {
+  const textCell = (text) => {
+    const cell = makeDgNode('DIV', 'text-cell', null, [makeTextNode(text)]);
+    cell.textContent = text;
+    cell.innerText = text;
+    return cell;
+  };
+  const textRow = (cellTexts) => makeDgNode('DIV', 'text-row', 'row', cellTexts.map(textCell));
+  const rowGroupEl = makeDgNode('DIV', 'text-rowgroup', 'rowgroup', [
+    textRow(['alpha', 'north']),
+    textRow(['bravo', 'south']),
+  ]);
+  const paneAEl = makeDgNode('DIV', 'crowded-pane-a', 'table', [
+    makeDgRow(0, ['alpha', '7,318,204']),
+    makeDgRow(1, ['bravo', '551,077']),
+  ]);
+  const paneBEl = makeDgNode('DIV', 'crowded-pane-b', 'table', [
+    makeDgRow(0, ['charlie', '2,140,663']),
+    makeDgRow(1, ['delta', '73,915']),
+  ]);
+  const rootEl = makeDgNode('DIV', 'crowded-root', 'table', [rowGroupEl, paneAEl, paneBEl]);
+  return { rootEl, paneAEl, paneBEl };
+}
+
+(function nominationStep_reportsSelectedForTheDatabaseQueryShape() {
+  const grid = makeDatabaseQueryGrid();
+  const result = nominateNest(grid.wrapperEl);
+
+  eq('nomination: a filled database query grid reports the selected outcome',
+    result.outcome, 'selected');
+  eq('nomination: the selected element is the scrolling pane',
+    result.selected === grid.scrollPaneEl, true);
+  eq('nomination: the reported chain root is the wrapper',
+    result.chainRoot === grid.wrapperEl, true);
+  eq('nomination: the chain holds the wrapper and the scrolling pane',
+    result.chainSize, 2);
+  eq('nomination: findTables on the same shape reports the selected handle alone',
+    findTables(grid.wrapperEl).map((r) => r.handle === grid.scrollPaneEl), [true]);
+})();
+
+(function nominationStep_reportsEmptyForAGridWithNoRows() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+  const result = nominateNest(grid.wrapperEl);
+
+  eq('nomination: a grid with no rows reports the empty outcome', result.outcome, 'empty');
+  eq('nomination: the empty outcome selects nothing', result.selected, null);
+  eq('nomination: the empty outcome reports the wrapper as the chain root',
+    result.chainRoot === grid.wrapperEl, true);
+  eq('nomination: the empty outcome reports a chain size of zero', result.chainSize, 0);
+  eq('nomination: findTables on a grid with no rows reports nothing',
+    findTables(grid.wrapperEl).length, 0);
+})();
+
+(function nominationStep_reportsCrowdedWhenTheDepthHoldsTwoAndTheRootFails() {
+  const nest = makeCrowdedNest();
+
+  eq('nomination: the crowded root fails the data test', isDataTable(nest.rootEl), false);
+  eq('nomination: both panes of the crowded nest pass the data test',
+    [nest.paneAEl, nest.paneBEl].map(isDataTable), [true, true]);
+
+  const result = nominateNest(nest.rootEl);
+  eq('nomination: two passing siblings with a failing root report the crowded outcome',
+    result.outcome, 'crowded');
+  eq('nomination: the crowded outcome selects nothing', result.selected, null);
+  eq('nomination: the crowded outcome counts both passing siblings', result.chainSize, 2);
+  eq('nomination: findTables on the crowded shape reports nothing',
+    findTables(nest.rootEl).length, 0);
+})();
+
+(function nominationStep_reportsRegisteredWhenTheNestHoldsASeenElement() {
+  const grid = makeDatabaseQueryGrid();
+  const result = nominateNest(grid.wrapperEl, { isSeen: (el) => el === grid.scrollPaneEl });
+
+  eq('nomination: a nest holding a seen element reports the registered outcome',
+    result.outcome, 'registered');
+  eq('nomination: the registered outcome selects nothing', result.selected, null);
+  eq('nomination: the registered outcome reports a chain size of zero', result.chainSize, 0);
+  eq('nomination: findTables on a nest holding a seen element reports nothing',
+    findTables(grid.wrapperEl, { isSeen: (el) => el === grid.scrollPaneEl }).length, 0);
+})();
+
+(function nominationStep_reportsOneResultPerNestInDocumentOrder() {
+  const first = makeDatabaseQueryGrid();
+  const second = makeDatabaseQueryGrid();
+  const results = nominateNests(makeNestingHost([first.wrapperEl, second.wrapperEl]));
+
+  eq('nomination: a host holding two grids reports two results', results.length, 2);
+  eq('nomination: the results carry the two chain roots in document order',
+    results.map((r) => r.chainRoot === first.wrapperEl || r.chainRoot === second.wrapperEl),
+    [true, true]);
+  eq('nomination: the first result belongs to the first grid',
+    results[0] && results[0].chainRoot === first.wrapperEl, true);
+  eq('nomination: the second result belongs to the second grid',
+    results[1] && results[1].chainRoot === second.wrapperEl, true);
+  eq('nomination: each result selects its own scrolling pane',
+    results.map((r) => r.selected === first.scrollPaneEl || r.selected === second.scrollPaneEl),
+    [true, true]);
+})();
+
+(function nominationStep_theChainRootWalkFindsTheOutermostQualifyingElement() {
+  const grid = makeDatabaseQueryGrid();
+  eq('nomination: the walk from the scrolling pane lands on the wrapper',
+    chainRootOf(grid.scrollPaneEl) === grid.wrapperEl, true);
+  eq('nomination: the walk from the pinned pane lands on the same wrapper',
+    chainRootOf(grid.pinnedPaneEl) === grid.wrapperEl, true);
+  eq('nomination: the walk from the wrapper lands on the wrapper itself',
+    chainRootOf(grid.wrapperEl) === grid.wrapperEl, true);
+  eq('nomination: a plain element with no qualifying ancestor has no chain root',
+    chainRootOf(makeDgNode('DIV', 'plain-element', null, [])), null);
+})();
+
+// --- Criterion 5: the living docs state the pending table rule ---
+
+(function pendingRetest_AC5_livingDocsStateTheRule() {
+  const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
+  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
+  const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
+
+  const pendingRow = vocabularyMd.split('\n')
+    .find((line) => /^\|\s*pending table\s*\|/i.test(line)) || '';
+  eq('pending AC5: docs/vocabulary.md carries a row for "pending table"',
+    pendingRow !== '', true);
+  eq('pending AC5: the pending table row states the subtree observer',
+    /subtree observer/i.test(pendingRow), true);
+  eq('pending AC5: the pending table row states the re-test cap',
+    /re-test cap/i.test(pendingRow), true);
+
+  const designParagraphs = designMd.split('\n\n');
+  const detectionParagraph = designParagraphs.find((p) => /^\*\*Detection\.\*\*/.test(p)) || '';
+  eq('pending AC5: docs/design.md carries a Detection paragraph',
+    detectionParagraph !== '', true);
+  eq('pending AC5: the Detection paragraph states that an empty chain leaves a pending table',
+    /pending table/i.test(detectionParagraph), true);
+  eq('pending AC5: the Detection paragraph states the cap on failed re-tests',
+    /cap/i.test(detectionParagraph), true);
+
+  const stateParagraph = designParagraphs.find((p) => /hold state outside the model/i.test(p)) || '';
+  eq('pending AC5: docs/design.md lists the state held outside the model',
+    stateParagraph !== '', true);
+  eq('pending AC5: that list names each pending table\'s subtree observer',
+    /pending table[^.]*observer/i.test(stateParagraph), true);
+
+  const detectionPoint = extensionReadme.split('\n')
+    .find((line) => /Detection runs on demand/i.test(line)) || '';
+  eq('pending AC5: chrome-extension/README.md carries the detection point',
+    detectionPoint !== '', true);
+  eq('pending AC5: the detection point states the pending table',
+    /pending table/i.test(detectionPoint), true);
+  eq('pending AC5: the detection point names the re-test cap in the tuning block',
+    /pendingRetestCap/.test(detectionPoint), true);
+})();
+
+// =============================================================================
 // Sprint merge-ladder: lib/dr-simplify classification ladder
 // =============================================================================
 //
