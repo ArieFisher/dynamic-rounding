@@ -200,7 +200,7 @@ The extension is the largest consumer of the algorithm and carries its own compo
 
 | Package | Job |
 |---------|-----|
-| `constants.js` | The settings contract, loaded by all three contexts: each option's name and its default |
+| `constants.js` | The settings contract and the detection tuning block, loaded by all three contexts: each option's name and its default, and every detection tuning value with its two lookup lists |
 | `lib/dr-log/` | The log buffer: the last 50 log rows per context, snapshot into every capture |
 | `lib/dr-number/` | Rounding, parsing, and formatting — the algorithm itself, plus dates and times |
 | `lib/dr-table/` | Detection and the table adapters (`NativeTableAdapter`, `GridAdapter`) |
