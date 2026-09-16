@@ -133,7 +133,7 @@ const DR_STORE = (function () {
         // below describe data no longer on the screen. null until that one
         // writer runs: an entry a first write created (see the note on
         // registerTable below) carries no fingerprint, and the controller's
-        // comparison treats that as nothing to compare against.
+        // comparison reads that as nothing to compare against.
         fingerprint: null,
       };
       tableRegistry.set(table, entry);
@@ -281,7 +281,7 @@ const DR_STORE = (function () {
   }
 
   // null with no entry and null with an entry that never recorded one are
-  // the same answer, and the controller's comparison treats both the same
+  // the same answer, and the controller's comparison reads both the same
   // way: nothing recorded, so nothing to compare against.
   function getTableFingerprint(table) {
     const entry = tableRegistry.get(table);

@@ -1063,16 +1063,19 @@ function isDataTable(table, opts = {}) {
 
 /**
  * Read one table's shape fingerprint through the adapter: the column count
- * (the widest row's cell count) and the header row's cell texts. The registry
- * records it when the table registers, and every action on a registered table
- * compares the table's current shape against the recorded one before it acts.
+ * (the widest row's cell count) and, where the table has a header row, that
+ * row's cell texts. The registry records it when the table registers, and
+ * every action on a registered table compares the table's current shape
+ * against the recorded one before it acts.
  *
  * The row count stays out of the fingerprint on purpose. A virtualized grid
  * creates and destroys rows on every scroll, so a row count would report a
  * scroll as a shape change.
  *
- * The header row is the first row the adapter returns — an outside row where
- * a grid groups its rows, the head section on a native table.
+ * Header texts are read only where _hasHeaderRow holds for the first row the
+ * adapter returns; otherwise headerTexts is null and the fingerprint is the
+ * column count alone. A grid that groups nothing has a data row first, and a
+ * scroll redraws it, so its text would report a scroll as a shape change.
  *
  * opts.originalText, when the caller supplies it, reads a cell's stored
  * pre-simplification text and returns undefined for a cell with none. A
@@ -1087,7 +1090,7 @@ function isDataTable(table, opts = {}) {
  * @param {Element} el
  * @param {{originalText?: (cellEl: Element) => (string|undefined),
  *          vendorProfiles?: object[], originalsPort?: object}} [opts]
- * @returns {{columnCount: number, headerTexts: string[]}}
+ * @returns {{columnCount: number, headerTexts: string[]|null}}
  */
 function readTableFingerprint(el, opts = {}) {
   const adapter = makeAdapter(el, opts);
@@ -1106,8 +1109,8 @@ function readTableFingerprint(el, opts = {}) {
 }
 
 /**
- * Whether the first row the adapter returns is a header row, which is what
- * decides whether the fingerprint carries header texts at all.
+ * Whether the first row the adapter returns is a header row, which determines
+ * whether the fingerprint carries header texts at all.
  *
  * On a grid the answer is the adapter's own outside-row mark: a grid that
  * groups its data rows puts its header row outside every group, and the
@@ -1119,7 +1122,7 @@ function readTableFingerprint(el, opts = {}) {
  * so the head section is read from the row itself: the row sits in a THEAD,
  * or it holds header cells and no data cell. The second form covers a table
  * written with a leading row of <th> and no explicit head section, which the
- * simplification engine already treats as a header row by skipping every <th>
+ * simplification engine already reads as a header row by skipping every <th>
  * cell it holds.
  *
  * @param {Element} el
@@ -1156,12 +1159,12 @@ function _fingerprintCellText(cellObj, opts) {
  * Whether two shape fingerprints describe the same shape: the same column
  * count, and the same header texts element by element.
  *
- * Either side missing answers false. The one caller treats a missing recorded
+ * Either side missing answers false. The one caller reads a missing recorded
  * fingerprint as its own case before it compares, so a false here always
  * means a read that returned nothing.
  *
- * @param {{columnCount: number, headerTexts: string[]}} a
- * @param {{columnCount: number, headerTexts: string[]}} b
+ * @param {{columnCount: number, headerTexts: string[]|null}} a
+ * @param {{columnCount: number, headerTexts: string[]|null}} b
  * @returns {boolean}
  */
 function sameTableFingerprint(a, b) {
