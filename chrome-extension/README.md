@@ -79,6 +79,8 @@ A row outside every row group — or, on a native table, a `<tfoot>` row — is 
 
 On virtualized grids, the max magnitude freezes when simplification is first applied (the magnitude freeze), and the data test samples a bounded ten cells in each of ten rows, so a wide header row cannot exhaust the sample.
 
+On a native table, the data test and rounding share one cell read: the cell's rendered text, falling back to its raw text when the rendered text is empty. A hidden cell rounds like any other cell, and its raw text counts toward the test; a hidden fragment inside a visible cell — the hidden sort key above — stays out, because that cell's rendered text is not empty and the fallback never runs.
+
 #### Why grids need a different write model
 
 A `<table>` cell can be rewritten via `innerHTML` safely. A framework-managed grid cell **cannot**: React (and similar) hold a fiber reference to the cell's text node, so replacing it (`innerHTML =`, `textContent =`, `removeChild`/`appendChild`) crashes the host app's reconciler on the next re-render (observed: a `removeChild NotFoundError` that tore down the results panel on column resize). Grid writes therefore patch the existing text node **in place** (`textNode.nodeValue = …`), preserving the node identity the framework tracks. (Mixed-text cells — e.g. numbers embedded in surrounding text or `<sup>` exponents — have no clean in-place rewrite and are currently skipped on grids; tracked as a follow-up.)
