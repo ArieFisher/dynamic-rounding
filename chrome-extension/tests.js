@@ -8065,6 +8065,147 @@ function makeGridWrapper(rowData, opts) {
 }
 
 // ---------------------------------------------------------------------------
+// A synthetic Databricks-shaped vendor grid.
+//
+// The shape rebuilds docs/test-pages/tables.html §13 with invented values, per
+// the repository's regression-fixture convention: a role="table" wrapper
+// holding a pinned pane of leading columns beside a scrolling pane of data,
+// all under dg-- classes, with rows paired across the panes by data-row. The
+// nomination step, the two adapters, and the pillbox builder all read these
+// nodes, so each one answers the selector queries, the role read, the class
+// list, the parent link, and the text reads those three make.
+// ---------------------------------------------------------------------------
+
+// Match one node against the selector forms this file's fixtures are queried
+// with: a comma-separated list whose parts are an attribute selector on role,
+// a single class, or a tag name.
+function dgNodeMatches(node, selector) {
+  return String(selector).split(',').map((part) => part.trim()).filter(Boolean).some((part) => {
+    const roleMatch = /^\[role="([^"]+)"\]$/.exec(part);
+    if (roleMatch) return node.getAttribute('role') === roleMatch[1];
+    if (part.charAt(0) === '.') return node.classList.contains(part.slice(1));
+    return String(node.tagName).toUpperCase() === part.toUpperCase();
+  });
+}
+
+// Every element descendant of `node`, in document order, that matches.
+function dgDescendantsMatching(node, selector) {
+  const found = [];
+  (function visit(current) {
+    for (const child of current.children) {
+      if (dgNodeMatches(child, selector)) found.push(child);
+      visit(child);
+    }
+  })(node);
+  return found;
+}
+
+// One element node of the fixture. `childNodes` holds text nodes for a cell
+// and element nodes everywhere else; `children` is the element half, which is
+// what the adapters walk when a selector finds nothing.
+function makeDgNode(tagName, className, role, childNodes) {
+  const classes = new Set(String(className || '').split(/\s+/).filter(Boolean));
+  const kids = childNodes || [];
+  const node = {
+    nodeType: 1,
+    tagName: tagName,
+    childNodes: kids,
+    children: kids.filter((child) => child.nodeType === 1),
+    dataset: {},
+    parentElement: null,
+    parentNode: null,
+    style: {},
+    textContent: '',
+    innerText: '',
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      contains(name) { return classes.has(name); },
+    },
+    getAttribute(name) { return name === 'role' ? (role || null) : null; },
+    removeAttribute() {},
+    matches(selector) { return dgNodeMatches(node, selector); },
+    querySelector(selector) { return dgDescendantsMatching(node, selector)[0] || null; },
+    querySelectorAll(selector) { return dgDescendantsMatching(node, selector); },
+    getBoundingClientRect() { return { top: 20, right: 420, bottom: 260, left: 20, width: 400, height: 240 }; },
+  };
+  Object.defineProperty(node, 'className', {
+    get() { return Array.from(classes).join(' '); },
+    configurable: true,
+  });
+  for (const child of node.children) {
+    child.parentElement = node;
+  }
+  return node;
+}
+
+// One dg--cell wrapping a single text node, the shape the grid write path
+// patches in place.
+function makeDgCell(text) {
+  const cell = makeDgNode('DIV', 'dg--cell', null, [makeTextNode(text)]);
+  cell.textContent = text;
+  cell.innerText = text;
+  return cell;
+}
+
+function makeDgRow(rowIndex, cellTexts) {
+  const row = makeDgNode('DIV', 'dg--virtual-row', null, cellTexts.map(makeDgCell));
+  row.dataset = { row: String(rowIndex) };
+  return row;
+}
+
+/**
+ * Build the synthetic Databricks-shaped grid.
+ *
+ * Two parameters cover the cases the nesting rule turns on:
+ *   - pinnedColumns: cells in each pinned row. One column fails the data test,
+ *     so the pinned pane drops out of the containment chain and depth 1 holds
+ *     the scrolling pane alone. Two columns pass it, which puts two elements
+ *     at depth 1.
+ *   - rows: row pairs across the two panes. Zero builds an empty wrapper, the
+ *     shape a later sprint retests once its rows arrive.
+ *
+ * @param {{pinnedColumns?: number, rows?: number}} [opts]
+ * @returns {{wrapperEl: object, pinnedPaneEl: object, scrollPaneEl: object,
+ *            pinnedRowEls: object[], scrollRowEls: object[]}}
+ */
+function makeDatabricksGrid(opts) {
+  const options = opts || {};
+  const pinnedColumns = options.pinnedColumns === undefined ? 1 : options.pinnedColumns;
+  const rowCount = options.rows === undefined ? 6 : options.rows;
+
+  // Invented values. The identifier column names a measure; the two numeric
+  // columns hold a count and a rate, one order of magnitude apart so a
+  // set-aware pass has something to separate.
+  const measures = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+  const counts = ['7,318,204', '551,077', '2,140,663', '73,915', '10,428', '3,906'];
+  const rates = ['284.51', '31.77', '58.02', '7.44', '2.19', '0.63'];
+  // The pinned pane's leading column is the row-number gutter; a second
+  // pinned column holds a short label so the pane passes the data test only
+  // when the caller asks for it.
+  const gutterLabels = ['north', 'south', 'east', 'west', 'inland', 'coastal'];
+
+  const pinnedRowEls = [];
+  const scrollRowEls = [];
+  for (let i = 0; i < rowCount; i++) {
+    const pinnedTexts = [String(i + 1)];
+    for (let c = 1; c < pinnedColumns; c++) pinnedTexts.push(gutterLabels[i % gutterLabels.length]);
+    pinnedRowEls.push(makeDgRow(i, pinnedTexts));
+    scrollRowEls.push(makeDgRow(i, [
+      measures[i % measures.length],
+      counts[i % counts.length],
+      rates[i % rates.length],
+    ]));
+  }
+
+  const pinnedPaneEl = makeDgNode('DIV', 'dg--grid-container dg--pinned-grid', 'grid', pinnedRowEls);
+  const scrollPaneEl = makeDgNode('DIV', 'dg--grid-container dg--grid-scroll-container', 'grid', scrollRowEls);
+  const wrapperEl = makeDgNode('DIV', 'dg--table-wrapper', 'table', [pinnedPaneEl, scrollPaneEl]);
+
+  return { wrapperEl, pinnedPaneEl, scrollPaneEl, pinnedRowEls, scrollRowEls };
+}
+
+// ---------------------------------------------------------------------------
 // GR1: Unlabelled variable-row-height grid — structural extraction + nodeValue rounding
 // The headline test: no ARIA roles, no dg-- classes. GridAdapter must fall back
 // to direct children as rows and direct row-children as cells.
