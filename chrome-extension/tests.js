@@ -20590,14 +20590,16 @@ function makeBusSandbox(opts) {
 //
 // A hidden native cell is modeled as a mock cell whose rendered text
 // (innerText) is empty and whose raw text (textContent) holds a number.
-// Browsers exclude non-rendered content from innerText, but textContent
-// always concatenates every text node regardless of rendering — the
-// NativeTableAdapter read (cell.innerText || cell.textContent || '', see
-// getText() in lib/dr-table/detect.js) therefore falls back to the raw text
-// only when the rendered text is empty. Every assertion below drives the
-// real adapter, the real data test, or the real engine (isDataTable,
-// roundTable, resetTable, collectNumericCells, findTables) — none pins the
-// source text of detect.js or content.js.
+// A cell that is itself not rendered, such as a cell in a display:none row,
+// still returns its descendant text through innerText. The rendered read
+// comes back empty for a cell in a visibility:hidden row and for a cell in
+// a closed details element; textContent holds every text node in both
+// cases. The NativeTableAdapter read (getText() in lib/dr-table/detect.js)
+// falls back to the raw text only when the rendered text is empty, which
+// covers those two cases. Every assertion below drives the real adapter,
+// the real data test, or the real engine (isDataTable, roundTable,
+// resetTable, collectNumericCells, findTables); none pins the source text
+// of detect.js or content.js.
 // ---------------------------------------------------------------------------
 
 // (a) The data test passes on a table whose only number sits in a hidden
