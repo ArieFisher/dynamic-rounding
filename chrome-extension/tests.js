@@ -191,6 +191,24 @@ globalThis.computeGridRoundedValues = computeGridRoundedValues;
 globalThis.gridObservers = gridObservers;
 globalThis.gridReapplyTimers = gridReapplyTimers;
 globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_TUNING.gridRedrawDelayMs;
+// Expose the nomination step (lib/dr-table/detect.js) for the nesting and
+// pending-table suites. The step reports outcomes findTables drops, so the
+// suites read them here rather than through findTables.
+globalThis.chainRootOf = chainRootOf;
+globalThis.nominateNest = nominateNest;
+globalThis.nominateNests = nominateNests;
+// Expose the controller's pending-table state and the three functions that
+// hold, re-test, and drop a pending record (sprint pending-retest). The
+// content-script bundle evaluates in its own scope, so the pending suite
+// reaches these names only through this list.
+globalThis.consumeNominations = consumeNominations;
+globalThis.holdPendingTable = holdPendingTable;
+globalThis.retestPendingTable = retestPendingTable;
+globalThis.dropPendingTable = dropPendingTable;
+globalThis.pendingRoots = pendingRoots;
+globalThis.pendingObservers = pendingObservers;
+globalThis.pendingRetestTimers = pendingRetestTimers;
+globalThis.pendingRetestCounts = pendingRetestCounts;
 // Expose phantom a11y predicate and its threshold constant for tests
 globalThis.isPhantomA11yTable = isPhantomA11yTable;
 globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_TUNING.offscreenLeftPx;
@@ -10852,6 +10870,356 @@ function asAddedGridNode(grid) {
     tableToggles.has(realTbl), true);
 
   cleanupPass1Tables([realTbl]);
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint pending-retest: a grid that arrives before its rows registers when
+// the rows arrive.
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.4 and the
+// pending-retest block in §5; the re-test cap's reasoning in §6.
+// ---------------------------------------------------------------------------
+//
+// The rule these assertions pin, in the specification's words:
+//   - A chain root whose containment chain is empty — no qualifying element of
+//     its nest passes the data test — becomes a pending table: one debounced
+//     subtree observer on the chain root, watching childList, characterData,
+//     and subtree.
+//   - A change to the subtree runs the nomination step from the root again. A
+//     registration clears the pending record and disconnects the observer.
+//   - A re-test that still finds the chain empty counts against
+//     DR_TUNING.pendingRetestCap; reaching the cap drops the observer, the
+//     timer, and the count, and records a debug log row.
+//   - The pending unit is the chain root, so a nest of several qualifying
+//     elements carries one observer.
+//
+// Every expected value below comes from that statement, never from the
+// controller's source.
+
+// Drive the pending table's observer and its debounce the way the re-apply
+// observer tests drive theirs. The capturing MutationObserver records every
+// instance and every observe call, so a test can count the observers a nest
+// produced; the setTimeout stub stores each scheduled callback for the test to
+// run.
+function withPendingHarness(fn) {
+  const observers = [];
+  const timers = [];
+  const CapturingPendingMO = class {
+    constructor(cb) {
+      this._cb = cb;
+      this.observeCalls = [];
+      this.disconnectCount = 0;
+      observers.push(this);
+    }
+    observe(target, options) { this.observeCalls.push({ target, options }); }
+    disconnect() { this.disconnectCount++; }
+    /** Test helper: run the callback as one subtree mutation. */
+    trigger() { if (this._cb) this._cb([], this); }
+  };
+
+  const origMO = global.MutationObserver;
+  const origSetTimeout = global.setTimeout;
+  const origClearTimeout = global.clearTimeout;
+  global.MutationObserver = CapturingPendingMO;
+  global.setTimeout = function (callback, ms) {
+    timers.push({ callback, ms, cancelled: false, ran: false });
+    return timers.length - 1;
+  };
+  global.clearTimeout = function (id) {
+    if (id !== undefined && id !== null && timers[id]) timers[id].cancelled = true;
+  };
+
+  try {
+    fn({ observers, timers });
+  } finally {
+    global.MutationObserver = origMO;
+    global.setTimeout = origSetTimeout;
+    global.clearTimeout = origClearTimeout;
+  }
+}
+
+// Run the debounce timers a pending observer scheduled, and only those: the
+// pillbox builder schedules its own positioning timer at another delay, and
+// running that one here would test nothing about the re-test. Returns how many
+// ran.
+function runPendingRetestTimers(timers) {
+  let ran = 0;
+  for (const timer of timers) {
+    if (timer.cancelled || timer.ran) continue;
+    if (timer.ms !== DR_TUNING.gridRedrawDelayMs) continue;
+    timer.ran = true;
+    ran++;
+    timer.callback();
+  }
+  return ran;
+}
+
+// Add one element child to a fixture node after it was built. makeDgNode links
+// a child to its parent at construction, so a later child takes that link here.
+function appendDgChild(parentEl, childEl) {
+  parentEl.childNodes.push(childEl);
+  parentEl.children.push(childEl);
+  childEl.parentElement = parentEl;
+  return childEl;
+}
+
+// The row pairs a database query grid draws once its rows arrive: a row-number
+// gutter row in the pinned pane, and an identifier with a count and a rate in
+// the scrolling pane. Invented values, one order of magnitude apart.
+const PENDING_FILL_ROWS = [
+  ['alpha', '7,318,204', '284.51'],
+  ['bravo', '551,077', '31.77'],
+  ['charlie', '2,140,663', '58.02'],
+];
+
+// Fill an empty database query grid fixture, the way the page fills a grid
+// that drew before its rows loaded.
+function fillDatabaseQueryGrid(grid) {
+  PENDING_FILL_ROWS.forEach((scrollTexts, i) => {
+    appendDgChild(grid.pinnedPaneEl, makeDgRow(i, [String(i + 1)]));
+    appendDgChild(grid.scrollPaneEl, makeDgRow(i, scrollTexts));
+  });
+}
+
+// --- Criterion 1: a container inserted empty and then filled registers ---
+
+(function pendingRetest_AC1_aLoneContainerFilledLaterRegistersAndGainsAPillbox() {
+  const lone = makeDgNode('DIV', 'lone-pending-grid', 'grid', []);
+  const before = DR_STORE.getRegisteredTables().length;
+
+  eq('pending AC1: the suite holds no pending table before this case',
+    pendingRoots.size, 0);
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(lone);
+    });
+
+    eq('pending AC1: an empty container registers nothing',
+      DR_STORE.hasTable(lone), false);
+    eq('pending AC1: an empty container gains no pillbox', tableToggles.has(lone), false);
+    eq('pending AC1: an empty container is held as a pending table',
+      pendingRoots.has(lone), true);
+    eq('pending AC1: the empty container carries one observer', observers.length, 1);
+
+    // The rows arrive, each holding a number.
+    PENDING_FILL_ROWS.forEach((cellTexts, i) => appendDgChild(lone, makeDgRow(i, cellTexts)));
+    eq('pending AC1: the filled container passes the data test', isDataTable(lone), true);
+
+    withToggleDocumentMock(function () {
+      if (observers[0]) observers[0].trigger();
+      eq('pending AC1: one mutation schedules one re-test', runPendingRetestTimers(timers), 1);
+    });
+
+    eq('pending AC1: the filled container registers', DR_STORE.hasTable(lone), true);
+    eq('pending AC1: the filled container gains a pillbox', tableToggles.has(lone), true);
+    eq('pending AC1: the registration drops the pending record',
+      pendingRoots.has(lone), false);
+    eq('pending AC1: the registration disconnects the observer',
+      observers[0] && observers[0].disconnectCount, 1);
+    eq('pending AC1: the registration adds exactly one registry entry',
+      DR_STORE.getRegisteredTables().length - before, 1);
+  });
+
+  forgetRegisteredTable(lone);
+})();
+
+(function pendingRetest_AC1_anEmptyDatabaseQueryGridFilledLaterRegistersItsScrollingPane() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+  const before = DR_STORE.getRegisteredTables().length;
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(grid.wrapperEl);
+    });
+
+    eq('pending AC1: an empty database query grid registers nothing',
+      [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_STORE.hasTable(el)),
+      [false, false, false]);
+    eq('pending AC1: an empty database query grid holds the wrapper as a pending table',
+      pendingRoots.has(grid.wrapperEl), true);
+    eq('pending AC1: the empty wrapper carries one observer', observers.length, 1);
+
+    fillDatabaseQueryGrid(grid);
+
+    withToggleDocumentMock(function () {
+      if (observers[0]) observers[0].trigger();
+      eq('pending AC1: one fill schedules one re-test', runPendingRetestTimers(timers), 1);
+    });
+
+    eq('pending AC1: the filled grid registers the scrolling pane alone',
+      [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_STORE.hasTable(el)),
+      [false, false, true]);
+    eq('pending AC1: the scrolling pane gains a pillbox',
+      tableToggles.has(grid.scrollPaneEl), true);
+    eq('pending AC1: the wrapper gains no pillbox', tableToggles.has(grid.wrapperEl), false);
+    eq('pending AC1: the pinned pane gains no pillbox',
+      tableToggles.has(grid.pinnedPaneEl), false);
+    eq('pending AC1: the registration drops the wrapper\'s pending record',
+      pendingRoots.has(grid.wrapperEl), false);
+    eq('pending AC1: the registration disconnects the wrapper\'s observer',
+      observers[0] && observers[0].disconnectCount, 1);
+    eq('pending AC1: the fill adds exactly one registry entry',
+      DR_STORE.getRegisteredTables().length - before, 1);
+  });
+
+  forgetRegisteredTable(grid.scrollPaneEl);
+})();
+
+// --- Criterion 2: one observer per pending wrapper ---
+
+(function pendingRetest_AC2_aPendingWrapperCarriesOneObserverForThreeElements() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+  const extraPaneEl = appendDgChild(grid.wrapperEl,
+    makeDgNode('DIV', 'dg--grid-container dg--extra-pane', 'grid', []));
+
+  eq('pending AC2: three role-bearing elements sit under the empty wrapper',
+    [grid.pinnedPaneEl, grid.scrollPaneEl, extraPaneEl]
+      .map((el) => el.parentElement === grid.wrapperEl), [true, true, true]);
+  eq('pending AC2: no element of the empty nest passes the data test',
+    [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl, extraPaneEl].map(isDataTable),
+    [false, false, false, false]);
+
+  withPendingHarness(function ({ observers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(grid.wrapperEl);
+    });
+
+    eq('pending AC2: a nest of four qualifying elements carries one observer',
+      observers.length, 1);
+    eq('pending AC2: the one observer watches the chain root',
+      observers[0] && observers[0].observeCalls.length === 1 &&
+        observers[0].observeCalls[0].target === grid.wrapperEl, true);
+    eq('pending AC2: the observer watches added nodes, changed text, and the whole subtree',
+      observers[0] && observers[0].observeCalls[0].options,
+      { childList: true, characterData: true, subtree: true });
+
+    // A second pass over the same empty wrapper holds the record it already
+    // has rather than starting a second one.
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(grid.wrapperEl);
+    });
+    eq('pending AC2: a second pass over the same empty wrapper adds no second observer',
+      observers.length, 1);
+    eq('pending AC2: a second pass leaves one pending root', pendingRoots.size, 1);
+
+    dropPendingTable(grid.wrapperEl);
+  });
+
+  eq('pending AC2: the case leaves no pending table behind', pendingRoots.size, 0);
+})();
+
+// --- Criterion 3: the re-test cap bounds a container that never passes ---
+//
+// The container holds rows of text and no number, so every re-test finds the
+// chain empty. The debounce is driven once per re-test, the way a subtree that
+// churns without loading data drives it.
+
+(function pendingRetest_AC3_aContainerThatNeverPassesStopsAtTheCap() {
+  const neverEl = makeDgNode('DIV', 'never-a-data-grid', 'grid', [
+    makeDgRow(0, ['alpha', 'north', 'open']),
+    makeDgRow(1, ['bravo', 'south', 'open']),
+    makeDgRow(2, ['charlie', 'east', 'open']),
+  ]);
+  eq('pending AC3: a container of text rows never passes the data test',
+    isDataTable(neverEl), false);
+  eq('pending AC3: the tuning block ships a re-test cap of 100',
+    DR_TUNING.pendingRetestCap, 100);
+
+  // The log buffer holds the last 50 rows and counts the rows that dropped off
+  // the front, so the two together give a running total this case can subtract
+  // to find the rows it recorded itself.
+  const recordedRows = () => {
+    const snapshot = DR_LOG.snapshot();
+    return snapshot.dropped + snapshot.entries.length;
+  };
+  const logRowsBefore = recordedRows();
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(neverEl);
+    });
+
+    eq('pending AC3: the container is held as a pending table',
+      pendingRoots.has(neverEl), true);
+    eq('pending AC3: the held container starts at zero failed re-tests',
+      pendingRetestCounts.get(neverEl), 0);
+
+    const observer = observers[0];
+    // One short of the cap: the observer stays connected.
+    for (let i = 0; i < DR_TUNING.pendingRetestCap - 1; i++) {
+      if (observer) observer.trigger();
+      runPendingRetestTimers(timers);
+    }
+    eq('pending AC3: one short of the cap the count reads the failed re-tests',
+      pendingRetestCounts.get(neverEl), DR_TUNING.pendingRetestCap - 1);
+    eq('pending AC3: one short of the cap the observer stays connected',
+      observer && observer.disconnectCount, 0);
+    eq('pending AC3: one short of the cap the container is still pending',
+      pendingRoots.has(neverEl), true);
+
+    // The re-test that reaches the cap.
+    if (observer) observer.trigger();
+    runPendingRetestTimers(timers);
+
+    eq('pending AC3: reaching the cap disconnects the observer',
+      observer && observer.disconnectCount, 1);
+    eq('pending AC3: reaching the cap drops the pending root',
+      pendingRoots.has(neverEl), false);
+    eq('pending AC3: reaching the cap drops the failed-re-test count',
+      pendingRetestCounts.has(neverEl), false);
+    eq('pending AC3: reaching the cap drops the debounce timer',
+      pendingRetestTimers.has(neverEl), false);
+    eq('pending AC3: reaching the cap leaves the observer map empty for the root',
+      pendingObservers.has(neverEl), false);
+    eq('pending AC3: the dropped container registers nothing',
+      DR_STORE.hasTable(neverEl), false);
+
+    const added = recordedRows() - logRowsBefore;
+    const entries = DR_LOG.snapshot().entries;
+    const newRows = entries.slice(Math.max(0, entries.length - added));
+    eq('pending AC3: the cap cycle records at least one log row', added >= 1, true);
+    eq('pending AC3: reaching the cap records a debug log row naming the pending table',
+      newRows.some((row) => row.level === 'debug' && /pending table/i.test(row.text)), true);
+
+    // A later mutation on the dropped container costs nothing: no observer
+    // remains to run, and the record is gone.
+    eq('pending AC3: the dropped container holds no pending record',
+      pendingRoots.size, 0);
+  });
+})();
+
+// --- Adversarial: the debounce collapses a burst of mutations into one re-test ---
+
+(function pendingRetest_twoMutationsInsideTheDelayScheduleOneRetest() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(grid.wrapperEl);
+    });
+
+    const observer = observers[0];
+    if (observer) observer.trigger();
+    if (observer) observer.trigger();
+
+    const scheduled = timers.filter((t) => t.ms === DR_TUNING.gridRedrawDelayMs);
+    eq('pending debounce: two mutations schedule two timers and cancel the first',
+      scheduled.map((t) => t.cancelled), [true, false]);
+    eq('pending debounce: the delay is the grid redraw delay',
+      scheduled.every((t) => t.ms === DR_TUNING.gridRedrawDelayMs), true);
+
+    fillDatabaseQueryGrid(grid);
+    withToggleDocumentMock(function () {
+      eq('pending debounce: two mutations inside the delay run one re-test',
+        runPendingRetestTimers(timers), 1);
+    });
+
+    eq('pending debounce: the one re-test registers the scrolling pane',
+      DR_STORE.hasTable(grid.scrollPaneEl), true);
+  });
+
+  forgetRegisteredTable(grid.scrollPaneEl);
+  eq('pending debounce: the case leaves no pending table behind', pendingRoots.size, 0);
 })();
 
 // ---------------------------------------------------------------------------
