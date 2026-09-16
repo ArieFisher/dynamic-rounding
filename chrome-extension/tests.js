@@ -100,6 +100,9 @@ globalThis.DR_LOG = DR_LOG;
 // wire-response composer for the capture test suites.
 globalThis.collectCaptureState = collectCaptureState;
 globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
+// Expose the capture format version so the capture-tuning tests can pin the
+// state's captureFormat against the source of truth instead of a literal.
+globalThis.CAPTURE_FORMAT = CAPTURE_FORMAT;
 // Expose the lib/dr-capture package bundle, mirroring DR_NUMBER above.
 globalThis.DR_CAPTURE = DR_CAPTURE;
 // Expose the renderer's glyph map so the glyph pin can compare it against
@@ -19199,7 +19202,7 @@ function makePressTable(text) {
 
   const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 1);
+  eq('capture-state: the state carries its format version', state.captureFormat, 2);
   eq('capture-state: the settings record is carried verbatim',
     state.settings, { enabled: true, offsetTop: -0.5 });
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
@@ -19363,7 +19366,7 @@ function makePressTable(text) {
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 1, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 2, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting logs its own row, and that row lands in the capture',
@@ -19433,7 +19436,7 @@ function makePressTable(text) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 1,
+    captureFormat: 2,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
@@ -19615,7 +19618,7 @@ function makePressTable(text) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 1,
+    captureFormat: 2,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'negative',
@@ -19850,7 +19853,7 @@ function makePressTable(text) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 1,
+      captureFormat: 2,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'positive', note: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -19862,6 +19865,224 @@ function makePressTable(text) {
     html.includes('table contents') &&
       html.includes('Share it as you would share the page.'),
     true);
+})();
+
+// --- lib/dr-capture: the tuning block in force at capture time (D8) ---
+//
+// The capture state gains a tuning field: a plain copy of DR_TUNING taken at
+// capture time, so a capture shows the detection values that were in force.
+
+// Criterion 1: collectCaptureState carries every key of the tuning block,
+// the format version moves to 2, and the copy is plain and detached — a
+// mutation on the returned tuning must never reach DR_TUNING itself.
+(function captureStateCarriesTuningBlock() {
+  eq('capture-tuning: collectCaptureState loads in the content-script bundle',
+    typeof globalThis.collectCaptureState, 'function');
+  if (typeof globalThis.collectCaptureState !== 'function') return;
+
+  const makeFakeStore = () => ({
+    getRegisteredTables: () => [],
+    getSelectedTable: () => null,
+    getSettings: () => ({}),
+    getTableAppliedFlag: () => 'original',
+    getTableRoundOptions: () => null,
+    getTableMaxMagnitude: () => null,
+    getTableOriginalText: () => undefined,
+  });
+  const fakeAdapterFor = () => ({ isVirtualized: () => false, getRows: () => [] });
+
+  const state = collectCaptureState({ store: makeFakeStore(), adapterFor: fakeAdapterFor });
+
+  eq('capture-tuning: the capture state carries every key of the tuning block, with the values in force',
+    state.tuning, DR_TUNING);
+  eq('capture-tuning: the state\'s captureFormat equals CAPTURE_FORMAT',
+    state.captureFormat, CAPTURE_FORMAT);
+  eq('capture-tuning: CAPTURE_FORMAT is 2',
+    CAPTURE_FORMAT, 2);
+  eq('capture-tuning: the returned tuning is not the same object as DR_TUNING',
+    state.tuning !== DR_TUNING, true);
+
+  // Adversarial: mutate the returned copy and confirm the live block holds.
+  const originalDisplayValuesLength = DR_TUNING.gridDisplayValues.length;
+  const originalMinChildren = DR_TUNING.gridMinChildren;
+  const originalFirstVendorName = DR_TUNING.vendorProfiles[0].name;
+
+  state.tuning.gridDisplayValues.push('mutated-by-test');
+  state.tuning.gridMinChildren = 999999;
+  state.tuning.vendorProfiles[0].name = 'mutated-by-test';
+
+  eq('capture-tuning: pushing onto the returned tuning\'s list leaves DR_TUNING\'s list unchanged',
+    DR_TUNING.gridDisplayValues.length, originalDisplayValuesLength);
+  eq('capture-tuning: changing a scalar on the returned tuning leaves DR_TUNING\'s scalar unchanged',
+    DR_TUNING.gridMinChildren, originalMinChildren);
+  eq('capture-tuning: changing a nested profile field on the returned tuning leaves DR_TUNING\'s profile unchanged',
+    DR_TUNING.vendorProfiles[0].name, originalFirstVendorName);
+})();
+
+// Criterion 2: the rendered file shows the tuning values in its visible
+// half — a scalar, every item of a display-value list, and a vendor
+// profile's name and selector — and a hostile value in a profile field
+// reaches the visible half only in its escaped form.
+(function captureTuningSectionRendersValues() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
+
+  const baseState = (tuning) => ({
+    captureFormat: 2,
+    meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
+    mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+    tables: [], lensPreview: null, sidebarView: null,
+    log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
+    tuning,
+  });
+  const visibleHalf = (html) => html.slice(0, html.indexOf('id="capture-state"'));
+
+  const tuning = {
+    exampleScalarSetting: 4242,
+    exampleDisplayValues: ['north-list-value', 'south-list-value'],
+    exampleVendorProfiles: [{
+      name: 'north-vendor',
+      classToken: 'nv--',
+      scrollContainerSelectors: ['.nv--scroll-container'],
+      pinnedPaneSelectors: ['.nv--pinned-pane'],
+    }],
+  };
+  const visible = visibleHalf(buildCaptureDocument({ state: baseState(tuning), lockedStatusText: '' }));
+
+  eq('capture-tuning: a scalar tuning value renders in the visible half',
+    visible.includes('4242'), true);
+  eq('capture-tuning: every item of a tuning display-value list renders in the visible half',
+    visible.includes('north-list-value') && visible.includes('south-list-value'), true);
+  eq('capture-tuning: a vendor profile\'s name renders in the visible half',
+    visible.includes('north-vendor'), true);
+  eq('capture-tuning: a vendor profile\'s selector renders in the visible half',
+    visible.includes('.nv--scroll-container'), true);
+
+  // Hostile half: a profile name and a selector each carrying <script>, a
+  // double quote, and an ampersand must reach the visible half escaped only.
+  const hostileTuning = {
+    exampleScalarSetting: 'one<script>alert(3)</script>"&',
+    exampleDisplayValues: ['.list<script>alert(4)</script>"&item'],
+    exampleVendorProfiles: [{
+      name: 'north<script>alert(1)</script>"&vendor',
+      classToken: 'nv--',
+      scrollContainerSelectors: ['.nv--<script>alert(2)</script>"&pane'],
+      pinnedPaneSelectors: [],
+    }],
+  };
+  const hostileVisible = visibleHalf(
+    buildCaptureDocument({ state: baseState(hostileTuning), lockedStatusText: '' }));
+
+  eq('capture-tuning: a hostile profile field never renders a literal script tag in the visible half',
+    hostileVisible.toLowerCase().includes('<script>'), false);
+  eq('capture-tuning: a hostile profile field renders its angle brackets escaped',
+    hostileVisible.includes('&lt;script&gt;') && hostileVisible.includes('&lt;/script&gt;'), true);
+  eq('capture-tuning: a hostile profile field renders its double quote escaped',
+    hostileVisible.includes('&quot;'), true);
+  eq('capture-tuning: a hostile profile field renders its ampersand escaped',
+    hostileVisible.includes('&amp;'), true);
+})();
+
+// Criterion 3: a state with no tuning field (null, or the key absent) does
+// not throw, renders the absence placeholder in the tuning section, and the
+// header still states the format version — the capture still saves. The
+// sidebar side: assembleAndSaveCapture's fallback state carries
+// tuning: null, so a failed state pull renders the absence honestly rather
+// than losing the field.
+(function captureTuningAbsenceHonesty() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
+
+  const baseState = (over) => Object.assign({
+    captureFormat: 2,
+    meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
+    mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+    tables: [], lensPreview: null, sidebarView: null,
+    log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
+  }, over || {});
+  const visibleHalf = (html) => html.slice(0, html.indexOf('id="capture-state"'));
+
+  let threwWithNull = false;
+  let htmlWithNull = '';
+  try {
+    htmlWithNull = buildCaptureDocument({ state: baseState({ tuning: null }), lockedStatusText: '' });
+  } catch (e) {
+    threwWithNull = true;
+  }
+  eq('capture-tuning: a null tuning field does not throw while building the document',
+    threwWithNull, false);
+
+  const stateWithAbsentTuning = baseState({});
+  delete stateWithAbsentTuning.tuning;
+  let threwWithAbsent = false;
+  let htmlWithAbsent = '';
+  try {
+    htmlWithAbsent = buildCaptureDocument({ state: stateWithAbsentTuning, lockedStatusText: '' });
+  } catch (e) {
+    threwWithAbsent = true;
+  }
+  eq('capture-tuning: a state with the tuning field absent does not throw while building the document',
+    threwWithAbsent, false);
+
+  eq('capture-tuning: a null tuning field renders the absence placeholder in the tuning section',
+    /<h2>Detection tuning<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithNull)), true);
+  eq('capture-tuning: an absent tuning field renders the absence placeholder in the tuning section',
+    /<h2>Detection tuning<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
+  eq('capture-tuning: the format version still prints in the header when tuning is absent',
+    /<dt>Capture format<\/dt><dd>2<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+
+  const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
+  const fnBody = fnStart === -1 ? '' : sidebarJsSrc.slice(fnStart, sidebarJsSrc.indexOf('\nfunction ', fnStart + 1));
+  eq('capture-tuning: assembleAndSaveCapture\'s fallback state carries tuning: null',
+    fnStart !== -1 && /tuning:\s*null/.test(fnBody), true);
+})();
+
+// Criterion 4: the living docs name the tuning block in the capture
+// paragraph or row a reader would consult — the README's capture section,
+// the design doc's Capture paragraph, and the vocabulary's capture state
+// row — loose enough to survive rewording, tight enough to fail if the
+// mention is dropped.
+(function captureTuningLivingDocsNameTheBlock() {
+  const readmeMd = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
+  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
+  const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
+
+  const readmeCaptureSection = (readmeMd.split('\n## Capture\n')[1] || '').split('\n## ')[0];
+  eq('living docs: chrome-extension/README.md\'s capture paragraph names the tuning block',
+    readmeCaptureSection.includes('tuning block'), true);
+
+  const designCaptureParagraph = designMd.split('\n').find((line) => line.startsWith('**Capture.**')) || '';
+  eq('living docs: docs/design.md\'s Capture paragraph names the tuning block',
+    designCaptureParagraph.includes('tuning block'), true);
+
+  const vocabularyCaptureStateRow = vocabularyMd.split('\n').find((line) => line.startsWith('| capture state |')) || '';
+  eq('living docs: docs/vocabulary.md\'s capture state row names the tuning block',
+    vocabularyCaptureStateRow.includes('tuning block'), true);
+})();
+
+// Criterion 5: the tuning section sits in the visible half under its own
+// heading, ahead of the hidden capture-state JSON block, so a reader finds
+// it while scanning the file rather than only in the JSON.
+(function captureTuningHeadingPrecedesStateBlock() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const html = DR_CAPTURE.buildCaptureDocument({
+    state: {
+      captureFormat: 2,
+      meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
+      mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+      tables: [], lensPreview: null, sidebarView: null,
+      log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
+      tuning: { exampleScalarSetting: 1 },
+    },
+    lockedStatusText: '',
+  });
+  const headingMatch = /<h2>[^<]*tuning[^<]*<\/h2>/i.exec(html);
+  const stateBlockIndex = html.indexOf('id="capture-state"');
+  eq('capture-tuning: the visible half carries a heading naming detection tuning',
+    headingMatch !== null, true);
+  eq('capture-tuning: the tuning heading sits before the hidden capture-state block',
+    headingMatch !== null && stateBlockIndex !== -1 && headingMatch.index < stateBlockIndex, true);
 })();
 
 // --- content.js: the extension stands down on capture pages ---

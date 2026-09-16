@@ -32,11 +32,18 @@
  * present in the DOM at capture time; the state carries its frozen
  * magnitude as part of the evidence.
  *
+ * The state also carries tuning, a plain copy of DR_TUNING (constants.js)
+ * taken at capture time — the detection tuning block in force, so a
+ * negative capture shows the values detection ran under. The copy is a
+ * JSON round-trip: a later change to the block cannot reach a saved state,
+ * and the state shares no live object with it.
+ *
  * captureFormat is the state's format version, one integer, so a future
- * tool that parses capture files can tell old formats apart.
+ * tool that parses capture files can tell old formats apart. Format 2 adds
+ * the tuning field.
  */
 
-const CAPTURE_FORMAT = 1;
+const CAPTURE_FORMAT = 2;
 
 function collectCaptureState(deps) {
   const store = (deps && deps.store) || DR_STORE;
@@ -116,6 +123,11 @@ function collectCaptureState(deps) {
   return {
     captureFormat: CAPTURE_FORMAT,
     settings: store.getSettings(),
+    // A plain copy, not the live block: a later edit to DR_TUNING must not
+    // reach a state already captured. Read as a bare global, the same rule
+    // the detection layer, the pillbox view, and the controller follow, so
+    // a missing block fails at load rather than serializing a silent gap.
+    tuning: JSON.parse(JSON.stringify(DR_TUNING)),
     activeTableIndex,
     tables,
     fixtureSeed: selected && typeof selected.outerHTML === 'string' ? selected.outerHTML : null,

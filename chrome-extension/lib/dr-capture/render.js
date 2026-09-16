@@ -11,9 +11,9 @@
  * buildCaptureDocument() turns one capture state into one self-contained
  * HTML document — a string in, a string out, no browser API touched. The
  * document reads as a report: the mark and note on top, the bound table
- * beside a likeness of the sidebar, the log rows of both contexts, the
- * fixture seed as readable text, and the whole state as machine-readable
- * JSON at the bottom.
+ * beside a likeness of the sidebar, the registry, the tuning block in
+ * force, the log rows of both contexts, the fixture seed as readable text,
+ * and the whole state as machine-readable JSON at the bottom.
  *
  * Safety doctrine, adapted from the model extension's capture for string
  * assembly (the test harness has no DOM, so the document cannot be built as
@@ -296,6 +296,56 @@ function renderRegistrySection(state) {
   return '<section><h2>Registry</h2>' + body + '</section>';
 }
 
+// A tuning field's own value, rendered for reading: a list joins its items
+// with ", " (an empty list falls back to displayValue's dash), a scalar goes
+// through displayValue. Every item and every scalar passes through
+// escapeHtml — the vendor profiles' selectors are strings that reach the
+// file like any other value, so they pass through it too.
+function renderTuningValue(value) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return escapeHtml(displayValue(null));
+    return value.map(function (item) { return escapeHtml(String(item)); }).join(', ');
+  }
+  return escapeHtml(displayValue(value));
+}
+
+// Every key of the tuning block, in the block's own order — no key list
+// lives here, so a key added to DR_TUNING prints with no renderer change
+// when it holds a scalar, a list of strings, or a list of flat profile
+// objects.
+// gridDisplayValues (an array of strings) joins onto one line.
+// vendorProfiles (an array of profile objects) prints one line per profile,
+// its own fields listed by name; the branch is on shape, not on the key.
+function renderTuningRows(tuning) {
+  return Object.keys(tuning).map(function (key) {
+    const value = tuning[key];
+    const isProfileList = Array.isArray(value) && value.length > 0 &&
+      typeof value[0] === 'object' && value[0] !== null;
+    if (isProfileList) {
+      return value.map(function (profile) {
+        const fields = Object.keys(profile).map(function (field) {
+          return escapeHtml(field) + ': ' + renderTuningValue(profile[field]);
+        }).join('; ');
+        return '<dt>' + escapeHtml(key) + '</dt><dd>' + fields + '</dd>';
+      }).join('');
+    }
+    return '<dt>' + escapeHtml(key) + '</dt><dd>' + renderTuningValue(value) + '</dd>';
+  }).join('');
+}
+
+// The detection tuning block in force at capture time (D8): every key of
+// state.tuning with its value, so a negative capture shows the values
+// detection ran under. A failed state pull leaves tuning null; the
+// section still renders, with one row holding the absence placeholder, so
+// the capture still saves.
+function renderTuningSection(state) {
+  const tuning = state.tuning;
+  const body = tuning
+    ? '<dl>' + renderTuningRows(tuning) + '</dl>'
+    : '<dl><dt>tuning</dt><dd>' + escapeHtml(displayValue(null)) + '</dd></dl>';
+  return '<section><h2>Detection tuning</h2>' + body + '</section>';
+}
+
 // The sidebar likeness: positions and states from plain values, rendered
 // open, under this file's own stylesheet — no page CSS, no cloned nodes,
 // and deliberately crude. The JSON island carries the precision.
@@ -423,6 +473,7 @@ function buildCaptureDocument(input) {
     renderSidebarLikeness(state, lockedStatusText) +
     '</div></section>' +
     renderRegistrySection(state) +
+    renderTuningSection(state) +
     renderCaptureLogs(state) +
     renderFixtureSeed(state) +
     '<footer>The hidden block below, id capture-state, holds the full capture state ' +
