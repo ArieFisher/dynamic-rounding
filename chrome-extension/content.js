@@ -156,6 +156,21 @@ DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
 const gridObservers = new WeakMap();
 const gridReapplyTimers = new WeakMap();
 
+// Pending table state, keyed by chain root. A chain root whose chain is empty
+// — no element of its nest passes the data test — becomes a pending table:
+// the grid arrived before its rows, and the rows may still arrive.
+// pendingObservers:   chainRootEl → MutationObserver watching the whole subtree.
+// pendingRetestTimers: chainRootEl → pending setTimeout id for the debounced re-test.
+// pendingRetestCounts: chainRootEl → failed re-tests so far, against
+//                      DR_TUNING.pendingRetestCap.
+// pendingRoots is the enumerable companion to the three WeakMaps, the way
+// trackedTables accompanies the registry: the table observer's removal branch
+// walks it to find a pending root inside a removed subtree.
+const pendingObservers = new WeakMap();
+const pendingRetestTimers = new WeakMap();
+const pendingRetestCounts = new WeakMap();
+const pendingRoots = new Set();
+
 
 // findTargetTable() only reports what it found; it never writes the
 // dr-ext-grid marker or builds the toggle widget. When it discovers a grid
@@ -284,16 +299,124 @@ function applySidebarRounding(table, options) {
   syncSwitchForTable(table);
 }
 
+// The one consumer of the nomination step's per-nest outcomes. Both live
+// scanners route their grid pass through here — the load-time scan in the
+// pillbox view (injectTableToggles) and the added-node pass below — so the
+// pending record and its clearing sit behind the step's outcome and never in
+// a caller. The step reports; this is where a report becomes a registration
+// or a watch.
+//
+// The step's results hold grids alone: each scanner's own pass 1 covers native
+// <table> elements, and the nomination step's two guards keep a native table
+// out of a nest. So no tagName check sits here.
+function consumeNominations(results) {
+  for (const result of results) consumeNomination(result);
+}
+
+// One nest's outcome:
+//   'selected'   register the element the step selected and drop any pending
+//                record the nest carried.
+//   'empty'      no element of the nest passes the data test, so hold the
+//                chain root as a pending table and re-test its subtree.
+//   'crowded'    a depth holds more than one data table and no shallower
+//                depth holds exactly one; the product decision in issue #373
+//                registers nothing for such a nest, so no watch holds it.
+//   'registered' the nest already holds a registered element, so a second
+//                registration would put a second pillbox on one grid.
+// A registration through another path — right-click, once that sprint lands —
+// leaves the pending record standing until the next re-test returns
+// 'registered', which drops it here.
+function consumeNomination({ chainRoot, selected, outcome }) {
+  if (outcome === 'selected') {
+    dropPendingTable(chainRoot);
+    selected.classList.add('dr-ext-grid');
+    createToggleForTable(selected);
+    return;
+  }
+  if (outcome === 'empty') {
+    holdPendingTable(chainRoot);
+    return;
+  }
+  dropPendingTable(chainRoot);
+}
+
+// Hold a chain root as a pending table, or count a re-test that failed again.
+//
+// The first 'empty' outcome for a root starts the record: one debounced
+// subtree observer, and a count of 0. Every later 'empty' outcome for the
+// same root is a failed re-test and counts against DR_TUNING.pendingRetestCap;
+// reaching the cap drops the observer, the timer, and the count, so a region
+// that never holds data costs a bounded amount of processing.
+//
+// One observer per chain root, whatever the number of qualifying elements
+// under it: the nomination step keys its results by chain root, so a nest of
+// three role-bearing elements produces one outcome and one watch.
+function holdPendingTable(chainRoot) {
+  if (pendingRoots.has(chainRoot)) {
+    const count = (pendingRetestCounts.get(chainRoot) || 0) + 1;
+    pendingRetestCounts.set(chainRoot, count);
+    if (count >= DR_TUNING.pendingRetestCap) {
+      dropPendingTable(chainRoot);
+      DR_LOG.debug("Dynamic Rounding: pending table dropped after " + count + " failed re-tests.");
+    }
+    return;
+  }
+  if (typeof MutationObserver === 'undefined') return;
+  // childList and characterData both, subtree wide: rows arrive as added
+  // nodes, and a cell filled in place changes text alone. The debounce copies
+  // the re-apply observer's: each mutation cancels the pending timer and
+  // schedules a fresh one, so a burst of rows costs one re-test.
+  const observer = new MutationObserver(() => {
+    const pending = pendingRetestTimers.get(chainRoot);
+    if (pending !== undefined) clearTimeout(pending);
+    const timerId = setTimeout(() => {
+      pendingRetestTimers.delete(chainRoot);
+      retestPendingTable(chainRoot);
+    }, DR_TUNING.gridRedrawDelayMs);
+    pendingRetestTimers.set(chainRoot, timerId);
+  });
+  observer.observe(chainRoot, { childList: true, characterData: true, subtree: true });
+  pendingObservers.set(chainRoot, observer);
+  pendingRetestCounts.set(chainRoot, 0);
+  pendingRoots.add(chainRoot);
+}
+
+// Re-run the nomination step from a pending root and consume the outcome
+// through the same function the scanners use, so a re-test that passes
+// registers exactly what the load-time scan would have registered.
+function retestPendingTable(chainRoot) {
+  consumeNomination(nominateNest(chainRoot, { isSeen: DR_STORE.hasTable }));
+}
+
+// Drop a pending record whole: the debounce timer, the subtree observer, the
+// failed-re-test count, and the root's membership in the enumerable set.
+// Safe on a root that holds no record.
+function dropPendingTable(chainRoot) {
+  const timerId = pendingRetestTimers.get(chainRoot);
+  if (timerId !== undefined) {
+    clearTimeout(timerId);
+    pendingRetestTimers.delete(chainRoot);
+  }
+  const observer = pendingObservers.get(chainRoot);
+  if (observer) {
+    observer.disconnect();
+    pendingObservers.delete(chainRoot);
+  }
+  pendingRetestCounts.delete(chainRoot);
+  pendingRoots.delete(chainRoot);
+}
+
 // Detect and attach toggles for tables and grids inside (or equal to) a node
 // added to the page. Pass 1 covers native <table> elements, skipping the
 // accessibility artifacts issue #128 calls out, so a dynamically rendered
 // single-page-application grid is found and an off-screen chart fallback is
 // not. Pass 2 hands the grids to the nomination step in the detection layer
-// (findTables), which lists the added node itself when it carries a grid or
-// table role, walks out to the node's chain root, and returns one element per
-// nest at the configured nesting depth — the same step the load-time scan
-// runs. The walk out matters here: a node added inside a wrapper already in
-// the page re-evaluates the whole nest rather than registering itself.
+// (nominateNests), which lists the added node itself when it carries a grid or
+// table role, walks out to the node's chain root, and reports one outcome per
+// nest — the same step the load-time scan runs. The walk out matters here: a
+// node added inside a wrapper already in the page re-evaluates the whole nest
+// rather than registering itself, and it is the route by which a pending
+// table registers once its rows arrive.
 // Extracted as a named function so the detection is unit-testable
 // independently of the live MutationObserver wiring below.
 function injectTogglesForAddedNode(node) {
@@ -309,14 +432,8 @@ function injectTogglesForAddedNode(node) {
       }
     });
   }
-  // Pass 2: the nomination step. Its native results repeat pass 1's above and
-  // come back with isNew false, so the two guards below leave them alone.
-  findTables(node, { isSeen: DR_STORE.hasTable }).forEach(({ handle, isNew }) => {
-    if (!isNew) return;
-    if (handle.tagName === 'TABLE') return;
-    handle.classList.add('dr-ext-grid');
-    createToggleForTable(handle);
-  });
+  // Pass 2: the nomination step, consumed above.
+  consumeNominations(nominateNests(node, { isSeen: DR_STORE.hasTable }));
 }
 
 if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
@@ -364,6 +481,16 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
           trackedTables.delete(table);
           DR_STORE.unregisterTable(table);
           DR_LOG.debug("Dynamic Rounding: removed table unregistered.");
+        }
+        // The same sweep over the pending roots. A pending table holds no
+        // registry entry, so the loop above passes over it; without this one
+        // its subtree observer and debounce timer would outlive the element.
+        for (const chainRoot of pendingRoots) {
+          const contained = chainRoot === node ||
+            (typeof node.contains === 'function' && node.contains(chainRoot));
+          if (!contained) continue;
+          dropPendingTable(chainRoot);
+          DR_LOG.debug("Dynamic Rounding: removed pending table dropped.");
         }
       }
     }
