@@ -8190,7 +8190,7 @@ function makeDatabricksGrid(opts) {
   const rates = ['284.51', '31.77', '58.02', '7.44', '2.19', '0.63'];
   // The pinned pane's leading column is the row-number gutter; a second
   // pinned column holds a short label so the pane passes the data test only
-  // when the caller asks for it.
+  // when the caller sets two pinned columns.
   const gutterLabels = ['north', 'south', 'east', 'west', 'inland', 'coastal'];
 
   const pinnedRowEls = [];
@@ -15192,9 +15192,9 @@ function forgetRegisteredTable(table) {
   eq('nesting AC7: that section holds an expectation paragraph', expectText !== '', true);
   eq('nesting AC7: the expectation names the scrolling pane',
     /scrolling pane/i.test(expectText), true);
-  eq('nesting AC7: the expectation promises no pillbox on the wrapper',
+  eq('nesting AC7: the expectation states no pillbox on the wrapper',
     /pillbox[^.]*wrapper/i.test(expectText), false);
-  eq('nesting AC7: the section promises no second pillbox',
+  eq('nesting AC7: the section states no second pillbox',
     /second pillbox/i.test(section), false);
 })();
 

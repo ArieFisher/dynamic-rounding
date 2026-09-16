@@ -357,9 +357,9 @@ function injectTableToggles() {
   });
   // Pass 2: the nomination step. Its native results repeat pass 1's above and
   // come back with isNew false, so the two guards below leave them alone.
-  // createToggleForTable re-runs the data test the step already ran; the
-  // second read is accepted so detection keeps reporting and this view keeps
-  // registering.
+  // createToggleForTable re-runs the data test the step already ran; this
+  // view accepts the second read so detection keeps reporting and this view
+  // keeps registering.
   findTables(document, { isSeen: DR_STORE.hasTable }).forEach(({ handle, isNew }) => {
     if (!isNew) return;
     if (handle.tagName === 'TABLE') return;

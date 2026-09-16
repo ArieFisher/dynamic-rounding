@@ -1062,9 +1062,10 @@ function isDataTable(table, opts = {}) {
 }
 
 /**
- * The two guards the ARIA pass applies to an element carrying a grid or table
- * role, before the data test runs on it: the element is not a native table,
- * and it holds no native table that tableFilter keeps (pass 1 owns that one).
+ * The two guards the nomination step applies to an element carrying a grid or
+ * table role, before the data test runs on it: the element is not a native
+ * table, and every native table it holds is one tableFilter drops (pass 1
+ * reports the others).
  * An element carrying the role and passing both guards is a qualifying
  * element.
  *
@@ -1082,7 +1083,7 @@ function _passesAriaGuards(el, tableFilter, opts) {
 /**
  * Whether an ancestor is a qualifying element. An ancestor carries no other
  * evidence of its role, so the role read goes through `matches`; an element
- * stub with no `matches` is treated as not qualifying, which makes the
+ * stub with no `matches` counts as not qualifying, which makes the
  * element below it its own chain root.
  *
  * @param {Element} el
@@ -1236,12 +1237,10 @@ function findTables(root, opts = {}) {
   const roleBearing = (rootCarriesRole ? [root] : []).concat(Array.from(root.querySelectorAll(GRID_ARIA_SELECTOR)));
   const qualifying = roleBearing.filter((el) => _passesAriaGuards(el, tableFilter, opts));
 
-  // Steps 2 and 3: one chain root per nest, each evaluated once.
-  const chainRoots = [];
-  for (const el of qualifying) {
-    const chainRoot = _chainRootOf(el, tableFilter, opts);
-    if (!chainRoots.includes(chainRoot)) chainRoots.push(chainRoot);
-  }
+  // Steps 2 and 3: one chain root per nest, each evaluated once. A Set keeps
+  // insertion order, so the results stay in document order.
+  const chainRoots = new Set();
+  for (const el of qualifying) chainRoots.add(_chainRootOf(el, tableFilter, opts));
 
   for (const chainRoot of chainRoots) {
     const nested = typeof chainRoot.querySelectorAll === 'function'
