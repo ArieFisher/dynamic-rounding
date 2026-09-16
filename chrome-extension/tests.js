@@ -20584,6 +20584,219 @@ function makeBusSandbox(opts) {
   }
 })();
 
+// ---------------------------------------------------------------------------
+// Sprint hidden-cells: the data test and the engine read a hidden cell's raw
+// text, and a hidden fragment inside a visible cell stays out of the read.
+//
+// A hidden native cell is modeled as a mock cell whose rendered text
+// (innerText) is empty and whose raw text (textContent) holds a number.
+// Browsers exclude non-rendered content from innerText, but textContent
+// always concatenates every text node regardless of rendering — the
+// NativeTableAdapter read (cell.innerText || cell.textContent || '', see
+// getText() in lib/dr-table/detect.js) therefore falls back to the raw text
+// only when the rendered text is empty. Every assertion below drives the
+// real adapter, the real data test, or the real engine (isDataTable,
+// roundTable, resetTable, collectNumericCells, findTables) — none pins the
+// source text of detect.js or content.js.
+// ---------------------------------------------------------------------------
+
+// (a) The data test passes on a table whose only number sits in a hidden
+// cell's raw text, and fails when that same raw text holds no number either
+// — isolating the pass to the hidden cell's raw text, not to some other cell.
+(function hiddenCells_dataTestReadsHiddenCellRawText() {
+  function hiddenNumericCell(rawText) {
+    return { tagName: 'TD', innerText: '', textContent: rawText };
+  }
+  function labelCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+  const table = {
+    rows: [
+      { cells: [labelCell('Metric'), labelCell('Value')] },
+      { cells: [labelCell('Revenue'), hiddenNumericCell('45230')] },
+    ],
+  };
+  eq('hidden cells: the data test passes when the table\'s only number sits in a hidden cell\'s raw text',
+    isDataTable(table), true);
+
+  const noNumberTable = {
+    rows: [
+      { cells: [labelCell('Metric'), labelCell('Value')] },
+      { cells: [labelCell('Revenue'), hiddenNumericCell('')] },
+    ],
+  };
+  eq('hidden cells: the data test fails when the hidden cell\'s raw text holds no number either',
+    isDataTable(noNumberTable), false);
+})();
+
+// (b) roundTable simplifies a hidden cell and resetTable restores it.
+//
+// A hidden cell's raw text is the one real text node under it; its rendered
+// text stays empty throughout, because rounding a hidden cell does not
+// unhide it. textContent and innerHTML share one backing value (the raw
+// text, exactly as a real <td> keeps them in sync); innerText is a fixed
+// empty string, unrelated to that backing value, modeling the rendered read
+// a hidden row keeps regardless of what the underlying text node holds.
+function makeHiddenNumericCell(rawText) {
+  let raw = rawText;
+  return {
+    tagName: 'TD',
+    innerText: '',
+    get textContent() { return raw; },
+    set textContent(v) { raw = v; },
+    get innerHTML() { return raw; },
+    set innerHTML(v) { raw = v; },
+    classList: {
+      _c: [],
+      add(c) { if (!this._c.includes(c)) this._c.push(c); },
+      remove(c) { this._c = this._c.filter(x => x !== c); },
+      contains(c) { return this._c.includes(c); },
+    },
+    dataset: {},
+    title: '',
+    querySelectorAll: () => [],
+    removeAttribute() {},
+  };
+}
+
+// A tree walker over the hidden cell's one real text node: its nodeValue is
+// the raw text (textContent), never the (unrelated) rendered read.
+function withHiddenCellTreeWalker(cell, fn) {
+  global.document.createTreeWalker = function() {
+    let done = false;
+    return {
+      nextNode() {
+        if (done) return null;
+        done = true;
+        return {
+          get nodeValue() { return cell.textContent; },
+          set nodeValue(v) { cell.textContent = v; },
+        };
+      },
+    };
+  };
+  try { fn(); } finally { delete global.document.createTreeWalker; }
+}
+
+(function hiddenCells_roundTableAndResetRestoreHiddenCell() {
+  const headerCell = { tagName: 'TD', innerText: 'Header', textContent: 'Header',
+    classList: { _c: [], add(c) { this._c.push(c); }, remove(c) { this._c = this._c.filter(x => x !== c); },
+      contains(c) { return this._c.includes(c); } },
+    dataset: {}, title: '', querySelectorAll: () => [], removeAttribute() {} };
+  const cell = makeHiddenNumericCell('4523789');
+  const table = {
+    rows: [
+      { cells: [headerCell] },
+      { cells: [cell] },
+    ],
+    dataset: {},
+    querySelector: () => null,
+    querySelectorAll(sel) {
+      return sel === '.dr-ext-rounded'
+        ? [headerCell, cell].filter(c => c.classList.contains('dr-ext-rounded'))
+        : [];
+    },
+  };
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: false, simplifyFirstColumn: true });
+
+  withHiddenCellTreeWalker(cell, function() {
+    roundTable(table, opts);
+  });
+
+  eq('hidden cells: roundTable rounds the hidden cell\'s raw text away from the original',
+    cell.textContent !== '4523789', true);
+  eq('hidden cells: roundTable marks the hidden cell rounded',
+    cell.classList.contains('dr-ext-rounded'), true);
+  eq('hidden cells: the hidden cell\'s rendered text stays empty after rounding',
+    cell.innerText, '');
+
+  resetTable(table);
+
+  eq('hidden cells: resetTable restores the hidden cell\'s exact raw text',
+    cell.textContent, '4523789');
+  eq('hidden cells: resetTable clears the rounded marker',
+    cell.classList.contains('dr-ext-rounded'), false);
+})();
+
+// (c) The lens preview pool (collectNumericCells) holds the hidden cell.
+(function hiddenCells_lensPreviewPoolHoldsHiddenCell() {
+  function hiddenNumericCell(rawText) {
+    return { tagName: 'TD', innerText: '', textContent: rawText };
+  }
+  function labelCell(text) {
+    return { tagName: 'TD', innerText: text, textContent: text };
+  }
+  const table = {
+    rows: [
+      { cells: [labelCell('Metric'), labelCell('Value')] },
+      { cells: [labelCell('Revenue'), hiddenNumericCell('45230')] },
+    ],
+  };
+  const cells = collectNumericCells(table);
+  eq('hidden cells: the lens preview pool holds the hidden cell\'s number',
+    cells.some(c => c.num === 45230), true);
+})();
+
+// (d) A visible cell whose rendered text is "+2.3%" and whose raw text is
+// "700023000+2.3%" (a display:none sort key ahead of the visible percent)
+// reads as "+2.3%" — through the real adapter, and through the engine.
+(function hiddenCells_visibleCellReadsRenderedTextNotSortKey() {
+  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  const sortKeyCell = tdCell('+2.3%');
+  sortKeyCell.textContent = '700023000+2.3%';
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('Change')] },
+      { cells: [thCell('Row'), sortKeyCell] },
+    ],
+  };
+
+  const adapterCell = makeAdapter(table).getRows()[1].getCells()[1];
+  eq('hidden cells: the adapter reads the visible cell\'s rendered text, not its raw sort-key-prefixed text',
+    adapterCell.getText(), '+2.3%');
+
+  eq('hidden cells: the engine extracts 2.3 from the cell, never the hidden sort key 700023000',
+    collectNumericCells(table).map(c => c.num), [2.3]);
+})();
+
+// (e) An accessibility artifact stays excluded, even though its hidden
+// numeric cells would otherwise pass the data test under D6.
+(function hiddenCells_accessibilityArtifactStaysExcluded() {
+  function hiddenNumericCell(rawText) {
+    return { tagName: 'TD', innerText: '', textContent: rawText };
+  }
+  const artifactTable = makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
+  artifactTable.rows = [
+    { cells: [hiddenNumericCell('1'), hiddenNumericCell('2')] },
+    { cells: [hiddenNumericCell('3'), hiddenNumericCell('45230')] },
+  ];
+
+  eq('hidden cells: the accessibility artifact\'s hidden numeric cells would otherwise pass the data test',
+    isDataTable(artifactTable), true);
+  eq('hidden cells: isPhantomA11yTable flags the artifact',
+    isPhantomA11yTable(artifactTable), true);
+
+  // findTables is where detection combines the two: its default tableFilter
+  // is isPhantomA11yTable, applied before any candidate is kept.
+  const root = makePhantomEl({ tagName: 'DIV' });
+  root.querySelectorAll = (sel) => (sel === 'table' ? [artifactTable] : []);
+  eq('hidden cells: detection skips the accessibility artifact despite its hidden numeric cells',
+    findTables(root).length, 0);
+
+  // Control: the identical row shape, minus the accessibility signal, is a
+  // real candidate — isolating the guard as the reason for the exclusion
+  // above, not some unrelated property of the mock.
+  const onScreenTable = makePhantomEl({ tagName: 'TABLE' });
+  onScreenTable.rows = artifactTable.rows;
+  const wrapper = makePhantomEl({ tagName: 'DIV' });
+  chainParents(onScreenTable, wrapper);
+  const root2 = makePhantomEl({ tagName: 'DIV' });
+  root2.querySelectorAll = (sel) => (sel === 'table' ? [onScreenTable] : []);
+  eq('hidden cells: detection keeps the same row shape without the accessibility signal',
+    findTables(root2).length, 1);
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
