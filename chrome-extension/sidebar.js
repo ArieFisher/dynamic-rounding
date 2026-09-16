@@ -969,6 +969,7 @@ function assembleAndSaveCapture(mark, note, pageState) {
     captureFormat: CAPTURE_FORMAT,
     page: null,
     settings: null,
+    tuning: null,
     activeTableIndex: null,
     tables: [],
     lensPreview: null,
