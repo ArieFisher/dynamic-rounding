@@ -15583,7 +15583,7 @@ function forgetRegisteredTable(table) {
       (addedNodePassSrc.includes('GRID_ARIA_SELECTOR') || addedNodePassSrc.includes('role="grid"')),
     false);
   // The step's page-wide entry point is nominateNests; findTables composes it
-  // and keeps the 'selected' outcomes. Both scanners need the other outcomes
+  // and keeps the 'selected' outcomes. Both scanners act on the other outcomes
   // too, so both call nominateNests directly.
   eq('nesting AC6: the load-time scan calls the nomination step',
     loadTimeScanSrc !== null && /nominateNests\s*\(/.test(loadTimeScanSrc), true);
@@ -15940,7 +15940,7 @@ function makeCrowdedNest() {
   eq('pending AC5: the Detection paragraph states that an empty chain leaves a pending table',
     /pending table/i.test(detectionParagraph), true);
   eq('pending AC5: the Detection paragraph states the cap on failed re-tests',
-    /cap/i.test(detectionParagraph), true);
+    /reaches the cap/i.test(detectionParagraph), true);
 
   const stateParagraph = designParagraphs.find((p) => /hold state outside the model/i.test(p)) || '';
   eq('pending AC5: docs/design.md lists the state held outside the model',

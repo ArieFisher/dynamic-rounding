@@ -320,7 +320,7 @@ function consumeNominations(results) {
 //                chain root as a pending table and re-test its subtree.
 //   'crowded'    a depth holds more than one data table and no shallower
 //                depth holds exactly one; the product decision in issue #373
-//                registers nothing for such a nest, so it needs no watch.
+//                registers nothing for such a nest, so no watch holds it.
 //   'registered' the nest already holds a registered element, so a second
 //                registration would put a second pillbox on one grid.
 // A registration through another path — right-click, once that sprint lands —
