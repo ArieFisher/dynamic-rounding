@@ -1062,6 +1062,87 @@ function isDataTable(table, opts = {}) {
 }
 
 /**
+ * Read one table's shape fingerprint through the adapter: the column count
+ * (the widest row's cell count) and the header row's cell texts. The registry
+ * records it when the table registers, and every action on a registered table
+ * compares the table's current shape against the recorded one before it acts.
+ *
+ * The row count stays out of the fingerprint on purpose. A virtualized grid
+ * creates and destroys rows on every scroll, so a row count would report a
+ * scroll as a shape change.
+ *
+ * The header row is the first row the adapter returns — an outside row where
+ * a grid groups its rows, the head section on a native table.
+ *
+ * opts.originalText, when the caller supplies it, reads a cell's stored
+ * pre-simplification text and returns undefined for a cell with none. A
+ * fingerprint read through it stays the same while the extension simplifies
+ * the table's own header cells, which is what keeps the extension's writes
+ * from reading as a page change. Without it the read takes each cell's
+ * current text.
+ *
+ * The return is plain values only, so a registry entry holding one stays
+ * serializable.
+ *
+ * @param {Element} el
+ * @param {{originalText?: (cellEl: Element) => (string|undefined),
+ *          vendorProfiles?: object[], originalsPort?: object}} [opts]
+ * @returns {{columnCount: number, headerTexts: string[]}}
+ */
+function readTableFingerprint(el, opts = {}) {
+  const adapter = makeAdapter(el, opts);
+  const rows = adapter.getRows();
+  let columnCount = 0;
+  let headerTexts = [];
+  for (let i = 0; i < rows.length; i++) {
+    const cells = rows[i].getCells();
+    if (cells.length > columnCount) columnCount = cells.length;
+    if (i === 0) headerTexts = cells.map((cellObj) => _fingerprintCellText(cellObj, opts));
+  }
+  return { columnCount, headerTexts };
+}
+
+/**
+ * One header cell's text for the fingerprint: its stored pre-simplification
+ * text where opts.originalText holds one, the cell's current text otherwise.
+ *
+ * @param {{getText(): string, el: Element}} cellObj
+ * @param {{originalText?: (cellEl: Element) => (string|undefined)}} opts
+ * @returns {string}
+ */
+function _fingerprintCellText(cellObj, opts) {
+  if (typeof opts.originalText === 'function') {
+    const stored = opts.originalText(cellObj.el);
+    if (stored !== undefined && stored !== null) return String(stored);
+  }
+  return cellObj.getText();
+}
+
+/**
+ * Whether two shape fingerprints describe the same shape: the same column
+ * count, and the same header texts element by element.
+ *
+ * Either side missing answers false. The one caller treats a missing recorded
+ * fingerprint as its own case before it compares, so a false here always
+ * means a read that returned nothing.
+ *
+ * @param {{columnCount: number, headerTexts: string[]}} a
+ * @param {{columnCount: number, headerTexts: string[]}} b
+ * @returns {boolean}
+ */
+function sameTableFingerprint(a, b) {
+  if (!a || !b) return false;
+  if (a.columnCount !== b.columnCount) return false;
+  const left = a.headerTexts || [];
+  const right = b.headerTexts || [];
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
+/**
  * The two guards the nomination step applies to an element carrying a grid or
  * table role, before the data test runs on it: the element is not a native
  * table, and every native table it holds is one tableFilter drops (pass 1
@@ -1123,6 +1204,42 @@ function _chainRootOf(el, tableFilter, opts) {
     depth++;
   }
   return chainRoot;
+}
+
+/**
+ * The chain root of the nest `el` sits in, for a caller outside this file.
+ *
+ * The walk starts at `el` itself and goes up to the nearest qualifying
+ * element — an element carrying a grid or table role that passes the two
+ * guards — then hands that element to the private walk above. It returns null
+ * when no qualifying element sits at or above `el` within
+ * DR_TUNING.gridWalkDepthCap DOM levels, which is the answer for an element
+ * that belongs to no nest.
+ *
+ * The one caller is the shape-fingerprint mismatch path in the controller: a
+ * fresh registration re-runs the nomination step from the chain root, because
+ * a new result set can change which element of the nest passes the data test.
+ *
+ * @param {Element} el
+ * @param {{tableFilter?: (table: Element) => boolean, doc?: Document,
+ *          styleProbe?: object}} [opts]
+ * @returns {Element|null}
+ */
+function chainRootOf(el, opts = {}) {
+  if (!el) return null;
+  const tableFilter = opts.tableFilter || isPhantomA11yTable;
+  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
+  const docBody = doc && doc.body;
+  let current = el;
+  let depth = 0;
+  while (current && current !== docBody && depth < DR_TUNING.gridWalkDepthCap) {
+    if (_isQualifyingAncestor(current, tableFilter, opts)) {
+      return _chainRootOf(current, tableFilter, opts);
+    }
+    current = current.parentElement || current.parentNode || null;
+    depth++;
+  }
+  return null;
 }
 
 /**

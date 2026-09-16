@@ -310,6 +310,17 @@ function createToggleForTable(table) {
   tableToggles.set(table, button);
   trackedTables.add(table);
   DR_STORE.registerTable(table);
+  // The shape fingerprint, recorded once per registration. Every later
+  // action on this table compares the table's shape against this reading
+  // first, and a mismatch discards the entry and registers the table fresh
+  // (see the controller). The originals port reads a cell's stored
+  // pre-simplification text; a table registering holds none, so the read
+  // takes the cells as they stand, and the two comparison sites pass the
+  // same port so a simplified header cell still compares against this
+  // reading.
+  DR_STORE.setTableFingerprint(table, readTableFingerprint(table, {
+    originalText: (cellEl) => DR_STORE.getTableOriginalText(table, cellEl),
+  }));
   DR_LOG.debug("Dynamic Rounding: registered " +
     (table.tagName === 'TABLE' ? 'native table' : 'grid') + ".");
 

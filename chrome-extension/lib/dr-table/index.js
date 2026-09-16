@@ -26,6 +26,9 @@ const DR_TABLE = {
   looksLikeGrid,
   findTargetTable,
   findTables,
+  chainRootOf,
   isPhantomA11yTable,
   isDataTable,
+  readTableFingerprint,
+  sameTableFingerprint,
 };

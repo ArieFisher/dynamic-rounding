@@ -171,6 +171,14 @@ globalThis.DR_BUS = DR_BUS;
 globalThis.looksLikeGrid = looksLikeGrid;
 globalThis.findTargetTable = findTargetTable;
 globalThis.findTables = findTables;
+globalThis.chainRootOf = chainRootOf;
+// The shape fingerprint: the detection layer's reader and comparison, and
+// the controller's two users of them — the teardown a mismatch runs and the
+// check both entry points call.
+globalThis.readTableFingerprint = readTableFingerprint;
+globalThis.sameTableFingerprint = sameTableFingerprint;
+globalThis.teardownTableEntry = teardownTableEntry;
+globalThis.revalidateTableShape = revalidateTableShape;
 // Expose TableAdapter abstraction for the grid-adapter test suite.
 globalThis.makeAdapter = makeAdapter;
 globalThis.NativeTableAdapter = NativeTableAdapter;
@@ -5680,8 +5688,12 @@ function fireTouchSecondTap(buttonEl) {
   // The merged press path: one settings write, and no read of any sidebar
   // value. The behavioral pins live in the part-one block further down; this
   // one holds the line at the source, so a reintroduced guard fails here.
+  // The handler names the element it acts on `target`: the shape-fingerprint
+  // check ahead of the screen read returns the pressed table on a match and
+  // the freshly registered element on a mismatch, and the flip direction
+  // comes from whichever one the press continues on.
   eq('sidebar-state removal: the intent:toggleTable handler reads the screen for its flip direction',
-    /intent:toggleTable'[\s\S]{0,600}!isTableRounded\(table\)/.test(contentSrc), true);
+    /intent:toggleTable'[\s\S]{0,1200}!isTableRounded\(target\)/.test(contentSrc), true);
 
   // content.js: sprint toggle-split consolidated the mouse and touch click
   // branches' controller logic (which used to each carry their own switch
@@ -14378,8 +14390,11 @@ function fireMouseClick(buttonEl, fn) {
     'looksLikeGrid',
     'findTargetTable',
     'findTables',
+    'chainRootOf',
     'isPhantomA11yTable',
     'isDataTable',
+    'readTableFingerprint',
+    'sameTableFingerprint',
   ].sort();
 
   eq('lib/dr-table/index.js: DR_TABLE exists on the global scope after the main eval',

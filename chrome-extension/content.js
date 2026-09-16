@@ -113,16 +113,32 @@ DR_BUS.respond('request:applySettings', ({ settings }) => {
 // press on the table that is already active keeps it: that table is the one
 // the expression describes. #328 replaces the clear with a per-table
 // expression.
-DR_BUS.subscribe('intent:toggleTable', ({ table }) => {
-  // Rule 1: read the screen first.
-  const nextEnabled = !isTableRounded(table);
-  const moved = table !== DR_STORE.getSelectedTable();
+DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
+  // Rule 0: the shape check runs before rule 1's screen read. A press on a
+  // table the page has refilled therefore reads the fresh entry's raw form
+  // and turns simplification on, where a read of the discarded entry would
+  // report a simplification of values no longer on the screen. The press
+  // continues on the element the check returns, which is a different element
+  // where a new result set moved the registration. A shape change that
+  // registers nothing stops the press here.
+  const revalidated = revalidateTableShape(pressedTable);
+  if (!revalidated.table) return;
+  const target = revalidated.table;
 
-  if (moved) {
+  // Rule 1: read the screen first.
+  const nextEnabled = !isTableRounded(target);
+  // A shape change counts as a move on its own. The fresh entry registered a
+  // moment ago and holds nothing, and the range expression states rows and
+  // columns by position, so it describes a shape that is gone.
+  const moved = revalidated.switched || target !== DR_STORE.getSelectedTable();
+
+  if (moved && !revalidated.switched) {
     // Rule 2. Reported as an intent rather than written here, so one intent
     // stays the single place a table becomes active even when a second
-    // intent (toggle) is what triggered it.
-    DR_BUS.publish('intent:selectTable', { table });
+    // intent (toggle) is what triggered it. A shape change published both of
+    // these from the check above, so this block covers the ordinary moved
+    // press alone.
+    DR_BUS.publish('intent:selectTable', { table: target });
     DR_BUS.publish('state:tableSwitched', {});
   }
 
@@ -249,7 +265,19 @@ window.addEventListener('pagehide', () => {
   DR_BUS.publish('state:pageUnloaded', {});
 });
 
-function applySidebarRounding(table, options) {
+function applySidebarRounding(requestedTable, options) {
+  // The shape check runs before the reset, so a table the page refilled is
+  // discarded and registered fresh rather than reset against originals that
+  // belong to cells no longer on the screen. The locked path below sits
+  // after this check for the same reason: a locked table whose shape changed
+  // is a replaced table, and its lost originals stop mattering once the
+  // entry holding them is gone. The apply continues on the element the check
+  // returns, which is a different element where a new result set moved the
+  // registration. A shape change that registers nothing stops the apply.
+  const revalidated = revalidateTableShape(requestedTable);
+  if (!revalidated.table) return;
+  const table = revalidated.table;
+
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
   ensureHighlightStyleInjected();
   const unrestorableCount = resetTable(table);
@@ -317,6 +345,83 @@ function injectTogglesForAddedNode(node) {
     handle.classList.add('dr-ext-grid');
     createToggleForTable(handle);
   });
+}
+
+// The shape fingerprint's read options for one table: the registry's stored
+// pre-simplification text per cell. The recording site (createToggleForTable)
+// passes the same thing, so a header cell the extension itself simplified
+// still reads as the text the registry recorded, and the extension's own
+// writes never read as a page change.
+function fingerprintReadOpts(table) {
+  return { originalText: (cellEl) => DR_STORE.getTableOriginalText(table, cellEl) };
+}
+
+// Check a registered table's shape against the fingerprint the registry
+// recorded, and recover when the two differ. Every action on a registered
+// table runs this first, and acts on the element it returns.
+//
+// A match returns the same table and changes nothing.
+//
+// A mismatch means the page put different content in this element — a new
+// result set, a different column set — so the entry describes data no longer
+// on the screen: its cell originals belong to cells that are gone, and its
+// form reports a simplification of values no one can see. The entry is
+// discarded whole, and the nomination step re-runs from the nest's chain
+// root, because a new result set can change which element of the nest passes
+// the data test: a pinned pane that now holds two columns puts two elements
+// at the configured depth, and the edge rule falls back to the wrapper. The
+// fresh registration can therefore land on a different element than the one
+// the action named. The fresh element becomes active through the same intent
+// a moved press publishes, and the table-switched topic carries the move to
+// the sidebar.
+//
+// The switch publishes even where the fresh registration lands on the same
+// element: the entry is new either way, with no originals and a raw form, and
+// the sidebar re-reads the settings record on that topic.
+//
+// A table with no recorded fingerprint compares against nothing and returns
+// as a match. Only a first write through the registry's setters creates such
+// an entry, never createToggleForTable, and discarding an entry over a
+// reading that never happened would throw away originals for no finding.
+//
+// Nothing registering — the whole nest fails the data test — returns null,
+// and the caller stops. The discarded table was the active one in that case
+// too, so the active table clears: it may not point at an element the
+// registry no longer holds.
+//
+// @returns {{table: Element|null, switched: boolean}}
+function revalidateTableShape(table) {
+  const recorded = DR_STORE.getTableFingerprint(table);
+  if (!recorded) return { table, switched: false };
+  if (sameTableFingerprint(recorded, readTableFingerprint(table, fingerprintReadOpts(table)))) {
+    return { table, switched: false };
+  }
+
+  DR_LOG.debug("Dynamic Rounding: table shape changed; re-running detection.");
+  teardownTableEntry(table, 'replaced');
+
+  // findTables on a <table> root returns that table in pass 1, so one call
+  // covers a native table and a grid alike.
+  const root = table.tagName === 'TABLE' ? table : (chainRootOf(table) || table);
+  let fresh = null;
+  for (const { handle, isNew } of findTables(root, { isSeen: DR_STORE.hasTable })) {
+    if (!isNew) continue;
+    if (handle.tagName !== 'TABLE') handle.classList.add('dr-ext-grid');
+    createToggleForTable(handle);
+    // createToggleForTable registers only what passes the data test, so the
+    // registry is what reports whether this element registered.
+    if (!fresh && DR_STORE.hasTable(handle)) fresh = handle;
+  }
+
+  if (!fresh) {
+    DR_LOG.debug("Dynamic Rounding: no table registered after the shape change.");
+    if (DR_STORE.getSelectedTable() === table) DR_BUS.publish('intent:selectTable', { table: null });
+    return { table: null, switched: false };
+  }
+
+  DR_BUS.publish('intent:selectTable', { table: fresh });
+  DR_BUS.publish('state:tableSwitched', {});
+  return { table: fresh, switched: true };
 }
 
 // Discard one table's registration and every per-table resource the
