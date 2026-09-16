@@ -821,7 +821,10 @@ function looksLikeGrid(el, opts = {}) {
  *   1. Nearest <table> ancestor (cheapest, most precise).
  *   2. Nearest ancestor (or el itself) already registered as found, per
  *      opts.isSeen.
- *   3. Walk UP from el calling looksLikeGrid at each ancestor; return the
+ *   3. The nomination step (findTables), run from the chain root of the nest
+ *      el sits in; return the element the configured nesting depth selects.
+ *      This route registers a marked grid the load-time scan missed.
+ *   4. Walk UP from el calling looksLikeGrid at each ancestor; return the
  *      OUTERMOST match — keep walking while the parent also passes; stop when
  *      the parent fails, is <body>, or depth exceeds DR_TUNING.gridWalkDepthCap.
  *
@@ -830,16 +833,16 @@ function looksLikeGrid(el, opts = {}) {
  * this element already been found" is opts.isSeen, a caller-supplied check
  * (e.g. the app model's table registry), following the same contract
  * findTables (below) already uses. Without opts.isSeen, step 2 is a no-op
- * and case 3's isNew is always true — this function keeps no registry of its
- * own, so with nothing to consult it cannot claim to have seen anything
- * before.
+ * and cases 3 and 4 report isNew: true throughout: this function keeps no
+ * registry of its own, so without opts.isSeen every result reports isNew:
+ * true.
  *
  * It returns { handle, isNew }, where `handle` is the resolved element and
  * `isNew` tells the caller whether this is the first time resolution has
  * reached this element — i.e. whether the caller still needs to mark it and
  * construct its widget. Case 1 resolves to an element the caller already
  * knows how to handle (a bare <table>), so isNew is always false for it;
- * cases 2 and 3 defer to opts.isSeen.
+ * cases 2, 3 and 4 defer to opts.isSeen.
  *
  * Returns null if nothing found.
  *
@@ -873,7 +876,26 @@ function findTargetTable(el, opts = {}) {
     seenDepth++;
   }
 
-  // 3. Walk up, calling looksLikeGrid; return the outermost consecutive match.
+  // 3. The nomination step, run from the chain root of the nest el sits in.
+  // The step applies the configured nesting depth to the whole nest, so the
+  // element it selects can be a sibling of the clicked element: a click in a
+  // vendor grid's row-number gutter resolves the scrolling pane beside it.
+  // Pass 1 of the step returns nothing here: a qualifying chain root holds no
+  // native table other than accessibility artifacts, so the step's one result
+  // is the nomination.
+  //
+  // The step returns nothing for a nest whose chain is empty, for a depth
+  // holding more than one element, and for a nest already holding a registered
+  // element; each of those falls through to the geometry probe below, which is
+  // the behavior issue #382 records for a click in a sibling pane of a
+  // registered nest.
+  const chainRoot = chainRootOf(el, opts);
+  if (chainRoot) {
+    const nominated = findTables(chainRoot, { ...opts, isSeen })[0];
+    if (nominated) return { handle: nominated.handle, isNew: !isSeen(nominated.handle) };
+  }
+
+  // 4. Walk up, calling looksLikeGrid; return the outermost consecutive match.
   let current = el.parentElement || el.parentNode;
   let depth = 0;
   let outermost = null;

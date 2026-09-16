@@ -63,7 +63,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | Term | Meaning |
 | --- | --- |
 | detection | Finding the tables on a page. |
-| load-time scan | The detection pass that runs when the page loads: native tables first, then elements marked with a grid or table role. Unmarked grids enter only on a right-click. |
+| load-time scan | The detection pass that runs when the page loads: native tables first, then elements marked with a grid or table role. A marked grid the scan missed enters on a right-click, which runs the nomination step from the clicked element's chain root. An unmarked grid still enters only on a right-click, through the geometry probe. |
 | geometry probe | The check that qualifies an unmarked grid on right-click: five or more repeated rows, a grid or flex layout, at least one numeric cell, and first-column widths that line up. |
 | accessibility artifact | A table that exists for screen readers or as a chart's fallback, hidden or drawn off-screen. Detection skips it: no registry entry, no pillbox. |
 | native table | A `<table>` element. |
