@@ -40,7 +40,6 @@ const TOGGLE_DOT_OVERLAP_PX = 8;
 const TOGGLE_DOT_OVERHANG_PX = 2;
 const TOGGLE_COLOR_ON = '#3d85c6';
 const TOGGLE_COLOR_OFF = '#cccccc';
-const TOUCH_AUTOCOLLAPSE_MS = 3000;
 // Hover text for a locked pill — see tableHasUnrestorableCells. Wording
 // mirrors sidebar.js's APPLY_BLOCKED_STATUS_MSG.
 const LOCKED_TOGGLE_TITLE = 'This table\'s original values are no longer available. Reload the page to change it.';
@@ -261,7 +260,7 @@ function createToggleForTable(table) {
     _touchCollapseTimer = setTimeout(() => {
       button.classList.remove('expanded');
       _touchCollapseTimer = null;
-    }, TOUCH_AUTOCOLLAPSE_MS);
+    }, DR_TUNING.pillboxAutoCollapseMs);
   }
 
   // Click handler: mouse/keyboard → immediate press; touch/pen → two-tap
