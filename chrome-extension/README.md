@@ -77,7 +77,7 @@ Row discovery uses a grid's row groups (`role="rowgroup"`, the ARIA analog of `<
 
 A row outside every row group — or, on a native table, a `<tfoot>` row — is an outside row: it rounds like any other row, but its values stay out of the dataset. They never feed the max magnitude or the lens preview.
 
-On virtualized grids, the max magnitude freezes when simplification is first applied (the magnitude freeze), and the data test samples a bounded ten cells in each of ten rows, so a wide header row cannot exhaust the sample.
+On virtualized grids, the max magnitude freezes when simplification is first applied (the magnitude freeze). The data test spends one budget of 1000 cell reads, in document order, stopping at the first number; the budget applies on native tables and grids alike.
 
 On a native table, the data test and rounding share one cell read: the cell's rendered text, falling back to its raw text when the rendered text is empty. A hidden cell rounds like any other cell, and its raw text counts toward the test; a hidden fragment inside a visible cell — the hidden sort key above — stays out, because that cell's rendered text is not empty and the fallback never runs.
 
