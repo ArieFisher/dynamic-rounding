@@ -171,7 +171,6 @@ globalThis.DR_BUS = DR_BUS;
 globalThis.looksLikeGrid = looksLikeGrid;
 globalThis.findTargetTable = findTargetTable;
 globalThis.findTables = findTables;
-globalThis.chainRootOf = chainRootOf;
 // The shape fingerprint: the detection layer's reader and comparison, and
 // the controller's two users of them — the teardown a mismatch runs and the
 // check both entry points call.
@@ -199,6 +198,24 @@ globalThis.computeGridRoundedValues = computeGridRoundedValues;
 globalThis.gridObservers = gridObservers;
 globalThis.gridReapplyTimers = gridReapplyTimers;
 globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_TUNING.gridRedrawDelayMs;
+// Expose the nomination step (lib/dr-table/detect.js) for the nesting and
+// pending-table suites. The step reports outcomes findTables drops, so the
+// suites read them here rather than through findTables.
+globalThis.chainRootOf = chainRootOf;
+globalThis.nominateNest = nominateNest;
+globalThis.nominateNests = nominateNests;
+// Expose the controller's pending-table state and the three functions that
+// hold, re-test, and drop a pending record (sprint pending-retest). The
+// content-script bundle evaluates in its own scope, so the pending suite
+// reaches these names only through this list.
+globalThis.consumeNominations = consumeNominations;
+globalThis.holdPendingTable = holdPendingTable;
+globalThis.retestPendingTable = retestPendingTable;
+globalThis.dropPendingTable = dropPendingTable;
+globalThis.pendingRoots = pendingRoots;
+globalThis.pendingObservers = pendingObservers;
+globalThis.pendingRetestTimers = pendingRetestTimers;
+globalThis.pendingRetestCounts = pendingRetestCounts;
 // Expose phantom a11y predicate and its threshold constant for tests
 globalThis.isPhantomA11yTable = isPhantomA11yTable;
 globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_TUNING.offscreenLeftPx;
@@ -7672,6 +7689,346 @@ function withFindTargetEnv(elements, fn) {
 })();
 
 // ---------------------------------------------------------------------------
+// Sprint right-click-registers: the nomination step runs from the clicked
+// element's chain root.
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.5 and the
+// right-click-registers block in §5; decision D1.
+// ---------------------------------------------------------------------------
+//
+// The route these assertions pin, in the specification's words:
+//   - A right-click resolves in four steps: the nearest native table, the
+//     nearest already-registered ancestor, the nomination step run from the
+//     chain root of the nest the clicked element sits in, and the geometry
+//     probe.
+//   - The third step returns the element the configured nesting depth
+//     selects. That element can be a sibling of the clicked element, so a
+//     click in a database query grid's row-number gutter resolves the
+//     scrolling pane beside it.
+//   - A nest that resolves nothing falls through to the geometry probe
+//     unchanged.
+//   - findTargetTable reports: it registers nothing and writes no marker.
+//
+// Every expected value below comes from that statement, never from the
+// detection layer's source. The fixture is makeDatabaseQueryGrid (defined
+// with the grid fixtures further down this file; a top-level function
+// declaration, so it is in scope here).
+
+// A role-bearing element whose own class carries no vendor token, so the
+// geometry probe's vendor short-circuit stays out of these cases.
+function makeRoleBearingNest(rows) {
+  return makeDgNode('DIV', 'plain-role-grid', 'grid', rows);
+}
+
+// A counting stand-in for the layout reads. Only the geometry probe reads
+// layout during a right-click resolution, so a resolution that leaves this
+// count at zero came from an earlier step. The returned values keep the
+// geometry probe working when a case does reach it.
+function makeCountingStyleProbe() {
+  const probe = {
+    calls: 0,
+    getComputedStyle(el) {
+      probe.calls++;
+      return { display: 'flex', visibility: 'visible', position: 'static', left: '', verticalAlign: '' };
+    },
+    getOffsetWidth(el) {
+      probe.calls++;
+      return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1;
+    },
+  };
+  return probe;
+}
+
+// A counting stand-in for the data test's numeric probe. It parses the way
+// the detection layer's default probe does and records every read, so a
+// test can state how many cells one resolution read.
+function makeCountingNumericProbe() {
+  const probe = {
+    calls: 0,
+    parse(text) {
+      probe.calls++;
+      const cleaned = String(text).trim().replace(/[$€£¥,\s%]/g, '');
+      if (cleaned === '') return null;
+      const parsed = parseFloat(cleaned);
+      return isFinite(parsed) ? parsed : null;
+    },
+  };
+  return probe;
+}
+
+// --- AC1: a click in the scrolling pane resolves the scrolling pane ---
+
+(function rightClickRegisters_AC1_aClickInTheScrollingPaneResolvesIt() {
+  const grid = makeDatabaseQueryGrid();
+  const styleProbe = makeCountingStyleProbe();
+  const result = findTargetTable(grid.scrollRowEls[2].children[1],
+    { isSeen: () => false, styleProbe });
+
+  eq('findTargetTable AC1: a click in the scrolling pane resolves the scrolling pane',
+    result !== null && result.handle === grid.scrollPaneEl, true);
+  eq('findTargetTable AC1: the scrolling pane resolution reports isNew',
+    result !== null && result.isNew, true);
+  eq('findTargetTable AC1: the resolution reads no layout, so the geometry probe did not produce it',
+    styleProbe.calls, 0);
+  eq('findTargetTable AC1: the resolution writes no grid marker class',
+    [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl]
+      .map((el) => el.classList.contains('dr-ext-grid')), [false, false, false]);
+  eq('findTargetTable AC1: the resolution adds no registry entry',
+    [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl]
+      .map((el) => DR_STORE.hasTable(el)), [false, false, false]);
+})();
+
+// --- AC1: a click on the nest's own layers resolves the scrolling pane ---
+//
+// A right-click inside the grid lands on whatever sits under the pointer, and
+// the gaps between the panes belong to the nest's plain layers. The geometry
+// probe walks ancestors of the clicked element and stops at the first one that
+// fails its row-count gate, so a click on a layer whose only child is another
+// layer resolves nothing through it. The nomination step runs from the chain
+// root instead, which covers every layer of the nest.
+
+(function rightClickRegisters_AC1_aClickOnTheNestsOwnLayersResolvesTheScrollingPane() {
+  const plain = makeDatabaseQueryGrid({ plainWrapper: true });
+  const paneRowResult = findTargetTable(plain.paneParentEl, { isSeen: () => false });
+  eq('findTargetTable AC1: a click on the plain layer between the panes resolves the scrolling pane',
+    paneRowResult !== null && paneRowResult.handle === plain.scrollPaneEl, true);
+
+  const grid = makeDatabaseQueryGrid();
+  const wrapperResult = findTargetTable(grid.wrapperEl, { isSeen: () => false });
+  eq('findTargetTable AC1: a click on the wrapper itself resolves the scrolling pane',
+    wrapperResult !== null && wrapperResult.handle === grid.scrollPaneEl, true);
+})();
+
+// --- AC2: a click in the row-number gutter resolves the scrolling pane ---
+
+(function rightClickRegisters_AC2_aClickInTheRowNumberGutterResolvesTheScrollingPane() {
+  const grid = makeDatabaseQueryGrid();
+  const gutterCell = grid.pinnedRowEls[0].children[0];
+
+  eq('findTargetTable AC2: the clicked gutter cell holds a row number',
+    /^\d+$/.test(gutterCell.textContent), true);
+
+  const styleProbe = makeCountingStyleProbe();
+  const result = findTargetTable(gutterCell, { isSeen: () => false, styleProbe });
+
+  eq('findTargetTable AC2: a click in the row-number gutter resolves the scrolling pane beside it',
+    result !== null && result.handle === grid.scrollPaneEl, true);
+  eq('findTargetTable AC2: the gutter resolution reports isNew',
+    result !== null && result.isNew, true);
+  eq('findTargetTable AC2: the gutter resolution reports neither the pinned pane nor the wrapper',
+    result !== null &&
+      (result.handle === grid.pinnedPaneEl || result.handle === grid.wrapperEl), false);
+  eq('findTargetTable AC2: the gutter resolution reads no layout, so the geometry probe did not produce it',
+    styleProbe.calls, 0);
+
+  // The layout counter is a live probe: the geometry probe does read layout
+  // when a case reaches it, so the zero above stands for a route that stopped
+  // earlier rather than for a port nothing ever calls.
+  const roleLessProbe = makeCountingStyleProbe();
+  const roleLess = makeDgNode('DIV', 'plain-host', null,
+    [0, 1, 2, 3, 4, 5].map((i) => makeDgRow(i, ['north', '4,281,905', '17.40'])));
+  findTargetTable(roleLess.children[0].children[0],
+    { isSeen: () => false, styleProbe: roleLessProbe });
+  eq('findTargetTable AC2: a role-less tree does reach the geometry probe and read layout',
+    roleLessProbe.calls > 0, true);
+})();
+
+// --- AC3: a role-bearing element that fails the data test resolves nothing ---
+
+(function rightClickRegisters_AC3_aRoleBearingElementThatFailsTheDataTestResolvesNothing() {
+  const oneCell = makeRoleBearingNest([makeDgRow(0, ['17'])]);
+  const noNumber = makeRoleBearingNest([
+    makeDgRow(0, ['north', 'alpha']),
+    makeDgRow(1, ['south', 'bravo']),
+  ]);
+
+  eq('findTargetTable AC3: one row of one cell fails the data test',
+    isDataTable(oneCell), false);
+  eq('findTargetTable AC3: two rows with no number fail the data test',
+    isDataTable(noNumber), false);
+  eq('findTargetTable AC3: the one-row-one-cell element is a chain root (sanity)',
+    chainRootOf(oneCell.children[0].children[0]) === oneCell, true);
+  eq('findTargetTable AC3: the two-rows-no-number element is a chain root (sanity)',
+    chainRootOf(noNumber.children[0].children[0]) === noNumber, true);
+
+  eq('findTargetTable AC3: a click inside the one-row-one-cell element resolves nothing',
+    findTargetTable(oneCell.children[0].children[0], { isSeen: () => false }), null);
+  eq('findTargetTable AC3: a click inside the two-rows-no-number element resolves nothing',
+    findTargetTable(noNumber.children[0].children[0], { isSeen: () => false }), null);
+})();
+
+// --- AC3: an empty nomination falls through to the geometry probe ---
+//
+// The two cases above resolve nothing because the geometry probe rejects them
+// as well, so they say nothing about which step produced the null. This case
+// separates the two steps: six rows of one numeric cell each fail the data
+// test at the two-cell gate, which leaves the nomination empty, and clear the
+// geometry probe's ladder (six repeated children sharing a class, a flex
+// display, a numeric cell, and a grid role short-circuiting the column-width
+// sample). The route therefore has to hand the element on rather than end the
+// resolution, and the layout counter records the probe producing the answer.
+
+(function rightClickRegisters_AC3_anEmptyNominationFallsThroughToTheGeometryProbe() {
+  const nest = makeRoleBearingNest(
+    [0, 1, 2, 3, 4, 5].map((i) => makeDgRow(i, ['4,281,905'])));
+  const styleProbe = makeCountingStyleProbe();
+
+  eq('findTargetTable AC3: a single-column nest fails the data test, so the nomination is empty',
+    isDataTable(nest), false);
+  eq('findTargetTable AC3: the clicked cell still sits in that nest',
+    chainRootOf(nest.children[0].children[0]) === nest, true);
+
+  const result = findTargetTable(nest.children[0].children[0],
+    { isSeen: () => false, styleProbe });
+
+  eq('findTargetTable AC3: an empty nomination falls through and the probe resolves the nest',
+    result !== null && result.handle === nest, true);
+  eq('findTargetTable AC3: the fall-through resolution reports isNew',
+    result !== null && result.isNew, true);
+  eq('findTargetTable AC3: the fall-through resolution reads layout, so the geometry probe produced it',
+    styleProbe.calls > 0, true);
+})();
+
+// --- AC4: a registered table resolves at the registry route ---
+//
+// The proof goes through the ports the resolver takes, not through the
+// source text: opts.numericProbe counts the data-test reads the nomination
+// step would spend, so a zero count shows the step spent none, and
+// opts.isSeen records the elements the resolver asked the registry about.
+// The last pair of assertions runs the same click with nothing registered,
+// so the zero count above stands for "the step spent no read" rather than
+// "the probe is inert".
+
+(function rightClickRegisters_AC4_aRegisteredTableResolvesAtTheRegistryRoute() {
+  const grid = makeDatabaseQueryGrid();
+  const cell = grid.scrollRowEls[3].children[1];
+
+  const asked = [];
+  const registryProbe = makeCountingNumericProbe();
+  const result = findTargetTable(cell, {
+    isSeen: (el) => { asked.push(el); return el === grid.scrollPaneEl; },
+    numericProbe: registryProbe,
+  });
+
+  eq('findTargetTable AC4: a click inside a registered scrolling pane resolves it',
+    result !== null && result.handle === grid.scrollPaneEl, true);
+  eq('findTargetTable AC4: the registry route reports isNew false',
+    result !== null && result.isNew, false);
+  eq('findTargetTable AC4: the registry route spends no data-test read',
+    registryProbe.calls, 0);
+  eq('findTargetTable AC4: the registry walk stops at the scrolling pane',
+    asked.length > 0 && asked[asked.length - 1] === grid.scrollPaneEl, true);
+  eq('findTargetTable AC4: no step asks the registry about the wrapper',
+    asked.includes(grid.wrapperEl), false);
+
+  const freshProbe = makeCountingNumericProbe();
+  const freshResult = findTargetTable(cell, { isSeen: () => false, numericProbe: freshProbe });
+  eq('findTargetTable AC4: the same click with nothing registered reaches the nomination step',
+    freshResult !== null && freshResult.handle === grid.scrollPaneEl, true);
+  eq('findTargetTable AC4: and that resolution does spend data-test reads',
+    freshProbe.calls > 0, true);
+})();
+
+// --- Edge: a crowded depth falls back outward on a right-click ---
+
+(function rightClickRegisters_edge_aCrowdedDepthFallsBackOutwardOnARightClick() {
+  const grid = makeDatabaseQueryGrid({ pinnedColumns: 2 });
+
+  eq('findTargetTable edge: a two-column pinned pane puts two elements at the shipped depth',
+    isDataTable(grid.pinnedPaneEl) && isDataTable(grid.scrollPaneEl), true);
+
+  const result = findTargetTable(grid.scrollRowEls[0].children[0], { isSeen: () => false });
+  eq('findTargetTable edge: the fall-back outward resolves the wrapper on a right-click',
+    result !== null && result.handle === grid.wrapperEl, true);
+})();
+
+// --- Edge: a role-less tree still resolves through the geometry probe ---
+
+(function rightClickRegisters_edge_aRoleLessTreeStillResolvesThroughTheGeometryProbe() {
+  withFindTargetEnv([], function () {
+    const makeRows5 = () => [
+      makeGridRow([{ text: 'A', width: 100 }, { text: '100' }], 'row', 20),
+      makeGridRow([{ text: 'B', width: 100 }, { text: '200' }], 'row', 20),
+      makeGridRow([{ text: 'C', width: 100 }, { text: '300' }], 'row', 20),
+      makeGridRow([{ text: 'D', width: 100 }, { text: '400' }], 'row', 20),
+      makeGridRow([{ text: 'E', width: 100 }, { text: '500' }], 'row', 20),
+    ];
+    const inner = makeWalkEl({ display: 'flex', rows: makeRows5() });
+    const outer = makeWalkEl({ display: 'flex', rows: makeRows5() });
+    inner.parentElement = outer;
+    inner.parentNode = outer;
+    outer.parentElement = document.body;
+    outer.parentNode = document.body;
+    inner.closest = function () { return null; };
+
+    eq('findTargetTable edge: a role-less tree has no chain root',
+      chainRootOf(inner), null);
+
+    const result = findTargetTable(inner);
+    eq('findTargetTable edge: a role-less tree still resolves to the outermost geometry-probe match',
+      result !== null && result.handle === outer, true);
+    eq('findTargetTable edge: that geometry-probe resolution still reports isNew',
+      result !== null && result.isNew, true);
+  });
+})();
+
+// --- chainRootOf: the nest an arbitrary clicked element sits in ---
+
+(function rightClickRegisters_chainRootOfResolvesTheNestOfAnArbitraryElement() {
+  const grid = makeDatabaseQueryGrid();
+  const plain = makeDatabaseQueryGrid({ plainWrapper: true });
+  const roleLess = makeDgNode('DIV', 'plain-host', null, [makeDgRow(0, ['north', '4,281,905'])]);
+
+  eq('chainRootOf: a null element returns null', chainRootOf(null), null);
+  eq('chainRootOf: a role-less tree returns null',
+    chainRootOf(roleLess.children[0].children[0]), null);
+  eq('chainRootOf: a cell in the scrolling pane returns the wrapper',
+    chainRootOf(grid.scrollRowEls[0].children[0]) === grid.wrapperEl, true);
+  eq('chainRootOf: a cell in the pinned pane returns the wrapper',
+    chainRootOf(grid.pinnedRowEls[0].children[0]) === grid.wrapperEl, true);
+  eq('chainRootOf: a plain layer between the wrapper and the panes still returns the wrapper',
+    chainRootOf(plain.scrollRowEls[0].children[0]) === plain.wrapperEl, true);
+})();
+
+// --- AC6: the living docs state the route ---
+
+(function rightClickRegisters_AC6_theLivingDocsStateTheRoute() {
+  const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
+  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
+  const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
+
+  const loadTimeScanRow = vocabularyMd.split('\n')
+    .find((line) => /^\|\s*load-time scan\s*\|/i.test(line)) || '';
+  eq('right-click AC6: docs/vocabulary.md keeps a load-time scan row',
+    loadTimeScanRow !== '', true);
+  eq('right-click AC6: that row states a marked grid the scan missed enters on a right-click',
+    /right-click/i.test(loadTimeScanRow) && /missed/i.test(loadTimeScanRow), true);
+  eq('right-click AC6: that row names the nomination step and the chain root',
+    /nomination step/i.test(loadTimeScanRow) && /chain root/i.test(loadTimeScanRow), true);
+  eq('right-click AC6: that row keeps the geometry probe as the unmarked grid route',
+    /unmarked grid/i.test(loadTimeScanRow) && /geometry probe/i.test(loadTimeScanRow), true);
+
+  const detectionParagraph = designMd.split('\n')
+    .find((line) => /^\*\*Detection\.\*\*/.test(line)) || '';
+  eq('right-click AC6: docs/design.md keeps a Detection paragraph',
+    detectionParagraph !== '', true);
+  eq('right-click AC6: the Detection paragraph states the right-click route',
+    /right-click/i.test(detectionParagraph) &&
+      /nomination step/i.test(detectionParagraph) &&
+      /chain root/i.test(detectionParagraph), true);
+  eq('right-click AC6: the Detection paragraph states the gutter outcome',
+    /gutter[\s\S]{0,120}scrolling pane/i.test(detectionParagraph), true);
+
+  const readmeDetectionPoint = extensionReadme.split('\n')
+    .find((line) => /^1\. \*\*Detection runs on demand/.test(line)) || '';
+  eq('right-click AC6: chrome-extension/README.md keeps its first detection point',
+    readmeDetectionPoint !== '', true);
+  eq('right-click AC6: that point states the right-click route',
+    /right-click/i.test(readmeDetectionPoint) &&
+      /nomination step/i.test(readmeDetectionPoint) &&
+      /chain root/i.test(readmeDetectionPoint), true);
+})();
+
+// ---------------------------------------------------------------------------
 // content.js markAndToggleIfNewGrid — the badge/marker call-site wrapper that
 // replaced findTargetTable's old internal mutation. It owns exactly what
 // findTargetTable used to do inline: write the dr-ext-grid marker and build
@@ -10870,6 +11227,475 @@ function asAddedGridNode(grid) {
 })();
 
 // ---------------------------------------------------------------------------
+// Sprint pending-retest: a grid that arrives before its rows registers when
+// the rows arrive.
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.4 and the
+// pending-retest block in §5; the re-test cap's reasoning in §6.
+// ---------------------------------------------------------------------------
+//
+// The rule these assertions pin, in the specification's words:
+//   - A chain root whose containment chain is empty — no qualifying element of
+//     its nest passes the data test — becomes a pending table: one debounced
+//     subtree observer on the chain root, watching childList, characterData,
+//     and subtree.
+//   - A change to the subtree runs the nomination step from the root again. A
+//     registration clears the pending record and disconnects the observer.
+//   - A re-test that still finds the chain empty counts against
+//     DR_TUNING.pendingRetestCap; reaching the cap drops the observer, the
+//     timer, and the count, and records a debug log row.
+//   - The pending unit is the chain root, so a nest of several qualifying
+//     elements carries one observer.
+//
+// Every expected value below comes from that statement, never from the
+// controller's source.
+
+// Drive the pending table's observer and its debounce the way the re-apply
+// observer tests drive theirs. The capturing MutationObserver records every
+// instance and every observe call, so a test can count the observers a nest
+// produced; the setTimeout stub stores each scheduled callback for the test to
+// run.
+function withPendingHarness(fn) {
+  const observers = [];
+  const timers = [];
+  const CapturingPendingMO = class {
+    constructor(cb) {
+      this._cb = cb;
+      this.observeCalls = [];
+      this.disconnectCount = 0;
+      observers.push(this);
+    }
+    observe(target, options) { this.observeCalls.push({ target, options }); }
+    disconnect() { this.disconnectCount++; }
+    /** Test helper: run the callback as one subtree mutation. */
+    trigger() { if (this._cb) this._cb([], this); }
+  };
+
+  const origMO = global.MutationObserver;
+  const origSetTimeout = global.setTimeout;
+  const origClearTimeout = global.clearTimeout;
+  global.MutationObserver = CapturingPendingMO;
+  global.setTimeout = function (callback, ms) {
+    timers.push({ callback, ms, cancelled: false, ran: false });
+    return timers.length - 1;
+  };
+  global.clearTimeout = function (id) {
+    if (id !== undefined && id !== null && timers[id]) timers[id].cancelled = true;
+  };
+
+  try {
+    fn({ observers, timers });
+  } finally {
+    global.MutationObserver = origMO;
+    global.setTimeout = origSetTimeout;
+    global.clearTimeout = origClearTimeout;
+  }
+}
+
+// Run the debounce timers a pending observer scheduled, and only those: the
+// pillbox builder schedules its own positioning timer at another delay, and
+// running that one here would test nothing about the re-test. Returns how many
+// ran.
+function runPendingRetestTimers(timers) {
+  let ran = 0;
+  for (const timer of timers) {
+    if (timer.cancelled || timer.ran) continue;
+    if (timer.ms !== DR_TUNING.gridRedrawDelayMs) continue;
+    timer.ran = true;
+    ran++;
+    timer.callback();
+  }
+  return ran;
+}
+
+// Add one element child to a fixture node after it was built. makeDgNode links
+// a child to its parent at construction, so a later child takes that link here.
+function appendDgChild(parentEl, childEl) {
+  parentEl.childNodes.push(childEl);
+  parentEl.children.push(childEl);
+  childEl.parentElement = parentEl;
+  return childEl;
+}
+
+// The row pairs a database query grid draws once its rows arrive: a row-number
+// gutter row in the pinned pane, and an identifier with a count and a rate in
+// the scrolling pane. Invented values, one order of magnitude apart.
+const PENDING_FILL_ROWS = [
+  ['alpha', '7,318,204', '284.51'],
+  ['bravo', '551,077', '31.77'],
+  ['charlie', '2,140,663', '58.02'],
+];
+
+// Fill an empty database query grid fixture, the way the page fills a grid
+// that drew before its rows loaded.
+function fillDatabaseQueryGrid(grid) {
+  PENDING_FILL_ROWS.forEach((scrollTexts, i) => {
+    appendDgChild(grid.pinnedPaneEl, makeDgRow(i, [String(i + 1)]));
+    appendDgChild(grid.scrollPaneEl, makeDgRow(i, scrollTexts));
+  });
+}
+
+// --- Criterion 1: a container inserted empty and then filled registers ---
+
+(function pendingRetest_AC1_aLoneContainerFilledLaterRegistersAndGainsAPillbox() {
+  const lone = makeDgNode('DIV', 'lone-pending-grid', 'grid', []);
+  const before = DR_STORE.getRegisteredTables().length;
+
+  eq('pending AC1: the suite holds no pending table before this case',
+    pendingRoots.size, 0);
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(lone);
+    });
+
+    eq('pending AC1: an empty container registers nothing',
+      DR_STORE.hasTable(lone), false);
+    eq('pending AC1: an empty container gains no pillbox', tableToggles.has(lone), false);
+    eq('pending AC1: an empty container is held as a pending table',
+      pendingRoots.has(lone), true);
+    eq('pending AC1: the empty container carries one observer', observers.length, 1);
+
+    // The rows arrive, each holding a number.
+    PENDING_FILL_ROWS.forEach((cellTexts, i) => appendDgChild(lone, makeDgRow(i, cellTexts)));
+    eq('pending AC1: the filled container passes the data test', isDataTable(lone), true);
+
+    withToggleDocumentMock(function () {
+      if (observers[0]) observers[0].trigger();
+      eq('pending AC1: one mutation schedules one re-test', runPendingRetestTimers(timers), 1);
+    });
+
+    eq('pending AC1: the filled container registers', DR_STORE.hasTable(lone), true);
+    eq('pending AC1: the filled container gains a pillbox', tableToggles.has(lone), true);
+    eq('pending AC1: the registration drops the pending record',
+      pendingRoots.has(lone), false);
+    eq('pending AC1: the registration disconnects the observer',
+      observers[0] && observers[0].disconnectCount, 1);
+    eq('pending AC1: the registration adds exactly one registry entry',
+      DR_STORE.getRegisteredTables().length - before, 1);
+  });
+
+  forgetRegisteredTable(lone);
+})();
+
+(function pendingRetest_AC1_anEmptyDatabaseQueryGridFilledLaterRegistersItsScrollingPane() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+  const before = DR_STORE.getRegisteredTables().length;
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(grid.wrapperEl);
+    });
+
+    eq('pending AC1: an empty database query grid registers nothing',
+      [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_STORE.hasTable(el)),
+      [false, false, false]);
+    eq('pending AC1: an empty database query grid holds the wrapper as a pending table',
+      pendingRoots.has(grid.wrapperEl), true);
+    eq('pending AC1: the empty wrapper carries one observer', observers.length, 1);
+
+    fillDatabaseQueryGrid(grid);
+
+    withToggleDocumentMock(function () {
+      if (observers[0]) observers[0].trigger();
+      eq('pending AC1: one fill schedules one re-test', runPendingRetestTimers(timers), 1);
+    });
+
+    eq('pending AC1: the filled grid registers the scrolling pane alone',
+      [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_STORE.hasTable(el)),
+      [false, false, true]);
+    eq('pending AC1: the scrolling pane gains a pillbox',
+      tableToggles.has(grid.scrollPaneEl), true);
+    eq('pending AC1: the wrapper gains no pillbox', tableToggles.has(grid.wrapperEl), false);
+    eq('pending AC1: the pinned pane gains no pillbox',
+      tableToggles.has(grid.pinnedPaneEl), false);
+    eq('pending AC1: the registration drops the wrapper\'s pending record',
+      pendingRoots.has(grid.wrapperEl), false);
+    eq('pending AC1: the registration disconnects the wrapper\'s observer',
+      observers[0] && observers[0].disconnectCount, 1);
+    eq('pending AC1: the fill adds exactly one registry entry',
+      DR_STORE.getRegisteredTables().length - before, 1);
+  });
+
+  forgetRegisteredTable(grid.scrollPaneEl);
+})();
+
+// --- Criterion 2: one observer per pending wrapper ---
+
+(function pendingRetest_AC2_aPendingWrapperCarriesOneObserverForThreeElements() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+  const extraPaneEl = appendDgChild(grid.wrapperEl,
+    makeDgNode('DIV', 'dg--grid-container dg--extra-pane', 'grid', []));
+
+  eq('pending AC2: three role-bearing elements sit under the empty wrapper',
+    [grid.pinnedPaneEl, grid.scrollPaneEl, extraPaneEl]
+      .map((el) => el.parentElement === grid.wrapperEl), [true, true, true]);
+  eq('pending AC2: no element of the empty nest passes the data test',
+    [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl, extraPaneEl].map(isDataTable),
+    [false, false, false, false]);
+
+  withPendingHarness(function ({ observers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(grid.wrapperEl);
+    });
+
+    eq('pending AC2: a nest of four qualifying elements carries one observer',
+      observers.length, 1);
+    eq('pending AC2: the one observer watches the chain root',
+      observers[0] && observers[0].observeCalls.length === 1 &&
+        observers[0].observeCalls[0].target === grid.wrapperEl, true);
+    eq('pending AC2: the observer watches added nodes, changed text, and the whole subtree',
+      observers[0] && observers[0].observeCalls[0].options,
+      { childList: true, characterData: true, subtree: true });
+
+    // A second pass over the same empty wrapper holds the record it already
+    // has rather than starting a second one.
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(grid.wrapperEl);
+    });
+    eq('pending AC2: a second pass over the same empty wrapper adds no second observer',
+      observers.length, 1);
+    eq('pending AC2: a second pass leaves one pending root', pendingRoots.size, 1);
+
+    dropPendingTable(grid.wrapperEl);
+  });
+
+  eq('pending AC2: the case leaves no pending table behind', pendingRoots.size, 0);
+})();
+
+// --- Criterion 3: the re-test cap bounds a container that never passes ---
+//
+// The container holds rows of text and no number, so every re-test finds the
+// chain empty. The debounce is driven once per re-test, the way a subtree that
+// churns without loading data drives it.
+
+(function pendingRetest_AC3_aContainerThatNeverPassesStopsAtTheCap() {
+  const neverEl = makeDgNode('DIV', 'never-a-data-grid', 'grid', [
+    makeDgRow(0, ['alpha', 'north', 'open']),
+    makeDgRow(1, ['bravo', 'south', 'open']),
+    makeDgRow(2, ['charlie', 'east', 'open']),
+  ]);
+  eq('pending AC3: a container of text rows never passes the data test',
+    isDataTable(neverEl), false);
+  eq('pending AC3: the tuning block ships a re-test cap of 100',
+    DR_TUNING.pendingRetestCap, 100);
+
+  // The log buffer holds the last 50 rows and counts the rows that dropped off
+  // the front, so the two together give a running total this case can subtract
+  // to find the rows it recorded itself.
+  const recordedRows = () => {
+    const snapshot = DR_LOG.snapshot();
+    return snapshot.dropped + snapshot.entries.length;
+  };
+  const logRowsBefore = recordedRows();
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(neverEl);
+    });
+
+    eq('pending AC3: the container is held as a pending table',
+      pendingRoots.has(neverEl), true);
+    eq('pending AC3: the held container starts at zero failed re-tests',
+      pendingRetestCounts.get(neverEl), 0);
+
+    const observer = observers[0];
+    // One short of the cap: the observer stays connected.
+    for (let i = 0; i < DR_TUNING.pendingRetestCap - 1; i++) {
+      if (observer) observer.trigger();
+      runPendingRetestTimers(timers);
+    }
+    eq('pending AC3: one short of the cap the count reads the failed re-tests',
+      pendingRetestCounts.get(neverEl), DR_TUNING.pendingRetestCap - 1);
+    eq('pending AC3: one short of the cap the observer stays connected',
+      observer && observer.disconnectCount, 0);
+    eq('pending AC3: one short of the cap the container is still pending',
+      pendingRoots.has(neverEl), true);
+
+    // The re-test that reaches the cap.
+    if (observer) observer.trigger();
+    runPendingRetestTimers(timers);
+
+    eq('pending AC3: reaching the cap disconnects the observer',
+      observer && observer.disconnectCount, 1);
+    eq('pending AC3: reaching the cap drops the pending root',
+      pendingRoots.has(neverEl), false);
+    eq('pending AC3: reaching the cap drops the failed-re-test count',
+      pendingRetestCounts.has(neverEl), false);
+    eq('pending AC3: reaching the cap drops the debounce timer',
+      pendingRetestTimers.has(neverEl), false);
+    eq('pending AC3: reaching the cap leaves the observer map empty for the root',
+      pendingObservers.has(neverEl), false);
+    eq('pending AC3: the dropped container registers nothing',
+      DR_STORE.hasTable(neverEl), false);
+
+    const added = recordedRows() - logRowsBefore;
+    const entries = DR_LOG.snapshot().entries;
+    const newRows = entries.slice(Math.max(0, entries.length - added));
+    eq('pending AC3: the cap cycle records at least one log row', added >= 1, true);
+    eq('pending AC3: reaching the cap records a debug log row naming the pending table',
+      newRows.some((row) => row.level === 'debug' && /pending table/i.test(row.text)), true);
+
+    // A later mutation on the dropped container costs nothing: no observer
+    // remains to run, and the record is gone.
+    eq('pending AC3: the dropped container holds no pending record',
+      pendingRoots.size, 0);
+  });
+})();
+
+// --- Adversarial: a re-test that finds the nest registered ends the record ---
+//
+// The vocabulary row states the rule: a re-test that finds the nest already
+// registered ends the pending table, as does one that finds its configured
+// depth crowded. The registration here goes through the pillbox builder
+// directly, which is the route a right-click takes today — the pending record
+// stands until the next re-test, and that re-test is what drops it. Without
+// this the record outlives the registration: a live observer on a subtree the
+// extension already registered, re-testing until it reaches the cap.
+
+(function pendingRetest_aRegisteredRetestEndsThePendingRecord() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+  const before = DR_STORE.getRegisteredTables().length;
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(grid.wrapperEl);
+    });
+
+    eq('pending registered: the empty wrapper is held as a pending table',
+      pendingRoots.has(grid.wrapperEl), true);
+    eq('pending registered: the empty wrapper carries one observer', observers.length, 1);
+
+    // The rows arrive, and another route registers the scrolling pane before
+    // the re-test runs.
+    fillDatabaseQueryGrid(grid);
+    withToggleDocumentMock(function () {
+      createToggleForTable(grid.scrollPaneEl);
+    });
+    eq('pending registered: the other route registered the scrolling pane',
+      DR_STORE.hasTable(grid.scrollPaneEl), true);
+    eq('pending registered: the pending record still stands before the re-test',
+      pendingRoots.has(grid.wrapperEl), true);
+
+    withToggleDocumentMock(function () {
+      if (observers[0]) observers[0].trigger();
+      eq('pending registered: one mutation schedules one re-test',
+        runPendingRetestTimers(timers), 1);
+    });
+
+    eq('pending registered: a re-test over a registered nest drops the pending root',
+      pendingRoots.has(grid.wrapperEl), false);
+    eq('pending registered: a re-test over a registered nest disconnects the observer',
+      observers[0] && observers[0].disconnectCount, 1);
+    eq('pending registered: the observer map holds nothing for the wrapper',
+      pendingObservers.has(grid.wrapperEl), false);
+    eq('pending registered: the failed-re-test count map holds nothing for the wrapper',
+      pendingRetestCounts.has(grid.wrapperEl), false);
+    eq('pending registered: the debounce timer map holds nothing for the wrapper',
+      pendingRetestTimers.has(grid.wrapperEl), false);
+    eq('pending registered: the nest holds one registry entry in all',
+      DR_STORE.getRegisteredTables().length - before, 1);
+    eq('pending registered: the re-test puts no second pillbox on the nest',
+      [tableToggles.has(grid.wrapperEl), tableToggles.has(grid.pinnedPaneEl)], [false, false]);
+    eq('pending registered: no pending root remains', pendingRoots.size, 0);
+  });
+
+  forgetRegisteredTable(grid.scrollPaneEl);
+})();
+
+// --- Adversarial: a re-test that finds the depth crowded ends the record ---
+//
+// A crowded nest registers nothing, by the product decision in issue #373, and
+// it registers nothing on every later re-test for the same reason. Holding the
+// record would leave an observer re-testing a shape whose answer cannot change
+// until the page rebuilds it.
+
+(function pendingRetest_aCrowdedRetestEndsThePendingRecord() {
+  const rootEl = makeDgNode('DIV', 'crowded-pending-root', 'table', []);
+  const nest = makeCrowdedNest();
+  const before = DR_STORE.getRegisteredTables().length;
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(rootEl);
+    });
+
+    eq('pending crowded: the empty root is held as a pending table',
+      pendingRoots.has(rootEl), true);
+    eq('pending crowded: the empty root carries one observer', observers.length, 1);
+
+    // The page draws a row group of text rows and two panes that each pass the
+    // data test, which puts two elements at the configured depth.
+    nest.rootEl.children.slice().forEach((child) => appendDgChild(rootEl, child));
+    eq('pending crowded: the filled root still fails the data test',
+      isDataTable(rootEl), false);
+    eq('pending crowded: both panes pass the data test',
+      [nest.paneAEl, nest.paneBEl].map(isDataTable), [true, true]);
+    eq('pending crowded: the filled nest reports the crowded outcome',
+      nominateNest(rootEl).outcome, 'crowded');
+
+    withToggleDocumentMock(function () {
+      if (observers[0]) observers[0].trigger();
+      eq('pending crowded: one mutation schedules one re-test',
+        runPendingRetestTimers(timers), 1);
+    });
+
+    eq('pending crowded: a crowded re-test drops the pending root',
+      pendingRoots.has(rootEl), false);
+    eq('pending crowded: a crowded re-test disconnects the observer',
+      observers[0] && observers[0].disconnectCount, 1);
+    eq('pending crowded: the observer map holds nothing for the root',
+      pendingObservers.has(rootEl), false);
+    eq('pending crowded: the failed-re-test count map holds nothing for the root',
+      pendingRetestCounts.has(rootEl), false);
+    eq('pending crowded: the debounce timer map holds nothing for the root',
+      pendingRetestTimers.has(rootEl), false);
+    eq('pending crowded: a crowded nest registers no element',
+      [rootEl, nest.paneAEl, nest.paneBEl].map((el) => DR_STORE.hasTable(el)),
+      [false, false, false]);
+    eq('pending crowded: a crowded nest gains no pillbox',
+      [rootEl, nest.paneAEl, nest.paneBEl].map((el) => tableToggles.has(el)),
+      [false, false, false]);
+    eq('pending crowded: a crowded nest adds no registry entry',
+      DR_STORE.getRegisteredTables().length - before, 0);
+    eq('pending crowded: no pending root remains', pendingRoots.size, 0);
+  });
+})();
+
+// --- Adversarial: the debounce collapses a burst of mutations into one re-test ---
+
+(function pendingRetest_twoMutationsInsideTheDelayScheduleOneRetest() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+
+  withPendingHarness(function ({ observers, timers }) {
+    withToggleDocumentMock(function () {
+      injectTogglesForAddedNode(grid.wrapperEl);
+    });
+
+    const observer = observers[0];
+    if (observer) observer.trigger();
+    if (observer) observer.trigger();
+
+    const scheduled = timers.filter((t) => t.ms === DR_TUNING.gridRedrawDelayMs);
+    eq('pending debounce: two mutations schedule two timers and cancel the first',
+      scheduled.map((t) => t.cancelled), [true, false]);
+    eq('pending debounce: the delay is the grid redraw delay',
+      scheduled.every((t) => t.ms === DR_TUNING.gridRedrawDelayMs), true);
+
+    fillDatabaseQueryGrid(grid);
+    withToggleDocumentMock(function () {
+      eq('pending debounce: two mutations inside the delay run one re-test',
+        runPendingRetestTimers(timers), 1);
+    });
+
+    eq('pending debounce: the one re-test registers the scrolling pane',
+      DR_STORE.hasTable(grid.scrollPaneEl), true);
+  });
+
+  forgetRegisteredTable(grid.scrollPaneEl);
+  eq('pending debounce: the case leaves no pending table behind', pendingRoots.size, 0);
+})();
+
+// ---------------------------------------------------------------------------
 // Sprint grid-rowgroup-tr-extraction: GridAdapter._getRowEls handles ARIA grids
 // whose data rows are bare <tr> inside a [role="rowgroup"], with header/summary
 // rows OUTSIDE the rowgroup (e.g. Kaggle's Data Explorer). Standard ARIA only.
@@ -12086,6 +12912,291 @@ function fireMouseClick(buttonEl, fn) {
     global.chrome = savedChrome;
     global.getComputedStyle = savedGCS;
   }
+})();
+
+// ---------------------------------------------------------------------------
+// Sprint right-click-registers (controller level): the right-click handler
+// registers what the new route resolves and makes it active.
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.5 and the
+// right-click-registers block in §5; decision D1.
+// ---------------------------------------------------------------------------
+//
+// The resolver half of these criteria sits with the findTargetTable tests
+// further up this file. "Registers" and "makes it active" are controller
+// facts, so they run through the real captured contextmenu listener against a
+// fresh evaluation of the content scripts, and read that evaluation's own
+// application model and pillbox bookkeeping.
+//
+// The MutationObserver stub is capturing rather than no-op so the observer
+// counts around one right-click are readable: this branch carries no pending
+// table and no subtree observer, and the criterion is that the route needs
+// neither.
+
+function withRightClickSandbox(run) {
+  let contextmenuHandler = null;
+  const observeCalls = [];
+  const constructedObservers = [];
+  const pendingTimers = [];
+
+  class CapturingRightClickMO {
+    constructor(cb) { this._cb = cb; constructedObservers.push(this); }
+    observe(target, options) { observeCalls.push({ target, options }); }
+    disconnect() {}
+  }
+
+  function makeMockElement(tag) {
+    const classes = [];
+    return {
+      tagName: String(tag).toUpperCase(),
+      type: '', className: '', textContent: '',
+      style: {}, dataset: {},
+      classList: {
+        add(c) { if (!classes.includes(c)) classes.push(c); },
+        remove(c) { const i = classes.indexOf(c); if (i >= 0) classes.splice(i, 1); },
+        contains(c) { return classes.includes(c); },
+      },
+      setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+      addEventListener() {}, appendChild() {}, parentElement: null,
+    };
+  }
+
+  const captureDoc = {
+    addEventListener(type, handler) { if (type === 'contextmenu') contextmenuHandler = handler; },
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild() {} },
+    head: { appendChild() {} },
+    documentElement: { appendChild() {} },
+    createElement: makeMockElement,
+  };
+  const sentMessages = [];
+  const captureChrome = {
+    runtime: {
+      onMessage: { addListener() {} },
+      sendMessage(msg) { sentMessages.push(msg); },
+    },
+  };
+
+  const saved = {
+    document: global.document, chrome: global.chrome, window: global.window,
+    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    Node: global.Node, NodeFilter: global.NodeFilter,
+    getComputedStyle: global.getComputedStyle, setTimeout: global.setTimeout,
+  };
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = {
+    addEventListener() {}, scrollX: 0, scrollY: 0,
+    getComputedStyle: () => ({ display: 'flex', visibility: 'visible' }),
+  };
+  global.MutationObserver = CapturingRightClickMO;
+  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  global.Node = { ELEMENT_NODE: 1 };
+  global.NodeFilter = { SHOW_TEXT: 4 };
+  // The geometry probe reads layout through the bare getComputedStyle global.
+  global.getComputedStyle = () => ({ display: 'flex', visibility: 'visible' });
+  // A collecting stub keeps the pillbox's deferred positioning out of the
+  // globals a later section runs under.
+  global.setTimeout = function (fn, ms) { pendingTimers.push({ fn, ms }); return pendingTimers.length - 1; };
+
+  try {
+    // The evaluation's own DR_STORE and tableToggles bindings, exposed the way
+    // the registry and parent-equivalence harnesses above expose theirs.
+    eval(contentScriptBundle + `
+      globalThis.__rcr_DR_STORE = DR_STORE;
+      globalThis.__rcr_tableToggles = tableToggles;
+    `);
+    run({
+      get contextmenuHandler() { return contextmenuHandler; },
+      store: global.__rcr_DR_STORE,
+      tableToggles: global.__rcr_tableToggles,
+      observeCalls, constructedObservers, sentMessages, pendingTimers,
+    });
+  } finally {
+    global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
+    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+    global.getComputedStyle = saved.getComputedStyle; global.setTimeout = saved.setTimeout;
+    delete global.__rcr_DR_STORE;
+    delete global.__rcr_tableToggles;
+  }
+}
+
+// --- AC1: a right-click in the scrolling pane registers it and makes it active ---
+
+(function rightClickRegisters_AC1_runtime_scrollingPaneRegistersAndBecomesActive() {
+  withRightClickSandbox(function (ctx) {
+    const grid = makeDatabaseQueryGrid();
+
+    eq('right-click AC1 runtime: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    eq('right-click AC1 runtime: no scan registered the nest before the click',
+      ctx.store.getRegisteredTables().length, 0);
+
+    ctx.contextmenuHandler({ target: grid.scrollRowEls[2].children[1] });
+
+    eq('right-click AC1 runtime: the scrolling pane enters the registry',
+      ctx.store.hasTable(grid.scrollPaneEl), true);
+    eq('right-click AC1 runtime: the scrolling pane becomes the active table',
+      ctx.store.getSelectedTable() === grid.scrollPaneEl, true);
+    eq('right-click AC1 runtime: the registry holds the scrolling pane alone',
+      ctx.store.getRegisteredTables().map((el) => el === grid.scrollPaneEl), [true]);
+    eq('right-click AC1 runtime: the scrolling pane carries a pillbox',
+      ctx.tableToggles.has(grid.scrollPaneEl), true);
+    eq('right-click AC1 runtime: the pinned pane carries no pillbox',
+      ctx.tableToggles.has(grid.pinnedPaneEl), false);
+    eq('right-click AC1 runtime: the wrapper carries no pillbox',
+      ctx.tableToggles.has(grid.wrapperEl), false);
+    eq('right-click AC1 runtime: the grid marker class lands on the scrolling pane alone',
+      [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl]
+        .map((el) => el.classList.contains('dr-ext-grid')), [false, false, true]);
+    eq('right-click AC1 runtime: the click reports the table as activated',
+      ctx.sentMessages.some((m) => m.action === 'state:tableActivated'), true);
+  });
+})();
+
+// --- AC1: a right-click on the nest's own layers registers the scrolling pane ---
+
+(function rightClickRegisters_AC1_runtime_aClickOnAPlainLayerRegistersTheScrollingPane() {
+  withRightClickSandbox(function (ctx) {
+    const plain = makeDatabaseQueryGrid({ plainWrapper: true });
+
+    eq('right-click AC1 runtime: the contextmenu handler was captured (plain layer)',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: plain.paneParentEl });
+
+    eq('right-click AC1 runtime: a click on the plain layer between the panes registers the scrolling pane',
+      ctx.store.hasTable(plain.scrollPaneEl), true);
+    eq('right-click AC1 runtime: that click makes the scrolling pane active',
+      ctx.store.getSelectedTable() === plain.scrollPaneEl, true);
+    eq('right-click AC1 runtime: that click puts a pillbox on the scrolling pane',
+      ctx.tableToggles.has(plain.scrollPaneEl), true);
+    eq('right-click AC1 runtime: that click puts no pillbox on the plain layer or the wrapper',
+      [plain.paneParentEl, plain.wrapperEl].map((el) => ctx.tableToggles.has(el)), [false, false]);
+  });
+})();
+
+// --- AC2: a right-click in the row-number gutter registers the scrolling pane ---
+
+(function rightClickRegisters_AC2_runtime_gutterRegistersTheScrollingPane() {
+  withRightClickSandbox(function (ctx) {
+    const grid = makeDatabaseQueryGrid();
+
+    eq('right-click AC2 runtime: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: grid.pinnedRowEls[0].children[0] });
+
+    eq('right-click AC2 runtime: a click in the row-number gutter registers the scrolling pane',
+      ctx.store.hasTable(grid.scrollPaneEl), true);
+    eq('right-click AC2 runtime: the scrolling pane becomes the active table',
+      ctx.store.getSelectedTable() === grid.scrollPaneEl, true);
+    eq('right-click AC2 runtime: the pinned pane stays out of the registry',
+      ctx.store.hasTable(grid.pinnedPaneEl), false);
+    eq('right-click AC2 runtime: the wrapper stays out of the registry',
+      ctx.store.hasTable(grid.wrapperEl), false);
+    eq('right-click AC2 runtime: the scrolling pane carries a pillbox',
+      ctx.tableToggles.has(grid.scrollPaneEl), true);
+    eq('right-click AC2 runtime: the pinned pane carries no pillbox',
+      ctx.tableToggles.has(grid.pinnedPaneEl), false);
+    eq('right-click AC2 runtime: the wrapper carries no pillbox',
+      ctx.tableToggles.has(grid.wrapperEl), false);
+  });
+})();
+
+// --- AC3: a role-bearing element that fails the data test registers nothing ---
+
+(function rightClickRegisters_AC3_runtime_aFailedDataTestRegistersNothing() {
+  withRightClickSandbox(function (ctx) {
+    const oneCell = makeRoleBearingNest([makeDgRow(0, ['17'])]);
+    const noNumber = makeRoleBearingNest([
+      makeDgRow(0, ['north', 'alpha']),
+      makeDgRow(1, ['south', 'bravo']),
+    ]);
+
+    eq('right-click AC3 runtime: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: oneCell.children[0].children[0] });
+
+    eq('right-click AC3 runtime: a click in the one-row-one-cell element registers nothing',
+      ctx.store.getRegisteredTables().length, 0);
+    eq('right-click AC3 runtime: a click in the one-row-one-cell element leaves no active table',
+      ctx.store.getSelectedTable(), null);
+    eq('right-click AC3 runtime: the one-row-one-cell element gets no pillbox',
+      ctx.tableToggles.has(oneCell), false);
+
+    ctx.contextmenuHandler({ target: noNumber.children[0].children[0] });
+
+    eq('right-click AC3 runtime: a click in the two-rows-no-number element registers nothing',
+      ctx.store.getRegisteredTables().length, 0);
+    eq('right-click AC3 runtime: a click in the two-rows-no-number element leaves no active table',
+      ctx.store.getSelectedTable(), null);
+    eq('right-click AC3 runtime: the two-rows-no-number element gets no pillbox',
+      ctx.tableToggles.has(noNumber), false);
+    eq('right-click AC3 runtime: neither click reports a table as activated',
+      ctx.sentMessages.some((m) => m.action === 'state:tableActivated'), false);
+  });
+})();
+
+// --- AC5: the route needs no pending observer ---
+
+(function rightClickRegisters_AC5_runtime_theRouteInstallsNoObserver() {
+  withRightClickSandbox(function (ctx) {
+    const grid = makeDatabaseQueryGrid();
+
+    eq('right-click AC5 runtime: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    // The content scripts build one observer at load, over the document body,
+    // for removed subtrees. Everything after this line is the right-click.
+    const observersAtLoad = ctx.constructedObservers.length;
+    const observeCallsAtLoad = ctx.observeCalls.length;
+
+    ctx.contextmenuHandler({ target: grid.pinnedRowEls[1].children[0] });
+
+    eq('right-click AC5 runtime: the resolution and registration construct no observer',
+      ctx.constructedObservers.length - observersAtLoad, 0);
+    eq('right-click AC5 runtime: the resolution and registration call observe no times',
+      ctx.observeCalls.length - observeCallsAtLoad, 0);
+    eq('right-click AC5 runtime: no observer watches any element of the nest',
+      ctx.observeCalls.some((call) =>
+        call.target === grid.wrapperEl ||
+        call.target === grid.pinnedPaneEl ||
+        call.target === grid.scrollPaneEl), false);
+    eq('right-click AC5 runtime: the registration still happened without one',
+      ctx.store.hasTable(grid.scrollPaneEl) &&
+        ctx.store.getSelectedTable() === grid.scrollPaneEl, true);
+  });
+})();
+
+// --- Adversarial: a second right-click in the same nest adds no second entry ---
+
+(function rightClickRegisters_runtime_aSecondClickAddsNoSecondRegistration() {
+  withRightClickSandbox(function (ctx) {
+    const grid = makeDatabaseQueryGrid();
+
+    eq('right-click runtime: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: grid.scrollRowEls[0].children[1] });
+    const afterFirst = ctx.store.getRegisteredTables().length;
+    ctx.contextmenuHandler({ target: grid.scrollRowEls[4].children[2] });
+
+    eq('right-click runtime: the first click registers one table', afterFirst, 1);
+    eq('right-click runtime: a second click in the registered pane adds no entry',
+      ctx.store.getRegisteredTables().length, 1);
+    eq('right-click runtime: the active table stays the scrolling pane',
+      ctx.store.getSelectedTable() === grid.scrollPaneEl, true);
+  });
 })();
 
 // ---------------------------------------------------------------------------
@@ -14572,11 +15683,13 @@ function fireMouseClick(buttonEl, fn) {
 // hand-copied from origin/main's lib/dr-table/detect.js (read via
 // `git show origin/main:chrome-extension/lib/dr-table/detect.js`) and the
 // design doc's key table; the detection-constants sprint moved them and
-// changed none of them. Two keys have no pre-move value: nestingDepth, the
-// nomination step's configured depth from the grid-nesting-rule sprint, and
+// changed none of them. Three keys have no pre-move value: nestingDepth, the
+// nomination step's configured depth from the grid-nesting-rule sprint;
 // dataTestCellBudget, the data test's cell budget from the data-test-budget
-// sprint. Key order matches constants.js's DR_TUNING declaration, so the
-// JSON.stringify-based eq() comparison below is not order-sensitive noise.
+// sprint; and pendingRetestCap, a pending table's re-test cap from the
+// pending-retest sprint. Key order matches constants.js's DR_TUNING
+// declaration, so the JSON.stringify-based eq() comparison below is not
+// order-sensitive noise.
 const PRE_MOVE_TUNING = {
   nestingDepth: 1,
   gridMinChildren: 5,
@@ -14601,6 +15714,7 @@ const PRE_MOVE_TUNING = {
     },
   ],
   gridRedrawDelayMs: 100,
+  pendingRetestCap: 100,
   offscreenLeftPx: -9999,
   pillboxAutoCollapseMs: 3000,
 };
@@ -14730,9 +15844,9 @@ const PRE_MOVE_TUNING = {
   );
 
   eq('tuning block: the combined sandbox does not throw', sandbox.threw, null);
-  eq('tuning block: DR_TUNING exposes exactly twelve keys, the ten pre-move keys plus nestingDepth and dataTestCellBudget',
+  eq('tuning block: DR_TUNING exposes exactly thirteen keys, the ten pre-move keys plus nestingDepth, dataTestCellBudget, and pendingRetestCap',
     sandbox.outcomes.tuningKeys, Object.keys(PRE_MOVE_TUNING).sort());
-  eq('tuning block: DR_TUNING carries every pre-move value unchanged, plus nestingDepth at 1 and dataTestCellBudget at 1000',
+  eq('tuning block: DR_TUNING carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, and pendingRetestCap at 100',
     sandbox.outcomes.tuning, PRE_MOVE_TUNING);
   eq('tuning block: looksLikeGrid rejects 4 children (below gridMinChildren)',
     sandbox.outcomes.minChildrenBelowFails, false);
@@ -15110,10 +16224,13 @@ function forgetRegisteredTable(table) {
     addedNodePassSrc !== null &&
       (addedNodePassSrc.includes('GRID_ARIA_SELECTOR') || addedNodePassSrc.includes('role="grid"')),
     false);
+  // The step's page-wide entry point is nominateNests; findTables composes it
+  // and keeps the 'selected' outcomes. Both scanners act on the other outcomes
+  // too, so both call nominateNests directly.
   eq('nesting AC6: the load-time scan calls the nomination step',
-    loadTimeScanSrc !== null && /findTables\s*\(/.test(loadTimeScanSrc), true);
+    loadTimeScanSrc !== null && /nominateNests\s*\(/.test(loadTimeScanSrc), true);
   eq('nesting AC6: the added-node pass calls the nomination step',
-    addedNodePassSrc !== null && /findTables\s*\(/.test(addedNodePassSrc), true);
+    addedNodePassSrc !== null && /nominateNests\s*\(/.test(addedNodePassSrc), true);
 })();
 
 (function gridNesting_AC6_loadTimeScanBuildsOnePillbox() {
@@ -15638,6 +16755,186 @@ function makeHeadSectionTable(headerTexts, dataRows) {
   eq('fingerprint chain root: an element in no nest has none',
     chainRootOf(makeNestingHost([])) === null, true);
   eq('fingerprint chain root: a missing element has none', chainRootOf(null) === null, true);
+})();
+
+// =============================================================================
+// Sprint pending-retest: the nomination step reports one nest at a time
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.3 and §3.4.
+// =============================================================================
+//
+// The four outcomes, in the specification's words:
+//   - 'selected'   the step selected an element to register.
+//   - 'empty'      no element of the nest passes the data test, which is the
+//                  pending-table case.
+//   - 'crowded'    a depth holds more than one element and no shallower depth
+//                  holds exactly one, so the nest registers nothing.
+//   - 'registered' the nest already holds an element the caller reports as
+//                  seen, which makes a rediscovery idempotent.
+// The chain size counts the nest elements that passed the data test and filed
+// at a depth; it is zero for 'empty' and for 'registered'.
+//
+// findTables keeps the 'selected' outcomes and drops the other three, so a
+// caller that acts on them reads them here.
+
+// A nest whose chain root fails the data test while two qualifying children
+// pass it: the shape that leaves the configured depth crowded with no
+// shallower depth to fall back to.
+//
+// The root's own row read comes from the row group under it, which holds two
+// rows of text and no number, so the root fails the data test. The two panes
+// sit outside that row group and hold their own rows, so each passes. Both
+// panes carry the table role rather than the grid role, which keeps the grid
+// adapter's scroll-container lookup on the root itself.
+function makeCrowdedNest() {
+  const textCell = (text) => {
+    const cell = makeDgNode('DIV', 'text-cell', null, [makeTextNode(text)]);
+    cell.textContent = text;
+    cell.innerText = text;
+    return cell;
+  };
+  const textRow = (cellTexts) => makeDgNode('DIV', 'text-row', 'row', cellTexts.map(textCell));
+  const rowGroupEl = makeDgNode('DIV', 'text-rowgroup', 'rowgroup', [
+    textRow(['alpha', 'north']),
+    textRow(['bravo', 'south']),
+  ]);
+  const paneAEl = makeDgNode('DIV', 'crowded-pane-a', 'table', [
+    makeDgRow(0, ['alpha', '7,318,204']),
+    makeDgRow(1, ['bravo', '551,077']),
+  ]);
+  const paneBEl = makeDgNode('DIV', 'crowded-pane-b', 'table', [
+    makeDgRow(0, ['charlie', '2,140,663']),
+    makeDgRow(1, ['delta', '73,915']),
+  ]);
+  const rootEl = makeDgNode('DIV', 'crowded-root', 'table', [rowGroupEl, paneAEl, paneBEl]);
+  return { rootEl, paneAEl, paneBEl };
+}
+
+(function nominationStep_reportsSelectedForTheDatabaseQueryShape() {
+  const grid = makeDatabaseQueryGrid();
+  const result = nominateNest(grid.wrapperEl);
+
+  eq('nomination: a filled database query grid reports the selected outcome',
+    result.outcome, 'selected');
+  eq('nomination: the selected element is the scrolling pane',
+    result.selected === grid.scrollPaneEl, true);
+  eq('nomination: the reported chain root is the wrapper',
+    result.chainRoot === grid.wrapperEl, true);
+  eq('nomination: the chain holds the wrapper and the scrolling pane',
+    result.chainSize, 2);
+  eq('nomination: findTables on the same shape reports the selected handle alone',
+    findTables(grid.wrapperEl).map((r) => r.handle === grid.scrollPaneEl), [true]);
+})();
+
+(function nominationStep_reportsEmptyForAGridWithNoRows() {
+  const grid = makeDatabaseQueryGrid({ rows: 0 });
+  const result = nominateNest(grid.wrapperEl);
+
+  eq('nomination: a grid with no rows reports the empty outcome', result.outcome, 'empty');
+  eq('nomination: the empty outcome selects nothing', result.selected, null);
+  eq('nomination: the empty outcome reports the wrapper as the chain root',
+    result.chainRoot === grid.wrapperEl, true);
+  eq('nomination: the empty outcome reports a chain size of zero', result.chainSize, 0);
+  eq('nomination: findTables on a grid with no rows reports nothing',
+    findTables(grid.wrapperEl).length, 0);
+})();
+
+(function nominationStep_reportsCrowdedWhenTheDepthHoldsTwoAndTheRootFails() {
+  const nest = makeCrowdedNest();
+
+  eq('nomination: the crowded root fails the data test', isDataTable(nest.rootEl), false);
+  eq('nomination: both panes of the crowded nest pass the data test',
+    [nest.paneAEl, nest.paneBEl].map(isDataTable), [true, true]);
+
+  const result = nominateNest(nest.rootEl);
+  eq('nomination: two passing siblings with a failing root report the crowded outcome',
+    result.outcome, 'crowded');
+  eq('nomination: the crowded outcome selects nothing', result.selected, null);
+  eq('nomination: the crowded outcome counts both passing siblings', result.chainSize, 2);
+  eq('nomination: findTables on the crowded shape reports nothing',
+    findTables(nest.rootEl).length, 0);
+})();
+
+(function nominationStep_reportsRegisteredWhenTheNestHoldsASeenElement() {
+  const grid = makeDatabaseQueryGrid();
+  const result = nominateNest(grid.wrapperEl, { isSeen: (el) => el === grid.scrollPaneEl });
+
+  eq('nomination: a nest holding a seen element reports the registered outcome',
+    result.outcome, 'registered');
+  eq('nomination: the registered outcome selects nothing', result.selected, null);
+  eq('nomination: the registered outcome reports a chain size of zero', result.chainSize, 0);
+  eq('nomination: findTables on a nest holding a seen element reports nothing',
+    findTables(grid.wrapperEl, { isSeen: (el) => el === grid.scrollPaneEl }).length, 0);
+})();
+
+(function nominationStep_reportsOneResultPerNestInDocumentOrder() {
+  const first = makeDatabaseQueryGrid();
+  const second = makeDatabaseQueryGrid();
+  const results = nominateNests(makeNestingHost([first.wrapperEl, second.wrapperEl]));
+
+  eq('nomination: a host holding two grids reports two results', results.length, 2);
+  eq('nomination: the results carry the two chain roots in document order',
+    results.map((r) => r.chainRoot === first.wrapperEl || r.chainRoot === second.wrapperEl),
+    [true, true]);
+  eq('nomination: the first result belongs to the first grid',
+    results[0] && results[0].chainRoot === first.wrapperEl, true);
+  eq('nomination: the second result belongs to the second grid',
+    results[1] && results[1].chainRoot === second.wrapperEl, true);
+  eq('nomination: each result selects its own scrolling pane',
+    results.map((r) => r.selected === first.scrollPaneEl || r.selected === second.scrollPaneEl),
+    [true, true]);
+})();
+
+(function nominationStep_theChainRootWalkFindsTheOutermostQualifyingElement() {
+  const grid = makeDatabaseQueryGrid();
+  eq('nomination: the walk from the scrolling pane lands on the wrapper',
+    chainRootOf(grid.scrollPaneEl) === grid.wrapperEl, true);
+  eq('nomination: the walk from the pinned pane lands on the same wrapper',
+    chainRootOf(grid.pinnedPaneEl) === grid.wrapperEl, true);
+  eq('nomination: the walk from the wrapper lands on the wrapper itself',
+    chainRootOf(grid.wrapperEl) === grid.wrapperEl, true);
+  eq('nomination: a plain element with no qualifying ancestor has no chain root',
+    chainRootOf(makeDgNode('DIV', 'plain-element', null, [])), null);
+})();
+
+// --- Criterion 5: the living docs state the pending table rule ---
+
+(function pendingRetest_AC5_livingDocsStateTheRule() {
+  const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
+  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
+  const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
+
+  const pendingRow = vocabularyMd.split('\n')
+    .find((line) => /^\|\s*pending table\s*\|/i.test(line)) || '';
+  eq('pending AC5: docs/vocabulary.md carries a row for "pending table"',
+    pendingRow !== '', true);
+  eq('pending AC5: the pending table row states the subtree observer',
+    /subtree observer/i.test(pendingRow), true);
+  eq('pending AC5: the pending table row states the re-test cap',
+    /re-test cap/i.test(pendingRow), true);
+
+  const designParagraphs = designMd.split('\n\n');
+  const detectionParagraph = designParagraphs.find((p) => /^\*\*Detection\.\*\*/.test(p)) || '';
+  eq('pending AC5: docs/design.md carries a Detection paragraph',
+    detectionParagraph !== '', true);
+  eq('pending AC5: the Detection paragraph states that an empty chain leaves a pending table',
+    /pending table/i.test(detectionParagraph), true);
+  eq('pending AC5: the Detection paragraph states the cap on failed re-tests',
+    /reaches the cap/i.test(detectionParagraph), true);
+
+  const stateParagraph = designParagraphs.find((p) => /hold state outside the model/i.test(p)) || '';
+  eq('pending AC5: docs/design.md lists the state held outside the model',
+    stateParagraph !== '', true);
+  eq('pending AC5: that list names each pending table\'s subtree observer',
+    /pending table[^.]*observer/i.test(stateParagraph), true);
+
+  const detectionPoint = extensionReadme.split('\n')
+    .find((line) => /Detection runs on demand/i.test(line)) || '';
+  eq('pending AC5: chrome-extension/README.md carries the detection point',
+    detectionPoint !== '', true);
+  eq('pending AC5: the detection point states the pending table',
+    /pending table/i.test(detectionPoint), true);
+  eq('pending AC5: the detection point names the re-test cap in the tuning block',
+    /pendingRetestCap/.test(detectionPoint), true);
 })();
 
 // =============================================================================
@@ -19052,6 +20349,130 @@ function recentLogRows() {
     global.ResizeObserver = savedResizeObserver;
     global.clearTimeout = savedClearTimeout;
     forgetRegisteredTable(grid.scrollPaneEl);
+  }
+})();
+
+// --- Sprint pending-retest, criterion 4: a pending container removed from the
+// page leaves no observer and no timer.
+// Spec: docs/sprint-plans/grid-detection-recovery-v2.md, the pending-retest
+// block in §5 — "The removal branch of the table observer drops a pending
+// root's observer and timer."
+//
+// A pending table holds no registry entry, so the registry sweep above passes
+// over it; the pending sweep is the only thing that reaches it. The real
+// `_tableObserver` callback runs here, captured the same way the ancestor-
+// removal case above captures it: the content-script bundle is re-evaluated
+// with a capturing MutationObserver installed first, so the observer under
+// test is the production one and not a re-implementation of its steps. ---
+(function pendingRetest_AC4_removalDropsTheObserverAndTheTimer() {
+  const capturedInstances = [];
+  class CapturingRemovalMO {
+    constructor(cb) { this._cb = cb; this.disconnectCount = 0; capturedInstances.push(this); }
+    observe(target, options) { this._target = target; this._options = options; }
+    disconnect() { this.disconnectCount++; }
+  }
+
+  const timers = [];
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild() {} },
+  };
+  const captureChrome = { runtime: { onMessage: { addListener() {} }, sendMessage() {} } };
+  const saved = {
+    document: global.document, chrome: global.chrome, window: global.window,
+    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    Node: global.Node, NodeFilter: global.NodeFilter,
+    setTimeout: global.setTimeout, clearTimeout: global.clearTimeout,
+  };
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
+  global.MutationObserver = CapturingRemovalMO;
+  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  global.Node = { ELEMENT_NODE: 1 };
+  global.NodeFilter = { SHOW_TEXT: 4 };
+  global.setTimeout = function (callback, ms) {
+    timers.push({ callback, ms, cancelled: false });
+    return timers.length - 1;
+  };
+  global.clearTimeout = function (id) {
+    if (id !== undefined && id !== null && timers[id]) timers[id].cancelled = true;
+  };
+
+  try {
+    eval(contentScriptBundle + `
+      globalThis.__pending_pendingRoots = pendingRoots;
+      globalThis.__pending_pendingObservers = pendingObservers;
+      globalThis.__pending_pendingRetestTimers = pendingRetestTimers;
+      globalThis.__pending_holdPendingTable = holdPendingTable;
+    `);
+
+    eq('pending AC4: exactly one observer stands after the load (the table observer)',
+      capturedInstances.length, 1);
+    const tableObserver = capturedInstances[0];
+    const freshPendingRoots = global.__pending_pendingRoots;
+    const holdPending = global.__pending_holdPendingTable;
+
+    // Case 1: the removed node is an ancestor of the pending root.
+    const root = { nodeType: 1, tagName: 'DIV' };
+    holdPending(root);
+    eq('pending AC4 (pre): the root is held as a pending table',
+      freshPendingRoots.has(root), true);
+    eq('pending AC4 (pre): holding the root builds one more observer',
+      capturedInstances.length, 2);
+    const pendingObserver = capturedInstances[1];
+
+    // One mutation on the subtree schedules the debounced re-test.
+    pendingObserver._cb([], pendingObserver);
+    eq('pending AC4 (pre): the mutation schedules one re-test timer',
+      timers.filter((t) => !t.cancelled).length, 1);
+
+    const ancestor = { nodeType: 1, contains: (el) => el === root };
+    tableObserver._cb([{ addedNodes: [], removedNodes: [ancestor] }]);
+
+    eq('pending AC4: removing an ancestor disconnects the pending observer',
+      pendingObserver.disconnectCount, 1);
+    eq('pending AC4: removing an ancestor cancels the scheduled re-test timer',
+      timers.filter((t) => !t.cancelled).length, 0);
+    eq('pending AC4: removing an ancestor drops the pending root',
+      freshPendingRoots.has(root), false);
+    eq('pending AC4: no pending root remains after the ancestor removal',
+      freshPendingRoots.size, 0);
+
+    // Case 2: the removed node is the pending root itself.
+    const rootItself = { nodeType: 1, tagName: 'DIV' };
+    holdPending(rootItself);
+    const secondObserver = capturedInstances[2];
+    secondObserver._cb([], secondObserver);
+    const scheduledForSecond = timers.filter((t) => !t.cancelled).length;
+    eq('pending AC4 (pre): the second root schedules one re-test timer',
+      scheduledForSecond, 1);
+
+    tableObserver._cb([{ addedNodes: [], removedNodes: [rootItself] }]);
+
+    eq('pending AC4: removing the pending root itself disconnects its observer',
+      secondObserver.disconnectCount, 1);
+    eq('pending AC4: removing the pending root itself cancels its re-test timer',
+      timers.filter((t) => !t.cancelled).length, 0);
+    eq('pending AC4: removing the pending root itself drops the pending root',
+      freshPendingRoots.has(rootItself), false);
+    eq('pending AC4: the pending observer map holds nothing for either root',
+      [global.__pending_pendingObservers.has(root),
+        global.__pending_pendingObservers.has(rootItself)], [false, false]);
+    eq('pending AC4: the pending timer map holds nothing for either root',
+      [global.__pending_pendingRetestTimers.has(root),
+        global.__pending_pendingRetestTimers.has(rootItself)], [false, false]);
+  } finally {
+    global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
+    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+    global.setTimeout = saved.setTimeout; global.clearTimeout = saved.clearTimeout;
+    delete global.__pending_pendingRoots;
+    delete global.__pending_pendingObservers;
+    delete global.__pending_pendingRetestTimers;
+    delete global.__pending_holdPendingTable;
   }
 })();
 

@@ -354,10 +354,18 @@ function createToggleForTable(table) {
 }
 
 // The load-time scan. Pass 1 covers native <table> elements. Pass 2 hands the
-// grids to the nomination step in the detection layer (findTables), which
-// returns one element per nest at the configured nesting depth — the same step
-// the added-node pass in content.js runs, so one page and one added subtree
-// register the same element. This view holds no scan of its own.
+// grids to the nomination step in the detection layer (nominateNests), which
+// reports one outcome per nest — the same step the added-node pass in
+// content.js runs, so one page and one added subtree register the same
+// element. This view holds no scan of its own.
+//
+// Pass 2's outcomes go to the controller (consumeNominations in content.js),
+// which registers what the step selected and holds a chain root whose chain is
+// empty as a pending table. A pending record is page-held state with a live
+// observer in it, and this view holds no such state; routing the outcomes
+// through the controller keeps both scanners on one copy of that rule. The
+// two files share one scope, and this call runs at DOMContentLoaded, after
+// every content script has loaded.
 function injectTableToggles() {
   // Pass 1: native <table> elements; phantom a11y tables are skipped.
   document.querySelectorAll('table').forEach(table => {
@@ -366,17 +374,10 @@ function injectTableToggles() {
       createToggleForTable(table);
     }
   });
-  // Pass 2: the nomination step. Its native results repeat pass 1's above and
-  // come back with isNew false, so the two guards below leave them alone.
-  // createToggleForTable re-runs the data test the step already ran; this
-  // view accepts the second read so detection keeps reporting and this view
-  // keeps registering.
-  findTables(document, { isSeen: DR_STORE.hasTable }).forEach(({ handle, isNew }) => {
-    if (!isNew) return;
-    if (handle.tagName === 'TABLE') return;
-    handle.classList.add('dr-ext-grid');
-    createToggleForTable(handle);
-  });
+  // Pass 2: the nomination step. createToggleForTable re-runs the data test
+  // the step already ran; this view accepts the second read so detection keeps
+  // reporting and this view keeps registering.
+  consumeNominations(nominateNests(document, { isSeen: DR_STORE.hasTable }));
 }
 
 // Reposition all tracked toggles on scroll/resize
