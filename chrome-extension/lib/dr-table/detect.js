@@ -32,13 +32,12 @@
  *
  * Every tuning value this file reads — the child-count floor, the walk-depth
  * cap, the column-width sample size and agreement threshold, the repetition
- * share, the redraw debounce, the off-screen threshold, and the vendor and
- * display-value lookup lists — lives in DR_TUNING (constants.js). Every
- * context loads constants.js before this file, so this file reads DR_TUNING
- * as a bare global: there is no local fallback copy of any of those values.
+ * share, the off-screen threshold, and the vendor and display-value lookup
+ * lists — lives in DR_TUNING (constants.js). The content script loads
+ * constants.js before this file, so this file reads DR_TUNING as a bare
+ * global with no local fallback copy of any of those values.
  * GRID_VENDOR_PROFILES below reads DR_TUNING at the top level, so a missing
- * block fails at load — before any function in this file runs — rather than
- * on first call.
+ * block fails at load, before any function in this file runs.
  */
 
 // Grid detection constants
@@ -99,8 +98,8 @@ const DEFAULT_NUMERIC_PROBE = {
 // `pinnedPaneSelectors` resolve GridAdapter's scroll and pinned panes. A
 // consumer may pass a custom list via opts.vendorProfiles.
 //
-// Read here, at load, rather than inside GridAdapter or looksLikeGrid: a
-// missing DR_TUNING block then fails at load, before either function runs.
+// The read sits at the top level, so a missing DR_TUNING block fails at
+// load, before GridAdapter or looksLikeGrid runs.
 const GRID_VENDOR_PROFILES = DR_TUNING.vendorProfiles;
 
 // --- TableAdapter abstraction ---

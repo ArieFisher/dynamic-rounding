@@ -14241,7 +14241,7 @@ function fireMouseClick(buttonEl, fn) {
     />=\s*0\.8\b/.test(src), false);
   eq('tuning block: the detection layer no longer builds a Set of the four display values',
     /new Set\(\s*\[\s*['"]grid['"]/.test(src), false);
-  eq('tuning block: the detection layer reads the display-value list as DR_TUNING.gridDisplayValues.includes(display), not a Set.has(display)',
+  eq('tuning block: the detection layer reads the display-value list through DR_TUNING.gridDisplayValues.includes(display)',
     /DR_TUNING\.gridDisplayValues\.includes\(display\)/.test(src), true);
 })();
 
@@ -14300,13 +14300,13 @@ const PRE_MOVE_TUNING = {
   pillboxAutoCollapseMs: 3000,
 };
 
-// jsdom-less criterion, extended: the configuration file (constants.js) and
-// the detection layer (lib/dr-table/detect.js) are evaluated together in one
-// vm sandbox with no chrome/window/getComputedStyle at all. DR_TUNING's
-// values are pinned against PRE_MOVE_TUNING above, and looksLikeGrid,
-// findTargetTable, isPhantomA11yTable, and isDataTable run against fixtures
-// whose expected outcome only holds when each moved value is read at its
-// pre-move value — a wrong read (a stale copy, a transposed value, a wrong
+// jsdom-less criterion, extended: one vm sandbox with no
+// chrome/window/getComputedStyle evaluates the configuration file
+// (constants.js) and then the detection layer (lib/dr-table/detect.js). The
+// test pins DR_TUNING's values against PRE_MOVE_TUNING above and runs
+// looksLikeGrid, findTargetTable, isPhantomA11yTable, and isDataTable against
+// fixtures whose expected outcome holds only when each moved value reads at
+// its pre-move value: a wrong read (a stale copy, a transposed value, a wrong
 // sample size) flips at least one outcome below.
 (function tuningBlock_sandboxBehaviorMatchesPreMoveValues() {
   if (constantsCode === null || detectCode === null) {
@@ -14490,7 +14490,7 @@ const PRE_MOVE_TUNING = {
     caught !== null, true);
   eq('tuning block: the load-time failure is a ReferenceError',
     caught && caught.name, 'ReferenceError');
-  eq('tuning block: the load-time failure names DR_TUNING',
+  eq('tuning block: the load-time failure message carries DR_TUNING',
     !!(caught && /DR_TUNING/.test(caught.message)), true);
 })();
 

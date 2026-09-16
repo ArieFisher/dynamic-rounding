@@ -12,8 +12,7 @@
  * right-click toggle's default behavior, so the two stay in lockstep.
  *
  * DR_TUNING is the detection tuning block: every value and lookup list that
- * shapes what detection finds. It is defined below DR_DEFAULTS, in the same
- * file, so a reader of either block finds the other beside it.
+ * shapes what detection finds.
  */
 const DR_DEFAULTS = {
   enabled: true,
@@ -66,7 +65,7 @@ const DR_TUNING = {
       pinnedPaneSelectors: ['.ag-pinned-left-cols-container'],
     },
   ],
-  // --- Virtualized-grid redraw (lib/dr-table/detect.js, read from content.js) ---
+  // --- Virtualized-grid redraw (content.js) ---
   gridRedrawDelayMs: 100,
   // --- Accessibility artifact check (lib/dr-table/detect.js: isPhantomA11yTable) ---
   offscreenLeftPx: -9999,
