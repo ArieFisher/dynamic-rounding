@@ -61,7 +61,7 @@ This guarantees that the structural HTML elements (like the spans dictating widt
 
 Not every "table" on the modern web is an HTML `<table>`. Many data-heavy apps render results as a **data grid** — a tabular UI built from plain `<div>` containers, usually **virtualized** (only the visible rows exist in the DOM; nodes are recycled as you scroll). Real-world examples:
 
-- **Databricks SQL** — components prefixed `dg--` (`.dg--virtual-row`, `.dg--cell`).
+- **Database query result grids** — components prefixed `dg--` (`.dg--virtual-row`, `.dg--cell`).
 - **AG Grid** (financial dashboards) — `.ag-center-cols-viewport` + a pinned `.ag-pinned-left-cols-container`.
 - **AWS Console** — the **Cloudscape** design system (`awsui` / `.awsui-table-wrapper`).
 - **Azure Data Studio / VS Code** — SlickGrid / Monaco grid (`monaco-workbench`).

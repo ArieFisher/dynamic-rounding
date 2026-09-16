@@ -215,7 +215,7 @@ class GridAdapter {
    */
   _getScrollContainer() {
     const el = this.el;
-    // Known library selectors (single-pane Databricks, AG Grid, etc.), plus
+    // Known library selectors (single-pane database query grids, AG Grid, etc.), plus
     // the generic ARIA grid role as a final, vendor-agnostic fallback.
     const knownSelectors = [
       ...this.vendorProfiles.flatMap((p) => p.scrollContainerSelectors || []),
@@ -238,7 +238,7 @@ class GridAdapter {
 
   /**
    * Find the pinned pane sibling, if any.
-   * Returns null for single-pane grids (Databricks).
+   * Returns null for single-pane grids (database query grids).
    */
   _getPinnedPane(scrollContainer) {
     const pinnedSelectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
