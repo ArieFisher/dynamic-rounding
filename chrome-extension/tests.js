@@ -511,6 +511,27 @@ eq('extractAll: zero is excluded',
   extractNumbersInText('range 0 to 500').map(m => m.num),
   [500]);
 
+// --- A comma that ends a number is punctuation, not a separator ---
+// The match string must end in a digit. A trailing comma in numStr breaks
+// every step that searches the live text for that string: the link filter
+// cannot find "12," inside the <a> whose text node ends at "12", so the
+// linked number is kept; the patch step then finds "12" where it expects
+// "12," and skips, and the cell logs a patch that did not land.
+eq('extractAll: comma after a number is left out of the match',
+  extractNumbersInText('See ref 12, total 9,850'),
+  [
+    { numStr: '12', num: 12, index: 8 },
+    { numStr: '9,850', num: 9850, index: 18 }
+  ]);
+
+eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
+  extractNumbersInText('1,200, 3,400, and 5,600').map(m => m.numStr),
+  ['1,200', '3,400', '5,600']);
+
+eq('extract: comma after the first number is left out of the match',
+  extractNumberInText('12, then 5'),
+  { numStr: '12', num: 12, index: 0 });
+
 // --- Range cell with mixed magnitudes ---
 (function rangeMixedMagnitudes() {
   const text = '50–5,000 range';
@@ -4846,6 +4867,54 @@ function withReactiveCreateTreeWalker(fn) {
     const after = collectNumericCells(table, opts);
     eq('linked-number-post-round regression: preview sample set is unchanged after rounding',
       after.map((c) => c.num), before.map((c) => c.num));
+  });
+})();
+
+// Regression: test page Table 8, "Linked number in text". The cell reads
+// "See <a>ref 12</a>, total 9,850". The linked 12 holds and 9,850 rounds,
+// with no patch left unlanded. Before the fix the number scan took "12,"
+// as the match string: the link filter could not find it in one text node
+// (the comma sits in the next node) and kept the linked number, and the
+// patch step found "12" where it expected "12," and skipped it, logging
+// "1 of 2 extracted-cell patches did not land".
+(function linkedReferenceFollowedByComma() {
+  withReactiveCreateTreeWalker(function () {
+    const opts = {
+      enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
+      simplifyMixedCells: true, simplifyMixedCurrency: true, simplifyMixedPercent: true,
+      simplifyDates: false, simplifyTimes: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+    };
+    const segments = [
+      { text: 'See ', inSup: false, inAnchor: false },
+      { text: 'ref 12', inSup: false, inAnchor: true },
+      { text: ', total 9,850', inSup: false, inAnchor: false },
+    ];
+    const cell = makeReactiveCell(segments);
+    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    const warnRowsBefore = DR_LOG.snapshot().entries
+      .filter((row) => /extracted-cell patch/.test(row.text)).length;
+    try {
+      roundTable(table, opts);
+      eq('table 8 linked reference: the linked 12 holds',
+        segments[1].text, 'ref 12');
+      eq('table 8 linked reference: the plain 9,850 rounds',
+        segments[2].text, ', total 10,000');
+      eq('table 8 linked reference: the cell records as simplified',
+        cell.classList.contains('dr-ext-rounded'), true);
+      // The registry record holds the flat-text index of every match that
+      // survived the link filter. Without the fix the linked "12," survived
+      // too and this read [8, 18]; the log-row count below can miss that
+      // when the 50-row buffer drops an older patch row on the same push.
+      eq('table 8 linked reference: only the plain number survives the link filter',
+        DR_STORE.getTableOriginal(table, cell).linkFilteredIdx, [18]);
+      const warnRowsAfter = DR_LOG.snapshot().entries
+        .filter((row) => /extracted-cell patch/.test(row.text)).length;
+      eq('table 8 linked reference: no patch is left unlanded',
+        warnRowsAfter, warnRowsBefore);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
   });
 })();
 
