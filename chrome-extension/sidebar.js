@@ -1002,7 +1002,7 @@ function assembleAndSaveCapture(mark, remarks, pageState) {
       lockedStatusText: APPLY_BLOCKED_STATUS_MSG,
     });
     saveCaptureFile({
-      filename: DR_CAPTURE.filenameFor({ at: at, url: state.meta.url }),
+      filename: DR_CAPTURE.filenameFor({ at: at, url: state.meta.url, mark: mark }),
       html: html,
     });
   } catch (e) {

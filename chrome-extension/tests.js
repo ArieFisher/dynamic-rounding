@@ -22806,14 +22806,38 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   eq('capture-render: an unbound capture says it carries no fixture seed',
     unbound.includes('No fixture seed'), true);
 
-  // Filename: date first (sorts beside fixtures), time last (a second
-  // capture is a new file), host slug in between.
-  eq('capture-render: the filename is date-first, host-slugged, time-last',
-    filenameFor({ at: new Date(2026, 8, 9, 14, 5, 6), url: 'https://www.example.com/prices' }),
-    'dr-capture-2026-09-09-example-com-140506.html');
+  // Filename: compact date first (sorts by day), then the source, then the
+  // time (a second capture is a new file), then the mark token, so a folder
+  // of captures reads each file's verdict without opening it.
+  const at = new Date(2026, 8, 9, 14, 5, 6);
+  eq('capture-render: the filename is compact-date first, source-slugged, time, then the mark',
+    filenameFor({ at, url: 'https://www.example.com/prices', mark: 'looks-right' }),
+    'dr-capture-20260909-example-com-140506-looks-right.html');
+  // A page opened from disk has no host; its file name stands in for it.
+  eq('capture-render: a file URL names the page file without its extension',
+    filenameFor({ at, url: 'file:///Users/me/Projects/tables.html', mark: 'not-sure' }),
+    'dr-capture-20260909-tables-140506-not-sure.html');
+  eq('capture-render: a percent-encoded file name decodes before slugging',
+    filenameFor({ at, url: 'file:///Users/me/My%20Table.html', mark: 'looks-wrong' }),
+    'dr-capture-20260909-my-table-140506-looks-wrong.html');
+  eq('capture-render: a file URL with no file name gets the no-source slug',
+    filenameFor({ at, url: 'file:///', mark: 'looks-wrong' }),
+    'dr-capture-20260909-no-source-140506-looks-wrong.html');
   eq('capture-render: a capture with no page url gets the no-source slug',
-    filenameFor({ at: new Date(2026, 8, 9, 14, 5, 6), url: null }),
-    'dr-capture-2026-09-09-no-source-140506.html');
+    filenameFor({ at, url: null, mark: 'looks-wrong' }),
+    'dr-capture-20260909-no-source-140506-looks-wrong.html');
+  eq('capture-render: an unparsable url gets the no-source slug',
+    filenameFor({ at, url: 'not a url', mark: 'looks-wrong' }),
+    'dr-capture-20260909-no-source-140506-looks-wrong.html');
+  eq('capture-render: each mark token ends the name before .html',
+    ['looks-right', 'not-sure', 'looks-wrong'].map((mark) =>
+      filenameFor({ at, url: 'https://example.com/', mark }).replace(/^.*-140506-/, '')),
+    ['looks-right.html', 'not-sure.html', 'looks-wrong.html']);
+  // The mark reaches the name through the same reducer as the source, so a
+  // value outside the three tokens cannot carry a path separator into it.
+  eq('capture-render: a mark outside the three tokens is reduced like the source',
+    filenameFor({ at, url: 'https://example.com/', mark: '../x' }),
+    'dr-capture-20260909-example-com-140506-x.html');
 })();
 
 // --- lib/dr-capture: the renderer keeps the state's absences (#304) ---
@@ -22996,8 +23020,8 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   eq('capture-ui: the renderer receives the locked wording as a value, not a copy',
     /buildCaptureDocument\(\{[\s\S]{0,120}lockedStatusText: APPLY_BLOCKED_STATUS_MSG/.test(sidebarJsSrc),
     true);
-  eq('capture-ui: the filename comes from the package helper',
-    /DR_CAPTURE\.filenameFor\(/.test(sidebarJsSrc), true);
+  eq('capture-ui: the filename comes from the package helper and carries the mark',
+    /DR_CAPTURE\.filenameFor\(\{[^}]*mark: mark/.test(sidebarJsSrc), true);
   eq('capture-ui: the sidebar\'s own log snapshot travels beside the content script\'s',
     /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
   eq('capture-ui: an unanswered state request still saves and records the failure',

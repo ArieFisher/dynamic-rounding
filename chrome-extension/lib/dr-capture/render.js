@@ -124,30 +124,54 @@ function capturePad2(n) {
   return String(n).padStart(2, '0');
 }
 
-// The hostname, reduced to something a filename can hold. Chrome strips
-// path separators out of a download name anyway; build them out here.
-function captureHostSlug(url) {
+// A value reduced to something a filename can hold: lower case, runs of
+// anything outside a-z and 0-9 collapsed to one dash, edge dashes trimmed.
+// Chrome strips path separators out of a download name anyway; build them
+// out here.
+function captureSlug(value) {
+  return String(value).toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+// The page's source for the file name: its host with the www. dropped, or,
+// for a page opened from disk (a file: URL has no host), the page file's
+// name without its extension. 'no-source' stands for no address, an address
+// that does not parse, or one that yields no name (file:///, about:blank).
+function captureSourceSlug(url) {
   if (!url) return 'no-source';
-  let host;
+  let parsed;
   try {
-    host = new URL(url).hostname;
+    parsed = new URL(url);
   } catch (e) {
     return 'no-source';
   }
-  const slug = host.toLowerCase()
-    .replace(/^www\./, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return slug || 'no-source';
+  let source;
+  if (parsed.protocol === 'file:') {
+    const segment = parsed.pathname.split('/').filter(Boolean).pop() || '';
+    let name = segment;
+    try {
+      name = decodeURIComponent(segment);
+    } catch (e) {
+      // A malformed escape keeps the raw segment.
+    }
+    source = name.replace(/\.[^.]*$/, '');
+  } else {
+    source = parsed.hostname.replace(/^www\./, '');
+  }
+  return captureSlug(source) || 'no-source';
 }
 
-// Date first so captures sort beside date-named fixtures; time last so a
-// second capture of the same page is a new file, never Chrome's "(1)" copy.
+// Compact date first so captures sort by day; time after the source so a
+// second capture of the same page is a new file, never Chrome's "(1)" copy;
+// the mark token last, so a folder of captures reads each file's verdict.
+// The mark passes through the same reducer as the source.
 function captureFilenameFor(opts) {
   const at = opts.at;
-  const date = at.getFullYear() + '-' + capturePad2(at.getMonth() + 1) + '-' + capturePad2(at.getDate());
+  const date = at.getFullYear() + capturePad2(at.getMonth() + 1) + capturePad2(at.getDate());
   const time = capturePad2(at.getHours()) + capturePad2(at.getMinutes()) + capturePad2(at.getSeconds());
-  return 'dr-capture-' + date + '-' + captureHostSlug(opts.url) + '-' + time + '.html';
+  return 'dr-capture-' + date + '-' + captureSourceSlug(opts.url) + '-' + time +
+    '-' + captureSlug(opts.mark) + '.html';
 }
 
 /* -------------------------------------------------------------- size note */
