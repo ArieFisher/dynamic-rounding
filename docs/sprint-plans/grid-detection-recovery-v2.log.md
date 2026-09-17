@@ -95,3 +95,55 @@ Wave 2: the three sprints under detection-constants, which merged as #362 after 
 - The pending-retest brief must carry #373 and #374: the step returns nothing for three outcomes it does not distinguish, and it exposes no chain root for a nest that registered nothing. The sprint's design of the pending record depends on both.
 - Wave 3 (pending-retest, right-click-registers, shape-fingerprint) all edit the controller; the plan says to merge them in that order and to expect the second and third to need `main` merged in.
 - Issue #270, the two-pillbox report, closed on 2026-09-15 before this run; grid-nesting-rule closes #219.
+
+## Run 3 — 2026-09-16 12:04 EDT to 2026-09-16 19:58 EDT
+
+Wave 3: the three sprints under grid-nesting-rule, which merged as #372 after run 2. Developers and test-writers on Opus (two M sprints, one L); reviewers on Fable. `main` held 2531 / 256 / 67 at the start. The product manager paused the wave at 11:07 and released it at 11:58; a spend limit stopped the run from 12:18 to 14:31 and again from 16:57 to 19:31, with every developer's and test-writer's work committed and nothing lost.
+
+### Completed
+- **right-click-registers** — fix/right-click-registers → PR #384 (https://github.com/ArieFisher/dynamic-rounding/pull/384), merged during the run after `main` with #386 was merged into it
+  - Reviewer: APPROVE (after 1 retry). The block: the rule that an empty nomination falls through to the geometry probe had no test, and a mutant returning null after an empty nomination passed the suite. The test-writer added a single-column nest that fails the data test and passes the probe; the mutant now fails its three outcome assertions.
+  - Tests: pass (2621 / 256 / 67 at approval; 2755 / 256 / 67 after `main` with #386 merged in; the branch adds 90 assertions)
+  - The merge of `main` conflicted in the README's detection point and the design doc's Detection paragraph, both of which pending-retest had also extended, and the auto-merge kept two copies of the identical chain-root walk and of its suite exposure; all four resolved by hand before the push.
+  - Review fixes applied after APPROVE as one chore commit: the unreachable native-table filter on the step's results goes; two comments and one assertion title state what the code and the proof establish.
+  - Follow-up filed: #385, a role-marked single-column grid fails the data test and still becomes the active table on right-click with no registry entry; identical on `main`.
+  - FYI: the route admits a marked grid under the data test alone, where the geometry probe's five-row floor applied before; this follows from D1.
+  - FYI: the sibling-pane case of #382 resolves nothing on the repository's own fixture, because the probe rejects the one-column gutter pane.
+  - FYI: a first registration through right-click runs the data test twice on the selected element, once in the step and once in the pillbox build.
+- **pending-retest** — fix/pending-retest → PR #386 (https://github.com/ArieFisher/dynamic-rounding/pull/386), merged during the run
+  - Reviewer: APPROVE (after 1 retry). The block: the rule that a re-test finding the nest registered or its depth crowded ends the pending record had no test; two mutants that leave the record standing passed the suite. The test-writer added one case per outcome.
+  - Tests: pass (2665 / 256 / 67; the branch adds 134 assertions)
+  - Review fixes applied after APPROVE as one chore commit: the three living-doc sentences state the redraw delay that bounds the re-test rate; the design doc names all three ends of a pending table; the doc pin on the cap matches the cap sentence alone; two comments follow the writing style.
+  - Follow-ups filed: #387 (the package export object omits the two nomination functions), #388 (a right-click registration leaves a pending table's watch standing until the page next changes; lands after #384 and #386 merge), #389 (the load-time scan's grid pass calls the controller from the pillbox view; judgement call).
+  - FYI: the step now reports one result per nest with an outcome kind (#374's scope); the page-wide function both scanners called keeps its signature and composes it, so #219's "no production caller" holds again for that function in substance.
+  - FYI: a crowded re-test ends the pending record for good, per #373; a nest that goes empty, then crowded, then back to one data table at depth 1 registers only through a right-click.
+  - FYI: the tuning block's exact-key pin moved from twelve to thirteen keys with the new cap.
+- **shape-fingerprint** — fix/shape-fingerprint → PR #392 (https://github.com/ArieFisher/dynamic-rounding/pull/392), open at the end of the run; it merges last and carries `main` through #391
+  - Reviewer: APPROVE (after 0 retries). Three reviewers ran: the spend limit stopped the first at 16:57, the second stalled at the harness's ten-minute cap while reading the whole diff in one pass, and the third read the diff per file and the suite in blocks of three hundred lines and returned the verdict.
+  - Tests: pass (2673 / 256 / 67 at approval; 2897 / 256 / 67 after `main` through #391 merged in; the branch adds 142 assertions)
+  - The test-writer's first pass committed six failing assertions on purpose: three for the scroll on a groupless grid, which the header-row rule under Notes resolved, and three for the added-column lock, which the restore before the teardown resolved. The test-writer revised ten stale assertions after the two fixes.
+  - The merge of `main` conflicted at two insertion points in the suite and in the design doc's Detection paragraph, and the auto-merge kept two copies of the identical chain-root walk and of its suite exposure; all resolved by hand before the push.
+  - Review fixes applied after APPROVE as one chore commit: the reader's header comment and two type annotations state the header-row condition and the null case; four comments and one vocabulary sentence follow the writing style.
+  - Follow-ups filed: #393 (no press-path test proves the fingerprint reads a simplified header cell through its original; a mutant dropping the originals port from the controller survives the suite), #394 (a grid registered through the geometry probe has no re-registration route on a mismatch; product fork between registering the table itself directly and accepting the right-click recovery), #395 (a nest empty at action time is discarded in place of becoming a pending table; the mismatch path calls the page-wide function that keeps only the selected outcome).
+  - FYI: the comparison walks every drawn row and cell once per action, so an action at most doubles its own walk.
+  - FYI: a fingerprint is one snapshot; a redraw caught with zero rows reads as a shape change and registers nothing, so the entry goes.
+  - FYI: a native table whose page rewrites a header text on sort trips on the next action and continues from raw; the press path clears the range expression and the apply path keeps it (#328 reworks the expression).
+  - FYI: the teardown leaves the grid style class and the pillbox map entry on the discarded element; both are inert.
+  - FYI: the native originals port returns the parsed number string, not the whole cell text, so a mixed header cell inside a range compares different after simplification.
+
+### Blocked
+- none
+
+### Deferred
+- none
+
+### Waiting (after-merge)
+- none. The plan's eight sprints are all Completed or merged after this run.
+
+### Notes
+- Product decision during the run (shape-fingerprint): header texts count in the fingerprint only when the table has a real header row (a row outside the scrolling row groups on a grid; the head section or a first row of header cells on a native table); a table with neither is fingerprinted by its column count alone. D7 as written tripped on every scroll of a groupless virtualized grid and locked the table. The accepted cost: a same-width result swap on a table with no header row keeps the old entry.
+- In-scope defect found by a test-writer (shape-fingerprint): a discard on a table in simplified form dropped the originals behind surviving cells and locked the table; the mismatch path now restores before the teardown.
+- Merge order: #386 and #384 merged during the run, in that order, each after `main` was merged into it. #392 is the last of the wave and carries `main` through #391, so its checks run against the current base.
+- Test-writers running in parallel overwrote one shared scratch path for mutant copies; later briefs named a branch-specific path. The mutant runs themselves were rebuilt and are sound.
+- Two reviewer verdicts turned on an untested load-bearing rule each, found by mutation; both test-writers had reported every criterion covered. Mutation runs stay in every reviewer brief.
+- A reviewer that reads a large diff in one pass stalls at the harness's ten-minute cap; the brief now asks for the diff per file and the suite in blocks of three hundred lines.
