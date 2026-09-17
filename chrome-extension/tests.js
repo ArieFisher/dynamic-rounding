@@ -15429,7 +15429,8 @@ function withRightClickSandbox(run) {
   // adapters/messaging.js and app/store.js, raising the count from 11 to 13.
   // The capture feature then added the log buffer (lib/dr-log/index.js) and
   // the three-file lib/dr-capture package (state.js, render.js, index.js),
-  // raising the count from 13 to 17.
+  // raising the count from 13 to 17. The error-surfacing feature then added
+  // the toast view (ui-toast.js), raising the count from 17 to 18.
   eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 18 files today',
     manifest.content_scripts[0].js.length, 18);
 })();
@@ -23430,6 +23431,13 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     LOG.info('no stack probe');
     eq('dr-log: an info row carries no stack trace',
       LOG.snapshot().entries.slice(-1)[0].stack, null);
+
+    // One list: the levels that carry a trace are the levels the controller
+    // records as extension errors, read from here and held nowhere else.
+    eq('dr-log: the error levels are warn and error', LOG.ERROR_LEVELS, ['warn', 'error']);
+    eq('dr-log: the controller reads the error levels from the log module',
+      /DR_LOG\.ERROR_LEVELS/.test(sourceByName('content.js') || '') &&
+        !/ERROR_ROW_LEVELS/.test(sourceByName('content.js') || ''), true);
 
     // A deep stack trace is cut at the same bound as row text.
     const savedLimit = Error.stackTraceLimit;

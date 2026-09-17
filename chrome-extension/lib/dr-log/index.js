@@ -38,7 +38,10 @@
 const DR_LOG = (function () {
   const ROW_LIMIT = 50;
   const TEXT_LIMIT = 2000;
-  const TRACED_LEVELS = ['warn', 'error'];
+  // The levels whose rows are extension errors. A row at one of these levels
+  // carries a stack trace here and enters the model's error state in the
+  // controller, which reads this list rather than holding its own.
+  const ERROR_LEVELS = ['warn', 'error'];
   const entries = [];
   const listeners = new Set();
   let dropped = 0;
@@ -67,7 +70,7 @@ const DR_LOG = (function () {
       at: new Date().toISOString(),
       level,
       text: asString.length > TEXT_LIMIT ? asString.slice(0, TEXT_LIMIT) : asString,
-      stack: TRACED_LEVELS.includes(level) ? stackTraceFrom(levelMethod) : null,
+      stack: ERROR_LEVELS.includes(level) ? stackTraceFrom(levelMethod) : null,
     };
     entries.push(row);
     if (entries.length > ROW_LIMIT) {
@@ -114,5 +117,5 @@ const DR_LOG = (function () {
   function warn(text) { record('warn', text, warn); }
   function error(text) { record('error', text, error); }
 
-  return { debug, info, warn, error, snapshot, onRow };
+  return { debug, info, warn, error, snapshot, onRow, ERROR_LEVELS: ERROR_LEVELS.slice() };
 })();
