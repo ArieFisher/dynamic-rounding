@@ -33,8 +33,14 @@
 // whitespace or punctuation and are unaffected. Note that en-dash ranges
 // ("₹615.71–623.33 crore") never relied on this — "-?" only ever matched an
 // ASCII hyphen — so hyphen-typed ranges now behave like en-dash ones.
-const NUMBER_IN_TEXT_REGEX = /(?<![\w.,])-?\d[\d,]*(?:\.\d+)?/;
-const NUMBER_IN_TEXT_REGEX_GLOBAL = /(?<![\w.,])-?\d[\d,]*(?:\.\d+)?/g;
+//
+// The integer part ends in a digit: "\d(?:[\d,]*\d)?" takes "1,200" whole but
+// stops "12," at the "12". A comma that ends a number is sentence punctuation
+// ("ref 12, total 9,850"), and every later step searches the live text for
+// the match string, so a trailing comma in it makes the link filter and the
+// patch step miss a number that is right there.
+const NUMBER_IN_TEXT_REGEX = /(?<![\w.,])-?\d(?:[\d,]*\d)?(?:\.\d+)?/;
+const NUMBER_IN_TEXT_REGEX_GLOBAL = /(?<![\w.,])-?\d(?:[\d,]*\d)?(?:\.\d+)?/g;
 
 function lettersToColIndex(letters) {
   const up = letters.toUpperCase();
