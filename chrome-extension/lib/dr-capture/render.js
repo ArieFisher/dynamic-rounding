@@ -164,7 +164,7 @@ function captureSourceSlug(url) {
 
 // Compact date first so captures sort by day; time after the source so a
 // second capture of the same page is a new file, never Chrome's "(1)" copy;
-// the mark token last, so a folder of captures reads each file's verdict.
+// the mark token last, so a folder listing shows each file's verdict.
 // The mark passes through the same reducer as the source.
 function captureFilenameFor(opts) {
   const at = opts.at;
@@ -372,7 +372,7 @@ function renderTuningRows(tuning) {
 }
 
 // The detection tuning block in force at capture time (D8): every key of
-// state.tuning with its value, so a negative capture shows the values
+// state.tuning with its value, so a looks-wrong capture shows the values
 // detection ran under. A failed state pull leaves tuning null; the
 // section still renders, with one row holding the absence placeholder, so
 // the capture still saves.
