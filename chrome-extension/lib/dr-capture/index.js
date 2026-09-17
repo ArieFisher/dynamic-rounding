@@ -16,6 +16,7 @@ const DR_CAPTURE = {
   // render.js
   buildCaptureDocument,
   filenameFor: captureFilenameFor,
+  markLabel: captureMarkLabel,
   sizeWarning: captureSizeWarning,
   escapeHtml,
 };

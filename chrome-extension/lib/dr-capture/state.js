@@ -45,10 +45,11 @@
  * captureFormat is the state's format version, one integer, so a future
  * tool that parses capture files can tell old formats apart. Format 2 adds
  * the tuning field. Format 3 adds the errorState field and the stack field
- * on each log row.
+ * on each log row. Format 4 renames the free-text key to remarks and the mark
+ * tokens to looks-right, not-sure, and looks-wrong.
  */
 
-const CAPTURE_FORMAT = 3;
+const CAPTURE_FORMAT = 4;
 
 function collectCaptureState(deps) {
   const store = (deps && deps.store) || DR_STORE;

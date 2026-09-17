@@ -22407,7 +22407,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 
   const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 3);
+  eq('capture-state: the state carries its format version', state.captureFormat, 4);
   eq('capture-state: the settings record is carried verbatim',
     state.settings, { enabled: true, offsetTop: -0.5 });
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
@@ -22572,7 +22572,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 3, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 4, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting logs its own row, and that row lands in the capture',
@@ -22642,13 +22642,13 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 3,
+    captureFormat: 4,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
     },
-    mark: 'positive',
-    note: 'rounded to 99,000\nbut the page stayed 98,765',
+    mark: 'looks-right',
+    remarks: 'rounded to 99,000\nbut the page stayed 98,765',
     settings: { enabled: true },
     activeTableIndex: 0,
     tables: [{
@@ -22705,8 +22705,14 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     /<html lang="en" data-dr-capture="1">/.test(html), true);
   eq('capture-render: the file carries no script element at all',
     html.toLowerCase().includes('<script'), false);
-  eq('capture-render: the mark shows as its glyph and is stored as its bare word',
-    html.includes('\u{1F44D}') && islandJson(html).mark, 'positive');
+  eq('capture-render: the mark shows as its glyph and is stored as its token',
+    html.includes('\u{1F44D}') && islandJson(html).mark, 'looks-right');
+  // The visible word is derived from the token, so no second word list exists.
+  eq('capture-render: the mark renders its word beside the glyph',
+    html.includes('<span>Looks right</span>'), true);
+  eq('capture-render: the island carries the remarks under the remarks key and no note key',
+    islandJson(html).remarks === 'rounded to 99,000\nbut the page stayed 98,765' &&
+      !('note' in islandJson(html)), true);
   eq('capture-render: header facts are present',
     ['https://www.example.com/prices', '2.1.50', 'test-platform', '2026-09-09T18:00:00.000Z']
       .every((s) => html.includes(s)), true);
@@ -22824,11 +22830,11 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 3,
+    captureFormat: 4,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
-    mark: 'negative',
-    note: '',
+    mark: 'looks-wrong',
+    remarks: '',
     settings: { enabled: true },
     activeTableIndex: 0,
     tables: [],
@@ -22966,10 +22972,10 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 
   eq('capture-ui: sidebar.html carries the capture section with three mark buttons',
     sidebarHtmlSrc.includes('id="captureSection"') &&
-      ['data-mark="positive"', 'data-mark="question"', 'data-mark="negative"']
+      ['data-mark="looks-right"', 'data-mark="not-sure"', 'data-mark="looks-wrong"']
         .every((m) => sidebarHtmlSrc.includes(m)),
     true);
-  eq('capture-ui: the note form starts hidden and holds one remarks field and both buttons',
+  eq('capture-ui: the remarks form starts hidden and holds one remarks field and both buttons',
     /<div[^>]*id="captureForm"[^>]*hidden/.test(sidebarHtmlSrc) &&
       ['id="captureRemarks"', 'id="captureSave"', 'id="captureCancel"']
         .every((id) => sidebarHtmlSrc.includes(id)) &&
@@ -23043,7 +23049,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 (function captureGlyphCopiesMatch() {
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   const buttonGlyphs = {};
-  const buttonRe = /data-mark="([a-z]+)"[^>]*>([^<]+)</g;
+  const buttonRe = /data-mark="([a-z-]+)"[^>]*>([^<]+)</g;
   let m;
   while ((m = buttonRe.exec(sidebarHtmlSrc)) !== null) {
     buttonGlyphs[m[1]] = m[2].replace(/&#(\d+);/g,
@@ -23051,6 +23057,19 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   }
   eq('capture-glyphs: the sidebar buttons and the renderer map carry the same three glyphs',
     buttonGlyphs, CAPTURE_MARK_GLYPHS);
+  // The button title is the mark's word for the sidebar; the renderer derives
+  // the same word from the token, so the two surfaces stay in step.
+  const buttonTitles = {};
+  const titleRe = /data-mark="([a-z-]+)"[^>]*title="([^"]+)"/g;
+  while ((m = titleRe.exec(sidebarHtmlSrc)) !== null) buttonTitles[m[1]] = m[2];
+  const rendererLabels = {};
+  Object.keys(CAPTURE_MARK_GLYPHS).forEach((token) => {
+    rendererLabels[token] = DR_CAPTURE.markLabel(token);
+  });
+  eq('capture-glyphs: the sidebar button titles match the renderer\'s mark words',
+    buttonTitles, rendererLabels);
+  eq('capture-glyphs: a token outside the three renders as itself',
+    DR_CAPTURE.markLabel('constructor'), 'constructor');
 })();
 
 // #310: the file says what it holds where the person about to attach it
@@ -23059,9 +23078,9 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 3,
+      captureFormat: 4,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
-      mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+      mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
       log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
     },
@@ -23104,8 +23123,8 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     state.tuning, DR_TUNING);
   eq('capture-tuning: the state\'s captureFormat equals CAPTURE_FORMAT',
     state.captureFormat, CAPTURE_FORMAT);
-  eq('capture-tuning: CAPTURE_FORMAT is 3',
-    CAPTURE_FORMAT, 3);
+  eq('capture-tuning: CAPTURE_FORMAT is 4',
+    CAPTURE_FORMAT, 4);
   eq('capture-tuning: the returned tuning is not the same object as DR_TUNING',
     state.tuning !== DR_TUNING, true);
 
@@ -23135,9 +23154,9 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (tuning) => ({
-    captureFormat: 3,
+    captureFormat: 4,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
-    mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+    mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
     log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
     tuning,
@@ -23201,9 +23220,9 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (over) => Object.assign({
-    captureFormat: 3,
+    captureFormat: 4,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
-    mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+    mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
     log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
   }, over || {});
@@ -23236,7 +23255,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   eq('capture-tuning: an absent tuning field renders the absence placeholder in the tuning section',
     /<h2>Detection tuning<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
   eq('capture-tuning: the format version still prints in the header when tuning is absent',
-    /<dt>Capture format<\/dt><dd>3<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+    /<dt>Capture format<\/dt><dd>4<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
@@ -23275,9 +23294,9 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 3,
+      captureFormat: 4,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
-      mark: 'positive', note: '', settings: {}, activeTableIndex: null,
+      mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
       log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
       tuning: { exampleScalarSetting: 1 },
@@ -23681,14 +23700,14 @@ function makeIsolatedModel() {
   };
   const state = collectCaptureState({ store: fakeStore, adapterFor: () => null });
   eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
-  eq('capture-state: format 3 marks the error state and the stack trace on each log row',
-    state.captureFormat, 3);
+  eq('capture-state: format 4 marks the remarks key and the mark tokens',
+    state.captureFormat, 4);
 
   const renderState = {
-    captureFormat: 3,
+    captureFormat: 4,
     meta: { url: 'https://www.example.com/p', title: 'P', version: '2.1.70',
       platform: 'test', at: '2026-09-17T16:00:00.000Z' },
-    mark: 'negative', note: '', settings: { enabled: true }, tuning: null,
+    mark: 'looks-wrong', remarks: '', settings: { enabled: true }, tuning: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
     sidebarView: { enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
       rangeExpr: '', stops: [0], topVal: 0, botVal: 0, coupled: true, status: '',
