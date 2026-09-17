@@ -167,6 +167,8 @@ Object.defineProperty(globalThis, 'lastRightClickedTable', {
 // app-model-selection test suite.
 globalThis.DR_STORE = DR_STORE;
 globalThis.DR_BUS = DR_BUS;
+// Expose the toast view for the toast test section.
+globalThis.DR_TOAST = DR_TOAST;
 // Expose grid-detection helpers for the grid-detection test suite.
 globalThis.looksLikeGrid = looksLikeGrid;
 globalThis.findTargetTable = findTargetTable;
@@ -2056,7 +2058,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
       'lib/dr-capture/index.js',
       'adapters/messaging.js', 'app/store.js',
-      'ui-toggle.js', 'content.js',
+      'ui-toggle.js', 'ui-toast.js', 'content.js',
     ]), true);
 
   // AC3: (sidebar-tidyup) the old "section-heading" with "Include numbers in cells containing:"
@@ -3795,7 +3797,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // extracted layers (core/parsing/detect/ui-toggle), so eval them in the
   // same order the manifest loads them before content.js.
   vm.runInContext(
-    constantsCode + '\n' + patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
+    constantsCode + '\n' + (sourceByName('lib/dr-log/index.js') || '') + '\n' +
+    patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
     detectCode + '\n' + messagingCode + '\n' + storeCode + '\n' +
     uiToggleCode + '\n' + contentSrc +
     '\nthis.__roundWithOffset = roundWithOffset;', ctx);
@@ -4935,7 +4938,7 @@ function withReactiveCreateTreeWalker(fn) {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   const js = manifest.content_scripts[0].js;
   const after = (a, b) => js.indexOf(a) > -1 && js.indexOf(b) > -1 && js.indexOf(a) < js.indexOf(b);
-  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < dr-simplify index.js < messaging.js < store.js < ui-toggle.js < content.js',
+  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < dr-simplify index.js < messaging.js < store.js < ui-toggle.js < ui-toast.js < content.js',
     after('lib/dr-number/rounding.js', 'lib/dr-number/core.js') &&
     after('lib/dr-number/core.js', 'lib/dr-number/parsing.js') &&
     after('lib/dr-number/parsing.js', 'lib/dr-number/index.js') &&
@@ -4946,7 +4949,8 @@ function withReactiveCreateTreeWalker(fn) {
     after('lib/dr-simplify/index.js', 'adapters/messaging.js') &&
     after('adapters/messaging.js', 'app/store.js') &&
     after('app/store.js', 'ui-toggle.js') &&
-    after('ui-toggle.js', 'content.js'), true);
+    after('ui-toggle.js', 'ui-toast.js') &&
+    after('ui-toast.js', 'content.js'), true);
   eq('manifest: content.js loads last', js[js.length - 1], 'content.js');
 
   // The sidebar deliberately does NOT load the content-only layers — it only
@@ -4961,6 +4965,7 @@ function withReactiveCreateTreeWalker(fn) {
   eq('sidebar.html does not load content-only lib/dr-simplify/ladder.js', sidebarHtml.includes('lib/dr-simplify/ladder.js'), false);
   eq('sidebar.html does not load content-only lib/dr-simplify/index.js', sidebarHtml.includes('lib/dr-simplify/index.js'), false);
   eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
+  eq('sidebar.html does not load content-only ui-toast.js', sidebarHtml.includes('ui-toast.js'), false);
 
   // NOTE: the main bootstrap eval() (top of this file) no longer concatenates
   // coreCode/parsingCode/detectCode/uiToggleCode/code directly — it evals
@@ -15334,7 +15339,7 @@ function withRightClickSandbox(run) {
     'lib/dr-table/detect.js', 'lib/dr-table/index.js',
     'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
     'adapters/messaging.js', 'app/store.js',
-    'ui-toggle.js', 'content.js',
+    'ui-toggle.js', 'ui-toast.js', 'content.js',
   ];
 
   // AC1: no content-script filename literal reaches readFileSync/path.join
@@ -15424,9 +15429,10 @@ function withRightClickSandbox(run) {
   // adapters/messaging.js and app/store.js, raising the count from 11 to 13.
   // The capture feature then added the log buffer (lib/dr-log/index.js) and
   // the three-file lib/dr-capture package (state.js, render.js, index.js),
-  // raising the count from 13 to 17.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 17 files today',
-    manifest.content_scripts[0].js.length, 17);
+  // raising the count from 13 to 17. The error-surfacing feature then added
+  // the toast view (ui-toast.js), raising the count from 17 to 18.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 18 files today',
+    manifest.content_scripts[0].js.length, 18);
 })();
 
 // ---------------------------------------------------------------------------
@@ -17897,6 +17903,8 @@ const LADDER_OPTS = {
     topicNames.slice().sort(),
     ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged',
      'state:settingsChanged',
+     // The model's error state, published to the toast view in the same context.
+     'state:errorRecorded',
      // The sidebar's four requests, each answered by the tab's content script.
      'request:applySettings', 'request:settings', 'request:previewSamples',
      'request:captureState',
@@ -18064,9 +18072,10 @@ const LADDER_OPTS = {
   const storeFieldNames = Array.from(storeSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_STORE');
-  eq('static scan: app/store.js declares its four private fields (sanity check on the scan itself)',
+  eq('static scan: app/store.js declares its seven private fields (sanity check on the scan itself)',
     storeFieldNames.slice().sort(),
-    ['registeredTables', 'selectedTable', 'settings', 'tableRegistry'].sort());
+    ['ERROR_ROW_LIMIT', 'errorCount', 'errorRows',
+     'registeredTables', 'selectedTable', 'settings', 'tableRegistry'].sort());
   const storeFieldWrites = storeFieldNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
     return assignRe.test(uiToggleSrcForScan) || assignRe.test(contentSrcForScan);
@@ -22346,6 +22355,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     getRegisteredTables: () => tables,
     getSelectedTable: () => (opts && opts.selected) || null,
     getSettings: () => ({ enabled: true, offsetTop: -0.5 }),
+    getErrorState: () => (opts && opts.errorState) || { hasError: false, count: 0, rows: [] },
     getTableAppliedFlag: (t) => (opts && opts.flags && opts.flags.get(t)) || 'original',
     getTableRoundOptions: (t) => (opts && opts.roundOptions && opts.roundOptions.get(t)) || null,
     getTableMaxMagnitude: (t) => {
@@ -22397,7 +22407,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 
   const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 2);
+  eq('capture-state: the state carries its format version', state.captureFormat, 3);
   eq('capture-state: the settings record is carried verbatim',
     state.settings, { enabled: true, offsetTop: -0.5 });
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
@@ -22497,6 +22507,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     getRegisteredTables: () => [table],
     getSelectedTable: () => null,
     getSettings: () => ({}),
+    getErrorState: () => ({ hasError: false, count: 0, rows: [] }),
     getTableAppliedFlag: () => 'simplified',
     getTableRoundOptions: () => null,
     getTableMaxMagnitude: () => null,
@@ -22561,7 +22572,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 2, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 3, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting logs its own row, and that row lands in the capture',
@@ -22631,7 +22642,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 2,
+    captureFormat: 3,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
@@ -22813,7 +22824,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 2,
+    captureFormat: 3,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'negative',
@@ -23048,7 +23059,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 2,
+      captureFormat: 3,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'positive', note: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -23079,6 +23090,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     getRegisteredTables: () => [],
     getSelectedTable: () => null,
     getSettings: () => ({}),
+    getErrorState: () => ({ hasError: false, count: 0, rows: [] }),
     getTableAppliedFlag: () => 'original',
     getTableRoundOptions: () => null,
     getTableMaxMagnitude: () => null,
@@ -23092,8 +23104,8 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     state.tuning, DR_TUNING);
   eq('capture-tuning: the state\'s captureFormat equals CAPTURE_FORMAT',
     state.captureFormat, CAPTURE_FORMAT);
-  eq('capture-tuning: CAPTURE_FORMAT is 2',
-    CAPTURE_FORMAT, 2);
+  eq('capture-tuning: CAPTURE_FORMAT is 3',
+    CAPTURE_FORMAT, 3);
   eq('capture-tuning: the returned tuning is not the same object as DR_TUNING',
     state.tuning !== DR_TUNING, true);
 
@@ -23123,7 +23135,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (tuning) => ({
-    captureFormat: 2,
+    captureFormat: 3,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'positive', note: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -23189,7 +23201,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (over) => Object.assign({
-    captureFormat: 2,
+    captureFormat: 3,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'positive', note: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -23224,7 +23236,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   eq('capture-tuning: an absent tuning field renders the absence placeholder in the tuning section',
     /<h2>Detection tuning<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
   eq('capture-tuning: the format version still prints in the header when tuning is absent',
-    /<dt>Capture format<\/dt><dd>2<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+    /<dt>Capture format<\/dt><dd>3<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
@@ -23263,7 +23275,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 2,
+      captureFormat: 3,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'positive', note: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -23385,6 +23397,344 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     snap.entries[snap.entries.length - 1].text, 'cap probe 54');
 })();
 
+// --- lib/dr-log: the stack trace and the row listener ---
+//
+// A warn or error row carries the stack trace at the moment it was recorded,
+// the same trace the extension error page shows, so a capture holds it and
+// the application model can store it. Debug and info rows carry none: they
+// are frequent, and a trace costs a stack walk per row. The row listener is
+// how the controller learns that a row landed without the log module reaching
+// up to the application model or the bus, both of which load after it.
+
+(function drLogStackTraceAndListener() {
+  if (typeof globalThis.DR_LOG !== 'object') return;
+  const LOG = globalThis.DR_LOG;
+  const origError = console.error;
+  console.error = () => {};
+  try {
+    function stackProbeCaller() { LOG.warn('stack probe'); }
+    stackProbeCaller();
+    const warnRow = LOG.snapshot().entries.slice(-1)[0];
+    eq('dr-log: a warn row carries the stack trace that recorded it',
+      typeof warnRow.stack === 'string' && /stackProbeCaller/.test(warnRow.stack), true);
+    eq('dr-log: the stack trace starts at the caller, with the log module\'s own frames left out',
+      /stackProbeCaller/.test(String(warnRow.stack).split('\n')[0]), true);
+
+    function errorStackProbeCaller() { LOG.error('error stack probe'); }
+    errorStackProbeCaller();
+    eq('dr-log: an error row carries the stack trace',
+      /errorStackProbeCaller/.test(LOG.snapshot().entries.slice(-1)[0].stack || ''), true);
+
+    LOG.debug('no stack probe');
+    eq('dr-log: a debug row carries no stack trace',
+      LOG.snapshot().entries.slice(-1)[0].stack, null);
+    LOG.info('no stack probe');
+    eq('dr-log: an info row carries no stack trace',
+      LOG.snapshot().entries.slice(-1)[0].stack, null);
+
+    // One list: the levels that carry a trace are the levels the controller
+    // records as extension errors, read from here and held nowhere else.
+    eq('dr-log: the error levels are warn and error', LOG.ERROR_LEVELS, ['warn', 'error']);
+    eq('dr-log: the controller reads the error levels from the log module',
+      /DR_LOG\.ERROR_LEVELS/.test(sourceByName('content.js') || '') &&
+        !/ERROR_ROW_LEVELS/.test(sourceByName('content.js') || ''), true);
+
+    // A deep stack trace is cut at the same bound as row text.
+    const savedLimit = Error.stackTraceLimit;
+    Error.stackTraceLimit = 200;
+    function deepWarn(n) { if (n === 0) { LOG.warn('deep probe'); return; } deepWarn(n - 1); }
+    deepWarn(150);
+    Error.stackTraceLimit = savedLimit;
+    eq('dr-log: a long stack trace is cut at 2000 characters',
+      String(LOG.snapshot().entries.slice(-1)[0].stack).length, 2000);
+
+    const snapCopy = LOG.snapshot();
+    snapCopy.entries[snapCopy.entries.length - 1].stack = 'mutated';
+    eq('dr-log: a snapshot row\'s stack trace is a copy',
+      LOG.snapshot().entries.slice(-1)[0].stack === 'mutated', false);
+
+    const seen = [];
+    const off = LOG.onRow((row) => { seen.push(row); });
+    LOG.debug('listener probe');
+    eq('dr-log: a row listener receives each row as it lands',
+      seen.length === 1 && seen[0].text === 'listener probe' && seen[0].level === 'debug', true);
+    seen[0].text = 'mutated';
+    eq('dr-log: the listener receives a copy, so mutating it never reaches the buffer',
+      LOG.snapshot().entries.slice(-1)[0].text, 'listener probe');
+    off();
+    LOG.debug('after removal probe');
+    eq('dr-log: a removed row listener receives nothing more', seen.length, 1);
+
+    let reported = null;
+    console.error = (msg) => { reported = msg; };
+    const offThrowing = LOG.onRow(() => { throw new Error('listener failure'); });
+    LOG.debug('throwing listener probe');
+    offThrowing();
+    eq('dr-log: a listener that throws does not stop the row from recording',
+      LOG.snapshot().entries.slice(-1)[0].text, 'throwing listener probe');
+    eq('dr-log: a listener\'s failure is reported on the console',
+      typeof reported === 'string' && /listener failure/.test(reported), true);
+  } finally {
+    console.error = origError;
+  }
+})();
+
+// --- app model: the error state ---
+//
+// The tab's error state: whether an extension error has been recorded on
+// this page, how many, and the last rows with their stack traces. The
+// controller writes it from the log buffer's row listener, the toast view
+// redraws from its state change, and the capture carries it. It never clears
+// within a page's life; a reload starts clean because nothing persists.
+//
+// The live model is a singleton every earlier test has written to, so these
+// tests build a fresh one: the settings contract, the bus, and the model,
+// evaluated together in their own context.
+
+function makeIsolatedModel() {
+  const vm = require('vm');
+  const sandbox = { chrome: global.chrome, console };
+  const ctx = vm.createContext(sandbox);
+  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + storeCode +
+    '\nthis.__store = DR_STORE; this.__bus = DR_BUS;', ctx);
+  return { store: sandbox.__store, bus: sandbox.__bus };
+}
+
+(function appModelErrorState() {
+  const { store, bus } = makeIsolatedModel();
+  const empty = { hasError: false, count: 0, rows: [] };
+  eq('error state: a fresh model holds no error', store.getErrorState(), empty);
+  eq('error state: the snapshot a reconnecting view pulls carries the error state',
+    store.getSnapshot().errorState, empty);
+
+  const published = [];
+  bus.subscribe('state:errorRecorded', (payload) => { published.push(payload); });
+  const row = { at: '2026-09-17T16:00:00.000Z', level: 'warn', text: 'probe row', stack: 'at probe' };
+  store.recordError(row);
+  eq('error state: recording a row sets the indicator and the count',
+    { hasError: store.getErrorState().hasError, count: store.getErrorState().count },
+    { hasError: true, count: 1 });
+  eq('error state: the recorded row keeps its time, level, text, and stack trace',
+    store.getErrorState().rows[0], row);
+  eq('error state: recording publishes the whole error state as a state change',
+    published, [{ errorState: { hasError: true, count: 1, rows: [row] } }]);
+
+  const read = store.getErrorState();
+  read.rows[0].text = 'mutated';
+  read.rows.push({});
+  eq('error state: the getter returns copies', store.getErrorState().rows, [row]);
+
+  for (let i = 0; i < 60; i++) {
+    store.recordError({ at: 'x', level: 'warn', text: 'row ' + i, stack: null });
+  }
+  eq('error state: the rows hold at most 50 while the count keeps counting',
+    { rows: store.getErrorState().rows.length, count: store.getErrorState().count },
+    { rows: 50, count: 61 });
+  eq('error state: the newest row survives the cap',
+    store.getErrorState().rows[49].text, 'row 59');
+
+  eq('bus: state:errorRecorded is a same-context state-change topic',
+    DR_BUS.TOPICS['state:errorRecorded'], { family: 'state-change', route: null });
+})();
+
+// --- controller: the log buffer feeds the error state ---
+//
+// Every warn or error row the content script records is an extension error:
+// the controller's row listener writes it into the model's error state, and
+// debug and info rows stay out. Every failure the extension records today is
+// a warn row, and the extension error page lists warn output beside errors.
+// These run against the live model and log buffer, so every count is
+// relative.
+
+(function controllerRoutesErrorRows() {
+  const before = DR_STORE.getErrorState().count;
+  const origError = console.error;
+  console.error = () => {};
+  try {
+    DR_LOG.warn('controller error probe');
+    const afterWarn = DR_STORE.getErrorState();
+    eq('controller: a warn row lands in the model\'s error state',
+      { count: afterWarn.count, hasError: afterWarn.hasError,
+        text: afterWarn.rows.slice(-1)[0] && afterWarn.rows.slice(-1)[0].text },
+      { count: before + 1, hasError: true, text: 'controller error probe' });
+    eq('controller: the recorded row carries the stack trace of the call that logged it',
+      /controllerRoutesErrorRows/.test((afterWarn.rows.slice(-1)[0] || {}).stack || ''), true);
+    DR_LOG.error('controller error-level probe');
+    eq('controller: an error row lands in the model\'s error state',
+      DR_STORE.getErrorState().count, before + 2);
+    DR_LOG.debug('controller debug probe');
+    DR_LOG.info('controller info probe');
+    eq('controller: debug and info rows stay out of the error state',
+      DR_STORE.getErrorState().count, before + 2);
+  } finally {
+    console.error = origError;
+  }
+})();
+
+// --- toast view: an error row shows on the page ---
+//
+// The toast view subscribes to the model's error state change and draws the
+// newest row's text in one fixed element at the page's bottom right, removed
+// by a click or after the hide delay. A second row replaces the text and
+// restarts the delay, so a repeating warning shows one toast. The view never
+// logs: a row it recorded would publish back to it.
+//
+// The live view has drawn against earlier tests' page stubs by the time this
+// section runs, so these build the settings contract, the bus, the model,
+// and the view together in a fresh context with their own page stub. The
+// model's publish reaching the view's subscription is the wiring under test.
+
+(function toastViewShowsErrorRows() {
+  const uiToastCode = sourceByName('ui-toast.js');
+  eq('toast: ui-toast.js is a content script in the manifest', uiToastCode !== null, true);
+  if (uiToastCode === null) return;
+
+  const appended = [];
+  const timers = [];
+  let cleared = 0;
+  const makeEl = (tag) => {
+    const listeners = {};
+    const attrs = {};
+    return {
+      _tag: tag, className: '', textContent: '', parentNode: null, _listeners: listeners,
+      setAttribute(name, value) { attrs[name] = value; },
+      getAttribute(name) { return attrs[name] === undefined ? null : attrs[name]; },
+      addEventListener(evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },
+    };
+  };
+  const container = () => ({
+    appendChild(child) { appended.push(child); child.parentNode = this; return child; },
+    removeChild(child) {
+      const i = appended.indexOf(child);
+      if (i >= 0) appended.splice(i, 1);
+      child.parentNode = null;
+    },
+  });
+  const vm = require('vm');
+  const sandbox = {
+    chrome: global.chrome,
+    console,
+    document: { createElement: makeEl, body: container(), head: container() },
+    setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+    clearTimeout: () => { cleared++; },
+  };
+  const ctx = vm.createContext(sandbox);
+  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + storeCode + '\n' + uiToastCode +
+    '\nthis.__store = DR_STORE; this.__toast = DR_TOAST;', ctx);
+  const store = sandbox.__store;
+  const view = sandbox.__toast;
+  const isToast = (el) => el.className === view.TOAST_CLASS;
+
+  store.recordError({ at: 'x', level: 'warn', text: 'Dynamic Rounding: toast probe one', stack: null });
+  const toast = appended.find(isToast);
+  eq('toast: an error row appends one toast to the page', !!toast, true);
+  eq('toast: the toast shows the row\'s text',
+    toast ? toast.textContent : null, 'Dynamic Rounding: toast probe one');
+  eq('toast: the toast is a status region for assistive technology',
+    toast ? toast.getAttribute('role') : null, 'status');
+  eq('toast: the view injects its stylesheet once',
+    appended.filter((el) => el._tag === 'style' && el.textContent.includes(view.TOAST_CLASS)).length, 1);
+  eq('toast: the toast hides itself after the hide delay',
+    timers.length === 1 && timers[0].ms === view.TOAST_HIDE_MS, true);
+
+  store.recordError({ at: 'x', level: 'warn', text: 'toast probe two', stack: null });
+  eq('toast: a second row replaces the text of the one toast',
+    { count: appended.filter(isToast).length, text: toast ? toast.textContent : null },
+    { count: 1, text: 'toast probe two' });
+  eq('toast: a second row restarts the hide delay',
+    { cleared, timers: timers.length }, { cleared: 1, timers: 2 });
+
+  if (timers[1]) timers[1].fn();
+  eq('toast: the hide delay removes the toast', appended.some(isToast), false);
+
+  store.recordError({ at: 'x', level: 'error', text: 'toast probe three', stack: null });
+  const second = appended.find(isToast);
+  eq('toast: a row after the hide draws a fresh toast',
+    !!second && second !== toast && second.textContent === 'toast probe three', true);
+  if (second) second._listeners.click[0]();
+  eq('toast: a click removes the toast', appended.some(isToast), false);
+  eq('toast: the stylesheet is injected once for the page\'s life',
+    appended.filter((el) => el._tag === 'style').length, 1);
+  eq('toast: the view logs nothing', /DR_LOG\./.test(uiToastCode), false);
+})();
+
+// --- capture: the error state and the stack traces travel in the capture ---
+//
+// The capture state carries the model's error state, and each log row's
+// stack trace renders under the row, folded, so a reader opens the trace
+// only for the row in question. Format 3 marks both additions. The sidebar's
+// fallback state, used when the page half never arrives, carries the new
+// field as an absence, like every other page-side field.
+
+(function captureCarriesErrorState() {
+  if (typeof globalThis.collectCaptureState !== 'function' ||
+      typeof globalThis.DR_CAPTURE !== 'object') return;
+  const errorState = {
+    hasError: true, count: 1,
+    rows: [{ at: '2026-09-17T16:00:00.000Z', level: 'warn', text: 'probe', stack: '    at roundTable' }],
+  };
+  const fakeStore = {
+    getRegisteredTables: () => [],
+    getSelectedTable: () => null,
+    getSettings: () => ({ enabled: true }),
+    getErrorState: () => errorState,
+  };
+  const state = collectCaptureState({ store: fakeStore, adapterFor: () => null });
+  eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
+  eq('capture-state: format 3 marks the error state and the stack trace on each log row',
+    state.captureFormat, 3);
+
+  const renderState = {
+    captureFormat: 3,
+    meta: { url: 'https://www.example.com/p', title: 'P', version: '2.1.70',
+      platform: 'test', at: '2026-09-17T16:00:00.000Z' },
+    mark: 'negative', note: '', settings: { enabled: true }, tuning: null,
+    activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
+    sidebarView: { enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
+      rangeExpr: '', stops: [0], topVal: 0, botVal: 0, coupled: true, status: '',
+      noTable: true, locked: false, lensPreview: { top: [], bottom: [] } },
+    errorState: errorState,
+    log: {
+      content: {
+        entries: [
+          { at: '2026-09-17T16:00:00.000Z', level: 'warn', text: 'traced row',
+            stack: '    at roundTable (content.js:1)\n    at <script>alert(1)</script>' },
+          { at: '2026-09-17T16:00:01.000Z', level: 'debug', text: 'plain row', stack: null },
+        ],
+        dropped: 0, limit: 50,
+      },
+      sidebar: { entries: [], dropped: 0, limit: 50 },
+    },
+  };
+  const html = DR_CAPTURE.buildCaptureDocument({ state: renderState, lockedStatusText: '' });
+  const visible = html.slice(0, html.indexOf('id="capture-state"'));
+  eq('capture-render: a row\'s stack trace renders under the row, folded',
+    /traced row[\s\S]{0,200}<details[\s\S]{0,200}at roundTable \(content\.js:1\)/.test(visible), true);
+  eq('capture-render: a row with no stack trace renders no fold',
+    (visible.match(/<details/g) || []).length, 1);
+  eq('capture-render: a hostile stack trace reaches the visible half escaped only',
+    visible.includes('&lt;script&gt;alert(1)&lt;/script&gt;') &&
+      !visible.toLowerCase().includes('<script'), true);
+  // The island's text, unescaped (ampersand last), parsed back.
+  const island = html.match(/<pre id="capture-state" hidden>([\s\S]*?)<\/pre>/);
+  const islandState = island ? JSON.parse(island[1]
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, '\'')
+    .replace(/&amp;/g, '&')) : null;
+  eq('capture-render: the island carries the stack trace byte-exact',
+    islandState && islandState.log.content.entries[0].stack,
+    renderState.log.content.entries[0].stack);
+  eq('capture-render: the island carries the error state',
+    islandState && islandState.errorState, errorState);
+
+  const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
+  const fnBody = fnStart === -1 ? '' :
+    sidebarJsSrc.slice(fnStart, sidebarJsSrc.indexOf('\nfunction ', fnStart + 1));
+  eq('capture: assembleAndSaveCapture\'s fallback state carries errorState: null',
+    fnStart !== -1 && /errorState:\s*null/.test(fnBody), true);
+})();
+
 // --- lib/dr-log: call sites route through the buffer ---
 //
 // The extension's own console.debug call sites (two in content.js, one in
@@ -23421,6 +23771,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const contextFiles = {
     'content.js': sourceByName('content.js') || '',
     'ui-toggle.js': uiToggleCode || '',
+    'ui-toast.js': sourceByName('ui-toast.js') || '',
     'app/store.js': storeCode || '',
     'sidebar.js': fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8'),
     'background.js': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),
@@ -23941,8 +24292,8 @@ function makeBusSandbox(opts) {
     if (!/^(intent|state|request):[a-z][A-Za-z]*$/.test(topic)) allNamed = false;
   }
   eq('one mechanism: every topic name follows the family:name style', allNamed, true);
-  eq('one mechanism: the table holds all eighteen cross-context topics plus the four same-context ones',
-    Object.keys(DR_BUS.TOPICS).length, 22);
+  eq('one mechanism: the table holds all eighteen cross-context topics plus the five same-context ones',
+    Object.keys(DR_BUS.TOPICS).length, 23);
 })();
 
 // --- #325 Task 12: the moved responders answer through the bus ---

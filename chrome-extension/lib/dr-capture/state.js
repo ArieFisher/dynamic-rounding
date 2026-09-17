@@ -38,12 +38,17 @@
  * JSON round-trip: a later change to the block cannot reach a saved state,
  * and the state shares no live object with it.
  *
+ * The state also carries errorState, the model's error state at capture
+ * time: whether an extension error was recorded on this page, how many, and
+ * the last rows with their stack traces.
+ *
  * captureFormat is the state's format version, one integer, so a future
  * tool that parses capture files can tell old formats apart. Format 2 adds
- * the tuning field.
+ * the tuning field. Format 3 adds the errorState field and the stack field
+ * on each log row.
  */
 
-const CAPTURE_FORMAT = 2;
+const CAPTURE_FORMAT = 3;
 
 function collectCaptureState(deps) {
   const store = (deps && deps.store) || DR_STORE;
@@ -131,5 +136,6 @@ function collectCaptureState(deps) {
     activeTableIndex,
     tables,
     fixtureSeed: selected && typeof selected.outerHTML === 'string' ? selected.outerHTML : null,
+    errorState: store.getErrorState(),
   };
 }
