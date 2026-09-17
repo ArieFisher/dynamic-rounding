@@ -124,6 +124,17 @@ const DR_STORE = (function () {
         // scroll-triggered re-apply cannot shift it. null until roundTable
         // freezes it; resetTable clears it back to null.
         maxMagnitude: null,
+        // The shape fingerprint: { columnCount, headerTexts } as read by
+        // lib/dr-table's readTableFingerprint at registration.
+        // createToggleForTable (ui-toggle.js) is the one writer. The
+        // controller compares the table's current shape against it before
+        // every action, and discards the whole entry on a mismatch — the
+        // page replaced the table's content, so the originals and the form
+        // below describe data no longer on the screen. null until that one
+        // writer runs: an entry a first write created (see the note on
+        // registerTable below) carries no fingerprint, and the controller's
+        // comparison reads that as nothing to compare against.
+        fingerprint: null,
       };
       tableRegistry.set(table, entry);
       registeredTables.add(table);
@@ -263,6 +274,20 @@ const DR_STORE = (function () {
     return entry ? entry.maxMagnitude : null;
   }
 
+  // The shape fingerprint a table carried when it registered. Plain values
+  // only, so the entry stays serializable.
+  function setTableFingerprint(table, fingerprint) {
+    _ensureEntry(table).fingerprint = fingerprint;
+  }
+
+  // null with no entry and null with an entry that never recorded one are
+  // the same answer, and the controller's comparison reads both the same
+  // way: nothing recorded, so nothing to compare against.
+  function getTableFingerprint(table) {
+    const entry = tableRegistry.get(table);
+    return entry ? entry.fingerprint : null;
+  }
+
   return {
     getSelectedTable,
     getSettings,
@@ -284,5 +309,7 @@ const DR_STORE = (function () {
     getTableRoundOptions,
     setTableMaxMagnitude,
     getTableMaxMagnitude,
+    setTableFingerprint,
+    getTableFingerprint,
   };
 })();

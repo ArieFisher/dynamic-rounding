@@ -1084,6 +1084,128 @@ function isDataTable(table, opts = {}) {
 }
 
 /**
+ * Read one table's shape fingerprint through the adapter: the column count
+ * (the widest row's cell count) and, where the table has a header row, that
+ * row's cell texts. The registry records it when the table registers, and
+ * every action on a registered table compares the table's current shape
+ * against the recorded one before it acts.
+ *
+ * The row count stays out of the fingerprint on purpose. A virtualized grid
+ * creates and destroys rows on every scroll, so a row count would report a
+ * scroll as a shape change.
+ *
+ * Header texts are read only where _hasHeaderRow holds for the first row the
+ * adapter returns; otherwise headerTexts is null and the fingerprint is the
+ * column count alone. A grid that groups nothing has a data row first, and a
+ * scroll redraws it, so its text would report a scroll as a shape change.
+ *
+ * opts.originalText, when the caller supplies it, reads a cell's stored
+ * pre-simplification text and returns undefined for a cell with none. A
+ * fingerprint read through it stays the same while the extension simplifies
+ * the table's own header cells, which is what keeps the extension's writes
+ * from reading as a page change. Without it the read takes each cell's
+ * current text.
+ *
+ * The return is plain values only, so a registry entry holding one stays
+ * serializable.
+ *
+ * @param {Element} el
+ * @param {{originalText?: (cellEl: Element) => (string|undefined),
+ *          vendorProfiles?: object[], originalsPort?: object}} [opts]
+ * @returns {{columnCount: number, headerTexts: string[]|null}}
+ */
+function readTableFingerprint(el, opts = {}) {
+  const adapter = makeAdapter(el, opts);
+  const rows = adapter.getRows();
+  const readsHeader = rows.length > 0 && _hasHeaderRow(el, adapter, rows[0]);
+  let columnCount = 0;
+  let headerTexts = null;
+  for (let i = 0; i < rows.length; i++) {
+    const cells = rows[i].getCells();
+    if (cells.length > columnCount) columnCount = cells.length;
+    if (i === 0 && readsHeader) {
+      headerTexts = cells.map((cellObj) => _fingerprintCellText(cellObj, opts));
+    }
+  }
+  return { columnCount, headerTexts };
+}
+
+/**
+ * Whether the first row the adapter returns is a header row, which determines
+ * whether the fingerprint carries header texts at all.
+ *
+ * On a grid the answer is the adapter's own outside-row mark: a grid that
+ * groups its data rows puts its header row outside every group, and the
+ * adapter marks that row isOutside. A grid that groups nothing — the shape a
+ * database query grid takes — has a data row first, and a scroll redraws it,
+ * so its text describes the rows on the screen rather than the table.
+ *
+ * On a native table the adapter's isOutside marks the footer section alone,
+ * so the head section is read from the row itself: the row sits in a THEAD,
+ * or it holds header cells and no data cell. The second form covers a table
+ * written with a leading row of <th> and no explicit head section, which the
+ * simplification engine already reads as a header row by skipping every <th>
+ * cell it holds.
+ *
+ * @param {Element} el
+ * @param {NativeTableAdapter|GridAdapter} adapter
+ * @param {{isOutside: boolean, getCells(): object[]}} firstRow
+ * @returns {boolean}
+ */
+function _hasHeaderRow(el, adapter, firstRow) {
+  if (!(adapter instanceof NativeTableAdapter)) return firstRow.isOutside === true;
+  const rowEl = el.rows && el.rows[0];
+  const parent = rowEl && (rowEl.parentElement || rowEl.parentNode);
+  if (parent && parent.tagName === 'THEAD') return true;
+  const cells = firstRow.getCells();
+  return cells.length > 0 && cells.every((cellObj) => cellObj.tagName === 'TH');
+}
+
+/**
+ * One header cell's text for the fingerprint: its stored pre-simplification
+ * text where opts.originalText holds one, the cell's current text otherwise.
+ *
+ * @param {{getText(): string, el: Element}} cellObj
+ * @param {{originalText?: (cellEl: Element) => (string|undefined)}} opts
+ * @returns {string}
+ */
+function _fingerprintCellText(cellObj, opts) {
+  if (typeof opts.originalText === 'function') {
+    const stored = opts.originalText(cellObj.el);
+    if (stored !== undefined && stored !== null) return String(stored);
+  }
+  return cellObj.getText();
+}
+
+/**
+ * Whether two shape fingerprints describe the same shape: the same column
+ * count, and the same header texts element by element.
+ *
+ * Either side missing answers false. The one caller reads a missing recorded
+ * fingerprint as its own case before it compares, so a false here always
+ * means a read that returned nothing.
+ *
+ * @param {{columnCount: number, headerTexts: string[]|null}} a
+ * @param {{columnCount: number, headerTexts: string[]|null}} b
+ * @returns {boolean}
+ */
+function sameTableFingerprint(a, b) {
+  if (!a || !b) return false;
+  if (a.columnCount !== b.columnCount) return false;
+  const left = a.headerTexts;
+  const right = b.headerTexts;
+  // Two readings that found no header row compare on the column count alone.
+  // A reading that found one against a reading that did not is a difference:
+  // the table gained or lost its header row.
+  if (left === null || right === null) return left === right;
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
+/**
  * The two guards the nomination step applies to an element carrying a grid or
  * table role, before the data test runs on it: the element is not a native
  * table, and every native table it holds is one tableFilter drops (pass 1
