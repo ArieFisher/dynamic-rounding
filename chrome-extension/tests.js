@@ -4902,6 +4902,12 @@ function withReactiveCreateTreeWalker(fn) {
         segments[2].text, ', total 10,000');
       eq('table 8 linked reference: the cell records as simplified',
         cell.classList.contains('dr-ext-rounded'), true);
+      // The registry record holds the flat-text index of every match that
+      // survived the link filter. Without the fix the linked "12," survived
+      // too and this read [8, 18]; the log-row count below can miss that
+      // when the 50-row buffer drops an older patch row on the same push.
+      eq('table 8 linked reference: only the plain number survives the link filter',
+        DR_STORE.getTableOriginal(table, cell).linkFilteredIdx, [18]);
       const warnRowsAfter = DR_LOG.snapshot().entries
         .filter((row) => /extracted-cell patch/.test(row.text)).length;
       eq('table 8 linked reference: no patch is left unlanded',
