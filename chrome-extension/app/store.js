@@ -29,7 +29,15 @@
  *                      controller applies every new value to the selected
  *                      table by subscribing to the resulting state-change.
  *
- * A third field, "whether the sidebar is open", lived here until the
+ *   - errorState      The tab's error state: whether an extension error has
+ *                      been recorded on this page, how many, and the last
+ *                      rows with their stack traces. The controller writes
+ *                      it from the log buffer's row listener (every warn or
+ *                      error row counts), the toast view redraws from its
+ *                      state change, and the capture carries it. It never
+ *                      clears within a page's life; a reload starts clean.
+ *
+ * A field, "whether the sidebar is open", lived here until the
  * 2026-09-14 sidebar-state-removal design retired it. Only the service
  * worker could correct it, and the correction needed a tab number the
  * service worker lost on an idle restart and on an ordinary sidebar close,
@@ -157,7 +165,7 @@ const DR_STORE = (function () {
   // missed while it was gone — the bus keeps no history, so a missed
   // publish is gone for good from the bus's point of view.
   function getSnapshot() {
-    return { selectedTable, settings: getSettings() };
+    return { selectedTable, settings: getSettings(), errorState: getErrorState() };
   }
 
   function setSelectedTable(table) {
@@ -168,6 +176,37 @@ const DR_STORE = (function () {
   function setSettings(newSettings) {
     settings = Object.assign({}, DR_DEFAULTS, newSettings || {});
     DR_BUS.publish('state:settingsChanged', { settings: getSettings() });
+  }
+
+  // --- Error state ---
+  //
+  // The rows are bounded so a page that logs on every scroll cannot grow the
+  // model for the life of the tab; the count keeps counting past the cap so
+  // the total stays readable. Rows are plain values (time, level, text,
+  // stack trace) copied on the way in and on the way out.
+  const ERROR_ROW_LIMIT = 50;
+  const errorRows = [];
+  let errorCount = 0;
+
+  function copyErrorRow(row) {
+    return { at: row.at, level: row.level, text: row.text, stack: row.stack };
+  }
+
+  function getErrorState() {
+    return {
+      hasError: errorCount > 0,
+      count: errorCount,
+      rows: errorRows.map(copyErrorRow),
+    };
+  }
+
+  // The one writer. Like the two scalar setters above: update the field,
+  // then publish the field's whole new value.
+  function recordError(row) {
+    errorRows.push(copyErrorRow(row));
+    if (errorRows.length > ERROR_ROW_LIMIT) errorRows.shift();
+    errorCount++;
+    DR_BUS.publish('state:errorRecorded', { errorState: getErrorState() });
   }
 
   // --- Table registry API ---
@@ -294,6 +333,8 @@ const DR_STORE = (function () {
     getSnapshot,
     setSelectedTable,
     setSettings,
+    getErrorState,
+    recordError,
     registerTable,
     unregisterTable,
     hasTable,

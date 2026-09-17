@@ -3774,7 +3774,8 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // extracted layers (core/parsing/detect/ui-toggle), so eval them in the
   // same order the manifest loads them before content.js.
   vm.runInContext(
-    constantsCode + '\n' + patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
+    constantsCode + '\n' + (sourceByName('lib/dr-log/index.js') || '') + '\n' +
+    patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
     detectCode + '\n' + messagingCode + '\n' + storeCode + '\n' +
     uiToggleCode + '\n' + contentSrc +
     '\nthis.__roundWithOffset = roundWithOffset;', ctx);
@@ -17828,6 +17829,8 @@ const LADDER_OPTS = {
     topicNames.slice().sort(),
     ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged',
      'state:settingsChanged',
+     // The model's error state, published to the toast view in the same context.
+     'state:errorRecorded',
      // The sidebar's four requests, each answered by the tab's content script.
      'request:applySettings', 'request:settings', 'request:previewSamples',
      'request:captureState',
@@ -17995,9 +17998,10 @@ const LADDER_OPTS = {
   const storeFieldNames = Array.from(storeSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_STORE');
-  eq('static scan: app/store.js declares its four private fields (sanity check on the scan itself)',
+  eq('static scan: app/store.js declares its seven private fields (sanity check on the scan itself)',
     storeFieldNames.slice().sort(),
-    ['registeredTables', 'selectedTable', 'settings', 'tableRegistry'].sort());
+    ['ERROR_ROW_LIMIT', 'errorCount', 'errorRows',
+     'registeredTables', 'selectedTable', 'settings', 'tableRegistry'].sort());
   const storeFieldWrites = storeFieldNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
     return assignRe.test(uiToggleSrcForScan) || assignRe.test(contentSrcForScan);
@@ -23316,6 +23320,173 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     snap.entries[snap.entries.length - 1].text, 'cap probe 54');
 })();
 
+// --- lib/dr-log: the stack trace and the row listener ---
+//
+// A warn or error row carries the stack trace at the moment it was recorded,
+// the same trace the extension error page shows, so a capture holds it and
+// the application model can store it. Debug and info rows carry none: they
+// are frequent, and a trace costs a stack walk per row. The row listener is
+// how the controller learns that a row landed without the log module reaching
+// up to the application model or the bus, both of which load after it.
+
+(function drLogStackTraceAndListener() {
+  if (typeof globalThis.DR_LOG !== 'object') return;
+  const LOG = globalThis.DR_LOG;
+  const origError = console.error;
+  console.error = () => {};
+  try {
+    function stackProbeCaller() { LOG.warn('stack probe'); }
+    stackProbeCaller();
+    const warnRow = LOG.snapshot().entries.slice(-1)[0];
+    eq('dr-log: a warn row carries the stack trace that recorded it',
+      typeof warnRow.stack === 'string' && /stackProbeCaller/.test(warnRow.stack), true);
+    eq('dr-log: the stack trace starts at the caller, with the log module\'s own frames left out',
+      /stackProbeCaller/.test(String(warnRow.stack).split('\n')[0]), true);
+
+    function errorStackProbeCaller() { LOG.error('error stack probe'); }
+    errorStackProbeCaller();
+    eq('dr-log: an error row carries the stack trace',
+      /errorStackProbeCaller/.test(LOG.snapshot().entries.slice(-1)[0].stack || ''), true);
+
+    LOG.debug('no stack probe');
+    eq('dr-log: a debug row carries no stack trace',
+      LOG.snapshot().entries.slice(-1)[0].stack, null);
+    LOG.info('no stack probe');
+    eq('dr-log: an info row carries no stack trace',
+      LOG.snapshot().entries.slice(-1)[0].stack, null);
+
+    // A deep stack trace is cut at the same bound as row text.
+    const savedLimit = Error.stackTraceLimit;
+    Error.stackTraceLimit = 200;
+    function deepWarn(n) { if (n === 0) { LOG.warn('deep probe'); return; } deepWarn(n - 1); }
+    deepWarn(150);
+    Error.stackTraceLimit = savedLimit;
+    eq('dr-log: a long stack trace is cut at 2000 characters',
+      String(LOG.snapshot().entries.slice(-1)[0].stack).length, 2000);
+
+    const snapCopy = LOG.snapshot();
+    snapCopy.entries[snapCopy.entries.length - 1].stack = 'mutated';
+    eq('dr-log: a snapshot row\'s stack trace is a copy',
+      LOG.snapshot().entries.slice(-1)[0].stack === 'mutated', false);
+
+    const seen = [];
+    const off = LOG.onRow((row) => { seen.push(row); });
+    LOG.debug('listener probe');
+    eq('dr-log: a row listener receives each row as it lands',
+      seen.length === 1 && seen[0].text === 'listener probe' && seen[0].level === 'debug', true);
+    seen[0].text = 'mutated';
+    eq('dr-log: the listener receives a copy, so mutating it never reaches the buffer',
+      LOG.snapshot().entries.slice(-1)[0].text, 'listener probe');
+    off();
+    LOG.debug('after removal probe');
+    eq('dr-log: a removed row listener receives nothing more', seen.length, 1);
+
+    let reported = null;
+    console.error = (msg) => { reported = msg; };
+    const offThrowing = LOG.onRow(() => { throw new Error('listener failure'); });
+    LOG.debug('throwing listener probe');
+    offThrowing();
+    eq('dr-log: a listener that throws does not stop the row from recording',
+      LOG.snapshot().entries.slice(-1)[0].text, 'throwing listener probe');
+    eq('dr-log: a listener\'s failure is reported on the console',
+      typeof reported === 'string' && /listener failure/.test(reported), true);
+  } finally {
+    console.error = origError;
+  }
+})();
+
+// --- app model: the error state ---
+//
+// The tab's error state: whether an extension error has been recorded on
+// this page, how many, and the last rows with their stack traces. The
+// controller writes it from the log buffer's row listener, the toast view
+// redraws from its state change, and the capture carries it. It never clears
+// within a page's life; a reload starts clean because nothing persists.
+//
+// The live model is a singleton every earlier test has written to, so these
+// tests build a fresh one: the settings contract, the bus, and the model,
+// evaluated together in their own context.
+
+function makeIsolatedModel() {
+  const vm = require('vm');
+  const sandbox = { chrome: global.chrome, console };
+  const ctx = vm.createContext(sandbox);
+  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + storeCode +
+    '\nthis.__store = DR_STORE; this.__bus = DR_BUS;', ctx);
+  return { store: sandbox.__store, bus: sandbox.__bus };
+}
+
+(function appModelErrorState() {
+  const { store, bus } = makeIsolatedModel();
+  const empty = { hasError: false, count: 0, rows: [] };
+  eq('error state: a fresh model holds no error', store.getErrorState(), empty);
+  eq('error state: the snapshot a reconnecting view pulls carries the error state',
+    store.getSnapshot().errorState, empty);
+
+  const published = [];
+  bus.subscribe('state:errorRecorded', (payload) => { published.push(payload); });
+  const row = { at: '2026-09-17T16:00:00.000Z', level: 'warn', text: 'probe row', stack: 'at probe' };
+  store.recordError(row);
+  eq('error state: recording a row sets the indicator and the count',
+    { hasError: store.getErrorState().hasError, count: store.getErrorState().count },
+    { hasError: true, count: 1 });
+  eq('error state: the recorded row keeps its time, level, text, and stack trace',
+    store.getErrorState().rows[0], row);
+  eq('error state: recording publishes the whole error state as a state change',
+    published, [{ errorState: { hasError: true, count: 1, rows: [row] } }]);
+
+  const read = store.getErrorState();
+  read.rows[0].text = 'mutated';
+  read.rows.push({});
+  eq('error state: the getter returns copies', store.getErrorState().rows, [row]);
+
+  for (let i = 0; i < 60; i++) {
+    store.recordError({ at: 'x', level: 'warn', text: 'row ' + i, stack: null });
+  }
+  eq('error state: the rows hold at most 50 while the count keeps counting',
+    { rows: store.getErrorState().rows.length, count: store.getErrorState().count },
+    { rows: 50, count: 61 });
+  eq('error state: the newest row survives the cap',
+    store.getErrorState().rows[49].text, 'row 59');
+
+  eq('bus: state:errorRecorded is a same-context state-change topic',
+    DR_BUS.TOPICS['state:errorRecorded'], { family: 'state-change', route: null });
+})();
+
+// --- controller: the log buffer feeds the error state ---
+//
+// Every warn or error row the content script records is an extension error:
+// the controller's row listener writes it into the model's error state, and
+// debug and info rows stay out. Every failure the extension records today is
+// a warn row, and the extension error page lists warn output beside errors.
+// These run against the live model and log buffer, so every count is
+// relative.
+
+(function controllerRoutesErrorRows() {
+  const before = DR_STORE.getErrorState().count;
+  const origError = console.error;
+  console.error = () => {};
+  try {
+    DR_LOG.warn('controller error probe');
+    const afterWarn = DR_STORE.getErrorState();
+    eq('controller: a warn row lands in the model\'s error state',
+      { count: afterWarn.count, hasError: afterWarn.hasError,
+        text: afterWarn.rows.slice(-1)[0] && afterWarn.rows.slice(-1)[0].text },
+      { count: before + 1, hasError: true, text: 'controller error probe' });
+    eq('controller: the recorded row carries the stack trace of the call that logged it',
+      /controllerRoutesErrorRows/.test((afterWarn.rows.slice(-1)[0] || {}).stack || ''), true);
+    DR_LOG.error('controller error-level probe');
+    eq('controller: an error row lands in the model\'s error state',
+      DR_STORE.getErrorState().count, before + 2);
+    DR_LOG.debug('controller debug probe');
+    DR_LOG.info('controller info probe');
+    eq('controller: debug and info rows stay out of the error state',
+      DR_STORE.getErrorState().count, before + 2);
+  } finally {
+    console.error = origError;
+  }
+})();
+
 // --- lib/dr-log: call sites route through the buffer ---
 //
 // The extension's own console.debug call sites (two in content.js, one in
@@ -23872,8 +24043,8 @@ function makeBusSandbox(opts) {
     if (!/^(intent|state|request):[a-z][A-Za-z]*$/.test(topic)) allNamed = false;
   }
   eq('one mechanism: every topic name follows the family:name style', allNamed, true);
-  eq('one mechanism: the table holds all eighteen cross-context topics plus the four same-context ones',
-    Object.keys(DR_BUS.TOPICS).length, 22);
+  eq('one mechanism: the table holds all eighteen cross-context topics plus the five same-context ones',
+    Object.keys(DR_BUS.TOPICS).length, 23);
 })();
 
 // --- #325 Task 12: the moved responders answer through the bus ---

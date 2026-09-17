@@ -132,6 +132,10 @@ const DR_BUS = (function () {
     // value to the selected table — this is the bus's first state-change
     // subscriber (see the depth guard below, issue #240).
     'state:settingsChanged': { family: STATE_CHANGE, route: null },
+    // Published by the model after every error row it records. The toast view
+    // (ui-toast.js) subscribes to draw the row on the page. Same context
+    // only: the sidebar reads the error state through the capture state pull.
+    'state:errorRecorded': { family: STATE_CHANGE, route: null },
     // The sidebar's four requests. Each addresses the tab's content script,
     // which holds the model.
     //

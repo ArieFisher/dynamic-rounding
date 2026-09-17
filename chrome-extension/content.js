@@ -64,6 +64,18 @@ DR_BUS.subscribe('state:settingsChanged', ({ settings }) => {
   }
 });
 
+// Every warn or error row this context records is an extension error: it
+// lands in the model's error state, whose state change the toast view
+// (ui-toast.js) draws and the capture carries. Debug and info rows stay out.
+// The listener lives here and not in the log module because the log module
+// loads before the model and the bus and reaches neither. A row recorded
+// inside a bus handler publishes one level deeper; the toast view never
+// logs, so the chain ends there.
+const ERROR_ROW_LEVELS = ['warn', 'error'];
+DR_LOG.onRow((row) => {
+  if (ERROR_ROW_LEVELS.includes(row.level)) DR_STORE.recordError(row);
+});
+
 // The sidebar's settings apply. Record it; the state-change subscriber above
 // applies it to the table. The answer's only job is to exist: the sidebar
 // reads that someone answered and stays bound.
