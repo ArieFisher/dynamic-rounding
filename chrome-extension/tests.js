@@ -22285,6 +22285,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     getRegisteredTables: () => tables,
     getSelectedTable: () => (opts && opts.selected) || null,
     getSettings: () => ({ enabled: true, offsetTop: -0.5 }),
+    getErrorState: () => (opts && opts.errorState) || { hasError: false, count: 0, rows: [] },
     getTableAppliedFlag: (t) => (opts && opts.flags && opts.flags.get(t)) || 'original',
     getTableRoundOptions: (t) => (opts && opts.roundOptions && opts.roundOptions.get(t)) || null,
     getTableMaxMagnitude: (t) => {
@@ -22336,7 +22337,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 
   const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 2);
+  eq('capture-state: the state carries its format version', state.captureFormat, 3);
   eq('capture-state: the settings record is carried verbatim',
     state.settings, { enabled: true, offsetTop: -0.5 });
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
@@ -22436,6 +22437,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     getRegisteredTables: () => [table],
     getSelectedTable: () => null,
     getSettings: () => ({}),
+    getErrorState: () => ({ hasError: false, count: 0, rows: [] }),
     getTableAppliedFlag: () => 'simplified',
     getTableRoundOptions: () => null,
     getTableMaxMagnitude: () => null,
@@ -22500,7 +22502,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 2, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 3, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting logs its own row, and that row lands in the capture',
@@ -22570,7 +22572,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 2,
+    captureFormat: 3,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
@@ -22752,7 +22754,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 2,
+    captureFormat: 3,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'negative',
@@ -22987,7 +22989,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 2,
+      captureFormat: 3,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'positive', note: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -23018,6 +23020,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     getRegisteredTables: () => [],
     getSelectedTable: () => null,
     getSettings: () => ({}),
+    getErrorState: () => ({ hasError: false, count: 0, rows: [] }),
     getTableAppliedFlag: () => 'original',
     getTableRoundOptions: () => null,
     getTableMaxMagnitude: () => null,
@@ -23031,8 +23034,8 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     state.tuning, DR_TUNING);
   eq('capture-tuning: the state\'s captureFormat equals CAPTURE_FORMAT',
     state.captureFormat, CAPTURE_FORMAT);
-  eq('capture-tuning: CAPTURE_FORMAT is 2',
-    CAPTURE_FORMAT, 2);
+  eq('capture-tuning: CAPTURE_FORMAT is 3',
+    CAPTURE_FORMAT, 3);
   eq('capture-tuning: the returned tuning is not the same object as DR_TUNING',
     state.tuning !== DR_TUNING, true);
 
@@ -23062,7 +23065,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (tuning) => ({
-    captureFormat: 2,
+    captureFormat: 3,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'positive', note: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -23128,7 +23131,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (over) => Object.assign({
-    captureFormat: 2,
+    captureFormat: 3,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'positive', note: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -23163,7 +23166,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   eq('capture-tuning: an absent tuning field renders the absence placeholder in the tuning section',
     /<h2>Detection tuning<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
   eq('capture-tuning: the format version still prints in the header when tuning is absent',
-    /<dt>Capture format<\/dt><dd>2<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+    /<dt>Capture format<\/dt><dd>3<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
@@ -23202,7 +23205,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 2,
+      captureFormat: 3,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'positive', note: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -23576,6 +23579,83 @@ function makeIsolatedModel() {
   eq('toast: the stylesheet is injected once for the page\'s life',
     appended.filter((el) => el._tag === 'style').length, 1);
   eq('toast: the view logs nothing', /DR_LOG\./.test(uiToastCode), false);
+})();
+
+// --- capture: the error state and the stack traces travel in the capture ---
+//
+// The capture state carries the model's error state, and each log row's
+// stack trace renders under the row, folded, so a reader opens the trace
+// only for the row in question. Format 3 marks both additions. The sidebar's
+// fallback state, used when the page half never arrives, carries the new
+// field as an absence, like every other page-side field.
+
+(function captureCarriesErrorState() {
+  if (typeof globalThis.collectCaptureState !== 'function' ||
+      typeof globalThis.DR_CAPTURE !== 'object') return;
+  const errorState = {
+    hasError: true, count: 1,
+    rows: [{ at: '2026-09-17T16:00:00.000Z', level: 'warn', text: 'probe', stack: '    at roundTable' }],
+  };
+  const fakeStore = {
+    getRegisteredTables: () => [],
+    getSelectedTable: () => null,
+    getSettings: () => ({ enabled: true }),
+    getErrorState: () => errorState,
+  };
+  const state = collectCaptureState({ store: fakeStore, adapterFor: () => null });
+  eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
+  eq('capture-state: format 3 marks the error state and the stack trace on each log row',
+    state.captureFormat, 3);
+
+  const renderState = {
+    captureFormat: 3,
+    meta: { url: 'https://www.example.com/p', title: 'P', version: '2.1.70',
+      platform: 'test', at: '2026-09-17T16:00:00.000Z' },
+    mark: 'negative', note: '', settings: { enabled: true }, tuning: null,
+    activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
+    sidebarView: { enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
+      rangeExpr: '', stops: [0], topVal: 0, botVal: 0, coupled: true, status: '',
+      noTable: true, locked: false, lensPreview: { top: [], bottom: [] } },
+    errorState: errorState,
+    log: {
+      content: {
+        entries: [
+          { at: '2026-09-17T16:00:00.000Z', level: 'warn', text: 'traced row',
+            stack: '    at roundTable (content.js:1)\n    at <script>alert(1)</script>' },
+          { at: '2026-09-17T16:00:01.000Z', level: 'debug', text: 'plain row', stack: null },
+        ],
+        dropped: 0, limit: 50,
+      },
+      sidebar: { entries: [], dropped: 0, limit: 50 },
+    },
+  };
+  const html = DR_CAPTURE.buildCaptureDocument({ state: renderState, lockedStatusText: '' });
+  const visible = html.slice(0, html.indexOf('id="capture-state"'));
+  eq('capture-render: a row\'s stack trace renders under the row, folded',
+    /traced row[\s\S]{0,200}<details[\s\S]{0,200}at roundTable \(content\.js:1\)/.test(visible), true);
+  eq('capture-render: a row with no stack trace renders no fold',
+    (visible.match(/<details/g) || []).length, 1);
+  eq('capture-render: a hostile stack trace reaches the visible half escaped only',
+    visible.includes('&lt;script&gt;alert(1)&lt;/script&gt;') &&
+      !visible.toLowerCase().includes('<script'), true);
+  // The island's text, unescaped (ampersand last), parsed back.
+  const island = html.match(/<pre id="capture-state" hidden>([\s\S]*?)<\/pre>/);
+  const islandState = island ? JSON.parse(island[1]
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, '\'')
+    .replace(/&amp;/g, '&')) : null;
+  eq('capture-render: the island carries the stack trace byte-exact',
+    islandState && islandState.log.content.entries[0].stack,
+    renderState.log.content.entries[0].stack);
+  eq('capture-render: the island carries the error state',
+    islandState && islandState.errorState, errorState);
+
+  const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
+  const fnBody = fnStart === -1 ? '' :
+    sidebarJsSrc.slice(fnStart, sidebarJsSrc.indexOf('\nfunction ', fnStart + 1));
+  eq('capture: assembleAndSaveCapture\'s fallback state carries errorState: null',
+    fnStart !== -1 && /errorState:\s*null/.test(fnBody), true);
 })();
 
 // --- lib/dr-log: call sites route through the buffer ---

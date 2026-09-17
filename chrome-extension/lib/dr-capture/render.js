@@ -86,6 +86,8 @@ const CAPTURE_STYLES = [
   '.cap-log { font: 12px/1.5 ui-monospace, monospace; margin: 4px 0; padding-left: 0; list-style: none; }',
   '.cap-log li { overflow-wrap: anywhere; }',
   '.cap-log .warn { color: #8a6d3b; } .cap-log .error { color: #a94442; }',
+  '.cap-log details { margin: 2px 0 6px 16px; } .cap-log summary { cursor: pointer; color: #555; }',
+  'pre.cap-trace { margin: 4px 0; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }',
   'pre.cap-seed { border: 1px solid #ccc; border-radius: 4px; padding: 8px; overflow-x: auto; font-size: 12px; }',
   'footer { color: #777; font-size: 12px; margin-top: 24px; border-top: 1px solid #ddd; padding-top: 8px; }',
 ].join('\n');
@@ -406,9 +408,17 @@ function renderSidebarLikeness(state, lockedStatusText) {
 // Both contexts' log rows, labeled by provenance. An empty buffer is a
 // finding, so it renders as a sentence, never as a missing section — and a
 // missing snapshot is a different finding: the state pull for that context
-// failed, so no buffer arrived at all.
+// failed, so no buffer arrived at all. A row's stack trace (warn and error
+// rows carry one) sits under the row in a details element, folded, so a
+// reader opens the trace for the row in question. details/summary folds
+// without a script, so the file's own policy still holds.
 function renderCaptureLogs(state) {
   const log = state.log || {};
+  const trace = function (row) {
+    if (typeof row.stack !== 'string' || row.stack === '') return '';
+    return '<details><summary>Stack trace</summary><pre class="cap-trace">' +
+      escapeHtml(row.stack) + '</pre></details>';
+  };
   const section = function (label, snap) {
     if (!snap) {
       return '<h3>' + escapeHtml(label) + '</h3>' +
@@ -419,7 +429,7 @@ function renderCaptureLogs(state) {
       ' earlier row(s) dropped past the cap)</li>' : '';
     const items = rows.map(function (row) {
       return '<li class="' + escapeHtml(row.level) + '">' + escapeHtml(row.at) + ' [' +
-        escapeHtml(row.level) + '] ' + escapeHtml(row.text) + '</li>';
+        escapeHtml(row.level) + '] ' + escapeHtml(row.text) + trace(row) + '</li>';
     }).join('');
     const body = rows.length === 0
       ? '<p class="cap-band">Nothing was logged.</p>'

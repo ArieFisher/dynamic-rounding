@@ -974,6 +974,7 @@ function assembleAndSaveCapture(mark, note, pageState) {
     tables: [],
     lensPreview: null,
     fixtureSeed: null,
+    errorState: null,
     log: null,
   }, pageState || {});
   state.meta = {
