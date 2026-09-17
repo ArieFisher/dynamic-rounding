@@ -41,6 +41,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | lens control | The sidebar control (under 'advanced' as of this writing) where the user can change `offset_top` and `offset_other`. |
 | lens preview | Sample values from different OoM, before and after simplification. |
 | sample | One value shown in the lens preview. |
+| toast | The on-page notice for the newest extension error: one element at the page's bottom right holding the log row's text, removed by a click or after five seconds. A second row replaces the text and restarts the delay, so a warning that repeats shows one toast. |
 
 ## Reading a cell
 
@@ -139,6 +140,11 @@ One term per concept, across every platform and every document. Use the [Retired
 | adapter | A component that presents one shape of thing through a shared interface, so a caller works against the interface and never against the shape. The design doc groups the extension's adapters into a layer of the same name. <br><br>e.g. the native-table adapter and the grid adapter both present rows and cells, over markup with nothing in common |
 | marker class | A CSS class the extension adds to page elements it has processed so the extension can easily target that element later. |
 | page attribute | A named value written onto an HTML element in the page. |
+| extension error | A warn or error row the extension records in its log buffer. Every failure the extension records today is a warn row, and Chrome's extension error page lists warn output beside errors. An uncaught exception never reaches the log buffer and is not one. |
+| error state | The application model's record of extension errors on the current page: whether one has been recorded, how many, and the last 50 rows with their stack traces. The controller writes it from the row listener, the toast view redraws from its state-change topic, and the capture carries it. It never clears within a page's life; a reload starts clean. |
+| toast view | The view that draws the toast. It subscribes to the error state's state-change topic and never logs, because a row it recorded would publish back to it. |
+| row listener | A function the log buffer calls with a copy of each log row as it lands. The controller registers one to write warn and error rows into the error state. Not a subscriber: the log buffer loads before the event bus and the application model and reaches neither. |
+| stack trace | The list of calls active when a log row was recorded, starting at the caller of the log call. Warn and error rows carry one; debug and info rows carry none. Cut at the same bound as row text. |
 
 ## Capture
 
@@ -148,8 +154,8 @@ One term per concept, across every platform and every document. Use the [Retired
 | mark | The verdict a capture carries: positive, question, or negative. One of three buttons in the sidebar's capture section; pressing one opens the note form. |
 | note | The capture's one free-text field, labeled Remarks. Its preview text follows the mark: a negative capture prompts for expected, observed, and cause (if known); a question mark prompts for suggestions, questions, or remarks. A blank note saves as blank. |
 | finish | The explicit gesture that writes the capture file — the "Save capture" button. Nothing saves without that press. |
-| capture state | The plain-value record embedded in the capture: full registry detail for every table, the settings record, the tuning block in force at capture time, the lens preview samples, the sidebar view state, the log rows, the page and extension metadata, and the fixture seed. Carries a one-integer format version so a later tool can read old captures. |
-| log buffer | A per-context list of the last 50 log rows the extension recorded, with a count of rows dropped past the cap. Each row also goes to the console, so devtools output is unchanged. |
+| capture state | The plain-value record embedded in the capture: full registry detail for every table, the settings record, the tuning block in force at capture time, the lens preview samples, the sidebar view state, the log rows with their stack traces, the error state, the page and extension metadata, and the fixture seed. Carries a one-integer format version so a later tool can read old captures. |
+| log buffer | A per-context list of the last 50 log rows the extension recorded, with a count of rows dropped past the cap. A warn or error row carries its stack trace. Each row also goes to the console, so devtools output is unchanged, and to every row listener. |
 | state pull | The one request the sidebar sends for the page-side half of a capture. A failed state pull still saves the capture: the sidebar half is present, and the page half renders as an absence. |
 | fixture seed | The bound table's markup as it stood at capture time — form included, so a seed taken from a simplified table rebuilds in simplified form. Carried verbatim in the capture state, and escaped for reading in the visible file, so a regression fixture can be rebuilt from it. |
 | capture marker | The page attribute the saved capture carries on its document element. The content script stands down on any page carrying it, so a capture shows what was captured, never what the extension would do to it. |
