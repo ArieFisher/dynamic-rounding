@@ -167,6 +167,8 @@ Object.defineProperty(globalThis, 'lastRightClickedTable', {
 // app-model-selection test suite.
 globalThis.DR_STORE = DR_STORE;
 globalThis.DR_BUS = DR_BUS;
+// Expose the toast view for the toast test section.
+globalThis.DR_TOAST = DR_TOAST;
 // Expose grid-detection helpers for the grid-detection test suite.
 globalThis.looksLikeGrid = looksLikeGrid;
 globalThis.findTargetTable = findTargetTable;
@@ -2035,7 +2037,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
       'lib/dr-capture/index.js',
       'adapters/messaging.js', 'app/store.js',
-      'ui-toggle.js', 'content.js',
+      'ui-toggle.js', 'ui-toast.js', 'content.js',
     ]), true);
 
   // AC3: (sidebar-tidyup) the old "section-heading" with "Include numbers in cells containing:"
@@ -4867,7 +4869,7 @@ function withReactiveCreateTreeWalker(fn) {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   const js = manifest.content_scripts[0].js;
   const after = (a, b) => js.indexOf(a) > -1 && js.indexOf(b) > -1 && js.indexOf(a) < js.indexOf(b);
-  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < dr-simplify index.js < messaging.js < store.js < ui-toggle.js < content.js',
+  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < dr-simplify index.js < messaging.js < store.js < ui-toggle.js < ui-toast.js < content.js',
     after('lib/dr-number/rounding.js', 'lib/dr-number/core.js') &&
     after('lib/dr-number/core.js', 'lib/dr-number/parsing.js') &&
     after('lib/dr-number/parsing.js', 'lib/dr-number/index.js') &&
@@ -4878,7 +4880,8 @@ function withReactiveCreateTreeWalker(fn) {
     after('lib/dr-simplify/index.js', 'adapters/messaging.js') &&
     after('adapters/messaging.js', 'app/store.js') &&
     after('app/store.js', 'ui-toggle.js') &&
-    after('ui-toggle.js', 'content.js'), true);
+    after('ui-toggle.js', 'ui-toast.js') &&
+    after('ui-toast.js', 'content.js'), true);
   eq('manifest: content.js loads last', js[js.length - 1], 'content.js');
 
   // The sidebar deliberately does NOT load the content-only layers — it only
@@ -4893,6 +4896,7 @@ function withReactiveCreateTreeWalker(fn) {
   eq('sidebar.html does not load content-only lib/dr-simplify/ladder.js', sidebarHtml.includes('lib/dr-simplify/ladder.js'), false);
   eq('sidebar.html does not load content-only lib/dr-simplify/index.js', sidebarHtml.includes('lib/dr-simplify/index.js'), false);
   eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
+  eq('sidebar.html does not load content-only ui-toast.js', sidebarHtml.includes('ui-toast.js'), false);
 
   // NOTE: the main bootstrap eval() (top of this file) no longer concatenates
   // coreCode/parsingCode/detectCode/uiToggleCode/code directly — it evals
@@ -15266,7 +15270,7 @@ function withRightClickSandbox(run) {
     'lib/dr-table/detect.js', 'lib/dr-table/index.js',
     'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
     'adapters/messaging.js', 'app/store.js',
-    'ui-toggle.js', 'content.js',
+    'ui-toggle.js', 'ui-toast.js', 'content.js',
   ];
 
   // AC1: no content-script filename literal reaches readFileSync/path.join
@@ -15357,8 +15361,8 @@ function withRightClickSandbox(run) {
   // The capture feature then added the log buffer (lib/dr-log/index.js) and
   // the three-file lib/dr-capture package (state.js, render.js, index.js),
   // raising the count from 13 to 17.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 17 files today',
-    manifest.content_scripts[0].js.length, 17);
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 18 files today',
+    manifest.content_scripts[0].js.length, 18);
 })();
 
 // ---------------------------------------------------------------------------
@@ -23487,6 +23491,93 @@ function makeIsolatedModel() {
   }
 })();
 
+// --- toast view: an error row shows on the page ---
+//
+// The toast view subscribes to the model's error state change and draws the
+// newest row's text in one fixed element at the page's bottom right, removed
+// by a click or after the hide delay. A second row replaces the text and
+// restarts the delay, so a repeating warning shows one toast. The view never
+// logs: a row it recorded would publish back to it.
+//
+// The live view has drawn against earlier tests' page stubs by the time this
+// section runs, so these build the settings contract, the bus, the model,
+// and the view together in a fresh context with their own page stub. The
+// model's publish reaching the view's subscription is the wiring under test.
+
+(function toastViewShowsErrorRows() {
+  const uiToastCode = sourceByName('ui-toast.js');
+  eq('toast: ui-toast.js is a content script in the manifest', uiToastCode !== null, true);
+  if (uiToastCode === null) return;
+
+  const appended = [];
+  const timers = [];
+  let cleared = 0;
+  const makeEl = (tag) => {
+    const listeners = {};
+    const attrs = {};
+    return {
+      _tag: tag, className: '', textContent: '', parentNode: null, _listeners: listeners,
+      setAttribute(name, value) { attrs[name] = value; },
+      getAttribute(name) { return attrs[name] === undefined ? null : attrs[name]; },
+      addEventListener(evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },
+    };
+  };
+  const container = () => ({
+    appendChild(child) { appended.push(child); child.parentNode = this; return child; },
+    removeChild(child) {
+      const i = appended.indexOf(child);
+      if (i >= 0) appended.splice(i, 1);
+      child.parentNode = null;
+    },
+  });
+  const vm = require('vm');
+  const sandbox = {
+    chrome: global.chrome,
+    console,
+    document: { createElement: makeEl, body: container(), head: container() },
+    setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+    clearTimeout: () => { cleared++; },
+  };
+  const ctx = vm.createContext(sandbox);
+  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + storeCode + '\n' + uiToastCode +
+    '\nthis.__store = DR_STORE; this.__toast = DR_TOAST;', ctx);
+  const store = sandbox.__store;
+  const view = sandbox.__toast;
+  const isToast = (el) => el.className === view.TOAST_CLASS;
+
+  store.recordError({ at: 'x', level: 'warn', text: 'Dynamic Rounding: toast probe one', stack: null });
+  const toast = appended.find(isToast);
+  eq('toast: an error row appends one toast to the page', !!toast, true);
+  eq('toast: the toast shows the row\'s text',
+    toast ? toast.textContent : null, 'Dynamic Rounding: toast probe one');
+  eq('toast: the toast is a status region for assistive technology',
+    toast ? toast.getAttribute('role') : null, 'status');
+  eq('toast: the view injects its stylesheet once',
+    appended.filter((el) => el._tag === 'style' && el.textContent.includes(view.TOAST_CLASS)).length, 1);
+  eq('toast: the toast hides itself after the hide delay',
+    timers.length === 1 && timers[0].ms === view.TOAST_HIDE_MS, true);
+
+  store.recordError({ at: 'x', level: 'warn', text: 'toast probe two', stack: null });
+  eq('toast: a second row replaces the text of the one toast',
+    { count: appended.filter(isToast).length, text: toast ? toast.textContent : null },
+    { count: 1, text: 'toast probe two' });
+  eq('toast: a second row restarts the hide delay',
+    { cleared, timers: timers.length }, { cleared: 1, timers: 2 });
+
+  if (timers[1]) timers[1].fn();
+  eq('toast: the hide delay removes the toast', appended.some(isToast), false);
+
+  store.recordError({ at: 'x', level: 'error', text: 'toast probe three', stack: null });
+  const second = appended.find(isToast);
+  eq('toast: a row after the hide draws a fresh toast',
+    !!second && second !== toast && second.textContent === 'toast probe three', true);
+  if (second) second._listeners.click[0]();
+  eq('toast: a click removes the toast', appended.some(isToast), false);
+  eq('toast: the stylesheet is injected once for the page\'s life',
+    appended.filter((el) => el._tag === 'style').length, 1);
+  eq('toast: the view logs nothing', /DR_LOG\./.test(uiToastCode), false);
+})();
+
 // --- lib/dr-log: call sites route through the buffer ---
 //
 // The extension's own console.debug call sites (two in content.js, one in
@@ -23523,6 +23614,7 @@ function makeIsolatedModel() {
   const contextFiles = {
     'content.js': sourceByName('content.js') || '',
     'ui-toggle.js': uiToggleCode || '',
+    'ui-toast.js': sourceByName('ui-toast.js') || '',
     'app/store.js': storeCode || '',
     'sidebar.js': fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8'),
     'background.js': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),
