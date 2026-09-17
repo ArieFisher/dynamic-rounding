@@ -150,10 +150,11 @@ One term per concept, across every platform and every document. Use the [Retired
 
 | Term | Meaning |
 | --- | --- |
-| capture | A bug report written as one self-contained HTML file: the mark and note, the bound table's rendering, a likeness of the sidebar, both contexts' log rows, the fixture seed, and the capture state as machine-readable JSON. The file allows no scripts and no remote fetches, so it is safe to attach anywhere. |
-| mark | The verdict a capture carries: positive, question, or negative. One of three buttons in the sidebar's capture section; pressing one opens the note form. |
-| note | The capture's one free-text field, labeled Remarks. Its preview text follows the mark: a negative capture prompts for expected, observed, and cause (if known); a question mark prompts for suggestions, questions, or remarks. A blank note saves as blank. |
+| capture | A bug report written as one self-contained HTML file: the mark and remarks, the bound table's rendering, a likeness of the sidebar, both contexts' log rows, the fixture seed, and the capture state as machine-readable JSON. The file allows no scripts and no remote fetches, so it is safe to attach anywhere. |
+| mark | The verdict a capture carries: looks-right, not-sure, or looks-wrong, shown as "Looks right", "Not sure", "Looks wrong". One of three buttons in the sidebar's capture section; pressing one opens the remarks form. The token ends the capture file name. |
+| remarks | The capture's one free-text field, labeled Remarks. Its preview text follows the mark: a looks-wrong capture prompts for expected, observed, and cause (if known); a not-sure capture prompts for suggestions, questions, or remarks. Blank remarks save as blank. |
 | finish | The explicit gesture that writes the capture file — the "Save capture" button. Nothing saves without that press. |
+| capture file name | `dr-capture-YYYYMMDD-<source>-HHMMSS-<mark>.html`. The source is the page's host with `www.` dropped; for a page opened from disk it is the page file's name without its extension; it is `no-source` when the page has no address or the address does not parse. The mark token closes the name, so a folder of captures reads each file's verdict without opening it. |
 | capture state | The plain-value record embedded in the capture: full registry detail for every table, the settings record, the tuning block in force at capture time, the lens preview samples, the sidebar view state, the log rows with their stack traces, the error state, the page and extension metadata, and the fixture seed. Carries a one-integer format version so a later tool can read old captures. |
 | log buffer | A per-context list of the last 50 log rows the extension recorded, with a count of rows dropped past the cap. A warn or error row carries its stack trace. Each row also goes to the console, so devtools output is unchanged, and to every row listener. |
 | state pull | The one request the sidebar sends for the page-side half of a capture. A failed state pull still saves the capture: the sidebar half is present, and the page half renders as an absence. |
@@ -203,6 +204,7 @@ and a row with no pattern is left to the human sweep.
 | cross-context topic | wire action | A cross-context topic carries plain-value data only. | `\bwire action` |
 | sidebar | panel | Chrome opens the sidebar as a side panel. | `\bthe panel\b\|\bpanel is open\b\|\bpanel open\b\|\bpanel state\b` |
 | publish | report | A view publishes an intent; the application model publishes a state change. | — |
+| remarks | note (the capture's free-text field) | The capture's remarks follow the mark's preview text. | `\bmark and note\b\|\bnote form\b\|\bnote field\b\|the capture.s note` |
 
 ### Writing a pattern
 
