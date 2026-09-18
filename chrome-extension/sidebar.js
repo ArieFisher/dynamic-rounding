@@ -667,8 +667,8 @@ if (rangeExprEl) rangeExprEl.addEventListener('input', applyNow);
 document.body.addEventListener('click', (e) => {
   if (e.target.matches('input, select, option, summary')) return;
   if (e.target.closest && e.target.closest('.dual-wrap')) return;
-  // Capture interactions are not settings changes: a mark press, a note
-  // keystroke, or the finish button must not publish the settings record.
+  // Capture interactions are not settings changes: a mark press, a keystroke
+  // in the remarks, or the finish button must not publish the settings record.
   if (e.target.closest && e.target.closest('#captureSection')) return;
   applyNow();
 });
@@ -838,7 +838,7 @@ function pullSettingsAndApplyToUI() {
 }
 
 // ----- Capture (the bug-report file) -----
-// Three marks; pressing one unfolds the note form; the finish button is the
+// Three marks; pressing one unfolds the remarks form; the finish button is the
 // only thing that saves. The capture stays available with no table bound —
 // an empty registry is exactly what a "found no table" report must show —
 // and a failed state pull still saves, with the failure recorded as a row.
@@ -850,13 +850,13 @@ const captureSaveEl = document.getElementById('captureSave');
 const captureCancelEl = document.getElementById('captureCancel');
 const captureSizeNoteEl = document.getElementById('captureSizeNote');
 
-// The one note field's preview text follows the mark: a negative capture
-// prompts for the fixture loop's three facts, a question mark prompts
-// loosely, a positive mark needs only remarks.
+// The one remarks field's preview text follows the mark: looks wrong
+// prompts for the fixture loop's three facts, not sure prompts loosely,
+// looks right needs only remarks.
 const CAPTURE_REMARKS_HINTS = {
-  positive: 'Remarks',
-  question: 'Suggestions / questions / remarks',
-  negative: 'expected / observed / cause (if known)',
+  'looks-right': 'Remarks',
+  'not-sure': 'Suggestions / questions / remarks',
+  'looks-wrong': 'expected / observed / cause (if known)',
 };
 
 // The pressed mark, as its bare word — null while the form is folded.
@@ -872,7 +872,7 @@ function renderCaptureMarks() {
   }
 }
 
-// Folds the form and clears the mark. Typed note text survives a fold, so
+// Folds the form and clears the mark. Typed remarks survive a fold, so
 // an accidental cancel loses nothing; a completed save clears it below.
 function foldCaptureForm() {
   captureMark = null;
@@ -963,7 +963,7 @@ function collectSidebarView() {
 // or null when the pull failed) and this page's half. CAPTURE_FORMAT comes
 // from lib/dr-capture/state.js, loaded by this page too, so the fallback
 // carries the same version the serializer stamps.
-function assembleAndSaveCapture(mark, note, pageState) {
+function assembleAndSaveCapture(mark, remarks, pageState) {
   const at = new Date();
   const state = Object.assign({
     captureFormat: CAPTURE_FORMAT,
@@ -985,7 +985,7 @@ function assembleAndSaveCapture(mark, note, pageState) {
     at: at.toISOString(),
   };
   state.mark = mark;
-  state.note = note;
+  state.remarks = remarks;
   state.sidebarView = collectSidebarView();
   // Provenance is evidence: the two contexts' rows stay in separate lists.
   state.log = {
@@ -994,7 +994,7 @@ function assembleAndSaveCapture(mark, note, pageState) {
   };
   // A failure while building or saving the file used to surface as the
   // finish button doing nothing. It now reports on the status line and is
-  // logged; the form stays open with the typed note, so a retry costs
+  // logged; the form stays open with the typed remarks, so a retry costs
   // nothing.
   try {
     const html = DR_CAPTURE.buildCaptureDocument({
@@ -1002,7 +1002,7 @@ function assembleAndSaveCapture(mark, note, pageState) {
       lockedStatusText: APPLY_BLOCKED_STATUS_MSG,
     });
     saveCaptureFile({
-      filename: DR_CAPTURE.filenameFor({ at: at, url: state.meta.url }),
+      filename: DR_CAPTURE.filenameFor({ at: at, url: state.meta.url, mark: mark }),
       html: html,
     });
   } catch (e) {
@@ -1032,15 +1032,15 @@ function assembleAndSaveCapture(mark, note, pageState) {
 function saveCapture() {
   if (captureMark === null) return;
   const mark = captureMark;
-  const note = captureRemarksEl ? captureRemarksEl.value : '';
+  const remarks = captureRemarksEl ? captureRemarksEl.value : '';
   DR_LOG.debug('Dynamic Rounding: finish pressed; asking for capture state.');
   DR_BUS.request('request:captureState', {}, (answer) => {
     if (!answer) {
       DR_LOG.warn('Dynamic Rounding: capture state request went unanswered.');
-      assembleAndSaveCapture(mark, note, null);
+      assembleAndSaveCapture(mark, remarks, null);
       return;
     }
-    assembleAndSaveCapture(mark, note, answer);
+    assembleAndSaveCapture(mark, remarks, answer);
   });
 }
 

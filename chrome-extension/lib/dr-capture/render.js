@@ -10,7 +10,7 @@
  *
  * buildCaptureDocument() turns one capture state into one self-contained
  * HTML document — a string in, a string out, no browser API touched. The
- * document reads as a report: the mark and note on top, the bound table
+ * document reads as a report: the mark and remarks on top, the bound table
  * beside a likeness of the sidebar, the registry, the tuning block in
  * force, the log rows of both contexts, the fixture seed as readable text,
  * and the whole state as machine-readable JSON at the bottom.
@@ -50,10 +50,22 @@ const CAPTURE_CSP = [
 ].join('; ');
 
 const CAPTURE_MARK_GLYPHS = {
-  positive: '\u{1F44D}',
-  question: '\u{1F914}',
-  negative: '\u{1F44E}',
+  'looks-right': '\u{1F44D}',
+  'not-sure': '\u{1F914}',
+  'looks-wrong': '\u{1F44E}',
 };
+
+// The mark's word for reading, derived from its token — "looks-right" reads
+// "Looks right" — so the glyph map above stays the one list of marks. Only the
+// three own tokens derive a word; any other value returns as it is, and the
+// caller escapes it like every other value.
+function captureMarkLabel(token) {
+  if (!Object.prototype.hasOwnProperty.call(CAPTURE_MARK_GLYPHS, token)) {
+    return displayValue(token);
+  }
+  const words = String(token).split('-').join(' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 const CAPTURE_STYLES = [
   'body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; color: #1a1a1a; background: #fff; }',
@@ -64,8 +76,8 @@ const CAPTURE_STYLES = [
   '.cap-mark span { font-size: 13px; color: #555; vertical-align: middle; }',
   'dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0; }',
   'dt { color: #555; } dd { margin: 0; overflow-wrap: anywhere; }',
-  '.cap-note { border-left: 3px solid #3d85c6; padding: 4px 12px; margin: 12px 0; }',
-  '.cap-note p { margin: 2px 0; white-space: pre-wrap; }',
+  '.cap-remarks { border-left: 3px solid #3d85c6; padding: 4px 12px; margin: 12px 0; }',
+  '.cap-remarks p { margin: 2px 0; white-space: pre-wrap; }',
   '.cap-visual { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }',
   '.cap-page { flex: 1 1 320px; }',
   '.cap-panel { flex: 0 0 260px; border: 1px solid #ccc; border-radius: 8px; padding: 12px; }',
@@ -112,30 +124,54 @@ function capturePad2(n) {
   return String(n).padStart(2, '0');
 }
 
-// The hostname, reduced to something a filename can hold. Chrome strips
-// path separators out of a download name anyway; build them out here.
-function captureHostSlug(url) {
+// A value reduced to something a filename can hold: lower case, runs of
+// anything outside a-z and 0-9 collapsed to one dash, edge dashes trimmed.
+// Chrome strips path separators out of a download name anyway; build them
+// out here.
+function captureSlug(value) {
+  return String(value).toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+// The page's source for the file name: its host with the www. dropped, or,
+// for a page opened from disk (a file: URL has no host), the page file's
+// name without its extension. 'no-source' stands for no address, an address
+// that does not parse, or one that yields no name (file:///, about:blank).
+function captureSourceSlug(url) {
   if (!url) return 'no-source';
-  let host;
+  let parsed;
   try {
-    host = new URL(url).hostname;
+    parsed = new URL(url);
   } catch (e) {
     return 'no-source';
   }
-  const slug = host.toLowerCase()
-    .replace(/^www\./, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return slug || 'no-source';
+  let source;
+  if (parsed.protocol === 'file:') {
+    const segment = parsed.pathname.split('/').filter(Boolean).pop() || '';
+    let name = segment;
+    try {
+      name = decodeURIComponent(segment);
+    } catch (e) {
+      // A malformed escape keeps the raw segment.
+    }
+    source = name.replace(/\.[^.]*$/, '');
+  } else {
+    source = parsed.hostname.replace(/^www\./, '');
+  }
+  return captureSlug(source) || 'no-source';
 }
 
-// Date first so captures sort beside date-named fixtures; time last so a
-// second capture of the same page is a new file, never Chrome's "(1)" copy.
+// Compact date first so captures sort by day; time after the source so a
+// second capture of the same page is a new file, never Chrome's "(1)" copy;
+// the mark token last, so a folder listing shows each file's verdict.
+// The mark passes through the same reducer as the source.
 function captureFilenameFor(opts) {
   const at = opts.at;
-  const date = at.getFullYear() + '-' + capturePad2(at.getMonth() + 1) + '-' + capturePad2(at.getDate());
+  const date = at.getFullYear() + capturePad2(at.getMonth() + 1) + capturePad2(at.getDate());
   const time = capturePad2(at.getHours()) + capturePad2(at.getMinutes()) + capturePad2(at.getSeconds());
-  return 'dr-capture-' + date + '-' + captureHostSlug(opts.url) + '-' + time + '.html';
+  return 'dr-capture-' + date + '-' + captureSourceSlug(opts.url) + '-' + time +
+    '-' + captureSlug(opts.mark) + '.html';
 }
 
 /* -------------------------------------------------------------- size note */
@@ -174,7 +210,7 @@ function captureSizeWarning(state) {
 
 function renderCaptureHeader(state) {
   const meta = state.meta || {};
-  // Own-property guard: only the three mark words resolve a glyph. A bare
+  // Own-property guard: only the three mark tokens resolve a glyph. A bare
   // lookup would resolve prototype property names too, and the glyph is
   // interpolated as markup.
   const glyph = Object.prototype.hasOwnProperty.call(CAPTURE_MARK_GLYPHS, state.mark)
@@ -189,9 +225,9 @@ function renderCaptureHeader(state) {
   ].map(function (pair) {
     return '<dt>' + escapeHtml(pair[0]) + '</dt><dd>' + escapeHtml(pair[1]) + '</dd>';
   }).join('');
-  // The note is one free-text field; line breaks the user typed survive
-  // through the pre-wrap rule on .cap-note.
-  const noteRow = '<p><b>Remarks:</b> ' + escapeHtml(displayValue(state.note)) + '</p>';
+  // The remarks are one free-text field; line breaks the user typed survive
+  // through the pre-wrap rule on .cap-remarks.
+  const remarksRow = '<p><b>Remarks:</b> ' + escapeHtml(displayValue(state.remarks)) + '</p>';
   // What the file holds, stated where the person about to attach it reads
   // it: the script-free CSP makes the file safe to open, and this line
   // covers the other half — the values it carries.
@@ -199,10 +235,10 @@ function renderCaptureHeader(state) {
     'its address and title, and browser details. Share it as you would share the page.</p>';
   return '<header>' +
     '<h1>DynamicRounding capture</h1>' +
-    '<p class="cap-mark">' + glyph + ' <span>' + escapeHtml(displayValue(state.mark)) + '</span></p>' +
+    '<p class="cap-mark">' + glyph + ' <span>' + escapeHtml(captureMarkLabel(state.mark)) + '</span></p>' +
     '<dl>' + rows + '</dl>' +
     holdsRow +
-    '<section class="cap-note">' + noteRow + '</section>' +
+    '<section class="cap-remarks">' + remarksRow + '</section>' +
     '</header>';
 }
 
@@ -336,7 +372,7 @@ function renderTuningRows(tuning) {
 }
 
 // The detection tuning block in force at capture time (D8): every key of
-// state.tuning with its value, so a negative capture shows the values
+// state.tuning with its value, so a looks-wrong capture shows the values
 // detection ran under. A failed state pull leaves tuning null; the
 // section still renders, with one row holding the absence placeholder, so
 // the capture still saves.
