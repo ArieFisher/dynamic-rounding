@@ -22840,6 +22840,88 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     'dr-capture-20260909-example-com-140506-x.html');
 })();
 
+// --- lib/dr-capture: the file reads top to bottom ---
+//
+// The header is a header: the title and a small muted list of facts. The
+// mark and the remarks share the first section under it. The sidebar
+// likeness comes before the bound table, so the file reads in the order a
+// reader reconstructs the scene: what the controls said, then what the page
+// showed. A thin line separates every top-level section. A reader hint (a
+// note) is one size below the table text, italic, and opens with "Note: ",
+// so it never reads as content; the lens preview lines are content.
+(function captureLayout() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
+  const makeState = (over) => Object.assign({
+    captureFormat: 4,
+    meta: { url: 'https://www.example.com/prices', title: 'Prices',
+      version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
+    mark: 'looks-wrong',
+    remarks: 'the total rounded away',
+    settings: { enabled: true },
+    activeTableIndex: 0,
+    tables: [{
+      kind: 'native', appliedFlag: 'simplified', lastRoundOptions: { offsetTop: -0.5 },
+      maxMagnitude: null, locked: false, rowCount: 2, columnCount: 1,
+      cells: [
+        { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null },
+        { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' },
+      ],
+    }],
+    lensPreview: null,
+    sidebarView: {
+      enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
+      rangeExpr: '', stops: [-1, 0, 1], topVal: 0, botVal: 0, coupled: true,
+      status: '', noTable: false, locked: false,
+      lensPreview: { top: ['98,765'], bottom: [] },
+    },
+    log: {
+      content: { entries: [], dropped: 0, limit: 50 },
+      sidebar: { entries: [], dropped: 0, limit: 50 },
+    },
+    page: { url: 'https://www.example.com/prices', title: 'Prices' },
+    fixtureSeed: '<table><tr><td>98,765</td></tr></table>',
+  }, over || {});
+  const html = buildCaptureDocument({ state: makeState(), lockedStatusText: '' });
+  const header = html.slice(html.indexOf('<header>'), html.indexOf('</header>'));
+
+  eq('capture-render: the header holds the title and a small muted meta list',
+    /<header><h1>[^<]*<\/h1><dl class="cap-meta">/.test(html) &&
+      html.includes('.cap-meta { font-size: 12px'), true);
+  eq('capture-render: the header carries neither the mark nor the remarks',
+    header.includes('cap-mark') || header.includes('Remarks:'), false);
+  eq('capture-render: the mark and the remarks share one section directly under the header',
+    /<\/header><main><section class="cap-remarks"><p class="cap-mark">[\s\S]{0,120}<b>Remarks:<\/b> the total rounded away/
+      .test(html), true);
+  eq('capture-render: the mark renders its glyph and word in the remarks section',
+    /<section class="cap-remarks"><p class="cap-mark">\u{1F44E} <span>Looks wrong<\/span>/u.test(html), true);
+  const order = ['<h2>Sidebar</h2>', '<h2>Bound table</h2>', '<h2>Registry</h2>',
+    '<h2>Detection tuning</h2>', '<h2>Extension logs</h2>', '<h2>Fixture seed</h2>']
+    .map((h) => html.indexOf(h));
+  eq('capture-render: the file reads sidebar, bound table, registry, tuning, logs, seed',
+    order.every((i, n) => i !== -1 && (n === 0 || i > order[n - 1])), true);
+  eq('capture-render: the likeness and the table no longer sit side by side',
+    html.includes('cap-visual') || html.includes('Sidebar (rendered open)'), false);
+  eq('capture-render: a thin line separates each top-level section',
+    html.includes('main > section { border-top: 1px solid #ddd'), true);
+  eq('capture-render: a note is one size below the table text, italic, and prefixed',
+    html.includes('.cap-note { font-size: 13px; font-style: italic') &&
+      html.includes('<p class="cap-note">Note: Hover a dotted cell to see its original.</p>'), true);
+  eq('capture-render: every reader hint renders as a note',
+    (html.match(/<p class="cap-note">Note: /g) || []).length, 4);
+  const unbound = buildCaptureDocument({
+    state: makeState({ activeTableIndex: null, tables: [], fixtureSeed: null }),
+    lockedStatusText: '',
+  });
+  eq('capture-render: an unbound capture carries the one note that always applies',
+    (unbound.match(/<p class="cap-note">Note: /g) || []).length === 1 &&
+      unbound.includes('Note: Service worker rows are not captured.'), true);
+  eq('capture-render: lens preview lines are content, not notes',
+    /<div class="cap-band">98,765<\/div>/.test(html), true);
+  eq('capture-render: an absence is never a note',
+    unbound.includes('<p class="cap-empty">No table was bound'), true);
+})();
+
 // --- lib/dr-capture: the renderer keeps the state's absences (#304) ---
 //
 // The state records three kinds of absence honestly; the page a human reads
@@ -23096,9 +23178,9 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     DR_CAPTURE.markLabel('constructor'), 'constructor');
 })();
 
-// #310: the file says what it holds where the person about to attach it
-// reads it — the safe-to-attach claim covers script safety only.
-(function captureHeaderStatesContents() {
+// The header once stated what the file holds (#310). The product owner
+// retired the line as stating the obvious; this pin keeps it out.
+(function captureHeaderCarriesNoCaveat() {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
@@ -23110,10 +23192,8 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     },
     lockedStatusText: '',
   });
-  eq('capture-header: the header says what the file holds',
-    html.includes('table contents') &&
-      html.includes('Share it as you would share the page.'),
-    true);
+  eq('capture-header: the header carries no share caveat',
+    html.includes('Share it as you would share the page.'), false);
 })();
 
 // --- lib/dr-capture: the tuning block in force at capture time (D8) ---
@@ -23741,7 +23821,8 @@ function makeIsolatedModel() {
       content: {
         entries: [
           { at: '2026-09-17T16:00:00.000Z', level: 'warn', text: 'traced row',
-            stack: '    at roundTable (content.js:1)\n    at <script>alert(1)</script>' },
+            stack: '    at roundTable (chrome-extension://' + 'a'.repeat(32) +
+              '/content.js:1523:18)\n    at <script>alert(1)</script>' },
           { at: '2026-09-17T16:00:01.000Z', level: 'debug', text: 'plain row', stack: null },
         ],
         dropped: 0, limit: 50,
@@ -23751,8 +23832,9 @@ function makeIsolatedModel() {
   };
   const html = DR_CAPTURE.buildCaptureDocument({ state: renderState, lockedStatusText: '' });
   const visible = html.slice(0, html.indexOf('id="capture-state"'));
-  eq('capture-render: a row\'s stack trace renders under the row, folded',
-    /traced row[\s\S]{0,200}<details[\s\S]{0,200}at roundTable \(content\.js:1\)/.test(visible), true);
+  eq('capture-render: a row\'s stack trace renders under the row, folded, each frame in the short form',
+    /traced row[\s\S]{0,200}<details[\s\S]{0,200}content\.js:1523:18 \(roundTable\)/.test(visible) &&
+      !visible.includes('chrome-extension://'), true);
   eq('capture-render: a row with no stack trace renders no fold',
     (visible.match(/<details/g) || []).length, 1);
   eq('capture-render: a hostile stack trace reaches the visible half escaped only',
@@ -23776,6 +23858,40 @@ function makeIsolatedModel() {
     sidebarJsSrc.slice(fnStart, sidebarJsSrc.indexOf('\nfunction ', fnStart + 1));
   eq('capture: assembleAndSaveCapture\'s fallback state carries errorState: null',
     fnStart !== -1 && /errorState:\s*null/.test(fnBody), true);
+})();
+
+// --- lib/dr-capture: stack frames print in the short form ---
+//
+// V8 writes a frame as "at fn (origin/path:line:col)" or, with no name, as
+// "at origin/path:line:col". The capture prints each frame the way Chrome's
+// extension error page does: path:line:col (fn), the extension's own origin
+// dropped, an unnamed frame marked as an anonymous function. A line outside
+// either shape prints as it is, so nothing is lost; the JSON island keeps
+// the raw string byte-exact either way.
+(function captureTraceShortForm() {
+  if (typeof globalThis.DR_CAPTURE !== 'object' ||
+      typeof DR_CAPTURE.formatStackFrame !== 'function') {
+    eq('capture-trace: the package exposes the frame formatter',
+      typeof globalThis.DR_CAPTURE === 'object' && typeof DR_CAPTURE.formatStackFrame, 'function');
+    return;
+  }
+  const origin = 'chrome-extension://' + 'abcdefghijklmnopabcdefghijklmnop' + '/';
+  const f = DR_CAPTURE.formatStackFrame;
+  eq('capture-trace: a named frame renders as path:line:col (name)',
+    f('    at roundTable (' + origin + 'content.js:1523:18)'), 'content.js:1523:18 (roundTable)');
+  eq('capture-trace: an unnamed frame renders as an anonymous function',
+    f('    at ' + origin + 'adapters/messaging.js:399:9'),
+    'adapters/messaging.js:399:9 (anonymous function)');
+  eq('capture-trace: an Object.<anonymous> frame keeps its function part',
+    f('    at Object.<anonymous> (' + origin + 'x.js:1:2)'), 'x.js:1:2 (Object.<anonymous>)');
+  eq('capture-trace: an async frame keeps the async prefix',
+    f('    at async fetchIt (' + origin + 'y.js:3:4)'), 'y.js:3:4 (async fetchIt)');
+  eq('capture-trace: a constructor frame keeps the new prefix',
+    f('    at new Foo (' + origin + 'z.js:5:6)'), 'z.js:5:6 (new Foo)');
+  eq('capture-trace: a frame from another origin keeps its URL',
+    f('    at run (https://example.com/app.js:7:8)'), 'https://example.com/app.js:7:8 (run)');
+  eq('capture-trace: a line outside the frame shape prints as it is',
+    ['Error', '<script>alert(1)</script>', ''].map(f), ['Error', '<script>alert(1)</script>', '']);
 })();
 
 // --- lib/dr-log: call sites route through the buffer ---

@@ -17,6 +17,7 @@ const DR_CAPTURE = {
   buildCaptureDocument,
   filenameFor: captureFilenameFor,
   markLabel: captureMarkLabel,
+  formatStackFrame,
   sizeWarning: captureSizeWarning,
   escapeHtml,
 };
