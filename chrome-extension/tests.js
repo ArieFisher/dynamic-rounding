@@ -15776,7 +15776,7 @@ const PRE_MOVE_TUNING = {
   dataTestCellBudget: 1000,
   vendorProfiles: [
     {
-      name: 'database-query',
+      name: 'databricks',
       classToken: 'dg--',
       scrollContainerSelectors: ['.dg--grid-scroll-container', '.dg--grid-container'],
       pinnedPaneSelectors: ['.dg--pinned-grid'],
@@ -15945,7 +15945,7 @@ const PRE_MOVE_TUNING = {
     sandbox.outcomes.displayInlineFlexPasses, true);
   eq('tuning block: looksLikeGrid rejects display:block (not in gridDisplayValues)',
     sandbox.outcomes.displayBlockFails, false);
-  eq('tuning block: looksLikeGrid short-circuits ACCEPT for the default database-query vendorProfiles class token',
+  eq('tuning block: looksLikeGrid short-circuits ACCEPT for the default databricks vendorProfiles class token',
     sandbox.outcomes.vendorClassShortCircuitsAccept, true);
   eq('tuning block: looksLikeGrid still runs the width-agreement step with no vendor class',
     sandbox.outcomes.noVendorClassFailsWidthCheck, false);
