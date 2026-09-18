@@ -92,7 +92,7 @@ const uiToggleCode = sourceByName('ui-toggle.js');
 const allContentSrc = contentScriptBundle;
 eval(contentScriptBundle + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
-globalThis.DR_TUNING = DR_TUNING;
+globalThis.DR_DETECTION_SETTINGS = DR_DETECTION_SETTINGS;
 globalThis.DR_NUMBER = DR_NUMBER;
 // Expose the log buffer (lib/dr-log) for the dr-log test suite.
 globalThis.DR_LOG = DR_LOG;
@@ -100,7 +100,7 @@ globalThis.DR_LOG = DR_LOG;
 // wire-response composer for the capture test suites.
 globalThis.collectCaptureState = collectCaptureState;
 globalThis.buildCaptureStateResponse = buildCaptureStateResponse;
-// Expose the capture format version so the capture-tuning tests can pin the
+// Expose the capture format version so the capture-settings tests can pin the
 // state's captureFormat against the source of truth instead of a literal.
 globalThis.CAPTURE_FORMAT = CAPTURE_FORMAT;
 // Expose the lib/dr-capture package bundle, mirroring DR_NUMBER above.
@@ -142,7 +142,7 @@ globalThis.TOGGLE_DOT_OVERLAP_PX = TOGGLE_DOT_OVERLAP_PX;
 globalThis.TOGGLE_DOT_OVERHANG_PX = TOGGLE_DOT_OVERHANG_PX;
 globalThis.TOGGLE_COLOR_ON = TOGGLE_COLOR_ON;
 globalThis.TOGGLE_COLOR_OFF = TOGGLE_COLOR_OFF;
-globalThis.TOUCH_AUTOCOLLAPSE_MS = DR_TUNING.pillboxAutoCollapseMs;
+globalThis.PILLBOX_AUTO_COLLAPSE_MS = PILLBOX_AUTO_COLLAPSE_MS;
 // _globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
 Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   get() { return _globalTapCollapseAdded; },
@@ -199,7 +199,7 @@ globalThis.reapplyGridRounding = reapplyGridRounding;
 globalThis.computeGridRoundedValues = computeGridRoundedValues;
 globalThis.gridObservers = gridObservers;
 globalThis.gridReapplyTimers = gridReapplyTimers;
-globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_TUNING.gridRedrawDelayMs;
+globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.gridRedrawDelayMs;
 // Expose the nomination step (lib/dr-table/detect.js) for the nesting and
 // pending-table suites. The step reports outcomes findTables drops, so the
 // suites read them here rather than through findTables.
@@ -220,7 +220,7 @@ globalThis.pendingRetestTimers = pendingRetestTimers;
 globalThis.pendingRetestCounts = pendingRetestCounts;
 // Expose phantom a11y predicate and its threshold constant for tests
 globalThis.isPhantomA11yTable = isPhantomA11yTable;
-globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_TUNING.offscreenLeftPx;
+globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_DETECTION_SETTINGS.offscreenLeftPx;
 // Expose content.js's badge/marker call-site wrapper (sprint extract-dr-table)
 // for direct unit testing.
 globalThis.markAndToggleIfNewGrid = markAndToggleIfNewGrid;
@@ -4196,7 +4196,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 })();
 
 // --- Auto-collapse timer ---
-// Spec (AC): after .expanded is added, TOUCH_AUTOCOLLAPSE_MS ms later .expanded is removed.
+// Spec (AC): after .expanded is added, PILLBOX_AUTO_COLLAPSE_MS ms later .expanded is removed.
 // We fake setTimeout to capture and drain the queued callback synchronously.
 
 (function morphAC_autoCollapse_timer() {
@@ -4271,11 +4271,11 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   eq('expanding-toggle: auto-collapse: .expanded after first touch tap',
     buttonEl.classList.contains('expanded'), true);
 
-  // Drain the captured timer (simulating TOUCH_AUTOCOLLAPSE_MS passing)
+  // Drain the captured timer (simulating PILLBOX_AUTO_COLLAPSE_MS passing)
   const timer = pendingTimers[pendingTimers.length - 1];
   const capturedMs = timer ? timer.ms : -1;
-  eq('expanding-toggle: auto-collapse: timer duration equals TOUCH_AUTOCOLLAPSE_MS',
-    capturedMs, TOUCH_AUTOCOLLAPSE_MS);
+  eq('expanding-toggle: auto-collapse: timer duration equals PILLBOX_AUTO_COLLAPSE_MS',
+    capturedMs, PILLBOX_AUTO_COLLAPSE_MS);
 
   if (timer && timer.fn) timer.fn();  // fire the callback
 
@@ -10244,10 +10244,10 @@ function makeOnScreenTable() {
   return table;
 }
 
-// --- AC: DR_TUNING.offscreenLeftPx is -9999 ---
+// --- AC: DR_DETECTION_SETTINGS.offscreenLeftPx is -9999 ---
 (function phantomA11y_threshold_value() {
-  eq('isPhantomA11yTable: DR_TUNING.offscreenLeftPx === -9999',
-    DR_TUNING.offscreenLeftPx, -9999);
+  eq('isPhantomA11yTable: DR_DETECTION_SETTINGS.offscreenLeftPx === -9999',
+    DR_DETECTION_SETTINGS.offscreenLeftPx, -9999);
 })();
 
 // ---------------------------------------------------------------------------
@@ -11315,7 +11315,7 @@ function asAddedGridNode(grid) {
 //   - A change to the subtree runs the nomination step from the root again. A
 //     registration clears the pending record and disconnects the observer.
 //   - A re-test that still finds the chain empty counts against
-//     DR_TUNING.pendingRetestCap; reaching the cap drops the observer, the
+//     DR_DETECTION_SETTINGS.pendingRetestCap; reaching the cap drops the observer, the
 //     timer, and the count, and records a debug log row.
 //   - The pending unit is the chain root, so a nest of several qualifying
 //     elements carries one observer.
@@ -11373,7 +11373,7 @@ function runPendingRetestTimers(timers) {
   let ran = 0;
   for (const timer of timers) {
     if (timer.cancelled || timer.ran) continue;
-    if (timer.ms !== DR_TUNING.gridRedrawDelayMs) continue;
+    if (timer.ms !== DR_DETECTION_SETTINGS.gridRedrawDelayMs) continue;
     timer.ran = true;
     ran++;
     timer.callback();
@@ -11550,8 +11550,8 @@ function fillDatabaseQueryGrid(grid) {
   ]);
   eq('pending AC3: a container of text rows never passes the data test',
     isDataTable(neverEl), false);
-  eq('pending AC3: the tuning block ships a re-test cap of 100',
-    DR_TUNING.pendingRetestCap, 100);
+  eq('pending AC3: the detection settings ship a re-test cap of 100',
+    DR_DETECTION_SETTINGS.pendingRetestCap, 100);
 
   // The log buffer holds the last 50 rows and counts the rows that dropped off
   // the front, so the two together give a running total this case can subtract
@@ -11574,12 +11574,12 @@ function fillDatabaseQueryGrid(grid) {
 
     const observer = observers[0];
     // One short of the cap: the observer stays connected.
-    for (let i = 0; i < DR_TUNING.pendingRetestCap - 1; i++) {
+    for (let i = 0; i < DR_DETECTION_SETTINGS.pendingRetestCap - 1; i++) {
       if (observer) observer.trigger();
       runPendingRetestTimers(timers);
     }
     eq('pending AC3: one short of the cap the count reads the failed re-tests',
-      pendingRetestCounts.get(neverEl), DR_TUNING.pendingRetestCap - 1);
+      pendingRetestCounts.get(neverEl), DR_DETECTION_SETTINGS.pendingRetestCap - 1);
     eq('pending AC3: one short of the cap the observer stays connected',
       observer && observer.disconnectCount, 0);
     eq('pending AC3: one short of the cap the container is still pending',
@@ -11749,11 +11749,11 @@ function fillDatabaseQueryGrid(grid) {
     if (observer) observer.trigger();
     if (observer) observer.trigger();
 
-    const scheduled = timers.filter((t) => t.ms === DR_TUNING.gridRedrawDelayMs);
+    const scheduled = timers.filter((t) => t.ms === DR_DETECTION_SETTINGS.gridRedrawDelayMs);
     eq('pending debounce: two mutations schedule two timers and cancel the first',
       scheduled.map((t) => t.cancelled), [true, false]);
     eq('pending debounce: the delay is the grid redraw delay',
-      scheduled.every((t) => t.ms === DR_TUNING.gridRedrawDelayMs), true);
+      scheduled.every((t) => t.ms === DR_DETECTION_SETTINGS.gridRedrawDelayMs), true);
 
     fillDatabaseQueryGrid(grid);
     withToggleDocumentMock(function () {
@@ -11995,10 +11995,10 @@ function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
 
 // ---------------------------------------------------------------------------
 // Sprint data-test-budget: the data test spends one budget of
-// DR_TUNING.dataTestCellBudget cell reads, walked in document order and
+// DR_DETECTION_SETTINGS.dataTestCellBudget cell reads, walked in document order and
 // stopped at the first number, on native tables and grids alike. It replaces
 // the retired per-row sample on grids and the retired unbounded scan on
-// native tables. isDataTable and DR_TUNING.dataTestCellBudget live in
+// native tables. isDataTable and DR_DETECTION_SETTINGS.dataTestCellBudget live in
 // chrome-extension/lib/dr-table/detect.js and chrome-extension/constants.js.
 // ---------------------------------------------------------------------------
 
@@ -12039,11 +12039,11 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
 // with a number at the budget-th cell passes; the same table with its only
 // number one cell past the budget fails.
 (function dataTestBudget_nativeTable_boundary() {
-  const budget = DR_TUNING.dataTestCellBudget;
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
   const cols = 101;
   const rows = Math.ceil((budget + 1) / cols);
 
-  eq('data test: DR_TUNING.dataTestCellBudget is 1000',
+  eq('data test: DR_DETECTION_SETTINGS.dataTestCellBudget is 1000',
     budget, 1000);
 
   const noNumberTable = makeNativeTableEl(buildBudgetTableRowsSpec(rows, cols, null));
@@ -12075,7 +12075,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
 // number far past 1000 cells would have passed. The budget applies to native tables and
 // grids alike, so this table fails.
 (function dataTestBudget_nativeTable_farPastBudgetFails() {
-  const budget = DR_TUNING.dataTestCellBudget;
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
   const cols = 100;
   const rows = Math.ceil((budget * 3) / cols);
   const totalCells = rows * cols;
@@ -15609,7 +15609,7 @@ function withRightClickSandbox(run) {
 })();
 
 // jsdom-less criterion: detect.js is evaluated with its one dependency —
-// constants.js, for DR_TUNING — and nothing else, in a vm context with no
+// constants.js, for DR_DETECTION_SETTINGS — and nothing else, in a vm context with no
 // `chrome`, no `window`, and no `getComputedStyle` at all, against a minimal
 // fake document holding one plain <table>. Detection must still find the
 // table and must not throw — this is the acceptance bar for "runs under
@@ -15672,28 +15672,31 @@ function withRightClickSandbox(run) {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint detection-constants: every detection tuning value and both lookup
-// lists now have one home, the tuning block (DR_TUNING, in the configuration
-// file constants.js), with no behavior change. Four groups of tests:
+// Sprint detection-constants: every detection setting and both lookup
+// lists now have one home, the detection settings (DR_DETECTION_SETTINGS, in
+// the configuration file constants.js), with no behavior change. The
+// pillbox auto-collapse delay, once beside them, lives in the pillbox view
+// (ui-toggle.js) as its own constant: the view alone reads it. Four groups
+// of tests:
 //   1. Source scan: none of the eight retired names carries a second
 //      const/let/var definition anywhere the manifest loads, and the two
 //      retired literal forms (the repetition-share division, the bare
 //      column-width-agreement literal) and the retired Set are gone from
 //      the detection layer (lib/dr-table/detect.js).
-//   2. Source scan: the detection layer, the pillbox view (ui-toggle.js),
-//      and the controller (content.js) read DR_TUNING as a bare global —
-//      no typeof guard, no OR-fallback, no reassignment.
+//   2. Source scan: the detection layer and the controller (content.js)
+//      read DR_DETECTION_SETTINGS as a bare global — no typeof guard, no
+//      OR-fallback, no reassignment — and the pillbox view reads none of it.
 //   3. Behavior: a sandbox that evaluates the configuration file and then
-//      the detection layer carries the ten pre-move values unchanged, and
+//      the detection layer carries the nine pre-move values unchanged, and
 //      looksLikeGrid, findTargetTable, isPhantomA11yTable, and isDataTable
 //      behave exactly as the pre-move source did, on fixtures whose outcome
 //      the pre-move values determine.
 //   4. Behavior: a sandbox that evaluates the detection layer alone, with
 //      no configuration file, fails at load with a ReferenceError naming
-//      DR_TUNING — before any function in the file runs.
+//      DR_DETECTION_SETTINGS — before any function in the file runs.
 // ---------------------------------------------------------------------------
 
-(function tuningBlock_retiredNamesHaveNoSecondDefinition() {
+(function detectionSettings_retiredNamesHaveNoSecondDefinition() {
   const RETIRED_NAMES = [
     'GRID_MIN_CHILDREN',
     'GRID_WALK_DEPTH_CAP',
@@ -15713,59 +15716,76 @@ function withRightClickSandbox(run) {
 
   for (const name of RETIRED_NAMES) {
     const definitionPattern = new RegExp(`\\b(const|let|var)\\s+${name}\\b`);
-    eq(`tuning block: ${name} carries no const/let/var definition anywhere the manifest loads`,
+    eq(`detection settings: ${name} carries no const/let/var definition anywhere the manifest loads`,
       definitionPattern.test(scannedSources), false);
   }
 })();
 
-(function tuningBlock_retiredLiteralFormsAreGoneFromDetection() {
+(function detectionSettings_retiredLiteralFormsAreGoneFromDetection() {
   const src = detectCode || '';
-  eq('tuning block: the detection layer no longer computes the repetition floor as children.length / 2',
+  eq('detection settings: the detection layer no longer computes the repetition floor as children.length / 2',
     /children\.length\s*\/\s*2/.test(src), false);
-  eq('tuning block: the detection layer no longer compares column-width agreement to a bare 0.8 literal',
+  eq('detection settings: the detection layer no longer compares column-width agreement to a bare 0.8 literal',
     />=\s*0\.8\b/.test(src), false);
-  eq('tuning block: the detection layer no longer builds a Set of the four display values',
+  eq('detection settings: the detection layer no longer builds a Set of the four display values',
     /new Set\(\s*\[\s*['"]grid['"]/.test(src), false);
-  eq('tuning block: the detection layer reads the display-value list through DR_TUNING.gridDisplayValues.includes(display)',
-    /DR_TUNING\.gridDisplayValues\.includes\(display\)/.test(src), true);
+  eq('detection settings: the detection layer reads the display-value list through DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)',
+    /DR_DETECTION_SETTINGS\.gridDisplayValues\.includes\(display\)/.test(src), true);
 })();
 
-(function tuningBlock_noFallbackCopyOfDrTuning() {
+(function detectionSettings_noFallbackCopy() {
   const filesToScan = {
     'lib/dr-table/detect.js': detectCode,
-    'ui-toggle.js': uiToggleCode,
     'content.js': sourceByName('content.js'),
   };
   for (const [file, src] of Object.entries(filesToScan)) {
     if (src === null || src === undefined) {
-      eq(`tuning block: source file ${file} present in manifest`, false, true);
+      eq(`detection settings: source file ${file} present in manifest`, false, true);
       continue;
     }
-    eq(`tuning block: ${file} carries no typeof DR_TUNING guard`,
-      /typeof\s+DR_TUNING\b/.test(src), false);
-    eq(`tuning block: ${file} carries no DR_TUNING || fallback`,
-      /DR_TUNING\s*\|\|/.test(src), false);
-    eq(`tuning block: ${file} carries no window.DR_TUNING read`,
-      /window\.DR_TUNING\b/.test(src), false);
-    eq(`tuning block: ${file} carries no globalThis.DR_TUNING read`,
-      /globalThis\.DR_TUNING\b/.test(src), false);
-    eq(`tuning block: ${file} carries no DR_TUNING reassignment`,
-      /\bDR_TUNING\s*=[^=]/.test(src), false);
+    eq(`detection settings: ${file} carries no typeof DR_DETECTION_SETTINGS guard`,
+      /typeof\s+DR_DETECTION_SETTINGS\b/.test(src), false);
+    eq(`detection settings: ${file} carries no DR_DETECTION_SETTINGS || fallback`,
+      /DR_DETECTION_SETTINGS\s*\|\|/.test(src), false);
+    eq(`detection settings: ${file} carries no window.DR_DETECTION_SETTINGS read`,
+      /window\.DR_DETECTION_SETTINGS\b/.test(src), false);
+    eq(`detection settings: ${file} carries no globalThis.DR_DETECTION_SETTINGS read`,
+      /globalThis\.DR_DETECTION_SETTINGS\b/.test(src), false);
+    eq(`detection settings: ${file} carries no DR_DETECTION_SETTINGS reassignment`,
+      /\bDR_DETECTION_SETTINGS\s*=[^=]/.test(src), false);
   }
 })();
 
-// The tuning block's expected contents. Ten values are the pre-move ones,
-// hand-copied from origin/main's lib/dr-table/detect.js (read via
+// The pillbox view holds no detection setting: its touch auto-collapse
+// delay is its own constant, so the view reads the detection settings
+// nowhere and the settings carry no delay the view alone reads.
+(function detectionSettings_pillboxViewHoldsItsOwnDelay() {
+  const src = uiToggleCode || '';
+  eq('detection settings: ui-toggle.js defines PILLBOX_AUTO_COLLAPSE_MS as its own constant',
+    /^const PILLBOX_AUTO_COLLAPSE_MS = 3000;/m.test(src), true);
+  eq('detection settings: ui-toggle.js reads DR_DETECTION_SETTINGS nowhere',
+    /DR_DETECTION_SETTINGS/.test(src), false);
+  eq('detection settings: the auto-collapse timer takes the view\'s own constant',
+    /},\s*PILLBOX_AUTO_COLLAPSE_MS\);/.test(src), true);
+  eq('detection settings: the settings carry no pillboxAutoCollapseMs key',
+    Object.prototype.hasOwnProperty.call(DR_DETECTION_SETTINGS, 'pillboxAutoCollapseMs'), false);
+})();
+
+// The detection settings' expected contents. Nine values are the pre-move
+// ones, hand-copied from origin/main's lib/dr-table/detect.js (read via
 // `git show origin/main:chrome-extension/lib/dr-table/detect.js`) and the
 // design doc's key table; the detection-constants sprint moved them and
-// changed none of them. Three keys have no pre-move value: nestingDepth, the
+// changed none of them. A tenth moved value, the pillbox auto-collapse
+// delay, went back to the pillbox view as its own constant: the view alone
+// reads it, and it shapes nothing detection finds. Three keys have no
+// pre-move value: nestingDepth, the
 // nomination step's configured depth from the grid-nesting-rule sprint;
 // dataTestCellBudget, the data test's cell budget from the data-test-budget
 // sprint; and pendingRetestCap, a pending table's re-test cap from the
-// pending-retest sprint. Key order matches constants.js's DR_TUNING
+// pending-retest sprint. Key order matches constants.js's DR_DETECTION_SETTINGS
 // declaration, so the JSON.stringify-based eq() comparison below is not
 // order-sensitive noise.
-const PRE_MOVE_TUNING = {
+const PRE_MOVE_DETECTION_SETTINGS = {
   nestingDepth: 1,
   gridMinChildren: 5,
   gridWalkDepthCap: 15,
@@ -15791,20 +15811,19 @@ const PRE_MOVE_TUNING = {
   gridRedrawDelayMs: 100,
   pendingRetestCap: 100,
   offscreenLeftPx: -9999,
-  pillboxAutoCollapseMs: 3000,
 };
 
 // jsdom-less criterion, extended: one vm sandbox with no
 // chrome/window/getComputedStyle evaluates the configuration file
 // (constants.js) and then the detection layer (lib/dr-table/detect.js). The
-// test pins DR_TUNING's values against PRE_MOVE_TUNING above and runs
+// test pins DR_DETECTION_SETTINGS's values against PRE_MOVE_DETECTION_SETTINGS above and runs
 // looksLikeGrid, findTargetTable, isPhantomA11yTable, and isDataTable against
 // fixtures whose expected outcome holds only when each moved value reads at
 // its pre-move value: a wrong read (a stale copy, a transposed value, a wrong
 // sample size) flips at least one outcome below.
-(function tuningBlock_sandboxBehaviorMatchesPreMoveValues() {
+(function detectionSettings_sandboxBehaviorMatchesPreMoveValues() {
   if (constantsCode === null || detectCode === null) {
-    eq('tuning block: source files constants.js and lib/dr-table/detect.js present in manifest', false, true);
+    eq('detection settings: source files constants.js and lib/dr-table/detect.js present in manifest', false, true);
     return;
   }
   const vm = require('vm');
@@ -15814,8 +15833,8 @@ const PRE_MOVE_TUNING = {
   vm.runInContext(
     constantsCode + '\n' + detectCode + `
     try {
-      outcomes.tuningKeys = Object.keys(DR_TUNING).sort();
-      outcomes.tuning = DR_TUNING;
+      outcomes.settingsKeys = Object.keys(DR_DETECTION_SETTINGS).sort();
+      outcomes.settings = DR_DETECTION_SETTINGS;
 
       function makeCell(text, width) { return { textContent: text, offsetWidth: width }; }
       function makeRow(cls, cells) { return { className: cls, children: cells }; }
@@ -15918,58 +15937,58 @@ const PRE_MOVE_TUNING = {
     ctx
   );
 
-  eq('tuning block: the combined sandbox does not throw', sandbox.threw, null);
-  eq('tuning block: DR_TUNING exposes exactly thirteen keys, the ten pre-move keys plus nestingDepth, dataTestCellBudget, and pendingRetestCap',
-    sandbox.outcomes.tuningKeys, Object.keys(PRE_MOVE_TUNING).sort());
-  eq('tuning block: DR_TUNING carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, and pendingRetestCap at 100',
-    sandbox.outcomes.tuning, PRE_MOVE_TUNING);
-  eq('tuning block: looksLikeGrid rejects 4 children (below gridMinChildren)',
+  eq('detection settings: the combined sandbox does not throw', sandbox.threw, null);
+  eq('detection settings: DR_DETECTION_SETTINGS exposes exactly twelve keys, the nine pre-move keys plus nestingDepth, dataTestCellBudget, and pendingRetestCap',
+    sandbox.outcomes.settingsKeys, Object.keys(PRE_MOVE_DETECTION_SETTINGS).sort());
+  eq('detection settings: DR_DETECTION_SETTINGS carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, and pendingRetestCap at 100',
+    sandbox.outcomes.settings, PRE_MOVE_DETECTION_SETTINGS);
+  eq('detection settings: looksLikeGrid rejects 4 children (below gridMinChildren)',
     sandbox.outcomes.minChildrenBelowFails, false);
-  eq('tuning block: looksLikeGrid accepts 5 children (at gridMinChildren)',
+  eq('detection settings: looksLikeGrid accepts 5 children (at gridMinChildren)',
     sandbox.outcomes.minChildrenAtPasses, true);
-  eq('tuning block: looksLikeGrid rejects a 3-of-8 share (below gridRepetitionShare)',
+  eq('detection settings: looksLikeGrid rejects a 3-of-8 share (below gridRepetitionShare)',
     sandbox.outcomes.repetitionBelowFloorFails, false);
-  eq('tuning block: looksLikeGrid accepts a 5-of-10 share (at gridRepetitionShare)',
+  eq('detection settings: looksLikeGrid accepts a 5-of-10 share (at gridRepetitionShare)',
     sandbox.outcomes.repetitionAtFloorPasses, true);
-  eq('tuning block: looksLikeGrid accepts an 8-of-10 sampled-width agreement (at gridColumnWidthAgreement, within gridColumnWidthSample)',
+  eq('detection settings: looksLikeGrid accepts an 8-of-10 sampled-width agreement (at gridColumnWidthAgreement, within gridColumnWidthSample)',
     sandbox.outcomes.widthAgreementAtThresholdPasses, true);
-  eq('tuning block: looksLikeGrid rejects a 7-of-10 sampled-width agreement (below gridColumnWidthAgreement)',
+  eq('detection settings: looksLikeGrid rejects a 7-of-10 sampled-width agreement (below gridColumnWidthAgreement)',
     sandbox.outcomes.widthAgreementBelowThresholdFails, false);
-  eq('tuning block: looksLikeGrid accepts display:grid (in gridDisplayValues)',
+  eq('detection settings: looksLikeGrid accepts display:grid (in gridDisplayValues)',
     sandbox.outcomes.displayGridPasses, true);
-  eq('tuning block: looksLikeGrid accepts display:flex (in gridDisplayValues)',
+  eq('detection settings: looksLikeGrid accepts display:flex (in gridDisplayValues)',
     sandbox.outcomes.displayFlexPasses, true);
-  eq('tuning block: looksLikeGrid accepts display:inline-grid (in gridDisplayValues)',
+  eq('detection settings: looksLikeGrid accepts display:inline-grid (in gridDisplayValues)',
     sandbox.outcomes.displayInlineGridPasses, true);
-  eq('tuning block: looksLikeGrid accepts display:inline-flex (in gridDisplayValues)',
+  eq('detection settings: looksLikeGrid accepts display:inline-flex (in gridDisplayValues)',
     sandbox.outcomes.displayInlineFlexPasses, true);
-  eq('tuning block: looksLikeGrid rejects display:block (not in gridDisplayValues)',
+  eq('detection settings: looksLikeGrid rejects display:block (not in gridDisplayValues)',
     sandbox.outcomes.displayBlockFails, false);
-  eq('tuning block: looksLikeGrid short-circuits ACCEPT for the default databricks vendorProfiles class token',
+  eq('detection settings: looksLikeGrid short-circuits ACCEPT for the default databricks vendorProfiles class token',
     sandbox.outcomes.vendorClassShortCircuitsAccept, true);
-  eq('tuning block: looksLikeGrid still runs the width-agreement step with no vendor class',
+  eq('detection settings: looksLikeGrid still runs the width-agreement step with no vendor class',
     sandbox.outcomes.noVendorClassFailsWidthCheck, false);
-  eq('tuning block: findTargetTable bounds the ancestor walk to gridWalkDepthCap (15)',
+  eq('detection settings: findTargetTable bounds the ancestor walk to gridWalkDepthCap (15)',
     sandbox.outcomes.walkDepthCapLabel, 14);
-  eq('tuning block: isPhantomA11yTable treats offscreenLeftPx itself as off-screen',
+  eq('detection settings: isPhantomA11yTable treats offscreenLeftPx itself as off-screen',
     sandbox.outcomes.offscreenAtThresholdIsPhantom, true);
-  eq('tuning block: isPhantomA11yTable treats a value beyond offscreenLeftPx as off-screen',
+  eq('detection settings: isPhantomA11yTable treats a value beyond offscreenLeftPx as off-screen',
     sandbox.outcomes.offscreenBeyondThresholdIsPhantom, true);
-  eq('tuning block: isPhantomA11yTable treats a value inside offscreenLeftPx as on-screen',
+  eq('detection settings: isPhantomA11yTable treats a value inside offscreenLeftPx as on-screen',
     sandbox.outcomes.offscreenInsideThresholdIsNotPhantom, false);
-  eq('tuning block: isDataTable still finds a plain 2x2 numeric table (no collateral breakage)',
+  eq('detection settings: isDataTable still finds a plain 2x2 numeric table (no collateral breakage)',
     sandbox.outcomes.isDataTableStillFindsANumericTable, true);
 })();
 
 // A fresh sandbox with no configuration file: the detection layer reads
-// DR_TUNING as a bare global with no fallback, so evaluating it alone throws
-// a ReferenceError naming DR_TUNING — at load, before any function in the
+// DR_DETECTION_SETTINGS as a bare global with no fallback, so evaluating it alone throws
+// a ReferenceError naming DR_DETECTION_SETTINGS — at load, before any function in the
 // file runs. The try/catch sits outside vm.runInContext, so a caught error
 // here can only have come from evaluating the source itself, never from a
 // function call the script goes on to make.
-(function tuningBlock_detectionFailsClosedWithNoConfigurationFile() {
+(function detectionSettings_detectionFailsClosedWithNoConfigurationFile() {
   if (detectCode === null) {
-    eq('tuning block: source file lib/dr-table/detect.js present in manifest', false, true);
+    eq('detection settings: source file lib/dr-table/detect.js present in manifest', false, true);
     return;
   }
   const vm = require('vm');
@@ -15980,24 +15999,24 @@ const PRE_MOVE_TUNING = {
   } catch (e) {
     caught = { name: e.name, message: e.message };
   }
-  eq('tuning block: evaluating the detection layer with no configuration file throws at load',
+  eq('detection settings: evaluating the detection layer with no configuration file throws at load',
     caught !== null, true);
-  eq('tuning block: the load-time failure is a ReferenceError',
+  eq('detection settings: the load-time failure is a ReferenceError',
     caught && caught.name, 'ReferenceError');
-  eq('tuning block: the load-time failure message carries DR_TUNING',
-    !!(caught && /DR_TUNING/.test(caught.message)), true);
+  eq('detection settings: the load-time failure message carries DR_DETECTION_SETTINGS',
+    !!(caught && /DR_DETECTION_SETTINGS/.test(caught.message)), true);
 })();
 
 // Living docs: docs/design.md's package table and docs/vocabulary.md both
-// carry the tuning block, per AGENTS.md's rule that a behavior-invalidating
+// carry the detection settings, per AGENTS.md's rule that a behavior-invalidating
 // change updates every living doc it invalidates in the same branch.
-(function tuningBlock_livingDocsCarryTheTuningBlock() {
+(function detectionSettings_livingDocsCarryTheTerm() {
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  eq('living docs: docs/design.md carries the tuning block',
-    designMd.includes('tuning block'), true);
-  eq('living docs: docs/vocabulary.md defines the tuning block',
-    vocabularyMd.includes('tuning block'), true);
+  eq('living docs: docs/design.md carries the detection settings',
+    designMd.includes('detection settings'), true);
+  eq('living docs: docs/vocabulary.md defines the detection settings',
+    vocabularyMd.includes('detection settings'), true);
 })();
 
 // VendorProfiles: a custom list replaces the default, and GridAdapter honors
@@ -16426,7 +16445,7 @@ function forgetRegisteredTable(table) {
 // --- Adversarial: the depth port reads zero as a depth ---
 
 (function gridNesting_theDepthPortReadsZeroAsADepth() {
-  eq('nesting: the tuning block ships a nesting depth of 1', DR_TUNING.nestingDepth, 1);
+  eq('nesting: the detection settings ship a nesting depth of 1', DR_DETECTION_SETTINGS.nestingDepth, 1);
 
   const grid = makeDatabaseQueryGrid();
   const host = makeNestingHost([grid.wrapperEl]);
@@ -17008,7 +17027,7 @@ function makeCrowdedNest() {
     detectionPoint !== '', true);
   eq('pending AC5: the detection point states the pending table',
     /pending table/i.test(detectionPoint), true);
-  eq('pending AC5: the detection point names the re-test cap in the tuning block',
+  eq('pending AC5: the detection point names the re-test cap in the detection settings',
     /pendingRetestCap/.test(detectionPoint), true);
 })();
 
@@ -22407,7 +22426,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 
   const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 5);
+  eq('capture-state: the state carries its format version', state.captureFormat, 6);
   eq('capture-state: the settings record is carried verbatim',
     state.settings, { enabled: true, offsetTop: -0.5 });
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
@@ -22572,7 +22591,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 5, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 6, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting logs its own row, and that row lands in the capture',
@@ -22642,7 +22661,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 5,
+    captureFormat: 6,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
@@ -22853,7 +22872,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 5,
+    captureFormat: 6,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -22897,9 +22916,9 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   eq('capture-render: the mark renders its glyph and word in the remarks section',
     /<section class="cap-remarks"><p class="cap-mark">\u{1F44E} <span>Looks wrong<\/span>/u.test(html), true);
   const order = ['<h2>Sidebar</h2>', '<h2>Bound table</h2>', '<h2>Registry</h2>',
-    '<h2>Detection tuning</h2>', '<h2>Extension logs</h2>', '<h2>Fixture seed</h2>']
+    '<h2>Detection settings</h2>', '<h2>Extension logs</h2>', '<h2>Fixture seed</h2>']
     .map((h) => html.indexOf(h));
-  eq('capture-render: the file reads sidebar, bound table, registry, tuning, logs, seed',
+  eq('capture-render: the file reads sidebar, bound table, registry, detection settings, logs, seed',
     order.every((i, n) => i !== -1 && (n === 0 || i > order[n - 1])), true);
   eq('capture-render: the likeness and the table no longer sit side by side',
     html.includes('cap-visual') || html.includes('Sidebar (rendered open)'), false);
@@ -22934,10 +22953,10 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 5,
+    captureFormat: 6,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
-    mark: 'looks-wrong', remarks: '', settings: { enabled: true }, tuning: null,
+    mark: 'looks-wrong', remarks: '', settings: { enabled: true }, detectionSettings: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
     sidebarView: null, errorState: null,
     log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
@@ -23014,7 +23033,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 5,
+    captureFormat: 6,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -23334,7 +23353,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 5,
+      captureFormat: 6,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -23346,16 +23365,16 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     html.includes('Share it as you would share the page.'), false);
 })();
 
-// --- lib/dr-capture: the tuning block in force at capture time (D8) ---
+// --- lib/dr-capture: the detection settings in force at capture time (D8) ---
 //
-// The capture state gains a tuning field: a plain copy of DR_TUNING taken at
+// The capture state gains a detectionSettings field: a plain copy of DR_DETECTION_SETTINGS taken at
 // capture time, so a capture shows the detection values that were in force.
 
-// Criterion 1: collectCaptureState carries every key of the tuning block,
+// Criterion 1: collectCaptureState carries every key of the detection settings,
 // the format version moves to 2, and the copy is plain and detached — a
-// mutation on the returned tuning must never reach DR_TUNING itself.
-(function captureStateCarriesTuningBlock() {
-  eq('capture-tuning: collectCaptureState loads in the content-script bundle',
+// mutation on the returned copy must never reach DR_DETECTION_SETTINGS itself.
+(function captureStateCarriesDetectionSettings() {
+  eq('capture-settings: collectCaptureState loads in the content-script bundle',
     typeof globalThis.collectCaptureState, 'function');
   if (typeof globalThis.collectCaptureState !== 'function') return;
 
@@ -23373,51 +23392,51 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 
   const state = collectCaptureState({ store: makeFakeStore(), adapterFor: fakeAdapterFor });
 
-  eq('capture-tuning: the capture state carries every key of the tuning block, with the values in force',
-    state.tuning, DR_TUNING);
-  eq('capture-tuning: the state\'s captureFormat equals CAPTURE_FORMAT',
+  eq('capture-settings: the capture state carries every key of the detection settings, with the values in force',
+    state.detectionSettings, DR_DETECTION_SETTINGS);
+  eq('capture-settings: the state\'s captureFormat equals CAPTURE_FORMAT',
     state.captureFormat, CAPTURE_FORMAT);
-  eq('capture-tuning: CAPTURE_FORMAT is 5',
-    CAPTURE_FORMAT, 5);
-  eq('capture-tuning: the returned tuning is not the same object as DR_TUNING',
-    state.tuning !== DR_TUNING, true);
+  eq('capture-settings: CAPTURE_FORMAT is 6',
+    CAPTURE_FORMAT, 6);
+  eq('capture-settings: the returned copy is not the same object as DR_DETECTION_SETTINGS',
+    state.detectionSettings !== DR_DETECTION_SETTINGS, true);
 
   // Adversarial: mutate the returned copy and confirm the live block holds.
-  const originalDisplayValuesLength = DR_TUNING.gridDisplayValues.length;
-  const originalMinChildren = DR_TUNING.gridMinChildren;
-  const originalFirstVendorName = DR_TUNING.vendorProfiles[0].name;
+  const originalDisplayValuesLength = DR_DETECTION_SETTINGS.gridDisplayValues.length;
+  const originalMinChildren = DR_DETECTION_SETTINGS.gridMinChildren;
+  const originalFirstVendorName = DR_DETECTION_SETTINGS.vendorProfiles[0].name;
 
-  state.tuning.gridDisplayValues.push('mutated-by-test');
-  state.tuning.gridMinChildren = 999999;
-  state.tuning.vendorProfiles[0].name = 'mutated-by-test';
+  state.detectionSettings.gridDisplayValues.push('mutated-by-test');
+  state.detectionSettings.gridMinChildren = 999999;
+  state.detectionSettings.vendorProfiles[0].name = 'mutated-by-test';
 
-  eq('capture-tuning: pushing onto the returned tuning\'s list leaves DR_TUNING\'s list unchanged',
-    DR_TUNING.gridDisplayValues.length, originalDisplayValuesLength);
-  eq('capture-tuning: changing a scalar on the returned tuning leaves DR_TUNING\'s scalar unchanged',
-    DR_TUNING.gridMinChildren, originalMinChildren);
-  eq('capture-tuning: changing a nested profile field on the returned tuning leaves DR_TUNING\'s profile unchanged',
-    DR_TUNING.vendorProfiles[0].name, originalFirstVendorName);
+  eq('capture-settings: pushing onto the returned copy\'s list leaves DR_DETECTION_SETTINGS\'s list unchanged',
+    DR_DETECTION_SETTINGS.gridDisplayValues.length, originalDisplayValuesLength);
+  eq('capture-settings: changing a scalar on the returned copy leaves DR_DETECTION_SETTINGS\'s scalar unchanged',
+    DR_DETECTION_SETTINGS.gridMinChildren, originalMinChildren);
+  eq('capture-settings: changing a nested profile field on the returned copy leaves DR_DETECTION_SETTINGS\'s profile unchanged',
+    DR_DETECTION_SETTINGS.vendorProfiles[0].name, originalFirstVendorName);
 })();
 
-// Criterion 2: the rendered file shows the tuning values in its visible
+// Criterion 2: the rendered file shows the detection settings in its visible
 // half — a scalar, every item of a display-value list, and a vendor
 // profile's name and selector — and a hostile value in a profile field
 // reaches the visible half only in its escaped form.
-(function captureTuningSectionRendersValues() {
+(function captureDetectionSettingsSectionRendersValues() {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
-  const baseState = (tuning) => ({
-    captureFormat: 5,
+  const baseState = (detectionSettings) => ({
+    captureFormat: 6,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
     log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
-    tuning,
+    detectionSettings,
   });
   const visibleHalf = (html) => html.slice(0, html.indexOf('id="capture-state"'));
 
-  const tuning = {
+  const settings = {
     exampleScalarSetting: 4242,
     exampleDisplayValues: ['north-list-value', 'south-list-value'],
     exampleVendorProfiles: [{
@@ -23427,20 +23446,20 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
       pinnedPaneSelectors: ['.nv--pinned-pane'],
     }],
   };
-  const visible = visibleHalf(buildCaptureDocument({ state: baseState(tuning), lockedStatusText: '' }));
+  const visible = visibleHalf(buildCaptureDocument({ state: baseState(settings), lockedStatusText: '' }));
 
-  eq('capture-tuning: a scalar tuning value renders in the visible half',
+  eq('capture-settings: a scalar detection setting renders in the visible half',
     visible.includes('4242'), true);
-  eq('capture-tuning: every item of a tuning display-value list renders in the visible half',
+  eq('capture-settings: every item of a display-value list renders in the visible half',
     visible.includes('north-list-value') && visible.includes('south-list-value'), true);
-  eq('capture-tuning: a vendor profile\'s name renders in the visible half',
+  eq('capture-settings: a vendor profile\'s name renders in the visible half',
     visible.includes('north-vendor'), true);
-  eq('capture-tuning: a vendor profile\'s selector renders in the visible half',
+  eq('capture-settings: a vendor profile\'s selector renders in the visible half',
     visible.includes('.nv--scroll-container'), true);
 
   // Hostile half: a profile name and a selector each carrying <script>, a
   // double quote, and an ampersand must reach the visible half escaped only.
-  const hostileTuning = {
+  const hostileSettings = {
     exampleScalarSetting: 'one<script>alert(3)</script>"&',
     exampleDisplayValues: ['.list<script>alert(4)</script>"&item'],
     exampleVendorProfiles: [{
@@ -23451,30 +23470,30 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     }],
   };
   const hostileVisible = visibleHalf(
-    buildCaptureDocument({ state: baseState(hostileTuning), lockedStatusText: '' }));
+    buildCaptureDocument({ state: baseState(hostileSettings), lockedStatusText: '' }));
 
-  eq('capture-tuning: a hostile profile field never renders a literal script tag in the visible half',
+  eq('capture-settings: a hostile profile field never renders a literal script tag in the visible half',
     hostileVisible.toLowerCase().includes('<script>'), false);
-  eq('capture-tuning: a hostile profile field renders its angle brackets escaped',
+  eq('capture-settings: a hostile profile field renders its angle brackets escaped',
     hostileVisible.includes('&lt;script&gt;') && hostileVisible.includes('&lt;/script&gt;'), true);
-  eq('capture-tuning: a hostile profile field renders its double quote escaped',
+  eq('capture-settings: a hostile profile field renders its double quote escaped',
     hostileVisible.includes('&quot;'), true);
-  eq('capture-tuning: a hostile profile field renders its ampersand escaped',
+  eq('capture-settings: a hostile profile field renders its ampersand escaped',
     hostileVisible.includes('&amp;'), true);
 })();
 
-// Criterion 3: a state with no tuning field (null, or the key absent) does
-// not throw, renders the absence placeholder in the tuning section, and the
+// Criterion 3: a state with no detectionSettings field (null, or the key absent) does
+// not throw, renders the absence placeholder in the detection settings section, and the
 // header still states the format version — the capture still saves. The
 // sidebar side: assembleAndSaveCapture's fallback state carries
-// tuning: null, so a failed state pull renders the absence honestly rather
+// detectionSettings: null, so a failed state pull renders the absence honestly rather
 // than losing the field.
-(function captureTuningAbsenceHonesty() {
+(function captureDetectionSettingsAbsenceHonesty() {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (over) => Object.assign({
-    captureFormat: 5,
+    captureFormat: 6,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -23485,83 +23504,83 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   let threwWithNull = false;
   let htmlWithNull = '';
   try {
-    htmlWithNull = buildCaptureDocument({ state: baseState({ tuning: null }), lockedStatusText: '' });
+    htmlWithNull = buildCaptureDocument({ state: baseState({ detectionSettings: null }), lockedStatusText: '' });
   } catch (e) {
     threwWithNull = true;
   }
-  eq('capture-tuning: a null tuning field does not throw while building the document',
+  eq('capture-settings: a null detectionSettings field does not throw while building the document',
     threwWithNull, false);
 
-  const stateWithAbsentTuning = baseState({});
-  delete stateWithAbsentTuning.tuning;
+  const stateWithAbsentSettings = baseState({});
+  delete stateWithAbsentSettings.detectionSettings;
   let threwWithAbsent = false;
   let htmlWithAbsent = '';
   try {
-    htmlWithAbsent = buildCaptureDocument({ state: stateWithAbsentTuning, lockedStatusText: '' });
+    htmlWithAbsent = buildCaptureDocument({ state: stateWithAbsentSettings, lockedStatusText: '' });
   } catch (e) {
     threwWithAbsent = true;
   }
-  eq('capture-tuning: a state with the tuning field absent does not throw while building the document',
+  eq('capture-settings: a state with the detectionSettings field absent does not throw while building the document',
     threwWithAbsent, false);
 
-  eq('capture-tuning: a null tuning field renders the absence placeholder in the tuning section',
-    /<h2>Detection tuning<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithNull)), true);
-  eq('capture-tuning: an absent tuning field renders the absence placeholder in the tuning section',
-    /<h2>Detection tuning<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
-  eq('capture-tuning: the format version still prints in the header when tuning is absent',
-    /<dt>Capture format<\/dt><dd>5<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+  eq('capture-settings: a null detectionSettings field renders the absence placeholder in the detection settings section',
+    /<h2>Detection settings<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithNull)), true);
+  eq('capture-settings: an absent detectionSettings field renders the absence placeholder in the detection settings section',
+    /<h2>Detection settings<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
+  eq('capture-settings: the format version still prints in the header when detectionSettings is absent',
+    /<dt>Capture format<\/dt><dd>6<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
   const fnBody = fnStart === -1 ? '' : sidebarJsSrc.slice(fnStart, sidebarJsSrc.indexOf('\nfunction ', fnStart + 1));
-  eq('capture-tuning: assembleAndSaveCapture\'s fallback state carries tuning: null',
-    fnStart !== -1 && /tuning:\s*null/.test(fnBody), true);
+  eq('capture-settings: assembleAndSaveCapture\'s fallback state carries detectionSettings: null',
+    fnStart !== -1 && /detectionSettings:\s*null/.test(fnBody), true);
 })();
 
-// Criterion 4: the living docs name the tuning block in the capture
+// Criterion 4: the living docs name the detection settings in the capture
 // paragraph or row a reader would consult — the README's capture section,
 // the design doc's Capture paragraph, and the vocabulary's capture state
 // row — loose enough to survive rewording, tight enough to fail if the
 // mention is dropped.
-(function captureTuningLivingDocsNameTheBlock() {
+(function captureDetectionSettingsLivingDocsNameTheTerm() {
   const readmeMd = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
 
   const readmeCaptureSection = (readmeMd.split('\n## Capture\n')[1] || '').split('\n## ')[0];
-  eq('living docs: chrome-extension/README.md\'s capture paragraph names the tuning block',
-    readmeCaptureSection.includes('tuning block'), true);
+  eq('living docs: chrome-extension/README.md\'s capture paragraph names the detection settings',
+    readmeCaptureSection.includes('detection settings'), true);
 
   const designCaptureParagraph = designMd.split('\n').find((line) => line.startsWith('**Capture.**')) || '';
-  eq('living docs: docs/design.md\'s Capture paragraph names the tuning block',
-    designCaptureParagraph.includes('tuning block'), true);
+  eq('living docs: docs/design.md\'s Capture paragraph names the detection settings',
+    designCaptureParagraph.includes('detection settings'), true);
 
   const vocabularyCaptureStateRow = vocabularyMd.split('\n').find((line) => line.startsWith('| capture state |')) || '';
-  eq('living docs: docs/vocabulary.md\'s capture state row names the tuning block',
-    vocabularyCaptureStateRow.includes('tuning block'), true);
+  eq('living docs: docs/vocabulary.md\'s capture state row names the detection settings',
+    vocabularyCaptureStateRow.includes('detection settings'), true);
 })();
 
-// Criterion 5: the tuning section sits in the visible half under its own
+// Criterion 5: the detection settings section sits in the visible half under its own
 // heading, ahead of the hidden capture-state JSON block, so a reader finds
 // it while scanning the file rather than only in the JSON.
-(function captureTuningHeadingPrecedesStateBlock() {
+(function captureDetectionSettingsHeadingPrecedesStateBlock() {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 5,
+      captureFormat: 6,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
       log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
-      tuning: { exampleScalarSetting: 1 },
+      detectionSettings: { exampleScalarSetting: 1 },
     },
     lockedStatusText: '',
   });
-  const headingMatch = /<h2>[^<]*tuning[^<]*<\/h2>/i.exec(html);
+  const headingMatch = /<h2>Detection settings<\/h2>/.exec(html);
   const stateBlockIndex = html.indexOf('id="capture-state"');
-  eq('capture-tuning: the visible half carries a heading naming detection tuning',
+  eq('capture-settings: the visible half carries the Detection settings heading',
     headingMatch !== null, true);
-  eq('capture-tuning: the tuning heading sits before the hidden capture-state block',
+  eq('capture-settings: the detection settings heading sits before the hidden capture-state block',
     headingMatch !== null && stateBlockIndex !== -1 && headingMatch.index < stateBlockIndex, true);
 })();
 
@@ -23954,14 +23973,14 @@ function makeIsolatedModel() {
   };
   const state = collectCaptureState({ store: fakeStore, adapterFor: () => null });
   eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
-  eq('capture-state: format 5 marks the screenshot record',
-    state.captureFormat, 5);
+  eq('capture-state: format 6 renames the detection settings key',
+    state.captureFormat, 6);
 
   const renderState = {
-    captureFormat: 5,
+    captureFormat: 6,
     meta: { url: 'https://www.example.com/p', title: 'P', version: '2.1.70',
       platform: 'test', at: '2026-09-17T16:00:00.000Z' },
-    mark: 'looks-wrong', remarks: '', settings: { enabled: true }, tuning: null,
+    mark: 'looks-wrong', remarks: '', settings: { enabled: true }, detectionSettings: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
     sidebarView: { enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
       rangeExpr: '', stops: [0], topVal: 0, botVal: 0, coupled: true, status: '',

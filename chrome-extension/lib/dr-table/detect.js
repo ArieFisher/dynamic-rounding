@@ -30,15 +30,15 @@
  * small port with a working default, so the functions below run under a
  * plain Node/jsdom-less context with no Chrome globals and no `window`.
  *
- * Every tuning value this file reads — the child-count floor, the walk-depth
+ * Every detection setting this file reads — the child-count floor, the walk-depth
  * cap, the column-width sample size and agreement threshold, the repetition
  * share, the data test's cell budget, the off-screen threshold, and the
- * vendor and display-value lookup lists — lives in DR_TUNING (constants.js).
+ * vendor and display-value lookup lists — lives in DR_DETECTION_SETTINGS (constants.js).
  * The content script loads
- * constants.js before this file, so this file reads DR_TUNING as a bare
+ * constants.js before this file, so this file reads DR_DETECTION_SETTINGS as a bare
  * global with no local fallback copy of any of those values.
- * GRID_VENDOR_PROFILES below reads DR_TUNING at the top level, so a missing
- * block fails at load, before any function in this file runs.
+ * GRID_VENDOR_PROFILES below reads DR_DETECTION_SETTINGS at the top level, so a missing
+ * object fails at load, before any function in this file runs.
  */
 
 // Grid detection constants
@@ -99,9 +99,9 @@ const DEFAULT_NUMERIC_PROBE = {
 // `pinnedPaneSelectors` resolve GridAdapter's scroll and pinned panes. A
 // consumer may pass a custom list via opts.vendorProfiles.
 //
-// The read sits at the top level, so a missing DR_TUNING block fails at
+// The read sits at the top level, so a missing DR_DETECTION_SETTINGS object fails at
 // load, before GridAdapter or looksLikeGrid runs.
-const GRID_VENDOR_PROFILES = DR_TUNING.vendorProfiles;
+const GRID_VENDOR_PROFILES = DR_DETECTION_SETTINGS.vendorProfiles;
 
 // --- TableAdapter abstraction ---
 // Two adapter classes provide a uniform row/cell interface over both native
@@ -740,9 +740,9 @@ function looksLikeGrid(el, opts = {}) {
   const numericProbe = opts.numericProbe || DEFAULT_NUMERIC_PROBE;
   const vendorProfiles = opts.vendorProfiles || GRID_VENDOR_PROFILES;
 
-  // --- Step 1: Child count ≥ DR_TUNING.gridMinChildren ---
+  // --- Step 1: Child count ≥ DR_DETECTION_SETTINGS.gridMinChildren ---
   const children = Array.from(el.children);
-  if (children.length < DR_TUNING.gridMinChildren) return false;
+  if (children.length < DR_DETECTION_SETTINGS.gridMinChildren) return false;
 
   // --- Step 2: Repetitive structure — children share class or child shape ---
   // "Share class" = majority of children have the same first className token.
@@ -759,14 +759,14 @@ function looksLikeGrid(el, opts = {}) {
   }
   const maxClassCount = Math.max(...classFreq.values());
   const maxChildCount = Math.max(...childCountFreq.values());
-  // At least DR_TUNING.gridRepetitionShare of children must share a class
+  // At least DR_DETECTION_SETTINGS.gridRepetitionShare of children must share a class
   // token OR a child count.
-  const repetitionFloor = children.length * DR_TUNING.gridRepetitionShare;
+  const repetitionFloor = children.length * DR_DETECTION_SETTINGS.gridRepetitionShare;
   const repetitive = (maxClassCount >= repetitionFloor) || (maxChildCount >= repetitionFloor);
   if (!repetitive) return false;
 
   // --- Step 3: Consistent cell count — candidate rows have equal child counts ---
-  // The modal child count must appear in at least DR_TUNING.gridRepetitionShare
+  // The modal child count must appear in at least DR_DETECTION_SETTINGS.gridRepetitionShare
   // of the children.
   let modalChildCount = 0;
   let modalFreq = 0;
@@ -781,7 +781,7 @@ function looksLikeGrid(el, opts = {}) {
   // --- Step 4: Layout — display is grid or flex ---
   const computedForDisplay = styleProbe.getComputedStyle(el);
   const display = (computedForDisplay && computedForDisplay.display) || '';
-  if (!DR_TUNING.gridDisplayValues.includes(display)) return false;
+  if (!DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)) return false;
 
   // --- Step 5: Numeric content — ≥ 1 cell parses as a finite number (mandatory) ---
   let hasNumeric = false;
@@ -802,16 +802,16 @@ function looksLikeGrid(el, opts = {}) {
   if (vendorProfiles.some(profile => elClass.includes(profile.classToken))) return true;
 
   // --- Step 6: Column-width alignment — sample offsetWidth of column-0 cells ---
-  // Bounded to DR_TUNING.gridColumnWidthSample rows; only runs when all prior
+  // Bounded to DR_DETECTION_SETTINGS.gridColumnWidthSample rows; only runs when all prior
   // steps passed.
-  const sample = candidateRows.slice(0, DR_TUNING.gridColumnWidthSample);
+  const sample = candidateRows.slice(0, DR_DETECTION_SETTINGS.gridColumnWidthSample);
   const widths = sample.map(row => row.children[0] ? styleProbe.getOffsetWidth(row.children[0]) : -1)
                        .filter(w => w > 0);
   if (widths.length < 2) return true; // too few rows to measure — benefit of the doubt
   const firstWidth = widths[0];
-  // Accept when the sampled-width agreement meets DR_TUNING.gridColumnWidthAgreement.
+  // Accept when the sampled-width agreement meets DR_DETECTION_SETTINGS.gridColumnWidthAgreement.
   const matchCount = widths.filter(w => w === firstWidth).length;
-  return matchCount / widths.length >= DR_TUNING.gridColumnWidthAgreement;
+  return matchCount / widths.length >= DR_DETECTION_SETTINGS.gridColumnWidthAgreement;
 }
 
 /**
@@ -826,7 +826,7 @@ function looksLikeGrid(el, opts = {}) {
  *      This route registers a marked grid the load-time scan missed.
  *   4. Walk UP from el calling looksLikeGrid at each ancestor; return the
  *      OUTERMOST match — keep walking while the parent also passes; stop when
- *      the parent fails, is <body>, or depth exceeds DR_TUNING.gridWalkDepthCap.
+ *      the parent fails, is <body>, or depth exceeds DR_DETECTION_SETTINGS.gridWalkDepthCap.
  *
  * REPORTS only — this function never writes the dr-ext-grid marker class and
  * never builds a toggle widget, and it never reads that class either: "has
@@ -868,7 +868,7 @@ function findTargetTable(el, opts = {}) {
   // not a CSS selector.
   let seenCandidate = el;
   let seenDepth = 0;
-  while (seenCandidate && seenCandidate !== docBody && seenDepth < DR_TUNING.gridWalkDepthCap) {
+  while (seenCandidate && seenCandidate !== docBody && seenDepth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
     if (seenCandidate.nodeType === DR_TABLE_ELEMENT_NODE && isSeen(seenCandidate)) {
       return { handle: seenCandidate, isNew: false };
     }
@@ -900,7 +900,7 @@ function findTargetTable(el, opts = {}) {
   let depth = 0;
   let outermost = null;
 
-  while (current && current !== docBody && depth < DR_TUNING.gridWalkDepthCap) {
+  while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
     if (current.nodeType !== DR_TABLE_ELEMENT_NODE) {
       current = current.parentElement || current.parentNode;
       depth++;
@@ -925,7 +925,7 @@ function findTargetTable(el, opts = {}) {
 }
 
 // Left-offset threshold (px) below which an element is treated as
-// deliberately off-screen hidden: DR_TUNING.offscreenLeftPx.
+// deliberately off-screen hidden: DR_DETECTION_SETTINGS.offscreenLeftPx.
 
 /**
  * Return the nearest *positioned* ancestor of `el` (or `el` itself if it is
@@ -983,7 +983,7 @@ function _parsePx(value) {
  * Returns true when ANY ONE of the following signals holds:
  *   1. The table (or any ancestor) carries aria-hidden="true".
  *   2. The table's nearest positioned ancestor (or the table itself) has an
- *      inline or computed `left` value ≤ DR_TUNING.offscreenLeftPx px.
+ *      inline or computed `left` value ≤ DR_DETECTION_SETTINGS.offscreenLeftPx px.
  *      NOTE: In the Node test harness getComputedStyle does not report a
  *      meaningful `left`; this check therefore relies primarily on inline style.
  *   3. The table is inside a nearest positioned ancestor that also contains an
@@ -1023,7 +1023,7 @@ function isPhantomA11yTable(table, opts = {}) {
     const computed = styleProbe.getComputedStyle(checkEl);
     if (computed && computed.left) leftVal = _parsePx(computed.left);
   }
-  if (!isNaN(leftVal) && leftVal <= DR_TUNING.offscreenLeftPx) return true;
+  if (!isNaN(leftVal) && leftVal <= DR_DETECTION_SETTINGS.offscreenLeftPx) return true;
 
   // --- Signal 3: nearest positioned ancestor contains a chart-ish <svg> ---
   if (posAncestor) {
@@ -1063,7 +1063,7 @@ function isDataTable(table, opts = {}) {
     }
   }
   if (!hasMultipleColumns) return false;
-  // The scan spends one budget of DR_TUNING.dataTestCellBudget cell reads,
+  // The scan spends one budget of DR_DETECTION_SETTINGS.dataTestCellBudget cell reads,
   // counted across every row and cell in document order, on native tables
   // and grids alike. An empty cell counts as a read. The scan returns true
   // at the first cell that parses as a finite number, and returns false once
@@ -1072,7 +1072,7 @@ function isDataTable(table, opts = {}) {
   for (let i = 0; i < rows.length; i++) {
     const cells = rows[i].getCells();
     for (let j = 0; j < cells.length; j++) {
-      if (cellsRead >= DR_TUNING.dataTestCellBudget) return false;
+      if (cellsRead >= DR_DETECTION_SETTINGS.dataTestCellBudget) return false;
       cellsRead++;
       const text = cells[j].getText().trim();
       if (text === '') continue;
@@ -1245,7 +1245,7 @@ function _isQualifyingAncestor(el, tableFilter, opts) {
 
 /**
  * Walk up from `el` to its chain root: the outermost qualifying ancestor of
- * the nest `el` sits in. The walk is bounded by DR_TUNING.gridWalkDepthCap DOM
+ * the nest `el` sits in. The walk is bounded by DR_DETECTION_SETTINGS.gridWalkDepthCap DOM
  * levels and stops at the document body, and it continues past an ancestor
  * that carries no role, because a nest may put a plain wrapper between two
  * qualifying elements. An element with no parent is its own chain root.
@@ -1261,7 +1261,7 @@ function _chainRootOf(el, tableFilter, opts) {
   let chainRoot = el;
   let current = el.parentElement || el.parentNode || null;
   let depth = 0;
-  while (current && current !== docBody && depth < DR_TUNING.gridWalkDepthCap) {
+  while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
     if (_isQualifyingAncestor(current, tableFilter, opts)) chainRoot = current;
     current = current.parentElement || current.parentNode || null;
     depth++;
@@ -1287,7 +1287,7 @@ function _depthInChain(el, chainRoot, tableFilter, opts) {
   let count = 0;
   let current = el.parentElement || el.parentNode || null;
   let steps = 0;
-  while (current && steps < DR_TUNING.gridWalkDepthCap) {
+  while (current && steps < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
     if (current === chainRoot) return count + 1;
     if (_isQualifyingAncestor(current, tableFilter, opts)) count++;
     current = current.parentElement || current.parentNode || null;
@@ -1326,7 +1326,7 @@ function _selectAtNestingDepth(byDepth, configuredDepth) {
 /**
  * The chain root of the nest `el` sits in: the outermost qualifying element
  * at or above `el`, or null when no qualifying element sits within
- * DR_TUNING.gridWalkDepthCap levels of `el`.
+ * DR_DETECTION_SETTINGS.gridWalkDepthCap levels of `el`.
  *
  * This is the public form of the private _chainRootOf walk. _chainRootOf
  * takes a qualifying element and returns the outermost qualifying element
@@ -1349,7 +1349,7 @@ function chainRootOf(el, opts = {}) {
   const docBody = doc && doc.body;
   let current = el;
   let depth = 0;
-  while (current && current !== docBody && depth < DR_TUNING.gridWalkDepthCap) {
+  while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
     if (_isQualifyingAncestor(current, tableFilter, opts)) {
       return _chainRootOf(current, tableFilter, opts);
     }
@@ -1365,7 +1365,7 @@ function chainRootOf(el, opts = {}) {
  *
  * The nest is `chainRoot` plus every qualifying element under it. The chain
  * is the nest's elements that pass the data test, grouped by nesting depth;
- * _selectAtNestingDepth applies DR_TUNING.nestingDepth with decision D2's two
+ * _selectAtNestingDepth applies DR_DETECTION_SETTINGS.nestingDepth with decision D2's two
  * edge rules.
  *
  * The outcome kind states why the step returns what it returns, which is what
@@ -1385,7 +1385,7 @@ function chainRootOf(el, opts = {}) {
  *
  * The configured depth reads through a port in the style of
  * opts.vendorProfiles: opts.nestingDepth when the caller supplies one,
- * DR_TUNING.nestingDepth otherwise. Zero is a legal depth, so the override
+ * DR_DETECTION_SETTINGS.nestingDepth otherwise. Zero is a legal depth, so the override
  * check is a nullish check.
  *
  * REPORTS only — like findTargetTable, this never writes the dr-ext-grid
@@ -1404,7 +1404,7 @@ function chainRootOf(el, opts = {}) {
 function nominateNest(chainRoot, opts = {}) {
   const tableFilter = opts.tableFilter || isPhantomA11yTable;
   const isSeen = opts.isSeen || (() => false);
-  const configuredDepth = opts.nestingDepth ?? DR_TUNING.nestingDepth;
+  const configuredDepth = opts.nestingDepth ?? DR_DETECTION_SETTINGS.nestingDepth;
 
   const nested = typeof chainRoot.querySelectorAll === 'function'
     ? Array.from(chainRoot.querySelectorAll(GRID_ARIA_SELECTOR)) : [];

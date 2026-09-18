@@ -43,6 +43,10 @@ const TOGGLE_COLOR_OFF = '#cccccc';
 // Hover text for a locked pill — see tableHasUnrestorableCells. Wording
 // mirrors sidebar.js's APPLY_BLOCKED_STATUS_MSG.
 const LOCKED_TOGGLE_TITLE = 'This table\'s original values are no longer available. Reload the page to change it.';
+// Touch and pen: an expanded pillbox collapses on its own after this delay.
+// This view alone reads it, so it lives here and not in the detection
+// settings.
+const PILLBOX_AUTO_COLLAPSE_MS = 3000;
 
 // --- Per-table toggle switch infrastructure ---
 
@@ -260,7 +264,7 @@ function createToggleForTable(table) {
     _touchCollapseTimer = setTimeout(() => {
       button.classList.remove('expanded');
       _touchCollapseTimer = null;
-    }, DR_TUNING.pillboxAutoCollapseMs);
+    }, PILLBOX_AUTO_COLLAPSE_MS);
   }
 
   // Click handler: mouse/keyboard → immediate press; touch/pen → two-tap

@@ -12,7 +12,7 @@
  * HTML document — a string in, a string out, no browser API touched. The
  * document reads as a report, top to bottom: a header of facts, the mark and
  * remarks, a likeness of the sidebar, the screenshot, the bound table, the
- * registry, the tuning block in force, the log rows of both contexts, the
+ * registry, the detection settings in force, the log rows of both contexts, the
  * fixture seed as readable text, and the whole state as machine-readable
  * JSON at the bottom.
  * A thin line separates every section. A reader hint (a note) renders one
@@ -357,12 +357,12 @@ function renderRegistrySection(state) {
   return '<section><h2>Registry</h2>' + body + '</section>';
 }
 
-// A tuning field's own value, rendered for reading: a list joins its items
+// A setting's own value, rendered for reading: a list joins its items
 // with ", " (an empty list falls back to displayValue's dash), a scalar goes
 // through displayValue. Every item and every scalar passes through
 // escapeHtml — the vendor profiles' selectors are strings that reach the
 // file like any other value, so they pass through it too.
-function renderTuningValue(value) {
+function renderSettingValue(value) {
   if (Array.isArray(value)) {
     if (value.length === 0) return escapeHtml(displayValue(null));
     return value.map(function (item) { return escapeHtml(String(item)); }).join(', ');
@@ -370,41 +370,41 @@ function renderTuningValue(value) {
   return escapeHtml(displayValue(value));
 }
 
-// Every key of the tuning block, in the block's own order — no key list
-// lives here, so a key added to DR_TUNING prints with no renderer change
-// when it holds a scalar, a list of strings, or a list of flat profile
-// objects.
+// Every key of the detection settings, in the object's own order — no key
+// list lives here, so a key added to DR_DETECTION_SETTINGS prints with no
+// renderer change when it holds a scalar, a list of strings, or a list of
+// flat profile objects.
 // gridDisplayValues (an array of strings) joins onto one line.
 // vendorProfiles (an array of profile objects) prints one line per profile,
 // its own fields listed by name; the branch is on shape, not on the key.
-function renderTuningRows(tuning) {
-  return Object.keys(tuning).map(function (key) {
-    const value = tuning[key];
+function renderDetectionSettingsRows(settings) {
+  return Object.keys(settings).map(function (key) {
+    const value = settings[key];
     const isProfileList = Array.isArray(value) && value.length > 0 &&
       typeof value[0] === 'object' && value[0] !== null;
     if (isProfileList) {
       return value.map(function (profile) {
         const fields = Object.keys(profile).map(function (field) {
-          return escapeHtml(field) + ': ' + renderTuningValue(profile[field]);
+          return escapeHtml(field) + ': ' + renderSettingValue(profile[field]);
         }).join('; ');
         return '<dt>' + escapeHtml(key) + '</dt><dd>' + fields + '</dd>';
       }).join('');
     }
-    return '<dt>' + escapeHtml(key) + '</dt><dd>' + renderTuningValue(value) + '</dd>';
+    return '<dt>' + escapeHtml(key) + '</dt><dd>' + renderSettingValue(value) + '</dd>';
   }).join('');
 }
 
-// The detection tuning block in force at capture time (D8): every key of
-// state.tuning with its value, so a looks-wrong capture shows the values
-// detection ran under. A failed state pull leaves tuning null; the
-// section still renders, with one row holding the absence placeholder, so
-// the capture still saves.
-function renderTuningSection(state) {
-  const tuning = state.tuning;
-  const body = tuning
-    ? '<dl>' + renderTuningRows(tuning) + '</dl>'
-    : '<dl><dt>tuning</dt><dd>' + escapeHtml(displayValue(null)) + '</dd></dl>';
-  return '<section><h2>Detection tuning</h2>' + body + '</section>';
+// The detection settings in force at capture time (D8): every key of
+// state.detectionSettings with its value, so a looks-wrong capture shows
+// the values detection ran under. A failed state pull leaves
+// detectionSettings null; the section still renders, with one row holding
+// the absence placeholder, so the capture still saves.
+function renderDetectionSettingsSection(state) {
+  const settings = state.detectionSettings;
+  const body = settings
+    ? '<dl>' + renderDetectionSettingsRows(settings) + '</dl>'
+    : '<dl><dt>detectionSettings</dt><dd>' + escapeHtml(displayValue(null)) + '</dd></dl>';
+  return '<section><h2>Detection settings</h2>' + body + '</section>';
 }
 
 // The one shape an image may take on its way into the file: a JPEG or PNG
@@ -578,7 +578,7 @@ function renderFixtureSeed(state) {
  * input.screenshotDataUrl is the screenshot the sidebar took, passed beside
  * the state so the JSON island never carries the image. The sections stack
  * in reading order: the mark and remarks, the sidebar likeness, the
- * screenshot, the bound table, the registry, the tuning block, the logs,
+ * screenshot, the bound table, the registry, the detection settings, the logs,
  * the seed.
  */
 function buildCaptureDocument(input) {
@@ -605,7 +605,7 @@ function buildCaptureDocument(input) {
     renderScreenshotSection(state, screenshotDataUrl) +
     '<section><h2>Bound table</h2>' + renderBoundTable(state, lockedStatusText) + '</section>' +
     renderRegistrySection(state) +
-    renderTuningSection(state) +
+    renderDetectionSettingsSection(state) +
     renderCaptureLogs(state) +
     renderFixtureSeed(state) +
     '<footer>The hidden block below, id capture-state, holds the full capture state ' +

@@ -190,7 +190,7 @@ const gridReapplyTimers = new WeakMap();
 // pendingObservers:   chainRootEl → MutationObserver watching the whole subtree.
 // pendingRetestTimers: chainRootEl → pending setTimeout id for the debounced re-test.
 // pendingRetestCounts: chainRootEl → failed re-tests so far, against
-//                      DR_TUNING.pendingRetestCap.
+//                      DR_DETECTION_SETTINGS.pendingRetestCap.
 // pendingRoots is the enumerable companion to the three WeakMaps, the way
 // trackedTables accompanies the registry: the table observer's removal branch
 // walks it to find a pending root inside a removed subtree.
@@ -384,7 +384,7 @@ function consumeNomination({ chainRoot, selected, outcome }) {
 //
 // The first 'empty' outcome for a root starts the record: one debounced
 // subtree observer, and a count of 0. Every later 'empty' outcome for the
-// same root is a failed re-test and counts against DR_TUNING.pendingRetestCap;
+// same root is a failed re-test and counts against DR_DETECTION_SETTINGS.pendingRetestCap;
 // reaching the cap drops the observer, the timer, and the count, so a region
 // that never holds data costs a bounded amount of processing.
 //
@@ -395,7 +395,7 @@ function holdPendingTable(chainRoot) {
   if (pendingRoots.has(chainRoot)) {
     const count = (pendingRetestCounts.get(chainRoot) || 0) + 1;
     pendingRetestCounts.set(chainRoot, count);
-    if (count >= DR_TUNING.pendingRetestCap) {
+    if (count >= DR_DETECTION_SETTINGS.pendingRetestCap) {
       dropPendingTable(chainRoot);
       DR_LOG.debug("Dynamic Rounding: pending table dropped after " + count + " failed re-tests.");
     }
@@ -412,7 +412,7 @@ function holdPendingTable(chainRoot) {
     const timerId = setTimeout(() => {
       pendingRetestTimers.delete(chainRoot);
       retestPendingTable(chainRoot);
-    }, DR_TUNING.gridRedrawDelayMs);
+    }, DR_DETECTION_SETTINGS.gridRedrawDelayMs);
     pendingRetestTimers.set(chainRoot, timerId);
   });
   observer.observe(chainRoot, { childList: true, characterData: true, subtree: true });
@@ -1360,7 +1360,7 @@ function roundTable(table, options) {
 
         const timerId = setTimeout(() => {
           reapplyGridRounding(wrapperEl);
-        }, DR_TUNING.gridRedrawDelayMs);
+        }, DR_DETECTION_SETTINGS.gridRedrawDelayMs);
 
         gridReapplyTimers.set(wrapperEl, timerId);
       });

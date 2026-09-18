@@ -1026,7 +1026,7 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
     captureFormat: CAPTURE_FORMAT,
     page: null,
     settings: null,
-    tuning: null,
+    detectionSettings: null,
     activeTableIndex: null,
     tables: [],
     lensPreview: null,

@@ -32,11 +32,12 @@
  * present in the DOM at capture time; the state carries its frozen
  * magnitude as part of the evidence.
  *
- * The state also carries tuning, a plain copy of DR_TUNING (constants.js)
- * taken at capture time — the detection tuning block in force, so a
- * looks-wrong capture shows the values detection ran under. The copy is a
- * JSON round-trip: a later change to the block cannot reach a saved state,
- * and the state shares no live object with it.
+ * The state also carries detectionSettings, a plain copy of
+ * DR_DETECTION_SETTINGS (constants.js) taken at capture time — the
+ * detection settings in force, so a looks-wrong capture shows the values
+ * detection ran under. The copy is a JSON round-trip: a later change to the
+ * settings cannot reach a saved state, and the state shares no live object
+ * with it.
  *
  * The state also carries errorState, the model's error state at capture
  * time: whether an extension error was recorded on this page, how many, and
@@ -48,9 +49,11 @@
  * on each log row. Format 4 renames the free-text key to remarks and the mark
  * tokens to looks-right, not-sure, and looks-wrong. Format 5 adds the
  * screenshot field: the take's record (taken, format, chars), never the image.
+ * Format 6 renames the tuning field to detectionSettings and drops the
+ * pillbox auto-collapse delay from it; the pillbox view holds that delay.
  */
 
-const CAPTURE_FORMAT = 5;
+const CAPTURE_FORMAT = 6;
 
 function collectCaptureState(deps) {
   const store = (deps && deps.store) || DR_STORE;
@@ -130,11 +133,12 @@ function collectCaptureState(deps) {
   return {
     captureFormat: CAPTURE_FORMAT,
     settings: store.getSettings(),
-    // A plain copy, not the live block: a later edit to DR_TUNING must not
-    // reach a state already captured. Read as a bare global, the same rule
-    // the detection layer, the pillbox view, and the controller follow, so
-    // a missing block fails at load rather than serializing a silent gap.
-    tuning: JSON.parse(JSON.stringify(DR_TUNING)),
+    // A plain copy, not the live object: a later edit to
+    // DR_DETECTION_SETTINGS must not reach a state already captured. Read
+    // as a bare global, the same rule the detection layer and the controller
+    // follow, so a missing object fails at load rather than serializing a
+    // silent gap.
+    detectionSettings: JSON.parse(JSON.stringify(DR_DETECTION_SETTINGS)),
     activeTableIndex,
     tables,
     fixtureSeed: selected && typeof selected.outerHTML === 'string' ? selected.outerHTML : null,
