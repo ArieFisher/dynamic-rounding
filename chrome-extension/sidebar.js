@@ -106,6 +106,14 @@ function createBoundTab(tabsApi, bus) {
     // is passed over. A tabs interface reporting no window leaves the
     // comparison on the tab alone.
     //
+    // The window the bound tab sits in: null before the lookup answers, and
+    // null when the tabs interface reports no window. The screenshot take
+    // names this window, whose front tab is the bound tab by construction —
+    // the sidebar closes when that tab leaves the front.
+    windowId() {
+      return boundWindowId;
+    },
+
     // With no tab recorded there is nothing to have left, so nothing closes.
     onSwitchAway(onLeft) {
       if (!tabsApi || !tabsApi.onActivated ||
@@ -959,11 +967,60 @@ function collectSidebarView() {
   };
 }
 
+// JPEG at this quality keeps table text legible and holds a laptop viewport
+// near a few hundred kilobytes; PNG runs three to six times larger on a
+// text-heavy page.
+const CAPTURE_SCREENSHOT_QUALITY = 85;
+
+// The bound tab's visible area as one image data URL, for the capture. The
+// tabs interface arrives as a parameter so the suite drives this with a
+// stub. chrome.tabs.captureVisibleTab needs the activeTab grant, which the
+// right-click menu item that opened the sidebar gives for that tab and a
+// navigation takes away; it runs from extension pages, and Chrome settles
+// its promise on every documented failure (no grant, quota, protected
+// page), so no timer guards it. Every route calls done exactly once: with
+// the image and a taken record, or with no image and a record naming the
+// reason. A failure here never blocks the save; it is one more fact the
+// capture records.
+function takeCaptureScreenshot(tabsApi, windowId, done) {
+  const fail = (reason) => {
+    const text = reason && reason.message ? reason.message : String(reason);
+    DR_LOG.warn('Dynamic Rounding: screenshot failed (' + text + ').');
+    done({ dataUrl: null, record: { taken: false, reason: text } });
+  };
+  if (!tabsApi || typeof tabsApi.captureVisibleTab !== 'function') {
+    fail('the tabs interface offers no capture');
+    return;
+  }
+  const options = { format: 'jpeg', quality: CAPTURE_SCREENSHOT_QUALITY };
+  const args = typeof windowId === 'number' ? [windowId, options] : [options];
+  let pending;
+  try {
+    pending = tabsApi.captureVisibleTab.apply(tabsApi, args);
+  } catch (e) {
+    fail(e);
+    return;
+  }
+  if (!pending || typeof pending.then !== 'function') {
+    fail('the capture returned no promise');
+    return;
+  }
+  pending.then((dataUrl) => {
+    if (typeof dataUrl !== 'string' || dataUrl === '') {
+      fail('the capture returned no image');
+      return;
+    }
+    done({ dataUrl: dataUrl, record: { taken: true, format: 'jpeg', chars: dataUrl.length } });
+  }, fail);
+}
+
 // One capture state from the page's half (the request:captureState answer,
-// or null when the pull failed) and this page's half. CAPTURE_FORMAT comes
-// from lib/dr-capture/state.js, loaded by this page too, so the fallback
-// carries the same version the serializer stamps.
-function assembleAndSaveCapture(mark, remarks, pageState) {
+// or null when the pull failed), this page's half, and the screenshot take's
+// answer. CAPTURE_FORMAT comes from lib/dr-capture/state.js, loaded by this
+// page too, so the fallback carries the same version the serializer stamps.
+// The image travels to the renderer beside the state, never inside it: the
+// state holds the take's record alone, so the JSON island stays small.
+function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   const at = new Date();
   const state = Object.assign({
     captureFormat: CAPTURE_FORMAT,
@@ -986,6 +1043,9 @@ function assembleAndSaveCapture(mark, remarks, pageState) {
   };
   state.mark = mark;
   state.remarks = remarks;
+  state.screenshot = shot && shot.record
+    ? shot.record
+    : { taken: false, reason: 'no screenshot was attempted' };
   state.sidebarView = collectSidebarView();
   // Provenance is evidence: the two contexts' rows stay in separate lists.
   state.log = {
@@ -1000,6 +1060,7 @@ function assembleAndSaveCapture(mark, remarks, pageState) {
     const html = DR_CAPTURE.buildCaptureDocument({
       state: state,
       lockedStatusText: APPLY_BLOCKED_STATUS_MSG,
+      screenshotDataUrl: shot ? shot.dataUrl : null,
     });
     saveCaptureFile({
       filename: DR_CAPTURE.filenameFor({ at: at, url: state.meta.url, mark: mark }),
@@ -1029,18 +1090,30 @@ function assembleAndSaveCapture(mark, remarks, pageState) {
   }
 }
 
+// The state pull and the screenshot take run side by side; the save runs
+// once both have answered, whichever answers first. Each answer is a fact
+// the capture records: a pull that never answers saves with the page half
+// as an absence, a take that fails saves with the reason in the record.
 function saveCapture() {
   if (captureMark === null) return;
   const mark = captureMark;
   const remarks = captureRemarksEl ? captureRemarksEl.value : '';
   DR_LOG.debug('Dynamic Rounding: finish pressed; asking for capture state.');
+  let pageAnswer = null;
+  let shot = null;
+  let pending = 2;
+  const settle = () => {
+    pending -= 1;
+    if (pending === 0) assembleAndSaveCapture(mark, remarks, pageAnswer, shot);
+  };
   DR_BUS.request('request:captureState', {}, (answer) => {
-    if (!answer) {
-      DR_LOG.warn('Dynamic Rounding: capture state request went unanswered.');
-      assembleAndSaveCapture(mark, remarks, null);
-      return;
-    }
-    assembleAndSaveCapture(mark, remarks, answer);
+    if (!answer) DR_LOG.warn('Dynamic Rounding: capture state request went unanswered.');
+    pageAnswer = answer || null;
+    settle();
+  });
+  takeCaptureScreenshot(chrome.tabs, boundTab.windowId(), (result) => {
+    shot = result;
+    settle();
   });
 }
 

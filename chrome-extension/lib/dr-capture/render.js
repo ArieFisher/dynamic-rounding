@@ -11,9 +11,10 @@
  * buildCaptureDocument() turns one capture state into one self-contained
  * HTML document — a string in, a string out, no browser API touched. The
  * document reads as a report, top to bottom: a header of facts, the mark and
- * remarks, a likeness of the sidebar, the bound table, the registry, the
- * tuning block in force, the log rows of both contexts, the fixture seed as
- * readable text, and the whole state as machine-readable JSON at the bottom.
+ * remarks, a likeness of the sidebar, the screenshot, the bound table, the
+ * registry, the tuning block in force, the log rows of both contexts, the
+ * fixture seed as readable text, and the whole state as machine-readable
+ * JSON at the bottom.
  * A thin line separates every section. A reader hint (a note) renders one
  * size below the table text, in italics, opening with "Note: ", through one
  * helper, so it never reads as content.
@@ -89,6 +90,7 @@ const CAPTURE_STYLES = [
   // A reader note: one size below the table text, italic, never content.
   '.cap-note { font-size: 13px; font-style: italic; color: #555; margin: 4px 0; }',
   '.cap-panel { max-width: 320px; border: 1px solid #ccc; border-radius: 8px; padding: 12px; }',
+  'img.cap-shot { max-width: 100%; border: 1px solid #ccc; }',
   'table.cap-table { border-collapse: collapse; }',
   '.cap-table th, .cap-table td { border: 1px solid #bbb; padding: 4px 10px; text-align: right; }',
   '.cap-table th { background: #f2f2f2; }',
@@ -187,7 +189,10 @@ function captureFilenameFor(opts) {
 // The saved file carries the same content about four times — the two table
 // renderings, the JSON island, and the visible seed — so the serialized
 // state's length times this factor estimates the file's size before any
-// file exists.
+// file exists. The screenshot stays out of the estimate: it lands once, its
+// size is bounded by the viewport (a few hundred thousand characters, under
+// a tenth of the warning threshold), and the size note runs when the form
+// opens, before any screenshot exists.
 const CAPTURE_FILE_CHARS_PER_STATE_CHAR = 4;
 // Estimates at or above this many characters (about 4 MB) get a size
 // warning on the capture form. The full-detail default stays: the warning
@@ -401,6 +406,34 @@ function renderTuningSection(state) {
   return '<section><h2>Detection tuning</h2>' + body + '</section>';
 }
 
+// The one shape an image may take on its way into the file: a JPEG or PNG
+// data URL whose payload is base64 alone. A value of any other shape never
+// reaches the src attribute — no other scheme, no quote, no attribute.
+const CAPTURE_IMAGE_DATA_URL = /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/;
+
+// The screenshot the sidebar took at finish: the bound tab's visible area.
+// The image arrives beside the state, never inside it; the state holds the
+// take's record alone. A take that failed, a record that is missing, and
+// image data outside the one accepted shape each render as an absence
+// naming the reason — never as an empty frame.
+function renderScreenshotSection(state, dataUrl) {
+  const record = state.screenshot;
+  let body;
+  if (!record) {
+    body = '<p class="cap-empty">No screenshot was recorded.</p>';
+  } else if (!record.taken) {
+    body = '<p class="cap-empty">No screenshot: ' + escapeHtml(displayValue(record.reason)) + '.</p>';
+  } else if (typeof dataUrl !== 'string' || !CAPTURE_IMAGE_DATA_URL.test(dataUrl)) {
+    body = '<p class="cap-empty">No screenshot: the image data was not an image data URL.</p>';
+  } else {
+    body = '<img class="cap-shot" src="' + escapeHtml(dataUrl) +
+      '" alt="The bound tab as it stood at capture time">' +
+      renderNote('The tab’s visible area when Save capture was pressed. ' +
+        'The sidebar is browser UI and is not in the image.');
+  }
+  return '<section><h2>Screenshot</h2>' + body + '</section>';
+}
+
 // The sidebar likeness: positions and states from plain values, rendered
 // open, under this file's own stylesheet — no page CSS, no cloned nodes,
 // and deliberately crude. The JSON island carries the precision.
@@ -540,14 +573,17 @@ function renderFixtureSeed(state) {
  * The whole capture document. input.state is the full capture state — it
  * becomes the JSON island verbatim, and every visible section renders from
  * it. input.lockedStatusText is the locked-table wording, passed in as a
- * value because it already lives in the sidebar and the pill title. The
- * sections stack in reading order: the mark and remarks, the sidebar
- * likeness, the bound table, the registry, the tuning block, the logs, the
- * seed.
+ * value because it already lives in the sidebar and the pill title.
+ * input.screenshotDataUrl is the screenshot the sidebar took, passed beside
+ * the state so the JSON island never carries the image. The sections stack
+ * in reading order: the mark and remarks, the sidebar likeness, the
+ * screenshot, the bound table, the registry, the tuning block, the logs,
+ * the seed.
  */
 function buildCaptureDocument(input) {
   const state = input.state;
   const lockedStatusText = input.lockedStatusText;
+  const screenshotDataUrl = input.screenshotDataUrl;
   const meta = state.meta || {};
   // data-dr-capture is the capture marker: a saved capture holds a real
   // table, and with file access enabled Chrome injects this extension's own
@@ -565,6 +601,7 @@ function buildCaptureDocument(input) {
     '<main>' +
     renderMarkAndRemarks(state) +
     '<section><h2>Sidebar</h2>' + renderSidebarLikeness(state, lockedStatusText) + '</section>' +
+    renderScreenshotSection(state, screenshotDataUrl) +
     '<section><h2>Bound table</h2>' + renderBoundTable(state, lockedStatusText) + '</section>' +
     renderRegistrySection(state) +
     renderTuningSection(state) +

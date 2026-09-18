@@ -22407,7 +22407,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 
   const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 4);
+  eq('capture-state: the state carries its format version', state.captureFormat, 5);
   eq('capture-state: the settings record is carried verbatim',
     state.settings, { enabled: true, offsetTop: -0.5 });
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
@@ -22572,7 +22572,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 4, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 5, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting logs its own row, and that row lands in the capture',
@@ -22642,7 +22642,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 4,
+    captureFormat: 5,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
@@ -22853,7 +22853,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 4,
+    captureFormat: 5,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -22922,6 +22922,83 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     unbound.includes('<p class="cap-empty">No table was bound'), true);
 })();
 
+// --- lib/dr-capture: the screenshot section ---
+//
+// The sidebar takes a screenshot of the bound tab at finish and hands the
+// image to the renderer beside the state, never inside it: the state holds
+// a small record (taken, format, size) and the JSON island stays small. The
+// image reaches the file only as an image data URL; anything else, a failed
+// take, or no record at all renders as an absence with its reason.
+(function captureScreenshotSection() {
+  if (typeof globalThis.DR_CAPTURE !== 'object') return;
+  const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
+  const makeState = (over) => Object.assign({
+    captureFormat: 5,
+    meta: { url: 'https://www.example.com/prices', title: 'Prices',
+      version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
+    mark: 'looks-wrong', remarks: '', settings: { enabled: true }, tuning: null,
+    activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
+    sidebarView: null, errorState: null,
+    log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
+    page: { url: 'https://www.example.com/prices', title: 'Prices' },
+  }, over || {});
+  const islandOf = (docHtml) => {
+    const m = docHtml.match(/<pre id="capture-state" hidden>([\s\S]*?)<\/pre>/);
+    return m ? m[1] : '';
+  };
+  const islandJson = (docHtml) => JSON.parse(islandOf(docHtml)
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&'));
+
+  const jpeg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDA==';
+  const taken = { taken: true, format: 'jpeg', chars: jpeg.length };
+  const html = buildCaptureDocument({
+    state: makeState({ screenshot: taken }), lockedStatusText: '', screenshotDataUrl: jpeg,
+  });
+  eq('capture-render: the screenshot renders as an image from the data URL passed beside the state',
+    html.includes('<img class="cap-shot" src="' + jpeg + '"'), true);
+  eq('capture-render: the island carries the screenshot record and never the image data',
+    islandJson(html).screenshot, taken);
+  eq('capture-render: the island holds no image data',
+    islandOf(html).includes('data:image'), false);
+  const order = ['<h2>Sidebar</h2>', '<h2>Screenshot</h2>', '<h2>Bound table</h2>']
+    .map((h) => html.indexOf(h));
+  eq('capture-render: the Screenshot section sits between the sidebar likeness and the bound table',
+    order.every((i, n) => i !== -1 && (n === 0 || i > order[n - 1])), true);
+  eq('capture-render: the screenshot carries a note on what the image shows',
+    /<img class="cap-shot"[^>]*>\s*<p class="cap-note">Note: The tab/.test(html), true);
+
+  const failed = buildCaptureDocument({
+    state: makeState({ screenshot: { taken: false, reason: 'activeTab was not granted' } }),
+    lockedStatusText: '', screenshotDataUrl: null,
+  });
+  eq('capture-render: a failed screenshot renders as an absence naming the reason',
+    failed.includes('<p class="cap-empty">No screenshot: activeTab was not granted.</p>') &&
+      !failed.includes('<img class="cap-shot"'), true);
+  const absent = buildCaptureDocument({ state: makeState(), lockedStatusText: '' });
+  eq('capture-render: an absent screenshot record renders as an absence',
+    absent.includes('<p class="cap-empty">No screenshot was recorded.</p>') &&
+      !absent.includes('<img class="cap-shot"'), true);
+
+  // The image reaches the src attribute only as an image data URL: a
+  // scheme, a quote, or an attribute cannot ride in on the value.
+  const hostile = ['javascript:alert(1)', 'data:text/html;base64,AAAA',
+    'data:image/png;base64,AAAA" onerror="alert(1)', ''];
+  const hostileOut = hostile.map((value) => buildCaptureDocument({
+    state: makeState({ screenshot: taken }), lockedStatusText: '', screenshotDataUrl: value,
+  }));
+  eq('capture-render: a value outside the image data URL shape never reaches the img src',
+    hostileOut.every((out) => !out.includes('<img class="cap-shot"') && !out.includes('onerror') &&
+      !out.includes('javascript:') &&
+      out.includes('No screenshot: the image data was not an image data URL.')), true);
+  eq('capture-render: a png data URL renders like a jpeg one',
+    buildCaptureDocument({
+      state: makeState({ screenshot: { taken: true, format: 'png', chars: 26 } }),
+      lockedStatusText: '', screenshotDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+    }).includes('<img class="cap-shot" src="data:image/png;base64,iVBORw0KGgo="'), true);
+})();
+
 // --- lib/dr-capture: the renderer keeps the state's absences (#304) ---
 //
 // The state records three kinds of absence honestly; the page a human reads
@@ -22936,7 +23013,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 4,
+    captureFormat: 5,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -23108,6 +23185,78 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
   eq('capture-ui: an unanswered state request still saves and records the failure',
     /DR_LOG\.warn\([^)]*went unanswered/.test(sidebarJsSrc), true);
+  const saveBody = (sidebarJsSrc.match(/function saveCapture\(\)[\s\S]*?\n\}/) || [''])[0];
+  eq('capture-ui: finish takes the screenshot beside the state pull and the save waits for both',
+    saveBody.includes("DR_BUS.request('request:captureState'") &&
+      saveBody.includes('takeCaptureScreenshot(chrome.tabs, boundTab.windowId()') &&
+      (saveBody.match(/assembleAndSaveCapture\(/g) || []).length === 1, true);
+  eq('capture-ui: the renderer receives the image beside the state, never inside it',
+    /buildCaptureDocument\(\{[\s\S]{0,200}screenshotDataUrl:/.test(sidebarJsSrc) &&
+      /state\.screenshot = /.test(sidebarJsSrc) &&
+      !/state\.screenshotDataUrl/.test(sidebarJsSrc), true);
+})();
+
+// --- sidebar: the screenshot take never blocks the save ---
+//
+// takeCaptureScreenshot takes its tabs interface as a parameter and answers
+// through one callback, so the suite drives the real source with a stub
+// that settles at once. Every route — a resolved take, a rejected one, a
+// throw before the promise exists, a tabs interface with no capture — calls
+// the callback exactly once, with the image or with a not-taken record that
+// names the reason.
+(function captureScreenshotTake() {
+  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
+  const source = sidebarSrc.match(/function takeCaptureScreenshot\([\s\S]*?\n\}/);
+  eq('capture-shot: takeCaptureScreenshot extracted from sidebar.js', !!source, true);
+  if (!source) return;
+  const warned = [];
+  const logStub = { warn: (text) => { warned.push(text); }, debug: () => {} };
+  // The quality constant sits beside the take in the source; the take reads
+  // it as a bare name, so the extracted function receives it the same way.
+  const quality = sidebarSrc.match(/const CAPTURE_SCREENSHOT_QUALITY = (\d+);/);
+  eq('capture-shot: the quality constant sits beside the take', !!quality, true);
+  const take = (new Function('DR_LOG', 'CAPTURE_SCREENSHOT_QUALITY', 'return ' + source[0] + ';'))(
+    logStub, quality ? Number(quality[1]) : 0);
+
+  const drive = (tabsApi, windowId) => {
+    const results = [];
+    take(tabsApi, windowId, (result) => { results.push(result); });
+    return results;
+  };
+  const settled = (value) => ({ then(ok) { ok(value); } });
+  const rejected = (error) => ({ then(ok, fail) { fail(error); } });
+
+  const okArgs = [];
+  const ok = drive({ captureVisibleTab: (...args) => { okArgs.push(args); return settled('data:image/jpeg;base64,AAAA'); } }, 7);
+  eq('capture-shot: a resolved take yields the data URL and a taken record with its char count',
+    ok, [{ dataUrl: 'data:image/jpeg;base64,AAAA',
+      record: { taken: true, format: 'jpeg', chars: 'data:image/jpeg;base64,AAAA'.length } }]);
+  eq('capture-shot: the take passes jpeg at quality 85 and the window it was given',
+    okArgs, [[7, { format: 'jpeg', quality: 85 }]]);
+
+  const noWindowArgs = [];
+  drive({ captureVisibleTab: (...args) => { noWindowArgs.push(args); return settled('data:image/jpeg;base64,AAAA'); } }, null);
+  eq('capture-shot: with no window the take omits the window argument',
+    noWindowArgs, [[{ format: 'jpeg', quality: 85 }]]);
+
+  const failed = drive({ captureVisibleTab: () => rejected(new Error('activeTab missing')) }, 7);
+  eq('capture-shot: a rejected take yields a not-taken record naming the reason and no data URL',
+    failed, [{ dataUrl: null, record: { taken: false, reason: 'activeTab missing' } }]);
+  eq('capture-shot: a rejected take logs a warn row',
+    warned.length === 1 && /screenshot failed \(activeTab missing\)/.test(warned[0]), true);
+
+  const threw = drive({ captureVisibleTab: () => { throw new Error('no permission'); } }, 7);
+  eq('capture-shot: a take that throws before returning yields a not-taken record',
+    threw, [{ dataUrl: null, record: { taken: false, reason: 'no permission' } }]);
+
+  const missing = drive({}, 7);
+  eq('capture-shot: a missing capture function yields a not-taken record',
+    missing.length === 1 && missing[0].dataUrl === null && missing[0].record.taken === false &&
+      typeof missing[0].record.reason === 'string' && missing[0].record.reason.length > 0, true);
+
+  const empty = drive({ captureVisibleTab: () => settled('') }, 7);
+  eq('capture-shot: a take that answers with no image yields a not-taken record',
+    empty.length === 1 && empty[0].dataUrl === null && empty[0].record.taken === false, true);
 })();
 
 // --- capture follow-ups: the pull guard, the glyph pin, the header line ---
@@ -23184,7 +23333,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 4,
+      captureFormat: 5,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -23227,8 +23376,8 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     state.tuning, DR_TUNING);
   eq('capture-tuning: the state\'s captureFormat equals CAPTURE_FORMAT',
     state.captureFormat, CAPTURE_FORMAT);
-  eq('capture-tuning: CAPTURE_FORMAT is 4',
-    CAPTURE_FORMAT, 4);
+  eq('capture-tuning: CAPTURE_FORMAT is 5',
+    CAPTURE_FORMAT, 5);
   eq('capture-tuning: the returned tuning is not the same object as DR_TUNING',
     state.tuning !== DR_TUNING, true);
 
@@ -23258,7 +23407,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (tuning) => ({
-    captureFormat: 4,
+    captureFormat: 5,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -23324,7 +23473,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (over) => Object.assign({
-    captureFormat: 4,
+    captureFormat: 5,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -23359,7 +23508,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   eq('capture-tuning: an absent tuning field renders the absence placeholder in the tuning section',
     /<h2>Detection tuning<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
   eq('capture-tuning: the format version still prints in the header when tuning is absent',
-    /<dt>Capture format<\/dt><dd>4<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+    /<dt>Capture format<\/dt><dd>5<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
@@ -23398,7 +23547,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 4,
+      captureFormat: 5,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -23804,11 +23953,11 @@ function makeIsolatedModel() {
   };
   const state = collectCaptureState({ store: fakeStore, adapterFor: () => null });
   eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
-  eq('capture-state: format 4 marks the remarks key and the mark tokens',
-    state.captureFormat, 4);
+  eq('capture-state: format 5 marks the screenshot record',
+    state.captureFormat, 5);
 
   const renderState = {
-    captureFormat: 4,
+    captureFormat: 5,
     meta: { url: 'https://www.example.com/p', title: 'P', version: '2.1.70',
       platform: 'test', at: '2026-09-17T16:00:00.000Z' },
     mark: 'looks-wrong', remarks: '', settings: { enabled: true }, tuning: null,
@@ -24632,6 +24781,19 @@ function makeBusSandbox(opts) {
     bus.deliver('state:applyOk', {}, OWN_TAB);
     eq('bound tab: resolve records the tab the sidebar was opened for',
       seen, ['report']);
+  })();
+
+  // --- The window the bound tab sits in, for the screenshot ---
+  (function windowIdAccessor() {
+    const boundTab = createBoundTab(makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]), makeBus());
+    const before = boundTab.windowId();
+    boundTab.resolve(() => {});
+    eq('bound tab: windowId() answers null before the lookup and the window after it',
+      [before, boundTab.windowId()], [null, OWN_WINDOW]);
+    const noWindow = createBoundTab({ query: (q, cb) => cb([{ id: OWN_TAB }]) }, makeBus());
+    noWindow.resolve(() => {});
+    eq('bound tab: windowId() stays null when the tabs interface reports no window',
+      noWindow.windowId(), null);
   })();
 
   // No tab to bind to: the sidebar still runs its opening read, which falls
