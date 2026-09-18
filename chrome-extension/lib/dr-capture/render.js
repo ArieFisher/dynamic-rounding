@@ -75,7 +75,7 @@ const CAPTURE_STYLES = [
   'h1 { font-size: 18px; margin: 0 0 4px; }',
   'h2 { font-size: 15px; margin: 0 0 8px; }',
   'h3 { font-size: 13px; margin: 12px 0 4px; }',
-  // The header is a header: the facts read small and muted, below the body.
+  // The header is a header: the facts read one size below the body text, muted.
   '.cap-meta { font-size: 12px; color: #666; margin: 4px 0 0; }',
   '.cap-meta dt { color: #888; }',
   // One thin line between sections; the sections stack, none sits beside another.
@@ -216,9 +216,10 @@ function captureSizeWarning(state) {
 
 /* --------------------------------------------------------------- sections */
 
-// A reader note: one sentence about how to read the file, never a finding
-// about the page (an absence renders in the absence box). The prefix and the
-// class live here alone, so every note reads the same.
+// A reader note: a sentence or two about how to read the file, never a
+// finding about the page (an absence renders as an absence sentence,
+// highlighted). The prefix and the class live here alone, so every note
+// reads the same.
 function renderNote(text) {
   return '<p class="cap-note">Note: ' + escapeHtml(text) + '</p>';
 }
