@@ -10,10 +10,13 @@
  *
  * buildCaptureDocument() turns one capture state into one self-contained
  * HTML document — a string in, a string out, no browser API touched. The
- * document reads as a report: the mark and remarks on top, the bound table
- * beside a likeness of the sidebar, the registry, the tuning block in
- * force, the log rows of both contexts, the fixture seed as readable text,
- * and the whole state as machine-readable JSON at the bottom.
+ * document reads as a report, top to bottom: a header of facts, the mark and
+ * remarks, a likeness of the sidebar, the bound table, the registry, the
+ * tuning block in force, the log rows of both contexts, the fixture seed as
+ * readable text, and the whole state as machine-readable JSON at the bottom.
+ * A thin line separates every section. A reader hint (a note) renders one
+ * size below the table text, in italics, opening with "Note: ", through one
+ * helper, so it never reads as content.
  *
  * Safety doctrine, adapted from the model extension's capture for string
  * assembly (the test harness has no DOM, so the document cannot be built as
@@ -70,17 +73,22 @@ function captureMarkLabel(token) {
 const CAPTURE_STYLES = [
   'body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; color: #1a1a1a; background: #fff; }',
   'h1 { font-size: 18px; margin: 0 0 4px; }',
-  'h2 { font-size: 15px; margin: 24px 0 8px; }',
+  'h2 { font-size: 15px; margin: 0 0 8px; }',
   'h3 { font-size: 13px; margin: 12px 0 4px; }',
+  // The header is a header: the facts read one size below the body text, muted.
+  '.cap-meta { font-size: 12px; color: #666; margin: 4px 0 0; }',
+  '.cap-meta dt { color: #888; }',
+  // One thin line between sections; the sections stack, none sits beside another.
+  'main > section { border-top: 1px solid #ddd; margin-top: 16px; padding-top: 8px; }',
   '.cap-mark { font-size: 20px; margin: 4px 0; }',
   '.cap-mark span { font-size: 13px; color: #555; vertical-align: middle; }',
   'dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0; }',
   'dt { color: #555; } dd { margin: 0; overflow-wrap: anywhere; }',
   '.cap-remarks { border-left: 3px solid #3d85c6; padding: 4px 12px; margin: 12px 0; }',
   '.cap-remarks p { margin: 2px 0; white-space: pre-wrap; }',
-  '.cap-visual { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }',
-  '.cap-page { flex: 1 1 320px; }',
-  '.cap-panel { flex: 0 0 260px; border: 1px solid #ccc; border-radius: 8px; padding: 12px; }',
+  // A reader note: one size below the table text, italic, never content.
+  '.cap-note { font-size: 13px; font-style: italic; color: #555; margin: 4px 0; }',
+  '.cap-panel { max-width: 320px; border: 1px solid #ccc; border-radius: 8px; padding: 12px; }',
   'table.cap-table { border-collapse: collapse; }',
   '.cap-table th, .cap-table td { border: 1px solid #bbb; padding: 4px 10px; text-align: right; }',
   '.cap-table th { background: #f2f2f2; }',
@@ -208,13 +216,19 @@ function captureSizeWarning(state) {
 
 /* --------------------------------------------------------------- sections */
 
+// A reader note: a sentence or two about how to read the file, never a
+// finding about the page (an absence renders as an absence sentence,
+// highlighted). The prefix and the class live here alone, so every note
+// reads the same.
+function renderNote(text) {
+  return '<p class="cap-note">Note: ' + escapeHtml(text) + '</p>';
+}
+
+// The header holds the facts alone: the title and a small muted list. The
+// verdict and the remarks follow in their own section, so the eye lands on
+// them first among the content.
 function renderCaptureHeader(state) {
   const meta = state.meta || {};
-  // Own-property guard: only the three mark tokens resolve a glyph. A bare
-  // lookup would resolve prototype property names too, and the glyph is
-  // interpolated as markup.
-  const glyph = Object.prototype.hasOwnProperty.call(CAPTURE_MARK_GLYPHS, state.mark)
-    ? CAPTURE_MARK_GLYPHS[state.mark] : '';
   const rows = [
     ['Page', displayValue(meta.url)],
     ['Title', displayValue(meta.title)],
@@ -225,21 +239,25 @@ function renderCaptureHeader(state) {
   ].map(function (pair) {
     return '<dt>' + escapeHtml(pair[0]) + '</dt><dd>' + escapeHtml(pair[1]) + '</dd>';
   }).join('');
-  // The remarks are one free-text field; line breaks the user typed survive
-  // through the pre-wrap rule on .cap-remarks.
-  const remarksRow = '<p><b>Remarks:</b> ' + escapeHtml(displayValue(state.remarks)) + '</p>';
-  // What the file holds, stated where the person about to attach it reads
-  // it: the script-free CSP makes the file safe to open, and this line
-  // covers the other half — the values it carries.
-  const holdsRow = '<p class="cap-band">This capture holds the page’s table contents, ' +
-    'its address and title, and browser details. Share it as you would share the page.</p>';
   return '<header>' +
     '<h1>DynamicRounding capture</h1>' +
-    '<p class="cap-mark">' + glyph + ' <span>' + escapeHtml(captureMarkLabel(state.mark)) + '</span></p>' +
-    '<dl>' + rows + '</dl>' +
-    holdsRow +
-    '<section class="cap-remarks">' + remarksRow + '</section>' +
+    '<dl class="cap-meta">' + rows + '</dl>' +
     '</header>';
+}
+
+// The mark and the remarks together: the glyph and its word, then the text.
+function renderMarkAndRemarks(state) {
+  // Own-property guard: only the three mark tokens resolve a glyph. A bare
+  // lookup would resolve prototype property names too, and the glyph is
+  // interpolated as markup.
+  const glyph = Object.prototype.hasOwnProperty.call(CAPTURE_MARK_GLYPHS, state.mark)
+    ? CAPTURE_MARK_GLYPHS[state.mark] : '';
+  // The remarks are one free-text field; line breaks the user typed survive
+  // through the pre-wrap rule on .cap-remarks.
+  return '<section class="cap-remarks">' +
+    '<p class="cap-mark">' + glyph + ' <span>' + escapeHtml(captureMarkLabel(state.mark)) + '</span></p>' +
+    '<p><b>Remarks:</b> ' + escapeHtml(displayValue(state.remarks)) + '</p>' +
+    '</section>';
 }
 
 // One rendering of the bound table's cells, rebuilt as a real table of
@@ -307,13 +325,13 @@ function renderBoundTable(state, lockedStatusText) {
   return '<h3>' + caption + '</h3>' +
     lockedHtml +
     renderCapTable(table, 'displayed') +
-    '<p class="cap-band">Hover a dotted cell to see its original.</p>' +
+    renderNote('Hover a dotted cell to see its original.') +
     '<h3>The same table, with the originals</h3>' +
     renderCapTable(table, 'originals') +
     // The state records no cell spans, so both renderings and the JSON place
     // every cell in its own slot (#309's named limit).
-    '<p class="cap-band">Cell spans are not recorded: merged cells render ' +
-    'unmerged here and in the state below.</p>';
+    renderNote('Cell spans are not recorded: merged cells render ' +
+      'unmerged here and in the state below.');
 }
 
 // Every table the registry held, one line each, the bound one marked. The
@@ -421,7 +439,6 @@ function renderSidebarLikeness(state, lockedStatusText) {
   };
 
   return '<div class="cap-panel">' +
-    '<h3>Sidebar (rendered open)</h3>' +
     switchRow('Rounding', view.enabled) +
     switches +
     '<div class="cap-switch"><span>Dates</span><b>' + escapeHtml(displayValue(view.dateGranularity)) + '</b></div>' +
@@ -441,19 +458,49 @@ function renderSidebarLikeness(state, lockedStatusText) {
     '</div>';
 }
 
+// The extension's own origin in a stack frame: chrome-extension://, the
+// 32-letter id, the slash. Dropping it leaves the path the source tree uses.
+const CAPTURE_FRAME_ORIGIN = /^chrome-extension:\/\/[a-p]{32}\//;
+// V8's two frame shapes: "at fn (location:line:col)" and, for a frame with
+// no name, "at location:line:col".
+const CAPTURE_NAMED_FRAME = /^\s*at (.+?) \((.+):(\d+):(\d+)\)$/;
+const CAPTURE_BARE_FRAME = /^\s*at (\S+):(\d+):(\d+)$/;
+
+// One stack frame in the short form Chrome's extension error page uses:
+// path:line:col (function). The extension's origin drops out of the path;
+// a frame with no name reads "(anonymous function)"; "async " and "new "
+// stay with the name. A line outside both shapes returns as it is, so the
+// reader still sees every line V8 wrote. The result is plain text; the
+// caller escapes it at the boundary like every other value.
+function formatStackFrame(line) {
+  const named = CAPTURE_NAMED_FRAME.exec(line);
+  if (named) {
+    return named[2].replace(CAPTURE_FRAME_ORIGIN, '') + ':' + named[3] + ':' + named[4] +
+      ' (' + named[1] + ')';
+  }
+  const bare = CAPTURE_BARE_FRAME.exec(line);
+  if (bare) {
+    return bare[1].replace(CAPTURE_FRAME_ORIGIN, '') + ':' + bare[2] + ':' + bare[3] +
+      ' (anonymous function)';
+  }
+  return line;
+}
+
 // Both contexts' log rows, labeled by provenance. An empty buffer is a
 // finding, so it renders as a sentence, never as a missing section — and a
 // missing snapshot is a different finding: the state pull for that context
 // failed, so no buffer arrived at all. A row's stack trace (warn and error
 // rows carry one) sits under the row in a details element, folded, so a
-// reader opens the trace for the row in question. details/summary folds
-// without a script, so the file's own policy still holds.
+// reader opens the trace for the row in question, each frame in the short
+// form; the JSON island keeps the raw string. details/summary folds without
+// a script, so the file's own policy still holds.
 function renderCaptureLogs(state) {
   const log = state.log || {};
   const trace = function (row) {
     if (typeof row.stack !== 'string' || row.stack === '') return '';
+    const frames = row.stack.split('\n').map(formatStackFrame).join('\n');
     return '<details><summary>Stack trace</summary><pre class="cap-trace">' +
-      escapeHtml(row.stack) + '</pre></details>';
+      escapeHtml(frames) + '</pre></details>';
   };
   const section = function (label, snap) {
     if (!snap) {
@@ -475,7 +522,7 @@ function renderCaptureLogs(state) {
   return '<section><h2>Extension logs</h2>' +
     section('Content script', log.content) +
     section('Sidebar', log.sidebar) +
-    '<p class="cap-band">Service worker rows are not captured.</p>' +
+    renderNote('Service worker rows are not captured.') +
     '</section>';
 }
 
@@ -485,8 +532,8 @@ function renderFixtureSeed(state) {
       '<p class="cap-empty">No fixture seed: no table was bound.</p></section>';
   }
   return '<section><h2>Fixture seed</h2>' +
-    '<p class="cap-band">The bound table’s markup as it stood at capture time, ' +
-    'escaped here for reading. The JSON below carries it byte-exact.</p>' +
+    renderNote('The bound table’s markup as it stood at capture time, ' +
+      'escaped here for reading. The JSON below carries it byte-exact.') +
     '<pre class="cap-seed">' + escapeHtml(state.fixtureSeed) + '</pre></section>';
 }
 
@@ -494,7 +541,10 @@ function renderFixtureSeed(state) {
  * The whole capture document. input.state is the full capture state — it
  * becomes the JSON island verbatim, and every visible section renders from
  * it. input.lockedStatusText is the locked-table wording, passed in as a
- * value because it already lives in the sidebar and the pill title.
+ * value because it already lives in the sidebar and the pill title. The
+ * sections stack in reading order: the mark and remarks, the sidebar
+ * likeness, the bound table, the registry, the tuning block, the logs, the
+ * seed.
  */
 function buildCaptureDocument(input) {
   const state = input.state;
@@ -514,10 +564,9 @@ function buildCaptureDocument(input) {
     '</head>\n<body>\n' +
     renderCaptureHeader(state) +
     '<main>' +
-    '<section><h2>What the extension saw</h2><div class="cap-visual">' +
-    '<div class="cap-page">' + renderBoundTable(state, lockedStatusText) + '</div>' +
-    renderSidebarLikeness(state, lockedStatusText) +
-    '</div></section>' +
+    renderMarkAndRemarks(state) +
+    '<section><h2>Sidebar</h2>' + renderSidebarLikeness(state, lockedStatusText) + '</section>' +
+    '<section><h2>Bound table</h2>' + renderBoundTable(state, lockedStatusText) + '</section>' +
     renderRegistrySection(state) +
     renderTuningSection(state) +
     renderCaptureLogs(state) +
