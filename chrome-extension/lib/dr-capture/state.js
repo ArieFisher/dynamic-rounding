@@ -47,7 +47,7 @@
  * the tuning field. Format 3 adds the errorState field and the stack field
  * on each log row. Format 4 renames the free-text key to remarks and the mark
  * tokens to looks-right, not-sure, and looks-wrong. Format 5 adds the
- * screenshot field: the take's record (taken, format, size), never the image.
+ * screenshot field: the take's record (taken, format, chars), never the image.
  */
 
 const CAPTURE_FORMAT = 5;

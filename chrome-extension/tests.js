@@ -22974,7 +22974,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     state: makeState({ screenshot: { taken: false, reason: 'activeTab was not granted' } }),
     lockedStatusText: '', screenshotDataUrl: null,
   });
-  eq('capture-render: a failed screenshot renders as an absence naming the reason',
+  eq('capture-render: a failed screenshot renders as an absence with the reason',
     failed.includes('<p class="cap-empty">No screenshot: activeTab was not granted.</p>') &&
       !failed.includes('<img class="cap-shot"'), true);
   const absent = buildCaptureDocument({ state: makeState(), lockedStatusText: '' });
@@ -22983,7 +22983,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
       !absent.includes('<img class="cap-shot"'), true);
 
   // The image reaches the src attribute only as an image data URL: a
-  // scheme, a quote, or an attribute cannot ride in on the value.
+  // scheme, a quote, or an attribute cannot enter through the value.
   const hostile = ['javascript:alert(1)', 'data:text/html;base64,AAAA',
     'data:image/png;base64,AAAA" onerror="alert(1)', ''];
   const hostileOut = hostile.map((value) => buildCaptureDocument({
@@ -23204,7 +23204,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 // that settles at once. Every route — a resolved take, a rejected one, a
 // throw before the promise exists, a tabs interface with no capture — calls
 // the callback exactly once, with the image or with a not-taken record that
-// names the reason.
+// holds the reason.
 (function captureScreenshotTake() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const source = sidebarSrc.match(/function takeCaptureScreenshot\([\s\S]*?\n\}/);
@@ -23241,7 +23241,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     noWindowArgs, [[{ format: 'jpeg', quality: 85 }]]);
 
   const failed = drive({ captureVisibleTab: () => rejected(new Error('activeTab missing')) }, 7);
-  eq('capture-shot: a rejected take yields a not-taken record naming the reason and no data URL',
+  eq('capture-shot: a rejected take yields a not-taken record with the reason and no data URL',
     failed, [{ dataUrl: null, record: { taken: false, reason: 'activeTab missing' } }]);
   eq('capture-shot: a rejected take logs a warn row',
     warned.length === 1 && /screenshot failed \(activeTab missing\)/.test(warned[0]), true);

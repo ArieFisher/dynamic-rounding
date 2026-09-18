@@ -416,7 +416,7 @@ const CAPTURE_IMAGE_DATA_URL = /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/
 // The image arrives beside the state, never inside it; the state holds the
 // take's record alone. A take that failed, a record that is missing, and
 // image data outside the one accepted shape each render as an absence
-// naming the reason — never as an empty frame.
+// that states the reason — never as an empty frame.
 function renderScreenshotSection(state, dataUrl) {
   const record = state.screenshot;
   let body;
@@ -429,7 +429,7 @@ function renderScreenshotSection(state, dataUrl) {
   } else {
     body = '<img class="cap-shot" src="' + escapeHtml(dataUrl) +
       '" alt="The bound tab as it stood at capture time">' +
-      renderNote('The tab’s visible area when Save capture was pressed. ' +
+      renderNote('The tab’s visible area at the Save capture press. ' +
         'The sidebar is browser UI and is not in the image.');
   }
   return '<section><h2>Screenshot</h2>' + body + '</section>';
