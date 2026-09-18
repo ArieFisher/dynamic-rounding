@@ -34,7 +34,7 @@
  *
  * The state also carries tuning, a plain copy of DR_TUNING (constants.js)
  * taken at capture time — the detection tuning block in force, so a
- * negative capture shows the values detection ran under. The copy is a
+ * looks-wrong capture shows the values detection ran under. The copy is a
  * JSON round-trip: a later change to the block cannot reach a saved state,
  * and the state shares no live object with it.
  *

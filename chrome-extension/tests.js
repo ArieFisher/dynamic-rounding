@@ -22808,7 +22808,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 
   // Filename: compact date first (sorts by day), then the source, then the
   // time (a second capture is a new file), then the mark token, so a folder
-  // of captures reads each file's verdict without opening it.
+  // listing shows each file's verdict without opening the file.
   const at = new Date(2026, 8, 9, 14, 5, 6);
   eq('capture-render: the filename is compact-date first, source-slugged, time, then the mark',
     filenameFor({ at, url: 'https://www.example.com/prices', mark: 'looks-right' }),
