@@ -108,7 +108,7 @@ function createBoundTab(tabsApi, bus) {
     //
     // The window the bound tab sits in: null before the lookup answers, and
     // null when the tabs interface reports no window. The screenshot take
-    // names this window, whose front tab is the bound tab by construction —
+    // passes this window, whose front tab is the bound tab by construction —
     // the sidebar closes when that tab leaves the front.
     windowId() {
       return boundWindowId;
@@ -979,7 +979,7 @@ const CAPTURE_SCREENSHOT_QUALITY = 85;
 // navigation takes away; it runs from extension pages, and Chrome settles
 // its promise on every documented failure (no grant, quota, protected
 // page), so no timer guards it. Every route calls done exactly once: with
-// the image and a taken record, or with no image and a record naming the
+// the image and a taken record, or with no image and a record that holds the
 // reason. A failure here never blocks the save; it is one more fact the
 // capture records.
 function takeCaptureScreenshot(tabsApi, windowId, done) {
@@ -1018,7 +1018,7 @@ function takeCaptureScreenshot(tabsApi, windowId, done) {
 // or null when the pull failed), this page's half, and the screenshot take's
 // answer. CAPTURE_FORMAT comes from lib/dr-capture/state.js, loaded by this
 // page too, so the fallback carries the same version the serializer stamps.
-// The image travels to the renderer beside the state, never inside it: the
+// The image passes to the renderer beside the state, never inside it: the
 // state holds the take's record alone, so the JSON island stays small.
 function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   const at = new Date();
