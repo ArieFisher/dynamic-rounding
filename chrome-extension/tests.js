@@ -22885,9 +22885,10 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const html = buildCaptureDocument({ state: makeState(), lockedStatusText: '' });
   const header = html.slice(html.indexOf('<header>'), html.indexOf('</header>'));
 
-  eq('capture-render: the header holds the title and a small muted meta list',
-    /<header><h1>[^<]*<\/h1><dl class="cap-meta">/.test(html) &&
-      html.includes('.cap-meta { font-size: 12px'), true);
+  // The whole header shape is pinned, so no sentence re-enters it unseen.
+  eq('capture-render: the header holds the title and the meta list, and nothing else',
+    /^<header><h1>[^<]*<\/h1><dl class="cap-meta">(?:<dt>[^<]*<\/dt><dd>[^<]*<\/dd>)+<\/dl>$/
+      .test(header) && html.includes('.cap-meta { font-size: 12px'), true);
   eq('capture-render: the header carries neither the mark nor the remarks',
     header.includes('cap-mark') || header.includes('Remarks:'), false);
   eq('capture-render: the mark and the remarks share one section directly under the header',
@@ -24039,8 +24040,13 @@ function makeIsolatedModel() {
     f('    at new Foo (' + origin + 'z.js:5:6)'), 'z.js:5:6 (new Foo)');
   eq('capture-trace: a frame from another origin keeps its URL',
     f('    at run (https://example.com/app.js:7:8)'), 'https://example.com/app.js:7:8 (run)');
+  // V8 also writes frames with no location — a built-in, a promise
+  // combinator — and a cut frame; each prints as it is.
+  const passThrough = ['Error', '<script>alert(1)</script>', '',
+    '    at new Promise (<anonymous>)', '    at Array.forEach (<anonymous>)',
+    '    at async Promise.all (index 0)', '    at roundTable (' + origin + 'content.js:15'];
   eq('capture-trace: a line outside the frame shape prints as it is',
-    ['Error', '<script>alert(1)</script>', ''].map(f), ['Error', '<script>alert(1)</script>', '']);
+    passThrough.map(f), passThrough);
 })();
 
 // --- lib/dr-log: call sites route through the buffer ---
