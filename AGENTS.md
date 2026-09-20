@@ -40,7 +40,7 @@ These rules govern all prose: **chat**, **documents**, and **GitHub** (pull requ
 - **TL;DR first.** Conclusion, then support.
 - **Answer only what was asked.** A narrow question gets the answer and stops. No options, no offers, no extra framing.
 - **Explain ideas, not instructions.** State the problem, the change, and why the change removes the problem. Do not merely strip out the jargon: a de-jargonized instruction is still an instruction.
-- **Surface unconsidered consequences.** Before implementing, list every behavior change the edit causes beyond the one I named. Put each unnamed one to me first, and never ship it and mention it after.
+- **Surface a consequence only when it would change my decision.** Flag a behavior change beyond the one I named when it does one of these: breaks something that works today, changes what a user sees on a page or a cell type I did not name, or needs a product choice. A consequence that follows directly from the change I asked for is not flagged. Put each flagged change to me before implementing, and never ship one and mention it after.
 - **No unrequested scope.** Build the rule I asked for, not the adjacent one. A related concern becomes a separate issue, never a quiet addition.
 
 ## Design
