@@ -890,7 +890,7 @@ function collectNumericCells(table, options) {
         if (usingStoredOriginal && storedRecord.supRanges) {
           superscriptRanges = storedRecord.supRanges;
         } else {
-          superscriptRanges = getSuperscriptRanges(cellEl);
+          superscriptRanges = getSuperscriptRanges(cellEl, { text });
         }
       }
       // Likewise, the link filter's live-text substring search cannot locate
@@ -1550,7 +1550,7 @@ function roundTable(table, options) {
           ranges,
           isWholeLink: isCellWholeLink(cell),
           hasSuperscript,
-          superscriptRanges: hasSuperscript ? getSuperscriptRanges(cell) : [],
+          superscriptRanges: hasSuperscript ? getSuperscriptRanges(cell, { text }) : [],
         }, opts),
         cell
       );
@@ -1636,12 +1636,19 @@ function roundTable(table, options) {
         // whole-cell character-distribution approach, which mis-allocates
         // characters when newText length differs from original (corrupting
         // adjacent <sup> content, punctuation, and <a> text nodes).
+        // A match position counts in the rendered text the cell was
+        // classified on; the patch step counts in the flat text, where a
+        // pretty-printed cell keeps the line breaks and indentation the
+        // browser collapses. mapRenderedToFlat converts one to the other.
         const cell = cellsMap[r][c];
+        const toFlat = mapRenderedToFlat(originalValue,
+          collectTextPieces(cell).map((piece) => piece.nodeValue).join(''));
         const patches = [];
         for (const m of info.matches) {
           const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
           const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
-          if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
+          const index = toFlat ? toFlat[m.index] : m.index;
+          if (newNum !== m.numStr) patches.push({ index, numStr: m.numStr, newNum });
         }
         if (patches.length === 0) continue;
         // Measure the pristine HTML, superscript ranges, and the surviving
@@ -1655,7 +1662,7 @@ function roundTable(table, options) {
         const originalRecord = {
           html: cell.innerHTML,
           value: originalValue,
-          supRanges: getSuperscriptRanges(cell),
+          supRanges: getSuperscriptRanges(cell, { text: originalValue }),
           linkFilteredIdx: info.matches.map((m) => m.index),
         };
         const { landed } = applyExtractedPatches(cell, patches);

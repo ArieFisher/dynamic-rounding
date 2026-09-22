@@ -4947,6 +4947,96 @@ function withReactiveCreateTreeWalker(fn) {
   });
 })();
 
+// Issue #403, test page Table 21. A cell whose markup carries line breaks
+// and indentation around its text: the browser collapses them in the
+// rendered text the classifier reads, and the patch step counts positions in
+// the flat text, where they remain. The rendered read below collapses the
+// flat text the way the browser does.
+function makePrettyPrintedCell(segments) {
+  const cell = makeReactiveCell(segments);
+  Object.defineProperty(cell, 'innerText', {
+    get() { return segments.map((s) => s.text).join('').replace(/\s+/g, ' ').trim(); },
+    set() {},
+  });
+  return cell;
+}
+
+(function mapRenderedToFlat_positions() {
+  eq('mapRenderedToFlat: equal texts map each position to itself',
+    mapRenderedToFlat('a 1', 'a 1'), [0, 1, 2]);
+  eq('mapRenderedToFlat: collapsed line breaks and indentation map past the raw whitespace',
+    mapRenderedToFlat('Grew 1', '\n  Grew\n    1\n'), [3, 4, 5, 6, 7, 12]);
+  eq('mapRenderedToFlat: a line break the browser adds at a <br> maps to the next flat character',
+    mapRenderedToFlat('5\nkg', '5kg'), [0, 1, 1, 2]);
+  eq('mapRenderedToFlat: hidden text in the flat text returns null',
+    mapRenderedToFlat('+2.3%', '700023000+2.3%'), null);
+  eq('mapRenderedToFlat: flat text ending in more than whitespace returns null',
+    mapRenderedToFlat('5', '5 kg'), null);
+})();
+
+(function prettyPrintedExtractedCellRounds() {
+  withReactiveCreateTreeWalker(function () {
+    const opts = {
+      enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
+      simplifyMixedCells: true, simplifyMixedCurrency: true, simplifyMixedPercent: true,
+      simplifyDates: false, simplifyTimes: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+    };
+    const segments = [{ text: '\n            Grew 9,850 units\n          ', inSup: false, inAnchor: false }];
+    const cell = makePrettyPrintedCell(segments);
+    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    const warnRowsBefore = DR_LOG.snapshot().entries
+      .filter((row) => /extracted-cell patch/.test(row.text)).length;
+    try {
+      roundTable(table, opts);
+      eq('table 21 line breaks: the number inside words rounds, and the line breaks stay',
+        segments[0].text, '\n            Grew 10,000 units\n          ');
+      eq('table 21 line breaks: the cell records as simplified',
+        cell.classList.contains('dr-ext-rounded'), true);
+      eq('table 21 line breaks: the stored original is the rendered text',
+        (DR_STORE.getTableOriginal(table, cell) || {}).value, 'Grew 9,850 units');
+      const warnRowsAfter = DR_LOG.snapshot().entries
+        .filter((row) => /extracted-cell patch/.test(row.text)).length;
+      eq('table 21 line breaks: no patch is left unlanded',
+        warnRowsAfter, warnRowsBefore);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
+// A footnote in a pretty-printed cell: the superscript range counts in flat
+// text and converts to rendered positions, so the footnote digit stays
+// masked and the quantity beside it rounds.
+(function prettyPrintedFootnoteStaysMasked() {
+  withReactiveCreateTreeWalker(function () {
+    const opts = {
+      enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
+      simplifyMixedCells: true, simplifyMixedCurrency: true, simplifyMixedPercent: true,
+      simplifyDates: false, simplifyTimes: false,
+      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+    };
+    const segments = [
+      { text: '\n      Total\n      9,850 kg\n      ', inSup: false },
+      { text: '7', inSup: true },
+      { text: '\n    ', inSup: false },
+    ];
+    const cell = makePrettyPrintedCell(segments);
+    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    try {
+      roundTable(table, opts);
+      eq('pretty-printed footnote: the quantity rounds',
+        segments[0].text, '\n      Total\n      10,000 kg\n      ');
+      eq('pretty-printed footnote: the footnote digit holds',
+        segments[1].text, '7');
+      eq('pretty-printed footnote: the stored superscript range counts in the rendered text',
+        (DR_STORE.getTableOriginal(table, cell) || {}).supRanges, [{ start: 15, end: 16 }]);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
 (function previewBand_manifestLoadsRoundingJs() {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   eq('manifest content_scripts loads lib/dr-number/rounding.js between constants.js and content.js',

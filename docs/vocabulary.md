@@ -57,6 +57,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | allow list | A list of the characters or words that may touch a number in an extracted cell, so an identifier such as "DT1234" stays unchanged. Not built yet; until it exists, extracted cells stay unchanged on grids. |
 | text piece | A run of plain text inside a cell with no HTML tag inside it. A cell may hold several: `<span>$</span><span>337.91</span>` holds two. |
 | flat text | The join of a cell's text pieces in page order. A position in the flat text maps to exactly one text piece. |
+| rendered text | A cell's text as the browser shows it: runs of spaces and line breaks in the markup collapse to one space, the ends are trimmed, and hidden text is left out. A native table classifies a cell on its rendered text. On a pretty-printed page it is shorter than the flat text, so a position converts between the two before a patch. |
 | exclusion | A settings-driven reason to skip a cell: first row, first column, currency, or percent. |
 | quoted cell | A cell wrapped in double quotes. The application treats it as a direct quote and leaves it unsimplified. |
 | ambiguous date | An all-numeric date readable two ways: 7/4/99 may be July 4 or April 7. |
