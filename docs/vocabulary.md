@@ -51,6 +51,10 @@ One term per concept, across every platform and every document. Use the [Retired
 | mode | The ladder's result for one cell: `skip`, `pure`, `date`, `time`, or `extracted`. |
 | pure cell | A cell whose whole text is one number. |
 | extracted cell | A cell where numbers are found inside surrounding text and replaced in place, leaving the words alone. |
+| unit number | A cell whose whole text is one number with a magnitude suffix after it, a listed currency code before or after it, or both: "4.91tn", "CAD$45.67", "1,234 USD". Its digits round and the suffix and code stay. It rounds on every table kind, whatever the sidebar's "words" setting says. The suffixes and codes are listed once, in the number parser. |
+| stacked cell | A grid cell whose text pieces each hold one whole number or unit number, or nothing but whitespace or a currency sign: "125" above "126". Each number rounds in its own piece. |
+| split number | A number whose characters sit across two text pieces: "4." in one and "91" in the next. It stays unchanged. |
+| allow list | A list of the characters or words that may touch a number in an extracted cell, so an identifier such as "DT1234" stays unchanged. Not built yet; until it exists, extracted cells stay unchanged on grids. |
 | text piece | A run of plain text inside a cell with no HTML tag inside it. A cell may hold several: `<span>$</span><span>337.91</span>` holds two. |
 | flat text | The join of a cell's text pieces in page order. A position in the flat text maps to exactly one text piece. |
 | exclusion | A settings-driven reason to skip a cell: first row, first column, currency, or percent. |
