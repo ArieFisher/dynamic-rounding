@@ -103,14 +103,17 @@ const DR_STORE = (function () {
     let entry = tableRegistry.get(table);
     if (!entry) {
       entry = {
-        // Per-cell pre-round original, keyed by cell element. A grid cell's
-        // value is the plain original text (nodeValue patching, one string);
-        // a native cell's value is a record — { html, value, supRanges,
-        // linkFilteredIdx } — because the native write path preserves
-        // mixed-content markup and needs all four to classify and restore a
-        // cell correctly. restoreTable (content.js) and collectNumericCells
-        // (content.js) are the two readers, and both already know which
-        // shape to expect from which kind of table. A WeakMap, not a Map,
+        // Per-cell pre-round original, keyed by cell element. Both kinds
+        // hold a record whose value is the pre-round text. A native cell's
+        // record is { html, value, supRanges, linkFilteredIdx }, because the
+        // native write path preserves mixed-content markup and needs all
+        // four to classify and restore a cell correctly. A grid cell's
+        // record is { value, pieces, supRanges, linkFilteredIdx }: pieces
+        // holds each patched text piece's pre-round text by piece index, and
+        // restore writes each one back into its piece (see applyPatches in
+        // lib/dr-table/detect.js). restoreTable (content.js) and
+        // collectNumericCells (content.js) are the two readers, and
+        // restoreTable dispatches on the table's kind. A WeakMap, not a Map,
         // for the same reason tableRegistry itself is one: nothing
         // enumerates a table's originals (only .get/.set/.has/.delete by a
         // specific cell), so there is no companion Set to keep in lockstep
@@ -265,13 +268,12 @@ const DR_STORE = (function () {
     return !!entry && entry.originals.has(cellRef);
   }
 
-  // The registry stores a cell's original in two shapes — a grid cell holds
-  // the plain pre-round text (one string), a native cell holds the
-  // four-field record documented in _ensureEntry. This read resolves that
-  // difference in one place and returns the original as plain text for
-  // either kind, or undefined when no original is stored. The capture's
-  // state serializer is the first caller; restoreTable and
-  // collectNumericCells (content.js) still carry their own shape branches.
+  // The registry stores a cell's original as one of the two records
+  // documented in _ensureEntry, and both carry the pre-round text as value.
+  // This read returns that text for either kind, or undefined when no
+  // original is stored. A plain string reads back as itself. The capture's
+  // state serializer and the shape fingerprint's read are the callers;
+  // restoreTable and collectNumericCells (content.js) read the record whole.
   function getTableOriginalText(table, cellRef) {
     const original = getTableOriginal(table, cellRef);
     if (original === undefined || original === null) return undefined;

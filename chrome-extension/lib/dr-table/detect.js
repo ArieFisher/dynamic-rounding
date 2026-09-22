@@ -12,8 +12,9 @@
  * makeAdapter) gives the engine a uniform row/cell interface over native
  * <table> elements and div-based virtual grids. Also holds the grid-shape
  * constants and the structure-preserving cell-write helpers
- * (replaceTextPreservingHTML, applyExtractedPatches, getSuperscriptRanges,
- * link filtering). Loaded by manifest content_scripts before content.js.
+ * (replaceTextPreservingHTML, applyExtractedPatches, restoreTextPieces,
+ * getSuperscriptRanges, link filtering). Loaded by manifest content_scripts
+ * before content.js.
  *
  * This file is the lib/dr-table package's detection layer. Detection
  * (isDataTable, looksLikeGrid, findTargetTable, isPhantomA11yTable) reports
@@ -181,21 +182,22 @@ const GRID_ROUNDED_CLASS = 'dr-ext-rounded';
 
 /**
  * OriginalsPort: pluggable per-cell "what did this cell say before I rounded
- * it" storage for GridAdapter's getText/setText, following the same port-
- * with-a-working-default pattern as StyleProbe/NumericProbe above. The
- * default is a private WeakMap<cellEl, text> — correct for a standalone or
+ * it" storage for GridAdapter's getText/applyPatches, following the same
+ * port-with-a-working-default pattern as StyleProbe/NumericProbe above. The
+ * default is a private WeakMap<cellEl, record> — correct for a standalone or
  * test caller with no application model to hand in. content.js's real call
  * sites inject a port backed by DR_STORE's per-table registry entry (see
  * app/store.js, loaded after this file) instead, which is what makes a
  * grid's originals survive a rounding toggle without a page attribute.
  * A custom port is passed via opts.originalsPort on makeAdapter/GridAdapter.
+ * The record's shape is documented at applyPatches in _makeCellObj.
  */
 function makeDefaultOriginalsPort() {
   const store = new WeakMap();
   return {
     has(cellEl) { return store.has(cellEl); },
     get(cellEl) { return store.get(cellEl); },
-    set(cellEl, text) { store.set(cellEl, text); },
+    set(cellEl, record) { store.set(cellEl, record); },
   };
 }
 const DEFAULT_ORIGINALS_PORT = makeDefaultOriginalsPort();
@@ -357,36 +359,76 @@ class GridAdapter {
 
   /**
    * Build a cell object compatible with the NativeTableAdapter cell shape.
-   * setText uses nodeValue patching — never textContent/innerHTML/appendChild/removeChild.
+   * applyPatches writes through applyExtractedPatches, which patches text
+   * pieces through nodeValue — never textContent/innerHTML/appendChild/removeChild.
    * @param {Element} cellEl
-   * @returns {{getText(): string, setText(s: string): void, el: Element, tagName: string}}
+   * @returns {{getText(): string, getTextOffset(): number|null,
+   *            applyPatches(patches: object[]): number, getDisplayedText(): string,
+   *            el: Element, tagName: string}}
    */
   _makeCellObj(cellEl) {
     const port = this.originalsPort;
+    // The live read: one text piece, the last non-empty one.
+    function readLiveText() {
+      const tn = findCellTextNode(cellEl);
+      return tn ? tn.nodeValue : (cellEl.textContent || '');
+    }
     return {
       el: cellEl,
       tagName: 'TD', // grid cells are treated as data cells (no <th> concept)
       getText() {
         // Prefer the stored original (if already rounded), else live text
         if (port.has(cellEl)) {
-          return port.get(cellEl);
+          return port.get(cellEl).value;
         }
-        const tn = findCellTextNode(cellEl);
-        return tn ? tn.nodeValue : (cellEl.textContent || '');
+        return readLiveText();
       },
-      setText(s) {
-        const tn = findCellTextNode(cellEl);
-        // No text node to patch: the write skips, and the caller reads the
-        // false so a skipped write never counts toward the table's form.
-        if (tn === null) return false;
-        // Store the original value once, through the port.
-        if (!port.has(cellEl)) {
-          port.set(cellEl, tn.nodeValue);
+      // Temporary, until the read becomes the cell's flat text (#120): the
+      // flat position where the text getText() returns begins. A patch
+      // position counts from the start of the cell's flat text, and
+      // getText() reads one piece, so a caller adds this to a position
+      // inside that piece. On a rounded cell the piece is the one the
+      // record holds. The textContent fallback read starts at 0. null when
+      // the piece is no longer in the cell.
+      getTextOffset() {
+        const pieces = collectTextPieces(cellEl);
+        const record = port.has(cellEl) ? port.get(cellEl) : null;
+        const target = record ? pieces[record.pieces[0].i] : findCellTextNode(cellEl);
+        if (!target) return record ? null : 0;
+        let offset = 0;
+        for (const piece of pieces) {
+          if (piece === target) return offset;
+          offset += piece.nodeValue.length;
         }
-        // Patch in place — NEVER replace the node (preserves React fiber identity).
-        tn.nodeValue = s;
+        return null;
+      },
+      // Write the patches into the cell's text pieces and return how many
+      // landed. The first landed write stores the cell's record through the
+      // originals port: { value, pieces, supRanges, linkFilteredIdx }, where
+      // value is the text getText() returned before the write and pieces
+      // holds each touched piece's text before the write, by piece index.
+      // supRanges and linkFilteredIdx stay null, as on a native pure cell.
+      // A later write adds each piece the record does not hold yet, and a
+      // piece the record holds takes patches only while it still shows its
+      // stored text, so a piece the page rewrote keeps the page's text. A
+      // write that lands nothing stores nothing and adds no marker.
+      applyPatches(patches) {
+        const record = port.has(cellEl) ? port.get(cellEl) : null;
+        const valueBefore = record ? record.value : readLiveText();
+        const result = applyExtractedPatches(cellEl, patches, record ? record.pieces : undefined);
+        if (result.landed === 0) return 0;
+        const stored = record ? record.pieces : [];
+        const added = result.pieces
+          .filter((touched) => !stored.some((piece) => piece.i === touched.i))
+          .map((touched) => ({ i: touched.i, text: touched.before }));
+        if (!record || added.length > 0) {
+          const pieces = stored.concat(added).sort((x, y) => x.i - y.i);
+          port.set(cellEl, record
+            ? Object.assign({}, record, { pieces })
+            : { value: valueBefore, pieces, supRanges: null, linkFilteredIdx: null });
+        }
         if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
-        return true;
+        return result.landed;
       },
       // The displayed text: what the screen shows right now — the cell's
       // whole live text, never the originals port. On a rounded grid cell
@@ -396,8 +438,6 @@ class GridAdapter {
       // The whole text, not findCellTextNode's one node: a cell that builds
       // its text from several pieces (a number and a unit in separate
       // nodes) displays all of them, matching the native read.
-      // Declared after setText so the GR3b/GR6j source guards' fixed scan
-      // window over _makeCellObj still covers the write path.
       getDisplayedText() {
         return cellEl.textContent || '';
       },
@@ -671,46 +711,115 @@ function replaceTextPreservingHTML(cell, originalText, newText) {
 }
 
 /**
- * Applies targeted per-number patches to the text nodes of a cell.
- * Each patch {index, numStr, newNum} identifies a position in the cell's flat
- * text (TreeWalker/textContent order — same coordinate space as getSuperscriptRanges
- * and extractNumbersInText), the original string, and its replacement.
- *
- * Patches are applied right-to-left so earlier flat-text positions are unaffected
- * by changes at higher positions. Only the specific text node containing each
- * number is touched; <sup>, <a>, and all other surrounding nodes are left intact.
- *
- * A patch is skipped when its node cannot be found or numStr is not at the
- * expected position. Returns the number of patches that landed: the caller
- * records the cell as simplified only on a count above zero, because a
- * skipped patch leaves the screen unchanged.
- *
- * @returns {number} how many patches landed
+ * The cell's text pieces in page order: every text node under the cell,
+ * whitespace-only and empty ones included. A patch position counts over the
+ * join of these pieces (the cell's flat text), and a grid cell's originals
+ * record holds piece indexes into this list. Walks with the page's
+ * tree walker when one exists, else walks child nodes depth-first, which
+ * visits the same nodes in the same order.
+ * @param {Element} cell
+ * @returns {Text[]}
  */
-function applyExtractedPatches(cell, patches) {
-  if (!patches || patches.length === 0) return 0;
-  const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
-  const nodePositions = [];
+function collectTextPieces(cell) {
+  const pieces = [];
+  if (typeof document !== 'undefined' && typeof document.createTreeWalker === 'function') {
+    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
+    let node;
+    while ((node = walker.nextNode())) pieces.push(node);
+    return pieces;
+  }
+  (function visit(node) {
+    const kids = node.childNodes || [];
+    for (let k = 0; k < kids.length; k++) {
+      if (kids[k].nodeType === 3) pieces.push(kids[k]);
+      else visit(kids[k]);
+    }
+  })(cell);
+  return pieces;
+}
+
+/**
+ * Applies targeted per-number patches to the text pieces of a cell.
+ * Each patch {index, numStr, newNum} identifies a position in the cell's flat
+ * text (the join of its text pieces in page order — same coordinate space as
+ * getSuperscriptRanges and extractNumbersInText), the original string, and
+ * its replacement.
+ *
+ * Patches are grouped by the piece that holds their position and applied
+ * right to left inside each piece, so an earlier position is unaffected by a
+ * change at a later one. Each touched piece is written once, through
+ * nodeValue; no node is added, removed, or replaced, so <sup>, <a>, and
+ * every other node keep their identity.
+ *
+ * A patch is skipped when no piece holds its position or numStr is not at
+ * that position. `expected`, when given, lists pieces by index with the text
+ * each must show: a listed piece whose live text differs takes none of its
+ * patches.
+ *
+ * Returns the count of patches that landed, and each touched piece's text
+ * before and after the write, in piece order. The caller records the cell as
+ * simplified only on a landed count above zero, because a skipped patch
+ * leaves the screen unchanged.
+ *
+ * @param {Element} cell
+ * @param {{index: number, numStr: string, newNum: string}[]} patches
+ * @param {{i: number, text: string}[]} [expected]
+ * @returns {{landed: number, pieces: {i: number, before: string, after: string}[]}}
+ */
+function applyExtractedPatches(cell, patches, expected) {
+  if (!patches || patches.length === 0) return { landed: 0, pieces: [] };
+  const pieces = collectTextPieces(cell);
+  const starts = [];
   let flatLen = 0;
-  let node;
-  while ((node = walker.nextNode())) {
-    nodePositions.push({ node, start: flatLen });
-    flatLen += node.nodeValue.length;
+  for (const piece of pieces) {
+    starts.push(flatLen);
+    flatLen += piece.nodeValue.length;
   }
-  const sorted = [...patches].sort((a, b) => b.index - a.index);
-  let landed = 0;
-  for (const { index, numStr, newNum } of sorted) {
-    const pos = nodePositions.find(
-      p => p.start <= index && index < p.start + p.node.nodeValue.length
+  const byPiece = new Map();
+  for (const patch of patches) {
+    const i = pieces.findIndex(
+      (piece, k) => starts[k] <= patch.index && patch.index < starts[k] + piece.nodeValue.length
     );
-    if (!pos) continue;
-    const i = index - pos.start;
-    const v = pos.node.nodeValue;
-    if (v.substring(i, i + numStr.length) !== numStr) continue;
-    pos.node.nodeValue = v.substring(0, i) + newNum + v.substring(i + numStr.length);
-    landed++;
+    if (i < 0) continue;
+    if (!byPiece.has(i)) byPiece.set(i, []);
+    byPiece.get(i).push(patch);
   }
-  return landed;
+  const expectedText = new Map((expected || []).map((piece) => [piece.i, piece.text]));
+  let landed = 0;
+  const touched = [];
+  for (const i of Array.from(byPiece.keys()).sort((x, y) => x - y)) {
+    const before = pieces[i].nodeValue;
+    if (expectedText.has(i) && expectedText.get(i) !== before) continue;
+    const rightToLeft = byPiece.get(i).slice().sort((x, y) => y.index - x.index);
+    let after = before;
+    let landedHere = 0;
+    for (const { index, numStr, newNum } of rightToLeft) {
+      const at = index - starts[i];
+      if (after.substring(at, at + numStr.length) !== numStr) continue;
+      after = after.substring(0, at) + newNum + after.substring(at + numStr.length);
+      landedHere++;
+    }
+    if (landedHere === 0) continue;
+    pieces[i].nodeValue = after;
+    landed += landedHere;
+    touched.push({ i, before, after });
+  }
+  return { landed, pieces: touched };
+}
+
+/**
+ * Put a grid cell's stored piece texts back, each into the piece at its
+ * index, through nodeValue like the patch writer. Writes nothing and returns
+ * false when the cell no longer holds a piece at every stored index.
+ * @param {Element} cell
+ * @param {{i: number, text: string}[]} storedPieces
+ * @returns {boolean}
+ */
+function restoreTextPieces(cell, storedPieces) {
+  const pieces = collectTextPieces(cell);
+  if (storedPieces.some((piece) => piece.i >= pieces.length)) return false;
+  for (const piece of storedPieces) pieces[piece.i].nodeValue = piece.text;
+  return true;
 }
 
 // --- Table/grid detection predicates ---

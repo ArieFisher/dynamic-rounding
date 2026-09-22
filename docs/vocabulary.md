@@ -51,6 +51,8 @@ One term per concept, across every platform and every document. Use the [Retired
 | mode | The ladder's result for one cell: `skip`, `pure`, `date`, `time`, or `extracted`. |
 | pure cell | A cell whose whole text is one number. |
 | extracted cell | A cell where numbers are found inside surrounding text and replaced in place, leaving the words alone. |
+| text piece | A run of plain text inside a cell with no HTML tag inside it. A cell may hold several: `<span>$</span><span>337.91</span>` holds two. |
+| flat text | The join of a cell's text pieces in page order. A position in the flat text maps to exactly one text piece. |
 | exclusion | A settings-driven reason to skip a cell: first row, first column, currency, or percent. |
 | quoted cell | A cell wrapped in double quotes. The application treats it as a direct quote and leaves it unsimplified. |
 | ambiguous date | An all-numeric date readable two ways: 7/4/99 may be July 4 or April 7. |
@@ -92,6 +94,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | simplify | Apply the full treatment to a table per the current settings: rounding for numbers, granularity for dates and times. |
 | form | Whether a table's cells are showing raw or simplified. Values: raw, simplified. |
 | apply | The sidebar gesture that pushes the current settings onto a bound table. |
+| patch | One replacement inside a text piece: the position in the flat text, the characters to replace, and the new characters. A grid cell changes through patches alone, so every text node the page drew stays in place. |
 | originals | The cell values stored before simplification so the table can be restored. |
 | restore | Put the originals back. |
 | unrestorable | Originals lost or never captured. The table cannot be restored. |
