@@ -1113,8 +1113,23 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 //   title (writable), and a querySelector stub on the table.
 // ---------------------------------------------------------------------------
 
+// A mock cell's one text piece, the way a page element holds its text: a
+// text node child whose value reads and writes the cell's text. The placement
+// step reads a native cell's text pieces, so a mock cell with no text node
+// would hold no piece for a value to sit in.
+function withTextPiece(cell) {
+  cell.childNodes = [{
+    nodeType: 3,
+    parentNode: cell,
+    parentElement: cell,
+    get nodeValue() { return cell.textContent; },
+    set nodeValue(v) { cell.textContent = v; cell.innerText = v; },
+  }];
+  return cell;
+}
+
 function makeMockCell(tag, text) {
-  return {
+  return withTextPiece({
     tagName: tag.toUpperCase(),
     innerText: text,
     textContent: text,
@@ -1123,7 +1138,7 @@ function makeMockCell(tag, text) {
     dataset: {},
     title: '',
     _classes: [],
-  };
+  });
 }
 
 function makeMockTable(rowsSpec, querySelectorResult) {
@@ -1138,7 +1153,7 @@ function makeMockTable(rowsSpec, querySelectorResult) {
   };
 }
 
-// roundTable calls document.createTreeWalker (via replaceTextPreservingHTML).
+// roundTable calls document.createTreeWalker (via collectTextPieces).
 // We need to stub that too so the "apply rounding" path doesn't crash.
 // Stub createTreeWalker to return a walker that finds the cell's single text node.
 
@@ -1815,7 +1830,7 @@ function withLinkCreateTreeWalker(fn) {
       DR_STORE.getTableAppliedFlag(table), 'original');
     eq('patch-honesty: the failure leaves a warn row naming the patch step',
       DR_LOG.snapshot().entries.some(
-        (row) => row.level === 'warn' && /extracted-cell patch/.test(row.text)),
+        (row) => row.level === 'warn' && /cell patches did not land/.test(row.text)),
       true);
   } finally {
     delete global.document.createTreeWalker;
@@ -1858,7 +1873,7 @@ function withLinkCreateTreeWalker(fn) {
   ]]);
   const failureRows = [];
   const offRow = DR_LOG.onRow((row) => {
-    if (row.level === 'warn' && /extracted-cell patch/.test(row.text)) failureRows.push(row.text);
+    if (row.level === 'warn' && /cell patches did not land/.test(row.text)) failureRows.push(row.text);
   });
   try {
     withCreateTreeWalker(function () {
@@ -2178,7 +2193,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
     /dataset\.originalHtml\s*=/.test(contentSrc), false);
 
   eq('registry: native-table originals are recorded via DR_STORE.setTableOriginal',
-    /DR_STORE\.setTableOriginal\(\s*table\s*,\s*cell\s*,\s*\{\s*html:/.test(contentSrc), true);
+    /const originalRecord = \{\s*html:/.test(contentSrc) &&
+      /DR_STORE\.setTableOriginal\(\s*table\s*,\s*cell\s*,\s*originalRecord\s*\)/.test(contentSrc), true);
 
   eq('unified (superseded by app-model-registry): tableOptions WeakMap no longer declared',
     /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), false);
@@ -4582,10 +4598,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 (function previewBand_collectNumericCells() {
   // Build a small stub table; only the pure-number cells should appear.
   function tdCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   function thCell(text) {
-    return { tagName: 'TH', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
   }
   const table = {
     rows: [
@@ -4616,10 +4632,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // engine always did — a row-0/column-0 <td> would be dropped, same as it
   // would be when actually rounding the table.
   function tdCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   function thCell(text) {
-    return { tagName: 'TH', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
   }
   const table = {
     rows: [
@@ -4646,10 +4662,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // preview is three lines: top-band 1k+ (1234) plus bottom-band 100+ (123)
   // and 10+ (|-12|).
   function tdCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   function thCell(text) {
-    return { tagName: 'TH', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
   }
   const table = {
     rows: [
@@ -4690,10 +4706,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // that visibly changes under the default offset instead, even when the
   // already-round cell appears first in document order.
   function tdCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   function thCell(text) {
-    return { tagName: 'TH', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
   }
   const table = {
     rows: [
@@ -4715,10 +4731,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   // If every cell in a bucket is already round, fall back to document order
   // rather than dropping the row.
   function tdCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   function thCell(text) {
-    return { tagName: 'TH', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
   }
   const table = {
     rows: [
@@ -4734,10 +4750,10 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 (function previewBand_extractPreviewSamples_largeMagOnly() {
   // All cells in the top magnitude bucket -> bottom band ends up empty.
   function tdCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   function thCell(text) {
-    return { tagName: 'TH', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
   }
   const table = {
     rows: [
@@ -4752,7 +4768,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
 
 (function previewBand_extractPreviewSamples_emptyTable() {
   function tdCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   const table = {
     rows: [{ cells: [tdCell('hello'), tdCell('world')] }],
@@ -4922,7 +4938,7 @@ function withReactiveCreateTreeWalker(fn) {
     const cell = makeReactiveCell(segments);
     const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
     const warnRowsBefore = DR_LOG.snapshot().entries
-      .filter((row) => /extracted-cell patch/.test(row.text)).length;
+      .filter((row) => /cell patches did not land/.test(row.text)).length;
     try {
       roundTable(table, opts);
       eq('table 8 linked reference: the linked 12 holds',
@@ -4938,7 +4954,7 @@ function withReactiveCreateTreeWalker(fn) {
       eq('table 8 linked reference: only the plain number survives the link filter',
         DR_STORE.getTableOriginal(table, cell).linkFilteredIdx, [18]);
       const warnRowsAfter = DR_LOG.snapshot().entries
-        .filter((row) => /extracted-cell patch/.test(row.text)).length;
+        .filter((row) => /cell patches did not land/.test(row.text)).length;
       eq('table 8 linked reference: no patch is left unlanded',
         warnRowsAfter, warnRowsBefore);
     } finally {
@@ -4986,7 +5002,7 @@ function makePrettyPrintedCell(segments) {
     const cell = makePrettyPrintedCell(segments);
     const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
     const warnRowsBefore = DR_LOG.snapshot().entries
-      .filter((row) => /extracted-cell patch/.test(row.text)).length;
+      .filter((row) => /cell patches did not land/.test(row.text)).length;
     try {
       roundTable(table, opts);
       eq('table 21 line breaks: the number inside words rounds, and the line breaks stay',
@@ -4996,7 +5012,7 @@ function makePrettyPrintedCell(segments) {
       eq('table 21 line breaks: the stored original is the rendered text',
         (DR_STORE.getTableOriginal(table, cell) || {}).value, 'Grew 9,850 units');
       const warnRowsAfter = DR_LOG.snapshot().entries
-        .filter((row) => /extracted-cell patch/.test(row.text)).length;
+        .filter((row) => /cell patches did not land/.test(row.text)).length;
       eq('table 21 line breaks: no patch is left unlanded',
         warnRowsAfter, warnRowsBefore);
     } finally {
@@ -5035,6 +5051,105 @@ function makePrettyPrintedCell(segments) {
       DR_STORE.unregisterTable(table);
     }
   });
+})();
+
+// Issue #430: a native table's pure, date, and time cells take the same
+// three steps as every other cell — classify, place, patch. A value whose
+// characters sit in one text piece rounds through the patch writer, with its
+// rendered position converted to the flat text. A value that crosses a piece
+// boundary stays unchanged with a debug row: the native placement step runs
+// no stacked-cell test, and no writer spreads characters across pieces.
+function nativeOnePieceOpts() {
+  return Object.assign({}, DR_DEFAULTS, {
+    enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
+    offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
+  });
+}
+
+(function nativePureCell_prettyPrintedRoundsInItsPiece() {
+  withReactiveCreateTreeWalker(function () {
+    const segments = [{ text: '\n      4,523,789\n    ', inSup: false }];
+    const cell = makePrettyPrintedCell(segments);
+    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    try {
+      roundTable(table, nativeOnePieceOpts());
+      eq('native pure cell: a pretty-printed value rounds, and the line breaks stay',
+        segments[0].text, '\n      4,500,000\n    ');
+      eq('native pure cell: the stored original is the rendered text',
+        (DR_STORE.getTableOriginal(table, cell) || {}).value, '4,523,789');
+      eq('native pure cell: the cell records as simplified',
+        cell.classList.contains('dr-ext-rounded'), true);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
+(function nativePureCell_valueAcrossPiecesStaysUnchanged() {
+  withReactiveCreateTreeWalker(function () {
+    // "4,523," plain and "789" in bold: one number across two text pieces.
+    const segments = [{ text: '4,523,', inSup: false }, { text: '789', inSup: false }];
+    const cell = makeReactiveCell(segments);
+    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    try {
+      roundTable(table, nativeOnePieceOpts());
+      eq('native pure cell across pieces: the first piece keeps its text',
+        segments[0].text, '4,523,');
+      eq('native pure cell across pieces: the second piece keeps its text',
+        segments[1].text, '789');
+      eq('native pure cell across pieces: the cell gets no marker',
+        cell.classList.contains('dr-ext-rounded'), false);
+      eq('native pure cell across pieces: the cell stores no original',
+        DR_STORE.getTableOriginal(table, cell), undefined);
+      eq('native pure cell across pieces: a debug row records the skip',
+        DR_LOG.snapshot().entries.some((row) => row.level === 'debug' &&
+          /native cell value split across text pieces/.test(row.text)), true);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
+(function nativeDateCell_roundsInItsPieceAndSkipsAcrossPieces() {
+  withReactiveCreateTreeWalker(function () {
+    const oneSegments = [{ text: ' 2024-09-15 ', inSup: false }];
+    const splitSegments = [{ text: '2024-', inSup: false }, { text: '09-15', inSup: false }];
+    const oneCell = makeReactiveCell(oneSegments);
+    const splitCell = makeReactiveCell(splitSegments);
+    const table = { rows: [{ cells: [oneCell] }, { cells: [splitCell] }], querySelector: () => null, dataset: {} };
+    try {
+      roundTable(table, Object.assign(nativeOnePieceOpts(), { simplifyDates: true, dateGranularity: 'year' }));
+      eq('native date cell: a date in one piece rounds, and the piece keeps its whitespace',
+        oneSegments[0].text, ' 2025 ');
+      eq('native date cell: a date across pieces keeps its text',
+        splitSegments.map((seg) => seg.text).join('|'), '2024-|09-15');
+      eq('native date cell: a date across pieces gets no marker',
+        splitCell.classList.contains('dr-ext-rounded'), false);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
+(function placeDecision_stackedTestRunsOnlyWhenAsked() {
+  const layout = { original: ['1', '23'], liveStarts: [0, 1], toFlat: null };
+  const decision = { mode: 'pure', value: { num: 123 } };
+  eq('placeDecision: without the stacked-cell test, a value across pieces skips with reason pieces',
+    placeDecision(decision, '123', layout), { mode: 'skip', reason: 'pieces' });
+  eq('placeDecision: with the stacked-cell test, each piece rounds as its own number',
+    placeDecision(decision, '123', layout, { stacked: true }).value.matches.map((m) => m.numStr), ['1', '23']);
+  eq('placeDecision: a value in one piece stands',
+    placeDecision(decision, '123', { original: ['123'], liveStarts: [0], toFlat: null }), decision);
+  eq('placeDecision: a rendered position converts through toFlat before the piece check',
+    placeDecision(decision, '123', { original: ['\n  ', '123', '\n'], liveStarts: [0, 3, 6], toFlat: [3, 4, 5] }), decision);
+})();
+
+(function nativeWrite_olderWriterIsGone() {
+  eq('native write: no loaded source defines or calls the older whole-cell writer',
+    /replaceTextPreservingHTML/.test(allContentSrc), false);
+  const body = sourceBodyOf(allContentSrc, 'function roundTable(');
+  eq('native write: roundTable holds no innerHTML= assignment',
+    body.length > 0 && !/innerHTML\s*=(?!=)/.test(body), true);
 })();
 
 (function previewBand_manifestLoadsRoundingJs() {
@@ -6084,7 +6199,7 @@ function makeSuperscriptCell(segments) {
   const cell = {
     innerText: fullText,
     textContent: fullText,
-    innerHTML: fullText,   // good-enough stub; replaceTextPreservingHTML may use it
+    innerHTML: fullText,   // good-enough stub; the native record stores it
     classList: {
       _classes: [],
       add(cls) { this._classes.push(cls); },
@@ -9771,9 +9886,9 @@ function sourceBodyOf(src, signature) {
 // React fiber identity.
 //
 // Source-level assertion: the grid cell object, the patch writer, and the
-// piece restore hold no innerHTML= assignment. The native path's innerHTML
-// writes (replaceTextPreservingHTML's fallback branch, the native branch of
-// restoreTable) sit outside these bodies.
+// piece restore hold no innerHTML= assignment. The native path's one
+// innerHTML write (the native branch of restoreTable) sits outside these
+// bodies.
 //
 // This test encodes the hard rule from the sprint brief:
 //   "The grid write must be nodeValue-only."
@@ -9796,7 +9911,7 @@ function sourceBodyOf(src, signature) {
 // Spec: docs/sprint-plans/grid-support-v2.md §2 D3 + §4 "grid-rounding".
 // Regression guard for commit 3404e86: roundTable must write via nodeValue
 // (GridAdapter's applyPatches → the registry record), NOT via
-// replaceTextPreservingHTML / innerHTML (which crashes React's reconciler).
+// an innerHTML write (which crashes React's reconciler).
 // =============================================================================
 
 /**
@@ -13942,7 +14057,7 @@ function withRightClickSandbox(run) {
 // Detection functions (findTargetTable, findTables, looksLikeGrid, isDataTable,
 // isPhantomA11yTable) must never write to the page — no classList.add,
 // createElement, appendChild, or createToggleForTable inside their bodies.
-// Write-layer helpers (replaceTextPreservingHTML, applyExtractedPatches,
+// Write-layer helpers (applyExtractedPatches,
 // restoreTextPieces, GridAdapter's applyPatches) legitimately create/mutate nodes and are correctly
 // excluded from this scan — they are reachable only from explicit write calls
 // (roundTable / reapplyGridRounding), never from detection.
@@ -15614,10 +15729,10 @@ function withRightClickSandbox(run) {
 // -------------------------------------------------------------------------
 (function ac3_embeddedInTextMaxMag() {
   function tdCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   function thCell(text) {
-    return { tagName: 'TH', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
   }
 
   // The large number is embedded inside prose; the small number is pure-numeric.
@@ -15714,10 +15829,10 @@ function withRightClickSandbox(run) {
     isEraYear('79 a.d.', 0, '79'), true);
 
   function tdCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   function thCell(text) {
-    return { tagName: 'TH', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
   }
 
   // A header row + label column keep the data off row 0 / column 0
@@ -16237,9 +16352,13 @@ function withRightClickSandbox(run) {
     'getSuperscriptRanges',
     'isCellWholeLink',
     'filterLinkMatches',
-    'replaceTextPreservingHTML',
+    'collectTextPieces',
+    'mapRenderedToFlat',
     'applyExtractedPatches',
     'restoreTextPieces',
+    'placeDecision',
+    'layoutPieceHolding',
+    'livePatches',
     'looksLikeGrid',
     'findTargetTable',
     'findTables',
@@ -18033,8 +18152,8 @@ const LADDER_OPTS = {
   // isInRanges — every numeric cell was sampled regardless of the sidebar's
   // range restriction. The merged ladder now applies isInRanges exactly like
   // the engine.
-  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
@@ -18054,7 +18173,7 @@ const LADDER_OPTS = {
   // numeric header-row <td> was sampled like any other cell. The merged
   // ladder applies getExclusionReason's first-row rule exactly like the
   // engine, whose DR_DEFAULTS ships simplifyFirstRow: false.
-  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [tdCell('label'), tdCell('777')] }, // row 0
@@ -18068,7 +18187,7 @@ const LADDER_OPTS = {
 (function mergeLadderDivergence_firstColumn() {
   // Same rule, isolated to the column axis (DR_DEFAULTS ships
   // simplifyFirstColumn: false too).
-  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [tdCell('999'), tdCell('999')] },  // row 0 — excluded by first-row regardless
@@ -18083,8 +18202,8 @@ const LADDER_OPTS = {
   // OLD preview copy: never checked simplifyMixedPercent — a percent cell was
   // always sampled as a pure number, even with the sidebar's percent toggle
   // off. The merged ladder applies getExclusionReason's percent rule.
-  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A')] },
@@ -18099,8 +18218,8 @@ const LADDER_OPTS = {
 
 (function mergeLadderDivergence_currencyGating() {
   // Same rule, currency symbols.
-  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A')] },
@@ -18118,8 +18237,8 @@ const LADDER_OPTS = {
   // fails (quotes aren't stripped), so it fell into the mixed-text fallback
   // and extractNumbersInText happily found "12345" inside the quotes,
   // sampling a cell the engine treats as literal text and never touches.
-  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A')] },
@@ -18134,8 +18253,8 @@ const LADDER_OPTS = {
   // OLD preview copy's mixed-text fallback never applied quote masking —
   // 'Product "42" ships in 10 days' would surface 42 (a quoted, literal
   // value) as a would-change sample alongside the real number 10.
-  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A')] },
@@ -18151,7 +18270,7 @@ const LADDER_OPTS = {
   // entire visible text is a hyperlink (e.g. a linked page number) was
   // sampled like any other pure number, even though the engine leaves it
   // untouched.
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const linkCell = makeLinkCell(['42'], null);
   const table = {
     rows: [
@@ -18167,7 +18286,7 @@ const LADDER_OPTS = {
   // OLD preview copy's mixed-text fallback never applied filterLinkMatches —
   // "<text> 42" with "42" wrapped in <a> would surface 42 as a sample the
   // engine never touches (filterLinkMatches drops it).
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const mixedLinkCell = makeLinkCell(['42'], 'See page for details');
   const table = {
     rows: [
@@ -18187,7 +18306,7 @@ const LADDER_OPTS = {
   // as the single pure number 1012, a wrong value the engine never produces
   // (the engine masks the exponent and, finding nothing left to round,
   // leaves the cell untouched entirely).
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   withSupCreateTreeWalker(() => {
     const supCell = makeSuperscriptCell([
       { text: '10', inSup: false },
@@ -18209,8 +18328,8 @@ const LADDER_OPTS = {
   // checked opts.simplifyMixedCells, so turning that sidebar toggle off had
   // no effect on the preview even though the engine would leave every mixed
   // cell untouched.
-  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A')] },
@@ -18230,8 +18349,8 @@ const LADDER_OPTS = {
   // even though the ladder classifies them and the engine would simplify
   // them. The old preview copy also excluded dates/times (via its own
   // isDateLike/isTimeLike/isDateTimeLike checks) — this is parity, not a fix.
-  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
@@ -18411,7 +18530,7 @@ const LADDER_OPTS = {
 
   // Sandbox has NO `chrome` property whatsoever — only the DOM/browser
   // primitives the engine's non-controller code paths actually touch
-  // (document.createTreeWalker via replaceTextPreservingHTML, NodeFilter).
+  // (document.createTreeWalker via collectTextPieces, NodeFilter).
   const sandbox = {
     document: {
       addEventListener() {},
@@ -25929,10 +26048,10 @@ function makeBusSandbox(opts) {
 // — isolating the pass to the hidden cell's raw text, not to some other cell.
 (function hiddenCells_dataTestReadsHiddenCellRawText() {
   function hiddenNumericCell(rawText) {
-    return { tagName: 'TD', innerText: '', textContent: rawText };
+    return withTextPiece({ tagName: 'TD', innerText: '', textContent: rawText });
   }
   function labelCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   const table = {
     rows: [
@@ -26045,10 +26164,10 @@ function withHiddenCellTreeWalker(cell, fn) {
 // (c) The lens preview pool (collectNumericCells) holds the hidden cell.
 (function hiddenCells_lensPreviewPoolHoldsHiddenCell() {
   function hiddenNumericCell(rawText) {
-    return { tagName: 'TD', innerText: '', textContent: rawText };
+    return withTextPiece({ tagName: 'TD', innerText: '', textContent: rawText });
   }
   function labelCell(text) {
-    return { tagName: 'TD', innerText: text, textContent: text };
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
   const table = {
     rows: [
@@ -26065,8 +26184,8 @@ function withHiddenCellTreeWalker(cell, fn) {
 // "700023000+2.3%" (a display:none sort key ahead of the visible percent)
 // reads as "+2.3%" — through the real adapter, and through the engine.
 (function hiddenCells_visibleCellReadsRenderedTextNotSortKey() {
-  function tdCell(text) { return { tagName: 'TD', innerText: text, textContent: text }; }
-  function thCell(text) { return { tagName: 'TH', innerText: text, textContent: text }; }
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const sortKeyCell = tdCell('+2.3%');
   sortKeyCell.textContent = '700023000+2.3%';
   const table = {

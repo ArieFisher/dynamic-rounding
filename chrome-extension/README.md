@@ -60,16 +60,15 @@ During the development of this extension, we encountered a specific edge case co
 2. **Hidden Sort Keys:** Tables often embed machine-readable sort values directly alongside the visual text using `display: none` or hidden spans so that the table sorts correctly when a user clicks the column header.
    *Example:* `<span class="sortkey" style="display:none">700023000</span>+2.3%`
 
-#### The Solution: Multi-Node Text Replacement
-If a script naively overwrites the `innerText` when it fails to find a single clean text node to replace, it wipes out these structural spans. This leads to broken column widths, lost padding, and ruined text colors (since the alignment spans and CSS classes are removed).
+#### The Solution: One Patch Inside One Text Piece
+Overwriting a cell's `innerText` wipes out these structural spans. Column widths break, padding goes, and text colors reset, because the alignment spans and their CSS classes are gone.
 
-To preserve the layout and keep column widths consistent, the extension uses a cross-node replacement algorithm:
-1. We traverse the DOM tree of the cell using a `TreeWalker` to extract all `TextNodes`.
-2. We concatenate their values into a single string to find the exact start and end indices of the target number.
-3. We map those string indices back to the specific `TextNodes` that house the characters.
-4. We inject the new rounded number into the first `TextNode` involved in the match and empty the subsequent nodes that contained the rest of the old number.
+The extension never rewrites a cell's markup. Every cell, on a native table or a grid, takes three steps:
+1. **Classify.** The classification ladder reads the cell's text and determines what to change.
+2. **Place.** The placement step checks each change against the cell's text pieces. A change whose characters sit in one text piece stands.
+3. **Patch.** The patch writer replaces those characters inside that one text piece, through `nodeValue`. No element is added, removed, or replaced.
 
-This guarantees that the structural HTML elements (like the spans dictating width, color, or alignment) are left completely untouched, preventing the table columns from resizing or breaking.
+A value whose characters cross a piece boundary, such as the decimal-alignment example above, stays unchanged. On a native table the skip leaves a debug log row. On a grid the cell first takes the stacked cell test (see below).
 
 ### Data Grids vs. HTML Tables
 
@@ -82,7 +81,7 @@ Not every "table" on the modern web is an HTML `<table>`. Many data-heavy apps r
 
 The extension abstracts both shapes behind a `TableAdapter` interface (`lib/dr-table/detect.js`), chosen by `makeAdapter(el)`:
 
-- **`NativeTableAdapter`** (`<table>` elements) — reads `.rows`/`.cells`; writes use the cross-node replacement algorithm above (preserving `innerHTML` structure).
+- **`NativeTableAdapter`** (`<table>` elements) — reads `.rows`/`.cells` and classifies each cell on its rendered text. Writes go through the patch writer, as on a grid; restore puts back the cell's saved HTML.
 - **`GridAdapter`** (`<div>`-based grids, `isVirtualized() === true`) — stitches each row from the pinned pane and the scrollable pane and exposes the same row/cell API.
 
 #### Rows, row groups, and outside rows
@@ -95,11 +94,13 @@ On virtualized grids, the max magnitude freezes when simplification is first app
 
 On a native table, the data test and rounding share one cell read: the cell's rendered text, falling back to its raw text when the rendered text is empty. A hidden cell rounds like any other cell, and its raw text counts toward the test; a hidden fragment inside a visible cell — the hidden sort key above — stays out, because that cell's rendered text is not empty and the fallback never runs.
 
-An extracted cell on a native table is classified on its rendered text and patched in its flat text. The two differ on a pretty-printed page: the browser collapses the line breaks and indentation of the markup to one space in the rendered text, and the flat text keeps them. Each number position and each superscript position converts between the two texts, so "Grew 1,200 units" written across several lines of markup rounds and keeps its line breaks. A cell whose two texts differ in more than whitespace, such as one holding a hidden sort key, keeps its rendered positions.
+A native table cell is classified on its rendered text and patched in its flat text. The two differ on a pretty-printed page: the browser collapses the line breaks and indentation of the markup to one space in the rendered text, and the flat text keeps them. Each value position, number position, and superscript position converts between the two texts, so "Grew 1,200 units" or "4,523,789" written across several lines of markup rounds and keeps its line breaks. A cell whose two texts differ in more than whitespace, such as one holding a hidden sort key, keeps its rendered positions; a patch that misses there does not land, and the cell stays unchanged with a warn log row.
 
-#### Why grids need a different write model
+#### Why every write is a patch
 
-A `<table>` cell can be rewritten via `innerHTML` safely. A framework-managed grid cell **cannot**: React (and similar) hold a fiber reference to the cell's text node, so replacing it (`innerHTML =`, `textContent =`, `removeChild`/`appendChild`) crashes the host app's reconciler on the next re-render (observed: a `removeChild NotFoundError` that tore down the results panel on column resize). Grid writes therefore patch the existing text node **in place** (`textNode.nodeValue = …`), preserving the node identity the framework tracks.
+A framework-managed grid cell **cannot** be rewritten: React (and similar) hold a fiber reference to the cell's text node, so replacing it (`innerHTML =`, `textContent =`, `removeChild`/`appendChild`) crashes the host application's reconciler on the next re-render (observed: a `removeChild NotFoundError` that tore down the results panel on column resize). Writes therefore patch the existing text node **in place** (`textNode.nodeValue = …`), preserving the node identity the framework tracks. Native tables use the same patch writer, so one write rule covers every table kind. Restore differs by kind: a native cell gets back its saved HTML, and a grid cell gets back each patched piece's saved text.
+
+A native table cell takes no stacked cell test. Inline styling splits one number across pieces ("1" plain, "23" in bold), and the test reads a digit beside a digit across pieces as two numbers. So a native value across pieces stays unchanged.
 
 A grid cell reads as its flat text: every text piece, joined in page order. Each change is a patch to the one text piece that holds the changed characters, and the cell's originals hold each patched piece's text, so restore puts every piece back. Three rules follow from the piece layout:
 

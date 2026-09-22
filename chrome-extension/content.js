@@ -845,9 +845,9 @@ function collectNumericCells(table, options) {
 
   const out = [];
   const adapter = makeAdapter(table, { originalsPort: registryOriginalsPort(table) });
-  // A grid cell classifies as computeGridRoundedValues classifies it —
-  // extracted cells held back, each decision placed in the cell's text
-  // pieces — so the preview lists only numbers the grid rounds.
+  // A cell classifies as roundTable classifies it — each decision placed in
+  // the cell's text pieces, and on a grid extracted cells held back — so the
+  // preview lists only numbers the table rounds.
   const isGrid = adapter.isVirtualized();
   const rows = adapter.getRows();
   for (let r = 0; r < rows.length; r++) {
@@ -911,11 +911,14 @@ function collectNumericCells(table, options) {
         superscriptRanges,
         allowExtracted: !isGrid,
       }, opts);
-      const decision = finalizeExtractedDecision(
-        isGrid ? placeGridDecision(classified, text, cellObj.getPieceLayout(), hasSuperscript) : classified,
-        cellEl,
-        staleFilteredIndices
-      );
+      // A rounded native cell passed the placement step when it was written,
+      // and its live pieces now hold the rounded text, so it skips the step.
+      // A grid layout carries the record's stored piece text, so a grid cell
+      // is placed either way.
+      const placed = (isGrid || !usingStoredOriginal)
+        ? placeDecision(classified, text, cellObj.getPieceLayout(), { hasSuperscript, stacked: isGrid })
+        : classified;
+      const decision = finalizeExtractedDecision(placed, cellEl, staleFilteredIndices);
 
       if (decision.mode === 'pure') {
         const { num } = decision.value;
@@ -1059,8 +1062,9 @@ function buildCaptureStateResponse() {
  * implementation, so they cannot drift the way two hand-kept-in-sync copies
  * could.
  *
- * A cell's text is its flat text, and placeGridDecision places each decision
- * in the cell's text pieces, so a stacked cell rounds number by number.
+ * A cell's text is its flat text, and the placement step (placeDecision in
+ * lib/dr-table) places each decision in the cell's text pieces, so a
+ * stacked cell rounds number by number.
  *
  * max_mag is computed only over the surviving in-range, non-excluded
  * numbers — pure cells, unit numbers, and each number of a stacked cell, the
@@ -1142,7 +1146,7 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
       // "DT1234" (#120), whatever opts.simplifyMixedCells says. A unit
       // number still rounds; see classifyCell.
       const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-      const placed = placeGridDecision(classifyCell({
+      const placed = placeDecision(classifyCell({
         text,
         rowIndex: r,
         columnIndex: col,
@@ -1151,7 +1155,7 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
         hasSuperscript,
         superscriptRanges: hasSuperscript ? getSuperscriptRanges(cell) : [],
         allowExtracted: false,
-      }, opts), text, layout, hasSuperscript);
+      }, opts), text, layout, { hasSuperscript, stacked: true });
       if (placed.reason === 'split') {
         DR_LOG.debug('Dynamic Rounding: a grid cell number split across text pieces stays unchanged.');
       }
@@ -1224,7 +1228,7 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
         rounded = roundTimeText(trimmed, opts.timeGranularity);
       }
       if (rounded !== null && rounded !== trimmed) {
-        if (pieceHolding(pieceSpans(layout), lead, trimmed.length)) {
+        if (layoutPieceHolding(layout, lead, trimmed.length)) {
           patches = [{ index: lead, numStr: trimmed, newNum: rounded }];
         } else {
           DR_LOG.debug('Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.');
@@ -1249,99 +1253,6 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
   }
 
   return { results, maxMag: max_mag };
-}
-
-// A grid cell's pieces as getText() saw them (see getPieceLayout in
-// lib/dr-table/detect.js), each with its index and its start in that text.
-function pieceSpans(layout) {
-  const spans = [];
-  let at = 0;
-  layout.original.forEach((text, i) => {
-    spans.push({ i, start: at, text });
-    at += text.length;
-  });
-  return spans;
-}
-
-// The piece that holds every character of [start, start + length), or null.
-function pieceHolding(spans, start, length) {
-  const span = spans.find((s) => s.start <= start && start < s.start + s.text.length);
-  return span && start + length <= span.start + span.text.length ? span : null;
-}
-
-// Move patches measured in the text getText() returned onto the cell's live
-// pieces: same piece, same place inside it, at that piece's live start. A
-// patched piece can differ in length from its original, so a later piece's
-// live start can differ from its start in the original text.
-function livePatches(patches, layout) {
-  if (patches.length === 0) return patches;
-  const spans = pieceSpans(layout);
-  return patches.map((patch) => {
-    const span = pieceHolding(spans, patch.index, 1);
-    return Object.assign({}, patch, { index: layout.liveStarts[span.i] + (patch.index - span.start) });
-  });
-}
-
-// A piece with no number in it that a stacked cell may still hold: currency
-// symbols (the number parser's list) or a percent sign. A listed currency
-// code alone also counts; stackedMatches checks it.
-const STACKED_SYMBOL_PIECE_RE = new RegExp('^(?:' + CURRENCY_SYMBOL_CLASS + '|%)+$');
-
-// The numbers of a stacked grid cell: a cell whose text pieces each hold
-// one whole number or unit number, or nothing but whitespace or a symbol.
-// Two numbers in one piece, even with a space between them ("416 555 1234"),
-// make the cell not stacked, and so does a piece that reads as a date or a
-// time ("2024" above "2025"), because a lone year stays a year. Returns the numbers as matches measured in the
-// text getText() returned, null when the cell is not stacked, or 'split'
-// when a number sits across two pieces: a piece that ends in "." or ","
-// before one that starts with a digit ("4." then "91"). A piece that starts
-// with "." or "," never reads as a number, so "4" then ".91" is not stacked
-// either. A digit next to a digit across two pieces reads as two numbers,
-// the shape of one number per line.
-function stackedMatches(spans) {
-  const filled = spans.filter((span) => span.text.length > 0);
-  for (let k = 1; k < filled.length; k++) {
-    if (/[.,]$/.test(filled[k - 1].text) && /^\d/.test(filled[k].text)) return 'split';
-  }
-  const matches = [];
-  for (const span of filled) {
-    const trimmed = span.text.trim();
-    if (trimmed === '' || STACKED_SYMBOL_PIECE_RE.test(trimmed) || CURRENCY_CODES.includes(trimmed)) continue;
-    if (isDateTimeLike(trimmed) || isDateLike(trimmed) || isTimeLike(trimmed)) return null;
-    const unit = matchUnitNumber(span.text);
-    const found = unit ? [unit] : extractNumbersInText(span.text);
-    if (found.length !== 1 || (!unit && toNumber(span.text) === null)) return null;
-    matches.push({ numStr: found[0].numStr, num: found[0].num, index: span.start + found[0].index });
-  }
-  return matches.length > 0 ? matches : null;
-}
-
-// Place a grid cell's classifyCell decision in the cell's text pieces. A
-// patch edits one piece, so a decision stands only when the characters it
-// changes sit in one piece: a pure cell's trimmed text, a unit number's
-// digits. Otherwise, and for a cell the grid flag held back as mixed text,
-// the cell may be stacked (see stackedMatches), and rounds number by number
-// as an extracted decision. A number split across pieces skips with reason
-// 'split'. A cell whose pieces no longer reach its record skips. A cell
-// with a <sup> keeps its decision, which on a grid is always a skip, so a
-// footnote marker never rounds as a stacked number. A date or time passes
-// through; its piece check runs when its patch is built.
-function placeGridDecision(decision, text, layout, hasSuperscript) {
-  if (!layout) return { mode: 'skip', reason: 'pieces-changed' };
-  if (hasSuperscript && decision.mode === 'skip') return decision;
-  const spans = pieceSpans(layout);
-  if (decision.mode === 'pure') {
-    const lead = text.length - text.trimStart().length;
-    if (pieceHolding(spans, lead, text.trim().length)) return decision;
-  } else if (decision.mode === 'extracted') {
-    if (decision.value.matches.every((m) => pieceHolding(spans, m.index, m.numStr.length))) return decision;
-  } else if (!(decision.mode === 'skip' && decision.reason === 'mixed-disabled')) {
-    return decision;
-  }
-  const matches = stackedMatches(spans);
-  if (matches === 'split') return { mode: 'skip', reason: 'split' };
-  if (matches === null) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
-  return { mode: 'extracted', reason: 'stacked', value: { matches } };
 }
 
 /**
@@ -1516,12 +1427,15 @@ function roundTable(table, options) {
   // For native tables, cellsMap stores raw element.
   const cellsMap = [];
   const cellInfo = [];
+  // Each cell's text pieces, as the placement step read them.
+  const cellLayouts = [];
 
   for (let r = 0; r < adapterRows.length; r++) {
     const adapterCells = adapterRows[r].getCells();
     const rowData = [];
     const rowCells = [];
     const rowInfo = [];
+    const rowLayouts = [];
     for (let c = 0; c < adapterCells.length; c++) {
       const cellObj = adapterCells[c];
       const cell = cellObj.el;
@@ -1542,23 +1456,29 @@ function roundTable(table, options) {
       // ladder cannot perform itself (see lib/dr-simplify/ladder.js header);
       // compute them here and pass the results in as plain data.
       const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-      const decision = finalizeExtractedDecision(
-        classifyCell({
-          text,
-          rowIndex: r,
-          columnIndex: col,
-          ranges,
-          isWholeLink: isCellWholeLink(cell),
-          hasSuperscript,
-          superscriptRanges: hasSuperscript ? getSuperscriptRanges(cell, { text }) : [],
-        }, opts),
-        cell
-      );
-      rowInfo.push(decisionToLegacyInfo(decision));
+      // The placement step runs without the stacked-cell test, so a value
+      // that crosses a text piece boundary stays unchanged (see
+      // placeDecision in lib/dr-table).
+      const layout = cellObj.getPieceLayout();
+      const placed = placeDecision(classifyCell({
+        text,
+        rowIndex: r,
+        columnIndex: col,
+        ranges,
+        isWholeLink: isCellWholeLink(cell),
+        hasSuperscript,
+        superscriptRanges: hasSuperscript ? getSuperscriptRanges(cell, { text }) : [],
+      }, opts), text, layout, { hasSuperscript });
+      if (placed.reason === 'pieces') {
+        DR_LOG.debug('Dynamic Rounding: a native cell value split across text pieces stays unchanged.');
+      }
+      rowInfo.push(decisionToLegacyInfo(finalizeExtractedDecision(placed, cell)));
+      rowLayouts.push(layout);
     }
     data.push(rowData);
     cellsMap.push(rowCells);
     cellInfo.push(rowInfo);
+    cellLayouts.push(rowLayouts);
   }
 
   // --- Column post-pass: resolve ambiguous numeric date cells per column ---
@@ -1607,6 +1527,11 @@ function roundTable(table, options) {
   // This reflects the precision implied by the user's offset choice (e.g. offset 0.25 → 2 decimals).
   const floorDecimals = Math.max(decimalCount(offsetTop), decimalCount(offsetOther));
 
+  // Every cell's patches go through the patch writer, each inside one text
+  // piece. A patch position counts in the rendered text the cell was
+  // classified on; livePatches converts it to the flat text the writer
+  // counts in, where a pretty-printed cell keeps the line breaks and
+  // indentation the browser collapses.
   let appliedAny = false;
   for (let r = 0; r < data.length; r++) {
     for (let c = 0; c < data[r].length; c++) {
@@ -1614,83 +1539,72 @@ function roundTable(table, options) {
       if (info.mode === 'skip') continue;
 
       const originalValue = data[r][c];
-      let formattedValue;
+      const trimmed = originalValue.trim();
+      const lead = originalValue.length - originalValue.trimStart().length;
+      const cell = cellsMap[r][c];
+      const layout = cellLayouts[r][c];
+      let patches = [];
+      let linkFilteredIdx = null;
 
-      if (info.mode === 'date') {
-        const prefilled = (info.month !== undefined) ? { month: info.month, day: info.day, year: info.year } : undefined;
-        formattedValue = roundDateText(originalValue, opts.dateGranularity, prefilled);
-        if (formattedValue === originalValue) continue;
-      } else if (info.mode === 'time') {
-        formattedValue = roundTimeText(originalValue, opts.timeGranularity);
-        if (formattedValue === null || formattedValue === originalValue) continue;
+      if (info.mode === 'date' || info.mode === 'time') {
+        // The new text replaces the trimmed text, and the piece keeps its
+        // own whitespace. A date or time split across pieces stays unchanged.
+        let formattedValue;
+        if (info.mode === 'date') {
+          const prefilled = (info.month !== undefined) ? { month: info.month, day: info.day, year: info.year } : undefined;
+          formattedValue = roundDateText(trimmed, opts.dateGranularity, prefilled);
+        } else {
+          formattedValue = roundTimeText(trimmed, opts.timeGranularity);
+        }
+        if (formattedValue === null || formattedValue === trimmed) continue;
+        if (!layoutPieceHolding(layout, lead, trimmed.length)) {
+          DR_LOG.debug('Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.');
+          continue;
+        }
+        patches = [{ index: lead, numStr: trimmed, newNum: formattedValue }];
       } else if (info.mode === 'pure') {
         const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
-        formattedValue = restoreFormatting(roundedValue, originalValue, floorDecimals);
+        const formattedValue = restoreFormatting(roundedValue, originalValue, floorDecimals);
         // Compare formatted output to the trimmed original: catches cases
         // where the number is numerically unchanged but the display format
         // simplifies (e.g. "35.0" → "35").
-        if (formattedValue === originalValue.trim()) continue;
+        if (formattedValue === trimmed) continue;
+        patches = [{ index: lead, numStr: trimmed, newNum: formattedValue }];
       } else {
-        // mode === 'extracted': multi-match HTML-preserving patches.
-        // Round each match and patch its text node directly. This avoids the
-        // whole-cell character-distribution approach, which mis-allocates
-        // characters when newText length differs from original (corrupting
-        // adjacent <sup> content, punctuation, and <a> text nodes).
-        // A match position counts in the rendered text the cell was
-        // classified on; the patch step counts in the flat text, where a
-        // pretty-printed cell keeps the line breaks and indentation the
-        // browser collapses. mapRenderedToFlat converts one to the other.
-        const cell = cellsMap[r][c];
-        const toFlat = mapRenderedToFlat(originalValue,
-          collectTextPieces(cell).map((piece) => piece.nodeValue).join(''));
-        const patches = [];
+        // mode === 'extracted': one patch per changed number, so the words,
+        // links, and <sup> content around each number stay.
         for (const m of info.matches) {
           const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
           const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
-          const index = toFlat ? toFlat[m.index] : m.index;
-          if (newNum !== m.numStr) patches.push({ index, numStr: m.numStr, newNum });
+          if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
         }
         if (patches.length === 0) continue;
-        // Measure the pristine HTML, superscript ranges, and the surviving
-        // (link-filtered) match indices against the pre-round text, BEFORE
-        // applyExtractedPatches shortens it — but store the record only after
-        // a patch confirms the cell changed. The registry record replaces
-        // four separate dataset attributes; collectNumericCells reads it back
-        // instead of re-measuring the (now-rounded, differently-offset) live
-        // element against stored original text. See finalizeExtractedDecision
-        // and collectNumericCells for the read side.
-        const originalRecord = {
-          html: cell.innerHTML,
-          value: originalValue,
-          supRanges: getSuperscriptRanges(cell, { text: originalValue }),
-          linkFilteredIdx: info.matches.map((m) => m.index),
-        };
-        const { landed } = applyExtractedPatches(cell, patches);
-        if (landed < patches.length) {
-          DR_LOG.warn('Dynamic Rounding: ' + (patches.length - landed) + ' of ' +
-            patches.length + ' extracted-cell patches did not land.');
-        }
-        // Record only a confirmed change: with every patch skipped the screen
-        // keeps its text, and storing the original, the hover text, or the
-        // marker would record a simplification that never happened.
-        if (landed === 0) continue;
-        DR_STORE.setTableOriginal(table, cell, originalRecord);
-        cell.title = `Original: ${originalValue}`;
-        cell.classList.add('dr-ext-rounded');
-        appliedAny = true;
-        continue;
+        linkFilteredIdx = info.matches.map((m) => m.index);
       }
 
-      // Native-table path: cache pristine HTML before mutation so toggle/reset can
-      // restore it without needing to keep the rounded value around.
-      const cell = cellsMap[r][c];
-      DR_STORE.setTableOriginal(table, cell, {
+      // Measure the pristine HTML, superscript ranges, and the surviving
+      // (link-filtered) match indices against the pre-round text, BEFORE
+      // applyExtractedPatches changes it — but store the record only after
+      // a patch confirms the cell changed. collectNumericCells reads the
+      // record back instead of re-measuring the rounded live element against
+      // the stored original text. See finalizeExtractedDecision and
+      // collectNumericCells for the read side.
+      const originalRecord = {
         html: cell.innerHTML,
         value: originalValue,
-        supRanges: null,
-        linkFilteredIdx: null,
-      });
-      replaceTextPreservingHTML(cell, originalValue, formattedValue);
+        supRanges: info.mode === 'extracted' ? getSuperscriptRanges(cell, { text: originalValue }) : null,
+        linkFilteredIdx,
+      };
+      const { landed } = applyExtractedPatches(cell, livePatches(patches, layout));
+      if (landed < patches.length) {
+        DR_LOG.warn('Dynamic Rounding: ' + (patches.length - landed) + ' of ' +
+          patches.length + ' cell patches did not land.');
+      }
+      // Record only a confirmed change: with every patch skipped the screen
+      // keeps its text, and storing the original, the hover text, or the
+      // marker would record a simplification that never happened.
+      if (landed === 0) continue;
+      DR_STORE.setTableOriginal(table, cell, originalRecord);
       cell.title = `Original: ${originalValue}`;
       cell.classList.add('dr-ext-rounded');
       appliedAny = true;
