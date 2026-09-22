@@ -525,8 +525,8 @@ function getSuperscriptRanges(cell, opts = {}) {
   let node;
   while ((node = treeWalker.nextNode())) {
     const len = node.nodeValue ? node.nodeValue.length : 0;
-    if (len > 0) flat += node.nodeValue;
     if (len > 0) {
+      flat += node.nodeValue;
       // Check if any ancestor up to (not including) cell is a <sup> element.
       let isSup = false;
       let ancestor = node.parentNode || node.parentElement;
