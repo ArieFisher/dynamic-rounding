@@ -182,8 +182,8 @@ function classifyCell(input, options) {
   }
 
   // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
-  // currency code, so it rounds like a pure cell whatever the words toggle
-  // and the grid flag say. Its digits alone change, which is the extracted
+  // currency code, so it rounds like a pure cell whatever the words setting
+  // and the grid flag hold. Its digits alone change, which is the extracted
   // write, so it takes mode:'extracted' with its one match. A cell with a
   // <sup> takes the footnote path above instead, so its exponent stays masked.
   const unit = hasSuperscript ? null : matchUnitNumber(text);

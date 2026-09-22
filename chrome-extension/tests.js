@@ -9173,6 +9173,59 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   }
 })();
 
+// Cells the stacked check leaves unchanged, and one it admits. Dataset 125
+// and 126 from cell d, so the max magnitude is 2.
+//   a: a unit number beside a <sup> footnote: a grid cell with a <sup>
+//      never rounds, so the footnote marker cannot round as a number
+//   b: a stacked year above a year: each piece reads as a date
+//   c: "1," then "234": a number split after its grouping comma
+//   d: a listed currency code in its own piece above two numbers
+(function gridStacked_cellsTheStackedCheckLeaves() {
+  const grid = makeE2EGridWrapper([['4.91T12', '20242025', '1,234', 'CAD125126']]);
+  const [a, b, c, d] = grid.cellEls;
+  const sup = makeElementNode('sup', [makeTextNode('12')]);
+  setGridCellPieces(a, [makeTextNode('4.91T'), sup]);
+  a.querySelector = (sel) => (sel === 'sup' ? sup : null);
+  setGridCellPieces(b, [makeElementNode('l1', [makeTextNode('2024')]), makeElementNode('l2', [makeTextNode('2025')])]);
+  setGridCellPieces(c, [makeTextNode('1,'), makeElementNode('g', [makeTextNode('234')])]);
+  setGridCellPieces(d, [makeElementNode('c', [makeTextNode('CAD')]),
+    makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])]);
+  const opts = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
+  try {
+    eq('grid stacked: the lens preview pool leaves out the footnote, the years, and the split number',
+      collectNumericCells(grid.wrapperEl, opts).map((sample) => sample.num), [125, 126]);
+    roundTable(grid.wrapperEl, opts);
+    eq('grid stacked: a cell with a <sup> stays unchanged', pieceTextsOf(a), ['4.91T', '12']);
+    eq('grid stacked: stacked years stay unchanged', pieceTextsOf(b), ['2024', '2025']);
+    eq('grid stacked: a number split after its grouping comma stays unchanged', pieceTextsOf(c), ['1,', '234']);
+    eq('grid stacked: a currency code in its own piece stays and the numbers round',
+      pieceTextsOf(d), ['CAD', '150', '150']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// A rounded stacked cell that the page redraws with fewer pieces: the
+// re-apply and the lens preview skip it, and reset counts it unrestorable.
+(function gridStacked_aRoundedCellThatLostAPiece() {
+  const grid = makeE2EGridWrapper([['125126']]);
+  const [cell] = grid.cellEls;
+  setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])]);
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('150')])]);
+    let threw = null;
+    try { reapplyGridRounding(grid.wrapperEl); } catch (e) { threw = String(e); }
+    eq('grid stacked: the re-apply skips a cell that lost a piece', { threw, pieces: pieceTextsOf(cell) },
+      { threw: null, pieces: ['150'] });
+    eq('grid stacked: the lens preview leaves out a cell that lost a piece',
+      collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS), []);
+    eq('grid stacked: reset counts a cell that lost a piece as unrestorable', resetTable(grid.wrapperEl), 1);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
 // A unit number that is the largest number on the grid sets the frozen max
 // magnitude: 5,432.1 has magnitude 3.
 (function gridStacked_aUnitNumberJoinsTheDataset() {
@@ -17809,7 +17862,7 @@ const LADDER_OPTS = {
   const wordsOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCells: false });
   const currencyOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false });
   const at = (text, extra) => Object.assign({ text, rowIndex: 1, columnIndex: 1, ranges: null }, extra || {});
-  eq('classifyCell: a unit number simplifies with the words toggle off',
+  eq('classifyCell: a unit number simplifies with the words setting off',
     classifyCell(at('4.91tn'), wordsOff),
     { mode: 'extracted', reason: 'unit', value: { matches: [{ numStr: '4.91', num: 4.91, index: 0 }] } });
   eq('classifyCell: a unit number simplifies on a grid',
@@ -17825,9 +17878,14 @@ const LADDER_OPTS = {
     classifyCell(at('DT1234'), wordsOff), { mode: 'skip', reason: 'mixed-disabled' });
   eq('classifyCell: a plain currency number stays pure',
     classifyCell(at('$45.67'), wordsOff), { mode: 'pure', reason: 'simplify', value: { num: 45.67 } });
+  // "4.91<sup>1</sup>tn" flattens to "4.911tn": the footnote digit must not
+  // join the unit number.
+  eq('classifyCell: a cell with a <sup> is not a unit number',
+    classifyCell(at('4.911tn', { hasSuperscript: true, superscriptRanges: [{ start: 4, end: 5 }] }), wordsOff),
+    { mode: 'skip', reason: 'mixed-disabled' });
 })();
 
-// On an HTML table a unit number rounds with the words toggle off; only its
+// On an HTML table a unit number rounds with the words setting off; only its
 // digits change. Dataset: 4.91 (magnitude 0) and 45.67 (magnitude 1), so
 // 45.67 takes the top band (step 5) and 4.91 the other band (step 0.5).
 (function nativeTable_unitNumbersRoundWithWordsOff() {
@@ -17838,7 +17896,7 @@ const LADDER_OPTS = {
     roundTable(table, Object.assign({}, DR_DEFAULTS, {
       simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedCells: false,
     }));
-    eq('HTML table: unit numbers round with the words toggle off and an identifier stays',
+    eq('HTML table: unit numbers round with the words setting off and an identifier stays',
       table.rows[0].cells.map((cell) => cell.innerText), ['5tn', 'CAD45m', 'DT1234']);
   });
 })();

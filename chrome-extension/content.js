@@ -912,7 +912,7 @@ function collectNumericCells(table, options) {
         allowExtracted: !isGrid,
       }, opts);
       const decision = finalizeExtractedDecision(
-        isGrid ? placeGridDecision(classified, text, cellObj.getPieceLayout()) : classified,
+        isGrid ? placeGridDecision(classified, text, cellObj.getPieceLayout(), hasSuperscript) : classified,
         cellEl,
         staleFilteredIndices
       );
@@ -1151,7 +1151,7 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
         hasSuperscript,
         superscriptRanges: hasSuperscript ? getSuperscriptRanges(cell) : [],
         allowExtracted: false,
-      }, opts), text, layout);
+      }, opts), text, layout, hasSuperscript);
       if (placed.reason === 'split') {
         DR_LOG.debug('Dynamic Rounding: a grid cell number split across text pieces stays unchanged.');
       }
@@ -1282,14 +1282,16 @@ function livePatches(patches, layout) {
   });
 }
 
-// A piece with no number in it that a stacked cell may still hold: a
-// currency symbol, a percent sign, or a listed currency code.
-const STACKED_SYMBOL_PIECE_RE = /^[$€£¥₹%]+$/;
+// A piece with no number in it that a stacked cell may still hold: currency
+// symbols (the number parser's list) or a percent sign. A listed currency
+// code alone also counts; stackedMatches checks it.
+const STACKED_SYMBOL_PIECE_RE = new RegExp('^(?:' + CURRENCY_SYMBOL_CLASS + '|%)+$');
 
 // The numbers of a stacked grid cell: a cell whose text pieces each hold
 // one whole number or unit number, or nothing but whitespace or a symbol.
 // Two numbers in one piece, even with a space between them ("416 555 1234"),
-// make the cell not stacked. Returns the numbers as matches measured in the
+// make the cell not stacked, and so does a piece that reads as a date or a
+// time ("2024" above "2025"), because a lone year stays a year. Returns the numbers as matches measured in the
 // text getText() returned, null when the cell is not stacked, or 'split'
 // when a number sits across two pieces: a piece that ends in "." or ","
 // before one that starts with a digit ("4." then "91"). A piece that starts
@@ -1305,6 +1307,7 @@ function stackedMatches(spans) {
   for (const span of filled) {
     const trimmed = span.text.trim();
     if (trimmed === '' || STACKED_SYMBOL_PIECE_RE.test(trimmed) || CURRENCY_CODES.includes(trimmed)) continue;
+    if (isDateTimeLike(trimmed) || isDateLike(trimmed) || isTimeLike(trimmed)) return null;
     const unit = matchUnitNumber(span.text);
     const found = unit ? [unit] : extractNumbersInText(span.text);
     if (found.length !== 1 || (!unit && toNumber(span.text) === null)) return null;
@@ -1319,10 +1322,13 @@ function stackedMatches(spans) {
 // digits. Otherwise, and for a cell the grid flag held back as mixed text,
 // the cell may be stacked (see stackedMatches), and rounds number by number
 // as an extracted decision. A number split across pieces skips with reason
-// 'split'. A cell whose pieces no longer reach its record skips. A date or
-// time passes through; its piece check runs when its patch is built.
-function placeGridDecision(decision, text, layout) {
+// 'split'. A cell whose pieces no longer reach its record skips. A cell
+// with a <sup> keeps its decision, which on a grid is always a skip, so a
+// footnote marker never rounds as a stacked number. A date or time passes
+// through; its piece check runs when its patch is built.
+function placeGridDecision(decision, text, layout, hasSuperscript) {
   if (!layout) return { mode: 'skip', reason: 'pieces-changed' };
+  if (hasSuperscript && decision.mode === 'skip') return decision;
   const spans = pieceSpans(layout);
   if (decision.mode === 'pure') {
     const lead = text.length - text.trimStart().length;

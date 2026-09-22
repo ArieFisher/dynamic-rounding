@@ -24,7 +24,7 @@ The extension uses the same offset model as the rest of the project. As of the `
 
 ## Unit numbers
 
-A unit number is a cell whose whole text is one number with a magnitude suffix after it, a listed currency code before or after it, or both: "4.91tn", "41.31m", "5.2 Bn", "CAD45.67", "CAD$45.67", "$CAD45.67", "45.67 CAD", "CAD45.67m". Only the digits round, so "CAD45.67m" becomes "CAD45m" and "4.91tn" becomes "5tn". A unit number rounds on HTML tables and grids alike, whatever the sidebar's "words" setting says.
+A unit number is a cell whose whole text is one number with a magnitude suffix after it, a listed currency code before or after it, or both: "4.91tn", "41.31m", "5.2 Bn", "CAD45.67", "CAD$45.67", "$CAD45.67", "45.67 CAD", "CAD45.67m". Only the digits round, so "CAD45.67m" becomes "CAD45m" and "4.91tn" becomes "5tn". A unit number rounds on HTML tables and grids alike, whatever the sidebar's "words" setting holds.
 
 - The suffixes are k, m, b, t, bn, and tn, in any case, directly after the number or after one space.
 - A currency code counts only in upper case and only as its own word, so "CADENCE" and "usd" do not. The suffixes and the codes are listed once, in `lib/dr-number/parsing.js`.
@@ -101,9 +101,9 @@ A `<table>` cell can be rewritten via `innerHTML` safely. A framework-managed gr
 
 A grid cell reads as its flat text: every text piece, joined in page order. Each change is a patch to the one text piece that holds the changed characters, and the cell's originals hold each patched piece's text, so restore puts every piece back. Three rules follow from the piece layout:
 
-- A **stacked cell** rounds number by number: "125" above "126" becomes "150" above "150", and a "$" in its own piece beside "337.91" stays while the number becomes "350". Two numbers in one piece, even with a space between them, make the cell not stacked, so it stays unchanged.
+- A **stacked cell** rounds number by number: "125" above "126" becomes "150" above "150", and a "$" in its own piece beside "337.91" stays while the number becomes "350". Two numbers in one piece, even with a space between them, make the cell not stacked, so it stays unchanged. So does a piece that reads as a date or a time: "2024" above "2025" stays, as a lone "2024" does.
 - A **split number** stays unchanged, with a debug log row: "4." in one piece and "91" in the next. A date or time split across pieces stays unchanged the same way.
-- **Extracted cells** stay unchanged on grids, `<sup>` exponents included, until an allow list separates quantities from identifiers such as "DT1234" (#120). The lens preview leaves them out on grids too, so it lists only numbers the grid rounds. A unit number is not an extracted cell for this rule: "4.91tn" becomes "5tn" on a grid.
+- **Extracted cells** stay unchanged on grids, and so does any grid cell with a `<sup>`, until an allow list separates quantities from identifiers such as "DT1234" (#120). The lens preview leaves them out on grids too, so it lists only numbers the grid rounds. A unit number is not an extracted cell for this rule: "4.91tn" becomes "5tn" on a grid.
 
 Because virtualized grids recycle rows on scroll and rewrite cells in place on sort, a debounced `MutationObserver` (watching both `childList` and `characterData`) re-applies rounding to rows that scroll into view and cells that a sort reverts.
 
