@@ -5131,6 +5131,38 @@ function nativeOnePieceOpts() {
   });
 })();
 
+// A hidden sort key ahead of the value: the rendered text leaves it out and
+// the flat text holds it, so the two differ in more than whitespace. The
+// value sits in the one piece that holds it, and the sort key keeps its text.
+function makeSortKeyCell(segments, rendered) {
+  const cell = makeReactiveCell(segments);
+  Object.defineProperty(cell, 'innerText', { get() { return rendered(); }, set() {} });
+  return cell;
+}
+
+(function nativePureCell_hiddenSortKeyRoundsTheVisibleValue() {
+  withReactiveCreateTreeWalker(function () {
+    const keyed = [{ text: '000000007002300', inSup: false }, { text: '7,002,300', inSup: false }];
+    const repeated = [{ text: '0000004523789', inSup: false }, { text: '4523789', inSup: false }];
+    const keyedCell = makeSortKeyCell(keyed, () => keyed[1].text);
+    const repeatedCell = makeSortKeyCell(repeated, () => repeated[1].text);
+    const table = { rows: [{ cells: [keyedCell] }, { cells: [repeatedCell] }], querySelector: () => null, dataset: {} };
+    try {
+      roundTable(table, nativeOnePieceOpts());
+      eq('native sort-key cell: the visible value rounds',
+        keyed[1].text, '7,000,000');
+      eq('native sort-key cell: the hidden sort key keeps its text',
+        keyed[0].text, '000000007002300');
+      eq('native sort-key cell: a sort key that also holds the digits keeps its text, and the visible value rounds',
+        repeated.map((seg) => seg.text).join('|'), '0000004523789|4,500,000');
+      eq('native sort-key cell: the cells record as simplified',
+        keyedCell.classList.contains('dr-ext-rounded') && repeatedCell.classList.contains('dr-ext-rounded'), true);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
 (function placeDecision_stackedTestRunsOnlyWhenAsked() {
   const layout = { original: ['1', '23'], liveStarts: [0, 1], toFlat: null };
   const decision = { mode: 'pure', value: { num: 123 } };

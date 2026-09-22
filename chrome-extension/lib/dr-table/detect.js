@@ -154,7 +154,8 @@ class NativeTableAdapter {
               at += text.length;
             }
             const rendered = cell.innerText || cell.textContent || '';
-            return { original: pieces, liveStarts, toFlat: mapRenderedToFlat(rendered, pieces.join('')) };
+            const toFlat = mapRenderedToFlat(rendered, pieces.join(''));
+            return { original: pieces, liveStarts, toFlat: toFlat || mapValueToPiece(rendered, pieces) };
           },
           el: cell,
           tagName: cell.tagName,
@@ -698,6 +699,38 @@ function mapRenderedToFlat(rendered, flat) {
 }
 
 /**
+ * Where a cell's trimmed rendered text sits in its flat text, for a cell
+ * whose two texts differ in more than whitespace: a hidden sort key ahead of
+ * the value ("000000007002300" hidden, then "7,002,300"). The value sits in
+ * the one piece whose trimmed text equals it, or else in the one piece that
+ * holds it exactly once. Returns an array holding, for each rendered
+ * position of the value, its flat position, with no entry for any other
+ * rendered position, or null when no single piece qualifies.
+ * @param {string} rendered
+ * @param {string[]} pieces
+ * @returns {number[]|null}
+ */
+function mapValueToPiece(rendered, pieces) {
+  const value = rendered.trim();
+  if (value === '') return null;
+  let candidates = pieces.map((text, i) => i).filter((i) => pieces[i].trim() === value);
+  if (candidates.length !== 1) {
+    candidates = pieces.map((text, i) => i).filter((i) => {
+      const at = pieces[i].indexOf(value);
+      return at >= 0 && pieces[i].indexOf(value, at + 1) < 0;
+    });
+  }
+  if (candidates.length !== 1) return null;
+  const i = candidates[0];
+  let flatStart = pieces[i].indexOf(value);
+  for (let k = 0; k < i; k++) flatStart += pieces[k].length;
+  const lead = rendered.length - rendered.trimStart().length;
+  const toFlat = [];
+  for (let k = 0; k < value.length; k++) toFlat[lead + k] = flatStart + k;
+  return toFlat;
+}
+
+/**
  * Applies targeted per-number patches to the text pieces of a cell.
  * Each patch {index, numStr, newNum} identifies a position in the cell's flat
  * text (the join of its text pieces in page order — same coordinate space as
@@ -791,11 +824,14 @@ function restoreTextPieces(cell, storedPieces) {
 //   original    each piece's text as the classified text saw it
 //   liveStarts  where each piece starts in the cell's live flat text
 //   toFlat      for each position of the classified text, its position in
-//               the join of original; null when the positions count alike
+//               the join of original; null when the positions count alike,
+//               and no entry for a position with no known counterpart
 // A native cell classifies its rendered text and converts positions through
 // mapRenderedToFlat. When the rendered and flat texts differ in more than
-// whitespace, toFlat is null and the rendered positions stand; a patch that
-// misses there does not land.
+// whitespace, such as a hidden sort key ahead of the value, toFlat maps the
+// trimmed rendered text to the one piece that holds it (mapValueToPiece).
+// With no such piece the rendered positions stand, and a patch that misses
+// there does not land.
 
 // The cell's pieces as the classified text saw them, each with its index
 // and its start in the join of original.
@@ -816,12 +852,14 @@ function pieceHolding(spans, start, length) {
 }
 
 // A range of the classified text, as a range of the join of original.
+// converted is false when toFlat holds no entry for the range, which then
+// keeps its classified positions.
 function flatRange(layout, start, length) {
-  if (!layout.toFlat || length === 0) return { start, length };
+  if (!layout.toFlat || length === 0) return { start, length, converted: false };
   const first = layout.toFlat[start];
   const last = layout.toFlat[start + length - 1];
-  if (first === undefined || last === undefined) return { start, length };
-  return { start: first, length: last + 1 - first };
+  if (first === undefined || last === undefined) return { start, length, converted: false };
+  return { start: first, length: last + 1 - first, converted: true };
 }
 
 /**
@@ -856,7 +894,7 @@ function livePatches(patches, layout) {
     const range = flatRange(layout, patch.index, patch.numStr.length);
     const span = pieceHolding(spans, range.start, 1);
     if (!span) return patch;
-    const numStr = layout.toFlat ? flat.substring(range.start, range.start + range.length) : patch.numStr;
+    const numStr = range.converted ? flat.substring(range.start, range.start + range.length) : patch.numStr;
     return Object.assign({}, patch, { index: layout.liveStarts[span.i] + (range.start - span.start), numStr });
   });
 }
