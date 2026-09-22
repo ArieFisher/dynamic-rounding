@@ -8783,6 +8783,19 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
   }
 })();
 
+// A date piece with whitespace around it: the date's own text is replaced and
+// the piece's whitespace stays once. Year granularity: 2024-03-15 → 2024.
+(function gridPatch_aPaddedDatePieceKeepsItsWhitespaceOnce() {
+  const grid = makeE2EGridWrapper([[' 2024-03-15 ']]);
+  try {
+    roundTable(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true, dateGranularity: 'year' }));
+    eq('grid patch: a padded date piece keeps its whitespace once',
+      pieceTextsOf(grid.cellEls[0]), [' 2024 ']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
 (function gridPatch_recordHoldsTheReadTextAndEachTouchedPiece() {
   const { grid } = makePatchGrid();
   const [a, b] = grid.cellEls;
@@ -9532,12 +9545,12 @@ function makeE2EGridWrapper(rowData) {
   eq('E2E-GR1: cell[0] childNodes.length unchanged after roundTable',
     cell0.childNodes.length, childCountBefore);
 
-  // The registry original must be recorded for the cell (nodeValue path).
+  // The registry original must be recorded for the cell (the patch path).
   eq('E2E-GR1: cell[0] registry original is set to original text',
     DR_STORE.getTableOriginalText(grid.wrapperEl, cell0), originalValue);
 
   // originalHtml must NOT be set (that is the native-table / extracted path,
-  // which records a { html, value, ... } record instead of a plain string).
+  // which records a { html, value, ... } record; a grid record holds its pieces).
   eq('E2E-GR1: cell[0] dataset.originalHtml is NOT set on a grid cell',
     cell0.dataset.originalHtml, undefined);
 })();
@@ -22567,7 +22580,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 // answers with the ORIGINAL (the engine's contract; see the port-preferring
 // read in GridAdapter._makeCellObj), so a capture reading getText() would
 // lie about the screen. (2) The registry stores a cell's original in two
-// shapes (grid: plain string; native: a four-field record);
+// shapes (grid: { value, pieces, ... }; native: { html, value, ... });
 // DR_STORE.getTableOriginalText() resolves the difference in one place and
 // returns plain text for either kind, or undefined when nothing is stored.
 
@@ -22651,11 +22664,16 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const table = {};
   const gridCell = {};
   const nativeCell = {};
-  DR_STORE.setTableOriginal(table, gridCell, '98,765');
+  const stringCell = {};
+  DR_STORE.setTableOriginal(table, gridCell,
+    { value: '98,765', pieces: [{ i: 0, text: '98,765' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableOriginal(table, nativeCell,
     { html: '<b>1,234</b>', value: '1,234', supRanges: null, linkFilteredIdx: null });
-  eq('capture-reads: a grid original (plain string) reads back as its text',
+  DR_STORE.setTableOriginal(table, stringCell, '55,000');
+  eq('capture-reads: a grid original (record) reads back as its value field',
     has ? DR_STORE.getTableOriginalText(table, gridCell) : null, '98,765');
+  eq('capture-reads: a plain-string original reads back as itself',
+    has ? DR_STORE.getTableOriginalText(table, stringCell) : null, '55,000');
   eq('capture-reads: a native original (record) reads back as its value field',
     has ? DR_STORE.getTableOriginalText(table, nativeCell) : null, '1,234');
   eq('capture-reads: a cell with no stored original reads back undefined',

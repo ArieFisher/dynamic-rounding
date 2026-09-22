@@ -1186,10 +1186,12 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
       const prefilled = (info.month !== undefined)
         ? { month: info.month, day: info.day, year: info.year }
         : undefined;
-      const rounded = roundDateText(text, opts.dateGranularity, prefilled);
+      // The trimmed text: the patch replaces the trimmed text and the piece
+      // keeps its own whitespace, so the new text must carry none.
+      const rounded = roundDateText(trimmed, opts.dateGranularity, prefilled);
       if (rounded !== null && rounded !== trimmed) newText = rounded;
     } else if (info.mode === 'time') {
-      const rounded = roundTimeText(text, opts.timeGranularity);
+      const rounded = roundTimeText(trimmed, opts.timeGranularity);
       if (rounded !== null && rounded !== trimmed) newText = rounded;
     } else if (info.mode === 'pure') {
       const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
