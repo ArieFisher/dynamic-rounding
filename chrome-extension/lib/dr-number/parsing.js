@@ -136,13 +136,72 @@ function resolveNumTop(value, fallback) {
   return Math.floor(num);
 }
 
+// The currency codes that count as a currency sign, and the magnitude
+// suffixes that may follow a number. This is the one copy of each list:
+// the docs point here instead of restating them. A code counts only in
+// upper case and only as its own token, so "CADENCE" and "usd" do not.
+// A suffix counts in any case ("m", "M", "Bn", "TN").
+const CURRENCY_CODES = [
+  'USD', 'CAD', 'EUR', 'GBP', 'JPY', 'AUD', 'NZD', 'CHF',
+  'CNY', 'HKD', 'SGD', 'INR', 'MXN', 'BRL', 'KRW',
+];
+const MAGNITUDE_SUFFIXES = ['bn', 'tn', 'k', 'm', 'b', 't'];
+const CURRENCY_SYMBOL_CLASS = '[$€£¥₹]';
+const CURRENCY_CODE_ALTERNATION = CURRENCY_CODES.join('|');
+const CURRENCY_CODE_TOKEN_RE = new RegExp('(?<![A-Za-z])(?:' + CURRENCY_CODE_ALTERNATION + ')(?![A-Za-z])');
+// Each suffix letter matches either case; longer suffixes come first so
+// "bn" wins over "b".
+const MAGNITUDE_SUFFIX_ALTERNATION = MAGNITUDE_SUFFIXES
+  .slice()
+  .sort((a, b) => b.length - a.length)
+  .map((suffix) => suffix.split('').map((ch) => '[' + ch.toLowerCase() + ch.toUpperCase() + ']').join(''))
+  .join('|');
+// A whole trimmed text of: an optional prefix (a code with a symbol on
+// either side or none, then one optional space; or a symbol alone), the
+// number, an optional suffix after one optional space, and an optional code
+// after one optional space. matchUnitNumber adds the two rules a regular
+// expression states badly: a code on one side only, and a code or a suffix
+// present.
+const UNIT_NUMBER_RE = new RegExp(
+  '^(?<pre>' + CURRENCY_SYMBOL_CLASS + '?(?<codeBefore>' + CURRENCY_CODE_ALTERNATION + ')' +
+    CURRENCY_SYMBOL_CLASS + '? ?|' + CURRENCY_SYMBOL_CLASS + ')?' +
+  '(?<num>-?\\d(?:[\\d,]*\\d)?(?:\\.\\d+)?)' +
+  '(?: ?(?<suffix>' + MAGNITUDE_SUFFIX_ALTERNATION + '))?' +
+  '(?: ?(?<codeAfter>' + CURRENCY_CODE_ALTERNATION + '))?$'
+);
+
+/**
+ * Match a unit number: a text that is one number with a magnitude suffix
+ * after it, a listed currency code before or after it, or both ("4.91tn",
+ * "CAD$45.67", "1,234 USD", "CAD45.67m"). Returns the number's digits, value,
+ * and position in `text` as given, the same shape as extractNumbersInText's
+ * matches, or null. An identifier such as "DT1234" is not a unit number,
+ * because its letters are neither a listed code nor a suffix.
+ * @param {string} text
+ * @returns {{numStr: string, num: number, index: number}|null}
+ */
+function matchUnitNumber(text) {
+  if (typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  const m = UNIT_NUMBER_RE.exec(trimmed);
+  if (!m) return null;
+  const { pre, codeBefore, num: numStr, suffix, codeAfter } = m.groups;
+  if (codeBefore && codeAfter) return null;
+  if (!codeBefore && !codeAfter && !suffix) return null;
+  const num = toNumber(numStr);
+  if (num === null || num === 0) return null;
+  const lead = text.length - text.trimStart().length;
+  return { numStr, num, index: lead + (pre || '').length };
+}
+
 function getExclusionReason(text, columnIndex, options, rowIndex) {
   if (!options.simplifyFirstRow && rowIndex === 0) return 'firstRow';
   if (!options.simplifyFirstColumn && columnIndex === 0) return 'firstColumn';
   if (typeof text !== 'string') return null;
   const t = text.trim();
   if (!options.simplifyMixedPercent && /%/.test(t)) return 'percent';
-  if (!options.simplifyMixedCurrency && /[$€£¥₹]/.test(t)) return 'currency';
+  if (!options.simplifyMixedCurrency &&
+    (new RegExp(CURRENCY_SYMBOL_CLASS).test(t) || CURRENCY_CODE_TOKEN_RE.test(t))) return 'currency';
   return null;
 }
 

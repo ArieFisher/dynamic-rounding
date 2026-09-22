@@ -148,35 +148,6 @@ class NativeTableAdapter {
   }
 }
 
-/**
- * Depth-first search returning the deepest non-empty Text node
- * (nodeType === 3, non-whitespace nodeValue) under cellEl.
- * Returns null if no such node exists.
- * @param {Element} cellEl
- * @returns {Text|null}
- */
-function findCellTextNode(cellEl) {
-  if (!cellEl) return null;
-  // Walk depth-first; track the deepest non-empty text node found.
-  let best = null;
-  function visit(node) {
-    if (node.nodeType === 3) {
-      // Text node
-      if (node.nodeValue && node.nodeValue.trim() !== '') {
-        best = node;
-      }
-      return;
-    }
-    if (node.childNodes) {
-      for (let i = 0; i < node.childNodes.length; i++) {
-        visit(node.childNodes[i]);
-      }
-    }
-  }
-  visit(cellEl);
-  return best;
-}
-
 /** CSS class applied to rounded grid cells (same class used by native-table path). */
 const GRID_ROUNDED_CLASS = 'dr-ext-rounded';
 
@@ -362,16 +333,20 @@ class GridAdapter {
    * applyPatches writes through applyExtractedPatches, which patches text
    * pieces through nodeValue — never textContent/innerHTML/appendChild/removeChild.
    * @param {Element} cellEl
-   * @returns {{getText(): string, getTextOffset(): number|null,
-   *            applyPatches(patches: object[]): number, getDisplayedText(): string,
-   *            el: Element, tagName: string}}
+   * @returns {{getText(): string, getPieceLayout(): object|null,
+   *            applyPatches(patches: object[], linkFilteredIdx?: number[]|null): number,
+   *            getDisplayedText(): string, el: Element, tagName: string}}
    */
   _makeCellObj(cellEl) {
     const port = this.originalsPort;
-    // The live read: one text piece, the last non-empty one.
+    // The live read: the cell's flat text, i.e. the join of its text pieces
+    // in page order, the coordinate space every patch position counts in.
+    // A cell with no text piece reads its textContent, which a page element
+    // holds empty in that case.
     function readLiveText() {
-      const tn = findCellTextNode(cellEl);
-      return tn ? tn.nodeValue : (cellEl.textContent || '');
+      const pieces = collectTextPieces(cellEl);
+      if (pieces.length === 0) return cellEl.textContent || '';
+      return pieces.map((piece) => piece.nodeValue).join('');
     }
     return {
       el: cellEl,
@@ -383,36 +358,42 @@ class GridAdapter {
         }
         return readLiveText();
       },
-      // Temporary, until the read becomes the cell's flat text (#120): the
-      // flat position where the text getText() returns begins. A patch
-      // position counts from the start of the cell's flat text, and
-      // getText() reads one piece, so a caller adds this to a position
-      // inside that piece. On a rounded cell the piece is the one the
-      // record holds. The textContent fallback read starts at 0. null when
-      // the piece is no longer in the cell.
-      getTextOffset() {
+      // The cell's pieces as getText() saw them, and where each piece starts
+      // in the live flat text. original holds each piece's live text, with
+      // the record's stored text in place of each piece the record holds, so
+      // a position measured against getText() maps to a piece index. A caller
+      // turns that into a live position with liveStarts, because a patched
+      // piece may have a different length now. null when the cell no longer
+      // holds a piece at every index the record stores.
+      getPieceLayout() {
         const pieces = collectTextPieces(cellEl);
+        const original = pieces.map((piece) => piece.nodeValue);
         const record = port.has(cellEl) ? port.get(cellEl) : null;
-        const target = record ? pieces[record.pieces[0].i] : findCellTextNode(cellEl);
-        if (!target) return record ? null : 0;
-        let offset = 0;
-        for (const piece of pieces) {
-          if (piece === target) return offset;
-          offset += piece.nodeValue.length;
+        for (const piece of record ? record.pieces : []) {
+          if (piece.i >= original.length) return null;
+          original[piece.i] = piece.text;
         }
-        return null;
+        const liveStarts = [];
+        let at = 0;
+        for (const piece of pieces) {
+          liveStarts.push(at);
+          at += piece.nodeValue.length;
+        }
+        return { original, liveStarts };
       },
       // Write the patches into the cell's text pieces and return how many
       // landed. The first landed write stores the cell's record through the
       // originals port: { value, pieces, supRanges, linkFilteredIdx }, where
-      // value is the text getText() returned before the write and pieces
-      // holds each touched piece's text before the write, by piece index.
-      // supRanges and linkFilteredIdx stay null, as on a native pure cell.
+      // value is the cell's flat text before the write and pieces holds each
+      // touched piece's text before the write, by piece index.
+      // linkFilteredIdx holds the positions of the numbers the link filter
+      // kept, for a cell rounded number by number, and null otherwise.
+      // supRanges stays null: a grid cell with a <sup> never rounds.
       // A later write adds each piece the record does not hold yet, and a
       // piece the record holds takes patches only while it still shows its
       // stored text, so a piece the page rewrote keeps the page's text. A
       // write that lands nothing stores nothing and adds no marker.
-      applyPatches(patches) {
+      applyPatches(patches, linkFilteredIdx) {
         const record = port.has(cellEl) ? port.get(cellEl) : null;
         const valueBefore = record ? record.value : readLiveText();
         const result = applyExtractedPatches(cellEl, patches, record ? record.pieces : undefined);
@@ -425,7 +406,7 @@ class GridAdapter {
           const pieces = stored.concat(added).sort((x, y) => x.i - y.i);
           port.set(cellEl, record
             ? Object.assign({}, record, { pieces })
-            : { value: valueBefore, pieces, supRanges: null, linkFilteredIdx: null });
+            : { value: valueBefore, pieces, supRanges: null, linkFilteredIdx: linkFilteredIdx || null });
         }
         if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
         return result.landed;
@@ -435,9 +416,6 @@ class GridAdapter {
       // getText() above answers with the ORIGINAL (the engine's contract:
       // classification must see pre-round text), so a consumer that needs
       // "as displayed" — the capture's state serializer — reads this one.
-      // The whole text, not findCellTextNode's one node: a cell that builds
-      // its text from several pieces (a number and a unit in separate
-      // nodes) displays all of them, matching the native read.
       getDisplayedText() {
         return cellEl.textContent || '';
       },

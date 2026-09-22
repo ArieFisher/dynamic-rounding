@@ -22,6 +22,16 @@ A tab switch closes the sidebar. The service worker closes it whenever the user 
 
 The extension uses the same offset model as the rest of the project. As of the `2026-05-28` release, the meaning of fractional offsets is sign-aware: `+0.5` rounds toward half of the next-larger order of magnitude, and `-0.5` rounds toward half of the current order. The result is also floored at the value's own order of magnitude so a large number can never collapse to zero. One platform difference: an out-of-range offset does not throw here — the extension falls back to the default instead. See the [Sheets README](../js/README.md#offset-reference) for the full offset reference and parameter table.
 
+## Unit numbers
+
+A unit number is a cell whose whole text is one number with a magnitude suffix after it, a listed currency code before or after it, or both: "4.91tn", "41.31m", "5.2 Bn", "CAD45.67", "CAD$45.67", "$CAD45.67", "45.67 CAD", "CAD45.67m". Only the digits round, so "CAD45.67m" becomes "CAD45m" and "4.91tn" becomes "5tn". A unit number rounds on HTML tables and grids alike, whatever the sidebar's "words" setting holds.
+
+- The suffixes are k, m, b, t, bn, and tn, in any case, directly after the number or after one space.
+- A currency code counts only in upper case and only as its own word, so "CADENCE" and "usd" do not. The suffixes and the codes are listed once, in `lib/dr-number/parsing.js`.
+- With the currency setting off, a cell holding a listed code stays unchanged, the same as a cell holding "$".
+- A unit number counts as its shown digits in the max magnitude: "4.91tn" counts as 4.91.
+- Letters that are neither a suffix nor a listed code make the cell something else: "DT1234" and "cust15" are identifiers and never round as unit numbers.
+
 ## Extension errors
 
 Every warning or error the extension records on a page shows as a toast at the page's bottom right: the row's text, for five seconds or until a click. A second row replaces the first, so a warning that repeats on every scroll shows one toast. The tab keeps its error state for the life of the page: whether an error was recorded, how many, and the last 50 rows with their stack traces. A reload starts clean. The capture carries that state, and each log row's stack trace sits under the row in the capture file, folded.
@@ -87,7 +97,13 @@ On a native table, the data test and rounding share one cell read: the cell's re
 
 #### Why grids need a different write model
 
-A `<table>` cell can be rewritten via `innerHTML` safely. A framework-managed grid cell **cannot**: React (and similar) hold a fiber reference to the cell's text node, so replacing it (`innerHTML =`, `textContent =`, `removeChild`/`appendChild`) crashes the host app's reconciler on the next re-render (observed: a `removeChild NotFoundError` that tore down the results panel on column resize). Grid writes therefore patch the existing text node **in place** (`textNode.nodeValue = …`), preserving the node identity the framework tracks. (Mixed-text cells — e.g. numbers embedded in surrounding text or `<sup>` exponents — have no clean in-place rewrite and are currently skipped on grids; tracked as a follow-up.)
+A `<table>` cell can be rewritten via `innerHTML` safely. A framework-managed grid cell **cannot**: React (and similar) hold a fiber reference to the cell's text node, so replacing it (`innerHTML =`, `textContent =`, `removeChild`/`appendChild`) crashes the host app's reconciler on the next re-render (observed: a `removeChild NotFoundError` that tore down the results panel on column resize). Grid writes therefore patch the existing text node **in place** (`textNode.nodeValue = …`), preserving the node identity the framework tracks.
+
+A grid cell reads as its flat text: every text piece, joined in page order. Each change is a patch to the one text piece that holds the changed characters, and the cell's originals hold each patched piece's text, so restore puts every piece back. Three rules follow from the piece layout:
+
+- A **stacked cell** rounds number by number: "125" above "126" becomes "150" above "150", and a "$" in its own piece beside "337.91" stays while the number becomes "350". Two numbers in one piece, even with a space between them, make the cell not stacked, so it stays unchanged. So does a piece that reads as a date or a time: "2024" above "2025" stays, as a lone "2024" does.
+- A **split number** stays unchanged, with a debug log row: "4." in one piece and "91" in the next. A date or time split across pieces stays unchanged the same way.
+- **Extracted cells** stay unchanged on grids, and so does any grid cell with a `<sup>`, until an allow list separates quantities from identifiers such as "DT1234" (#120). The lens preview leaves them out on grids too, so it lists only numbers the grid rounds. A unit number is not an extracted cell for this rule: "4.91tn" becomes "5tn" on a grid.
 
 Because virtualized grids recycle rows on scroll and rewrite cells in place on sort, a debounced `MutationObserver` (watching both `childList` and `characterData`) re-applies rounding to rows that scroll into view and cells that a sort reverts.
 
@@ -103,6 +119,6 @@ A `display: grid` / `flex` container is not necessarily a *data* grid — it mig
    - **at least one cell that parses as a finite number** — the decisive filter: nav menus, card grids, and galleries have no numeric cells and are rejected here;
    - column-width alignment (sampled column-0 cells must have matching widths) unless short-circuited by an ARIA role or library class.
 
-Even past detection, rounding only writes cells the classification ladder admits: cells whose text parses as a number, date cells (on by default, simplified to the year), time cells (opt-in), and — on native tables — mixed-text cells where a number sits inside surrounding words. A non-numeric layout grid contains none of these, so it produces no changes regardless.
+Even past detection, rounding only writes cells the classification ladder admits: cells whose text parses as a number, unit numbers, stacked cells on grids, date cells (on by default, simplified to the year), time cells (opt-in), and — on native tables — mixed-text cells where a number sits inside surrounding words. A non-numeric layout grid contains none of these, so it produces no changes regardless.
 
 **Caveat (by design):** a CSS layout grid that genuinely contains aligned numeric columns *will* qualify — at that point it is functionally a data grid, which is exactly the content a user would want rounded.

@@ -14,7 +14,6 @@
 
 const DR_TABLE = {
   // detect.js
-  findCellTextNode,
   NativeTableAdapter,
   GridAdapter,
   makeAdapter,
