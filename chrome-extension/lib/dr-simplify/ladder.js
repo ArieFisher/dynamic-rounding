@@ -31,9 +31,9 @@
  * matches is expected to run filterLinkMatches over decision.value.matches
  * afterward and, if that empties the list, downgrade the decision to
  * { mode: 'skip', reason: decision.reason } itself. That single downgrade
- * check has exactly one call site (the native-table path — grids never
- * reach 'extracted', see allowExtracted below) so it is not a second copy of
- * ladder logic.
+ * check lives in one caller-side function, which the native-table path, the
+ * grid path, and the preview-sample extractor all call, so it is not a
+ * second copy of ladder logic.
  */
 
 /**
@@ -79,14 +79,16 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *   reason: one of the ladder's rule names — 'out-of-range', 'first-row',
  *     'first-column', 'percent', 'currency', 'quoted', 'link', 'footnote',
  *     'dates-disabled', 'times-disabled', 'mixed-disabled', 'no-number',
- *     'ambiguous-date', or 'simplify' for a cell that rounds.
+ *     'ambiguous-date', 'simplify' for a cell that rounds, or 'unit' for a
+ *     unit number (see matchUnitNumber in lib/dr-number), which rounds.
  *   value: mode-specific payload —
  *     'pure' → { num }
  *     'date' (resolved) → { month, day, year }
  *     'date' (needs the column post-pass) → { ambiguous: { n1, n2, year } },
  *       plus pending: 'ambiguous-date'
  *     'extracted' → { matches } — matches still need a caller-side
- *       filterLinkMatches pass; see file header.
+ *       filterLinkMatches pass; see file header. A unit number holds one
+ *       match.
  *
  * @param {object} input
  * @param {string} input.text - raw cell text (as returned by the adapter)
@@ -96,8 +98,10 @@ function extractSimplifyMatches(text, superscriptRanges) {
  * @param {boolean} [input.isWholeLink] - isCellWholeLink(cell) result
  * @param {boolean} [input.hasSuperscript] - !!cell.querySelector('sup')
  * @param {{start:number,end:number}[]} [input.superscriptRanges] - getSuperscriptRanges(cell) result
- * @param {boolean} [input.allowExtracted=true] - false on the grid path, which
- *   cannot patch multi-node HTML (issue #120) and so never enters mode:'extracted'
+ * @param {boolean} [input.allowExtracted=true] - false on the grid path, where
+ *   extracted cells stay unchanged until an allow list separates
+ *   quantities from identifiers (issue #120). A unit number still returns
+ *   mode:'extracted'.
  * @param {object} options - resolved rounding options (simplifyFirstRow,
  *   simplifyFirstColumn, simplifyMixedPercent, simplifyMixedCurrency,
  *   simplifyDates, simplifyTimes, simplifyMixedCells)
@@ -175,6 +179,17 @@ function classifyCell(input, options) {
     }
 
     return { mode: 'pure', reason: 'simplify', value: { num } };
+  }
+
+  // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
+  // currency code, so it rounds like a pure cell whatever the words toggle
+  // and the grid flag say. Its digits alone change, which is the extracted
+  // write, so it takes mode:'extracted' with its one match. A cell with a
+  // <sup> takes the footnote path above instead, so its exponent stays masked.
+  const unit = hasSuperscript ? null : matchUnitNumber(text);
+  if (unit) {
+    if (isWholeLink) return { mode: 'skip', reason: 'link' };
+    return { mode: 'extracted', reason: 'unit', value: { matches: [unit] } };
   }
 
   if (!options.simplifyMixedCells || !allowExtracted) {

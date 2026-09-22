@@ -844,7 +844,12 @@ function collectNumericCells(table, options) {
   const ranges = rangeParse.ranges;
 
   const out = [];
-  const rows = makeAdapter(table, { originalsPort: registryOriginalsPort(table) }).getRows();
+  const adapter = makeAdapter(table, { originalsPort: registryOriginalsPort(table) });
+  // A grid cell classifies as computeGridRoundedValues classifies it —
+  // extracted cells held back, each decision placed in the cell's text
+  // pieces — so the preview lists only numbers the grid rounds.
+  const isGrid = adapter.isVirtualized();
+  const rows = adapter.getRows();
   for (let r = 0; r < rows.length; r++) {
     // Outside rows never feed the preview pool — the lens preview shows the
     // dataset, and an outside row rounds against it without joining it.
@@ -896,16 +901,18 @@ function collectNumericCells(table, options) {
       if (usingStoredOriginal && storedRecord.linkFilteredIdx) {
         staleFilteredIndices = new Set(storedRecord.linkFilteredIdx);
       }
+      const classified = classifyCell({
+        text,
+        rowIndex: r,
+        columnIndex: c,
+        ranges,
+        isWholeLink: !!(cellEl && isCellWholeLink(cellEl)),
+        hasSuperscript,
+        superscriptRanges,
+        allowExtracted: !isGrid,
+      }, opts);
       const decision = finalizeExtractedDecision(
-        classifyCell({
-          text,
-          rowIndex: r,
-          columnIndex: c,
-          ranges,
-          isWholeLink: !!(cellEl && isCellWholeLink(cellEl)),
-          hasSuperscript,
-          superscriptRanges,
-        }, opts),
+        isGrid ? placeGridDecision(classified, text, cellObj.getPieceLayout()) : classified,
         cellEl,
         staleFilteredIndices
       );
@@ -1052,25 +1059,31 @@ function buildCaptureStateResponse() {
  * implementation, so they cannot drift the way two hand-kept-in-sync copies
  * could.
  *
- * max_mag is computed only over the surviving in-range, non-excluded pure
- * (and extracted) numeric cells — the same filtered set the initial pass uses —
- * so that values produced here are identical to those the initial pass would
- * produce given the same visible DOM and opts.
+ * A cell's text is its flat text, and placeGridDecision places each decision
+ * in the cell's text pieces, so a stacked cell rounds number by number.
  *
- * Returns a flat array of { cellObj, patches } for every TD cell in the
- * grid's current visible rows. patches is the list the cell's applyPatches
- * writes (see lib/dr-table/detect.js); an empty list means leave the cell
- * unchanged (excluded, out-of-range, skip, or no change needed). A pure,
- * date, or time cell takes one patch: its trimmed text, replaced whole by
- * the rounded or formatted value.
+ * max_mag is computed only over the surviving in-range, non-excluded
+ * numbers — pure cells, unit numbers, and each number of a stacked cell, the
+ * same filtered set the initial pass uses — so that values produced here are
+ * identical to those the initial pass would produce given the same visible
+ * DOM and opts.
+ *
+ * Returns a flat array of { cellObj, patches, linkFilteredIdx } for every TD
+ * cell in the grid's current visible rows. patches is the list the cell's
+ * applyPatches writes (see lib/dr-table/detect.js); an empty list means
+ * leave the cell unchanged (excluded, out-of-range, skip, or no change
+ * needed). A pure, date, or time cell takes one patch: its trimmed text,
+ * replaced whole by the rounded or formatted value. A unit number or a
+ * stacked cell takes one patch per changed number, and linkFilteredIdx
+ * holds the positions of the numbers the link filter kept.
  *
  * Both `roundTable` (initial grid write pass) and `reapplyGridRounding`
  * (scroll/sort re-apply) call this single function so they cannot diverge.
  *
- * NOTE: mode:'extracted' cells (mixed text with embedded numbers, e.g.
- * <sup>-containing cells) are intentionally skipped on grids — that path
- * requires innerHTML writes incompatible with the nodeValue-only write model.
- * This is deferred work tracked in issue #120.
+ * NOTE: extracted cells (other than a unit number, and <sup>-containing
+ * cells among them) stay unchanged on grids until
+ * an allow list separates quantities from identifiers (#120). A number,
+ * date, or time split across text pieces stays unchanged with a debug row.
  *
  * @param {Element} wrapperEl - The grid wrapper element.
  * @param {object}  opts      - Fully-resolved rounding options.
@@ -1081,7 +1094,7 @@ function buildCaptureStateResponse() {
  *   scroll-triggered re-apply can never shift the basis the initial pass
  *   established (the sprint's deliberate stability trade for virtualized
  *   grids — see roundTable's virtualized branch).
- * @returns {{results: Array<{cellObj: object, patches: object[]}>, maxMag: number}}
+ * @returns {{results: Array<{cellObj: object, patches: object[], linkFilteredIdx: number[]|null}>, maxMag: number}}
  */
 function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
   const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
@@ -1122,12 +1135,14 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
       const cell = cellObj.el;
       const text = cellObj.getText();
       const trimmed = typeof text === 'string' ? text.trim() : '';
+      const layout = cellObj.getPieceLayout();
 
-      // allowExtracted: false — mode:'extracted' (mixed-text/superscript
-      // cells) is unsupported on grids (nodeValue-only write model, issue
-      // #120), whatever opts.simplifyMixedCells says.
+      // allowExtracted: false — extracted cells stay unchanged on grids
+      // until an allow list separates quantities from identifiers such as
+      // "DT1234" (#120), whatever opts.simplifyMixedCells says. A unit
+      // number still rounds; see classifyCell.
       const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-      const decision = classifyCell({
+      const placed = placeGridDecision(classifyCell({
         text,
         rowIndex: r,
         columnIndex: col,
@@ -1136,11 +1151,18 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
         hasSuperscript,
         superscriptRanges: hasSuperscript ? getSuperscriptRanges(cell) : [],
         allowExtracted: false,
-      }, opts);
-      const info = decisionToLegacyInfo(decision);
+      }, opts), text, layout);
+      if (placed.reason === 'split') {
+        DR_LOG.debug('Dynamic Rounding: a grid cell number split across text pieces stays unchanged.');
+      }
+      // The link filter reads the live pieces. A rounded cell's kept numbers
+      // differ from the live text only in the pieces an earlier write
+      // patched, and a patch never lands there again, so the live read
+      // serves here; the lens preview reads the record's kept positions.
+      const info = decisionToLegacyInfo(finalizeExtractedDecision(placed, cell));
 
       const entryIdx = cellEntries.length;
-      cellEntries.push({ cellObj, text, trimmed, info, col, rowIdx: r, isOutside });
+      cellEntries.push({ cellObj, text, trimmed, info, layout, col, rowIdx: r, isOutside });
 
       if (info.mode === 'date' && info.ambiguous) {
         if (!ambigByCol.has(col)) ambigByCol.set(col, []);
@@ -1172,50 +1194,148 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
       // Outside rows round against the dataset without joining it.
       if (isOutside) continue;
       if (info.mode === 'pure') allNums.push(info.num);
-      // mode:'extracted' is skipped on grids, so no extracted nums here
+      else if (info.mode === 'extracted') {
+        for (const m of info.matches) allNums.push(m.num);
+      }
     }
     max_mag = findMaxMagnitude([allNums]);
   }
 
   // --- Pass 3: compute each cell's patches ---
+  // A patch position counts in the text getText() returned; livePatches
+  // moves each one onto the cell's live pieces.
   const results = [];
-  for (const { cellObj, text, trimmed, info } of cellEntries) {
-    let newText = null;
+  for (const { cellObj, text, trimmed, info, layout } of cellEntries) {
+    const lead = typeof text === 'string' ? text.length - text.trimStart().length : 0;
+    let patches = [];
+    let linkFilteredIdx = null;
 
-    if (info.mode === 'date') {
-      const prefilled = (info.month !== undefined)
-        ? { month: info.month, day: info.day, year: info.year }
-        : undefined;
+    if (info.mode === 'date' || info.mode === 'time') {
       // The trimmed text: the patch replaces the trimmed text and the piece
-      // keeps its own whitespace, so the new text must carry none.
-      const rounded = roundDateText(trimmed, opts.dateGranularity, prefilled);
-      if (rounded !== null && rounded !== trimmed) newText = rounded;
-    } else if (info.mode === 'time') {
-      const rounded = roundTimeText(trimmed, opts.timeGranularity);
-      if (rounded !== null && rounded !== trimmed) newText = rounded;
+      // keeps its own whitespace, so the new text must carry none. A date
+      // or time split across pieces stays unchanged.
+      let rounded;
+      if (info.mode === 'date') {
+        const prefilled = (info.month !== undefined)
+          ? { month: info.month, day: info.day, year: info.year }
+          : undefined;
+        rounded = roundDateText(trimmed, opts.dateGranularity, prefilled);
+      } else {
+        rounded = roundTimeText(trimmed, opts.timeGranularity);
+      }
+      if (rounded !== null && rounded !== trimmed) {
+        if (pieceHolding(pieceSpans(layout), lead, trimmed.length)) {
+          patches = [{ index: lead, numStr: trimmed, newNum: rounded }];
+        } else {
+          DR_LOG.debug('Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.');
+        }
+      }
     } else if (info.mode === 'pure') {
       const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
       const formatted = restoreFormatting(roundedValue, text, floorDecimals);
-      if (formatted !== trimmed) newText = formatted;
+      if (formatted !== trimmed) patches = [{ index: lead, numStr: trimmed, newNum: formatted }];
+    } else if (info.mode === 'extracted') {
+      // A unit number or a stacked cell: each number's digits change in
+      // their own piece, and the words, symbols, and suffixes stay.
+      for (const m of info.matches) {
+        const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
+        const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
+        if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
+      }
+      linkFilteredIdx = info.matches.map((m) => m.index);
     }
-    // mode:'extracted' and mode:'skip' → newText stays null (skip on grid)
 
-    results.push({ cellObj, patches: newText === null ? [] : wholeTextPatches(cellObj, text, trimmed, newText) });
+    results.push({ cellObj, patches: livePatches(patches, layout), linkFilteredIdx });
   }
 
   return { results, maxMag: max_mag };
 }
 
-// The one patch a whole-value grid cell takes: its trimmed text, replaced
-// by newText. A patch position counts from the start of the cell's flat
-// text, so the position is where the read text begins (getTextOffset, a
-// temporary while the read is one piece) plus the trimmed text's place
-// inside the read. No patch when the read piece is gone.
-function wholeTextPatches(cellObj, text, trimmed, newText) {
-  const offset = cellObj.getTextOffset();
-  if (offset === null) return [];
-  const lead = text.length - text.trimStart().length;
-  return [{ index: offset + lead, numStr: trimmed, newNum: newText }];
+// A grid cell's pieces as getText() saw them (see getPieceLayout in
+// lib/dr-table/detect.js), each with its index and its start in that text.
+function pieceSpans(layout) {
+  const spans = [];
+  let at = 0;
+  layout.original.forEach((text, i) => {
+    spans.push({ i, start: at, text });
+    at += text.length;
+  });
+  return spans;
+}
+
+// The piece that holds every character of [start, start + length), or null.
+function pieceHolding(spans, start, length) {
+  const span = spans.find((s) => s.start <= start && start < s.start + s.text.length);
+  return span && start + length <= span.start + span.text.length ? span : null;
+}
+
+// Move patches measured in the text getText() returned onto the cell's live
+// pieces: same piece, same place inside it, at that piece's live start. A
+// patched piece can differ in length from its original, so a later piece's
+// live start can differ from its start in the original text.
+function livePatches(patches, layout) {
+  if (patches.length === 0) return patches;
+  const spans = pieceSpans(layout);
+  return patches.map((patch) => {
+    const span = pieceHolding(spans, patch.index, 1);
+    return Object.assign({}, patch, { index: layout.liveStarts[span.i] + (patch.index - span.start) });
+  });
+}
+
+// A piece with no number in it that a stacked cell may still hold: a
+// currency symbol, a percent sign, or a listed currency code.
+const STACKED_SYMBOL_PIECE_RE = /^[$€£¥₹%]+$/;
+
+// The numbers of a stacked grid cell: a cell whose text pieces each hold
+// one whole number or unit number, or nothing but whitespace or a symbol.
+// Two numbers in one piece, even with a space between them ("416 555 1234"),
+// make the cell not stacked. Returns the numbers as matches measured in the
+// text getText() returned, null when the cell is not stacked, or 'split'
+// when a number sits across two pieces: a piece that ends in "." or ","
+// before one that starts with a digit ("4." then "91"). A piece that starts
+// with "." or "," never reads as a number, so "4" then ".91" is not stacked
+// either. A digit next to a digit across two pieces reads as two numbers,
+// the shape of one number per line.
+function stackedMatches(spans) {
+  const filled = spans.filter((span) => span.text.length > 0);
+  for (let k = 1; k < filled.length; k++) {
+    if (/[.,]$/.test(filled[k - 1].text) && /^\d/.test(filled[k].text)) return 'split';
+  }
+  const matches = [];
+  for (const span of filled) {
+    const trimmed = span.text.trim();
+    if (trimmed === '' || STACKED_SYMBOL_PIECE_RE.test(trimmed) || CURRENCY_CODES.includes(trimmed)) continue;
+    const unit = matchUnitNumber(span.text);
+    const found = unit ? [unit] : extractNumbersInText(span.text);
+    if (found.length !== 1 || (!unit && toNumber(span.text) === null)) return null;
+    matches.push({ numStr: found[0].numStr, num: found[0].num, index: span.start + found[0].index });
+  }
+  return matches.length > 0 ? matches : null;
+}
+
+// Place a grid cell's classifyCell decision in the cell's text pieces. A
+// patch edits one piece, so a decision stands only when the characters it
+// changes sit in one piece: a pure cell's trimmed text, a unit number's
+// digits. Otherwise, and for a cell the grid flag held back as mixed text,
+// the cell may be stacked (see stackedMatches), and rounds number by number
+// as an extracted decision. A number split across pieces skips with reason
+// 'split'. A cell whose pieces no longer reach its record skips. A date or
+// time passes through; its piece check runs when its patch is built.
+function placeGridDecision(decision, text, layout) {
+  if (!layout) return { mode: 'skip', reason: 'pieces-changed' };
+  const spans = pieceSpans(layout);
+  if (decision.mode === 'pure') {
+    const lead = text.length - text.trimStart().length;
+    if (pieceHolding(spans, lead, text.trim().length)) return decision;
+  } else if (decision.mode === 'extracted') {
+    if (decision.value.matches.every((m) => pieceHolding(spans, m.index, m.numStr.length))) return decision;
+  } else if (!(decision.mode === 'skip' && decision.reason === 'mixed-disabled')) {
+    return decision;
+  }
+  const matches = stackedMatches(spans);
+  if (matches === 'split') return { mode: 'skip', reason: 'split' };
+  if (matches === null) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
+  return { mode: 'extracted', reason: 'stacked', value: { matches } };
 }
 
 /**
@@ -1276,7 +1396,7 @@ function reapplyGridRounding(wrapperEl) {
   const frozenMaxMag = DR_STORE.getTableMaxMagnitude(wrapperEl);
   const { results: cellTargets } = computeGridRoundedValues(wrapperEl, opts, frozenMaxMag);
 
-  for (const { cellObj, patches } of cellTargets) {
+  for (const { cellObj, patches, linkFilteredIdx } of cellTargets) {
     // Empty means "leave unchanged" — excluded, out-of-range, or no change needed.
     if (patches.length === 0) continue;
 
@@ -1287,7 +1407,7 @@ function reapplyGridRounding(wrapperEl) {
     // applyPatches stores the cell's record on its first landed write,
     // exactly like the initial roundTable pass — one write model, whichever
     // pass calls it.
-    cellObj.applyPatches(patches);
+    cellObj.applyPatches(patches, linkFilteredIdx);
   }
 
   // Reconnect the observer after the write pass.
@@ -1332,13 +1452,13 @@ function roundTable(table, options) {
     DR_STORE.setTableMaxMagnitude(table, maxMag);
     let appliedAny = false;
     let skippedWrites = 0;
-    for (const { cellObj, patches } of cellTargets) {
+    for (const { cellObj, patches, linkFilteredIdx } of cellTargets) {
       // Empty means "leave unchanged" — excluded, out-of-range, or no change needed.
       if (patches.length === 0) continue;
       // applyPatches returns how many patches landed; a cell whose patches
       // all skipped never counts toward the form — the same rule as the
       // extracted-cell path (#301, #315).
-      if (cellObj.applyPatches(patches) > 0) {
+      if (cellObj.applyPatches(patches, linkFilteredIdx) > 0) {
         appliedAny = true;
       } else {
         skippedWrites++;

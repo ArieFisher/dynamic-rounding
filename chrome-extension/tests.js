@@ -8801,14 +8801,14 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
   const [a, b] = grid.cellEls;
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid patch: the record holds the read text and the touched piece by index',
+    eq('grid patch: the record holds the flat text and the touched piece by index',
       DR_STORE.getTableOriginal(grid.wrapperEl, a),
-      { value: '8,584,629', pieces: [{ i: 1, text: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
+      { value: ' 8,584,629 ', pieces: [{ i: 1, text: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
     eq('grid patch: a piece\'s whitespace is part of its stored text',
       DR_STORE.getTableOriginal(grid.wrapperEl, b),
       { value: ' 7,318,204 ', pieces: [{ i: 0, text: ' 7,318,204 ' }], supRanges: null, linkFilteredIdx: null });
     eq('grid patch: the plain-text read of a record is its value',
-      DR_STORE.getTableOriginalText(grid.wrapperEl, a), '8,584,629');
+      DR_STORE.getTableOriginalText(grid.wrapperEl, a), ' 8,584,629 ');
   } finally {
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
@@ -8898,7 +8898,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
     const tableRec = state.tables[DR_STORE.getRegisteredTables().indexOf(grid.wrapperEl)];
     const cellRec = tableRec.cells.find((cell) => cell.row === 0 && cell.col === 0);
     eq('grid patch capture: a patched grid cell carries its original text',
-      cellRec.original, '8,584,629');
+      cellRec.original, ' 8,584,629 ');
     const html = DR_CAPTURE.buildCaptureDocument({
       state: {
         captureFormat: 6,
@@ -8913,7 +8913,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
     });
     const originalsTable = (html.split('with the originals')[1] || '').split('</table>')[0];
     eq('grid patch capture: the originals rendering shows the cell\'s original',
-      /<td[^>]*>8,584,629<\/td>/.test(originalsTable), true);
+      /<td[^>]*>\s*8,584,629\s*<\/td>/.test(originalsTable), true);
   } finally {
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
@@ -8982,6 +8982,240 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
     [first.nodeValue, second.nodeValue], ['A 90 B 250', ' C 999']);
   eq('patch writer: an empty patch list lands nothing',
     applyExtractedPatches(cell, []), { landed: 0, pieces: [] });
+})();
+
+// ---------------------------------------------------------------------------
+// Stacked cells and unit numbers on grids (#120). A grid cell's text is its
+// flat text. A stacked cell holds whole numbers in separate text pieces, and
+// each rounds in its own piece. A unit number's digits change and its suffix
+// or currency code stays. Extracted cells stay unchanged on grids.
+//
+// A synthetic key-statistics grid with invented values. The dataset is
+// 338.49, 4.91, 125, 126, 337.91, and 41.31, so the max magnitude is 2:
+//   magnitude 2, top band, step 50:    338.49 → 350, 125 → 150, 126 → 150, 337.91 → 350
+//   magnitude 1, other band, step 5:   41.31 → 40
+//   magnitude 0, other band, step 0.5: 4.91 → 5
+// The split number (4.91 across two pieces), the link, and the extracted
+// cell stay out of the dataset. Counted as one number, the stacked
+// cell's 125126 would raise the max magnitude to 5.
+// ---------------------------------------------------------------------------
+
+function makeKeyStatsGrid() {
+  const grid = makeE2EGridWrapper([
+    ['$338.49', '4.91tn'],
+    ['125 126', '$337.91'],
+    ['41.31m', '4.91tn'],
+    ['Revenue 500 units', 'DT1234'],
+    ['7.5m', '2024-03-15'],
+  ]);
+  const [, , stacked, dollar, , split, , , link, date] = grid.cellEls;
+  setGridCellPieces(stacked, [makeElementNode('s', [
+    makeTextNode(' 125 '), makeElementNode('br', []), makeTextNode(' 126'),
+  ])]);
+  setGridCellPieces(dollar, [makeElementNode('sym', [makeTextNode('$')]), makeElementNode('num', [makeTextNode('337.91')])]);
+  setGridCellPieces(split, [makeTextNode('4.'), makeElementNode('dec', [makeTextNode('91')]), makeTextNode('tn')]);
+  const anchor = makeElementNode('a', [makeTextNode('7.5m')]);
+  anchor.innerText = '7.5m';
+  setGridCellPieces(link, [anchor]);
+  link.innerText = '7.5m';
+  link.querySelectorAll = (sel) => (sel === 'a' ? [anchor] : []);
+  setGridCellPieces(date, [makeTextNode('2024-'), makeElementNode('md', [makeTextNode('03-15')])]);
+  return grid;
+}
+
+const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: true, simplifyDates: true });
+
+(function gridStacked_roundWritesEachNumberInItsPiece() {
+  const grid = makeKeyStatsGrid();
+  const piecesBefore = grid.cellEls.map(gridCellTextPieces);
+  try {
+    roundTable(grid.wrapperEl, KEY_STATS_OPTS);
+    eq('grid stacked: each cell\'s pieces after the round',
+      grid.cellEls.map(pieceTextsOf), [
+        ['$350'], ['5tn'],
+        [' 150 ', ' 150'], ['$', '350'],
+        ['40m'], ['4.', '91', 'tn'],
+        ['Revenue 500 units'], ['DT1234'],
+        ['7.5m'], ['2024-', '03-15'],
+      ]);
+    eq('grid stacked: every text piece is the same node object after the round',
+      grid.cellEls.every((cell, k) => {
+        const after = gridCellTextPieces(cell);
+        return after.length === piecesBefore[k].length &&
+          after.every((node, n) => node === piecesBefore[k][n]);
+      }), true);
+    eq('grid stacked: the max magnitude counts the stacked numbers one by one',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 2);
+    eq('grid stacked: a number split across pieces leaves a debug row',
+      DR_LOG.snapshot().entries.some(
+        (row) => row.level === 'debug' && /split across text pieces/.test(row.text) && /number/.test(row.text)),
+      true);
+    eq('grid stacked: a date split across pieces leaves a debug row',
+      DR_LOG.snapshot().entries.some(
+        (row) => row.level === 'debug' && /split across text pieces/.test(row.text) && /date or time/.test(row.text)),
+      true);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+(function gridStacked_recordAndReset() {
+  const grid = makeKeyStatsGrid();
+  const [, , stacked, dollar] = grid.cellEls;
+  const originalPieces = grid.cellEls.map(pieceTextsOf);
+  try {
+    roundTable(grid.wrapperEl, KEY_STATS_OPTS);
+    eq('grid stacked: the record holds the flat original and each touched piece',
+      DR_STORE.getTableOriginal(grid.wrapperEl, stacked),
+      { value: ' 125  126', pieces: [{ i: 0, text: ' 125 ' }, { i: 1, text: ' 126' }], supRanges: null, linkFilteredIdx: [1, 6] });
+    eq('grid stacked: an untouched "$" piece stays out of the record',
+      DR_STORE.getTableOriginal(grid.wrapperEl, dollar).pieces, [{ i: 1, text: '337.91' }]);
+    eq('grid stacked: reset restores every cell', resetTable(grid.wrapperEl), 0);
+    eq('grid stacked: reset puts every piece back', grid.cellEls.map(pieceTextsOf), originalPieces);
+    eq('grid stacked: reset clears every record',
+      grid.cellEls.some((cell) => DR_STORE.hasTableOriginal(grid.wrapperEl, cell)), false);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// A stacked cell whose first piece gets shorter: a later piece's position
+// moves, so the re-apply measures each patch against the live pieces.
+(function gridStacked_reapplyAfterAPieceShortened() {
+  const grid = makeE2EGridWrapper([['337.91 126']]);
+  const [cell] = grid.cellEls;
+  const first = makeCountingTextNode('337.91');
+  const second = makeCountingTextNode('126');
+  setGridCellPieces(cell, [makeElementNode('a1', [first]), makeElementNode('a2', [second])]);
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid stacked re-apply (setup): both pieces round', pieceTextsOf(cell), ['350', '150']);
+    reapplyGridRounding(grid.wrapperEl);
+    eq('grid stacked re-apply: pieces already patched are not written again',
+      [first.writes, second.writes], [1, 1]);
+    second.nodeValue = '126';
+    reapplyGridRounding(grid.wrapperEl);
+    eq('grid stacked re-apply: a later piece redrawn to its original is patched again',
+      pieceTextsOf(cell), ['350', '150']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// Stacked-cell edges. Dataset 125, 126, 4.91, so the max magnitude is 2:
+// 125 → 150, 126 → 150, 4.91 → 5.
+//   a: one number per element with no whitespace between (a digit next to a
+//      digit across pieces reads as two numbers)
+//   b: a suffix in its own piece
+//   c: two numbers in one piece beside a third piece: not stacked
+//   d: two unit numbers, one per piece: 4.91 → 5, 41.31 → 40
+//   e: a number split before its decimal point: unchanged
+(function gridStacked_edges() {
+  const grid = makeE2EGridWrapper([['125126', '4.91tn', '416 5551234', '4.91tn41.31m', '4.91']]);
+  const [a, b, c, d, e] = grid.cellEls;
+  setGridCellPieces(e, [makeTextNode('4'), makeElementNode('dec', [makeTextNode('.91')])]);
+  setGridCellPieces(a, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])]);
+  setGridCellPieces(b, [makeTextNode('4.91'), makeElementNode('u', [makeTextNode('tn')])]);
+  setGridCellPieces(c, [makeTextNode('416 555'), makeElementNode('x', [makeTextNode('1234')])]);
+  setGridCellPieces(d, [makeElementNode('l1', [makeTextNode('4.91tn')]), makeElementNode('l2', [makeTextNode('41.31m')])]);
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid stacked: one number per element with no whitespace between rounds number by number',
+      pieceTextsOf(a), ['150', '150']);
+    eq('grid stacked: a suffix in its own piece stays and the digits round', pieceTextsOf(b), ['5', 'tn']);
+    eq('grid stacked: two numbers in one piece make the cell not stacked',
+      pieceTextsOf(c), ['416 555', '1234']);
+    eq('grid stacked: unit numbers one per piece round number by number',
+      pieceTextsOf(d), ['5tn', '40m']);
+    eq('grid stacked: a number split before its decimal point stays unchanged',
+      pieceTextsOf(e), ['4', '.91']);
+    eq('grid stacked: the max magnitude leaves out the cell that is not stacked',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 2);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// The link filter holds on a stacked cell: a number inside a link stays, and
+// once the cell is rounded the record's kept positions drive the preview.
+(function gridStacked_linkFilter() {
+  const grid = makeE2EGridWrapper([['125126']]);
+  const [cell] = grid.cellEls;
+  const plain = makeElementNode('p', [makeTextNode('125')]);
+  const anchor = makeElementNode('a', [makeTextNode('126')]);
+  anchor.tagName = 'A';
+  anchor.innerText = '126';
+  setGridCellPieces(cell, [plain, anchor]);
+  cell.innerText = '125126';
+  cell.querySelectorAll = (sel) => (sel === 'a' ? [anchor] : []);
+  cell.contains = (node) => node === anchor || node === plain;
+  for (const holder of [plain, anchor]) {
+    holder.childNodes[0].parentElement = holder;
+    holder.closest = (sel) => (sel === 'a' && holder === anchor ? anchor : null);
+  }
+  const saved = global.document.createTreeWalker;
+  global.document.createTreeWalker = (root) => {
+    const nodes = gridCellTextPieces(root);
+    return { nextNode() { return nodes.shift() || null; } };
+  };
+  const pool = () => collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((sample) => sample.num);
+  try {
+    eq('grid stacked link (setup): the preview leaves out the linked number', pool(), [125]);
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid stacked link: the number inside the link stays', pieceTextsOf(cell), ['150', '126']);
+    eq('grid stacked link: the record keeps the position of the number the filter kept',
+      DR_STORE.getTableOriginal(grid.wrapperEl, cell).linkFilteredIdx, [0]);
+    eq('grid stacked link: the preview after the round reads the kept positions', pool(), [125]);
+  } finally {
+    if (saved === undefined) delete global.document.createTreeWalker;
+    else global.document.createTreeWalker = saved;
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// A unit number that is the largest number on the grid sets the frozen max
+// magnitude: 5,432.1 has magnitude 3.
+(function gridStacked_aUnitNumberJoinsTheDataset() {
+  const grid = makeE2EGridWrapper([['4.91', '5,432.1m']]);
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid stacked: a unit number joins the dataset', DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 3);
+    eq('grid stacked: the unit number keeps its suffix', pieceTextsOf(grid.cellEls[1]), ['5,500m']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+(function gridStacked_currencyOffExcludesASymbolInItsOwnPiece() {
+  const grid = makeKeyStatsGrid();
+  const [, unit, , dollar] = grid.cellEls;
+  try {
+    roundTable(grid.wrapperEl, Object.assign({}, KEY_STATS_OPTS, { simplifyMixedCurrency: false }));
+    eq('grid stacked: with the currency setting off, a "$" in its own piece excludes the cell',
+      pieceTextsOf(dollar), ['$', '337.91']);
+    eq('grid stacked: with the currency setting off, a suffixed number still rounds',
+      pieceTextsOf(unit), ['5tn']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// The lens preview lists exactly the numbers the grid rounds: the stacked
+// numbers one by one, the unit numbers, and nothing from the numbers inside
+// text, the split number, or the link. It lists the same numbers once the
+// grid is rounded, read from the records.
+(function gridStacked_lensPreviewMatchesThePage() {
+  const grid = makeKeyStatsGrid();
+  const nums = () => collectNumericCells(grid.wrapperEl, KEY_STATS_OPTS)
+    .map((sample) => sample.num).sort((x, y) => x - y);
+  const expected = [4.91, 41.31, 125, 126, 337.91, 338.49];
+  try {
+    eq('grid stacked: the lens preview pool before the round', nums(), expected);
+    roundTable(grid.wrapperEl, KEY_STATS_OPTS);
+    eq('grid stacked: the lens preview pool after the round', nums(), expected);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
 })();
 
 // ---------------------------------------------------------------------------
@@ -9269,40 +9503,18 @@ function sourceBodyOf(src, signature) {
 // GR6: Adversarial extras
 // ---------------------------------------------------------------------------
 
-// GR6a: findCellTextNode returns the deepest non-empty text node
-(function gr6a_findCellTextNode_deepestNode() {
-  // Cell with nested structure: div > span > text("42")
-  const innerText = makeTextNode('42');
-  const span = makeElementNode('inner', [innerText]);
-  const cell = makeElementNode('cell', [span]);
-
-  // findCellTextNode must walk depth-first and return the deepest node
-  const result = findCellTextNode(cell);
-
-  eq('GR6a: findCellTextNode returns the deepest non-empty text node',
-    result === innerText, true);
-
-  eq('GR6a: findCellTextNode result nodeValue is "42"',
-    result && result.nodeValue, '42');
-})();
-
-// GR6b: findCellTextNode returns null when no text node exists
-(function gr6b_findCellTextNode_nullWhenEmpty() {
-  // Cell with only element children, no text
-  const span = makeElementNode('inner', []);
-  const cell = makeElementNode('cell', [span]);
-
-  eq('GR6b: findCellTextNode returns null for cell with no text nodes',
-    findCellTextNode(cell), null);
-})();
-
-// GR6c: findCellTextNode returns null for a whitespace-only text node
-(function gr6c_findCellTextNode_whitespaceIsNull() {
-  const wsNode = makeTextNode('   ');
-  const cell = makeElementNode('cell', [wsNode]);
-
-  eq('GR6c: findCellTextNode returns null for whitespace-only text node',
-    findCellTextNode(cell), null);
+// GR6a: the grid read is the cell's flat text: every text piece, joined in
+// page order, however deep the pieces sit.
+(function gr6a_gridRead_isTheFlatText() {
+  const readOf = (cell) => new GridAdapter({})._makeCellObj(cell).getText();
+  eq('GR6a: a piece inside nested elements is read',
+    readOf(makeElementNode('cell', [makeElementNode('inner', [makeTextNode('42')])])), '42');
+  eq('GR6a: a cell with no text piece reads as empty',
+    readOf(makeElementNode('cell', [makeElementNode('inner', [])])), '');
+  eq('GR6a: a whitespace piece is part of the read',
+    readOf(makeElementNode('cell', [makeTextNode('   ')])), '   ');
+  eq('GR6a: every piece joins in page order',
+    readOf(makeElementNode('cell', [makeTextNode('first'), makeElementNode('b', [makeTextNode('42')])])), 'first42');
 })();
 
 // GR6d: applyPatches is a no-op when the cell has no text node
@@ -9387,23 +9599,6 @@ function sourceBodyOf(src, signature) {
 
   eq('GR6g: isDataTable returns false for all-text grid (no numeric cells)',
     isDataTable(grid.wrapperEl), false);
-})();
-
-// GR6h: findCellTextNode returns the LAST non-empty text node in depth-first order
-// (implementation uses "best = node" overwriting, so last DFS visit wins — this is
-// the "deepest" semantic: the last text node encountered in DFS order).
-(function gr6h_findCellTextNode_lastDfsTextNode() {
-  // Cell with two sibling text nodes; the second (deeper in DFS order) should win.
-  const firstText  = makeTextNode('first');
-  const secondText = makeTextNode('42');
-  const cell = makeElementNode('cell', [firstText, secondText]);
-
-  const result = findCellTextNode(cell);
-
-  // The implementation overwrites `best` on every non-empty text node, so the
-  // last one encountered (secondText) is returned.
-  eq('GR6h: findCellTextNode returns last non-empty text node in DFS order',
-    result === secondText, true);
 })();
 
 // GR6i: GridAdapter write sequence — getText after applyPatches returns the
@@ -9589,18 +9784,19 @@ function makeE2EGridWrapper(rowData) {
   const grid = makeE2EGridWrapper([
     ['8584629', '286'],
   ]);
-  // Strip every cell's text pieces while keeping the text readable through
-  // the whole-text fallback: classification still computes targets, and the
-  // nodeValue write has nothing to patch — every write skips.
-  for (const cell of grid.cellEls) {
-    cell.textContent = cell.childNodes[0] ? cell.childNodes[0].nodeValue : '';
-    cell.childNodes = [];
-    cell.children = [];
-  }
+  // The page redraws every cell between classification and the write:
+  // roundTable stores the frozen max magnitude between the two, so the
+  // redraw runs there. Each patch then finds other characters at its
+  // position, and every write skips.
+  const setMaxMagnitude = DR_STORE.setTableMaxMagnitude;
+  DR_STORE.setTableMaxMagnitude = function (table, value) {
+    for (const cell of grid.cellEls) cell.childNodes[0].nodeValue = '1';
+    return setMaxMagnitude.call(DR_STORE, table, value);
+  };
   try {
     const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
     roundTable(grid.wrapperEl, opts);
-    eq('grid-honesty: a write with no text piece adds no marker through roundTable',
+    eq('grid-honesty: a write that lands nothing adds no marker through roundTable',
       grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
     eq('grid-honesty: a grid whose every write skipped keeps form original',
       DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
@@ -9609,6 +9805,7 @@ function makeE2EGridWrapper(rowData) {
         (row) => row.level === 'warn' && /grid cell write/.test(row.text)),
       true);
   } finally {
+    DR_STORE.setTableMaxMagnitude = setMaxMagnitude;
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
 })();
@@ -15776,7 +15973,7 @@ function withRightClickSandbox(run) {
     'findMaxMagnitude', 'toNumber',
     // parsing.js
     'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
-    'isInRanges', 'resolveOffset', 'resolveNumTop', 'getExclusionReason',
+    'isInRanges', 'resolveOffset', 'resolveNumTop', 'matchUnitNumber', 'getExclusionReason',
     'resolveMonthName', 'normalizeDateCandidate', 'parseDateLike', 'parseAmbiguousNumericDate',
     'isDateLike', 'isTimeLike', 'parseISODateTime', 'isDateTimeLike',
     'roundDateText', 'roundISODateTime', 'roundTimeText',
@@ -15891,7 +16088,6 @@ function withRightClickSandbox(run) {
 // ---------------------------------------------------------------------------
 (function drTableBundleIsPublished() {
   const EXPECTED_DR_TABLE_NAMES = [
-    'findCellTextNode',
     'NativeTableAdapter',
     'GridAdapter',
     'makeAdapter',
@@ -17573,6 +17769,88 @@ const LADDER_OPTS = {
   eq('classifyCell: mixed text with no numeric content is skipped',
     classifyCell({ text: 'hello world', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
     { mode: 'skip', reason: 'no-number' });
+})();
+
+// A unit number: one number with a magnitude suffix after it, a listed
+// currency code before or after it, or both. The match reports the number's
+// digits and their position in the text as given.
+(function matchUnitNumber_shapes() {
+  if (typeof matchUnitNumber !== 'function') {
+    eq('matchUnitNumber: the function exists', false, true);
+    return;
+  }
+  const m = (text) => {
+    const found = matchUnitNumber(text);
+    return found && { numStr: found.numStr, index: found.index };
+  };
+  eq('matchUnitNumber: a suffix directly after the number', m('4.91tn'), { numStr: '4.91', index: 0 });
+  eq('matchUnitNumber: a one-letter suffix', m('41.31m'), { numStr: '41.31', index: 0 });
+  eq('matchUnitNumber: a suffix after one space, any case', m('5.2 Bn'), { numStr: '5.2', index: 0 });
+  eq('matchUnitNumber: an upper-case suffix', m('10K'), { numStr: '10', index: 0 });
+  eq('matchUnitNumber: a code before the number', m('CAD45.67'), { numStr: '45.67', index: 3 });
+  eq('matchUnitNumber: a code then a symbol', m('CAD$45.67'), { numStr: '45.67', index: 4 });
+  eq('matchUnitNumber: a symbol then a code', m('$CAD45.67'), { numStr: '45.67', index: 4 });
+  eq('matchUnitNumber: a code and one space', m('CAD 45.67'), { numStr: '45.67', index: 4 });
+  eq('matchUnitNumber: a code and a suffix', m('CAD45.67m'), { numStr: '45.67', index: 3 });
+  eq('matchUnitNumber: a code after the number', m('45.67 CAD'), { numStr: '45.67', index: 0 });
+  eq('matchUnitNumber: a grouped number with a code after it', m('1,234 USD'), { numStr: '1,234', index: 0 });
+  eq('matchUnitNumber: a symbol and a suffix', m('$4.91tn'), { numStr: '4.91', index: 1 });
+  eq('matchUnitNumber: a negative number with a suffix', m('-2.5bn'), { numStr: '-2.5', index: 0 });
+  eq('matchUnitNumber: the index counts the text\'s own whitespace', m(' 41.31m '), { numStr: '41.31', index: 1 });
+  eq('matchUnitNumber: the match carries the number\'s value', matchUnitNumber('41.31m').num, 41.31);
+
+  for (const text of ['DT1234', 'cust15', 'XYZ45.67', '45.67kg', '4.91tnx', 'm45', '45.67', '$45.67',
+    'CAD', '12 of 40', 'usd45', 'CAD45.67 USD', '4.91  tn', 'Revenue 500m']) {
+    eq('matchUnitNumber: "' + text + '" is not a unit number', matchUnitNumber(text), null);
+  }
+})();
+
+(function classifyCell_unitNumbers() {
+  const wordsOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCells: false });
+  const currencyOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false });
+  const at = (text, extra) => Object.assign({ text, rowIndex: 1, columnIndex: 1, ranges: null }, extra || {});
+  eq('classifyCell: a unit number simplifies with the words toggle off',
+    classifyCell(at('4.91tn'), wordsOff),
+    { mode: 'extracted', reason: 'unit', value: { matches: [{ numStr: '4.91', num: 4.91, index: 0 }] } });
+  eq('classifyCell: a unit number simplifies on a grid',
+    classifyCell(at('CAD45.67', { allowExtracted: false }), LADDER_OPTS),
+    { mode: 'extracted', reason: 'unit', value: { matches: [{ numStr: '45.67', num: 45.67, index: 3 }] } });
+  eq('classifyCell: a code before the number excludes the cell with the currency setting off',
+    classifyCell(at('CAD45.67'), currencyOff), { mode: 'skip', reason: 'currency' });
+  eq('classifyCell: a code after the number excludes the cell with the currency setting off',
+    classifyCell(at('45.67 USD'), currencyOff), { mode: 'skip', reason: 'currency' });
+  eq('classifyCell: a unit number that is a whole link is skipped',
+    classifyCell(at('7.5m', { isWholeLink: true }), LADDER_OPTS), { mode: 'skip', reason: 'link' });
+  eq('classifyCell: an identifier is not a unit number',
+    classifyCell(at('DT1234'), wordsOff), { mode: 'skip', reason: 'mixed-disabled' });
+  eq('classifyCell: a plain currency number stays pure',
+    classifyCell(at('$45.67'), wordsOff), { mode: 'pure', reason: 'simplify', value: { num: 45.67 } });
+})();
+
+// On an HTML table a unit number rounds with the words toggle off; only its
+// digits change. Dataset: 4.91 (magnitude 0) and 45.67 (magnitude 1), so
+// 45.67 takes the top band (step 5) and 4.91 the other band (step 0.5).
+(function nativeTable_unitNumbersRoundWithWordsOff() {
+  withCreateTreeWalker(function () {
+    const table = makeMockTable([[
+      { tag: 'td', text: '4.91tn' }, { tag: 'td', text: 'CAD45.67m' }, { tag: 'td', text: 'DT1234' },
+    ]]);
+    roundTable(table, Object.assign({}, DR_DEFAULTS, {
+      simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedCells: false,
+    }));
+    eq('HTML table: unit numbers round with the words toggle off and an identifier stays',
+      table.rows[0].cells.map((cell) => cell.innerText), ['5tn', 'CAD45m', 'DT1234']);
+  });
+})();
+
+(function getExclusionReason_currencyCodes() {
+  const currencyOff = Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false });
+  eq('getExclusionReason: a listed code counts as a currency sign',
+    getExclusionReason('CAD45.67m', 1, currencyOff, 1), 'currency');
+  eq('getExclusionReason: a code inside a longer word does not count',
+    getExclusionReason('CADENCE 12', 1, currencyOff, 1), null);
+  eq('getExclusionReason: a code in lower case does not count',
+    getExclusionReason('usd 12', 1, currencyOff, 1), null);
 })();
 
 (function pickDateFormatHint_and_resolveAmbiguousDateDecision() {

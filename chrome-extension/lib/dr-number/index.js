@@ -33,6 +33,7 @@ const DR_NUMBER = {
   isInRanges,
   resolveOffset,
   resolveNumTop,
+  matchUnitNumber,
   getExclusionReason,
   resolveMonthName,
   normalizeDateCandidate,
