@@ -11,10 +11,10 @@
  * The TableAdapter abstraction (NativeTableAdapter / GridAdapter, chosen by
  * makeAdapter) gives the engine a uniform row/cell interface over native
  * <table> elements and div-based virtual grids. Also holds the grid-shape
- * constants and the structure-preserving cell-write helpers
- * (replaceTextPreservingHTML, applyExtractedPatches, restoreTextPieces,
- * getSuperscriptRanges, link filtering). Loaded by manifest content_scripts
- * before content.js.
+ * constants, the placement step (placeDecision), and the
+ * structure-preserving cell-write helpers (applyExtractedPatches,
+ * restoreTextPieces, getSuperscriptRanges, link filtering). Loaded by
+ * manifest content_scripts before content.js.
  *
  * This file is the lib/dr-table package's detection layer. Detection
  * (isDataTable, looksLikeGrid, findTargetTable, isPhantomA11yTable) reports
@@ -140,6 +140,23 @@ class NativeTableAdapter {
           // there getText() answers with the original through the originals
           // port once the cell is rounded.
           getDisplayedText() { return cell.innerText || cell.textContent || ''; },
+          // The cell's text pieces for the placement step (see placeDecision).
+          // A native cell classifies its rendered text, so toFlat converts
+          // each rendered position to its flat-text position. The native
+          // write path resets a table before it rounds it, so the live
+          // pieces are the pieces the rendered text was read from.
+          getPieceLayout() {
+            const pieces = collectTextPieces(cell).map((piece) => piece.nodeValue);
+            const liveStarts = [];
+            let at = 0;
+            for (const text of pieces) {
+              liveStarts.push(at);
+              at += text.length;
+            }
+            const rendered = cell.innerText || cell.textContent || '';
+            const toFlat = mapRenderedToFlat(rendered, pieces.join(''));
+            return { original: pieces, liveStarts, toFlat: toFlat || mapValueToPiece(rendered, pieces) };
+          },
           el: cell,
           tagName: cell.tagName,
         }));
@@ -363,8 +380,10 @@ class GridAdapter {
       // the record's stored text in place of each piece the record holds, so
       // a position measured against getText() maps to a piece index. A caller
       // turns that into a live position with liveStarts, because a patched
-      // piece may have a different length now. null when the cell no longer
-      // holds a piece at every index the record stores.
+      // piece may have a different length now. toFlat is null: a grid cell
+      // classifies its flat text, so its positions need no conversion. null
+      // when the cell no longer holds a piece at every index the record
+      // stores.
       getPieceLayout() {
         const pieces = collectTextPieces(cellEl);
         const original = pieces.map((piece) => piece.nodeValue);
@@ -379,7 +398,7 @@ class GridAdapter {
           liveStarts.push(at);
           at += piece.nodeValue.length;
         }
-        return { original, liveStarts };
+        return { original, liveStarts, toFlat: null };
       },
       // Write the patches into the cell's text pieces and return how many
       // landed. The first landed write stores the cell's record through the
@@ -587,7 +606,7 @@ function filterLinkMatches(cell, matches) {
   const anchors = cell.querySelectorAll('a');
   if (!anchors || anchors.length === 0) return matches;
 
-  // Collect text nodes via TreeWalker (same pattern as replaceTextPreservingHTML).
+  // Collect text nodes via TreeWalker.
   const treeWalker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
   const textNodes = [];
   let currentNode;
@@ -613,94 +632,6 @@ function filterLinkMatches(cell, matches) {
     const inAnchor = [...anchors].some(a => (a.innerText || a.textContent || '').includes(numStr));
     return !inAnchor;
   });
-}
-
-function replaceTextPreservingHTML(cell, originalText, newText) {
-  const treeWalker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
-  let currentNode;
-  const textNodes = [];
-  
-  while (currentNode = treeWalker.nextNode()) {
-    textNodes.push(currentNode);
-  }
-  
-  const nonEmptyNodes = textNodes.filter(n => n.nodeValue.trim() !== '');
-  const trimmedOriginal = originalText.trim();
-  
-  if (nonEmptyNodes.length === 1) {
-    const text = nonEmptyNodes[0].nodeValue;
-    nonEmptyNodes[0].nodeValue = text.replace(trimmedOriginal, newText);
-    return;
-  }
-  
-  for (let node of nonEmptyNodes) {
-    if (node.nodeValue.includes(trimmedOriginal)) {
-      node.nodeValue = node.nodeValue.replace(trimmedOriginal, newText);
-      return;
-    }
-  }
-  
-  if (cell.innerHTML.includes(trimmedOriginal)) {
-    cell.innerHTML = cell.innerHTML.replace(trimmedOriginal, newText);
-    return;
-  }
-  
-  // Advanced replacement across multiple nodes to avoid destroying HTML structure
-  let fullText = "";
-  const nodePositions = [];
-  for (let node of textNodes) {
-    const start = fullText.length;
-    fullText += node.nodeValue;
-    nodePositions.push({ node, start, end: fullText.length });
-  }
-  
-  const matchIndex = fullText.indexOf(trimmedOriginal);
-  if (matchIndex !== -1) {
-    const matchEnd = matchIndex + trimmedOriginal.length;
-    let firstNodeIdx = -1;
-    let lastNodeIdx = -1;
-    
-    for (let i = 0; i < nodePositions.length; i++) {
-      if (nodePositions[i].end > matchIndex && firstNodeIdx === -1) {
-        firstNodeIdx = i;
-      }
-      if (nodePositions[i].start < matchEnd) {
-        lastNodeIdx = i;
-      }
-    }
-    
-    if (firstNodeIdx !== -1 && lastNodeIdx !== -1) {
-      // Distribute newText across the matched nodes to preserve exact HTML span structure
-      let remainingNewText = newText;
-      for (let i = firstNodeIdx; i <= lastNodeIdx; i++) {
-        const pos = nodePositions[i];
-        const nodeStr = pos.node.nodeValue;
-        
-        const overlapStartInNode = Math.max(0, matchIndex - pos.start);
-        const overlapEndInNode = Math.min(nodeStr.length, matchEnd - pos.start);
-        const overlapLen = overlapEndInNode - overlapStartInNode;
-        
-        let replacementForThisNode = "";
-        if (i === lastNodeIdx) {
-          replacementForThisNode = remainingNewText;
-        } else {
-          replacementForThisNode = remainingNewText.substring(0, overlapLen);
-          remainingNewText = remainingNewText.substring(overlapLen);
-        }
-        
-        const beforeMatch = nodeStr.substring(0, overlapStartInNode);
-        const afterMatch = nodeStr.substring(overlapEndInNode);
-        
-        pos.node.nodeValue = beforeMatch + replacementForThisNode + afterMatch;
-      }
-      return;
-    }
-  }
-  
-  // Removed absolute innerText fallback to completely eliminate risk of breaking column widths or DOM structures
-  // lib/dr-table also runs standalone (test sandboxes evaluate this file
-  // alone), so the row routes through DR_LOG only when dr-log is loaded.
-  (typeof DR_LOG !== 'undefined' ? DR_LOG : console).debug("Dynamic Rounding: Skipped complex multi-node cell replacement to preserve layout.");
 }
 
 /**
@@ -765,6 +696,38 @@ function mapRenderedToFlat(rendered, flat) {
     }
   }
   return flat.substring(j).trim() === '' ? toFlat : null;
+}
+
+/**
+ * Where a cell's trimmed rendered text sits in its flat text, for a cell
+ * whose two texts differ in more than whitespace: a hidden sort key ahead of
+ * the value ("000000007002300" hidden, then "7,002,300"). The value sits in
+ * the one piece whose trimmed text equals it, or else in the one piece that
+ * holds it exactly once. Returns an array holding, for each rendered
+ * position of the value, its flat position, with no entry for any other
+ * rendered position, or null when no single piece qualifies.
+ * @param {string} rendered
+ * @param {string[]} pieces
+ * @returns {number[]|null}
+ */
+function mapValueToPiece(rendered, pieces) {
+  const value = rendered.trim();
+  if (value === '') return null;
+  let candidates = pieces.map((text, i) => i).filter((i) => pieces[i].trim() === value);
+  if (candidates.length !== 1) {
+    candidates = pieces.map((text, i) => i).filter((i) => {
+      const at = pieces[i].indexOf(value);
+      return at >= 0 && pieces[i].indexOf(value, at + 1) < 0;
+    });
+  }
+  if (candidates.length !== 1) return null;
+  const i = candidates[0];
+  let flatStart = pieces[i].indexOf(value);
+  for (let k = 0; k < i; k++) flatStart += pieces[k].length;
+  const lead = rendered.length - rendered.trimStart().length;
+  const toFlat = [];
+  for (let k = 0; k < value.length; k++) toFlat[lead + k] = flatStart + k;
+  return toFlat;
 }
 
 /**
@@ -849,6 +812,167 @@ function restoreTextPieces(cell, storedPieces) {
   if (storedPieces.some((piece) => piece.i >= pieces.length)) return false;
   for (const piece of storedPieces) pieces[piece.i].nodeValue = piece.text;
   return true;
+}
+
+// --- Placement step ---
+// Every cell, native or grid, takes three steps: classify, place, patch. The
+// placement step checks a classifyCell decision against the cell's text
+// pieces before any patch is built, and the patch writer
+// (applyExtractedPatches) then writes each patch inside one piece.
+//
+// A layout comes from the cell object's getPieceLayout():
+//   original    each piece's text as the classified text saw it
+//   liveStarts  where each piece starts in the cell's live flat text
+//   toFlat      for each position of the classified text, its position in
+//               the join of original; null when the positions count alike,
+//               and no entry for a position with no known counterpart
+// A native cell classifies its rendered text and converts positions through
+// mapRenderedToFlat. When the rendered and flat texts differ in more than
+// whitespace, such as a hidden sort key ahead of the value, toFlat maps the
+// trimmed rendered text to the one piece that holds it (mapValueToPiece).
+// With no such piece the rendered positions stand, and a patch that misses
+// there does not land.
+
+// The cell's pieces as the classified text saw them, each with its index
+// and its start in the join of original.
+function pieceSpans(layout) {
+  const spans = [];
+  let at = 0;
+  layout.original.forEach((text, i) => {
+    spans.push({ i, start: at, text });
+    at += text.length;
+  });
+  return spans;
+}
+
+// The piece that holds every character of [start, start + length), or null.
+function pieceHolding(spans, start, length) {
+  const span = spans.find((s) => s.start <= start && start < s.start + s.text.length);
+  return span && start + length <= span.start + span.text.length ? span : null;
+}
+
+// A range of the classified text, as a range of the join of original.
+// converted is false when toFlat holds no entry for the range, which then
+// keeps its classified positions.
+function flatRange(layout, start, length) {
+  if (!layout.toFlat || length === 0) return { start, length, converted: false };
+  const first = layout.toFlat[start];
+  const last = layout.toFlat[start + length - 1];
+  if (first === undefined || last === undefined) return { start, length, converted: false };
+  return { start: first, length: last + 1 - first, converted: true };
+}
+
+/**
+ * The piece that holds every character of a range of the classified text,
+ * or null when the range crosses a piece boundary.
+ * @param {{original: string[], liveStarts: number[], toFlat: number[]|null}} layout
+ * @param {number} start
+ * @param {number} length
+ * @returns {{i: number, start: number, text: string}|null}
+ */
+function layoutPieceHolding(layout, start, length) {
+  const range = flatRange(layout, start, length);
+  return pieceHolding(pieceSpans(layout), range.start, range.length);
+}
+
+/**
+ * Move patches measured in the classified text onto the cell's live pieces:
+ * same piece, same place inside it, at that piece's live start. A patched
+ * grid piece can differ in length from its original, so a later piece's live
+ * start can differ from its start in original. Where toFlat converts
+ * positions, numStr becomes the flat text of the converted range, so a line
+ * break the browser collapsed inside a value still matches.
+ * @param {{index: number, numStr: string, newNum: string}[]} patches
+ * @param {{original: string[], liveStarts: number[], toFlat: number[]|null}} layout
+ * @returns {{index: number, numStr: string, newNum: string}[]}
+ */
+function livePatches(patches, layout) {
+  if (patches.length === 0) return patches;
+  const spans = pieceSpans(layout);
+  const flat = layout.original.join('');
+  return patches.map((patch) => {
+    const range = flatRange(layout, patch.index, patch.numStr.length);
+    const span = pieceHolding(spans, range.start, 1);
+    if (!span) return patch;
+    const numStr = range.converted ? flat.substring(range.start, range.start + range.length) : patch.numStr;
+    return Object.assign({}, patch, { index: layout.liveStarts[span.i] + (range.start - span.start), numStr });
+  });
+}
+
+// The numbers of a stacked cell: a cell whose text pieces each hold one
+// whole number or unit number, or nothing but whitespace, currency symbols
+// (the number parser's list), a percent sign, or a listed currency code.
+// Two numbers in one piece, even with a space between them ("416 555 1234"),
+// make the cell not stacked, and so does a piece that reads as a date or a
+// time ("2024" above "2025"), because a lone year stays a year. Returns the
+// numbers as matches measured in the join of original, null when the cell
+// is not stacked, or 'split' when a number sits across two pieces: a piece
+// that ends in "." or "," before one that starts with a digit ("4." then
+// "91"). A piece that starts with "." or "," never reads as a number, so "4"
+// then ".91" is not stacked either. A digit next to a digit across two
+// pieces reads as two numbers, the shape of one number per line.
+function stackedMatches(spans) {
+  const symbolPiece = new RegExp('^(?:' + CURRENCY_SYMBOL_CLASS + '|%)+$');
+  const filled = spans.filter((span) => span.text.length > 0);
+  for (let k = 1; k < filled.length; k++) {
+    if (/[.,]$/.test(filled[k - 1].text) && /^\d/.test(filled[k].text)) return 'split';
+  }
+  const matches = [];
+  for (const span of filled) {
+    const trimmed = span.text.trim();
+    if (trimmed === '' || symbolPiece.test(trimmed) || CURRENCY_CODES.includes(trimmed)) continue;
+    if (isDateTimeLike(trimmed) || isDateLike(trimmed) || isTimeLike(trimmed)) return null;
+    const unit = matchUnitNumber(span.text);
+    const found = unit ? [unit] : extractNumbersInText(span.text);
+    if (found.length !== 1 || (!unit && toNumber(span.text) === null)) return null;
+    matches.push({ numStr: found[0].numStr, num: found[0].num, index: span.start + found[0].index });
+  }
+  return matches.length > 0 ? matches : null;
+}
+
+/**
+ * The placement step: place a classifyCell decision in the cell's text
+ * pieces. A patch edits one piece, so a decision stands only when the
+ * characters it changes sit in one piece: a pure cell's trimmed text, each
+ * number of an extracted cell. A date or time passes through; its piece
+ * check runs when its patch is built, because only a changed value needs
+ * one.
+ *
+ * A decision whose characters cross a piece boundary skips with reason
+ * 'pieces'. With opts.stacked, the cell first takes the stacked-cell test
+ * (see stackedMatches), and so does a cell held back as mixed text: a
+ * stacked cell rounds number by number as an extracted decision, and a
+ * number split across pieces skips with reason 'split'. Grids take the
+ * stacked-cell test. Native tables do not: the test reads a digit beside a
+ * digit across pieces as two numbers, and a native cell's inline styling
+ * splits one number that way ("1" plain, "23" in bold).
+ *
+ * A cell with no layout (its pieces no longer reach its record) skips with
+ * reason 'pieces-changed'. A cell with a <sup> keeps a skip decision, so a
+ * footnote marker never rounds as a stacked number.
+ *
+ * @param {object} decision - classifyCell's decision
+ * @param {string} text - the text the decision was classified on
+ * @param {{original: string[], liveStarts: number[], toFlat: number[]|null}|null} layout
+ * @param {{hasSuperscript?: boolean, stacked?: boolean}} [opts]
+ * @returns {object} the placed decision
+ */
+function placeDecision(decision, text, layout, opts = {}) {
+  if (!layout) return { mode: 'skip', reason: 'pieces-changed' };
+  if (opts.hasSuperscript && decision.mode === 'skip') return decision;
+  if (decision.mode === 'pure') {
+    const lead = text.length - text.trimStart().length;
+    if (layoutPieceHolding(layout, lead, text.trim().length)) return decision;
+  } else if (decision.mode === 'extracted') {
+    if (decision.value.matches.every((m) => layoutPieceHolding(layout, m.index, m.numStr.length))) return decision;
+  } else if (!(decision.mode === 'skip' && decision.reason === 'mixed-disabled')) {
+    return decision;
+  }
+  if (!opts.stacked) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
+  const matches = stackedMatches(pieceSpans(layout));
+  if (matches === 'split') return { mode: 'skip', reason: 'split' };
+  if (matches === null) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
+  return { mode: 'extracted', reason: 'stacked', value: { matches } };
 }
 
 // --- Table/grid detection predicates ---
