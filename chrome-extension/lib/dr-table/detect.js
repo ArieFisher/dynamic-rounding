@@ -503,8 +503,13 @@ function makeAdapter(el, opts = {}) {
  * - The vertical-align check goes through opts.styleProbe (default:
  *   DEFAULT_STYLE_PROBE), so the helper never throws when getComputedStyle
  *   is absent.
+ *
+ * opts.text, when given, is the rendered text the caller classifies, and each
+ * range converts into its positions through mapRenderedToFlat. A range with
+ * no rendered character drops out. When the two texts differ in anything but
+ * whitespace, the ranges stay in flat-text positions.
  * @param {Element} cell
- * @param {{doc?: Document, styleProbe?: object}} [opts]
+ * @param {{doc?: Document, styleProbe?: object, text?: string}} [opts]
  * @returns {{start: number, end: number}[]}
  */
 function getSuperscriptRanges(cell, opts = {}) {
@@ -516,9 +521,11 @@ function getSuperscriptRanges(cell, opts = {}) {
   const ranges = [];
   const treeWalker = doc.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
   let cursor = 0;
+  let flat = '';
   let node;
   while ((node = treeWalker.nextNode())) {
     const len = node.nodeValue ? node.nodeValue.length : 0;
+    if (len > 0) flat += node.nodeValue;
     if (len > 0) {
       // Check if any ancestor up to (not including) cell is a <sup> element.
       let isSup = false;
@@ -543,7 +550,15 @@ function getSuperscriptRanges(cell, opts = {}) {
     }
     cursor += len;
   }
-  return ranges;
+  const toFlat = typeof opts.text === 'string' ? mapRenderedToFlat(opts.text, flat) : null;
+  if (!toFlat) return ranges;
+  const rendered = [];
+  for (const { start, end } of ranges) {
+    const inside = [];
+    toFlat.forEach((at, i) => { if (at >= start && at < end) inside.push(i); });
+    if (inside.length > 0) rendered.push({ start: inside[0], end: inside[inside.length - 1] + 1 });
+  }
+  return rendered;
 }
 
 /**
@@ -714,6 +729,42 @@ function collectTextPieces(cell) {
     }
   })(cell);
   return pieces;
+}
+
+/**
+ * Where each character of a cell's rendered text sits in its flat text.
+ * The browser collapses runs of spaces and line breaks in the markup to one
+ * space, trims the ends, and adds a line break at a <br> or a block
+ * boundary, so a pretty-printed cell's rendered text is shorter than its
+ * flat text before a number. The walk pairs equal characters, skips a flat
+ * whitespace character with no rendered counterpart, and points a rendered
+ * whitespace character with no flat counterpart at the next flat character.
+ * Returns an array holding, for each rendered position, its flat position,
+ * or null when the two texts differ in anything but whitespace (hidden text
+ * inside the cell, a CSS text transform), so the caller keeps rendered
+ * positions as they are.
+ * @param {string} rendered
+ * @param {string} flat
+ * @returns {number[]|null}
+ */
+function mapRenderedToFlat(rendered, flat) {
+  const isSpace = (ch) => /\s/.test(ch);
+  const toFlat = [];
+  let j = 0;
+  for (let i = 0; i < rendered.length;) {
+    if (j < flat.length && rendered[i] === flat[j]) {
+      toFlat.push(j++);
+      i++;
+    } else if (isSpace(rendered[i])) {
+      toFlat.push(j < flat.length && isSpace(flat[j]) ? j++ : j);
+      i++;
+    } else if (j < flat.length && isSpace(flat[j])) {
+      j++;
+    } else {
+      return null;
+    }
+  }
+  return flat.substring(j).trim() === '' ? toFlat : null;
 }
 
 /**

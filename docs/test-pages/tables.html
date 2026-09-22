@@ -1246,22 +1246,17 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>21. Mixed-text cell with line breaks in its markup</h2>
-    <p class="expect">Expect: pillbox at load, and one extension error on every
-      simplification. The second row's number sits inside words, and its cell
-      markup carries line breaks. The classification measures the number's
-      position in the rendered text, where the browser has collapsed the line
-      breaks, and the patch step looks for it at that position in the raw text,
-      where they remain, so the patch misses and logs "1 of 1 extracted-cell
-      patches did not land" (issue #403). The first row rounds; the second
-      holds. Use this table to test the toast, the error state, and the stack
-      trace in a capture. When #403 is fixed, this expectation flips: both rows
-      round and no error is logged.</p>
+    <p class="expect">Expect: pillbox at load. Both rows round and no extension
+      error is logged. The second row's number sits inside words, and its cell
+      markup carries line breaks and indentation that the browser collapses on
+      screen. The patch step converts the number's position in the rendered
+      text to its position in the flat text, so the patch lands (issue
+      #403).</p>
 
     <!--
-      48,215                          -> rounds; a pure cell's write searches for
-                                         its text and never depends on position
-      Grew 1,200 units (line breaks)  -> holds; the patch misses the number and
-                                         logs one extension error
+      48,215                          -> rounds
+      Grew 1,200 units (line breaks)  -> rounds; the line breaks in the markup
+                                         stay
     -->
     <table>
       <thead>
