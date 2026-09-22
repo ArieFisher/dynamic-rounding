@@ -99,7 +99,9 @@ One term per concept, across every platform and every document. Use the [Retired
 | simplify | Apply the full treatment to a table per the current settings: rounding for numbers, granularity for dates and times. |
 | form | Whether a table's cells are showing raw or simplified. Values: raw, simplified. |
 | apply | The sidebar gesture that pushes the current settings onto a bound table. |
-| patch | One replacement inside a text piece: the position in the flat text, the characters to replace, and the new characters. A grid cell changes through patches alone, so every text node the page drew stays in place. |
+| patch | One replacement inside a text piece: the position in the flat text, the characters to replace, and the new characters. Every cell, on a native table or a grid, changes through patches alone, so every text node the page drew stays in place. |
+| patch writer | The write step that applies patches, each inside one text piece. A patch whose characters are not at its position does not land, and the cell stays unchanged. |
+| placement step | The step between classification and the patch writer: it checks a cell's classified result against the cell's text pieces. A result whose changed characters sit in one text piece stands. Otherwise a grid cell takes the stacked cell test, and a native table cell stays unchanged. |
 | originals | The cell values stored before simplification so the table can be restored. |
 | restore | Put the originals back. |
 | unrestorable | Originals lost or never captured. The table cannot be restored. |
