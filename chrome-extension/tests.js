@@ -1849,6 +1849,32 @@ function withLinkCreateTreeWalker(fn) {
   }
 })();
 
+// Two numbers in one text piece are two patches that land in one write. The
+// failure row holds a count of patches, never of touched pieces, so two
+// landed patches in one piece log no row.
+(function twoPatchesInOnePieceLogNoFailure() {
+  const table = makeMockTable([[
+    { tag: 'td', text: 'Cost: 123,456 to 654,321 per month' },
+  ]]);
+  const failureRows = [];
+  const offRow = DR_LOG.onRow((row) => {
+    if (row.level === 'warn' && /extracted-cell patch/.test(row.text)) failureRows.push(row.text);
+  });
+  try {
+    withCreateTreeWalker(function () {
+      roundTable(table, EXTRACTED_PATCH_OPTS);
+    });
+    const cell = table.rows[0].cells[0];
+    eq('patch-honesty: both numbers in one piece change',
+      /123,456|654,321/.test(cell.innerText), false);
+    eq('patch-honesty: two landed patches in one piece log no failure row',
+      failureRows, []);
+  } finally {
+    offRow();
+    DR_STORE.unregisterTable(table);
+  }
+})();
+
 // The patch step reports what it did: the landed count is the write path's
 // only evidence that the screen changed.
 (function applyExtractedPatchesReturnsLandedCount() {
@@ -1863,13 +1889,13 @@ function withLinkCreateTreeWalker(fn) {
     };
   };
   try {
-    const landed = applyExtractedPatches({}, [
+    const { landed } = applyExtractedPatches({}, [
       { index: 2, numStr: '100', newNum: '90' },
       { index: 8, numStr: '999', newNum: '1,000' },
     ]);
     eq('patch-honesty: applyExtractedPatches returns the landed count', landed, 1);
     eq('patch-honesty: an empty patch list lands zero patches',
-      applyExtractedPatches({}, []), 0);
+      applyExtractedPatches({}, []).landed, 0);
   } finally {
     delete global.document.createTreeWalker;
   }
@@ -8246,6 +8272,9 @@ function makeNativeTableEl(rowsSpec) {
 
   eq('TA1b: native adapter cell exposes no setText',
     cell.setText, undefined);
+  // applyPatches is the grid cell's write, the name such a loop reaches now.
+  eq('TA1b: native adapter cell exposes no applyPatches',
+    cell.applyPatches, undefined);
 
   // Source scan: nothing in the class may assign textContent/innerHTML on a
   // cell. Catches a setText re-added under a different name.
@@ -8663,6 +8692,286 @@ function makeDatabaseQueryGrid(opts) {
 }
 
 // ---------------------------------------------------------------------------
+// Grid patch writes (#120). A grid cell's change lands as a patch to the one
+// text piece that holds the changed characters, and the cell's originals
+// record holds each touched piece's text by piece index.
+//
+// Invented values at one magnitude, so each rounded value is derived by hand:
+// under the defaults every number sits in the top band, and an offset of -0.5
+// on magnitude 6 rounds to a step of 500,000.
+//   8,584,629 → 8,500,000    7,318,204 → 7,500,000
+//   2,140,663 → 2,000,000    1,234,567 → 1,000,000
+// ---------------------------------------------------------------------------
+
+const PATCH_GRID_OPTS = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+
+// A text piece that counts the writes to it.
+function makeCountingTextNode(value) {
+  let current = value;
+  return {
+    nodeType: 3,
+    childNodes: null,
+    writes: 0,
+    get nodeValue() { return current; },
+    set nodeValue(v) { this.writes++; current = v; },
+  };
+}
+
+function setGridCellPieces(cell, childNodes) {
+  cell.childNodes = childNodes;
+  cell.children = childNodes.filter((node) => node.nodeType === 1);
+}
+
+// The cell's text pieces in page order, walked by hand.
+function gridCellTextPieces(cell) {
+  const found = [];
+  (function visit(node) {
+    for (const child of node.childNodes || []) {
+      if (child.nodeType === 3) found.push(child);
+      else visit(child);
+    }
+  })(cell);
+  return found;
+}
+
+// Four cells, each a different piece layout:
+//   a: whitespace pieces around a number in its own element
+//   b: one piece with whitespace inside it
+//   c: "$" in its own piece, the number in the next
+//   d: one plain piece
+function makePatchGrid() {
+  const grid = makeE2EGridWrapper([
+    ['8,584,629', '7,318,204'],
+    ['2,140,663', '1,234,567'],
+  ]);
+  const [a, b, c] = grid.cellEls;
+  const aNumber = makeCountingTextNode('8,584,629');
+  setGridCellPieces(a, [makeTextNode(' '), makeElementNode('inner', [aNumber]), makeTextNode(' ')]);
+  setGridCellPieces(b, [makeTextNode(' 7,318,204 ')]);
+  setGridCellPieces(c, [makeElementNode('sym', [makeTextNode('$')]), makeElementNode('num', [makeTextNode('2,140,663')])]);
+  return { grid, aNumber };
+}
+
+const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeValue);
+
+(function gridPatch_roundWritesEachChangeIntoItsPiece() {
+  const { grid } = makePatchGrid();
+  const [a, b, c, d] = grid.cellEls;
+  const piecesBefore = grid.cellEls.map(gridCellTextPieces);
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid patch: a number between whitespace pieces changes in its own piece',
+      pieceTextsOf(a), [' ', '8,500,000', ' ']);
+    eq('grid patch: whitespace inside the patched piece stays',
+      pieceTextsOf(b), [' 7,500,000 ']);
+    eq('grid patch: a number after a piece of its own patches at that piece\'s position',
+      pieceTextsOf(c), ['$', '2,000,000']);
+    eq('grid patch: a plain one-piece cell rounds as before',
+      pieceTextsOf(d), ['1,000,000']);
+    eq('grid patch: every text piece is the same node object after the round',
+      grid.cellEls.every((cell, k) => {
+        const after = gridCellTextPieces(cell);
+        return after.length === piecesBefore[k].length &&
+          after.every((node, n) => node === piecesBefore[k][n]);
+      }), true);
+    eq('grid patch: every rounded cell carries the marker class',
+      grid.cellEls.every((cell) => cell.classList.contains('dr-ext-rounded')), true);
+    eq('grid patch: the landed writes set the form to simplified',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'simplified');
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+(function gridPatch_recordHoldsTheReadTextAndEachTouchedPiece() {
+  const { grid } = makePatchGrid();
+  const [a, b] = grid.cellEls;
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid patch: the record holds the read text and the touched piece by index',
+      DR_STORE.getTableOriginal(grid.wrapperEl, a),
+      { value: '8,584,629', pieces: [{ i: 1, text: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
+    eq('grid patch: a piece\'s whitespace is part of its stored text',
+      DR_STORE.getTableOriginal(grid.wrapperEl, b),
+      { value: ' 7,318,204 ', pieces: [{ i: 0, text: ' 7,318,204 ' }], supRanges: null, linkFilteredIdx: null });
+    eq('grid patch: the plain-text read of a record is its value',
+      DR_STORE.getTableOriginalText(grid.wrapperEl, a), '8,584,629');
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+(function gridPatch_resetPutsEveryPieceBack() {
+  const { grid } = makePatchGrid();
+  const [a, b, c, d] = grid.cellEls;
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    const unrestorable = resetTable(grid.wrapperEl);
+    eq('grid patch reset: every cell restores', unrestorable, 0);
+    eq('grid patch reset: each piece holds its original text again',
+      [pieceTextsOf(a), pieceTextsOf(b), pieceTextsOf(c), pieceTextsOf(d)],
+      [[' ', '8,584,629', ' '], [' 7,318,204 '], ['$', '2,140,663'], ['1,234,567']]);
+    eq('grid patch reset: the records are cleared',
+      grid.cellEls.map((cell) => DR_STORE.hasTableOriginal(grid.wrapperEl, cell)),
+      [false, false, false, false]);
+    eq('grid patch reset: the marker classes are removed',
+      grid.cellEls.some((cell) => cell.classList.contains('dr-ext-rounded')), false);
+    eq('grid patch reset: the form is original',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+(function gridPatch_aCellWithFewerPiecesIsUnrestorable() {
+  const { grid } = makePatchGrid();
+  const [a, b] = grid.cellEls;
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    const recordBefore = DR_STORE.getTableOriginal(grid.wrapperEl, a);
+    // The page redraws cell a with one piece; the record's piece 1 is gone.
+    setGridCellPieces(a, [makeTextNode('8,500,000')]);
+    const unrestorable = resetTable(grid.wrapperEl);
+    eq('grid patch reset: a cell whose pieces no longer reach a stored index counts as unrestorable',
+      unrestorable, 1);
+    eq('grid patch reset: the unrestorable cell keeps its text',
+      pieceTextsOf(a), ['8,500,000']);
+    eq('grid patch reset: the unrestorable cell keeps its marker and record',
+      { marked: a.classList.contains('dr-ext-rounded'),
+        record: DR_STORE.getTableOriginal(grid.wrapperEl, a) === recordBefore },
+      { marked: true, record: true });
+    eq('grid patch reset: the other cells restore',
+      pieceTextsOf(b), [' 7,318,204 ']);
+    eq('grid patch reset: an unrestorable cell leaves the form simplified',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'simplified');
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+(function gridPatch_reapplyWritesOnlyWhereTheOriginalStands() {
+  const { grid, aNumber } = makePatchGrid();
+  const [a, b] = grid.cellEls;
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid patch re-apply (setup): the round wrote the number piece once', aNumber.writes, 1);
+
+    reapplyGridRounding(grid.wrapperEl);
+    eq('grid patch re-apply: a piece already patched is not written again', aNumber.writes, 1);
+
+    // The page redraws the piece with its original text.
+    aNumber.nodeValue = '8,584,629';
+    reapplyGridRounding(grid.wrapperEl);
+    eq('grid patch re-apply: a piece redrawn to its original is patched again',
+      pieceTextsOf(a), [' ', '8,500,000', ' ']);
+
+    // The page changes the piece's text in place. The old number's characters
+    // still sit at the patch position, and the piece is no longer its original.
+    b.childNodes[0].nodeValue = ' 7,318,204.5 ';
+    reapplyGridRounding(grid.wrapperEl);
+    eq('grid patch re-apply: a piece whose text the page changed is left as the page wrote it',
+      pieceTextsOf(b), [' 7,318,204.5 ']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+(function gridPatch_captureCarriesTheRecordValue() {
+  const { grid } = makePatchGrid();
+  const [a] = grid.cellEls;
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    const state = collectCaptureState({ store: DR_STORE, adapterFor: (t) => makeAdapter(t) });
+    const tableRec = state.tables[DR_STORE.getRegisteredTables().indexOf(grid.wrapperEl)];
+    const cellRec = tableRec.cells.find((cell) => cell.row === 0 && cell.col === 0);
+    eq('grid patch capture: a patched grid cell carries its original text',
+      cellRec.original, '8,584,629');
+    const html = DR_CAPTURE.buildCaptureDocument({
+      state: {
+        captureFormat: 6,
+        meta: { url: 'https://www.example.com/grid', title: 'G', version: '2.1.70',
+          platform: 'test', at: '2026-09-22T16:00:00.000Z' },
+        mark: 'looks-right', remarks: '', settings: { enabled: true }, detectionSettings: null,
+        activeTableIndex: 0, tables: [tableRec], lensPreview: null, fixtureSeed: null,
+        sidebarView: null, errorState: { hasError: false, count: 0, rows: [] },
+        log: { content: { entries: [], dropped: 0, limit: 50 }, sidebar: { entries: [], dropped: 0, limit: 50 } },
+      },
+      lockedStatusText: '',
+    });
+    const originalsTable = (html.split('with the originals')[1] || '').split('</table>')[0];
+    eq('grid patch capture: the originals rendering shows the cell\'s original',
+      /<td[^>]*>8,584,629<\/td>/.test(originalsTable), true);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// The grid cell's write: it returns how many patches landed, and records the
+// cell on a landed patch. The no-piece case sits with the form honesty tests.
+(function gridPatch_applyPatchesReturnsAndRecords() {
+  const makePort = () => {
+    const m = new Map();
+    return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
+  };
+  const port = makePort();
+  const adapter = new GridAdapter({}, { originalsPort: port });
+  if (typeof adapter._makeCellObj(makeElementNode('', [])).applyPatches !== 'function') {
+    eq('grid patch write: the grid cell object exposes applyPatches', false, true);
+    return;
+  }
+
+  const el = makeGridCellWithTextNode('A 100 B 200');
+  const cellObj = adapter._makeCellObj(el);
+  eq('grid patch write: the write returns its landed count',
+    cellObj.applyPatches([
+      { index: 2, numStr: '100', newNum: '90' },
+      { index: 8, numStr: '999', newNum: '1,000' },
+    ]), 1);
+  eq('grid patch write: the landed patch changes its piece',
+    el.childNodes[0].nodeValue, 'A 90 B 200');
+  eq('grid patch write: the first landed write stores the record',
+    port.get(el),
+    { value: 'A 100 B 200', pieces: [{ i: 0, text: 'A 100 B 200' }], supRanges: null, linkFilteredIdx: null });
+
+  // A later write that touches a piece the record does not hold adds it, and
+  // keeps the stored text of a piece it already holds.
+  const twoEl = makeElementNode('', [makeTextNode('100'), makeTextNode(' 200')]);
+  const two = adapter._makeCellObj(twoEl);
+  two.applyPatches([{ index: 0, numStr: '100', newNum: '90' }]);
+  two.applyPatches([{ index: 3, numStr: '200', newNum: '250' }]);
+  eq('grid patch write: a later write adds each newly touched piece to the record',
+    port.get(twoEl).pieces, [{ i: 0, text: '100' }, { i: 1, text: ' 200' }]);
+})();
+
+// The writer groups patches by piece, writes each touched piece once, and
+// returns the landed count with each touched piece's text before and after.
+(function applyExtractedPatchesReturnsTouchedPieces() {
+  const cell = makeElementNode('', [makeTextNode('A 100 B 200'), makeTextNode(' C 300')]);
+  const [first, second] = cell.childNodes;
+  // The pieces walk runs with no tree walker in this suite's document.
+  let result;
+  try {
+    result = applyExtractedPatches(cell, [
+      { index: 2, numStr: '100', newNum: '90' },
+      { index: 8, numStr: '200', newNum: '250' },
+      { index: 14, numStr: '300', newNum: '999' },
+      { index: 14, numStr: '777', newNum: '1' },
+    ]);
+  } catch (e) {
+    eq('patch writer: the writer runs without a tree walker', String(e), null);
+    return;
+  }
+  eq('patch writer: the result carries the landed count', result.landed, 3);
+  eq('patch writer: the result lists each touched piece once, in piece order',
+    result.pieces,
+    [{ i: 0, before: 'A 100 B 200', after: 'A 90 B 250' }, { i: 1, before: ' C 300', after: ' C 999' }]);
+  eq('patch writer: the pieces hold the patched text',
+    [first.nodeValue, second.nodeValue], ['A 90 B 250', ' C 999']);
+  eq('patch writer: an empty patch list lands nothing',
+    applyExtractedPatches(cell, []), { landed: 0, pieces: [] });
+})();
+
+// ---------------------------------------------------------------------------
 // GR1: Unlabelled variable-row-height grid — structural extraction + nodeValue rounding
 // The headline test: no ARIA roles, no dg-- classes. GridAdapter must fall back
 // to direct children as rows and direct row-children as cells.
@@ -8698,14 +9007,14 @@ function makeDatabaseQueryGrid(opts) {
   eq('GR1: row 0 cell 1 getText() returns "286"',
     cells0[1].getText(), '286');
 
-  // Now round via setText and confirm nodeValue changed
-  cells0[0].setText('8500000');
+  // Now round via applyPatches and confirm nodeValue changed
+  cells0[0].applyPatches([{ index: 0, numStr: '8584629', newNum: '8500000' }]);
   const tn0 = grid.cellEls[0].childNodes[0];
-  eq('GR1: after setText, text node nodeValue is rounded value',
+  eq('GR1: after applyPatches, text node nodeValue is rounded value',
     tn0.nodeValue, '8500000');
 
   // The dr-ext-rounded class must be on the cell element
-  eq('GR1: after setText, cell carries dr-ext-rounded class',
+  eq('GR1: after applyPatches, cell carries dr-ext-rounded class',
     grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
 })();
 
@@ -8754,58 +9063,69 @@ function makeDatabaseQueryGrid(opts) {
   const rows = adapter.getRows();
   const cellObj = rows[0].getCells()[0];
 
-  // Capture the Text node object reference BEFORE setText.
+  // Capture the Text node object reference BEFORE the write.
   const textNodeBefore = grid.cellEls[0].childNodes[0];
   const childCountBefore = grid.cellEls[0].childNodes.length;
 
-  // Round via setText
-  cellObj.setText('9900000');
+  // Round via applyPatches
+  cellObj.applyPatches([{ index: 0, numStr: '9876543', newNum: '9900000' }]);
 
-  // The Text node reference returned by findCellTextNode must be the SAME object.
+  // The Text node reference must be the SAME object.
   const textNodeAfter = grid.cellEls[0].childNodes[0];
 
-  eq('GR3: text node object identity preserved after setText (same reference)',
+  eq('GR3: text node object identity preserved after applyPatches (same reference)',
     textNodeAfter === textNodeBefore, true);
 
   eq('GR3: text node nodeValue was patched to rounded value',
     textNodeAfter.nodeValue, '9900000');
 
   // The cell's child node list length must be unchanged (no insertion/removal)
-  eq('GR3: cell childNodes.length unchanged after setText (no appendChild/removeChild)',
+  eq('GR3: cell childNodes.length unchanged after applyPatches (no appendChild/removeChild)',
     grid.cellEls[0].childNodes.length, childCountBefore);
 
   // Double-safety: the cell element itself is unchanged (not recreated)
-  eq('GR3: cell element reference unchanged after setText',
+  eq('GR3: cell element reference unchanged after applyPatches',
     grid.cellEls[0], grid.cellEls[0]);
 })();
 
+// The source text of one function or method: from its signature to the
+// brace that closes its body. '' when the signature is absent.
+function sourceBodyOf(src, signature) {
+  const start = src.indexOf(signature);
+  if (start < 0) return '';
+  const open = src.indexOf('{', start);
+  let depth = 0;
+  for (let k = open; k < src.length; k++) {
+    if (src[k] === '{') depth++;
+    else if (src[k] === '}' && --depth === 0) return src.slice(start, k + 1);
+  }
+  return '';
+}
+
 // ---------------------------------------------------------------------------
-// GR3b: setText does NOT use textContent/innerHTML — source-level guard
-// The spec forbids: cell.textContent=, cell.innerHTML=, removeChild, appendChild
-// on a cell during a grid write. We verify the node reference is identical (GR3)
-// which implies none of those paths ran. Additionally scan source for the
-// critical prohibition.
+// GR3b: the grid write path does NOT use textContent/innerHTML — source-level
+// guard. The spec forbids: cell.textContent=, cell.innerHTML=, removeChild,
+// appendChild on a cell during a grid write. We verify the node reference is
+// identical (GR3) which implies none of those paths ran. Additionally scan
+// source for the critical prohibition: the grid cell object (applyPatches),
+// the patch writer it calls, and the piece restore.
 // ---------------------------------------------------------------------------
 
 (function gr3b_noTextContentWriteInGridPath() {
-  // The _makeCellObj method must ONLY use tn.nodeValue = s.
-  // Source scan: the setText implementation inside _makeCellObj must not contain
-  // 'textContent =' (with a write) or 'innerHTML =' outside the native-table path.
-  // GridAdapter now lives in lib/dr-table/detect.js (Phase 2 split).
   const src = allContentSrc;
+  const bodies = ['_makeCellObj(', 'function applyExtractedPatches(', 'function restoreTextPieces(']
+    .map((signature) => sourceBodyOf(src, signature));
 
-  // Extract _makeCellObj body (from _makeCellObj to the closing brace of its returned object)
-  const makeCellObjIdx = src.indexOf('_makeCellObj(');
-  const bodyAfter = makeCellObjIdx >= 0 ? src.slice(makeCellObjIdx, makeCellObjIdx + 1000) : '';
+  eq('GR3b: the grid write path source is found',
+    bodies.every((body) => body.length > 0), true);
 
-  // Within that body, there must be no 'textContent =' assignment
-  // (the tn.nodeValue = s line is the ONLY allowed write in grid setText)
-  eq('GR3b: _makeCellObj setText does not contain textContent= assignment',
-    /textContent\s*=/.test(bodyAfter), false);
+  // No 'textContent =' assignment anywhere on the grid write path.
+  eq('GR3b: the grid write path contains no textContent= assignment',
+    bodies.some((body) => /textContent\s*=(?!=)/.test(body)), false);
 
-  // Must contain the nodeValue write pattern
-  eq('GR3b: _makeCellObj setText uses nodeValue = s (the required write model)',
-    /tn\.nodeValue\s*=/.test(bodyAfter), true);
+  // The writer and the restore write through nodeValue.
+  eq('GR3b: the patch writer and the piece restore write through nodeValue',
+    /\.nodeValue\s*=(?!=)/.test(bodies[1]) && /\.nodeValue\s*=(?!=)/.test(bodies[2]), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -8825,7 +9145,7 @@ function makeDatabaseQueryGrid(opts) {
   // Round all cells
   rows.forEach(function(row) {
     row.getCells().forEach(function(c) {
-      c.setText('ROUNDED');
+      c.applyPatches([{ index: 0, numStr: c.getText(), newNum: 'ROUNDED' }]);
     });
   });
 
@@ -8833,7 +9153,7 @@ function makeDatabaseQueryGrid(opts) {
   eq('GR4 (setup): cell 0 is rounded',
     grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
   eq('GR4 (setup): cell 0 registry original is stored original value',
-    DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), '8584629');
+    DR_STORE.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '8584629');
 
   // Simulate a recycled row: cell has NO .dr-ext-rounded (framework removed+readded it)
   // We model this by creating a fresh cell that was never rounded by us.
@@ -8972,8 +9292,8 @@ function makeDatabaseQueryGrid(opts) {
     findCellTextNode(cell), null);
 })();
 
-// GR6d: setText is a no-op when the cell has no text node
-(function gr6d_setText_noopWhenNoTextNode() {
+// GR6d: applyPatches is a no-op when the cell has no text node
+(function gr6d_applyPatches_noopWhenNoTextNode() {
   // Build a cell with no text node
   const emptyCell = makeElementNode('empty-cell', []);
   emptyCell.querySelector = function() { return null; };
@@ -8995,38 +9315,39 @@ function makeDatabaseQueryGrid(opts) {
 
   let threw = false;
   try {
-    cellObj.setText('should-be-noop');
+    cellObj.applyPatches([{ index: 0, numStr: '123', newNum: 'should-be-noop' }]);
   } catch (e) {
     threw = true;
   }
 
-  eq('GR6d: setText on cell with no text node does not throw',
+  eq('GR6d: applyPatches on cell with no text node does not throw',
     threw, false);
 
-  eq('GR6d: setText on cell with no text node leaves classList unchanged',
+  eq('GR6d: applyPatches on cell with no text node leaves classList unchanged',
     emptyCell.classList.contains('dr-ext-rounded'), false);
 })();
 
-// GR6e: the registry original is stored ONCE and NOT overwritten on a second setText call
+// GR6e: the registry original is stored ONCE; a second write against the
+// patched piece lands nothing and leaves the stored original in place.
+// A re-round starts from restored text: every apply resets the table first.
 (function gr6e_drOriginal_storedOnce() {
   const grid = makeGridWrapper([['12345']]);
   const adapter = makeAdapter(grid.wrapperEl, { originalsPort: registryOriginalsPort(grid.wrapperEl) });
   const cellObj = adapter.getRows()[0].getCells()[0];
 
-  // First setText: original should be stored
-  cellObj.setText('12000');
-  const storedOriginal = DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]);
-  eq('GR6e: registry original stored on first setText',
-    storedOriginal, '12345');
+  // First write: original should be stored
+  cellObj.applyPatches([{ index: 0, numStr: '12345', newNum: '12000' }]);
+  eq('GR6e: registry original stored on first write',
+    DR_STORE.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '12345');
 
-  // Second setText (e.g. rounding again): the registry original must NOT change
-  cellObj.setText('10000');
-  eq('GR6e: registry original NOT overwritten on second setText',
-    DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), '12345');
-
-  // But the nodeValue IS updated
-  eq('GR6e: nodeValue updated to second setText value',
-    grid.cellEls[0].childNodes[0].nodeValue, '10000');
+  // Second write, against the piece's patched text: the piece no longer
+  // shows its stored original, so nothing lands.
+  eq('GR6e: a second write into the patched piece lands nothing',
+    cellObj.applyPatches([{ index: 0, numStr: '12000', newNum: '10000' }]), 0);
+  eq('GR6e: registry original NOT overwritten on second write',
+    DR_STORE.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '12345');
+  eq('GR6e: nodeValue keeps the first write',
+    grid.cellEls[0].childNodes[0].nodeValue, '12000');
 })();
 
 // GR6f: isDataTable returns true for a grid with numeric cells
@@ -9072,71 +9393,59 @@ function makeDatabaseQueryGrid(opts) {
     result === secondText, true);
 })();
 
-// GR6i: GridAdapter.setText sequence — getText after setText returns the rounded value
-// (confirms the adapter's read/write round-trip works symmetrically)
-(function gr6i_setText_getTextRoundTrip() {
+// GR6i: GridAdapter write sequence — getText after applyPatches returns the
+// stored original, and the text node holds the rounded value
+(function gr6i_applyPatches_getTextRoundTrip() {
   const grid = makeGridWrapper([['9876543']]);
   const adapter = makeAdapter(grid.wrapperEl);
   const cellObj = adapter.getRows()[0].getCells()[0];
 
-  eq('GR6i (setup): getText before setText returns original',
+  eq('GR6i (setup): getText before applyPatches returns original',
     cellObj.getText(), '9876543');
 
-  cellObj.setText('9900000');
+  cellObj.applyPatches([{ index: 0, numStr: '9876543', newNum: '9900000' }]);
 
-  // The nodeValue was patched; getText should now return the rounded value
-  // (implementation reads drOriginal if set, so getText returns the original — check)
-  // Actually, getText returns drOriginal if dataset.drOriginal is set.
-  // After setText, drOriginal = '9876543' and nodeValue = '9900000'.
-  // getText() returns dataset.drOriginal ('9876543') — this is the spec design:
-  // getText after setText returns the ORIGINAL so re-rounding uses the right base.
-  eq('GR6i: getText after setText returns stored original (for re-round safety)',
+  // getText after the write returns the ORIGINAL so re-rounding uses the right base.
+  eq('GR6i: getText after applyPatches returns stored original (for re-round safety)',
     cellObj.getText(), '9876543');
 
   // The nodeValue on the text node is the rounded value
-  eq('GR6i: text node nodeValue after setText is the rounded value',
+  eq('GR6i: text node nodeValue after applyPatches is the rounded value',
     grid.cellEls[0].childNodes[0].nodeValue, '9900000');
 })();
 
-// GR6j: SPEC GAP GUARD — roundTable must call adapter's setText (or equivalent
-// nodeValue-only path) for grid cells. The spec (D3) says the write is:
-//   tn.nodeValue = s   (via GridAdapter.setText → findCellTextNode → nodeValue =)
-// NOT cell.innerHTML = … which destroys React fiber identity.
+// GR6j: SPEC GAP GUARD — the grid write path is nodeValue-only. The spec (D3)
+// says the write is a nodeValue patch (GridAdapter's applyPatches →
+// applyExtractedPatches → nodeValue =), NOT cell.innerHTML = … which destroys
+// React fiber identity.
 //
-// Source-level assertion: content.js must NOT contain a bare `cell.innerHTML =`
-// assignment *outside* the native-table reset/extracted path. We check that the
-// replaceTextPreservingHTML fallback branch (line ~2195) and the extracted-patch
-// branch are the only innerHTML writes; a grid-routed pure-cell path must not
-// write innerHTML.
+// Source-level assertion: the grid cell object, the patch writer, and the
+// piece restore hold no innerHTML= assignment. The native path's innerHTML
+// writes (replaceTextPreservingHTML's fallback branch, the native branch of
+// restoreTable) sit outside these bodies.
 //
 // This test encodes the hard rule from the sprint brief:
 //   "The grid write must be nodeValue-only."
-// It passes today because replaceTextPreservingHTML's single-text-node path is
-// nodeValue-safe. It will flag a regression if someone adds an innerHTML= write
-// in the adapter's setText or in a new grid-specific roundTable branch.
-(function gr6j_gridSetText_sourceGuard_noInnerHTMLInAdapterSetText() {
-  // GridAdapter now lives in lib/dr-table/detect.js (Phase 2 split).
+(function gr6j_gridWrite_sourceGuard_noInnerHTML() {
   const src = allContentSrc;
+  const bodies = ['_makeCellObj(', 'function applyExtractedPatches(', 'function restoreTextPieces(']
+    .map((signature) => sourceBodyOf(src, signature));
 
-  // Extract _makeCellObj body (the GridAdapter's cell factory, ~1000 chars)
-  const idx = src.indexOf('_makeCellObj(');
-  const body = idx >= 0 ? src.slice(idx, idx + 1200) : '';
+  eq('GR6j: the grid write path has no innerHTML= assignment',
+    bodies.every((body) => body.length > 0 && !/innerHTML\s*=(?!=)/.test(body)), true);
 
-  // The grid adapter's setText (inside _makeCellObj) must NOT assign innerHTML
-  eq('GR6j: GridAdapter _makeCellObj setText has no innerHTML= assignment',
-    /innerHTML\s*=/.test(body), false);
-
-  // It MUST have the nodeValue assignment (the only permitted write)
-  eq('GR6j: GridAdapter _makeCellObj setText uses tn.nodeValue = s',
-    /tn\.nodeValue\s*=/.test(body), true);
+  // The grid cell object writes through the patch writer, and the patch
+  // writer writes through nodeValue (the only permitted write).
+  eq('GR6j: applyPatches writes through the patch writer, which assigns nodeValue',
+    /applyExtractedPatches\(/.test(bodies[0]) && /\.nodeValue\s*=(?!=)/.test(bodies[1]), true);
 })();
 
 // =============================================================================
 // E2E grid rounding tests — drive roundTable/resetTable on real div-grid stubs.
 // Spec: docs/sprint-plans/grid-support-v2.md §2 D3 + §4 "grid-rounding".
 // Regression guard for commit 3404e86: roundTable must write via nodeValue
-// (GridAdapter.setText → drOriginal), NOT via replaceTextPreservingHTML /
-// innerHTML (which crashes React's reconciler).
+// (GridAdapter's applyPatches → the registry record), NOT via
+// replaceTextPreservingHTML / innerHTML (which crashes React's reconciler).
 // =============================================================================
 
 /**
@@ -9225,7 +9534,7 @@ function makeE2EGridWrapper(rowData) {
 
   // The registry original must be recorded for the cell (nodeValue path).
   eq('E2E-GR1: cell[0] registry original is set to original text',
-    DR_STORE.getTableOriginal(grid.wrapperEl, cell0), originalValue);
+    DR_STORE.getTableOriginalText(grid.wrapperEl, cell0), originalValue);
 
   // originalHtml must NOT be set (that is the native-table / extracted path,
   // which records a { html, value, ... } record instead of a plain string).
@@ -9241,24 +9550,26 @@ function makeE2EGridWrapper(rowData) {
 // patch; such a write skips, and a skipped write must not flip the form.
 // ---------------------------------------------------------------------------
 
-(function gridSetTextReportsLanded() {
+(function gridApplyPatchesReturnsLanded() {
   const makePort = () => {
     const m = new Map();
     return { has: (k) => m.has(k), get: (k) => m.get(k), set: (k, v) => m.set(k, v) };
   };
-  const adapter = new GridAdapter({}, { originalsPort: makePort() });
+  const port = makePort();
+  const adapter = new GridAdapter({}, { originalsPort: port });
 
   const withNode = adapter._makeCellObj(makeGridCellWithTextNode('8584629'));
-  eq('grid-honesty: setText reports true when the write lands',
-    withNode.setText('8,500,000'), true);
+  eq('grid-honesty: applyPatches returns a landed count when the write lands',
+    withNode.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }]), 1);
 
   const bareEl = makeElementNode('', []);
   bareEl.textContent = '8584629';
   const bare = adapter._makeCellObj(bareEl);
-  eq('grid-honesty: setText reports false when the cell has no text piece',
-    bare.setText('8,500,000'), false);
-  eq('grid-honesty: a skipped write adds no marker',
-    bareEl.classList.contains('dr-ext-rounded'), false);
+  eq('grid-honesty: applyPatches returns zero when the cell has no text piece',
+    bare.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }]), 0);
+  eq('grid-honesty: a skipped write adds no marker and no record',
+    { marked: bareEl.classList.contains('dr-ext-rounded'), recorded: port.has(bareEl) },
+    { marked: false, recorded: false });
 })();
 
 (function e2e_gridFormCountsConfirmedWrites() {
@@ -9401,7 +9712,7 @@ function makeE2EGridWrapper(rowData) {
 
   // Registry original set on numeric, not on mixed.
   eq('E2E-GR4: registry original set on pure-numeric cell',
-    DR_STORE.getTableOriginal(grid.wrapperEl, numericCell), numericTextBefore);
+    DR_STORE.getTableOriginalText(grid.wrapperEl, numericCell), numericTextBefore);
 
   eq('E2E-GR4: registry original NOT set on mixed-text cell',
     DR_STORE.getTableOriginal(grid.wrapperEl, mixedCell), undefined);
@@ -9597,7 +9908,7 @@ function flushTimers(pendingTimers) {
 
     const tn0 = cell0.childNodes[0];
     const roundedValue = tn0.nodeValue;   // e.g. '8600000'
-    const originalValue = DR_STORE.getTableOriginal(grid.wrapperEl, cell0);  // e.g. '8584629'
+    const originalValue = DR_STORE.getTableOriginalText(grid.wrapperEl, cell0);  // e.g. '8584629'
 
     eq('GV2 (pre): roundedValue differs from original',
       roundedValue !== originalValue, true);
@@ -9977,7 +10288,7 @@ function flushTimers(pendingTimers) {
 //
 // Regression guard for the BLOCK: before the fix, reapplyGridRounding recomputed
 // max_mag over an unfiltered cell set and wrote excluded cells.  After the fix
-// (computeGridRoundedValues shared path), excluded cells get targetValue:null and
+// (computeGridRoundedValues shared path), excluded cells get no patches and
 // are never written.
 //
 // Grid layout (2 rows × 2 cols):
@@ -10033,7 +10344,7 @@ function flushTimers(pendingTimers) {
     // Capture the rounded value so we can verify re-apply restores it.
     const tn_r1c1 = cell_r1c1.childNodes[0];
     const roundedValue_r1c1 = tn_r1c1.nodeValue;
-    const originalValue_r1c1 = DR_STORE.getTableOriginal(grid.wrapperEl, cell_r1c1);  // '87654321'
+    const originalValue_r1c1 = DR_STORE.getTableOriginalText(grid.wrapperEl, cell_r1c1);  // '87654321'
 
     eq('GV8 (pre): row-1 col-1 rounded value differs from original',
       roundedValue_r1c1 !== originalValue_r1c1, true);
@@ -10139,7 +10450,7 @@ function flushTimers(pendingTimers) {
     // Capture the rounded value for re-apply verification.
     const tn_r1c0 = cell_r1c0.childNodes[0];
     const roundedValue_r1c0 = tn_r1c0.nodeValue;
-    const originalValue_r1c0 = DR_STORE.getTableOriginal(grid.wrapperEl, cell_r1c0);
+    const originalValue_r1c0 = DR_STORE.getTableOriginalText(grid.wrapperEl, cell_r1c0);
 
     eq('GV9 (pre): row-1 col-0 rounded value differs from original',
       roundedValue_r1c0 !== originalValue_r1c0, true);
@@ -12132,13 +12443,13 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
   eq('row-universe: every cell of every row is classified',
     results.length, 8);
   eq('row-universe: the header row\'s numeric cell holds under the first-row default',
-    results[1] && results[1].targetValue, null);
+    results[1] && results[1].patches.length, 0);
   eq('row-universe: the first data row rounds under defaults',
-    !!(results[3] && results[3].targetValue !== null), true);
+    !!(results[3] && results[3].patches.length > 0), true);
   eq('row-universe: the first column of a data row still holds',
-    results[2] && results[2].targetValue, null);
+    results[2] && results[2].patches.length, 0);
   eq('row-universe: the summary row below the group rounds with the data',
-    !!(results[7] && results[7].targetValue !== null), true);
+    !!(results[7] && results[7].patches.length > 0), true);
 })();
 
 // Behavior: with the rowgroup first (no header row outside), the first data
@@ -12151,11 +12462,11 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
   );
   const { results } = computeGridRoundedValues(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
   eq('row-universe: rowgroup-first grid holds its first data row',
-    results[1] && results[1].targetValue, null);
+    results[1] && results[1].patches.length, 0);
   eq('row-universe: rowgroup-first grid rounds its second data row',
-    !!(results[3] && results[3].targetValue !== null), true);
+    !!(results[3] && results[3].patches.length > 0), true);
   eq('row-universe: rowgroup-first grid rounds its summary row',
-    !!(results[5] && results[5].targetValue !== null), true);
+    !!(results[5] && results[5].patches.length > 0), true);
 })();
 
 // Outside rows: a row outside the row group rounds, but its values stay out
@@ -12172,7 +12483,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
   eq('outside-row: the max magnitude comes from the data rows alone',
     maxMag, 6);
   eq('outside-row: the outside row still rounds against that dataset',
-    !!(results[7] && results[7].targetValue !== null), true);
+    !!(results[7] && results[7].patches.length > 0), true);
 })();
 
 // Outside rows: the lens preview pool draws from the dataset only.
@@ -12229,7 +12540,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
   eq('outside-row: a dataset of outside rows alone is empty',
     maxMag, null);
   eq('outside-row: with an empty dataset the outside value takes the other-band offset',
-    results[5] && results[5].targetValue, '24,000,000');
+    results[5] && results[5].patches[0] && results[5].patches[0].newNum, '24,000,000');
 })();
 
 // Outside rows, native analog: a footer-section row rounds but stays out of
@@ -12859,7 +13170,7 @@ function fireMouseClick(buttonEl, fn) {
 (function doubleInvocation_contextmenuAndMenuClicked_noDuplicateWidget() {
   // A minimal div-based "grid" using the same ARIA-free, querySelectorAll-less
   // fallback shape GridAdapter already supports (repetitive children): no
-  // real Text nodes, so GridAdapter's setText() finds nothing to patch and
+  // real Text nodes, so GridAdapter's applyPatches() finds nothing to patch and
   // safely no-ops. This fixture only needs to prove marker/widget bookkeeping,
   // not actual cell rewriting (covered elsewhere).
   function makeCell(text) { return { nodeType: 1, textContent: text, children: [] }; }
@@ -13279,7 +13590,7 @@ function withRightClickSandbox(run) {
 // isPhantomA11yTable) must never write to the page — no classList.add,
 // createElement, appendChild, or createToggleForTable inside their bodies.
 // Write-layer helpers (replaceTextPreservingHTML, applyExtractedPatches,
-// GridAdapter's setText) legitimately create/mutate nodes and are correctly
+// restoreTextPieces, GridAdapter's applyPatches) legitimately create/mutate nodes and are correctly
 // excluded from this scan — they are reachable only from explicit write calls
 // (roundTable / reapplyGridRounding), never from detection.
 // ---------------------------------------------------------------------------
@@ -15576,6 +15887,7 @@ function withRightClickSandbox(run) {
     'filterLinkMatches',
     'replaceTextPreservingHTML',
     'applyExtractedPatches',
+    'restoreTextPieces',
     'looksLikeGrid',
     'findTargetTable',
     'findTables',
@@ -19861,7 +20173,7 @@ function makeIssue251SidebarHarness() {
     const { grid, pendingTimers } = ctx;
     const cell0 = grid.cellEls[0];
     const roundedValue = cell0.childNodes[0].nodeValue;
-    const originalValue = DR_STORE.getTableOriginal(grid.wrapperEl, cell0);
+    const originalValue = DR_STORE.getTableOriginalText(grid.wrapperEl, cell0);
 
     // Strip every page attribute a pre-registry build would have relied on —
     // the re-apply must work from DR_STORE alone.
@@ -22280,7 +22592,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     nodeType: 1,
     childNodes: [{ nodeType: 3, nodeValue: text }],
     classList: { add() {}, contains() { return false; } },
-    // Like the DOM: textContent derives from the child nodes, so a setText
+    // Like the DOM: textContent derives from the child nodes, so a
     // patch through nodeValue shows up in the whole-cell read.
     get textContent() { return this.childNodes[0].nodeValue; },
   });
@@ -22296,7 +22608,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   // Grid cell, rounded: the engine's read answers with the original through
   // the port; the displayed read answers with what the screen shows now.
   const rounded = adapter._makeCellObj(makeGridCellEl('98,765'));
-  rounded.setText('99,000');
+  rounded.applyPatches([{ index: 0, numStr: '98,765', newNum: '99,000' }]);
   eq('capture-reads: a rounded grid cell keeps engine text = original, displayed text = live',
     typeof rounded.getDisplayedText === 'function'
       ? { engine: rounded.getText(), displayed: rounded.getDisplayedText() } : null,

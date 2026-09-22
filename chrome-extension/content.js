@@ -666,12 +666,13 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
 // the one place a grid's per-cell originals leave the page (they used to be
 // dataset.drOriginal) and enter the application model. Every makeAdapter()
 // call below that touches a grid's cell text passes this so read and write
-// go through the same store the native path already uses directly.
+// go through the same store the native path already uses directly. It
+// carries the grid cell's whole record (see applyPatches in detect.js).
 function registryOriginalsPort(table) {
   return {
     has(cellEl) { return DR_STORE.hasTableOriginal(table, cellEl); },
     get(cellEl) { return DR_STORE.getTableOriginal(table, cellEl); },
-    set(cellEl, text) { DR_STORE.setTableOriginal(table, cellEl, text); },
+    set(cellEl, record) { DR_STORE.setTableOriginal(table, cellEl, record); },
   };
 }
 
@@ -679,9 +680,9 @@ function registryOriginalsPort(table) {
 // DR_STORE's registry instead of page attributes (dataset.originalValue/
 // originalHtml/drOriginal used to carry this, with two separately-written
 // restore branches). Dispatches once on table kind — native tables restore
-// via innerHTML, grids via per-cell text-node patching — so the caller sees
-// exactly one restore path regardless of which write model applies
-// underneath.
+// via innerHTML, grids by putting each stored piece's text back into the
+// piece at its index — so the caller sees exactly one restore path
+// regardless of which write model applies underneath.
 //
 // keepEntry: false (resetTable's full teardown) clears the dr-ext-rounded
 // marker and the stored original per cell — a genuinely fresh state. true
@@ -708,6 +709,9 @@ function registryOriginalsPort(table) {
 // of those for a cell that was NOT actually restored would claim a recovery
 // that did not happen and destroy data that was still recoverable by eye
 // even though the registry could no longer recover it programmatically.
+// A grid cell that no longer holds a piece at every index its record stores
+// counts the same way and stays the same way: the page redrew it with fewer
+// pieces, so its originals have nowhere to go.
 // Returns the count of cells left unrestored, so a caller can tell a
 // genuine restore from a no-op one.
 function restoreTable(table, keepEntry) {
@@ -722,8 +726,10 @@ function restoreTable(table, keepEntry) {
       continue;
     }
     if (isGrid) {
-      const tn = findCellTextNode(cell);
-      if (tn !== null) tn.nodeValue = original;
+      if (!restoreTextPieces(cell, original.pieces)) {
+        unrestorableCount++;
+        continue;
+      }
     } else {
       cell.innerHTML = original.html;
     }
@@ -848,12 +854,12 @@ function collectNumericCells(table, options) {
       const cellObj = cells[c];
       if (cellObj.tagName !== 'TD') continue;
       // Issue #2: when the table is already simplified, read the stored original
-      // rather than the rounded text now showing in the cell. Native-table rounded
-      // cells hold a { html, value, supRanges, linkFilteredIdx } record in the
-      // registry; grid cells already return their pre-round text from getText()
-      // (the registry-backed originals port — see registryOriginalsPort), so
-      // only a native-shaped record (an object, not a string) counts as
-      // "stored original" here.
+      // rather than the rounded text now showing in the cell. A rounded native
+      // cell holds a { html, value, supRanges, linkFilteredIdx } record in the
+      // registry, and a rounded grid cell a { value, pieces, supRanges,
+      // linkFilteredIdx } record; value is the pre-round text either way. A
+      // record whose supRanges or linkFilteredIdx is null falls back to the
+      // live reads below.
       const cellEl = cellObj.el;
       const storedRecord = cellEl ? DR_STORE.getTableOriginal(table, cellEl) : undefined;
       const usingStoredOriginal = !!storedRecord && typeof storedRecord === 'object';
@@ -1051,11 +1057,12 @@ function buildCaptureStateResponse() {
  * so that values produced here are identical to those the initial pass would
  * produce given the same visible DOM and opts.
  *
- * Returns a flat array of { cellObj, targetValue } for every TD cell in the
- * grid's current visible rows.  targetValue is:
- *   - null  → leave the cell unchanged (excluded, out-of-range, skip, or no
- *             change needed)
- *   - a string → the rounded/formatted value the cell should display
+ * Returns a flat array of { cellObj, patches } for every TD cell in the
+ * grid's current visible rows. patches is the list the cell's applyPatches
+ * writes (see lib/dr-table/detect.js); an empty list means leave the cell
+ * unchanged (excluded, out-of-range, skip, or no change needed). A pure,
+ * date, or time cell takes one patch: its trimmed text, replaced whole by
+ * the rounded or formatted value.
  *
  * Both `roundTable` (initial grid write pass) and `reapplyGridRounding`
  * (scroll/sort re-apply) call this single function so they cannot diverge.
@@ -1074,7 +1081,7 @@ function buildCaptureStateResponse() {
  *   scroll-triggered re-apply can never shift the basis the initial pass
  *   established (the sprint's deliberate stability trade for virtualized
  *   grids — see roundTable's virtualized branch).
- * @returns {{results: Array<{cellObj: object, targetValue: string|null}>, maxMag: number}}
+ * @returns {{results: Array<{cellObj: object, patches: object[]}>, maxMag: number}}
  */
 function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
   const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
@@ -1170,36 +1177,43 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
     max_mag = findMaxMagnitude([allNums]);
   }
 
-  // --- Pass 3: compute target value for each cell ---
+  // --- Pass 3: compute each cell's patches ---
   const results = [];
   for (const { cellObj, text, trimmed, info } of cellEntries) {
-    if (info.mode === 'skip') {
-      results.push({ cellObj, targetValue: null });
-      continue;
-    }
-
-    let targetValue = null;
+    let newText = null;
 
     if (info.mode === 'date') {
       const prefilled = (info.month !== undefined)
         ? { month: info.month, day: info.day, year: info.year }
         : undefined;
       const rounded = roundDateText(text, opts.dateGranularity, prefilled);
-      if (rounded !== null && rounded !== text) targetValue = rounded;
+      if (rounded !== null && rounded !== trimmed) newText = rounded;
     } else if (info.mode === 'time') {
       const rounded = roundTimeText(text, opts.timeGranularity);
-      if (rounded !== null && rounded !== text) targetValue = rounded;
+      if (rounded !== null && rounded !== trimmed) newText = rounded;
     } else if (info.mode === 'pure') {
       const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
       const formatted = restoreFormatting(roundedValue, text, floorDecimals);
-      if (formatted !== trimmed) targetValue = formatted;
+      if (formatted !== trimmed) newText = formatted;
     }
-    // mode:'extracted' → targetValue stays null (skip on grid)
+    // mode:'extracted' and mode:'skip' → newText stays null (skip on grid)
 
-    results.push({ cellObj, targetValue });
+    results.push({ cellObj, patches: newText === null ? [] : wholeTextPatches(cellObj, text, trimmed, newText) });
   }
 
   return { results, maxMag: max_mag };
+}
+
+// The one patch a whole-value grid cell takes: its trimmed text, replaced
+// by newText. A patch position counts from the start of the cell's flat
+// text, so the position is where the read text begins (getTextOffset, a
+// temporary while the read is one piece) plus the trimmed text's place
+// inside the read. No patch when the read piece is gone.
+function wholeTextPatches(cellObj, text, trimmed, newText) {
+  const offset = cellObj.getTextOffset();
+  if (offset === null) return [];
+  const lead = text.length - text.trimStart().length;
+  return [{ index: offset + lead, numStr: trimmed, newNum: newText }];
 }
 
 /**
@@ -1256,24 +1270,22 @@ function reapplyGridRounding(wrapperEl) {
 
   // Delegate to the single shared classify+compute function, with the
   // frozen magnitude basis so scrolling cannot shift the rounding basis.
-  // targetValue is null for excluded/out-of-range/skip cells (leave untouched).
+  // patches is empty for excluded/out-of-range/skip cells (leave untouched).
   const frozenMaxMag = DR_STORE.getTableMaxMagnitude(wrapperEl);
   const { results: cellTargets } = computeGridRoundedValues(wrapperEl, opts, frozenMaxMag);
 
-  for (const { cellObj, targetValue } of cellTargets) {
-    // null means "leave unchanged" — excluded, out-of-range, or no change needed.
-    if (targetValue === null) continue;
+  for (const { cellObj, patches } of cellTargets) {
+    // Empty means "leave unchanged" — excluded, out-of-range, or no change needed.
+    if (patches.length === 0) continue;
 
-    const tn = findCellTextNode(cellObj.el);
-    if (!tn) continue;
-    // Only write if the live text node differs from the computed target.
-    if (tn.nodeValue === targetValue) continue;
-
-    // setText stashes the pre-write value as this cell's original (through
-    // the registry-backed originals port) the first time it sees this cell,
+    // A rounded cell's patches come from its stored original, so they land
+    // only where the original still stands: a piece already patched is not
+    // written again, a piece the framework redrew to its original is
+    // patched again, and a piece the page rewrote keeps the page's text.
+    // applyPatches stores the cell's record on its first landed write,
     // exactly like the initial roundTable pass — one write model, whichever
     // pass calls it.
-    cellObj.setText(targetValue);
+    cellObj.applyPatches(patches);
   }
 
   // Reconnect the observer after the write pass.
@@ -1318,13 +1330,13 @@ function roundTable(table, options) {
     DR_STORE.setTableMaxMagnitude(table, maxMag);
     let appliedAny = false;
     let skippedWrites = 0;
-    for (const { cellObj, targetValue } of cellTargets) {
-      // null means "leave unchanged" — excluded, out-of-range, or no change needed.
-      if (targetValue === null) continue;
-      // setText reports whether the write landed; a cell with no text piece
-      // skips, and a skipped write never counts toward the form — the same
-      // rule as the extracted-cell path (#301, #315).
-      if (cellObj.setText(targetValue) === true) {
+    for (const { cellObj, patches } of cellTargets) {
+      // Empty means "leave unchanged" — excluded, out-of-range, or no change needed.
+      if (patches.length === 0) continue;
+      // applyPatches returns how many patches landed; a cell whose patches
+      // all skipped never counts toward the form — the same rule as the
+      // extracted-cell path (#301, #315).
+      if (cellObj.applyPatches(patches) > 0) {
         appliedAny = true;
       } else {
         skippedWrites++;
@@ -1518,7 +1530,7 @@ function roundTable(table, options) {
           supRanges: getSuperscriptRanges(cell),
           linkFilteredIdx: info.matches.map((m) => m.index),
         };
-        const landed = applyExtractedPatches(cell, patches);
+        const { landed } = applyExtractedPatches(cell, patches);
         if (landed < patches.length) {
           DR_LOG.warn('Dynamic Rounding: ' + (patches.length - landed) + ' of ' +
             patches.length + ' extracted-cell patches did not land.');

@@ -23,6 +23,7 @@ const DR_TABLE = {
   filterLinkMatches,
   replaceTextPreservingHTML,
   applyExtractedPatches,
+  restoreTextPieces,
   looksLikeGrid,
   findTargetTable,
   findTables,
