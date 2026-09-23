@@ -537,6 +537,59 @@ function overlapsQuoteRange(maskedRanges, matchStart, matchEnd) {
   return false;
 }
 
+// --- The accounting minus sign: a bracket pair around a number ---
+// A financial statement writes a negative as "(1,234)". The brackets are the
+// minus sign, so the number's own text stays its digits and the brackets are
+// format marks like a currency sign: they stay where the page put them, and
+// only the digits round. FORMAT_MARK_ALTERNATION (core.js) is the one list of
+// what may stand between a bracket and the number — a currency sign, a
+// percent sign, whitespace — so "$(1,234)", "($1,234)" and "(12.3%)" all read
+// as negatives while "(see note 4)" does not.
+const BRACKET_OPEN_RE = new RegExp('\\(' + FORMAT_MARK_ALTERNATION + '*$');
+const BRACKET_CLOSE_RE = new RegExp('^' + FORMAT_MARK_ALTERNATION + '*\\)');
+// A digit right after the closing bracket, with at most one space or hyphen
+// between, marks a telephone number rather than an amount ("(416) 555-1234").
+// Such a bracket pair is not a minus sign.
+const DIGIT_AFTER_BRACKET_RE = /^[\s-]?\d/;
+// A whole text made of format marks alone, or empty.
+const FORMAT_MARKS_ONLY_RE = new RegExp('^' + FORMAT_MARK_ALTERNATION + '*$');
+
+/**
+ * The span of the bracket pair standing as the minus sign of the number at
+ * [index, index + numStr.length) in `text`, as {start, end} offsets covering
+ * the brackets themselves, or null when the number carries no such pair. The
+ * pair must hold nothing but that number and its own format marks. A number
+ * that already carries a written minus sign never takes one, so "(-1,234)" is
+ * read once rather than twice.
+ * @param {string} text
+ * @param {number} index
+ * @param {string} numStr
+ * @returns {{start: number, end: number}|null}
+ */
+function bracketSignSpan(text, index, numStr) {
+  if (typeof text !== 'string' || typeof numStr !== 'string') return null;
+  if (numStr.startsWith('-')) return null;
+  const open = text.slice(0, index).match(BRACKET_OPEN_RE);
+  if (!open) return null;
+  const after = text.slice(index + numStr.length);
+  const close = after.match(BRACKET_CLOSE_RE);
+  if (!close) return null;
+  if (DIGIT_AFTER_BRACKET_RE.test(after.slice(close[0].length))) return null;
+  return { start: index - open[0].length, end: index + numStr.length + close[0].length };
+}
+
+/**
+ * True when the number at [index, index + numStr.length) in `text` sits in a
+ * bracket pair standing as its minus sign.
+ * @param {string} text
+ * @param {number} index
+ * @param {string} numStr
+ * @returns {boolean}
+ */
+function isBracketedNegative(text, index, numStr) {
+  return bracketSignSpan(text, index, numStr) !== null;
+}
+
 function extractNumberInText(text) {
   if (typeof text !== 'string') return null;
   const match = text.match(NUMBER_IN_TEXT_REGEX);
@@ -544,7 +597,8 @@ function extractNumberInText(text) {
   const numStr = match[0];
   const num = toNumber(numStr);
   if (num === null || num === 0) return null;
-  return { numStr, num, index: match.index };
+  const signed = isBracketedNegative(text, match.index, numStr) ? -num : num;
+  return { numStr, num: signed, index: match.index };
 }
 
 function extractNumbersInText(text) {
@@ -555,10 +609,33 @@ function extractNumbersInText(text) {
   while ((m = re.exec(text)) !== null) {
     const num = toNumber(m[0]);
     if (num !== null && num !== 0) {
-      matches.push({ numStr: m[0], num, index: m.index });
+      const signed = isBracketedNegative(text, m.index, m[0]) ? -num : num;
+      matches.push({ numStr: m[0], num: signed, index: m.index });
     }
   }
   return matches;
+}
+
+/**
+ * Match a whole text that is one number wrapped in a bracket pair standing as
+ * its minus sign ("(1,234)", "$(1,234)", "(12.3%)"). Returns that number as a
+ * match in the same shape as extractNumbersInText's, its value negative and
+ * its numStr the digits alone, or null. The text must hold exactly one
+ * number, and nothing but format marks may stand outside the bracket pair, so
+ * "(see note 4)", "(1,234) (5,678)" and "USD (1,234)" are not matches.
+ * @param {string} text
+ * @returns {{numStr: string, num: number, index: number}|null}
+ */
+function matchBracketedNumber(text) {
+  if (typeof text !== 'string') return null;
+  const matches = extractNumbersInText(text);
+  if (matches.length !== 1) return null;
+  const match = matches[0];
+  const span = bracketSignSpan(text, match.index, match.numStr);
+  if (!span) return null;
+  if (!FORMAT_MARKS_ONLY_RE.test(text.slice(0, span.start))) return null;
+  if (!FORMAT_MARKS_ONLY_RE.test(text.slice(span.end))) return null;
+  return match;
 }
 
 // --- Era-marked calendar years (e.g. "2898 AD", "500 BC", "AD 79", "1200 CE") ---
@@ -642,6 +719,12 @@ function decimalCount(n) {
  * stays 0. Sprint trim-trailing-zeros replaced the earlier band rule that raised
  * the floor to the offset's own decimal count for |rounded| < 10.
  *
+ * The rounded number carries the sign the original text showed. A negative
+ * whose original text holds no minus sign wrote that sign as the brackets
+ * around it (see isBracketedNegative); those brackets sit outside the patched
+ * characters and stay on the page, so a minus written here would double the
+ * sign ("(-1,200)").
+ *
  * @param {number} rounded       - The rounded numeric value.
  * @param {string} originalNumStr - The original number string (for comma/decimal detection).
  * @param {number} [floorDecimals=0] - Ignored. Kept so existing call sites and the
@@ -649,7 +732,8 @@ function decimalCount(n) {
  */
 function formatExtractedNumber(rounded, originalNumStr, floorDecimals = 0) {
   const hasCommas = originalNumStr.includes(',');
-  return rounded.toLocaleString('en-US', {
+  const signed = originalNumStr.trim().startsWith('-') ? rounded : Math.abs(rounded);
+  return signed.toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 10,
     useGrouping: hasCommas
