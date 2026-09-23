@@ -56,6 +56,17 @@ A list belongs in exactly one place. Two copies drift apart and nothing reports 
 
 Applies to allowlists, error codes, supported-version tables, feature flags, and these conventions.
 
+### Collapse a path before opening a second one
+
+A change that looks like it needs a second code path — a new adapter, a new branch for a new surface, a new writer — first gets one check: can the existing path widen to cover both cases instead? Treat that refactor as the default answer, not a step weighed only after the second path already stands.
+
+- When the two cannot collapse into one, build the rule they share once, and ship it to both paths in the same change.
+- Never build a rule for one path first and leave a second path to catch up in a later change.
+- When a path's code is not yet ready to run the shared rule, hold the whole rule back from every path. Do not split the rule's rollout from its scope.
+- A pull request whose whole point is bringing one path in line with another is the outcome to avoid, not a normal, expected step of the work.
+
+This extends [Group like concepts into a single location](#group-like-concepts-into-a-single-location) from documented lists to code paths and rules, and to timing: a rule staggered across paths drifts apart the same way a duplicated list does.
+
 ### Versions
 
 Always take the newest release of an action, tool, or runtime. Read its breaking-change notes to confirm the jump, not to justify avoiding it. Report anything left behind, including a runtime whose newest line is ahead of the newest long-term-support line.
