@@ -136,17 +136,11 @@ function resolveNumTop(value, fallback) {
   return Math.floor(num);
 }
 
-// The currency codes that count as a currency sign, and the magnitude
-// suffixes that may follow a number. This is the one copy of each list:
-// the docs point here instead of restating them. A code counts only in
-// upper case and only as its own token, so "CADENCE" and "usd" do not.
-// A suffix counts in any case ("m", "M", "Bn", "TN").
-const CURRENCY_CODES = [
-  'USD', 'CAD', 'EUR', 'GBP', 'JPY', 'AUD', 'NZD', 'CHF',
-  'CNY', 'HKD', 'SGD', 'INR', 'MXN', 'BRL', 'KRW',
-];
+// The magnitude suffixes that may follow a number. This is the one copy of
+// that list: the docs point here instead of restating it. A suffix counts
+// in any case ("m", "M", "Bn", "TN"). The currency signs and codes come
+// from CURRENCIES in core.js, which every currency rule reads.
 const MAGNITUDE_SUFFIXES = ['bn', 'tn', 'k', 'm', 'b', 't'];
-const CURRENCY_SYMBOL_CLASS = '[$€£¥₹]';
 const CURRENCY_CODE_ALTERNATION = CURRENCY_CODES.join('|');
 const CURRENCY_CODE_TOKEN_RE = new RegExp('(?<![A-Za-z])(?:' + CURRENCY_CODE_ALTERNATION + ')(?![A-Za-z])');
 // Each suffix letter matches either case; longer suffixes come first so
@@ -162,9 +156,10 @@ const MAGNITUDE_SUFFIX_ALTERNATION = MAGNITUDE_SUFFIXES
 // after one optional space. matchUnitNumber adds the two rules a regular
 // expression states badly: a code on one side only, and a code or a suffix
 // present.
+const SIGN_GROUP = '(?:' + CURRENCY_SIGN_ALTERNATION + ')';
 const UNIT_NUMBER_RE = new RegExp(
-  '^(?<pre>' + CURRENCY_SYMBOL_CLASS + '?(?<codeBefore>' + CURRENCY_CODE_ALTERNATION + ')' +
-    CURRENCY_SYMBOL_CLASS + '? ?|' + CURRENCY_SYMBOL_CLASS + ')?' +
+  '^(?<pre>' + SIGN_GROUP + '?(?<codeBefore>' + CURRENCY_CODE_ALTERNATION + ')' +
+    SIGN_GROUP + '? ?|' + SIGN_GROUP + ')?' +
   '(?<num>-?\\d(?:[\\d,]*\\d)?(?:\\.\\d+)?)' +
   '(?: ?(?<suffix>' + MAGNITUDE_SUFFIX_ALTERNATION + '))?' +
   '(?: ?(?<codeAfter>' + CURRENCY_CODE_ALTERNATION + '))?$'
@@ -201,7 +196,7 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
   const t = text.trim();
   if (!options.simplifyMixedPercent && /%/.test(t)) return 'percent';
   if (!options.simplifyMixedCurrency &&
-    (new RegExp(CURRENCY_SYMBOL_CLASS).test(t) || CURRENCY_CODE_TOKEN_RE.test(t))) return 'currency';
+    (CURRENCY_SIGN_RE.test(t) || CURRENCY_CODE_TOKEN_RE.test(t))) return 'currency';
   return null;
 }
 
@@ -689,15 +684,22 @@ function restoreFormatting(roundedValue, originalString, floorDecimals = 0) {
     result = '+' + result;
   }
 
-  // Handle currency
-  if (originalTrimmed.includes('$')) {
-    result = '$' + result;
-  } else if (originalTrimmed.includes('€')) {
-    result = '€' + result;
-  } else if (originalTrimmed.includes('£')) {
-    result = '£' + result;
-  } else if (originalTrimmed.includes('¥')) {
-    result = '¥' + result;
+  // Put the currency sign back on the side it stood, with the space it had.
+  // The sign comes from CURRENCY_SIGN_RE (core.js), so every currency the one
+  // list names survives rounding, and a letter that only looks like a sign
+  // ("Revenue") is left alone.
+  const signMatch = CURRENCY_SIGN_RE.exec(originalTrimmed);
+  if (signMatch) {
+    const sign = signMatch[0];
+    const at = signMatch.index;
+    const firstDigit = originalTrimmed.search(/\d/);
+    if (firstDigit === -1 || at < firstDigit) {
+      const gap = /^\s/.test(originalTrimmed.slice(at + sign.length)) ? ' ' : '';
+      result = sign + gap + result;
+    } else {
+      const gap = /\s$/.test(originalTrimmed.slice(0, at)) ? ' ' : '';
+      result = result + gap + sign;
+    }
   }
 
   // Handle parens

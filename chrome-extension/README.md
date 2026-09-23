@@ -27,7 +27,8 @@ The extension uses the same offset model as the rest of the project. As of the `
 A unit number is a cell whose whole text is one number with a magnitude suffix after it, a listed currency code before or after it, or both: "4.91tn", "41.31m", "5.2 Bn", "CAD45.67", "CAD$45.67", "$CAD45.67", "45.67 CAD", "CAD45.67m". Only the digits round, so "CAD45.67m" becomes "CAD45m" and "4.91tn" becomes "5tn". A unit number rounds on HTML tables and grids alike, whatever the sidebar's "words" setting holds.
 
 - The suffixes are k, m, b, t, bn, and tn, in any case, directly after the number or after one space.
-- A currency code counts only in upper case and only as its own word, so "CADENCE" and "usd" do not. The suffixes and the codes are listed once, in `lib/dr-number/parsing.js`.
+- A currency code counts only in upper case and only as its own word, so "CADENCE" and "usd" do not. A currency sign written in letters takes the same rule on whichever end carries the letter, so the rand's "R" counts in "R45" and not in "Revenue". A sign written as a picture counts wherever it sits.
+- Every currency the extension reads — its signs and its code together — is listed once, in `lib/dr-number/core.js`. Reading a cell as a number, the currency exclusion, the sign-only piece test, the data test's numeric probe, and putting the sign back after rounding all read that one list. The magnitude suffixes are listed once, in `lib/dr-number/parsing.js`.
 - With the currency setting off, a cell holding a listed code stays unchanged, the same as a cell holding "$".
 - A unit number counts as its shown digits in the max magnitude: "4.91tn" counts as 4.91.
 - Letters that are neither a suffix nor a listed code make the cell something else: "DT1234" and "cust15" are identifiers and never round as unit numbers.
