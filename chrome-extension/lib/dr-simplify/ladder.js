@@ -98,10 +98,6 @@ function extractSimplifyMatches(text, superscriptRanges) {
  * @param {boolean} [input.isWholeLink] - isCellWholeLink(cell) result
  * @param {boolean} [input.hasSuperscript] - !!cell.querySelector('sup')
  * @param {{start:number,end:number}[]} [input.superscriptRanges] - getSuperscriptRanges(cell) result
- * @param {boolean} [input.allowExtracted=true] - false on the grid path, where
- *   extracted cells stay unchanged until an allow list separates
- *   quantities from identifiers (issue #120). A unit number still returns
- *   mode:'extracted'.
  * @param {object} options - resolved rounding options (simplifyFirstRow,
  *   simplifyFirstColumn, simplifyMixedPercent, simplifyMixedCurrency,
  *   simplifyDates, simplifyTimes, simplifyMixedCells)
@@ -116,7 +112,6 @@ function classifyCell(input, options) {
     isWholeLink = false,
     hasSuperscript = false,
     superscriptRanges = [],
-    allowExtracted = true,
   } = input;
   const trimmed = typeof text === 'string' ? text.trim() : '';
 
@@ -170,7 +165,7 @@ function classifyCell(input, options) {
       // exponent digits (e.g. "10<sup>12</sup>" -> "1012"). Route through
       // extraction so superscript masking can protect the exponent, instead
       // of rounding the flattened (wrong) number.
-      if (!options.simplifyMixedCells || !allowExtracted) {
+      if (!options.simplifyMixedCells) {
         return { mode: 'skip', reason: 'footnote' };
       }
       const matches = extractSimplifyMatches(text, superscriptRanges);
@@ -183,16 +178,16 @@ function classifyCell(input, options) {
 
   // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
   // currency code, so it rounds like a pure cell whatever the words setting
-  // and the grid flag hold. Its digits alone change, which is the extracted
-  // write, so it takes mode:'extracted' with its one match. A cell with a
-  // <sup> takes the footnote path above instead, so its exponent stays masked.
+  // holds. Its digits alone change, which is the extracted write, so it
+  // takes mode:'extracted' with its one match. A cell with a <sup> takes the
+  // footnote path above instead, so its exponent stays masked.
   const unit = hasSuperscript ? null : matchUnitNumber(text);
   if (unit) {
     if (isWholeLink) return { mode: 'skip', reason: 'link' };
     return { mode: 'extracted', reason: 'unit', value: { matches: [unit] } };
   }
 
-  if (!options.simplifyMixedCells || !allowExtracted) {
+  if (!options.simplifyMixedCells) {
     return { mode: 'skip', reason: 'mixed-disabled' };
   }
   const matches = extractSimplifyMatches(text, superscriptRanges);

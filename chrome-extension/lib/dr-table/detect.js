@@ -351,7 +351,7 @@ class GridAdapter {
    * pieces through nodeValue — never textContent/innerHTML/appendChild/removeChild.
    * @param {Element} cellEl
    * @returns {{getText(): string, getPieceLayout(): object|null,
-   *            applyPatches(patches: object[], linkFilteredIdx?: number[]|null): number,
+   *            applyPatches(patches: object[], linkFilteredIdx?: number[]|null, supRanges?: {start:number,end:number}[]|null): number,
    *            getDisplayedText(): string, el: Element, tagName: string}}
    */
   _makeCellObj(cellEl) {
@@ -407,12 +407,14 @@ class GridAdapter {
       // touched piece's text before the write, by piece index.
       // linkFilteredIdx holds the positions of the numbers the link filter
       // kept, for a cell rounded number by number, and null otherwise.
-      // supRanges stays null: a grid cell with a <sup> never rounds.
+      // supRanges holds a <sup>-bearing cell's exponent ranges, measured in
+      // value's flat text, the same ranges the ladder classified the cell
+      // with; null for a cell with no <sup>.
       // A later write adds each piece the record does not hold yet, and a
       // piece the record holds takes patches only while it still shows its
       // stored text, so a piece the page rewrote keeps the page's text. A
       // write that lands nothing stores nothing and adds no marker.
-      applyPatches(patches, linkFilteredIdx) {
+      applyPatches(patches, linkFilteredIdx, supRanges) {
         const record = port.has(cellEl) ? port.get(cellEl) : null;
         const valueBefore = record ? record.value : readLiveText();
         const result = applyExtractedPatches(cellEl, patches, record ? record.pieces : undefined);
@@ -425,7 +427,7 @@ class GridAdapter {
           const pieces = stored.concat(added).sort((x, y) => x.i - y.i);
           port.set(cellEl, record
             ? Object.assign({}, record, { pieces })
-            : { value: valueBefore, pieces, supRanges: null, linkFilteredIdx: linkFilteredIdx || null });
+            : { value: valueBefore, pieces, supRanges: supRanges || null, linkFilteredIdx: linkFilteredIdx || null });
         }
         if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
         return result.landed;
