@@ -127,6 +127,13 @@ globalThis.isDataTable = isDataTable;
 globalThis.collectNumericCells = collectNumericCells;
 globalThis.extractPreviewSamples = extractPreviewSamples;
 globalThis.isEraYear = isEraYear;
+// The one currency list and what it derives, so the currency suite reads the
+// canon rather than restating any part of it.
+globalThis.CURRENCIES = CURRENCIES;
+globalThis.CURRENCY_SIGNS = CURRENCY_SIGNS;
+globalThis.CURRENCY_CODES = CURRENCY_CODES;
+globalThis.CLEAN_REGEX = CLEAN_REGEX;
+globalThis.DEFAULT_NUMERIC_PROBE = DEFAULT_NUMERIC_PROBE;
 globalThis.eraYearDigitRanges = eraYearDigitRanges;
 globalThis.formatStep = formatStep;
 globalThis.stepForOffset = stepForOffset;
@@ -16517,8 +16524,9 @@ function withRightClickSandbox(run) {
     /^const DR_TABLE\b/m.test(indexSrc), true);
 })();
 
-// jsdom-less criterion: detect.js is evaluated with its one dependency —
-// constants.js, for DR_DETECTION_SETTINGS — and nothing else, in a vm context with no
+// jsdom-less criterion: detect.js is evaluated with its two dependencies —
+// constants.js, for DR_DETECTION_SETTINGS, and lib/dr-number/core.js, for the
+// currency signs the numeric probe strips — and nothing else, in a vm context with no
 // `chrome`, no `window`, and no `getComputedStyle` at all, against a minimal
 // fake document holding one plain <table>. Detection must still find the
 // table and must not throw — this is the acceptance bar for "runs under
@@ -16544,15 +16552,16 @@ function withRightClickSandbox(run) {
     },
   };
 
-  // The sandbox carries ONLY fakeDoc/fakeTable and whatever constantsCode and
-  // detectCode themselves declare — no window, no getComputedStyle, no
-  // chrome, no document global. constantsCode is plain values only, so
-  // prepending it costs the sandbox no browser dependency.
+  // The sandbox carries ONLY fakeDoc/fakeTable and whatever constantsCode,
+  // coreCode and detectCode themselves declare — no window, no
+  // getComputedStyle, no chrome, no document global. constantsCode is plain
+  // values only and coreCode is framework-free and side-effect-free, so
+  // prepending them costs the sandbox no browser dependency.
   const sandbox = { fakeDoc, fakeTable, results: null, threw: null };
   const ctx = vm.createContext(sandbox);
 
   vm.runInContext(
-    constantsCode + '\n' + detectCode + `
+    constantsCode + '\n' + coreCode + '\n' + detectCode + `
     try {
       var found = findTables(fakeDoc);
       results = {
@@ -16724,7 +16733,9 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 
 // jsdom-less criterion, extended: one vm sandbox with no
 // chrome/window/getComputedStyle evaluates the configuration file
-// (constants.js) and then the detection layer (lib/dr-table/detect.js). The
+// (constants.js), the number core (lib/dr-number/core.js, for the currency
+// signs the numeric probe strips) and then the detection layer
+// (lib/dr-table/detect.js). The
 // test pins DR_DETECTION_SETTINGS's values against PRE_MOVE_DETECTION_SETTINGS above and runs
 // looksLikeGrid, findTargetTable, isPhantomA11yTable, and isDataTable against
 // fixtures whose expected outcome holds only when each moved value reads at
@@ -16740,7 +16751,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   const ctx = vm.createContext(sandbox);
 
   vm.runInContext(
-    constantsCode + '\n' + detectCode + `
+    constantsCode + '\n' + coreCode + '\n' + detectCode + `
     try {
       outcomes.settingsKeys = Object.keys(DR_DETECTION_SETTINGS).sort();
       outcomes.settings = DR_DETECTION_SETTINGS;
@@ -26355,6 +26366,118 @@ function withHiddenCellTreeWalker(cell, fn) {
   root2.querySelectorAll = (sel) => (sel === 'table' ? [onScreenTable] : []);
   eq('hidden cells: detection keeps the same row shape without the accessibility signal',
     findTables(root2).length, 1);
+})();
+
+// =============================================================================
+// One currency list
+// =============================================================================
+// Every currency rule reads CURRENCIES in lib/dr-number/core.js. These
+// assertions drive themselves from that list, so a currency added there is
+// covered here without a second list to keep in step.
+
+(function currencies_oneListDrivesEveryRule() {
+  if (!Array.isArray(CURRENCIES) || CURRENCIES.length === 0) {
+    eq('currencies: the one currency list is present and not empty', false, true);
+    return;
+  }
+
+  // Every sign the list names reads as a sign: the digits beside it parse.
+  for (const { name, signs } of CURRENCIES) {
+    for (const sign of signs) {
+      eq('currencies: "' + sign + '" (' + name + ') before the digits reads as a number',
+        toNumber(sign + '450'), 450);
+    }
+  }
+
+  // Every code the list names is a currency code, so the currency exclusion
+  // and the unit-number reader both admit it.
+  const currencyOff = { simplifyFirstRow: true, simplifyFirstColumn: true,
+    simplifyMixedPercent: true, simplifyMixedCurrency: false };
+  for (const { name, code } of CURRENCIES) {
+    eq('currencies: the code ' + code + ' (' + name + ') excludes a cell with the currency setting off',
+      getExclusionReason('450 ' + code, 1, currencyOff, 1), 'currency');
+  }
+
+  // The data test's numeric probe strips exactly the signs the reader strips.
+  // Before the collapse it carried its own shorter list, so a rupee cell read
+  // as a number for the reader and as text for the probe.
+  for (const sign of CURRENCY_SIGNS) {
+    eq('currencies: the numeric probe reads "' + sign + '450" like the number reader does',
+      DEFAULT_NUMERIC_PROBE.parse(sign + '450'), 450);
+  }
+
+  // The sign-only piece test admits every sign, so a cell that draws its sign
+  // in one piece and its digits in another still simplifies.
+  for (const sign of CURRENCY_SIGNS) {
+    const spans = [{ i: 0, start: 0, text: sign }, { i: 1, start: sign.length, text: '450' }];
+    eq('currencies: a cell drawn as "' + sign + '" beside "450" is a stacked cell',
+      stackedMatches(spans), [{ numStr: '450', num: 450, index: sign.length }]);
+  }
+})();
+
+(function currencies_roundingKeepsTheSign() {
+  // Before the collapse, restore carried its own four-symbol chain, so a cell
+  // marked with any other currency rounded and lost its sign outright.
+  for (const { name, signs } of CURRENCIES) {
+    for (const sign of signs) {
+      eq('currencies: rounding keeps "' + sign + '" (' + name + ')',
+        restoreFormatting(500, sign + '450'), sign + '500');
+    }
+  }
+  eq('currencies: a sign after the digits goes back after them',
+    restoreFormatting(500, '450 kr'), '500 kr');
+  eq('currencies: a sign before the digits keeps its space',
+    restoreFormatting(500, '\u20b9 450'), '\u20b9 500');
+  eq('currencies: a letter that only looks like a sign gains none',
+    restoreFormatting(500, 'Revenue 450'), '500');
+  eq('currencies: an accounting negative keeps its brackets and its sign',
+    restoreFormatting(-500, '($450)'), '($500)');
+})();
+
+(function currencies_letterSignsTakeTheTokenRule() {
+  // A sign written in letters counts on the end that carries the letter only
+  // when no letter sits against it, the same rule a currency code takes. A
+  // sign written as a picture counts anywhere.
+  for (const text of ['Revenue', 'Rate', 'Region', 'Fresh', 'Free', 'From', 'krona', 'Crop',
+    'R2D2', 'Form 10-K', 'Q4 2024', 'DT1234']) {
+    eq('currencies: "' + text + '" does not read as a number',
+      toNumber(text), null);
+  }
+  eq('currencies: a letter sign against the digits still reads ("R45")', toNumber('R45'), 45);
+  eq('currencies: a letter sign and a space still read ("kr 45")', toNumber('kr 45'), 45);
+  eq('currencies: a two-letter sign against the digits still reads ("Fr45")', toNumber('Fr45'), 45);
+  eq('currencies: the longest sign wins ("EC$45")', toNumber('EC$45'), 45);
+  eq('currencies: a picture sign after the digits reads ("45€")', toNumber('45€'), 45);
+  eq('currencies: a picture sign with a letter left beside it does not read ("a€45")',
+    toNumber('a€45'), null);
+
+  // Regression: the currency exclusion once fired on any capital R, so a
+  // plain text cell was skipped as currency with the setting off.
+  const currencyOff = { simplifyFirstRow: true, simplifyFirstColumn: true,
+    simplifyMixedPercent: true, simplifyMixedCurrency: false };
+  eq('currencies: "Revenue 45" is not a currency cell',
+    getExclusionReason('Revenue 45', 1, currencyOff, 1), null);
+  eq('currencies: "Fresh 45" is not a currency cell',
+    getExclusionReason('Fresh 45', 1, currencyOff, 1), null);
+  eq('currencies: "R 45" is a currency cell',
+    getExclusionReason('R 45', 1, currencyOff, 1), 'currency');
+})();
+
+(function currencies_noSecondList() {
+  // Fail closed on a restated list. A second copy of the signs necessarily
+  // carries several currency pictures, so no content script outside core.js
+  // may hold more than one distinct picture. The dollar sign stays out of the
+  // scan: it is ordinary regular-expression and template syntax. A file that
+  // legitimately needs several pictures reads CURRENCY_SIGNS instead.
+  const pictures = /[€£¥₹₽₺₣]/g;
+  const offenders = [];
+  for (const [file, src] of contentScriptSources) {
+    if (file === 'lib/dr-number/core.js') continue; // the one list lives here
+    const distinct = new Set(src.match(pictures) || []);
+    if (distinct.size > 1) offenders.push(file);
+  }
+  eq('currencies: no content script outside the one list spells out the currency signs',
+    offenders, []);
 })();
 
 // --- Report ---

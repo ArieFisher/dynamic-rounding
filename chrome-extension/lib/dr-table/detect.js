@@ -78,9 +78,10 @@ const DEFAULT_STYLE_PROBE = {
 /**
  * NumericProbe: parses a cell's text to a number for the "does this look
  * numeric" checks in looksLikeGrid/isDataTable. This default is a
- * self-contained, byte-equivalent port of the predicate detection used
- * before the lib/dr-table extraction: strip currency/comma/percent/
- * whitespace symbols, then parseFloat. It deliberately does NOT delegate to
+ * port of the predicate detection used before the lib/dr-table extraction:
+ * strip currency signs, commas, percent signs and whitespace, then
+ * parseFloat. The strip reads CLEAN_REGEX, so the probe admits exactly the
+ * currency signs CURRENCIES lists. It deliberately does NOT delegate to
  * DR_NUMBER.toNumber — that parser's unicode-minus and parenthesized-negative
  * handling changes which tables are detected (dates, times, and unit-suffixed
  * cells lose their toggle; accounting negatives gain one). A caller that
@@ -88,7 +89,7 @@ const DEFAULT_STYLE_PROBE = {
  */
 const DEFAULT_NUMERIC_PROBE = {
   parse(text) {
-    const cleaned = String(text).trim().replace(/[$€£¥,\s%]/g, '');
+    const cleaned = String(text).trim().replace(CLEAN_REGEX, '');
     if (cleaned === '') return null;
     const parsed = parseFloat(cleaned);
     return isFinite(parsed) ? parsed : null;
@@ -914,7 +915,7 @@ function livePatches(patches, layout) {
 // then ".91" is not stacked either. A digit next to a digit across two
 // pieces reads as two numbers, the shape of one number per line.
 function stackedMatches(spans) {
-  const symbolPiece = new RegExp('^(?:' + CURRENCY_SYMBOL_CLASS + '|%)+$');
+  const symbolPiece = new RegExp('^(?:' + CURRENCY_SIGN_ALTERNATION + '|%)+$');
   const filled = spans.filter((span) => span.text.length > 0);
   for (let k = 1; k < filled.length; k++) {
     if (/[.,]$/.test(filled[k - 1].text) && /^\d/.test(filled[k].text)) return 'split';
