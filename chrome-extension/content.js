@@ -1151,7 +1151,18 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
       // conversion, unlike a native cell's — getSuperscriptRanges takes no
       // `text` opt here. These ranges also double as the record's stored
       // supRanges (pass 3 below): both count in the same pre-round flat text.
-      const superscriptRanges = hasSuperscript ? getSuperscriptRanges(cell) : [];
+      // A rounded cell's live text has already shrunk (or grown) around the
+      // <sup>, so re-measuring it live would mask the wrong positions in
+      // `text` above (the frozen pre-round value); reuse the record's kept
+      // ranges instead, the same guard collectNumericCells already applies
+      // to its own live re-measure.
+      let superscriptRanges = [];
+      if (hasSuperscript) {
+        const storedRecord = DR_STORE.getTableOriginal(wrapperEl, cell);
+        superscriptRanges = (storedRecord && storedRecord.supRanges)
+          ? storedRecord.supRanges
+          : getSuperscriptRanges(cell);
+      }
       const placed = placeDecision(classifyCell({
         text,
         rowIndex: r,

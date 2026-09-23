@@ -9498,6 +9498,42 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   }
 })();
 
+// A rounded grid footnote cell whose base piece shrinks: the live piece the
+// footnote sits beside is now shorter than it was when the cell first
+// classified, so a re-apply that re-measured the superscript mask against
+// the LIVE pieces (instead of the record's kept supRanges, the same reuse
+// collectNumericCells already applies to its own live re-measure) would
+// mask the wrong position in the frozen pre-round text and let the
+// footnote round as an ordinary number.
+(function gridFootnote_supRangesSurviveAReapplyAfterTheBaseShrinks() {
+  const grid = makeE2EGridWrapper([['Revenue 4.91tn units 137']]);
+  const [cell] = grid.cellEls;
+  const sup = makeElementNode('sup', [makeTextNode('137')]);
+  sup.tagName = 'SUP';
+  sup.childNodes[0].parentElement = sup;
+  const plain = makeTextNode('Revenue 4.91tn units ');
+  setGridCellPieces(cell, [plain, sup]);
+  cell.querySelector = (sel) => (sel === 'sup' ? sup : null);
+  const saved = global.document.createTreeWalker;
+  global.document.createTreeWalker = (root) => {
+    const nodes = gridCellTextPieces(root);
+    return { nextNode() { return nodes.shift() || null; } };
+  };
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    const afterFirstRound = pieceTextsOf(cell);
+    eq('grid footnote re-apply (setup): the base rounds and the footnote holds',
+      afterFirstRound[1], '137');
+    reapplyGridRounding(grid.wrapperEl);
+    eq('grid footnote re-apply: the footnote stays masked after the base has already shrunk',
+      pieceTextsOf(cell), afterFirstRound);
+  } finally {
+    if (saved === undefined) delete global.document.createTreeWalker;
+    else global.document.createTreeWalker = saved;
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
 // A rounded stacked cell that the page redraws with fewer pieces: the
 // re-apply and the lens preview skip it, and reset counts it unrestorable.
 (function gridStacked_aRoundedCellThatLostAPiece() {
