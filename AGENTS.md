@@ -67,6 +67,15 @@ A change that looks like it needs a second code path — a new adapter, a new br
 
 This extends [Group like concepts into a single location](#group-like-concepts-into-a-single-location) from documented lists to code paths and rules, and to timing: a rule staggered across paths drifts apart the same way a duplicated list does.
 
+### Table kinds behave alike
+
+A native table and a grid are one product. A reader sees a table on a page and never learns which markup drew it, so every rule reaches both kinds and produces the same result on both. A difference between the kinds needs a practical reason: something one kind's code can do that the other's cannot.
+
+- A change reaching both table kinds is this rule holding. Never report it to me as a consequence.
+- A change that leaves the two kinds behaving unlike each other is a difference. Put it to me with the reason the difference is forced, under [Surface a consequence only when it would change my decision](#chat).
+
+This gives [Collapse a path before opening a second one](#collapse-a-path-before-opening-a-second-one) its product reason, and narrows what counts as a consequence worth my attention.
+
 ### Versions
 
 Always take the newest release of an action, tool, or runtime. Read its breaking-change notes to confirm the jump, not to justify avoiding it. Report anything left behind, including a runtime whose newest line is ahead of the newest long-term-support line.
