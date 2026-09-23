@@ -26627,6 +26627,76 @@ eq('bracketed: the sign rule leaves a positive number alone',
   });
 })();
 
+// --- The whole-text match ---
+
+eq('bracketed: a bracket pair holding more than the number is not a whole-text match',
+  [
+    matchBracketedNumber('(see note 4)'),
+    matchBracketedNumber('(1,234) (5,678)'),
+    matchBracketedNumber('USD (1,234)'),
+  ],
+  [null, null, null]);
+
+// --- The sign reaches the max magnitude ---
+
+(function bracketedNumberSetsTheMaxMagnitude() {
+  withSupCreateTreeWalker(function() {
+    const big = makeExtractedCell([{ text: '(12,345)' }]);
+    const small = makeExtractedCell([{ text: '678' }]);
+    const table = { rows: [{ cells: [big, small] }], querySelector: () => null, dataset: {} };
+    roundTable(table, Object.assign({}, supTestOpts, { offsetOther: -2 }));
+    eq('bracketed: a bracketed number sets the max magnitude and rounds in the top band',
+      big._textNodes[0].nodeValue, '(10,000)');
+    eq('bracketed: the other band rounds against that max magnitude',
+      small._textNodes[0].nodeValue, '678');
+  });
+})();
+
+// --- End to end on a grid ---
+
+(function bracketedGridCellRoundsAcrossPieces() {
+  const grid = makeE2EGridWrapper([['4.91', '(5,432.1)']]);
+  const bracketed = grid.cellEls[1];
+  setGridCellPieces(bracketed, [makeTextNode('('), makeTextNode('5,432.1'), makeTextNode(')')]);
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('bracketed: a grid cell rounds its digits and keeps its brackets in their own pieces',
+      gridCellTextPieces(bracketed).map((node) => node.nodeValue), ['(', '5,500', ')']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+(function bracketedStackedGridCellRoundsWithWordsOff() {
+  const grid = makeE2EGridWrapper([['4.91', '(125)(126)']]);
+  const stacked = grid.cellEls[1];
+  setGridCellPieces(stacked, [makeTextNode('(125)'), makeTextNode('(126)')]);
+  try {
+    roundTable(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: false }));
+    eq('bracketed: a stacked grid cell of bracketed numbers rounds with the words setting off',
+      gridCellTextPieces(stacked).map((node) => node.nodeValue), ['(150)', '(150)']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// --- The lens preview carries the sign ---
+
+(function bracketedNumberReachesTheLensPreviewAsNegative() {
+  const grid = makeE2EGridWrapper([['4.91', '(5,432.1)']]);
+  const bracketed = grid.cellEls[1];
+  setGridCellPieces(bracketed, [makeTextNode('('), makeTextNode('5,432.1'), makeTextNode(')')]);
+  try {
+    eq('bracketed: the lens preview pool reads the raw cell as a negative',
+      collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((cell) => cell.num), [4.91, -5432.1]);
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('bracketed: the lens preview pool still reads it as a negative once rounded',
+      collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((cell) => cell.num), [4.91, -5432.1]);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
 // --- Report ---
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
