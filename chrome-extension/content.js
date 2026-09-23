@@ -328,11 +328,11 @@ function applySidebarRounding(requestedTable, options) {
     sendRangeStatusMessage(result);
     DR_LOG.debug("Dynamic Rounding: apply ran (applied=" + result.applied + ", rangeStatus=" + result.rangeStatus + ").");
     if (table.querySelector('.dr-ext-rounded')) {
-      DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle readable data' });
+      DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle table' });
     }
   } else {
     DR_LOG.debug("Dynamic Rounding: apply ran with rounding off; table reset.");
-    DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle readable data' });
+    DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle table' });
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   flashRangePulse(table, rangeParse.error ? null : rangeParse.ranges);

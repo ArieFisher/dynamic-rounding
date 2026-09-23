@@ -35,7 +35,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | pillbox | The on/off control on a data table. |
 | toggle | Verb: to change a table's state. As a noun it is the act ("a toggle or apply"), never the on-table control — that control is the pillbox. The one control named "toggle" is the menu toggle below, a menu item. |
 | switch | An on/off control in the sidebar. |
-| menu toggle | The "Toggle readable data" item in the extension's right-click menu. Toggles the active table. |
+| menu toggle | The "Toggle table" item in the extension's right-click menu. Toggles the active table. |
 | pulse | A brief highlight flashed over the cells a toggle or apply changed, as visual feedback. <br><br>It covers the range expression's cells; with a blank range expression it covers the whole table. |
 | lens | A simplified data set with different assumptions (parameters). |
 | lens control | The sidebar control (under 'advanced' as of this writing) where the user can change `offset_top` and `offset_other`. |

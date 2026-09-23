@@ -15,12 +15,12 @@ let sidebarTabId = null;
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "dr-action",
-    title: "Toggle readable data",
+    title: "Toggle table",
     contexts: ["all"]
   });
   chrome.contextMenus.create({
     id: "dr-action-sidebar",
-    title: "Round table dynamically (with options)...",
+    title: "Toggle and open sidebar",
     contexts: ["all"]
   });
 });

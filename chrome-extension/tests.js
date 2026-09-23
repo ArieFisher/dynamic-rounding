@@ -18847,7 +18847,7 @@ const LADDER_OPTS = {
     [
       { action: 'state:applyOk' },
       { action: 'state:rangeOk' },
-      { action: 'intent:updateMenuLabel', title: 'Toggle readable data' },
+      { action: 'intent:updateMenuLabel', title: 'Toggle table' },
     ]);
   eq('range-status sequence (valid range): the cell was actually rounded',
     okRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), true);
@@ -19334,7 +19334,7 @@ const LADDER_OPTS = {
     'true': [
       { action: 'state:applyOk' },
       { action: 'state:rangeOk' },
-      { action: 'intent:updateMenuLabel', title: 'Toggle readable data' },
+      { action: 'intent:updateMenuLabel', title: 'Toggle table' },
       { action: 'state:tableEnabledChanged', enabled: true },
     ],
     // A press on a table that is NOT the active one. Issue #251 made this
@@ -19352,7 +19352,7 @@ const LADDER_OPTS = {
       { action: 'state:tableSwitched' },
       { action: 'state:applyOk' },
       { action: 'state:rangeOk' },
-      { action: 'intent:updateMenuLabel', title: 'Toggle readable data' },
+      { action: 'intent:updateMenuLabel', title: 'Toggle table' },
     ],
   };
 
@@ -22935,7 +22935,7 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 // Issue #275: the context-menu toggle must go through the same controller
 // branch a pill click uses. The right-click that opens the menu already
 // connects the table (the contextmenu handler calls setSelectedTable), so
-// with the sidebar open, "Toggle readable data" on that table must write the
+// with the sidebar open, "Toggle table" on that table must write the
 // record and report it (state:tableEnabledChanged) — the #272 contract. Before the
 // fix, intent:menuClicked simplified the table directly: the page changed,
 // the settings record and the sidebar both went stale, and the next reopen or switch
