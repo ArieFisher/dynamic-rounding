@@ -539,12 +539,12 @@ function overlapsQuoteRange(maskedRanges, matchStart, matchEnd) {
 
 // --- The accounting minus sign: a bracket pair around a number ---
 // A financial statement writes a negative as "(1,234)". The brackets are the
-// minus sign, so the number's own text stays its digits and the brackets are
-// format marks like a currency sign: they stay where the page put them, and
-// only the digits round. FORMAT_MARK_ALTERNATION (core.js) is the one list of
-// what may stand between a bracket and the number — a currency sign, a
-// percent sign, whitespace — so "$(1,234)", "($1,234)" and "(12.3%)" all read
-// as negatives while "(see note 4)" does not.
+// minus sign, so the number's own text stays its digits: only the digits
+// round, and the brackets stay where the page put them, as a currency sign
+// does. FORMAT_MARK_ALTERNATION (core.js) is the one list of what may stand
+// between a bracket and the number — a currency sign, a percent sign,
+// whitespace — so "$(1,234)", "($1,234)" and "(12.3%)" all read as negatives
+// while "(see note 4)" does not.
 const BRACKET_OPEN_RE = new RegExp('\\(' + FORMAT_MARK_ALTERNATION + '*$');
 const BRACKET_CLOSE_RE = new RegExp('^' + FORMAT_MARK_ALTERNATION + '*\\)');
 // A digit right after the closing bracket, with at most one space or hyphen

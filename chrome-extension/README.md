@@ -41,7 +41,7 @@ A financial statement writes a negative as a bracket pair: "(1,234)" is −1,234
 - A bracket may sit in its own piece of the page's markup, apart from the digits. Because only the digits are replaced, such a cell rounds like any other.
 - A number that already carries a written minus sign keeps it: "(-1,234)" reads as −1,234 once, not twice.
 - A bracket pair followed by a digit is a telephone area code, not a minus sign, so "(416) 555-1234" stays positive.
-- Brackets are format marks in the one list in `lib/dr-number/core.js`, beside the currency signs, so every rule that steps past a mark to reach a number reads the same source.
+- The brackets themselves are the minus sign. What may stand between a bracket and the number is the format-mark list in `lib/dr-number/core.js`, beside the currency signs, so the bracket test and the reader that strips marks before a text reads as a number read one source.
 
 ## Extension errors
 

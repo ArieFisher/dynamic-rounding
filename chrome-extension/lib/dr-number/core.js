@@ -82,8 +82,10 @@ const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 // belonging to it — a currency sign, a percent sign, and whitespace. The
 // signs come from CURRENCIES above, so a new row reaches this list too.
 // Every rule that steps past a mark to reach a number reads this one source:
-// the clean-up before a text reads as a number, and the bracket test that
-// reads a bracket pair as a minus sign (lib/dr-number/parsing.js).
+// the clean-up before a text reads as a number, and the test for what stands
+// between a bracket and the number (lib/dr-number/parsing.js). A bracket is
+// not a format mark: it is the number's minus sign, and adding it here would
+// strip it before PARENS_REGEX below could read it.
 const FORMAT_MARK_ALTERNATION = '(?:' + CURRENCY_SIGN_ALTERNATION + '|[\\s%])';
 // Everything dropped from a text before it reads as a number: a format mark,
 // plus the thousands comma, which is part of how the number is written.
