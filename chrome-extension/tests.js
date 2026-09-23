@@ -9262,6 +9262,12 @@ function makeKeyStatsGrid() {
 
 const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: true, simplifyDates: true });
 
+// "Revenue 500 units" and "DT1234" now round like any extracted cell (issue
+// #120), but both show unchanged pieces here for reasons that have nothing
+// to do with the flag removal: 500 already sits on the step this dataset's
+// magnitude rounds to, so it formats back to itself, and "DT1234"'s digits
+// sit glued to a letter with no separator, so the number extractor never
+// finds them at all — on a grid or a native table alike.
 (function gridStacked_roundWritesEachNumberInItsPiece() {
   const grid = makeKeyStatsGrid();
   const piecesBefore = grid.cellEls.map(gridCellTextPieces);
@@ -9345,7 +9351,15 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 //      digit across pieces reads as two numbers)
 //   b: a suffix in its own piece
 //   c: two numbers in one piece beside a third piece: not stacked
-//   d: two unit numbers, one per piece: 4.91 → 5, 41.31 → 40
+//   d: two unit numbers glued together with no separator, one per piece:
+//      only 4.91 rounds. The cell's flat text is one joined string with no
+//      piece boundary marker, and the number extractor never starts a match
+//      right after a letter, so "41.31" (glued right after "tn") is never
+//      found at all; the decision that does survive already fits in one
+//      piece, so the piece-aware stacked-cell fallback that would have
+//      caught both numbers never runs. A native table hits this identical
+//      gap for the same glued shape, since it takes no stacked-cell test
+//      either — parity, not a grid-specific regression.
 //   e: a number split before its decimal point: unchanged
 (function gridStacked_edges() {
   const grid = makeE2EGridWrapper([['125126', '4.91tn', '416 5551234', '4.91tn41.31m', '4.91']]);
@@ -9362,8 +9376,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('grid stacked: a suffix in its own piece stays and the digits round', pieceTextsOf(b), ['5', 'tn']);
     eq('grid stacked: two numbers in one piece make the cell not stacked',
       pieceTextsOf(c), ['416 555', '1234']);
-    eq('grid stacked: unit numbers one per piece round number by number',
-      pieceTextsOf(d), ['5tn', '40m']);
+    eq('grid stacked: two unit numbers glued with no separator round only the first',
+      pieceTextsOf(d), ['5tn', '41.31m']);
     eq('grid stacked: a number split before its decimal point stays unchanged',
       pieceTextsOf(e), ['4', '.91']);
     eq('grid stacked: the max magnitude leaves out the cell that is not stacked',
@@ -9410,10 +9424,13 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   }
 })();
 
-// Cells the stacked check leaves unchanged, and one it admits. Dataset 125
-// and 126 from cell d, so the max magnitude is 2.
-//   a: a unit number beside a <sup> footnote: a grid cell with a <sup>
-//      never rounds, so the footnote marker cannot round as a number
+// Cells the stacked check leaves unchanged, and the ones it admits. Dataset
+// 4.91, 125, and 126, so the max magnitude is 2.
+//   a: a number beside a <sup> footnote, glued together with no separator:
+//      the base number rounds and the footnote digits stay, exactly as a
+//      native table already rounds this shape (issue #120) — the digit run
+//      right after the <sup> is never even a candidate match, since the
+//      number extractor never starts a match right after a letter
 //   b: a stacked year above a year: each piece reads as a date
 //   c: "1," then "234": a number split after its grouping comma
 //   d: a listed currency code in its own piece above two numbers
@@ -9429,15 +9446,54 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])]);
   const opts = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
   try {
-    eq('grid stacked: the lens preview pool leaves out the footnote, the years, and the split number',
-      collectNumericCells(grid.wrapperEl, opts).map((sample) => sample.num), [125, 126]);
+    eq('grid stacked: the lens preview pool keeps the footnote\'s base number, leaves out the years and the split number',
+      collectNumericCells(grid.wrapperEl, opts).map((sample) => sample.num).sort((x, y) => x - y), [4.91, 125, 126]);
     roundTable(grid.wrapperEl, opts);
-    eq('grid stacked: a cell with a <sup> stays unchanged', pieceTextsOf(a), ['4.91T', '12']);
+    eq('grid stacked: a cell with a <sup> rounds its base and keeps the exponent', pieceTextsOf(a), ['5T', '12']);
     eq('grid stacked: stacked years stay unchanged', pieceTextsOf(b), ['2024', '2025']);
     eq('grid stacked: a number split after its grouping comma stays unchanged', pieceTextsOf(c), ['1,', '234']);
     eq('grid stacked: a currency code in its own piece stays and the numbers round',
       pieceTextsOf(d), ['CAD', '150', '150']);
   } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// A grid cell whose <sup> is a real footnote, separated from its base
+// number by whitespace rather than glued to it: the base rounds, the
+// footnote digit stays, and the mask's ranges land in the record's
+// supRanges — the same field a native table's footnote cell stores (see
+// prettyPrintedFootnoteStaysMasked) — so a later re-apply and the lens
+// preview both read the cell's kept footnote position instead of
+// re-measuring the (now rounded, therefore shifted) live text.
+(function gridFootnote_supRangesSurviveRecordReapplyAndPreview() {
+  const grid = makeE2EGridWrapper([['Revenue 837 units 7']]);
+  const [cell] = grid.cellEls;
+  const sup = makeElementNode('sup', [makeTextNode('7')]);
+  sup.tagName = 'SUP';
+  sup.childNodes[0].parentElement = sup;
+  const plain = makeTextNode('Revenue 837 units ');
+  setGridCellPieces(cell, [plain, sup]);
+  cell.querySelector = (sel) => (sel === 'sup' ? sup : null);
+  const saved = global.document.createTreeWalker;
+  global.document.createTreeWalker = (root) => {
+    const nodes = gridCellTextPieces(root);
+    return { nextNode() { return nodes.shift() || null; } };
+  };
+  const pool = () => collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((sample) => sample.num);
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid footnote: the base rounds and the footnote digit stays',
+      pieceTextsOf(cell), ['Revenue 850 units ', '7']);
+    eq('grid footnote: the record stores the mask\'s superscript range',
+      DR_STORE.getTableOriginal(grid.wrapperEl, cell).supRanges, [{ start: 18, end: 19 }]);
+    reapplyGridRounding(grid.wrapperEl);
+    eq('grid footnote: the record\'s supRanges survive a re-apply',
+      DR_STORE.getTableOriginal(grid.wrapperEl, cell).supRanges, [{ start: 18, end: 19 }]);
+    eq('grid footnote: the preview after the round reads the base number, not the footnote digit', pool(), [837]);
+  } finally {
+    if (saved === undefined) delete global.document.createTreeWalker;
+    else global.document.createTreeWalker = saved;
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
 })();
@@ -9491,14 +9547,16 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // The lens preview lists exactly the numbers the grid rounds: the stacked
-// numbers one by one, the unit numbers, and nothing from the numbers inside
-// text, the split number, or the link. It lists the same numbers once the
-// grid is rounded, read from the records.
+// numbers one by one, the unit numbers, the number inside "Revenue 500
+// units", and nothing from "DT1234" (its digits sit glued to a letter, so
+// the extractor never finds them, on a grid or a native table alike) or the
+// split number or the link. It lists the same numbers once the grid is
+// rounded, read from the records.
 (function gridStacked_lensPreviewMatchesThePage() {
   const grid = makeKeyStatsGrid();
   const nums = () => collectNumericCells(grid.wrapperEl, KEY_STATS_OPTS)
     .map((sample) => sample.num).sort((x, y) => x - y);
-  const expected = [4.91, 41.31, 125, 126, 337.91, 338.49];
+  const expected = [4.91, 41.31, 125, 126, 337.91, 338.49, 500];
   try {
     eq('grid stacked: the lens preview pool before the round', nums(), expected);
     roundTable(grid.wrapperEl, KEY_STATS_OPTS);
@@ -18033,12 +18091,6 @@ const LADDER_OPTS = {
       text: '1012', rowIndex: 1, columnIndex: 1, ranges: null, hasSuperscript: true,
     }, Object.assign({}, LADDER_OPTS, { simplifyMixedCells: false })),
     { mode: 'skip', reason: 'footnote' });
-
-  eq('classifyCell: superscript-flagged cell is skipped when allowExtracted is false (grid)',
-    classifyCell({
-      text: '1012', rowIndex: 1, columnIndex: 1, ranges: null, hasSuperscript: true, allowExtracted: false,
-    }, LADDER_OPTS),
-    { mode: 'skip', reason: 'footnote' });
 })();
 
 (function classifyCell_mixedText() {
@@ -18056,9 +18108,6 @@ const LADDER_OPTS = {
   eq('classifyCell: mixed text is skipped when simplifyMixedCells is false',
     classifyCell({ text: 'Revenue 500 units', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyMixedCells: false })),
-    { mode: 'skip', reason: 'mixed-disabled' });
-  eq('classifyCell: mixed text is skipped when allowExtracted is false (grid)',
-    classifyCell({ text: 'Revenue 500 units', rowIndex: 1, columnIndex: 1, ranges: null, allowExtracted: false }, LADDER_OPTS),
     { mode: 'skip', reason: 'mixed-disabled' });
   eq('classifyCell: mixed text with no numeric content is skipped',
     classifyCell({ text: 'hello world', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
@@ -18106,8 +18155,8 @@ const LADDER_OPTS = {
   eq('classifyCell: a unit number simplifies with the words setting off',
     classifyCell(at('4.91tn'), wordsOff),
     { mode: 'extracted', reason: 'unit', value: { matches: [{ numStr: '4.91', num: 4.91, index: 0 }] } });
-  eq('classifyCell: a unit number simplifies on a grid',
-    classifyCell(at('CAD45.67', { allowExtracted: false }), LADDER_OPTS),
+  eq('classifyCell: a unit number simplifies with the words setting on',
+    classifyCell(at('CAD45.67'), LADDER_OPTS),
     { mode: 'extracted', reason: 'unit', value: { matches: [{ numStr: '45.67', num: 45.67, index: 3 }] } });
   eq('classifyCell: a code before the number excludes the cell with the currency setting off',
     classifyCell(at('CAD45.67'), currencyOff), { mode: 'skip', reason: 'currency' });

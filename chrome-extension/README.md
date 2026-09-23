@@ -106,7 +106,7 @@ A grid cell reads as its flat text: every text piece, joined in page order. Each
 
 - A **stacked cell** rounds number by number: "125" above "126" becomes "150" above "150", and a "$" in its own piece beside "337.91" stays while the number becomes "350". Two numbers in one piece, even with a space between them, make the cell not stacked, so it stays unchanged. So does a piece that reads as a date or a time: "2024" above "2025" stays, as a lone "2024" does.
 - A **split number** stays unchanged, with a debug log row: "4." in one piece and "91" in the next. A date or time split across pieces stays unchanged the same way.
-- **Extracted cells** stay unchanged on grids, and so does any grid cell with a `<sup>`, until an allow list separates quantities from identifiers such as "DT1234" (#120). The lens preview leaves them out on grids too, so it lists only numbers the grid rounds. A unit number is not an extracted cell for this rule: "4.91tn" becomes "5tn" on a grid.
+- **Extracted cells** round on a grid exactly as they already round on a native table: a number inside surrounding words rounds in place, and a grid cell with a `<sup>` rounds its base number while the mask keeps the exponent unchanged. The lens preview lists these numbers on both table kinds. A unit number is always an extracted cell for this rule too: "4.91tn" becomes "5tn" on a grid.
 
 Because virtualized grids recycle rows on scroll and rewrite cells in place on sort, a debounced `MutationObserver` (watching both `childList` and `characterData`) re-applies rounding to rows that scroll into view and cells that a sort reverts.
 
