@@ -33,6 +33,16 @@ A unit number is a cell whose whole text is one number with a magnitude suffix a
 - A unit number counts as its shown digits in the max magnitude: "4.91tn" counts as 4.91.
 - Letters that are neither a suffix nor a listed code make the cell something else: "DT1234" and "cust15" are identifiers and never round as unit numbers.
 
+## Bracketed numbers
+
+A financial statement writes a negative as a bracket pair: "(1,234)" is −1,234. The extension reads that pair as the number's minus sign, so the cell rounds by the value it states and joins the table's max magnitude with the right sign. Only the digits change and the brackets stay where the page put them, so "(1,234)" becomes "(1,000)" and "$(1,234)" becomes "$(1,000)". This holds on HTML tables and grids alike, whatever the sidebar's "words" setting holds.
+
+- The brackets may hold nothing but the number and its own format marks — a currency sign, a percent sign, whitespace — so "($1,234)", "$(1,234)" and "(12.3%)" are bracketed numbers and "(see note 4)" is not.
+- A bracket may sit in its own piece of the page's markup, apart from the digits. Because only the digits are replaced, such a cell rounds like any other.
+- A number that already carries a written minus sign keeps it: "(-1,234)" reads as −1,234 once, not twice.
+- A bracket pair followed by a digit is a telephone area code, not a minus sign, so "(416) 555-1234" stays positive.
+- The brackets themselves are the minus sign. What may stand between a bracket and the number is the format-mark list in `lib/dr-number/core.js`, beside the currency signs, so the bracket test and the reader that strips marks before a text reads as a number read one source.
+
 ## Extension errors
 
 Every warning or error the extension records on a page shows as a toast at the page's bottom right: the row's text, for five seconds or until a click. A second row replaces the first, so a warning that repeats on every scroll shows one toast. The tab keeps its error state for the life of the page: whether an error was recorded, how many, and the last 50 rows with their stack traces. A reload starts clean. The capture carries that state, and each log row's stack trace sits under the row in the capture file, folded.

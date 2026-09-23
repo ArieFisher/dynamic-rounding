@@ -16369,6 +16369,7 @@ function withRightClickSandbox(run) {
     'isDateLike', 'isTimeLike', 'parseISODateTime', 'isDateTimeLike',
     'roundDateText', 'roundISODateTime', 'roundTimeText',
     'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumberInText', 'extractNumbersInText',
+    'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'isEraYear', 'decimalCount', 'formatExtractedNumber', 'restoreFormatting',
   ].sort();
 
@@ -26478,6 +26479,222 @@ function withHiddenCellTreeWalker(cell, fn) {
   }
   eq('currencies: no content script outside the one list spells out the currency signs',
     offenders, []);
+})();
+
+// =============================================================================
+// Bracketed numbers — the accounting minus sign
+// =============================================================================
+// A bracket pair around a number is that number's minus sign: "(1,234)" is
+// -1,234. The brackets are format marks, so the number's own text is its
+// digits alone, the digits alone round, and the brackets stay where the page
+// put them — including when the page gives a bracket its own text piece.
+// =============================================================================
+
+const bracketOpts = Object.assign({}, DR_DEFAULTS, {
+  simplifyFirstRow: true,
+  simplifyFirstColumn: true,
+});
+
+// --- Reading the sign ---
+
+eq('bracketed: a bracket pair reads as a minus sign',
+  extractNumbersInText('(1,234)'),
+  [{ numStr: '1,234', num: -1234, index: 1 }]);
+
+eq('bracketed: a currency sign inside the brackets keeps the minus sign',
+  extractNumbersInText('($1,234)'),
+  [{ numStr: '1,234', num: -1234, index: 2 }]);
+
+eq('bracketed: a currency sign outside the brackets keeps the minus sign',
+  extractNumbersInText('$(1,234)'),
+  [{ numStr: '1,234', num: -1234, index: 2 }]);
+
+eq('bracketed: a percent sign inside the brackets keeps the minus sign',
+  extractNumbersInText('(12.3%)'),
+  [{ numStr: '12.3', num: -12.3, index: 1 }]);
+
+eq('bracketed: a space between the bracket and the number keeps the minus sign',
+  extractNumbersInText('( 1,234 )'),
+  [{ numStr: '1,234', num: -1234, index: 2 }]);
+
+eq('bracketed: brackets around a number among words read as a minus sign',
+  extractNumbersInText('Net loss (1,234) for the year'),
+  [{ numStr: '1,234', num: -1234, index: 10 }]);
+
+eq('bracketed: a written minus sign inside brackets is not doubled',
+  extractNumbersInText('(-1,234)'),
+  [{ numStr: '-1,234', num: -1234, index: 1 }]);
+
+eq('bracketed: brackets holding words leave the number positive',
+  extractNumbersInText('(see note 4)'),
+  [{ numStr: '4', num: 4, index: 10 }]);
+
+eq('bracketed: a bracket pair followed by digits is an area code, not a minus sign',
+  extractNumbersInText('(416) 555-1234').map((m) => m.num),
+  [416, 555, 1234]);
+
+eq('bracketed: an unclosed bracket leaves the number positive',
+  extractNumbersInText('(1,234').map((m) => m.num), [1234]);
+
+eq('bracketed: an unopened bracket leaves the number positive',
+  extractNumbersInText('1,234)').map((m) => m.num), [1234]);
+
+eq('bracketed: the first-number reader takes the same sign',
+  extractNumberInText('(1,234)'),
+  { numStr: '1,234', num: -1234, index: 1 });
+
+eq('bracketed: the bracket test answers for the number it is given',
+  [isBracketedNegative('(1,234)', 1, '1,234'), isBracketedNegative('(see 4)', 5, '4')],
+  [true, false]);
+
+// --- Writing the sign back ---
+
+eq('bracketed: the rounded number carries the sign the original text showed',
+  formatExtractedNumber(-1200, '1,234'), '1,200');
+
+eq('bracketed: a written minus sign survives rounding',
+  formatExtractedNumber(-1200, '-1,234'), '-1,200');
+
+eq('bracketed: the sign rule leaves a positive number alone',
+  formatExtractedNumber(1200, '1,234'), '1,200');
+
+// --- Classification ---
+
+(function bracketedCellClassifiesAsExtracted() {
+  eq('bracketed: a whole-cell bracketed number classifies as extracted',
+    classifyCell({ text: '(1,234)', rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts),
+    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '1,234', num: -1234, index: 1 }] } });
+})();
+
+(function bracketedCellRoundsWithWordsOff() {
+  const opts = Object.assign({}, bracketOpts, { simplifyMixedCells: false });
+  eq('bracketed: a bracketed cell rounds with the words setting off',
+    classifyCell({ text: '(1,234)', rowIndex: 1, columnIndex: 1, ranges: null }, opts).mode,
+    'extracted');
+})();
+
+(function plainNumberStaysPure() {
+  eq('bracketed: a plain number still classifies as pure',
+    classifyCell({ text: '1,234', rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts).mode,
+    'pure');
+})();
+
+(function bracketedWholeLinkStaysUnchanged() {
+  eq('bracketed: a bracketed cell that is one whole link stays unchanged',
+    classifyCell({ text: '(1,234)', rowIndex: 1, columnIndex: 1, ranges: null, isWholeLink: true }, bracketOpts),
+    { mode: 'skip', reason: 'link' });
+})();
+
+(function bracketedQuotedCellStaysUnchanged() {
+  eq('bracketed: a quoted bracketed number stays unchanged',
+    classifyCell({ text: '"(1,234)"', rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts),
+    { mode: 'skip', reason: 'quoted' });
+})();
+
+// --- Placement: a bracket may hold its own text piece ---
+
+(function bracketInItsOwnPiecePlaces() {
+  const pieces = ['(', '1,234', ')'];
+  const text = pieces.join('');
+  const liveStarts = [];
+  let at = 0;
+  for (const piece of pieces) { liveStarts.push(at); at += piece.length; }
+  const layout = { original: pieces, liveStarts, toFlat: null };
+  const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts);
+  eq('bracketed: a bracket in its own text piece still places on a native table',
+    placeDecision(decision, text, layout, { stacked: false }).mode, 'extracted');
+  eq('bracketed: a bracket in its own text piece still places on a grid',
+    placeDecision(decision, text, layout, { stacked: true }).mode, 'extracted');
+})();
+
+// --- End to end on a native table ---
+
+(function bracketedCellRoundsAcrossPieces() {
+  withSupCreateTreeWalker(function() {
+    const cell = makeExtractedCell([{ text: '(' }, { text: '1,234' }, { text: ')' }]);
+    roundTable({ rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} }, supTestOpts);
+    eq('bracketed: the digits round and the brackets stay in their own pieces',
+      cell._textNodes.map((n) => n.nodeValue), ['(', '1,000', ')']);
+  });
+})();
+
+(function bracketedCellKeepsItsCurrencySign() {
+  withSupCreateTreeWalker(function() {
+    const cell = makeExtractedCell([{ text: '$(1,234)' }]);
+    roundTable({ rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} }, supTestOpts);
+    eq('bracketed: a currency sign outside the brackets stays put',
+      cell._textNodes[0].nodeValue, '$(1,000)');
+  });
+})();
+
+// --- The whole-text match ---
+
+eq('bracketed: a bracket pair holding more than the number is not a whole-text match',
+  [
+    matchBracketedNumber('(see note 4)'),
+    matchBracketedNumber('(1,234) (5,678)'),
+    matchBracketedNumber('USD (1,234)'),
+  ],
+  [null, null, null]);
+
+// --- The sign reaches the max magnitude ---
+
+(function bracketedNumberSetsTheMaxMagnitude() {
+  withSupCreateTreeWalker(function() {
+    const big = makeExtractedCell([{ text: '(12,345)' }]);
+    const small = makeExtractedCell([{ text: '678' }]);
+    const table = { rows: [{ cells: [big, small] }], querySelector: () => null, dataset: {} };
+    roundTable(table, Object.assign({}, supTestOpts, { offsetOther: -2 }));
+    eq('bracketed: a bracketed number sets the max magnitude and rounds in the top band',
+      big._textNodes[0].nodeValue, '(10,000)');
+    eq('bracketed: the other band rounds against that max magnitude',
+      small._textNodes[0].nodeValue, '678');
+  });
+})();
+
+// --- End to end on a grid ---
+
+(function bracketedGridCellRoundsAcrossPieces() {
+  const grid = makeE2EGridWrapper([['4.91', '(5,432.1)']]);
+  const bracketed = grid.cellEls[1];
+  setGridCellPieces(bracketed, [makeTextNode('('), makeTextNode('5,432.1'), makeTextNode(')')]);
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('bracketed: a grid cell rounds its digits and keeps its brackets in their own pieces',
+      gridCellTextPieces(bracketed).map((node) => node.nodeValue), ['(', '5,500', ')']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+(function bracketedStackedGridCellRoundsWithWordsOff() {
+  const grid = makeE2EGridWrapper([['4.91', '(125)(126)']]);
+  const stacked = grid.cellEls[1];
+  setGridCellPieces(stacked, [makeTextNode('(125)'), makeTextNode('(126)')]);
+  try {
+    roundTable(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: false }));
+    eq('bracketed: a stacked grid cell of bracketed numbers rounds with the words setting off',
+      gridCellTextPieces(stacked).map((node) => node.nodeValue), ['(150)', '(150)']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// --- The lens preview carries the sign ---
+
+(function bracketedNumberReachesTheLensPreviewAsNegative() {
+  const grid = makeE2EGridWrapper([['4.91', '(5,432.1)']]);
+  const bracketed = grid.cellEls[1];
+  setGridCellPieces(bracketed, [makeTextNode('('), makeTextNode('5,432.1'), makeTextNode(')')]);
+  try {
+    eq('bracketed: the lens preview pool reads the raw cell as a negative',
+      collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((cell) => cell.num), [4.91, -5432.1]);
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('bracketed: the lens preview pool still reads it as a negative once rounded',
+      collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((cell) => cell.num), [4.91, -5432.1]);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
 })();
 
 // --- Report ---
