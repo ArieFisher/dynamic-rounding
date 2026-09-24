@@ -62,6 +62,8 @@ One term per concept, across every platform and every document. Use the [Retired
 | flat text | The join of a cell's text pieces in page order. A position in the flat text maps to exactly one text piece. |
 | rendered text | A cell's text as the browser shows it: runs of spaces and line breaks in the markup collapse to one space, the ends are trimmed, and hidden text is left out. A native table classifies a cell on its rendered text. On a pretty-printed page it is shorter than the flat text, so a position converts between the two before a patch. |
 | exclusion | A settings-driven reason to skip a cell: first row, first column, currency, or percent. |
+| merged cell | One cell covering two or more rows or columns of the table. A native table declares the cover in its markup, a grid in its accessibility attributes. |
+| grid column | The column a cell is laid out in, counted from the left. Every rule that gates a cell by column — the exclusions, the range expression, the dataset behind the max magnitude, the column post-pass, and the capture state — reads this one number. It is not the cell's position in the row read: a merged cell earlier in the table holds columns that the cells after it skip, so the two differ on every row a merge covers. |
 | quoted cell | A cell wrapped in double quotes. The application treats it as a direct quote and leaves it unsimplified. |
 | ambiguous date | An all-numeric date readable two ways: 7/4/99 may be July 4 or April 7. |
 | format hint | The column-level result for ambiguous dates: `month-first`, `day-first`, `mixed`, or `ambiguous`. <br><br>Mixed and ambiguous leave the column unchanged rather than assume a reading. |

@@ -1280,6 +1280,96 @@ TSLA,75,"248.09","18,606.75"
     </table>
   </section>
 
+  <section>
+    <h2>22. Merged cells</h2>
+    <p class="expect">Expect: a pillbox at load on both tables. A cell's column
+      is the column it is laid out in, so a merge never moves the cells after
+      it into a neighbouring column (issue #330).</p>
+
+    <p class="expect">22a, a label column merged down. Expect: every number
+      rounds, 1,250,000 included, and the whole table rounds at the coarseness
+      1,250,000 sets. Before this rule the covered rows read one column to the
+      left: 1,250,000 took the first-column exclusion, stayed raw, and never
+      reached the coarseness, so every other value rounded at a finer step.</p>
+
+    <!--
+      West / East      -> merged down over two rows each; first column, stays raw
+      1,250,000        -> rounds; sets the top band for the whole table
+      every other cell -> rounds against that band
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Region</th>
+          <th scope="col">Q1</th>
+          <th scope="col">Q2</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row" rowspan="2">West</th>
+          <td>1,234</td>
+          <td>2,345</td>
+        </tr>
+        <tr>
+          <td>1,250,000</td>
+          <td>3,210</td>
+        </tr>
+        <tr>
+          <th scope="row" rowspan="2">East</th>
+          <td>4,410</td>
+          <td>980</td>
+        </tr>
+        <tr>
+          <td>7,765</td>
+          <td>12,300</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="expect">22b, merged column headers and a total row merged across.
+      Expect: every number rounds. Then set the range expression to C and apply
+      again: only the Revenue column changes, the total included, and the
+      outline that flashes frames that column alone. Before this rule the
+      total sat in the Units column, so range C left it raw and the outline
+      framed the wrong cells.</p>
+
+    <!--
+      2026        -> a header merged across two columns; headers never round
+      Total       -> merged across the first two columns
+      1,140,043   -> the total's own cell, column C
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col" rowspan="2">Product</th>
+          <th scope="col" colspan="2">2026</th>
+        </tr>
+        <tr>
+          <th scope="col">Units</th>
+          <th scope="col">Revenue</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Widget</th>
+          <td>4,182</td>
+          <td>918,554</td>
+        </tr>
+        <tr>
+          <th scope="row">Gadget</th>
+          <td>1,207</td>
+          <td>221,489</td>
+        </tr>
+        <tr>
+          <th scope="row" colspan="2">Total</th>
+          <td>1,140,043</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+
 </body>
 
 </html>

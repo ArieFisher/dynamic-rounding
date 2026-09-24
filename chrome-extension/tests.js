@@ -1150,8 +1150,13 @@ function makeMockCell(tag, text) {
 
 function makeMockTable(rowsSpec, querySelectorResult) {
   // rowsSpec: array of arrays of {tag, text}
+  // colSpan and rowSpan stand at 1 on every cell, as they do on a real table
+  // cell; a spec entry naming one declares a merge.
   const rows = rowsSpec.map(rowSpec => ({
-    cells: rowSpec.map(s => makeMockCell(s.tag, s.text))
+    cells: rowSpec.map(s => Object.assign(makeMockCell(s.tag, s.text), {
+      colSpan: s.colSpan || 1,
+      rowSpan: s.rowSpan === undefined ? 1 : s.rowSpan,
+    }))
   }));
   return {
     rows,
@@ -23394,9 +23399,14 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     isVirtualized: () => !!table._virtualized,
     getRows: () => table._rows.map((row) => ({
       isOutside: !!row.isOutside,
-      getCells: () => row.cells.map((cell) => ({
+      // columnIndex and columnSpan are part of the adapter's cell contract
+      // (see assignGridColumns); this spec declares no merge, so each cell
+      // sits at its read position and covers one column.
+      getCells: () => row.cells.map((cell, c) => ({
         el: cell.el,
         tagName: cell.tagName || 'TD',
+        columnIndex: c,
+        columnSpan: 1,
         getDisplayedText: () => cell.text,
       })),
     })),
@@ -23716,6 +23726,60 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 
   const html = buildCaptureDocument({ state: makeState(), lockedStatusText: LOCKED_TEXT });
 
+// --- The capture rendering places a cell under its own column ---
+
+(function theCaptureRenderingPlacesACellAtItsColumn() {
+  // A total row merged across the first two columns: one header row of three
+  // cells, then a row holding a label at column 0 and the total at column 2.
+  const merged = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: {},
+        maxMagnitude: null, locked: false, rowCount: 2, columnCount: 3,
+        cells: [
+          { row: 0, col: 0, role: 'th', isOutside: false, text: 'Product', original: null },
+          { row: 0, col: 1, role: 'th', isOutside: false, text: 'Units', original: null },
+          { row: 0, col: 2, role: 'th', isOutside: false, text: 'Revenue', original: null },
+          { row: 1, col: 0, role: 'th', isOutside: false, text: 'Total', original: null },
+          { row: 1, col: 2, role: 'td', isOutside: false, text: '1,000,000', original: '1,140,043' },
+        ],
+      }],
+    }),
+    lockedStatusText: '',
+  });
+  const rows = merged.match(/<tr>[\s\S]*?<\/tr>/g) || [];
+  eq('#330: a cell the state records at a later column renders under that column',
+    rows[1], '<tr><th>Total</th><td></td><td class="cap-simplified" ' +
+      'title="Original: 1,140,043">1,000,000</td></tr>');
+  eq('#330: a row whose cells fill every column renders unchanged',
+    rows[0], '<tr><th>Product</th><th>Units</th><th>Revenue</th></tr>');
+})();
+
+(function theCaptureRenderingPadsEveryRowToTheTableWidth() {
+  // A total row merged across all three columns, and a row the state holds
+  // no cell for at all.
+  const padded = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: {},
+        maxMagnitude: null, locked: false, rowCount: 3, columnCount: 3,
+        cells: [
+          { row: 0, col: 0, role: 'th', isOutside: false, text: 'Product', original: null },
+          { row: 0, col: 1, role: 'th', isOutside: false, text: 'Units', original: null },
+          { row: 0, col: 2, role: 'th', isOutside: false, text: 'Revenue', original: null },
+          { row: 2, col: 0, role: 'th', isOutside: false, text: 'Total', original: null },
+        ],
+      }],
+    }),
+    lockedStatusText: '',
+  });
+  const rows = padded.match(/<tr>[\s\S]*?<\/tr>/g) || [];
+  eq('#330: the columns a merge covers render blank even at the table\'s right edge',
+    rows[2], '<tr><th>Total</th><td></td><td></td></tr>');
+  eq('#330: a row the state holds no cell for still renders',
+    rows[1], '<tr><td></td><td></td><td></td></tr>');
+})();
+
   eq('capture-render: the CSP forbids scripts and remote fetches',
     /http-equiv="Content-Security-Policy"[^>]*script-src 'none'/.test(html) &&
       /img-src data:/.test(html), true);
@@ -23747,7 +23811,8 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     /with the originals/.test(html) &&
       /<td[^>]*>98,765<\/td>/.test(html), true);
   eq('capture-render: the table renderings state the span limit',
-    html.includes('merged cells render unmerged'), true);
+    html.includes('Cell spans are not recorded') &&
+      html.includes('the columns it covers render blank'), true);
   eq('capture-render: the likeness shows both thumbs when the lens control is coupled',
     (html.match(/class="cap-thumb/g) || []).length, 2);
   eq('capture-render: the coupled heading names the shared value',
@@ -26695,6 +26760,200 @@ eq('bracketed: a bracket pair holding more than the number is not a whole-text m
   } finally {
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #330: a merged cell shifts the columns after it
+//
+// A cell's column number is its grid column — the column the browser lays the
+// cell out in — not its position in the row read. A cell merged across
+// advances the cursor by its whole width, and a cell merged down holds its
+// columns on every row it covers, so the cells after a merge keep their real
+// column number. Both table kinds run the same rule: an ordinary table reads
+// the span from the markup, a grid from the accessibility attributes a page
+// declares.
+// ---------------------------------------------------------------------------
+
+// The worked example from the issue: a label column merged down over two rows,
+// and a total row merged across the first two columns.
+function makeMergedSpanTable() {
+  return makeMockTable([
+    [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }, { tag: 'th', text: 'Q2' }],
+    [{ tag: 'td', text: 'West', rowSpan: 2 }, { tag: 'td', text: '1,234' }, { tag: 'td', text: '2,345' }],
+    [{ tag: 'td', text: '12,500' }, { tag: 'td', text: '3,210' }],
+    [{ tag: 'td', text: 'Total', colSpan: 2 }, { tag: 'td', text: '5,555' }],
+  ]);
+}
+
+// The same table with every merge written out: the reading each consumer must
+// agree with.
+function makeUnmergedSpanTable() {
+  return makeMockTable([
+    [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }, { tag: 'th', text: 'Q2' }],
+    [{ tag: 'td', text: 'West' }, { tag: 'td', text: '1,234' }, { tag: 'td', text: '2,345' }],
+    [{ tag: 'td', text: 'West' }, { tag: 'td', text: '12,500' }, { tag: 'td', text: '3,210' }],
+  ]);
+}
+
+// Declare merges on a grid the way a page does, through the accessibility
+// attributes. Every cell answers the attribute read, as a page element does;
+// only the cells named here answer with a span.
+function declareGridSpans(grid, spansByCellIndex) {
+  grid.cellEls.forEach(function (cellEl, idx) {
+    const spans = spansByCellIndex[idx] || {};
+    cellEl.getAttribute = function (name) {
+      if (name === 'aria-colspan') return spans.colSpan ? String(spans.colSpan) : null;
+      if (name === 'aria-rowspan') return spans.rowSpan ? String(spans.rowSpan) : null;
+      return null;
+    };
+  });
+  return grid;
+}
+
+function adapterColumnsOf(el) {
+  return makeAdapter(el).getRows().map((row) => row.getCells().map((cell) => cell.columnIndex));
+}
+
+// --- The column number is the grid column ---
+
+(function mergedCellsCarryTheirGridColumn() {
+  eq('#330: a row merged down and a row merged across keep every column number',
+    adapterColumnsOf(makeMergedSpanTable()), [[0, 1, 2], [0, 1, 2], [1, 2], [0, 2]]);
+})();
+
+(function aTableWithNoMergeNumbersByReadPosition() {
+  eq('#330: a table with no merge numbers its columns by read position',
+    adapterColumnsOf(makeUnmergedSpanTable()), [[0, 1, 2], [0, 1, 2], [0, 1, 2]]);
+})();
+
+(function aMergedCellReportsItsWidth() {
+  const widths = makeAdapter(makeMergedSpanTable()).getRows()[3]
+    .getCells().map((cell) => cell.columnSpan);
+  eq('#330: a cell merged across reports the columns it covers', widths, [2, 1]);
+})();
+
+(function anOverlappingMergeKeepsTheOlderHold() {
+  // Markup a table model calls an error, still laid out: the second row's
+  // cell is wide enough to reach a column the third-row merge above already
+  // holds. Both cells keep the shared slot, so the cursor carries the longer
+  // hold and the last row's third cell lands past it.
+  const table = makeMockTable([
+    [{ tag: 'td', text: 'A', rowSpan: 2 }, { tag: 'td', text: 'B' }, { tag: 'td', text: 'C', rowSpan: 3 }],
+    [{ tag: 'td', text: 'D', colSpan: 2 }],
+    [{ tag: 'td', text: 'E' }, { tag: 'td', text: 'F' }, { tag: 'td', text: 'G' }],
+  ]);
+  eq('#330: a merge reaching into a held column does not release that column',
+    adapterColumnsOf(table), [[0, 1, 2], [1], [0, 1, 3]]);
+})();
+
+// --- The first-column exclusion falls on the label column ---
+
+(function theFirstColumnExclusionFollowsTheGridColumn() {
+  withCreateTreeWalker(function () {
+    const table = makeMergedSpanTable();
+    roundTable(table, Object.assign({}, DR_DEFAULTS));
+    eq('#330: the cell after a downward merge is not read as the first column',
+      table.rows[2].cells[0].classList.contains('dr-ext-rounded'), true);
+  });
+})();
+
+// --- The max magnitude matches the unmerged equivalent ---
+
+(function theMaxMagnitudeMatchesTheUnmergedTable() {
+  withCreateTreeWalker(function () {
+    const merged = makeMergedSpanTable();
+    const unmerged = makeUnmergedSpanTable();
+    // The two offsets differ, so the band a value falls in against the max
+    // magnitude changes its text. Under the shipped defaults both offsets are
+    // the same and the max magnitude picks between two equal choices, which
+    // would leave this test blind to the reading it is here to pin.
+    const opts = Object.assign({}, DR_DEFAULTS, { offsetTop: -1, offsetOther: 0 });
+    roundTable(merged, opts);
+    roundTable(unmerged, opts);
+    const textsOf = (table, r) => table.rows[r].cells.map((cell) => cell.textContent);
+    eq('#330: the merged table rounds its first data row like the unmerged one',
+      textsOf(merged, 1), textsOf(unmerged, 1));
+    eq('#330: the merged table rounds its second data row like the unmerged one',
+      textsOf(merged, 2), textsOf(unmerged, 2).slice(1));
+  });
+})();
+
+// --- The range pulse frames the cells the engine rounds ---
+
+(function theRangePulseFramesTheGridColumn() {
+  const table = makeMergedSpanTable();
+  // Column 1 sits at 100-200, column 2 at 200-300, so the overlay's geometry
+  // says which cell matched. The row merged down covers column 0, so the two
+  // cells of the third row are grid columns 1 and 2.
+  const shifted = table.rows[2].cells;
+  shifted[0].getBoundingClientRect = () => ({ top: 40, left: 100, right: 200, bottom: 60 });
+  shifted[1].getBoundingClientRect = () => ({ top: 40, left: 200, right: 300, bottom: 60 });
+
+  const origCreateElement = global.document.createElement;
+  const origBody = global.document.body;
+  const origSetTimeout = global.setTimeout;
+  let overlay = null;
+  global.document.createElement = (tag) => {
+    const el = { style: {}, addEventListener() {} };
+    if (tag === 'div') overlay = el;
+    return el;
+  };
+  global.document.body = { appendChild() {} };
+  global.setTimeout = () => 0;
+
+  try {
+    // Column B of the third row alone: the cell the engine rounds there.
+    flashRangePulse(table, [{ rowMin: 2, rowMax: 2, colMin: 1, colMax: 1 }]);
+  } finally {
+    global.document.createElement = origCreateElement;
+    global.document.body = origBody;
+    global.setTimeout = origSetTimeout;
+  }
+
+  eq('#330: the range pulse frames the cell at the grid column, not at the read position',
+    overlay && { left: overlay.style.left, width: overlay.style.width },
+    { left: '100px', width: '100px' });
+})();
+
+// --- The capture state records the grid width ---
+
+(function theCaptureStateRecordsTheGridWidth() {
+  // Every row holds a merge, so no row's cell count reaches the table's
+  // width: counting the widest row answers 2 where the table is 3 columns.
+  const table = makeMockTable([
+    [{ tag: 'th', text: 'Quarters', colSpan: 2 }, { tag: 'th', text: 'Year' }],
+    [{ tag: 'td', text: 'West', rowSpan: 2 }, { tag: 'td', text: '1,234', colSpan: 2 }],
+    [{ tag: 'td', text: '3,210', colSpan: 2 }],
+  ]);
+  DR_STORE.registerTable(table);
+  try {
+    const state = collectCaptureState({ store: DR_STORE, adapterFor: (t) => makeAdapter(t) });
+    const record = state.tables[DR_STORE.getRegisteredTables().indexOf(table)];
+    eq('#330: the capture state counts the grid width, not the widest row read',
+      record.columnCount, 3);
+    eq('#330: the capture state records each cell at its grid column',
+      record.cells.filter((cell) => cell.row === 0).map((cell) => cell.col), [0, 2]);
+  } finally {
+    DR_STORE.unregisterTable(table);
+  }
+})();
+
+// --- A grid runs the same rule ---
+
+(function aGridCellCarriesItsGridColumn() {
+  const grid = declareGridSpans(makeGridWrapper([
+    ['West', '1,234', '2,345'],
+    ['12,500', '3,210'],
+  ], { useDgClasses: true }), { 0: { rowSpan: 2 } });
+  eq('#330: a grid cell after a declared downward merge keeps its grid column',
+    adapterColumnsOf(grid.wrapperEl), [[0, 1, 2], [1, 2]]);
+})();
+
+(function aGridWithNoDeclaredMergeNumbersByReadPosition() {
+  const grid = declareGridSpans(
+    makeGridWrapper([['4.91', '5,432.1'], ['12', '34']], { useDgClasses: true }), {});
+  eq('#330: a grid that declares no merge numbers its columns by read position',
+    adapterColumnsOf(grid.wrapperEl), [[0, 1], [0, 1]]);
 })();
 
 // --- Report ---

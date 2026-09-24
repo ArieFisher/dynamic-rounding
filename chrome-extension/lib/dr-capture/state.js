@@ -71,10 +71,14 @@ function collectCaptureState(deps) {
     const cells = [];
     for (let r = 0; r < rows.length; r++) {
       const rowCells = rows[r].getCells();
-      if (rowCells.length > columnCount) columnCount = rowCells.length;
       const isOutside = !!rows[r].isOutside;
       for (let c = 0; c < rowCells.length; c++) {
         const cellObj = rowCells[c];
+        // The table's width is the rightmost grid column any cell reaches,
+        // not the widest row's cell count: a row whose cells are merged holds
+        // fewer cells than the table has columns.
+        const rightEdge = cellObj.columnIndex + cellObj.columnSpan;
+        if (rightEdge > columnCount) columnCount = rightEdge;
         const originalText = store.getTableOriginalText(table, cellObj.el);
         const original = originalText === undefined ? null : originalText;
         // GRID_ROUNDED_CLASS (lib/dr-table/detect.js) marks every rounded
@@ -85,7 +89,7 @@ function collectCaptureState(deps) {
         if (wearsMarker && original === null) locked = true;
         cells.push({
           row: r,
-          col: c,
+          col: cellObj.columnIndex,
           role: cellObj.tagName === 'TH' ? 'th' : 'td',
           isOutside,
           text: cellObj.getDisplayedText(),

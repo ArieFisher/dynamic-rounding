@@ -274,14 +274,30 @@ function renderMarkAndRemarks(state) {
 // lost and renders as that absence, never a substituted value; without it
 // the cell was never rounded, so its displayed text IS the original.
 function renderCapTable(table, mode) {
+  // Each cell goes in the slot its recorded column names, not in the next
+  // free one. A row under a merge holds fewer cells than the table has
+  // columns, so packing them left to right would draw every cell after the
+  // merge one column early, under the wrong header.
   const byRow = [];
   for (let i = 0; i < table.cells.length; i++) {
     const cell = table.cells[i];
     if (!byRow[cell.row]) byRow[cell.row] = [];
-    byRow[cell.row].push(cell);
+    byRow[cell.row][cell.col] = cell;
   }
-  const rowsHtml = byRow.map(function (rowCells) {
-    const cellsHtml = (rowCells || []).map(function (cell) {
+  // Array.from over the length, not map, at both levels: a row whose cells
+  // skip a column and a table whose state holds no cell for a row are both
+  // sparse arrays, and map passes over the holes that are the whole point.
+  // Each row draws to the table's full width, so the columns a merge covers
+  // render blank wherever the merge sits, its right edge included.
+  const width = Math.max(table.columnCount || 0, 0);
+  const rowsHtml = Array.from(byRow, function (rowCells) {
+    const cells = rowCells || [];
+    const cellsHtml = Array.from({ length: Math.max(cells.length, width) }, function (_, col) {
+      const cell = cells[col];
+      // The columns a merge covers hold no cell of their own. They render as
+      // empty slots, which is what keeps the cells after them in place; the
+      // note below states that the merge itself is not drawn.
+      if (!cell) return '<td></td>';
       const tag = cell.role === 'th' ? 'th' : 'td';
       if (mode === 'originals') {
         if (cell.original === null && cell.wearsMarker) {
@@ -333,10 +349,12 @@ function renderBoundTable(state, lockedStatusText) {
     renderNote('Hover a dotted cell to see its original.') +
     '<h3>The same table, with the originals</h3>' +
     renderCapTable(table, 'originals') +
-    // The state records no cell spans, so both renderings and the JSON place
-    // every cell in its own slot (#309's named limit).
-    renderNote('Cell spans are not recorded: merged cells render ' +
-      'unmerged here and in the state below.');
+    // The state records each cell's column but not how far a merge reaches,
+    // so both renderings and the JSON place every cell in its own slot and
+    // leave the rest of a merge blank (#309's named limit).
+    renderNote('Cell spans are not recorded: a merged cell renders in the ' +
+      'column it starts at, and the columns it covers render blank, here ' +
+      'and in the state below.');
 }
 
 // Every table the registry held, one line each, the bound one marked. The
