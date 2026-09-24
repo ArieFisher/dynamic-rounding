@@ -23755,6 +23755,31 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     rows[0], '<tr><th>Product</th><th>Units</th><th>Revenue</th></tr>');
 })();
 
+(function theCaptureRenderingPadsEveryRowToTheTableWidth() {
+  // A total row merged across all three columns, and a row the state holds
+  // no cell for at all.
+  const padded = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: {},
+        maxMagnitude: null, locked: false, rowCount: 3, columnCount: 3,
+        cells: [
+          { row: 0, col: 0, role: 'th', isOutside: false, text: 'Product', original: null },
+          { row: 0, col: 1, role: 'th', isOutside: false, text: 'Units', original: null },
+          { row: 0, col: 2, role: 'th', isOutside: false, text: 'Revenue', original: null },
+          { row: 2, col: 0, role: 'th', isOutside: false, text: 'Total', original: null },
+        ],
+      }],
+    }),
+    lockedStatusText: '',
+  });
+  const rows = padded.match(/<tr>[\s\S]*?<\/tr>/g) || [];
+  eq('#330: the columns a merge covers render blank even at the table\'s right edge',
+    rows[2], '<tr><th>Total</th><td></td><td></td></tr>');
+  eq('#330: a row the state holds no cell for still renders',
+    rows[1], '<tr><td></td><td></td><td></td></tr>');
+})();
+
   eq('capture-render: the CSP forbids scripts and remote fetches',
     /http-equiv="Content-Security-Policy"[^>]*script-src 'none'/.test(html) &&
       /img-src data:/.test(html), true);

@@ -284,10 +284,16 @@ function renderCapTable(table, mode) {
     if (!byRow[cell.row]) byRow[cell.row] = [];
     byRow[cell.row][cell.col] = cell;
   }
-  // Array.from over the length, not map: a row whose cells skip a column is
-  // a sparse array, and map passes over the holes that are the whole point.
-  const rowsHtml = byRow.map(function (rowCells) {
-    const cellsHtml = Array.from(rowCells || [], function (cell) {
+  // Array.from over the length, not map, at both levels: a row whose cells
+  // skip a column and a table whose state holds no cell for a row are both
+  // sparse arrays, and map passes over the holes that are the whole point.
+  // Each row draws to the table's full width, so the columns a merge covers
+  // render blank wherever the merge sits, its right edge included.
+  const width = Math.max(table.columnCount || 0, 0);
+  const rowsHtml = Array.from(byRow, function (rowCells) {
+    const cells = rowCells || [];
+    const cellsHtml = Array.from({ length: Math.max(cells.length, width) }, function (_, col) {
+      const cell = cells[col];
       // The columns a merge covers hold no cell of their own. They render as
       // empty slots, which is what keeps the cells after them in place; the
       // note below states that the merge itself is not drawn.
