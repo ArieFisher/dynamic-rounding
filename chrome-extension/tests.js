@@ -23726,6 +23726,35 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
 
   const html = buildCaptureDocument({ state: makeState(), lockedStatusText: LOCKED_TEXT });
 
+// --- The capture rendering places a cell under its own column ---
+
+(function theCaptureRenderingPlacesACellAtItsColumn() {
+  // A total row merged across the first two columns: one header row of three
+  // cells, then a row holding a label at column 0 and the total at column 2.
+  const merged = buildCaptureDocument({
+    state: makeState({
+      tables: [{
+        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: {},
+        maxMagnitude: null, locked: false, rowCount: 2, columnCount: 3,
+        cells: [
+          { row: 0, col: 0, role: 'th', isOutside: false, text: 'Product', original: null },
+          { row: 0, col: 1, role: 'th', isOutside: false, text: 'Units', original: null },
+          { row: 0, col: 2, role: 'th', isOutside: false, text: 'Revenue', original: null },
+          { row: 1, col: 0, role: 'th', isOutside: false, text: 'Total', original: null },
+          { row: 1, col: 2, role: 'td', isOutside: false, text: '1,000,000', original: '1,140,043' },
+        ],
+      }],
+    }),
+    lockedStatusText: '',
+  });
+  const rows = merged.match(/<tr>[\s\S]*?<\/tr>/g) || [];
+  eq('#330: a cell the state records at a later column renders under that column',
+    rows[1], '<tr><th>Total</th><td></td><td class="cap-simplified" ' +
+      'title="Original: 1,140,043">1,000,000</td></tr>');
+  eq('#330: a row whose cells fill every column renders unchanged',
+    rows[0], '<tr><th>Product</th><th>Units</th><th>Revenue</th></tr>');
+})();
+
   eq('capture-render: the CSP forbids scripts and remote fetches',
     /http-equiv="Content-Security-Policy"[^>]*script-src 'none'/.test(html) &&
       /img-src data:/.test(html), true);
@@ -23757,7 +23786,8 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
     /with the originals/.test(html) &&
       /<td[^>]*>98,765<\/td>/.test(html), true);
   eq('capture-render: the table renderings state the span limit',
-    html.includes('merged cells render unmerged'), true);
+    html.includes('Cell spans are not recorded') &&
+      html.includes('the columns it covers render blank'), true);
   eq('capture-render: the likeness shows both thumbs when the lens control is coupled',
     (html.match(/class="cap-thumb/g) || []).length, 2);
   eq('capture-render: the coupled heading names the shared value',
