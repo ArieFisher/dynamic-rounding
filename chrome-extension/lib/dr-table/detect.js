@@ -233,9 +233,10 @@ class NativeTableAdapter {
         (row.parentElement || row.parentNode).tagName === 'TFOOT'),
       getCells() {
         return Array.from(row.cells).map((cell, c) => Object.assign(columnPlacement(plan[r], c), {
-          // No setText: the native path writes cells directly in roundTable so it
-          // can preserve markup in mixed cells and stash both originalHtml and
-          // originalValue. A textContent-based setText here would flatten mixed
+          // No setText: the simplification pass in content.js writes a native
+          // cell directly (NATIVE_TABLE_PASS.writeCell) so it can preserve
+          // markup in mixed cells and store both the original HTML and the
+          // original value. A textContent-based setText here would flatten mixed
           // cells and skip originalValue, silently feeding the sidebar preview
           // its own rounded output.
           getText() { return cell.innerText || cell.textContent || ''; },
