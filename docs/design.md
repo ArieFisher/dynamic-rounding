@@ -114,6 +114,8 @@ The selected offset is then passed to the rounding logic.
 
 **The extension's dataset:** in a table, the max magnitude comes only from cells that are inside the range expression, not excluded (first row, first column, currency, percent), classified as numbers the table rounds (pure cells, unit numbers, bracketed numbers, each number of a stacked cell on a grid, and each number of an extracted cell on a native table), and not in an outside row. An outside row — a grid row outside every row group, or a native table's `<tfoot>` row — rounds against the dataset without joining it: its values never feed the max magnitude or the lens preview. On a virtualized grid the max magnitude freezes when simplification is first applied, so scrolling new rows into view does not shift it.
 
+**Where a cell sits:** every rule that gates a cell by column reads the cell's grid column, computed once for the whole table before any text is read. The adapter walks the rows in order with a column cursor: a cell merged across advances the cursor by its whole width, and a cell merged down holds its columns on the rows below it, so the cursor skips a held column. Both table kinds run that one walk, over the spans the markup declares on a native table and the spans the accessibility attributes declare on a grid. A grid that declares no span numbers its columns by read position, which is the same answer. Without this walk a merge inside the data area shifts every cell after it, and the shift moves the exclusions and the range expression onto the wrong cells and changes the step the whole table rounds at, including its unmerged rows.
+
 ## Rounding Logic
 
 Given a `value` and an `offset`:
