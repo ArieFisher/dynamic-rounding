@@ -26777,6 +26777,20 @@ function adapterColumnsOf(el) {
   eq('#330: a cell merged across reports the columns it covers', widths, [2, 1]);
 })();
 
+(function anOverlappingMergeKeepsTheOlderHold() {
+  // Markup a table model calls an error, still laid out: the second row's
+  // cell is wide enough to reach a column the third-row merge above already
+  // holds. Both cells keep the shared slot, so the cursor carries the longer
+  // hold and the last row's third cell lands past it.
+  const table = makeMockTable([
+    [{ tag: 'td', text: 'A', rowSpan: 2 }, { tag: 'td', text: 'B' }, { tag: 'td', text: 'C', rowSpan: 3 }],
+    [{ tag: 'td', text: 'D', colSpan: 2 }],
+    [{ tag: 'td', text: 'E' }, { tag: 'td', text: 'F' }, { tag: 'td', text: 'G' }],
+  ]);
+  eq('#330: a merge reaching into a held column does not release that column',
+    adapterColumnsOf(table), [[0, 1, 2], [1], [0, 1, 3]]);
+})();
+
 // --- The first-column exclusion falls on the label column ---
 
 (function theFirstColumnExclusionFollowsTheGridColumn() {
@@ -26794,8 +26808,13 @@ function adapterColumnsOf(el) {
   withCreateTreeWalker(function () {
     const merged = makeMergedSpanTable();
     const unmerged = makeUnmergedSpanTable();
-    roundTable(merged, Object.assign({}, DR_DEFAULTS));
-    roundTable(unmerged, Object.assign({}, DR_DEFAULTS));
+    // The two offsets differ, so the band a value falls in against the max
+    // magnitude changes its text. Under the shipped defaults both offsets are
+    // the same and the max magnitude picks between two equal choices, which
+    // would leave this test blind to the reading it is here to pin.
+    const opts = Object.assign({}, DR_DEFAULTS, { offsetTop: -1, offsetOther: 0 });
+    roundTable(merged, opts);
+    roundTable(unmerged, opts);
     const textsOf = (table, r) => table.rows[r].cells.map((cell) => cell.textContent);
     eq('#330: the merged table rounds its first data row like the unmerged one',
       textsOf(merged, 1), textsOf(unmerged, 1));
@@ -26804,10 +26823,51 @@ function adapterColumnsOf(el) {
   });
 })();
 
+// --- The range pulse frames the cells the engine rounds ---
+
+(function theRangePulseFramesTheGridColumn() {
+  const table = makeMergedSpanTable();
+  // Column 1 sits at 100-200, column 2 at 200-300, so the overlay's geometry
+  // says which cell matched. The row merged down covers column 0, so the two
+  // cells of the third row are grid columns 1 and 2.
+  const shifted = table.rows[2].cells;
+  shifted[0].getBoundingClientRect = () => ({ top: 40, left: 100, right: 200, bottom: 60 });
+  shifted[1].getBoundingClientRect = () => ({ top: 40, left: 200, right: 300, bottom: 60 });
+
+  const origCreateElement = global.document.createElement;
+  const origBody = global.document.body;
+  const origSetTimeout = global.setTimeout;
+  let overlay = null;
+  global.document.createElement = (tag) => {
+    const el = { style: {}, addEventListener() {} };
+    if (tag === 'div') overlay = el;
+    return el;
+  };
+  global.document.body = { appendChild() {} };
+  global.setTimeout = () => 0;
+
+  // Column B of the third row alone: the cell the engine rounds there.
+  flashRangePulse(table, [{ rowMin: 2, rowMax: 2, colMin: 1, colMax: 1 }]);
+
+  global.document.createElement = origCreateElement;
+  global.document.body = origBody;
+  global.setTimeout = origSetTimeout;
+
+  eq('#330: the range pulse frames the cell at the grid column, not at the read position',
+    overlay && { left: overlay.style.left, width: overlay.style.width },
+    { left: '100px', width: '100px' });
+})();
+
 // --- The capture state records the grid width ---
 
 (function theCaptureStateRecordsTheGridWidth() {
-  const table = makeMergedSpanTable();
+  // Every row holds a merge, so no row's cell count reaches the table's
+  // width: counting the widest row answers 2 where the table is 3 columns.
+  const table = makeMockTable([
+    [{ tag: 'th', text: 'Quarters', colSpan: 2 }, { tag: 'th', text: 'Year' }],
+    [{ tag: 'td', text: 'West', rowSpan: 2 }, { tag: 'td', text: '1,234', colSpan: 2 }],
+    [{ tag: 'td', text: '3,210', colSpan: 2 }],
+  ]);
   DR_STORE.registerTable(table);
   try {
     const state = collectCaptureState({ store: DR_STORE, adapterFor: (t) => makeAdapter(t) });
@@ -26815,7 +26875,7 @@ function adapterColumnsOf(el) {
     eq('#330: the capture state counts the grid width, not the widest row read',
       record.columnCount, 3);
     eq('#330: the capture state records each cell at its grid column',
-      record.cells.filter((cell) => cell.row === 3).map((cell) => cell.col), [0, 2]);
+      record.cells.filter((cell) => cell.row === 0).map((cell) => cell.col), [0, 2]);
   } finally {
     DR_STORE.unregisterTable(table);
   }

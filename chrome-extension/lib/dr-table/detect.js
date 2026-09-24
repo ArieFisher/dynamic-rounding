@@ -181,7 +181,13 @@ function assignGridColumns(rowSpans) {
     const placed = cells.map(({ colSpan, rowSpan }) => {
       while (held[cursor] > 0) cursor += 1;
       const columnIndex = cursor;
-      for (let col = cursor; col < cursor + colSpan; col++) held[col] = rowSpan;
+      // The longer of the two holds wins. On well-formed markup no covered
+      // column carries a hold at this point, so this reads as a plain write;
+      // it matters where a cell merged across reaches into a column a merge
+      // above still holds, which the table model keeps on the shared slot.
+      for (let col = cursor; col < cursor + colSpan; col++) {
+        held[col] = Math.max(held[col] || 0, rowSpan);
+      }
       cursor += colSpan;
       return { columnIndex, columnSpan: colSpan };
     });
