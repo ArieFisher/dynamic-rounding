@@ -193,13 +193,17 @@ function assignGridColumns(rowSpans) {
 }
 
 /**
- * The column plan entry for one cell, or the read position when the plan
- * holds no entry for it — a grid whose rows changed between the plan and the
- * read, which leaves the cell numbered as it was before this rule.
+ * A fresh placement for one cell: the column plan's entry for it, or the read
+ * position when the plan holds no entry — a table whose rows changed between
+ * the plan and the read, which leaves the cell numbered as it was before this
+ * rule. Fresh because the caller builds each cell object on top of it, and a
+ * shared entry would tie every cell object at that position together.
  */
 function columnPlacement(planRow, position) {
   const entry = planRow && planRow[position];
-  return entry || { columnIndex: position, columnSpan: 1 };
+  return entry
+    ? { columnIndex: entry.columnIndex, columnSpan: entry.columnSpan }
+    : { columnIndex: position, columnSpan: 1 };
 }
 
 class NativeTableAdapter {
