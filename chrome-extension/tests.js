@@ -9138,6 +9138,52 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
   }
 })();
 
+// A later simplification with an invalid range expression stores its options
+// and returns an error without resetting the grid, so the re-apply observer
+// from the first simplification still fires. The re-apply reads the stored
+// invalid expression and writes nothing, as the first simplification would.
+(function gridReapply_underAnInvalidRangeExpression_writesNothing() {
+  const { grid, aNumber } = makePatchGrid();
+  const [a] = grid.cellEls;
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    const result = roundTable(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { rangeExpr: 'A:B:C' }));
+    eq('grid re-apply invalid range (setup): the second simplification returns the range error',
+      result.rangeStatus, 'error');
+    aNumber.nodeValue = '8,584,629';
+    const writesBefore = aNumber.writes;
+    reapplyGridRounding(grid.wrapperEl);
+    eq('grid re-apply invalid range: a piece redrawn to its original is not patched',
+      { pieces: pieceTextsOf(a), writes: aNumber.writes },
+      { pieces: [' ', '8,584,629', ' '], writes: writesBefore });
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// A grid whose first simplification found no dataset holds no magnitude
+// freeze (null). The re-apply then computes the max magnitude from the
+// visible cells, and only a first simplification stores a freeze, so the
+// freeze stays unset for the next re-apply.
+(function gridReapply_withNoMagnitudeFreeze_computesTheBasisAndLeavesTheFreezeUnset() {
+  const { grid, aNumber } = makePatchGrid();
+  const [a] = grid.cellEls;
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid re-apply no freeze (setup): the first simplification stores a freeze',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 6);
+    DR_STORE.setTableMaxMagnitude(grid.wrapperEl, null);
+    aNumber.nodeValue = '8,584,629';
+    reapplyGridRounding(grid.wrapperEl);
+    eq('grid re-apply no freeze: a piece redrawn to its original rounds against the visible cells',
+      pieceTextsOf(a), [' ', '8,500,000', ' ']);
+    eq('grid re-apply no freeze: the re-apply stores no freeze',
+      DR_STORE.getTableMaxMagnitude(grid.wrapperEl), null);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
 (function gridPatch_captureCarriesTheRecordValue() {
   const { grid } = makePatchGrid();
   const [a] = grid.cellEls;
