@@ -111,6 +111,97 @@ const GRID_VENDOR_PROFILES = DR_DETECTION_SETTINGS.vendorProfiles;
 // (isDataTable, roundTable, resetTable, extractPreviewSamples) consume only
 // the adapter API; they never touch .rows/.cells directly.
 
+/**
+ * Read one span value, normalized the way a table cell holds it.
+ *
+ * A missing, blank, or unreadable value is one column or one row. An explicit
+ * zero is the "to the end" form, which HTML and ARIA both define for rowspan
+ * and neither honours for colspan, so the caller passes what zero means.
+ * Column spans are capped at the 1000 a table cell allows, so a malformed
+ * value cannot stretch the column cursor.
+ *
+ * @param {string|number|null|undefined} raw
+ * @param {number} whenZero
+ * @returns {number}
+ */
+function normalizeSpan(raw, whenZero) {
+  if (raw === null || raw === undefined || raw === '') return 1;
+  const value = Math.trunc(Number(raw));
+  if (!Number.isFinite(value) || value < 0) return 1;
+  if (value === 0) return whenZero;
+  return Math.min(value, 1000);
+}
+
+/** Spans of a native table cell, read from the element's own properties. */
+function nativeCellSpans(cell) {
+  return {
+    colSpan: normalizeSpan(cell.colSpan, 1),
+    rowSpan: normalizeSpan(cell.rowSpan, Infinity),
+  };
+}
+
+/**
+ * Spans of a grid cell, read from the accessibility attributes a page
+ * declares. A grid that declares none reports one column and one row for
+ * every cell, which is the same numbering the read position gives.
+ */
+function gridCellSpans(cellEl) {
+  const read = (cellEl && typeof cellEl.getAttribute === 'function')
+    ? (name) => cellEl.getAttribute(name)
+    : () => null;
+  return {
+    colSpan: normalizeSpan(read('aria-colspan'), 1),
+    rowSpan: normalizeSpan(read('aria-rowspan'), Infinity),
+  };
+}
+
+/**
+ * Number every cell by the column the browser lays it out in (issue #330).
+ *
+ * Rows are walked in order, each with a cursor starting at the leftmost
+ * column. A cell merged down holds its columns on the rows below it and the
+ * cursor skips a held column; a cell merged across advances the cursor by its
+ * whole width. Both table kinds call this with their own span reads, so the
+ * numbering rule lives in one place and the two kinds agree cell for cell.
+ *
+ * Without this, a cell's position in the row read stands for its column, and
+ * a merge inside the data area shifts every cell after it: the first-column
+ * exclusion and the range expression then fall on the wrong cells, the
+ * dataset behind the max magnitude gains or loses values, and the whole table
+ * rounds at the wrong step.
+ *
+ * @param {{colSpan: number, rowSpan: number}[][]} rowSpans
+ * @returns {{columnIndex: number, columnSpan: number}[][]}
+ */
+function assignGridColumns(rowSpans) {
+  // Per column, how many further rows a merge above holds it for.
+  const held = [];
+  return rowSpans.map((cells) => {
+    let cursor = 0;
+    const placed = cells.map(({ colSpan, rowSpan }) => {
+      while (held[cursor] > 0) cursor += 1;
+      const columnIndex = cursor;
+      for (let col = cursor; col < cursor + colSpan; col++) held[col] = rowSpan;
+      cursor += colSpan;
+      return { columnIndex, columnSpan: colSpan };
+    });
+    for (let col = 0; col < held.length; col++) {
+      if (held[col] > 0) held[col] -= 1;
+    }
+    return placed;
+  });
+}
+
+/**
+ * The column plan entry for one cell, or the read position when the plan
+ * holds no entry for it — a grid whose rows changed between the plan and the
+ * read, which leaves the cell numbered as it was before this rule.
+ */
+function columnPlacement(planRow, position) {
+  const entry = planRow && planRow[position];
+  return entry || { columnIndex: position, columnSpan: 1 };
+}
+
 class NativeTableAdapter {
   constructor(el) {
     this.el = el;
@@ -122,11 +213,16 @@ class NativeTableAdapter {
     // outside the row group. Outside rows round like any other, but their
     // values stay out of the dataset: consumers skip them when computing the
     // max magnitude and the lens preview pool.
-    return Array.from(this.el.rows).map(row => ({
+    const rowEls = Array.from(this.el.rows);
+    // One pass over the spans numbers every cell by its grid column, before
+    // any text is read; a cell then carries the number its consumers gate on.
+    const plan = assignGridColumns(
+      rowEls.map((row) => Array.from(row.cells).map(nativeCellSpans)));
+    return rowEls.map((row, r) => ({
       isOutside: !!((row.parentElement || row.parentNode) &&
         (row.parentElement || row.parentNode).tagName === 'TFOOT'),
       getCells() {
-        return Array.from(row.cells).map(cell => ({
+        return Array.from(row.cells).map((cell, c) => Object.assign(columnPlacement(plan[r], c), {
           // No setText: the native path writes cells directly in roundTable so it
           // can preserve markup in mixed cells and stash both originalHtml and
           // originalValue. A textContent-based setText here would flatten mixed
@@ -467,31 +563,30 @@ class GridAdapter {
     }
 
     const adapter = this;
-    return scrollEntries.map(({ el: rowEl, isOutside }, idx) => {
+    // Each row's cell elements in the order getCells() hands them out: the
+    // pinned pane's cells, then the scrolling pane's. Read once here so the
+    // column plan below and the cell objects below that count in the same
+    // row shape, and so a row is queried for its cells once, not twice.
+    const rowCellEls = scrollEntries.map(({ el: rowEl }, idx) => {
       const scrollKey = adapter._getRowKey(rowEl, idx);
       // Find the matching pinned row (by data-row / data-index / DOM index).
-      let pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
-
-      return {
-        isOutside,
-        getCells() {
-          const cells = [];
-          // Pinned cells first (if any pinned pane exists).
-          if (pinnedRowEl) {
-            const pinnedCellEls = adapter._getCellEls(pinnedRowEl);
-            for (const cellEl of pinnedCellEls) {
-              cells.push(adapter._makeCellObj(cellEl));
-            }
-          }
-          // Scroll cells.
-          const scrollCellEls = adapter._getCellEls(rowEl);
-          for (const cellEl of scrollCellEls) {
-            cells.push(adapter._makeCellObj(cellEl));
-          }
-          return cells;
-        },
-      };
+      const pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
+      const pinned = pinnedRowEl ? adapter._getCellEls(pinnedRowEl) : [];
+      return pinned.concat(adapter._getCellEls(rowEl));
     });
+    // A grid declares a merge through the accessibility attributes, the only
+    // spans its markup carries; a grid that declares none numbers its columns
+    // by read position, as it did before this rule (issue #330).
+    const plan = assignGridColumns(
+      rowCellEls.map((cellEls) => cellEls.map(gridCellSpans)));
+
+    return scrollEntries.map(({ isOutside }, idx) => ({
+      isOutside,
+      getCells() {
+        return rowCellEls[idx].map((cellEl, c) => Object.assign(
+          columnPlacement(plan[idx], c), adapter._makeCellObj(cellEl)));
+      },
+    }));
   }
 }
 

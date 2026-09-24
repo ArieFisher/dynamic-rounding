@@ -904,7 +904,7 @@ function collectNumericCells(table, options) {
       const classified = classifyCell({
         text,
         rowIndex: r,
-        columnIndex: c,
+        columnIndex: cellObj.columnIndex,
         ranges,
         isWholeLink: !!(cellEl && isCellWholeLink(cellEl)),
         hasSuperscript,
@@ -1136,7 +1136,7 @@ function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
       // <th> cells are never rounded, but they still occupy their column — see
       // the column-index note in roundTable's native path.
       if (cellObj.tagName !== 'TD') continue;
-      const col = c;
+      const col = cellObj.columnIndex;
       const cell = cellObj.el;
       const text = cellObj.getText();
       const trimmed = typeof text === 'string' ? text.trim() : '';
@@ -1450,6 +1450,9 @@ function roundTable(table, options) {
   const cellInfo = [];
   // Each cell's text pieces, as the placement step read them.
   const cellLayouts = [];
+  // Each packed cell's grid column, so the date post-pass below can group by
+  // the column a reader sees rather than by the nth-<td> position.
+  const cellCols = [];
 
   for (let r = 0; r < adapterRows.length; r++) {
     const adapterCells = adapterRows[r].getCells();
@@ -1457,17 +1460,19 @@ function roundTable(table, options) {
     const rowCells = [];
     const rowInfo = [];
     const rowLayouts = [];
+    const rowCols = [];
     for (let c = 0; c < adapterCells.length; c++) {
       const cellObj = adapterCells[c];
       const cell = cellObj.el;
       // Skip <th> cells entirely — they are never rounded.
       if (cellObj.tagName !== 'TD') continue;
-      // The column index is the cell's position in the row, counting <th> row
-      // headers rather than skipping them. A <th scope="row"> IS the table's
-      // first column as rendered, so in such a table the leading <td> is column
-      // B: "first column" (and range "A") target the header column, not the
+      // The column index is the column the browser lays the cell out in (the
+      // adapter's reading, see assignGridColumns), counting <th> row headers
+      // rather than skipping them. A <th scope="row"> IS the table's first
+      // column as rendered, so in such a table the leading <td> is column B:
+      // "first column" (and range "A") target the header column, not the
       // first data cell after it.
-      const col = c;
+      const col = cellObj.columnIndex;
       const text = cellObj.getText();
       rowData.push(text);
       // For native adapters carry the raw element (unchanged).
@@ -1495,35 +1500,36 @@ function roundTable(table, options) {
       }
       rowInfo.push(decisionToLegacyInfo(finalizeExtractedDecision(placed, cell)));
       rowLayouts.push(layout);
+      rowCols.push(col);
     }
     data.push(rowData);
     cellsMap.push(rowCells);
     cellInfo.push(rowInfo);
     cellLayouts.push(rowLayouts);
+    cellCols.push(rowCols);
   }
 
   // --- Column post-pass: resolve ambiguous numeric date cells per column ---
-  // Note: rowData / rowInfo are packed per row (one entry per <td>), so the `c`
-  // below is the nth-<td> index, not the `col` used for range/exclusion gating.
-  // For a table with a uniform <th> layout the two differ by a constant, so
-  // cells still group by their real column.
-  // Determine the maximum number of data columns across all rows.
-  const numCols = cellInfo.reduce((max, row) => Math.max(max, row.length), 0);
-  for (let c = 0; c < numCols; c++) {
-    // Collect all ambiguous date cells in this column.
-    const ambigCells = [];
-    for (let r = 0; r < cellInfo.length; r++) {
+  // rowData / rowInfo are packed per row (one entry per <td>), so the packed
+  // position is the nth-<td> index, not the column. Grouping runs on the grid
+  // column each cell carries, so one visual column settles one reading for
+  // all of its cells — a merge inside the table cannot split a column into
+  // two groups that read 7/4/99 as July in one row and April in another.
+  const ambigByCol = new Map();
+  for (let r = 0; r < cellInfo.length; r++) {
+    for (let c = 0; c < cellInfo[r].length; c++) {
       const info = cellInfo[r][c];
-      if (info && info.mode === 'date' && info.ambiguous) {
-        ambigCells.push({ r, info });
-      }
+      if (!info || info.mode !== 'date' || !info.ambiguous) continue;
+      const col = cellCols[r][c];
+      if (!ambigByCol.has(col)) ambigByCol.set(col, []);
+      ambigByCol.get(col).push({ r, c, info });
     }
-    if (ambigCells.length === 0) continue;
-
-    // Compute format hint from the ambiguous cells, then resolve or downgrade
-    // each one based on the hint.
+  }
+  // Compute the format hint from each column's ambiguous cells, then resolve
+  // or downgrade each one against that hint.
+  for (const ambigCells of ambigByCol.values()) {
     const formatHint = pickDateFormatHint(ambigCells.map(({ info }) => info.ambiguous));
-    for (const { r, info } of ambigCells) {
+    for (const { r, c, info } of ambigCells) {
       const pendingDecision = { value: { ambiguous: info.ambiguous } };
       cellInfo[r][c] = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, formatHint));
     }
