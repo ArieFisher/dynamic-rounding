@@ -1121,7 +1121,8 @@ function buildCaptureStateResponse() {
 //                 magnitude as its magnitude freeze, and writes the kind's
 //                 missed-writes row. 'reapply' writes every changed cell and
 //                 nothing else. 'none' writes nothing and returns each
-//                 cell's patches (computeGridRoundedValues).
+//                 cell's patches; only the test suite passes it, to read a
+//                 table's planned patches with the page left unchanged.
 //
 // A cell's writes follow its patches in the same loop, so a native table's
 // debug and warn rows keep their page order. The patch step reads only what
@@ -1402,32 +1403,6 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
 // A grid's rows, read through the registry-backed originals port.
 function gridRows(wrapperEl) {
   return makeAdapter(wrapperEl, { originalsPort: registryOriginalsPort(wrapperEl) }).getRows();
-}
-
-/**
- * The one simplification pass over a grid with writes off: every visible
- * <td>'s patches and the max magnitude, with the page left unchanged. The
- * suite reads a grid's planned patches through it.
- *
- * @param {Element} wrapperEl - The grid wrapper element.
- * @param {object}  opts      - Fully-resolved rounding options.
- * @param {number|null} [frozenMaxMag] - The max magnitude to use instead of
- *   computing it from the visible cells; see the pass settings above.
- * @returns {{results: Array<{cellObj: object, patches: object[], linkFilteredIdx: number[]|null, supRanges: object[]|null}>, maxMag: number|null}}
- *   patches is the list the cell's applyPatches writes; an empty list means
- *   leave the cell unchanged. supRanges is the record's supRanges the write
- *   would store.
- */
-function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
-  const { cells, maxMag } = simplifyTableCells(wrapperEl, gridRows(wrapperEl), opts,
-    { kind: GRID_TABLE_PASS, frozenMaxMag, writes: 'none' });
-  const results = cells.map(({ entry, patches, linkFilteredIdx }) => ({
-    cellObj: entry.cellObj,
-    patches,
-    linkFilteredIdx,
-    supRanges: GRID_TABLE_PASS.recordSupRanges(entry),
-  }));
-  return { results, maxMag };
 }
 
 /**

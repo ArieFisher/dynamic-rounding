@@ -203,7 +203,9 @@ globalThis.finalizeExtractedDecision = finalizeExtractedDecision;
 globalThis.decisionToLegacyInfo = decisionToLegacyInfo;
 // Expose grid-virtualization internals for the grid-virtualization test suite.
 globalThis.reapplyGridRounding = reapplyGridRounding;
-globalThis.computeGridRoundedValues = computeGridRoundedValues;
+globalThis.simplifyTableCells = simplifyTableCells;
+globalThis.gridRows = gridRows;
+globalThis.GRID_TABLE_PASS = GRID_TABLE_PASS;
 globalThis.gridObservers = gridObservers;
 globalThis.gridReapplyTimers = gridReapplyTimers;
 globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.gridRedrawDelayMs;
@@ -13090,7 +13092,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
     [['North', '1482391'], ['South', '918554']],
     ['Total', '2400945']
   );
-  const { results } = computeGridRoundedValues(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
+  const { cells: results } = simplifyTableCells(g.wrapperEl, gridRows(g.wrapperEl), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
   // results are row-major over all rows: [header c0, header c1, r1c0, r1c1, r2c0, r2c1, total c0, total c1]
   eq('row-universe: every cell of every row is classified',
     results.length, 8);
@@ -13112,7 +13114,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
     [['1111111', '1482391'], ['2222222', '918554']],
     ['Total', '2400945']
   );
-  const { results } = computeGridRoundedValues(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
+  const { cells: results } = simplifyTableCells(g.wrapperEl, gridRows(g.wrapperEl), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
   eq('row-universe: rowgroup-first grid holds its first data row',
     results[1] && results[1].patches.length, 0);
   eq('row-universe: rowgroup-first grid rounds its second data row',
@@ -13131,7 +13133,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
     [['North', '1,482,391'], ['South', '918,554']],
     ['Total', '24,009,450']
   );
-  const { results, maxMag } = computeGridRoundedValues(g.wrapperEl, Object.assign({}, DR_DEFAULTS));
+  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, gridRows(g.wrapperEl), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
   eq('outside-row: the max magnitude comes from the data rows alone',
     maxMag, 6);
   eq('outside-row: the outside row still rounds against that dataset',
@@ -13188,7 +13190,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
     ['Total', '24,009,450']
   );
   const opts = Object.assign({}, DR_DEFAULTS, { offsetTop: -0.5, offsetOther: -1 });
-  const { results, maxMag } = computeGridRoundedValues(g.wrapperEl, opts);
+  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, gridRows(g.wrapperEl), opts, { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
   eq('outside-row: a dataset of outside rows alone is empty',
     maxMag, null);
   eq('outside-row: with an empty dataset the outside value takes the other-band offset',
@@ -18641,7 +18643,8 @@ const LADDER_OPTS = {
 
 // ---------------------------------------------------------------------------
 // Sprint engine-returns-results: static purity scan.
-// The simplification engine (roundTable, computeGridRoundedValues,
+// The simplification engine (roundTable, the one simplification pass —
+// simplifyTableCells, classifyTableCell, cellPatches — and
 // reapplyGridRounding) must never call chrome.* directly — it returns result
 // values instead, and the controller sends the messages. Mirrors the
 // detectionFunctions_sourceScan_noPageWrites pattern above.
@@ -18652,7 +18655,7 @@ const LADDER_OPTS = {
     eq('engine purity scan: source file content.js present in manifest', false, true);
     return;
   }
-  const ENGINE_FNS = ['roundTable', 'computeGridRoundedValues', 'reapplyGridRounding'];
+  const ENGINE_FNS = ['roundTable', 'simplifyTableCells', 'classifyTableCell', 'cellPatches', 'reapplyGridRounding'];
 
   // Extract a top-level `function name(` body by brace-matching from the
   // opening brace to its balanced close (same approach as the detection
@@ -21034,8 +21037,9 @@ function makeIssue251SidebarHarness() {
 // took no frozenMaxMag parameter and reapplyGridRounding recomputed max_mag
 // from whatever was visible on every scroll re-apply. HEAD's roundTable
 // freezes max_mag on first sight into DR_STORE.setTableMaxMagnitude and every
-// later reapplyGridRounding reuses that frozen value (see content.js's
-// frozenMaxMag doc on computeGridRoundedValues). offsetTop/offsetOther are
+// later reapplyGridRounding reuses that frozen value (see the frozenMaxMag
+// entry in the pass settings header above simplifyTableCells in content.js).
+// offsetTop/offsetOther are
 // deliberately set apart so a magnitude-driven bucket flip is visible in the
 // formatted output, not just in the stored number. ---
 (function registrySprint_gridMagnitudeFrozenAtFirstSight() {
