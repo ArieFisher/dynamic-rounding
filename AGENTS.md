@@ -97,9 +97,18 @@ Run `scripts/check-files.sh --staged` before committing. It is the same check th
 
 A capture from the extension holds real page content, and this repository is public. A committed regression fixture is always a minimized synthetic copy: rebuild the failing structure with invented values that still reproduce the defect, and commit only that. A raw capture never enters the repository.
 
+### The manual test page
+
+`docs/test-pages/tables.html` holds one table per shape the extension handles, each with the result to expect. It is the page I load to check a change by hand, so it is the only place a manual test can name.
+
+- **Every change that adds a kind of test names the table in that page to test it on.** Give me the section number in the pull request's manual tests and in chat. A test with no table to run it on is a test I cannot run.
+- **A change whose shape the page already holds needs no new table.** Point at the section that holds it.
+- **A change that turns on a shape the page does not hold gets a new section, in the same branch.** Merged cells are the example: nothing on the page carried one, so no amount of simplifying it could tell the new reading from the old. The measure is whether the shape matters to someone using the extension, not whether the change was large.
+- Each new section states what to expect, and what the result was before the change where that is what makes the difference visible.
+
 ### Docs track behavior
 
-Living docs: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
+Living docs: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/test-pages/tables.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
 
 - A pull request that changes behavior updates every living doc its change invalidates, in the same branch. If none apply, write "No doc impact" in the body.
 - Documented input and output examples are under test. `node js/doc-tests.js` runs every pair the docs state against the library, locally and in CI. Keep a new example in a shape the extractors parse, or extend `js/doc-tests.js` in the same pull request.
