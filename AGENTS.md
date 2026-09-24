@@ -67,6 +67,19 @@ A change that looks like it needs a second code path — a new adapter, a new br
 
 This extends [Group like concepts into a single location](#group-like-concepts-into-a-single-location) from documented lists to code paths and rules, and to timing: a rule staggered across paths drifts apart the same way a duplicated list does.
 
+### Test a plan for simplicity before it is final
+
+A plan is final only after it answers the questions below in its own section, titled "Simplicity". This covers every plan: a sprint plan, a scope document, and a plan written in chat. Answer each question from the code. A plan's own account of the code is a claim to check.
+
+1. **Size.** Is the code after the change simpler than the code before it? Name what the change adds and what it removes. When the code grows, list each addition and the requirement it implements.
+2. **Duplicates.** Which duplicated code does the change pass through? Each one is a candidate to merge first, under [Collapse a path before opening a second one](#collapse-a-path-before-opening-a-second-one). A merge that changes no behavior goes in its own `refactor/` pull request, ahead of the change that needs it, so the existing suite proves it.
+3. **Removals.** Can any step, stored field, setting, or branch the plan adds come out without losing a requirement?
+4. **Orphans.** Does the change leave a function, field, or path with no reader? Remove it in the same change.
+5. **Bounds.** Does the plan hold anything unbounded: a walk over page content, a wait, a retry, a count, a queue? Each gets a cap with a stated value, a reason for the value, and the behavior when the cap is reached.
+6. **Current behavior.** Does every statement the plan makes about how the code behaves today match the code? A defect the plan describes must be reproducible on `main`.
+
+An answer that leads to a change updates the plan before it is final. When an answer needs a product choice, put the options to me.
+
 ### Table kinds behave alike
 
 A native table and a grid are one product. A reader sees a table on a page and never learns which markup drew it, so every rule reaches both kinds and produces the same result on both. A difference between the kinds needs a practical reason: something one kind's code can do that the other's cannot.
