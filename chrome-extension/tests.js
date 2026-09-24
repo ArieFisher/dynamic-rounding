@@ -26846,12 +26846,14 @@ function adapterColumnsOf(el) {
   global.document.body = { appendChild() {} };
   global.setTimeout = () => 0;
 
-  // Column B of the third row alone: the cell the engine rounds there.
-  flashRangePulse(table, [{ rowMin: 2, rowMax: 2, colMin: 1, colMax: 1 }]);
-
-  global.document.createElement = origCreateElement;
-  global.document.body = origBody;
-  global.setTimeout = origSetTimeout;
+  try {
+    // Column B of the third row alone: the cell the engine rounds there.
+    flashRangePulse(table, [{ rowMin: 2, rowMax: 2, colMin: 1, colMax: 1 }]);
+  } finally {
+    global.document.createElement = origCreateElement;
+    global.document.body = origBody;
+    global.setTimeout = origSetTimeout;
+  }
 
   eq('#330: the range pulse frames the cell at the grid column, not at the read position',
     overlay && { left: overlay.style.left, width: overlay.style.width },
