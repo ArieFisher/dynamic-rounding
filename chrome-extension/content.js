@@ -666,7 +666,7 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
 // the one place a grid's per-cell originals leave the page (they used to be
 // dataset.drOriginal) and enter the application model. Every makeAdapter()
 // call below that touches a grid's cell text passes this so read and write
-// go through the same store the native path already uses directly. It
+// go through the same store a native cell's write uses directly. It
 // carries the grid cell's whole record (see applyPatches in detect.js).
 function registryOriginalsPort(table) {
   return {
@@ -789,11 +789,12 @@ function resetTable(table) {
 // rather than the live cell, the live text no longer contains the original
 // numStr values, so filterLinkMatches' substring search against live text
 // nodes cannot locate them (and its fallback silently keeps everything,
-// dropping the link filter with no signal). The write path already ran
-// filterLinkMatches once, against the live text, at the moment it rounded
-// the cell; the caller passes the surviving match indices from that run
-// here (see roundTable's registry record's linkFilteredIdx) so the same
-// filter outcome applies instead of being silently skipped.
+// dropping the link filter with no signal). The simplification pass already
+// ran filterLinkMatches once, against the live text, at the moment it
+// rounded the cell; the caller passes the surviving match indices from that
+// run here (see the registry record's linkFilteredIdx, stored by each kind's
+// writeCell in the simplification pass) so the same filter outcome applies
+// instead of being silently skipped.
 function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
   if (decision.mode !== 'extracted') return decision;
   const filtered = staleFilteredIndices
@@ -804,10 +805,9 @@ function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
 }
 
 // Adapts a classifyCell decision to the { mode, num, ambiguous, month, day,
-// year, matches } shape the column post-pass and value-computation passes
-// below already expect. Those passes compute rounded VALUES from a decision
-// (not classification), so this sprint leaves their (still duplicated
-// between the native and grid paths) logic as found.
+// year, matches } shape the one simplification pass below reads in its
+// column post-pass, its max magnitude, and its patch step, on both table
+// kinds.
 function decisionToLegacyInfo(decision) {
   if (decision.mode === 'pure') return { mode: 'pure', num: decision.value.num };
   if (decision.mode === 'extracted') return { mode: 'extracted', matches: decision.value.matches };
@@ -877,9 +877,10 @@ function collectNumericCells(table, options) {
       // A rounded cell's <sup>-bearing text is stale: text above is the
       // pre-round original, but rounding shortens the live text elsewhere in
       // the cell, so re-measuring ranges against the LIVE element would index
-      // the wrong characters in the original string (see roundTable's write
-      // path, which stashes the registry record's supRanges against this
-      // exact text before mutating). isWholeLink is not similarly stale:
+      // the wrong characters in the original string (see recordSupRanges in
+      // the simplification pass, which stores the registry record's
+      // supRanges against this exact text before the write). isWholeLink is
+      // not similarly stale:
       // rounding only patches text-node values, never adds or removes <a>
       // elements, and the whole-link check compares live anchor text to live
       // cell text — both move together, so it stays correct read live. A
@@ -895,7 +896,7 @@ function collectNumericCells(table, options) {
       }
       // Likewise, the link filter's live-text substring search cannot locate
       // the original numStr once the cell is rounded; reuse the match indices
-      // the write path already kept (the registry record's linkFilteredIdx)
+      // the simplification pass already kept (the registry record's linkFilteredIdx)
       // instead of re-deriving from the (now mismatched) live text.
       let staleFilteredIndices = null;
       if (usingStoredOriginal && storedRecord.linkFilteredIdx) {
@@ -1052,242 +1053,392 @@ function buildCaptureStateResponse() {
   }, state);
 }
 
+// --- The one simplification pass ---
+//
+// Every simplification of a table runs simplifyTableCells below, on both
+// table kinds: the first simplification of a native table (roundTable), the
+// first simplification of a grid (roundTable), and the grid re-apply
+// (reapplyGridRounding). The pass classifies every <td> through the
+// classification ladder (lib/dr-simplify) and the placement step
+// (placeDecision in lib/dr-table), resolves ambiguous dates per column,
+// finds the max magnitude over the dataset, builds each cell's patches, and
+// writes each changed cell through the patch writer, cell by cell in page
+// order. A rule added to the pass reaches both table kinds at once.
+//
+// The adapters (lib/dr-table/detect.js) hold two differences between the
+// kinds before the pass starts. getText() returns a native cell's rendered
+// text, and a grid cell's flat text (its record's stored value once
+// rounded). getPieceLayout()'s toFlat converts a native cell's rendered
+// positions to flat positions, which livePatches reads; a grid cell's
+// positions need no conversion, so its toFlat is null.
+//
+// Every other difference is a field of the kind object the caller passes,
+// NATIVE_TABLE_PASS or GRID_TABLE_PASS:
+//   stacked              whether the placement step runs the stacked-cell
+//                        test. Grids only: a native cell's inline styling
+//                        splits one number across two pieces ("1" plain,
+//                        "23" in bold), which the test reads as two numbers.
+//   splitReason, splitRow  the placement result that writes a debug row, and
+//                        that row's text: a native value that crosses a
+//                        piece boundary ('pieces'), a grid number split
+//                        across two pieces ('split').
+//   dateSplitRow         the debug row for a changed date or time whose text
+//                        crosses a piece boundary.
+//   superscriptRanges(table, cell, text)  the exponent ranges the ladder
+//                        masks, for a cell holding a <sup>. The native kind
+//                        measures them live, converted to the rendered text.
+//                        The grid kind reads a rounded cell's stored ranges
+//                        from its record, because its live text has shrunk
+//                        or grown around the <sup> since.
+//   recordSupRanges(entry)  the supRanges a written cell's record stores.
+//                        The native kind measures every extracted cell live,
+//                        before its write, so a vertical-align:super element
+//                        with no <sup> counts. The grid kind stores the
+//                        ranges the cell classified with, for an extracted
+//                        cell with a <sup>, and null otherwise.
+//   writeCell(table, entry, patches, linkFilteredIdx, supRanges)  writes
+//                        one cell's live patches and returns how many
+//                        landed. A native write stores the cell's
+//                        { html, value, supRanges, linkFilteredIdx } record,
+//                        its hover text, and the marker class in this file,
+//                        and writes a warn row for each cell with a patch
+//                        that did not land. A grid write goes through the
+//                        cell object's applyPatches, which stores the
+//                        { value, pieces, supRanges, linkFilteredIdx } record
+//                        through the originals port and adds the marker
+//                        class, with no hover text.
+//   freezesMaxMagnitude  whether the first simplification stores the max
+//                        magnitude as the table's magnitude freeze.
+//   missedWritesRow(count)  the warn row the first simplification writes
+//                        for the cells whose write landed nothing, or null
+//                        when writeCell writes a row for each cell itself.
+//
+// The pass settings beside the kind:
+//   frozenMaxMag  the max magnitude to use instead of computing it from the
+//                 cells; null or undefined computes it. The grid re-apply
+//                 passes the table's magnitude freeze.
+//   writes        'first' writes every changed cell, stores a grid's max
+//                 magnitude as its magnitude freeze, and writes the kind's
+//                 missed-writes row. 'reapply' writes every changed cell and
+//                 nothing else. 'none' writes nothing and returns each
+//                 cell's patches (computeGridRoundedValues).
+//
+// A cell's writes follow its patches in the same loop, so a native table's
+// debug and warn rows keep their page order. The patch step reads only what
+// classification captured, never the page, so a write to one cell leaves the
+// patches of the cells after it unchanged.
+
+const NATIVE_TABLE_PASS = {
+  stacked: false,
+  splitReason: 'pieces',
+  splitRow: 'Dynamic Rounding: a native cell value split across text pieces stays unchanged.',
+  dateSplitRow: 'Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.',
+  superscriptRanges(table, cell, text) {
+    return getSuperscriptRanges(cell, { text });
+  },
+  recordSupRanges(entry) {
+    return entry.info.mode === 'extracted'
+      ? getSuperscriptRanges(entry.cellObj.el, { text: entry.text })
+      : null;
+  },
+  // The record holds the pristine HTML, the superscript ranges, and the
+  // surviving (link-filtered) match indices, all measured against the
+  // pre-round text before applyExtractedPatches changes it, and it is stored
+  // only after a patch confirms the cell changed. collectNumericCells reads
+  // the record back instead of re-measuring the rounded live element against
+  // the stored original text; see finalizeExtractedDecision.
+  writeCell(table, entry, patches, linkFilteredIdx, supRanges) {
+    const cell = entry.cellObj.el;
+    const originalRecord = { html: cell.innerHTML, value: entry.text, supRanges, linkFilteredIdx };
+    const { landed } = applyExtractedPatches(cell, patches);
+    if (landed < patches.length) {
+      DR_LOG.warn('Dynamic Rounding: ' + (patches.length - landed) + ' of ' +
+        patches.length + ' cell patches did not land.');
+    }
+    // Record only a confirmed change: with every patch skipped the screen
+    // keeps its text, and storing the original, the hover text, or the
+    // marker would record a simplification that never happened.
+    if (landed === 0) return 0;
+    DR_STORE.setTableOriginal(table, cell, originalRecord);
+    cell.title = `Original: ${entry.text}`;
+    cell.classList.add('dr-ext-rounded');
+    return landed;
+  },
+  freezesMaxMagnitude: false,
+  missedWritesRow: null,
+};
+
+const GRID_TABLE_PASS = {
+  stacked: true,
+  splitReason: 'split',
+  splitRow: 'Dynamic Rounding: a grid cell number split across text pieces stays unchanged.',
+  dateSplitRow: 'Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.',
+  // A grid cell classifies its flat text, so getSuperscriptRanges takes no
+  // `text` opt. collectNumericCells applies the same stored-ranges guard to
+  // its own re-measure.
+  superscriptRanges(table, cell) {
+    const storedRecord = DR_STORE.getTableOriginal(table, cell);
+    return (storedRecord && storedRecord.supRanges)
+      ? storedRecord.supRanges
+      : getSuperscriptRanges(cell);
+  },
+  // The ranges count in the cell's pre-round flat text, the same coordinate
+  // space as the record's value.
+  recordSupRanges(entry) {
+    return (entry.info.mode === 'extracted' && entry.hasSuperscript) ? entry.superscriptRanges : null;
+  },
+  // A rounded cell's patches come from its stored original, so they land
+  // only where the original still stands: a piece already patched is not
+  // written again, a piece the framework redrew to its original is patched
+  // again, and a piece the page rewrote keeps the page's text. applyPatches
+  // stores the cell's record on its first landed write.
+  writeCell(table, entry, patches, linkFilteredIdx, supRanges) {
+    return entry.cellObj.applyPatches(patches, linkFilteredIdx, supRanges);
+  },
+  freezesMaxMagnitude: true,
+  missedWritesRow(count) {
+    return 'Dynamic Rounding: ' + count + ' grid cell write(s) did not land.';
+  },
+};
+
+// The offsets, the top-band count, and the decimal floor, resolved once for
+// the whole table. The decimal floor reflects the precision the offsets
+// imply (e.g. offset 0.25 gives 2 decimals).
+function resolveRoundingSettings(opts) {
+  const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
+  const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
+  return {
+    offsetTop,
+    offsetOther,
+    numTop: resolveNumTop(opts.numTop, DEFAULT_NUM_TOP),
+    floorDecimals: Math.max(decimalCount(offsetTop), decimalCount(offsetOther)),
+  };
+}
+
+// Classify one <td>: the ladder, then the placement step. isCellWholeLink
+// and the superscript ranges are DOM-only checks the pure ladder cannot
+// perform itself (see lib/dr-simplify/ladder.js header), so they pass in as
+// plain data. The link filter reads the live pieces. A rounded grid cell's
+// kept numbers differ from the live text only in the pieces an earlier write
+// patched, and a patch never lands there again, so the live read serves
+// here; the lens preview reads the record's kept positions.
+function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, kind) {
+  const cell = cellObj.el;
+  const text = cellObj.getText();
+  const layout = cellObj.getPieceLayout();
+  const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
+  const superscriptRanges = hasSuperscript ? kind.superscriptRanges(table, cell, text) : [];
+  const placed = placeDecision(classifyCell({
+    text,
+    rowIndex,
+    columnIndex: cellObj.columnIndex,
+    ranges,
+    isWholeLink: isCellWholeLink(cell),
+    hasSuperscript,
+    superscriptRanges,
+  }, opts), text, layout, { hasSuperscript, stacked: kind.stacked });
+  if (placed.reason === kind.splitReason) DR_LOG.debug(kind.splitRow);
+  return {
+    cellObj,
+    text,
+    trimmed: typeof text === 'string' ? text.trim() : '',
+    info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell)),
+    layout,
+    col: cellObj.columnIndex,
+    isOutside,
+    hasSuperscript,
+    superscriptRanges,
+  };
+}
+
+// Classify every <td> of every row, in page order. A <th> is never rounded,
+// but it still holds its column: the column index is the column the browser
+// lays the cell out in (the adapter's reading, see assignGridColumns). A
+// <th scope="row"> IS the table's first column as rendered, so in such a
+// table the leading <td> is column B: "first column" (and range "A") target
+// the header column, not the first data cell after it. An outside row rounds
+// like any other; its entries carry isOutside so its values stay out of the
+// dataset.
+function classifyTableCells(table, adapterRows, opts, ranges, kind) {
+  const entries = [];
+  for (let r = 0; r < adapterRows.length; r++) {
+    const isOutside = !!adapterRows[r].isOutside;
+    for (const cellObj of adapterRows[r].getCells()) {
+      if (cellObj.tagName !== 'TD') continue;
+      entries.push(classifyTableCell(table, cellObj, r, isOutside, opts, ranges, kind));
+    }
+  }
+  return entries;
+}
+
+// The column post-pass: resolve each ambiguous numeric date against its
+// column's format hint. Grouping runs on the grid column each cell carries,
+// so one visual column settles one reading for all of its cells — a merge
+// inside the table cannot split a column into two groups that read 7/4/99 as
+// July in one row and April in another.
+function resolveAmbiguousDates(entries) {
+  const isAmbiguous = (info) => info.mode === 'date' && !!info.ambiguous;
+  const readingsByCol = new Map();
+  for (const { info, col } of entries) {
+    if (!isAmbiguous(info)) continue;
+    if (!readingsByCol.has(col)) readingsByCol.set(col, []);
+    readingsByCol.get(col).push(info.ambiguous);
+  }
+  const hintByCol = new Map(Array.from(readingsByCol, ([col, readings]) => [col, pickDateFormatHint(readings)]));
+  return entries.map((entry) => {
+    if (!isAmbiguous(entry.info)) return entry;
+    const pendingDecision = { value: { ambiguous: entry.info.ambiguous } };
+    const info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, hintByCol.get(entry.col)));
+    return Object.assign({}, entry, { info });
+  });
+}
+
+// The max magnitude over the dataset: every pure cell's number and each
+// number of an extracted cell, outside rows left out — they round against
+// the dataset without joining it.
+function datasetMaxMagnitude(entries) {
+  const allNums = [];
+  for (const { info, isOutside } of entries) {
+    if (isOutside) continue;
+    if (info.mode === 'pure') allNums.push(info.num);
+    else if (info.mode === 'extracted') {
+      for (const m of info.matches) allNums.push(m.num);
+    }
+  }
+  return findMaxMagnitude([allNums]);
+}
+
+// One cell's patches, positioned in the text the cell classified: empty for a
+// skip cell, an unchanged value, or a changed date or time that crosses a
+// piece boundary. A pure, date, or time cell takes one patch: its trimmed
+// text, replaced whole, while the piece keeps its own whitespace. A pure
+// cell compares its formatted output to the trimmed text, which catches a
+// number that is unchanged but whose display simplifies (e.g. "35.0" to
+// "35"). An extracted cell — a unit number, a stacked cell, or numbers
+// inside words, links, or a <sup> — takes one patch per changed number, and
+// linkFilteredIdx holds the positions of the numbers the link filter kept.
+function cellPatches(entry, maxMag, opts, rounding, kind) {
+  const { text, trimmed, info, layout } = entry;
+  const { offsetTop, offsetOther, numTop, floorDecimals } = rounding;
+  const lead = typeof text === 'string' ? text.length - text.trimStart().length : 0;
+  if (info.mode === 'date' || info.mode === 'time') {
+    const prefilled = (info.month !== undefined)
+      ? { month: info.month, day: info.day, year: info.year }
+      : undefined;
+    const rounded = info.mode === 'date'
+      ? roundDateText(trimmed, opts.dateGranularity, prefilled)
+      : roundTimeText(trimmed, opts.timeGranularity);
+    if (rounded === null || rounded === trimmed) return { patches: [], linkFilteredIdx: null };
+    if (!layoutPieceHolding(layout, lead, trimmed.length)) {
+      DR_LOG.debug(kind.dateSplitRow);
+      return { patches: [], linkFilteredIdx: null };
+    }
+    return { patches: [{ index: lead, numStr: trimmed, newNum: rounded }], linkFilteredIdx: null };
+  }
+  if (info.mode === 'pure') {
+    const roundedValue = roundCellSetAware(info.num, info.num, maxMag, offsetTop, offsetOther, numTop);
+    const formatted = restoreFormatting(roundedValue, text, floorDecimals);
+    const patches = formatted === trimmed ? [] : [{ index: lead, numStr: trimmed, newNum: formatted }];
+    return { patches, linkFilteredIdx: null };
+  }
+  if (info.mode === 'extracted') {
+    const patches = [];
+    for (const m of info.matches) {
+      const rounded = roundCellSetAware(m.num, m.num, maxMag, offsetTop, offsetOther, numTop);
+      const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
+      if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
+    }
+    return { patches, linkFilteredIdx: info.matches.map((m) => m.index) };
+  }
+  return { patches: [], linkFilteredIdx: null };
+}
+
 /**
- * Classify and compute rounded target values for all visible cells of a
- * virtualized grid. Classification (isInRanges, getExclusionReason, whole-
- * cell-quote, date/time, link, superscript) runs through the same
- * classifyCell ladder (lib/dr-simplify) the native-table path in roundTable
- * calls below — the two paths share one implementation, so they cannot
- * drift the way two hand-kept-in-sync copies could.
+ * The one simplification pass (see the section header above).
  *
- * A cell's text is its flat text, and the placement step (placeDecision in
- * lib/dr-table) places each decision in the cell's text pieces, so a
- * stacked cell rounds number by number.
- *
- * max_mag is computed only over the surviving in-range, non-excluded
- * numbers — pure cells, unit numbers, and each number of a stacked or
- * extracted cell, the same filtered set the initial pass uses — so that
- * values produced here are identical to those the initial pass would
- * produce given the same visible DOM and opts.
- *
- * Returns a flat array of { cellObj, patches, linkFilteredIdx, supRanges }
- * for every TD cell in the grid's current visible rows. patches is the list
- * the cell's applyPatches writes (see lib/dr-table/detect.js); an empty list
- * means leave the cell unchanged (excluded, out-of-range, skip, or no change
- * needed). A pure, date, or time cell takes one patch: its trimmed text,
- * replaced whole by the rounded or formatted value. A unit number, a stacked
- * cell, or a cell whose numbers sit inside words or a <sup> takes one patch
- * per changed number; linkFilteredIdx holds the positions of the numbers the
- * link filter kept, and supRanges holds a <sup>-bearing cell's exponent
- * ranges (null otherwise), both measured in the cell's flat text.
- *
- * Both `roundTable` (initial grid write pass) and `reapplyGridRounding`
- * (scroll/sort re-apply) call this single function so they cannot diverge.
- *
- * NOTE: every cell, native or grid, takes the same classify-place-patch rule
- * (issue #120): a number inside surrounding words, a unit number, and a
- * <sup>-marked cell (base rounds, exponent stays) all round on a grid
- * exactly as they already do on a native table. A number, date, or time
- * split across text pieces stays unchanged with a debug row.
+ * @param {Element} table - The table or grid wrapper (key into DR_STORE's registry).
+ * @param {object[]} adapterRows - The adapter's rows, as getRows() read them.
+ * @param {object} opts - Fully-resolved rounding options.
+ * @param {{kind: object, frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none'}} pass
+ * @returns {{cells: Array<{entry: object, patches: object[], linkFilteredIdx: number[]|null}>,
+ *            maxMag: number|null, landedCells: number, missedCells: number}}
+ *   cells holds every <td> in page order with its live patches (empty means
+ *   leave the cell unchanged). landedCells counts the written cells with a
+ *   landed patch, missedCells the written cells with none. An invalid range
+ *   expression or a table with no rows returns no cells and writes nothing.
+ */
+function simplifyTableCells(table, adapterRows, opts, pass) {
+  const { kind, writes } = pass;
+  const rangeParse = parseRangeExpr(opts.rangeExpr);
+  if (rangeParse.error || adapterRows.length === 0) {
+    return { cells: [], maxMag: null, landedCells: 0, missedCells: 0 };
+  }
+  const rounding = resolveRoundingSettings(opts);
+  const entries = resolveAmbiguousDates(classifyTableCells(table, adapterRows, opts, rangeParse.ranges, kind));
+  const frozen = pass.frozenMaxMag;
+  const maxMag = (frozen !== undefined && frozen !== null) ? frozen : datasetMaxMagnitude(entries);
+  if (writes === 'first' && kind.freezesMaxMagnitude) DR_STORE.setTableMaxMagnitude(table, maxMag);
+
+  const cells = [];
+  let landedCells = 0;
+  let missedCells = 0;
+  for (const entry of entries) {
+    const { patches, linkFilteredIdx } = cellPatches(entry, maxMag, opts, rounding, kind);
+    const live = livePatches(patches, entry.layout);
+    cells.push({ entry, patches: live, linkFilteredIdx });
+    if (writes === 'none' || live.length === 0) continue;
+    if (kind.writeCell(table, entry, live, linkFilteredIdx, kind.recordSupRanges(entry)) > 0) {
+      landedCells++;
+    } else {
+      missedCells++;
+    }
+  }
+  if (writes === 'first' && kind.missedWritesRow && missedCells > 0) {
+    DR_LOG.warn(kind.missedWritesRow(missedCells));
+  }
+  return { cells, maxMag, landedCells, missedCells };
+}
+
+// A grid's rows, read through the registry-backed originals port.
+function gridRows(wrapperEl) {
+  return makeAdapter(wrapperEl, { originalsPort: registryOriginalsPort(wrapperEl) }).getRows();
+}
+
+/**
+ * The one simplification pass over a grid with writes off: every visible
+ * <td>'s patches and the max magnitude, with the page left unchanged. The
+ * suite reads a grid's planned patches through it.
  *
  * @param {Element} wrapperEl - The grid wrapper element.
  * @param {object}  opts      - Fully-resolved rounding options.
- * @param {number|null} [frozenMaxMag] - The magnitude basis to use instead of
- *   recomputing from the currently-visible cells. roundTable's initial pass
- *   leaves this undefined/null and freezes whatever this function computes;
- *   reapplyGridRounding always passes DR_STORE's frozen value, so a
- *   scroll-triggered re-apply can never shift the basis the initial pass
- *   established (the sprint's deliberate stability trade for virtualized
- *   grids — see roundTable's virtualized branch).
- * @returns {{results: Array<{cellObj: object, patches: object[], linkFilteredIdx: number[]|null}>, maxMag: number}}
+ * @param {number|null} [frozenMaxMag] - The max magnitude to use instead of
+ *   computing it from the visible cells; see the pass settings above.
+ * @returns {{results: Array<{cellObj: object, patches: object[], linkFilteredIdx: number[]|null, supRanges: object[]|null}>, maxMag: number|null}}
+ *   patches is the list the cell's applyPatches writes; an empty list means
+ *   leave the cell unchanged. supRanges is the record's supRanges the write
+ *   would store.
  */
 function computeGridRoundedValues(wrapperEl, opts, frozenMaxMag) {
-  const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
-  const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
-  const numTop = resolveNumTop(opts.numTop, DEFAULT_NUM_TOP);
-  const rangeParse = parseRangeExpr(opts.rangeExpr);
-  // If the range expression is invalid, no cells should be rounded.
-  if (rangeParse.error) return { results: [], maxMag: null };
-  const ranges = rangeParse.ranges;
-  const floorDecimals = Math.max(decimalCount(offsetTop), decimalCount(offsetOther));
-
-  const adapter = makeAdapter(wrapperEl, { originalsPort: registryOriginalsPort(wrapperEl) });
-  const adapterRows = adapter.getRows();
-  if (adapterRows.length === 0) return { results: [], maxMag: null };
-
-  // --- Pass 1: classify every visible TD cell (same logic as roundTable) ---
-  // cellEntries: flat array of { cellObj, text, trimmed, info }
-  // info is the classification result: { mode: 'skip'|'pure'|'date'|'time'|'extracted', ... }
-  // rowIndex and colIndex track position for isInRanges / getExclusionReason.
-  const cellEntries = [];
-
-  // Also build a per-column list of entries with ambiguous date mode so we can
-  // run the column post-pass (same as roundTable).
-  // Map: colIndex → array of indices into cellEntries
-  const ambigByCol = new Map();
-
-  for (let r = 0; r < adapterRows.length; r++) {
-    const adapterCells = adapterRows[r].getCells();
-    // Outside rows round like any other, but their values stay out of the
-    // dataset (pass 2 skips them when computing max_mag).
-    const isOutside = !!adapterRows[r].isOutside;
-    for (let c = 0; c < adapterCells.length; c++) {
-      const cellObj = adapterCells[c];
-      // <th> cells are never rounded, but they still occupy their column — see
-      // the column-index note in roundTable's native path.
-      if (cellObj.tagName !== 'TD') continue;
-      const col = cellObj.columnIndex;
-      const cell = cellObj.el;
-      const text = cellObj.getText();
-      const trimmed = typeof text === 'string' ? text.trim() : '';
-      const layout = cellObj.getPieceLayout();
-
-      // Extracted cells (a number inside words, a unit number, or a
-      // <sup>-marked cell) round on a grid exactly as classifyCell already
-      // rounds them on a native table; see classifyCell.
-      const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-      // A grid cell classifies its flat text (see placeDecision's file
-      // header), so its superscript ranges need no rendered-to-flat
-      // conversion, unlike a native cell's — getSuperscriptRanges takes no
-      // `text` opt here. These ranges also double as the record's stored
-      // supRanges (pass 3 below): both count in the same pre-round flat text.
-      // A rounded cell's live text has already shrunk (or grown) around the
-      // <sup>, so re-measuring it live would mask the wrong positions in
-      // `text` above (the frozen pre-round value); reuse the record's kept
-      // ranges instead, the same guard collectNumericCells already applies
-      // to its own live re-measure.
-      let superscriptRanges = [];
-      if (hasSuperscript) {
-        const storedRecord = DR_STORE.getTableOriginal(wrapperEl, cell);
-        superscriptRanges = (storedRecord && storedRecord.supRanges)
-          ? storedRecord.supRanges
-          : getSuperscriptRanges(cell);
-      }
-      const placed = placeDecision(classifyCell({
-        text,
-        rowIndex: r,
-        columnIndex: col,
-        ranges,
-        isWholeLink: isCellWholeLink(cell),
-        hasSuperscript,
-        superscriptRanges,
-      }, opts), text, layout, { hasSuperscript, stacked: true });
-      if (placed.reason === 'split') {
-        DR_LOG.debug('Dynamic Rounding: a grid cell number split across text pieces stays unchanged.');
-      }
-      // The link filter reads the live pieces. A rounded cell's kept numbers
-      // differ from the live text only in the pieces an earlier write
-      // patched, and a patch never lands there again, so the live read
-      // serves here; the lens preview reads the record's kept positions.
-      const info = decisionToLegacyInfo(finalizeExtractedDecision(placed, cell));
-
-      const entryIdx = cellEntries.length;
-      cellEntries.push({ cellObj, text, trimmed, info, layout, col, rowIdx: r, isOutside, hasSuperscript, superscriptRanges });
-
-      if (info.mode === 'date' && info.ambiguous) {
-        if (!ambigByCol.has(col)) ambigByCol.set(col, []);
-        ambigByCol.get(col).push(entryIdx);
-      }
-    }
-  }
-
-  // --- Column post-pass: resolve ambiguous date cells per column ---
-  for (const [col, indices] of ambigByCol) {
-    const formatHint = pickDateFormatHint(indices.map((idx) => cellEntries[idx].info.ambiguous));
-    for (const idx of indices) {
-      const entry = cellEntries[idx];
-      const pendingDecision = { value: { ambiguous: entry.info.ambiguous } };
-      entry.info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, formatHint));
-    }
-  }
-  // --- End column post-pass ---
-
-  // --- Pass 2: compute max_mag over filtered (in-range, non-excluded) numeric cells ---
-  // Skipped entirely when a frozen basis was supplied — see the frozenMaxMag
-  // param doc above.
-  let max_mag;
-  if (frozenMaxMag !== undefined && frozenMaxMag !== null) {
-    max_mag = frozenMaxMag;
-  } else {
-    const allNums = [];
-    for (const { info, isOutside } of cellEntries) {
-      // Outside rows round against the dataset without joining it.
-      if (isOutside) continue;
-      if (info.mode === 'pure') allNums.push(info.num);
-      else if (info.mode === 'extracted') {
-        for (const m of info.matches) allNums.push(m.num);
-      }
-    }
-    max_mag = findMaxMagnitude([allNums]);
-  }
-
-  // --- Pass 3: compute each cell's patches ---
-  // A patch position counts in the text getText() returned; livePatches
-  // moves each one onto the cell's live pieces.
-  const results = [];
-  for (const { cellObj, text, trimmed, info, layout, hasSuperscript, superscriptRanges } of cellEntries) {
-    const lead = typeof text === 'string' ? text.length - text.trimStart().length : 0;
-    let patches = [];
-    let linkFilteredIdx = null;
-
-    if (info.mode === 'date' || info.mode === 'time') {
-      // The trimmed text: the patch replaces the trimmed text and the piece
-      // keeps its own whitespace, so the new text must carry none. A date
-      // or time split across pieces stays unchanged.
-      let rounded;
-      if (info.mode === 'date') {
-        const prefilled = (info.month !== undefined)
-          ? { month: info.month, day: info.day, year: info.year }
-          : undefined;
-        rounded = roundDateText(trimmed, opts.dateGranularity, prefilled);
-      } else {
-        rounded = roundTimeText(trimmed, opts.timeGranularity);
-      }
-      if (rounded !== null && rounded !== trimmed) {
-        if (layoutPieceHolding(layout, lead, trimmed.length)) {
-          patches = [{ index: lead, numStr: trimmed, newNum: rounded }];
-        } else {
-          DR_LOG.debug('Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.');
-        }
-      }
-    } else if (info.mode === 'pure') {
-      const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
-      const formatted = restoreFormatting(roundedValue, text, floorDecimals);
-      if (formatted !== trimmed) patches = [{ index: lead, numStr: trimmed, newNum: formatted }];
-    } else if (info.mode === 'extracted') {
-      // A unit number, a stacked cell, or a number sitting inside words or a
-      // <sup>: each number's digits change in their own piece, and the
-      // surrounding text, symbols, suffixes, and exponent stay.
-      for (const m of info.matches) {
-        const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
-        const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
-        if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
-      }
-      linkFilteredIdx = info.matches.map((m) => m.index);
-    }
-
-    // A <sup>-bearing cell's exponent ranges become the record's stored
-    // supRanges, the same coordinate space as the record's value (this
-    // cell's pre-round flat text) — see the pass-1 comment above.
-    const supRanges = (info.mode === 'extracted' && hasSuperscript) ? superscriptRanges : null;
-    results.push({ cellObj, patches: livePatches(patches, layout), linkFilteredIdx, supRanges });
-  }
-
-  return { results, maxMag: max_mag };
+  const { cells, maxMag } = simplifyTableCells(wrapperEl, gridRows(wrapperEl), opts,
+    { kind: GRID_TABLE_PASS, frozenMaxMag, writes: 'none' });
+  const results = cells.map(({ entry, patches, linkFilteredIdx }) => ({
+    cellObj: entry.cellObj,
+    patches,
+    linkFilteredIdx,
+    supRanges: GRID_TABLE_PASS.recordSupRanges(entry),
+  }));
+  return { results, maxMag };
 }
 
 /**
  * Re-apply grid rounding to all currently-visible cells of `wrapperEl`.
  * Called by the debounced MutationObserver after scroll or sort events.
  *
- * Delegates ALL classification and value computation to `computeGridRoundedValues`
- * — the same function used by the initial `roundTable` grid pass — so the two
- * passes are guaranteed to produce identical results for any given visible DOM
- * state and opts.  In particular, re-apply now honours:
- *   - isInRanges (cells outside the user's range are left untouched)
- *   - getExclusionReason (firstRow / firstColumn / percent / currency)
- *   - whole-cell-quote, date/time, isCellWholeLink, <sup> handling
- *   - max_mag computed over the same filtered in-range, non-excluded cell set
+ * Runs the one simplification pass, the same pass as the first
+ * simplification in `roundTable`, under the table's magnitude freeze, so a
+ * re-apply produces the result the first simplification would for any given
+ * visible DOM state and opts: the range expression, the exclusions, quoted
+ * cells, dates and times, whole-link cells, and <sup> handling all apply.
  *
  * Guards against infinite re-triggering by disconnecting the grid's observer
  * for the duration of the write pass and reconnecting after.
@@ -1328,25 +1479,12 @@ function reapplyGridRounding(wrapperEl) {
 
   DR_LOG.debug("Dynamic Rounding: grid re-apply fired.");
 
-  // Delegate to the single shared classify+compute function, with the
-  // frozen magnitude basis so scrolling cannot shift the rounding basis.
-  // patches is empty for excluded/out-of-range/skip cells (leave untouched).
-  const frozenMaxMag = DR_STORE.getTableMaxMagnitude(wrapperEl);
-  const { results: cellTargets } = computeGridRoundedValues(wrapperEl, opts, frozenMaxMag);
-
-  for (const { cellObj, patches, linkFilteredIdx, supRanges } of cellTargets) {
-    // Empty means "leave unchanged" — excluded, out-of-range, or no change needed.
-    if (patches.length === 0) continue;
-
-    // A rounded cell's patches come from its stored original, so they land
-    // only where the original still stands: a piece already patched is not
-    // written again, a piece the framework redrew to its original is
-    // patched again, and a piece the page rewrote keeps the page's text.
-    // applyPatches stores the cell's record on its first landed write,
-    // exactly like the initial roundTable pass — one write model, whichever
-    // pass calls it.
-    cellObj.applyPatches(patches, linkFilteredIdx, supRanges);
-  }
+  // The magnitude freeze keeps a scroll from shifting the rounding basis.
+  simplifyTableCells(wrapperEl, gridRows(wrapperEl), opts, {
+    kind: GRID_TABLE_PASS,
+    frozenMaxMag: DR_STORE.getTableMaxMagnitude(wrapperEl),
+    writes: 'reapply',
+  });
 
   // Reconnect the observer after the write pass.
   if (observer) {
@@ -1358,14 +1496,10 @@ function reapplyGridRounding(wrapperEl) {
 function roundTable(table, options) {
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
   DR_STORE.setTableRoundOptions(table, opts);
-  const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
-  const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
-  const numTop = resolveNumTop(opts.numTop, DEFAULT_NUM_TOP);
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   if (rangeParse.error) {
     return { applied: false, rangeStatus: 'error', error: rangeParse.error };
   }
-  const ranges = rangeParse.ranges;
   const adapter = makeAdapter(table, { originalsPort: registryOriginalsPort(table) });
   const adapterRows = adapter.getRows();
   // Clean stub path: if the adapter returns no rows (e.g. GridAdapter stub),
@@ -1373,272 +1507,56 @@ function roundTable(table, options) {
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
   const isVirtualized = adapter.isVirtualized();
 
-  // --- Virtualized grid path ---
-  // Delegate ALL classification and value computation to computeGridRoundedValues
-  // so the initial write pass and reapplyGridRounding share one gated path and
-  // cannot produce diverging results for the same visible DOM + opts.
-  if (isVirtualized) {
-    // Freeze the magnitude basis on first sight: leave frozenMaxMag
-    // undefined so computeGridRoundedValues computes it fresh from what's
-    // visible right now, then store that value so every later
-    // reapplyGridRounding (scroll/sort) reuses it instead of recomputing —
-    // otherwise a scroll that changes which rows are visible could shift
-    // the rounding basis mid-session. resetTable clears this back to null,
-    // so a fresh roundTable() call (e.g. re-rounding after settings change)
-    // re-freezes from its own first sight rather than reusing a stale value.
-    const { results: cellTargets, maxMag } = computeGridRoundedValues(table, opts);
-    DR_STORE.setTableMaxMagnitude(table, maxMag);
-    let appliedAny = false;
-    let skippedWrites = 0;
-    for (const { cellObj, patches, linkFilteredIdx, supRanges } of cellTargets) {
-      // Empty means "leave unchanged" — excluded, out-of-range, or no change needed.
-      if (patches.length === 0) continue;
-      // applyPatches returns how many patches landed; a cell whose patches
-      // all skipped never counts toward the form — the same rule as the
-      // extracted-cell path (#301, #315).
-      if (cellObj.applyPatches(patches, linkFilteredIdx, supRanges) > 0) {
-        appliedAny = true;
-      } else {
-        skippedWrites++;
-      }
-    }
-    if (skippedWrites > 0) {
-      DR_LOG.warn('Dynamic Rounding: ' + skippedWrites + ' grid cell write(s) did not land.');
-    }
-    DR_STORE.setTableAppliedFlag(table, appliedAny ? 'simplified' : 'original');
-    syncSwitchForTable(table);
-
-    // Attach the scroll/sort re-apply observer AFTER the initial pass so our own
-    // nodeValue writes above do not immediately re-trigger it.
-    if (typeof MutationObserver !== 'undefined') {
-      // Disconnect any stale observer (e.g. roundTable called twice on same grid).
-      const staleObserver = gridObservers.get(table);
-      if (staleObserver) staleObserver.disconnect();
-
-      // Clear any pending debounce timer from a previous observer.
-      const staleTimer = gridReapplyTimers.get(table);
-      if (staleTimer !== undefined) {
-        clearTimeout(staleTimer);
-        gridReapplyTimers.delete(table);
-      }
-
-      const scrollContainer = adapter._getScrollContainer();
-      const wrapperEl = table; // alias for clarity inside the closure
-
-      const observer = new MutationObserver(() => {
-        // Cancel any pending debounce timer for this grid and schedule a fresh one.
-        const pending = gridReapplyTimers.get(wrapperEl);
-        if (pending !== undefined) clearTimeout(pending);
-
-        const timerId = setTimeout(() => {
-          reapplyGridRounding(wrapperEl);
-        }, DR_DETECTION_SETTINGS.gridRedrawDelayMs);
-
-        gridReapplyTimers.set(wrapperEl, timerId);
-      });
-
-      observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
-      gridObservers.set(wrapperEl, observer);
-    }
-    return { applied: true, rangeStatus: 'ok' };
-  }
-
-  // --- Native <table> path ---
-  const data = [];
-  // For native tables, cellsMap stores raw element.
-  const cellsMap = [];
-  const cellInfo = [];
-  // Each cell's text pieces, as the placement step read them.
-  const cellLayouts = [];
-  // Each packed cell's grid column, so the date post-pass below can group by
-  // the column a reader sees rather than by the nth-<td> position.
-  const cellCols = [];
-
-  for (let r = 0; r < adapterRows.length; r++) {
-    const adapterCells = adapterRows[r].getCells();
-    const rowData = [];
-    const rowCells = [];
-    const rowInfo = [];
-    const rowLayouts = [];
-    const rowCols = [];
-    for (let c = 0; c < adapterCells.length; c++) {
-      const cellObj = adapterCells[c];
-      const cell = cellObj.el;
-      // Skip <th> cells entirely — they are never rounded.
-      if (cellObj.tagName !== 'TD') continue;
-      // The column index is the column the browser lays the cell out in (the
-      // adapter's reading, see assignGridColumns), counting <th> row headers
-      // rather than skipping them. A <th scope="row"> IS the table's first
-      // column as rendered, so in such a table the leading <td> is column B:
-      // "first column" (and range "A") target the header column, not the
-      // first data cell after it.
-      const col = cellObj.columnIndex;
-      const text = cellObj.getText();
-      rowData.push(text);
-      // For native adapters carry the raw element (unchanged).
-      rowCells.push(cell);
-
-      // isCellWholeLink and getSuperscriptRanges are DOM-only checks the pure
-      // ladder cannot perform itself (see lib/dr-simplify/ladder.js header);
-      // compute them here and pass the results in as plain data.
-      const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-      // The placement step runs without the stacked-cell test, so a value
-      // that crosses a text piece boundary stays unchanged (see
-      // placeDecision in lib/dr-table).
-      const layout = cellObj.getPieceLayout();
-      const placed = placeDecision(classifyCell({
-        text,
-        rowIndex: r,
-        columnIndex: col,
-        ranges,
-        isWholeLink: isCellWholeLink(cell),
-        hasSuperscript,
-        superscriptRanges: hasSuperscript ? getSuperscriptRanges(cell, { text }) : [],
-      }, opts), text, layout, { hasSuperscript });
-      if (placed.reason === 'pieces') {
-        DR_LOG.debug('Dynamic Rounding: a native cell value split across text pieces stays unchanged.');
-      }
-      rowInfo.push(decisionToLegacyInfo(finalizeExtractedDecision(placed, cell)));
-      rowLayouts.push(layout);
-      rowCols.push(col);
-    }
-    data.push(rowData);
-    cellsMap.push(rowCells);
-    cellInfo.push(rowInfo);
-    cellLayouts.push(rowLayouts);
-    cellCols.push(rowCols);
-  }
-
-  // --- Column post-pass: resolve ambiguous numeric date cells per column ---
-  // rowData / rowInfo are packed per row (one entry per <td>), so the packed
-  // position is the nth-<td> index, not the column. Grouping runs on the grid
-  // column each cell carries, so one visual column settles one reading for
-  // all of its cells — a merge inside the table cannot split a column into
-  // two groups that read 7/4/99 as July in one row and April in another.
-  const ambigByCol = new Map();
-  for (let r = 0; r < cellInfo.length; r++) {
-    for (let c = 0; c < cellInfo[r].length; c++) {
-      const info = cellInfo[r][c];
-      if (!info || info.mode !== 'date' || !info.ambiguous) continue;
-      const col = cellCols[r][c];
-      if (!ambigByCol.has(col)) ambigByCol.set(col, []);
-      ambigByCol.get(col).push({ r, c, info });
-    }
-  }
-  // Compute the format hint from each column's ambiguous cells, then resolve
-  // or downgrade each one against that hint.
-  for (const ambigCells of ambigByCol.values()) {
-    const formatHint = pickDateFormatHint(ambigCells.map(({ info }) => info.ambiguous));
-    for (const { r, c, info } of ambigCells) {
-      const pendingDecision = { value: { ambiguous: info.ambiguous } };
-      cellInfo[r][c] = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, formatHint));
-    }
-  }
-  // --- End column post-pass ---
-
-  const allNums = [];
-  for (let r = 0; r < cellInfo.length; r++) {
-    // Outside rows (footer-section rows) round against the dataset without
-    // joining it — their values never set the max magnitude.
-    if (adapterRows[r] && adapterRows[r].isOutside) continue;
-    for (const info of cellInfo[r]) {
-      if (info.mode === 'pure') allNums.push(info.num);
-      else if (info.mode === 'extracted') {
-        for (const m of info.matches) allNums.push(m.num);
-      }
-    }
-  }
-  const max_mag = findMaxMagnitude([allNums]);
-
-  // Compute the decimal floor from the offset parameters once for the whole table.
-  // This reflects the precision implied by the user's offset choice (e.g. offset 0.25 → 2 decimals).
-  const floorDecimals = Math.max(decimalCount(offsetTop), decimalCount(offsetOther));
-
-  // Every cell's patches go through the patch writer, each inside one text
-  // piece. A patch position counts in the rendered text the cell was
-  // classified on; livePatches converts it to the flat text the writer
-  // counts in, where a pretty-printed cell keeps the line breaks and
-  // indentation the browser collapses.
-  let appliedAny = false;
-  for (let r = 0; r < data.length; r++) {
-    for (let c = 0; c < data[r].length; c++) {
-      const info = cellInfo[r][c];
-      if (info.mode === 'skip') continue;
-
-      const originalValue = data[r][c];
-      const trimmed = originalValue.trim();
-      const lead = originalValue.length - originalValue.trimStart().length;
-      const cell = cellsMap[r][c];
-      const layout = cellLayouts[r][c];
-      let patches = [];
-      let linkFilteredIdx = null;
-
-      if (info.mode === 'date' || info.mode === 'time') {
-        // The new text replaces the trimmed text, and the piece keeps its
-        // own whitespace. A date or time split across pieces stays unchanged.
-        let formattedValue;
-        if (info.mode === 'date') {
-          const prefilled = (info.month !== undefined) ? { month: info.month, day: info.day, year: info.year } : undefined;
-          formattedValue = roundDateText(trimmed, opts.dateGranularity, prefilled);
-        } else {
-          formattedValue = roundTimeText(trimmed, opts.timeGranularity);
-        }
-        if (formattedValue === null || formattedValue === trimmed) continue;
-        if (!layoutPieceHolding(layout, lead, trimmed.length)) {
-          DR_LOG.debug('Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.');
-          continue;
-        }
-        patches = [{ index: lead, numStr: trimmed, newNum: formattedValue }];
-      } else if (info.mode === 'pure') {
-        const roundedValue = roundCellSetAware(info.num, info.num, max_mag, offsetTop, offsetOther, numTop);
-        const formattedValue = restoreFormatting(roundedValue, originalValue, floorDecimals);
-        // Compare formatted output to the trimmed original: catches cases
-        // where the number is numerically unchanged but the display format
-        // simplifies (e.g. "35.0" → "35").
-        if (formattedValue === trimmed) continue;
-        patches = [{ index: lead, numStr: trimmed, newNum: formattedValue }];
-      } else {
-        // mode === 'extracted': one patch per changed number, so the words,
-        // links, and <sup> content around each number stay.
-        for (const m of info.matches) {
-          const rounded = roundCellSetAware(m.num, m.num, max_mag, offsetTop, offsetOther, numTop);
-          const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
-          if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
-        }
-        if (patches.length === 0) continue;
-        linkFilteredIdx = info.matches.map((m) => m.index);
-      }
-
-      // Measure the pristine HTML, superscript ranges, and the surviving
-      // (link-filtered) match indices against the pre-round text, BEFORE
-      // applyExtractedPatches changes it — but store the record only after
-      // a patch confirms the cell changed. collectNumericCells reads the
-      // record back instead of re-measuring the rounded live element against
-      // the stored original text. See finalizeExtractedDecision and
-      // collectNumericCells for the read side.
-      const originalRecord = {
-        html: cell.innerHTML,
-        value: originalValue,
-        supRanges: info.mode === 'extracted' ? getSuperscriptRanges(cell, { text: originalValue }) : null,
-        linkFilteredIdx,
-      };
-      const { landed } = applyExtractedPatches(cell, livePatches(patches, layout));
-      if (landed < patches.length) {
-        DR_LOG.warn('Dynamic Rounding: ' + (patches.length - landed) + ' of ' +
-          patches.length + ' cell patches did not land.');
-      }
-      // Record only a confirmed change: with every patch skipped the screen
-      // keeps its text, and storing the original, the hover text, or the
-      // marker would record a simplification that never happened.
-      if (landed === 0) continue;
-      DR_STORE.setTableOriginal(table, cell, originalRecord);
-      cell.title = `Original: ${originalValue}`;
-      cell.classList.add('dr-ext-rounded');
-      appliedAny = true;
-    }
-  }
-  DR_STORE.setTableAppliedFlag(table, appliedAny ? 'simplified' : 'original');
+  // The one simplification pass, on either table kind. A grid's first
+  // simplification computes the max magnitude from what is visible right
+  // now and stores it as the magnitude freeze, so every later
+  // reapplyGridRounding (scroll/sort) reuses it instead of recomputing —
+  // otherwise a scroll that changes which rows are visible could shift the
+  // rounding basis mid-session. resetTable clears the freeze back to null,
+  // so a fresh roundTable() call (e.g. re-rounding after settings change)
+  // freezes again from its own first sight rather than reusing a stale
+  // value. A cell whose patches all skipped never counts toward the form
+  // (#301, #315).
+  const { landedCells } = simplifyTableCells(table, adapterRows, opts, {
+    kind: isVirtualized ? GRID_TABLE_PASS : NATIVE_TABLE_PASS,
+    frozenMaxMag: null,
+    writes: 'first',
+  });
+  DR_STORE.setTableAppliedFlag(table, landedCells > 0 ? 'simplified' : 'original');
   syncSwitchForTable(table);
+
+  // Attach the scroll/sort re-apply observer AFTER the first simplification
+  // so our own nodeValue writes above do not immediately re-trigger it.
+  if (isVirtualized && typeof MutationObserver !== 'undefined') {
+    // Disconnect any stale observer (e.g. roundTable called twice on same grid).
+    const staleObserver = gridObservers.get(table);
+    if (staleObserver) staleObserver.disconnect();
+
+    // Clear any pending debounce timer from a previous observer.
+    const staleTimer = gridReapplyTimers.get(table);
+    if (staleTimer !== undefined) {
+      clearTimeout(staleTimer);
+      gridReapplyTimers.delete(table);
+    }
+
+    const scrollContainer = adapter._getScrollContainer();
+    const wrapperEl = table; // alias for clarity inside the closure
+
+    const observer = new MutationObserver(() => {
+      // Cancel any pending debounce timer for this grid and schedule a fresh one.
+      const pending = gridReapplyTimers.get(wrapperEl);
+      if (pending !== undefined) clearTimeout(pending);
+
+      const timerId = setTimeout(() => {
+        reapplyGridRounding(wrapperEl);
+      }, DR_DETECTION_SETTINGS.gridRedrawDelayMs);
+
+      gridReapplyTimers.set(wrapperEl, timerId);
+    });
+
+    observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
+    gridObservers.set(wrapperEl, observer);
+  }
   return { applied: true, rangeStatus: 'ok' };
 }
 
