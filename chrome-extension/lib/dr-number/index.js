@@ -54,7 +54,6 @@ const DR_NUMBER = {
   isBracketedNegative,
   matchBracketedNumber,
   eraYearDigitRanges,
-  isEraYear,
   decimalCount,
   formatExtractedNumber,
   restoreFormatting,

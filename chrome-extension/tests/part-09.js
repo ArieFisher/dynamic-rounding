@@ -1131,12 +1131,16 @@
 
 // -------------------------------------------------------------------------
 // Issue #4: era-marked years are dates, not offset-rounded numbers.
-// isEraYear locates a year token bound to an era marker; collectNumericCells /
-// extractPreviewSamples must exclude such tokens from magnitude detection and
-// the preview examples.
+// eraYearDigitRanges locates each year token bound to an era marker;
+// collectNumericCells / extractPreviewSamples must exclude such tokens from
+// magnitude detection and the preview examples.
 // -------------------------------------------------------------------------
 (function eraYearDetection() {
-  // isEraYear: the digit token bound to a marker (either order) is an era year.
+  // The number at [index, index + numStr.length) sits in an era-year range.
+  const isEraYear = (text, index, numStr) =>
+    overlapsQuoteRange(eraYearDigitRanges(text), index, index + numStr.length);
+
+  // The digit token bound to a marker (either order) is an era year.
   eq('era: "Kalki 2898 AD" → 2898 is an era year',
     isEraYear('Kalki 2898 AD', 'Kalki '.length, '2898'), true);
   eq('era: "500 BC" → 500 is an era year',
@@ -1634,7 +1638,7 @@
     'roundDateText', 'roundISODateTime', 'roundTimeText',
     'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumberInText', 'extractNumbersInText',
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
-    'eraYearDigitRanges', 'isEraYear', 'decimalCount', 'formatExtractedNumber', 'restoreFormatting',
+    'eraYearDigitRanges', 'decimalCount', 'formatExtractedNumber', 'restoreFormatting',
     // identifiers.js
     'matchIdentifierShape', 'getIdentifierMaskedRanges', 'isPhoneNumber', 'isGroupedDigitIdentifier', 'isIpAddress',
     'isWebOrEmailAddress', 'isIsbnShape', 'isPostalCode',
