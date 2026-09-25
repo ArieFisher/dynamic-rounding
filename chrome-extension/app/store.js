@@ -112,7 +112,7 @@ const DR_STORE = (function () {
         // holds each patched text piece's pre-round text by piece index, and
         // restore writes each one back into its piece (see applyPatches in
         // lib/dr-table/detect.js). restoreTable (content.js) and
-        // collectNumericCells (content.js) are the two readers, and
+        // classifyTableCell (content.js) are the two readers, and
         // restoreTable dispatches on the table's kind. A WeakMap, not a Map,
         // for the same reason tableRegistry itself is one: nothing
         // enumerates a table's originals (only .get/.set/.has/.delete by a
@@ -273,7 +273,7 @@ const DR_STORE = (function () {
   // This read returns that text for either kind, or undefined when no
   // original is stored. A plain string reads back as itself. The capture's
   // state serializer and the shape fingerprint's read are the callers;
-  // restoreTable and collectNumericCells (content.js) read the record whole.
+  // restoreTable and classifyTableCell (content.js) read the record whole.
   function getTableOriginalText(table, cellRef) {
     const original = getTableOriginal(table, cellRef);
     if (original === undefined || original === null) return undefined;
