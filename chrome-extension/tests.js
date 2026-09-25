@@ -1842,9 +1842,9 @@ function withLinkCreateTreeWalker(fn) {
       DR_STORE.getTableOriginalText(table, cell), undefined);
     eq('patch-honesty: a table whose only change failed keeps form original',
       DR_STORE.getTableAppliedFlag(table), 'original');
-    eq('patch-honesty: the failure leaves a warn row naming the patch step',
+    eq('patch-honesty: the failure leaves a debug row, which raises no toast',
       DR_LOG.snapshot().entries.some(
-        (row) => row.level === 'warn' && /cell patches did not land/.test(row.text)),
+        (row) => row.level === 'debug' && /cells were left unrounded/.test(row.text)),
       true);
   } finally {
     delete global.document.createTreeWalker;
@@ -1887,7 +1887,7 @@ function withLinkCreateTreeWalker(fn) {
   ]]);
   const failureRows = [];
   const offRow = DR_LOG.onRow((row) => {
-    if (row.level === 'warn' && /cell patches did not land/.test(row.text)) failureRows.push(row.text);
+    if (/cells were left unrounded/.test(row.text)) failureRows.push(row.text);
   });
   try {
     withCreateTreeWalker(function () {
@@ -4954,7 +4954,7 @@ function withReactiveCreateTreeWalker(fn) {
     const cell = makeReactiveCell(segments);
     const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
     const warnRowsBefore = DR_LOG.snapshot().entries
-      .filter((row) => /cell patches did not land/.test(row.text)).length;
+      .filter((row) => /cells were left unrounded/.test(row.text)).length;
     try {
       roundTable(table, opts);
       eq('table 8 linked reference: the linked 12 holds',
@@ -4970,7 +4970,7 @@ function withReactiveCreateTreeWalker(fn) {
       eq('table 8 linked reference: only the plain number survives the link filter',
         DR_STORE.getTableOriginal(table, cell).linkFilteredIdx, [18]);
       const warnRowsAfter = DR_LOG.snapshot().entries
-        .filter((row) => /cell patches did not land/.test(row.text)).length;
+        .filter((row) => /cells were left unrounded/.test(row.text)).length;
       eq('table 8 linked reference: no patch is left unlanded',
         warnRowsAfter, warnRowsBefore);
     } finally {
@@ -5018,7 +5018,7 @@ function makePrettyPrintedCell(segments) {
     const cell = makePrettyPrintedCell(segments);
     const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
     const warnRowsBefore = DR_LOG.snapshot().entries
-      .filter((row) => /cell patches did not land/.test(row.text)).length;
+      .filter((row) => /cells were left unrounded/.test(row.text)).length;
     try {
       roundTable(table, opts);
       eq('table 21 line breaks: the number inside words rounds, and the line breaks stay',
@@ -5028,7 +5028,7 @@ function makePrettyPrintedCell(segments) {
       eq('table 21 line breaks: the stored original is the rendered text',
         (DR_STORE.getTableOriginal(table, cell) || {}).value, 'Grew 9,850 units');
       const warnRowsAfter = DR_LOG.snapshot().entries
-        .filter((row) => /cell patches did not land/.test(row.text)).length;
+        .filter((row) => /cells were left unrounded/.test(row.text)).length;
       eq('table 21 line breaks: no patch is left unlanded',
         warnRowsAfter, warnRowsBefore);
     } finally {
@@ -10260,9 +10260,9 @@ function makeE2EGridWrapper(rowData) {
       grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
     eq('grid-honesty: a grid whose every write skipped keeps form original',
       DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
-    eq('grid-honesty: the skipped writes leave a warn row',
+    eq('grid-honesty: the skipped writes leave a debug row, which raises no toast',
       DR_LOG.snapshot().entries.some(
-        (row) => row.level === 'warn' && /grid cell write/.test(row.text)),
+        (row) => row.level === 'debug' && /cells were left unrounded/.test(row.text)),
       true);
   } finally {
     DR_STORE.setTableMaxMagnitude = setMaxMagnitude;
@@ -27384,8 +27384,14 @@ function eachRewriteKind(kinds, run) {
   }
 }
 
-const rwWarnRows = (pattern) => DR_LOG.snapshot().entries
-  .filter((row) => row.level === 'warn' && pattern.test(row.text)).length;
+// Every log row from here on, kept whole: the log's own buffer drops old
+// rows, and a pass writes a debug row of its own.
+const rwLogged = [];
+DR_LOG.onRow((row) => rwLogged.push(row));
+const rwRows = (level, pattern) => rwLogged
+  .filter((row) => row.level === level && pattern.test(row.text)).length;
+const RW_CAP_ROW = /more than the .* the extension follows/;
+const RW_UNROUNDED_ROW = /cells were left unrounded/;
 
 // --- Test 1: a cell the extension holds, unchanged: the pass writes nothing. ---
 (function rewrite01_aHeldCellTakesNoWrite() {
@@ -27669,24 +27675,26 @@ const rwWarnRows = (pattern) => DR_LOG.snapshot().entries
       page.settle();
       eq(`#421 cell cap (${kind}): a table at the cap runs its pass`, t.text(0, 0), '4,300');
 
-      const warnsBefore = rwWarnRows(/cap/);
+      const rowsBefore = rwRows('debug', RW_CAP_ROW);
       t.addRow(['8,765']);
       t.write(0, 1, '6,543');
       page.settle();
       eq(`#421 cell cap (${kind}): a pass over the cap writes nothing`,
         [t.text(0, 1), t.rowTexts()[2][0]], ['6,543', '8,765']);
-      eq(`#421 cell cap (${kind}): one warning row records the stop`, rwWarnRows(/cap/) - warnsBefore, 1);
+      eq(`#421 cell cap (${kind}): one debug row records the stop`, rwRows('debug', RW_CAP_ROW) - rowsBefore, 1);
       t.write(1, 0, '7,654');
       page.settle();
       eq(`#421 cell cap (${kind}): the stopped watcher runs no later pass`, t.text(1, 0), '7,654');
 
       const big = build(RW_ROWS.concat([['9,876']]));
-      const warnsAtFirst = rwWarnRows(/cap/);
+      const rowsAtFirst = rwRows('debug', RW_CAP_ROW);
       roundTable(big.table, RW_OPTS);
       eq(`#421 cell cap (${kind}): the first simplification over the cap still simplifies`,
         big.text(2, 0), '9,900');
-      eq(`#421 cell cap (${kind}): the first simplification over the cap records one warning row`,
-        rwWarnRows(/cap/) - warnsAtFirst, 1);
+      eq(`#421 cell cap (${kind}): the first simplification over the cap records one debug row`,
+        rwRows('debug', RW_CAP_ROW) - rowsAtFirst, 1);
+      eq(`#421 cell cap (${kind}): the cap writes no warn row, so it raises no toast`,
+        rwRows('warn', RW_CAP_ROW), 0);
       big.write(0, 0, '4,321');
       page.settle();
       eq(`#421 cell cap (${kind}): a table over the cap at its first simplification runs no pass`,
@@ -27742,24 +27750,43 @@ const rwWarnRows = (pattern) => DR_LOG.snapshot().entries
   });
 })();
 
-// A native cell whose patch cannot land writes its warn row at the first
-// simplification alone, so a table the page keeps changing raises no toast
-// on every pass. The cell's rendered text differs from its one piece in more
-// than whitespace, so the patch misses.
-(function rewriteMissedPatchRowBelongsToTheFirstSimplification() {
-  eachRewriteKind(['native'], (kind, page, build) => {
+// A cell left unrounded writes one debug row at the first simplification
+// alone, on both table kinds, so a table the page keeps changing writes no
+// row on every pass, and no row raises a toast. The native cell's rendered
+// text differs from its one piece in more than whitespace; the grid cell's
+// text changes between classification and the write. Either way no number
+// sits where the pass expects it.
+(function rewriteUnroundedCellsRowBelongsToTheFirstSimplification() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
-    t.redraw(1, 1, '3,578');
-    Object.defineProperty(t.cell(1, 1), 'innerText', { get: () => '3,579' });
-    const before = rwWarnRows(/cell patches did not land/);
-    roundTable(t.table, RW_OPTS);
-    eq('#421 missed patch (native): the first simplification writes the warn row',
-      rwWarnRows(/cell patches did not land/) - before, 1);
+    let restoreMagnitude = null;
+    if (kind === 'native') {
+      t.redraw(1, 1, '3,578');
+      Object.defineProperty(t.cell(1, 1), 'innerText', { get: () => '3,579' });
+    } else {
+      const setMaxMagnitude = DR_STORE.setTableMaxMagnitude;
+      DR_STORE.setTableMaxMagnitude = function (table, value) {
+        t.pieces(1, 1)[0].nodeValue = '3,578';
+        return setMaxMagnitude.call(DR_STORE, table, value);
+      };
+      restoreMagnitude = () => { DR_STORE.setTableMaxMagnitude = setMaxMagnitude; };
+    }
+    const before = rwRows('debug', RW_UNROUNDED_ROW);
+    try {
+      roundTable(t.table, RW_OPTS);
+    } finally {
+      if (restoreMagnitude) restoreMagnitude();
+    }
+    eq(`#421 unrounded cells (${kind}): the first simplification writes one debug row with the counts`,
+      rwLogged.filter((row) => row.level === 'debug' && RW_UNROUNDED_ROW.test(row.text)).slice(before)
+        .map((row) => row.text),
+      ['Dynamic Rounding: 1 of 4 cells were left unrounded because the text they show did not match the text they hold.']);
     t.write(0, 0, '4,321');
     page.settle();
-    eq('#421 missed patch (native): a later pass writes no further warn row',
-      { rows: rwWarnRows(/cell patches did not land/) - before, simplified: t.text(0, 0) },
-      { rows: 1, simplified: '4,300' });
+    eq(`#421 unrounded cells (${kind}): a later pass writes no further row, and no row is a warn row`,
+      { rows: rwRows('debug', RW_UNROUNDED_ROW) - before, warns: rwRows('warn', RW_UNROUNDED_ROW),
+        simplified: t.text(0, 0) },
+      { rows: 1, warns: 0, simplified: '4,300' });
   });
 })();
 

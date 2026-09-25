@@ -83,7 +83,7 @@ const DR_DETECTION_SETTINGS = {
   // cells. Ten times the data test's cell budget, e.g. 1,000 rows of 10
   // columns. The value holds a pass under 100 ms: in Chrome on the test page
   // a pass over 10,000 cells took 44 to 57 ms. Above it the pass writes
-  // nothing, the table's re-apply observer stops, and one warning row records
+  // nothing, the table's re-apply observer stops, and one debug row records
   // the stop; a table above it at its first simplification never attaches
   // the observer.
   reapplyCellCap: 10000,

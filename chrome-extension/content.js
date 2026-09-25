@@ -1021,17 +1021,11 @@ function buildCaptureStateResponse() {
 //                        crosses a piece boundary.
 //   hoverText            whether a written cell carries hover text showing
 //                        its original. Native tables only.
-//   missedPatchesRow(missed, total)  the warn row a native cell writes at
-//                        the first simplification when a patch did not
-//                        land, or null.
-//   missedWritesRow(count)  the warn row the first simplification writes
-//                        for the cells whose write landed nothing, or null
-//                        when missedPatchesRow writes a row for each cell.
 //   freezesMaxMagnitude  whether the first simplification stores the max
 //                        magnitude as the table's magnitude freeze. Grids
-//                        only: a grid holds only its visible rows, so it
-//                        cannot tell a value the page changed from a row
-//                        scrolled into view.
+//                        only: a grid holds only its visible rows, so a
+//                        changed value and a row scrolled into view read
+//                        the same.
 //   watchedElement(adapter)  the element the re-apply observer watches: a
 //                        native table itself, a grid's scroll container.
 //
@@ -1040,8 +1034,8 @@ function buildCaptureStateResponse() {
 //                 cells; null or undefined computes it. A grid's re-apply
 //                 passes the table's magnitude freeze.
 //   writes        'first' writes every changed cell, stores a grid's max
-//                 magnitude as its magnitude freeze, and writes the kind's
-//                 missed-writes row. 'reapply' writes every changed cell and
+//                 magnitude as its magnitude freeze, and writes the debug
+//                 row for the cells left unrounded (unroundedCellsRow). 'reapply' writes every changed cell and
 //                 nothing else. 'none' sorts no cell, writes nothing, and
 //                 returns each cell's patches; only the test suite passes
 //                 it, to read a table's planned patches with the page left
@@ -1052,7 +1046,7 @@ function buildCaptureStateResponse() {
 //                 simplification passes none.
 //
 // A cell's writes follow its patches in the same loop, so a native table's
-// debug and warn rows keep their page order. The patch step reads only what
+// debug rows keep their page order. The patch step reads only what
 // classification captured, never the page, so a write to one cell leaves the
 // patches of the cells after it unchanged.
 
@@ -1062,10 +1056,6 @@ const NATIVE_TABLE_PASS = {
   splitRow: 'Dynamic Rounding: a native cell value split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.',
   hoverText: true,
-  missedPatchesRow(missed, total) {
-    return 'Dynamic Rounding: ' + missed + ' of ' + total + ' cell patches did not land.';
-  },
-  missedWritesRow: null,
   freezesMaxMagnitude: false,
   watchedElement(adapter) { return adapter.getElement(); },
 };
@@ -1076,10 +1066,6 @@ const GRID_TABLE_PASS = {
   splitRow: 'Dynamic Rounding: a grid cell number split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.',
   hoverText: false,
-  missedPatchesRow: null,
-  missedWritesRow(count) {
-    return 'Dynamic Rounding: ' + count + ' grid cell write(s) did not land.';
-  },
   freezesMaxMagnitude: true,
   watchedElement(adapter) { return adapter._getScrollContainer(); },
 };
@@ -1090,18 +1076,23 @@ const GRID_TABLE_PASS = {
 // supRanges are the ranges the cell classified with, for an extracted cell
 // with a <sup>, counted in the record's value. Record only a confirmed
 // change: with every patch skipped the screen keeps its text, and storing
-// the hover text would record a simplification that never happened. The
-// missed-patches row, like the grid's missed-writes row, belongs to the
-// first simplification alone, so a table the page keeps changing writes no
-// warning row, and raises no toast, on every pass.
-function writeCell(entry, patches, linkFilteredIdx, kind, writes) {
+// the hover text would record a simplification that never happened.
+function writeCell(entry, patches, linkFilteredIdx, kind) {
   const supRanges = (entry.info.mode === 'extracted' && entry.hasSuperscript) ? entry.superscriptRanges : null;
   const landed = entry.cellObj.applyPatches(patches, { value: entry.text, linkFilteredIdx, supRanges });
-  if (writes === 'first' && kind.missedPatchesRow && landed < patches.length) {
-    DR_LOG.warn(kind.missedPatchesRow(patches.length - landed, patches.length));
-  }
   if (landed > 0 && kind.hoverText) entry.cellObj.el.title = `Original: ${entry.text}`;
   return landed;
+}
+
+// The debug row the first simplification writes when a cell with a change
+// to make took none of it: the text the cell shows differs from the text
+// its pieces hold, so no number sat where the pass expected it. One wording
+// for both table kinds, and a debug row, so it raises no toast. The first
+// simplification alone writes it, so a table the page keeps changing writes
+// no row on every pass.
+function unroundedCellsRow(missed, total) {
+  return 'Dynamic Rounding: ' + missed + ' of ' + total + ' cells were left unrounded because ' +
+    'the text they show did not match the text they hold.';
 }
 
 // The offsets, the top-band count, and the decimal floor, resolved once for
@@ -1337,8 +1328,8 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   if (writes === 'first' && kind.freezesMaxMagnitude) DR_STORE.setTableMaxMagnitude(table, maxMag);
 
   const written = writeTableCells(table, entries, { maxMag, opts, kind, writes });
-  if (writes === 'first' && kind.missedWritesRow && written.missedCells > 0) {
-    DR_LOG.warn(kind.missedWritesRow(written.missedCells));
+  if (writes === 'first' && written.missedCells > 0) {
+    DR_LOG.debug(unroundedCellsRow(written.missedCells, written.landedCells + written.missedCells));
   }
   DR_LOG.debug('Dynamic Rounding: a pass read ' + dataCells.length + ' cells in ' +
     (Date.now() - startedAt) + ' ms.');
@@ -1359,7 +1350,7 @@ function writeTableCells(table, entries, { maxMag, opts, kind, writes }) {
     cells.push({ entry, patches: flat, linkFilteredIdx });
     if (writes === 'none') continue;
     const held = DR_STORE.hasTableOriginal(table, entry.cellObj.el);
-    const landed = flat.length > 0 ? writeCell(entry, flat, linkFilteredIdx, kind, writes) : 0;
+    const landed = flat.length > 0 ? writeCell(entry, flat, linkFilteredIdx, kind) : 0;
     if (flat.length > 0 && landed > 0) landedCells++;
     else if (flat.length > 0) missedCells++;
     if (landed === 0 && held) releaseCell(table, entry.cellObj.el, kind);
@@ -1398,7 +1389,7 @@ function watchTable(table, adapter, kind, cellCount) {
   unwatchTable(table);
   if (typeof MutationObserver === 'undefined') return;
   if (cellCount > DR_DETECTION_SETTINGS.reapplyCellCap) {
-    warnAboveCellCap(cellCount);
+    logAboveCellCap(cellCount);
     return;
   }
   const observer = new MutationObserver(() => scheduleReapply(table));
@@ -1439,9 +1430,11 @@ function scheduleReapply(table) {
   reapplyTimers.set(table, setTimeout(() => reapplyRounding(table), wait));
 }
 
-function warnAboveCellCap(cellCount) {
-  DR_LOG.warn('Dynamic Rounding: a simplified table holds ' + cellCount + ' cells, above the cap of ' +
-    DR_DETECTION_SETTINGS.reapplyCellCap + ' a pass reads; the table no longer follows page changes.');
+// The debug row for a table above the cell cap. A debug row raises no toast.
+function logAboveCellCap(cellCount) {
+  DR_LOG.debug('Dynamic Rounding: this table holds ' + cellCount.toLocaleString('en-US') +
+    ' cells, more than the ' + DR_DETECTION_SETTINGS.reapplyCellCap.toLocaleString('en-US') +
+    ' the extension follows, so it no longer rounds the page\'s updates.');
 }
 
 /**
@@ -1487,7 +1480,7 @@ function runReapplyPass(table) {
   });
   if (result.overCap) {
     unwatchTable(table);
-    warnAboveCellCap(result.cellCount);
+    logAboveCellCap(result.cellCount);
   }
 }
 
