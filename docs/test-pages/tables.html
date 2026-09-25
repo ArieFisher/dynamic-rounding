@@ -1393,9 +1393,10 @@ TSLA,75,"248.09","18,606.75"
       does. The extension watches every simplified table, native or grid, and
       simplifies each change within a moment. A restore always shows the
       numbers the page last wrote. Reload the page to start any part again.
-      Before this rule, a native table was never simplified again after its
-      first simplification, a grid left a changed cell raw, and a restore on
-      either kind wrote the old numbers back over the page's new ones.</p>
+      Before this rule, the extension never simplified a native table again
+      after its first simplification, a grid left a changed cell raw, and a
+      restore on either kind wrote the old numbers back over the page's new
+      ones.</p>
 
     <p class="expect">23a, one native table and one grid holding the same
       values. First pull the sidebar's two offsets apart: largest numbers at
@@ -1434,8 +1435,8 @@ TSLA,75,"248.09","18,606.75"
         originals. The grid keeps the scale it took at its first
         simplification: its other cells stay as they were, and the Global
         values take the rounding of the largest values.
-        A grid holds only the rows on the screen, so it cannot tell a larger
-        value the page wrote from a row scrolled into view. Before: the
+        A grid holds only the rows on the screen, so a larger value the page
+        wrote and a row scrolled into view read the same. Before: the
         native table left the new row raw.</li>
       <li><b>Swap the column set</b> replaces the headers and the first five rows,
         as a page that loads a different query result into the same table.
@@ -1765,19 +1766,20 @@ TSLA,75,"248.09","18,606.75"
     </script>
 
     <p class="expect">23d, the pass measurement and the cell cap. The
-      extension reads at most 3,000 cells in one pass. Build the tables,
-      then press the 300-row table's pillbox on and start its updates:
+      extension reads at most 10,000 cells in one pass. Build the tables,
+      then press the 1,000-row table's pillbox on and start its updates:
       they write a value into a random cell every 50 milliseconds, faster
       than the redraw delay. Expect: each updated value outside the first
       column shows simplified, one pass a second at most, and each pass
       writes a debug row in the extension's log with its duration and cell
-      count, under 100 ms. Press the 301-row table's
-      pillbox on. Expect: it simplifies, and a warning toast reports that
-      the table holds more cells than a pass reads and no longer follows
-      page changes. Press Rewrite a cell: the cell shows 777,777 raw. Press
-      the pillbox off: the cell keeps 777,777, and every other cell shows
-      its original. Before: neither table followed page changes, no warning
-      appeared, and the restore wrote the old number back over 777,777.</p>
+      count, under 100 ms. Press the 1,001-row table's pillbox on. Expect:
+      it simplifies with no toast, and a debug row in the extension's log
+      reads that the table holds 10,010 cells, more than the 10,000 the
+      extension follows, so it no longer rounds the page's updates. Press
+      Rewrite a cell: the cell shows 777,777 raw. Press the pillbox off: the
+      cell keeps 777,777, and every other cell shows its original. Before:
+      neither table followed page changes, and the restore wrote the old
+      number back over 777,777.</p>
     <div class="rw-buttons">
       <button type="button" id="rw-build">Build the tables</button>
       <button type="button" id="rw-updates" disabled>Start updates</button>
@@ -1785,15 +1787,15 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <!--
-      300 rows of 10 value cells is 3,000 cells, the cap itself; one row
-      more is 3,010, above it. Both tables build on the button press, so the
+      1,000 rows of 10 value cells is 10,000 cells, the cap itself; one row
+      more is 10,010, above it. Both tables build on the button press, so the
       page loads fast without them.
     -->
     <div id="rw-cap-slot"></div>
     <script>
       (function () {
         var COLUMNS = 10;
-        var AT_CAP_ROWS = 300;
+        var AT_CAP_ROWS = 1000;
         var UPDATE_MS = 50;
         var slot = document.getElementById('rw-cap-slot');
         var updatesButton = document.getElementById('rw-updates');
