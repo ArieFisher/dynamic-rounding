@@ -16840,7 +16840,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   ],
   gridRedrawDelayMs: 100,
   reapplyMaxWaitMs: 1000,
-  reapplyCellCap: 3000,
+  reapplyCellCap: 10000,
   pendingRetestCap: 100,
   offscreenLeftPx: -9999,
 };
@@ -16974,7 +16974,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   eq('detection settings: the combined sandbox does not throw', sandbox.threw, null);
   eq('detection settings: DR_DETECTION_SETTINGS exposes exactly fourteen keys, the nine pre-move keys plus nestingDepth, dataTestCellBudget, pendingRetestCap, reapplyMaxWaitMs, and reapplyCellCap',
     sandbox.outcomes.settingsKeys, Object.keys(PRE_MOVE_DETECTION_SETTINGS).sort());
-  eq('detection settings: DR_DETECTION_SETTINGS carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, pendingRetestCap at 100, reapplyMaxWaitMs at 1000, and reapplyCellCap at 3000',
+  eq('detection settings: DR_DETECTION_SETTINGS carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, pendingRetestCap at 100, reapplyMaxWaitMs at 1000, and reapplyCellCap at 10000',
     sandbox.outcomes.settings, PRE_MOVE_DETECTION_SETTINGS);
   eq('detection settings: looksLikeGrid rejects 4 children (below gridMinChildren)',
     sandbox.outcomes.minChildrenBelowFails, false);

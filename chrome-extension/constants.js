@@ -80,13 +80,13 @@ const DR_DETECTION_SETTINGS = {
   // burst has lasted this long: at most one pass a second.
   reapplyMaxWaitMs: 1000,
   // The most cells a pass reads: a native table's cells, a grid's visible
-  // cells, e.g. 300 rows of 10 columns. The value holds a pass under 100 ms:
-  // in Chrome on the test page a pass over 3,000 cells took 57 to 76 ms, and
-  // one over 10,000 cells took about 180 ms. Above it the pass writes
-  // nothing, the table's re-apply observer stops, and one warning row
-  // records the stop; a table above it at its first simplification never
-  // attaches the observer.
-  reapplyCellCap: 3000,
+  // cells. Ten times the data test's cell budget, e.g. 1,000 rows of 10
+  // columns. The value holds a pass under 100 ms: in Chrome on the test page
+  // a pass over 10,000 cells took 44 to 57 ms. Above it the pass writes
+  // nothing, the table's re-apply observer stops, and one warning row records
+  // the stop; a table above it at its first simplification never attaches
+  // the observer.
+  reapplyCellCap: 10000,
   // --- Pending tables (content.js) ---
   // Failed re-tests a pending table takes before its subtree observer drops.
   // A re-test runs only after a subtree change and the redraw delay above, so
