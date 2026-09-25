@@ -93,8 +93,8 @@ const DR_STORE = (function () {
   // dead refs, and this codebase has no such sweep loop anywhere), the
   // enumerable companion here is a plain Set kept in exact lockstep with the
   // WeakMap by registerTable/unregisterTable — the same two call sites that
-  // already tear down this table's other per-table resources (gridObservers,
-  // gridReapplyTimers, tableResizeObservers), so no new leak surface is
+  // already tear down this table's other per-table resources (the re-apply
+  // observer and its timer, tableResizeObservers), so no new leak surface is
   // introduced beyond what those call sites already had to get right.
   const tableRegistry = new WeakMap();
   const registeredTables = new Set();
@@ -104,16 +104,14 @@ const DR_STORE = (function () {
     if (!entry) {
       entry = {
         // Per-cell pre-round original, keyed by cell element. Both kinds
-        // hold a record whose value is the pre-round text. A native cell's
-        // record is { html, value, supRanges, linkFilteredIdx }, because the
-        // native write path preserves mixed-content markup and needs all
-        // four to classify and restore a cell correctly. A grid cell's
-        // record is { value, pieces, supRanges, linkFilteredIdx }: pieces
-        // holds each patched text piece's pre-round text by piece index, and
-        // restore writes each one back into its piece (see applyPatches in
-        // lib/dr-table/detect.js). restoreTable (content.js) and
-        // classifyTableCell (content.js) are the two readers, and
-        // restoreTable dispatches on the table's kind. A WeakMap, not a Map,
+        // hold one record shape, { value, pieces, supRanges,
+        // linkFilteredIdx }: value is the pre-round text the cell
+        // classified, and pieces holds one entry per text piece with its
+        // original text and its written text, the text right after the
+        // extension's last write (see applyPatches in
+        // lib/dr-table/detect.js). The cell objects' reads, the pass's cell
+        // sort, and the one piece restore (releaseCell in content.js) are
+        // the readers. A WeakMap, not a Map,
         // for the same reason tableRegistry itself is one: nothing
         // enumerates a table's originals (only .get/.set/.has/.delete by a
         // specific cell), so there is no companion Set to keep in lockstep
@@ -268,12 +266,12 @@ const DR_STORE = (function () {
     return !!entry && entry.originals.has(cellRef);
   }
 
-  // The registry stores a cell's original as one of the two records
-  // documented in _ensureEntry, and both carry the pre-round text as value.
-  // This read returns that text for either kind, or undefined when no
-  // original is stored. A plain string reads back as itself. The capture's
-  // state serializer and the shape fingerprint's read are the callers;
-  // restoreTable and classifyTableCell (content.js) read the record whole.
+  // The registry stores a cell's original as the record documented in
+  // _ensureEntry, which carries the pre-round text as value. This read
+  // returns that text, or undefined when no original is stored. A plain
+  // string reads back as itself. The capture's state serializer and the
+  // shape fingerprint's read are the callers; the cell objects and the
+  // controller (content.js) read the record whole.
   function getTableOriginalText(table, cellRef) {
     const original = getTableOriginal(table, cellRef);
     if (original === undefined || original === null) return undefined;

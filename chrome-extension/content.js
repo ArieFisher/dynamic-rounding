@@ -178,11 +178,17 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
 // original now live in DR_STORE's per-table registry entry (app/store.js) —
 // not a file-level WeakMap here.
 
-// Grid virtualization re-apply state.
-// gridObservers: wrapperEl → MutationObserver watching the scroll container.
-// gridReapplyTimers: wrapperEl → pending setTimeout id for the debounced re-apply.
-const gridObservers = new WeakMap();
-const gridReapplyTimers = new WeakMap();
+// Re-apply observer state, one entry per simplified table of either kind
+// (see watchTable).
+// reapplyObservers: table → { observer, target }: the MutationObserver and
+//                   the element it watches, a native table itself or a grid's
+//                   scroll container.
+// reapplyTimers:    table → pending setTimeout id for the next pass.
+// reapplyBursts:    table → the clock time the current burst of page edits
+//                   began, which bounds the burst's wait for its pass.
+const reapplyObservers = new WeakMap();
+const reapplyTimers = new WeakMap();
+const reapplyBursts = new WeakMap();
 
 // Pending table state, keyed by chain root. A chain root whose chain is empty
 // — no element of its nest passes the data test — becomes a pending table:
@@ -518,8 +524,15 @@ function fingerprintReadOpts(table) {
 // too, so the active table clears: it may not point at an element the
 // registry no longer holds.
 //
+// opts.activates false leaves the active table where it stands: the
+// re-apply observer passes it for a table that is not the active one, so a
+// page change to a table the user is not working with never moves the
+// sidebar's binding.
+//
+// @param {Element} table
+// @param {{activates?: boolean}} [opts]
 // @returns {{table: Element|null, switched: boolean}}
-function revalidateTableShape(table) {
+function revalidateTableShape(table, opts = {}) {
   const recorded = DR_STORE.getTableFingerprint(table);
   if (!recorded) return { table, switched: false };
   if (sameTableFingerprint(recorded, readTableFingerprint(table, fingerprintReadOpts(table)))) {
@@ -565,22 +578,24 @@ function revalidateTableShape(table) {
     return { table: null, switched: false };
   }
 
-  DR_BUS.publish('intent:selectTable', { table: fresh });
-  DR_BUS.publish('state:tableSwitched', {});
+  if (opts.activates !== false) {
+    DR_BUS.publish('intent:selectTable', { table: fresh });
+    DR_BUS.publish('state:tableSwitched', {});
+  }
   return { table: fresh, switched: true };
 }
 
 // Discard one table's registration and every per-table resource the
 // extension holds beside it: the pillbox, the resize observer that keeps the
-// pillbox positioned, a virtualized grid's re-apply observer and its pending
-// debounce timer, the view's tracked-table list, and the registry entry with
-// the cell originals and the form inside it. Two callers reach this: the
-// removal observer, for a table the page took out; and the shape-fingerprint
+// pillbox positioned, the table's re-apply observer and its pending timer,
+// the view's tracked-table list, and the registry entry with the cell
+// originals and the form inside it. Two callers reach this: the removal
+// observer, for a table the page took out; and the shape-fingerprint
 // mismatch path, for a table whose shape no longer matches the one the
 // registry recorded. `reason` names which, and reaches the debug row.
 //
-// The grid observer and its timer tear down here so a grid removed from the
-// page cannot re-apply rounding after it leaves.
+// The re-apply observer and its timer tear down here so a table removed
+// from the page cannot re-apply rounding after it leaves.
 function teardownTableEntry(table, reason) {
   const button = tableToggles.get(table);
   if (button && button.parentElement) {
@@ -590,16 +605,7 @@ function teardownTableEntry(table, reason) {
   if (ro) {
     ro.disconnect();
   }
-  const pendingTimer = gridReapplyTimers.get(table);
-  if (pendingTimer !== undefined) {
-    clearTimeout(pendingTimer);
-    gridReapplyTimers.delete(table);
-  }
-  const gridObs = gridObservers.get(table);
-  if (gridObs) {
-    gridObs.disconnect();
-    gridObservers.delete(table);
-  }
+  unwatchTable(table);
   trackedTables.delete(table);
   DR_STORE.unregisterTable(table);
   DR_LOG.debug("Dynamic Rounding: " + reason + " table unregistered.");
@@ -662,12 +668,12 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
 // --- End per-table toggle switch infrastructure ---
 
 // registryOriginalsPort adapts DR_STORE's per-table registry entry to the
-// OriginalsPort interface GridAdapter expects (see lib/dr-table/detect.js) —
-// the one place a grid's per-cell originals leave the page (they used to be
-// dataset.drOriginal) and enter the application model. Every makeAdapter()
-// call below that touches a grid's cell text passes this so read and write
-// go through the same store a native cell's write uses directly. It
-// carries the grid cell's whole record (see applyPatches in detect.js).
+// OriginalsPort interface both adapters expect (see lib/dr-table/detect.js)
+// — the one place a cell's record leaves the page (grid records used to be
+// dataset.drOriginal) and enters the application model. Every makeAdapter()
+// call below that reads or writes a simplified cell passes this, so every
+// read and every write goes through the same store. It carries the cell's
+// whole record (see applyPatches in detect.js).
 function registryOriginalsPort(table) {
   return {
     has(cellEl) { return DR_STORE.hasTableOriginal(table, cellEl); },
@@ -676,25 +682,22 @@ function registryOriginalsPort(table) {
   };
 }
 
-// Restore a table's rounded cells to their pre-round originals, reading from
+// Restore a table's simplified cells to their originals, reading from
 // DR_STORE's registry instead of page attributes (dataset.originalValue/
-// originalHtml/drOriginal used to carry this, with two separately-written
-// restore branches). Dispatches once on table kind — native tables restore
-// via innerHTML, grids by putting each stored piece's text back into the
-// piece at its index — so the caller sees exactly one restore path
-// regardless of which write model applies underneath.
+// originalHtml/drOriginal used to carry this). One piece restore serves
+// both table kinds: each marked cell goes through releaseCell, which puts
+// the original text back into every text piece that still shows the
+// extension's written text. A patch changes only text, never tags, so the
+// cell's markup comes back as it stood before simplification.
 //
-// keepEntry: false (resetTable's full teardown) clears the dr-ext-rounded
-// marker and the stored original per cell — a genuinely fresh state. true
-// restores the display and keeps both, so a later pass finds these same
-// cells again.
-//
-// NO CALLER PASSES true TODAY. The form flip that showed a table's originals
-// while keeping its markers was the only one, and the 2026-09-14 sidebar-
-// state-removal design retired it: a press that turns simplification off now
-// resets the table outright. The branch stays because removing it changes
-// this function's signature and its one caller's call, which is its own
-// change rather than part of this one; #332 carries it.
+// A restore can arrive before a pass has processed a page edit — within the
+// wait for a pass, or on a table above the cell cap — so it sorts each cell
+// the way a pass does. A held cell gets its original text back in every
+// piece the extension wrote. A rewritten cell gets it back only in the
+// pieces that still show written text, and the pieces the page rewrote keep
+// the page's text. In a cell whose piece count changed, a piece matches its
+// stored piece by written text, not by position (see restoreTextPieces). A
+// restore never writes a number the page no longer shows.
 //
 // KNOWN ACCEPTED COST: registry-held originals do not survive Chrome
 // re-injecting the content script, which page attributes did (a reload of
@@ -709,37 +712,35 @@ function registryOriginalsPort(table) {
 // of those for a cell that was NOT actually restored would claim a recovery
 // that did not happen and destroy data that was still recoverable by eye
 // even though the registry could no longer recover it programmatically.
-// A grid cell that no longer holds a piece at every index its record stores
-// counts the same way and stays the same way: the page redrew it with fewer
-// pieces, so its originals have nowhere to go.
 // Returns the count of cells left unrestored, so a caller can tell a
 // genuine restore from a no-op one.
-function restoreTable(table, keepEntry) {
+function restoreTable(table) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
   if (roundedCells.length === 0) return 0;
-  const isGrid = makeAdapter(table).isVirtualized();
+  const kind = tableKindPass(makeAdapter(table));
   let unrestorableCount = 0;
   for (const cell of roundedCells) {
-    const original = DR_STORE.getTableOriginal(table, cell);
-    if (original === undefined) {
+    if (!DR_STORE.hasTableOriginal(table, cell)) {
       unrestorableCount++;
       continue;
     }
-    if (isGrid) {
-      if (!restoreTextPieces(cell, original.pieces)) {
-        unrestorableCount++;
-        continue;
-      }
-    } else {
-      cell.innerHTML = original.html;
-    }
-    cell.removeAttribute('title');
-    if (!keepEntry) {
-      cell.classList.remove('dr-ext-rounded'); // === GRID_ROUNDED_CLASS
-      DR_STORE.deleteTableOriginal(table, cell);
-    }
+    releaseCell(table, cell, kind);
   }
   return unrestorableCount;
+}
+
+// Release one simplified cell: put its original text back into every text
+// piece that still shows the extension's written text (restoreTextPieces),
+// then drop its record, its marker class, and a native cell's hover text.
+// The restore runs it on every marked cell; a pass runs it on a rewritten
+// cell before simplifying it fresh, and on a held cell whose target text is
+// its original.
+function releaseCell(table, cell, kind) {
+  const record = DR_STORE.getTableOriginal(table, cell);
+  if (record) restoreTextPieces(cell, record.pieces);
+  DR_STORE.deleteTableOriginal(table, cell);
+  cell.classList.remove(GRID_ROUNDED_CLASS);
+  if (kind.hoverText) cell.removeAttribute('title');
 }
 
 // Returns the count of cells restoreTable could not restore (see its doc).
@@ -748,26 +749,16 @@ function restoreTable(table, keepEntry) {
 // instead of 'original', which would claim a clean reset that did not
 // happen for every cell.
 function resetTable(table) {
-  // --- Grid virtualization teardown (must happen BEFORE cell restore) ---
-  // Clear any pending debounce timer so a queued re-apply cannot fire after reset.
-  const pendingTimer = gridReapplyTimers.get(table);
-  if (pendingTimer !== undefined) {
-    clearTimeout(pendingTimer);
-    gridReapplyTimers.delete(table);
-  }
-  // Disconnect the scroll/sort observer so it stops watching the scroll container.
-  const gridObserver = gridObservers.get(table);
-  if (gridObserver) {
-    gridObserver.disconnect();
-    gridObservers.delete(table);
-  }
-  // Also clear the stored options and frozen magnitude basis so
-  // reapplyGridRounding (if somehow still in-flight) bails out harmlessly,
-  // and so the next roundTable() call re-freezes fresh.
+  // The re-apply observer stops BEFORE the cell restore, so the restore's
+  // own writes run no pass and a queued pass cannot fire after the reset.
+  unwatchTable(table);
+  // Also clear the stored options and frozen magnitude basis so a pass (if
+  // somehow still in flight) stops harmlessly, and so the next roundTable()
+  // call re-freezes fresh.
   DR_STORE.setTableRoundOptions(table, null);
   DR_STORE.setTableMaxMagnitude(table, null);
 
-  const unrestorableCount = restoreTable(table, false);
+  const unrestorableCount = restoreTable(table);
   DR_STORE.setTableAppliedFlag(table, unrestorableCount > 0 ? 'simplified' : 'original');
   syncSwitchForTable(table);
   return unrestorableCount;
@@ -792,9 +783,9 @@ function resetTable(table) {
 // dropping the link filter with no signal). The simplification pass already
 // ran filterLinkMatches once, against the live text, at the moment it
 // rounded the cell; the caller passes the surviving match indices from that
-// run here (see the registry record's linkFilteredIdx, stored by each kind's
-// writeCell in the simplification pass) so the same filter outcome applies
-// instead of being silently skipped.
+// run here (see the registry record's linkFilteredIdx, stored by the cell
+// object's applyPatches) so the same filter outcome applies instead of being
+// silently skipped.
 function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
   if (decision.mode !== 'extracted') return decision;
   const filtered = staleFilteredIndices
@@ -827,9 +818,10 @@ function decisionToLegacyInfo(decision) {
 // classification step the one simplification pass runs (classifyTableCells
 // below), on the kind the pass picks, so a cell appears here only if the
 // table rounds it. The step reads each simplified cell's stored original
-// (see classifyTableCell). The filters over its result keep what the lens
-// preview samples. Outside rows stay out, because an outside row rounds
-// against the dataset without joining it; empty cells stay out. Pure and
+// (see classifyTableCell) and writes nothing. The filters over its result
+// keep what the lens preview samples. Outside rows stay out, because an
+// outside row rounds against the dataset without joining it; empty cells
+// stay out. Pure and
 // extracted results alone count: the lens preview is about numeric
 // magnitude and offset, so dates and times stay out even though the ladder
 // classifies them.
@@ -845,9 +837,9 @@ function collectNumericCells(table, options) {
   // (roundTable returns before touching any cell); mirror that here instead
   // of falling back to "whole table".
   if (rangeParse.error) return [];
-  const adapter = makeAdapter(table, { originalsPort: registryOriginalsPort(table) });
-  const entries = classifyTableCells(table, adapter.getRows(), opts, rangeParse.ranges,
-    tableKindPass(adapter), { readsStoredOriginal: true });
+  const adapter = registryAdapter(table);
+  const entries = classifyTableCells(table, tableDataCells(adapter.getRows()), opts, rangeParse.ranges,
+    tableKindPass(adapter));
   const out = [];
   for (const { trimmed, info, isOutside } of entries) {
     if (isOutside || !trimmed) continue;
@@ -981,21 +973,37 @@ function buildCaptureStateResponse() {
 // --- The one simplification pass ---
 //
 // Every simplification of a table runs simplifyTableCells below, on both
-// table kinds: the first simplification of a native table (roundTable), the
-// first simplification of a grid (roundTable), and the grid re-apply
-// (reapplyGridRounding). The pass classifies every <td> through the
-// classification ladder (lib/dr-simplify) and the placement step
-// (placeDecision in lib/dr-table), resolves ambiguous dates per column,
-// finds the max magnitude over the dataset, builds each cell's patches, and
-// writes each changed cell through the patch writer, cell by cell in page
-// order. A rule added to the pass reaches both table kinds at once.
+// table kinds: the first simplification (roundTable) and every pass the
+// re-apply observer runs (reapplyRounding). The pass first sorts each cell
+// by its record (sortCellByRecord in lib/dr-table):
+//   fresh      no stored originals: an added row, a row scrolled into view,
+//              or a cell the page replaced with a new element. Every cell is
+//              fresh on the first simplification.
+//   held       every text piece shows its original or its written text, and
+//              the piece count matches. The cell's reads answer from its
+//              record, so its target text comes from its stored originals
+//              under the current max magnitude.
+//   rewritten  anything else: the page wrote a new value. releaseCell puts
+//              the original text back into each piece that still shows
+//              written text and drops the record, so the cell holds only the
+//              page's text, and the pass then treats it as fresh.
+// The pass then classifies every <td> through the classification ladder
+// (lib/dr-simplify) and the placement step (placeDecision in lib/dr-table),
+// resolves ambiguous dates per column, finds the max magnitude over the
+// dataset, builds each cell's patches, and writes each cell through the
+// patch writer, cell by cell in page order. The writer gives every piece
+// whose live text differs from its target the target, so a held cell with
+// nothing changed takes no write, a piece redrawn to its original takes the
+// patch again, and a piece written under an old max magnitude takes the new
+// rounding. A held cell whose target is its original is released. A rule
+// added to the pass reaches both table kinds at once.
 //
 // The adapters (lib/dr-table/detect.js) hold two differences between the
 // kinds before the pass starts. getText() returns a native cell's rendered
-// text, and a grid cell's flat text (its record's stored value once
-// rounded). getPieceLayout()'s toFlat converts a native cell's rendered
-// positions to flat positions, which livePatches reads; a grid cell's
-// positions need no conversion, so its toFlat is null.
+// text, and a grid cell's flat text; both answer with the record's stored
+// value once the cell is simplified. getPieceLayout()'s toFlat converts a
+// native cell's rendered positions to flat positions, which flatPatches
+// reads; a grid cell's positions need no conversion, so its toFlat is null.
 //
 // Every other difference is a field of the kind object the caller passes,
 // NATIVE_TABLE_PASS or GRID_TABLE_PASS:
@@ -1003,12 +1011,6 @@ function buildCaptureStateResponse() {
 //                        test. Grids only: a native cell's inline styling
 //                        splits one number across two pieces ("1" plain,
 //                        "23" in bold), which the test reads as two numbers.
-//   layoutHoldsStoredText  whether getPieceLayout() holds a rounded cell's
-//                        pre-round piece text. A grid layout carries the
-//                        record's stored piece text. A native layout holds
-//                        the live pieces, which hold the rounded text, so a
-//                        stored-original read skips the placement step on a
-//                        native cell.
 //   splitReason, splitRow  the placement result that writes a debug row, and
 //                        that row's text: a native value that crosses a
 //                        piece boundary ('pieces'), a grid number split
@@ -1018,133 +1020,81 @@ function buildCaptureStateResponse() {
 //                        none.
 //   dateSplitRow         the debug row for a changed date or time whose text
 //                        crosses a piece boundary.
-//   superscriptRanges(table, cell, text)  the exponent ranges the ladder
-//                        masks, for a cell holding a <sup>. The native kind
-//                        measures them live, converted to the rendered text.
-//                        The grid kind reads a rounded cell's stored ranges
-//                        from its record, because its live text has shrunk
-//                        or grown around the <sup> since.
-//   recordSupRanges(entry)  the supRanges a written cell's record stores.
-//                        The native kind measures every extracted cell live,
-//                        before its write, so a vertical-align:super element
-//                        with no <sup> counts. The grid kind stores the
-//                        ranges the cell classified with, for an extracted
-//                        cell with a <sup>, and null otherwise.
-//   writeCell(table, entry, patches, linkFilteredIdx, supRanges)  writes
-//                        one cell's live patches and returns how many
-//                        landed. A native write stores the cell's
-//                        { html, value, supRanges, linkFilteredIdx } record,
-//                        its hover text, and the marker class in this file,
-//                        and writes a warn row for each cell with a patch
-//                        that did not land. A grid write goes through the
-//                        cell object's applyPatches, which stores the
-//                        { value, pieces, supRanges, linkFilteredIdx } record
-//                        through the originals port and adds the marker
-//                        class, with no hover text.
+//   hoverText            whether a written cell carries hover text showing
+//                        its original. Native tables only.
 //   freezesMaxMagnitude  whether the first simplification stores the max
-//                        magnitude as the table's magnitude freeze.
-//   missedWritesRow(count)  the warn row the first simplification writes
-//                        for the cells whose write landed nothing, or null
-//                        when writeCell writes a row for each cell itself.
+//                        magnitude as the table's magnitude freeze. Grids
+//                        only: a grid holds only its visible rows, so a
+//                        changed value and a row scrolled into view read
+//                        the same.
+//   watchedElement(adapter)  the element the re-apply observer watches: a
+//                        native table itself, a grid's scroll container.
 //
 // The pass settings beside the kind:
 //   frozenMaxMag  the max magnitude to use instead of computing it from the
-//                 cells; null or undefined computes it. The grid re-apply
+//                 cells; null or undefined computes it. A grid's re-apply
 //                 passes the table's magnitude freeze.
 //   writes        'first' writes every changed cell, stores a grid's max
-//                 magnitude as its magnitude freeze, and writes the kind's
-//                 missed-writes row. 'reapply' writes every changed cell and
-//                 nothing else. 'none' writes nothing and returns each
-//                 cell's patches; only the test suite passes it, to read a
-//                 table's planned patches with the page left unchanged.
-//
-// The classification step's own setting (see classifyTableCell):
-//   readsStoredOriginal  classify each simplified cell's stored original.
-//                 The pass leaves it off; the lens preview (see
-//                 collectNumericCells) turns it on, and runs the
-//                 classification step alone, with no patches and no writes.
+//                 magnitude as its magnitude freeze, and writes the debug
+//                 row for the cells left unrounded (unroundedCellsRow). 'reapply' writes every changed cell and
+//                 nothing else. 'none' sorts no cell, writes nothing, and
+//                 returns each cell's patches; only the test suite passes
+//                 it, to read a table's planned patches with the page left
+//                 unchanged.
+//   cellCap       the most cells the pass reads; above it the pass writes
+//                 nothing and returns overCap. The re-apply observer passes
+//                 the detection settings' reapplyCellCap; the first
+//                 simplification passes none.
 //
 // A cell's writes follow its patches in the same loop, so a native table's
-// debug and warn rows keep their page order. The patch step reads only what
+// debug rows keep their page order. The patch step reads only what
 // classification captured, never the page, so a write to one cell leaves the
 // patches of the cells after it unchanged.
 
 const NATIVE_TABLE_PASS = {
   stacked: false,
-  layoutHoldsStoredText: false,
   splitReason: 'pieces',
   splitRow: 'Dynamic Rounding: a native cell value split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.',
-  superscriptRanges(table, cell, text) {
-    return getSuperscriptRanges(cell, { text });
-  },
-  recordSupRanges(entry) {
-    return entry.info.mode === 'extracted'
-      ? getSuperscriptRanges(entry.cellObj.el, { text: entry.text })
-      : null;
-  },
-  // The record holds the pristine HTML, the superscript ranges, and the
-  // surviving (link-filtered) match indices, all measured against the
-  // pre-round text before applyExtractedPatches changes it, and it is stored
-  // only after a patch confirms the cell changed. The lens preview's
-  // stored-original read (see classifyTableCell) takes the record back
-  // instead of re-measuring the rounded live element against the stored
-  // original text; see finalizeExtractedDecision.
-  writeCell(table, entry, patches, linkFilteredIdx, supRanges) {
-    const cell = entry.cellObj.el;
-    const originalRecord = { html: cell.innerHTML, value: entry.text, supRanges, linkFilteredIdx };
-    const { landed } = applyExtractedPatches(cell, patches);
-    if (landed < patches.length) {
-      DR_LOG.warn('Dynamic Rounding: ' + (patches.length - landed) + ' of ' +
-        patches.length + ' cell patches did not land.');
-    }
-    // Record only a confirmed change: with every patch skipped the screen
-    // keeps its text, and storing the original, the hover text, or the
-    // marker would record a simplification that never happened.
-    if (landed === 0) return 0;
-    DR_STORE.setTableOriginal(table, cell, originalRecord);
-    cell.title = `Original: ${entry.text}`;
-    cell.classList.add('dr-ext-rounded');
-    return landed;
-  },
+  hoverText: true,
   freezesMaxMagnitude: false,
-  missedWritesRow: null,
+  watchedElement(adapter) { return adapter.getElement(); },
 };
 
 const GRID_TABLE_PASS = {
   stacked: true,
-  layoutHoldsStoredText: true,
   splitReason: 'split',
   splitRow: 'Dynamic Rounding: a grid cell number split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.',
-  // A grid cell classifies its flat text, so getSuperscriptRanges takes no
-  // `text` opt. The lens preview's stored-original read handles a rounded
-  // cell itself, on either kind, and reaches this read only for a cell with
-  // no record (see classifyTableCell).
-  superscriptRanges(table, cell) {
-    const storedRecord = DR_STORE.getTableOriginal(table, cell);
-    return (storedRecord && storedRecord.supRanges)
-      ? storedRecord.supRanges
-      : getSuperscriptRanges(cell);
-  },
-  // The ranges count in the cell's pre-round flat text, the same coordinate
-  // space as the record's value.
-  recordSupRanges(entry) {
-    return (entry.info.mode === 'extracted' && entry.hasSuperscript) ? entry.superscriptRanges : null;
-  },
-  // A rounded cell's patches come from its stored original, so they land
-  // only where the original still stands: a piece already patched is not
-  // written again, a piece the framework redrew to its original is patched
-  // again, and a piece the page rewrote keeps the page's text. applyPatches
-  // stores the cell's record on its first landed write.
-  writeCell(table, entry, patches, linkFilteredIdx, supRanges) {
-    return entry.cellObj.applyPatches(patches, linkFilteredIdx, supRanges);
-  },
+  hoverText: false,
   freezesMaxMagnitude: true,
-  missedWritesRow(count) {
-    return 'Dynamic Rounding: ' + count + ' grid cell write(s) did not land.';
-  },
+  watchedElement(adapter) { return adapter._getScrollContainer(); },
 };
+
+// Write one cell's patches through the cell object's applyPatches, which
+// stores the record and adds the marker class on a landed write (see
+// makeCellObj in lib/dr-table), and return how many landed. The record's
+// supRanges are the ranges the cell classified with, for an extracted cell
+// with a <sup>, counted in the record's value. Record only a confirmed
+// change: with every patch skipped the screen keeps its text, and storing
+// the hover text would record a simplification that never happened.
+function writeCell(entry, patches, linkFilteredIdx, kind) {
+  const supRanges = (entry.info.mode === 'extracted' && entry.hasSuperscript) ? entry.superscriptRanges : null;
+  const landed = entry.cellObj.applyPatches(patches, { value: entry.text, linkFilteredIdx, supRanges });
+  if (landed > 0 && kind.hoverText) entry.cellObj.el.title = `Original: ${entry.text}`;
+  return landed;
+}
+
+// The debug row the first simplification writes when a cell with a change
+// to make took none of it: the text the cell shows differs from the text
+// its pieces hold, so no number sat where the pass expected it. One wording
+// for both table kinds, and a debug row, so it raises no toast. The first
+// simplification alone writes it, so a table the page keeps changing writes
+// no row on every pass.
+function unroundedCellsRow(missed, total) {
+  return 'Dynamic Rounding: ' + missed + ' of ' + total + ' cells were left unrounded because ' +
+    'the text they show did not match the text they hold.';
+}
 
 // The offsets, the top-band count, and the decimal floor, resolved once for
 // the whole table. The decimal floor reflects the precision the offsets
@@ -1166,15 +1116,11 @@ function resolveRoundingSettings(opts) {
 // plain data. The step reads the page and writes nothing: the pass writes
 // the debug row for a split value (entry.isSplit) after classification.
 //
-// With read.readsStoredOriginal off (the pass), the step reads the live
-// cell. The link filter reads the live pieces: a rounded grid cell's kept
-// numbers differ from the live text only in the pieces an earlier write
-// patched, and a patch never lands there again, so the live read serves.
-//
-// With read.readsStoredOriginal on (the lens preview), a simplified cell
-// classifies its stored original rather than the rounded text now showing
-// (issue #2). Its record holds value, the pre-round text, on either kind,
-// and each read below measured against that text takes the record's copy:
+// A simplified cell classifies its stored original rather than the rounded
+// text now showing (issue #2), on either kind: the cell object's getText()
+// and getPieceLayout() answer from its record. The pass and the lens
+// preview read alike. Each read below measured against that text takes the
+// record's copy:
 //   superscriptRanges  the record's supRanges, because rounding shrinks or
 //                      grows the live text around the <sup>. A record with
 //                      none measures the live cell against the stored text.
@@ -1183,25 +1129,18 @@ function resolveRoundingSettings(opts) {
 //                      because the filter's substring search cannot find
 //                      the original numbers in the rounded live text. A
 //                      record with none runs the live filter.
-//   placement step     skipped on a kind whose layout holds the live
-//                      rounded pieces (layoutHoldsStoredText); the cell
-//                      passed it when it was written.
 // isWholeLink stays a live read: rounding patches text-node values and
 // never adds or removes an <a>, so the anchor text and the cell text move
 // together, and a whole-link cell never rounds in the first place.
-function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, kind, read) {
+function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, kind) {
   const cell = cellObj.el;
-  const stored = read.readsStoredOriginal ? DR_STORE.getTableOriginal(table, cell) : null;
-  const record = (stored && typeof stored === 'object') ? stored : null;
-  const text = record ? record.value : cellObj.getText();
+  const record = DR_STORE.getTableOriginal(table, cell) || null;
+  const text = cellObj.getText();
   const layout = cellObj.getPieceLayout();
   const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-  let superscriptRanges = [];
-  if (hasSuperscript) {
-    superscriptRanges = record
-      ? (record.supRanges || getSuperscriptRanges(cell, { text }))
-      : kind.superscriptRanges(table, cell, text);
-  }
+  const superscriptRanges = hasSuperscript
+    ? ((record && record.supRanges) || getSuperscriptRanges(cell, { text }))
+    : [];
   const classified = classifyCell({
     text,
     rowIndex,
@@ -1211,9 +1150,7 @@ function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, ki
     hasSuperscript,
     superscriptRanges,
   }, opts);
-  const placed = (record && !kind.layoutHoldsStoredText)
-    ? classified
-    : placeDecision(classified, text, layout, { hasSuperscript, stacked: kind.stacked });
+  const placed = placeDecision(classified, text, layout, { hasSuperscript, stacked: kind.stacked });
   const keptIndices = (record && record.linkFilteredIdx) ? new Set(record.linkFilteredIdx) : null;
   return {
     cellObj,
@@ -1229,25 +1166,40 @@ function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, ki
   };
 }
 
-// Classify every <td> of every row, in page order. A <th> is never rounded,
-// but it still holds its column: the column index is the column the browser
-// lays the cell out in (the adapter's reading, see assignGridColumns). A
-// <th scope="row"> IS the table's first column as rendered, so in such a
-// table the leading <td> is column B: "first column" (and range "A") target
-// the header column, not the first data cell after it. An outside row rounds
-// like any other; its entries carry isOutside so its values stay out of the
-// dataset. read holds the step's one setting, readsStoredOriginal (see
-// classifyTableCell); the pass passes none.
-function classifyTableCells(table, adapterRows, opts, ranges, kind, read = {}) {
-  const entries = [];
+// Every <td> of every row, in page order, with its row index and whether its
+// row is an outside row. A <th> is never rounded, but it still holds its
+// column: the column index is the column the browser lays the cell out in
+// (the adapter's reading, see assignGridColumns). A <th scope="row"> IS the
+// table's first column as rendered, so in such a table the leading <td> is
+// column B: "first column" (and range "A") target the header column, not the
+// first data cell after it. An outside row rounds like any other; its
+// entries carry isOutside so its values stay out of the dataset. The count
+// of these cells is what the cell cap measures.
+function tableDataCells(adapterRows) {
+  const cells = [];
   for (let r = 0; r < adapterRows.length; r++) {
     const isOutside = !!adapterRows[r].isOutside;
     for (const cellObj of adapterRows[r].getCells()) {
-      if (cellObj.tagName !== 'TD') continue;
-      entries.push(classifyTableCell(table, cellObj, r, isOutside, opts, ranges, kind, read));
+      if (cellObj.tagName === 'TD') cells.push({ cellObj, rowIndex: r, isOutside });
     }
   }
-  return entries;
+  return cells;
+}
+
+// Classify every <td> of every row, in page order (see tableDataCells). The
+// lens preview runs this step alone: no sort and no writes.
+function classifyTableCells(table, dataCells, opts, ranges, kind) {
+  return dataCells.map(({ cellObj, rowIndex, isOutside }) =>
+    classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, kind));
+}
+
+// The pass's sort (see the section header): release every rewritten cell,
+// so it holds only the page's text and classifies fresh.
+function releaseRewrittenCells(table, dataCells, kind) {
+  for (const { cellObj } of dataCells) {
+    const record = DR_STORE.getTableOriginal(table, cellObj.el);
+    if (sortCellByRecord(cellObj.el, record) === 'rewritten') releaseCell(table, cellObj.el, kind);
+  }
 }
 
 // The kind the one simplification pass runs on a table, from its adapter.
@@ -1344,22 +1296,30 @@ function cellPatches(entry, maxMag, opts, rounding, kind) {
  * @param {Element} table - The table or grid wrapper (key into DR_STORE's registry).
  * @param {object[]} adapterRows - The adapter's rows, as getRows() read them.
  * @param {object} opts - Fully-resolved rounding options.
- * @param {{kind: object, frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none'}} pass
+ * @param {{kind: object, frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none',
+ *          cellCap?: number}} pass
  * @returns {{cells: Array<{entry: object, patches: object[], linkFilteredIdx: number[]|null}>,
- *            maxMag: number|null, landedCells: number, missedCells: number}}
- *   cells holds every <td> in page order with its live patches (empty means
- *   leave the cell unchanged). landedCells counts the written cells with a
- *   landed patch, missedCells the written cells with none. An invalid range
- *   expression or a table with no rows returns no cells and writes nothing.
+ *            maxMag: number|null, landedCells: number, missedCells: number,
+ *            cellCount: number, overCap: boolean}}
+ *   cells holds every <td> in page order with its patches (empty means the
+ *   cell's target text is its original). landedCells counts the written
+ *   cells with a landed patch, missedCells the written cells with none.
+ *   cellCount counts the <td> cells the pass read. An invalid range
+ *   expression or a table with no rows returns no cells and writes nothing;
+ *   so does a table above pass.cellCap, with overCap true.
  */
 function simplifyTableCells(table, adapterRows, opts, pass) {
+  const startedAt = Date.now();
   const { kind, writes } = pass;
   const rangeParse = parseRangeExpr(opts.rangeExpr);
-  if (rangeParse.error || adapterRows.length === 0) {
-    return { cells: [], maxMag: null, landedCells: 0, missedCells: 0 };
+  const none = { cells: [], maxMag: null, landedCells: 0, missedCells: 0, cellCount: 0, overCap: false };
+  if (rangeParse.error || adapterRows.length === 0) return none;
+  const dataCells = tableDataCells(adapterRows);
+  if (pass.cellCap !== undefined && dataCells.length > pass.cellCap) {
+    return Object.assign({}, none, { cellCount: dataCells.length, overCap: true });
   }
-  const rounding = resolveRoundingSettings(opts);
-  const classified = classifyTableCells(table, adapterRows, opts, rangeParse.ranges, kind);
+  if (writes !== 'none') releaseRewrittenCells(table, dataCells, kind);
+  const classified = classifyTableCells(table, dataCells, opts, rangeParse.ranges, kind);
   for (const entry of classified) {
     if (entry.isSplit) DR_LOG.debug(kind.splitRow);
   }
@@ -1368,92 +1328,176 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   const maxMag = (frozen !== undefined && frozen !== null) ? frozen : datasetMaxMagnitude(entries);
   if (writes === 'first' && kind.freezesMaxMagnitude) DR_STORE.setTableMaxMagnitude(table, maxMag);
 
+  const written = writeTableCells(table, entries, { maxMag, opts, kind, writes });
+  if (writes === 'first' && written.missedCells > 0) {
+    DR_LOG.debug(unroundedCellsRow(written.missedCells, written.landedCells + written.missedCells));
+  }
+  DR_LOG.debug('Dynamic Rounding: a pass read ' + dataCells.length + ' cells in ' +
+    (Date.now() - startedAt) + ' ms.');
+  return Object.assign(written, { maxMag, cellCount: dataCells.length, overCap: false });
+}
+
+// The pass's patch and write loop, cell by cell in page order. A held cell
+// with no patch, or with no landed patch, shows its original as its target,
+// so it is released: its record, marker class, and hover text go.
+function writeTableCells(table, entries, { maxMag, opts, kind, writes }) {
+  const rounding = resolveRoundingSettings(opts);
   const cells = [];
   let landedCells = 0;
   let missedCells = 0;
   for (const entry of entries) {
     const { patches, linkFilteredIdx } = cellPatches(entry, maxMag, opts, rounding, kind);
-    const live = livePatches(patches, entry.layout);
-    cells.push({ entry, patches: live, linkFilteredIdx });
-    if (writes === 'none' || live.length === 0) continue;
-    if (kind.writeCell(table, entry, live, linkFilteredIdx, kind.recordSupRanges(entry)) > 0) {
-      landedCells++;
-    } else {
-      missedCells++;
-    }
+    const flat = flatPatches(patches, entry.layout);
+    cells.push({ entry, patches: flat, linkFilteredIdx });
+    if (writes === 'none') continue;
+    const held = DR_STORE.hasTableOriginal(table, entry.cellObj.el);
+    const landed = flat.length > 0 ? writeCell(entry, flat, linkFilteredIdx, kind) : 0;
+    if (flat.length > 0 && landed > 0) landedCells++;
+    else if (flat.length > 0) missedCells++;
+    if (landed === 0 && held) releaseCell(table, entry.cellObj.el, kind);
   }
-  if (writes === 'first' && kind.missedWritesRow && missedCells > 0) {
-    DR_LOG.warn(kind.missedWritesRow(missedCells));
-  }
-  return { cells, maxMag, landedCells, missedCells };
+  return { cells, landedCells, missedCells };
 }
 
-// A grid's rows, read through the registry-backed originals port.
-function gridRows(wrapperEl) {
-  return makeAdapter(wrapperEl, { originalsPort: registryOriginalsPort(wrapperEl) }).getRows();
+// A table's adapter, reading and writing each cell's record through the
+// registry-backed originals port.
+function registryAdapter(table) {
+  return makeAdapter(table, { originalsPort: registryOriginalsPort(table) });
+}
+
+// --- The re-apply observer ---
+//
+// One watcher for every simplified table, native or grid: a MutationObserver
+// on the table's watched element (a native table itself, a grid's scroll
+// container), for added and removed nodes and for text changes anywhere
+// under it. A grid redraws rows on scroll and cells on sort; a page rewrites
+// a cell's value in place or adds a row. Each runs a pass.
+//
+// The observer is off during the extension's own writes, the restore
+// included: a pass disconnects it before it writes and reconnects it after,
+// and a reset stops it before the restore writes. A pass while the form is
+// raw writes nothing. A burst of page edits collapses into one pass: each
+// change restarts the redraw delay, and a burst that never goes quiet runs
+// its pass once it has lasted the longest wait (reapplyMaxWaitMs in the
+// detection settings). A table above the cell cap (reapplyCellCap) takes no
+// observer, and a pass that finds its table above the cap stops the observer.
+
+const OBSERVED_CHANGES = { childList: true, characterData: true, subtree: true };
+
+// Start watching a table after its first simplification. The first
+// simplification's own writes are done by then, so they run no pass.
+function watchTable(table, adapter, kind, cellCount) {
+  unwatchTable(table);
+  if (typeof MutationObserver === 'undefined') return;
+  if (cellCount > DR_DETECTION_SETTINGS.reapplyCellCap) {
+    logAboveCellCap(cellCount);
+    return;
+  }
+  const observer = new MutationObserver(() => scheduleReapply(table));
+  reapplyObservers.set(table, { observer, target: kind.watchedElement(adapter) });
+  observeTable(table);
+}
+
+function observeTable(table) {
+  const watcher = reapplyObservers.get(table);
+  if (watcher) watcher.observer.observe(watcher.target, OBSERVED_CHANGES);
+}
+
+// Stop watching a table: its pending timer, its burst, and its observer.
+// Safe on a table that holds none.
+function unwatchTable(table) {
+  const pending = reapplyTimers.get(table);
+  if (pending !== undefined) {
+    clearTimeout(pending);
+    reapplyTimers.delete(table);
+  }
+  reapplyBursts.delete(table);
+  const watcher = reapplyObservers.get(table);
+  if (watcher) {
+    watcher.observer.disconnect();
+    reapplyObservers.delete(table);
+  }
+}
+
+// One page change: restart the wait for the pass, bounded by the longest
+// wait counted from the burst's first change.
+function scheduleReapply(table) {
+  const now = Date.now();
+  if (!reapplyBursts.has(table)) reapplyBursts.set(table, now);
+  const pending = reapplyTimers.get(table);
+  if (pending !== undefined) clearTimeout(pending);
+  const untilLongest = reapplyBursts.get(table) + DR_DETECTION_SETTINGS.reapplyMaxWaitMs - now;
+  const wait = Math.max(0, Math.min(DR_DETECTION_SETTINGS.gridRedrawDelayMs, untilLongest));
+  reapplyTimers.set(table, setTimeout(() => reapplyRounding(table), wait));
+}
+
+// The debug row for a table above the cell cap. A debug row raises no toast.
+function logAboveCellCap(cellCount) {
+  DR_LOG.debug('Dynamic Rounding: this table holds ' + cellCount.toLocaleString('en-US') +
+    ' cells, more than the ' + DR_DETECTION_SETTINGS.reapplyCellCap.toLocaleString('en-US') +
+    ' the extension follows, so it no longer rounds the page\'s updates.');
 }
 
 /**
- * Re-apply grid rounding to all currently-visible cells of `wrapperEl`.
- * Called by the debounced MutationObserver after scroll or sort events.
- *
- * Runs the one simplification pass, the same pass as the first
- * simplification in `roundTable`, under the table's magnitude freeze, so a
- * re-apply produces the result the first simplification would for any given
- * visible DOM state and opts: the range expression, the exclusions, quoted
- * cells, dates and times, whole-link cells, and <sup> handling all apply.
- *
- * Guards against infinite re-triggering by disconnecting the grid's observer
- * for the duration of the write pass and reconnecting after.
- *
- * @param {Element} wrapperEl - The grid wrapper element (key into DR_STORE's table registry).
+ * One pass of the re-apply observer. The observer is disconnected for the
+ * pass's own writes and reconnected after, unless the pass stopped it or
+ * replaced the table's registration.
+ * @param {Element} table - The table or grid (key into DR_STORE's registry).
  */
-function reapplyGridRounding(wrapperEl) {
-  // Clear the stored timer reference (it has already fired).
-  gridReapplyTimers.delete(wrapperEl);
+function reapplyRounding(table) {
+  reapplyTimers.delete(table);
+  reapplyBursts.delete(table);
+  const watcher = reapplyObservers.get(table);
+  if (!watcher) return;
+  watcher.observer.disconnect();
+  try {
+    runReapplyPass(table);
+  } finally {
+    if (reapplyObservers.get(table) === watcher) observeTable(table);
+  }
+}
 
-  const observer = gridObservers.get(wrapperEl);
-
-  // Disconnect FIRST — our own nodeValue writes fire characterData mutations;
-  // without this guard we enter an infinite re-apply loop.
-  if (observer) observer.disconnect();
-
-  const opts = DR_STORE.getTableRoundOptions(wrapperEl);
-  if (!opts) {
-    // Table has been reset/removed — reconnect (no-op write) and bail.
-    if (observer) {
-      const scrollContainer = new GridAdapter(wrapperEl)._getScrollContainer();
-      observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
-    }
+// The pass itself. It writes nothing while the table's form is raw. The
+// shape check runs before any cell is sorted: a table the page refilled
+// re-detects and simplifies fresh. The pass then runs the one
+// simplification pass under the table's magnitude freeze, if it holds one,
+// so a grid's scroll never shifts its rounding basis, and a native table's
+// max magnitude follows the page's values.
+function runReapplyPass(table) {
+  const opts = DR_STORE.getTableRoundOptions(table);
+  if (!opts || DR_STORE.getTableAppliedFlag(table) !== 'simplified') return;
+  const wasActive = DR_STORE.getSelectedTable() === table;
+  const revalidated = revalidateTableShape(table, { activates: wasActive });
+  if (revalidated.switched || revalidated.table !== table) {
+    resimplifyReplacedTable(revalidated.table, opts, wasActive);
     return;
   }
-
-  // Bail without writing while the table is showing originals (DR_STORE's
-  // appliedFlag, set by the restore path before it rewrites cells) —
-  // otherwise this re-apply would fight it. Reconnect so a later press back
-  // to simplified still triggers re-applies.
-  if (DR_STORE.getTableAppliedFlag(wrapperEl) !== 'simplified') {
-    if (observer) {
-      const scrollContainer = new GridAdapter(wrapperEl)._getScrollContainer();
-      observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
-    }
-    return;
-  }
-
-  DR_LOG.debug("Dynamic Rounding: grid re-apply fired.");
-
-  // The magnitude freeze keeps a scroll from shifting the rounding basis.
-  simplifyTableCells(wrapperEl, gridRows(wrapperEl), opts, {
-    kind: GRID_TABLE_PASS,
-    frozenMaxMag: DR_STORE.getTableMaxMagnitude(wrapperEl),
+  const adapter = registryAdapter(table);
+  const result = simplifyTableCells(table, adapter.getRows(), opts, {
+    kind: tableKindPass(adapter),
+    frozenMaxMag: DR_STORE.getTableMaxMagnitude(table),
     writes: 'reapply',
+    cellCap: DR_DETECTION_SETTINGS.reapplyCellCap,
   });
-
-  // Reconnect the observer after the write pass.
-  if (observer) {
-    const scrollContainer = new GridAdapter(wrapperEl)._getScrollContainer();
-    observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
+  if (result.overCap) {
+    unwatchTable(table);
+    logAboveCellCap(result.cellCount);
   }
+}
+
+// Simplify the table a shape change registered, with the settings the
+// replaced table carried. The range expression states rows and columns by
+// position, so it describes a shape that is gone and clears. On the active
+// table this is the path a pillbox press on a changed table takes: the
+// settings record's write applies to the table the shape check made active.
+// On any other table the sidebar's binding stays where it is.
+function resimplifyReplacedTable(fresh, opts, wasActive) {
+  if (!fresh) return;
+  if (wasActive) {
+    DR_STORE.setSettings(Object.assign({}, DR_STORE.getSettings(), { rangeExpr: '' }));
+    return;
+  }
+  roundTable(fresh, Object.assign({}, opts, { rangeExpr: '' }));
 }
 
 function roundTable(table, options) {
@@ -1463,63 +1507,34 @@ function roundTable(table, options) {
   if (rangeParse.error) {
     return { applied: false, rangeStatus: 'error', error: rangeParse.error };
   }
-  const adapter = makeAdapter(table, { originalsPort: registryOriginalsPort(table) });
+  const adapter = registryAdapter(table);
   const adapterRows = adapter.getRows();
   // Clean stub path: if the adapter returns no rows (e.g. GridAdapter stub),
   // return early without throwing.
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
-  const isVirtualized = adapter.isVirtualized();
+  const kind = tableKindPass(adapter);
 
   // The one simplification pass, on either table kind. A grid's first
   // simplification computes the max magnitude from what is visible right
-  // now and stores it as the magnitude freeze, so every later
-  // reapplyGridRounding (scroll/sort) reuses it instead of recomputing —
-  // otherwise a scroll that changes which rows are visible could shift the
-  // rounding basis mid-session. resetTable clears the freeze back to null,
-  // so a fresh roundTable() call (e.g. re-rounding after settings change)
-  // freezes again from its own first sight rather than reusing a stale
-  // value. A cell whose patches all skipped never counts toward the form
-  // (#301, #315).
-  const { landedCells } = simplifyTableCells(table, adapterRows, opts, {
-    kind: tableKindPass(adapter),
+  // now and stores it as the magnitude freeze, so every later pass of the
+  // re-apply observer (scroll, sort, page edit) reuses it instead of
+  // recomputing — otherwise a scroll that changes which rows are visible
+  // could shift the rounding basis mid-session. resetTable clears the freeze
+  // back to null, so a fresh roundTable() call (e.g. re-rounding after
+  // settings change) freezes again from its own first sight rather than
+  // reusing a stale value. A cell whose patches all skipped never counts
+  // toward the form (#301, #315).
+  const { landedCells, cellCount } = simplifyTableCells(table, adapterRows, opts, {
+    kind,
     frozenMaxMag: null,
     writes: 'first',
   });
   DR_STORE.setTableAppliedFlag(table, landedCells > 0 ? 'simplified' : 'original');
   syncSwitchForTable(table);
 
-  // Attach the scroll/sort re-apply observer AFTER the first simplification
-  // so our own nodeValue writes above do not immediately re-trigger it.
-  if (isVirtualized && typeof MutationObserver !== 'undefined') {
-    // Disconnect any stale observer (e.g. roundTable called twice on same grid).
-    const staleObserver = gridObservers.get(table);
-    if (staleObserver) staleObserver.disconnect();
-
-    // Clear any pending debounce timer from a previous observer.
-    const staleTimer = gridReapplyTimers.get(table);
-    if (staleTimer !== undefined) {
-      clearTimeout(staleTimer);
-      gridReapplyTimers.delete(table);
-    }
-
-    const scrollContainer = adapter._getScrollContainer();
-    const wrapperEl = table; // alias for clarity inside the closure
-
-    const observer = new MutationObserver(() => {
-      // Cancel any pending debounce timer for this grid and schedule a fresh one.
-      const pending = gridReapplyTimers.get(wrapperEl);
-      if (pending !== undefined) clearTimeout(pending);
-
-      const timerId = setTimeout(() => {
-        reapplyGridRounding(wrapperEl);
-      }, DR_DETECTION_SETTINGS.gridRedrawDelayMs);
-
-      gridReapplyTimers.set(wrapperEl, timerId);
-    });
-
-    observer.observe(scrollContainer, { childList: true, characterData: true, subtree: true });
-    gridObservers.set(wrapperEl, observer);
-  }
+  // The re-apply observer attaches AFTER the first simplification, so the
+  // writes above run no pass.
+  watchTable(table, adapter, kind, cellCount);
   return { applied: true, rangeStatus: 'ok' };
 }
 

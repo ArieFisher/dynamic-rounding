@@ -92,7 +92,7 @@ Not every "table" on the modern web is an HTML `<table>`. Many data-heavy apps r
 
 The extension abstracts both shapes behind a `TableAdapter` interface (`lib/dr-table/detect.js`), chosen by `makeAdapter(el)`:
 
-- **`NativeTableAdapter`** (`<table>` elements) — reads `.rows`/`.cells` and classifies each cell on its rendered text. Writes go through the patch writer, as on a grid; restore puts back the cell's saved HTML.
+- **`NativeTableAdapter`** (`<table>` elements) — reads `.rows`/`.cells` and classifies each cell on its rendered text. Writes go through the patch writer, as on a grid, and restore puts back each patched piece's saved text.
 - **`GridAdapter`** (`<div>`-based grids, `isVirtualized() === true`) — stitches each row from the pinned pane and the scrollable pane and exposes the same row/cell API.
 
 #### Rows, row groups, and outside rows
@@ -101,7 +101,7 @@ Row discovery uses a grid's row groups (`role="rowgroup"`, the ARIA analog of `<
 
 A row outside every row group — or, on a native table, a `<tfoot>` row — is an outside row: it rounds like any other row, but its values stay out of the dataset. They never feed the max magnitude or the lens preview.
 
-On virtualized grids, the max magnitude freezes when simplification is first applied (the magnitude freeze). The data test spends one budget of 1000 cell reads, in document order, stopping at the first number; the budget applies on native tables and grids alike.
+On virtualized grids, the max magnitude freezes when simplification is first applied (the magnitude freeze); a native table computes it again on every pass. The data test spends one budget of 1000 cell reads, in document order, stopping at the first number; the budget applies on native tables and grids alike.
 
 On a native table, the data test and rounding share one cell read: the cell's rendered text, falling back to its raw text when the rendered text is empty. A hidden cell rounds like any other cell, and its raw text counts toward the test; a hidden fragment inside a visible cell — the hidden sort key above — stays out, because that cell's rendered text is not empty and the fallback never runs.
 
@@ -109,7 +109,7 @@ A native table cell is classified on its rendered text and patched in its flat t
 
 #### Why every write is a patch
 
-A framework-managed grid cell **cannot** be rewritten: React (and similar) hold a fiber reference to the cell's text node, so replacing it (`innerHTML =`, `textContent =`, `removeChild`/`appendChild`) crashes the host application's reconciler on the next re-render (observed: a `removeChild NotFoundError` that tore down the results panel on column resize). Writes therefore patch the existing text node **in place** (`textNode.nodeValue = …`), preserving the node identity the framework tracks. Native tables use the same patch writer, so one write rule covers every table kind. Restore differs by kind: a native cell gets back its saved HTML, and a grid cell gets back each patched piece's saved text.
+A framework-managed grid cell **cannot** be rewritten: React (and similar) hold a fiber reference to the cell's text node, so replacing it (`innerHTML =`, `textContent =`, `removeChild`/`appendChild`) crashes the host application's reconciler on the next re-render (observed: a `removeChild NotFoundError` that tore down the results panel on column resize). Writes therefore patch the existing text node **in place** (`textNode.nodeValue = …`), preserving the node identity the framework tracks. Native tables use the same patch writer, so one write rule covers every table kind. One restore covers every table kind too: each text piece that still shows the extension's written text gets back its saved original, and a piece the page rewrote keeps the page's text.
 
 A native table cell takes no stacked cell test. Inline styling splits one number across pieces ("1" plain, "23" in bold), and the test reads a digit beside a digit across pieces as two numbers. So a native value across pieces stays unchanged.
 
@@ -119,7 +119,7 @@ A grid cell reads as its flat text: every text piece, joined in page order. Each
 - A **split number** stays unchanged, with a debug log row: "4." in one piece and "91" in the next. A date or time split across pieces stays unchanged the same way.
 - **Extracted cells** round on a grid exactly as they already round on a native table: a number inside surrounding words rounds in place, and a grid cell with a `<sup>` rounds its base number while the mask keeps the exponent unchanged. The lens preview lists these numbers on both table kinds. A unit number is always an extracted cell for this rule too: "4.91tn" becomes "5tn" on a grid.
 
-Because virtualized grids recycle rows on scroll and rewrite cells in place on sort, a debounced `MutationObserver` (watching both `childList` and `characterData`) re-applies rounding to rows that scroll into view and cells that a sort reverts.
+Because virtualized grids recycle rows on scroll and rewrite cells in place on sort, and live pages rewrite values and add rows, a debounced `MutationObserver` (watching both `childList` and `characterData`) watches every simplified table, native or grid, and re-applies rounding after each page change. A cell the page rewrote simplifies from its new text, and a cell the page left alone takes no write. A burst of changes runs one pass, a table that never stops changing gets one pass a second, and a table above 10,000 cells stops following page changes and records one debug row, with no toast.
 
 ### Data Grids vs. CSS Layout Grids
 

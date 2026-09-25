@@ -102,6 +102,22 @@
     #tr-grid {
       display: grid;
     }
+
+    /* Section 23: the scrolling grid that reuses its row elements */
+    .rw-viewport {
+      height: 256px;
+      overflow-y: auto;
+      width: 500px;
+    }
+
+    .rw-viewport .g-row {
+      height: 32px;
+      box-sizing: border-box;
+    }
+
+    .rw-buttons button {
+      margin: 0 6px 6px 0;
+    }
   </style>
 </head>
 
@@ -1369,6 +1385,478 @@ TSLA,75,"248.09","18,606.75"
     </table>
   </section>
 
+  <section>
+    <h2>23. Cells the page rewrites</h2>
+    <p class="expect">Expect: a pillbox at load on 23a's two tables, 23c's
+      grid, and 23d's table. Each table here changes its own values after the
+      extension simplifies it, the way a live dashboard or a scrolling grid
+      does. The extension watches every simplified table, native or grid, and
+      simplifies each change within a moment. A restore always shows the
+      numbers the page last wrote. Reload the page to start any part again.
+      Before this rule, the extension never simplified a native table again
+      after its first simplification, a grid left a changed cell raw, and a
+      restore on either kind wrote the old numbers back over the page's new
+      ones.</p>
+
+    <p class="expect">23a, one native table and one grid holding the same
+      values. First pull the sidebar's two offsets apart: largest numbers at
+      -1, all other numbers at 0. Add a row with a larger value shows its
+      effect only then, because at equal offsets every value rounds the same
+      whatever the largest value is. Press both pillboxes on, then each
+      button below; every button rewrites the same cell in both tables, so
+      the two results sit side by side. Check each result, then press the
+      pillbox off and check the restore.</p>
+    <ul class="expect">
+      <li><b>Write a new number</b> writes 953,877 into South, Q2. Expect: the
+        cell shows 953,877 simplified, and the native cell's hover text shows
+        953,877. Restore shows 953,877. Before: the cell stayed raw, and the
+        restore wrote 947,310 back.</li>
+      <li><b>Write a round number</b> writes 400,000 into East, Q1. Expect: the
+        cell shows 400,000 and is no longer simplified: no hover text, and
+        restore leaves 400,000. Before: the restore wrote 427,808 back.</li>
+      <li><b>Write a word</b> writes n/a into Central, Q3. Expect: the cell
+        shows n/a with no hover text, and restore leaves n/a. Before: the
+        restore wrote 93,662 back.</li>
+      <li><b>Rewrite one piece</b> writes 15,118 into the italic part of West,
+        Q3. Expect: both numbers in the cell show simplified, the bold one
+        from 281,745 and the italic one from 15,118. Restore shows 281,745 and
+        15,118. Before: the bold number stayed simplified, the italic number
+        stayed raw, and the restore wrote 12,406 back.</li>
+      <li><b>Redraw the original</b> writes the cell's own original, 1,482,391,
+        back into North, Q1, as a page redraw does. Expect: the cell shows
+        simplified again within a moment. Before: the grid simplified it
+        again, and the native table left it raw.</li>
+      <li><b>Add a row with a larger value</b> adds a Global row of values
+        above 12,000,000. Expect: the new row shows simplified on both
+        tables, 12,000,000 and 13,000,000. The native table simplifies every
+        cell again against the new largest value, so the North row, the
+        largest values until now, drops to the coarser rounding (1,500,000
+        becomes 1,000,000), and its hover text still shows its own
+        originals. The grid keeps the scale it took at its first
+        simplification: its other cells stay as they were, and the Global
+        values take the rounding of the largest values.
+        A grid holds only the rows on the screen, so a larger value the page
+        wrote and a row scrolled into view read the same. Before: the
+        native table left the new row raw.</li>
+      <li><b>Swap the column set</b> replaces the headers and the first five rows,
+        as a page that loads a different query result into the same table.
+        Expect: the extension detects the table again and simplifies the new
+        values, and the pillbox stays on. The sidebar's active table moves to
+        the new table only when this table was the active one. Before: the
+        new values stayed raw, and the restore wrote the old result set back
+        into the cells.</li>
+      <li><b>Rewrite as the pillbox is pressed</b> arms the page. The next
+        pillbox press on either table first writes 925,006 into that table's
+        South, Q1, in the same moment as the press, so the restore runs before
+        any pass can read the change. Press it with both tables on. Expect:
+        the restore shows 925,006 in that cell and the originals everywhere
+        else. Before: the restore wrote 918,554 back.</li>
+    </ul>
+    <div class="rw-buttons">
+      <button type="button" data-rewrite="number">Write a new number</button>
+      <button type="button" data-rewrite="round">Write a round number</button>
+      <button type="button" data-rewrite="word">Write a word</button>
+      <button type="button" data-rewrite="piece">Rewrite one piece</button>
+      <button type="button" data-rewrite="redraw">Redraw the original</button>
+      <button type="button" data-rewrite="row">Add a row with a larger value</button>
+      <button type="button" data-rewrite="swap">Swap the column set</button>
+      <button type="button" data-rewrite="press">Rewrite as the pillbox is pressed</button>
+    </div>
+
+    <!--
+      Both tables come from one list below, so they always hold the same
+      values. West, Q3 holds two numbers in two tagged parts, so a page edit
+      can reach one text piece of a cell with several. The grid's header row
+      sits outside its row group, so the grid's shape record carries the
+      header texts and the swap reads as a shape change on both kinds.
+    -->
+    <table id="rw-native">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+    <div id="rw-grid" class="aria-grid" role="grid" aria-label="Sessions by region, rewritten"></div>
+    <script>
+      (function () {
+        var HEADERS = ['Region', 'Q1', 'Q2', 'Q3'];
+        var ROWS = [
+          ['North', '1,482,391', '1,506,220', '1,611,842'],
+          ['South', '918,554', '947,310', '1,002,466'],
+          ['East', '427,808', '431,552', '440,193'],
+          ['West', '263,114', '270,987', '<b>281,745</b> (<i>12,406</i> new)'],
+          ['Central', '88,209', '90,114', '93,662']
+        ];
+        var SWAPPED_HEADERS = ['Product', 'Units', 'Revenue', 'Margin'];
+        var SWAPPED_ROWS = [
+          ['Widget', '4,182', '918,554', '31.4'],
+          ['Gadget', '1,207', '221,489', '27.9'],
+          ['Sprocket', '36,610', '2,448,901', '12.2'],
+          ['Gizmo', '512', '88,730', '44.1'],
+          ['Doohickey', '9,944', '640,112', '18.6']
+        ];
+        var GLOBAL_ROW = ['Global', '12,480,113', '12,611,590', '12,902,334'];
+
+        var native = document.getElementById('rw-native');
+        var grid = document.getElementById('rw-grid');
+
+        function nativeHeader(texts) {
+          var tr = document.createElement('tr');
+          texts.forEach(function (text) {
+            var th = document.createElement('th');
+            th.scope = 'col';
+            th.textContent = text;
+            tr.appendChild(th);
+          });
+          return tr;
+        }
+        function nativeRow(cells) {
+          var tr = document.createElement('tr');
+          cells.forEach(function (html, c) {
+            var cell = document.createElement(c === 0 ? 'th' : 'td');
+            if (c === 0) cell.scope = 'row';
+            cell.innerHTML = html;
+            tr.appendChild(cell);
+          });
+          return tr;
+        }
+        function gridRow(cells, role) {
+          var row = document.createElement('div');
+          row.className = 'g-row';
+          row.setAttribute('role', 'row');
+          cells.forEach(function (html) {
+            var cell = document.createElement('span');
+            cell.setAttribute('role', role);
+            cell.innerHTML = html;
+            row.appendChild(cell);
+          });
+          return row;
+        }
+
+        native.tHead.appendChild(nativeHeader(HEADERS));
+        ROWS.forEach(function (cells) { native.tBodies[0].appendChild(nativeRow(cells)); });
+        grid.appendChild(gridRow(HEADERS, 'columnheader'));
+        var group = document.createElement('div');
+        group.setAttribute('role', 'rowgroup');
+        ROWS.forEach(function (cells) { group.appendChild(gridRow(cells, 'cell')); });
+        grid.appendChild(group);
+
+        // The cell at a data row and a column, in either table.
+        function nativeCell(r, c) { return native.tBodies[0].rows[r].cells[c]; }
+        function gridCell(r, c) { return group.querySelectorAll('[role="row"]')[r].children[c]; }
+        function eachCell(r, c, write) {
+          write(nativeCell(r, c));
+          write(gridCell(r, c));
+        }
+
+        function swapColumnSet() {
+          Array.prototype.forEach.call(native.tHead.rows[0].cells, function (th, c) {
+            th.textContent = SWAPPED_HEADERS[c];
+          });
+          Array.prototype.forEach.call(grid.firstChild.children, function (cell, c) {
+            cell.textContent = SWAPPED_HEADERS[c];
+          });
+          SWAPPED_ROWS.forEach(function (cells, r) {
+            cells.forEach(function (text, c) {
+              eachCell(r, c, function (cell) { cell.textContent = text; });
+            });
+          });
+        }
+
+        // The pillbox is the extension's own control, outside every table, so
+        // an armed press picks the section 23a table whose top right corner
+        // sits nearest the pressed pillbox.
+        var armed = false;
+        function nearestTable(pillbox) {
+          var box = pillbox.getBoundingClientRect();
+          var best = null;
+          var bestDistance = Infinity;
+          [native, grid].forEach(function (table) {
+            var rect = table.getBoundingClientRect();
+            var distance = Math.abs(rect.top - box.top) + Math.abs(rect.right - box.right);
+            if (distance < bestDistance) { best = table; bestDistance = distance; }
+          });
+          return best;
+        }
+        // A capture listener on the document runs before the pillbox's own
+        // click listener, so the rewrite lands first and the restore that
+        // the press starts reads it.
+        document.addEventListener('click', function (event) {
+          var pillbox = event.target.closest && event.target.closest('.dr-ext-morph');
+          if (!armed || !pillbox) return;
+          armed = false;
+          var cell = nearestTable(pillbox) === native ? nativeCell(1, 1) : gridCell(1, 1);
+          cell.textContent = '925,006';
+        }, true);
+
+        var ACTIONS = {
+          number: function () { eachCell(1, 2, function (cell) { cell.textContent = '953,877'; }); },
+          round: function () { eachCell(2, 1, function (cell) { cell.textContent = '400,000'; }); },
+          word: function () { eachCell(4, 3, function (cell) { cell.textContent = 'n/a'; }); },
+          piece: function () {
+            eachCell(3, 3, function (cell) { cell.querySelector('i').textContent = '15,118'; });
+          },
+          redraw: function () { eachCell(0, 1, function (cell) { cell.textContent = '1,482,391'; }); },
+          row: function () {
+            native.tBodies[0].appendChild(nativeRow(GLOBAL_ROW));
+            group.appendChild(gridRow(GLOBAL_ROW, 'cell'));
+          },
+          swap: swapColumnSet,
+          press: function () { armed = true; }
+        };
+        Array.prototype.forEach.call(document.querySelectorAll('[data-rewrite]'), function (button) {
+          button.addEventListener('click', ACTIONS[button.getAttribute('data-rewrite')]);
+        });
+      })();
+    </script>
+
+    <p class="expect">23b, a table that rewrites every value every 30 seconds
+      with a random whole number from 1,000 to 1,000,000. Press its pillbox
+      on. Expect: after each update every cell shows simplified against the
+      new values' largest value, and each hover text shows the new original.
+      A restore at any moment shows the numbers the page last wrote. Before:
+      the cells stayed raw after the first update, and a restore wrote the
+      first round's numbers back.</p>
+    <p class="expect" id="rw-live-status">Next update in 30 seconds.</p>
+
+    <!--
+      Every update writes every value cell at once: one burst of page edits,
+      which the extension answers with one pass.
+    -->
+    <table id="rw-live">
+      <thead>
+        <tr>
+          <th scope="col">Store</th>
+          <th scope="col">Mon</th>
+          <th scope="col">Tue</th>
+          <th scope="col">Wed</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <script>
+      (function () {
+        var STORES = ['Downtown', 'Harbour', 'Airport', 'Uptown', 'Outlet'];
+        var PERIOD_SECONDS = 30;
+        var body = document.querySelector('#rw-live tbody');
+        var status = document.getElementById('rw-live-status');
+        function randomValue() {
+          return (1000 + Math.floor(Math.random() * 999001)).toLocaleString('en-US');
+        }
+        STORES.forEach(function (store) {
+          var tr = document.createElement('tr');
+          var th = document.createElement('th');
+          th.scope = 'row';
+          th.textContent = store;
+          tr.appendChild(th);
+          for (var c = 0; c < 3; c++) {
+            var td = document.createElement('td');
+            td.textContent = randomValue();
+            tr.appendChild(td);
+          }
+          body.appendChild(tr);
+        });
+        var remaining = PERIOD_SECONDS;
+        setInterval(function () {
+          remaining--;
+          if (remaining === 0) {
+            Array.prototype.forEach.call(body.querySelectorAll('td'), function (td) {
+              td.textContent = randomValue();
+            });
+            remaining = PERIOD_SECONDS;
+          }
+          status.textContent = 'Next update in ' + remaining + ' seconds.';
+        }, 1000);
+      })();
+    </script>
+
+    <p class="expect">23c, a scrolling grid that reuses its row elements. The
+      grid holds 60 rows and shows 8; on scroll it keeps the same 8 row
+      elements and writes the next rows' text into them, the way a
+      virtualized grid does. Its Note column alternates between a cell with
+      a bold number (two text pieces) and a plain one (one piece), so each
+      scroll also redraws cells with fewer pieces (issue #423). Press its
+      pillbox on with the offsets from 23a, then scroll down. Expect: every
+      visible cell shows simplified against the scale the grid took at its
+      first simplification; the rows from Account 031 on hold values above
+      that scale, and they take the rounding of the largest values. Scroll
+      back up: the returning rows show simplified again. Scroll down once
+      more and press the pillbox off: the grid shows the values of the rows
+      on the screen, never the numbers of the rows that were there before,
+      and the pillbox turns off. Before: the redrawn cells stayed raw, and a
+      restore wrote the previous rows' numbers into them; a Note cell
+      redrawn with fewer pieces came back with its text doubled, e.g.
+      1,613 units units.</p>
+
+    <!--
+      The row group is the scroll viewport. Two spacers keep its scroll
+      height at 60 rows; the 8 row elements between them never change, and
+      only their text does. The header row sits outside the row group, so
+      it never scrolls.
+    -->
+    <div id="rw-scroll" class="aria-grid" role="grid" aria-label="Accounts, scrolling">
+      <div class="g-row" role="row">
+        <span role="columnheader">Account</span>
+        <span role="columnheader">Balance</span>
+        <span role="columnheader">Change</span>
+        <span role="columnheader">Note</span>
+      </div>
+      <div class="rw-viewport" role="rowgroup"></div>
+    </div>
+    <script>
+      (function () {
+        var TOTAL_ROWS = 60;
+        var SHOWN_ROWS = 8;
+        var ROW_HEIGHT = 32;
+        var LARGE_FROM = 30;
+        var viewport = document.querySelector('#rw-scroll .rw-viewport');
+
+        // Row i's values, the same on every visit. The rows from index 30
+        // (Account 031) on hold balances ten times larger than the rows above.
+        function rowValues(i) {
+          var scale = i >= LARGE_FROM ? 10 : 1;
+          var balance = ((i * 7919) % 900000 + 100000) * scale;
+          var change = (i * 3571) % 90000 + 1000;
+          var units = (i * 613) % 9000 + 1000;
+          var note = i % 2 === 0
+            ? '<b>' + units.toLocaleString('en-US') + '</b> units'
+            : units.toLocaleString('en-US') + ' units';
+          return [
+            'Account ' + String(i + 1).padStart(3, '0'),
+            balance.toLocaleString('en-US'),
+            change.toLocaleString('en-US'),
+            note
+          ];
+        }
+
+        var top = document.createElement('div');
+        var bottom = document.createElement('div');
+        viewport.appendChild(top);
+        var rowEls = [];
+        for (var k = 0; k < SHOWN_ROWS; k++) {
+          var row = document.createElement('div');
+          row.className = 'g-row';
+          row.setAttribute('role', 'row');
+          for (var c = 0; c < 4; c++) {
+            var cell = document.createElement('span');
+            cell.setAttribute('role', 'cell');
+            row.appendChild(cell);
+          }
+          viewport.appendChild(row);
+          rowEls.push(row);
+        }
+        viewport.appendChild(bottom);
+
+        var shownFirst = -1;
+        function draw() {
+          var first = Math.min(TOTAL_ROWS - SHOWN_ROWS, Math.floor(viewport.scrollTop / ROW_HEIGHT));
+          if (first === shownFirst) return;
+          shownFirst = first;
+          top.style.height = (first * ROW_HEIGHT) + 'px';
+          bottom.style.height = ((TOTAL_ROWS - SHOWN_ROWS - first) * ROW_HEIGHT) + 'px';
+          rowEls.forEach(function (rowEl, k) {
+            var values = rowValues(first + k);
+            for (var c = 0; c < 3; c++) {
+              rowEl.children[c].textContent = values[c];
+            }
+            rowEl.children[3].innerHTML = values[3];
+          });
+        }
+        viewport.addEventListener('scroll', draw);
+        draw();
+      })();
+    </script>
+
+    <p class="expect">23d, the pass measurement and the cell cap. The
+      extension reads at most 10,000 cells in one pass. Build the tables,
+      then press the 1,000-row table's pillbox on and start its updates:
+      they write a value into a random cell every 50 milliseconds, faster
+      than the redraw delay. Expect: each updated value outside the first
+      column shows simplified, one pass a second at most, and each pass
+      writes a debug row in the extension's log with its duration and cell
+      count, under 100 ms. Press the 1,001-row table's pillbox on. Expect:
+      it simplifies with no toast, and a debug row in the extension's log
+      reads that the table holds 10,010 cells, more than the 10,000 the
+      extension follows, so it no longer rounds the page's updates. Press
+      Rewrite a cell: the cell shows 777,777 raw. Press the pillbox off: the
+      cell keeps 777,777, and every other cell shows its original. Before:
+      neither table followed page changes, and the restore wrote the old
+      number back over 777,777.</p>
+    <div class="rw-buttons">
+      <button type="button" id="rw-build">Build the tables</button>
+      <button type="button" id="rw-updates" disabled>Start updates</button>
+      <button type="button" id="rw-over-rewrite" disabled>Rewrite a cell</button>
+    </div>
+
+    <!--
+      1,000 rows of 10 value cells is 10,000 cells, the cap itself; one row
+      more is 10,010, above it. Both tables build on the button press, so the
+      page loads fast without them.
+    -->
+    <div id="rw-cap-slot"></div>
+    <script>
+      (function () {
+        var COLUMNS = 10;
+        var AT_CAP_ROWS = 1000;
+        var UPDATE_MS = 50;
+        var slot = document.getElementById('rw-cap-slot');
+        var updatesButton = document.getElementById('rw-updates');
+        var rewriteButton = document.getElementById('rw-over-rewrite');
+        var atCap = null;
+        var overCap = null;
+        var timer = null;
+
+        function randomValue() {
+          return (1000 + Math.floor(Math.random() * 999001)).toLocaleString('en-US');
+        }
+        function buildTable(id, rowCount) {
+          var table = document.createElement('table');
+          table.id = id;
+          var head = table.createTHead().insertRow();
+          for (var c = 0; c < COLUMNS; c++) {
+            var th = document.createElement('th');
+            th.scope = 'col';
+            th.textContent = 'Series ' + (c + 1);
+            head.appendChild(th);
+          }
+          var body = table.createTBody();
+          for (var r = 0; r < rowCount; r++) {
+            var tr = body.insertRow();
+            for (var k = 0; k < COLUMNS; k++) {
+              tr.insertCell().textContent = randomValue();
+            }
+          }
+          return table;
+        }
+
+        document.getElementById('rw-build').addEventListener('click', function () {
+          if (atCap) return;
+          atCap = buildTable('rw-at-cap', AT_CAP_ROWS);
+          overCap = buildTable('rw-over-cap', AT_CAP_ROWS + 1);
+          slot.appendChild(atCap);
+          slot.appendChild(overCap);
+          updatesButton.disabled = false;
+          rewriteButton.disabled = false;
+        });
+        updatesButton.addEventListener('click', function () {
+          if (timer !== null) {
+            clearInterval(timer);
+            timer = null;
+            updatesButton.textContent = 'Start updates';
+            return;
+          }
+          var cells = atCap.tBodies[0].getElementsByTagName('td');
+          timer = setInterval(function () {
+            cells[Math.floor(Math.random() * cells.length)].textContent = randomValue();
+          }, UPDATE_MS);
+          updatesButton.textContent = 'Stop updates';
+        });
+        rewriteButton.addEventListener('click', function () {
+          // The second column: the first column holds under the shipped
+          // first-column default.
+          overCap.tBodies[0].rows[0].cells[1].textContent = '777,777';
+        });
+      })();
+    </script>
+  </section>
 
 </body>
 
