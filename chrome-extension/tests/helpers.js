@@ -1178,9 +1178,21 @@ function makeCountingTextNode(value) {
   };
 }
 
-function setGridCellPieces(cell, childNodes) {
+// The cell's innerText follows its live pieces the way a browser draws
+// them: an element named 'br' adds a line break, and with opts.lines each
+// child of the cell sits on its own line, as block elements do. Without
+// opts.lines the children run together, as inline elements do.
+function setGridCellPieces(cell, childNodes, opts = {}) {
   cell.childNodes = childNodes;
   cell.children = childNodes.filter((node) => node.nodeType === 1);
+  const drawn = (node) => (node.nodeType === 3
+    ? node.nodeValue
+    : node.className === 'br' ? '\n' : (node.childNodes || []).map(drawn).join(''));
+  Object.defineProperty(cell, 'innerText', {
+    get() { return childNodes.map(drawn).join(opts.lines ? '\n' : ''); },
+    set() {},
+    configurable: true,
+  });
 }
 
 // The cell's text pieces in page order, walked by hand.

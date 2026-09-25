@@ -684,7 +684,7 @@
 // a space or a line break between them. Dataset 337.91, 125, 126, so the
 // max magnitude is 2.
 //   a: a currency sign in its own piece, then the number
-//   b: one number per line, with mixed-cell simplification off
+//   b: one number per line, with the words setting off
 //   c: one number that inline styling splits into two pieces ("6,7" plain,
 //      "18,245" bold): the rendered text runs them together, so it stays
 //   d: a number split after its grouping comma: stays
@@ -710,7 +710,7 @@
       roundTable(table, opts);
       eq('native stacked: a currency sign in its own piece stays and the number rounds',
         a.map((seg) => seg.text), ['$', '350']);
-      eq('native stacked: one number per line rounds number by number with mixed-cell simplification off',
+      eq('native stacked: one number per line rounds number by number with the words setting off',
         b.map((seg) => seg.text), ['150', '150']);
       eq('native stacked: a number that inline styling splits into two pieces stays unchanged',
         c.map((seg) => seg.text), ['6,7', '18,245']);
@@ -1559,7 +1559,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const [cell] = grid.cellEls;
   const first = makeCountingTextNode('337.91');
   const second = makeCountingTextNode('126');
-  setGridCellPieces(cell, [makeElementNode('a1', [first]), makeElementNode('a2', [second])]);
+  setGridCellPieces(cell, [makeElementNode('a1', [first]), makeElementNode('a2', [second])], { lines: true });
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid stacked re-apply (setup): both pieces round', pieceTextsOf(cell), ['350', '150']);
@@ -1577,8 +1577,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 
 // Stacked-cell edges. Dataset 125, 126, 4.91, so the max magnitude is 2:
 // 125 → 150, 126 → 150, 4.91 → 5.
-//   a: one number per element with no whitespace between (a digit next to a
-//      digit across pieces reads as two numbers)
+//   a: one number per block element with no whitespace between in the
+//      markup: the rendered text puts each on its own line, so the digits
+//      beside digits across pieces read as two numbers
 //   b: a suffix in its own piece
 //   c: two numbers in one piece beside a third piece: not stacked
 //   d: two unit numbers glued together with no separator, one per piece:
@@ -1594,10 +1595,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const grid = makeE2EGridWrapper([['125126', '4.91tn', '416 5551234', '4.91tn41.31m', '4.91']]);
   const [a, b, c, d, e] = grid.cellEls;
   setGridCellPieces(e, [makeTextNode('4'), makeElementNode('dec', [makeTextNode('.91')])]);
-  setGridCellPieces(a, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])]);
+  setGridCellPieces(a, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   setGridCellPieces(b, [makeTextNode('4.91'), makeElementNode('u', [makeTextNode('tn')])]);
   setGridCellPieces(c, [makeTextNode('416 555'), makeElementNode('x', [makeTextNode('1234')])]);
-  setGridCellPieces(d, [makeElementNode('l1', [makeTextNode('4.91tn')]), makeElementNode('l2', [makeTextNode('41.31m')])]);
+  setGridCellPieces(d, [makeElementNode('l1', [makeTextNode('4.91tn')]), makeElementNode('l2', [makeTextNode('41.31m')])], { lines: true });
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid stacked: one number per element with no whitespace between rounds number by number',
@@ -1617,25 +1618,30 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // The cells of the native stacked test above, on a grid, with mixed-cell
-// simplification off (test page section 25). A grid cell's flat text holds
-// nothing between pieces, so a digit beside a digit across pieces reads as
-// two numbers, and one number that inline styling splits ("6,7" plain,
-// "18,245" in bold) rounds as two numbers where a native table leaves it.
+// simplification off (test page section 25). A grid reads the gap between
+// two pieces from the cell's rendered text, as a native table does, so one
+// number that inline styling splits ("6,7" plain, "18,245" in bold) stays
+// unchanged (issue #479). Before, the grid rounded it to "65" and "20,000".
 (function gridStacked_sameCellsAsTheNativeTable() {
   const grid = makeE2EGridWrapper([['$337.91', '125126', '6,718,245']]);
   const [a, b, c] = grid.cellEls;
   setGridCellPieces(a, [makeElementNode('s', [makeTextNode('$')]), makeElementNode('n', [makeTextNode('337.91')])]);
-  setGridCellPieces(b, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])]);
+  setGridCellPieces(b, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   setGridCellPieces(c, [makeTextNode('6,7'), makeElementNode('b', [makeTextNode('18,245')])]);
+  const rows = [];
+  const offRow = DR_LOG.onRow((row) => rows.push(row));
   try {
     roundTable(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: false }));
     eq('grid stacked: a currency sign in its own piece stays and the number rounds, as on a native table',
       pieceTextsOf(a), ['$', '350']);
-    eq('grid stacked: one number per line rounds with mixed-cell simplification off, as on a native table',
+    eq('grid stacked: one number per line rounds with the words setting off, as on a native table',
       pieceTextsOf(b), ['150', '150']);
-    eq('grid stacked: one number that inline styling splits rounds as two numbers',
-      pieceTextsOf(c), ['65', '20,000']);
+    eq('grid stacked: one number that inline styling splits stays unchanged, as on a native table',
+      pieceTextsOf(c), ['6,7', '18,245']);
+    eq('grid stacked: the styled number leaves a debug row',
+      rows.some((row) => row.level === 'debug' && /grid cell number split across text pieces/.test(row.text)), true);
   } finally {
+    offRow();
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
 })();
@@ -1673,8 +1679,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const anchor = makeElementNode('a', [makeTextNode('126')]);
   anchor.tagName = 'A';
   anchor.innerText = '126';
-  setGridCellPieces(cell, [plain, anchor]);
-  cell.innerText = '125126';
+  setGridCellPieces(cell, [plain, anchor], { lines: true });
   cell.querySelectorAll = (sel) => (sel === 'a' ? [anchor] : []);
   cell.contains = (node) => node === anchor || node === plain;
   for (const holder of [plain, anchor]) {
@@ -1717,10 +1722,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const sup = makeElementNode('sup', [makeTextNode('12')]);
   setGridCellPieces(a, [makeTextNode('4.91T'), sup]);
   a.querySelector = (sel) => (sel === 'sup' ? sup : null);
-  setGridCellPieces(b, [makeElementNode('l1', [makeTextNode('2024')]), makeElementNode('l2', [makeTextNode('2025')])]);
+  setGridCellPieces(b, [makeElementNode('l1', [makeTextNode('2024')]), makeElementNode('l2', [makeTextNode('2025')])], { lines: true });
   setGridCellPieces(c, [makeTextNode('1,'), makeElementNode('g', [makeTextNode('234')])]);
   setGridCellPieces(d, [makeElementNode('c', [makeTextNode('CAD')]),
-    makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])]);
+    makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   const opts = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
   try {
     eq('grid stacked: the lens preview pool keeps the footnote\'s base number, leaves out the years and the split number',
@@ -1820,7 +1825,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 (function gridStacked_aRoundedCellThatLostAPiece() {
   const grid = makeE2EGridWrapper([['125126']]);
   const [cell] = grid.cellEls;
-  setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])]);
+  setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid stacked (setup): the first simplification writes 150 into the first piece',
