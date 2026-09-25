@@ -9607,24 +9607,29 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // A rounded stacked cell that the page redraws with fewer pieces is a
-// rewritten cell (#423): the re-apply drops its originals and classifies the
-// page's text fresh, the lens preview then reads that text, and reset counts
-// nothing unrestorable.
+// rewritten cell (#423). Its one remaining piece shows the extension's
+// written text for the first stored piece, so it matches that piece by text
+// and takes its original back before the record drops: the re-apply then
+// simplifies the cell from 125, the lens preview reads 125, and reset puts
+// 125 back and counts nothing unrestorable.
 (function gridStacked_aRoundedCellThatLostAPiece() {
   const grid = makeE2EGridWrapper([['125126']]);
   const [cell] = grid.cellEls;
   setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])]);
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid stacked (setup): the first simplification writes 150 into the first piece',
+      pieceTextsOf(cell)[0], '150');
     setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('150')])]);
     let threw = null;
     try { reapplyRounding(grid.wrapperEl); } catch (e) { threw = String(e); }
-    eq('grid stacked: the re-apply releases a cell that lost a piece and keeps the page\'s text',
-      { threw, pieces: pieceTextsOf(cell), record: DR_STORE.hasTableOriginal(grid.wrapperEl, cell) },
-      { threw: null, pieces: ['150'], record: false });
-    eq('grid stacked: the lens preview reads the page\'s text in a cell that lost a piece',
-      collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((c) => c.num), [150]);
+    eq('grid stacked: the re-apply simplifies a cell that lost a piece from the original its written text matches',
+      { threw, pieces: pieceTextsOf(cell), original: DR_STORE.getTableOriginalText(grid.wrapperEl, cell) },
+      { threw: null, pieces: ['150'], original: '125' });
+    eq('grid stacked: the lens preview reads the matched original in a cell that lost a piece',
+      collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((c) => c.num), [125]);
     eq('grid stacked: reset counts nothing unrestorable after a cell lost a piece', resetTable(grid.wrapperEl), 0);
+    eq('grid stacked: reset puts the matched original back', pieceTextsOf(cell), ['125']);
   } finally {
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
@@ -27836,6 +27841,50 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
     eq(`#423 fewer pieces (${kind}): the restore counts no cell unrestorable and puts back the redrawn value`,
       { unrestorable, text: t.text(0, 0), form: DR_STORE.getTableAppliedFlag(t.table) },
       { unrestorable: 0, text: '8,765', form: 'original' });
+  });
+})();
+
+// A redraw that changes a cell's count of text pieces but leaves a piece
+// showing the extension's written text: the piece matches its stored piece
+// by text, not by position, and takes its original back before the record
+// drops. The pass then simplifies the cell from its true original, and a
+// restore shows it.
+(function rewriteACellRedrawnWithAnExtraPieceMatchesByText() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([[[{ tag: 'b', text: '1,613,245' }, ' units'], '5,678'], ['2,468', '3,579']]);
+    roundTable(t.table, RW_OPTS);
+    eq(`#421 extra piece (${kind}, precondition): the first simplification rounds the bold number`,
+      t.text(0, 0), '1,600,000 units');
+    t.redraw(0, 0, [{ tag: 'b', text: '1,600,000' }, ' units', { tag: 'i', text: ' est.' }]);
+    page.settle();
+    const record = DR_STORE.getTableOriginal(t.table, t.cell(0, 0));
+    eq(`#421 extra piece (${kind}): the pass simplifies the cell from its true original`,
+      { text: t.text(0, 0), original: DR_STORE.getTableOriginalText(t.table, t.cell(0, 0)),
+        storedTexts: record && record.pieces.map((piece) => piece.text) },
+      { text: '1,600,000 units est.', original: '1,613,245 units est.',
+        storedTexts: ['1,613,245', ' units', ' est.'] });
+    resetTable(t.table);
+    eq(`#421 extra piece (${kind}): a restore shows the true original`, t.text(0, 0), '1,613,245 units est.');
+  });
+})();
+
+// The same redraw with a restore before any pass, and two pieces showing the
+// same written text: matching runs in page order, and each stored piece
+// matches one live piece at most, so each number gets its own original back.
+(function rewriteARestoreMatchesDuplicateWrittenTextInOrder() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([
+      [[{ tag: 'b', text: '1,613,245' }, ' to ', { tag: 'b', text: '1,587,002' }], '5,678'],
+      ['2,468', '3,579'],
+    ]);
+    roundTable(t.table, RW_OPTS);
+    eq(`#421 duplicate written text (${kind}, precondition): both numbers show the same rounded text`,
+      t.text(0, 0), '1,600,000 to 1,600,000');
+    t.redraw(0, 0, [{ tag: 'b', text: '1,600,000' }, ' to ', { tag: 'b', text: '1,600,000' },
+      { tag: 'i', text: ' est.' }]);
+    const unrestorable = resetTable(t.table);
+    eq(`#421 duplicate written text (${kind}): a restore before any pass puts each original back in order`,
+      { unrestorable, text: t.text(0, 0) }, { unrestorable: 0, text: '1,613,245 to 1,587,002 est.' });
   });
 })();
 

@@ -695,8 +695,9 @@ function registryOriginalsPort(table) {
 // the way a pass does. A held cell gets its original text back in every
 // piece the extension wrote. A rewritten cell gets it back only in the
 // pieces that still show written text, and the pieces the page rewrote keep
-// the page's text; a cell whose piece count changed keeps the page's text
-// whole. A restore never writes a number the page no longer shows.
+// the page's text. In a cell whose piece count changed, a piece matches its
+// stored piece by written text, not by position (see restoreTextPieces). A
+// restore never writes a number the page no longer shows.
 //
 // KNOWN ACCEPTED COST: registry-held originals do not survive Chrome
 // re-injecting the content script, which page attributes did (a reload of

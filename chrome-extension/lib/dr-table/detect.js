@@ -936,17 +936,34 @@ function sortCellByRecord(cell, record) {
  * Put a cell's original text back into every text piece that still shows
  * the extension's written text, through nodeValue like the patch writer. A
  * piece the page rewrote keeps the page's text, so this never writes a
- * number the page no longer shows. A cell whose piece count changed takes no
- * write: its pieces no longer line up with the record's.
+ * number the page no longer shows.
+ *
+ * With the piece count unchanged, each piece pairs with the stored piece at
+ * its position. With the count changed, the pieces no longer line up, so
+ * each live piece pairs with a stored piece by text: a live piece whose text
+ * equals a stored piece's written text takes that piece's original. The
+ * match runs in page order, and each stored piece matches one live piece at
+ * most, so two pieces showing the same written text each get their own
+ * original back. A live piece that matches no written text keeps its text.
  * @param {Element} cell
  * @param {{text: string, written: string}[]} storedPieces
  */
 function restoreTextPieces(cell, storedPieces) {
   const pieces = collectTextPieces(cell);
-  if (pieces.length !== storedPieces.length) return;
-  storedPieces.forEach((piece, i) => {
-    if (piece.text !== piece.written && pieces[i].nodeValue === piece.written) pieces[i].nodeValue = piece.text;
-  });
+  if (pieces.length === storedPieces.length) {
+    storedPieces.forEach((piece, i) => {
+      if (piece.text !== piece.written && pieces[i].nodeValue === piece.written) pieces[i].nodeValue = piece.text;
+    });
+    return;
+  }
+  const written = storedPieces.filter((piece) => piece.text !== piece.written);
+  let next = 0;
+  for (const live of pieces) {
+    const at = written.findIndex((piece, k) => k >= next && piece.written === live.nodeValue);
+    if (at < 0) continue;
+    live.nodeValue = written[at].text;
+    next = at + 1;
+  }
 }
 
 // --- Placement step ---
