@@ -35,14 +35,12 @@
 
 // The one list of identifier shapes. Each entry names the shape and carries
 // the test for it, read by matchIdentifierShape alone — classifyCell holds no
-// separate copy, and a new shape is one more entry here. An entry marked
-// onePieceOnly applies only when the cell's digits sit in one text piece: a
-// grid's stacked cell ("1500" above "1600") joins its pieces with whitespace,
-// and that join is several numbers, not one spaced identifier. Phone numbers
-// come before grouped digits so "416 555 1234" takes the phone name.
+// separate copy, and a new shape is one more entry here. Every test takes the
+// trimmed text and whether the cell's digits span several text pieces. Phone
+// numbers come before grouped digits so "416 555 1234" takes the phone name.
 const IDENTIFIER_SHAPES = [
   { name: 'phone-number', test: isPhoneNumber },
-  { name: 'grouped-digits', test: isGroupedDigitIdentifier, onePieceOnly: true },
+  { name: 'grouped-digits', test: isGroupedDigitIdentifier },
   { name: 'ip-address', test: isIpAddress },
   { name: 'web-or-email-address', test: isWebOrEmailAddress },
   { name: 'isbn', test: isIsbnShape },
@@ -55,17 +53,13 @@ const IDENTIFIER_SHAPES = [
  * thirteen-digit value written "1 234 567 890" never reads as an ISBN.
  * @param {string} trimmed - already-trimmed cell text
  * @param {boolean} [digitsSpanPieces] - true when the cell's digits sit in
- *   more than one text piece; the onePieceOnly shapes then do not apply
+ *   more than one text piece
  * @returns {string|null}
  */
 function matchIdentifierShape(trimmed, digitsSpanPieces = false) {
-  if (typeof trimmed !== 'string' || trimmed === '') return null;
   if (GROUPED_DIGITS_QUANTITY_RE.test(trimmed)) return null;
-  for (const shape of IDENTIFIER_SHAPES) {
-    if (shape.onePieceOnly && digitsSpanPieces) continue;
-    if (shape.test(trimmed)) return shape.name;
-  }
-  return null;
+  const shape = IDENTIFIER_SHAPES.find((s) => s.test(trimmed, digitsSpanPieces));
+  return shape ? shape.name : null;
 }
 
 // --- Phone numbers ---
@@ -96,15 +90,15 @@ const GROUPED_DIGITS_GENERAL_RE = /^[+-]?\d+(?:\s+\d+)+(?:\.\d+)?$/;
 const GROUPED_DIGITS_QUANTITY_RE = /^[+-]?\d{1,3}(?:\s+\d{3})+(?:\.\d+)?$/;
 
 /**
- * True when trimmed is a whole cell of digit groups split by whitespace that
- * is not the thousands-grouping shape ("4165 5512", "44 20 7946 0958"). A
- * cell that is the thousands-grouping shape itself ("1 234 567", "12 345.67")
- * is a quantity and returns false, so it keeps rounding as a pure cell — the
- * whitespace is a format mark CLEAN_REGEX (core.js) already strips before the
- * text reads as a number.
+ * True when trimmed is a whole cell of digit groups split by whitespace
+ * ("4165 5512", "44 20 7946 0958") with its digits in one text piece.
+ * matchIdentifierShape has already turned away the thousands-grouping shape
+ * ("1 234 567", "12 345.67"), which keeps rounding as a pure cell. A grid's
+ * stacked cell ("1500" above "1600") joins its pieces with whitespace, and
+ * that join is several numbers, not one spaced identifier.
  */
-function isGroupedDigitIdentifier(trimmed) {
-  return GROUPED_DIGITS_GENERAL_RE.test(trimmed) && !GROUPED_DIGITS_QUANTITY_RE.test(trimmed);
+function isGroupedDigitIdentifier(trimmed, digitsSpanPieces) {
+  return !digitsSpanPieces && GROUPED_DIGITS_GENERAL_RE.test(trimmed);
 }
 
 // --- IP addresses ---
