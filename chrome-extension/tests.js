@@ -16105,6 +16105,56 @@ function withRightClickSandbox(run) {
     cells[0].num, 2794356);
 })();
 
+// A simplified native cell whose live pieces split the rounded value: the
+// lens preview classifies the stored original and skips the placement step,
+// because the live pieces hold the rounded text, not the text it classifies.
+// The same split with no stored original stays out of the pool, because the
+// placement step reads a value that crosses a piece boundary.
+(function previewSimplifiedNativeCell_skipsThePlacementStep() {
+  withReactiveCreateTreeWalker(function () {
+    const opts = { simplifyFirstRow: true, simplifyFirstColumn: true, rangeExpr: '' };
+    const roundedCell = makeReactiveCell([{ text: '6,7', inSup: false }, { text: '00,000', inSup: false }]);
+    const table = { rows: [{ cells: [roundedCell] }], dataset: {} };
+    DR_STORE.setTableOriginal(table, roundedCell, {
+      html: '6,718,245', value: '6,718,245', supRanges: null, linkFilteredIdx: null,
+    });
+    const liveCell = makeReactiveCell([{ text: '6,7', inSup: false }, { text: '18,245', inSup: false }]);
+    const liveTable = { rows: [{ cells: [liveCell] }], dataset: {} };
+    try {
+      eq('preview simplified native cell: the stored original joins the pool across the live split',
+        collectNumericCells(table, opts).map((c) => c.num), [6718245]);
+      eq('preview simplified native cell: the same split with no stored original stays out',
+        collectNumericCells(liveTable, opts), []);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
+// The lens preview writes no log rows: a native value split across text
+// pieces, which the simplification pass records with a debug row, leaves
+// the log unchanged when the preview classifies it.
+(function previewWritesNoLogRows() {
+  withReactiveCreateTreeWalker(function () {
+    const opts = { simplifyFirstRow: true, simplifyFirstColumn: true, rangeExpr: '' };
+    const splitCell = makeReactiveCell([{ text: '3,406,', inSup: false }, { text: '918', inSup: false }]);
+    const table = { rows: [{ cells: [splitCell] }], dataset: {} };
+    const rows = [];
+    const offRow = DR_LOG.onRow((row) => rows.push(row));
+    try {
+      eq('preview log rows: the split value stays out of the pool',
+        collectNumericCells(table, opts), []);
+      eq('preview log rows: the preview writes no row', rows.length, 0);
+      roundTable(table, opts);
+      eq('preview log rows (control): the simplification pass writes the split row',
+        rows.some((row) => row.level === 'debug' && /native cell value split across text pieces/.test(row.text)), true);
+    } finally {
+      offRow();
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
 // ---------------------------------------------------------------------------
 // Background message routing.
 //
