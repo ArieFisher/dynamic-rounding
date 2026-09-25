@@ -54,7 +54,7 @@ Some text names a thing instead of counting it. A cell whose whole text matches 
 - An ISBN: "ISBN 978-0-306-40615-7", "978-0-306-40615-7". Without the word "ISBN" the digits must carry a dash or a space, so a bare "1234567890" still rounds.
 - A postal code: Canadian "M5V 2T6", UK "SW1A 1AA", US nine-digit "90210-1234". A bare five-digit "90210" reads as a count; the range expression is the way to leave such a column out.
 
-The shape must fill the whole cell, so "Call 416-555-1234" rounds its numbers as any extracted cell does. One rule reaches inside text: a number right after "@" belongs to a handle or an address and never rounds, so "@2020vision" and "Follow @2020vision" stay as written. "@cherry1234" stays already, because digits joined to letters never read as a number. A cell with a superscript skips the shapes, since its text joins base and exponent digits. The shapes are listed once, in `lib/dr-number/identifiers.js`.
+The shape must fill the whole cell, so "Call 416-555-1234" rounds its numbers as any extracted cell does. One rule reaches inside text: a number right after "@" belongs to an at-name or an address and never rounds, so "@2020vision" and "Follow @2020vision" stay as written. "@cherry1234" stays already, because digits joined to letters never read as a number. A cell with a superscript skips the shapes, since its text joins base and exponent digits. The shapes are listed once, in `lib/dr-number/identifiers.js`.
 
 ## Extension errors
 

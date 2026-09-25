@@ -18753,14 +18753,14 @@ const IDENTIFIER_NEAR_MISSES = [
     classifyCell({ text: '21 June 2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).mode, 'date');
 })();
 
-// A number right after "@" belongs to a handle or an address, in any cell.
-(function handleNumbersNeverRound() {
+// A number right after "@" belongs to an at-name or an address, in any cell.
+(function atNameNumbersNeverRound() {
   for (const text of ['@1234', '@2020vision', '@cherry1234', 'Follow @2020vision on X']) {
-    eq(`handle: "${text}" holds no number to round`,
+    eq(`at-name: "${text}" holds no number to round`,
       classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
       { mode: 'skip', reason: 'no-number' });
   }
-  eq('handle: a count beside a handle still rounds, and the handle stays',
+  eq('at-name: a count beside an at-name still rounds, and the at-name stays',
     extractNumbersInText('@2020vision has 1,613,245 fans').map((m) => m.numStr), ['1,613,245']);
 })();
 

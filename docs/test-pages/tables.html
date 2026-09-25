@@ -1862,15 +1862,16 @@ TSLA,75,"248.09","18,606.75"
     <h2>24. Identifiers</h2>
     <p class="expect">Expect: a pillbox at load on both tables, a native table
       and a grid holding the same rows. Press each pillbox on. Every Value
-      cell down to US ZIP+4 is an identifier shape or a handle and stays as written, on
+      cell down to US ZIP+4 is an identifier shape or an at-name and stays as written, on
       both tables, with no hover text. The Count column rounds as usual. The
       last three rows round their Value cell: "1 234 567" is thousands
       grouping and reads as one number, "90210" alone reads as a count, and
       "Call 416-555-1234" holds words, so its numbers round as any extracted
       cell does. The sidebar preview samples the Count column and none of the
       identifiers. Before this rule, most Value cells rounded: "416 555 1234"
-      became 4,000,000,000, "192.168.0.1" became 200.0.1, and each other
-      phone number, the web address, the ISBN, and the handle rounded their
+      became 4,000,000,000, "192.168.0.1" became 200.0.1, "2001:db8::1"
+      became 2000:db8::1, "90210-1234" became 90000-1000, and each other
+      phone number, the web address, the ISBN, and the at-name rounded their
       digits.</p>
 
     <!--
@@ -1893,7 +1894,7 @@ TSLA,75,"248.09","18,606.75"
           ['Phone, dashes', '416-555-1234', '427,808'],
           ['Phone, area code', '(416) 555-1234', '263,114'],
           ['Phone, area code, no space', '(416)555-1234', '612,027'],
-          ['Handle', '@2020vision', '38,512'],
+          ['At-name', '@2020vision', '38,512'],
           ['Phone, toll-free', '1-800-555-0199', '88,209'],
           ['IP address', '192.168.0.1', '1,482,391'],
           ['IP address, v6', '2001:db8::1', '947,310'],

@@ -17,7 +17,7 @@
 // A digit run only counts as a quantity when it starts at a clean boundary: the
 // preceding character must not be a letter, digit, dot, comma, or "@".
 //
-// "@": a number right after it belongs to a handle or an address
+// "@": a number right after it belongs to an at-name or an address
 // ("@2020vision", "name@123.example"), not a quantity.
 //
 // Letters: digits welded to letters belong to an identifier, not a measurement
