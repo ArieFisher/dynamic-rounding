@@ -2107,7 +2107,8 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
       'constants.js',
       'lib/dr-log/index.js',
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
-      'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
+      'lib/dr-number/parsing.js', 'lib/dr-number/identifiers.js',
+      'lib/dr-number/index.js',
       'lib/dr-table/detect.js', 'lib/dr-table/index.js',
       'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
@@ -9459,6 +9460,30 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   }
 })();
 
+// A stacked cell's joined text ("1500 1600") looks like digit groups split by
+// whitespace, but its digits sit in several text pieces, so the spaced-digit
+// identifier shape does not apply and each number rounds. A one-piece cell
+// with the same kind of text stays as written. Dataset 1500, 1600, 45, 46,
+// so the max magnitude is 3: 1500 → 1500, 1600 → 1500, 45 → 45, 46 → 45.
+(function gridStacked_digitsInSeveralPiecesAreNotOneIdentifier() {
+  const grid = makeE2EGridWrapper([['1500 1600', '45 46', '4165 5512']]);
+  const [a, b, c] = grid.cellEls;
+  setGridCellPieces(a, [makeTextNode(' 1500 '), makeElementNode('br', []), makeTextNode(' 1600')]);
+  setGridCellPieces(b, [makeElementNode('l1', [makeTextNode('45')]), makeTextNode(' '),
+    makeElementNode('l2', [makeTextNode('46')])]);
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid stacked: numbers in several pieces round though their join looks like spaced digit groups',
+      pieceTextsOf(a), [' 1500 ', ' 1500']);
+    eq('grid stacked: two-digit numbers in several pieces round number by number',
+      pieceTextsOf(b), ['45', ' ', '45']);
+    eq('grid stacked: spaced digit groups in one piece stay as written',
+      pieceTextsOf(c), ['4165 5512']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
 // The link filter holds on a stacked cell: a number inside a link stays, and
 // once the cell is rounded the record's kept positions drive the preview.
 (function gridStacked_linkFilter() {
@@ -16457,9 +16482,11 @@ function withRightClickSandbox(run) {
   // The capture feature then added the log buffer (lib/dr-log/index.js) and
   // the three-file lib/dr-capture package (state.js, render.js, index.js),
   // raising the count from 13 to 17. The error-surfacing feature then added
-  // the toast view (ui-toast.js), raising the count from 17 to 18.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 18 files today',
-    manifest.content_scripts[0].js.length, 18);
+  // the toast view (ui-toast.js), raising the count from 17 to 18. The
+  // identifier shapes (lib/dr-number/identifiers.js) then raised it from 18
+  // to 19.
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 19 files today',
+    manifest.content_scripts[0].js.length, 19);
 })();
 
 // ---------------------------------------------------------------------------
@@ -16486,6 +16513,9 @@ function withRightClickSandbox(run) {
     'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumberInText', 'extractNumbersInText',
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'isEraYear', 'decimalCount', 'formatExtractedNumber', 'restoreFormatting',
+    // identifiers.js
+    'matchIdentifierShape', 'isPhoneNumber', 'isGroupedDigitIdentifier', 'isIpAddress',
+    'isWebOrEmailAddress', 'isIsbnShape', 'isPostalCode',
   ].sort();
 
   eq('lib/dr-number/index.js: DR_NUMBER exists on the global scope after the main eval',
@@ -16572,10 +16602,11 @@ function withRightClickSandbox(run) {
     ...declaredNamesIn(sourceByName('lib/dr-number/rounding.js')),
     ...declaredNamesIn(sourceByName('lib/dr-number/core.js')),
     ...declaredNamesIn(sourceByName('lib/dr-number/parsing.js')),
+    ...declaredNamesIn(sourceByName('lib/dr-number/identifiers.js')),
   ].sort();
   eq('lib/dr-number bundle: source files declared at least one top-level function',
     declaredNames.length > 0, true);
-  eq('lib/dr-number bundle: DR_NUMBER keys are exactly the top-level functions declared in rounding.js + core.js + parsing.js',
+  eq('lib/dr-number bundle: DR_NUMBER keys are exactly the top-level functions declared in rounding.js + core.js + parsing.js + identifiers.js',
     Object.keys(globalThis.DR_NUMBER || {}).sort(), declaredNames);
 })();
 
@@ -18661,6 +18692,111 @@ const LADDER_OPTS = {
         ['Row2', 'Revenue: 5,000,000 units', 'Kalki 2898 AD', '300', '', '', ''],
       ]);
   });
+})();
+
+// --- Identifier shapes (issue #426) ---
+//
+// A cell whose whole text is an identifier shape (a phone number, an IP
+// address, a web or email address, an ISBN, a postal code, or digit groups
+// split by whitespace outside thousands grouping) stays as written. The
+// "still rounds" rows pin the near misses each shape must leave alone.
+const IDENTIFIER_SHAPE_CELLS = [
+  ['416 555 1234', 'phone-number'],
+  ['+1 416 555 1234', 'phone-number'],
+  ['4165 5512', 'grouped-digits'],
+  ['44 20 7946 0958', 'grouped-digits'],
+  ['416-555-1234', 'phone-number'],
+  ['416 555-1234', 'phone-number'],
+  ['(416) 555-1234', 'phone-number'],
+  ['(416) 555 1234', 'phone-number'],
+  ['(416)555-1234', 'phone-number'],
+  ['+1 (416) 555-1234', 'phone-number'],
+  ['416.555.1234', 'phone-number'],
+  ['1-800-555-0199', 'phone-number'],
+  ['192.168.0.1', 'ip-address'],
+  ['2001:db8::1', 'ip-address'],
+  ['https://example.com/item/123', 'web-or-email-address'],
+  ['www.example.com/p/12', 'web-or-email-address'],
+  ['sales@example.com', 'web-or-email-address'],
+  ['ISBN 978-0-306-40615-7', 'isbn'],
+  ['978-0-306-40615-7', 'isbn'],
+  ['ISBN: 0-306-40615-2', 'isbn'],
+  ['ISBN 9780306406157', 'isbn'],
+  ['M5V 2T6', 'postal-code'],
+  ['SW1A 1AA', 'postal-code'],
+  ['M1 1AE', 'postal-code'],
+  ['90210-1234', 'postal-code'],
+];
+const IDENTIFIER_NEAR_MISSES = [
+  '1 234 567', '12 345.67', '1 234 567', '1 234 567',
+  '1 234 567 890', '9 780 306 406 157',
+  '100-200', '192.5', '1.5', '90210', '1234567890', '9780306406157',
+  '$1,613,245', '4.91tn', 'About 1,613,245 people', 'Call 416-555-1234',
+];
+
+(function identifierShapes_matchTheWholeCell() {
+  for (const [text, name] of IDENTIFIER_SHAPE_CELLS) {
+    eq(`identifier shape: "${text}" matches ${name}`, matchIdentifierShape(text), name);
+    eq(`identifier shape: "${text}" is a skipped cell`,
+      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+      { mode: 'skip', reason: 'identifier' });
+  }
+  for (const text of IDENTIFIER_NEAR_MISSES) {
+    eq(`identifier shape: "${text}" matches no shape`, matchIdentifierShape(text), null);
+    eq(`identifier shape: "${text}" still rounds`,
+      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).mode !== 'skip', true);
+  }
+  eq('identifier shape: "DT1234" keeps its no-number reason',
+    classifyCell({ text: 'DT1234', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'skip', reason: 'no-number' });
+  eq('identifier shape: a date written with spaces still reads as a date',
+    classifyCell({ text: '21 June 2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).mode, 'date');
+})();
+
+// A number right after "@" belongs to an at-name or an address, in any cell.
+(function atNameNumbersNeverRound() {
+  for (const text of ['@1234', '@2020vision', '@cherry1234', 'Follow @2020vision on X']) {
+    eq(`at-name: "${text}" holds no number to round`,
+      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+      { mode: 'skip', reason: 'no-number' });
+  }
+  eq('at-name: a count beside an at-name still rounds, and the at-name stays',
+    extractNumbersInText('@2020vision has 1,613,245 fans').map((m) => m.numStr), ['1,613,245']);
+})();
+
+(function identifierShapes_stayOnEveryTableKind() {
+  // One row of identifiers beside one quantity, so the table has a number to
+  // round and the identifiers are the only cells the rule holds back.
+  const identifiers = ['416 555 1234', '(416) 555-1234', '192.168.0.1', 'M5V 2T6', 'ISBN 978-0-306-40615-7'];
+  const quantity = '1,613,245';
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([[...identifiers, quantity].map((text) => ({ tag: 'td', text }))]);
+    roundTable(table, opts);
+    eq('identifier shape (native table): identifiers stay as written and the quantity rounds',
+      table.rows[0].cells.map((c) => c.textContent), [...identifiers, '1,500,000']);
+  });
+
+  const grid = makeE2EGridWrapper([[...identifiers, quantity]]);
+  try {
+    roundTable(grid.wrapperEl, opts);
+    eq('identifier shape (grid): identifiers stay as written and the quantity rounds',
+      grid.cellEls.map((cell) => pieceTextsOf(cell).join('')), [...identifiers, '1,500,000']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+
+  function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
+  function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
+  const previewTable = {
+    rows: [
+      { cells: [thCell(''), ...identifiers.map(() => thCell('A')), thCell('B')] },
+      { cells: [thCell('Row'), ...identifiers.map(tdCell), tdCell(quantity)] },
+    ],
+  };
+  eq('identifier shape (sidebar preview): only the quantity is sampled',
+    collectNumericCells(previewTable).map((c) => c.num), [1613245]);
 })();
 
 // --- Shared rounding case table (js/round-dynamic-cases.json) ---

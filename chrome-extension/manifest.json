@@ -23,6 +23,7 @@
         "lib/dr-number/rounding.js",
         "lib/dr-number/core.js",
         "lib/dr-number/parsing.js",
+        "lib/dr-number/identifiers.js",
         "lib/dr-number/index.js",
         "lib/dr-table/detect.js",
         "lib/dr-table/index.js",

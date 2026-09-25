@@ -15,7 +15,10 @@
  */
 
 // A digit run only counts as a quantity when it starts at a clean boundary: the
-// preceding character must not be a letter, digit, dot, or comma.
+// preceding character must not be a letter, digit, dot, comma, or "@".
+//
+// "@": a number right after it belongs to an at-name or an address
+// ("@2020vision", "name@123.example"), not a quantity.
 //
 // Letters: digits welded to letters belong to an identifier, not a measurement
 // ("XR47182913MKB07", "MKB07", "Q3"). Mining them produces a rounded value that
@@ -39,8 +42,8 @@
 // ("ref 12, total 9,850"), and every later step searches the live text for
 // the match string, so a trailing comma in it makes the link filter and the
 // patch step miss a number that is right there.
-const NUMBER_IN_TEXT_REGEX = /(?<![\w.,])-?\d(?:[\d,]*\d)?(?:\.\d+)?/;
-const NUMBER_IN_TEXT_REGEX_GLOBAL = /(?<![\w.,])-?\d(?:[\d,]*\d)?(?:\.\d+)?/g;
+const NUMBER_IN_TEXT_REGEX = /(?<![\w.,@])-?\d(?:[\d,]*\d)?(?:\.\d+)?/;
+const NUMBER_IN_TEXT_REGEX_GLOBAL = /(?<![\w.,@])-?\d(?:[\d,]*\d)?(?:\.\d+)?/g;
 
 function lettersToColIndex(letters) {
   const up = letters.toUpperCase();

@@ -1141,6 +1141,9 @@ function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, ki
   const superscriptRanges = hasSuperscript
     ? ((record && record.supRanges) || getSuperscriptRanges(cell, { text }))
     : [];
+  // A stacked cell's pieces each hold a number, and its joined text is not
+  // one spaced identifier (see matchIdentifierShape).
+  const digitsSpanPieces = !!layout && layout.original.filter((piece) => /\d/.test(piece)).length > 1;
   const classified = classifyCell({
     text,
     rowIndex,
@@ -1149,6 +1152,7 @@ function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, ki
     isWholeLink: isCellWholeLink(cell),
     hasSuperscript,
     superscriptRanges,
+    digitsSpanPieces,
   }, opts);
   const placed = placeDecision(classified, text, layout, { hasSuperscript, stacked: kind.stacked });
   const keptIndices = (record && record.linkFilteredIdx) ? new Set(record.linkFilteredIdx) : null;
