@@ -2964,7 +2964,7 @@ const LADDER_OPTS = {
   for (const sign of CURRENCY_SIGNS) {
     const spans = [{ i: 0, start: 0, text: sign }, { i: 1, start: sign.length, text: '450' }];
     eq('currencies: a cell drawn as "' + sign + '" beside "450" is a stacked cell',
-      stackedMatches(spans), [{ numStr: '450', num: 450, index: sign.length }]);
+      stackedMatches(spans, () => false), [{ numStr: '450', num: 450, index: sign.length }]);
   }
 })();
 

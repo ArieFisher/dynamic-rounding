@@ -1103,7 +1103,7 @@ function showsPiecesTogether(shown, pieces, i) {
 // pieces reads as two numbers, the shape of one number per line, unless
 // runTogether(span) holds for the second piece: then the two pieces read as
 // one number split across them ("6,7" plain, then "18,245" in bold).
-function stackedMatches(spans, runTogether = () => false) {
+function stackedMatches(spans, runTogether) {
   const symbolPiece = new RegExp('^(?:' + CURRENCY_SIGN_ALTERNATION + '|%)+$');
   const filled = spans.filter((span) => span.text.length > 0);
   for (let k = 1; k < filled.length; k++) {
@@ -1142,8 +1142,7 @@ function stackedMatches(spans, runTogether = () => false) {
  * unless the layout's runsTogether(i) holds for the second piece: the text
  * the browser shows runs the two pieces together, as inline styling does to
  * one number ("1" plain, "23" in bold), so the number skips with reason
- * 'split'. Both table kinds read the shown text (see showsPiecesTogether). A
- * layout with no runsTogether reads two numbers.
+ * 'split'. Both table kinds read the shown text (see showsPiecesTogether).
  *
  * A cell with no layout (its pieces no longer reach its record) skips with
  * reason 'pieces-changed'. A cell with a <sup> keeps a skip decision, so a
@@ -1151,7 +1150,7 @@ function stackedMatches(spans, runTogether = () => false) {
  *
  * @param {object} decision - classifyCell's decision
  * @param {string} text - the text the decision was classified on
- * @param {{original: string[], toFlat: number[]|null, rendered?: boolean, runsTogether?: (i: number) => boolean}|null} layout
+ * @param {{original: string[], toFlat: number[]|null, rendered?: boolean, runsTogether: (i: number) => boolean}|null} layout
  * @param {{hasSuperscript?: boolean}} [opts]
  * @returns {object} the placed decision
  */
@@ -1166,8 +1165,7 @@ function placeDecision(decision, text, layout, opts = {}) {
   } else if (!(decision.mode === 'skip' && decision.reason === 'mixed-disabled')) {
     return decision;
   }
-  const runsTogether = layout.runsTogether || (() => false);
-  const matches = stackedMatches(pieceSpans(layout), (span) => runsTogether(span.i));
+  const matches = stackedMatches(pieceSpans(layout), (span) => layout.runsTogether(span.i));
   if (matches === 'split') return { mode: 'skip', reason: 'split' };
   if (matches === null) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
   // Every other match counts in the classified text, so the patch step
