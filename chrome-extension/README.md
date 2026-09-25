@@ -47,14 +47,14 @@ A financial statement writes a negative as a bracket pair: "(1,234)" is −1,234
 
 Some text names a thing instead of counting it. A cell whose whole text matches one of these shapes stays as written, on HTML tables and grids alike, whatever the sidebar's "words" setting holds:
 
-- A phone number with dashes, dots, or a bracketed area code: "416-555-1234", "416.555.1234", "(416) 555-1234", "1-800-555-0199".
-- Digit groups split by spaces outside thousands grouping: "416 555 1234", "+1 416 555 1234". Thousands grouping (a first group of one to three digits, then groups of exactly three) still reads as one number, so "1 234 567" rounds.
+- A phone number with dashes, dots, spaces, or a bracketed area code: "416-555-1234", "416.555.1234", "416 555 1234", "+1 416 555 1234", "(416) 555-1234", "(416)555-1234", "1-800-555-0199".
+- Digit groups split by spaces outside thousands grouping: "4165 5512", "44 20 7946 0958". Thousands grouping (a first group of one to three digits, then groups of exactly three) reads as one number for every shape, so "1 234 567" and "1 234 567 890" round. On a grid, a stacked cell whose numbers sit in separate pieces of the markup ("1500" above "1600") rounds number by number, since its joined text is several numbers.
 - An IP address: "192.168.0.1", "2001:db8::1".
 - A web or email address: "https://example.com/item/123", "www.example.com/p/12", "sales@example.com".
 - An ISBN: "ISBN 978-0-306-40615-7", "978-0-306-40615-7". Without the word "ISBN" the digits must carry a dash or a space, so a bare "1234567890" still rounds.
 - A postal code: Canadian "M5V 2T6", UK "SW1A 1AA", US nine-digit "90210-1234". A bare five-digit "90210" reads as a count; the range expression is the way to leave such a column out.
 
-The shape must fill the whole cell, so "Call 416-555-1234" rounds its numbers as any extracted cell does. A cell with a superscript skips the shapes, since its text joins base and exponent digits. The shapes are listed once, in `lib/dr-number/identifiers.js`.
+The shape must fill the whole cell, so "Call 416-555-1234" rounds its numbers as any extracted cell does. One rule reaches inside text: a number right after "@" belongs to a handle or an address and never rounds, so "@2020vision" and "Follow @2020vision" stay as written. "@cherry1234" stays already, because digits joined to letters never read as a number. A cell with a superscript skips the shapes, since its text joins base and exponent digits. The shapes are listed once, in `lib/dr-number/identifiers.js`.
 
 ## Extension errors
 
