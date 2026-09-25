@@ -726,6 +726,28 @@
   });
 })();
 
+// A hidden sort key beside a currency sign in its own tag: the rendered text
+// ("$7,002,300") differs from the flat text in more than whitespace, and no
+// one piece holds it, so no rendered position maps to a piece. A stacked
+// number could sit in the hidden text, so the cell stays unchanged and its
+// numbers stay out of the lens preview pool.
+(function nativeStacked_hiddenSortKeyStaysUnchanged() {
+  withReactiveCreateTreeWalker(function () {
+    const segs = [{ text: '7002300', inSup: false }, { text: '$', inSup: false }, { text: '7,002,300', inSup: false }];
+    const cell = makeSortKeyCell(segs, () => '$7,002,300');
+    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    try {
+      eq('native stacked: a hidden sort key beside a stacked cell keeps its numbers out of the pool',
+        collectNumericCells(table, nativeOnePieceOpts()), []);
+      roundTable(table, nativeOnePieceOpts());
+      eq('native stacked: a hidden sort key beside a stacked cell leaves every piece unchanged',
+        segs.map((seg) => seg.text), ['7002300', '$', '7,002,300']);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
 (function nativeWrite_olderWriterIsGone() {
   eq('native write: no loaded source defines or calls the older whole-cell writer',
     /replaceTextPreservingHTML/.test(allContentSrc), false);

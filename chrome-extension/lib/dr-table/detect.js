@@ -1054,21 +1054,21 @@ function flatPatches(patches, layout) {
 
 // The position in the classified text of the character at a position of the
 // join of original, or -1 when the classified text does not hold it. With no
-// toFlat the two count alike.
+// toFlat a flat text counts alike, and a rendered text holds no known
+// position: it differs from the flat text in more than whitespace, such as
+// a hidden sort key, so a stacked number could sit in the hidden text.
 function textPosition(layout, text, flat) {
-  if (!layout.toFlat) return flat;
+  if (!layout.toFlat) return layout.rendered ? -1 : flat;
   return layout.toFlat.findIndex((f, r) => f === flat && !/\s/.test(text[r]));
 }
 
 // Whether the classified text shows a piece's first character straight
 // after the character before it, with no space or line break between. Only
 // rendered text shows that break (see placeDecision), so a layout of flat
-// text answers false. A rendered text with no toFlat, or a piece whose first
-// character the classified text does not hold, answers true, so the pieces
-// stay unchanged.
+// text answers false. A piece whose first character the classified text
+// does not hold answers true, so the pieces stay unchanged.
 function runsIntoPiece(layout, text, span) {
   if (!layout.rendered) return false;
-  if (!layout.toFlat) return true;
   const at = textPosition(layout, text, span.start);
   return at <= 0 || !/\s/.test(text[at - 1]);
 }
