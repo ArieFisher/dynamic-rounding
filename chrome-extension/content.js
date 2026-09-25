@@ -1007,14 +1007,10 @@ function buildCaptureStateResponse() {
 //
 // Every other difference is a field of the kind object the caller passes,
 // NATIVE_TABLE_PASS or GRID_TABLE_PASS:
-//   stacked              whether the placement step runs the stacked-cell
-//                        test. Grids only: a native cell's inline styling
-//                        splits one number across two pieces ("1" plain,
-//                        "23" in bold), which the test reads as two numbers.
-//   splitReason, splitRow  the placement result that writes a debug row, and
-//                        that row's text: a native value that crosses a
-//                        piece boundary ('pieces'), a grid number split
-//                        across two pieces ('split'). The pass writes the
+//   splitReasons, splitRow  the placement results that write a debug row,
+//                        and that row's text: a native value that crosses a
+//                        piece boundary ('pieces' or 'split'), a grid number
+//                        split across two pieces ('split'). The pass writes the
 //                        row after classification, so the lens preview,
 //                        which runs the classification step alone, writes
 //                        none.
@@ -1052,8 +1048,7 @@ function buildCaptureStateResponse() {
 // patches of the cells after it unchanged.
 
 const NATIVE_TABLE_PASS = {
-  stacked: false,
-  splitReason: 'pieces',
+  splitReasons: ['pieces', 'split'],
   splitRow: 'Dynamic Rounding: a native cell value split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.',
   hoverText: true,
@@ -1062,8 +1057,7 @@ const NATIVE_TABLE_PASS = {
 };
 
 const GRID_TABLE_PASS = {
-  stacked: true,
-  splitReason: 'split',
+  splitReasons: ['split'],
   splitRow: 'Dynamic Rounding: a grid cell number split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.',
   hoverText: false,
@@ -1154,14 +1148,14 @@ function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, ki
     superscriptRanges,
     digitsSpanPieces,
   }, opts);
-  const placed = placeDecision(classified, text, layout, { hasSuperscript, stacked: kind.stacked });
+  const placed = placeDecision(classified, text, layout, { hasSuperscript });
   const keptIndices = (record && record.linkFilteredIdx) ? new Set(record.linkFilteredIdx) : null;
   return {
     cellObj,
     text,
     trimmed: typeof text === 'string' ? text.trim() : '',
     info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, keptIndices)),
-    isSplit: placed.reason === kind.splitReason,
+    isSplit: kind.splitReasons.includes(placed.reason),
     layout,
     col: cellObj.columnIndex,
     isOutside,

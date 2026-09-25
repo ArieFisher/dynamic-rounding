@@ -242,13 +242,22 @@
     mapRenderedToFlat('5', '5 kg'), null);
 })();
 
-(function placeDecision_stackedTestRunsOnlyWhenAsked() {
-  const layout = { original: ['1', '23'], liveStarts: [0, 1], toFlat: null };
+(function placeDecision_stackedTestReadsTheGapBetweenPieces() {
+  const layout = { original: ['1', '23'], liveStarts: [0, 1], toFlat: null, rendered: false };
   const decision = { mode: 'pure', value: { num: 123 } };
-  eq('placeDecision: without the stacked-cell test, a value across pieces skips with reason pieces',
-    placeDecision(decision, '123', layout), { mode: 'skip', reason: 'pieces' });
-  eq('placeDecision: with the stacked-cell test, each piece rounds as its own number',
-    placeDecision(decision, '123', layout, { stacked: true }).value.matches.map((m) => m.numStr), ['1', '23']);
+  eq('placeDecision: in flat text, digits beside digits across pieces round as two numbers',
+    placeDecision(decision, '123', layout).value.matches.map((m) => m.numStr), ['1', '23']);
+  eq('placeDecision: in rendered text with a line break between the pieces, each piece rounds as its own number',
+    placeDecision(decision, '1\n23', Object.assign({}, layout, { rendered: true, toFlat: [0, 1, 1, 2] }))
+      .value.matches.map((m) => m.numStr), ['1', '23']);
+  eq('placeDecision: in rendered text that runs the pieces together, the number skips with reason split',
+    placeDecision(decision, '123', Object.assign({}, layout, { rendered: true, toFlat: [0, 1, 2] })),
+    { mode: 'skip', reason: 'split' });
+  eq('placeDecision: in rendered text with no known positions, the number skips with reason split',
+    placeDecision(decision, '123', Object.assign({}, layout, { rendered: true })), { mode: 'skip', reason: 'split' });
+  eq('placeDecision: a value across pieces that is not stacked skips with reason pieces',
+    placeDecision(decision, '12 kg', { original: ['12 k', 'g'], liveStarts: [0, 4], toFlat: null, rendered: false }),
+    { mode: 'skip', reason: 'pieces' });
   eq('placeDecision: a value in one piece stands',
     placeDecision(decision, '123', { original: ['123'], liveStarts: [0], toFlat: null }), decision);
   eq('placeDecision: a rendered position converts through toFlat before the piece check',
@@ -3627,9 +3636,9 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   const layout = { original: pieces, liveStarts, toFlat: null };
   const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts);
   eq('bracketed: a bracket in its own text piece still places on a native table',
-    placeDecision(decision, text, layout, { stacked: false }).mode, 'extracted');
+    placeDecision(decision, text, Object.assign({}, layout, { rendered: true })).mode, 'extracted');
   eq('bracketed: a bracket in its own text piece still places on a grid',
-    placeDecision(decision, text, layout, { stacked: true }).mode, 'extracted');
+    placeDecision(decision, text, Object.assign({}, layout, { rendered: false })).mode, 'extracted');
 })();
 
 // ---------------------------------------------------------------------------
