@@ -822,18 +822,22 @@ function decisionToLegacyInfo(decision) {
 
 // --- Preview-band sample extraction (consumed by sidebar via IPC) ---
 
-// Walk every <td> in the table and return its trimmed text + parsed number,
-// via the same classification ladder (lib/dr-simplify) the engine uses, so a
-// cell only appears here if the engine would actually change it. Restricted
-// to mode:'pure' and mode:'extracted' decisions — this preview band is about
-// numeric magnitude/offset, not date/time granularity, so mode:'date' and
-// mode:'time' decisions are deliberately left out of the sample pool even
-// though the ladder classifies them.
+// The lens preview's sample pool: each number the table rounds in its
+// dataset, with its cell's trimmed text. The preview classifies through the
+// classification step the one simplification pass runs (classifyTableCells
+// below), on the kind the pass picks, so a cell appears here only if the
+// table rounds it. The step reads each simplified cell's stored original
+// (see classifyTableCell). The filters over its result keep what the lens
+// preview samples. Outside rows stay out, because an outside row rounds
+// against the dataset without joining it; empty cells stay out. Pure and
+// extracted results alone count: the lens preview is about numeric
+// magnitude and offset, so dates and times stay out even though the ladder
+// classifies them.
 //
 // options defaults to DR_DEFAULTS when the caller passes none (tests exercise
 // the ladder's option-gated rules directly this way); the real call site,
-// extractPreviewSamples below, passes the model's live settings so the
-// preview band classifies cells exactly as roundTable will.
+// extractPreviewSamples below, passes the model's live settings so the lens
+// preview classifies cells exactly as roundTable will.
 function collectNumericCells(table, options) {
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
   const rangeParse = parseRangeExpr(opts.rangeExpr);
@@ -841,95 +845,16 @@ function collectNumericCells(table, options) {
   // (roundTable returns before touching any cell); mirror that here instead
   // of falling back to "whole table".
   if (rangeParse.error) return [];
-  const ranges = rangeParse.ranges;
-
-  const out = [];
   const adapter = makeAdapter(table, { originalsPort: registryOriginalsPort(table) });
-  // A cell classifies as roundTable classifies it — each decision placed in
-  // the cell's text pieces — so the preview lists only numbers the table
-  // rounds.
-  const isGrid = adapter.isVirtualized();
-  const rows = adapter.getRows();
-  for (let r = 0; r < rows.length; r++) {
-    // Outside rows never feed the preview pool — the lens preview shows the
-    // dataset, and an outside row rounds against it without joining it.
-    if (rows[r].isOutside) continue;
-    const cells = rows[r].getCells();
-    for (let c = 0; c < cells.length; c++) {
-      const cellObj = cells[c];
-      if (cellObj.tagName !== 'TD') continue;
-      // Issue #2: when the table is already simplified, read the stored original
-      // rather than the rounded text now showing in the cell. A rounded native
-      // cell holds a { html, value, supRanges, linkFilteredIdx } record in the
-      // registry, and a rounded grid cell a { value, pieces, supRanges,
-      // linkFilteredIdx } record; value is the pre-round text either way. A
-      // record whose supRanges or linkFilteredIdx is null falls back to the
-      // live reads below.
-      const cellEl = cellObj.el;
-      const storedRecord = cellEl ? DR_STORE.getTableOriginal(table, cellEl) : undefined;
-      const usingStoredOriginal = !!storedRecord && typeof storedRecord === 'object';
-      const storedOriginal = usingStoredOriginal ? storedRecord.value : undefined;
-      const text = usingStoredOriginal ? storedOriginal : cellObj.getText();
-      const trimmed = typeof text === 'string' ? text.trim() : '';
-      if (!trimmed) continue;
-
-      const hasSuperscript = !!(cellEl && cellEl.querySelector && cellEl.querySelector('sup'));
-      // A rounded cell's <sup>-bearing text is stale: text above is the
-      // pre-round original, but rounding shortens the live text elsewhere in
-      // the cell, so re-measuring ranges against the LIVE element would index
-      // the wrong characters in the original string (see recordSupRanges in
-      // the simplification pass, which stores the registry record's
-      // supRanges against this exact text before the write). isWholeLink is
-      // not similarly stale:
-      // rounding only patches text-node values, never adds or removes <a>
-      // elements, and the whole-link check compares live anchor text to live
-      // cell text — both move together, so it stays correct read live. A
-      // cell that WAS a whole link would have been skipped (never rounded),
-      // so a rounded cell reaching here was never a whole link to begin with.
-      let superscriptRanges = [];
-      if (hasSuperscript) {
-        if (usingStoredOriginal && storedRecord.supRanges) {
-          superscriptRanges = storedRecord.supRanges;
-        } else {
-          superscriptRanges = getSuperscriptRanges(cellEl, { text });
-        }
-      }
-      // Likewise, the link filter's live-text substring search cannot locate
-      // the original numStr once the cell is rounded; reuse the match indices
-      // the simplification pass already kept (the registry record's linkFilteredIdx)
-      // instead of re-deriving from the (now mismatched) live text.
-      let staleFilteredIndices = null;
-      if (usingStoredOriginal && storedRecord.linkFilteredIdx) {
-        staleFilteredIndices = new Set(storedRecord.linkFilteredIdx);
-      }
-      const classified = classifyCell({
-        text,
-        rowIndex: r,
-        columnIndex: cellObj.columnIndex,
-        ranges,
-        isWholeLink: !!(cellEl && isCellWholeLink(cellEl)),
-        hasSuperscript,
-        superscriptRanges,
-      }, opts);
-      // A rounded native cell passed the placement step when it was written,
-      // and its live pieces now hold the rounded text, so it skips the step.
-      // A grid layout carries the record's stored piece text, so a grid cell
-      // is placed either way.
-      const placed = (isGrid || !usingStoredOriginal)
-        ? placeDecision(classified, text, cellObj.getPieceLayout(), { hasSuperscript, stacked: isGrid })
-        : classified;
-      const decision = finalizeExtractedDecision(placed, cellEl, staleFilteredIndices);
-
-      if (decision.mode === 'pure') {
-        const { num } = decision.value;
-        if (num !== 0 && isFinite(num)) out.push({ text: trimmed, num });
-      } else if (decision.mode === 'extracted') {
-        for (const { num: extractedNum } of decision.value.matches) {
-          out.push({ text: trimmed, num: extractedNum });
-        }
-      }
-      // mode:'date'/'time'/'skip' are not numeric-preview material — see the
-      // function comment above.
+  const entries = classifyTableCells(table, adapter.getRows(), opts, rangeParse.ranges,
+    tableKindPass(adapter), { readsStoredOriginal: true });
+  const out = [];
+  for (const { trimmed, info, isOutside } of entries) {
+    if (isOutside || !trimmed) continue;
+    if (info.mode === 'pure') {
+      if (info.num !== 0 && isFinite(info.num)) out.push({ text: trimmed, num: info.num });
+    } else if (info.mode === 'extracted') {
+      for (const { num } of info.matches) out.push({ text: trimmed, num });
     }
   }
   return out;
@@ -1078,10 +1003,19 @@ function buildCaptureStateResponse() {
 //                        test. Grids only: a native cell's inline styling
 //                        splits one number across two pieces ("1" plain,
 //                        "23" in bold), which the test reads as two numbers.
+//   layoutHoldsStoredText  whether getPieceLayout() holds a rounded cell's
+//                        pre-round piece text. A grid layout carries the
+//                        record's stored piece text. A native layout holds
+//                        the live pieces, which hold the rounded text, so a
+//                        stored-original read skips the placement step on a
+//                        native cell.
 //   splitReason, splitRow  the placement result that writes a debug row, and
 //                        that row's text: a native value that crosses a
 //                        piece boundary ('pieces'), a grid number split
-//                        across two pieces ('split').
+//                        across two pieces ('split'). The pass writes the
+//                        row after classification, so the lens preview,
+//                        which runs the classification step alone, writes
+//                        none.
 //   dateSplitRow         the debug row for a changed date or time whose text
 //                        crosses a piece boundary.
 //   superscriptRanges(table, cell, text)  the exponent ranges the ladder
@@ -1124,6 +1058,12 @@ function buildCaptureStateResponse() {
 //                 cell's patches; only the test suite passes it, to read a
 //                 table's planned patches with the page left unchanged.
 //
+// The classification step's own setting (see classifyTableCell):
+//   readsStoredOriginal  classify each simplified cell's stored original.
+//                 The pass leaves it off; the lens preview (see
+//                 collectNumericCells) turns it on, and runs the
+//                 classification step alone, with no patches and no writes.
+//
 // A cell's writes follow its patches in the same loop, so a native table's
 // debug and warn rows keep their page order. The patch step reads only what
 // classification captured, never the page, so a write to one cell leaves the
@@ -1131,6 +1071,7 @@ function buildCaptureStateResponse() {
 
 const NATIVE_TABLE_PASS = {
   stacked: false,
+  layoutHoldsStoredText: false,
   splitReason: 'pieces',
   splitRow: 'Dynamic Rounding: a native cell value split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.',
@@ -1145,9 +1086,10 @@ const NATIVE_TABLE_PASS = {
   // The record holds the pristine HTML, the superscript ranges, and the
   // surviving (link-filtered) match indices, all measured against the
   // pre-round text before applyExtractedPatches changes it, and it is stored
-  // only after a patch confirms the cell changed. collectNumericCells reads
-  // the record back instead of re-measuring the rounded live element against
-  // the stored original text; see finalizeExtractedDecision.
+  // only after a patch confirms the cell changed. The lens preview's
+  // stored-original read (see classifyTableCell) takes the record back
+  // instead of re-measuring the rounded live element against the stored
+  // original text; see finalizeExtractedDecision.
   writeCell(table, entry, patches, linkFilteredIdx, supRanges) {
     const cell = entry.cellObj.el;
     const originalRecord = { html: cell.innerHTML, value: entry.text, supRanges, linkFilteredIdx };
@@ -1171,12 +1113,14 @@ const NATIVE_TABLE_PASS = {
 
 const GRID_TABLE_PASS = {
   stacked: true,
+  layoutHoldsStoredText: true,
   splitReason: 'split',
   splitRow: 'Dynamic Rounding: a grid cell number split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.',
   // A grid cell classifies its flat text, so getSuperscriptRanges takes no
-  // `text` opt. collectNumericCells applies the same stored-ranges guard to
-  // its own re-measure.
+  // `text` opt. The lens preview's stored-original read handles a rounded
+  // cell itself, on either kind, and reaches this read only for a cell with
+  // no record (see classifyTableCell).
   superscriptRanges(table, cell) {
     const storedRecord = DR_STORE.getTableOriginal(table, cell);
     return (storedRecord && storedRecord.supRanges)
@@ -1219,17 +1163,46 @@ function resolveRoundingSettings(opts) {
 // Classify one <td>: the ladder, then the placement step. isCellWholeLink
 // and the superscript ranges are DOM-only checks the pure ladder cannot
 // perform itself (see lib/dr-simplify/ladder.js header), so they pass in as
-// plain data. The link filter reads the live pieces. A rounded grid cell's
-// kept numbers differ from the live text only in the pieces an earlier write
-// patched, and a patch never lands there again, so the live read serves
-// here; the lens preview reads the record's kept positions.
-function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, kind) {
+// plain data. The step reads the page and writes nothing: the pass writes
+// the debug row for a split value (entry.isSplit) after classification.
+//
+// With read.readsStoredOriginal off (the pass), the step reads the live
+// cell. The link filter reads the live pieces: a rounded grid cell's kept
+// numbers differ from the live text only in the pieces an earlier write
+// patched, and a patch never lands there again, so the live read serves.
+//
+// With read.readsStoredOriginal on (the lens preview), a simplified cell
+// classifies its stored original rather than the rounded text now showing
+// (issue #2). Its record holds value, the pre-round text, on either kind,
+// and each read below measured against that text takes the record's copy:
+//   superscriptRanges  the record's supRanges, because rounding shrinks or
+//                      grows the live text around the <sup>. A record with
+//                      none measures the live cell against the stored text.
+//   link filter        the record's linkFilteredIdx, the positions of the
+//                      numbers the link filter kept when the cell rounded,
+//                      because the filter's substring search cannot find
+//                      the original numbers in the rounded live text. A
+//                      record with none runs the live filter.
+//   placement step     skipped on a kind whose layout holds the live
+//                      rounded pieces (layoutHoldsStoredText); the cell
+//                      passed it when it was written.
+// isWholeLink stays a live read: rounding patches text-node values and
+// never adds or removes an <a>, so the anchor text and the cell text move
+// together, and a whole-link cell never rounds in the first place.
+function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, kind, read) {
   const cell = cellObj.el;
-  const text = cellObj.getText();
+  const stored = read.readsStoredOriginal ? DR_STORE.getTableOriginal(table, cell) : null;
+  const record = (stored && typeof stored === 'object') ? stored : null;
+  const text = record ? record.value : cellObj.getText();
   const layout = cellObj.getPieceLayout();
   const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-  const superscriptRanges = hasSuperscript ? kind.superscriptRanges(table, cell, text) : [];
-  const placed = placeDecision(classifyCell({
+  let superscriptRanges = [];
+  if (hasSuperscript) {
+    superscriptRanges = record
+      ? (record.supRanges || getSuperscriptRanges(cell, { text }))
+      : kind.superscriptRanges(table, cell, text);
+  }
+  const classified = classifyCell({
     text,
     rowIndex,
     columnIndex: cellObj.columnIndex,
@@ -1237,13 +1210,17 @@ function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, ki
     isWholeLink: isCellWholeLink(cell),
     hasSuperscript,
     superscriptRanges,
-  }, opts), text, layout, { hasSuperscript, stacked: kind.stacked });
-  if (placed.reason === kind.splitReason) DR_LOG.debug(kind.splitRow);
+  }, opts);
+  const placed = (record && !kind.layoutHoldsStoredText)
+    ? classified
+    : placeDecision(classified, text, layout, { hasSuperscript, stacked: kind.stacked });
+  const keptIndices = (record && record.linkFilteredIdx) ? new Set(record.linkFilteredIdx) : null;
   return {
     cellObj,
     text,
     trimmed: typeof text === 'string' ? text.trim() : '',
-    info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell)),
+    info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, keptIndices)),
+    isSplit: placed.reason === kind.splitReason,
     layout,
     col: cellObj.columnIndex,
     isOutside,
@@ -1259,17 +1236,24 @@ function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, ki
 // table the leading <td> is column B: "first column" (and range "A") target
 // the header column, not the first data cell after it. An outside row rounds
 // like any other; its entries carry isOutside so its values stay out of the
-// dataset.
-function classifyTableCells(table, adapterRows, opts, ranges, kind) {
+// dataset. read holds the step's one setting, readsStoredOriginal (see
+// classifyTableCell); the pass passes none.
+function classifyTableCells(table, adapterRows, opts, ranges, kind, read = {}) {
   const entries = [];
   for (let r = 0; r < adapterRows.length; r++) {
     const isOutside = !!adapterRows[r].isOutside;
     for (const cellObj of adapterRows[r].getCells()) {
       if (cellObj.tagName !== 'TD') continue;
-      entries.push(classifyTableCell(table, cellObj, r, isOutside, opts, ranges, kind));
+      entries.push(classifyTableCell(table, cellObj, r, isOutside, opts, ranges, kind, read));
     }
   }
   return entries;
+}
+
+// The kind the one simplification pass runs on a table, from its adapter.
+// roundTable and the lens preview both pick through it.
+function tableKindPass(adapter) {
+  return adapter.isVirtualized() ? GRID_TABLE_PASS : NATIVE_TABLE_PASS;
 }
 
 // The column post-pass: resolve each ambiguous numeric date against its
@@ -1375,7 +1359,11 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
     return { cells: [], maxMag: null, landedCells: 0, missedCells: 0 };
   }
   const rounding = resolveRoundingSettings(opts);
-  const entries = resolveAmbiguousDates(classifyTableCells(table, adapterRows, opts, rangeParse.ranges, kind));
+  const classified = classifyTableCells(table, adapterRows, opts, rangeParse.ranges, kind);
+  for (const entry of classified) {
+    if (entry.isSplit) DR_LOG.debug(kind.splitRow);
+  }
+  const entries = resolveAmbiguousDates(classified);
   const frozen = pass.frozenMaxMag;
   const maxMag = (frozen !== undefined && frozen !== null) ? frozen : datasetMaxMagnitude(entries);
   if (writes === 'first' && kind.freezesMaxMagnitude) DR_STORE.setTableMaxMagnitude(table, maxMag);
@@ -1493,7 +1481,7 @@ function roundTable(table, options) {
   // value. A cell whose patches all skipped never counts toward the form
   // (#301, #315).
   const { landedCells } = simplifyTableCells(table, adapterRows, opts, {
-    kind: isVirtualized ? GRID_TABLE_PASS : NATIVE_TABLE_PASS,
+    kind: tableKindPass(adapter),
     frozenMaxMag: null,
     writes: 'first',
   });
