@@ -220,6 +220,7 @@ const IDENTIFIER_SHAPE_CELLS = [
   ['https://example.com/item/123', 'web-or-email-address'],
   ['www.example.com/p/12', 'web-or-email-address'],
   ['sales@example.com', 'web-or-email-address'],
+  ['311@example.com', 'web-or-email-address'],
   ['ISBN 978-0-306-40615-7', 'isbn'],
   ['978-0-306-40615-7', 'isbn'],
   ['ISBN: 0-306-40615-2', 'isbn'],
@@ -378,3 +379,4 @@ const bracketOpts = Object.assign({}, DR_DEFAULTS, {
     classifyCell({ text: '"(1,234)"', rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts),
     { mode: 'skip', reason: 'quoted' });
 })();
+
