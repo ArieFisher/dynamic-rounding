@@ -25,7 +25,7 @@
  *
  * 1. Every dynamic value passes through escapeHtml() on its way into the
  *    string. No interpolation of raw state exists in this file; the
- *    hostile-payload tests in tests/part-14.js attack this directly.
+ *    hostile-payload tests in tests/capture-log.js attack this directly.
  * 2. The file declares its own Content-Security-Policy meta tag —
  *    script-src 'none', img-src data: — and carries no script element, so
  *    a renderer bug cannot become code execution and a remote reference in

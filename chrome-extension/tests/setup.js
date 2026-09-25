@@ -269,3 +269,15 @@ function eq(name, actual, expected) {
 const SIDEBAR_HARNESS_TAB = 42;
 const FROM_SIDEBAR_TAB = { tab: { id: SIDEBAR_HARNESS_TAB } };
 
+// Stub constructors so the module-level MutationObserver / ResizeObserver usage
+// at content.js load time does not throw in Node. The stubs are injected BEFORE
+// the eval, but since we patch globalThis here (after the eval), we need to work
+// around the fact the eval already ran. In practice the guards in content.js
+// (`if (typeof MutationObserver !== 'undefined')`) check the global at eval time.
+// The eval has already run successfully (MutationObserver was undefined → guarded).
+// These stubs are only needed for any test that directly calls createToggleForTable,
+// which itself calls `new ResizeObserver(...)`. We therefore stub ResizeObserver
+// on globalThis before those tests run.
+global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+global.MutationObserver = class { observe() {} disconnect() {} };
+global.Node = { ELEMENT_NODE: 1 };

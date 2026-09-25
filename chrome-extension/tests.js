@@ -20,10 +20,15 @@ const PIECES_DIR = path.join(__dirname, 'tests');
 const PIECES = [
   'setup.js',
   'helpers.js',
-  'part-01.js', 'part-02.js', 'part-03.js', 'part-04.js',
-  'part-05.js', 'part-06.js', 'part-07.js', 'part-08.js',
-  'part-09.js', 'part-10.js', 'part-11.js', 'part-12.js',
-  'part-13.js', 'part-14.js', 'part-15.js', 'part-16.js',
+  'number.js',
+  'ladder.js',
+  'pillbox.js',
+  'detection.js',
+  'rounding-pass.js',
+  'sidebar.js',
+  'messaging-model.js',
+  'capture-log.js',
+  'source-checks.js',
   'report.js',
 ];
 
