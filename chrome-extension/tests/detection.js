@@ -243,18 +243,30 @@
 })();
 
 (function placeDecision_stackedTestReadsTheGapBetweenPieces() {
-  const layout = { original: ['1', '23'], liveStarts: [0, 1], toFlat: null, rendered: false };
   const decision = { mode: 'pure', value: { num: 123 } };
-  eq('placeDecision: in flat text, digits beside digits across pieces round as two numbers',
-    placeDecision(decision, '123', layout).value.matches.map((m) => m.numStr), ['1', '23']);
-  eq('placeDecision: in rendered text with a line break between the pieces, each piece rounds as its own number',
-    placeDecision(decision, '1\n23', Object.assign({}, layout, { rendered: true, toFlat: [0, 1, 1, 2] }))
-      .value.matches.map((m) => m.numStr), ['1', '23']);
-  eq('placeDecision: in rendered text that runs the pieces together, the number skips with reason split',
-    placeDecision(decision, '123', Object.assign({}, layout, { rendered: true, toFlat: [0, 1, 2] })),
-    { mode: 'skip', reason: 'split' });
-  eq('placeDecision: in rendered text with no known positions, the number skips with reason split',
-    placeDecision(decision, '123', Object.assign({}, layout, { rendered: true })), { mode: 'skip', reason: 'split' });
+  const layout = (runsTogether) => ({ original: ['1', '23'], liveStarts: [0, 1], toFlat: null, rendered: false, runsTogether });
+  eq('placeDecision: pieces on separate lines round as two numbers',
+    placeDecision(decision, '123', layout(() => false)).value.matches.map((m) => m.numStr), ['1', '23']);
+  eq('placeDecision: pieces the shown text runs together skip with reason split',
+    placeDecision(decision, '123', layout(() => true)), { mode: 'skip', reason: 'split' });
+  eq('placeDecision: runsTogether is asked about the second piece',
+    (() => { const asked = []; placeDecision(decision, '123', layout((i) => { asked.push(i); return false; })); return asked; })(),
+    [1]);
+  eq('placeDecision: a stacked native cell counts its numbers in its rendered text',
+    placeDecision(decision, '1\n23', Object.assign(layout(() => false), { rendered: true, toFlat: [0, 1, 1, 2] }))
+      .value.matches.map((m) => m.index), [0, 2]);
+  eq('placeDecision: a stacked native cell with no known positions skips with reason pieces',
+    placeDecision(decision, '123', Object.assign(layout(() => false), { rendered: true })), { mode: 'skip', reason: 'pieces' });
+  eq('showsPiecesTogether: a line break between pieces answers false',
+    showsPiecesTogether('125\n126', ['125', '126'], 1), false);
+  eq('showsPiecesTogether: a space between pieces answers false',
+    showsPiecesTogether('125 126', ['125', '126'], 1), false);
+  eq('showsPiecesTogether: pieces with nothing between answer true',
+    showsPiecesTogether('6,718,245', ['6,7', '18,245'], 1), true);
+  eq('showsPiecesTogether: shown text that differs from the pieces in more than whitespace answers true',
+    showsPiecesTogether('$7,002,300', ['7002300', '$', '7,002,300'], 2), true);
+  eq('showsPiecesTogether: empty shown text answers true',
+    showsPiecesTogether('', ['125', '126'], 1), true);
   eq('placeDecision: a value across pieces that is not stacked skips with reason pieces',
     placeDecision(decision, '12 kg', { original: ['12 k', 'g'], liveStarts: [0, 4], toFlat: null, rendered: false }),
     { mode: 'skip', reason: 'pieces' });

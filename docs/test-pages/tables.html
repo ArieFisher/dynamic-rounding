@@ -2023,21 +2023,21 @@ TSLA,75,"248.09","18,606.75"
     <p class="expect">Expect: a pillbox at load on both tables, a native table
       and a grid holding the same rows. Press each pillbox on. On both tables,
       the "$" in its own tag stays and the number beside it rounds, and each
-      number in the one-number-per-line cell rounds on its own. Switch
-      mixed-cell simplification off in the sidebar and press each pillbox
-      again: the same cells round. The last row holds one number whose
-      digits sit in two tags, the second in bold. The native table leaves it
-      unchanged, because its rendered text runs the two tags together. The
-      grid rounds "6,7" and "18,245" as two numbers, because its flat text
-      holds no line breaks. Before this change, the native table left the "$" row
-      unchanged, and left the one-number-per-line cell unchanged with
-      mixed-cell simplification off (issues #452, #461).</p>
+      number in the one-number-per-line cell rounds on its own. Switch the
+      "words" setting off in the sidebar and press each pillbox again: the
+      same cells round. The last row holds one number whose
+      digits sit in two tags, the second in bold. Both tables leave it
+      unchanged, because the text the browser shows runs the two tags
+      together. Before this change, the native table left the "$" row
+      unchanged, and left the one-number-per-line cell unchanged with the
+      "words" setting off (issues #452, #461), and the grid rounded
+      "6,7" and "18,245" as two numbers (issue #479).</p>
 
     <!--
       $ 337.91 (sign in its own tag)  -> $ stays, 337.91 rounds, both tables
-      125 above 126                    -> each rounds, both tables, mixed-cell
-                                          simplification on or off
-      6,7 + <b>18,245</b>              -> native: unchanged; grid: two numbers
+      125 above 126                    -> each rounds, both tables, "words"
+                                          setting on or off
+      6,7 + <b>18,245</b>              -> unchanged, both tables
     -->
     <table>
       <thead>

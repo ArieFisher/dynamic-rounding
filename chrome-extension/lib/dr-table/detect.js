@@ -271,15 +271,19 @@ function makeCellObj(cellEl, port, reads) {
     // positions; a grid cell classifies its flat text, so its toFlat is
     // null. null when the cell no longer holds as many pieces as its record,
     // which the pass sorts as a rewritten cell before it reads a layout.
+    // runsTogether reads the cell's rendered text and live pieces on both
+    // kinds, only when the placement step asks: a grid classifies its flat
+    // text, and a rendered-text read lays out the page.
     getPieceLayout() {
       const live = collectTextPieces(cellEl).map((piece) => piece.nodeValue);
       const record = recordOf();
       if (record && record.pieces.length !== live.length) return null;
       const original = record ? record.pieces.map((piece) => piece.text) : live;
-      if (!reads.rendered) return { original, toFlat: null, rendered: false };
+      const runsTogether = (i) => showsPiecesTogether(cellEl.innerText || cellEl.textContent || '', live, i);
+      if (!reads.rendered) return { original, toFlat: null, rendered: false, runsTogether };
       const text = getText();
       const toFlat = mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original);
-      return { original, toFlat, rendered: true };
+      return { original, toFlat, rendered: true, runsTogether };
     },
     // Write the patches and return how many landed. The patches count in
     // the join of the cell's original pieces (see flatPatches), so the
@@ -980,6 +984,8 @@ function restoreTextPieces(cell, storedPieces) {
 //               and no entry for a position with no known counterpart
 //   rendered    whether the classified text is rendered text: true for a
 //               native cell, false for a grid cell
+//   runsTogether(i)  whether the text the browser shows runs piece i
+//               straight after piece i - 1 (see showsPiecesTogether)
 // A native cell classifies its rendered text and converts positions through
 // mapRenderedToFlat. When the rendered and flat texts differ in more than
 // whitespace, such as a hidden sort key ahead of the value, toFlat maps the
@@ -1062,15 +1068,25 @@ function textPosition(layout, text, flat) {
   return layout.toFlat.findIndex((f, r) => f === flat && !/\s/.test(text[r]));
 }
 
-// Whether the classified text shows a piece's first character straight
-// after the character before it, with no space or line break between. Only
-// rendered text shows that break (see placeDecision), so a layout of flat
-// text answers false. A piece whose first character the classified text
-// does not hold answers true, so the pieces stay unchanged.
-function runsIntoPiece(layout, text, span) {
-  if (!layout.rendered) return false;
-  const at = textPosition(layout, text, span.start);
-  return at <= 0 || !/\s/.test(text[at - 1]);
+/**
+ * Whether the text the browser shows for a cell runs piece i straight after
+ * the character before it, with no space or line break between. The browser
+ * adds a line break at a <br> or a block boundary, so two pieces on separate
+ * lines answer false, and two pieces that inline styling splits ("6,7"
+ * plain, "18,245" in bold) answer true. Text that differs from the pieces in
+ * more than whitespace, or that does not hold the piece's first character,
+ * answers true, so the pieces stay unchanged.
+ * @param {string} shown - the cell's rendered text
+ * @param {string[]} pieces - the cell's live text pieces, in page order
+ * @param {number} i
+ * @returns {boolean}
+ */
+function showsPiecesTogether(shown, pieces, i) {
+  const toFlat = mapRenderedToFlat(shown, pieces.join(''));
+  if (!toFlat) return true;
+  const start = pieces.slice(0, i).reduce((sum, piece) => sum + piece.length, 0);
+  const at = toFlat.findIndex((f, r) => f === start && !/\s/.test(shown[r]));
+  return at <= 0 || !/\s/.test(shown[at - 1]);
 }
 
 // The numbers of a stacked cell: a cell whose text pieces each hold one
@@ -1123,12 +1139,11 @@ function stackedMatches(spans, runTogether = () => false) {
  * with reason 'pieces'.
  *
  * The test reads a digit beside a digit across two pieces as two numbers
- * unless the classified text runs the two pieces together. A native cell
- * classifies its rendered text, which holds a line break or a space between
- * two pieces on separate lines and nothing between two pieces that inline
- * styling splits ("1" plain, "23" in bold), so the rendered text sorts the
- * two shapes. A grid cell classifies its flat text, which joins every piece
- * with nothing between, so a grid reads two numbers.
+ * unless the layout's runsTogether(i) holds for the second piece: the text
+ * the browser shows runs the two pieces together, as inline styling does to
+ * one number ("1" plain, "23" in bold), so the number skips with reason
+ * 'split'. Both table kinds read the shown text (see showsPiecesTogether). A
+ * layout with no runsTogether reads two numbers.
  *
  * A cell with no layout (its pieces no longer reach its record) skips with
  * reason 'pieces-changed'. A cell with a <sup> keeps a skip decision, so a
@@ -1136,7 +1151,7 @@ function stackedMatches(spans, runTogether = () => false) {
  *
  * @param {object} decision - classifyCell's decision
  * @param {string} text - the text the decision was classified on
- * @param {{original: string[], toFlat: number[]|null, rendered?: boolean}|null} layout
+ * @param {{original: string[], toFlat: number[]|null, rendered?: boolean, runsTogether?: (i: number) => boolean}|null} layout
  * @param {{hasSuperscript?: boolean}} [opts]
  * @returns {object} the placed decision
  */
@@ -1151,7 +1166,8 @@ function placeDecision(decision, text, layout, opts = {}) {
   } else if (!(decision.mode === 'skip' && decision.reason === 'mixed-disabled')) {
     return decision;
   }
-  const matches = stackedMatches(pieceSpans(layout), (span) => runsIntoPiece(layout, text, span));
+  const runsTogether = layout.runsTogether || (() => false);
+  const matches = stackedMatches(pieceSpans(layout), (span) => runsTogether(span.i));
   if (matches === 'split') return { mode: 'skip', reason: 'split' };
   if (matches === null) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
   // Every other match counts in the classified text, so the patch step
