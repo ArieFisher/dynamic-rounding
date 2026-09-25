@@ -1902,15 +1902,6 @@
 // tests build a fresh one: the settings contract, the bus, and the model,
 // evaluated together in their own context.
 
-function makeIsolatedModel() {
-  const vm = require('vm');
-  const sandbox = { chrome: global.chrome, console };
-  const ctx = vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + storeCode +
-    '\nthis.__store = DR_STORE; this.__bus = DR_BUS;', ctx);
-  return { store: sandbox.__store, bus: sandbox.__bus };
-}
-
 (function appModelErrorState() {
   const { store, bus } = makeIsolatedModel();
   const empty = { hasError: false, count: 0, rows: [] };

@@ -1048,67 +1048,6 @@
 // Reviewer repro: reviewer-sup-stale.js.
 // ---------------------------------------------------------------------------
 
-// A reactive multi-segment cell mock: unlike makeSuperscriptCell (used by the
-// static AC tests above), writing a text node's nodeValue here also updates
-// cell.innerText/textContent/innerHTML, so getText() sees the post-round
-// shortened text the way a real DOM element would.
-function makeReactiveCell(segments) {
-  const cell = {
-    tagName: 'TD',
-    dataset: {},
-    title: '',
-    classList: {
-      _c: [],
-      add(x) { this._c.push(x); },
-      contains(x) { return this._c.includes(x); },
-      remove(x) { this._c = this._c.filter((y) => y !== x); },
-    },
-    querySelectorAll: (sel) => (sel === 'a' && cell._anchor ? [cell._anchor] : []),
-    querySelector: (sel) => (sel === 'sup' && segments.some((s) => s.inSup) ? { tagName: 'SUP' } : null),
-    removeAttribute() {},
-    contains(el) { return el === cell._anchor; },
-  };
-  const refresh = () => {
-    const joined = segments.map((s) => s.text).join('');
-    cell.innerText = joined;
-    cell.textContent = joined;
-    cell.innerHTML = joined;
-  };
-  cell._textNodes = segments.map((seg) => {
-    let parent;
-    if (seg.inSup) {
-      parent = { tagName: 'SUP', parentNode: cell, parentElement: cell };
-    } else if (seg.inAnchor) {
-      const anchorEl = cell._anchor || (cell._anchor = { tagName: 'A', closest: (sel) => (sel === 'a' ? cell._anchor : null) });
-      parent = anchorEl;
-    } else {
-      parent = { closest: () => null, tagName: 'TD' };
-    }
-    return {
-      get nodeValue() { return seg.text; },
-      set nodeValue(v) { seg.text = v; refresh(); },
-      parentNode: parent,
-      parentElement: parent,
-    };
-  });
-  refresh();
-  return cell;
-}
-
-function withReactiveCreateTreeWalker(fn) {
-  const saved = global.document.createTreeWalker;
-  global.document.createTreeWalker = function (cell) {
-    const nodes = cell._textNodes ? [...cell._textNodes] : [];
-    return { nextNode() { return nodes.shift() || null; } };
-  };
-  try {
-    fn();
-  } finally {
-    if (saved === undefined) delete global.document.createTreeWalker;
-    else global.document.createTreeWalker = saved;
-  }
-}
-
 (function previewBand_supStaleRegression() {
   withReactiveCreateTreeWalker(function () {
     const opts = {
@@ -1225,20 +1164,6 @@ function withReactiveCreateTreeWalker(fn) {
   });
 })();
 
-// Issue #403, test page Table 21. A cell whose markup carries line breaks
-// and indentation around its text: the browser collapses them in the
-// rendered text the classifier reads, and the patch step counts positions in
-// the flat text, where they remain. The rendered read below collapses the
-// flat text the way the browser does.
-function makePrettyPrintedCell(segments) {
-  const cell = makeReactiveCell(segments);
-  Object.defineProperty(cell, 'innerText', {
-    get() { return segments.map((s) => s.text).join('').replace(/\s+/g, ' ').trim(); },
-    set() {},
-  });
-  return cell;
-}
-
 (function mapRenderedToFlat_positions() {
   eq('mapRenderedToFlat: equal texts map each position to itself',
     mapRenderedToFlat('a 1', 'a 1'), [0, 1, 2]);
@@ -1315,19 +1240,6 @@ function makePrettyPrintedCell(segments) {
   });
 })();
 
-// Issue #430: a native table's pure, date, and time cells take the same
-// three steps as every other cell — classify, place, patch. A value whose
-// characters sit in one text piece rounds through the patch writer, with its
-// rendered position converted to the flat text. A value that crosses a piece
-// boundary stays unchanged with a debug row: the native placement step runs
-// no stacked-cell test, and no writer spreads characters across pieces.
-function nativeOnePieceOpts() {
-  return Object.assign({}, DR_DEFAULTS, {
-    enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
-    offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
-  });
-}
-
 (function nativePureCell_prettyPrintedRoundsInItsPiece() {
   withReactiveCreateTreeWalker(function () {
     const segments = [{ text: '\n      4,523,789\n    ', inSup: false }];
@@ -1392,15 +1304,6 @@ function nativeOnePieceOpts() {
     }
   });
 })();
-
-// A hidden sort key ahead of the value: the rendered text leaves it out and
-// the flat text holds it, so the two differ in more than whitespace. The
-// value sits in the one piece that holds it, and the sort key keeps its text.
-function makeSortKeyCell(segments, rendered) {
-  const cell = makeReactiveCell(segments);
-  Object.defineProperty(cell, 'innerText', { get() { return rendered(); }, set() {} });
-  return cell;
-}
 
 (function nativePureCell_hiddenSortKeyRoundsTheVisibleValue() {
   withReactiveCreateTreeWalker(function () {

@@ -79,7 +79,7 @@ Run the test suite — the repo's largest, and part of CI on every PR:
 node chrome-extension/tests.js
 ```
 
-The tests live in pieces under `chrome-extension/tests/`, and `tests.js` joins them in its order list and runs them as one script, so every piece reads the setup and helpers in `setup.js`. Add a test to the piece that holds related tests. A new piece goes in the order list, and the run stops with an error on a piece missing from the list or a listed piece missing from the folder.
+The tests live in pieces under `chrome-extension/tests/`, and `tests.js` joins them in its order list and runs them as one script, so every piece reads the setup in `setup.js` and the helper functions in `helpers.js`. A new helper function goes in `helpers.js`. Add a test to the piece that holds related tests. A new piece goes in the order list, and the run stops with an error on a piece missing from the list or a listed piece missing from the folder.
 
 ### Python
 

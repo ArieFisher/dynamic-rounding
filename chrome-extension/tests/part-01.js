@@ -850,73 +850,9 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 //   title (writable), and a querySelector stub on the table.
 // ---------------------------------------------------------------------------
 
-// A mock cell's one text piece, the way a page element holds its text: a
-// text node child whose value reads and writes the cell's text. The placement
-// step reads a native cell's text pieces, so a mock cell with no text node
-// would hold no piece for a value to sit in.
-function withTextPiece(cell) {
-  cell.childNodes = [{
-    nodeType: 3,
-    parentNode: cell,
-    parentElement: cell,
-    get nodeValue() { return cell.textContent; },
-    set nodeValue(v) { cell.textContent = v; cell.innerText = v; },
-  }];
-  return cell;
-}
-
-function makeMockCell(tag, text) {
-  return withTextPiece({
-    tagName: tag.toUpperCase(),
-    innerText: text,
-    textContent: text,
-    classList: { add: function(cls) { this._classes = this._classes || []; this._classes.push(cls); },
-                 contains: function(cls) { return (this._classes||[]).includes(cls); } },
-    dataset: {},
-    title: '',
-    _classes: [],
-  });
-}
-
-function makeMockTable(rowsSpec, querySelectorResult) {
-  // rowsSpec: array of arrays of {tag, text}
-  // colSpan and rowSpan stand at 1 on every cell, as they do on a real table
-  // cell; a spec entry naming one declares a merge.
-  const rows = rowsSpec.map(rowSpec => ({
-    cells: rowSpec.map(s => Object.assign(makeMockCell(s.tag, s.text), {
-      colSpan: s.colSpan || 1,
-      rowSpan: s.rowSpan === undefined ? 1 : s.rowSpan,
-    }))
-  }));
-  return {
-    rows,
-    querySelector: function() { return querySelectorResult || null; },
-    dataset: {},
-  };
-}
-
 // roundTable calls document.createTreeWalker (via collectTextPieces).
 // We need to stub that too so the "apply rounding" path doesn't crash.
 // Stub createTreeWalker to return a walker that finds the cell's single text node.
-
-function withCreateTreeWalker(fn) {
-  global.document.createTreeWalker = function(cell) {
-    let done = false;
-    return {
-      nextNode: function() {
-        if (done) return null;
-        done = true;
-        // Return a fake text node whose nodeValue matches the cell text.
-        return {
-          nodeValue: cell.innerText,
-          get nodeValue() { return this._val !== undefined ? this._val : cell.innerText; },
-          set nodeValue(v) { cell.innerText = v; cell.textContent = v; this._val = v; }
-        };
-      }
-    };
-  };
-  try { fn(); } finally { delete global.document.createTreeWalker; }
-}
 
 // --- Test 1: Table with row headers — nothing outside the range is rounded ---
 // Row: [<th>Name</th>, <td>100</td>, <td>200</td>]
@@ -974,32 +910,6 @@ function withCreateTreeWalker(fn) {
       cells[2].classList.contains('dr-ext-rounded'), false);
   });
 })();
-
-// --- Test 3 / 4 helper: row-header table shaped like Wikipedia's
-// "List of James Bond films" — every data row opens with <th scope="row">.
-//   [<th>Dr. No</th>,     <td>59.5</td>,  <td>1234</td>]
-//   [<th>Goldfinger</th>, <td>124.9</td>, <td>5678</td>]
-// Columns: A = the <th>, B = the first <td>, C = the second <td>.
-function runRowHeaderTable(optsOverrides) {
-  let rows;
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([
-      [{ tag: 'th', text: 'Dr. No'     }, { tag: 'td', text: '59.5'  }, { tag: 'td', text: '1234' }],
-      [{ tag: 'th', text: 'Goldfinger' }, { tag: 'td', text: '124.9' }, { tag: 'td', text: '5678' }],
-    ]);
-    roundTable(table, Object.assign({
-      enabled: true, simplifyMixedCells: false, simplifyDates: true, simplifyTimes: true,
-      simplifyFirstRow: true, simplifyFirstColumn: false,
-      simplifyMixedPercent: false, simplifyMixedCurrency: false,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: ''
-    }, optsOverrides));
-    rows = table.rows.map(row => row.cells);
-  });
-  return rows;
-}
-
-function isRounded(cell) { return cell.classList.contains('dr-ext-rounded'); }
 
 // --- Test 3: simplifyFirstColumn gates the <th>, not the leading <td> ---
 // Regression: selecting "first column" used to enable the *second* rendered
@@ -1156,95 +1066,6 @@ function isRounded(cell) { return cell.classList.contains('dr-ext-rounded'); }
 // ---------------------------------------------------------------------------
 // Sprint exclude-numbers-in-links
 // ---------------------------------------------------------------------------
-
-// Helper: build a mock anchor element that looks enough like a DOM <a> node
-// for isCellWholeLink and filterLinkMatches to consume.
-function makeMockAnchor(text) {
-  const anchor = {
-    innerText: text,
-    textContent: text,
-    _isAnchor: true,
-  };
-  return anchor;
-}
-
-// Helper: build a mock text node that has a parentElement with optional anchor chain.
-// If insideAnchor is an anchor object, parentElement.closest('a') returns it and
-// cell.contains(anchor) returns true.
-function makeMockTextNode(text, insideAnchor, cell) {
-  const parentEl = insideAnchor
-    ? {
-        closest: (sel) => sel === 'a' ? insideAnchor : null,
-      }
-    : {
-        closest: () => null,
-      };
-  return {
-    nodeValue: text,
-    parentElement: parentEl,
-  };
-}
-
-// Build a mock cell for isCellWholeLink / filterLinkMatches testing.
-// anchors: array of anchor text strings that appear as <a> children
-// outsideText: text in the cell that is NOT inside any anchor (null if none)
-// cell.innerText = outsideText + anchor texts combined (as visible text)
-// cell.contains(anchor): returns true for any anchor we built
-function makeLinkCell(anchors, outsideText) {
-  const anchorObjs = anchors.map(t => makeMockAnchor(t));
-  const allText = (outsideText ? outsideText + ' ' : '') +
-    anchorObjs.map(a => a.innerText).join(' ');
-  const trimmed = allText.trim();
-
-  const cell = {
-    innerText: trimmed,
-    textContent: trimmed,
-    // querySelectorAll('a') returns the anchor objects we built
-    querySelectorAll: (sel) => sel === 'a' ? anchorObjs : [],
-    contains: (node) => anchorObjs.includes(node),
-    // classList / dataset stubs so makeMockTable-level code won't crash
-    classList: {
-      _classes: [],
-      add(cls) { this._classes.push(cls); },
-      contains(cls) { return this._classes.includes(cls); },
-    },
-    dataset: {},
-    title: '',
-    tagName: 'TD',
-  };
-
-  // Build text nodes list for filterLinkMatches's createTreeWalker.
-  // We model the DOM structure: anchor text is inside anchor nodes, outside text is bare.
-  const textNodes = [];
-  if (outsideText) {
-    textNodes.push(makeMockTextNode(outsideText, null, cell));
-  }
-  for (const a of anchorObjs) {
-    textNodes.push(makeMockTextNode(a.innerText, a, cell));
-  }
-
-  // Attach a createTreeWalker stub that returns these text nodes in order.
-  cell._textNodes = textNodes;
-  return cell;
-}
-
-// Override createTreeWalker to handle linkCell's _textNodes when present.
-function withLinkCreateTreeWalker(fn) {
-  global.document.createTreeWalker = function(cell) {
-    // If the cell has pre-built textNodes (link cell), use those.
-    const nodes = cell._textNodes ? [...cell._textNodes] : [];
-    // Fallback for plain cells: single text node from innerText.
-    if (nodes.length === 0 && cell.innerText) {
-      nodes.push({ nodeValue: cell.innerText, parentElement: { closest: () => null } });
-    }
-    return {
-      nextNode() {
-        return nodes.shift() || null;
-      }
-    };
-  };
-  try { fn(); } finally { delete global.document.createTreeWalker; }
-}
 
 // --- AC1: Cell whose entire content is inside <a> is left unrounded ---
 // isCellWholeLink(<td><a href="#">1234</a></td>) must return true.

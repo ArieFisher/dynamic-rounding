@@ -37,57 +37,6 @@
     unused, []);
 })();
 
-// ---------------------------------------------------------------------------
-// Issue #325 — every cross-context topic on the event bus.
-//
-// A shared sandbox harness for the bus tests below. adapters/messaging.js has
-// no DOM dependency, so it runs in its own vm context with only the Chrome
-// interfaces stubbed. Each call builds a fresh bus, which matters: a responder
-// registration and a subscription both outlive the test that made them, and
-// the one-responder rule would make the second test in a file throw for the
-// first test's registration.
-//
-// opts.noTabs        omit chrome.tabs entirely — the content-script context.
-// opts.noActiveTab   chrome.tabs.query answers with no tabs.
-// opts.throwOnSend   chrome.tabs.sendMessage throws, as it does when the tab
-//                    holds no content script.
-// opts.reply         the value chrome.tabs.sendMessage hands its callback.
-// ---------------------------------------------------------------------------
-function makeBusSandbox(opts) {
-  const options = opts || {};
-  const vm = require('vm');
-  const sent = { pages: [], tabs: [], queries: 0 };
-  let captured = null;
-  const tabs = {
-    query(q, cb) { sent.queries++; cb(options.noActiveTab ? [] : [{ id: 7 }]); },
-    sendMessage(tabId, msg, cb) {
-      sent.tabs.push({ tabId, msg });
-      if (options.throwOnSend) throw new Error('no content script');
-      if (cb) cb(options.reply);
-    },
-  };
-  const sandbox = {
-    chrome: {
-      runtime: {
-        lastError: null,
-        sendMessage(msg, cb) { sent.pages.push(msg); if (cb) cb(undefined); },
-        onMessage: { addListener(fn) { captured = fn; } },
-      },
-    },
-  };
-  if (!options.noTabs) sandbox.chrome.tabs = tabs;
-  vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
-  return {
-    bus: sandbox.__DR_BUS,
-    sent,
-    // Call the bus's own onMessage listener the way Chrome would.
-    fire(request, sender, sendResponse) {
-      return captured(request, sender || {}, sendResponse || function () {});
-    },
-  };
-}
-
 // --- #325 Task 1: the topic table carries a route ---
 (function busTableCarriesRoute() {
   const VALID_ROUTES = [null, 'extension-pages', 'tab'];
