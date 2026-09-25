@@ -40,8 +40,21 @@ A financial statement writes a negative as a bracket pair: "(1,234)" is −1,234
 - The brackets may hold nothing but the number and its own format marks — a currency sign, a percent sign, whitespace — so "($1,234)", "$(1,234)" and "(12.3%)" are bracketed numbers and "(see note 4)" is not.
 - A bracket may sit in its own piece of the page's markup, apart from the digits. Because only the digits are replaced, such a cell rounds like any other.
 - A number that already carries a written minus sign keeps it: "(-1,234)" reads as −1,234 once, not twice.
-- A bracket pair followed by a digit is a telephone area code, not a minus sign, so "(416) 555-1234" stays positive.
+- A bracket pair followed by a digit is a telephone area code, not a minus sign, so "(416) 555-1234" never reads as negative. A whole cell holding it is an identifier shape and stays as written.
 - The brackets themselves are the minus sign. What may stand between a bracket and the number is the format-mark list in `lib/dr-number/core.js`, beside the currency signs, so the bracket test and the reader that strips marks before a text reads as a number read one source.
+
+## Identifier shapes
+
+Some text names a thing instead of counting it. A cell whose whole text matches one of these shapes stays as written, on HTML tables and grids alike, whatever the sidebar's "words" setting holds:
+
+- A phone number with dashes, dots, or a bracketed area code: "416-555-1234", "416.555.1234", "(416) 555-1234", "1-800-555-0199".
+- Digit groups split by spaces outside thousands grouping: "416 555 1234", "+1 416 555 1234". Thousands grouping (a first group of one to three digits, then groups of exactly three) still reads as one number, so "1 234 567" rounds.
+- An IP address: "192.168.0.1", "2001:db8::1".
+- A web or email address: "https://example.com/item/123", "www.example.com/p/12", "sales@example.com".
+- An ISBN: "ISBN 978-0-306-40615-7", "978-0-306-40615-7". Without the word "ISBN" the digits must carry a dash or a space, so a bare "1234567890" still rounds.
+- A postal code: Canadian "M5V 2T6", UK "SW1A 1AA", US nine-digit "90210-1234". A bare five-digit "90210" reads as a count; the range expression is the way to leave such a column out.
+
+The shape must fill the whole cell, so "Call 416-555-1234" rounds its numbers as any extracted cell does. A cell with a superscript skips the shapes, since its text joins base and exponent digits. The shapes are listed once, in `lib/dr-number/identifiers.js`.
 
 ## Extension errors
 

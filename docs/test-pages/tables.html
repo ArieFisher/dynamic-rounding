@@ -1858,6 +1858,95 @@ TSLA,75,"248.09","18,606.75"
     </script>
   </section>
 
+  <section>
+    <h2>24. Identifiers</h2>
+    <p class="expect">Expect: a pillbox at load on both tables, a native table
+      and a grid holding the same rows. Press each pillbox on. Every Value
+      cell down to US ZIP+4 is an identifier shape and stays as written, on
+      both tables, with no hover text. The Count column rounds as usual. The
+      last three rows round their Value cell: "1 234 567" is thousands
+      grouping and reads as one number, "90210" alone reads as a count, and
+      "Call 416-555-1234" holds words, so its numbers round as any extracted
+      cell does. The sidebar preview samples the Count column and none of the
+      identifiers. Before this rule, every Value cell rounded: "416 555 1234"
+      read as the number 4,165,551,234, "192.168.0.1" rounded its first
+      part, and "M5V 2T6" rounded its 2.</p>
+
+    <!--
+      Both tables come from one list below, so they always hold the same
+      values. The Shape column holds under the shipped first-column default;
+      the Count column gives each table numbers to round beside the
+      identifiers.
+    -->
+    <table id="id-native">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+    <div id="id-grid" class="aria-grid" role="grid" aria-label="Identifier shapes"></div>
+    <script>
+      (function () {
+        var HEADERS = ['Shape', 'Value', 'Count'];
+        var ROWS = [
+          ['Phone, spaced', '416 555 1234', '1,613,245'],
+          ['Phone, international', '+1 416 555 1234', '918,554'],
+          ['Phone, dashes', '416-555-1234', '427,808'],
+          ['Phone, area code', '(416) 555-1234', '263,114'],
+          ['Phone, toll-free', '1-800-555-0199', '88,209'],
+          ['IP address', '192.168.0.1', '1,482,391'],
+          ['IP address, v6', '2001:db8::1', '947,310'],
+          ['Web address', 'https://example.com/item/123', '431,552'],
+          ['Email address', 'sales@example.com', '270,987'],
+          ['ISBN', 'ISBN 978-0-306-40615-7', '90,114'],
+          ['Canadian postal code', 'M5V 2T6', '1,506,220'],
+          ['UK postcode', 'SW1A 1AA', '1,002,466'],
+          ['US ZIP+4', '90210-1234', '440,193'],
+          ['Thousands grouping (rounds)', '1 234 567', '281,745'],
+          ['Five-digit ZIP (rounds)', '90210', '93,662'],
+          ['Words (rounds)', 'Call 416-555-1234', '1,611,842']
+        ];
+        var native = document.getElementById('id-native');
+        var grid = document.getElementById('id-grid');
+
+        var headerRow = document.createElement('tr');
+        HEADERS.forEach(function (text) {
+          var th = document.createElement('th');
+          th.scope = 'col';
+          th.textContent = text;
+          headerRow.appendChild(th);
+        });
+        native.tHead.appendChild(headerRow);
+        ROWS.forEach(function (cells) {
+          var tr = document.createElement('tr');
+          cells.forEach(function (text, c) {
+            var cell = document.createElement(c === 0 ? 'th' : 'td');
+            if (c === 0) cell.scope = 'row';
+            cell.textContent = text;
+            tr.appendChild(cell);
+          });
+          native.tBodies[0].appendChild(tr);
+        });
+
+        function gridRow(cells, role) {
+          var row = document.createElement('div');
+          row.className = 'g-row';
+          row.setAttribute('role', 'row');
+          cells.forEach(function (text) {
+            var cell = document.createElement('span');
+            cell.setAttribute('role', role);
+            cell.textContent = text;
+            row.appendChild(cell);
+          });
+          return row;
+        }
+        grid.appendChild(gridRow(HEADERS, 'columnheader'));
+        var group = document.createElement('div');
+        group.setAttribute('role', 'rowgroup');
+        ROWS.forEach(function (cells) { group.appendChild(gridRow(cells, 'cell')); });
+        grid.appendChild(group);
+      })();
+    </script>
+  </section>
+
 </body>
 
 </html>
