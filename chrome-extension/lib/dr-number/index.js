@@ -61,10 +61,6 @@ const DR_NUMBER = {
   // identifiers.js
   matchIdentifierShape,
   getIdentifierMaskedRanges,
-  isPhoneNumber,
   isGroupedDigitIdentifier,
-  isIpAddress,
-  isWebOrEmailAddress,
   isIsbnShape,
-  isPostalCode,
 };

@@ -1640,8 +1640,7 @@
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'decimalCount', 'formatExtractedNumber', 'restoreFormatting',
     // identifiers.js
-    'matchIdentifierShape', 'getIdentifierMaskedRanges', 'isPhoneNumber', 'isGroupedDigitIdentifier', 'isIpAddress',
-    'isWebOrEmailAddress', 'isIsbnShape', 'isPostalCode',
+    'matchIdentifierShape', 'getIdentifierMaskedRanges', 'isGroupedDigitIdentifier', 'isIsbnShape',
   ].sort();
 
   eq('lib/dr-number/index.js: DR_NUMBER exists on the global scope after the main eval',

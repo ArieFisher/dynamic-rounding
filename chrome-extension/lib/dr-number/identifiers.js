@@ -27,8 +27,8 @@
  * span inside text starts only where a shape can start, so every test runs
  * in time linear in the text's length.
  *
- * Each shape's patterns and test come first; the list and its two lookups
- * close the file, after every pattern they read.
+ * Each shape's pattern comes first; the list, which builds both readings of
+ * each pattern, and its two lookups close the file.
  *
  * Loaded by manifest content_scripts BEFORE lib/dr-number/index.js, which
  * reads every function here into DR_NUMBER as it loads. Nothing here reads
@@ -48,6 +48,11 @@ const SPAN_END = '(?![\\w]|\\.\\w)';
 // groups split by spaces, which count only as a whole cell.
 const SPACED_DIGITS_ONLY_RE = /^[+\d\s]+$/;
 
+// The two readings of one pattern: anchored to a whole cell, and found
+// anywhere inside text between the span edges above.
+const wholeCellRe = (pattern, flags = '') => new RegExp(`^(?:${pattern})$`, flags);
+const spanRe = (pattern, flags = '') => new RegExp(`${SPAN_START}(?:${pattern})${SPAN_END}`, `${flags}g`);
+
 // --- Phone numbers ---
 // Two written shapes: digits split by dashes, dots, or spaces in a 3-3-4
 // group with an optional leading "1" or "+1" ("416-555-1234", "416.555.1234",
@@ -57,12 +62,6 @@ const SPACED_DIGITS_ONLY_RE = /^[+\d\s]+$/;
 // groups, not three, so it is not this shape and keeps rounding as an
 // extracted cell.
 const PHONE_NUMBER_PATTERN = '\\+?(?:1[-.\\s]?)?\\d{3}[-.\\s]\\d{3}[-.\\s]\\d{4}|(?:\\+?1[-.\\s]?)?\\(\\d{3}\\)\\s?\\d{3}[-.\\s]\\d{4}';
-const PHONE_NUMBER_RE = new RegExp(`^(?:${PHONE_NUMBER_PATTERN})$`);
-const PHONE_NUMBER_SPAN_RE = new RegExp(`${SPAN_START}(?:${PHONE_NUMBER_PATTERN})${SPAN_END}`, 'g');
-
-function isPhoneNumber(trimmed) {
-  return PHONE_NUMBER_RE.test(trimmed);
-}
 
 // --- Grouped digits split by whitespace ---
 // A digit run split by whitespace reads as thousands grouping only in one
@@ -114,28 +113,18 @@ const IPV6_PATTERN = '(?:' + [
   ':(?:(?::[0-9a-fA-F]{1,4}){1,7}|:)',
 ].join('|') + ')';
 const IP_ADDRESS_PATTERN = `${IPV4_PATTERN}|${IPV6_PATTERN}`;
-const IP_ADDRESS_RE = new RegExp(`^(?:${IP_ADDRESS_PATTERN})$`);
-const IP_ADDRESS_SPAN_RE = new RegExp(`${SPAN_START}(?:${IP_ADDRESS_PATTERN})${SPAN_END}`, 'g');
-
-function isIpAddress(trimmed) {
-  return IP_ADDRESS_RE.test(trimmed);
-}
 
 // --- Web and email addresses ---
 // A URL prefix (http://, https://, www.) followed by anything non-blank, or
 // a bare name@domain.tld shape. The domain's labels exclude the dot that
-// joins them, so each character has one place to match. Inside text, an
-// email address starts only after whitespace or at the text's start: its
-// name part takes any non-blank character, so a start at every punctuation
-// mark of a long unbroken string would read that string again from each one.
+// joins them, so each character has one place to match. An email address
+// starts only after whitespace or at the text's start: its name part takes
+// any non-blank character, so inside text a start at every punctuation mark
+// of a long unbroken string would read that string again from each one. A
+// whole cell starts at the text's start, so that edge never narrows it.
 const WEB_PATTERN = 'https?:\\/\\/\\S+|www\\.\\S+';
 const EMAIL_PATTERN = '[^\\s@]+@[^\\s@.]+(?:\\.[^\\s@.]+)+';
-const WEB_OR_EMAIL_RE = new RegExp(`^(?:${WEB_PATTERN}|${EMAIL_PATTERN})$`, 'i');
-const WEB_OR_EMAIL_SPAN_RE = new RegExp(`${SPAN_START}(?:${WEB_PATTERN})|(?<!\\S)(?:${EMAIL_PATTERN})`, 'gi');
-
-function isWebOrEmailAddress(trimmed) {
-  return WEB_OR_EMAIL_RE.test(trimmed);
-}
+const WEB_OR_EMAIL_PATTERN = `${WEB_PATTERN}|(?<!\\S)(?:${EMAIL_PATTERN})`;
 
 // --- ISBN-10 and ISBN-13 ---
 // An optional "ISBN" word (with an optional "-10"/"-13" and an optional
@@ -152,8 +141,7 @@ function isWebOrEmailAddress(trimmed) {
 // word has one way to match.
 const ISBN_PREFIX_PATTERN = 'isbn(?:-1[03])?(?:\\s*:)?\\s*';
 const ISBN_BODY_PATTERN = '97[89](?:[- ]?\\d){10}|\\d(?:[- ]?\\d){8}[- ]?[\\dX]';
-const ISBN_RE = new RegExp(`^(${ISBN_PREFIX_PATTERN})?(?:${ISBN_BODY_PATTERN})$`, 'i');
-const ISBN_SPAN_RE = new RegExp(`${SPAN_START}${ISBN_PREFIX_PATTERN}(?:${ISBN_BODY_PATTERN})${SPAN_END}`, 'gi');
+const ISBN_RE = wholeCellRe(`(${ISBN_PREFIX_PATTERN})?(?:${ISBN_BODY_PATTERN})`, 'i');
 
 /**
  * True when trimmed is a whole cell holding an ISBN-10 or ISBN-13: with the
@@ -176,28 +164,23 @@ const POSTAL_CODE_PATTERN = [
   '[A-Za-z]{1,2}\\d[A-Za-z\\d]?\\s?\\d[A-Za-z]{2}',
   '\\d{5}-\\d{4}',
 ].join('|');
-const POSTAL_CODE_RE = new RegExp(`^(?:${POSTAL_CODE_PATTERN})$`);
-const POSTAL_CODE_SPAN_RE = new RegExp(`${SPAN_START}(?:${POSTAL_CODE_PATTERN})${SPAN_END}`, 'g');
 
-function isPostalCode(trimmed) {
-  return POSTAL_CODE_RE.test(trimmed);
-}
-
-// The one list of identifier shapes. Each entry names the shape, carries its
-// whole-cell test, and carries its span pattern for text with words, or null
-// when the shape counts only as a whole cell. matchIdentifierShape and
-// getIdentifierMaskedRanges read it alone — classifyCell and
-// extractSimplifyMatches hold no separate copy, and a new shape is one more
-// entry here. Every test takes the trimmed text and whether the cell's digits
-// span several text pieces. Phone numbers come before grouped digits so
-// "416 555 1234" takes the phone name.
+// The one list of identifier shapes. Each entry names the shape and carries
+// its whole-cell test — a pattern anchored to the whole cell, or a function
+// for a shape with a rule beyond its pattern — and its span pattern for text
+// with words, or null when the shape counts only as a whole cell.
+// matchIdentifierShape and getIdentifierMaskedRanges read it alone —
+// classifyCell and extractSimplifyMatches hold no separate copy, and a new
+// shape is one more entry here. A test function takes the trimmed text and
+// whether the cell's digits span several text pieces. Phone numbers come
+// before grouped digits so "416 555 1234" takes the phone name.
 const IDENTIFIER_SHAPES = [
-  { name: 'phone-number', test: isPhoneNumber, span: PHONE_NUMBER_SPAN_RE },
-  { name: 'grouped-digits', test: isGroupedDigitIdentifier, span: null },
-  { name: 'ip-address', test: isIpAddress, span: IP_ADDRESS_SPAN_RE },
-  { name: 'web-or-email-address', test: isWebOrEmailAddress, span: WEB_OR_EMAIL_SPAN_RE },
-  { name: 'isbn', test: isIsbnShape, span: ISBN_SPAN_RE },
-  { name: 'postal-code', test: isPostalCode, span: POSTAL_CODE_SPAN_RE },
+  { name: 'phone-number', whole: wholeCellRe(PHONE_NUMBER_PATTERN), span: spanRe(PHONE_NUMBER_PATTERN) },
+  { name: 'grouped-digits', whole: isGroupedDigitIdentifier, span: null },
+  { name: 'ip-address', whole: wholeCellRe(IP_ADDRESS_PATTERN), span: spanRe(IP_ADDRESS_PATTERN) },
+  { name: 'web-or-email-address', whole: wholeCellRe(WEB_OR_EMAIL_PATTERN, 'i'), span: spanRe(WEB_OR_EMAIL_PATTERN, 'i') },
+  { name: 'isbn', whole: isIsbnShape, span: spanRe(`${ISBN_PREFIX_PATTERN}(?:${ISBN_BODY_PATTERN})`, 'i') },
+  { name: 'postal-code', whole: wholeCellRe(POSTAL_CODE_PATTERN), span: spanRe(POSTAL_CODE_PATTERN) },
 ];
 
 /**
@@ -211,7 +194,9 @@ const IDENTIFIER_SHAPES = [
  */
 function matchIdentifierShape(trimmed, digitsSpanPieces = false) {
   if (GROUPED_DIGITS_QUANTITY_RE.test(trimmed)) return null;
-  const shape = IDENTIFIER_SHAPES.find((s) => s.test(trimmed, digitsSpanPieces));
+  const shape = IDENTIFIER_SHAPES.find((s) => (typeof s.whole === 'function'
+    ? s.whole(trimmed, digitsSpanPieces)
+    : s.whole.test(trimmed)));
   return shape ? shape.name : null;
 }
 
