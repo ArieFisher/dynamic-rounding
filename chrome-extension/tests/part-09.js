@@ -1636,7 +1636,7 @@
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'isEraYear', 'decimalCount', 'formatExtractedNumber', 'restoreFormatting',
     // identifiers.js
-    'matchIdentifierShape', 'isPhoneNumber', 'isGroupedDigitIdentifier', 'isIpAddress',
+    'matchIdentifierShape', 'getIdentifierMaskedRanges', 'isPhoneNumber', 'isGroupedDigitIdentifier', 'isIpAddress',
     'isWebOrEmailAddress', 'isIsbnShape', 'isPostalCode',
   ].sort();
 

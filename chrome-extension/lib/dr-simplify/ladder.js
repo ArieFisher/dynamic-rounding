@@ -47,9 +47,9 @@ function isWholeCellQuoted(trimmedText) {
 }
 
 /**
- * Drop any match overlapping a masked range (quote spans or superscript
- * spans, both in the same flat-text coordinate space extractNumbersInText
- * uses). A no-op when ranges is empty.
+ * Drop any match overlapping a masked range (quote spans, identifier spans,
+ * or superscript spans, all in the same flat-text coordinate space
+ * extractNumbersInText uses). A no-op when ranges is empty.
  */
 function filterMaskedMatches(matches, ranges) {
   if (!ranges || ranges.length === 0) return matches;
@@ -59,13 +59,16 @@ function filterMaskedMatches(matches, ranges) {
 /**
  * Every text-only filter mode:'extracted' applies before a caller's DOM-only
  * link filter: pull numbers out of `text`, mask anything inside a quoted
- * span or a superscript span, then drop era-marked years (issue #4 — "2898
- * AD" is a date, not a quantity). superscriptRanges is caller-supplied plain
- * data (see file header); pass [] when the cell carries no <sup>.
+ * span, an identifier span ("Call 416-555-1234"; see
+ * getIdentifierMaskedRanges in lib/dr-number/identifiers.js), or a
+ * superscript span, then drop era-marked years (issue #4 — "2898 AD" is a
+ * date, not a quantity). superscriptRanges is caller-supplied plain data (see
+ * file header); pass [] when the cell carries no <sup>.
  */
 function extractSimplifyMatches(text, superscriptRanges) {
   let matches = extractNumbersInText(text);
   matches = filterMaskedMatches(matches, getQuoteMaskedRanges(text));
+  matches = filterMaskedMatches(matches, getIdentifierMaskedRanges(text));
   matches = filterMaskedMatches(matches, superscriptRanges);
   matches = matches.filter((m) => !isEraYear(text, m.index, m.numStr));
   return matches;

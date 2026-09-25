@@ -1992,7 +1992,7 @@ const IDENTIFIER_NEAR_MISSES = [
   '1 234 567', '12 345.67', '1 234 567', '1 234 567',
   '1 234 567 890', '9 780 306 406 157',
   '100-200', '192.5', '1.5', '90210', '1234567890', '9780306406157',
-  '$1,613,245', '4.91tn', 'About 1,613,245 people', 'Call 416-555-1234',
+  '$1,613,245', '4.91tn', 'About 1,613,245 people',
 ];
 
 (function identifierShapes_matchTheWholeCell() {
@@ -2014,6 +2014,86 @@ const IDENTIFIER_NEAR_MISSES = [
     classifyCell({ text: '21 June 2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).mode, 'date');
 })();
 
+// --- Identifier shapes inside text (issue #465) ---
+//
+// Inside an extracted cell, a span matching an identifier shape holds its
+// digits, and every other number in the cell rounds. Digit groups split by
+// spaces alone stay whole-cell only: inside a sentence they are as likely to
+// be two numbers side by side.
+const IDENTIFIER_SPAN_CELLS = [
+  ['Call 416-555-1234 about 1,613,245 units', ['1,613,245']],
+  ['(416) 555-1234 ordered 918,554', ['918,554']],
+  ['Dial +1 (416) 555-1234 for 263,114 refunds', ['263,114']],
+  ['Fax 416.555.1234, 427,808 pages', ['427,808']],
+  ['Call 416 555-1234 about 612,027 units', ['612,027']],
+  ['Dial 1-800-555-0199 for 88,209 refunds', ['88,209']],
+  ['Host 192.168.0.1 served 1,482,391 requests', ['1,482,391']],
+  ['Host 2001:db8::1 served 947,310 requests', ['947,310']],
+  ['See https://example.com/item/123 for 431,552 rows', ['431,552']],
+  ['See (www.example.com/p/12) for 431,552 rows', ['431,552']],
+  ['Mail 311@example.com about 270,987 orders', ['270,987']],
+  ['ISBN 978-0-306-40615-7 sold 90,114 copies', ['90,114']],
+  ['ISBN: 0-306-40615-2 sold 90,114 copies', ['90,114']],
+  ['Ship to M5V 2T6, 1,506,220 parcels', ['1,506,220']],
+  ['Ship to SW1A 1AA, 1,002,466 parcels', ['1,002,466']],
+  ['Ship to 90210-1234, 440,193 parcels', ['440,193']],
+];
+const IDENTIFIER_SPAN_NEAR_MISSES = [
+  ['Call 416 555 1234 about 281,745 units', ['416', '555', '1234', '281,745']],
+  ['+1 416 555 1234 ordered 281,745', ['1', '416', '555', '1234', '281,745']],
+  ['In 2024 12 stores opened', ['2024', '12']],
+  ['978-0-306-40615-7 sold 90,114 copies', ['978', '306', '40615', '7', '90,114']],
+  ['Call 416-555-12345 about 281,745 units', ['416', '555', '12345', '281,745']],
+  ['Range 100-200 of 1,613,245', ['100', '200', '1,613,245']],
+  ['Zip 90210 has 93,662 people', ['90210', '93,662']],
+  ['Host 192.168.0.1.5 served 12 requests', ['192.168', '12']],
+];
+
+(function identifierShapes_holdTheirDigitsInsideText() {
+  const extractedNumbers = (text) => {
+    const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
+    return decision.mode === 'extracted' ? decision.value.matches.map((m) => m.numStr) : decision;
+  };
+  for (const [text, expected] of IDENTIFIER_SPAN_CELLS) {
+    eq(`identifier shape inside text: "${text}" rounds only its quantity`, extractedNumbers(text), expected);
+  }
+  for (const [text, expected] of IDENTIFIER_SPAN_NEAR_MISSES) {
+    eq(`identifier shape inside text: "${text}" rounds every number`, extractedNumbers(text), expected);
+  }
+  eq('identifier shape inside text: "Call 416-555-1234" matches no whole-cell shape',
+    matchIdentifierShape('Call 416-555-1234'), null);
+  eq('identifier shape inside text: "Call 416-555-1234" holds no number to round',
+    classifyCell({ text: 'Call 416-555-1234', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+    { mode: 'skip', reason: 'no-number' });
+  eq('identifier shape inside text: a footnote cell holds its phone number and rounds its quantity',
+    extractSimplifyMatches('Call 416-555-1234 about 1,613,245 units1', [{ start: 39, end: 40 }]).map((m) => m.numStr),
+    ['1,613,245']);
+  eq('identifier shape inside text: ranges cover each span in the text',
+    getIdentifierMaskedRanges('Call 416-555-1234 or sales@example.com'),
+    [{ start: 5, end: 17 }, { start: 21, end: 38 }]);
+  eq('identifier shape inside text: a text with no shape has no ranges',
+    getIdentifierMaskedRanges('About 1,613,245 people'), []);
+})();
+
+// Every span pattern starts only where a shape can start and has no repeat
+// that can match one character two ways, so a long text with many near
+// starts takes time linear in its length.
+(function identifierSpans_runInLinearTime() {
+  const texts = [
+    '-a'.repeat(50000),
+    '1-'.repeat(50000),
+    '1.'.repeat(50000),
+    'a:'.repeat(50000),
+    'x@'.repeat(50000),
+    'ISBN 9'.repeat(20000),
+    'A1'.repeat(50000),
+  ];
+  const started = Date.now();
+  for (const text of texts) getIdentifierMaskedRanges(text);
+  eq('identifier shape inside text: seven 100,000-character texts scan in under a second',
+    Date.now() - started < 1000, true);
+})();
+
 // A number right after "@" belongs to an at-name or an address, in any cell.
 (function atNameNumbersNeverRound() {
   for (const text of ['@1234', '@2020vision', '@cherry1234', 'Follow @2020vision on X']) {
@@ -2032,18 +2112,22 @@ const IDENTIFIER_NEAR_MISSES = [
   const quantity = '1,613,245';
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
 
+  // A cell with words holds its phone number and rounds its count (issue #465).
+  const inText = 'Call 416-555-1234 about 1,613,245 units';
+  const inTextRounded = 'Call 416-555-1234 about 1,500,000 units';
+
   withCreateTreeWalker(function() {
-    const table = makeMockTable([[...identifiers, quantity].map((text) => ({ tag: 'td', text }))]);
+    const table = makeMockTable([[...identifiers, inText, quantity].map((text) => ({ tag: 'td', text }))]);
     roundTable(table, opts);
     eq('identifier shape (native table): identifiers stay as written and the quantity rounds',
-      table.rows[0].cells.map((c) => c.textContent), [...identifiers, '1,500,000']);
+      table.rows[0].cells.map((c) => c.textContent), [...identifiers, inTextRounded, '1,500,000']);
   });
 
-  const grid = makeE2EGridWrapper([[...identifiers, quantity]]);
+  const grid = makeE2EGridWrapper([[...identifiers, inText, quantity]]);
   try {
     roundTable(grid.wrapperEl, opts);
     eq('identifier shape (grid): identifiers stay as written and the quantity rounds',
-      grid.cellEls.map((cell) => pieceTextsOf(cell).join('')), [...identifiers, '1,500,000']);
+      grid.cellEls.map((cell) => pieceTextsOf(cell).join('')), [...identifiers, inTextRounded, '1,500,000']);
   } finally {
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
