@@ -276,9 +276,10 @@ function makeCellObj(cellEl, port, reads) {
       const record = recordOf();
       if (record && record.pieces.length !== live.length) return null;
       const original = record ? record.pieces.map((piece) => piece.text) : live;
-      if (!reads.rendered) return { original, toFlat: null };
+      if (!reads.rendered) return { original, toFlat: null, rendered: false };
       const text = getText();
-      return { original, toFlat: mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original) };
+      const toFlat = mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original);
+      return { original, toFlat, rendered: true };
     },
     // Write the patches and return how many landed. The patches count in
     // the join of the cell's original pieces (see flatPatches), so the
@@ -977,6 +978,8 @@ function restoreTextPieces(cell, storedPieces) {
 //   toFlat      for each position of the classified text, its position in
 //               the join of original; null when the positions count alike,
 //               and no entry for a position with no known counterpart
+//   rendered    whether the classified text is rendered text: true for a
+//               native cell, false for a grid cell
 // A native cell classifies its rendered text and converts positions through
 // mapRenderedToFlat. When the rendered and flat texts differ in more than
 // whitespace, such as a hidden sort key ahead of the value, toFlat maps the
@@ -1049,6 +1052,27 @@ function flatPatches(patches, layout) {
   });
 }
 
+// The position in the classified text of the character at a position of the
+// join of original, or -1 when the classified text does not hold it. With no
+// toFlat a flat text counts alike, and a rendered text holds no known
+// position: it differs from the flat text in more than whitespace, such as
+// a hidden sort key, so a stacked number could sit in the hidden text.
+function textPosition(layout, text, flat) {
+  if (!layout.toFlat) return layout.rendered ? -1 : flat;
+  return layout.toFlat.findIndex((f, r) => f === flat && !/\s/.test(text[r]));
+}
+
+// Whether the classified text shows a piece's first character straight
+// after the character before it, with no space or line break between. Only
+// rendered text shows that break (see placeDecision), so a layout of flat
+// text answers false. A piece whose first character the classified text
+// does not hold answers true, so the pieces stay unchanged.
+function runsIntoPiece(layout, text, span) {
+  if (!layout.rendered) return false;
+  const at = textPosition(layout, text, span.start);
+  return at <= 0 || !/\s/.test(text[at - 1]);
+}
+
 // The numbers of a stacked cell: a cell whose text pieces each hold one
 // whole number or unit number, or nothing but whitespace, currency symbols
 // (the number parser's list), a percent sign, or a listed currency code.
@@ -1060,12 +1084,16 @@ function flatPatches(patches, layout) {
 // that ends in "." or "," before one that starts with a digit ("4." then
 // "91"). A piece that starts with "." or "," never reads as a number, so "4"
 // then ".91" is not stacked either. A digit next to a digit across two
-// pieces reads as two numbers, the shape of one number per line.
-function stackedMatches(spans) {
+// pieces reads as two numbers, the shape of one number per line, unless
+// runTogether(span) holds for the second piece: then the two pieces read as
+// one number split across them ("6,7" plain, then "18,245" in bold).
+function stackedMatches(spans, runTogether = () => false) {
   const symbolPiece = new RegExp('^(?:' + CURRENCY_SIGN_ALTERNATION + '|%)+$');
   const filled = spans.filter((span) => span.text.length > 0);
   for (let k = 1; k < filled.length; k++) {
-    if (/[.,]$/.test(filled[k - 1].text) && /^\d/.test(filled[k].text)) return 'split';
+    const before = filled[k - 1].text;
+    if (!/^\d/.test(filled[k].text)) continue;
+    if (/[.,]$/.test(before) || (/\d$/.test(before) && runTogether(filled[k]))) return 'split';
   }
   const matches = [];
   for (const span of filled) {
@@ -1088,14 +1116,19 @@ function stackedMatches(spans) {
  * check runs when its patch is built, because only a changed value needs
  * one.
  *
- * A decision whose characters cross a piece boundary skips with reason
- * 'pieces'. With opts.stacked, the cell first takes the stacked-cell test
- * (see stackedMatches), and so does a cell held back as mixed text: a
- * stacked cell rounds number by number as an extracted decision, and a
- * number split across pieces skips with reason 'split'. Grids take the
- * stacked-cell test. Native tables do not: the test reads a digit beside a
- * digit across pieces as two numbers, and a native cell's inline styling
- * splits one number that way ("1" plain, "23" in bold).
+ * A decision whose characters cross a piece boundary takes the stacked-cell
+ * test (see stackedMatches), and so does a cell held back as mixed text: a
+ * stacked cell rounds number by number as an extracted decision, a number
+ * split across pieces skips with reason 'split', and any other cell skips
+ * with reason 'pieces'.
+ *
+ * The test reads a digit beside a digit across two pieces as two numbers
+ * unless the classified text runs the two pieces together. A native cell
+ * classifies its rendered text, which holds a line break or a space between
+ * two pieces on separate lines and nothing between two pieces that inline
+ * styling splits ("1" plain, "23" in bold), so the rendered text sorts the
+ * two shapes. A grid cell classifies its flat text, which joins every piece
+ * with nothing between, so a grid reads two numbers.
  *
  * A cell with no layout (its pieces no longer reach its record) skips with
  * reason 'pieces-changed'. A cell with a <sup> keeps a skip decision, so a
@@ -1103,8 +1136,8 @@ function stackedMatches(spans) {
  *
  * @param {object} decision - classifyCell's decision
  * @param {string} text - the text the decision was classified on
- * @param {{original: string[], toFlat: number[]|null}|null} layout
- * @param {{hasSuperscript?: boolean, stacked?: boolean}} [opts]
+ * @param {{original: string[], toFlat: number[]|null, rendered?: boolean}|null} layout
+ * @param {{hasSuperscript?: boolean}} [opts]
  * @returns {object} the placed decision
  */
 function placeDecision(decision, text, layout, opts = {}) {
@@ -1118,11 +1151,14 @@ function placeDecision(decision, text, layout, opts = {}) {
   } else if (!(decision.mode === 'skip' && decision.reason === 'mixed-disabled')) {
     return decision;
   }
-  if (!opts.stacked) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
-  const matches = stackedMatches(pieceSpans(layout));
+  const matches = stackedMatches(pieceSpans(layout), (span) => runsIntoPiece(layout, text, span));
   if (matches === 'split') return { mode: 'skip', reason: 'split' };
   if (matches === null) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
-  return { mode: 'extracted', reason: 'stacked', value: { matches } };
+  // Every other match counts in the classified text, so the patch step
+  // converts it through toFlat (see flatPatches).
+  const placed = matches.map((m) => Object.assign({}, m, { index: textPosition(layout, text, m.index) }));
+  if (placed.some((m) => m.index < 0)) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
+  return { mode: 'extracted', reason: 'stacked', value: { matches: placed } };
 }
 
 // --- Table/grid detection predicates ---

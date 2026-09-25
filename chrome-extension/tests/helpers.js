@@ -428,8 +428,8 @@ function makePrettyPrintedCell(segments) {
 // three steps as every other cell — classify, place, patch. A value whose
 // characters sit in one text piece rounds through the patch writer, with its
 // rendered position converted to the flat text. A value that crosses a piece
-// boundary stays unchanged with a debug row: the native placement step runs
-// no stacked-cell test, and no writer spreads characters across pieces.
+// boundary and fails the stacked-cell test stays unchanged with a debug row:
+// no writer spreads characters across pieces.
 function nativeOnePieceOpts() {
   return Object.assign({}, DR_DEFAULTS, {
     enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,

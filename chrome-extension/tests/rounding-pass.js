@@ -677,6 +677,77 @@
   });
 })();
 
+// Issues #452 and #461: a native table runs the stacked-cell test, as a grid
+// does. A native cell classifies its rendered text, which shows whether two
+// pieces sit on separate lines or run together, so a digit beside a digit
+// across two pieces reads as two numbers only when the rendered text shows
+// a space or a line break between them. Dataset 337.91, 125, 126, so the
+// max magnitude is 2.
+//   a: a currency sign in its own piece, then the number
+//   b: one number per line, with mixed-cell simplification off
+//   c: one number that inline styling splits into two pieces ("6,7" plain,
+//      "18,245" bold): the rendered text runs them together, so it stays
+//   d: a number split after its grouping comma: stays
+(function nativeStacked_roundsEachNumberInItsPiece() {
+  withReactiveCreateTreeWalker(function () {
+    const onRows = (segs) => () => segs.map((seg) => seg.text).join('\n');
+    const joined = (segs) => () => segs.map((seg) => seg.text).join('');
+    const a = [{ text: '$', inSup: false }, { text: '337.91', inSup: false }];
+    const b = [{ text: '125', inSup: false }, { text: '126', inSup: false }];
+    const c = [{ text: '6,7', inSup: false }, { text: '18,245', inSup: false }];
+    const d = [{ text: '3,406,', inSup: false }, { text: '918', inSup: false }];
+    const cells = [
+      makeSortKeyCell(a, joined(a)), makeSortKeyCell(b, onRows(b)),
+      makeSortKeyCell(c, joined(c)), makeSortKeyCell(d, joined(d)),
+    ];
+    const table = { rows: cells.map((cell) => ({ cells: [cell] })), querySelector: () => null, dataset: {} };
+    const rows = [];
+    const offRow = DR_LOG.onRow((row) => rows.push(row));
+    const opts = Object.assign(nativeOnePieceOpts(), { simplifyMixedCells: false });
+    try {
+      eq('native stacked: the lens preview pool holds the numbers the pass rounds',
+        collectNumericCells(table, opts).map((cell) => cell.num), [337.91, 125, 126]);
+      roundTable(table, opts);
+      eq('native stacked: a currency sign in its own piece stays and the number rounds',
+        a.map((seg) => seg.text), ['$', '350']);
+      eq('native stacked: one number per line rounds number by number with mixed-cell simplification off',
+        b.map((seg) => seg.text), ['150', '150']);
+      eq('native stacked: a number that inline styling splits into two pieces stays unchanged',
+        c.map((seg) => seg.text), ['6,7', '18,245']);
+      eq('native stacked: a number split after its grouping comma stays unchanged',
+        d.map((seg) => seg.text), ['3,406,', '918']);
+      eq('native stacked: each split number leaves a debug row',
+        rows.filter((row) => row.level === 'debug' && /native cell value split across text pieces/.test(row.text)).length,
+        2);
+    } finally {
+      offRow();
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
+// A hidden sort key beside a currency sign in its own tag: the rendered text
+// ("$7,002,300") differs from the flat text in more than whitespace, and no
+// one piece holds it, so no rendered position maps to a piece. A stacked
+// number could sit in the hidden text, so the cell stays unchanged and its
+// numbers stay out of the lens preview pool.
+(function nativeStacked_hiddenSortKeyStaysUnchanged() {
+  withReactiveCreateTreeWalker(function () {
+    const segs = [{ text: '7002300', inSup: false }, { text: '$', inSup: false }, { text: '7,002,300', inSup: false }];
+    const cell = makeSortKeyCell(segs, () => '$7,002,300');
+    const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
+    try {
+      eq('native stacked: a hidden sort key beside a stacked cell keeps its numbers out of the pool',
+        collectNumericCells(table, nativeOnePieceOpts()), []);
+      roundTable(table, nativeOnePieceOpts());
+      eq('native stacked: a hidden sort key beside a stacked cell leaves every piece unchanged',
+        segs.map((seg) => seg.text), ['7002300', '$', '7,002,300']);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
 (function nativeWrite_olderWriterIsGone() {
   eq('native write: no loaded source defines or calls the older whole-cell writer',
     /replaceTextPreservingHTML/.test(allContentSrc), false);
@@ -1517,8 +1588,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 //      found at all; the decision that does survive already fits in one
 //      piece, so the piece-aware stacked-cell fallback that would have
 //      caught both numbers never runs. A native table hits this identical
-//      gap for the same glued shape, since it takes no stacked-cell test
-//      either — parity, not a grid-specific regression.
+//      gap for the same glued shape, for the same reason.
 //   e: a number split before its decimal point: unchanged
 (function gridStacked_edges() {
   const grid = makeE2EGridWrapper([['125126', '4.91tn', '416 5551234', '4.91tn41.31m', '4.91']]);
@@ -1541,6 +1611,30 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
       pieceTextsOf(e), ['4', '.91']);
     eq('grid stacked: the max magnitude leaves out the cell that is not stacked',
       DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 2);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+// The cells of the native stacked test above, on a grid, with mixed-cell
+// simplification off (test page section 25). A grid cell's flat text holds
+// nothing between pieces, so a digit beside a digit across pieces reads as
+// two numbers, and one number that inline styling splits ("6,7" plain,
+// "18,245" in bold) rounds as two numbers where a native table leaves it.
+(function gridStacked_sameCellsAsTheNativeTable() {
+  const grid = makeE2EGridWrapper([['$337.91', '125126', '6,718,245']]);
+  const [a, b, c] = grid.cellEls;
+  setGridCellPieces(a, [makeElementNode('s', [makeTextNode('$')]), makeElementNode('n', [makeTextNode('337.91')])]);
+  setGridCellPieces(b, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])]);
+  setGridCellPieces(c, [makeTextNode('6,7'), makeElementNode('b', [makeTextNode('18,245')])]);
+  try {
+    roundTable(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: false }));
+    eq('grid stacked: a currency sign in its own piece stays and the number rounds, as on a native table',
+      pieceTextsOf(a), ['$', '350']);
+    eq('grid stacked: one number per line rounds with mixed-cell simplification off, as on a native table',
+      pieceTextsOf(b), ['150', '150']);
+    eq('grid stacked: one number that inline styling splits rounds as two numbers',
+      pieceTextsOf(c), ['65', '20,000']);
   } finally {
     DR_STORE.unregisterTable(grid.wrapperEl);
   }

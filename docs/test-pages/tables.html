@@ -2018,6 +2018,79 @@ TSLA,75,"248.09","18,606.75"
     </script>
   </section>
 
+  <section>
+    <h2>25. Stacked cells</h2>
+    <p class="expect">Expect: a pillbox at load on both tables, a native table
+      and a grid holding the same rows. Press each pillbox on. On both tables,
+      the "$" in its own tag stays and the number beside it rounds, and each
+      number in the one-number-per-line cell rounds on its own. Switch
+      mixed-cell simplification off in the sidebar and press each pillbox
+      again: the same cells round. The last row holds one number whose
+      digits sit in two tags, the second in bold. The native table leaves it
+      unchanged, because its rendered text runs the two tags together. The
+      grid rounds "6,7" and "18,245" as two numbers, because its flat text
+      holds no line breaks. Before this change, the native table left the "$" row
+      unchanged, and left the one-number-per-line cell unchanged with
+      mixed-cell simplification off (issues #452, #461).</p>
+
+    <!--
+      $ 337.91 (sign in its own tag)  -> $ stays, 337.91 rounds, both tables
+      125 above 126                    -> each rounds, both tables, mixed-cell
+                                          simplification on or off
+      6,7 + <b>18,245</b>              -> native: unchanged; grid: two numbers
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Case</th>
+          <th scope="col">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Plain number</th>
+          <td>48,215</td>
+        </tr>
+        <tr>
+          <th scope="row">Sign in its own tag</th>
+          <td><span>$</span><span>337.91</span></td>
+        </tr>
+        <tr>
+          <th scope="row">One number per line</th>
+          <td><span>125</span><br><span>126</span></td>
+        </tr>
+        <tr>
+          <th scope="row">One number, digits in two tags</th>
+          <td>6,7<b>18,245</b></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="aria-grid" role="grid" aria-label="Stacked cells">
+      <div class="g-row" role="row">
+        <span role="columnheader">Case</span>
+        <span role="columnheader">Value</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">Plain number</span>
+          <span role="cell">48,215</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Sign in its own tag</span>
+          <span role="cell"><span>$</span><span>337.91</span></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">One number per line</span>
+          <span role="cell"><span>125</span><br><span>126</span></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">One number, digits in two tags</span>
+          <span role="cell">6,7<b>18,245</b></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
 </body>
 
 </html>
