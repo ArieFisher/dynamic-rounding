@@ -25,9 +25,12 @@
  * before their definitions, and the patterns they read are defined before
  * any cell is classified.
  *
- * Loaded by manifest content_scripts AFTER core.js and parsing.js and BEFORE
- * lib/dr-simplify/ladder.js. All symbols land on the shared global scope
- * consumed by ladder.js, the same convention core.js and parsing.js use.
+ * Loaded by manifest content_scripts BEFORE lib/dr-number/index.js, which
+ * reads every function here into DR_NUMBER as it loads. Nothing here reads
+ * another file at load time, and ladder.js calls matchIdentifierShape only
+ * while classifying a cell, after every content script has loaded. All
+ * symbols land on the shared global scope, the same convention core.js and
+ * parsing.js use.
  */
 
 // The one list of identifier shapes. Each entry names the shape and carries
