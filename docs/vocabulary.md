@@ -195,6 +195,9 @@ Terms for reviews, plans, and discussion.
 | never used | Code no caller reaches. |
 | living doc | A doc that describes the current system and must track it: the READMEs, the design doc, this vocabulary, the agent instructions. A behavior change updates the living docs it invalidates in the same branch. |
 | historical record | A doc that describes a moment: sprint plans and logs, research notes, changelog entries. Never rewritten — a superseded or completed record gets a status marker pointing forward. |
+| test piece | One file of the extension's test suite, in the tests folder beside the runner. A piece does not run alone: it reads the setup and helpers other pieces define. |
+| order list | The runner's one list of test pieces, in run order. A piece in the folder missing from the list, or a listed piece missing from the folder, stops the run with an error. |
+| joined suite | The text of every test piece, in order-list order, run as one script in one shared scope. A function one piece defines is callable from every piece, and state one piece leaves behind reaches the pieces after it. The checks that scan the suite's own text read the joined suite. |
 | cost | What a change uses up (units may be: lines, risk, review time, runtime, etc.) |
 | benefit | What the user or the maintainer gains from a change. |
 
