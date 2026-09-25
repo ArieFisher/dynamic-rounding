@@ -99,6 +99,8 @@ function extractSimplifyMatches(text, superscriptRanges) {
  * @param {boolean} [input.isWholeLink] - isCellWholeLink(cell) result
  * @param {boolean} [input.hasSuperscript] - !!cell.querySelector('sup')
  * @param {{start:number,end:number}[]} [input.superscriptRanges] - getSuperscriptRanges(cell) result
+ * @param {boolean} [input.digitsSpanPieces] - true when the cell's digits sit
+ *   in more than one text piece (see matchIdentifierShape)
  * @param {object} options - resolved rounding options (simplifyFirstRow,
  *   simplifyFirstColumn, simplifyMixedPercent, simplifyMixedCurrency,
  *   simplifyDates, simplifyTimes, simplifyMixedCells)
@@ -113,6 +115,7 @@ function classifyCell(input, options) {
     isWholeLink = false,
     hasSuperscript = false,
     superscriptRanges = [],
+    digitsSpanPieces = false,
   } = input;
   const trimmed = typeof text === 'string' ? text.trim() : '';
 
@@ -161,15 +164,17 @@ function classifyCell(input, options) {
   // address, an ISBN, a postal code, or a digit run split by whitespace that
   // is not thousands grouping) reads as a code, not a quantity, so the whole
   // cell stays as written. Checked after the date and time checks above, so
-  // a date written with spaces ("2020 06 21") still reads as a date first,
-  // and before the bracketed-number check below, since a phone number's
-  // bracketed area code ("(416) 555-1234") is not that bracket's minus sign.
+  // a date the date parser reads ("21 June 2020") stays a date, and before
+  // the bracketed-number check below, since a phone number's bracketed area
+  // code ("(416) 555-1234") is not that bracket's minus sign.
   // matchIdentifierShape (lib/dr-number/identifiers.js) holds the one list of
-  // shapes; this is the one place that reads it. A cell with a <sup> takes
-  // the footnote path below instead: its flattened text joins base and
-  // exponent digits ("20 10<sup>15</sup>" reads "20 1015"), which is not the
-  // text the reader sees, so no shape is tested against it.
-  if (!hasSuperscript && matchIdentifierShape(trimmed)) {
+  // shapes; this is the one place that reads it. digitsSpanPieces comes from
+  // the caller's piece layout, so a stacked cell's join of several numbers
+  // never reads as one spaced identifier. A cell with a <sup> takes the
+  // footnote path below instead: its flattened text joins base and exponent
+  // digits ("20 10<sup>15</sup>" reads "20 1015"), which is not the text the
+  // reader sees, so no shape is tested against it.
+  if (!hasSuperscript && matchIdentifierShape(trimmed, digitsSpanPieces)) {
     return { mode: 'skip', reason: 'identifier' };
   }
 

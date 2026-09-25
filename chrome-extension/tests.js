@@ -9460,6 +9460,30 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   }
 })();
 
+// A stacked cell's joined text ("1500 1600") looks like digit groups split by
+// whitespace, but its digits sit in several text pieces, so the spaced-digit
+// identifier shape does not apply and each number rounds. A one-piece cell
+// with the same kind of text stays as written. Dataset 1500, 1600, 45, 46,
+// so the max magnitude is 3: 1500 → 1500, 1600 → 1500, 45 → 45, 46 → 45.
+(function gridStacked_digitsInSeveralPiecesAreNotOneIdentifier() {
+  const grid = makeE2EGridWrapper([['1500 1600', '45 46', '4165 5512']]);
+  const [a, b, c] = grid.cellEls;
+  setGridCellPieces(a, [makeTextNode(' 1500 '), makeElementNode('br', []), makeTextNode(' 1600')]);
+  setGridCellPieces(b, [makeElementNode('l1', [makeTextNode('45')]), makeTextNode(' '),
+    makeElementNode('l2', [makeTextNode('46')])]);
+  try {
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('grid stacked: numbers in several pieces round though their join looks like spaced digit groups',
+      pieceTextsOf(a), [' 1500 ', ' 1500']);
+    eq('grid stacked: two-digit numbers in several pieces round number by number',
+      pieceTextsOf(b), ['45', ' ', '45']);
+    eq('grid stacked: spaced digit groups in one piece stay as written',
+      pieceTextsOf(c), ['4165 5512']);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
 // The link filter holds on a stacked cell: a number inside a link stays, and
 // once the cell is rounded the record's kept positions drive the preview.
 (function gridStacked_linkFilter() {
@@ -16490,7 +16514,8 @@ function withRightClickSandbox(run) {
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'isEraYear', 'decimalCount', 'formatExtractedNumber', 'restoreFormatting',
     // identifiers.js
-    'isGroupedDigitIdentifier', 'isIsbnShape', 'matchIdentifierShape',
+    'matchIdentifierShape', 'isPhoneNumber', 'isGroupedDigitIdentifier', 'isIpAddress',
+    'isWebOrEmailAddress', 'isIsbnShape', 'isPostalCode',
   ].sort();
 
   eq('lib/dr-number/index.js: DR_NUMBER exists on the global scope after the main eval',
@@ -18676,11 +18701,16 @@ const LADDER_OPTS = {
 // split by whitespace outside thousands grouping) stays as written. The
 // "still rounds" rows pin the near misses each shape must leave alone.
 const IDENTIFIER_SHAPE_CELLS = [
-  ['416 555 1234', 'grouped-digits'],
-  ['+1 416 555 1234', 'grouped-digits'],
+  ['416 555 1234', 'phone-number'],
+  ['+1 416 555 1234', 'phone-number'],
   ['4165 5512', 'grouped-digits'],
+  ['44 20 7946 0958', 'grouped-digits'],
   ['416-555-1234', 'phone-number'],
+  ['416 555-1234', 'phone-number'],
   ['(416) 555-1234', 'phone-number'],
+  ['(416) 555 1234', 'phone-number'],
+  ['(416)555-1234', 'phone-number'],
+  ['+1 (416) 555-1234', 'phone-number'],
   ['416.555.1234', 'phone-number'],
   ['1-800-555-0199', 'phone-number'],
   ['192.168.0.1', 'ip-address'],
@@ -18699,6 +18729,7 @@ const IDENTIFIER_SHAPE_CELLS = [
 ];
 const IDENTIFIER_NEAR_MISSES = [
   '1 234 567', '12 345.67', '1 234 567', '1 234 567',
+  '1 234 567 890', '9 780 306 406 157',
   '100-200', '192.5', '1.5', '90210', '1234567890', '9780306406157',
   '$1,613,245', '4.91tn', 'About 1,613,245 people', 'Call 416-555-1234',
 ];
@@ -18720,6 +18751,17 @@ const IDENTIFIER_NEAR_MISSES = [
     { mode: 'skip', reason: 'no-number' });
   eq('identifier shape: a date written with spaces still reads as a date',
     classifyCell({ text: '21 June 2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).mode, 'date');
+})();
+
+// A number right after "@" belongs to a handle or an address, in any cell.
+(function handleNumbersNeverRound() {
+  for (const text of ['@1234', '@2020vision', '@cherry1234', 'Follow @2020vision on X']) {
+    eq(`handle: "${text}" holds no number to round`,
+      classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
+      { mode: 'skip', reason: 'no-number' });
+  }
+  eq('handle: a count beside a handle still rounds, and the handle stays',
+    extractNumbersInText('@2020vision has 1,613,245 fans').map((m) => m.numStr), ['1,613,245']);
 })();
 
 (function identifierShapes_stayOnEveryTableKind() {

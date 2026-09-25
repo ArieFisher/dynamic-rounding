@@ -60,7 +60,11 @@ const DR_NUMBER = {
   restoreFormatting,
 
   // identifiers.js
-  isGroupedDigitIdentifier,
-  isIsbnShape,
   matchIdentifierShape,
+  isPhoneNumber,
+  isGroupedDigitIdentifier,
+  isIpAddress,
+  isWebOrEmailAddress,
+  isIsbnShape,
+  isPostalCode,
 };

@@ -8,20 +8,76 @@
 /**
  * Identifier shapes: whole-cell text shapes that read as a code rather than a
  * quantity — a phone number, an IP address, a web or email address, an ISBN,
- * or a postal code. classifyCell (lib/dr-simplify/ladder.js) checks a cell's
- * whole trimmed text against this one list and skips the cell (reason:
+ * a postal code, or digit groups split by whitespace outside thousands
+ * grouping. classifyCell (lib/dr-simplify/ladder.js) checks a cell's whole
+ * trimmed text against this one list and skips the cell (reason:
  * 'identifier') on a match, before the bracketed-number check and after the
- * date and time checks, so a date written with spaces still reads as a date
- * first. A cell with words around a matching shape ("Call 416-555-1234")
- * never reaches this list: every pattern is anchored to the whole trimmed
- * text with `^...$`, and no repeat in any pattern can match the same
- * character two ways, so every match runs in time linear in the cell's
+ * date and time checks, so a date the date parser reads ("21 June 2020")
+ * stays a date. A text in thousands grouping ("1 234 567 890") is a quantity
+ * for every shape and never matches. A cell with words around a matching
+ * shape ("Call 416-555-1234") never matches: every pattern is anchored to the
+ * whole trimmed text with `^...$`, and no repeat in any pattern can match the
+ * same character two ways, so every test runs in time linear in the cell's
  * length.
+ *
+ * The list and its lookup come first; each shape's test and patterns follow
+ * below. The tests are function declarations, so the list can name them
+ * before their definitions, and the patterns they read are defined before
+ * any cell is classified.
  *
  * Loaded by manifest content_scripts AFTER core.js and parsing.js and BEFORE
  * lib/dr-simplify/ladder.js. All symbols land on the shared global scope
  * consumed by ladder.js, the same convention core.js and parsing.js use.
  */
+
+// The one list of identifier shapes. Each entry names the shape and carries
+// the test for it, read by matchIdentifierShape alone — classifyCell holds no
+// separate copy, and a new shape is one more entry here. An entry marked
+// onePieceOnly applies only when the cell's digits sit in one text piece: a
+// grid's stacked cell ("1500" above "1600") joins its pieces with whitespace,
+// and that join is several numbers, not one spaced identifier. Phone numbers
+// come before grouped digits so "416 555 1234" takes the phone name.
+const IDENTIFIER_SHAPES = [
+  { name: 'phone-number', test: isPhoneNumber },
+  { name: 'grouped-digits', test: isGroupedDigitIdentifier, onePieceOnly: true },
+  { name: 'ip-address', test: isIpAddress },
+  { name: 'web-or-email-address', test: isWebOrEmailAddress },
+  { name: 'isbn', test: isIsbnShape },
+  { name: 'postal-code', test: isPostalCode },
+];
+
+/**
+ * The name of the identifier shape trimmed's whole text matches, or null. A
+ * text in thousands grouping is a quantity and matches no shape, so a ten- or
+ * thirteen-digit value written "1 234 567 890" never reads as an ISBN.
+ * @param {string} trimmed - already-trimmed cell text
+ * @param {boolean} [digitsSpanPieces] - true when the cell's digits sit in
+ *   more than one text piece; the onePieceOnly shapes then do not apply
+ * @returns {string|null}
+ */
+function matchIdentifierShape(trimmed, digitsSpanPieces = false) {
+  if (typeof trimmed !== 'string' || trimmed === '') return null;
+  if (GROUPED_DIGITS_QUANTITY_RE.test(trimmed)) return null;
+  for (const shape of IDENTIFIER_SHAPES) {
+    if (shape.onePieceOnly && digitsSpanPieces) continue;
+    if (shape.test(trimmed)) return shape.name;
+  }
+  return null;
+}
+
+// --- Phone numbers ---
+// Two written shapes: digits split by dashes, dots, or spaces in a 3-3-4
+// group with an optional leading "1" or "+1" ("416-555-1234", "416.555.1234",
+// "416 555-1234", "1-800-555-0199"), or a bracketed area code with the same
+// optional lead and an optional space after the bracket ("(416) 555-1234",
+// "(416)555-1234", "(416) 555 1234", "+1 (416) 555-1234"). "100-200" is two
+// groups, not three, so it is not this shape and keeps rounding as an
+// extracted cell.
+const PHONE_NUMBER_RE = /^(?:\+?(?:1[-.\s]?)?\d{3}[-.\s]\d{3}[-.\s]\d{4}|(?:\+?1[-.\s]?)?\(\d{3}\)\s?\d{3}[-.\s]\d{4})$/;
+
+function isPhoneNumber(trimmed) {
+  return PHONE_NUMBER_RE.test(trimmed);
+}
 
 // --- Grouped digits split by whitespace ---
 // A digit run split by whitespace reads as thousands grouping only in one
@@ -31,30 +87,22 @@
 // space (U+202F) and the no-break space (U+00A0) international sites use for
 // that grouping, alongside the plain ASCII space. Anything else with
 // whitespace between two digits — a first group over 3 digits, a later group
-// not exactly 3, a phone number's area code and exchange — is not that shape,
-// so it reads as an identifier instead of a quantity.
+// not exactly 3 — is not that shape, so it reads as an identifier instead of
+// a quantity.
 const GROUPED_DIGITS_GENERAL_RE = /^[+-]?\d+(?:\s+\d+)+(?:\.\d+)?$/;
 const GROUPED_DIGITS_QUANTITY_RE = /^[+-]?\d{1,3}(?:\s+\d{3})+(?:\.\d+)?$/;
 
 /**
  * True when trimmed is a whole cell of digit groups split by whitespace that
- * is not the thousands-grouping shape ("416 555 1234", "+1 416 555 1234",
- * "4165 5512"). A cell that is the thousands-grouping shape itself ("1 234
- * 567", "12 345.67") is a quantity and returns false, so it keeps rounding as
- * a pure cell — the whitespace is a format mark CLEAN_REGEX (core.js) already
- * strips before the text reads as a number.
+ * is not the thousands-grouping shape ("4165 5512", "44 20 7946 0958"). A
+ * cell that is the thousands-grouping shape itself ("1 234 567", "12 345.67")
+ * is a quantity and returns false, so it keeps rounding as a pure cell — the
+ * whitespace is a format mark CLEAN_REGEX (core.js) already strips before the
+ * text reads as a number.
  */
 function isGroupedDigitIdentifier(trimmed) {
   return GROUPED_DIGITS_GENERAL_RE.test(trimmed) && !GROUPED_DIGITS_QUANTITY_RE.test(trimmed);
 }
-
-// --- Phone numbers ---
-// Two written shapes: digits split by dashes or dots in a 3-3-4 group with an
-// optional leading "1" or a "+" country code ("416-555-1234", "416.555.1234",
-// "1-800-555-0199"), or a bracketed area code ("(416) 555-1234"). "100-200"
-// is two groups, not three, so it is not this shape and keeps rounding as an
-// extracted cell.
-const PHONE_NUMBER_RE = /^(?:\+?(?:1[-.]?)?\d{3}[-.]\d{3}[-.]\d{4}|\(\d{3}\)\s?\d{3}[-.]\d{4})$/;
 
 // --- IP addresses ---
 // IPv4: four dot-separated groups, each 0-255. "192.5" and "1.5" are two
@@ -81,12 +129,20 @@ const IPV6_PATTERN = '(?:' + [
 ].join('|') + ')';
 const IP_ADDRESS_RE = new RegExp(`^(?:${IPV4_PATTERN}|${IPV6_PATTERN})$`);
 
+function isIpAddress(trimmed) {
+  return IP_ADDRESS_RE.test(trimmed);
+}
+
 // --- Web and email addresses ---
 // A URL prefix (http://, https://, www.) followed by anything non-blank, or
 // a bare name@domain.tld shape. The domain's labels exclude the dot that
 // joins them, so each character has one place to match and the test stays
 // linear on a long unbroken string.
 const WEB_OR_EMAIL_RE = /^(?:https?:\/\/\S+|www\.\S+|[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+)$/i;
+
+function isWebOrEmailAddress(trimmed) {
+  return WEB_OR_EMAIL_RE.test(trimmed);
+}
 
 // --- ISBN-10 and ISBN-13 ---
 // An optional "ISBN" word (with an optional "-10"/"-13" and an optional
@@ -131,31 +187,6 @@ const POSTAL_CODE_RE = new RegExp(
   ].join('|') + ')$'
 );
 
-// The one list of identifier shapes. Each entry names the shape and carries
-// either an anchored `pattern` (a RegExp tested against the whole trimmed
-// cell text) or a `test` predicate built the same way from anchored patterns,
-// for the two shapes ("grouped-digits", "isbn") a single regex cannot decide
-// alone. A new shape is one more entry here, read by matchIdentifierShape
-// alone — classifyCell holds no separate copy.
-const IDENTIFIER_SHAPES = [
-  { name: 'grouped-digits', test: isGroupedDigitIdentifier },
-  { name: 'phone-number', pattern: PHONE_NUMBER_RE },
-  { name: 'ip-address', pattern: IP_ADDRESS_RE },
-  { name: 'web-or-email-address', pattern: WEB_OR_EMAIL_RE },
-  { name: 'isbn', test: isIsbnShape },
-  { name: 'postal-code', pattern: POSTAL_CODE_RE },
-];
-
-/**
- * The name of the identifier shape trimmed's whole text matches, or null.
- * @param {string} trimmed - already-trimmed cell text
- * @returns {string|null}
- */
-function matchIdentifierShape(trimmed) {
-  if (typeof trimmed !== 'string' || trimmed === '') return null;
-  for (const shape of IDENTIFIER_SHAPES) {
-    const matched = shape.pattern ? shape.pattern.test(trimmed) : shape.test(trimmed);
-    if (matched) return shape.name;
-  }
-  return null;
+function isPostalCode(trimmed) {
+  return POSTAL_CODE_RE.test(trimmed);
 }
