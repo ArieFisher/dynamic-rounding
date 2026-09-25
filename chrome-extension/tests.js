@@ -202,12 +202,12 @@ globalThis.resolveAmbiguousDateDecision = resolveAmbiguousDateDecision;
 globalThis.finalizeExtractedDecision = finalizeExtractedDecision;
 globalThis.decisionToLegacyInfo = decisionToLegacyInfo;
 // Expose grid-virtualization internals for the grid-virtualization test suite.
-globalThis.reapplyGridRounding = reapplyGridRounding;
+globalThis.reapplyRounding = reapplyRounding;
 globalThis.simplifyTableCells = simplifyTableCells;
-globalThis.gridRows = gridRows;
+globalThis.registryAdapter = registryAdapter;
 globalThis.GRID_TABLE_PASS = GRID_TABLE_PASS;
-globalThis.gridObservers = gridObservers;
-globalThis.gridReapplyTimers = gridReapplyTimers;
+globalThis.reapplyObservers = reapplyObservers;
+globalThis.reapplyTimers = reapplyTimers;
 globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.gridRedrawDelayMs;
 // Expose the nomination step (lib/dr-table/detect.js) for the nesting and
 // pending-table suites. The step reports outcomes findTables drops, so the
@@ -2175,7 +2175,7 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   // (GRID_REAPPLY_DEBOUNCE_MS), which is not a retry loop and does not
   // reference settings/attempt/GET_SIDEBAR_SETTINGS at all.
   const setTimeoutCalls = contentSrc.match(/setTimeout\([\s\S]{0,120}/g) || [];
-  eq('pull (inverted): every remaining setTimeout in content.js is the grid re-apply debounce, not a settings retry',
+  eq('pull (inverted): every remaining setTimeout in content.js is the re-apply debounce, not a settings retry',
     setTimeoutCalls.every((call) => !/attempt|GET_SIDEBAR_SETTINGS|requestSidebarSettingsAndApply/.test(call)),
     true);
 
@@ -2206,9 +2206,11 @@ eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
   eq('unified (superseded by app-model-registry): dataset.originalHtml is no longer written',
     /dataset\.originalHtml\s*=/.test(contentSrc), false);
 
-  eq('registry: native-table originals are recorded via DR_STORE.setTableOriginal',
-    /const originalRecord = \{\s*html:/.test(contentSrc) &&
-      /DR_STORE\.setTableOriginal\(\s*table\s*,\s*cell\s*,\s*originalRecord\s*\)/.test(contentSrc), true);
+  // #421: both kinds record one shape through the registry port, and the
+  // native markup copy is gone.
+  eq('registry: every cell\'s originals are recorded via DR_STORE.setTableOriginal, through the registry port',
+    /set\(cellEl, record\)\s*\{\s*DR_STORE\.setTableOriginal\(table, cellEl, record\);/.test(contentSrc) &&
+      !/html:\s*cell\.innerHTML/.test(contentSrc), true);
 
   eq('unified (superseded by app-model-registry): tableOptions WeakMap no longer declared',
     /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), false);
@@ -2486,7 +2488,7 @@ function makeMockButton() {
   // 'simplified'.
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
-  DR_STORE.setTableOriginal(table, cell, { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableOriginal(table, cell, { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
   cell.innerHTML = '1,000';
   // Also need to stub the innerHTML setter so the restore can write it
@@ -2534,7 +2536,7 @@ function makeMockButton() {
   // record is the locked re-injection state (issue #262), tested in the
   // re-injection suite.
   table._cells[0].classList.add('dr-ext-rounded');
-  DR_STORE.setTableOriginal(table, table._cells[0], { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
 
   syncSwitchForTable(table);
@@ -2547,7 +2549,7 @@ function makeMockButton() {
   const button = injectToggleEntry(table);
   table._cells[0].classList.add('dr-ext-rounded');
   // Registry record present — see atToggle_syncSwitch_ariaTrueWhenRounded.
-  DR_STORE.setTableOriginal(table, table._cells[0], { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'original');
   button.setAttribute('aria-pressed', 'true');
 
@@ -2820,7 +2822,7 @@ function makeMockButton() {
   const table = makeToggleTable([{ tag: 'td', text: '8,500,000' }]);
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
-  DR_STORE.setTableOriginal(table, cell, { html: '8,584,629', value: '8,584,629', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
 
   // The cell's innerHTML property needs to be writable
@@ -3142,7 +3144,7 @@ function makeMockButton() {
   // dr-ext-rounded class with no registry entry is the unrestorable case
   // (see the content-script re-injection tests), which is a different
   // scenario than the one this test means to exercise.
-  DR_STORE.setTableOriginal(table, cell, { html: '50000', value: '50000', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableOriginal(table, cell, { value: '50000', pieces: [{ text: '50000', written: '50000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
 
   // Fire click via handlers
@@ -3899,7 +3901,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
   // Registry record present — see atToggle_syncSwitch_ariaTrueWhenRounded.
-  DR_STORE.setTableOriginal(table, table._cells[0], { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
   const button = injectToggleEntry(table);
   syncSwitchForTable(table);
@@ -3911,7 +3913,7 @@ eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
   // Registry record present — see atToggle_syncSwitch_ariaTrueWhenRounded.
-  DR_STORE.setTableOriginal(table, table._cells[0], { html: '1,000', value: '1,000', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'original');
   const button = injectToggleEntry(table);
   syncSwitchForTable(table);
@@ -9052,12 +9054,14 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
   const [a, b] = grid.cellEls;
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid patch: the record holds the flat text and the touched piece by index',
+    eq('grid patch: the record holds the flat text and each piece\'s original and written text',
       DR_STORE.getTableOriginal(grid.wrapperEl, a),
-      { value: ' 8,584,629 ', pieces: [{ i: 1, text: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
+      { value: ' 8,584,629 ',
+        pieces: [{ text: ' ', written: ' ' }, { text: '8,584,629', written: '8,500,000' }, { text: ' ', written: ' ' }],
+        supRanges: null, linkFilteredIdx: null });
     eq('grid patch: a piece\'s whitespace is part of its stored text',
       DR_STORE.getTableOriginal(grid.wrapperEl, b),
-      { value: ' 7,318,204 ', pieces: [{ i: 0, text: ' 7,318,204 ' }], supRanges: null, linkFilteredIdx: null });
+      { value: ' 7,318,204 ', pieces: [{ text: ' 7,318,204 ', written: ' 7,500,000 ' }], supRanges: null, linkFilteredIdx: null });
     eq('grid patch: the plain-text read of a record is its value',
       DR_STORE.getTableOriginalText(grid.wrapperEl, a), ' 8,584,629 ');
   } finally {
@@ -9087,27 +9091,28 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
   }
 })();
 
-(function gridPatch_aCellWithFewerPiecesIsUnrestorable() {
+// Issue #423: a cell the page redrew with fewer pieces is a rewritten cell.
+// The restore keeps the page's text in it and drops its record and marker,
+// so nothing counts unrestorable and the table never locks over it.
+(function gridPatch_aCellWithFewerPiecesKeepsThePagesText() {
   const { grid } = makePatchGrid();
   const [a, b] = grid.cellEls;
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    const recordBefore = DR_STORE.getTableOriginal(grid.wrapperEl, a);
-    // The page redraws cell a with one piece; the record's piece 1 is gone.
-    setGridCellPieces(a, [makeTextNode('8,500,000')]);
+    // The page redraws cell a with one piece; the record's pieces no longer
+    // line up with the cell's.
+    setGridCellPieces(a, [makeTextNode('9,100,000')]);
     const unrestorable = resetTable(grid.wrapperEl);
-    eq('grid patch reset: a cell whose pieces no longer reach a stored index counts as unrestorable',
-      unrestorable, 1);
-    eq('grid patch reset: the unrestorable cell keeps its text',
-      pieceTextsOf(a), ['8,500,000']);
-    eq('grid patch reset: the unrestorable cell keeps its marker and record',
-      { marked: a.classList.contains('dr-ext-rounded'),
-        record: DR_STORE.getTableOriginal(grid.wrapperEl, a) === recordBefore },
-      { marked: true, record: true });
+    eq('grid patch reset: a cell redrawn with fewer pieces counts as restored', unrestorable, 0);
+    eq('grid patch reset: the redrawn cell keeps the page\'s text',
+      pieceTextsOf(a), ['9,100,000']);
+    eq('grid patch reset: the redrawn cell drops its marker and record',
+      { marked: a.classList.contains('dr-ext-rounded'), record: DR_STORE.hasTableOriginal(grid.wrapperEl, a) },
+      { marked: false, record: false });
     eq('grid patch reset: the other cells restore',
       pieceTextsOf(b), [' 7,318,204 ']);
-    eq('grid patch reset: an unrestorable cell leaves the form simplified',
-      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'simplified');
+    eq('grid patch reset: with every cell restored, the form is original',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
   } finally {
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
@@ -9120,21 +9125,23 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid patch re-apply (setup): the round wrote the number piece once', aNumber.writes, 1);
 
-    reapplyGridRounding(grid.wrapperEl);
+    reapplyRounding(grid.wrapperEl);
     eq('grid patch re-apply: a piece already patched is not written again', aNumber.writes, 1);
 
     // The page redraws the piece with its original text.
     aNumber.nodeValue = '8,584,629';
-    reapplyGridRounding(grid.wrapperEl);
+    reapplyRounding(grid.wrapperEl);
     eq('grid patch re-apply: a piece redrawn to its original is patched again',
       pieceTextsOf(a), [' ', '8,500,000', ' ']);
 
-    // The page changes the piece's text in place. The old number's characters
-    // still sit at the patch position, and the piece is no longer its original.
+    // The page changes the piece's text in place. The piece shows neither
+    // its original nor its written text, so the cell is a rewritten cell and
+    // simplifies the page's value fresh (#421).
     b.childNodes[0].nodeValue = ' 7,318,204.5 ';
-    reapplyGridRounding(grid.wrapperEl);
-    eq('grid patch re-apply: a piece whose text the page changed is left as the page wrote it',
-      pieceTextsOf(b), [' 7,318,204.5 ']);
+    reapplyRounding(grid.wrapperEl);
+    eq('grid patch re-apply: a piece whose text the page changed simplifies the page\'s value',
+      { pieces: pieceTextsOf(b), original: DR_STORE.getTableOriginalText(grid.wrapperEl, b) },
+      { pieces: [' 7,500,000 '], original: ' 7,318,204.5 ' });
   } finally {
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
@@ -9154,7 +9161,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
       result.rangeStatus, 'error');
     aNumber.nodeValue = '8,584,629';
     const writesBefore = aNumber.writes;
-    reapplyGridRounding(grid.wrapperEl);
+    reapplyRounding(grid.wrapperEl);
     eq('grid re-apply invalid range: a piece redrawn to its original is not patched',
       { pieces: pieceTextsOf(a), writes: aNumber.writes },
       { pieces: [' ', '8,584,629', ' '], writes: writesBefore });
@@ -9176,7 +9183,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
       DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 6);
     DR_STORE.setTableMaxMagnitude(grid.wrapperEl, null);
     aNumber.nodeValue = '8,584,629';
-    reapplyGridRounding(grid.wrapperEl);
+    reapplyRounding(grid.wrapperEl);
     eq('grid re-apply no freeze: a piece redrawn to its original rounds against the visible cells',
       pieceTextsOf(a), [' ', '8,500,000', ' ']);
     eq('grid re-apply no freeze: the re-apply stores no freeze',
@@ -9241,16 +9248,19 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
     el.childNodes[0].nodeValue, 'A 90 B 200');
   eq('grid patch write: the first landed write stores the record',
     port.get(el),
-    { value: 'A 100 B 200', pieces: [{ i: 0, text: 'A 100 B 200' }], supRanges: null, linkFilteredIdx: null });
+    { value: 'A 100 B 200', pieces: [{ text: 'A 100 B 200', written: 'A 90 B 200' }], supRanges: null, linkFilteredIdx: null });
 
-  // A later write that touches a piece the record does not hold adds it, and
-  // keeps the stored text of a piece it already holds.
+  // A later write counts its patches in the join of the stored originals,
+  // keeps each piece's original, and records each piece's new written text.
+  // A piece the later write leaves at its original goes back to it.
   const twoEl = makeElementNode('', [makeTextNode('100'), makeTextNode(' 200')]);
   const two = adapter._makeCellObj(twoEl);
   two.applyPatches([{ index: 0, numStr: '100', newNum: '90' }]);
-  two.applyPatches([{ index: 3, numStr: '200', newNum: '250' }]);
-  eq('grid patch write: a later write adds each newly touched piece to the record',
-    port.get(twoEl).pieces, [{ i: 0, text: '100' }, { i: 1, text: ' 200' }]);
+  two.applyPatches([{ index: 4, numStr: '200', newNum: '250' }]);
+  eq('grid patch write: a later write records each piece\'s original and its new written text',
+    port.get(twoEl).pieces, [{ text: '100', written: '100' }, { text: ' 200', written: ' 250' }]);
+  eq('grid patch write: the later write gives each piece its target text',
+    twoEl.childNodes.map((node) => node.nodeValue), ['100', ' 250']);
 })();
 
 // The writer groups patches by piece, writes each touched piece once, and
@@ -9368,11 +9378,13 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const originalPieces = grid.cellEls.map(pieceTextsOf);
   try {
     roundTable(grid.wrapperEl, KEY_STATS_OPTS);
-    eq('grid stacked: the record holds the flat original and each touched piece',
+    eq('grid stacked: the record holds the flat original and each piece\'s original and written text',
       DR_STORE.getTableOriginal(grid.wrapperEl, stacked),
-      { value: ' 125  126', pieces: [{ i: 0, text: ' 125 ' }, { i: 1, text: ' 126' }], supRanges: null, linkFilteredIdx: [1, 6] });
-    eq('grid stacked: an untouched "$" piece stays out of the record',
-      DR_STORE.getTableOriginal(grid.wrapperEl, dollar).pieces, [{ i: 1, text: '337.91' }]);
+      { value: ' 125  126', pieces: [{ text: ' 125 ', written: ' 150 ' }, { text: ' 126', written: ' 150' }],
+        supRanges: null, linkFilteredIdx: [1, 6] });
+    eq('grid stacked: an untouched "$" piece holds the same original and written text',
+      DR_STORE.getTableOriginal(grid.wrapperEl, dollar).pieces,
+      [{ text: '$', written: '$' }, { text: '337.91', written: '350' }]);
     eq('grid stacked: reset restores every cell', resetTable(grid.wrapperEl), 0);
     eq('grid stacked: reset puts every piece back', grid.cellEls.map(pieceTextsOf), originalPieces);
     eq('grid stacked: reset clears every record',
@@ -9393,11 +9405,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid stacked re-apply (setup): both pieces round', pieceTextsOf(cell), ['350', '150']);
-    reapplyGridRounding(grid.wrapperEl);
+    reapplyRounding(grid.wrapperEl);
     eq('grid stacked re-apply: pieces already patched are not written again',
       [first.writes, second.writes], [1, 1]);
     second.nodeValue = '126';
-    reapplyGridRounding(grid.wrapperEl);
+    reapplyRounding(grid.wrapperEl);
     eq('grid stacked re-apply: a later piece redrawn to its original is patched again',
       pieceTextsOf(cell), ['350', '150']);
   } finally {
@@ -9547,7 +9559,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
       pieceTextsOf(cell), ['Revenue 850 units ', '7']);
     eq('grid footnote: the record stores the mask\'s superscript range',
       DR_STORE.getTableOriginal(grid.wrapperEl, cell).supRanges, [{ start: 18, end: 19 }]);
-    reapplyGridRounding(grid.wrapperEl);
+    reapplyRounding(grid.wrapperEl);
     eq('grid footnote: the record\'s supRanges survive a re-apply',
       DR_STORE.getTableOriginal(grid.wrapperEl, cell).supRanges, [{ start: 18, end: 19 }]);
     eq('grid footnote: the preview after the round reads the base number, not the footnote digit', pool(), [837]);
@@ -9584,7 +9596,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     const afterFirstRound = pieceTextsOf(cell);
     eq('grid footnote re-apply (setup): the base rounds and the footnote holds',
       afterFirstRound[1], '137');
-    reapplyGridRounding(grid.wrapperEl);
+    reapplyRounding(grid.wrapperEl);
     eq('grid footnote re-apply: the footnote stays masked after the base has already shrunk',
       pieceTextsOf(cell), afterFirstRound);
   } finally {
@@ -9594,8 +9606,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   }
 })();
 
-// A rounded stacked cell that the page redraws with fewer pieces: the
-// re-apply and the lens preview skip it, and reset counts it unrestorable.
+// A rounded stacked cell that the page redraws with fewer pieces is a
+// rewritten cell (#423): the re-apply drops its originals and classifies the
+// page's text fresh, the lens preview then reads that text, and reset counts
+// nothing unrestorable.
 (function gridStacked_aRoundedCellThatLostAPiece() {
   const grid = makeE2EGridWrapper([['125126']]);
   const [cell] = grid.cellEls;
@@ -9604,12 +9618,13 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('150')])]);
     let threw = null;
-    try { reapplyGridRounding(grid.wrapperEl); } catch (e) { threw = String(e); }
-    eq('grid stacked: the re-apply skips a cell that lost a piece', { threw, pieces: pieceTextsOf(cell) },
-      { threw: null, pieces: ['150'] });
-    eq('grid stacked: the lens preview leaves out a cell that lost a piece',
-      collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS), []);
-    eq('grid stacked: reset counts a cell that lost a piece as unrestorable', resetTable(grid.wrapperEl), 1);
+    try { reapplyRounding(grid.wrapperEl); } catch (e) { threw = String(e); }
+    eq('grid stacked: the re-apply releases a cell that lost a piece and keeps the page\'s text',
+      { threw, pieces: pieceTextsOf(cell), record: DR_STORE.hasTableOriginal(grid.wrapperEl, cell) },
+      { threw: null, pieces: ['150'], record: false });
+    eq('grid stacked: the lens preview reads the page\'s text in a cell that lost a piece',
+      collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((c) => c.num), [150]);
+    eq('grid stacked: reset counts nothing unrestorable after a cell lost a piece', resetTable(grid.wrapperEl), 0);
   } finally {
     DR_STORE.unregisterTable(grid.wrapperEl);
   }
@@ -9798,13 +9813,13 @@ function sourceBodyOf(src, signature) {
 // guard. The spec forbids: cell.textContent=, cell.innerHTML=, removeChild,
 // appendChild on a cell during a grid write. We verify the node reference is
 // identical (GR3) which implies none of those paths ran. Additionally scan
-// source for the critical prohibition: the grid cell object (applyPatches),
-// the patch writer it calls, and the piece restore.
+// source for the critical prohibition: the cell object both kinds share
+// (applyPatches), the patch writer it calls, and the piece restore.
 // ---------------------------------------------------------------------------
 
 (function gr3b_noTextContentWriteInGridPath() {
   const src = allContentSrc;
-  const bodies = ['_makeCellObj(', 'function applyExtractedPatches(', 'function restoreTextPieces(']
+  const bodies = ['function makeCellObj(', 'function applyExtractedPatches(', 'function restoreTextPieces(']
     .map((signature) => sourceBodyOf(src, signature));
 
   eq('GR3b: the grid write path source is found',
@@ -10071,23 +10086,24 @@ function sourceBodyOf(src, signature) {
 // applyExtractedPatches → nodeValue =), NOT cell.innerHTML = … which destroys
 // React fiber identity.
 //
-// Source-level assertion: the grid cell object, the patch writer, and the
-// piece restore hold no innerHTML= assignment. The native path's one
-// innerHTML write (the native branch of restoreTable) sits outside these
-// bodies.
+// Source-level assertion: the cell object both kinds share, the patch
+// writer, the piece restore, and the controller's restore hold no
+// innerHTML= assignment. Since #421 a native restore writes text pieces too,
+// so no write path on either kind assigns markup.
 //
 // This test encodes the hard rule from the sprint brief:
 //   "The grid write must be nodeValue-only."
 (function gr6j_gridWrite_sourceGuard_noInnerHTML() {
   const src = allContentSrc;
-  const bodies = ['_makeCellObj(', 'function applyExtractedPatches(', 'function restoreTextPieces(']
+  const bodies = ['function makeCellObj(', 'function applyExtractedPatches(', 'function restoreTextPieces(',
+    'function restoreTable(', 'function releaseCell(']
     .map((signature) => sourceBodyOf(src, signature));
 
-  eq('GR6j: the grid write path has no innerHTML= assignment',
+  eq('GR6j: the write path has no innerHTML= assignment',
     bodies.every((body) => body.length > 0 && !/innerHTML\s*=(?!=)/.test(body)), true);
 
-  // The grid cell object writes through the patch writer, and the patch
-  // writer writes through nodeValue (the only permitted write).
+  // The cell object writes through the patch writer, and the patch writer
+  // writes through nodeValue (the only permitted write).
   eq('GR6j: applyPatches writes through the patch writer, which assigns nodeValue',
     /applyExtractedPatches\(/.test(bodies[0]) && /\.nodeValue\s*=(?!=)/.test(bodies[1]), true);
 })();
@@ -10375,8 +10391,8 @@ function makeE2EGridWrapper(rowData) {
 // =============================================================================
 // Grid-virtualization re-apply tests
 // Spec: docs/sprint-plans/grid-support-v2.md §2 D4 + §4 "grid-virtualization"
-// Commit: a65129c added GRID_REAPPLY_DEBOUNCE_MS, gridObservers, gridReapplyTimers,
-// computeGridCellRoundedValue, reapplyGridRounding, observer attachment in roundTable,
+// Commit: a65129c added GRID_REAPPLY_DEBOUNCE_MS, reapplyObservers, reapplyTimers,
+// computeGridCellRoundedValue, reapplyRounding, observer attachment in roundTable,
 // and teardown in resetTable + removed-node observer.
 //
 // Timer/observer control mechanism:
@@ -10598,7 +10614,7 @@ function flushTimers(pendingTimers) {
 })();
 
 // ---------------------------------------------------------------------------
-// GV3: Debounce — N rapid mutations result in reapplyGridRounding running once.
+// GV3: Debounce — N rapid mutations result in reapplyRounding running once.
 // Fire the observer callback 5 times in quick succession; assert that only
 // one non-cancelled timer fires (earlier ones are cancelled by the debounce).
 // ---------------------------------------------------------------------------
@@ -10622,11 +10638,11 @@ function flushTimers(pendingTimers) {
     eq('GV3: exactly 1 active (non-cancelled) debounce timer after 5 rapid mutations',
       activeCnt, 1);
 
-    // Track re-apply call count by spying on gridReapplyTimers writes inside flush.
+    // Track re-apply call count by spying on reapplyTimers writes inside flush.
     let reapplyCalls = 0;
-    const origRAGR = global.reapplyGridRounding;
+    const origRAGR = global.reapplyRounding;
     // We can't easily intercept the closure directly; instead count timer fires.
-    // Each non-cancelled timer fires reapplyGridRounding once.
+    // Each non-cancelled timer fires reapplyRounding once.
     flushTimers(pendingTimers);
     // If any additional timers were scheduled by the re-apply itself, they would appear here.
     const newTimers = pendingTimers.filter(function(t, i) { return i >= 5; });
@@ -10657,13 +10673,13 @@ function flushTimers(pendingTimers) {
     const { pendingTimers } = ctx;
     const obs = ctx.capturedObserver;
 
-    // Trigger once and flush — this runs reapplyGridRounding.
+    // Trigger once and flush — this runs reapplyRounding.
     obs.trigger([{ type: 'childList' }]);
     const countBefore = pendingTimers.length;  // should be 1
 
     flushTimers(pendingTimers);
 
-    // reapplyGridRounding disconnects observer before writes and reconnects after.
+    // reapplyRounding disconnects observer before writes and reconnects after.
     // Its own nodeValue writes must NOT schedule a new debounce timer.
     const countAfter = pendingTimers.length;
     eq('GV4: no new timer scheduled during re-apply (self-trigger loop prevented)',
@@ -10674,7 +10690,7 @@ function flushTimers(pendingTimers) {
       obs.disconnectCount >= 1, true);
 
     eq('GV4: observer reconnected after re-apply',
-      obs.reconnectCount >= 2, true);  // once in roundTable, once in reapplyGridRounding
+      obs.reconnectCount >= 2, true);  // once in roundTable, once in reapplyRounding
 
   } finally {
     if (ctx) {
@@ -10701,17 +10717,17 @@ function flushTimers(pendingTimers) {
     const obs = ctx.capturedObserver;
 
     // Pre-condition: observer is set up.
-    eq('GV5 (pre): gridObservers has entry for wrapperEl',
-      gridObservers.has(grid.wrapperEl), true);
+    eq('GV5 (pre): reapplyObservers has entry for wrapperEl',
+      reapplyObservers.has(grid.wrapperEl), true);
 
     // Reset the table — should disconnect the observer and clear any pending timer.
     resetTable(grid.wrapperEl);
 
-    eq('GV5: gridObservers entry removed after resetTable',
-      gridObservers.has(grid.wrapperEl), false);
+    eq('GV5: reapplyObservers entry removed after resetTable',
+      reapplyObservers.has(grid.wrapperEl), false);
 
-    eq('GV5: gridReapplyTimers entry removed after resetTable',
-      gridReapplyTimers.has(grid.wrapperEl), false);
+    eq('GV5: reapplyTimers entry removed after resetTable',
+      reapplyTimers.has(grid.wrapperEl), false);
 
     // Observer should be disconnected.
     eq('GV5: observer disconnected after resetTable',
@@ -10720,10 +10736,10 @@ function flushTimers(pendingTimers) {
     // Now simulate a mutation — the observer callback fires (it's the same object,
     // but it's been disconnected so in the real DOM it would not fire; here we
     // call it manually to prove the debounce logic does NOT schedule a new timer
-    // because gridObservers / tableOptions no longer has the wrapper).
+    // because reapplyObservers / tableOptions no longer has the wrapper).
     const timerCountBefore = pendingTimers.length;
     obs.trigger([{ type: 'childList' }]);
-    // The callback still fires (we're calling it directly), but reapplyGridRounding
+    // The callback still fires (we're calling it directly), but reapplyRounding
     // will bail harmlessly because tableOptions no longer has the wrapper.
     // The debounce timer IS still scheduled by the closure (the closure holds wrapperEl).
     // Flush it and confirm no rounding occurred.
@@ -10819,10 +10835,10 @@ function flushTimers(pendingTimers) {
 })();
 
 // ---------------------------------------------------------------------------
-// GV6 (Adversarial): Native <table> gets NO observer — after rounding a native
-// table, gridObservers has no entry for it. Observer is grid-only (perf guard).
+// GV6: a native <table> gets the same re-apply observer a grid gets (#421),
+// watching the table element itself.
 // ---------------------------------------------------------------------------
-(function gv6_nativeTable_noGridObserver() {
+(function gv6_nativeTable_getsTheReapplyObserver() {
   // Build a minimal native table stub that isDataTable and roundTable can process.
   const origMO = global.MutationObserver;
   const origSetTimeout = global.setTimeout;
@@ -10858,11 +10874,13 @@ function flushTimers(pendingTimers) {
     const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true });
     roundTable(nativeTable, opts);
 
-    eq('GV6: gridObservers has NO entry for a native <table> after roundTable',
-      gridObservers.has(nativeTable), false);
-
-    eq('GV6: no MutationObserver instantiated for native table rounding',
-      moConstructCount, 0);
+    eq('GV6: a native <table> holds a re-apply observer after roundTable',
+      reapplyObservers.has(nativeTable), true);
+    eq('GV6: the observer watches the native table element itself',
+      (reapplyObservers.get(nativeTable) || {}).target === nativeTable, true);
+    eq('GV6: one MutationObserver is instantiated for the native table',
+      moConstructCount, 1);
+    resetTable(nativeTable);
 
   } finally {
     global.MutationObserver = origMO;
@@ -10890,39 +10908,24 @@ function flushTimers(pendingTimers) {
     eq('GV7 (pre): a debounce timer is pending',
       pendingTimers.filter(function(t) { return !t.cancelled; }).length, 1);
 
-    eq('GV7 (pre): gridObservers has entry for grid',
-      gridObservers.has(grid.wrapperEl), true);
+    eq('GV7 (pre): reapplyObservers has entry for grid',
+      reapplyObservers.has(grid.wrapperEl), true);
 
     // The removed-node observer path in content.js (the _tableObserver that watches
-    // document.body) calls disconnect + delete when it detects a tracked table was
-    // removed from the DOM. We simulate that path directly by invoking the same
-    // cleanup logic that the observer callback executes:
-    //   clearTimeout(gridReapplyTimers.get(table)); gridReapplyTimers.delete(table);
-    //   gridObservers.get(table).disconnect(); gridObservers.delete(table);
-    // In the test harness the _tableObserver is a no-op stub, so we exercise the
-    // teardown path via resetTable (which runs the same teardown code and is the
-    // direct production path called by the toggle-off handler).
-    // For the removed-node path specifically: call the same sequence manually.
-    const pendingTimer = gridReapplyTimers.get(grid.wrapperEl);
-    if (pendingTimer !== undefined) {
-      global.clearTimeout(pendingTimer);
-      gridReapplyTimers.delete(grid.wrapperEl);
-    }
-    const gridObs = gridObservers.get(grid.wrapperEl);
-    if (gridObs) {
-      gridObs.disconnect();
-      gridObservers.delete(grid.wrapperEl);
-    }
+    // document.body) runs teardownTableEntry when it detects a tracked table was
+    // removed from the DOM. In the test harness the _tableObserver is a no-op
+    // stub, so the teardown runs directly.
+    teardownTableEntry(grid.wrapperEl, 'removed');
 
     // Assert cleanup.
     eq('GV7: observer disconnected after removed-node teardown',
       obs.disconnectCount >= 1, true);
 
-    eq('GV7: gridObservers entry deleted after removed-node teardown',
-      gridObservers.has(grid.wrapperEl), false);
+    eq('GV7: reapplyObservers entry deleted after removed-node teardown',
+      reapplyObservers.has(grid.wrapperEl), false);
 
-    eq('GV7: gridReapplyTimers entry deleted after removed-node teardown',
-      gridReapplyTimers.has(grid.wrapperEl), false);
+    eq('GV7: reapplyTimers entry deleted after removed-node teardown',
+      reapplyTimers.has(grid.wrapperEl), false);
 
     // Previously-pending timer must now be cancelled.
     eq('GV7: pending debounce timer was cancelled during teardown',
@@ -10940,7 +10943,7 @@ function flushTimers(pendingTimers) {
 // ---------------------------------------------------------------------------
 // GV8: Exclusion-gate parity — re-apply HONORS firstRow / firstColumn gates.
 //
-// Regression guard for the BLOCK: before the fix, reapplyGridRounding recomputed
+// Regression guard for the BLOCK: before the fix, reapplyRounding recomputed
 // max_mag over an unfiltered cell set and wrote excluded cells.  After the fix
 // (computeGridRoundedValues shared path), excluded cells get no patches and
 // are never written.
@@ -13092,7 +13095,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
     [['North', '1482391'], ['South', '918554']],
     ['Total', '2400945']
   );
-  const { cells: results } = simplifyTableCells(g.wrapperEl, gridRows(g.wrapperEl), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+  const { cells: results } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
   // results are row-major over all rows: [header c0, header c1, r1c0, r1c1, r2c0, r2c1, total c0, total c1]
   eq('row-universe: every cell of every row is classified',
     results.length, 8);
@@ -13114,7 +13117,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
     [['1111111', '1482391'], ['2222222', '918554']],
     ['Total', '2400945']
   );
-  const { cells: results } = simplifyTableCells(g.wrapperEl, gridRows(g.wrapperEl), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+  const { cells: results } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
   eq('row-universe: rowgroup-first grid holds its first data row',
     results[1] && results[1].patches.length, 0);
   eq('row-universe: rowgroup-first grid rounds its second data row',
@@ -13133,7 +13136,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
     [['North', '1,482,391'], ['South', '918,554']],
     ['Total', '24,009,450']
   );
-  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, gridRows(g.wrapperEl), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
   eq('outside-row: the max magnitude comes from the data rows alone',
     maxMag, 6);
   eq('outside-row: the outside row still rounds against that dataset',
@@ -13190,7 +13193,7 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
     ['Total', '24,009,450']
   );
   const opts = Object.assign({}, DR_DEFAULTS, { offsetTop: -0.5, offsetOther: -1 });
-  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, gridRows(g.wrapperEl), opts, { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), opts, { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
   eq('outside-row: a dataset of outside rows alone is empty',
     maxMag, null);
   eq('outside-row: with an empty dataset the outside value takes the other-band offset',
@@ -14246,7 +14249,7 @@ function withRightClickSandbox(run) {
 // Write-layer helpers (applyExtractedPatches,
 // restoreTextPieces, GridAdapter's applyPatches) legitimately create/mutate nodes and are correctly
 // excluded from this scan — they are reachable only from explicit write calls
-// (roundTable / reapplyGridRounding), never from detection.
+// (roundTable / reapplyRounding), never from detection.
 // ---------------------------------------------------------------------------
 (function detectionFunctions_sourceScan_noPageWrites() {
   if (detectCode === null) {
@@ -16081,6 +16084,7 @@ function withRightClickSandbox(run) {
     innerText: '3,000,000',
     textContent: '3,000,000',
     dataset: {},
+    childNodes: [{ nodeType: 3, nodeValue: '3,000,000' }],
   };
   // A header row + label column keep the cell off row 0 / column 0
   // (DR_DEFAULTS excludes both by default; see the merge-ladder divergence
@@ -16096,7 +16100,7 @@ function withRightClickSandbox(run) {
     ],
   };
   DR_STORE.setTableOriginal(mockTable, roundedCell, {
-    html: '2,794,356', value: '2,794,356', supRanges: null, linkFilteredIdx: null,
+    value: '2,794,356', pieces: [{ text: '2,794,356', written: '3,000,000' }], supRanges: null, linkFilteredIdx: null,
   });
   const cells = collectNumericCells(mockTable);
   eq('orig-value: reads original text, not rounded',
@@ -16105,23 +16109,26 @@ function withRightClickSandbox(run) {
     cells[0].num, 2794356);
 })();
 
-// A simplified native cell whose live pieces split the rounded value: the
-// lens preview classifies the stored original and skips the placement step,
-// because the live pieces hold the rounded text, not the text it classifies.
-// The same split with no stored original stays out of the pool, because the
-// placement step reads a value that crosses a piece boundary.
-(function previewSimplifiedNativeCell_skipsThePlacementStep() {
+// A simplified native cell classifies its stored original pieces, so the
+// placement step reads the pieces the value was written from, not the live
+// pieces, which hold the written text. The stored pieces hold the value in
+// one piece, so it joins the pool. The same split with no stored original
+// stays out of the pool, because the placement step reads a value that
+// crosses a piece boundary.
+(function previewSimplifiedNativeCell_placesItsStoredPieces() {
   withReactiveCreateTreeWalker(function () {
     const opts = { simplifyFirstRow: true, simplifyFirstColumn: true, rangeExpr: '' };
-    const roundedCell = makeReactiveCell([{ text: '6,7', inSup: false }, { text: '00,000', inSup: false }]);
+    const roundedCell = makeReactiveCell([{ text: '6,700,000', inSup: false }, { text: ' kg', inSup: false }]);
     const table = { rows: [{ cells: [roundedCell] }], dataset: {} };
     DR_STORE.setTableOriginal(table, roundedCell, {
-      html: '6,718,245', value: '6,718,245', supRanges: null, linkFilteredIdx: null,
+      value: '6,718,245 kg',
+      pieces: [{ text: '6,718,245', written: '6,700,000' }, { text: ' kg', written: ' kg' }],
+      supRanges: null, linkFilteredIdx: null,
     });
     const liveCell = makeReactiveCell([{ text: '6,7', inSup: false }, { text: '18,245', inSup: false }]);
     const liveTable = { rows: [{ cells: [liveCell] }], dataset: {} };
     try {
-      eq('preview simplified native cell: the stored original joins the pool across the live split',
+      eq('preview simplified native cell: the stored original joins the pool through its stored pieces',
         collectNumericCells(table, opts).map((c) => c.num), [6718245]);
       eq('preview simplified native cell: the same split with no stored original stays out',
         collectNumericCells(liveTable, opts), []);
@@ -16595,7 +16602,8 @@ function withRightClickSandbox(run) {
     'restoreTextPieces',
     'placeDecision',
     'layoutPieceHolding',
-    'livePatches',
+    'flatPatches',
+    'sortCellByRecord',
     'looksLikeGrid',
     'findTargetTable',
     'findTables',
@@ -16831,6 +16839,8 @@ const PRE_MOVE_DETECTION_SETTINGS = {
     },
   ],
   gridRedrawDelayMs: 100,
+  reapplyMaxWaitMs: 1000,
+  reapplyCellCap: 3000,
   pendingRetestCap: 100,
   offscreenLeftPx: -9999,
 };
@@ -16962,9 +16972,9 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   );
 
   eq('detection settings: the combined sandbox does not throw', sandbox.threw, null);
-  eq('detection settings: DR_DETECTION_SETTINGS exposes exactly twelve keys, the nine pre-move keys plus nestingDepth, dataTestCellBudget, and pendingRetestCap',
+  eq('detection settings: DR_DETECTION_SETTINGS exposes exactly fourteen keys, the nine pre-move keys plus nestingDepth, dataTestCellBudget, pendingRetestCap, reapplyMaxWaitMs, and reapplyCellCap',
     sandbox.outcomes.settingsKeys, Object.keys(PRE_MOVE_DETECTION_SETTINGS).sort());
-  eq('detection settings: DR_DETECTION_SETTINGS carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, and pendingRetestCap at 100',
+  eq('detection settings: DR_DETECTION_SETTINGS carries every pre-move value unchanged, plus nestingDepth at 1, dataTestCellBudget at 1000, pendingRetestCap at 100, reapplyMaxWaitMs at 1000, and reapplyCellCap at 3000',
     sandbox.outcomes.settings, PRE_MOVE_DETECTION_SETTINGS);
   eq('detection settings: looksLikeGrid rejects 4 children (below gridMinChildren)',
     sandbox.outcomes.minChildrenBelowFails, false);
@@ -18695,7 +18705,7 @@ const LADDER_OPTS = {
 // Sprint engine-returns-results: static purity scan.
 // The simplification engine (roundTable, the one simplification pass —
 // simplifyTableCells, classifyTableCell, cellPatches — and
-// reapplyGridRounding) must never call chrome.* directly — it returns result
+// reapplyRounding) must never call chrome.* directly — it returns result
 // values instead, and the controller sends the messages. Mirrors the
 // detectionFunctions_sourceScan_noPageWrites pattern above.
 // ---------------------------------------------------------------------------
@@ -18705,7 +18715,7 @@ const LADDER_OPTS = {
     eq('engine purity scan: source file content.js present in manifest', false, true);
     return;
   }
-  const ENGINE_FNS = ['roundTable', 'simplifyTableCells', 'classifyTableCell', 'cellPatches', 'reapplyGridRounding'];
+  const ENGINE_FNS = ['roundTable', 'simplifyTableCells', 'classifyTableCell', 'cellPatches', 'reapplyRounding'];
 
   // Extract a top-level `function name(` body by brace-matching from the
   // opening brace to its balanced close (same approach as the detection
@@ -19165,7 +19175,7 @@ const LADDER_OPTS = {
   };
   const contentTopLevelNames = topLevelBindingNames(contentSrcForScan);
   eq('static scan: content.js still declares its usual top-level bindings (sanity check on the scan itself)',
-    contentTopLevelNames.includes('lastRightClickedElement') && contentTopLevelNames.includes('gridObservers'),
+    contentTopLevelNames.includes('lastRightClickedElement') && contentTopLevelNames.includes('reapplyObservers'),
     true);
   eq('static scan: content.js no longer declares lastRightClickedTable at top level',
     contentTopLevelNames.includes('lastRightClickedTable'),
@@ -21084,10 +21094,10 @@ function makeIssue251SidebarHarness() {
 
 // --- (f) Grid magnitude basis freeze: DELIBERATE BEHAVIOR CHANGE from the
 // parent branch (refactor/app-model-settings), where computeGridRoundedValues
-// took no frozenMaxMag parameter and reapplyGridRounding recomputed max_mag
+// took no frozenMaxMag parameter and reapplyRounding recomputed max_mag
 // from whatever was visible on every scroll re-apply. HEAD's roundTable
 // freezes max_mag on first sight into DR_STORE.setTableMaxMagnitude and every
-// later reapplyGridRounding reuses that frozen value (see the frozenMaxMag
+// later reapplyRounding reuses that frozen value (see the frozenMaxMag
 // entry in the pass settings header above simplifyTableCells in content.js).
 // offsetTop/offsetOther are
 // deliberately set apart so a magnitude-driven bucket flip is visible in the
@@ -21266,7 +21276,7 @@ function makeIssue251SidebarHarness() {
   const cell = { tagName: 'TD' };
 
   DR_STORE.registerTable(table);
-  DR_STORE.setTableOriginal(table, cell, { html: '8,584,629', value: '8,584,629', supRanges: null, linkFilteredIdx: null });
+  DR_STORE.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
   DR_STORE.setTableRoundOptions(table, { offsetTop: -1 });
   DR_STORE.setTableMaxMagnitude(table, 7);
@@ -21519,9 +21529,9 @@ function recentLogRows() {
 
   try {
     const removedPillboxes = registerFingerprintedTable(grid.scrollPaneEl);
-    gridObservers.set(grid.scrollPaneEl, { disconnect() { gridObserverDisconnects++; } });
+    reapplyObservers.set(grid.scrollPaneEl, { observer: { disconnect() { gridObserverDisconnects++; } }, target: grid.scrollPaneEl });
     const pendingTimer = setTimeout(function () {}, 10000);
-    gridReapplyTimers.set(grid.scrollPaneEl, pendingTimer);
+    reapplyTimers.set(grid.scrollPaneEl, pendingTimer);
 
     eq('fingerprint teardown: the grid registers and tracks before the teardown (precondition)',
       DR_STORE.hasTable(grid.scrollPaneEl) && trackedTables.has(grid.scrollPaneEl), true);
@@ -21534,10 +21544,10 @@ function recentLogRows() {
     eq('fingerprint teardown: the pending re-apply timer is cleared',
       clearedTimers.includes(pendingTimer), true);
     eq('fingerprint teardown: the timer record goes with it',
-      gridReapplyTimers.has(grid.scrollPaneEl), false);
-    eq('fingerprint teardown: the grid observer disconnects', gridObserverDisconnects, 1);
-    eq('fingerprint teardown: the grid observer record goes with it',
-      gridObservers.has(grid.scrollPaneEl), false);
+      reapplyTimers.has(grid.scrollPaneEl), false);
+    eq('fingerprint teardown: the re-apply observer disconnects', gridObserverDisconnects, 1);
+    eq('fingerprint teardown: the re-apply observer record goes with it',
+      reapplyObservers.has(grid.scrollPaneEl), false);
     eq('fingerprint teardown: the view stops tracking the table',
       trackedTables.has(grid.scrollPaneEl), false);
     eq('fingerprint teardown: the registry entry is gone',
@@ -22853,7 +22863,7 @@ function makePressTable(text) {
     ]);
     const cell = table.rows[1].cells[1];
     DR_STORE.setTableOriginal(table, cell,
-      { html: '1,482,391', value: '1,482,391', supRanges: null, linkFilteredIdx: null });
+      { value: '1,482,391', pieces: [{ text: '1,482,391', written: '1,482,391' }], supRanges: null, linkFilteredIdx: null });
     eq('fingerprint unrecorded: the entry carries no fingerprint (precondition)',
       DR_STORE.getTableFingerprint(table), null);
 
@@ -23445,9 +23455,9 @@ function emptyTheDatabaseQueryGridOfNumbers(grid) {
   const nativeCell = {};
   const stringCell = {};
   DR_STORE.setTableOriginal(table, gridCell,
-    { value: '98,765', pieces: [{ i: 0, text: '98,765' }], supRanges: null, linkFilteredIdx: null });
+    { value: '98,765', pieces: [{ text: '98,765', written: '100,000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableOriginal(table, nativeCell,
-    { html: '<b>1,234</b>', value: '1,234', supRanges: null, linkFilteredIdx: null });
+    { value: '1,234', pieces: [{ text: '1,234', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableOriginal(table, stringCell, '55,000');
   eq('capture-reads: a grid original (record) reads back as its value field',
     has ? DR_STORE.getTableOriginalText(table, gridCell) : null, '98,765');
@@ -26447,7 +26457,11 @@ function withHiddenCellTreeWalker(cell, fn) {
   eq('hidden cells: the hidden cell\'s rendered text stays empty after rounding',
     cell.innerText, '');
 
-  resetTable(table);
+  // The restore writes the cell's text pieces, so it reads them through the
+  // same walker as the write.
+  withHiddenCellTreeWalker(cell, function() {
+    resetTable(table);
+  });
 
   eq('hidden cells: resetTable restores the hidden cell\'s exact raw text',
     cell.textContent, '4523789');
@@ -27054,6 +27068,765 @@ function adapterColumnsOf(el) {
     makeGridWrapper([['4.91', '5,432.1'], ['12', '34']], { useDgClasses: true }), {});
   eq('#330: a grid that declares no merge numbers its columns by read position',
     adapterColumnsOf(grid.wrapperEl), [[0, 1], [0, 1]]);
+})();
+
+// =============================================================================
+// Issue #421: cells the page rewrites
+//
+// While a table is simplified, the page can write a new value into a cell. A
+// pass sorts each cell into one of three groups: fresh (no stored originals),
+// held (every text piece shows its original or its written text, and the
+// piece count matches), and rewritten (anything else). A held cell takes its
+// target text from its stored originals; a rewritten cell gets its original
+// text back in each piece that still shows written text, drops its record,
+// and simplifies fresh. The restore sorts the same way. One re-apply observer
+// watches every simplified table.
+//
+// The page model below: element and text nodes that report each change to
+// the mutation observers watching an ancestor. The observer stand-in queues
+// one record per change and delivers the queue when the harness advances its
+// clock, the way a browser delivers records after the running task. Timers
+// run on the same fake clock. Every case builds its table through one builder
+// that draws a native table or a grid from the same rows.
+//
+// Invented values. The options round the top band at offset -1 and the other
+// band at offset 0, so a change in the max magnitude changes the result:
+//   max magnitude 3: 1,234 -> 1,200   5,678 -> 5,700   2,468 -> 2,500
+//                    3,579 -> 3,600   4,321 -> 4,300   8,765 -> 8,800
+//   max magnitude 4: 98,765 -> 99,000, and every magnitude-3 value rounds to
+//                    the nearest 1,000: 1,234 -> 1,000, 5,678 -> 6,000
+// =============================================================================
+
+const RW_OPTS = Object.assign({}, DR_DEFAULTS, {
+  simplifyFirstRow: true, simplifyFirstColumn: true, simplifyDates: false,
+  offsetTop: -1, offsetOther: 0, numTop: 1,
+});
+const RW_ROWS = [['1,234', '5,678'], ['2,468', '3,579']];
+const RW_KINDS = ['native', 'grid'];
+
+// The observers the page model reports to. The harness clears the list.
+const rwObservers = [];
+let rwDeliveringToObserver = false;
+
+class RewriteObserver {
+  constructor(callback) { this.callback = callback; this.target = null; this.queue = []; }
+  observe(target) {
+    this.target = target;
+    if (!rwObservers.includes(this)) rwObservers.push(this);
+  }
+  disconnect() {
+    this.target = null;
+    this.queue = [];
+    const at = rwObservers.indexOf(this);
+    if (at >= 0) rwObservers.splice(at, 1);
+  }
+}
+
+function rwRecordMutation(node) {
+  for (const observer of rwObservers) {
+    for (let at = node; at; at = at.parentNode) {
+      if (at === observer.target) { observer.queue.push({ target: node }); break; }
+    }
+  }
+}
+
+function rwDeliverMutations() {
+  for (const observer of rwObservers.slice()) {
+    if (observer.queue.length === 0) continue;
+    const records = observer.queue;
+    observer.queue = [];
+    rwDeliveringToObserver = true;
+    try { observer.callback(records, observer); } finally { rwDeliveringToObserver = false; }
+  }
+}
+
+function rwText(value) {
+  let current = value;
+  const node = {
+    nodeType: 3, childNodes: null, parentNode: null, parentElement: null, writes: 0,
+    get nodeValue() { return current; },
+    set nodeValue(v) { current = v; node.writes++; rwRecordMutation(node); },
+  };
+  return node;
+}
+
+function rwTextNodesOf(root) {
+  const found = [];
+  (function visit(node) {
+    for (const child of node.childNodes || []) {
+      if (child.nodeType === 3) found.push(child);
+      else visit(child);
+    }
+  })(root);
+  return found;
+}
+
+function rwSerialize(node) {
+  if (node.nodeType === 3) return node.nodeValue;
+  const tag = node.tagName.toLowerCase();
+  return '<' + tag + '>' + node.childNodes.map(rwSerialize).join('') + '</' + tag + '>';
+}
+
+function rwClone(node) {
+  if (node.nodeType === 3) return rwText(node.nodeValue);
+  return rwEl(node.tagName, node._attrs, node.childNodes.map(rwClone));
+}
+
+function rwSetChildren(el, children) {
+  el.childNodes = children;
+  for (const child of children) { child.parentNode = el; child.parentElement = el; }
+  rwRecordMutation(el);
+}
+
+// One element. innerHTML reads the markup, and a write of markup the element
+// served before puts a fresh copy of those nodes in, the way the browser
+// parses markup into new nodes.
+function rwEl(tagName, attrs, children) {
+  const classes = new Set();
+  const snapshots = new Map();
+  const el = {
+    nodeType: 1, tagName: String(tagName).toUpperCase(), childNodes: [],
+    parentNode: null, parentElement: null, dataset: {}, style: {}, title: '',
+    _attrs: Object.assign({}, attrs || {}), innerHTMLWrites: 0,
+    classList: {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      contains(name) { return classes.has(name); },
+    },
+    get className() { return Array.from(classes).join(' '); },
+    get children() { return el.childNodes.filter((node) => node.nodeType === 1); },
+    get textContent() { return rwTextNodesOf(el).map((node) => node.nodeValue).join(''); },
+    get innerText() { return el.textContent; },
+    get innerHTML() {
+      const markup = el.childNodes.map(rwSerialize).join('');
+      snapshots.set(markup, el.childNodes.map(rwClone));
+      return markup;
+    },
+    set innerHTML(markup) {
+      el.innerHTMLWrites++;
+      const nodes = snapshots.get(markup);
+      rwSetChildren(el, nodes ? nodes.map(rwClone) : [rwText(markup)]);
+    },
+    getAttribute(name) { return Object.prototype.hasOwnProperty.call(el._attrs, name) ? el._attrs[name] : null; },
+    setAttribute(name, value) { el._attrs[name] = String(value); },
+    removeAttribute(name) { delete el._attrs[name]; if (name === 'title') el.title = ''; },
+    matches(selector) { return dgNodeMatches(el, selector); },
+    querySelector(selector) { return dgDescendantsMatching(el, selector)[0] || null; },
+    querySelectorAll(selector) { return dgDescendantsMatching(el, selector); },
+    contains(other) {
+      for (let at = other; at; at = at.parentNode) if (at === el) return true;
+      return false;
+    },
+    closest(selector) {
+      for (let at = el; at && at.nodeType === 1; at = at.parentNode) if (dgNodeMatches(at, selector)) return at;
+      return null;
+    },
+    getBoundingClientRect() { return { top: 10, left: 10, right: 410, bottom: 210, width: 400, height: 200 }; },
+  };
+  if (el.tagName === 'TABLE') {
+    Object.defineProperty(el, 'rows', { get() { return dgDescendantsMatching(el, 'tr'); } });
+  }
+  if (el.tagName === 'TR') {
+    Object.defineProperty(el, 'cells', {
+      get() { return el.children.filter((c) => c.tagName === 'TD' || c.tagName === 'TH'); },
+    });
+  }
+  rwSetChildren(el, children || []);
+  return el;
+}
+
+// A cell's contents: a string is one text piece; an array lists pieces, each
+// a string for a bare text piece or { tag, text } for a piece inside its own
+// element.
+function rwPieces(spec) {
+  const items = Array.isArray(spec) ? spec : [spec];
+  return items.map((item) => (typeof item === 'string'
+    ? rwText(item)
+    : rwEl(item.tag, {}, [rwText(item.text)])));
+}
+
+/**
+ * Draw one table of either kind from the same rows. A native table holds a
+ * head section for the header and a body for the rows; a grid holds its
+ * header row outside a row group and its data rows inside it, or its data
+ * rows alone with no header.
+ *
+ * @param {'native'|'grid'} kind
+ * @param {Array<Array<string|Array>>} rows
+ * @param {{header?: string[]}} [opts]
+ */
+function rwBuildTable(kind, rows, opts) {
+  const header = (opts && opts.header) || null;
+  const isNative = kind === 'native';
+  const makeCell = (spec) => rwEl(isNative ? 'td' : 'div', isNative ? {} : { role: 'cell' }, rwPieces(spec));
+  const makeRow = (specs) => rwEl(isNative ? 'tr' : 'div', isNative ? {} : { role: 'row' }, specs.map(makeCell));
+  const dataRows = rows.map(makeRow);
+  let body;
+  let table;
+  if (isNative) {
+    body = rwEl('tbody', {}, dataRows);
+    const head = header
+      ? [rwEl('thead', {}, [rwEl('tr', {}, header.map((text) => rwEl('th', {}, [rwText(text)])))])]
+      : [];
+    table = rwEl('table', {}, head.concat([body]));
+  } else {
+    const headerRow = header
+      ? [rwEl('div', { role: 'row' }, header.map((text) => rwEl('div', { role: 'columnheader' }, [rwText(text)])))]
+      : [];
+    body = header ? rwEl('div', { role: 'rowgroup' }, dataRows) : null;
+    table = rwEl('div', { role: 'grid' }, header ? headerRow.concat([body]) : dataRows);
+    if (!header) body = table;
+  }
+  const rowEl = (r) => body.children[r];
+  const cell = (r, c) => rowEl(r).children[c];
+  return {
+    kind, table,
+    cell,
+    pieces: (r, c) => rwTextNodesOf(cell(r, c)),
+    text: (r, c) => cell(r, c).textContent,
+    // The page writes a new text into one piece of a cell, in place.
+    write: (r, c, text, k) => { rwTextNodesOf(cell(r, c))[k || 0].nodeValue = text; },
+    // The page redraws a cell's contents with new pieces, in place.
+    redraw: (r, c, spec) => rwSetChildren(cell(r, c), rwPieces(spec)),
+    addRow: (specs) => rwSetChildren(body, body.childNodes.concat([makeRow(specs)])),
+    headerWrite: (c, text) => {
+      const headerCells = isNative ? table.rows[0].cells : table.children[0].children;
+      rwTextNodesOf(headerCells[c])[0].nodeValue = text;
+    },
+    rowTexts: () => body.children.map((row) => row.children.map((c) => c.textContent)),
+  };
+}
+
+/**
+ * Run one case against the page model: the observer stand-in, a fake clock
+ * for every timer, and a tree walker over the model's text nodes.
+ * page.advance(ms) delivers queued mutation records and runs every timer due
+ * inside the window, in due order. page.passes() counts the re-apply timers
+ * that ran: timers an observer callback scheduled.
+ */
+function withRewritePage(fn) {
+  const saved = {
+    MutationObserver: global.MutationObserver,
+    setTimeout: global.setTimeout,
+    clearTimeout: global.clearTimeout,
+    now: Date.now,
+    walker: global.document.createTreeWalker,
+    createElement: global.document.createElement,
+  };
+  // No element factory, so the toast view draws nothing for the cap's
+  // warning rows; the shape-change case supplies its own for the pillbox.
+  delete global.document.createElement;
+  const clock = { now: 5000000 };
+  const timers = [];
+  global.MutationObserver = RewriteObserver;
+  global.setTimeout = (callback, ms) => {
+    timers.push({ callback, due: clock.now + (ms || 0), cancelled: false, ran: false,
+      fromObserver: rwDeliveringToObserver });
+    return timers.length - 1;
+  };
+  global.clearTimeout = (id) => { if (timers[id]) timers[id].cancelled = true; };
+  Date.now = () => clock.now;
+  global.document.createTreeWalker = (root) => {
+    const nodes = rwTextNodesOf(root);
+    return { nextNode: () => nodes.shift() || null };
+  };
+  const page = {
+    advance(ms) {
+      const until = clock.now + ms;
+      for (let guard = 0; guard < 100; guard++) {
+        rwDeliverMutations();
+        const due = timers.filter((t) => !t.cancelled && !t.ran && t.due <= until)
+          .sort((a, b) => a.due - b.due)[0];
+        if (!due) break;
+        clock.now = Math.max(clock.now, due.due);
+        due.ran = true;
+        due.callback();
+      }
+      clock.now = until;
+    },
+    settle() { page.advance(3000); },
+    passes: () => timers.filter((t) => t.ran && t.fromObserver).length,
+    pendingPasses: () => timers.filter((t) => !t.ran && !t.cancelled && t.fromObserver).length,
+    now: () => clock.now,
+  };
+  try {
+    fn(page);
+  } finally {
+    global.MutationObserver = saved.MutationObserver;
+    global.setTimeout = saved.setTimeout;
+    global.clearTimeout = saved.clearTimeout;
+    Date.now = saved.now;
+    if (saved.walker === undefined) delete global.document.createTreeWalker;
+    else global.document.createTreeWalker = saved.walker;
+    if (saved.createElement !== undefined) global.document.createElement = saved.createElement;
+    rwObservers.length = 0;
+  }
+}
+
+// Run one case on each table kind, with the table's registry entry and
+// every re-apply resource cleared afterwards.
+function eachRewriteKind(kinds, run) {
+  for (const kind of kinds) {
+    withRewritePage((page) => {
+      const tables = [];
+      const build = (rows, opts) => { const t = rwBuildTable(kind, rows, opts); tables.push(t.table); return t; };
+      try {
+        run(kind, page, build);
+      } catch (e) {
+        eq(`#421 a case on the ${kind} kind runs without an exception`, String((e && e.stack) || e), null);
+      } finally {
+        for (const table of tables) {
+          resetTable(table);
+          forgetRegisteredTable(table);
+        }
+      }
+    });
+  }
+}
+
+const rwWarnRows = (pattern) => DR_LOG.snapshot().entries
+  .filter((row) => row.level === 'warn' && pattern.test(row.text)).length;
+
+// --- Test 1: a cell the extension holds, unchanged: the pass writes nothing. ---
+(function rewrite01_aHeldCellTakesNoWrite() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    const held = t.pieces(0, 1)[0];
+    const writesBefore = held.writes;
+    t.write(1, 0, '4,321');
+    page.settle();
+    eq(`#421 held cell (${kind}): the pass ran on the page edit elsewhere in the table`,
+      t.text(1, 0), '4,300');
+    eq(`#421 held cell (${kind}): the pass writes nothing into a held cell`,
+      { text: t.text(0, 1), writes: held.writes - writesBefore }, { text: '5,700', writes: 0 });
+  });
+})();
+
+// --- Test 2: a piece the page redrew to its original takes the patch again. ---
+(function rewrite02_aPieceRedrawnToItsOriginalTakesThePatchAgain() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    t.write(0, 0, '1,234');
+    page.settle();
+    eq(`#421 redraw (${kind}): a piece redrawn to its original shows the simplified value again`,
+      t.text(0, 0), '1,200');
+    eq(`#421 redraw (${kind}): the stored original stays the original`,
+      DR_STORE.getTableOriginalText(t.table, t.cell(0, 0)), '1,234');
+  });
+})();
+
+// --- Test 3: a native table gains a row with a larger value. The cells the
+// extension holds take the new rounding, and their stored originals stay the
+// true originals. ---
+(function rewrite03_aNativeTableThatGainsALargerValueRoundsAgain() {
+  eachRewriteKind(['native'], (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    eq('#421 larger value (native, precondition): the first simplification rounds at magnitude 3',
+      t.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600']]);
+    t.addRow(['98,765', '1,111']);
+    page.settle();
+    eq('#421 larger value (native): every cell takes the rounding of the new max magnitude',
+      t.rowTexts(), [['1,000', '6,000'], ['2,000', '4,000'], ['99,000', '1,000']]);
+    eq('#421 larger value (native): the stored originals stay the true originals',
+      [t.cell(0, 0), t.cell(0, 1), t.cell(1, 0), t.cell(1, 1)]
+        .map((cell) => DR_STORE.getTableOriginalText(t.table, cell)),
+      ['1,234', '5,678', '2,468', '3,579']);
+  });
+})();
+
+// --- Test 4: the page writes a new number. The cell simplifies it, and a
+// restore puts back the new number. ---
+(function rewrite04_aNewNumberSimplifiesAndRestoresToItself() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    t.write(0, 0, '4,321');
+    page.settle();
+    eq(`#421 new number (${kind}): the cell simplifies the page's new value`, t.text(0, 0), '4,300');
+    eq(`#421 new number (${kind}): the stored original is the page's new value`,
+      DR_STORE.getTableOriginalText(t.table, t.cell(0, 0)), '4,321');
+    resetTable(t.table);
+    eq(`#421 new number (${kind}): a restore puts back the page's new value`, t.text(0, 0), '4,321');
+  });
+})();
+
+// --- Test 5: the page writes a number that needs no rounding. The marker and
+// the stored originals go, and a restore leaves the page's number. ---
+(function rewrite05_anAlreadyRoundNumberReleasesTheCell() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    t.write(0, 0, '100');
+    page.settle();
+    eq(`#421 round number (${kind}): the cell shows the page's number`, t.text(0, 0), '100');
+    eq(`#421 round number (${kind}): the marker and the stored originals go`,
+      { marked: t.cell(0, 0).classList.contains('dr-ext-rounded'),
+        stored: DR_STORE.hasTableOriginal(t.table, t.cell(0, 0)) },
+      { marked: false, stored: false });
+    resetTable(t.table);
+    eq(`#421 round number (${kind}): a restore leaves the page's number`, t.text(0, 0), '100');
+  });
+})();
+
+// --- Test 6: the page writes text that is not a number. The cell is
+// released, its hover text goes, and the page's text stays. ---
+(function rewrite06_aWordReleasesTheCell() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    t.write(0, 0, 'pending');
+    page.settle();
+    eq(`#421 word (${kind}): the cell is released and keeps the page's text`,
+      { text: t.text(0, 0), marked: t.cell(0, 0).classList.contains('dr-ext-rounded'),
+        stored: DR_STORE.hasTableOriginal(t.table, t.cell(0, 0)), title: t.cell(0, 0).title },
+      { text: 'pending', marked: false, stored: false, title: '' });
+    resetTable(t.table);
+    eq(`#421 word (${kind}): a restore leaves the page's text`, t.text(0, 0), 'pending');
+  });
+})();
+
+// --- Test 7: the page rewrites one piece of a cell with several pieces. The
+// other pieces show their original text again before the cell simplifies
+// fresh, so the stored originals hold no text the extension wrote. ---
+(function rewrite07_onePieceOfSeveralRewritten() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([
+      [[{ tag: 'b', text: '1,234' }, ' to ', { tag: 'b', text: '5,678' }], '2,468'],
+      ['3,579', '4,321'],
+    ]);
+    roundTable(t.table, RW_OPTS);
+    eq(`#421 one piece (${kind}, precondition): both numbers of the cell round`,
+      t.pieces(0, 0).map((p) => p.nodeValue), ['1,200', ' to ', '5,700']);
+    t.write(0, 0, '2,222', 0);
+    page.settle();
+    eq(`#421 one piece (${kind}): the cell simplifies the page's new value and its other piece`,
+      t.pieces(0, 0).map((p) => p.nodeValue), ['2,200', ' to ', '5,700']);
+    eq(`#421 one piece (${kind}): the stored originals hold no extension-written text`,
+      ((DR_STORE.getTableOriginal(t.table, t.cell(0, 0)) || {}).pieces || []).map((p) => p.text),
+      ['2,222', ' to ', '5,678']);
+  });
+})();
+
+// --- Test 8: a grid value above the frozen scale. The magnitude freeze
+// stays, and the value takes the largest-value rounding. ---
+(function rewrite08_aGridValueAboveTheFrozenScale() {
+  eachRewriteKind(['grid'], (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    t.write(0, 0, '98,765');
+    page.settle();
+    eq('#421 above the freeze (grid): the value takes the largest-value rounding',
+      t.text(0, 0), '99,000');
+    eq('#421 above the freeze (grid): the magnitude freeze stays',
+      DR_STORE.getTableMaxMagnitude(t.table), 3);
+    eq('#421 above the freeze (grid): the other cells keep their rounding',
+      t.rowTexts(), [['99,000', '5,700'], ['2,500', '3,600']]);
+  });
+})();
+
+// --- Test 9: a grid that reuses its cell elements for other rows on scroll.
+// Each reused cell simplifies the new row's value, and a restore puts back
+// that value, never the previous row's. ---
+(function rewrite09_aReusedGridCellShowsItsNewRow() {
+  eachRewriteKind(['grid'], (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    const scrolled = [['4,321', '8,765'], ['6,543', '7,654']];
+    scrolled.forEach((row, r) => row.forEach((text, c) => t.write(r, c, text)));
+    page.settle();
+    eq('#421 reused cells (grid): every reused cell simplifies the new row\'s value',
+      t.rowTexts(), [['4,300', '8,800'], ['6,500', '7,700']]);
+    resetTable(t.table);
+    eq('#421 reused cells (grid): a restore puts back the new rows\' values',
+      t.rowTexts(), scrolled);
+  });
+})();
+
+// --- Test 10: a shape change during a pass. The table re-detects and
+// simplifies; the active table changes only when the changed table was the
+// active one. ---
+(function rewrite10_aShapeChangeDuringAPassReDetects() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const header = ['Region', 'Q1', 'Q2'];
+    const rows = [['North', '1,234', '5,678'], ['South', '2,468', '3,579']];
+    const active = build(rows, { header });
+    const other = build(rows, { header });
+    const savedSelected = DR_STORE.getSelectedTable();
+    const savedSettings = DR_STORE.getSettings();
+    let switches = 0;
+    const unsubscribe = DR_BUS.subscribe('state:tableSwitched', () => { switches++; });
+    try {
+      withToggleDocumentMock(() => {
+        createToggleForTable(active.table);
+        createToggleForTable(other.table);
+        DR_STORE.setSelectedTable(null);
+        DR_STORE.setSettings(Object.assign({}, RW_OPTS, { simplifyFirstRow: false }));
+        DR_STORE.setSelectedTable(active.table);
+        applySidebarRounding(active.table, DR_STORE.getSettings());
+        roundTable(other.table, Object.assign({}, RW_OPTS, { simplifyFirstRow: false }));
+
+        other.headerWrite(2, 'Q3');
+        page.settle();
+        eq(`#421 shape change (${kind}): a change on the inactive table leaves the active table alone`,
+          { selected: DR_STORE.getSelectedTable() === active.table, switches }, { selected: true, switches: 0 });
+        eq(`#421 shape change (${kind}): the changed table registers fresh with the new header`,
+          (DR_STORE.getTableFingerprint(other.table) || {}).headerTexts, ['Region', 'Q1', 'Q3']);
+        eq(`#421 shape change (${kind}): the changed table simplifies again`,
+          { rounded: isTableRounded(other.table), texts: other.rowTexts() },
+          { rounded: true, texts: [['North', '1,200', '5,700'], ['South', '2,500', '3,600']] });
+
+        active.headerWrite(2, 'Q3');
+        page.settle();
+        eq(`#421 shape change (${kind}): a change on the active table moves the active table to the fresh entry`,
+          { selected: DR_STORE.getSelectedTable() === active.table, switches }, { selected: true, switches: 1 });
+        eq(`#421 shape change (${kind}): the active table simplifies again`,
+          { rounded: isTableRounded(active.table), texts: active.rowTexts() },
+          { rounded: true, texts: [['North', '1,200', '5,700'], ['South', '2,500', '3,600']] });
+      });
+    } finally {
+      unsubscribe();
+      DR_STORE.setSelectedTable(null);
+      DR_STORE.setSettings(savedSettings);
+      DR_STORE.setSelectedTable(savedSelected);
+    }
+  });
+})();
+
+// --- Test 11: the extension's own writes, a restore included, run no pass,
+// and a burst of page edits runs one pass. ---
+(function rewrite11_ownWritesRunNoPassAndABurstRunsOne() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    page.settle();
+    eq(`#421 own writes (${kind}): the first simplification runs no pass`, page.passes(), 0);
+    t.write(0, 0, '4,321');
+    t.write(0, 1, '8,765');
+    t.write(1, 0, '6,543');
+    page.settle();
+    eq(`#421 own writes (${kind}): a burst of page edits runs one pass`,
+      { passes: page.passes(), texts: t.rowTexts() },
+      { passes: 1, texts: [['4,300', '8,800'], ['6,500', '3,600']] });
+    page.settle();
+    eq(`#421 own writes (${kind}): the pass's own writes run no further pass`, page.passes(), 1);
+    resetTable(t.table);
+    page.settle();
+    eq(`#421 own writes (${kind}): a restore runs no pass`, page.passes(), 1);
+  });
+})();
+
+// --- Test 12: an added row simplifies, on each kind. ---
+(function rewrite12_anAddedRowSimplifies() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    t.addRow(['4,321', '8,765']);
+    page.settle();
+    eq(`#421 added row (${kind}): the added row simplifies`,
+      t.rowTexts()[2], ['4,300', '8,800']);
+  });
+})();
+
+// --- Test 13: a restore before any pass has run, after the page rewrote one
+// piece of a cell. The page's text stays, and the untouched pieces show
+// their originals. ---
+(function rewrite13_aRestoreBeforeAnyPassKeepsThePagesText() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([
+      [[{ tag: 'b', text: '1,234' }, ' to ', { tag: 'b', text: '5,678' }], '2,468'],
+      ['3,579', '4,321'],
+    ]);
+    roundTable(t.table, RW_OPTS);
+    t.write(0, 0, '2,222', 0);
+    t.write(1, 1, '9,999');
+    resetTable(t.table);
+    eq(`#421 early restore (${kind}): the rewritten piece keeps the page's text, and the untouched piece shows its original`,
+      t.pieces(0, 0).map((p) => p.nodeValue), ['2,222', ' to ', '5,678']);
+    eq(`#421 early restore (${kind}): a cell the page rewrote whole keeps the page's text`,
+      t.text(1, 1), '9,999');
+    eq(`#421 early restore (${kind}): the cells the extension held show their originals`,
+      [t.text(0, 1), t.text(1, 0)], ['2,468', '3,579']);
+    eq(`#421 early restore (${kind}): every cell restores, so the form is raw`,
+      DR_STORE.getTableAppliedFlag(t.table), 'original');
+  });
+})();
+
+// --- Test 14: the cell cap. A table one cell over the cap writes nothing,
+// its watcher stops, and one warning row records it. A table at the cap runs
+// its pass. A table over the cap at its first simplification never attaches
+// a watcher. ---
+(function rewrite14_theCellCap() {
+  const savedCap = DR_DETECTION_SETTINGS.reapplyCellCap;
+  DR_DETECTION_SETTINGS.reapplyCellCap = 4;
+  try {
+    eachRewriteKind(RW_KINDS, (kind, page, build) => {
+      const t = build(RW_ROWS);
+      roundTable(t.table, RW_OPTS);
+      t.write(0, 0, '4,321');
+      page.settle();
+      eq(`#421 cell cap (${kind}): a table at the cap runs its pass`, t.text(0, 0), '4,300');
+
+      const warnsBefore = rwWarnRows(/cap/);
+      t.addRow(['8,765']);
+      t.write(0, 1, '6,543');
+      page.settle();
+      eq(`#421 cell cap (${kind}): a pass over the cap writes nothing`,
+        [t.text(0, 1), t.rowTexts()[2][0]], ['6,543', '8,765']);
+      eq(`#421 cell cap (${kind}): one warning row records the stop`, rwWarnRows(/cap/) - warnsBefore, 1);
+      t.write(1, 0, '7,654');
+      page.settle();
+      eq(`#421 cell cap (${kind}): the stopped watcher runs no later pass`, t.text(1, 0), '7,654');
+
+      const big = build(RW_ROWS.concat([['9,876']]));
+      const warnsAtFirst = rwWarnRows(/cap/);
+      roundTable(big.table, RW_OPTS);
+      eq(`#421 cell cap (${kind}): the first simplification over the cap still simplifies`,
+        big.text(2, 0), '9,900');
+      eq(`#421 cell cap (${kind}): the first simplification over the cap records one warning row`,
+        rwWarnRows(/cap/) - warnsAtFirst, 1);
+      big.write(0, 0, '4,321');
+      page.settle();
+      eq(`#421 cell cap (${kind}): a table over the cap at its first simplification runs no pass`,
+        big.text(0, 0), '4,321');
+    });
+  } finally {
+    DR_DETECTION_SETTINGS.reapplyCellCap = savedCap;
+  }
+})();
+
+// --- Test 15: page edits arriving faster than the redraw delay. A pass runs
+// once the burst reaches the longest wait. ---
+(function rewrite15_aBurstThatNeverGoesQuietStillRunsAPass() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTable(t.table, RW_OPTS);
+    const start = page.now();
+    let firstPassAt = null;
+    for (let step = 0; step < 20; step++) {
+      t.write(1, 1, step % 2 === 0 ? '4,321' : '4,322');
+      page.advance(50);
+      if (firstPassAt === null && page.passes() > 0) firstPassAt = page.now() - start;
+    }
+    eq(`#421 longest wait (${kind}): a pass runs within the longest wait of the burst's start`,
+      firstPassAt !== null && firstPassAt <= 1000, true);
+    eq(`#421 longest wait (${kind}): that pass simplifies the page's value`, t.text(1, 1), '4,300');
+  });
+})();
+
+// --- Test 16: a native cell with a link, a superscript, and several text
+// pieces restores through the one piece restore, to markup identical to its
+// markup before simplification. ---
+(function rewrite16_aNativeCellRestoresPieceByPiece() {
+  eachRewriteKind(['native'], (kind, page, build) => {
+    const t = build([
+      [['Total ', { tag: 'a', text: 'note 12' }, ', ', { tag: 'b', text: '9,850' }, ' kg', { tag: 'sup', text: '2' }], '1,234'],
+      ['2,468', '3,579'],
+    ]);
+    const cell = t.cell(0, 0);
+    const markupBefore = cell.innerHTML;
+    const piecesBefore = t.pieces(0, 0);
+    roundTable(t.table, RW_OPTS);
+    eq('#421 piece restore (native, precondition): the number outside the link rounds, the link and the superscript hold',
+      t.pieces(0, 0).map((p) => p.nodeValue), ['Total ', 'note 12', ', ', '9,900', ' kg', '2']);
+    const writesBefore = cell.innerHTMLWrites;
+    resetTable(t.table);
+    eq('#421 piece restore (native): the markup after the restore matches the markup before simplification',
+      cell.innerHTML, markupBefore);
+    eq('#421 piece restore (native): the restore writes no markup, so every text piece keeps its node',
+      { markupWrites: cell.innerHTMLWrites - writesBefore,
+        sameNodes: t.pieces(0, 0).every((p, k) => p === piecesBefore[k]) },
+      { markupWrites: 0, sameNodes: true });
+  });
+})();
+
+// A native cell whose patch cannot land writes its warn row at the first
+// simplification alone, so a table the page keeps changing raises no toast
+// on every pass. The cell's rendered text differs from its one piece in more
+// than whitespace, so the patch misses.
+(function rewriteMissedPatchRowBelongsToTheFirstSimplification() {
+  eachRewriteKind(['native'], (kind, page, build) => {
+    const t = build(RW_ROWS);
+    t.redraw(1, 1, '3,578');
+    Object.defineProperty(t.cell(1, 1), 'innerText', { get: () => '3,579' });
+    const before = rwWarnRows(/cell patches did not land/);
+    roundTable(t.table, RW_OPTS);
+    eq('#421 missed patch (native): the first simplification writes the warn row',
+      rwWarnRows(/cell patches did not land/) - before, 1);
+    t.write(0, 0, '4,321');
+    page.settle();
+    eq('#421 missed patch (native): a later pass writes no further warn row',
+      { rows: rwWarnRows(/cell patches did not land/) - before, simplified: t.text(0, 0) },
+      { rows: 1, simplified: '4,300' });
+  });
+})();
+
+// A native cell's rendered text read after another cell's write makes the
+// browser lay out the whole table again, once per cell, so a 10,000-cell
+// table takes most of a minute to simplify. The pass reads every cell's
+// rendered text before its first write and none after.
+(function rewriteThePassReadsNoRenderedTextAfterAWrite() {
+  eachRewriteKind(['native'], (kind, page, build) => {
+    const t = build(RW_ROWS);
+    const allPieces = () => [0, 1].flatMap((r) => [0, 1].flatMap((c) => t.pieces(r, c)));
+    let readsAfterAWrite = 0;
+    for (const r of [0, 1]) {
+      for (const c of [0, 1]) {
+        const cell = t.cell(r, c);
+        Object.defineProperty(cell, 'innerText', {
+          get() {
+            if (allPieces().some((piece) => piece.writes > 0)) readsAfterAWrite++;
+            return cell.textContent;
+          },
+        });
+      }
+    }
+    roundTable(t.table, RW_OPTS);
+    eq('#421 rendered text (native): the first simplification reads no rendered text after a write',
+      { readsAfterAWrite, rows: t.rowTexts() },
+      { readsAfterAWrite: 0, rows: [['1,200', '5,700'], ['2,500', '3,600']] });
+  });
+})();
+
+// Issue #423: a grid cell the page redraws with fewer text pieces is a
+// rewritten cell. It drops its originals and simplifies fresh, so a restore
+// never stops on it and the table never locks over it.
+(function rewrite423_aCellRedrawnWithFewerPiecesSimplifiesFresh() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([
+      [[{ tag: 'b', text: '1,234' }, ' to ', { tag: 'b', text: '5,678' }], '2,468'],
+      ['3,579', '4,321'],
+    ]);
+    roundTable(t.table, RW_OPTS);
+    t.redraw(0, 0, '8,765');
+    page.settle();
+    eq(`#423 fewer pieces (${kind}): the redrawn cell simplifies its new value`, t.text(0, 0), '8,800');
+    eq(`#423 fewer pieces (${kind}): the stored original is the redrawn value`,
+      DR_STORE.getTableOriginalText(t.table, t.cell(0, 0)), '8,765');
+    const unrestorable = resetTable(t.table);
+    eq(`#423 fewer pieces (${kind}): the restore counts no cell unrestorable and puts back the redrawn value`,
+      { unrestorable, text: t.text(0, 0), form: DR_STORE.getTableAppliedFlag(t.table) },
+      { unrestorable: 0, text: '8,765', form: 'original' });
+  });
+})();
+
+// A restore that arrives before a pass, on a cell the page redrew with fewer
+// pieces: the page's text stays and nothing counts unrestorable.
+(function rewrite423_aRestoreBeforeAPassOnACellWithFewerPieces() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([
+      [[{ tag: 'b', text: '1,234' }, ' to ', { tag: 'b', text: '5,678' }], '2,468'],
+      ['3,579', '4,321'],
+    ]);
+    roundTable(t.table, RW_OPTS);
+    t.redraw(0, 0, '8,765');
+    const unrestorable = resetTable(t.table);
+    eq(`#423 fewer pieces, early restore (${kind}): the page's text stays and nothing counts unrestorable`,
+      { unrestorable, text: t.text(0, 0), marked: t.cell(0, 0).classList.contains('dr-ext-rounded') },
+      { unrestorable: 0, text: '8,765', marked: false });
+  });
 })();
 
 // --- Report ---
