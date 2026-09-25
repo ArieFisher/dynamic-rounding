@@ -118,6 +118,16 @@
     .rw-buttons button {
       margin: 0 6px 6px 0;
     }
+
+    /* Section 24: identifier grids. Web and email addresses hold no spaces
+       to wrap at, so these columns fit the longest value. */
+    #id-grid .g-row {
+      grid-template-columns: 240px 260px 110px;
+    }
+
+    #id-text-grid .g-row {
+      grid-template-columns: 240px 420px 110px;
+    }
   </style>
 </head>
 
@@ -1870,8 +1880,8 @@ TSLA,75,"248.09","18,606.75"
       identifiers. Before this rule, most Value cells rounded: "416 555 1234"
       became 4,000,000,000, "192.168.0.1" became 200.0.1, "2001:db8::1"
       became 2000:db8::1, "90210-1234" became 90000-1000, and each other
-      phone number, the web address, the ISBN, and the at-name rounded their
-      digits.</p>
+      phone number, the web address, the email address, the ISBN, and the
+      at-name rounded their digits.</p>
 
     <!--
       Both tables come from one list below, so they always hold the same
@@ -1987,7 +1997,7 @@ TSLA,75,"248.09","18,606.75"
           ['IP address', '192.168.0.1', '1,482,391'],
           ['IP address, v6', '2001:db8::1', '947,310'],
           ['Web address', 'https://example.com/item/123', '431,552'],
-          ['Email address', 'sales@example.com', '270,987'],
+          ['Email address', '311@example.com', '270,987'],
           ['ISBN', 'ISBN 978-0-306-40615-7', '90,114'],
           ['Canadian postal code', 'M5V 2T6', '1,506,220'],
           ['UK postcode', 'SW1A 1AA', '1,002,466'],
