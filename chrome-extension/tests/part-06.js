@@ -14,29 +14,6 @@
 // cell's 125126 would raise the max magnitude to 5.
 // ---------------------------------------------------------------------------
 
-function makeKeyStatsGrid() {
-  const grid = makeE2EGridWrapper([
-    ['$338.49', '4.91tn'],
-    ['125 126', '$337.91'],
-    ['41.31m', '4.91tn'],
-    ['Revenue 500 units', 'DT1234'],
-    ['7.5m', '2024-03-15'],
-  ]);
-  const [, , stacked, dollar, , split, , , link, date] = grid.cellEls;
-  setGridCellPieces(stacked, [makeElementNode('s', [
-    makeTextNode(' 125 '), makeElementNode('br', []), makeTextNode(' 126'),
-  ])]);
-  setGridCellPieces(dollar, [makeElementNode('sym', [makeTextNode('$')]), makeElementNode('num', [makeTextNode('337.91')])]);
-  setGridCellPieces(split, [makeTextNode('4.'), makeElementNode('dec', [makeTextNode('91')]), makeTextNode('tn')]);
-  const anchor = makeElementNode('a', [makeTextNode('7.5m')]);
-  anchor.innerText = '7.5m';
-  setGridCellPieces(link, [anchor]);
-  link.innerText = '7.5m';
-  link.querySelectorAll = (sel) => (sel === 'a' ? [anchor] : []);
-  setGridCellPieces(date, [makeTextNode('2024-'), makeElementNode('md', [makeTextNode('03-15')])]);
-  return grid;
-}
-
 const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: true, simplifyDates: true });
 
 // "Revenue 500 units" and "DT1234" now round like any extracted cell (issue
@@ -530,20 +507,6 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     grid.cellEls[0], grid.cellEls[0]);
 })();
 
-// The source text of one function or method: from its signature to the
-// brace that closes its body. '' when the signature is absent.
-function sourceBodyOf(src, signature) {
-  const start = src.indexOf(signature);
-  if (start < 0) return '';
-  const open = src.indexOf('{', start);
-  let depth = 0;
-  for (let k = open; k < src.length; k++) {
-    if (src[k] === '{') depth++;
-    else if (src[k] === '}' && --depth === 0) return src.slice(start, k + 1);
-  }
-  return '';
-}
-
 // ---------------------------------------------------------------------------
 // GR3b: the grid write path does NOT use textContent/innerHTML — source-level
 // guard. The spec forbids: cell.textContent=, cell.innerHTML=, removeChild,
@@ -852,51 +815,6 @@ function sourceBodyOf(src, signature) {
 // an innerHTML write (which crashes React's reconciler).
 // =============================================================================
 
-/**
- * Build a self-contained div-grid wrapper whose querySelectorAll('.dr-ext-rounded')
- * dynamically reflects which cells currently carry that class.
- *
- * Uses makeGridWrapper (existing helper, ~L6821) for the DOM stub, then
- * overwrites the querySelectorAll stub on the wrapper so resetTable can find
- * rounded cells after roundTable has run.
- *
- * @param {Array<Array<string>>} rowData  — 2D array of cell text values
- * @returns {{ wrapperEl, rowEls, cellEls }}
- */
-function makeE2EGridWrapper(rowData) {
-  const grid = makeGridWrapper(rowData);
-
-  // Collect all cells for dynamic querySelectorAll lookup.
-  const allCells = grid.cellEls.slice();
-
-  // Override wrapper querySelectorAll:
-  // - '.dr-ext-rounded': walk allCells and return those carrying the class.
-  // - other selectors: delegate to the original stub (returns []).
-  grid.wrapperEl.querySelectorAll = function(sel) {
-    if (sel === '.dr-ext-rounded') {
-      return allCells.filter(function(c) {
-        return c.classList.contains('dr-ext-rounded');
-      });
-    }
-    // _getRowEls fallback path in GridAdapter uses children, not querySelectorAll,
-    // so returning [] for other selectors is safe.
-    return [];
-  };
-
-  // Override wrapper querySelector so isTableRounded / syncSwitchForTable don't throw.
-  grid.wrapperEl.querySelector = function(sel) {
-    if (sel === '.dr-ext-rounded') {
-      return allCells.find(function(c) { return c.classList.contains('dr-ext-rounded'); }) || null;
-    }
-    return null;
-  };
-
-  // dataset is already set by makeGridWrapper; ensure drShowingOriginal can be deleted.
-  if (!grid.wrapperEl.dataset) grid.wrapperEl.dataset = {};
-
-  return grid;
-}
-
 // ---------------------------------------------------------------------------
 // E2E-GR1: roundTable on a numeric div-grid — nodeValue written, node identity
 // preserved, drOriginal set, originalHtml NOT set, dr-ext-rounded applied.
@@ -1143,86 +1061,6 @@ function makeE2EGridWrapper(rowData) {
 // roundTable's `new MutationObserver(cb)` instantiates the capturing class, not the
 // no-op stub that was installed at eval time.
 // =============================================================================
-
-/**
- * Build a grid with a capturing MutationObserver stub installed, then round it.
- * Returns { grid, capturedObserver, capturedTimers, origMO, origSetTimeout, origClearTimeout }.
- *
- * The caller is responsible for restoring globals in a finally block.
- *
- * @param {Array<Array<string>>} rowData
- * @param {object} [roundOpts]   — merged with DR_DEFAULTS for roundTable
- */
-function setupVirtGrid(rowData, roundOpts) {
-  const pendingTimers = [];
-  let cancelledIds = new Set();
-
-  // Capturing MutationObserver: stores callback + observe options so tests can drive them.
-  let capturedObserver = null;
-  const CapturingMO = class {
-    constructor(cb) {
-      this._cb = cb;
-      this._observing = false;
-      this._options = null;
-      this._target = null;
-      this.disconnectCount = 0;
-      this.reconnectCount = 0;
-      capturedObserver = this;
-    }
-    observe(target, options) {
-      if (!this._observing) {
-        this.reconnectCount++;
-      }
-      this._observing = true;
-      this._target = target;
-      this._options = options;
-    }
-    disconnect() {
-      this._observing = false;
-      this.disconnectCount++;
-    }
-    /** Test helper: fire the callback as if a mutation occurred. */
-    trigger(mutations) {
-      if (this._cb) this._cb(mutations || [], this);
-    }
-  };
-
-  const origMO = global.MutationObserver;
-  const origSetTimeout = global.setTimeout;
-  const origClearTimeout = global.clearTimeout;
-
-  global.MutationObserver = CapturingMO;
-  global.setTimeout = function(fn, ms) {
-    const id = pendingTimers.length;
-    pendingTimers.push({ fn, ms, cancelled: false });
-    return id;
-  };
-  global.clearTimeout = function(id) {
-    if (id !== undefined && id !== null && pendingTimers[id]) {
-      pendingTimers[id].cancelled = true;
-    }
-  };
-
-  const grid = makeE2EGridWrapper(rowData);
-  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true }, roundOpts || {});
-  roundTable(grid.wrapperEl, opts);
-
-  return {
-    grid,
-    get capturedObserver() { return capturedObserver; },
-    pendingTimers,
-    origMO,
-    origSetTimeout,
-    origClearTimeout,
-  };
-}
-
-/** Fire all non-cancelled pending timers synchronously (simulate "advance past debounce"). */
-function flushTimers(pendingTimers) {
-  for (const t of pendingTimers) {
-    if (!t.cancelled) t.fn();
-  }
-}
 
 // ---------------------------------------------------------------------------
 // GV1: Recycle (childList) — new row appended while grid is rounded;

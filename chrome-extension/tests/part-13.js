@@ -126,74 +126,6 @@
   }
 })();
 
-// ===========================================================================
-// One meaning for a pillbox press (2026-09-14 sidebar-state-removal, part one)
-// ===========================================================================
-//
-// A press made three different things happen, and which one it made happen
-// turned on a value the page could not keep true: whether the sidebar stood
-// open. Only the service worker could correct that value, and the correction
-// needed a tab number the service worker lost on an idle restart and on an
-// ordinary sidebar close. Once the value went stale, a press on a second
-// table silently became "move the sidebar here" for the rest of the page's
-// life. With the settings record's on/off value at off, such a press changed
-// no numbers at all, so the pillbox read as intermittent (#241).
-//
-// The rule now: a press makes the pressed table active and flips its form
-// from what the screen shows, writing the settings record once.
-//
-// A helper, because every case below needs the same three things reset: the
-// settings record, the active table, and the messages a press sends.
-function runPressFixture(setup) {
-  const savedSelected = DR_STORE.getSelectedTable();
-  const savedSettings = DR_STORE.getSettings();
-  const sent = [];
-  const origSend = global.chrome.runtime.sendMessage;
-  global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
-  // Count settings writes at the model's own publish, which is the one place
-  // every write passes through, rather than by wrapping the setter.
-  let settingsWrites = 0;
-  const unsub = DR_BUS.subscribe('state:settingsChanged', () => { settingsWrites++; });
-  // A press that carries a range expression ends in a per-range pulse, which
-  // builds overlay elements. The suite's shared document stub has no
-  // createElement; supply one for the length of the press.
-  const origCreateElement = global.document.createElement;
-  global.document.createElement = () => ({
-    style: {}, classList: { add() {}, remove() {} },
-    appendChild() {}, remove() {}, setAttribute() {},
-    addEventListener() {}, removeEventListener() {},
-  });
-  try {
-    // Clear the active table BEFORE seeding the settings record, so the
-    // seeding write has nothing to apply to.
-    DR_STORE.setSelectedTable(null);
-    return setup({ sent, writes: () => settingsWrites, resetWrites: () => { settingsWrites = 0; } });
-  } finally {
-    unsub();
-    if (origCreateElement === undefined) delete global.document.createElement;
-    else global.document.createElement = origCreateElement;
-    global.chrome.runtime.sendMessage = origSend;
-    DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(savedSettings);
-    DR_STORE.setSelectedTable(savedSelected);
-  }
-}
-
-function makePressTable(text) {
-  const table = makeToggleTable([
-    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
-    [{ tag: 'td', text: 'R' }, { tag: 'td', text: text }],
-  ]);
-  table._cells.forEach((c) => {
-    c.querySelectorAll = () => [];
-    // A press that keeps a range expression ends in a per-cell pulse, which
-    // measures each cell in the range; the toggle-table mock has no layout.
-    c.getBoundingClientRect = () => ({ top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 });
-  });
-  injectToggleEntry(table);
-  return table;
-}
-
 // --- The defect's own symptom. The settings record stands at off and the
 // press lands on a table that is not the active one. Before the fix this took
 // the rebind path and applied the settings record, which at off changed no
@@ -793,15 +725,6 @@ function makePressTable(text) {
 // --- Nothing registering stops the action. The page returns a narrower result
 // set holding no number, so the column count trips the check and every element
 // of the nest then fails the data test. ---
-
-// The change: two word-only columns in place of three columns of data, and a
-// single word in each pinned row. The column count moves from three to two.
-function emptyTheDatabaseQueryGridOfNumbers(grid) {
-  const places = ['november', 'oscar', 'papa', 'quebec', 'romeo', 'sierra'];
-  const states = ['pending', 'running', 'queued', 'halted', 'idle', 'done'];
-  grid.pinnedRowEls.forEach((rowEl, i) => dgReplaceRowCells(rowEl, [places[i]]));
-  grid.scrollRowEls.forEach((rowEl, i) => dgReplaceRowCells(rowEl, [places[i], states[i]]));
-}
 
 (function shapeFingerprint_nothingRegisteringStopsThePressAndClearsTheActiveTable() {
   runPressFixture(({ writes, resetWrites }) => {

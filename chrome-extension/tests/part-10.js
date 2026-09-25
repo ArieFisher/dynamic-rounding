@@ -436,35 +436,6 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 // scanner suites above spell it.
 const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 
-// A plain parent carrying no grid or table role: a nest boundary that
-// qualifies nothing of its own, so each grid under it heads its own chain.
-function makeNestingHost(children) {
-  return makeDgNode('DIV', 'nesting-host', null, children);
-}
-
-// A lone grid: one role="grid" element with numeric rows and no qualifying
-// element under it, so its containment chain is one element long.
-function makeLoneGrid() {
-  return makeDgNode('DIV', 'lone-grid', 'grid', [
-    makeDgRow(0, ['north', '4,281,905', '17.40']),
-    makeDgRow(1, ['south', '622,148', '9.05']),
-    makeDgRow(2, ['east', '58,730', '3.62']),
-  ]);
-}
-
-// The live text of one column across a list of fixture rows.
-function dgColumnTexts(rowEls, columnIndex) {
-  return rowEls.map((rowEl) => rowEl.children[columnIndex].childNodes[0].nodeValue);
-}
-
-// Drop a registration and the pillbox bookkeeping that goes with it, so a
-// later case counts its own registrations alone.
-function forgetRegisteredTable(table) {
-  DR_STORE.unregisterTable(table);
-  tableToggles.delete(table);
-  trackedTables.delete(table);
-}
-
 // --- AC1: the database query shape registers the scrolling pane alone ---
 
 (function gridNesting_AC1_databaseQueryShapeRegistersTheScrollingPane() {
@@ -876,92 +847,6 @@ function forgetRegisteredTable(table) {
 // Every expected value below comes from that statement, never from the
 // detection layer's source.
 
-// Replace one fixture row's cells, the way a virtualized grid redraws a row.
-function dgReplaceRowCells(rowEl, cellTexts) {
-  const cellEls = cellTexts.map(makeDgCell);
-  for (const cellEl of cellEls) {
-    cellEl.parentElement = rowEl;
-    cellEl.parentNode = rowEl;
-  }
-  rowEl.childNodes = cellEls;
-  rowEl.children = cellEls;
-}
-
-// Add one cell to the end of a fixture row, the way a wider result set does.
-// The row's existing cell elements stay, so a test can hold one of them across
-// the change.
-function dgAppendRowCell(rowEl, text) {
-  const cellEl = makeDgCell(text);
-  cellEl.parentElement = rowEl;
-  cellEl.parentNode = rowEl;
-  rowEl.childNodes = rowEl.childNodes.concat([cellEl]);
-  rowEl.children = rowEl.children.concat([cellEl]);
-}
-
-// Narrow one fixture row to a subset of the cell elements it already holds,
-// the way a page that drops a column leaves the rest of the row in place. The
-// kept cells are the same elements, so a test can read what they show.
-function dgKeepRowCells(rowEl, indices) {
-  const kept = indices.map((i) => rowEl.children[i]);
-  rowEl.childNodes = kept;
-  rowEl.children = kept;
-}
-
-// Replace one fixture pane's drawn rows, the way a scroll does.
-function dgReplacePaneRows(paneEl, rowEls) {
-  for (const rowEl of rowEls) {
-    rowEl.parentElement = paneEl;
-    rowEl.parentNode = paneEl;
-  }
-  paneEl.childNodes = rowEls;
-  paneEl.children = rowEls;
-}
-
-// An ARIA grid that groups its data rows, with the header row outside the
-// group. redraw() replaces the group's rows and leaves the header row in
-// place, which is what a scroll of a virtualized grid does.
-function makeScrollingRowgroupGrid(headerTexts, dataRows) {
-  function makeRoleRow(cellTexts) {
-    const cellEls = cellTexts.map(makeGridCellWithTextNode);
-    const row = makeElementNode('g-row', cellEls);
-    row.children = cellEls;
-    row.querySelectorAll = (sel) => (sel === '[role="cell"]' ? cellEls : []);
-    return row;
-  }
-  const headerRow = makeRoleRow(headerTexts);
-  let dataRowEls = dataRows.map(makeRoleRow);
-  const rowgroup = makeElementNode('', []);
-  rowgroup.querySelectorAll = (sel) => (sel === '[role="row"]' ? dataRowEls : []);
-  const wrapperEl = makeElementNode('aria-grid', [headerRow, rowgroup]);
-  wrapperEl.tagName = 'DIV';
-  wrapperEl.matches = (sel) => sel === GRID_ARIA_SELECTOR_TEXT;
-  wrapperEl.querySelector = () => null;
-  wrapperEl.querySelectorAll = function (sel) {
-    if (sel === '[role="rowgroup"]') return [rowgroup];
-    if (sel === '[role="row"]') return [headerRow].concat(dataRowEls);
-    return [];
-  };
-  wrapperEl.getAttribute = (name) => (name === 'role' ? 'grid' : null);
-  wrapperEl.getBoundingClientRect = () => (
-    { top: 20, right: 420, bottom: 260, left: 20, width: 400, height: 240 });
-  return {
-    wrapperEl,
-    headerRow,
-    dataRowEls: () => dataRowEls,
-    redraw(rows) { dataRowEls = rows.map(makeRoleRow); },
-  };
-}
-
-// A native table whose first row sits in a head section. The adapter reads
-// the row's parent, so the section is a parent stub carrying the tag name.
-function makeHeadSectionTable(headerTexts, dataRows) {
-  const table = makeToggleTable(
-    [headerTexts.map((text) => ({ tag: 'td', text }))].concat(
-      dataRows.map((rowTexts) => rowTexts.map((text) => ({ tag: 'td', text })))));
-  table.rows[0].parentElement = { tagName: 'THEAD' };
-  return table;
-}
-
 // --- The reader ---
 
 (function shapeFingerprint_theReaderReportsColumnsAndTheHeaderRowsTexts() {
@@ -1200,39 +1085,6 @@ function makeHeadSectionTable(headerTexts, dataRows) {
 //
 // findTables keeps the 'selected' outcomes and drops the other three, so a
 // caller that acts on them reads them here.
-
-// A nest whose chain root fails the data test while two qualifying children
-// pass it: the shape that leaves the configured depth crowded with no
-// shallower depth to fall back to.
-//
-// The root's own row read comes from the row group under it, which holds two
-// rows of text and no number, so the root fails the data test. The two panes
-// sit outside that row group and hold their own rows, so each passes. Both
-// panes carry the table role rather than the grid role, which keeps the grid
-// adapter's scroll-container lookup on the root itself.
-function makeCrowdedNest() {
-  const textCell = (text) => {
-    const cell = makeDgNode('DIV', 'text-cell', null, [makeTextNode(text)]);
-    cell.textContent = text;
-    cell.innerText = text;
-    return cell;
-  };
-  const textRow = (cellTexts) => makeDgNode('DIV', 'text-row', 'row', cellTexts.map(textCell));
-  const rowGroupEl = makeDgNode('DIV', 'text-rowgroup', 'rowgroup', [
-    textRow(['alpha', 'north']),
-    textRow(['bravo', 'south']),
-  ]);
-  const paneAEl = makeDgNode('DIV', 'crowded-pane-a', 'table', [
-    makeDgRow(0, ['alpha', '7,318,204']),
-    makeDgRow(1, ['bravo', '551,077']),
-  ]);
-  const paneBEl = makeDgNode('DIV', 'crowded-pane-b', 'table', [
-    makeDgRow(0, ['charlie', '2,140,663']),
-    makeDgRow(1, ['delta', '73,915']),
-  ]);
-  const rootEl = makeDgNode('DIV', 'crowded-root', 'table', [rowGroupEl, paneAEl, paneBEl]);
-  return { rootEl, paneAEl, paneBEl };
-}
 
 (function nominationStep_reportsSelectedForTheDatabaseQueryShape() {
   const grid = makeDatabaseQueryGrid();

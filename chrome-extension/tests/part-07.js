@@ -15,49 +15,6 @@
 //   chainParents(child, ...parents)  – link elements into a parentElement chain
 //   makePositionedAncestor(styleProps)  – element with style.position = 'absolute'
 
-function makePhantomEl(opts) {
-  opts = opts || {};
-  const attrs = opts.attrs || {};
-  const style  = opts.style  || {};
-  return {
-    tagName:      opts.tagName || 'DIV',
-    getAttribute: function(name) {
-      return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
-    },
-    style:        Object.assign({}, style),
-    parentElement: null,
-    parentNode:   null,
-    // querySelector / querySelectorAll stubs (overridden per-fixture where needed)
-    querySelector:    function() { return null; },
-    querySelectorAll: function() { return []; },
-  };
-}
-
-// Link child -> parent -> grandparent -> … in parentElement chain.
-function chainParents(child /*, ...parents */) {
-  let current = child;
-  for (let i = 1; i < arguments.length; i++) {
-    current.parentElement = arguments[i];
-    arguments[i].parentNode = null; // ensure parentNode fallback not needed
-    current = arguments[i];
-  }
-  return child;
-}
-
-// An element that qualifies as "positioned" (inline style.position='absolute').
-function makePositionedAncestor(styleOverrides) {
-  return makePhantomEl({ style: Object.assign({ position: 'absolute' }, styleOverrides || {}) });
-}
-
-// A minimal 2-column numeric table stub (no aria-hidden, normal left, no svg).
-function makeOnScreenTable() {
-  const table = makePhantomEl({ tagName: 'TABLE' });
-  // parentElement: a plain non-positioned wrapper
-  const wrapper = makePhantomEl({ tagName: 'DIV' });
-  chainParents(table, wrapper);
-  return table;
-}
-
 // --- AC: DR_DETECTION_SETTINGS.offscreenLeftPx is -9999 ---
 (function phantomA11y_threshold_value() {
   eq('isPhantomA11yTable: DR_DETECTION_SETTINGS.offscreenLeftPx === -9999',
@@ -270,161 +227,6 @@ function makeOnScreenTable() {
   eq('isPhantomA11yTable: plain object without getAttribute -> false',
     isPhantomA11yTable({}), false);
 })();
-
-// =============================================================================
-// Sprint filter-pass1-native: Pass 1 guard skips phantom a11y tables
-// =============================================================================
-//
-// injectTableToggles() Pass 1 calls document.querySelectorAll('table') and skips
-// any table for which isPhantomA11yTable(table) is true, then calls
-// createToggleForTable(table) only for the survivors.
-//
-// A toggle was created iff tableToggles.has(table) becomes true afterwards.
-//
-// For each test we:
-//   1. Temporarily replace global.document.querySelectorAll so Pass 1 sees our
-//      fixture tables and Pass 2 (GRID_ARIA_SELECTOR) sees an empty list.
-//   2. Temporarily stub document.createElement + document.body.appendChild so
-//      createToggleForTable can run without errors.
-//   3. Reset tableToggles / trackedTables for each run by deleting entries we
-//      added (WeakMap doesn't expose a clear(), so we track which table objects
-//      we inserted and delete them by re-using the objects).
-//
-// CRITICAL: phantom tables must pass isDataTable() so the only reason they
-// would be skipped is the isPhantomA11yTable guard, not the isDataTable gate.
-// Real on-screen tables must fail isPhantomA11yTable but pass isDataTable.
-//
-// Helper: build a 2-column 2-row numeric table stub (satisfies isDataTable).
-// Also provide getAttribute (for isPhantomA11yTable signal 1) and parentElement
-// chain + style (for signals 2/3).
-//
-function makePass1DataTable(opts) {
-  opts = opts || {};
-  const attrs = opts.attrs || {};
-  const style  = opts.style  || {};
-  const rows = [
-    { cells: [
-        { tagName: 'TD', innerText: '10000', textContent: '10000', innerHTML: '10000',
-          classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
-          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
-        { tagName: 'TD', innerText: '20000', textContent: '20000', innerHTML: '20000',
-          classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
-          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
-      ]
-    },
-    { cells: [
-        { tagName: 'TD', innerText: '30000', textContent: '30000', innerHTML: '30000',
-          classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
-          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
-        { tagName: 'TD', innerText: '40000', textContent: '40000', innerHTML: '40000',
-          classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
-          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
-      ]
-    },
-  ];
-  const table = {
-    tagName: 'TABLE',
-    rows: rows,
-    dataset: {},
-    getAttribute: function(name) {
-      return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
-    },
-    style: Object.assign({}, style),
-    parentElement: null,
-    parentNode: null,
-    querySelector: function() { return null; },
-    querySelectorAll: function() { return []; },
-    getBoundingClientRect: function() { return { top: 10, right: 100, bottom: 50, left: 10, width: 90, height: 40 }; },
-    classList: {
-      _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);},
-      contains(c){return this._c.includes(c);}
-    },
-  };
-  return table;
-}
-
-// Run injectTableToggles() with a controlled list of tables returned by
-// document.querySelectorAll('table'). Stubs away document.createElement and
-// document.body.appendChild so createToggleForTable doesn't throw in Node.
-// Restores all globals afterwards. Returns { tables } (same array for inspection).
-function runPass1WithTables(tables) {
-  const origQSA      = global.document.querySelectorAll;
-  const origCreateEl = global.document.createElement;
-  const origBody     = global.document.body;
-  const origDocEl    = global.document.documentElement;
-
-  // Stub querySelectorAll: Pass 1 → our tables; Pass 2 (GRID_ARIA_SELECTOR) → []
-  global.document.querySelectorAll = function(sel) {
-    if (sel === 'table') return tables;
-    return [];
-  };
-
-  // Stub createElement so createToggleForTable can build its button tree
-  global.document.createElement = function(tag) {
-    const attrs = {};
-    const listeners = {};
-    return {
-      _tag: tag,
-      type: '',
-      className: '',
-      style: {},
-      _children: [],
-      dataset: {},
-      parentElement: null,
-      textContent: '',
-      classList: {
-        _c: [],
-        add(c)     { if (!this._c.includes(c)) this._c.push(c); },
-        remove(c)  { this._c = this._c.filter(x => x !== c); },
-        contains(c){ return this._c.includes(c); },
-        toggle(c, f) {
-          const has = this._c.includes(c);
-          const want = f === undefined ? !has : f;
-          if (want && !has) this._c.push(c);
-          else if (!want && has) this._c = this._c.filter(x => x !== c);
-          return want;
-        },
-      },
-      contains() { return false; },
-      appendChild(child) { this._children.push(child); child.parentElement = this; return child; },
-      addEventListener(evt, fn) { if (!listeners[evt]) listeners[evt]=[]; listeners[evt].push(fn); },
-      setAttribute(name, val) { attrs[name] = val; },
-      getAttribute(name) { return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null; },
-      removeAttribute(name) { delete attrs[name]; },
-    };
-  };
-
-  // Stub body so button is appended without errors
-  global.document.body = { appendChild() {} };
-  global.document.documentElement = { appendChild() {} };
-
-  // Reset toggleStyleInjected so ensureToggleStyleInjected doesn't try document.head
-  const origToggleStyleInjected = toggleStyleInjected;
-  toggleStyleInjected = true; // skip style injection (would need document.head)
-
-  try {
-    injectTableToggles();
-  } finally {
-    global.document.querySelectorAll  = origQSA;
-    global.document.createElement     = origCreateEl;
-    global.document.body              = origBody;
-    global.document.documentElement   = origDocEl;
-    toggleStyleInjected               = origToggleStyleInjected;
-  }
-
-  return { tables };
-}
-
-// Helper: clean up tableToggles / trackedTables for a list of table objects so
-// they don't pollute subsequent tests.
-function cleanupPass1Tables(tables) {
-  for (const t of tables) {
-    if (tableToggles.has(t)) {
-      tableToggles.delete(t);
-      trackedTables.delete(t);
-    }
-  }
-}
 
 // --- pass1-filter AC1: phantom tables (aria-hidden ancestor) get NO toggle ---
 // Build N=3 phantom tables (aria-hidden parent), all valid data tables.
@@ -688,165 +490,6 @@ function cleanupPass1Tables(tables) {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint loosen-pass2-aria: Pass 2 phantom-table gate in injectTableToggles
-// ---------------------------------------------------------------------------
-//
-// The spec change: Pass 2 now skips an ARIA grid ONLY when it contains at
-// least one REAL (non-phantom) <table>.  A grid that contains only phantom
-// a11y tables (aria-hidden, offscreen, or svg-chart-wrapped) must be picked up
-// by Pass 2 and get a toggle.
-//
-// Helper: build a minimal ARIA grid element (div with role="grid" or role="table")
-// with a proper classList and the querySelectorAll('table') that returns a given
-// list of embedded table stubs.  Also provides a real row/cell structure so that
-// isDataTable() → GridAdapter.getRows() returns numeric data rows, making
-// createToggleForTable() proceed past the isDataTable guard.
-//
-function makeAriaGrid(embeddedTables) {
-  const classes = new Set();
-
-  // Build two rows × two numeric cells so isDataTable returns true.
-  function makeGridCell(text) {
-    return {
-      tagName: 'DIV',
-      textContent: text,
-      dataset: {},
-      classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
-      querySelectorAll() { return []; },
-      childNodes: [],
-    };
-  }
-  function makeGridRow(texts) {
-    const cellEls = texts.map(makeGridCell);
-    return {
-      tagName: 'DIV',
-      dataset: {},
-      children: cellEls,
-      querySelectorAll() { return []; },
-    };
-  }
-  const rowEls = [
-    makeGridRow(['1,000,000', '2,000,000']),
-    makeGridRow(['3,000,000', '4,000,000']),
-  ];
-
-  return {
-    tagName: 'DIV',
-    classList: {
-      contains(c) { return classes.has(c); },
-      add(c)      { classes.add(c); },
-      remove(c)   { classes.delete(c); },
-      _classes:   classes,
-    },
-    // querySelectorAll: for 'table' return embeddedTables; for grid-detection selectors
-    // ([role="grid"], [role="row"], etc.) return nothing so GridAdapter falls back to children.
-    querySelectorAll(sel) {
-      if (sel === 'table') return embeddedTables || [];
-      return [];
-    },
-    // children: the two rows — used by GridAdapter._getRowEls as fallback
-    children: rowEls,
-    getBoundingClientRect() {
-      return { top: 50, right: 300, bottom: 100, left: 50 };
-    },
-  };
-}
-
-// Helper: build a minimal phantom embedded table (aria-hidden on self → isPhantomA11yTable true)
-function makePhantomEmbeddedTable() {
-  return makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
-}
-
-// Helper: build a minimal real on-screen embedded table (isPhantomA11yTable false)
-function makeRealEmbeddedTable() {
-  const tbl = makePhantomEl({ tagName: 'TABLE' });
-  const wrapper = makePhantomEl({ tagName: 'DIV' });
-  chainParents(tbl, wrapper);
-  return tbl;
-}
-
-// Shared mock factory for the document.createElement / document.body rig
-// that createToggleForTable requires.  Returns { restore } to undo.
-function withToggleDocumentMock(fn) {
-  const origCreateEl = global.document.createElement;
-  const origBody     = global.document.body;
-  const origDocEl    = global.document.documentElement;
-  const origQSA      = global.document.querySelectorAll;
-  const origScrollX  = global.window.scrollX;
-  const origScrollY  = global.window.scrollY;
-
-  global.window.scrollX = 0;
-  global.window.scrollY = 0;
-  global.document.documentElement = { appendChild() {} };
-
-  global.document.createElement = (tag) => {
-    const attrs = {};
-    const listeners = {};
-    const el = {
-      _tag: tag,
-      type: '',
-      className: '',
-      style: {},
-      _children: [],
-      dataset: {},
-      parentElement: null,
-      textContent: '',
-      appendChild(child) {
-        this._children.push(child);
-        child.parentElement = this;
-        return child;
-      },
-      addEventListener(evt, fn2) {
-        if (!listeners[evt]) listeners[evt] = [];
-        listeners[evt].push(fn2);
-      },
-      setAttribute(name, value) { attrs[name] = value; },
-      getAttribute(name) {
-        return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
-      },
-      removeAttribute(name) { delete attrs[name]; },
-      classList: (() => {
-        const c = [];
-        return {
-          _c: c,
-          add(x)       { if (!c.includes(x)) c.push(x); },
-          remove(x)    { const i = c.indexOf(x); if (i >= 0) c.splice(i, 1); },
-          contains(x)  { return c.includes(x); },
-          toggle(x, f) {
-            const has = c.includes(x);
-            const want = f === undefined ? !has : f;
-            if (want && !has) c.push(x);
-            else if (!want && has) c.splice(c.indexOf(x), 1);
-            return want;
-          },
-        };
-      })(),
-      contains() { return false; },
-    };
-    return el;
-  };
-
-  global.document.body = {
-    appendChild(child) { child.parentElement = global.document.body; },
-    // The registry teardown detaches a pillbox through its parent, so the
-    // body stub answers the other half of the pair.
-    removeChild(child) { child.parentElement = null; },
-  };
-
-  try {
-    fn();
-  } finally {
-    global.document.createElement   = origCreateEl;
-    global.document.body            = origBody;
-    global.document.documentElement = origDocEl;
-    global.document.querySelectorAll = origQSA;
-    global.window.scrollX            = origScrollX;
-    global.window.scrollY            = origScrollY;
-    toggleStyleInjected = true; // prevent style re-injection leaking across tests
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Sanity: isPhantomA11yTable round-trip on the embedded-table fixtures
 // ---------------------------------------------------------------------------
 (function pass2aria_sanity_phantomEmbedded() {
@@ -1028,15 +671,6 @@ function withToggleDocumentMock(fn) {
 // These tests drive that function directly with element-node stubs.
 // ---------------------------------------------------------------------------
 
-// Helper: turn a makeAriaGrid() result into an added-node stub: it must look
-// like an element node and match GRID_ARIA_SELECTOR via node.matches().
-function asAddedGridNode(grid) {
-  grid.nodeType = global.Node.ELEMENT_NODE;
-  grid.tagName = 'DIV';
-  grid.matches = function(sel) { return sel === '[role="grid"], [role="table"]'; };
-  return grid;
-}
-
 // AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
 // <table>s are phantom chart a11y tables → gets dr-ext-grid + a toggle.
 (function observer_AC1_addedGridOnlyPhantomTables_getsToggle() {
@@ -1137,73 +771,6 @@ function asAddedGridNode(grid) {
 // Every expected value below comes from that statement, never from the
 // controller's source.
 
-// Drive the pending table's observer and its debounce the way the re-apply
-// observer tests drive theirs. The capturing MutationObserver records every
-// instance and every observe call, so a test can count the observers a nest
-// produced; the setTimeout stub stores each scheduled callback for the test to
-// run.
-function withPendingHarness(fn) {
-  const observers = [];
-  const timers = [];
-  const CapturingPendingMO = class {
-    constructor(cb) {
-      this._cb = cb;
-      this.observeCalls = [];
-      this.disconnectCount = 0;
-      observers.push(this);
-    }
-    observe(target, options) { this.observeCalls.push({ target, options }); }
-    disconnect() { this.disconnectCount++; }
-    /** Test helper: run the callback as one subtree mutation. */
-    trigger() { if (this._cb) this._cb([], this); }
-  };
-
-  const origMO = global.MutationObserver;
-  const origSetTimeout = global.setTimeout;
-  const origClearTimeout = global.clearTimeout;
-  global.MutationObserver = CapturingPendingMO;
-  global.setTimeout = function (callback, ms) {
-    timers.push({ callback, ms, cancelled: false, ran: false });
-    return timers.length - 1;
-  };
-  global.clearTimeout = function (id) {
-    if (id !== undefined && id !== null && timers[id]) timers[id].cancelled = true;
-  };
-
-  try {
-    fn({ observers, timers });
-  } finally {
-    global.MutationObserver = origMO;
-    global.setTimeout = origSetTimeout;
-    global.clearTimeout = origClearTimeout;
-  }
-}
-
-// Run the debounce timers a pending observer scheduled, and only those: the
-// pillbox builder schedules its own positioning timer at another delay, and
-// running that one here would test nothing about the re-test. Returns how many
-// ran.
-function runPendingRetestTimers(timers) {
-  let ran = 0;
-  for (const timer of timers) {
-    if (timer.cancelled || timer.ran) continue;
-    if (timer.ms !== DR_DETECTION_SETTINGS.gridRedrawDelayMs) continue;
-    timer.ran = true;
-    ran++;
-    timer.callback();
-  }
-  return ran;
-}
-
-// Add one element child to a fixture node after it was built. makeDgNode links
-// a child to its parent at construction, so a later child takes that link here.
-function appendDgChild(parentEl, childEl) {
-  parentEl.childNodes.push(childEl);
-  parentEl.children.push(childEl);
-  childEl.parentElement = parentEl;
-  return childEl;
-}
-
 // The row pairs a database query grid draws once its rows arrive: a row-number
 // gutter row in the pinned pane, and an identifier with a count and a rate in
 // the scrolling pane. Invented values, one order of magnitude apart.
@@ -1212,15 +779,6 @@ const PENDING_FILL_ROWS = [
   ['bravo', '551,077', '31.77'],
   ['charlie', '2,140,663', '58.02'],
 ];
-
-// Fill an empty database query grid fixture, the way the page fills a grid
-// that drew before its rows loaded.
-function fillDatabaseQueryGrid(grid) {
-  PENDING_FILL_ROWS.forEach((scrollTexts, i) => {
-    appendDgChild(grid.pinnedPaneEl, makeDgRow(i, [String(i + 1)]));
-    appendDgChild(grid.scrollPaneEl, makeDgRow(i, scrollTexts));
-  });
-}
 
 // --- Criterion 1: a container inserted empty and then filled registers ---
 
@@ -1589,53 +1147,6 @@ function fillDatabaseQueryGrid(grid) {
 // rows OUTSIDE the rowgroup (e.g. Kaggle's Data Explorer). Standard ARIA only.
 // ---------------------------------------------------------------------------
 
-// Build a <tr>-style row element whose cells are its element children.
-function makeTrRow(cellTexts) {
-  const cellEls = cellTexts.map(makeGridCellWithTextNode);
-  const row = makeElementNode('', cellEls);
-  row.tagName = 'TR';
-  row.children = cellEls;
-  row.querySelectorAll = function(sel) {
-    if (sel === '[role="cell"]' || sel === '.dg--cell') return [];
-    return [];
-  };
-  return row;
-}
-
-// Build a Kaggle-shaped ARIA grid:
-//   grid[role=table]
-//     div[role=row]            ← lone description block (NOT a data row)
-//     div[role=none] > tr(th)  ← header row, OUTSIDE any rowgroup
-//     div[role=none] > tr(td)  ← per-column stats row, OUTSIDE any rowgroup
-//     div[role=rowgroup] > span > tr(td) ...  ← the real data rows
-function makeKaggleLikeGrid(dataRows) {
-  const descRow = makeElementNode('', [makeGridCellWithTextNode('About this file')]);
-  descRow.querySelectorAll = () => [];
-
-  const headerTr = makeTrRow(['Release_Date', 'Popularity', 'Vote_Count']);
-  const statsTr  = makeTrRow(['9515', '9824', '9827']);
-
-  const dataTrs = dataRows.map(makeTrRow);
-  const rowgroup = makeElementNode('', dataTrs);
-  rowgroup.querySelectorAll = function(sel) {
-    if (sel === 'tr') return dataTrs;
-    return []; // no [role="row"] / .dg--virtual-row inside
-  };
-
-  const allTrs = [headerTr, statsTr, ...dataTrs];
-  const wrapper = makeElementNode('grid', [descRow, headerTr, statsTr, rowgroup]);
-  wrapper.tagName = 'DIV';
-  wrapper.matches = () => false;
-  wrapper.querySelector = () => null;
-  wrapper.querySelectorAll = function(sel) {
-    if (sel === '[role="rowgroup"]') return [rowgroup];
-    if (sel === '[role="row"]') return [descRow];
-    if (sel === 'tr') return allTrs;
-    return [];
-  };
-  return wrapper;
-}
-
 (function gridRowgroup_selectorFromGroup_universeFromGrid() {
   const grid = makeKaggleLikeGrid([
     ['2021-12-15', '5083.954', '8940'],
@@ -1685,54 +1196,6 @@ function makeKaggleLikeGrid(dataRows) {
 // the first-row default held the first DATA row — the grid's second literal
 // row.
 // ---------------------------------------------------------------------------
-
-// Build a Table-10-shaped ARIA grid: [role="row"] rows, with an optional
-// header row before the rowgroup and an optional summary row after it, both
-// OUTSIDE the group. Data rows sit inside the rowgroup.
-function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
-  function makeRoleRow(cellTexts) {
-    const cellEls = cellTexts.map(makeGridCellWithTextNode);
-    const row = makeElementNode('g-row', cellEls);
-    row.children = cellEls;
-    row.querySelectorAll = function(sel) {
-      if (sel === '[role="cell"]') return cellEls;
-      return [];
-    };
-    return row;
-  }
-
-  const headerRow = headerTexts ? makeRoleRow(headerTexts) : null;
-  const dataRowEls = dataRows.map(makeRoleRow);
-  const summaryRow = summaryTexts ? makeRoleRow(summaryTexts) : null;
-
-  const rowgroup = makeElementNode('', dataRowEls);
-  rowgroup.querySelectorAll = function(sel) {
-    if (sel === '[role="row"]') return dataRowEls;
-    return [];
-  };
-
-  // Document order, as the real querySelectorAll would report it.
-  const allRows = [];
-  if (headerRow) allRows.push(headerRow);
-  allRows.push.apply(allRows, dataRowEls);
-  if (summaryRow) allRows.push(summaryRow);
-
-  const kids = [];
-  if (headerRow) kids.push(headerRow);
-  kids.push(rowgroup);
-  if (summaryRow) kids.push(summaryRow);
-
-  const wrapper = makeElementNode('aria-grid', kids);
-  wrapper.tagName = 'DIV';
-  wrapper.matches = function() { return false; };
-  wrapper.querySelector = function() { return null; };
-  wrapper.querySelectorAll = function(sel) {
-    if (sel === '[role="rowgroup"]') return [rowgroup];
-    if (sel === '[role="row"]') return allRows;
-    return [];
-  };
-  return { wrapperEl: wrapper, dataRowEls, headerRow, summaryRow };
-}
 
 // Row universe: role="row" grid with a header row before the group and a
 // summary row after it — all four rows come back, in document order.
@@ -1828,24 +1291,6 @@ function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
   eq('data test: a grid whose first number sits in the twelfth column of its first data row passes',
     isDataTable(g.wrapperEl), true);
 })();
-
-// Helper: a native table of `rows` by `cols` cells, with a number placed at
-// the given one-based position in document order (row by row, left to
-// right), or no number at all when numberPosition is null. Every other cell
-// is empty, so the fixture also exercises the rule that an empty cell counts
-// as a read.
-function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
-  const spec = [];
-  for (let r = 0; r < rows; r++) {
-    const rowSpec = [];
-    for (let c = 0; c < cols; c++) {
-      const position = r * cols + c + 1;
-      rowSpec.push({ tag: 'td', text: (position === numberPosition) ? '42' : '' });
-    }
-    spec.push(rowSpec);
-  }
-  return spec;
-}
 
 // AC2: a native table large enough to cross the budget. The budget reads
 // cells in document order, header row included, and stops at the first
