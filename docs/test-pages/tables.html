@@ -1862,12 +1862,11 @@ TSLA,75,"248.09","18,606.75"
     <h2>24. Identifiers</h2>
     <p class="expect">Expect: a pillbox at load on both tables, a native table
       and a grid holding the same rows. Press each pillbox on. Every Value
-      cell down to US ZIP+4 is an identifier shape or an at-name and stays as written, on
+      cell down to "Phone inside words" is an identifier shape or an at-name and stays as written, on
       both tables, with no hover text. The Count column rounds as usual. The
-      last three rows round their Value cell: "1 234 567" is thousands
-      grouping and reads as one number, "90210" alone reads as a count, and
-      "Call 416-555-1234" holds words, so its numbers round as any extracted
-      cell does. The sidebar preview samples the Count column and none of the
+      last two rows round their Value cell: "1 234 567" is thousands
+      grouping and reads as one number, and "90210" alone reads as a count.
+      The sidebar preview samples the Count column and none of the
       identifiers. Before this rule, most Value cells rounded: "416 555 1234"
       became 4,000,000,000, "192.168.0.1" became 200.0.1, "2001:db8::1"
       became 2000:db8::1, "90210-1234" became 90000-1000, and each other
@@ -1915,10 +1914,69 @@ TSLA,75,"248.09","18,606.75"
         </div>
       </div>
     </div>
+    <p class="expect">24c, identifiers inside words: a native table and a
+      grid holding the same rows. Press each pillbox on. In each Text cell
+      down to US ZIP+4, the identifier stays as written and the count after
+      it rounds, on both tables. The last three rows round every number in
+      their Text cell: digit groups split by spaces alone ("416 555 1234",
+      "2024 12") count as an identifier only when they fill the whole cell,
+      and an ISBN inside words needs the word "ISBN". Before this change,
+      each identifier's digits rounded with the count, so the three digit
+      groups of "416-555-1234" each changed.</p>
+    <table id="id-text-native">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+    <div id="id-text-grid" class="aria-grid" role="grid" aria-label="Identifier shapes inside words"></div>
     <script>
       (function () {
-        var HEADERS = ['Shape', 'Value', 'Count'];
-        var ROWS = [
+        // Two tables per list, so each native table and its grid always hold
+        // the same values. The Shape column holds under the shipped
+        // first-column default; the Count column gives each table numbers to
+        // round beside the identifiers.
+        function buildPair(nativeId, gridId, headers, rows) {
+          var native = document.getElementById(nativeId);
+          var grid = document.getElementById(gridId);
+
+          var headerRow = document.createElement('tr');
+          headers.forEach(function (text) {
+            var th = document.createElement('th');
+            th.scope = 'col';
+            th.textContent = text;
+            headerRow.appendChild(th);
+          });
+          native.tHead.appendChild(headerRow);
+          rows.forEach(function (cells) {
+            var tr = document.createElement('tr');
+            cells.forEach(function (text, c) {
+              var cell = document.createElement(c === 0 ? 'th' : 'td');
+              if (c === 0) cell.scope = 'row';
+              cell.textContent = text;
+              tr.appendChild(cell);
+            });
+            native.tBodies[0].appendChild(tr);
+          });
+
+          function gridRow(cells, role) {
+            var row = document.createElement('div');
+            row.className = 'g-row';
+            row.setAttribute('role', 'row');
+            cells.forEach(function (text) {
+              var cell = document.createElement('span');
+              cell.setAttribute('role', role);
+              cell.textContent = text;
+              row.appendChild(cell);
+            });
+            return row;
+          }
+          grid.appendChild(gridRow(headers, 'columnheader'));
+          var group = document.createElement('div');
+          group.setAttribute('role', 'rowgroup');
+          rows.forEach(function (cells) { group.appendChild(gridRow(cells, 'cell')); });
+          grid.appendChild(group);
+        }
+
+        buildPair('id-native', 'id-grid', ['Shape', 'Value', 'Count'], [
           ['Phone, spaced', '416 555 1234', '1,613,245'],
           ['Phone, international', '+1 416 555 1234', '918,554'],
           ['Phone, dashes', '416-555-1234', '427,808'],
@@ -1934,49 +1992,28 @@ TSLA,75,"248.09","18,606.75"
           ['Canadian postal code', 'M5V 2T6', '1,506,220'],
           ['UK postcode', 'SW1A 1AA', '1,002,466'],
           ['US ZIP+4', '90210-1234', '440,193'],
+          ['Phone inside words', 'Call 416-555-1234', '1,611,842'],
           ['Thousands grouping (rounds)', '1 234 567', '281,745'],
-          ['Five-digit ZIP (rounds)', '90210', '93,662'],
-          ['Words (rounds)', 'Call 416-555-1234', '1,611,842']
-        ];
-        var native = document.getElementById('id-native');
-        var grid = document.getElementById('id-grid');
+          ['Five-digit ZIP (rounds)', '90210', '93,662']
+        ]);
 
-        var headerRow = document.createElement('tr');
-        HEADERS.forEach(function (text) {
-          var th = document.createElement('th');
-          th.scope = 'col';
-          th.textContent = text;
-          headerRow.appendChild(th);
-        });
-        native.tHead.appendChild(headerRow);
-        ROWS.forEach(function (cells) {
-          var tr = document.createElement('tr');
-          cells.forEach(function (text, c) {
-            var cell = document.createElement(c === 0 ? 'th' : 'td');
-            if (c === 0) cell.scope = 'row';
-            cell.textContent = text;
-            tr.appendChild(cell);
-          });
-          native.tBodies[0].appendChild(tr);
-        });
-
-        function gridRow(cells, role) {
-          var row = document.createElement('div');
-          row.className = 'g-row';
-          row.setAttribute('role', 'row');
-          cells.forEach(function (text) {
-            var cell = document.createElement('span');
-            cell.setAttribute('role', role);
-            cell.textContent = text;
-            row.appendChild(cell);
-          });
-          return row;
-        }
-        grid.appendChild(gridRow(HEADERS, 'columnheader'));
-        var group = document.createElement('div');
-        group.setAttribute('role', 'rowgroup');
-        ROWS.forEach(function (cells) { group.appendChild(gridRow(cells, 'cell')); });
-        grid.appendChild(group);
+        buildPair('id-text-native', 'id-text-grid', ['Shape', 'Text', 'Count'], [
+          ['Phone, dashes', 'Call 416-555-1234 about 1,613,245 units', '1,611,842'],
+          ['Phone, area code', '(416) 555-1234 ordered 918,554', '918,120'],
+          ['Phone, dots', 'Fax 416.555.1234, 427,808 pages', '427,550'],
+          ['Phone, toll-free', 'Dial 1-800-555-0199 for 263,114 refunds', '263,900'],
+          ['IP address', 'Host 192.168.0.1 served 1,482,391 requests', '1,482,005'],
+          ['IP address, v6', 'Host 2001:db8::1 served 947,310 requests', '947,688'],
+          ['Web address', 'See https://example.com/item/123 for 431,552 rows', '431,017'],
+          ['Email address', 'Mail 311@example.com about 270,987 orders', '270,441'],
+          ['ISBN', 'ISBN 978-0-306-40615-7 sold 90,114 copies', '90,562'],
+          ['Canadian postal code', 'Ship to M5V 2T6, 1,506,220 parcels', '1,506,781'],
+          ['UK postcode', 'Ship to SW1A 1AA, 1,002,466 parcels', '1,002,093'],
+          ['US ZIP+4', 'Ship to 90210-1234, 440,193 parcels', '440,650'],
+          ['Phone, spaced (rounds)', 'Call 416 555 1234 about 281,745 units', '281,302'],
+          ['Year and count (rounds)', 'In 2024 12 stores opened', '93,662'],
+          ['ISBN without the word (rounds)', '978-0-306-40615-7 sold 90,114 copies', '90,870']
+        ]);
       })();
     </script>
   </section>

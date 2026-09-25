@@ -689,20 +689,6 @@ function eraYearDigitRanges(text) {
 }
 
 /**
- * True if the number occurrence [index, index + numStr.length) in `text` is a
- * calendar year bound to an era marker (and therefore a date, not a numeric
- * value to be offset-rounded).
- */
-function isEraYear(text, index, numStr) {
-  if (typeof text !== 'string' || typeof numStr !== 'string') return false;
-  const end = index + numStr.length;
-  for (const r of eraYearDigitRanges(text)) {
-    if (index < r.end && end > r.start) return true;
-  }
-  return false;
-}
-
-/**
  * Returns the number of fractional digits in n's string representation.
  * Sign is stripped before counting. null/undefined/NaN all return 0.
  * Examples: decimalCount(0.5) → 1, decimalCount(-0.25) → 2, decimalCount(1) → 0.

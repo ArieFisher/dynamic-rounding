@@ -54,17 +54,13 @@ const DR_NUMBER = {
   isBracketedNegative,
   matchBracketedNumber,
   eraYearDigitRanges,
-  isEraYear,
   decimalCount,
   formatExtractedNumber,
   restoreFormatting,
 
   // identifiers.js
   matchIdentifierShape,
-  isPhoneNumber,
+  getIdentifierMaskedRanges,
   isGroupedDigitIdentifier,
-  isIpAddress,
-  isWebOrEmailAddress,
   isIsbnShape,
-  isPostalCode,
 };

@@ -126,7 +126,6 @@ globalThis.injectTogglesForAddedNode = injectTogglesForAddedNode;
 globalThis.isDataTable = isDataTable;
 globalThis.collectNumericCells = collectNumericCells;
 globalThis.extractPreviewSamples = extractPreviewSamples;
-globalThis.isEraYear = isEraYear;
 // The one currency list and what it derives, so the currency suite reads the
 // canon rather than restating any part of it.
 globalThis.CURRENCIES = CURRENCIES;
