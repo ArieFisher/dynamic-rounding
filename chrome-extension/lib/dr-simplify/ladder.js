@@ -63,12 +63,17 @@ function filterMaskedMatches(matches, ranges) {
  * getIdentifierMaskedRanges in lib/dr-number/identifiers.js), or a
  * superscript span, then drop era-marked years (issue #4 — "2898 AD" is a
  * date, not a quantity). superscriptRanges is caller-supplied plain data (see
- * file header); pass [] when the cell carries no <sup>.
+ * file header); pass [] when the cell carries no <sup>. The identifier scan
+ * reads the text with each superscript span blanked to spaces, so a footnote
+ * marker right after a phone number ("416-555-1234<sup>1</sup>") never joins
+ * its digits; the blanks keep every position in place.
  */
 function extractSimplifyMatches(text, superscriptRanges) {
   let matches = extractNumbersInText(text);
   matches = filterMaskedMatches(matches, getQuoteMaskedRanges(text));
-  matches = filterMaskedMatches(matches, getIdentifierMaskedRanges(text));
+  const shapeText = (superscriptRanges || []).reduce(
+    (t, r) => t.slice(0, r.start) + ' '.repeat(r.end - r.start) + t.slice(r.end), text);
+  matches = filterMaskedMatches(matches, getIdentifierMaskedRanges(shapeText));
   matches = filterMaskedMatches(matches, superscriptRanges);
   matches = matches.filter((m) => !isEraYear(text, m.index, m.numStr));
   return matches;

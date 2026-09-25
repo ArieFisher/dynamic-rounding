@@ -2068,6 +2068,9 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
   eq('identifier shape inside text: a footnote cell holds its phone number and rounds its quantity',
     extractSimplifyMatches('Call 416-555-1234 about 1,613,245 units1', [{ start: 39, end: 40 }]).map((m) => m.numStr),
     ['1,613,245']);
+  eq('identifier shape inside text: a footnote marker right after a phone number leaves the phone number whole',
+    extractSimplifyMatches('416-555-12341 about 1,613,245 units', [{ start: 12, end: 13 }]).map((m) => m.numStr),
+    ['1,613,245']);
   eq('identifier shape inside text: ranges cover each span in the text',
     getIdentifierMaskedRanges('Call 416-555-1234 or sales@example.com'),
     [{ start: 5, end: 17 }, { start: 21, end: 38 }]);
@@ -2087,11 +2090,16 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
     'x@'.repeat(50000),
     'ISBN 9'.repeat(20000),
     'A1'.repeat(50000),
+    'ISBN' + ' '.repeat(100000) + 'x',
   ];
   const started = Date.now();
   for (const text of texts) getIdentifierMaskedRanges(text);
-  eq('identifier shape inside text: seven 100,000-character texts scan in under a second',
+  eq('identifier shape inside text: eight 100,000-character texts scan in under a second',
     Date.now() - started < 1000, true);
+  const wholeCellStarted = Date.now();
+  matchIdentifierShape('ISBN' + ' '.repeat(100000) + 'x');
+  eq('identifier shape: a 100,000-character cell after "ISBN" tests in under a second',
+    Date.now() - wholeCellStarted < 1000, true);
 })();
 
 // A number right after "@" belongs to an at-name or an address, in any cell.

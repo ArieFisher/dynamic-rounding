@@ -148,7 +148,9 @@ function isWebOrEmailAddress(trimmed) {
 // carry a dash or a space, the way an ISBN is printed: a bare 10- or
 // 13-digit run ("1234567890") is a quantity written without thousands
 // commas, and keeps rounding. Inside text the word is required.
-const ISBN_PREFIX_PATTERN = 'isbn(?:-1[03])?\\s*:?\\s*';
+// The colon takes the whitespace before it, so a run of whitespace after the
+// word has one way to match.
+const ISBN_PREFIX_PATTERN = 'isbn(?:-1[03])?(?:\\s*:)?\\s*';
 const ISBN_BODY_PATTERN = '97[89](?:[- ]?\\d){10}|\\d(?:[- ]?\\d){8}[- ]?[\\dX]';
 const ISBN_RE = new RegExp(`^(${ISBN_PREFIX_PATTERN})?(?:${ISBN_BODY_PATTERN})$`, 'i');
 const ISBN_SPAN_RE = new RegExp(`${SPAN_START}${ISBN_PREFIX_PATTERN}(?:${ISBN_BODY_PATTERN})${SPAN_END}`, 'gi');

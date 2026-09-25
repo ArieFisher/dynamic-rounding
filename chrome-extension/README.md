@@ -56,7 +56,7 @@ Some text names a thing instead of counting it. A cell whose whole text matches 
 
 Inside a cell with words, a shape keeps its digits and every other number in the cell rounds: "Call 416-555-1234 about 1,613,245 units" becomes "Call 416-555-1234 about 1,500,000 units". Two shapes count only as a whole cell. Digit groups split by spaces alone never match inside text, since "in 2024 12 stores opened" holds two numbers side by side; "Call 416 555 1234" still rounds its three numbers, while "Call 416 555-1234" keeps them. An ISBN inside text needs the word "ISBN" before it.
 
-A number right after "@" belongs to an at-name or an address and never rounds, so "@2020vision" and "Follow @2020vision" stay as written. "@cherry1234" stays already, because digits joined to letters never read as a number. A cell with a superscript skips the whole-cell test, since its text joins base and exponent digits; the shapes inside its text still keep their digits. The shapes are listed once, in `lib/dr-number/identifiers.js`.
+A number right after "@" belongs to an at-name or an address and never rounds, so "@2020vision" and "Follow @2020vision" stay as written. "@cherry1234" stays already, because digits joined to letters never read as a number. A cell with a superscript skips the whole-cell test, since its text joins base and exponent digits; the shapes inside its text still keep their digits, and a footnote marker right after one ("416-555-1234¹") leaves it whole. The shapes are listed once, in `lib/dr-number/identifiers.js`.
 
 ## Extension errors
 
