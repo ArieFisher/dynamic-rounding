@@ -1885,6 +1885,36 @@ TSLA,75,"248.09","18,606.75"
       <tbody></tbody>
     </table>
     <div id="id-grid" class="aria-grid" role="grid" aria-label="Identifier shapes"></div>
+
+    <p class="expect">24b, a grid of stacked cells: each cell holds two
+      numbers, one above the other, in separate pieces of the markup. Their
+      joined text ("1500 1600") looks like digit groups split by a space, but
+      the numbers sit in separate pieces, so each rounds on its own. Expect:
+      every number rounds, as it did before the identifier shapes. A Low or
+      High cell left as written means the spaced-digit shape caught a
+      stacked cell.</p>
+    <div class="aria-grid" role="grid" aria-label="Stacked cells beside identifiers">
+      <div class="g-row" role="row">
+        <span role="columnheader">Metric</span>
+        <span role="columnheader">Low</span>
+        <span role="columnheader">High</span>
+        <span role="columnheader">Range</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">Visits</span>
+          <span role="cell"><span>1500</span><br><span>1600</span></span>
+          <span role="cell"><span>45</span><br><span>46</span></span>
+          <span role="cell"><span>125</span><br><span>126</span></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Orders</span>
+          <span role="cell"><span>2350</span><br><span>2475</span></span>
+          <span role="cell"><span>61</span><br><span>68</span></span>
+          <span role="cell"><span>312</span><br><span>318</span></span>
+        </div>
+      </div>
+    </div>
     <script>
       (function () {
         var HEADERS = ['Shape', 'Value', 'Count'];
