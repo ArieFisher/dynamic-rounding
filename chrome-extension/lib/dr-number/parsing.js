@@ -42,8 +42,13 @@
 // ("ref 12, total 9,850"), and every later step searches the live text for
 // the match string, so a trailing comma in it makes the link filter and the
 // patch step miss a number that is right there.
-const NUMBER_IN_TEXT_REGEX = /(?<![\w.,@])-?\d(?:[\d,]*\d)?(?:\.\d+)?/;
-const NUMBER_IN_TEXT_REGEX_GLOBAL = /(?<![\w.,@])-?\d(?:[\d,]*\d)?(?:\.\d+)?/g;
+//
+// DIGIT_RUN_PATTERN is the one copy of a number's digit run: the pattern
+// that finds a number inside text and the unit-number pattern both read it.
+const DIGIT_RUN_PATTERN = '\\d(?:[\\d,]*\\d)?(?:\\.\\d+)?';
+const NUMBER_IN_TEXT_PATTERN = '(?<![\\w.,@])-?' + DIGIT_RUN_PATTERN;
+const NUMBER_IN_TEXT_REGEX = new RegExp(NUMBER_IN_TEXT_PATTERN);
+const NUMBER_IN_TEXT_REGEX_GLOBAL = new RegExp(NUMBER_IN_TEXT_PATTERN, 'g');
 
 function lettersToColIndex(letters) {
   const up = letters.toUpperCase();
@@ -163,7 +168,7 @@ const SIGN_GROUP = '(?:' + CURRENCY_SIGN_ALTERNATION + ')';
 const UNIT_NUMBER_RE = new RegExp(
   '^(?<pre>' + SIGN_GROUP + '?(?<codeBefore>' + CURRENCY_CODE_ALTERNATION + ')' +
     SIGN_GROUP + '? ?|' + SIGN_GROUP + ')?' +
-  '(?<num>-?\\d(?:[\\d,]*\\d)?(?:\\.\\d+)?)' +
+  '(?<num>-?' + DIGIT_RUN_PATTERN + ')' +
   '(?: ?(?<suffix>' + MAGNITUDE_SUFFIX_ALTERNATION + '))?' +
   '(?: ?(?<codeAfter>' + CURRENCY_CODE_ALTERNATION + '))?$'
 );
