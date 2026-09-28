@@ -57,7 +57,7 @@ round_dynamic_series(s)  # → [1000.0, -500.0, 4500000.0]
 - **Type preservation:** Returns `int` when the input was `int` and the result is whole, and also when the result is whole and under 10 (trimming a trailing `.0`)
 - **None handling:** `None` input returns `None` (not 0)
 - **Pass-through:** Non-numeric values pass through unchanged by default
-- **String parsing (pandas):** Parses `$`, `€`, `£`, `¥`, commas, spaces, percent signs (`"50%"` → 50), Unicode dash and minus variants, and `(500)` → `-500`. A string with no digits (`"$"`) passes through, and strings with non-ASCII digits pass through for parity with the JS implementations
+- **String parsing (pandas):** Parses `$`, `€`, `£`, `¥`, comma groups (`"1,234"`), spaces, percent signs (`"50%"` → 50), Unicode dash and minus variants, and `(500)` → `-500`. A comma groups thousands only in the group shape: a first group of one to three digits, then groups of exactly three, before the decimal dot. Any other comma makes the string non-numeric, so `"13,63"` and `"1.234,56"` pass through unchanged, and a European decimal comma is not read. A string with no digits (`"$"`) passes through, and strings with non-ASCII digits pass through for parity with the JS implementations
 
 ## API
 
@@ -79,7 +79,7 @@ round_dynamic_series(s)  # → [1000.0, -500.0, 4500000.0]
 
 Same parameters as `round_dynamic`, but operates on a pandas Series.
 
-- Parses formatted strings automatically (currency, commas, accounting negatives)
+- Parses formatted strings automatically (currency, comma groups, accounting negatives)
 - Returns a new Series (original unchanged)
 
 ### Offset values

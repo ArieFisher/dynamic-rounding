@@ -23,6 +23,8 @@ const DR_NUMBER = {
 
   // core.js
   findMaxMagnitude,
+  numberFormat,
+  isNumberShape,
   toNumber,
 
   // parsing.js
@@ -54,9 +56,8 @@ const DR_NUMBER = {
   isBracketedNegative,
   matchBracketedNumber,
   eraYearDigitRanges,
-  decimalCount,
-  formatExtractedNumber,
-  restoreFormatting,
+  formatNumber,
+  pureNumberSpan,
 
   // identifiers.js
   matchIdentifierShape,

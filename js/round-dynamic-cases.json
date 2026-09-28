@@ -480,6 +480,31 @@
     ]
   },
   {
+    "description": "A comma outside the group shape is not a number: European-style and malformed runs pass through unchanged",
+    "cases": [
+      {
+        "input": "13,63",
+        "params": {},
+        "expected": "13,63"
+      },
+      {
+        "input": "987,5",
+        "params": {},
+        "expected": "987,5"
+      },
+      {
+        "input": "1.234,56",
+        "params": {},
+        "expected": "1.234,56"
+      },
+      {
+        "input": "1,234,56",
+        "params": {},
+        "expected": "1,234,56"
+      }
+    ]
+  },
+  {
     "description": "Dataset mode: num_top=1 applies offset_top only to the single largest magnitude",
     "cases": [
       {

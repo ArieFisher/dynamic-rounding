@@ -148,7 +148,7 @@
 
 // ---------------------------------------------------------------------------
 // Regression: DEFAULT_NUMERIC_PROBE must stay byte-equivalent to the old
-// pre-extraction predicate (trim -> strip CLEAN_REGEX chars -> parseFloat ->
+// pre-extraction predicate (trim -> strip format marks and commas -> parseFloat ->
 // isFinite). A prior version of this probe delegated to DR_NUMBER.toNumber,
 // which uses Number() plus unicode-minus/parenthesized-negative handling and
 // disagrees with parseFloat on exactly these shapes: date-only, time-only,
@@ -191,7 +191,7 @@
     isDataTable(table), true);
 })();
 
-// Value-with-unit column: CLEAN_REGEX strips the space ("3.5 kg" -> "3.5kg"),
+// Value-with-unit column: the probe's strip removes the space ("3.5 kg" -> "3.5kg"),
 // then parseFloat('3.5kg') -> 3.5 -> true.
 // DR_NUMBER.toNumber('3.5 kg') -> Number('3.5kg') -> NaN -> false.
 (function isDataTable_unitSuffixColumn() {
@@ -215,7 +215,7 @@
     isDataTable(table), false);
 })();
 
-// Accounting-negative cell: old CLEAN_REGEX + parseFloat leaves the
+// Accounting-negative cell: the probe's strip + parseFloat leaves the
 // parentheses in place; parseFloat('(1,234)' -> '(1234)') -> NaN -> false.
 // DR_NUMBER.toNumber rewrites "(1234)" -> "-1234" -> -1234 -> true. Verify
 // against the parent branch's own behavior (git show refactor/extract-dr-number)
@@ -562,8 +562,8 @@ const supTestOpts = {
     roundTable(makeSupTable(cell), supTestOpts);
     eq('RG3: anchor text node is intact after rounding adjacent number',
       anchorNode.nodeValue, 'lithium-7');
-    eq('RG3: plain node was rounded (1234 → 1000)',
-      plainNode.nodeValue, '1000 ');
+    eq('RG3: plain node was rounded (1234 → 1,000)',
+      plainNode.nodeValue, '1,000 ');
   });
 
 })();

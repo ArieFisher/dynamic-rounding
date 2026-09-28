@@ -2101,6 +2101,111 @@ TSLA,75,"248.09","18,606.75"
     </div>
   </section>
 
+  <section>
+    <h2>26. Decimal comma</h2>
+    <p class="expect">Expect: a pillbox at load on both tables, a native table
+      and a grid holding the same rows. Press each pillbox on. Every cell in
+      the European style column stays as written, on both tables, with no
+      hover text: a comma counts only in the group shape (a first group of
+      one to three digits, then groups of exactly three), before the decimal
+      dot, so a decimal comma is not read. The US style column
+      rounds: "1,234.56" becomes "1,000" and "0.125" becomes "0.15". Before
+      this change, every comma was deleted before reading, so "13,63 €"
+      showed "1,500 €", "5,16 €" showed "500 €", "987,5" showed "10,000", and
+      "1.234,56 €" showed "1 €".</p>
+
+    <!--
+      13,63 €      -> unchanged, both tables
+      5,16 €       -> unchanged, both tables
+      1.234,56 €   -> unchanged, both tables
+      1 234,56 €   -> unchanged, both tables
+      0,75         -> unchanged, both tables
+      987,5        -> unchanged, both tables
+      1,234.56     -> 1,000, both tables
+      0.125        -> 0.15, both tables
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Case</th>
+          <th scope="col">European style</th>
+          <th scope="col">US style</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Two-decimal price</th>
+          <td>13,63 €</td>
+          <td>1,234.56</td>
+        </tr>
+        <tr>
+          <th scope="row">Two-decimal price, small</th>
+          <td>5,16 €</td>
+          <td>0.125</td>
+        </tr>
+        <tr>
+          <th scope="row">Dot between groups</th>
+          <td>1.234,56 €</td>
+          <td></td>
+        </tr>
+        <tr>
+          <th scope="row">Space between groups</th>
+          <td>1 234,56 €</td>
+          <td></td>
+        </tr>
+        <tr>
+          <th scope="row">Below one</th>
+          <td>0,75</td>
+          <td></td>
+        </tr>
+        <tr>
+          <th scope="row">One decimal</th>
+          <td>987,5</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="aria-grid" role="grid" aria-label="Decimal comma">
+      <div class="g-row" role="row">
+        <span role="columnheader">Case</span>
+        <span role="columnheader">European style</span>
+        <span role="columnheader">US style</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">Two-decimal price</span>
+          <span role="cell">13,63 €</span>
+          <span role="cell">1,234.56</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Two-decimal price, small</span>
+          <span role="cell">5,16 €</span>
+          <span role="cell">0.125</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Dot between groups</span>
+          <span role="cell">1.234,56 €</span>
+          <span role="cell"></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Space between groups</span>
+          <span role="cell">1 234,56 €</span>
+          <span role="cell"></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Below one</span>
+          <span role="cell">0,75</span>
+          <span role="cell"></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">One decimal</span>
+          <span role="cell">987,5</span>
+          <span role="cell"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
 </body>
 
 </html>

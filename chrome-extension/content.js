@@ -1090,9 +1090,7 @@ function unroundedCellsRow(missed, total) {
     'the text they show did not match the text they hold.';
 }
 
-// The offsets, the top-band count, and the decimal floor, resolved once for
-// the whole table. The decimal floor reflects the precision the offsets
-// imply (e.g. offset 0.25 gives 2 decimals).
+// The offsets and the top-band count, resolved once for the whole table.
 function resolveRoundingSettings(opts) {
   const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
   const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
@@ -1100,7 +1098,6 @@ function resolveRoundingSettings(opts) {
     offsetTop,
     offsetOther,
     numTop: resolveNumTop(opts.numTop, DEFAULT_NUM_TOP),
-    floorDecimals: Math.max(decimalCount(offsetTop), decimalCount(offsetOther)),
   };
 }
 
@@ -1245,16 +1242,19 @@ function datasetMaxMagnitude(entries) {
 
 // One cell's patches, positioned in the text the cell classified: empty for a
 // skip cell, an unchanged value, or a changed date or time that crosses a
-// piece boundary. A pure, date, or time cell takes one patch: its trimmed
-// text, replaced whole, while the piece keeps its own whitespace. A pure
-// cell compares its formatted output to the trimmed text, which catches a
-// number that is unchanged but whose display simplifies (e.g. "35.0" to
-// "35"). An extracted cell — a unit number, a stacked cell, or numbers
-// inside words, links, or a <sup> — takes one patch per changed number, and
-// linkFilteredIdx holds the positions of the numbers the link filter kept.
+// piece boundary. A date or time cell takes one patch: its trimmed text,
+// replaced whole, while the piece keeps its own whitespace. Every number
+// takes the one write-back, formatNumber, patched in place. A pure cell
+// takes one patch over its number span (pureNumberSpan), so its sign,
+// currency sign, and percent sign stay where the page put them; the patch
+// compares the written digits to the span, which catches a number that is
+// unchanged but whose display simplifies (e.g. "35.0" to "35"). An extracted
+// cell — a unit number, a stacked cell, or numbers inside words, links, or a
+// <sup> — takes one patch per changed number, and linkFilteredIdx holds the
+// positions of the numbers the link filter kept.
 function cellPatches(entry, maxMag, opts, rounding, kind) {
   const { text, trimmed, info, layout } = entry;
-  const { offsetTop, offsetOther, numTop, floorDecimals } = rounding;
+  const { offsetTop, offsetOther, numTop } = rounding;
   const lead = typeof text === 'string' ? text.length - text.trimStart().length : 0;
   if (info.mode === 'date' || info.mode === 'time') {
     const prefilled = (info.month !== undefined)
@@ -1272,15 +1272,16 @@ function cellPatches(entry, maxMag, opts, rounding, kind) {
   }
   if (info.mode === 'pure') {
     const roundedValue = roundCellSetAware(info.num, info.num, maxMag, offsetTop, offsetOther, numTop);
-    const formatted = restoreFormatting(roundedValue, text, floorDecimals);
-    const patches = formatted === trimmed ? [] : [{ index: lead, numStr: trimmed, newNum: formatted }];
+    const span = pureNumberSpan(text);
+    const newNum = formatNumber(roundedValue, span.numStr);
+    const patches = newNum === span.numStr ? [] : [{ index: span.index, numStr: span.numStr, newNum }];
     return { patches, linkFilteredIdx: null };
   }
   if (info.mode === 'extracted') {
     const patches = [];
     for (const m of info.matches) {
       const rounded = roundCellSetAware(m.num, m.num, maxMag, offsetTop, offsetOther, numTop);
-      const newNum = formatExtractedNumber(rounded, m.numStr, floorDecimals);
+      const newNum = formatNumber(rounded, m.numStr);
       if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
     }
     return { patches, linkFilteredIdx: info.matches.map((m) => m.index) };

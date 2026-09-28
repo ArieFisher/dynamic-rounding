@@ -337,7 +337,7 @@ function makeMockButton() {
 // isDataTable(table) returns true iff:
 //   - table.rows.length >= 2
 //   - at least one row has cells.length >= 2
-//   - at least one cell has numeric textContent (CLEAN_REGEX stripped + parseFloat + isFinite)
+//   - at least one cell has numeric textContent (format marks and commas stripped + parseFloat + isFinite)
 //
 // Helper: build a minimal table stub for isDataTable.
 // rowsSpec: array of arrays of textContent strings.

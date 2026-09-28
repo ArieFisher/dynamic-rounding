@@ -22,13 +22,19 @@ A tab switch closes the sidebar. The service worker closes it whenever the user 
 
 The extension uses the same offset model as the rest of the project. As of the `2026-05-28` release, the meaning of fractional offsets is sign-aware: `+0.5` rounds toward half of the next-larger order of magnitude, and `-0.5` rounds toward half of the current order. The result is also floored at the value's own order of magnitude so a large number can never collapse to zero. One platform difference: an out-of-range offset does not throw here — the extension falls back to the default instead. See the [Sheets README](../js/README.md#offset-reference) for the full offset reference and parameter table.
 
+## Commas and decimal marks
+
+The extension reads numbers in US style, strictly. A comma groups thousands only in the group shape — a first group of one to three digits, then groups of exactly three — and only before the decimal mark, and the dot is the only decimal mark. "1,234", "1,234.56" and "0.125" read as numbers. "13,63", "987,5", "1,0845", "1,234,56", "1.234,56" and "12.03.2024" do not, and a cell or a number inside words that holds one stays as written. So a European price such as "13,63 €" stays as written.
+
+Every rounded number is written back one way: its digits alone change, in place, grouped with commas and a dot, and the characters around it stay where the page put them. "up 12345 units" becomes "up 10,000 units", "$ 1,234" becomes "$ 1,000", "(1,234)" becomes "(1,000)", "+5%" stays "+5%", and a minus sign written as "−" stays "−". A space-grouped number comes back with commas: "1 234 567" becomes "1,000,000".
+
 ## Unit numbers
 
 A unit number is a cell whose whole text is one number with a magnitude suffix after it, a listed currency code before or after it, or both: "4.91tn", "41.31m", "5.2 Bn", "CAD45.67", "CAD$45.67", "$CAD45.67", "45.67 CAD", "CAD45.67m". Only the digits round, so "CAD45.67m" becomes "CAD45m" and "4.91tn" becomes "5tn". A unit number rounds on HTML tables and grids alike, whatever the sidebar's "words" setting holds.
 
 - The suffixes are k, m, b, t, bn, and tn, in any case, directly after the number or after one space.
 - A currency code counts only in upper case and only as its own word, so "CADENCE" and "usd" do not. A currency sign written in letters takes the same rule on whichever end carries the letter, so the rand's "R" counts in "R45" and not in "Revenue". A sign written as a picture counts wherever it sits.
-- Every currency the extension reads — its signs and its code together — is listed once, in `lib/dr-number/core.js`. Reading a cell as a number, the currency exclusion, the sign-only piece test, the data test's numeric probe, and putting the sign back after rounding all read that one list. The magnitude suffixes are listed once, in `lib/dr-number/parsing.js`.
+- Every currency the extension reads — its signs and its code together — is listed once, in `lib/dr-number/core.js`. Reading a cell as a number, the currency exclusion, the sign-only piece test, the data test's numeric probe, and the number span, which leaves the sign out of what the write-back replaces, all read that one list. The magnitude suffixes are listed once, in `lib/dr-number/parsing.js`.
 - With the currency setting off, a cell holding a listed code stays unchanged, the same as a cell holding "$".
 - A unit number counts as its shown digits in the max magnitude: "4.91tn" counts as 4.91.
 - Letters that are neither a suffix nor a listed code make the cell something else: "DT1234" and "cust15" are identifiers and never round as unit numbers.
@@ -48,7 +54,7 @@ A financial statement writes a negative as a bracket pair: "(1,234)" is −1,234
 Some text names a thing instead of counting it. A cell whose whole text matches one of these shapes stays as written, on HTML tables and grids alike, whatever the sidebar's "words" setting holds:
 
 - A phone number with dashes, dots, spaces, or a bracketed area code: "416-555-1234", "416.555.1234", "416 555 1234", "+1 416 555 1234", "(416) 555-1234", "(416)555-1234", "1-800-555-0199".
-- Digit groups split by spaces outside thousands grouping: "4165 5512", "44 20 7946 0958". Thousands grouping (a first group of one to three digits, then groups of exactly three) reads as one number for every shape, so "1 234 567" and "1 234 567 890" round. A stacked cell whose numbers sit in separate pieces of the markup ("1500" above "1600") rounds number by number, since its joined text is several numbers.
+- Digit groups split by spaces outside thousands grouping: "4165 5512", "44 20 7946 0958". Thousands grouping (a first group of one to three digits, then groups of exactly three) reads as one number for every shape, so "1 234 567" and "1 234 567 890" round. A comma groups thousands in the same shape, and only before the decimal dot; see [Commas and decimal marks](#commas-and-decimal-marks). A stacked cell whose numbers sit in separate pieces of the markup ("1500" above "1600") rounds number by number, since its joined text is several numbers.
 - An IP address: "192.168.0.1", "2001:db8::1".
 - A web or email address: "https://example.com/item/123", "www.example.com/p/12", "sales@example.com".
 - An ISBN: "ISBN 978-0-306-40615-7", "978-0-306-40615-7". Without the word "ISBN" the digits must carry a dash or a space, so a bare "1234567890" still rounds.

@@ -90,7 +90,11 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 - `"50%"` → 50 (the percent sign is stripped, not scaled)
 - `"1 200"` → 1200 (spaces read as thousands separators)
 - `"−500"` → -500 (Unicode dash and minus variants read as a negative sign)
+- `"13,63"` → `"13,63"` (passes through unchanged: a comma counts only in the group shape, so a European decimal comma is not read)
+- `"1.234,56"` → `"1.234,56"` (passes through unchanged: a comma after the decimal dot is not read)
 - Supports `$`, `€`, `£`, `¥`
+
+**Commas:** A comma groups thousands only in the group shape: a first group of one to three digits, then groups of exactly three, all before the decimal dot. `"1,234"` and `"1,234.56"` read as numbers. Any other comma makes the string non-numeric, so `"987,5"` and `"1,234,56"` pass through unchanged. The dot is the only decimal mark.
 
 **Non-numeric values:** Pass through unchanged. A string with no digits at all — a lone currency symbol or separator like `"$"` or `","` — also passes through instead of reading as `0`.
 

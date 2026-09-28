@@ -82,15 +82,22 @@ const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 // belonging to it — a currency sign, a percent sign, and whitespace. The
 // signs come from CURRENCIES above, so a new row reaches this list too.
 // Every rule that steps past a mark to reach a number reads this one source:
-// the clean-up before a text reads as a number, and the test for what stands
-// between a bracket and the number (lib/dr-number/parsing.js). A bracket is
-// not a format mark: it is the number's minus sign, and adding it here would
-// strip it before PARENS_REGEX below could read it.
+// the clean-up before a text reads as a number, the test for what stands
+// between a bracket and the number, the pure number span, and the data
+// test's numeric probe (lib/dr-number/parsing.js, lib/dr-table/detect.js).
+// A bracket is not a format mark: it is the number's minus sign, and adding
+// it here would strip it before PARENS_REGEX below could read it.
 const FORMAT_MARK_ALTERNATION = '(?:' + CURRENCY_SIGN_ALTERNATION + '|[\\s%])';
-// Everything dropped from a text before it reads as a number: a format mark,
-// plus the thousands comma, which is part of how the number is written.
-const CLEAN_REGEX = new RegExp('(?:' + FORMAT_MARK_ALTERNATION + '|,)', 'g');
+// Everything dropped from a text before it reads as a number: the format
+// marks alone. A group mark stays, so the number shape test below can judge
+// where it stands.
+const CLEAN_REGEX = new RegExp(FORMAT_MARK_ALTERNATION, 'g');
 const PARENS_REGEX = /^\((.+)\)$/;
+// The characters toNumber reads as a minus sign: every dash and minus
+// variant, each normalized to an ASCII "-" before the conversion. The pure
+// number span (lib/dr-number/parsing.js) steps past the same class.
+const DASH_CLASS = '[‐-―−﹘﹣－]';
+const DASH_REGEX = new RegExp(DASH_CLASS, 'g');
 const DEFAULT_OFFSET_TOP = -0.5;
 const DEFAULT_NUM_TOP = 1;
 const VALIDATION_LIMIT = 20;
@@ -112,17 +119,68 @@ function findMaxMagnitude(numericRange) {
 
 // roundCellSetAware and roundWithOffset live in rounding.js.
 
+// The marks a number uses: US style, a comma between groups of three digits
+// and a dot before the fraction. Frozen, so no caller can change the marks
+// another caller reads.
+const US_NUMBER_FORMAT = Object.freeze({ group: ',', decimal: '.' });
+
+/**
+ * The number format function: the one place that states which marks a
+ * number uses. The number shape test reads it to know which shape to accept,
+ * and the write-back reads it to know which marks to write. It returns US
+ * style for now.
+ * @returns {{group: string, decimal: string}}
+ */
+function numberFormat() {
+  return US_NUMBER_FORMAT;
+}
+
+// The group-shape pattern for each group mark, built once: toNumber runs on
+// every cell of every pass. The number format function returns one set of
+// marks today, so the cache holds one entry; it grows by one entry for each
+// distinct group mark a later format returns, never with page content.
+const GROUP_SHAPE_CACHE = new Map();
+
+/**
+ * The number shape test. A group mark may appear only in the group shape (a
+ * first group of one to three digits, then groups of exactly three) and only
+ * before the decimal mark. A run with no group mark passes, and the
+ * conversion judges it as before, so ".300", "5." and "1.2E+05" still read
+ * as numbers and a second dot still fails there. `run` is a text with its
+ * format marks stripped, its dashes normalized, and its brackets turned into
+ * a minus sign.
+ * @param {string} run
+ * @param {{group: string, decimal: string}} marks
+ * @returns {boolean}
+ */
+function isNumberShape(run, marks) {
+  const at = run.indexOf(marks.decimal);
+  const whole = at === -1 ? run : run.slice(0, at);
+  const fraction = at === -1 ? '' : run.slice(at + marks.decimal.length);
+  if (fraction.includes(marks.group)) return false;
+  if (!whole.includes(marks.group)) return true;
+  if (!GROUP_SHAPE_CACHE.has(marks.group)) {
+    const escaped = marks.group.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    GROUP_SHAPE_CACHE.set(marks.group, new RegExp('^[+-]?\\d{1,3}(?:' + escaped + '\\d{3})+$'));
+  }
+  return GROUP_SHAPE_CACHE.get(marks.group).test(whole);
+}
+
 function toNumber(value) {
   if (typeof value === "number") {
     return isFinite(value) ? value : null;
   }
   if (typeof value === "string" && value.trim() !== "") {
-    let cleaned = value.trim()
-      .replace(/[‐-―−﹘﹣－]/g, "-")
+    const marks = numberFormat();
+    const cleaned = value.trim()
+      .replace(DASH_REGEX, "-")
       .replace(CLEAN_REGEX, "")
       .replace(PARENS_REGEX, "-$1");
     if (cleaned === "") return null;
-    const parsed = Number(cleaned);
+    if (!isNumberShape(cleaned, marks)) return null;
+    const ungrouped = cleaned.split(marks.group).join("");
+    const plain = marks.decimal === "." ? ungrouped : ungrouped.split(marks.decimal).join(".");
+    const parsed = Number(plain);
     return isFinite(parsed) ? parsed : null;
   }
   return null;
