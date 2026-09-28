@@ -37,15 +37,21 @@
 // ("₹615.71–623.33 crore") never relied on this — "-?" only ever matched an
 // ASCII hyphen — so hyphen-typed ranges now behave like en-dash ones.
 //
-// The integer part ends in a digit: "\d(?:[\d,]*\d)?" takes "1,200" whole but
-// stops "12," at the "12". A comma that ends a number is sentence punctuation
-// ("ref 12, total 9,850"), and every later step searches the live text for
-// the match string, so a trailing comma in it makes the link filter and the
-// patch step miss a number that is right there.
+// The run takes every comma and dot that sits between digits, so the number
+// shape test in toNumber (core.js) judges the whole run: "1.234,56" and
+// "12.03.2024" come through whole and read as no number, and the text stays
+// as written. A pattern that stopped at the first dot would take "1.234" and
+// round it.
+//
+// The run ends in a digit: "\d(?:[\d.,]*\d)?" takes "1,200" whole but stops
+// "12," at the "12" and "9,850." at the "9,850". A comma or period that ends
+// a number is sentence punctuation ("ref 12, total 9,850."), and every later
+// step searches the live text for the match string, so a trailing mark in it
+// makes the link filter and the patch step miss a number that is right there.
 //
 // DIGIT_RUN_PATTERN is the one copy of a number's digit run: the pattern
 // that finds a number inside text and the unit-number pattern both read it.
-const DIGIT_RUN_PATTERN = '\\d(?:[\\d,]*\\d)?(?:\\.\\d+)?';
+const DIGIT_RUN_PATTERN = '\\d(?:[\\d.,]*\\d)?';
 const NUMBER_IN_TEXT_PATTERN = '(?<![\\w.,@])-?' + DIGIT_RUN_PATTERN;
 const NUMBER_IN_TEXT_REGEX = new RegExp(NUMBER_IN_TEXT_PATTERN);
 const NUMBER_IN_TEXT_REGEX_GLOBAL = new RegExp(NUMBER_IN_TEXT_PATTERN, 'g');
@@ -694,107 +700,64 @@ function eraYearDigitRanges(text) {
 }
 
 /**
- * Returns the number of fractional digits in n's string representation.
- * Sign is stripped before counting. null/undefined/NaN all return 0.
- * Examples: decimalCount(0.5) → 1, decimalCount(-0.25) → 2, decimalCount(1) → 0.
- */
-function decimalCount(n) {
-  if (n === null || n === undefined || (typeof n === 'number' && isNaN(n))) return 0;
-  const s = String(Math.abs(n));
-  const dot = s.indexOf('.');
-  if (dot === -1) return 0;
-  return s.length - dot - 1;
-}
-
-/**
- * The two number formats every rounded value is written in: en-US, trailing
- * zeros stripped, with and without thousands separators. Each is built once.
- * A toLocaleString call with options builds a new format on every call, which
- * took most of a pass's time: about 15 microseconds a number against well
- * under one for a format built once.
+ * The number format every rounded value is written in: en-US, grouped,
+ * trailing zeros stripped. It is built once. A toLocaleString call with
+ * options builds a new format on every call, which took most of a pass's
+ * time: about 15 microseconds a number against well under one for a format
+ * built once. formatNumber maps its marks onto the marks the number format
+ * function returns.
  */
 const GROUPED_NUMBER_FORMAT = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 0,
   maximumFractionDigits: 10,
   useGrouping: true,
 });
-const UNGROUPED_NUMBER_FORMAT = new Intl.NumberFormat('en-US', {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 10,
-  useGrouping: false,
-});
 
 /**
- * Format a rounded number extracted from inline text for display.
+ * The one write-back: turn a rounded value into the characters that replace
+ * a number's digits in place, on every cell kind. The digits are grouped and
+ * written with the marks the number format function (core.js) returns.
+ * Trailing zeros are always stripped, at every magnitude.
  *
- * Trailing zeros are always stripped, at every magnitude: minimumFractionDigits
- * stays 0. Sprint trim-trailing-zeros replaced the earlier band rule that raised
- * the floor to the offset's own decimal count for |rounded| < 10.
+ * The characters around the number stay where the page put them, so a minus
+ * sign is written only when originalNumStr itself starts with one. A negative
+ * whose number holds no minus sign carries its sign outside the patched
+ * characters: in the brackets around it (see isBracketedNegative), or in a
+ * pure cell's own leading sign (see pureNumberSpan). A minus written here
+ * would double that sign ("(-1,200)").
  *
- * The rounded number carries the sign the original text showed. A negative
- * whose original text holds no minus sign wrote that sign as the brackets
- * around it (see isBracketedNegative); those brackets sit outside the patched
- * characters and stay on the page, so a minus written here would double the
- * sign ("(-1,200)").
- *
- * @param {number} rounded       - The rounded numeric value.
- * @param {string} originalNumStr - The original number string (for comma/decimal detection).
- * @param {number} [floorDecimals=0] - Ignored. Kept so existing call sites and the
- *   tests that assert output does not depend on it keep their signature.
+ * @param {number} rounded - The rounded value.
+ * @param {string} originalNumStr - The characters the result replaces.
+ * @returns {string}
  */
-function formatExtractedNumber(rounded, originalNumStr, floorDecimals = 0) {
-  const hasCommas = originalNumStr.includes(',');
-  const signed = originalNumStr.trim().startsWith('-') ? rounded : Math.abs(rounded);
-  return (hasCommas ? GROUPED_NUMBER_FORMAT : UNGROUPED_NUMBER_FORMAT).format(signed);
+function formatNumber(rounded, originalNumStr) {
+  const marks = numberFormat();
+  const signed = originalNumStr.startsWith('-') ? rounded : Math.abs(rounded);
+  return GROUPED_NUMBER_FORMAT.format(signed)
+    .replace(/[,.]/g, (mark) => (mark === ',' ? marks.group : marks.decimal));
 }
 
+// A pure cell's leading run: format marks and sign characters, the ASCII
+// plus and minus, the dash class toNumber reads as a minus sign, and the
+// opening bracket of an accounting minus sign. The trailing run: format
+// marks and the closing bracket. Both read the one format-mark list.
+const PURE_LEAD_RE = new RegExp('^(?:' + FORMAT_MARK_ALTERNATION + '|[+\\-(]|' + DASH_CLASS + ')*');
+const PURE_TRAIL_RE = new RegExp('(?:' + FORMAT_MARK_ALTERNATION + '|\\))*$');
+
 /**
- * Restore the formatting of a pure-numeric cell after rounding.
- *
- * Trailing zeros are always stripped, mirroring formatExtractedNumber.
- *
- * @param {number} roundedValue   - The rounded numeric value.
- * @param {string} originalString - Original cell text (for symbol/format detection).
- * @param {number} [floorDecimals=0] - Ignored. See formatExtractedNumber.
+ * The number span of a pure cell: its text with the leading run of format
+ * marks and sign characters and the trailing run of format marks left out.
+ * The write-back patches this span alone, so a sign, a currency sign and its
+ * gap, a percent sign, and a plus stay where the page put them. The span
+ * never starts with a minus sign, so the write-back writes the absolute
+ * value and the kept sign carries the negative. index counts into `text` as
+ * given, untrimmed.
+ * @param {string} text
+ * @returns {{numStr: string, index: number}}
  */
-function restoreFormatting(roundedValue, originalString, floorDecimals = 0) {
-  let result;
-  const originalTrimmed = originalString.trim();
-
-  result = GROUPED_NUMBER_FORMAT.format(roundedValue);
-
-  // Handle percent
-  if (originalTrimmed.includes('%')) {
-    result += '%';
-  }
-
-  // Handle plus
-  if (originalTrimmed.includes('+') && roundedValue > 0) {
-    result = '+' + result;
-  }
-
-  // Put the currency sign back on the side it stood, with the space it had.
-  // The sign comes from CURRENCY_SIGN_RE (core.js), so every currency the one
-  // list names survives rounding, and a letter that only looks like a sign
-  // ("Revenue") is left alone.
-  const signMatch = CURRENCY_SIGN_RE.exec(originalTrimmed);
-  if (signMatch) {
-    const sign = signMatch[0];
-    const at = signMatch.index;
-    const firstDigit = originalTrimmed.search(/\d/);
-    if (firstDigit === -1 || at < firstDigit) {
-      const gap = /^\s/.test(originalTrimmed.slice(at + sign.length)) ? ' ' : '';
-      result = sign + gap + result;
-    } else {
-      const gap = /\s$/.test(originalTrimmed.slice(0, at)) ? ' ' : '';
-      result = result + gap + sign;
-    }
-  }
-
-  // Handle parens
-  if (roundedValue < 0 && /^\(.*?\)$/.test(originalTrimmed)) {
-    result = '(' + result.replace('-', '') + ')';
-  }
-  
-  return result;
+function pureNumberSpan(text) {
+  const index = PURE_LEAD_RE.exec(text)[0].length;
+  const rest = text.slice(index);
+  const trail = PURE_TRAIL_RE.exec(rest)[0].length;
+  return { numStr: rest.slice(0, rest.length - trail), index };
 }

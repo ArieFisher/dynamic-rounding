@@ -128,23 +128,31 @@ eq('guard: caret exponent notation unaffected',
   numStrs('10^12'),
   ['10', '12']);
 
-// --- formatExtractedNumber ---
+// --- formatNumber: the one write-back ---
+
+// A pure cell's write: the one write-back over the cell's number span, with
+// the characters around the span left in place.
+function writePureCell(rounded, text) {
+  const span = pureNumberSpan(text);
+  return text.slice(0, span.index) + formatNumber(rounded, span.numStr) +
+    text.slice(span.index + span.numStr.length);
+}
 
 eq('format: large number gets commas matching original',
-  formatExtractedNumber(8500000, '8,584,629'),
+  formatNumber(8500000, '8,584,629'),
   '8,500,000');
 
 eq('format: small int no commas',
-  formatExtractedNumber(300, '286'),
+  formatNumber(300, '286'),
   '300');
 
 eq('format: trailing zeros stripped when |x|<10',
-  formatExtractedNumber(1.5, '1.234'),
+  formatNumber(1.5, '1.234'),
   '1.5');
 
-eq('format: |x|>=10 drops decimals even if original had them',
-  formatExtractedNumber(1500, '1.234'),
-  '1500');
+eq('format: |x|>=10 drops decimals and groups the digits',
+  formatNumber(1500, '1.234'),
+  '1,500');
 
 // --- toNumber sanity (covered indirectly but pin behavior) ---
 
@@ -185,8 +193,8 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
     if (info.mode === 'skip') return info.text;
     const rounded = roundCellSetAware(info.num, info.num, maxMag, -0.5, -0.5, 1);
     if (rounded === info.num) return info.text;
-    if (info.mode === 'pure') return restoreFormatting(rounded, info.text);
-    const num = formatExtractedNumber(rounded, info.numStr);
+    if (info.mode === 'pure') return writePureCell(rounded, info.text);
+    const num = formatNumber(rounded, info.numStr);
     return info.text.substring(0, info.index) + num + info.text.substring(info.index + info.numStr.length);
   });
 
@@ -206,7 +214,7 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
     const m = matches[i];
     const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
-    const newNum = formatExtractedNumber(rounded, m.numStr);
+    const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
   }
 
@@ -229,7 +237,7 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
   const out = infos.map(info => {
     if (info.mode === 'skip') return info.text;
     const rounded = roundCellSetAware(info.num, info.num, maxMag, -0.5, -0.5, 1);
-    return info.mode === 'pure' ? restoreFormatting(rounded, info.text) : info.text;
+    return info.mode === 'pure' ? writePureCell(rounded, info.text) : info.text;
   });
 
   eq('excludeWords=true: only pure-numeric cells round',
@@ -290,7 +298,7 @@ eq('extract: comma after the first number is left out of the match',
     const m = matches[i];
     const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
-    const newNum = formatExtractedNumber(rounded, m.numStr);
+    const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
   }
 
@@ -315,7 +323,7 @@ eq('extract: comma after the first number is left out of the match',
     const m = matches[i];
     const rounded = roundCellSetAware(m.num, m.num, maxMag, -0.5, -0.5, 1);
     if (rounded === m.num) continue;
-    const newNum = formatExtractedNumber(rounded, m.numStr);
+    const newNum = formatNumber(rounded, m.numStr);
     out = out.substring(0, m.index) + newNum + out.substring(m.index + m.numStr.length);
   }
 
@@ -337,18 +345,18 @@ eq('toNumber: euro sign only returns null', toNumber('€'), null);
 
 eq('toNumber: currency symbol with spaces returns null', toNumber(' $ '), null);
 
-// --- restoreFormatting roundtrips for common shapes ---
-eq('restoreFormatting: pure integer keeps commas',
-  restoreFormatting(8500000, '8,584,629'), '8,500,000');
+// --- Pure cell writes for common shapes ---
+eq('pure cell write: pure integer keeps commas',
+  writePureCell(8500000, '8,584,629'), '8,500,000');
 
-eq('restoreFormatting: currency prefix preserved',
-  restoreFormatting(8500000, '$8,584,629'), '$8,500,000');
+eq('pure cell write: currency prefix preserved',
+  writePureCell(8500000, '$8,584,629'), '$8,500,000');
 
-eq('restoreFormatting: percent suffix preserved',
-  restoreFormatting(12, '12.34%'), '12%');
+eq('pure cell write: percent suffix preserved',
+  writePureCell(12, '12.34%'), '12%');
 
-eq('restoreFormatting: parens-negative preserved',
-  restoreFormatting(-500, '(523)'), '(500)');
+eq('pure cell write: parens-negative preserved',
+  writePureCell(-500, '(523)'), '(500)');
 
 // --- Sprint A: exclusion checkboxes ---
 
@@ -1129,83 +1137,60 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
     contentSrc.includes('function overlapsQuoteRange('), true);
 })();
 
-// --- Sprint decimal-precision-display: decimalCount ---
+// --- Sprint decimal-precision-display: trailing zeros ---
 
-eq('decimalCount: 0.5 -> 1', decimalCount(0.5), 1);
+// trailing zeros always stripped regardless of the original decimal count
+eq('formatNumber: trailing zeros stripped on whole number',
+  formatNumber(1, '1'), '1');
 
-eq('decimalCount: 0.25 -> 2', decimalCount(0.25), 2);
+eq('formatNumber: trailing zeros stripped on one-decimal result',
+  formatNumber(1.5, '1.40'), '1.5');
 
-eq('decimalCount: -0.5 -> 1 (sign stripped)', decimalCount(-0.5), 1);
-
-eq('decimalCount: 1 -> 0', decimalCount(1), 0);
-
-eq('decimalCount: -1 -> 0', decimalCount(-1), 0);
-
-eq('decimalCount: null -> 0', decimalCount(null), 0);
-
-eq('decimalCount: undefined -> 0', decimalCount(undefined), 0);
-
-eq('decimalCount: NaN -> 0', decimalCount(NaN), 0);
-
-// --- Sprint decimal-precision-display: formatExtractedNumber with floorDecimals ---
-
-// trailing zeros always stripped regardless of floorDecimals or original decimal count
-eq('formatExtractedNumber: trailing zeros stripped on whole number (floorDecimals=1)',
-  formatExtractedNumber(1, '1', 1), '1');
-
-eq('formatExtractedNumber: trailing zeros stripped on one-decimal result (floorDecimals=1)',
-  formatExtractedNumber(1.5, '1.40', 1), '1.5');
-
-// original has 2 decimals, floorDecimals=2: result has 2 meaningful decimals, no stripping needed
-eq('formatExtractedNumber: two meaningful decimals preserved (floorDecimals=2)',
-  formatExtractedNumber(1.75, '1.72', 2), '1.75');
+// original has 2 decimals: result has 2 meaningful decimals, no stripping needed
+eq('formatNumber: two meaningful decimals preserved',
+  formatNumber(1.75, '1.72'), '1.75');
 
 // trailing zeros stripped even when original had 2 decimals and result is whole
-eq('formatExtractedNumber: trailing zeros stripped on whole number (floorDecimals=0)',
-  formatExtractedNumber(1, '1.00', 0), '1');
+eq('formatNumber: trailing zeros stripped on whole number from "1.00"',
+  formatNumber(1, '1.00'), '1');
 
-// |rounded| >= 10 short-circuit: decimals forced to 0, floorDecimals ignored
-eq('formatExtractedNumber: |rounded|>=10 short-circuit overrides floorDecimals',
-  formatExtractedNumber(12, '12', 1), '12');
+eq('formatNumber: |rounded|>=10 writes no decimals',
+  formatNumber(12, '12'), '12');
 
 // --- Sprint trim-trailing-zeros (chrome-extension): whole-number short-circuit ---
 
-// restoreFormatting drops trailing zeros for whole-number results under 10
-eq('restoreFormatting: whole number 1 from "1.04" -> "1"',
-  restoreFormatting(1, '1.04'), '1');
+// a pure cell write drops trailing zeros for whole-number results under 10
+eq('pure cell write: whole number 1 from "1.04" -> "1"',
+  writePureCell(1, '1.04'), '1');
 
-eq('restoreFormatting: whole number 2 from "1.5" -> "2"',
-  restoreFormatting(2, '1.5'), '2');
+eq('pure cell write: whole number 2 from "1.5" -> "2"',
+  writePureCell(2, '1.5'), '2');
 
-eq('restoreFormatting: 0 from "0.04" -> "0"',
-  restoreFormatting(0, '0.04'), '0');
+eq('pure cell write: 0 from "0.04" -> "0"',
+  writePureCell(0, '0.04'), '0');
 
-eq('restoreFormatting: negative whole number -5 from "-5.2" -> "-5"',
-  restoreFormatting(-5, '-5.2'), '-5');
+eq('pure cell write: negative whole number -5 from "-5.2" -> "-5"',
+  writePureCell(-5, '-5.2'), '-5');
 
 // Fractional results in the <10 band still keep their decimals
-eq('restoreFormatting: 1.5 from "1.4" -> "1.5"',
-  restoreFormatting(1.5, '1.4'), '1.5');
+eq('pure cell write: 1.5 from "1.4" -> "1.5"',
+  writePureCell(1.5, '1.4'), '1.5');
 
-eq('restoreFormatting: 1.25 from "1.234" -> "1.25" (trailing zeros stripped)',
-  restoreFormatting(1.25, '1.234'), '1.25');
+eq('pure cell write: 1.25 from "1.234" -> "1.25" (trailing zeros stripped)',
+  writePureCell(1.25, '1.234'), '1.25');
 
 // Trim plays nicely with format affixes
-eq('restoreFormatting: whole number with percent -> "1%"',
-  restoreFormatting(1, '1.04%'), '1%');
+eq('pure cell write: whole number with percent -> "1%"',
+  writePureCell(1, '1.04%'), '1%');
 
-eq('restoreFormatting: whole number with currency -> "$2"',
-  restoreFormatting(2, '$1.99'), '$2');
+eq('pure cell write: whole number with currency -> "$2"',
+  writePureCell(2, '$1.99'), '$2');
 
-eq('restoreFormatting: whole negative in parens -> "(3)"',
-  restoreFormatting(-3, '(2.85)'), '(3)');
+eq('pure cell write: whole negative in parens -> "(3)"',
+  writePureCell(-3, '(2.85)'), '(3)');
 
-// formatExtractedNumber trims trailing zeros for whole-number rounded results
-eq('formatExtractedNumber: whole number 1 from "1.04" -> "1"',
-  formatExtractedNumber(1, '1.04'), '1');
-
-eq('formatExtractedNumber: whole number with floorDecimals=2 still trimmed',
-  formatExtractedNumber(1, '1.04', 2), '1');
+eq('formatNumber: whole number 1 from "1.04" -> "1"',
+  formatNumber(1, '1.04'), '1');
 
 // =============================================================================
 // Sprint date-round-to-year-display tests
@@ -2969,22 +2954,23 @@ const LADDER_OPTS = {
 })();
 
 (function currencies_roundingKeepsTheSign() {
-  // Before the collapse, restore carried its own four-symbol chain, so a cell
-  // marked with any other currency rounded and lost its sign outright.
+  // Before the collapse, the write-back carried its own four-symbol chain, so
+  // a cell marked with any other currency rounded and lost its sign outright.
+  // The pure number span now steps past every sign the one list names.
   for (const { name, signs } of CURRENCIES) {
     for (const sign of signs) {
       eq('currencies: rounding keeps "' + sign + '" (' + name + ')',
-        restoreFormatting(500, sign + '450'), sign + '500');
+        writePureCell(500, sign + '450'), sign + '500');
     }
   }
-  eq('currencies: a sign after the digits goes back after them',
-    restoreFormatting(500, '450 kr'), '500 kr');
+  eq('currencies: a sign after the digits stays after them',
+    writePureCell(500, '450 kr'), '500 kr');
   eq('currencies: a sign before the digits keeps its space',
-    restoreFormatting(500, '\u20b9 450'), '\u20b9 500');
-  eq('currencies: a letter that only looks like a sign gains none',
-    restoreFormatting(500, 'Revenue 450'), '500');
+    writePureCell(500, '\u20b9 450'), '\u20b9 500');
+  eq('currencies: a letter that only looks like a sign stays inside the span',
+    writePureCell(500, 'Revenue 450'), '500');
   eq('currencies: an accounting negative keeps its brackets and its sign',
-    restoreFormatting(-500, '($450)'), '($500)');
+    writePureCell(-500, '($450)'), '($500)');
 })();
 
 (function currencies_letterSignsTakeTheTokenRule() {
@@ -3071,13 +3057,13 @@ eq('bracketed: the bracket test answers for the number it is given',
 // --- Writing the sign back ---
 
 eq('bracketed: the rounded number carries the sign the original text showed',
-  formatExtractedNumber(-1200, '1,234'), '1,200');
+  formatNumber(-1200, '1,234'), '1,200');
 
 eq('bracketed: a written minus sign survives rounding',
-  formatExtractedNumber(-1200, '-1,234'), '-1,200');
+  formatNumber(-1200, '-1,234'), '-1,200');
 
 eq('bracketed: the sign rule leaves a positive number alone',
-  formatExtractedNumber(1200, '1,234'), '1,200');
+  formatNumber(1200, '1,234'), '1,200');
 
 // --- The whole-text match ---
 
@@ -3088,6 +3074,135 @@ eq('bracketed: a bracket pair holding more than the number is not a whole-text m
     matchBracketedNumber('USD (1,234)'),
   ],
   [null, null, null]);
+
+// --- Decimal comma: strict US reading (issue #487) ---
+// The number format function returns the marks a number uses, US style for
+// now. The number shape test accepts a group mark only in the group shape
+// and only before the decimal mark. A run with no group mark goes to the
+// conversion as before, so a second dot still fails there. Before this
+// change the clean-up deleted every comma, so "13,63€" read as 1363.
+
+eq('number format function: returns the US marks',
+  numberFormat(), { group: ',', decimal: '.' });
+
+(function decimalComma_numberShapeTest() {
+  const marks = numberFormat();
+  const rows = [
+    ['1,234', true], ['1,234.56', true], ['1234.5', true], ['0.125', true],
+    ['12,345,678', true], ['-1,234', true], ['+1,234', true], ['1234', true],
+    ['13,63', false], ['987,5', false], ['1,0845', false], ['1,234,56', false],
+    ['1.234,56', false], ['12,34,567', false], [',123', false], ['1,234.5,6', false],
+    ['-13,63', false],
+  ];
+  for (const [run, expected] of rows) {
+    eq('number shape test: "' + run + '" ' + (expected ? 'passes' : 'fails'),
+      isNumberShape(run, marks), expected);
+  }
+})();
+
+(function decimalComma_numberReaderTable() {
+  const rows = [
+    ['1,234', 1234], ['1,234.56', 1234.56], ['1234.5', 1234.5], ['0.125', 0.125],
+    ['13,63', null], ['987,5', null], ['1,0845', null], ['1,234,56', null],
+    ['1.234,56', null], ['1.234.567', null], ['12.03.2024', null],
+    ['-1,234', -1234], ['−1,234', -1234], ['-13,63', null],
+    ['(1,234)', -1234], ['(13,63)', null],
+    ['1,234%', 1234], ['12.5%', 12.5], ['13,63%', null],
+  ];
+  for (const [text, expected] of rows) {
+    eq('number reader: "' + text + '" reads as ' + (expected === null ? 'no number' : expected),
+      toNumber(text), expected);
+  }
+})();
+
+eq('number reader: the capture values in European style read as no number',
+  ['13,63€', '5,16€', '2,37€', '1.234,56 €', '1 234,56'].map(toNumber),
+  [null, null, null, null, null]);
+
+eq('number reader: US-style values read as before',
+  ['1,234', '€1,234.56', '0.125'].map(toNumber),
+  [1234, 1234.56, 0.125]);
+
+// Inside text, the digit run takes every comma and dot between digits, so
+// the number shape test judges the whole run. Before this change the
+// pattern took "1.234" from "1.234,56" and "12.03" from "12.03.2024".
+eq('decimal comma in text: "13,63€ (includes 2,37€ VAT)" holds no number',
+  extractNumbersInText('13,63€ (includes 2,37€ VAT)'), []);
+
+eq('decimal comma in text: "Total: 1.234,56 €" holds no number',
+  extractNumbersInText('Total: 1.234,56 €'), []);
+
+eq('decimal comma in text: a dotted date "on 12.03.2024 we" holds no number',
+  extractNumbersInText('on 12.03.2024 we'), []);
+
+eq('decimal comma in text: a dotted version "1.2.3" holds no number',
+  extractNumbersInText('version 1.2.3 ships'), []);
+
+eq('decimal comma in text: "up 1,234.56 units" reads as before',
+  extractNumbersInText('up 1,234.56 units'),
+  [{ numStr: '1,234.56', num: 1234.56, index: 3 }]);
+
+eq('decimal comma in text: a sentence\'s final period stays outside the run',
+  extractNumbersInText('total 9,850.').map((m) => m.numStr), ['9,850']);
+
+eq('decimal comma: "1.234,56 EUR" is not a unit number',
+  matchUnitNumber('1.234,56 EUR'), null);
+
+eq('decimal comma: "1,234.56 EUR" is a unit number, as before',
+  matchUnitNumber('1,234.56 EUR'), { numStr: '1,234.56', num: 1234.56, index: 0 });
+
+(function decimalComma_ladderLeavesTheCellAsWritten() {
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+  const decide = (text) => classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
+  eq('decimal comma: the ladder skips every European-style cell',
+    ['13,63€', '5,16 €', '1.234,56 €', '0,75', '987,5',
+      '14,37€ (includes 2,49€ VAT)'].map((text) => decide(text).mode),
+    ['skip', 'skip', 'skip', 'skip', 'skip', 'skip']);
+  eq('decimal comma: the ladder still rounds a US-style cell',
+    ['1,234.56', '0.125'].map((text) => decide(text).mode), ['pure', 'pure']);
+})();
+
+// --- One write-back path (issue #487) ---
+// Every number is patched in place, digits only, grouped with the marks the
+// number format function returns. A pure cell's number span leaves out its
+// leading format marks and sign characters and its trailing format marks,
+// so those stay where the page put them.
+
+eq('write-back: a number with no group mark comes back grouped',
+  formatNumber(10000, '12345'), '10,000');
+
+eq('write-back: a space-grouped original comes back with commas',
+  formatNumber(1000000, '1 234 567'), '1,000,000');
+
+eq('write-back: trailing zeros go',
+  formatNumber(35, '35.0'), '35');
+
+eq('write-back: a negative whose original holds no minus sign writes none',
+  formatNumber(-1000, '1,234'), '1,000');
+
+eq('write-back: a written minus sign stays',
+  formatNumber(-1000, '-1,234'), '-1,000');
+
+eq('pure number span: a currency sign stays outside the span',
+  pureNumberSpan('$12345'), { numStr: '12345', index: 1 });
+
+eq('pure number span: a currency sign, its gap, and the cell\'s whitespace stay outside',
+  pureNumberSpan('  $ 1,234 '), { numStr: '1,234', index: 4 });
+
+eq('pure number span: a plus and a percent sign stay outside',
+  pureNumberSpan('+5%'), { numStr: '5', index: 1 });
+
+eq('pure number span: a dash minus sign stays outside',
+  pureNumberSpan('−1,234'), { numStr: '1,234', index: 1 });
+
+eq('pure number span: a bracket pair stays outside',
+  pureNumberSpan('(1 234)'), { numStr: '1 234', index: 1 });
+
+eq('pure number span: a sign after the digits stays outside',
+  pureNumberSpan('450 kr'), { numStr: '450', index: 0 });
+
+eq('pure number span: space-grouped digits form one span',
+  pureNumberSpan('1 234 567'), { numStr: '1 234 567', index: 0 });
 
 // The observers the page model reports to. The harness clears the list.
 const rwObservers = [];

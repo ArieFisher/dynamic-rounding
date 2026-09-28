@@ -1650,7 +1650,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // whitespace, but its digits sit in several text pieces, so the spaced-digit
 // identifier shape does not apply and each number rounds. A one-piece cell
 // with the same kind of text stays as written. Dataset 1500, 1600, 45, 46,
-// so the max magnitude is 3: 1500 → 1500, 1600 → 1500, 45 → 45, 46 → 45.
+// so the max magnitude is 3: 1500 → 1,500, 1600 → 1,500, 45 → 45, 46 → 45.
 (function gridStacked_digitsInSeveralPiecesAreNotOneIdentifier() {
   const grid = makeE2EGridWrapper([['1500 1600', '45 46', '4165 5512']]);
   const [a, b, c] = grid.cellEls;
@@ -1660,7 +1660,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid stacked: numbers in several pieces round though their join looks like spaced digit groups',
-      pieceTextsOf(a), [' 1500 ', ' 1500']);
+      pieceTextsOf(a), [' 1,500 ', ' 1,500']);
     eq('grid stacked: two-digit numbers in several pieces round number by number',
       pieceTextsOf(b), ['45', ' ', '45']);
     eq('grid stacked: spaced digit groups in one piece stay as written',
@@ -3347,6 +3347,71 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   };
   eq('identifier shape (sidebar preview): only the quantity is sampled',
     collectNumericCells(previewTable).map((c) => c.num), [1613245]);
+})();
+
+// Issue #487: a cart totals table in European style, minimized and
+// synthetic. Before the change the clean-up deleted every comma, so "7,42€"
+// read as 742 and rounded to "700€". Every cell now stays as written on
+// both table kinds, and the pass writes its usual debug row.
+(function decimalComma_cartTableStaysAsWritten() {
+  const rows = [
+    ['Item', 'Price'],
+    ['Subtotal', '7,42€'],
+    ['Shipment', '6,95€'],
+    ['Total', '14,37€ (includes 2,49€ VAT)'],
+  ];
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+  const passRows = [];
+  const offRow = DR_LOG.onRow((row) => {
+    if (row.level === 'debug' && /a pass read \d+ cells/.test(row.text)) passRows.push(row);
+  });
+  try {
+    withCreateTreeWalker(function() {
+      const table = makeMockTable(rows.map((row) => row.map((text) => ({ tag: 'td', text }))));
+      roundTable(table, opts);
+      eq('decimal comma (native table): every cell of the cart table stays as written',
+        table.rows.map((row) => row.cells.map((c) => c.textContent)), rows);
+    });
+    eq('decimal comma (native table): the pass writes its usual debug row', passRows.length, 1);
+
+    const grid = makeE2EGridWrapper(rows);
+    try {
+      roundTable(grid.wrapperEl, opts);
+      eq('decimal comma (grid): every cell of the cart table stays as written',
+        grid.cellEls.map((cell) => pieceTextsOf(cell).join('')), rows.flat());
+    } finally {
+      DR_STORE.unregisterTable(grid.wrapperEl);
+    }
+    eq('decimal comma (grid): the pass writes its usual debug row', passRows.length, 2);
+  } finally {
+    offRow();
+  }
+})();
+
+// Issue #487: one write-back path. Every number is patched in place, digits
+// only, grouped with US marks, and the characters around it stay where the
+// page put them. Before the change a number inside words kept no group mark
+// ("up 10000 units") while a pure cell was rebuilt with an ASCII minus sign.
+(function oneWriteBackPath_onEveryTableKind() {
+  const cells = ['up 12345 units', '$12345', '(1,234)', '+5%', '$ 1,234', '1 234 567', '35.0', '−1,234'];
+  const expected = ['up 10,000 units', '$10,000', '(1,000)', '+5%', '$ 1,000', '1,000,000', '35', '−1,000'];
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+
+  withCreateTreeWalker(function() {
+    const table = makeMockTable([cells.map((text) => ({ tag: 'td', text }))]);
+    roundTable(table, opts);
+    eq('one write-back path (native table): each number is patched in place with US marks',
+      table.rows[0].cells.map((c) => c.textContent), expected);
+  });
+
+  const grid = makeE2EGridWrapper([cells]);
+  try {
+    roundTable(grid.wrapperEl, opts);
+    eq('one write-back path (grid): each number is patched in place with US marks',
+      grid.cellEls.map((cell) => pieceTextsOf(cell).join('')), expected);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
 })();
 
 // ---------------------------------------------------------------------------

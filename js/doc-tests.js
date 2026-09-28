@@ -136,11 +136,20 @@ function extractOffsetTable(doc, text) {
 
 // --- Extractor 3: numeric-casting bullets --------------------------------
 // - `"<string>"` → <number>   documents toNumber(), not end-to-end rounding.
+// - `"<string>"` → `"<string>"`   documents a pass-through: toNumber() reads
+//   no number, and ROUND_DYNAMIC returns the input unchanged.
 function extractCastingBullets(doc, text) {
   let found = 0;
-  const re = /^- `"([^"]*)"` (?:→|->) (-?[\d.,]+)/gm;
+  const re = /^- `"([^"]*)"` (?:→|->) (?:(-?[\d.,]+)|`"([^"]*)"`)/gm;
   for (const m of text.matchAll(re)) {
     const input = m[1];
+    if (m[3] !== undefined) {
+      const actual = ROUND_DYNAMIC(input);
+      record(m[3] === input && toNumber(input) === null && actual === input,
+        `${doc}: ROUND_DYNAMIC(${JSON.stringify(input)}) -> expected ${JSON.stringify(m[3])} unchanged, got ${JSON.stringify(actual)}`);
+      found++;
+      continue;
+    }
     const expected = parseNumber(m[2]);
     const actual = toNumber(input);
     record(actual === expected,

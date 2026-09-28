@@ -3,8 +3,8 @@
  * Run: node tests.js
  *
  * Stubs out browser globals so we can eval content.js in Node and exercise
- * the pure functions (extractNumberInText, formatExtractedNumber, toNumber,
- * roundCellSetAware, findMaxMagnitude, restoreFormatting).
+ * the pure functions (extractNumberInText, formatNumber, toNumber,
+ * roundCellSetAware, findMaxMagnitude, pureNumberSpan).
  */
 
 const fs = require('fs');

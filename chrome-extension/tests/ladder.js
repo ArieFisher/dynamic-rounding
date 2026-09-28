@@ -290,7 +290,7 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
   ['Call 416-555-12345 about 281,745 units', ['416', '555', '12345', '281,745']],
   ['Range 100-200 of 1,613,245', ['100', '200', '1,613,245']],
   ['Zip 90210 has 93,662 people', ['90210', '93,662']],
-  ['Host 192.168.0.1.5 served 12 requests', ['192.168', '12']],
+  ['Host 192.168.0.1.5 served 12 requests', ['12']],
 ];
 
 (function identifierShapes_holdTheirDigitsInsideText() {

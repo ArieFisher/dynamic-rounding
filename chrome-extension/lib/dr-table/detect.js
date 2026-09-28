@@ -80,21 +80,32 @@ const DEFAULT_STYLE_PROBE = {
  * numeric" checks in looksLikeGrid/isDataTable. This default is a
  * port of the predicate detection used before the lib/dr-table extraction:
  * strip currency signs, commas, percent signs and whitespace, then
- * parseFloat. The strip reads CLEAN_REGEX, so the probe admits exactly the
- * currency signs CURRENCIES lists. It deliberately does NOT delegate to
- * DR_NUMBER.toNumber — that parser's unicode-minus and parenthesized-negative
- * handling changes which tables are detected (dates, times, and unit-suffixed
- * cells lose their toggle; accounting negatives gain one). A caller that
- * wants DR_NUMBER-aware detection passes a custom probe via opts.numericProbe.
+ * parseFloat. The strip reads FORMAT_MARK_ALTERNATION (core.js), so the
+ * probe admits exactly the currency signs CURRENCIES lists. It also strips
+ * every comma, with no number shape test, because it tests only whether a
+ * cell looks numeric: "1,234" and "13,63" both count. It deliberately does
+ * NOT delegate to DR_NUMBER.toNumber — that parser's unicode-minus and
+ * parenthesized-negative handling changes which tables are detected (dates,
+ * times, and unit-suffixed cells lose their toggle; accounting negatives gain
+ * one). A caller that wants DR_NUMBER-aware detection passes a custom probe
+ * via opts.numericProbe.
+ *
+ * The strip is built on the first parse, not at load: this file reads no
+ * core.js constant at load, so evaluating it alone fails first on the
+ * detection settings (see the detection settings tests).
  */
-const DEFAULT_NUMERIC_PROBE = {
-  parse(text) {
-    const cleaned = String(text).trim().replace(CLEAN_REGEX, '');
-    if (cleaned === '') return null;
-    const parsed = parseFloat(cleaned);
-    return isFinite(parsed) ? parsed : null;
-  },
-};
+const DEFAULT_NUMERIC_PROBE = (() => {
+  let strip = null;
+  return {
+    parse(text) {
+      if (strip === null) strip = new RegExp('(?:' + FORMAT_MARK_ALTERNATION + '|,)', 'g');
+      const cleaned = String(text).trim().replace(strip, '');
+      if (cleaned === '') return null;
+      const parsed = parseFloat(cleaned);
+      return isFinite(parsed) ? parsed : null;
+    },
+  };
+})();
 
 // VendorProfiles: known third-party grid libraries. `classToken` short-
 // circuits looksLikeGrid's geometry probe; `scrollContainerSelectors` /

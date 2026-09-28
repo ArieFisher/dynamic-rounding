@@ -1567,7 +1567,7 @@
     // rounding.js
     'roundWithOffset', 'roundCellSetAware', 'stepForOffset', 'formatStep', 'trimNum',
     // core.js
-    'findMaxMagnitude', 'toNumber',
+    'findMaxMagnitude', 'numberFormat', 'isNumberShape', 'toNumber',
     // parsing.js
     'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
     'isInRanges', 'resolveOffset', 'resolveNumTop', 'matchUnitNumber', 'getExclusionReason',
@@ -1576,7 +1576,7 @@
     'roundDateText', 'roundISODateTime', 'roundTimeText',
     'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumberInText', 'extractNumbersInText',
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
-    'eraYearDigitRanges', 'decimalCount', 'formatExtractedNumber', 'restoreFormatting',
+    'eraYearDigitRanges', 'formatNumber', 'pureNumberSpan',
     // identifiers.js
     'matchIdentifierShape', 'getIdentifierMaskedRanges', 'isGroupedDigitIdentifier', 'isIsbnShape',
   ].sort();

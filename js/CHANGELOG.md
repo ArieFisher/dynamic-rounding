@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed (2026-09-28)
+
+- **A comma counts only in the group shape**: a first group of one to three digits, then groups of exactly three, before the decimal dot. Any other comma makes the string non-numeric, so it passes through unchanged. A European decimal comma is not read. The chrome extension and the Python port take the same rule.
+  Before: `ROUND_DYNAMIC("13,63", -0.5)` → `1500`
+  After: `ROUND_DYNAMIC("13,63", -0.5)` → `"13,63"`
+
 ### Fixed (2026-08-25)
 
 Brought `ROUND_DYNAMIC`'s string parsing and float cleanup in line with the chrome extension's copy of the same logic, which already handled these cases correctly. A new shared test-case table (`js/round-dynamic-cases.json`) now runs against the extension, this file, and the Python port, so the three stay in agreement going forward.

@@ -6,8 +6,17 @@
  */
 
 // Constants
-const CLEAN_REGEX = /[$€£¥,\s%]/g;
+// Format marks dropped before a text reads as a number: currency signs,
+// whitespace, and percent signs. A comma stays, so GROUP_SHAPE_REGEX can
+// judge where it stands.
+const CLEAN_REGEX = /[$€£¥\s%]/g;
 const PARENS_REGEX = /^\((.+)\)$/;
+// The group shape in US style: a first group of one to three digits, then
+// comma groups of exactly three. A comma counts only in this shape and only
+// before the decimal dot, so "13,63" and "1.234,56" are not numbers. A run
+// with no comma goes to Number() as before. Matches the chrome extension's
+// number shape test in lib/dr-number/core.js.
+const GROUP_SHAPE_REGEX = /^[+-]?\d{1,3}(?:,\d{3})+$/;
 // Unicode dash/minus variants normalized to an ASCII "-" before parsing, so a
 // leading unusual dash (e.g. a pasted en dash or minus sign) reads as a
 // negative sign instead of failing to parse. Matches the chrome extension's
@@ -208,8 +217,21 @@ function roundWithOffset(num, offset) {
 }
 
 /**
+ * The number shape test in US style: true when every comma in the run sits
+ * in the group shape before the decimal dot, or the run holds no comma.
+ */
+function isNumberShape(run) {
+  const at = run.indexOf(".");
+  const whole = at === -1 ? run : run.slice(0, at);
+  const fraction = at === -1 ? "" : run.slice(at + 1);
+  if (fraction.includes(",")) return false;
+  if (!whole.includes(",")) return true;
+  return GROUP_SHAPE_REGEX.test(whole);
+}
+
+/**
  * Attempts to convert a value to a number.
- * Handles formatted strings with commas, currency symbols, etc.
+ * Handles formatted strings with comma groups, currency symbols, etc.
  * Returns the number if successful, null otherwise.
  */
 function toNumber(value) {
@@ -217,15 +239,17 @@ function toNumber(value) {
     return isFinite(value) ? value : null;
   }
   if (typeof value === "string" && value.trim() !== "") {
-    // Remove common formatting: currency symbols, commas, spaces, percent
-    // signs, parentheses for negatives, and normalize unusual dash/minus
-    // characters to an ASCII "-" first so they parse as a sign.
-    let cleaned = value.trim()
+    // Remove common formatting: currency symbols, spaces, percent signs,
+    // parentheses for negatives, and normalize unusual dash/minus characters
+    // to an ASCII "-" first so they parse as a sign. Then test the comma
+    // groups and drop them.
+    const cleaned = value.trim()
       .replace(DASH_REGEX, "-")
       .replace(CLEAN_REGEX, "")
       .replace(PARENS_REGEX, "-$1"); // (100) -> -100
     if (cleaned === "") return null;
-    const parsed = Number(cleaned);
+    if (!isNumberShape(cleaned)) return null;
+    const parsed = Number(cleaned.split(",").join(""));
     return isFinite(parsed) ? parsed : null;
   }
   return null;

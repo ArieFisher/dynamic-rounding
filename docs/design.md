@@ -24,7 +24,7 @@ The three platforms share one contract: `js/round-dynamic-cases.json`, a case ta
 
 5. **String Parsing:** Formatted strings are parsed automatically, identically on all three platforms:
    - Currency symbols: `$`, `€`, `£`, `¥`
-   - Thousands separators: commas, spaces
+   - Thousands separators: spaces, and commas in the group shape. A comma groups thousands only in the group shape — a first group of one to three digits, then groups of exactly three — and only before the decimal mark. The dot is the decimal mark. Any other arrangement is non-numeric and passes through: "13,63", "987,5", "1,234,56" and "1.234,56" are not numbers, so a European decimal comma is not read. The three platforms read alike.
    - Percent signs: `50%` → 50 (stripped, not scaled)
    - Unicode dash and minus variants: read as a negative sign
    - Accounting negatives: `(500)` → `-500`
