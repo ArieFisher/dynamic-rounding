@@ -106,7 +106,7 @@
     /GET_SIDEBAR_SETTINGS/.test(sidebarSrc), false);
 
   eq('pull (inverted): content.js answers request:settings with the active table\'s settings',
-    /respond\('request:settings'[\s\S]{0,200}DR_STORE\.getTableSettings\(DR_STORE\.getSelectedTable\(\)\)/.test(contentSrc), true);
+    /respond\('request:settings'[\s\S]{0,100}const selected = DR_STORE\.getSelectedTable\(\)[\s\S]{0,100}DR_STORE\.getTableSettings\(selected\)/.test(contentSrc), true);
 
   eq('pull (inverted): sidebar.js asks request:settings on open',
     /DR_BUS\.request\('request:settings'/.test(sidebarSrc), true);
@@ -3077,6 +3077,35 @@ function issue328SettingsOf(table) {
       [isTableRounded(table), table._cells[3].innerText], [true, simplified]);
     eq('sidebar open: the sidebar is told to re-read the active table',
       sent.some((m) => m.action === 'state:previewSamplesChanged'), true);
+  });
+})();
+
+// The settings read carries the active table's lock state, so the sidebar
+// learns the lock whenever it reads (#500). A table is locked while a cell
+// shows the simplified marker and the registry holds no original for it. The
+// read changes nothing on the page.
+(function issue500_theSettingsReadCarriesTheLockState() {
+  runPressFixture(() => {
+    eq('lock on read: no active table answers unlocked',
+      askContentScript({ action: 'request:settings' }).locked, false);
+
+    const table = makePressTable('8,584,629');
+    DR_STORE.setSelectedTable(table);
+    eq('lock on read: a raw table answers unlocked',
+      askContentScript({ action: 'request:settings' }).locked, false);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
+    eq('lock on read: a simplified table whose originals the registry holds answers unlocked',
+      askContentScript({ action: 'request:settings' }).locked, false);
+
+    // The unrestorable pairing: the marker stays, the original goes.
+    const cell = table._cells[3];
+    DR_STORE.deleteTableOriginal(table, cell);
+    const shown = cell.innerText;
+    eq('lock on read: a marked cell with no original answers locked',
+      askContentScript({ action: 'request:settings' }).locked, true);
+    eq('lock on read: the read leaves the cell as it stood',
+      [cell.classList.contains('dr-ext-rounded'), cell.innerText], [true, shown]);
   });
 })();
 

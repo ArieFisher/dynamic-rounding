@@ -1114,7 +1114,14 @@
     },
     tabs: {
       query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
-      sendMessage(tabId, msg, cb) { if (typeof cb === 'function') cb(queuedLastError ? undefined : { ok: true }); },
+      sendMessage(tabId, msg, cb) {
+        if (typeof cb !== 'function') return;
+        if (queuedLastError) cb(undefined);
+        // The settings read answers the way the page does: settings, and
+        // the lock state, unlocked once an apply has worked (#500).
+        else if (msg.action === 'request:settings') cb({ settings: {}, locked: false });
+        else cb({ ok: true });
+      },
     },
   };
 
@@ -1328,6 +1335,8 @@
     eq('lock-vs-pull: precondition — state:applyBlocked locked the panel',
       h.bodyClasses.has('table-locked'), true);
 
+    // The table is still locked, so the page's read answers locked (#500).
+    h.readAnswer.locked = true;
     h.dispatch({ action: 'state:previewSamplesChanged' });
     eq('lock-vs-pull: the pull leaves the locked toggle ON — the table IS simplified',
       h.enabledEl.checked, true);
@@ -1335,6 +1344,66 @@
       h.enabledEl.disabled, true);
     eq('lock-vs-pull: the lock itself survives the pull',
       h.bodyClasses.has('table-locked'), true);
+  } finally {
+    h.restore();
+  }
+})();
+
+// Issue #500: the lock reaches the sidebar through the settings read, so a
+// sidebar that missed the one-time "blocked" report still shows the lock.
+// Case 2: the sidebar opens on a locked table, and its opening read answers
+// locked.
+(function issue500_aReadAnsweringLockedLocksTheSidebar() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lock on read: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('lock on read: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null || !h.hasHandler()) return;
+    eq('lock on read: precondition — the opening read left the sidebar unlocked',
+      h.bodyClasses.has('table-locked'), false);
+
+    h.readAnswer.locked = true;
+    h.dispatch({ action: 'state:previewSamplesChanged' });
+    eq('lock on read: a read answering locked locks the sidebar',
+      h.bodyClasses.has('table-locked'), true);
+    eq('lock on read: the locked switch shows on and takes no input',
+      [h.enabledEl.checked, h.enabledEl.disabled], [true, true]);
+    eq('lock on read: the sidebar shows the locked notice',
+      [h.statusEl.textContent.includes('no longer available'), h.statusEl.dataset.source], [true, 'blocked']);
+  } finally {
+    h.restore();
+  }
+})();
+
+// Case 1: a right-click on an unlocked table after a locked one. The
+// right-click runs no apply, so no "worked" report arrives; the read it
+// triggers answers unlocked and lifts the lock.
+(function issue500_aReadAnsweringUnlockedLiftsTheLock() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lock lift on read: source files (defaults/rounding/core/messaging) present in manifest',
+      false, true);
+    return;
+  }
+  try {
+    eq('lock lift on read: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null || !h.hasHandler()) return;
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    eq('lock lift on read: precondition — the sidebar is locked',
+      h.bodyClasses.has('table-locked'), true);
+
+    h.readAnswer.locked = false;
+    h.dispatch({ action: 'state:tableActivated' });
+    eq('lock lift on read: a read answering unlocked lifts the lock',
+      h.bodyClasses.has('table-locked'), false);
+    eq('lock lift on read: the switch shows the table\'s own value and takes input',
+      [h.enabledEl.checked, h.enabledEl.disabled], [false, false]);
+    eq('lock lift on read: the locked notice clears',
+      [h.statusEl.textContent, h.statusEl.dataset.source], ['', undefined]);
   } finally {
     h.restore();
   }
@@ -1515,9 +1584,13 @@
 
     h.enabledEl.checked = true;
     h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    // The table is still locked, so the read answers locked (#500).
+    h.readAnswer.locked = true;
     h.dispatch({ action: 'state:previewSamplesChanged' });
     eq('lock-pull: the pull leaves the locked switch on (display-only)',
       h.enabledEl.checked, true);
+    // An apply worked, so the table is no longer locked.
+    h.readAnswer.locked = false;
     h.dispatch({ action: 'state:applyOk' });
     eq('lock-pull: the lift shows the table\'s off, not the pre-lock drift',
       h.enabledEl.checked, false);
@@ -1675,7 +1748,9 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     };
     h.tabMessages.length = 0;
     h.dispatch({ action: 'state:applyOk' });
-    eq('lock lift: the lift removes the lock', h.bodyClasses.has('table-locked'), false);
+    // The read's answer carries the lock state (#500), so the lock holds
+    // until the answer lands.
+    eq('lock lift: the lock holds until the read answers', h.bodyClasses.has('table-locked'), true);
     eq('lock lift: the lift reads the table\'s settings', held.length, 1);
     eq('lock lift: the switch stays disabled until the read answers', h.enabledEl.disabled, true);
 
@@ -1686,6 +1761,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 
     h.chromeMock.tabs.sendMessage = answerNow;
     held.forEach((answer) => answer());
+    eq('lock lift: the unlocked answer removes the lock', h.bodyClasses.has('table-locked'), false);
     eq('lock lift: the answer puts the table\'s off on the switch', h.enabledEl.checked, false);
     eq('lock lift: the answer re-enables the switch', h.enabledEl.disabled, false);
 

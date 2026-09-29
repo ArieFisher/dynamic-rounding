@@ -131,18 +131,6 @@ function createBoundTab(tabsApi, bus) {
 // The unit above, wired to the real tabs interface and the real bus.
 const boundTab = createBoundTab(chrome.tabs, DR_BUS);
 
-// Lift the #262 lock and read the active table's settings back. The table's
-// on/off value lives in the application model, and the lock's forced ON on
-// the switch is display only. The switch stays disabled until the read
-// answers, because a save while it is disabled leaves the on/off value out
-// (currentSettings); applySettingsToUI then puts the table's value on the
-// switch and enables it. So a save in the gap carries no leftover forced ON
-// (issue #272).
-function liftLockAndPullSettings() {
-  document.body.classList.remove('table-locked');
-  pullSettingsAndApplyToUI();
-}
-
 function setTableBound(isBound) {
   document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
   if (!isBound) {
@@ -585,10 +573,10 @@ if (botThumb) {
 
 function currentSettings() {
   // A disabled switch shows no value of the table's: under the #262 lock it
-  // shows a forced ON that is display only, and after the lift it shows
-  // the stale value until the settings read (liftLockAndPullSettings) lands. A save then (the sliders
-  // stay usable) leaves the on/off value out, and the content script's merge
-  // keeps the table's own value (issue #272).
+  // shows a forced ON that is display only, until a settings read answering
+  // unlocked lands. A save then (the sliders stay usable) leaves the on/off
+  // value out, and the content script's merge keeps the table's own value
+  // (issue #272).
   const settings = {};
   if (!enabledEl.disabled) settings.enabled = enabledEl.checked;
   for (const id in CHECKBOX_TO_SETTING) {
@@ -720,6 +708,12 @@ boundTab.subscribe('state:rangeOk', () => {
 
 boundTab.subscribe('state:applyBlocked', () => {
   DR_LOG.warn('Dynamic Rounding: apply blocked received; panel locked.');
+  showLock();
+});
+
+// The lock reaches the sidebar two ways: the report after a blocked apply,
+// and the settings read's answer (#500). Both run this one step.
+function showLock() {
   statusEl.textContent = APPLY_BLOCKED_STATUS_MSG;
   statusEl.dataset.source = 'blocked';
   // Issue #262: the connected table is stuck showing simplified values.
@@ -732,16 +726,23 @@ boundTab.subscribe('state:applyBlocked', () => {
   enabledEl.checked = true;
   enabledEl.disabled = true;
   updateDisabledState();
-});
+}
 
-// Every successful apply sends this. Only an apply that ends a lock reads the
-// settings back, so an ordinary apply sends no read.
-boundTab.subscribe('state:applyOk', () => {
+// The settings read answered unlocked: drop the lock and its notice, so the
+// settings the read carries reach the switch.
+function clearLock() {
+  document.body.classList.remove('table-locked');
   if (statusEl.dataset.source === 'blocked') {
     statusEl.textContent = '';
     delete statusEl.dataset.source;
   }
-  if (document.body.classList.contains('table-locked')) liftLockAndPullSettings();
+}
+
+// Every successful apply sends this. Only an apply that ends a lock reads the
+// settings back, so an ordinary apply sends no read. The read's answer lifts
+// the lock and puts the table's on/off value back on the switch.
+boundTab.subscribe('state:applyOk', () => {
+  if (document.body.classList.contains('table-locked')) pullSettingsAndApplyToUI();
 });
 
 boundTab.subscribe('state:previewSamplesChanged', () => {
@@ -754,12 +755,12 @@ boundTab.subscribe('state:previewSamplesChanged', () => {
 boundTab.subscribe('state:tableSwitched', () => {
   DR_LOG.debug('Dynamic Rounding: table switch received.');
   // A table switch: the lock, if any, belonged to the previous table. The
-  // switch apply on the content side runs after this message is sent, so
-  // its state:applyBlocked re-locks the sidebar right after this lift when the
-  // new table is locked. The sidebar mirrors the new active table's settings
-  // (issue #251); it does not reset to the shipped defaults.
+  // read answers the new table's lock state with its settings, so the lock
+  // lifts or stays by what the new table holds. The sidebar mirrors the new
+  // active table's settings (issue #251); it does not reset to the shipped
+  // defaults.
   try {
-    liftLockAndPullSettings();
+    pullSettingsAndApplyToUI();
   } catch (e) {
     // sidebar may be in teardown; harmless
   }
@@ -776,12 +777,11 @@ window.addEventListener('unload', () => {
 function applySettingsToUI(settings) {
   const s = Object.assign({}, DR_DEFAULTS, settings || {});
   // The #262 lock forces the main toggle ON + disabled while the bound
-  // table's originals are unrestorable. A pull or a notice resolving under
-  // the lock — a table switch's pull whose apply just re-blocked — must not
-  // write the table's on/off value over that forced ON; the lift reads the
-  // value back (liftLockAndPullSettings). Outside the lock the switch takes
-  // the table's value and accepts input again. Every other control mirrors
-  // the settings either way.
+  // table's originals are unrestorable. A settings notice or a read answering
+  // locked must not write the table's on/off value over that forced ON; a
+  // read answering unlocked lifts the lock first (pullSettingsAndApplyToUI).
+  // Outside the lock the switch takes the table's value and accepts input
+  // again. Every other control mirrors the settings either way.
   if (!document.body.classList.contains('table-locked')) {
     enabledEl.checked = s.enabled !== false;
     enabledEl.disabled = false;
@@ -817,6 +817,13 @@ function applyDefaultsToUI() {
 // No active tab, no content script yet, or no response at all falls back to
 // defaults, same as before this pull existed.
 //
+// The answer also carries whether the active table is locked (#500). The
+// sidebar sets or lifts the lock from it before the settings reach the
+// controls, so the switch shows the lock's forced ON or the table's own
+// value. The read is the lock's route in whenever the sidebar asks: on
+// start, on a right-click, on a table switch. The report after a blocked
+// apply covers a lock that arrives while the sidebar is open.
+//
 // fetchPreviewSamples runs only after the pull settles (success or fallback),
 // never in parallel with it: fetchPreviewSamples's own setTableBound call is
 // what forces enabledEl back off when no table is bound, and that must stay
@@ -827,6 +834,7 @@ function pullSettingsAndApplyToUI() {
     if (!answer || !answer.settings) {
       applyDefaultsToUI();
     } else {
+      if (answer.locked) showLock(); else clearLock();
       applySettingsToUI(answer.settings);
     }
     fetchPreviewSamples();
