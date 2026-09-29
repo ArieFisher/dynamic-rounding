@@ -1977,12 +1977,12 @@
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// AC1: Clicking the table's morph pill while sidebar is open sends the
+// AC1: Clicking the table's pillbox while sidebar is open sends the
 //      settings notice for the active table (issue #328), and the sidebar's
 //      handler for it redraws the switch from the notice's settings.
 //
 // Unit test strategy:
-//   Part A — the press: verify the settings notice goes out, naming the
+//   Part A — the press: verify the settings notice goes out, marking the
 //     active table and carrying the new on/off value.
 //   Part B — sidebar.js handler (static): verify the source subscribes to
 //     the notice and redraws from it. The sidebar suite drives the handler
@@ -2017,7 +2017,7 @@
   const notice = sent.find(m => m.action === 'state:settingsChanged');
   eq('AC1 part-A: the settings notice is sent when the pressed table is the active one',
     notice !== undefined, true);
-  eq('AC1 part-A: the notice names the active table and a page-side writer',
+  eq('AC1 part-A: the notice marks the active table and a page-side writer',
     notice && [notice.active, notice.source], [true, 'page']);
   // After click on a fresh table, it becomes rounded → enabled should be true.
   eq('AC1 part-A: the notice carries the new on/off value (true after first click)',
@@ -2098,7 +2098,7 @@
 //
 // The spec asked for no spurious sidebar update from such a press. The press
 // makes the pressed table active and sends state:tableSwitched first, so the
-// settings notice that follows names the active table, and the sidebar
+// settings notice that follows marks the active table, and the sidebar
 // redraws from it for the table it now describes (issue #328).
 // ---------------------------------------------------------------------------
 
@@ -2139,7 +2139,7 @@
 })();
 
 // With no table active, a press makes the pressed table the active one, so
-// its settings notice names the active table too.
+// its settings notice marks the active table too.
 (function pillbox_AC3_noLastRightClicked_noticeNamesTheActiveTable() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;

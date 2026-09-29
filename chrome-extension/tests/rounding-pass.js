@@ -3895,16 +3895,16 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     // notice carries the table's settings — the value the click wrote — not
     // the locked table's display state. Each click asks to turn the table
     // off, because the screen shows it simplified, so the table's settings
-    // and each notice go false. The panel guards its own display: each
+    // and each notice go false. The sidebar guards its own display: each
     // click's state:applyBlocked lands after its notice, so the lock's forced
-    // ON is the last thing the panel shows, and the lift reads the table's
+    // ON is the last thing the sidebar shows, and the lift reads the table's
     // off back — pinned by the issue328 sidebar-harness tests.
     eq('re-injection toggle clicks: each click\'s settings notice carries the table\'s off, as the click asked',
       notices.map((m) => m.settings.enabled), [false, false]);
     eq('re-injection toggle clicks: the table\'s settings hold the user\'s off, even though the locked table cannot change',
       global.__ri2_DR_STORE.getTableSettings(table2).enabled, false);
     const actionSeq = sentMessages.map((m) => m.action);
-    eq('re-injection toggle clicks: the last click\'s state:applyBlocked follows its settings notice — the panel ends locked',
+    eq('re-injection toggle clicks: the last click\'s state:applyBlocked follows its settings notice — the sidebar ends locked',
       actionSeq.lastIndexOf('state:settingsChanged') !== -1 &&
       actionSeq.lastIndexOf('state:settingsChanged') < actionSeq.lastIndexOf('state:applyBlocked'), true);
   } finally {

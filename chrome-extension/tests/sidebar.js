@@ -1444,7 +1444,7 @@
     eq('menu-toggle record: the menu toggle on the connected table writes the table\'s off',
       store.getTableSettings(gridEl).enabled, false);
     const notices = sentMessages.filter((m) => m.action === 'state:settingsChanged');
-    eq('menu-toggle record: the menu toggle sends the table\'s settings to the panel — off, for the active table',
+    eq('menu-toggle record: the menu toggle sends the table\'s settings to the sidebar — off, for the active table',
       notices.map((m) => [m.settings.enabled, m.active]), [[false, true]]);
   } finally {
     delete global.__i275_DR_STORE;
@@ -1481,7 +1481,7 @@
     h.enabledEl.checked = true;
     h.dispatch({ action: 'state:applyBlocked', count: 1 });
     // A save whose delivery fails: nothing answers applyNow's request, and it
-    // unbinds the panel (setTableBound(false)), which ends the lock.
+    // unbinds the sidebar (setTableBound(false)), which ends the lock.
     h.chromeMock.runtime.lastError = { message: 'no receiving end' };
     h.el('dateGranularity').fire('change');
     h.chromeMock.runtime.lastError = null;

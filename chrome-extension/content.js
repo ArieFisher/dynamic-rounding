@@ -54,7 +54,7 @@ DR_BUS.subscribe('intent:selectTable', ({ table }) => {
 // table the page refilled lands on the fresh registration, and the patch
 // merges onto that table's settings: the keys the patch holds replace, and
 // every other key keeps the table's value. The sidebar's apply and the
-// pillbox press both write through it; source names which ('sidebar' or
+// pillbox press both write through it; source holds which ('sidebar' or
 // 'page') for the settings notice. A shape change that registers nothing
 // stops the write.
 function writeTableSettings(table, patch, source) {
@@ -527,13 +527,16 @@ function revalidateTableShape(table, opts = {}) {
 
   DR_LOG.debug("Dynamic Rounding: table shape changed; re-running detection.");
 
-  // The order is restore, tear down, re-nominate, register, carry the
-  // settings, activate, publish. The settings are read before the teardown
-  // discards the entry that holds them, and they land on the fresh table
-  // before the switch publishes, so the sidebar's pull on the switch reads
-  // them. When the page kept the same element, the selection still points at
-  // it, so the carry's notice is marked active and the sidebar also draws the
-  // carried settings from the notice; both draws show the same values.
+  // The order is restore, tear down, re-nominate, register, clear the
+  // selection, carry the settings, activate, publish. The settings are read
+  // before the teardown discards the entry that holds them. The selection
+  // clears when the discarded table was the active one, because a native
+  // table registers again as the same element and the selection would still
+  // point at it. The carry then publishes an inactive notice, which the
+  // sidebar skips. An active one would redraw the sidebar to the settings
+  // from before a sidebar apply that is still on its way to the table. The
+  // activation selects the fresh table, and the sidebar reads its settings
+  // from the pull on the switch.
   //
   // The restore runs first, against the old entry while it still holds the
   // originals. A page that widens a table and leaves the rest of each row in
@@ -564,9 +567,9 @@ function revalidateTableShape(table, opts = {}) {
     if (!fresh && DR_STORE.hasTable(handle)) fresh = handle;
   }
 
+  if (DR_STORE.getSelectedTable() === table) DR_BUS.publish('intent:selectTable', { table: null });
   if (!fresh) {
     DR_LOG.debug("Dynamic Rounding: no table registered after the shape change.");
-    if (DR_STORE.getSelectedTable() === table) DR_BUS.publish('intent:selectTable', { table: null });
     return { table: null, switched: false };
   }
 

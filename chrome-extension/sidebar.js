@@ -585,8 +585,8 @@ if (botThumb) {
 
 function currentSettings() {
   // A disabled switch shows no value of the table's: under the #262 lock it
-  // shows a forced ON that is display only, and after the lift it waits for
-  // the settings read (liftLockAndPullSettings). A save then (the sliders
+  // shows a forced ON that is display only, and after the lift it shows
+  // the stale value until the settings read (liftLockAndPullSettings) lands. A save then (the sliders
   // stay usable) leaves the on/off value out, and the content script's merge
   // keeps the table's own value (issue #272).
   const settings = {};
@@ -756,8 +756,8 @@ boundTab.subscribe('state:tableSwitched', () => {
   DR_LOG.debug('Dynamic Rounding: table switch received.');
   // A table switch: the lock, if any, belonged to the previous table. The
   // switch apply on the content side runs after this message is sent, so
-  // its state:applyBlocked re-locks the panel right after this lift when the
-  // new table is locked. The panel mirrors the new active table's settings
+  // its state:applyBlocked re-locks the sidebar right after this lift when the
+  // new table is locked. The sidebar mirrors the new active table's settings
   // (issue #251); it does not reset to the shipped defaults.
   try {
     liftLockAndPullSettings();

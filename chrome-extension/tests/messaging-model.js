@@ -346,8 +346,8 @@
 
 // ---------------------------------------------------------------------------
 // Issue #251 (sync-on-switch): a switch with the sidebar open applies the
-// clicked table's own settings in the model (issue #328) — the panel then
-// mirrors them, and the table matches what the panel shows. Two cells: a
+// clicked table's own settings in the model (issue #328) — the sidebar then
+// mirrors them, and the table matches what the sidebar shows. Two cells: a
 // non-default offset reaches the new table's rounding pass, and a table
 // holding enabled:false still simplifies on a press, which reads the screen.
 // ---------------------------------------------------------------------------
@@ -1823,7 +1823,7 @@ const PENDING_FILL_ROWS = [
     //
     // state:tableSwitched leads so the sidebar lifts the previous table's lock
     // before this table's own state:applyBlocked/state:applyOk lands, and so
-    // the settings notice after it names the active table. No
+    // the settings notice after it marks the active table. No
     // state:previewSamplesChanged — the sidebar's pull chain ends in the
     // preview fetch.
     'false': [
@@ -2710,7 +2710,7 @@ const PENDING_FILL_ROWS = [
     });
     eq('leak-1: the first pill toggle rounds the connected table',
       isTableRounded(table), true);
-    eq('leak-1: the table\'s settings follow the pill — enabled true after toggle-on',
+    eq('leak-1: the table\'s settings follow the pillbox — enabled true after toggle-on',
       DR_STORE.getTableSettings(table).enabled, true);
 
     withCreateTreeWalker(function () {
@@ -2718,11 +2718,11 @@ const PENDING_FILL_ROWS = [
     });
     eq('leak-1: the second pill toggle restores the table to originals',
       isTableRounded(table), false);
-    eq('leak-1: the table\'s settings follow the pill — enabled false after toggle-off',
+    eq('leak-1: the table\'s settings follow the pillbox — enabled false after toggle-off',
       DR_STORE.getTableSettings(table).enabled, false);
 
     // The reopen path (state:sidebarOpened runs this same apply) must honor
-    // the settings the pill just wrote — not silently re-round the table.
+    // the settings the pillbox just wrote — not silently re-round the table.
     withCreateTreeWalker(function () {
       applySidebarRounding(table);
     });
@@ -2730,7 +2730,7 @@ const PENDING_FILL_ROWS = [
       isTableRounded(table), false);
 
     const notices = sent.filter((m) => m.action === 'state:settingsChanged');
-    eq('leak-1: one settings notice per pill toggle, carrying the table\'s enabled — true then false',
+    eq('leak-1: one settings notice per pillbox toggle, carrying the table\'s enabled — true then false',
       notices.map((m) => m.settings.enabled), [true, false]);
   } finally {
     global.chrome.runtime.sendMessage = origSend;
@@ -3620,14 +3620,62 @@ function issue328SettingsOf(table) {
       sent.filter((m) => m.action === 'state:applyOk').length, 1);
     eq('fingerprint move: a shape change publishes the table switch once',
       sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
-    // The carry and the press each send a notice. The last one for the
-    // active table holds the press's on and the cleared range expression.
+    // The carry sends an inactive notice, so the press's write is the one
+    // active notice: the press's on and the cleared range expression.
     const activeNotices = sent.filter((m) => m.action === 'state:settingsChanged' && m.active);
-    const lastNotice = activeNotices[activeNotices.length - 1];
-    eq('fingerprint move: the last active settings notice holds the press and the cleared range',
-      lastNotice && [lastNotice.settings.enabled, lastNotice.settings.rangeExpr], [true, '']);
+    eq('fingerprint move: the press sends the one active settings notice, holding its on and the cleared range',
+      activeNotices.map((m) => [m.source, m.settings.enabled, m.settings.rangeExpr]), [['page', true, '']]);
 
     if (fresh) forgetRegisteredTable(fresh);
+  });
+})();
+
+// --- A sidebar apply on a table the page refilled. A native table registers
+// again as the same element, so the selection still points at it when the
+// carry writes the fresh table's settings. The carry must reach the sidebar
+// as an inactive notice: an active one would redraw the sidebar to the values
+// from before the apply, and a keystroke before the switch's pull would land
+// on a blanked range box. The only active notice is the apply's own. ---
+
+(function issue328_aSidebarApplyOnARefilledTableSendsOnlyTheWrittenSettingsAsActive() {
+  runPressFixture(({ sent }) => {
+    const table = makeToggleTable([
+      [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
+      [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
+    ]);
+    registerFingerprintedTable(table);
+    DR_STORE.setTableSettings(table, { offsetTop: -2, rangeExpr: 'B2' }, 'page');
+    DR_STORE.setSelectedTable(table);
+
+    table.rows[0].cells[1].innerText = 'Q2';
+    table.rows[0].cells[1].textContent = 'Q2';
+    const written = Object.assign({}, DR_DEFAULTS, { offsetTop: 1, rangeExpr: 'C3' });
+
+    sent.length = 0;
+    withCreateTreeWalker(function () {
+      withToggleDocumentMock(function () {
+        askContentScript({ action: 'request:applySettings', settings: written });
+      });
+    });
+
+    const sequence = sent
+      .filter((m) => m.action === 'state:settingsChanged' || m.action === 'state:tableSwitched')
+      .map((m) => (m.action === 'state:tableSwitched'
+        ? 'switched'
+        : 'settings active=' + m.active + ' source=' + m.source + ' offsetTop=' +
+          m.settings.offsetTop + ' range=' + m.settings.rangeExpr));
+    eq('refilled apply: the carry is inactive, the switch follows, and the apply is the one active notice',
+      sequence, [
+        'settings active=false source=page offsetTop=-2 range=',
+        'switched',
+        'settings active=true source=sidebar offsetTop=1 range=C3',
+      ]);
+    eq('refilled apply: the table stays the active one',
+      DR_STORE.getSelectedTable() === table, true);
+    eq('refilled apply: the table holds the written settings',
+      DR_STORE.getTableSettings(table), written);
+
+    forgetRegisteredTable(table);
   });
 })();
 
