@@ -1809,7 +1809,7 @@ const PENDING_FILL_ROWS = [
     // enabled to the sidebar, and the apply that follows sends its own
     // state:applyOk.
     'true': [
-      { action: 'state:settingsChanged', active: true, source: 'page',
+      { action: 'state:settingsChanged', source: 'page',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
       { action: 'state:applyOk' },
       { action: 'state:rangeOk' },
@@ -1822,13 +1822,13 @@ const PENDING_FILL_ROWS = [
     // press has, whatever the sidebar is doing.
     //
     // state:tableSwitched leads so the sidebar lifts the previous table's lock
-    // before this table's own state:applyBlocked/state:applyOk lands, and so
-    // the settings notice after it marks the active table. No
+    // before this table's own state:applyBlocked/state:applyOk lands, and the
+    // settings notice after it describes the newly active table. No
     // state:previewSamplesChanged — the sidebar's pull chain ends in the
     // preview fetch.
     'false': [
       { action: 'state:tableSwitched' },
-      { action: 'state:settingsChanged', active: true, source: 'page',
+      { action: 'state:settingsChanged', source: 'page',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
       { action: 'state:applyOk' },
       { action: 'state:rangeOk' },
@@ -3066,11 +3066,11 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// A shape change registers a fresh table, which carries the replaced table's
-// settings with the range expression cleared: the expression states rows and
-// columns by position, so it points at cells that no longer exist.
-(function issue328_aShapeChangeCarriesTheSettingsAndClearsTheRange() {
-  runPressFixture(() => {
+// A shape change registers a new table. It holds no settings, so it reads the
+// shipped defaults, and it shows the page's values raw, the same as a table
+// found on page load. Nothing from the replaced table's settings reaches it.
+(function issue328_aShapeChangeRegistersANewTableUnderTheDefaults() {
+  runPressFixture(({ writes, resetWrites }) => {
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_STORE.setTableSettings(grid.scrollPaneEl,
@@ -3078,40 +3078,42 @@ function issue328SettingsOf(table) {
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
     grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 101)));
 
+    resetWrites();
     let outcome = null;
     withToggleDocumentMock(function () { outcome = revalidateTableShape(grid.scrollPaneEl); });
-    const carried = (outcome && outcome.table && DR_STORE.getTableSettings(outcome.table)) || {};
+    const fresh = outcome && outcome.table;
 
     eq('per-table settings: the shape change registers a fresh table (precondition)',
       outcome && outcome.switched, true);
-    eq('per-table settings: the fresh table\'s range expression is blank',
-      carried.rangeExpr, '');
-    eq('per-table settings: the fresh table keeps the replaced table\'s other settings',
-      [carried.enabled, carried.offsetTop, carried.offsetOther], [true, -2, -2]);
+    eq('per-table settings: the fresh table reads the shipped defaults',
+      fresh && DR_STORE.getTableSettings(fresh), Object.assign({}, DR_DEFAULTS));
+    eq('per-table settings: the fresh table shows raw',
+      fresh && DR_STORE.getTableAppliedFlag(fresh), 'original');
+    eq('per-table settings: the shape change writes no table\'s settings',
+      writes(), 0);
 
-    if (outcome && outcome.table) forgetRegisteredTable(outcome.table);
+    if (fresh) forgetRegisteredTable(fresh);
   });
 })();
 
 // The settings notice crosses to the sidebar, so it carries plain values
-// alone: whether the table is the active one, which side wrote it, and the
-// table's whole settings. A live table element cannot cross.
+// alone: which side wrote it and the table's whole settings. A live table
+// element cannot cross.
 (function issue328_theSettingsNoticeReachesTheExtensionPages() {
   eq('per-table settings: the settings notice takes the extension-pages route',
     DR_BUS.TOPICS['state:settingsChanged'].route, 'extension-pages');
   runPressFixture(({ sent }) => {
     const active = makePressTable('12,345');
-    const other = makePressTable('9,876');
     DR_STORE.setSelectedTable(active);
     sent.length = 0;
     DR_STORE.setTableSettings(active, { offsetTop: 1 }, 'page');
-    DR_STORE.setTableSettings(other, { offsetTop: -1 }, 'sidebar');
+    DR_STORE.setTableSettings(active, { offsetTop: -1 }, 'sidebar');
 
     const notices = sent.filter((m) => m.action === 'state:settingsChanged');
-    eq('per-table settings: each write sends one notice, naming active and source',
-      notices.map((n) => [n.active, n.source]), [[true, 'page'], [false, 'sidebar']]);
-    eq('per-table settings: the notice holds no field beyond the three plain values',
-      notices.length > 0 && Object.keys(notices[0]).sort(), ['action', 'active', 'settings', 'source']);
+    eq('per-table settings: each write sends one notice, marking its source',
+      notices.map((n) => n.source), ['page', 'sidebar']);
+    eq('per-table settings: the notice holds no field beyond the two plain values',
+      notices.length > 0 && Object.keys(notices[0]).sort(), ['action', 'settings', 'source']);
     eq('per-table settings: the notice carries the table\'s whole settings, defaults filled in',
       notices.length > 0 && notices[0].settings, Object.assign({}, DR_DEFAULTS, { offsetTop: 1 }));
   });
@@ -3136,8 +3138,8 @@ function issue328SettingsOf(table) {
 //     discarded table was the active one.
 //   - A table with no recorded fingerprint compares against nothing and
 //     counts as a match.
-//   - The fresh table carries the replaced table's settings with the range
-//     expression cleared (issue #328).
+//   - The fresh table is a new table: it reads the shipped defaults and shows
+//     raw (issue #328).
 //
 // Every expected value below comes from that statement, never from the
 // controller's source.
@@ -3626,15 +3628,16 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// --- A shape change on a press clears the fresh table's range expression: the
-// expression states rows and columns by position, so it describes a shape
-// that is gone. The press still applies once. ---
+// --- A press on a table whose shape changed presses a new table: the press
+// turns it on under the shipped defaults, and nothing from the replaced
+// table's settings reaches it. The press still applies once. ---
 
-(function shapeFingerprint_aShapeChangeOnAPressClearsTheRangeExpression() {
+(function shapeFingerprint_aShapeChangeOnAPressUsesTheDefaults() {
   runPressFixture(({ sent }) => {
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
-    DR_STORE.setTableSettings(grid.scrollPaneEl, { enabled: false, rangeExpr: 'B2' }, 'page');
+    DR_STORE.setTableSettings(grid.scrollPaneEl,
+      { enabled: false, offsetTop: -2, rangeExpr: 'B2' }, 'page');
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
     grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 101)));
 
@@ -3644,30 +3647,28 @@ function issue328SettingsOf(table) {
     });
     const fresh = DR_STORE.getSelectedTable();
 
-    eq('fingerprint move: a shape change clears the fresh table\'s range expression',
-      fresh && DR_STORE.getTableSettings(fresh).rangeExpr, '');
+    eq('fingerprint move: the fresh table holds the shipped defaults with the press\'s on',
+      fresh && DR_STORE.getTableSettings(fresh), Object.assign({}, DR_DEFAULTS, { enabled: true }));
     eq('fingerprint move: a shape change still runs exactly one apply',
       sent.filter((m) => m.action === 'state:applyOk').length, 1);
     eq('fingerprint move: a shape change publishes the table switch once',
       sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
-    // The carry sends an inactive notice, so the press's write is the one
-    // active notice: the press's on and the cleared range expression.
-    const activeNotices = sent.filter((m) => m.action === 'state:settingsChanged' && m.active);
-    eq('fingerprint move: the press sends the one active settings notice, holding its on and the cleared range',
-      activeNotices.map((m) => [m.source, m.settings.enabled, m.settings.rangeExpr]), [['page', true, '']]);
+    const notices = sent.filter((m) => m.action === 'state:settingsChanged');
+    eq('fingerprint move: the press sends the one settings notice, holding its on under the defaults',
+      notices.map((m) => [m.source, m.settings.enabled, m.settings.offsetTop, m.settings.rangeExpr]),
+      [['page', true, DR_DEFAULTS.offsetTop, '']]);
 
     if (fresh) forgetRegisteredTable(fresh);
   });
 })();
 
-// --- A sidebar apply on a table the page refilled. A native table registers
-// again as the same element, so the selection still points at it when the
-// carry writes the fresh table's settings. The carry must reach the sidebar
-// as an inactive notice: an active one would redraw the sidebar to the values
-// from before the apply, and a keystroke before the switch's pull would land
-// on a blanked range box. The only active notice is the apply's own. ---
+// --- A sidebar apply on a table the page refilled. No notice may reach the
+// sidebar with values from before the apply: it would redraw the controls to
+// them, and a keystroke before the switch's pull would land on a blanked
+// range box. The switch leads, and the one settings notice is the apply's
+// own. ---
 
-(function issue328_aSidebarApplyOnARefilledTableSendsOnlyTheWrittenSettingsAsActive() {
+(function issue328_aSidebarApplyOnARefilledTableSendsOnlyTheWrittenSettings() {
   runPressFixture(({ sent }) => {
     const table = makeToggleTable([
       [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
@@ -3692,13 +3693,12 @@ function issue328SettingsOf(table) {
       .filter((m) => m.action === 'state:settingsChanged' || m.action === 'state:tableSwitched')
       .map((m) => (m.action === 'state:tableSwitched'
         ? 'switched'
-        : 'settings active=' + m.active + ' source=' + m.source + ' offsetTop=' +
+        : 'settings source=' + m.source + ' offsetTop=' +
           m.settings.offsetTop + ' range=' + m.settings.rangeExpr));
-    eq('refilled apply: the carry is inactive, the switch follows, and the apply is the one active notice',
+    eq('refilled apply: the switch leads, and the apply sends the one settings notice',
       sequence, [
-        'settings active=false source=page offsetTop=-2 range=',
         'switched',
-        'settings active=true source=sidebar offsetTop=1 range=C3',
+        'settings source=sidebar offsetTop=1 range=C3',
       ]);
     eq('refilled apply: the table stays the active one',
       DR_STORE.getSelectedTable() === table, true);
@@ -4621,9 +4621,9 @@ function issue328SettingsOf(table) {
 
 const RW_UNROUNDED_ROW = /cells were left unrounded/;
 
-// --- Test 10: a shape change during a pass. The table re-detects and
-// simplifies; the active table changes only when the changed table was the
-// active one. ---
+// --- Test 10: a shape change during a pass. The table re-detects as a new
+// table and shows raw under the shipped defaults; the active table changes
+// only when the changed table was the active one. ---
 (function rewrite10_aShapeChangeDuringAPassReDetects() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const header = ['Region', 'Q1', 'Q2'];
@@ -4648,17 +4648,21 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
           { selected: DR_STORE.getSelectedTable() === active.table, switches }, { selected: true, switches: 0 });
         eq(`#421 shape change (${kind}): the changed table registers fresh with the new header`,
           (DR_STORE.getTableFingerprint(other.table) || {}).headerTexts, ['Region', 'Q1', 'Q3']);
-        eq(`#421 shape change (${kind}): the changed table simplifies again`,
-          { rounded: isTableRounded(other.table), texts: other.rowTexts() },
-          { rounded: true, texts: [['North', '1,200', '5,700'], ['South', '2,500', '3,600']] });
+        eq(`#421 shape change (${kind}): the changed table shows raw, under the shipped defaults`,
+          { rounded: isTableRounded(other.table), texts: other.rowTexts(),
+            settings: DR_STORE.getTableSettings(other.table) },
+          { rounded: false, texts: [['North', '1,234', '5,678'], ['South', '2,468', '3,579']],
+            settings: Object.assign({}, DR_DEFAULTS) });
 
         active.headerWrite(2, 'Q3');
         page.settle();
         eq(`#421 shape change (${kind}): a change on the active table moves the active table to the fresh entry`,
           { selected: DR_STORE.getSelectedTable() === active.table, switches }, { selected: true, switches: 1 });
-        eq(`#421 shape change (${kind}): the active table simplifies again`,
-          { rounded: isTableRounded(active.table), texts: active.rowTexts() },
-          { rounded: true, texts: [['North', '1,200', '5,700'], ['South', '2,500', '3,600']] });
+        eq(`#421 shape change (${kind}): the active table shows raw, under the shipped defaults`,
+          { rounded: isTableRounded(active.table), texts: active.rowTexts(),
+            settings: DR_STORE.getTableSettings(active.table) },
+          { rounded: false, texts: [['North', '1,234', '5,678'], ['South', '2,468', '3,579']],
+            settings: Object.assign({}, DR_DEFAULTS) });
       });
     } finally {
       unsubscribe();

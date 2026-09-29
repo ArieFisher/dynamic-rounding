@@ -491,10 +491,9 @@ function fingerprintReadOpts(table) {
 // element: the entry is new either way, with no originals and a raw form, and
 // the sidebar re-reads the active table's settings on that topic.
 //
-// The fresh table carries the replaced table's settings, with the range
-// expression cleared: the expression states rows and columns by position, so
-// it points at cells that no longer exist. This is the one place a range
-// expression clears.
+// The fresh table is a new table: it holds no settings, so it reads the
+// shipped defaults, and it shows the page's values raw, the same as a table
+// found on page load. Nothing from the replaced table's settings reaches it.
 //
 // A table with no recorded fingerprint compares against nothing and returns
 // as a match. Only a first write through the registry's setters creates such
@@ -523,16 +522,8 @@ function revalidateTableShape(table, opts = {}) {
 
   DR_LOG.debug("Dynamic Rounding: table shape changed; re-running detection.");
 
-  // The order is restore, tear down, re-nominate, register, clear the
-  // selection, carry the settings, activate, publish. The settings are read
-  // before the teardown discards the entry that holds them. The selection
-  // clears when the discarded table was the active one, because a native
-  // table registers again as the same element and the selection would still
-  // point at it. The carry then publishes an inactive notice, which the
-  // sidebar skips. An active one would redraw the sidebar to the settings
-  // from before a sidebar apply that is still on its way to the table. The
-  // activation selects the fresh table, and the sidebar reads its settings
-  // from the pull on the switch.
+  // The order is restore, tear down, re-nominate, register, activate,
+  // publish.
   //
   // The restore runs first, against the old entry while it still holds the
   // originals. A page that widens a table and leaves the rest of each row in
@@ -542,11 +533,10 @@ function revalidateTableShape(table, opts = {}) {
   // the simplified values as the cells' own, the apply would report every
   // one of them unrestorable, and the table would stand locked with no route
   // back. Restoring first puts raw text in every surviving cell, so the
-  // fresh registration records its fingerprint over raw text and simplifies
-  // from there. A cell whose original is gone stays as it is, the same as
-  // any other restore. The originals go back into the cells and nowhere
-  // else, so none of them reaches the fresh entry.
-  const carried = DR_STORE.getTableSettings(table);
+  // fresh registration records its fingerprint over raw text and starts raw.
+  // A cell whose original is gone stays as it is, the same as any other
+  // restore. The originals go back into the cells and nowhere else, so none
+  // of them reaches the fresh entry.
   resetTable(table);
   teardownTableEntry(table, 'replaced');
 
@@ -563,13 +553,12 @@ function revalidateTableShape(table, opts = {}) {
     if (!fresh && DR_STORE.hasTable(handle)) fresh = handle;
   }
 
-  if (DR_STORE.getSelectedTable() === table) DR_BUS.publish('intent:selectTable', { table: null });
   if (!fresh) {
     DR_LOG.debug("Dynamic Rounding: no table registered after the shape change.");
+    if (DR_STORE.getSelectedTable() === table) DR_BUS.publish('intent:selectTable', { table: null });
     return { table: null, switched: false };
   }
 
-  DR_STORE.setTableSettings(fresh, Object.assign({}, carried, { rangeExpr: '' }), 'page');
   if (opts.activates !== false) {
     DR_BUS.publish('intent:selectTable', { table: fresh });
     DR_BUS.publish('state:tableSwitched', {});
@@ -1448,8 +1437,9 @@ function reapplyRounding(table) {
 }
 
 // The pass itself. It writes nothing while the table's form is raw. The
-// shape check runs before any cell is sorted: a table the page refilled
-// re-detects and simplifies fresh. The pass then runs the one
+// shape check runs before any cell is sorted: a table the page refilled with
+// a different shape re-detects as a new table, raw and under the shipped
+// defaults, and the pass stops there. Otherwise the pass runs the one
 // simplification pass under the table's own settings and its magnitude
 // freeze, if it holds one, so a grid's scroll never shifts its rounding
 // basis, and a native table's max magnitude follows the page's values.
@@ -1457,10 +1447,7 @@ function runReapplyPass(table) {
   if (DR_STORE.getTableAppliedFlag(table) !== 'simplified') return;
   const wasActive = DR_STORE.getSelectedTable() === table;
   const revalidated = revalidateTableShape(table, { activates: wasActive });
-  if (revalidated.switched || revalidated.table !== table) {
-    resimplifyReplacedTable(revalidated.table, wasActive);
-    return;
-  }
+  if (revalidated.switched || revalidated.table !== table) return;
   const opts = DR_STORE.getTableSettings(table);
   const adapter = registryAdapter(table);
   const result = simplifyTableCells(table, adapter.getRows(), opts, {
@@ -1473,20 +1460,6 @@ function runReapplyPass(table) {
     unwatchTable(table);
     logAboveCellCap(result.cellCount);
   }
-}
-
-// Simplify the table a shape change registered, with the settings the shape
-// check carried onto it from the replaced table (range expression cleared).
-// On the active table this is the apply the sidebar's controls describe, so
-// it runs the same apply a sidebar change runs. On any other table the
-// sidebar's binding stays where it is.
-function resimplifyReplacedTable(fresh, wasActive) {
-  if (!fresh) return;
-  if (wasActive) {
-    applySidebarRounding(fresh);
-    return;
-  }
-  roundTable(fresh, DR_STORE.getTableSettings(fresh));
 }
 
 function roundTable(table, options) {

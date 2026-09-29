@@ -1444,8 +1444,8 @@
     eq('menu-toggle record: the menu toggle on the connected table writes the table\'s off',
       store.getTableSettings(gridEl).enabled, false);
     const notices = sentMessages.filter((m) => m.action === 'state:settingsChanged');
-    eq('menu-toggle record: the menu toggle sends the table\'s settings to the sidebar — off, for the active table',
-      notices.map((m) => [m.settings.enabled, m.active]), [[false, true]]);
+    eq('menu-toggle record: the menu toggle sends the table\'s settings to the sidebar — off, from a page-side writer',
+      notices.map((m) => [m.settings.enabled, m.source]), [[false, 'page']]);
   } finally {
     delete global.__i275_DR_STORE;
     global.document = savedDoc;
@@ -1548,7 +1548,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     if (h.evalError !== null) return;
 
     h.tabMessages.length = 0;
-    h.dispatch({ action: 'state:settingsChanged', active: true, source: 'page',
+    h.dispatch({ action: 'state:settingsChanged', source: 'page',
       settings: ISSUE328_PAGE_SETTINGS });
     eq('settings notice: the range expression redraws from the notice', h.rangeExprEl.value, 'C3');
     eq('settings notice: the switch redraws from the notice', h.enabledEl.checked, true);
@@ -1565,7 +1565,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
   }
 })();
 
-(function issue328_theSidebarSkipsItsOwnAndInactiveNotices() {
+(function issue328_theSidebarSkipsItsOwnNotices() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
     eq('settings notice skip: source files (defaults/rounding/core/messaging) present in manifest', false, true);
@@ -1576,14 +1576,10 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     if (h.evalError !== null) return;
 
     h.tabMessages.length = 0;
-    h.dispatch({ action: 'state:settingsChanged', active: true, source: 'sidebar',
+    h.dispatch({ action: 'state:settingsChanged', source: 'sidebar',
       settings: ISSUE328_PAGE_SETTINGS });
     eq('settings notice skip: the sidebar\'s own write redraws nothing', h.rangeExprEl.value, 'B2:E8');
-    h.dispatch({ action: 'state:settingsChanged', active: false, source: 'page',
-      settings: ISSUE328_PAGE_SETTINGS });
-    eq('settings notice skip: a write to a table that is not active redraws nothing',
-      h.rangeExprEl.value, 'B2:E8');
-    eq('settings notice skip: neither notice refreshes the lens preview',
+    eq('settings notice skip: the sidebar\'s own write refreshes no lens preview',
       h.tabMessages.filter((m) => m.action === 'request:previewSamples').length, 0);
   } finally {
     h.restore();
@@ -1714,7 +1710,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     if (h.evalError !== null) return;
 
     h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    h.dispatch({ action: 'state:settingsChanged', active: true, source: 'page',
+    h.dispatch({ action: 'state:settingsChanged', source: 'page',
       settings: Object.assign({}, ISSUE328_PAGE_SETTINGS, { enabled: false }) });
     eq('lock notice: the switch keeps the forced on under the lock',
       [h.enabledEl.checked, h.enabledEl.disabled], [true, true]);

@@ -2017,8 +2017,8 @@
   const notice = sent.find(m => m.action === 'state:settingsChanged');
   eq('AC1 part-A: the settings notice is sent when the pressed table is the active one',
     notice !== undefined, true);
-  eq('AC1 part-A: the notice marks the active table and a page-side writer',
-    notice && [notice.active, notice.source], [true, 'page']);
+  eq('AC1 part-A: the notice marks a page-side writer',
+    notice && notice.source, 'page');
   // After click on a fresh table, it becomes rounded → enabled should be true.
   eq('AC1 part-A: the notice carries the new on/off value (true after first click)',
     notice && notice.settings.enabled, true);
@@ -2134,13 +2134,13 @@
     actions.includes('state:tableSwitched'), true);
   eq('AC3: the switch reaches the sidebar before the settings notice',
     actions.indexOf('state:tableSwitched') < actions.indexOf('state:settingsChanged'), true);
-  eq('AC3: the press sends one settings notice, naming the active table',
-    notices.map(n => n.active), [true]);
+  eq('AC3: the press sends one settings notice, from a page-side writer',
+    notices.map(n => n.source), ['page']);
 })();
 
 // With no table active, a press makes the pressed table the active one, so
-// its settings notice marks the active table too.
-(function pillbox_AC3_noLastRightClicked_noticeNamesTheActiveTable() {
+// its press sends one settings notice, as a press on the active table does.
+(function pillbox_AC3_noLastRightClicked_pressSendsOneNotice() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
@@ -2158,8 +2158,8 @@
   lastRightClickedTable = null;
 
   const notices = sent.filter(m => m.action === 'state:settingsChanged');
-  eq('AC3 null active table: the press sends one settings notice, naming the active table',
-    notices.map(n => n.active), [true]);
+  eq('AC3 null active table: the press sends one settings notice, from a page-side writer',
+    notices.map(n => n.source), ['page']);
 })();
 
 // AC3 corollary: a press on the active table publishes the table's new

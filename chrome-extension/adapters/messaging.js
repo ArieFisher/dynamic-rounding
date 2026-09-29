@@ -161,9 +161,9 @@ const DR_BUS = (function () {
     // sidebar is an extension page.
     //
     // The settings notice: the model (app/store.js) publishes it after every
-    // write of a table's settings, whatever the writer. It states whether the
-    // table is the active one and which side wrote it, and carries the
-    // table's whole settings; the sidebar redraws from it. The content script
+    // write of a table's settings, whatever the writer. Every write targets
+    // the active table. It states which side wrote it and carries the table's
+    // whole settings; the sidebar redraws from it. The content script
     // publishes it and holds no subscriber of its own.
     'state:settingsChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableActivated': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },

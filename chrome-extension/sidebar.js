@@ -690,13 +690,12 @@ boundTab.subscribe('state:tableActivated', () => {
   pullSettingsAndApplyToUI();
 });
 
-// The settings notice, after every write of a table's settings. A notice for
-// the active table redraws the controls and the lens preview from the
-// settings it carries. The sidebar's own writes are skipped: an echo arriving
-// after a newer keystroke or slider step would overwrite that step. A notice
-// for a table that is not active describes nothing the controls show.
-boundTab.subscribe('state:settingsChanged', ({ active, source, settings }) => {
-  if (!active || source === 'sidebar') return;
+// The settings notice, after every write of the active table's settings. It
+// redraws the controls and the lens preview from the settings it carries.
+// The sidebar's own writes are skipped: an echo arriving after a newer
+// keystroke or slider step would overwrite that step.
+boundTab.subscribe('state:settingsChanged', ({ source, settings }) => {
+  if (source === 'sidebar') return;
   applySettingsToUI(settings);
   fetchPreviewSamples();
 });

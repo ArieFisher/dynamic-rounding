@@ -285,19 +285,16 @@ const DR_STORE = (function () {
   }
 
   // Store a table's whole settings, with the shipped defaults filled in, then
-  // publish the settings notice. The notice crosses to the sidebar, so it
-  // carries plain values alone: whether the table is the active one, the
-  // source ('sidebar' for the sidebar's apply, 'page' for every other
-  // writer), and a copy of the stored settings. The sidebar redraws from a
-  // notice for the active table whose source is not its own.
+  // publish the settings notice. Every writer writes the active table: the
+  // sidebar's apply, and a pillbox press, which makes its table active first.
+  // The notice crosses to the sidebar, so it carries plain values alone: the
+  // source ('sidebar' for the sidebar's apply, 'page' for every other writer)
+  // and a copy of the stored settings. The sidebar redraws from a notice
+  // whose source is not its own.
   function setTableSettings(table, settings, source) {
     const stored = Object.assign({}, DR_DEFAULTS, settings || {});
     _ensureEntry(table).settings = stored;
-    DR_BUS.publish('state:settingsChanged', {
-      active: table === selectedTable,
-      source,
-      settings: Object.assign({}, stored),
-    });
+    DR_BUS.publish('state:settingsChanged', { source, settings: Object.assign({}, stored) });
   }
 
   // A copy, so a caller cannot change the stored settings by changing what
