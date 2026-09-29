@@ -124,11 +124,11 @@ const DR_STORE = (function () {
         // showing originals"; isTableRounded (ui-toggle.js) is exactly
         // appliedFlag === 'simplified'.
         appliedFlag: 'original',
-        // The options object the most recent roundTable() call used —
-        // replaces content.js's tableOptions WeakMap. The virtualized-grid
-        // re-apply reads this to re-round scrolled-in rows with the same
-        // parameters instead of a stale cached value.
-        lastRoundOptions: null,
+        // The table's settings: the options object the most recent
+        // roundTable() call used. The re-apply pass reads it to simplify
+        // redrawn cells with the same parameters, and the capture carries it.
+        // resetTable clears it back to null.
+        settings: null,
         // Virtualized-grid magnitude basis, frozen on first round so a
         // scroll-triggered re-apply cannot shift it. null until roundTable
         // freezes it; resetTable clears it back to null.
@@ -224,7 +224,7 @@ const DR_STORE = (function () {
   // called once, from ui-toggle.js's createToggleForTable, idempotent so a
   // rediscovery (e.g. injectTogglesForAddedNode revisiting a node) is a
   // no-op. It is NOT the only path to a table having a registry entry:
-  // setTableOriginal, setTableAppliedFlag, setTableRoundOptions, and
+  // setTableOriginal, setTableAppliedFlag, setTableSettings, and
   // setTableMaxMagnitude below all call the same _ensureEntry and will
   // silently create one on first write if registerTable never ran for that
   // table.
@@ -295,13 +295,13 @@ const DR_STORE = (function () {
     return entry ? entry.appliedFlag : 'original';
   }
 
-  function setTableRoundOptions(table, opts) {
-    _ensureEntry(table).lastRoundOptions = opts;
+  function setTableSettings(table, opts) {
+    _ensureEntry(table).settings = opts;
   }
 
-  function getTableRoundOptions(table) {
+  function getTableSettings(table) {
     const entry = tableRegistry.get(table);
-    return entry ? entry.lastRoundOptions : null;
+    return entry ? entry.settings : null;
   }
 
   function setTableMaxMagnitude(table, mag) {
@@ -346,8 +346,8 @@ const DR_STORE = (function () {
     deleteTableOriginal,
     setTableAppliedFlag,
     getTableAppliedFlag,
-    setTableRoundOptions,
-    getTableRoundOptions,
+    setTableSettings,
+    getTableSettings,
     setTableMaxMagnitude,
     getTableMaxMagnitude,
     setTableFingerprint,

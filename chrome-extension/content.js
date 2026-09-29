@@ -56,12 +56,19 @@ DR_BUS.subscribe('intent:selectTable', ({ table }) => {
 // (its DR_STORE.setSettings is what triggers this subscriber); this also
 // covers any in-context caller that sets settings without going through that
 // request.
-DR_BUS.subscribe('state:settingsChanged', ({ settings }) => {
+DR_BUS.subscribe('state:settingsChanged', () => {
   const selected = DR_STORE.getSelectedTable();
   if (selected) {
-    applySidebarRounding(selected, settings);
+    applySidebarRounding(selected);
   }
 });
+
+// The controller's merge write: the settings record's current values with
+// the patch's keys replaced. The pillbox press and the shape change's clear
+// of the range expression both write through it.
+function writeSettings(patch) {
+  DR_STORE.setSettings(Object.assign({}, DR_STORE.getSettings(), patch));
+}
 
 // Every row at one of the log module's error levels (warn and error) is an
 // extension error: it lands in the model's error state, whose state change
@@ -157,7 +164,7 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
   // same write, so the clear cannot apply on its own.
   const patch = { enabled: nextEnabled };
   if (moved) patch.rangeExpr = '';
-  DR_STORE.setSettings(Object.assign({}, DR_STORE.getSettings(), patch));
+  writeSettings(patch);
 
   // The sidebar receives the new value once. A moved press already sent
   // TABLE_SWITCHED, and the sidebar's handler for it re-reads the settings
@@ -271,7 +278,7 @@ DR_BUS.subscribe('state:sidebarOpened', () => {
     DR_LOG.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
     return;
   }
-  applySidebarRounding(selected, DR_STORE.getSettings());
+  applySidebarRounding(selected);
   // Tell the sidebar its view is stale; it re-reads the model's settings and
   // re-asks for preview samples against the now-current targeted table.
   DR_BUS.publish('state:previewSamplesChanged', {});
@@ -297,7 +304,9 @@ window.addEventListener('pagehide', () => {
   DR_BUS.publish('state:pageUnloaded', {});
 });
 
-function applySidebarRounding(requestedTable, options) {
+// Apply the settings record to one table: reset it, then simplify it when the
+// record's on/off value is on.
+function applySidebarRounding(requestedTable) {
   // The shape check runs before the reset, so a table the page refilled is
   // discarded and registered fresh rather than reset against originals that
   // belong to cells no longer on the screen. The locked path below sits
@@ -310,7 +319,7 @@ function applySidebarRounding(requestedTable, options) {
   if (!revalidated.table) return;
   const table = revalidated.table;
 
-  const opts = Object.assign({}, DR_DEFAULTS, options || {});
+  const opts = DR_STORE.getSettings();
   ensureHighlightStyleInjected();
   const unrestorableCount = resetTable(table);
   if (unrestorableCount > 0) {
@@ -751,10 +760,10 @@ function resetTable(table) {
   // The re-apply observer stops BEFORE the cell restore, so the restore's
   // own writes run no pass and a queued pass cannot fire after the reset.
   unwatchTable(table);
-  // Also clear the stored options and frozen magnitude basis so a pass (if
+  // Also clear the table's settings and frozen magnitude basis so a pass (if
   // somehow still in flight) stops harmlessly, and so the next roundTable()
   // call re-freezes fresh.
-  DR_STORE.setTableRoundOptions(table, null);
+  DR_STORE.setTableSettings(table, null);
   DR_STORE.setTableMaxMagnitude(table, null);
 
   const unrestorableCount = restoreTable(table);
@@ -1462,7 +1471,7 @@ function reapplyRounding(table) {
 // so a grid's scroll never shifts its rounding basis, and a native table's
 // max magnitude follows the page's values.
 function runReapplyPass(table) {
-  const opts = DR_STORE.getTableRoundOptions(table);
+  const opts = DR_STORE.getTableSettings(table);
   if (!opts || DR_STORE.getTableAppliedFlag(table) !== 'simplified') return;
   const wasActive = DR_STORE.getSelectedTable() === table;
   const revalidated = revalidateTableShape(table, { activates: wasActive });
@@ -1492,7 +1501,7 @@ function runReapplyPass(table) {
 function resimplifyReplacedTable(fresh, opts, wasActive) {
   if (!fresh) return;
   if (wasActive) {
-    DR_STORE.setSettings(Object.assign({}, DR_STORE.getSettings(), { rangeExpr: '' }));
+    writeSettings({ rangeExpr: '' });
     return;
   }
   roundTable(fresh, Object.assign({}, opts, { rangeExpr: '' }));
@@ -1500,7 +1509,7 @@ function resimplifyReplacedTable(fresh, opts, wasActive) {
 
 function roundTable(table, options) {
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
-  DR_STORE.setTableRoundOptions(table, opts);
+  DR_STORE.setTableSettings(table, opts);
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   if (rangeParse.error) {
     return { applied: false, rangeStatus: 'error', error: rangeParse.error };

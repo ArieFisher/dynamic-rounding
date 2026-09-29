@@ -2414,8 +2414,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     // record. setupVirtGrid rounds with the first row and column included; the
     // settings record here carries the same, so the re-simplify reaches the
     // same cells.
-    applySidebarRounding(grid.wrapperEl, Object.assign(
+    DR_STORE.setSettings(Object.assign(
       {}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true, enabled: true }));
+    applySidebarRounding(grid.wrapperEl);
     eq('GV5b: appliedFlag is "simplified" after the press turns simplification back on',
       DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'simplified');
     eq('GV5b: cell[0] re-simplified after the press turns simplification back on',

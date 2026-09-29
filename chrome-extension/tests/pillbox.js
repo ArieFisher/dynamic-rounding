@@ -454,7 +454,8 @@
     // Register a checkbox so syncSwitchForTable doesn't crash
     const input = injectToggleEntry(table);
 
-    applySidebarRounding(table, Object.assign({}, DR_DEFAULTS, { enabled: true }));
+    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
+    applySidebarRounding(table);
 
     // After a press turning simplification on, at least one cell is simplified
     const hasRounded = table._cells.some(c => c.classList.contains('dr-ext-rounded'));

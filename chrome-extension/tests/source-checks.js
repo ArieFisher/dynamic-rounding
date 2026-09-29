@@ -2194,7 +2194,7 @@
       .map((file) => (file === 'content.js' ? contentSrc : contentScriptSources.get(file)))
       .join('\n');
     vm.runInContext(
-      bundle + '\nthis.__applySidebarRounding = applySidebarRounding; this.__DR_DEFAULTS = DR_DEFAULTS;',
+      bundle + '\nthis.__applySidebarRounding = applySidebarRounding; this.__DR_DEFAULTS = DR_DEFAULTS; this.__DR_STORE = DR_STORE;',
       ctx
     );
 
@@ -2229,7 +2229,8 @@
     }
     let threw = null;
     try {
-      sandbox.__applySidebarRounding(table, sandbox.__DR_DEFAULTS);
+      sandbox.__DR_STORE.setSettings(sandbox.__DR_DEFAULTS);
+      sandbox.__applySidebarRounding(table);
     } catch (e) {
       threw = e.message;
     }
