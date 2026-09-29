@@ -99,7 +99,9 @@
     /state:sidebarOpened[\s\S]{0,200}applySidebarRounding\([^)]*DR_DEFAULTS/.test(contentSrc), false);
 
   eq('pull (inverted): content.js applies the model\'s own settings on state:sidebarOpened',
-    /state:sidebarOpened[\s\S]{0,400}applySidebarRounding\([^)]*DR_STORE\.getSettings\(\)/.test(contentSrc), true);
+    /state:sidebarOpened[\s\S]{0,400}applySidebarRounding\(selected\)/.test(contentSrc) &&
+      /function applySidebarRounding\(requestedTable\)[\s\S]{0,1200}DR_STORE\.getSettings\(\)/.test(contentSrc),
+    true);
 
   eq('pull (inverted): sidebar.js no longer handles GET_SIDEBAR_SETTINGS',
     /GET_SIDEBAR_SETTINGS/.test(sidebarSrc), false);
@@ -131,8 +133,8 @@
   eq('unified (superseded by app-model-registry): tableOptions WeakMap no longer declared',
     /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), false);
 
-  eq('registry: round options are recorded via DR_STORE.setTableRoundOptions',
-    /DR_STORE\.setTableRoundOptions\(table,\s*opts\)/.test(contentSrc), true);
+  eq('registry: the table settings are recorded via DR_STORE.setTableSettings',
+    /DR_STORE\.setTableSettings\(table,\s*opts\)/.test(contentSrc), true);
 
   eq('unified: the apply re-runs roundTable rather than replaying a cached value',
     // Window sized for the locked-table refusal (issue #262) that sits
@@ -376,7 +378,7 @@
   fireMouseClick(buttonB);
 
   const rounded = tableB._cells.some(c => c.classList.contains('dr-ext-rounded'));
-  const usedOpts = DR_STORE.getTableRoundOptions(tableB);
+  const usedOpts = DR_STORE.getTableSettings(tableB);
 
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
@@ -2188,13 +2190,15 @@ const PENDING_FILL_ROWS = [
     const applyOpts = Object.assign(
       {}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true }, opts);
 
-    applySidebarRounding(grid.wrapperEl, Object.assign({}, applyOpts, { enabled: false }));
+    DR_STORE.setSettings(Object.assign({}, applyOpts, { enabled: false }));
+    applySidebarRounding(grid.wrapperEl);
     eq('round trip: the off press clears the display back to "555"',
       cell555.childNodes[0].nodeValue, '555');
     eq('round trip: the off press clears the frozen basis',
       DR_STORE.getTableMaxMagnitude(grid.wrapperEl), null);
 
-    applySidebarRounding(grid.wrapperEl, Object.assign({}, applyOpts, { enabled: true }));
+    DR_STORE.setSettings(Object.assign({}, applyOpts, { enabled: true }));
+    applySidebarRounding(grid.wrapperEl);
     eq('round trip: DR_STORE re-freezes from the now-visible magnitude-9 row (9), not the original magnitude-2 basis',
       DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 9);
     // Under the re-frozen (9) basis, current_mag(555)=2, max_mag-current_mag=7
@@ -2285,7 +2289,7 @@ const PENDING_FILL_ROWS = [
   DR_STORE.registerTable(table);
   DR_STORE.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
-  DR_STORE.setTableRoundOptions(table, { offsetTop: -1 });
+  DR_STORE.setTableSettings(table, { offsetTop: -1 });
   DR_STORE.setTableMaxMagnitude(table, 7);
 
   eq('re-register: table is rounded with state before removal (pre-condition)',
@@ -2309,8 +2313,8 @@ const PENDING_FILL_ROWS = [
     DR_STORE.hasTableOriginal(table, cell), false);
   eq('re-register: getTableOriginal for the old cell reference is undefined, not the stale record',
     DR_STORE.getTableOriginal(table, cell), undefined);
-  eq('re-register: lastRoundOptions resets to null (not the leftover options object)',
-    DR_STORE.getTableRoundOptions(table), null);
+  eq('re-register: the table settings reset to null (not the leftover options object)',
+    DR_STORE.getTableSettings(table), null);
   eq('re-register: maxMagnitude resets to null (not the leftover frozen value)',
     DR_STORE.getTableMaxMagnitude(table), null);
 })();
@@ -2736,7 +2740,7 @@ const PENDING_FILL_ROWS = [
     // The reopen path (state:sidebarOpened runs this same apply) must honor the
     // record the pill just wrote — not silently re-round the table.
     withCreateTreeWalker(function () {
-      applySidebarRounding(table, DR_STORE.getSettings());
+      applySidebarRounding(table);
     });
     eq('leak-1: a reopen-style apply honors the record — the table stays on originals',
       isTableRounded(table), false);
@@ -2857,7 +2861,7 @@ const PENDING_FILL_ROWS = [
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
 
-    const usedOpts = DR_STORE.getTableRoundOptions(pressed);
+    const usedOpts = DR_STORE.getTableSettings(pressed);
     eq('part one: turning simplification on uses the settings record\'s offset',
       usedOpts && usedOpts.offsetTop, -2);
   });
@@ -3527,7 +3531,7 @@ const PENDING_FILL_ROWS = [
     sent.length = 0;
     withCreateTreeWalker(function () {
       withToggleDocumentMock(function () {
-        applySidebarRounding(table, DR_STORE.getSettings());
+        applySidebarRounding(table);
       });
     });
     eq('fingerprint lock: the locked table blocks the apply before the change (precondition)',
@@ -3544,7 +3548,7 @@ const PENDING_FILL_ROWS = [
     sent.length = 0;
     withCreateTreeWalker(function () {
       withToggleDocumentMock(function () {
-        applySidebarRounding(table, DR_STORE.getSettings());
+        applySidebarRounding(table);
       });
     });
 
@@ -4439,7 +4443,7 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
         DR_STORE.setSelectedTable(null);
         DR_STORE.setSettings(Object.assign({}, RW_OPTS, { simplifyFirstRow: false }));
         DR_STORE.setSelectedTable(active.table);
-        applySidebarRounding(active.table, DR_STORE.getSettings());
+        applySidebarRounding(active.table);
         roundTable(other.table, Object.assign({}, RW_OPTS, { simplifyFirstRow: false }));
 
         other.headerWrite(2, 'Q3');

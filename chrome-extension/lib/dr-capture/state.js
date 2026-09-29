@@ -104,7 +104,7 @@ function collectCaptureState(deps) {
     return {
       kind: adapter.isVirtualized() ? 'grid' : 'native',
       appliedFlag: store.getTableAppliedFlag(table),
-      lastRoundOptions: store.getTableRoundOptions(table),
+      lastRoundOptions: store.getTableSettings(table),
       maxMagnitude: store.getTableMaxMagnitude(table),
       locked,
       rowCount: rows.length,

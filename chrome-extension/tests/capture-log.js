@@ -95,7 +95,7 @@
     getSettings: () => ({ enabled: true, offsetTop: -0.5 }),
     getErrorState: () => (opts && opts.errorState) || { hasError: false, count: 0, rows: [] },
     getTableAppliedFlag: (t) => (opts && opts.flags && opts.flags.get(t)) || 'original',
-    getTableRoundOptions: (t) => (opts && opts.roundOptions && opts.roundOptions.get(t)) || null,
+    getTableSettings: (t) => (opts && opts.roundOptions && opts.roundOptions.get(t)) || null,
     getTableMaxMagnitude: (t) => {
       const m = opts && opts.maxMags && opts.maxMags.get(t);
       return m === undefined ? null : m;
@@ -252,7 +252,7 @@
     getSettings: () => ({}),
     getErrorState: () => ({ hasError: false, count: 0, rows: [] }),
     getTableAppliedFlag: () => 'simplified',
-    getTableRoundOptions: () => null,
+    getTableSettings: () => null,
     getTableMaxMagnitude: () => null,
     getTableOriginalText: (t, cellEl) => (cellEl === marked ? '98,765' : undefined),
   };
@@ -894,7 +894,7 @@
     getSettings: () => ({}),
     getErrorState: () => ({ hasError: false, count: 0, rows: [] }),
     getTableAppliedFlag: () => 'original',
-    getTableRoundOptions: () => null,
+    getTableSettings: () => null,
     getTableMaxMagnitude: () => null,
     getTableOriginalText: () => undefined,
   });
