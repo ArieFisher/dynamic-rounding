@@ -124,11 +124,10 @@ One term per concept, across every platform and every document. Use the [Retired
 | restore | Put the originals back into every text piece that still shows its written text. A text piece the page rewrote keeps the page's text, so a restore never writes a number the page no longer shows. |
 | unrestorable | Originals lost or never captured. The table cannot be restored. |
 | locked | The state of a table's controls when the application will not apply simplify settings to it. <br><br>e.g. when its originals are unrestorable, changes do not apply. |
-| stash | The sidebar's held copy of the settings record's on/off while the bound table is locked. <br><br>The switch's forced "on" is display only: a save made under the lock carries the stashed value, a settings-record change landing under the lock updates it, and lifting the lock puts it back on the switch. |
-| bound | The sidebar's association with one table: the table its controls read from and write to. |
-| active | The table user actions target. <br>The most recently right-clicked table, or the most recent table whose pillbox was pressed. The sidebar binds the active table. |
+| bound | The sidebar's association with one table: the table whose table settings its controls read from and write to. |
+| active | The table user actions target. <br>The most recently right-clicked table, or the most recent table whose pillbox was pressed. The sidebar binds the active table, and a sidebar change writes the active table's table settings. |
 | activate | Make a table active: right-click it, or press its pillbox. |
-| range expression | An A1-style expression limiting which cells change. Blank means the whole table. <br><br>It states rows and columns by position, so it describes the table it was written for. A press that moves the active table therefore clears it. |
+| range expression | An A1-style expression limiting which cells change. Blank means the whole table. <br><br>It states rows and columns by position, so it describes the table it was written for. Each table holds its own range expression in its table settings. A shape change clears it, because the shape it described is gone. |
 
 ## Parts of the extension
 
@@ -142,11 +141,11 @@ One term per concept, across every platform and every document. Use the [Retired
 | sidebar | The extension's control panel page. Its own context. |
 | service worker | The extension's background context. One instance for the whole browser, common to every tab. It creates the right-click menu items, opens the sidebar, and records which tab the sidebar was opened for. Chrome shuts it down after an idle period and starts it again on the next message, so a restart begins with its variables empty. |
 | component | One part of the extension with one job and a boundary: it reaches other parts only through defined channels — topics or calls — and its insides can change without any other part changing. <br><br>e.g. The sidebar view, the controller, and the application model |
-| view | A component that draws application state on a screen and publishes a user gesture as an intent topic. <br><br>e.g. the pillbox, the sidebar's controls <br><br>A view holds no application state of record. The sidebar is the standing exception: its controls carry working values until a publish, and it stashes the on/off value while a table is locked. |
+| view | A component that draws application state on a screen and publishes a user gesture as an intent topic. <br><br>e.g. the pillbox, the sidebar's controls <br><br>A view holds no application state of record. The sidebar is the standing exception: its controls carry working values until a publish. |
 | controller | The one component that subscribes to the intent topics and turns each one into a write to the application model or a simplification of a table. |
-| application model | The one component that holds **application state**. Every other component reads from it or requests a change; none keeps its own copy.<br><br>- Application settings: the settings record.<br>- Current page state: registry, the active table, etc. |
-| settings record | The application model's one settings object for the page: the on/off value and every simplification option. <br><br>Every writer goes through it — the switch, a toggle on the active table (sidebar open or closed), any logic. The active table is re-simplified from its changes; the write causes the view change, never the reverse. |
-| registry | The application model's list of the tables found on the current page, with the details held for each: the cell originals, the form, the last simplification options, a virtualized grid's frozen max magnitude, and the shape fingerprint. |
+| application model | The one component that holds **application state**. Every other component reads from it or requests a change; none keeps its own copy.<br><br>- Application settings: each table's table settings, in the registry.<br>- Current page state: registry, the active table, etc. |
+| table settings | One table's settings object, held in its registry entry: the on/off value and every simplification option. A table with none uses the shipped defaults. <br><br>Every writer goes through it — the switch, a pillbox press (sidebar open or closed), the sidebar's controls, any logic. Each change re-simplifies the table, and the write causes the view change. The sidebar reads and writes the active table's table settings. A table the page replaces takes the replaced table's settings with the range expression cleared. |
+| registry | The application model's list of the tables found on the current page, with the details held for each: the cell originals, the form, the table settings, a virtualized grid's frozen max magnitude, and the shape fingerprint. |
 | shape fingerprint | The column count, and the header row's cell texts where the table has a header row, recorded for a table when it enters the registry. Every action on a registered table compares the table's current shape against it first. A mismatch means the page replaced the table's content with a different shape, so the controller discards the entry and the table registers fresh. The column count is the widest row's cell count. A grid has a header row where it groups its data rows and its first row is an outside row; a native table has one where its first row sits in the head section or holds header cells alone. A table with no header row carries the column count alone, because the first row of a grid that groups nothing is a data row that every scroll redraws. The row count stays out for the same reason: a virtualized grid changes its drawn row count on every scroll. |
 | handle | An opaque key standing for a live table on the page, like a coat-check ticket. The caller holds it and passes it back to act on that table. A **dead handle** stands for a table no longer in the page. |
 | contract | An agreement between components about names and values: which settings exist, what each is called, and what its default is. A contract marks what must not change in one component alone. |
@@ -184,7 +183,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | note | A reader hint in the capture file: a sentence or two in italics, one size below the table text, opening with "Note: ", stating a limit of what the file shows (the hover reveal, unrecorded cell spans, missing service worker rows, the seed's escaping). One helper renders every note, so the prefix and the style live in one place. An absence is never a note: it renders as an absence sentence, highlighted. Lens preview lines are content, never notes. |
 | finish | The explicit gesture that writes the capture file — the "Save capture" button. Nothing saves without that press. |
 | capture file name | `dr-capture-YYYYMMDD-<source>-HHMMSS-<mark>.html`. The source is the page's host with `www.` dropped; for a page opened from disk it is the page file's name without its extension; it is `no-source` when the page has no address or the address does not parse. The mark token closes the name, so a folder listing shows each file's verdict without opening the file. |
-| capture state | The plain-value record embedded in the capture: full registry detail for every table, the settings record, the detection settings in force at capture time, the lens preview samples, the sidebar view state, the log rows with their stack traces, the error state, the screenshot record (taken, format, chars; never the image), the page and extension metadata, and the fixture seed. Carries a one-integer format version so a later tool can read old captures. |
+| capture state | The plain-value record embedded in the capture: full registry detail for every table with its table settings, the detection settings in force at capture time, the lens preview samples, the sidebar view state, the log rows with their stack traces, the error state, the screenshot record (taken, format, chars; never the image), the page and extension metadata, and the fixture seed. Carries a one-integer format version so a later tool can read old captures. |
 | screenshot | The image of the bound tab's visible area the sidebar takes at finish, as JPEG, carried in the capture's Screenshot section between the sidebar likeness and the bound table. The take runs through chrome.tabs.captureVisibleTab under the activeTab grant the right-click menu item gives for the tab; a sidebar opened from Chrome's own side-panel control has no grant. The capture state holds a record alone (taken, format, chars), never the image data, so the JSON island stays small. A failed take records its reason, the save goes ahead, and the section shows that absence. |
 | log buffer | A per-context list of the last 50 log rows the extension recorded, with a count of rows dropped past the cap. A warn or error row carries its stack trace. Each row also goes to the console, so devtools output is unchanged, and to every row listener. |
 | state pull | The one request the sidebar sends for the page-side half of a capture. A failed state pull still saves the capture: the sidebar half is present, and the page half renders as an absence. |
@@ -226,10 +225,10 @@ and a row with no pattern is left to the human sweep.
 | originals | undo state, raw values ("raw form" stays) | Restore puts the originals back into the cells. | `\bundo state` |
 | never used (of code) | dead | No caller reaches the helper, so it is never used. | `\bdead code` |
 | dead handle | orphaned handle | A dead handle stands for a table no longer in the page. | `\borphaned handle` |
-| coupled | fused, tied | The sidebar view is coupled to the settings record. | `\bfused\b\|tightly tied\|tied together\|\btied to the (table\|panel\|pillbox\|toggle\|sidebar\|switch\|state)\b` |
+| coupled | fused, tied | The sidebar view is coupled to the active table's table settings. | `\bfused\b\|tightly tied\|tied together\|\btied to the (table\|panel\|pillbox\|toggle\|sidebar\|switch\|state)\b` |
 | benefit | "what it buys" | The gate's benefit is having a single vocabulary across every living doc. | `what it buys` |
 | lens preview | preview band | The lens preview shows samples from several magnitudes, before and after simplification. | `\bpreview band` |
-| settings record | record | The switch writes to the settings record, and the active table re-simplifies from it. | — |
+| table settings | settings record | The switch writes to the active table's table settings, and the table re-simplifies from them. | `\bsettings record\b\|\bsettings records\b` |
 | unrestorable | stuck | A table whose originals were never captured is unrestorable. | `stuck table` |
 | load-time scan | proactive scan | The load-time scan finds native tables first, then elements with a grid role. | `\bproactive scan` |
 | dataset | range (the set of values; "range expression" stays) | In set-aware simplification the max magnitude comes from the dataset. | `\bentire range\|\bwhole range\|\binput range` |
@@ -261,8 +260,7 @@ Chrome Web Store), a bare "is linked to the" (an issue linked to a PR), and a
 bare "panel's" (Chrome's own side panel, whose close event this repository
 describes).
 
-Three rows have no pattern on purpose. "record" reads the same in its retired
-sense and in "historical record", a term these conventions lean on. "state"
-keeps senses this vocabulary defines, among them a locked table's state.
-"report" carries the capture section's own phrasing — a capture is a bug report
-— so any pattern sparing that phrase would catch almost nothing.
+Two rows have no pattern on purpose. "state" keeps senses this vocabulary
+defines, among them a locked table's state. "report" carries the capture
+section's own phrasing — a capture is a bug report — so any pattern sparing
+that phrase would catch almost nothing.
