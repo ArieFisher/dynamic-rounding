@@ -16,7 +16,7 @@ I am the product manager and do not write the code. Lead with the mechanism in p
 
 These rules govern all prose: **chat**, **documents**, and **GitHub** (pull request titles and bodies, issues, commit messages, logs).
 
-- **Form:** plain declarative sentences in active voice. Not epigrammatic, not aphoristic.
+- **Form:** plain declarative sentences in active voice. Not epigrammatic, not aphoristic. State the plain meaning in place of a figure of speech: write "the notice's contents change", never "the notice changes shape". "Shape" stays literal for the terms the vocabulary defines, such as a table's shape fingerprint and the number shape test.
 - **Structure:** no antithesis. Present each point on its own, without a contrasting counterpart.
 - **Imagery:** no personification. The test: a part's verb names an operation the part performs, never a stance it takes. Operations pass: holds, determines, skips, detects, flags, stands for, contains, parses, publishes. Verbs of intent, awareness, or choice fail: own, know, decide, refuse, notice, warn, name — examples, not the whole list; "rides", "waits", and "speaks" fail the same test. Boundary: "the script reads the file" passes because reading is the operation; "the check refuses" fails because refusal is a stance. Similes are fine.
 - **Diction:** plain English, Saxon words, technical terms preserved. No contractions and no abbreviations, except i.e., e.g., etc., FYI, and TL;DR. Write "application", not "app".
