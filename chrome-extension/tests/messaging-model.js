@@ -98,9 +98,8 @@
   eq('pull (inverted): content.js no longer applies defaults on state:sidebarOpened',
     /state:sidebarOpened[\s\S]{0,200}applySidebarRounding\([^)]*DR_DEFAULTS/.test(contentSrc), false);
 
-  eq('pull (inverted): content.js applies the active table\'s own settings on state:sidebarOpened',
-    /state:sidebarOpened[\s\S]{0,600}revalidateTableShape\(selected\)[\s\S]{0,100}applySidebarRounding\(table\)/.test(contentSrc) &&
-      /function applySidebarRounding\(table\)\s*\{\s*const opts = DR_STORE\.getTableSettings\(table\)/.test(contentSrc),
+  eq('pull (inverted): the apply reads the table\'s own settings',
+    /function applySidebarRounding\(table\)\s*\{\s*const opts = DR_STORE\.getTableSettings\(table\)/.test(contentSrc),
     true);
 
   eq('pull (inverted): sidebar.js no longer handles GET_SIDEBAR_SETTINGS',
@@ -2721,12 +2720,12 @@ const PENDING_FILL_ROWS = [
     eq('leak-1: the table\'s settings follow the pillbox — enabled false after toggle-off',
       DR_STORE.getTableSettings(table).enabled, false);
 
-    // The reopen path (state:sidebarOpened runs this same apply) must honor
-    // the settings the pillbox just wrote — not silently re-round the table.
+    // A sidebar change runs this same apply, and it must honor the settings
+    // the pillbox just wrote — not silently re-round the table.
     withCreateTreeWalker(function () {
       applySidebarRounding(table);
     });
-    eq('leak-1: a reopen-style apply honors the table\'s settings — the table stays on originals',
+    eq('leak-1: a later apply honors the table\'s settings — the table stays on originals',
       isTableRounded(table), false);
 
     const notices = sent.filter((m) => m.action === 'state:settingsChanged');
@@ -3058,6 +3057,26 @@ function issue328SettingsOf(table) {
     withCreateTreeWalker(() => askContentScript({ action: 'state:sidebarOpened' }));
     eq('defaults: opening the sidebar on an untouched table leaves it raw',
       [isTableRounded(table), table._cells[3].innerText], [false, '8,584,629']);
+  });
+})();
+
+// Opening the sidebar runs no apply. The toggle already simplified the table
+// under its own settings, and the sidebar reads those settings itself, so an
+// apply on open would rebuild cells that already match. The open still tells
+// the sidebar to re-read.
+(function issue328_openingTheSidebarRunsNoApply() {
+  runPressFixture(({ sent }) => {
+    const table = makePressTable('8,584,629');
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
+    const simplified = table._cells[3].innerText;
+    sent.length = 0;
+    withCreateTreeWalker(() => askContentScript({ action: 'state:sidebarOpened' }));
+    eq('sidebar open: no apply runs on the simplified table',
+      sent.filter((m) => m.action === 'state:applyOk' || m.action === 'state:applyBlocked').length, 0);
+    eq('sidebar open: the simplified cells stay as the toggle left them',
+      [isTableRounded(table), table._cells[3].innerText], [true, simplified]);
+    eq('sidebar open: the sidebar is told to re-read the active table',
+      sent.some((m) => m.action === 'state:previewSamplesChanged'), true);
   });
 })();
 

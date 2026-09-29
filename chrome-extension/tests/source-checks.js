@@ -1347,8 +1347,8 @@
 
   // --- "Toggle and open sidebar" does both: the same toggle "Toggle table"
   // sends, then the sidebar-opened report, to the tab the right-click
-  // happened in and in that order, so the reopen's apply reads the toggled
-  // settings. ---
+  // happened in and in that order, so the sidebar's re-read on open reads
+  // the toggled settings. ---
   (function toggleAndOpenSidebarTogglesThenOpens() {
     const ctx = loadBackground();
     openPanel(ctx);

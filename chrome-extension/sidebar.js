@@ -777,7 +777,7 @@ function applySettingsToUI(settings) {
   const s = Object.assign({}, DR_DEFAULTS, settings || {});
   // The #262 lock forces the main toggle ON + disabled while the bound
   // table's originals are unrestorable. A pull or a notice resolving under
-  // the lock — a reconnect refresh whose apply just re-blocked — must not
+  // the lock — a table switch's pull whose apply just re-blocked — must not
   // write the table's on/off value over that forced ON; the lift reads the
   // value back (liftLockAndPullSettings). Outside the lock the switch takes
   // the table's value and accepts input again. Every other control mirrors
