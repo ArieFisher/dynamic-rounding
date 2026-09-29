@@ -621,6 +621,13 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
             (typeof node.contains === 'function' && node.contains(table));
           if (!contained) continue;
           teardownTableEntry(table, 'removed');
+          // A removed active table stops being active, and the sidebar
+          // re-reads: it finds no active table and shows the no-table
+          // state, where it would otherwise describe a table that is gone.
+          if (DR_STORE.getSelectedTable() === table) {
+            DR_BUS.publish('intent:selectTable', { table: null });
+            DR_BUS.publish('state:previewSamplesChanged', {});
+          }
         }
         // The same sweep over the pending roots. A pending table holds no
         // registry entry, so the loop above passes over it; without this one

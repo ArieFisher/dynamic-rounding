@@ -2213,6 +2213,69 @@ TSLA,75,"248.09","18,606.75"
     </div>
   </section>
 
+  <section>
+    <h2>27. Table removed while active</h2>
+    <p class="expect">Expect: a pillbox at load on both tables, a native table
+      and a grid. Press the native table's pillbox on and open the sidebar,
+      so the sidebar is bound to it. Press "Remove the native table". The
+      sidebar shows "Right-click a table to connect it here." and its switch
+      shows off. Right-click the grid, then press "Remove the grid": the
+      sidebar shows the same no-table state. Removing a table that is not the
+      active one leaves the sidebar bound where it is. Before this change,
+      the sidebar kept describing the removed table, with its switch and
+      lens preview for a table no longer on the page.</p>
+
+    <!--
+      Exercises the removal observer: the page takes a registered table out,
+      and the extension drops its registry entry. Removing the active table
+      also clears the active table, on both table kinds.
+    -->
+    <button type="button" id="remove-native-btn">Remove the native table</button>
+    <button type="button" id="remove-grid-btn">Remove the grid</button>
+    <table id="removable-native">
+      <thead>
+        <tr><th scope="col">Region</th><th scope="col">Revenue</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>North</td><td>4,812,390</td></tr>
+        <tr><td>South</td><td>918,554</td></tr>
+        <tr><td>East</td><td>73,206</td></tr>
+      </tbody>
+    </table>
+    <div class="aria-grid" role="grid" aria-label="Removable grid" id="removable-grid">
+      <div class="g-row" role="row">
+        <span role="columnheader">Region</span>
+        <span role="columnheader">Revenue</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">West</span>
+          <span role="cell">2,640,117</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Central</span>
+          <span role="cell">385,902</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Islands</span>
+          <span role="cell">41,058</span>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        function removeOnClick(buttonId, targetId) {
+          document.getElementById(buttonId).addEventListener('click', function () {
+            var target = document.getElementById(targetId);
+            if (target) target.remove();
+          });
+        }
+        removeOnClick('remove-native-btn', 'removable-native');
+        removeOnClick('remove-grid-btn', 'removable-grid');
+      })();
+    </script>
+  </section>
+
 </body>
 
 </html>

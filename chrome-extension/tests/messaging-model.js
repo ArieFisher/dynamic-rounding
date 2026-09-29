@@ -2479,6 +2479,74 @@ const PENDING_FILL_ROWS = [
   }
 })();
 
+// Issue #506: the page removing the active table clears the active table and
+// tells the sidebar to re-read, so the sidebar shows the no-table state
+// instead of describing a table that is gone. Removing any other table leaves
+// the active table where it is. Same fixture as the removal test above: the
+// real removal observer, from a fresh evaluation of the content script.
+(function issue506_removingTheActiveTableClearsIt() {
+  const capturedInstances = [];
+  class CapturingTableObserverMO {
+    constructor(cb) { this._cb = cb; capturedInstances.push(this); }
+    observe() {}
+    disconnect() {}
+  }
+  const sent = [];
+  const captureDoc = {
+    addEventListener() {},
+    querySelectorAll: () => [],
+    readyState: 'complete',
+    body: { appendChild() {} },
+  };
+  const captureChrome = {
+    runtime: { onMessage: { addListener() {} }, sendMessage(msg) { sent.push(msg); } },
+  };
+  const saved = {
+    document: global.document, chrome: global.chrome, window: global.window,
+    MutationObserver: global.MutationObserver, ResizeObserver: global.ResizeObserver,
+    Node: global.Node, NodeFilter: global.NodeFilter,
+  };
+  global.document = captureDoc;
+  global.chrome = captureChrome;
+  global.window = { addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
+  global.MutationObserver = CapturingTableObserverMO;
+  global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  global.Node = { ELEMENT_NODE: 1 };
+  global.NodeFilter = { SHOW_TEXT: 4 };
+
+  try {
+    eval(contentScriptBundle + `
+      globalThis.__rt506_DR_STORE = DR_STORE;
+    `);
+    const tableObserver = capturedInstances[0];
+    const store = global.__rt506_DR_STORE;
+
+    const active = { tagName: 'TABLE', nodeType: 1 };
+    const other = { tagName: 'TABLE', nodeType: 1 };
+    store.registerTable(active);
+    store.registerTable(other);
+    store.setSelectedTable(active);
+
+    sent.length = 0;
+    tableObserver._cb([{ addedNodes: [], removedNodes: [other] }]);
+    eq('removed table: removing another table leaves the active table in place',
+      store.getSelectedTable(), active);
+    eq('removed table: removing another table sends the sidebar nothing',
+      sent.some((m) => m.action === 'state:previewSamplesChanged'), false);
+
+    tableObserver._cb([{ addedNodes: [], removedNodes: [active] }]);
+    eq('removed table: removing the active table clears the active table',
+      store.getSelectedTable(), null);
+    eq('removed table: removing the active table tells the sidebar to re-read',
+      sent.some((m) => m.action === 'state:previewSamplesChanged'), true);
+  } finally {
+    delete global.__rt506_DR_STORE;
+    global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
+    global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
+    global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
+  }
+})();
+
 // --- Sprint shape-fingerprint: the teardown both the removal observer and the
 // mismatch path run. One function discards a table's registration and every
 // per-table resource the extension holds beside it: the pillbox, the resize
