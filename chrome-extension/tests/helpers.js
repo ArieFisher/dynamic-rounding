@@ -49,6 +49,14 @@ function makeMockTable(rowsSpec, querySelectorResult) {
   };
 }
 
+// Simplify a table under the given settings the way the apply does: the
+// settings land on the table first, so the re-apply pass reads them back
+// (issue #328). roundTable alone writes no settings.
+function roundTableUnder(table, opts) {
+  DR_STORE.setTableSettings(table, opts, 'page');
+  return roundTable(table, DR_STORE.getTableSettings(table));
+}
+
 function withCreateTreeWalker(fn) {
   global.document.createTreeWalker = function(cell) {
     let done = false;
@@ -1368,7 +1376,7 @@ function setupVirtGrid(rowData, roundOpts) {
 
   const grid = makeE2EGridWrapper(rowData);
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true }, roundOpts || {});
-  roundTable(grid.wrapperEl, opts);
+  roundTableUnder(grid.wrapperEl, opts);
 
   return {
     grid,
@@ -2391,6 +2399,9 @@ function makeIssue251SidebarHarness() {
 
   return {
     statusEl, enabledEl, rangeExprEl, bodyClasses, evalError, tabMessages,
+    // The object the settings read answers with; a test that changes a field
+    // changes the next answer.
+    modelSettings,
     chromeMock: captureChrome,
     el(id) { return elsById[id]; },
     dispatch(msg) { onMessageHandler(msg, FROM_SIDEBAR_TAB, () => {}); },
@@ -2439,17 +2450,17 @@ function recentLogRows() {
 // needed a tab number the service worker lost on an idle restart and on an
 // ordinary sidebar close. Once the value went stale, a press on a second
 // table silently became "move the sidebar here" for the rest of the page's
-// life. With the settings record's on/off value at off, such a press changed
+// life. With the page-wide on/off value at off, such a press changed
 // no numbers at all, so the pillbox read as intermittent (#241).
 //
 // The rule now: a press makes the pressed table active and flips its form
-// from what the screen shows, writing the settings record once.
+// from what the screen shows, writing the table's settings once.
 //
-// A helper, because every case below needs the same three things reset: the
-// settings record, the active table, and the messages a press sends.
+// A helper, because every case below needs the same two things reset: the
+// active table and the messages a press sends. Each case's tables are its
+// own, so their settings need no reset.
 function runPressFixture(setup) {
   const savedSelected = DR_STORE.getSelectedTable();
-  const savedSettings = DR_STORE.getSettings();
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
@@ -2466,18 +2477,18 @@ function runPressFixture(setup) {
     appendChild() {}, remove() {}, setAttribute() {},
     addEventListener() {}, removeEventListener() {},
   });
+  // The first apply injects the highlight style into the document head.
+  const origHead = global.document.head;
+  if (origHead === undefined) global.document.head = { appendChild() {} };
   try {
-    // Clear the active table BEFORE seeding the settings record, so the
-    // seeding write has nothing to apply to.
     DR_STORE.setSelectedTable(null);
     return setup({ sent, writes: () => settingsWrites, resetWrites: () => { settingsWrites = 0; } });
   } finally {
     unsub();
+    if (origHead === undefined) delete global.document.head;
     if (origCreateElement === undefined) delete global.document.createElement;
     else global.document.createElement = origCreateElement;
     global.chrome.runtime.sendMessage = origSend;
-    DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(savedSettings);
     DR_STORE.setSelectedTable(savedSelected);
   }
 }

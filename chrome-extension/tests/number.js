@@ -2427,40 +2427,40 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-settings: settings live in DR_STORE, sourced from
-// DR_DEFAULTS at init, changed only through setSettings (publishing the
-// whole new value), and read back through getSettings().
+// Settings live in DR_STORE, one set per table (issue #328): a table with none
+// reads as the shipped defaults, setTableSettings stores the whole settings
+// with the defaults filled in and publishes the whole new value, and
+// getTableSettings reads back a copy.
 // ---------------------------------------------------------------------------
-(function appModelSettings_storeSettingsField() {
-  eq('DR_STORE.getSettings: defaults to DR_DEFAULTS-shaped values at store init',
-    DR_STORE.getSettings().offsetTop, DR_DEFAULTS.offsetTop);
+(function appModelSettings_storeTableSettings() {
+  const table = { tagName: 'TABLE' };
+  eq('DR_STORE.getTableSettings: a table with no settings reads as the shipped defaults',
+    DR_STORE.getTableSettings(table), Object.assign({}, DR_DEFAULTS));
 
-  const savedSettings = DR_STORE.getSettings();
+  let stateChangePayload = 'NOT_CALLED';
+  const unsubscribe = DR_BUS.subscribe('state:settingsChanged', (payload) => {
+    stateChangePayload = payload;
+  });
   try {
-    let stateChangePayload = 'NOT_CALLED';
-    const unsubscribe = DR_BUS.subscribe('state:settingsChanged', (payload) => {
-      stateChangePayload = payload;
-    });
-    const newSettings = Object.assign({}, DR_DEFAULTS, { offsetTop: 0.25, rangeExpr: 'A1:C9' });
-    try {
-      DR_STORE.setSettings(newSettings);
-    } finally {
-      unsubscribe();
-    }
-    eq('DR_STORE.setSettings: getSettings() reflects the new value',
-      DR_STORE.getSettings().offsetTop, 0.25);
-    eq('DR_STORE.setSettings: the resulting state-change carries the whole new value, not a delta',
-      stateChangePayload && stateChangePayload.settings && stateChangePayload.settings.rangeExpr, 'A1:C9');
-
-    // getSettings() returns a copy — mutating what a caller read must not
-    // corrupt the store's own internal value (immutability convention).
-    const read = DR_STORE.getSettings();
-    read.offsetTop = 999;
-    eq('DR_STORE.getSettings: returns a copy, not a live reference — mutating it does not affect the store',
-      DR_STORE.getSettings().offsetTop, 0.25);
+    DR_STORE.setTableSettings(table, { offsetTop: 0.25, rangeExpr: 'A1:C9' }, 'page');
   } finally {
-    DR_STORE.setSettings(savedSettings);
+    unsubscribe();
   }
+  eq('DR_STORE.setTableSettings: getTableSettings reflects the new value',
+    DR_STORE.getTableSettings(table).offsetTop, 0.25);
+  eq('DR_STORE.setTableSettings: the stored settings carry the shipped defaults for every key not written',
+    DR_STORE.getTableSettings(table).simplifyDates, DR_DEFAULTS.simplifyDates);
+  eq('DR_STORE.setTableSettings: the resulting state-change carries the whole new value, not a delta',
+    stateChangePayload && stateChangePayload.settings,
+    Object.assign({}, DR_DEFAULTS, { offsetTop: 0.25, rangeExpr: 'A1:C9' }));
+
+  // getTableSettings returns a copy — mutating what a caller read must not
+  // corrupt the store's own value (immutability convention).
+  const read = DR_STORE.getTableSettings(table);
+  read.offsetTop = 999;
+  eq('DR_STORE.getTableSettings: returns a copy, not a live reference — mutating it does not affect the store',
+    DR_STORE.getTableSettings(table).offsetTop, 0.25);
+  DR_STORE.unregisterTable(table);
 })();
 
 // ---------------------------------------------------------------------------
@@ -2470,151 +2470,100 @@ const LADDER_OPTS = {
 // read the model, so they disagreed the moment a slider moved off default.
 // ---------------------------------------------------------------------------
 (function appModelSettings_previewAndTableAgreeOnLiveSettings() {
-  const savedSettings = DR_STORE.getSettings();
-  try {
-    const customSettings = Object.assign({}, DR_DEFAULTS, {
-      simplifyFirstRow: true,
-      simplifyFirstColumn: true,
-      offsetTop: -2,
-      offsetOther: 0.25,
-      numTop: 1,
-      rangeExpr: '',
-    });
-    // Validity check on the fixture itself: these offsets must differ from
-    // DR_DEFAULTS, or a regression back to reading DR_DEFAULTS would slip
-    // through this test undetected.
-    eq('preview/table agreement: fixture offsets differ from DR_DEFAULTS (test validity check)',
-      customSettings.offsetTop !== DR_DEFAULTS.offsetTop && customSettings.offsetOther !== DR_DEFAULTS.offsetOther,
-      true);
-    DR_STORE.setSettings(customSettings);
+  const customSettings = Object.assign({}, DR_DEFAULTS, {
+    simplifyFirstRow: true,
+    simplifyFirstColumn: true,
+    offsetTop: -2,
+    offsetOther: 0.25,
+    numTop: 1,
+    rangeExpr: '',
+  });
+  // Validity check on the fixture itself: these offsets must differ from
+  // DR_DEFAULTS, or a regression back to reading DR_DEFAULTS would slip
+  // through this test undetected.
+  eq('preview/table agreement: fixture offsets differ from DR_DEFAULTS (test validity check)',
+    customSettings.offsetTop !== DR_DEFAULTS.offsetTop && customSettings.offsetOther !== DR_DEFAULTS.offsetOther,
+    true);
 
-    const previewTable = makeMockTable([[
-      { tag: 'td', text: '1,000,000' },
-      { tag: 'td', text: '50' },
-    ]]);
-    const preview = extractPreviewSamples(previewTable);
-    eq('preview/table agreement: top band has the large cell',
-      preview.samples.top.length, 1);
-    eq('preview/table agreement: bottom band has the small cell',
-      preview.samples.bottom.length, 1);
+  const previewTable = makeMockTable([[
+    { tag: 'td', text: '1,000,000' },
+    { tag: 'td', text: '50' },
+  ]]);
+  DR_STORE.setTableSettings(previewTable, customSettings, 'page');
+  const preview = extractPreviewSamples(previewTable);
+  eq('preview/table agreement: top band has the large cell',
+    preview.samples.top.length, 1);
+  eq('preview/table agreement: bottom band has the small cell',
+    preview.samples.bottom.length, 1);
 
-    const expectedTop = roundWithOffset(1000000, customSettings.offsetTop);
-    const expectedBottom = roundWithOffset(50, customSettings.offsetOther);
+  const expectedTop = roundWithOffset(1000000, customSettings.offsetTop);
+  const expectedBottom = roundWithOffset(50, customSettings.offsetOther);
 
-    // What the sidebar's preview band would render for these two cells,
-    // built from the same sample the model supplied.
-    eq('preview/table agreement: preview top sample rounds via the live offsetTop',
-      roundWithOffset(preview.samples.top[0].num, customSettings.offsetTop), expectedTop);
-    eq('preview/table agreement: preview bottom sample rounds via the live offsetOther',
-      roundWithOffset(preview.samples.bottom[0].num, customSettings.offsetOther), expectedBottom);
+  // What the sidebar's preview band would render for these two cells,
+  // built from the same sample the model supplied.
+  eq('preview/table agreement: preview top sample rounds via the live offsetTop',
+    roundWithOffset(preview.samples.top[0].num, customSettings.offsetTop), expectedTop);
+  eq('preview/table agreement: preview bottom sample rounds via the live offsetOther',
+    roundWithOffset(preview.samples.bottom[0].num, customSettings.offsetOther), expectedBottom);
 
-    // What the table actually renders for the identical cells, applied the
-    // way the state:settingsChanged subscriber does — straight from the model.
-    const liveTable = makeMockTable([[
-      { tag: 'td', text: '1,000,000' },
-      { tag: 'td', text: '50' },
-    ]]);
-    withCreateTreeWalker(() => {
-      roundTable(liveTable, DR_STORE.getSettings());
-    });
-    const renderedTop = toNumber(liveTable.rows[0].cells[0].innerText);
-    const renderedBottom = toNumber(liveTable.rows[0].cells[1].innerText);
+  // What the table actually renders for the identical cells, applied the
+  // way the apply does — straight from the table's settings in the model.
+  const liveTable = makeMockTable([[
+    { tag: 'td', text: '1,000,000' },
+    { tag: 'td', text: '50' },
+  ]]);
+  DR_STORE.setTableSettings(liveTable, customSettings, 'page');
+  withCreateTreeWalker(() => {
+    roundTable(liveTable, DR_STORE.getTableSettings(liveTable));
+  });
+  const renderedTop = toNumber(liveTable.rows[0].cells[0].innerText);
+  const renderedBottom = toNumber(liveTable.rows[0].cells[1].innerText);
 
-    eq('preview/table agreement: the table cell value matches the preview-predicted top value',
-      renderedTop, expectedTop);
-    eq('preview/table agreement: the table cell value matches the preview-predicted bottom value',
-      renderedBottom, expectedBottom);
-  } finally {
-    DR_STORE.setSettings(savedSettings);
-  }
+  eq('preview/table agreement: the table cell value matches the preview-predicted top value',
+    renderedTop, expectedTop);
+  eq('preview/table agreement: the table cell value matches the preview-predicted bottom value',
+    renderedBottom, expectedBottom);
+  DR_STORE.unregisterTable(previewTable);
+  DR_STORE.unregisterTable(liveTable);
 })();
 
 // ---------------------------------------------------------------------------
 // Sprint app-model-settings, AC5: settings survive a sidebar close and
 // reopen — pulled from the model (request:settings), not reset to DR_DEFAULTS.
-// Uses the same isolated-eval capture pattern as the request:applySettings
-// AC1 test above, so this shared-scope DR_STORE is untouched by it.
+// The settings live on the active table (issue #328), so the reopen's read
+// answers that table's settings.
 // ---------------------------------------------------------------------------
 (function appModelSettings_settingsSurviveSidebarReconnect() {
-  // Chrome hands an arriving message to every registered listener, so collect
-  // them all and fan out the same way. The bundle registers one today, the
-  // bus's; keeping only the last registration would silently skip whichever
-  // listener registers first should a second one ever appear.
-  const capturedListeners = [];
-  function capturedListener(req, sender, respond) {
-    // Chrome keeps the reply port open when ANY listener returns true, and
-    // closes it otherwise. Returning nothing here would make the
-    // synchronous-answer assertions below unfalsifiable.
-    let keepOpen = false;
-    for (const fn of capturedListeners) {
-      if (fn(req, sender, respond || function () {}) === true) keepOpen = true;
-    }
-    return keepOpen;
-  }
-  const captureChrome = {
-    runtime: {
-      onMessage: { addListener(fn) { capturedListeners.push(fn); } },
-      sendMessage: () => {},
-      lastError: null,
-    },
-  };
-  const captureDoc = {
-    addEventListener: () => {},
-    querySelectorAll: () => [],
-    readyState: 'complete',
-    body: { appendChild: () => {}, observe: () => {} },
-  };
-  const captureWindow = {
-    addEventListener: () => {},
-    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
-  };
+  runPressFixture(() => {
+    const table = makePressTable('12,345');
+    DR_STORE.setSelectedTable(table);
 
-  const saved = { chrome: global.chrome, document: global.document, window: global.window };
-  global.chrome = captureChrome;
-  global.document = captureDoc;
-  global.window = captureWindow;
-  try {
-    eval(contentScriptBundle);
-  } catch (e) {
-    // module-level code may fail in the stub environment; the onMessage
-    // listener registers before any dynamic code runs (see the AC1 test).
-  } finally {
-    global.chrome = saved.chrome;
-    global.document = saved.document;
-    global.window = saved.window;
-  }
+    // The sidebar sets a custom value (an "open" session), then — simulated by
+    // nothing happening in between — closes and reopens, pulling the model.
+    const customSettings = {
+      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: true,
+      simplifyMixedPercent: true, simplifyFirstRow: false, simplifyFirstColumn: false,
+      simplifyDates: true, simplifyTimes: false, dateGranularity: 'year', timeGranularity: 'hour',
+      offsetTop: 0.25, offsetOther: -1.5, numTop: 1, rangeExpr: 'B2:E8',
+    };
+    let applyResponse = null;
+    withCreateTreeWalker(() => {
+      applyResponse = askContentScript({ action: 'request:applySettings', settings: customSettings });
+    });
+    eq('reconnect: request:applySettings was acknowledged before the (simulated) close',
+      applyResponse && applyResponse.ok, true);
 
-  eq('reconnect: the isolated listener was captured',
-    capturedListeners.length > 0, true);
-  if (capturedListeners.length === 0) return;
+    // Reopen: exactly what pullSettingsAndApplyToUI's request:settings does.
+    const getResponse = askContentScript({ action: 'request:settings' });
+    const pulled = (getResponse && getResponse.settings) || {};
 
-  // The sidebar sets a custom value (an "open" session), then — simulated by
-  // nothing happening in between — closes and reopens, pulling the model.
-  const customSettings = {
-    enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: true,
-    simplifyMixedPercent: true, simplifyFirstRow: false, simplifyFirstColumn: false,
-    simplifyDates: true, simplifyTimes: false, dateGranularity: 'year', timeGranularity: 'hour',
-    offsetTop: 0.25, offsetOther: -1.5, numTop: 1, rangeExpr: 'B2:E8',
-  };
-  let applyResponse = null;
-  capturedListener({ action: 'request:applySettings', settings: customSettings }, {}, (r) => { applyResponse = r; });
-  eq('reconnect: request:applySettings was acknowledged before the (simulated) close',
-    applyResponse && applyResponse.ok, true);
-
-  // Reopen: exactly what pullSettingsAndApplyToUI's request:settings does.
-  let getResponse = null;
-  capturedListener({ action: 'request:settings' }, {}, (r) => { getResponse = r; });
-
-  eq('reconnect: request:settings returns a settings object',
-    !!(getResponse && getResponse.settings), true);
-  eq('reconnect: offsetTop survives the close/reopen',
-    getResponse.settings.offsetTop, 0.25);
-  eq('reconnect: offsetOther survives the close/reopen',
-    getResponse.settings.offsetOther, -1.5);
-  eq('reconnect: rangeExpr survives the close/reopen',
-    getResponse.settings.rangeExpr, 'B2:E8');
-  eq('reconnect: a changed boolean flag survives the close/reopen',
-    getResponse.settings.simplifyMixedCells, false);
+    eq('reconnect: request:settings returns a settings object',
+      !!(getResponse && getResponse.settings), true);
+    eq('reconnect: offsetTop survives the close/reopen', pulled.offsetTop, 0.25);
+    eq('reconnect: offsetOther survives the close/reopen', pulled.offsetOther, -1.5);
+    eq('reconnect: rangeExpr survives the close/reopen', pulled.rangeExpr, 'B2:E8');
+    eq('reconnect: a changed boolean flag survives the close/reopen', pulled.simplifyMixedCells, false);
+  });
 })();
 
 // ---------------------------------------------------------------------------
@@ -2763,15 +2712,15 @@ const LADDER_OPTS = {
 // ---------------------------------------------------------------------------
 // Sprint app-model-settings, adversarial: the full wire path, not the store
 // directly. appModelSettings_previewAndTableAgreeOnLiveSettings (above) calls
-// DR_STORE.setSettings() straight from the test — it never exercises
-// content.js's own onMessage listener or the state:settingsChanged
-// subscriber, which is the actual code path a real request:applySettings
-// message drives. This test dispatches that message through the captured
-// listener (the AC1 pattern) against a table already bound as "selected",
-// lets the real subscriber call applySidebarRounding, and checks the
-// resulting cells against extractPreviewSamples computed from the same
-// settings on an identical table — so the assertion covers the message
-// arriving, not just the pure math agreeing.
+// DR_STORE.setTableSettings() straight from the test — it never exercises
+// content.js's own onMessage listener or the settings apply's responder,
+// which is the actual code path a real request:applySettings message
+// drives. This test dispatches that message through the captured listener
+// (the AC1 pattern) against a table already bound as "selected", lets the
+// real responder write the table's settings and apply them, and checks the
+// resulting cells against extractPreviewSamples on the same table, which
+// classifies each simplified cell's stored original — so the assertion
+// covers the message arriving, not just the pure math agreeing.
 // ---------------------------------------------------------------------------
 (function appModelSettings_wireMessageAppliesLiveSettingsToBoundTableAndPreviewAgrees() {
   function makeWiredMockTable(rowsSpec) {
@@ -2857,19 +2806,20 @@ const LADDER_OPTS = {
       if (capturedListeners.length === 0 || !wiredDR_STORE) return;
 
       // Bind a table as "selected" — mirrors what the contextmenu handler
-      // does for real, so the state:settingsChanged subscriber has
-      // something to apply the incoming message to.
+      // does for real, so the settings apply has an active table to write
+      // the incoming message to.
       boundTable = makeWiredMockTable(rowsSpec);
       wiredDR_STORE.setSelectedTable(boundTable);
 
       const customSettings = Object.assign({}, DR_DEFAULTS, {
         simplifyFirstRow: true, simplifyFirstColumn: true,
         offsetTop: CUSTOM_OFFSET_TOP, offsetOther: CUSTOM_OFFSET_OTHER,
-        numTop: 1, rangeExpr: '',
+        numTop: 1, rangeExpr: '', enabled: true,
       });
 
       // The real wire message, dispatched through the real onMessage
-      // listener — not DR_STORE.setSettings() called directly from the test.
+      // listener — not DR_STORE.setTableSettings() called directly from the
+      // test.
       capturedListener(
         { action: 'request:applySettings', settings: customSettings },
         {},
@@ -2888,7 +2838,7 @@ const LADDER_OPTS = {
     ackResponse && ackResponse.ok, true);
   if (!boundTable) return;
 
-  // The subscriber applied the message straight to the bound table — no
+  // The responder applied the message straight to the bound table — no
   // separate "apply" call from the test.
   const renderedTop = toNumber(boundTable.rows[0].cells[0].innerText);
   const renderedBottom = toNumber(boundTable.rows[0].cells[1].innerText);
@@ -2896,13 +2846,13 @@ const LADDER_OPTS = {
     renderedTop !== 1234567, true);
   eq('wire E2E: the fixture bottom value actually changed under rounding (test validity check)',
     renderedBottom !== 37, true);
-  eq('wire E2E: the bound table was actually rounded by the real subscriber path',
+  eq('wire E2E: the bound table was actually rounded by the real responder path',
     boundTable.rows[0].cells[0].classList.contains('dr-ext-rounded'), true);
 
-  // A fresh, identically-populated table for the preview extractor, so its
-  // read of DR_STORE.getSettings() cannot see already-rounded text.
-  const previewTable = makeWiredMockTable(rowsSpec);
-  const preview = wiredExtractPreviewSamples(previewTable);
+  // The preview extractor reads the bound table's own settings and each
+  // simplified cell's stored original, so the rounded text on the screen
+  // stays out of its read.
+  const preview = wiredExtractPreviewSamples(boundTable);
   eq('wire E2E: preview top band has the large cell',
     preview.samples.top.length, 1);
   eq('wire E2E: preview bottom band has the small cell',

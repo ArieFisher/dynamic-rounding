@@ -131,24 +131,16 @@ function createBoundTab(tabsApi, bus) {
 // The unit above, wired to the real tabs interface and the real bus.
 const boundTab = createBoundTab(chrome.tabs, DR_BUS);
 
-// Issue #272: while the #262 lock forces the main toggle ON, the record's
-// real enabled lives here — the forced ON is display-only. Captured when the
-// lock engages, updated by any record value landing under the lock (a pull,
-// or a TABLE_TOGGLE_STATE), read by every save (currentSettings), and put
-// back on the switch when the lock lifts. null whenever no lock holds a
-// stashed value.
-let lockStashedEnabled = null;
-
-// Lock teardown shared by APPLY_OK and TABLE_SWITCHED: lift the #262 lock
-// and restore the record's stashed enabled to the switch (issue #272).
-function liftLockAndRestoreEnabled() {
+// Lift the #262 lock and read the active table's settings back. The table's
+// on/off value lives in the application model, and the lock's forced ON on
+// the switch is display only. The switch stays disabled until the read
+// answers, because a save while it is disabled leaves the on/off value out
+// (currentSettings); applySettingsToUI then puts the table's value on the
+// switch and enables it. So a save in the gap carries no leftover forced ON
+// (issue #272).
+function liftLockAndPullSettings() {
   document.body.classList.remove('table-locked');
-  enabledEl.disabled = false;
-  if (lockStashedEnabled !== null) {
-    enabledEl.checked = lockStashedEnabled;
-    lockStashedEnabled = null;
-    updateDisabledState();
-  }
+  pullSettingsAndApplyToUI();
 }
 
 function setTableBound(isBound) {
@@ -158,12 +150,9 @@ function setTableBound(isBound) {
     // main toggle to its off state rather than dimming the whole sidebar.
     // Any lock belonged to the table that just went away (issue #262), and
     // the message written below is unsourced — drop a stale source tag so
-    // applyNow's delivery-success clear can still collect it. The stash goes
-    // with the lock (issue #272): the explicit off below is the no-table
-    // state, not a restore.
+    // applyNow's delivery-success clear can still collect it.
     document.body.classList.remove('table-locked');
     enabledEl.disabled = false;
-    lockStashedEnabled = null;
     delete statusEl.dataset.source;
     enabledEl.checked = false;
     statusEl.textContent = NO_TABLE_STATUS_MSG;
@@ -595,13 +584,13 @@ if (botThumb) {
 }
 
 function currentSettings() {
-  // Under the #262 lock the switch shows a forced ON that is display-only
-  // (issue #272) — a save while locked (the sliders stay usable) must carry
-  // the record's stashed enabled, not the forced ON.
-  const isLocked = document.body.classList.contains('table-locked');
-  const settings = {
-    enabled: isLocked && lockStashedEnabled !== null ? lockStashedEnabled : enabledEl.checked,
-  };
+  // A disabled switch shows no value of the table's: under the #262 lock it
+  // shows a forced ON that is display only, and after the lift it shows
+  // the stale value until the settings read (liftLockAndPullSettings) lands. A save then (the sliders
+  // stay usable) leaves the on/off value out, and the content script's merge
+  // keeps the table's own value (issue #272).
+  const settings = {};
+  if (!enabledEl.disabled) settings.enabled = enabledEl.checked;
   for (const id in CHECKBOX_TO_SETTING) {
     const el = document.getElementById(id);
     if (el) settings[CHECKBOX_TO_SETTING[id]] = el.checked;
@@ -632,7 +621,8 @@ function updateDisabledState() {
 
 // Cross-context: this page and content.js are separate extension contexts, so
 // the settings change travels as a request rather than a direct write to the
-// model. The content script records it and answers.
+// model. The content script writes it to the active table's settings and
+// answers.
 //
 // The answer's value is never read — only whether one arrived. Nothing
 // answering means no content script on the tab, which is exactly the unbound
@@ -676,7 +666,7 @@ document.body.addEventListener('click', (e) => {
   if (e.target.matches('input, select, option, summary')) return;
   if (e.target.closest && e.target.closest('.dual-wrap')) return;
   // Capture interactions are not settings changes: a mark press, a keystroke
-  // in the remarks, or the finish button must not publish the settings record.
+  // in the remarks, or the finish button must not send a settings apply.
   if (e.target.closest && e.target.closest('#captureSection')) return;
   applyNow();
 });
@@ -693,8 +683,21 @@ function flashSidebarContainer() {
   }, { once: true });
 }
 
+// A right-click made a table active, so the controls must describe that
+// table: read its settings, then its lens preview.
 boundTab.subscribe('state:tableActivated', () => {
   flashSidebarContainer();
+  pullSettingsAndApplyToUI();
+});
+
+// The settings notice, after every write of the active table's settings. It
+// redraws the controls and the lens preview from the settings it carries.
+// The sidebar's own writes are skipped: an echo arriving after a newer
+// keystroke or slider step would overwrite that step.
+boundTab.subscribe('state:settingsChanged', ({ source, settings }) => {
+  if (source === 'sidebar') return;
+  applySettingsToUI(settings);
+  fetchPreviewSamples();
 });
 
 DR_BUS.subscribe('intent:closeSidebar', () => {
@@ -722,59 +725,43 @@ boundTab.subscribe('state:applyBlocked', () => {
   // Issue #262: the connected table is stuck showing simplified values.
   // Show that truth and stop accepting input: main toggle ON and
   // disabled, settings area dimmed via body.table-locked (sidebar.html).
-  // The record's enabled goes to the stash first (issue #272) — a re-lock
-  // while already locked keeps the stash, never captures the forced ON.
-  if (!document.body.classList.contains('table-locked')) {
-    lockStashedEnabled = enabledEl.checked;
-  }
+  // The forced ON is display only: the table's on/off value stays in the
+  // application model, and a save leaves the disabled switch out (issue
+  // #272).
   document.body.classList.add('table-locked');
   enabledEl.checked = true;
   enabledEl.disabled = true;
   updateDisabledState();
 });
 
+// Every successful apply sends this. Only an apply that ends a lock reads the
+// settings back, so an ordinary apply sends no read.
 boundTab.subscribe('state:applyOk', () => {
   if (statusEl.dataset.source === 'blocked') {
     statusEl.textContent = '';
     delete statusEl.dataset.source;
   }
-  liftLockAndRestoreEnabled();
+  if (document.body.classList.contains('table-locked')) liftLockAndPullSettings();
 });
 
 boundTab.subscribe('state:previewSamplesChanged', () => {
-  // Stale view: re-read the model's settings, then the previews (the pull
-  // chain ends in fetchPreviewSamples). A bare preview fetch here used to
-  // reset the main toggle to the shipped default (issue #251).
+  // Stale view: re-read the active table's settings, then the previews (the
+  // pull chain ends in fetchPreviewSamples). A bare preview fetch here used
+  // to reset the main toggle to the shipped default (issue #251).
   pullSettingsAndApplyToUI();
 });
 
 boundTab.subscribe('state:tableSwitched', () => {
   DR_LOG.debug('Dynamic Rounding: table switch received.');
-  // A table switch: the lock, if any, belonged to the previous table.
-  // The switch apply on the content side runs after this message is
-  // sent, so its state:applyBlocked re-locks the panel right after this lift
-  // when the new table is stuck. Restoring the stash before the pull
-  // (issue #272) keeps the switch honest in that gap, so a re-lock
-  // captures the record's value, never a leftover forced ON.
-  liftLockAndRestoreEnabled();
-  // The panel mirrors the model's settings on any switch (issue #251); it
-  // does not reset to the shipped defaults.
+  // A table switch: the lock, if any, belonged to the previous table. The
+  // switch apply on the content side runs after this message is sent, so
+  // its state:applyBlocked re-locks the sidebar right after this lift when the
+  // new table is locked. The sidebar mirrors the new active table's settings
+  // (issue #251); it does not reset to the shipped defaults.
   try {
-    pullSettingsAndApplyToUI();
+    liftLockAndPullSettings();
   } catch (e) {
     // sidebar may be in teardown; harmless
-  }
-});
-
-boundTab.subscribe('state:tableEnabledChanged', ({ enabled }) => {
-  // The report carries the record (issue #272). Under the #262 lock the
-  // forced ON is display-only, so the record's value goes to the stash;
-  // the lift puts it on the switch.
-  if (document.body.classList.contains('table-locked')) {
-    lockStashedEnabled = enabled;
-  } else {
-    enabledEl.checked = enabled;
-    updateDisabledState();
   }
 });
 
@@ -782,21 +769,22 @@ window.addEventListener('unload', () => {
   DR_BUS.publish('state:sidebarClosed', {});
 });
 
-// Populate every control from a settings object. DR_DEFAULTS and a pulled
-// live-settings snapshot share this one path so the sidebar and content.js
-// can never drift apart no matter which one supplied the values.
+// Populate every control from a settings object. DR_DEFAULTS, a pulled copy
+// of the active table's settings, and a settings notice share this one path
+// so the sidebar and content.js can never drift apart no matter which one
+// supplied the values.
 function applySettingsToUI(settings) {
   const s = Object.assign({}, DR_DEFAULTS, settings || {});
   // The #262 lock forces the main toggle ON + disabled while the bound
-  // table is stuck simplified. A pull resolving under the lock — a
-  // reconnect refresh whose apply just re-blocked — must not write the
-  // model's enabled over that forced ON; it lands in the stash instead
-  // (issue #272), so the lift shows the model's latest value. Every other
-  // control still mirrors the model.
+  // table's originals are unrestorable. A pull or a notice resolving under
+  // the lock — a reconnect refresh whose apply just re-blocked — must not
+  // write the table's on/off value over that forced ON; the lift reads the
+  // value back (liftLockAndPullSettings). Outside the lock the switch takes
+  // the table's value and accepts input again. Every other control mirrors
+  // the settings either way.
   if (!document.body.classList.contains('table-locked')) {
     enabledEl.checked = s.enabled !== false;
-  } else {
-    lockStashedEnabled = s.enabled !== false;
+    enabledEl.disabled = false;
   }
   for (const id in CHECKBOX_TO_SETTING) {
     const el = document.getElementById(id);
@@ -822,12 +810,12 @@ function applyDefaultsToUI() {
   applySettingsToUI(DR_DEFAULTS);
 }
 
-// Reconnect, table switch, or stale-view refresh: pull the model's current
-// settings from content.js (the settings' sole owner) rather than resetting
-// to shipped defaults — neither a close/reopen nor a switch may lose what
-// the user configured (issue #251). No active tab, no content script yet,
-// or no response at all falls back to defaults, same as before this pull
-// existed.
+// Reconnect, table switch, right-click activation, lock lift, or stale-view
+// refresh: pull the active table's settings from content.js (the one holder
+// of settings) rather than resetting to shipped defaults — neither a
+// close/reopen nor a switch may lose what the user configured (issue #251).
+// No active tab, no content script yet, or no response at all falls back to
+// defaults, same as before this pull existed.
 //
 // fetchPreviewSamples runs only after the pull settles (success or fallback),
 // never in parallel with it: fetchPreviewSamples's own setTableBound call is
@@ -959,7 +947,6 @@ function collectSidebarView() {
     status: statusEl.textContent,
     noTable: document.body.classList.contains(NO_TABLE_CLASS),
     locked: document.body.classList.contains('table-locked'),
-    lockStashedEnabled: lockStashedEnabled,
     lensPreview: {
       top: topBandEl ? Array.from(topBandEl.children).map((n) => n.textContent) : [],
       bottom: botBandEl ? Array.from(botBandEl.children).map((n) => n.textContent) : [],
@@ -1025,7 +1012,6 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   const state = Object.assign({
     captureFormat: CAPTURE_FORMAT,
     page: null,
-    settings: null,
     detectionSettings: null,
     activeTableIndex: null,
     tables: [],

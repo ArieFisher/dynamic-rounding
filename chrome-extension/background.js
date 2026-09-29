@@ -42,6 +42,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       console.warn("Dynamic Rounding: failed to open side panel", e);
     }
     sidebarTabId = tab.id;
+    // The item does both things its title states: the same toggle "Toggle
+    // table" sends, then the sidebar-opened report. The toggle goes first, so
+    // the reopen's apply reads the toggled settings.
+    DR_BUS.publish('intent:menuClicked', {}, { tabId: tab.id });
     DR_BUS.publish('state:sidebarOpened', {}, { tabId: tab.id });
   }
 });

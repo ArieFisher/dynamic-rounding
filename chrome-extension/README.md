@@ -4,11 +4,13 @@ This extension applies the `ROUND_DYNAMIC` algorithm to tables on any website. E
 
 ## What a pillbox press does
 
-A press makes the pressed table the active one and flips its form from what the screen shows: a raw table simplifies, a simplified table goes back to its original values. It writes the settings record once, and the settings record's change is what reaches the table, so the pillbox, the sidebar's switch, and the right-click menu item all act through one path.
+A press makes the pressed table the active one and flips its form from what the screen shows: a raw table simplifies, a simplified table goes back to its original values. It writes that table's settings once, and that write is what reaches the table, so the pillbox, the sidebar's switch, and the right-click menu item all act through one path.
 
-Two consequences follow. Turning simplification on uses the settings record's current values, which a sidebar session may have changed since the last press. Turning it off resets the table: the simplified markers and the stored originals go, and a later press simplifies again from scratch.
+Two consequences follow. Turning simplification on uses the table's own settings, which a sidebar session may have changed since the last press. Turning it off resets the table: the simplified markers and the stored originals go, and a later press simplifies again from scratch.
 
-A press that moves the active table also clears the range expression. An expression states rows and columns by position, so it describes the table someone wrote it for, and carrying it to a second table would address different data there. A press on the table that is already active keeps the expression.
+Each table holds its own settings, the range expression included. A press changes the table's on/off value alone, so moving the active table leaves every table's range expression in place, and the sidebar shows the settings of whichever table is active.
+
+A table no one has turned on reads off, so the sidebar's switch shows off over a raw table, and opening the sidebar on its own changes nothing on the page. The right-click menu holds two items. "Toggle table" makes the same press on the table right-clicked. "Toggle and open sidebar" makes that press, then opens the sidebar.
 
 A press on a locked table publishes nothing. A table locks when its original values are lost, which happens when a content script re-injection empties the registry. The right-click menu item is the one way to act on such a table.
 

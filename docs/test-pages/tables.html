@@ -1450,11 +1450,13 @@ TSLA,75,"248.09","18,606.75"
         native table left the new row raw.</li>
       <li><b>Swap the column set</b> replaces the headers and the first five rows,
         as a page that loads a different query result into the same table.
-        Expect: the extension detects the table again and simplifies the new
-        values, and the pillbox stays on. The sidebar's active table moves to
-        the new table only when this table was the active one. Before: the
-        new values stayed raw, and the restore wrote the old result set back
-        into the cells.</li>
+        Expect: the extension detects a new table. It shows the new values
+        raw with the pillbox off, and the sidebar shows the shipped defaults
+        for it, so a press simplifies it under the defaults. The sidebar's
+        active table moves to the new table only when this table was the
+        active one. Before: the new table took the old table's settings and
+        simplified at once, and before that the restore wrote the old result
+        set back into the cells.</li>
       <li><b>Rewrite as the pillbox is pressed</b> arms the page. The next
         pillbox press on either table first writes 925,006 into that table's
         South, Q1, in the same moment as the press, so the restore runs before

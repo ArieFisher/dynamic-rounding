@@ -1434,8 +1434,8 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
   const { grid, aNumber } = makePatchGrid();
   const [a] = grid.cellEls;
   try {
-    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    const result = roundTable(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { rangeExpr: 'A:B:C' }));
+    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
+    const result = roundTableUnder(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { rangeExpr: 'A:B:C' }));
     eq('grid re-apply invalid range (setup): the second simplification returns the range error',
       result.rangeStatus, 'error');
     aNumber.nodeValue = '8,584,629';
@@ -1457,7 +1457,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
   const { grid, aNumber } = makePatchGrid();
   const [a] = grid.cellEls;
   try {
-    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid re-apply no freeze (setup): the first simplification stores a freeze',
       DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 6);
     DR_STORE.setTableMaxMagnitude(grid.wrapperEl, null);
@@ -1561,7 +1561,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const second = makeCountingTextNode('126');
   setGridCellPieces(cell, [makeElementNode('a1', [first]), makeElementNode('a2', [second])], { lines: true });
   try {
-    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid stacked re-apply (setup): both pieces round', pieceTextsOf(cell), ['350', '150']);
     reapplyRounding(grid.wrapperEl);
     eq('grid stacked re-apply: pieces already patched are not written again',
@@ -1764,7 +1764,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   };
   const pool = () => collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((sample) => sample.num);
   try {
-    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid footnote: the base rounds and the footnote digit stays',
       pieceTextsOf(cell), ['Revenue 850 units ', '7']);
     eq('grid footnote: the record stores the mask\'s superscript range',
@@ -1802,7 +1802,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     return { nextNode() { return nodes.shift() || null; } };
   };
   try {
-    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
     const afterFirstRound = pieceTextsOf(cell);
     eq('grid footnote re-apply (setup): the base rounds and the footnote holds',
       afterFirstRound[1], '137');
@@ -1827,7 +1827,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const [cell] = grid.cellEls;
   setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   try {
-    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid stacked (setup): the first simplification writes 150 into the first piece',
       pieceTextsOf(cell)[0], '150');
     setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('150')])]);
@@ -2410,12 +2410,12 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('GV5b: cell[1] still original after observer fires (no re-round)',
       grid.cellEls[1].childNodes[0].nodeValue, '100');
 
-    // A press back on runs the apply, which re-simplifies from the settings
-    // record. setupVirtGrid rounds with the first row and column included; the
-    // settings record here carries the same, so the re-simplify reaches the
-    // same cells.
-    DR_STORE.setSettings(Object.assign(
-      {}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true, enabled: true }));
+    // A press back on runs the apply, which re-simplifies from the table's
+    // settings. setupVirtGrid rounds with the first row and column included;
+    // the table's settings here carry the same, so the re-simplify reaches
+    // the same cells.
+    DR_STORE.setTableSettings(grid.wrapperEl,
+      { simplifyFirstRow: true, simplifyFirstColumn: true, enabled: true }, 'page');
     applySidebarRounding(grid.wrapperEl);
     eq('GV5b: appliedFlag is "simplified" after the press turns simplification back on',
       DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'simplified');
@@ -3732,7 +3732,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     // data cells still show their rounded text, still carry
     // dr-ext-rounded) but this eval's DR_STORE is BRAND NEW — instance 1's
     // registry (and its stored true originals) is unreachable garbage now,
-    // exactly as a real content-script reload would leave it. ---
+    // exactly as a real content-script reload would leave it. Its bus
+    // listener is kept, so scenario C can deliver the sidebar's apply the
+    // way Chrome does. ---
+    let ri2Listener = null;
+    global.chrome.runtime.onMessage.addListener = (fn) => { ri2Listener = fn; };
     eval(contentScriptBundle + `
       globalThis.__ri2_isTableRounded = isTableRounded;
       globalThis.__ri2_resetTable = resetTable;
@@ -3781,10 +3785,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 
     // --- Scenario C (issue #254): the sidebar apply path — the one other
     // resetTable caller. Drives the real wiring end to end: a sidebar
-    // settings change lands as DR_STORE.setSettings (the
-    // request:applySettings listener), whose state:settingsChanged
-    // subscriber calls applySidebarRounding on the selected table. Before
-    // the fix this ran roundTable over the already-rounded text — stamping
+    // settings change reaches the request:applySettings responder, which
+    // writes the active table's settings and calls applySidebarRounding on
+    // it. Before the fix this ran roundTable over the already-rounded text — stamping
     // a false "Original: <rounded value>" title over the surviving truth
     // and recording the rounded value as the registry original of record.
     // It must refuse instead, and tell the sidebar why nothing changed.
@@ -3797,7 +3800,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     const sentMessages = [];
     global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
     global.__ri2_DR_STORE.setSelectedTable(table3);
-    global.__ri2_DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { offsetTop: 1 }));
+    ri2Listener({ action: 'request:applySettings', settings: Object.assign({}, DR_DEFAULTS, { offsetTop: 1 }) },
+      {}, () => {});
 
     eq('re-injection sidebar apply: the dr-ext-rounded marker survives',
       dataCell3.classList.contains('dr-ext-rounded'), true);
@@ -3861,7 +3865,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     // oscillate the pillbox. Before the fix, alternating clicks flipped
     // appliedFlag between 'simplified' and 'original' (both restore branches
     // no-op on cells without registry records), so the pillbox toggled
-    // visually while the table never changed, and state:tableEnabledChanged
+    // visually while the table never changed, and the on/off notice of the time
     // carried enabled:false to the sidebar under a visibly simplified
     // table. ---
     const stub2 = makeMockButton();
@@ -3886,24 +3890,23 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('re-injection toggle clicks: the title still holds the true original',
       dataCell2.title, roundedTitle2);
 
-    const toggleStates = sentMessages.filter((m) => m.action === 'state:tableEnabledChanged');
-    // Issue #272 changed this contract: state:tableEnabledChanged reports the RECORD's
-    // enabled — the value the click wrote — not the stuck table's display
-    // state. The first click is a rebind (table3 was selected) and sends no
-    // toggle-state; the second click asks to turn the stuck table off, so the
-    // record and the message both go false. The panel guards its own display:
-    // under the #262 lock (this table's state:applyBlocked lands first) the forced
-    // ON is display-only and the record's value goes to the lock's stash —
-    // pinned by the issue272 sidebar-harness tests below.
-    eq('re-injection toggle clicks: state:tableEnabledChanged reports the record — off, as the click asked',
-      toggleStates.map((m) => m.enabled), [false]);
-    eq('re-injection toggle clicks: the record holds the user\'s off, even though the stuck table cannot change',
-      global.__ri2_DR_STORE.getSettings().enabled, false);
+    const notices = sentMessages.filter((m) => m.action === 'state:settingsChanged');
+    // Issue #272 changed this contract, and issue #328 kept it: the settings
+    // notice carries the table's settings — the value the click wrote — not
+    // the locked table's display state. Each click asks to turn the table
+    // off, because the screen shows it simplified, so the table's settings
+    // and each notice go false. The sidebar guards its own display: each
+    // click's state:applyBlocked lands after its notice, so the lock's forced
+    // ON is the last thing the sidebar shows, and the lift reads the table's
+    // off back — pinned by the issue328 sidebar-harness tests.
+    eq('re-injection toggle clicks: each click\'s settings notice carries the table\'s off, as the click asked',
+      notices.map((m) => m.settings.enabled), [false, false]);
+    eq('re-injection toggle clicks: the table\'s settings hold the user\'s off, even though the locked table cannot change',
+      global.__ri2_DR_STORE.getTableSettings(table2).enabled, false);
     const actionSeq = sentMessages.map((m) => m.action);
-    eq('re-injection toggle clicks: the blocked click\'s state:applyBlocked precedes its toggle-state — the panel locks before the record value lands in its stash',
-      actionSeq.lastIndexOf('state:applyBlocked') !== -1 &&
-      actionSeq.indexOf('state:tableEnabledChanged') !== -1 &&
-      actionSeq.lastIndexOf('state:applyBlocked') < actionSeq.indexOf('state:tableEnabledChanged'), true);
+    eq('re-injection toggle clicks: the last click\'s state:applyBlocked follows its settings notice — the sidebar ends locked',
+      actionSeq.lastIndexOf('state:settingsChanged') !== -1 &&
+      actionSeq.lastIndexOf('state:settingsChanged') < actionSeq.lastIndexOf('state:applyBlocked'), true);
   } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
@@ -4074,7 +4077,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite01_aHeldCellTakesNoWrite() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     const held = t.pieces(0, 1)[0];
     const writesBefore = held.writes;
     t.write(1, 0, '4,321');
@@ -4090,7 +4093,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite02_aPieceRedrawnToItsOriginalTakesThePatchAgain() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, '1,234');
     page.settle();
     eq(`#421 redraw (${kind}): a piece redrawn to its original shows the simplified value again`,
@@ -4106,7 +4109,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite03_aNativeTableThatGainsALargerValueRoundsAgain() {
   eachRewriteKind(['native'], (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     eq('#421 larger value (native, precondition): the first simplification rounds at magnitude 3',
       t.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600']]);
     t.addRow(['98,765', '1,111']);
@@ -4125,7 +4128,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite04_aNewNumberSimplifiesAndRestoresToItself() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, '4,321');
     page.settle();
     eq(`#421 new number (${kind}): the cell simplifies the page's new value`, t.text(0, 0), '4,300');
@@ -4141,7 +4144,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite05_anAlreadyRoundNumberReleasesTheCell() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, '100');
     page.settle();
     eq(`#421 round number (${kind}): the cell shows the page's number`, t.text(0, 0), '100');
@@ -4159,7 +4162,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite06_aWordReleasesTheCell() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, 'pending');
     page.settle();
     eq(`#421 word (${kind}): the cell is released and keeps the page's text`,
@@ -4180,7 +4183,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
       [[{ tag: 'b', text: '1,234' }, ' to ', { tag: 'b', text: '5,678' }], '2,468'],
       ['3,579', '4,321'],
     ]);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     eq(`#421 one piece (${kind}, precondition): both numbers of the cell round`,
       t.pieces(0, 0).map((p) => p.nodeValue), ['1,200', ' to ', '5,700']);
     t.write(0, 0, '2,222', 0);
@@ -4198,7 +4201,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite08_aGridValueAboveTheFrozenScale() {
   eachRewriteKind(['grid'], (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, '98,765');
     page.settle();
     eq('#421 above the freeze (grid): the value takes the largest-value rounding',
@@ -4216,7 +4219,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite09_aReusedGridCellShowsItsNewRow() {
   eachRewriteKind(['grid'], (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     const scrolled = [['4,321', '8,765'], ['6,543', '7,654']];
     scrolled.forEach((row, r) => row.forEach((text, c) => t.write(r, c, text)));
     page.settle();
@@ -4233,7 +4236,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite11_ownWritesRunNoPassAndABurstRunsOne() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     page.settle();
     eq(`#421 own writes (${kind}): the first simplification runs no pass`, page.passes(), 0);
     t.write(0, 0, '4,321');
@@ -4255,7 +4258,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite12_anAddedRowSimplifies() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     t.addRow(['4,321', '8,765']);
     page.settle();
     eq(`#421 added row (${kind}): the added row simplifies`,
@@ -4272,7 +4275,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
       [[{ tag: 'b', text: '1,234' }, ' to ', { tag: 'b', text: '5,678' }], '2,468'],
       ['3,579', '4,321'],
     ]);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     t.write(0, 0, '2,222', 0);
     t.write(1, 1, '9,999');
     resetTable(t.table);
@@ -4297,7 +4300,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   try {
     eachRewriteKind(RW_KINDS, (kind, page, build) => {
       const t = build(RW_ROWS);
-      roundTable(t.table, RW_OPTS);
+      roundTableUnder(t.table, RW_OPTS);
       t.write(0, 0, '4,321');
       page.settle();
       eq(`#421 cell cap (${kind}): a table at the cap runs its pass`, t.text(0, 0), '4,300');
@@ -4315,7 +4318,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 
       const big = build(RW_ROWS.concat([['9,876']]));
       const rowsAtFirst = rwRows('debug', RW_CAP_ROW);
-      roundTable(big.table, RW_OPTS);
+      roundTableUnder(big.table, RW_OPTS);
       eq(`#421 cell cap (${kind}): the first simplification over the cap still simplifies`,
         big.text(2, 0), '9,900');
       eq(`#421 cell cap (${kind}): the first simplification over the cap records one debug row`,
@@ -4337,7 +4340,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewrite15_aBurstThatNeverGoesQuietStillRunsAPass() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     const start = page.now();
     let firstPassAt = null;
     for (let step = 0; step < 20; step++) {
@@ -4363,7 +4366,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
     const cell = t.cell(0, 0);
     const markupBefore = cell.innerHTML;
     const piecesBefore = t.pieces(0, 0);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     eq('#421 piece restore (native, precondition): the number outside the link rounds, the link and the superscript hold',
       t.pieces(0, 0).map((p) => p.nodeValue), ['Total ', 'note 12', ', ', '9,900', ' kg', '2']);
     const writesBefore = cell.innerHTMLWrites;
@@ -4397,7 +4400,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
         });
       }
     }
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     eq('#421 rendered text (native): the first simplification reads no rendered text after a write',
       { readsAfterAWrite, rows: t.rowTexts() },
       { readsAfterAWrite: 0, rows: [['1,200', '5,700'], ['2,500', '3,600']] });
@@ -4413,7 +4416,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
       [[{ tag: 'b', text: '1,234' }, ' to ', { tag: 'b', text: '5,678' }], '2,468'],
       ['3,579', '4,321'],
     ]);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     t.redraw(0, 0, '8,765');
     page.settle();
     eq(`#423 fewer pieces (${kind}): the redrawn cell simplifies its new value`, t.text(0, 0), '8,800');
@@ -4434,7 +4437,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 (function rewriteACellRedrawnWithAnExtraPieceMatchesByText() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build([[[{ tag: 'b', text: '1,613,245' }, ' units'], '5,678'], ['2,468', '3,579']]);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     eq(`#421 extra piece (${kind}, precondition): the first simplification rounds the bold number`,
       t.text(0, 0), '1,600,000 units');
     t.redraw(0, 0, [{ tag: 'b', text: '1,600,000' }, ' units', { tag: 'i', text: ' est.' }]);
@@ -4459,7 +4462,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
       [[{ tag: 'b', text: '1,613,245' }, ' to ', { tag: 'b', text: '1,587,002' }], '5,678'],
       ['2,468', '3,579'],
     ]);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     eq(`#421 duplicate written text (${kind}, precondition): both numbers show the same rounded text`,
       t.text(0, 0), '1,600,000 to 1,600,000');
     t.redraw(0, 0, [{ tag: 'b', text: '1,600,000' }, ' to ', { tag: 'b', text: '1,600,000' },
@@ -4478,7 +4481,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
       [[{ tag: 'b', text: '1,234' }, ' to ', { tag: 'b', text: '5,678' }], '2,468'],
       ['3,579', '4,321'],
     ]);
-    roundTable(t.table, RW_OPTS);
+    roundTableUnder(t.table, RW_OPTS);
     t.redraw(0, 0, '8,765');
     const unrestorable = resetTable(t.table);
     eq(`#423 fewer pieces, early restore (${kind}): the page's text stays and nothing counts unrestorable`,

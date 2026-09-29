@@ -15,7 +15,10 @@
  * lookup list that shapes what detection finds.
  */
 const DR_DEFAULTS = {
-  enabled: true,
+  // Off: a table no one has turned on shows raw, so its settings read off.
+  // A toggle (the pillbox, either menu item) or the sidebar's switch turns a
+  // table on.
+  enabled: false,
   simplifyMixedCells: true,
   simplifyMixedCurrency: true,
   simplifyMixedPercent: true,
