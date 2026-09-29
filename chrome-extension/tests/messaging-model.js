@@ -1930,7 +1930,7 @@ const PENDING_FILL_ROWS = [
   let counter = 0;
 
   const unsubA = DR_BUS.subscribe(TOPIC_A, () => {
-    DR_BUS.publish(TOPIC_B, { active: false, source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); // A's handler always publishes B
+    DR_BUS.publish(TOPIC_B, { source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); // A's handler always publishes B
   });
   const unsubB = DR_BUS.subscribe(TOPIC_B, () => {
     counter++;

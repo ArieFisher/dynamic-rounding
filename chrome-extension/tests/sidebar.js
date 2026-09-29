@@ -767,7 +767,7 @@
   const savedSelected = DR_STORE.getSelectedTable();
   DR_STORE.setSelectedTable(null); // see the note on the guarded cycle above
 
-  const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { active: false, source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); });
+  const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); });
   const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, { table: null }); });
 
   let threw = null;
