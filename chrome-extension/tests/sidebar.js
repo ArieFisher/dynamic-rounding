@@ -1434,6 +1434,7 @@
       store.getSelectedTable(), gridEl);
 
     // The table's settings start at on, the table showing simplified values.
+    store.setTableSettings(gridEl, { enabled: true }, 'page');
     store.setTableAppliedFlag(gridEl, 'simplified');
     eq('menu-toggle record: precondition — the table\'s settings start enabled',
       store.getTableSettings(gridEl).enabled, true);

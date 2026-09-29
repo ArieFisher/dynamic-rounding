@@ -3046,6 +3046,21 @@ function issue328SettingsOf(table) {
   });
 })();
 
+// A table no one has turned on reads off: the shipped on/off value is off,
+// so the sidebar's switch matches a raw table, and opening the sidebar on an
+// untouched table leaves it raw. Only a toggle or the switch turns it on.
+(function issue328_anUntouchedTableReadsOff() {
+  runPressFixture(() => {
+    const table = makePressTable('8,584,629');
+    DR_STORE.setSelectedTable(table);
+    eq('defaults: a table with no settings reads off',
+      DR_STORE.getTableSettings(table).enabled, false);
+    withCreateTreeWalker(() => askContentScript({ action: 'state:sidebarOpened' }));
+    eq('defaults: opening the sidebar on an untouched table leaves it raw',
+      [isTableRounded(table), table._cells[3].innerText], [false, '8,584,629']);
+  });
+})();
+
 // Turning a table off resets its cells and keeps its settings, so the next
 // press simplifies it again under the settings it had.
 (function issue328_anOffPressKeepsTheTablesSettings() {
@@ -4637,7 +4652,8 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
       withToggleDocumentMock(() => {
         createToggleForTable(active.table);
         createToggleForTable(other.table);
-        DR_STORE.setTableSettings(active.table, Object.assign({}, RW_OPTS, { simplifyFirstRow: false }), 'page');
+        DR_STORE.setTableSettings(active.table,
+          Object.assign({}, RW_OPTS, { simplifyFirstRow: false, enabled: true }), 'page');
         DR_STORE.setSelectedTable(active.table);
         applySidebarRounding(active.table);
         roundTableUnder(other.table, Object.assign({}, RW_OPTS, { simplifyFirstRow: false }));

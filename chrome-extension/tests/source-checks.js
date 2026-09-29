@@ -1345,6 +1345,18 @@
     ctx.listeners.menuClicked({ menuItemId: 'dr-action-sidebar' }, { id: PANEL_TAB });
   }
 
+  // --- "Toggle and open sidebar" does both: the same toggle "Toggle table"
+  // sends, then the sidebar-opened report, to the tab the right-click
+  // happened in and in that order, so the reopen's apply reads the toggled
+  // settings. ---
+  (function toggleAndOpenSidebarTogglesThenOpens() {
+    const ctx = loadBackground();
+    openPanel(ctx);
+    eq('bg routing: "Toggle and open sidebar" sends the toggle, then the sidebar-opened report, to that tab',
+      ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.action),
+      ['intent:menuClicked', 'state:sidebarOpened']);
+  })();
+
   // --- Rule 1: closing notifies the sidebar page, and nothing else ---
   (function closeNotifiesTheSidebarOnly() {
     const ctx = loadBackground();
@@ -2231,7 +2243,8 @@
     }
     let threw = null;
     try {
-      sandbox.__DR_STORE.setTableSettings(table, sandbox.__DR_DEFAULTS, 'page');
+      sandbox.__DR_STORE.setTableSettings(table,
+        Object.assign({}, sandbox.__DR_DEFAULTS, { enabled: true }), 'page');
       // The settings notice above belongs to the write, not the apply.
       sentMessages.length = 0;
       sandbox.__applySidebarRounding(table);

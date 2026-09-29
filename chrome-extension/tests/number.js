@@ -2814,7 +2814,7 @@ const LADDER_OPTS = {
       const customSettings = Object.assign({}, DR_DEFAULTS, {
         simplifyFirstRow: true, simplifyFirstColumn: true,
         offsetTop: CUSTOM_OFFSET_TOP, offsetOther: CUSTOM_OFFSET_OTHER,
-        numTop: 1, rangeExpr: '',
+        numTop: 1, rangeExpr: '', enabled: true,
       });
 
       // The real wire message, dispatched through the real onMessage

@@ -10,6 +10,8 @@ Two consequences follow. Turning simplification on uses the table's own settings
 
 Each table holds its own settings, the range expression included. A press changes the table's on/off value alone, so moving the active table leaves every table's range expression in place, and the sidebar shows the settings of whichever table is active.
 
+A table no one has turned on reads off, so the sidebar's switch shows off over a raw table, and opening the sidebar on its own changes nothing on the page. The right-click menu holds two items. "Toggle table" makes the same press on the table right-clicked. "Toggle and open sidebar" makes that press, then opens the sidebar.
+
 A press on a locked table publishes nothing. A table locks when its original values are lost, which happens when a content script re-injection empties the registry. The right-click menu item is the one way to act on such a table.
 
 ## The sidebar serves one tab
