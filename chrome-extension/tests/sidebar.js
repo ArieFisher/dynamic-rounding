@@ -1320,7 +1320,7 @@
 
     // Issue #262's lock forces the main toggle ON + disabled (the bound
     // table is stuck simplified). A settings pull that resolves while the
-    // lock is displayed — a reconnect refresh whose apply just re-blocked —
+    // lock is displayed — a table switch's pull whose apply just re-blocked —
     // must not write the model's enabled:false over the lock's forced ON.
     // Ordering here mirrors the wire: state:applyBlocked lands, then the
     // stale-view refresh runs its pull.
