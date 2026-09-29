@@ -239,17 +239,17 @@ DR_BUS.subscribe('intent:menuClicked', () => {
   DR_BUS.publish('intent:toggleTable', { table: markAndToggleIfNewGrid(found) });
 });
 
-// Reconnect: apply the active table's own settings to it — the sidebar may be
-// reopening after a close, and the model holds both of record.
+// Reconnect: the sidebar reads the active table's settings itself, and the
+// table already shows them, so the open runs no apply. It runs the shape
+// check, so a table the page redrew since the last look registers fresh
+// before the sidebar reads it, then tells the sidebar to re-read.
 DR_BUS.subscribe('state:sidebarOpened', () => {
   const selected = DR_STORE.getSelectedTable();
   if (!selected) {
     DR_LOG.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
     return;
   }
-  // The shape check runs before the apply, the same as on every other path.
-  const table = revalidateTableShape(selected).table;
-  if (table) applySidebarRounding(table);
+  revalidateTableShape(selected);
   // Tell the sidebar its view is stale; it re-reads the active table's
   // settings and re-asks for preview samples against it.
   DR_BUS.publish('state:previewSamplesChanged', {});

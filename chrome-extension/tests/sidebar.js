@@ -53,11 +53,12 @@
   eq('sidebar-state removal: the bus registers no sidebar-open topic',
     Object.prototype.hasOwnProperty.call(DR_BUS.TOPICS, 'state:sidebarOpenChanged'), false);
 
-  // state:sidebarOpened survives — it still triggers the reconnect apply — but it
-  // records nothing about the sidebar. CLOSE_SIDEBAR goes to the sidebar page
-  // alone, so the content script carries no branch for it at all.
-  eq('sidebar-state removal: state:sidebarOpened still runs the reconnect apply',
-    /state:sidebarOpened[\s\S]{0,400}applySidebarRounding/.test(contentSrc), true);
+  // state:sidebarOpened survives — it still runs the shape check and tells the
+  // sidebar to re-read — but it records nothing about the sidebar.
+  // CLOSE_SIDEBAR goes to the sidebar page alone, so the content script
+  // carries no branch for it at all.
+  eq('sidebar-state removal: state:sidebarOpened still tells the sidebar to re-read',
+    /state:sidebarOpened[\s\S]{0,700}state:previewSamplesChanged/.test(contentSrc), true);
   // The topic moved onto the bus (#325), so the needle is its bus name: a
   // reintroduced subscription in the content script is what this catches.
   eq('sidebar-state removal: content.js registers no branch for the close message',
