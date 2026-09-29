@@ -16,9 +16,9 @@ I am the product manager and do not write the code. Lead with the mechanism in p
 
 These rules govern all prose: **chat**, **documents**, and **GitHub** (pull request titles and bodies, issues, commit messages, logs).
 
-- **Form:** plain declarative sentences in active voice. Not epigrammatic, not aphoristic. State the plain meaning in place of a figure of speech: write "the notice's contents change", never "the notice changes shape". "Shape" stays literal for the terms the vocabulary defines, such as a table's shape fingerprint and the number shape test.
+- **Form:** plain declarative sentences in active voice. Not epigrammatic, not aphoristic.
 - **Structure:** no antithesis. Present each point on its own, without a contrasting counterpart.
-- **Imagery:** no personification. The test: a part's verb names an operation the part performs, never a stance it takes. Operations pass: holds, determines, skips, detects, flags, stands for, contains, parses, publishes. Verbs of intent, awareness, or choice fail: own, know, decide, refuse, notice, warn, name — examples, not the whole list; "rides", "waits", and "speaks" fail the same test. Boundary: "the script reads the file" passes because reading is the operation; "the check refuses" fails because refusal is a stance. Similes are fine.
+- **Imagery:** no personification. The test: a part's verb names an operation the part performs, never a stance it takes. Operations pass: holds, determines, skips, detects, flags, stands for, contains, parses, publishes. Verbs of intent, awareness, or choice fail: own, know, decide, refuse, notice, warn, name — examples, not the whole list; "rides", "waits", and "speaks" fail the same test. Boundary: "the script reads the file" passes because reading is the operation; "the check refuses" fails because refusal is a stance. Similes are fine. State the plain meaning in place of a metaphor: write "the notice's contents change", never "the notice changes shape". "Shape" stays literal where it names a structure: a table's markup, and the terms the vocabulary defines, such as the shape fingerprint and the number shape test.
 - **Diction:** plain English, Saxon words, technical terms preserved. No contractions and no abbreviations, except i.e., e.g., etc., FYI, and TL;DR. Write "application", not "app".
 - **Tone:** laconic. Cut qualifiers, hedging, and introductory fluff.
 - **Voice:** high information density. Facts in active voice, no passive voice, no filler sentences.
@@ -115,7 +115,7 @@ A capture from the extension holds real page content, and this repository is pub
 `docs/test-pages/tables.html` holds one table per shape the extension handles, each with the result to expect. It is the page I load to check a change by hand, so it is the only place a manual test can name.
 
 - **Every change that adds a kind of test names the table in that page to test it on.** Give me the section number in the pull request's manual tests and in chat. A test with no table to run it on is a test I cannot run.
-- **A change whose shape the page already holds needs no new table.** Point at the section that holds it.
+- **A change to a table shape the page already holds needs no new table.** Point at the section that holds it.
 - **A change that turns on a shape the page does not hold gets a new section, in the same branch.** Merged cells are the example: nothing on the page carried one, so no amount of simplifying it could tell the new reading from the old. The measure is whether the shape matters to someone using the extension, not whether the change was large.
 - Each new section states what to expect, and what the result was before the change where that is what makes the difference visible.
 
