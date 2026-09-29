@@ -125,7 +125,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | unrestorable | Originals lost or never captured. The table cannot be restored. |
 | locked | The state of a table's controls when the application will not apply simplify settings to it. <br><br>e.g. when its originals are unrestorable, changes do not apply. |
 | bound | The sidebar's association with one table: the table whose table settings its controls read from and write to. |
-| active | The table user actions target. <br>The most recently right-clicked table, or the most recent table whose pillbox was pressed. The sidebar binds the active table, and a sidebar change writes the active table's table settings. |
+| active | The table user actions target. <br>The most recently right-clicked table, or the most recent table whose pillbox was pressed. The sidebar binds the active table, and a sidebar change writes the active table's table settings. A table the page removes stops being active, and the page then has no active table until the next right-click or press. |
 | activate | Make a table active: right-click it, or press its pillbox. |
 | range expression | An A1-style expression limiting which cells change. Blank means the whole table. <br><br>It states rows and columns by position, so it describes the table it was written for. Each table holds its own range expression in its table settings. A table the page gives new headers or columns registers fresh under the shipped defaults, so its range expression starts blank. |
 
