@@ -79,9 +79,17 @@ function isTableRounded(table) {
 // class disappears with the old cells and the lock lifts by itself.
 function tableHasUnrestorableCells(table) {
   for (const cell of table.querySelectorAll('.dr-ext-rounded')) {
-    if (DR_STORE.getTableOriginal(table, cell) === undefined) return true;
+    if (isUnrestorableCell(table, cell)) return true;
   }
   return false;
+}
+
+// A cell showing the simplified marker with no original in the registry.
+// The pillbox, the sidebar's settings read, and the restore in content.js
+// all read this one test: the restore leaves such a cell as it stands, and
+// one such cell locks the table.
+function isUnrestorableCell(table, cell) {
+  return !DR_STORE.hasTableOriginal(table, cell);
 }
 
 function syncSwitchForTable(table) {

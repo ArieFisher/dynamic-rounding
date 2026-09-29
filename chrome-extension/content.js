@@ -258,10 +258,16 @@ DR_BUS.subscribe('state:sidebarOpened', () => {
 // The sidebar's three reads of the model. Each answers from the tab's own
 // copy — the sidebar holds none of its own, so a close and reopen loses
 // nothing. The settings read answers the active table's settings; with no
-// table active, the model answers the shipped defaults.
-DR_BUS.respond('request:settings', () => ({
-  settings: DR_STORE.getTableSettings(DR_STORE.getSelectedTable()),
-}));
+// table active, the model answers the shipped defaults. It also answers
+// whether the active table is locked, so a sidebar that missed the one-time
+// report after an apply still shows the lock on its next read (#500).
+DR_BUS.respond('request:settings', () => {
+  const selected = DR_STORE.getSelectedTable();
+  return {
+    settings: DR_STORE.getTableSettings(selected),
+    locked: !!selected && tableHasUnrestorableCells(selected),
+  };
+});
 
 // No selected table answers nulls rather than nothing: the sidebar reads a
 // null samples field as the unbound state, and an unanswered request reaches
@@ -701,7 +707,7 @@ function restoreTable(table) {
   const kind = tableKindPass(makeAdapter(table));
   let unrestorableCount = 0;
   for (const cell of roundedCells) {
-    if (!DR_STORE.hasTableOriginal(table, cell)) {
+    if (isUnrestorableCell(table, cell)) {
       unrestorableCount++;
       continue;
     }

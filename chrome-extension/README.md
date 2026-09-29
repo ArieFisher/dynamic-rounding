@@ -12,7 +12,7 @@ Each table holds its own settings, the range expression included. A press change
 
 A table no one has turned on reads off, so the sidebar's switch shows off over a raw table, and opening the sidebar on its own changes nothing on the page. The right-click menu holds two items. "Toggle table" makes the same press on the table right-clicked. "Toggle and open sidebar" makes that press, then opens the sidebar.
 
-A press on a locked table publishes nothing. A table locks when its original values are lost, which happens when a content script re-injection empties the registry. The right-click menu item is the one way to act on such a table.
+A press on a locked table publishes nothing. A table locks when its original values are lost, which happens when a content script re-injection empties the registry. The right-click menu item is the one way to act on such a table. The sidebar reads whether the active table is locked each time it reads the table's settings, which includes when it opens and when a right-click or a press makes another table active. A locked table therefore shows the locked notice and a switch forced on, whichever way the sidebar was opened.
 
 ## The sidebar serves one tab
 
