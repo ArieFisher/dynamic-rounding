@@ -3681,7 +3681,7 @@ function issue328SettingsOf(table) {
 // of the nest then fails the data test. ---
 
 (function shapeFingerprint_nothingRegisteringStopsThePressAndClearsTheActiveTable() {
-  runPressFixture(({ writes, resetWrites }) => {
+  runPressFixture(({ sent, writes, resetWrites }) => {
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
@@ -3689,6 +3689,7 @@ function issue328SettingsOf(table) {
     emptyTheDatabaseQueryGridOfNumbers(grid);
 
     resetWrites();
+    sent.length = 0;
     withToggleDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
@@ -3698,6 +3699,8 @@ function issue328SettingsOf(table) {
       [false, false, false]);
     eq('fingerprint recovery: the discarded table was active, so the active table clears',
       DR_STORE.getSelectedTable() === null, true);
+    eq('fingerprint recovery: the sidebar is told to re-read, so it shows the no-table state (#506)',
+      sent.filter((m) => m.action === 'state:previewSamplesChanged').length, 1);
     eq('fingerprint recovery: the press stops, so it makes no settings write', writes(), 0);
     eq('fingerprint recovery: the empty recovery records a debug row',
       recentLogRows().some((text) => /no table registered after the shape change/.test(text)),
@@ -3706,7 +3709,7 @@ function issue328SettingsOf(table) {
 })();
 
 (function shapeFingerprint_nothingRegisteringLeavesAnotherActiveTableAlone() {
-  runPressFixture(() => {
+  runPressFixture(({ sent }) => {
     const other = makePressTable('1,000,000');
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
@@ -3714,12 +3717,15 @@ function issue328SettingsOf(table) {
 
     emptyTheDatabaseQueryGridOfNumbers(grid);
 
+    sent.length = 0;
     withToggleDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
 
     eq('fingerprint recovery: a discarded table that was not active leaves the active table alone',
       DR_STORE.getSelectedTable() === other, true);
+    eq('fingerprint recovery: a discarded table that was not active sends the sidebar no re-read',
+      sent.some((m) => m.action === 'state:previewSamplesChanged'), false);
   });
 })();
 
