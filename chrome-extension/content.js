@@ -561,7 +561,6 @@ function revalidateTableShape(table, opts = {}) {
 
   if (!fresh) {
     DR_LOG.debug("Dynamic Rounding: no table registered after the shape change.");
-    if (DR_STORE.getSelectedTable() === table) DR_BUS.publish('intent:selectTable', { table: null });
     return { table: null, switched: false };
   }
 
@@ -583,6 +582,12 @@ function revalidateTableShape(table, opts = {}) {
 //
 // The re-apply observer and its timer tear down here so a table removed
 // from the page cannot re-apply rounding after it leaves.
+//
+// A discarded active table stops being active, and the sidebar re-reads: it
+// finds no active table and shows the no-table state, where it would
+// otherwise describe an entry that is gone (#506). A shape change that
+// registers a fresh table makes that table active right after, and the
+// sidebar's read, which lands after this handler finishes, reads it.
 function teardownTableEntry(table, reason) {
   const button = tableToggles.get(table);
   if (button && button.parentElement) {
@@ -596,6 +601,10 @@ function teardownTableEntry(table, reason) {
   trackedTables.delete(table);
   DR_STORE.unregisterTable(table);
   DR_LOG.debug("Dynamic Rounding: " + reason + " table unregistered.");
+  if (DR_STORE.getSelectedTable() === table) {
+    DR_BUS.publish('intent:selectTable', { table: null });
+    DR_BUS.publish('state:previewSamplesChanged', {});
+  }
 }
 
 if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {

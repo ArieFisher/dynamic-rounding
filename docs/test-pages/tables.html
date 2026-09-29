@@ -2213,6 +2213,127 @@ TSLA,75,"248.09","18,606.75"
     </div>
   </section>
 
+  <section>
+    <h2>27. Active table removed or emptied</h2>
+    <p class="expect">Expect: a pillbox at load on all four tables, a native
+      table and a grid in each pair. Press the first native table's pillbox
+      on and open the sidebar, so the sidebar is bound to it. Press "Remove
+      the native table". The sidebar shows "Right-click a table to connect it
+      here." and its switch shows off. Right-click the first grid, then press
+      "Remove the grid": the sidebar shows the same no-table state. Removing
+      a table that is not the active one leaves the sidebar bound where it
+      is.</p>
+    <p class="expect">The second pair empties itself the way a results grid
+      does while it loads: new headers and a loading row with no number.
+      Press the second native table's pillbox on, with the sidebar open, then
+      press "Empty the native result". The table's pillbox disappears, and
+      the sidebar shows the same no-table state. Do the same with the second
+      grid and "Empty the grid result".</p>
+    <p class="expect">Before this change, in all four cases the sidebar kept
+      describing the table that was gone: its switch, its options, and its
+      lens preview, and a change to a control did nothing.</p>
+
+    <!--
+      Exercises the removal observer (the first pair) and the shape check
+      with nothing registering after it (the second pair). Both drop the
+      registry entry, and dropping the active table's entry clears the active
+      table, on both table kinds.
+    -->
+    <button type="button" id="remove-native-btn">Remove the native table</button>
+    <button type="button" id="remove-grid-btn">Remove the grid</button>
+    <table id="removable-native">
+      <thead>
+        <tr><th scope="col">Region</th><th scope="col">Revenue</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>North</td><td>4,812,390</td></tr>
+        <tr><td>South</td><td>918,554</td></tr>
+        <tr><td>East</td><td>73,206</td></tr>
+      </tbody>
+    </table>
+    <div class="aria-grid" role="grid" aria-label="Removable grid" id="removable-grid">
+      <div class="g-row" role="row">
+        <span role="columnheader">Region</span>
+        <span role="columnheader">Revenue</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">West</span>
+          <span role="cell">2,640,117</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Central</span>
+          <span role="cell">385,902</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Islands</span>
+          <span role="cell">41,058</span>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        function removeOnClick(buttonId, targetId) {
+          document.getElementById(buttonId).addEventListener('click', function () {
+            var target = document.getElementById(targetId);
+            if (target) target.remove();
+          });
+        }
+        removeOnClick('remove-native-btn', 'removable-native');
+        removeOnClick('remove-grid-btn', 'removable-grid');
+      })();
+    </script>
+
+    <button type="button" id="empty-native-btn">Empty the native result</button>
+    <button type="button" id="empty-grid-btn">Empty the grid result</button>
+    <table id="emptying-native">
+      <thead>
+        <tr><th scope="col">Account</th><th scope="col">Balance</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Operating</td><td>1,207,448</td></tr>
+        <tr><td>Reserve</td><td>562,031</td></tr>
+        <tr><td>Payroll</td><td>84,915</td></tr>
+      </tbody>
+    </table>
+    <div class="aria-grid" role="grid" aria-label="Emptying grid" id="emptying-grid">
+      <div class="g-row" role="row">
+        <span role="columnheader">Account</span>
+        <span role="columnheader">Balance</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">Savings</span>
+          <span role="cell">3,318,760</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Escrow</span>
+          <span role="cell">249,105</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Petty cash</span>
+          <span role="cell">7,392</span>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        document.getElementById('empty-native-btn').addEventListener('click', function () {
+          var table = document.getElementById('emptying-native');
+          table.tHead.innerHTML = '<tr><th scope="col">Status</th></tr>';
+          table.tBodies[0].innerHTML = '<tr><td>Loading results</td></tr>';
+        });
+        document.getElementById('empty-grid-btn').addEventListener('click', function () {
+          var grid = document.getElementById('emptying-grid');
+          grid.innerHTML =
+            '<div class="g-row" role="row"><span role="columnheader">Status</span></div>' +
+            '<div role="rowgroup"><div class="g-row" role="row">' +
+            '<span role="cell">Loading results</span></div></div>';
+        });
+      })();
+    </script>
+  </section>
+
 </body>
 
 </html>
