@@ -50,20 +50,16 @@ DR_BUS.subscribe('intent:selectTable', ({ table }) => {
 });
 
 // The controller's one write of a table's settings, followed by the apply
-// that puts them on the screen. The shape check runs first, so a write to a
-// table the page refilled lands on the fresh registration, and the patch
-// merges onto that table's settings: the keys the patch holds replace, and
-// every other key keeps the table's value. The sidebar's apply and the
-// pillbox press both write through it; source holds which ('sidebar' or
-// 'page') for the settings notice. A shape change that registers nothing
-// stops the write.
+// that puts them on the screen. The patch merges onto the table's settings:
+// the keys the patch holds replace, and every other key keeps the table's
+// value. The sidebar's apply and the pillbox press both write through it;
+// source holds which ('sidebar' or 'page') for the settings notice. Each
+// caller runs the shape check first and passes the table it returns, so a
+// write to a table the page refilled lands on the fresh registration.
 function writeTableSettings(table, patch, source) {
-  const revalidated = revalidateTableShape(table);
-  if (!revalidated.table) return;
-  const target = revalidated.table;
-  DR_STORE.setTableSettings(target,
-    Object.assign({}, DR_STORE.getTableSettings(target), patch), source);
-  applySidebarRounding(target);
+  DR_STORE.setTableSettings(table,
+    Object.assign({}, DR_STORE.getTableSettings(table), patch), source);
+  applySidebarRounding(table);
 }
 
 // Every row at one of the log module's error levels (warn and error) is an
@@ -80,12 +76,15 @@ DR_LOG.onRow((row) => {
 
 // The sidebar's settings apply: write the active table's settings and apply
 // them. The sidebar leaves the on/off value out while the #262 lock forces its
-// switch on, and the merge keeps the table's own value then. With no table
-// active nothing is written. The answer's only job is to exist: the sidebar
-// reads that someone answered and stays bound.
+// switch on, and the merge keeps the table's own value then. The shape check
+// runs before the write, so a change landing on a table the page refilled
+// writes the fresh registration, and a shape change that registers nothing
+// stops the write. With no table active nothing is written. The answer's only
+// job is to exist: the sidebar reads that someone answered and stays bound.
 DR_BUS.respond('request:applySettings', ({ settings }) => {
   const active = DR_STORE.getSelectedTable();
-  if (active) writeTableSettings(active, settings, 'sidebar');
+  const target = active && revalidateTableShape(active).table;
+  if (target) writeTableSettings(target, settings, 'sidebar');
   return { ok: true };
 });
 
@@ -248,7 +247,9 @@ DR_BUS.subscribe('state:sidebarOpened', () => {
     DR_LOG.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
     return;
   }
-  applySidebarRounding(selected);
+  // The shape check runs before the apply, the same as on every other path.
+  const table = revalidateTableShape(selected).table;
+  if (table) applySidebarRounding(table);
   // Tell the sidebar its view is stale; it re-reads the active table's
   // settings and re-asks for preview samples against it.
   DR_BUS.publish('state:previewSamplesChanged', {});
@@ -279,19 +280,14 @@ window.addEventListener('pagehide', () => {
 
 // Apply a table's own settings to it: reset it, then simplify it when its
 // on/off value is on.
-function applySidebarRounding(requestedTable) {
-  // The shape check runs before the reset, so a table the page refilled is
-  // discarded and registered fresh rather than reset against originals that
-  // belong to cells no longer on the screen. The locked path below sits
-  // after this check for the same reason: a locked table whose shape changed
-  // is a replaced table, and its lost originals stop mattering once the
-  // entry holding them is gone. The apply continues on the element the check
-  // returns, which is a different element where a new result set moved the
-  // registration. A shape change that registers nothing stops the apply.
-  const revalidated = revalidateTableShape(requestedTable);
-  if (!revalidated.table) return;
-  const table = revalidated.table;
-
+//
+// Every caller runs the shape check first and passes the table it returns,
+// so a table the page refilled is discarded and registered fresh rather than
+// reset against originals that belong to cells no longer on the screen. The
+// locked path below depends on that order for the same reason: a locked
+// table whose shape changed is a replaced table, and its lost originals stop
+// mattering once the entry holding them is gone.
+function applySidebarRounding(table) {
   const opts = DR_STORE.getTableSettings(table);
   ensureHighlightStyleInjected();
   const unrestorableCount = resetTable(table);

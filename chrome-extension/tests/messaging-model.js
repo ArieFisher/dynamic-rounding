@@ -99,8 +99,8 @@
     /state:sidebarOpened[\s\S]{0,200}applySidebarRounding\([^)]*DR_DEFAULTS/.test(contentSrc), false);
 
   eq('pull (inverted): content.js applies the active table\'s own settings on state:sidebarOpened',
-    /state:sidebarOpened[\s\S]{0,400}applySidebarRounding\(selected\)/.test(contentSrc) &&
-      /function applySidebarRounding\(requestedTable\)[\s\S]{0,1200}DR_STORE\.getTableSettings\(table\)/.test(contentSrc),
+    /state:sidebarOpened[\s\S]{0,600}revalidateTableShape\(selected\)[\s\S]{0,100}applySidebarRounding\(table\)/.test(contentSrc) &&
+      /function applySidebarRounding\(table\)\s*\{\s*const opts = DR_STORE\.getTableSettings\(table\)/.test(contentSrc),
     true);
 
   eq('pull (inverted): sidebar.js no longer handles GET_SIDEBAR_SETTINGS',
@@ -134,7 +134,7 @@
     /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), false);
 
   eq('registry: the table settings are recorded via DR_STORE.setTableSettings, in the controller\'s one write',
-    /function writeTableSettings\([\s\S]{0,400}DR_STORE\.setTableSettings\(target,/.test(contentSrc), true);
+    /function writeTableSettings\([\s\S]{0,400}DR_STORE\.setTableSettings\(table,/.test(contentSrc), true);
   eq('registry: roundTable writes no settings (issue #328)',
     /function roundTable\([\s\S]{0,300}setTableSettings/.test(contentSrc), false);
 
@@ -3016,6 +3016,36 @@ function issue328SettingsOf(table) {
   });
 })();
 
+// Each path runs the shape check once, before its write or its apply. Only
+// the first check can find a changed shape: it registers the fresh table, and
+// a second check on that table compares it against the shape it registered a
+// moment ago. The count reads the check's first step, the read of the
+// recorded shape.
+(function issue328_eachPathRunsTheShapeCheckOnce() {
+  runPressFixture(() => {
+    const table = makePressTable('8,584,629');
+    DR_STORE.setSelectedTable(table);
+    const origRead = DR_STORE.getTableFingerprint;
+    let checks = 0;
+    DR_STORE.getTableFingerprint = (t) => { checks++; return origRead(t); };
+    const countChecks = (run) => {
+      checks = 0;
+      withCreateTreeWalker(run);
+      return checks;
+    };
+    try {
+      const press = countChecks(() => DR_BUS.publish('intent:toggleTable', { table }));
+      const apply = countChecks(() => askContentScript({ action: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, ISSUE328_LIGHT) }));
+      const reopen = countChecks(() => askContentScript({ action: 'state:sidebarOpened' }));
+      eq('shape check: a pillbox press, a sidebar change, and a sidebar reopen each run it once',
+        [press, apply, reopen], [1, 1, 1]);
+    } finally {
+      DR_STORE.getTableFingerprint = origRead;
+    }
+  });
+})();
+
 // Turning a table off resets its cells and keeps its settings, so the next
 // press simplifies it again under the settings it had.
 (function issue328_anOffPressKeepsTheTablesSettings() {
@@ -3679,9 +3709,9 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// --- The second entry point: the apply. The shape check runs before the
-// reset, so a locked table whose content the page replaced registers fresh and
-// the apply proceeds. ---
+// --- The second entry point: a sidebar change. The shape check runs before
+// the write and its apply's reset, so a locked table whose content the page
+// replaced registers fresh and the apply proceeds. ---
 
 (function shapeFingerprint_aLockedTableWhoseShapeChangedRegistersFresh() {
   runPressFixture(({ sent }) => {
@@ -3715,7 +3745,8 @@ function issue328SettingsOf(table) {
     sent.length = 0;
     withCreateTreeWalker(function () {
       withToggleDocumentMock(function () {
-        applySidebarRounding(table);
+        askContentScript({ action: 'request:applySettings',
+          settings: DR_STORE.getTableSettings(table) });
       });
     });
 
