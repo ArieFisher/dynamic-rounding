@@ -98,8 +98,6 @@ const PARENS_REGEX = /^\((.+)\)$/;
 // number span (lib/dr-number/parsing.js) steps past the same class.
 const DASH_CLASS = '[‐-―−﹘﹣－]';
 const DASH_REGEX = new RegExp(DASH_CLASS, 'g');
-const DEFAULT_OFFSET_TOP = -0.5;
-const DEFAULT_NUM_TOP = 1;
 const VALIDATION_LIMIT = 20;
 
 function findMaxMagnitude(numericRange) {

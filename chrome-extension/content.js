@@ -6,8 +6,7 @@
  */
 
 // Constants
-// CLEAN_REGEX, PARENS_REGEX, DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP, and
-// VALIDATION_LIMIT live in core.js (loaded ahead of this file); they are used
+// CLEAN_REGEX, PARENS_REGEX, and VALIDATION_LIMIT live in core.js (loaded ahead of this file); they are used
 // here too via shared global scope.
 
 // EPSILON, X_FLOOR_THRESHOLD, roundWithOffset, and roundCellSetAware live in
@@ -1092,12 +1091,12 @@ function unroundedCellsRow(missed, total) {
 
 // The offsets and the top-band count, resolved once for the whole table.
 function resolveRoundingSettings(opts) {
-  const offsetTop = resolveOffset(opts.offsetTop, DEFAULT_OFFSET_TOP);
+  const offsetTop = resolveOffset(opts.offsetTop, DR_DEFAULTS.offsetTop);
   const offsetOther = resolveOffset(opts.offsetOther, offsetTop);
   return {
     offsetTop,
     offsetOther,
-    numTop: resolveNumTop(opts.numTop, DEFAULT_NUM_TOP),
+    numTop: resolveNumTop(opts.numTop, DR_DEFAULTS.numTop),
   };
 }
 
@@ -1537,7 +1536,7 @@ function roundTable(table, options) {
   return { applied: true, rangeStatus: 'ok' };
 }
 
-// findMaxMagnitude and toNumber (plus DEFAULT_OFFSET_TOP, DEFAULT_NUM_TOP,
-// VALIDATION_LIMIT, CLEAN_REGEX, PARENS_REGEX) live in core.js, loaded by
+// findMaxMagnitude and toNumber (plus VALIDATION_LIMIT, CLEAN_REGEX,
+// PARENS_REGEX) live in core.js, loaded by
 // manifest content_scripts ahead of this file. The sidebar loads core.js
 // separately via a script tag in sidebar.html.
