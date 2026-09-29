@@ -127,11 +127,6 @@ const DR_BUS = (function () {
     'intent:selectTable': { family: INTENT, route: null },
     'intent:toggleTable': { family: INTENT, route: null },
     'state:selectedTableChanged': { family: STATE_CHANGE, route: null },
-    // Published by the model (app/store.js) after every settings change,
-    // regardless of source. The controller subscribes to apply the new
-    // value to the selected table — this is the bus's first state-change
-    // subscriber (see the depth guard below, issue #240).
-    'state:settingsChanged': { family: STATE_CHANGE, route: null },
     // Published by the model after every error row it records. The toast view
     // (ui-toast.js) subscribes to draw the row on the page. Same context
     // only: the sidebar reads the error state through the capture state pull.
@@ -140,10 +135,11 @@ const DR_BUS = (function () {
     // which holds the model.
     //
     // The settings apply is a request rather than a one-way publish: the
-    // content script records the settings and answers, and the sidebar reads
-    // whether anyone answered at all to decide bound versus unbound. The
-    // answer's value is never read. The other three read the model: its
-    // settings, the selected table's preview samples, and the capture state.
+    // content script writes the active table's settings and answers, and the
+    // sidebar reads whether anyone answered at all to decide bound versus
+    // unbound. The answer's value is never read. The other three read the
+    // model: the active table's settings, its preview samples, and the
+    // capture state.
     'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
     'request:settings': { family: REQUEST, route: ROUTE_TAB },
     'request:previewSamples': { family: REQUEST, route: ROUTE_TAB },
@@ -163,9 +159,15 @@ const DR_BUS = (function () {
     // The content script's reports to the sidebar. Every one takes the
     // broadcast carrier: the content script holds no tabs interface, and the
     // sidebar is an extension page.
+    //
+    // The settings notice: the model (app/store.js) publishes it after every
+    // write of a table's settings, whatever the writer. It names whether the
+    // table is the active one and which side wrote it, and carries the
+    // table's whole settings; the sidebar redraws from it. The content script
+    // publishes it and holds no subscriber of its own.
+    'state:settingsChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableActivated': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableSwitched': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
-    'state:tableEnabledChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:rangeError': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:rangeOk': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:applyBlocked': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },

@@ -272,7 +272,7 @@ function createToggleForTable(table) {
   // publishes the intent and stops. It calls no content.js function itself.
   // The controller (content.js) is the sole subscriber to intent:toggleTable,
   // and it runs the one press path: make the pressed table active, flip its
-  // form, write the settings record, and send whatever sidebar messaging
+  // form, write the table's settings, and send whatever sidebar messaging
   // that implies. This view keeps only the expand/collapse interaction state
   // (view-transient), never the press logic.
   button.addEventListener('click', (e) => {

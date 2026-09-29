@@ -49,25 +49,21 @@ DR_BUS.subscribe('intent:selectTable', ({ table }) => {
   DR_STORE.setSelectedTable(table);
 });
 
-// The bus's first state-change subscriber (see adapters/messaging.js's depth
-// guard, issue #240): whenever the model's settings change — regardless of
-// source — apply the new value to whichever table is currently selected.
-// The sidebar's settings apply reaches the model through the responder below
-// (its DR_STORE.setSettings is what triggers this subscriber); this also
-// covers any in-context caller that sets settings without going through that
-// request.
-DR_BUS.subscribe('state:settingsChanged', () => {
-  const selected = DR_STORE.getSelectedTable();
-  if (selected) {
-    applySidebarRounding(selected);
-  }
-});
-
-// The controller's merge write: the settings record's current values with
-// the patch's keys replaced. The pillbox press and the shape change's clear
-// of the range expression both write through it.
-function writeSettings(patch) {
-  DR_STORE.setSettings(Object.assign({}, DR_STORE.getSettings(), patch));
+// The controller's one write of a table's settings, followed by the apply
+// that puts them on the screen. The shape check runs first, so a write to a
+// table the page refilled lands on the fresh registration, and the patch
+// merges onto that table's settings: the keys the patch holds replace, and
+// every other key keeps the table's value. The sidebar's apply and the
+// pillbox press both write through it; source names which ('sidebar' or
+// 'page') for the settings notice. A shape change that registers nothing
+// stops the write.
+function writeTableSettings(table, patch, source) {
+  const revalidated = revalidateTableShape(table);
+  if (!revalidated.table) return;
+  const target = revalidated.table;
+  DR_STORE.setTableSettings(target,
+    Object.assign({}, DR_STORE.getTableSettings(target), patch), source);
+  applySidebarRounding(target);
 }
 
 // Every row at one of the log module's error levels (warn and error) is an
@@ -82,11 +78,14 @@ DR_LOG.onRow((row) => {
   if (DR_LOG.ERROR_LEVELS.includes(row.level)) DR_STORE.recordError(row);
 });
 
-// The sidebar's settings apply. Record it; the state-change subscriber above
-// applies it to the table. The answer's only job is to exist: the sidebar
+// The sidebar's settings apply: write the active table's settings and apply
+// them. The sidebar leaves the on/off value out while the #262 lock forces its
+// switch on, and the merge keeps the table's own value then. With no table
+// active nothing is written. The answer's only job is to exist: the sidebar
 // reads that someone answered and stays bound.
 DR_BUS.respond('request:applySettings', ({ settings }) => {
-  DR_STORE.setSettings(settings || DR_DEFAULTS);
+  const active = DR_STORE.getSelectedTable();
+  if (active) writeTableSettings(active, settings, 'sidebar');
   return { ok: true };
 });
 
@@ -110,27 +109,18 @@ DR_BUS.respond('request:applySettings', ({ settings }) => {
 // The rules, in the order they matter:
 //
 //   1. The flip direction comes from the screen BEFORE any write. The
-//      settings write below publishes, and that publish applies to the
-//      active table, so a direction read afterward would read our own
-//      output: a press on a raw table would simplify it, then read
-//      "simplified" and write off, and the second apply would reset it —
-//      the press would land back where it started.
+//      settings write below applies to the table, so a direction read
+//      afterward would read our own output: a press on a raw table would
+//      simplify it, then read "simplified" and write off, and the second
+//      apply would reset it — the press would land back where it started.
 //   2. Activation precedes the write, so the sidebar receives the new
-//      active table before any APPLY_BLOCKED/APPLY_OK for it. The existing
-//      suite pins that order.
-//   3. Exactly one settings write per press. It carries the flipped enabled
-//      and, where the press moved the active table, the cleared range
-//      expression (see below). The state-change subscriber above runs the
-//      single apply.
-//
-// The range expression states rows and columns by position, so it describes
-// the table it was written for. Carrying it to a second table addresses
-// different data, and an expression the parser rejects would stop the press
-// before any cell changed, with RANGE_ERROR reaching a sidebar that may
-// stand closed. A press that moves the active table therefore clears it. A
-// press on the table that is already active keeps it: that table is the one
-// the expression describes. #328 replaces the clear with a per-table
-// expression.
+//      active table before the settings notice and any APPLY_BLOCKED/
+//      APPLY_OK for it. The existing suite pins that order.
+//   3. Exactly one settings write per press: the flipped on/off value, onto
+//      the pressed table's own settings. Every other setting, the range
+//      expression included, keeps the table's value, because each table
+//      holds its own. The write's settings notice carries the new value to
+//      the sidebar, and the write runs the single apply.
 DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
   // Rule 0: the shape check runs before rule 1's screen read. A press on a
   // table the page has refilled therefore reads the fresh entry's raw form
@@ -145,12 +135,8 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
 
   // Rule 1: read the screen first.
   const nextEnabled = !isTableRounded(target);
-  // A shape change counts as a move on its own. The fresh entry registered a
-  // moment ago and holds nothing, and the range expression states rows and
-  // columns by position, so it describes a shape that is gone.
-  const moved = revalidated.switched || target !== DR_STORE.getSelectedTable();
 
-  if (moved && !revalidated.switched) {
+  if (!revalidated.switched && target !== DR_STORE.getSelectedTable()) {
     // Rule 2. Reported as an intent rather than written here, so one intent
     // stays the single place a table becomes active even when a second
     // intent (toggle) is what triggered it. A shape change published both of
@@ -160,27 +146,11 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
     DR_BUS.publish('state:tableSwitched', {});
   }
 
-  // Rule 3: one write. A moved press clears the range expression in the
-  // same write, so the clear cannot apply on its own.
-  const patch = { enabled: nextEnabled };
-  if (moved) patch.rangeExpr = '';
-  writeSettings(patch);
-
-  // The sidebar receives the new value once. A moved press already sent
-  // TABLE_SWITCHED, and the sidebar's handler for it re-reads the settings
-  // record, so a send here would be a second delivery of the same fact. On a
-  // locked table it would carry a value the apply then blocks. An unmoved
-  // press sends no TABLE_SWITCHED, which leaves this the only path. With the
-  // sidebar closed no page receives either send; while the #262 lock holds,
-  // the open sidebar routes this one to its stash instead of the forced-ON
-  // switch.
-  if (!moved) {
-    DR_BUS.publish('state:tableEnabledChanged', { enabled: nextEnabled });
-  }
+  // Rule 3: one write.
+  writeTableSettings(target, { enabled: nextEnabled }, 'page');
 });
 
-// The options used for the most recent roundTable() run, the frozen grid
-// magnitude basis, the simplified/original flag, and every cell's pre-round
+// Each table's settings, the frozen grid magnitude basis, the simplified/original flag, and every cell's pre-round
 // original now live in DR_STORE's per-table registry entry (app/store.js) —
 // not a file-level WeakMap here.
 
@@ -259,7 +229,7 @@ function sendRangeStatusMessage(result) {
 // the one controller path above (issue #275). The right-click that opened the
 // menu already made the table active (the contextmenu handler's
 // setSelectedTable), so the press lands as an unmoved one: it flips the
-// settings record's on/off value and keeps the range expression.
+// table's on/off value.
 DR_BUS.subscribe('intent:menuClicked', () => {
   if (!lastRightClickedElement) return;
   const found = findTargetTable(lastRightClickedElement, { isSeen: DR_STORE.hasTable });
@@ -270,8 +240,8 @@ DR_BUS.subscribe('intent:menuClicked', () => {
   DR_BUS.publish('intent:toggleTable', { table: markAndToggleIfNewGrid(found) });
 });
 
-// Reconnect: pull the model's own selection and settings — the sidebar may be
-// reopening after a close, and DR_STORE owns both of record.
+// Reconnect: apply the active table's own settings to it — the sidebar may be
+// reopening after a close, and the model holds both of record.
 DR_BUS.subscribe('state:sidebarOpened', () => {
   const selected = DR_STORE.getSelectedTable();
   if (!selected) {
@@ -279,15 +249,18 @@ DR_BUS.subscribe('state:sidebarOpened', () => {
     return;
   }
   applySidebarRounding(selected);
-  // Tell the sidebar its view is stale; it re-reads the model's settings and
-  // re-asks for preview samples against the now-current targeted table.
+  // Tell the sidebar its view is stale; it re-reads the active table's
+  // settings and re-asks for preview samples against it.
   DR_BUS.publish('state:previewSamplesChanged', {});
 });
 
 // The sidebar's three reads of the model. Each answers from the tab's own
 // copy — the sidebar holds none of its own, so a close and reopen loses
-// nothing.
-DR_BUS.respond('request:settings', () => ({ settings: DR_STORE.getSettings() }));
+// nothing. The settings read answers the active table's settings; with no
+// table active, the model answers the shipped defaults.
+DR_BUS.respond('request:settings', () => ({
+  settings: DR_STORE.getTableSettings(DR_STORE.getSelectedTable()),
+}));
 
 // No selected table answers nulls rather than nothing: the sidebar reads a
 // null samples field as the unbound state, and an unanswered request reaches
@@ -304,8 +277,8 @@ window.addEventListener('pagehide', () => {
   DR_BUS.publish('state:pageUnloaded', {});
 });
 
-// Apply the settings record to one table: reset it, then simplify it when the
-// record's on/off value is on.
+// Apply a table's own settings to it: reset it, then simplify it when its
+// on/off value is on.
 function applySidebarRounding(requestedTable) {
   // The shape check runs before the reset, so a table the page refilled is
   // discarded and registered fresh rather than reset against originals that
@@ -319,7 +292,7 @@ function applySidebarRounding(requestedTable) {
   if (!revalidated.table) return;
   const table = revalidated.table;
 
-  const opts = DR_STORE.getSettings();
+  const opts = DR_STORE.getTableSettings(table);
   ensureHighlightStyleInjected();
   const unrestorableCount = resetTable(table);
   if (unrestorableCount > 0) {
@@ -520,7 +493,12 @@ function fingerprintReadOpts(table) {
 //
 // The switch publishes even where the fresh registration lands on the same
 // element: the entry is new either way, with no originals and a raw form, and
-// the sidebar re-reads the settings record on that topic.
+// the sidebar re-reads the active table's settings on that topic.
+//
+// The fresh table carries the replaced table's settings, with the range
+// expression cleared: the expression states rows and columns by position, so
+// it points at cells that no longer exist. This is the one place a range
+// expression clears.
 //
 // A table with no recorded fingerprint compares against nothing and returns
 // as a match. Only a first write through the registry's setters creates such
@@ -549,8 +527,13 @@ function revalidateTableShape(table, opts = {}) {
 
   DR_LOG.debug("Dynamic Rounding: table shape changed; re-running detection.");
 
-  // The order is restore, tear down, re-nominate, register, activate,
-  // publish.
+  // The order is restore, tear down, re-nominate, register, carry the
+  // settings, activate, publish. The settings are read before the teardown
+  // discards the entry that holds them, and they land on the fresh table
+  // before the switch publishes, so the sidebar's pull on the switch reads
+  // them. When the page kept the same element, the selection still points at
+  // it, so the carry's notice is marked active and the sidebar also draws the
+  // carried settings from the notice; both draws show the same values.
   //
   // The restore runs first, against the old entry while it still holds the
   // originals. A page that widens a table and leaves the rest of each row in
@@ -564,6 +547,7 @@ function revalidateTableShape(table, opts = {}) {
   // from there. A cell whose original is gone stays as it is, the same as
   // any other restore. The originals go back into the cells and nowhere
   // else, so none of them reaches the fresh entry.
+  const carried = DR_STORE.getTableSettings(table);
   resetTable(table);
   teardownTableEntry(table, 'replaced');
 
@@ -586,6 +570,7 @@ function revalidateTableShape(table, opts = {}) {
     return { table: null, switched: false };
   }
 
+  DR_STORE.setTableSettings(fresh, Object.assign({}, carried, { rangeExpr: '' }), 'page');
   if (opts.activates !== false) {
     DR_BUS.publish('intent:selectTable', { table: fresh });
     DR_BUS.publish('state:tableSwitched', {});
@@ -760,10 +745,9 @@ function resetTable(table) {
   // The re-apply observer stops BEFORE the cell restore, so the restore's
   // own writes run no pass and a queued pass cannot fire after the reset.
   unwatchTable(table);
-  // Also clear the table's settings and frozen magnitude basis so a pass (if
-  // somehow still in flight) stops harmlessly, and so the next roundTable()
-  // call re-freezes fresh.
-  DR_STORE.setTableSettings(table, null);
+  // Also clear the frozen magnitude basis, so the next roundTable() call
+  // re-freezes fresh. The table's settings stay: a reset changes the cells,
+  // never what the table is set to.
   DR_STORE.setTableMaxMagnitude(table, null);
 
   const unrestorableCount = restoreTable(table);
@@ -836,7 +820,7 @@ function decisionToLegacyInfo(decision) {
 //
 // options defaults to DR_DEFAULTS when the caller passes none (tests exercise
 // the ladder's option-gated rules directly this way); the real call site,
-// extractPreviewSamples below, passes the model's live settings so the lens
+// extractPreviewSamples below, passes the table's own settings so the lens
 // preview classifies cells exactly as roundTable will.
 function collectNumericCells(table, options) {
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
@@ -865,10 +849,10 @@ function collectNumericCells(table, options) {
 // the band shows the actual offset_top vs offset_other split that
 // roundCellSetAware will apply to the table.
 function extractPreviewSamples(table) {
-  // Live settings, not shipped defaults — otherwise the preview band and the
-  // table disagree the moment the sidebar's slider or checkboxes diverge
-  // from DR_DEFAULTS (issue this sprint fixes).
-  const liveSettings = DR_STORE.getSettings();
+  // The table's own settings, not shipped defaults — otherwise the preview
+  // band and the table disagree the moment the sidebar's slider or
+  // checkboxes diverge from DR_DEFAULTS.
+  const liveSettings = DR_STORE.getTableSettings(table);
   const cells = collectNumericCells(table, liveSettings);
   if (cells.length === 0) {
     return { samples: { top: [], bottom: [] }, maxMag: null };
@@ -1467,18 +1451,18 @@ function reapplyRounding(table) {
 // The pass itself. It writes nothing while the table's form is raw. The
 // shape check runs before any cell is sorted: a table the page refilled
 // re-detects and simplifies fresh. The pass then runs the one
-// simplification pass under the table's magnitude freeze, if it holds one,
-// so a grid's scroll never shifts its rounding basis, and a native table's
-// max magnitude follows the page's values.
+// simplification pass under the table's own settings and its magnitude
+// freeze, if it holds one, so a grid's scroll never shifts its rounding
+// basis, and a native table's max magnitude follows the page's values.
 function runReapplyPass(table) {
-  const opts = DR_STORE.getTableSettings(table);
-  if (!opts || DR_STORE.getTableAppliedFlag(table) !== 'simplified') return;
+  if (DR_STORE.getTableAppliedFlag(table) !== 'simplified') return;
   const wasActive = DR_STORE.getSelectedTable() === table;
   const revalidated = revalidateTableShape(table, { activates: wasActive });
   if (revalidated.switched || revalidated.table !== table) {
-    resimplifyReplacedTable(revalidated.table, opts, wasActive);
+    resimplifyReplacedTable(revalidated.table, wasActive);
     return;
   }
+  const opts = DR_STORE.getTableSettings(table);
   const adapter = registryAdapter(table);
   const result = simplifyTableCells(table, adapter.getRows(), opts, {
     kind: tableKindPass(adapter),
@@ -1492,24 +1476,22 @@ function runReapplyPass(table) {
   }
 }
 
-// Simplify the table a shape change registered, with the settings the
-// replaced table carried. The range expression states rows and columns by
-// position, so it describes a shape that is gone and clears. On the active
-// table this is the path a pillbox press on a changed table takes: the
-// settings record's write applies to the table the shape check made active.
-// On any other table the sidebar's binding stays where it is.
-function resimplifyReplacedTable(fresh, opts, wasActive) {
+// Simplify the table a shape change registered, with the settings the shape
+// check carried onto it from the replaced table (range expression cleared).
+// On the active table this is the apply the sidebar's controls describe, so
+// it runs the same apply a sidebar change runs. On any other table the
+// sidebar's binding stays where it is.
+function resimplifyReplacedTable(fresh, wasActive) {
   if (!fresh) return;
   if (wasActive) {
-    writeSettings({ rangeExpr: '' });
+    applySidebarRounding(fresh);
     return;
   }
-  roundTable(fresh, Object.assign({}, opts, { rangeExpr: '' }));
+  roundTable(fresh, DR_STORE.getTableSettings(fresh));
 }
 
 function roundTable(table, options) {
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
-  DR_STORE.setTableSettings(table, opts);
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   if (rangeParse.error) {
     return { applied: false, rangeStatus: 'error', error: rangeParse.error };

@@ -107,8 +107,12 @@
   const switchHandlerBlock = switchHandlerMatch ? switchHandlerMatch[1] : '';
   eq('rebind source: sidebar.js state:tableSwitched handler block was isolated (sanity check on the scan itself)',
     switchHandlerBlock.length > 0, true);
+  // The handler lifts the lock through liftLockAndPullSettings, whose own
+  // body runs the pull.
   eq('rebind source: sidebar.js state:tableSwitched handler calls pullSettingsAndApplyToUI()',
-    /pullSettingsAndApplyToUI\(\)/.test(switchHandlerBlock), true);
+    /pullSettingsAndApplyToUI\(\)/.test(switchHandlerBlock) ||
+      (/liftLockAndPullSettings\(\)/.test(switchHandlerBlock) &&
+        /function liftLockAndPullSettings\(\) \{[^}]*pullSettingsAndApplyToUI\(\)/.test(sidebarSrc)), true);
 
   // sidebar.js: state:tableSwitched handler does NOT reset the controls to the
   // shipped defaults — that reset is what desynced the panel from the model.
@@ -763,7 +767,7 @@
   const savedSelected = DR_STORE.getSelectedTable();
   DR_STORE.setSelectedTable(null); // see the note on the guarded cycle above
 
-  const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { settings: DR_STORE.getSettings() }); });
+  const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { active: false, source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); });
   const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, { table: null }); });
 
   let threw = null;
@@ -1050,6 +1054,8 @@
     return;
   }
 
+  // The attribute stubs serve the controls' redraw, which a lock lift runs
+  // when its settings read answers.
   function makeEl() {
     return {
       addEventListener() {}, removeEventListener() {},
@@ -1058,6 +1064,7 @@
       appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
       getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
       matches() { return false; }, closest() { return null; }, dataset: {},
+      setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
     };
   }
 
@@ -1337,10 +1344,10 @@
 // branch a pill click uses. The right-click that opens the menu already
 // connects the table (the contextmenu handler calls setSelectedTable), so
 // with the sidebar open, "Toggle table" on that table must write the
-// record and report it (state:tableEnabledChanged) — the #272 contract. Before the
-// fix, intent:menuClicked simplified the table directly: the page changed,
-// the settings record and the sidebar both went stale, and the next reopen or switch
-// re-imposed the stale record. Fresh-eval fixture modeled on the
+// table's settings and send them (the settings notice, issue #328) — the
+// #272 contract. Before the fix, intent:menuClicked simplified the table
+// directly: the page changed, the settings and the sidebar both went stale,
+// and the next reopen or switch re-imposed the stale settings. Fresh-eval fixture modeled on the
 // double-invocation test above; same minimal grid, real captured handlers.
 // ---------------------------------------------------------------------------
 (function issue275_menuToggleOnConnectedTableWritesRecord() {
@@ -1426,19 +1433,19 @@
     eq('menu-toggle record: the right-click connected the grid',
       store.getSelectedTable(), gridEl);
 
-    // The settings record starts at on, the table showing simplified values.
+    // The table's settings start at on, the table showing simplified values.
     store.setTableAppliedFlag(gridEl, 'simplified');
-    eq('menu-toggle record: precondition — the record starts enabled',
-      store.getSettings().enabled, true);
+    eq('menu-toggle record: precondition — the table\'s settings start enabled',
+      store.getTableSettings(gridEl).enabled, true);
 
     sentMessages.length = 0;
     fireMessage({ action: 'intent:menuClicked' });
 
-    eq('menu-toggle record: the menu toggle on the connected table writes the record\'s off',
-      store.getSettings().enabled, false);
-    const toggleMsgs = sentMessages.filter((m) => m.action === 'state:tableEnabledChanged');
-    eq('menu-toggle record: the menu toggle reports the record to the panel — off',
-      toggleMsgs.map((m) => m.enabled), [false]);
+    eq('menu-toggle record: the menu toggle on the connected table writes the table\'s off',
+      store.getTableSettings(gridEl).enabled, false);
+    const notices = sentMessages.filter((m) => m.action === 'state:settingsChanged');
+    eq('menu-toggle record: the menu toggle sends the table\'s settings to the panel — off, for the active table',
+      notices.map((m) => [m.settings.enabled, m.active]), [[false, true]]);
   } finally {
     delete global.__i275_DR_STORE;
     global.document = savedDoc;
@@ -1448,134 +1455,19 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #272, leak 2: the #262 lock's forced ON must be display-only. The
-// panel stashes the record's enabled when the lock engages, every save under
-// the lock writes the stashed value (the sliders stay usable while locked),
-// record changes landing under the lock update the stash, and lifting the
-// lock puts the stashed value back on the switch. Before the fix, a save
-// under the lock wrote the forced ON into the record — silently discarding
-// the user's off — and the forced ON outlived the lock until the next pull.
+// Issue #272, leak 2: the #262 lock's forced ON must be display-only. Before
+// the fix, a save under the lock wrote the forced ON into the settings —
+// silently discarding the user's off — and the forced ON outlived the lock
+// until the next pull. The sidebar held a copy of the on/off value under the
+// lock to guard this until issue #328 moved the value onto the table in the
+// application model; the issue328 lock tests below pin the save, the lift,
+// and a notice under the lock. These two keep the lock's edges.
 // ---------------------------------------------------------------------------
-(function issue272_saveUnderLockWritesTheRecordsEnabled() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('lock-save: source files (defaults/rounding/core/messaging) present in manifest',
-      false, true);
-    return;
-  }
-  try {
-    eq('lock-save: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
-    // The module-level pull mirrored the model: enabled off.
-    eq('lock-save: precondition — the switch mirrors the model\'s off',
-      h.enabledEl.checked, false);
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    eq('lock-save: precondition — the lock forces the switch on',
-      h.enabledEl.checked, true);
-
-    // A save while locked — the granularity control's change listener runs
-    // the same applyNow a slider drag ends in.
-    h.tabMessages.length = 0;
-    h.el('dateGranularity').fire('change');
-    const applyMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
-    eq('lock-save: the save reaches the wire', applyMsg !== undefined, true);
-    eq('lock-save: a save under the lock writes the record\'s off — not the forced on',
-      applyMsg && applyMsg.settings.enabled, false);
-  } finally {
-    h.restore();
-  }
-})();
-
-(function issue272_lockLiftRestoresTheRecordsEnabled() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('lock-lift: source files (defaults/rounding/core/messaging) present in manifest',
-      false, true);
-    return;
-  }
-  try {
-    eq('lock-lift: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    h.dispatch({ action: 'state:applyOk' });
-    eq('lock-lift: state:applyOk lifts the lock',
-      h.bodyClasses.has('table-locked'), false);
-    eq('lock-lift: state:applyOk re-enables the switch', h.enabledEl.disabled, false);
-    eq('lock-lift: the switch returns to the record\'s off — the forced ON does not outlive the lock',
-      h.enabledEl.checked, false);
-  } finally {
-    h.restore();
-  }
-})();
-
-(function issue272_recordChangesUnderLockAreDisplayOnlyAndTracked() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('locked toggle-state: source files (defaults/rounding/core/messaging) present in manifest',
-      false, true);
-    return;
-  }
-  try {
-    eq('locked toggle-state: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    h.dispatch({ action: 'state:tableEnabledChanged', enabled: false });
-    eq('locked toggle-state: the switch stays forced on while locked — the record change is display-only',
-      h.enabledEl.checked, true);
-    h.dispatch({ action: 'state:tableEnabledChanged', enabled: true });
-    h.dispatch({ action: 'state:applyOk' });
-    eq('locked toggle-state: the lift shows the record\'s latest value (on)',
-      h.enabledEl.checked, true);
-
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    h.dispatch({ action: 'state:tableEnabledChanged', enabled: false });
-    h.dispatch({ action: 'state:applyOk' });
-    eq('locked toggle-state: the lift shows the record\'s latest value (off)',
-      h.enabledEl.checked, false);
-  } finally {
-    h.restore();
-  }
-})();
-
-// A re-lock while already locked must keep the stash — never capture the
-// forced ON. The real sequence: a save under the lock re-applies on the
-// content side, the stuck table blocks again, and a second state:applyBlocked
-// lands while the switch is already forced on. Without the engage-guard the
-// stash becomes true and the next save writes the forced ON into the record
-// — leak 2 verbatim, one message later.
-(function issue272_reLockKeepsTheStash() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('re-lock: source files (defaults/rounding/core/messaging) present in manifest',
-      false, true);
-    return;
-  }
-  try {
-    eq('re-lock: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
-    h.dispatch({ action: 'state:applyBlocked', count: 1 }); // stash = model's off
-    h.dispatch({ action: 'state:applyBlocked', count: 1 }); // re-lock: stash must survive
-    h.tabMessages.length = 0;
-    h.el('dateGranularity').fire('change');
-    const applyMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
-    eq('re-lock: a save after a second state:applyBlocked still writes the record\'s off',
-      applyMsg && applyMsg.settings.enabled, false);
-    h.dispatch({ action: 'state:applyOk' });
-    eq('re-lock: the lift still shows the record\'s off',
-      h.enabledEl.checked, false);
-  } finally {
-    h.restore();
-  }
-})();
 
 // Unbinding while locked (a save whose delivery fails runs setTableBound(false))
-// must drop the stash with the lock. Without the clear, the stash outlives the
-// lock and the next state:applyOk restores a stale ON over the no-table off.
-(function issue272_unbindWhileLockedDropsTheStash() {
+// ends the lock with the no-table off. A later state:applyOk finds no lock to
+// lift, so it reads nothing back and restores no stale ON over that off.
+(function issue272_unbindWhileLockedEndsTheLock() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
     eq('unbind-locked: source files (defaults/rounding/core/messaging) present in manifest',
@@ -1586,11 +1478,10 @@
     eq('unbind-locked: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
 
-    // Drift the switch on, then lock — the stash captures the drifted on.
     h.enabledEl.checked = true;
     h.dispatch({ action: 'state:applyBlocked', count: 1 });
     // A save whose delivery fails: nothing answers applyNow's request, and it
-    // unbinds the panel (setTableBound(false)) — lock and stash both go.
+    // unbinds the panel (setTableBound(false)), which ends the lock.
     h.chromeMock.runtime.lastError = { message: 'no receiving end' };
     h.el('dateGranularity').fire('change');
     h.chromeMock.runtime.lastError = null;
@@ -1599,37 +1490,244 @@
     eq('unbind-locked: the no-table state forces the switch off',
       h.enabledEl.checked, false);
     h.dispatch({ action: 'state:applyOk' });
-    eq('unbind-locked: a later state:applyOk does not resurrect the pre-unbind stash',
+    eq('unbind-locked: a later state:applyOk leaves the no-table off',
       h.enabledEl.checked, false);
   } finally {
     h.restore();
   }
 })();
 
-(function issue272_pullUnderLockTracksTheRecord() {
+// A pull resolving under the lock reads the table's enabled:false. The display
+// must not change (pinned by the #251 lock-vs-pull test above), and the lift
+// shows the table's value, not the value the switch showed before the lock.
+(function issue272_pullUnderLockLeavesTheLiftToTheTable() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
-    eq('lock-pull-stash: source files (defaults/rounding/core/messaging) present in manifest',
+    eq('lock-pull: source files (defaults/rounding/core/messaging) present in manifest',
       false, true);
     return;
   }
   try {
-    eq('lock-pull-stash: sidebar.js loaded with no stub gaps', h.evalError, null);
+    eq('lock-pull: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
 
-    // Drift the switch on, then lock — the stash captures the drifted on.
     h.enabledEl.checked = true;
     h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    // A pull resolving under the lock reads the model's enabled:false. The
-    // display must not change (pinned by the #251 lock-vs-pull test above);
-    // the stash must track it so the lift shows the model, not the value
-    // stashed at lock time.
     h.dispatch({ action: 'state:previewSamplesChanged' });
-    eq('lock-pull-stash: the pull leaves the locked switch on (display-only)',
+    eq('lock-pull: the pull leaves the locked switch on (display-only)',
       h.enabledEl.checked, true);
     h.dispatch({ action: 'state:applyOk' });
-    eq('lock-pull-stash: the lift shows the model\'s off from the pull, not the pre-lock drift',
+    eq('lock-pull: the lift shows the table\'s off, not the pre-lock drift',
       h.enabledEl.checked, false);
+  } finally {
+    h.restore();
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #328: the settings notice reaches the sidebar, and the sidebar
+// redraws from it. The content script sent narrower notices by hand, one per
+// kind of change, so a writer that sent none left the sidebar showing stale
+// values. A notice carries whether its table is the active one and which side
+// wrote it. The sidebar redraws from a notice for the active table that
+// something other than the sidebar wrote. It skips its own writes, because an
+// echo arriving after a newer keystroke or slider step would overwrite that
+// step.
+// ---------------------------------------------------------------------------
+const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
+  { enabled: true, rangeExpr: 'C3', offsetTop: 1, offsetOther: 1 });
+
+(function issue328_aPageNoticeForTheActiveTableRedrawsTheSidebar() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('settings notice: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('settings notice: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.tabMessages.length = 0;
+    h.dispatch({ action: 'state:settingsChanged', active: true, source: 'page',
+      settings: ISSUE328_PAGE_SETTINGS });
+    eq('settings notice: the range expression redraws from the notice', h.rangeExprEl.value, 'C3');
+    eq('settings notice: the switch redraws from the notice', h.enabledEl.checked, true);
+    eq('settings notice: the lens preview refreshes',
+      h.tabMessages.filter((m) => m.action === 'request:previewSamples').length, 1);
+
+    h.tabMessages.length = 0;
+    h.el('dateGranularity').fire('change');
+    const applyMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
+    eq('settings notice: the next save carries the redrawn lens control',
+      applyMsg && [applyMsg.settings.offsetTop, applyMsg.settings.offsetOther], [1, 1]);
+  } finally {
+    h.restore();
+  }
+})();
+
+(function issue328_theSidebarSkipsItsOwnAndInactiveNotices() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('settings notice skip: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('settings notice skip: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.tabMessages.length = 0;
+    h.dispatch({ action: 'state:settingsChanged', active: true, source: 'sidebar',
+      settings: ISSUE328_PAGE_SETTINGS });
+    eq('settings notice skip: the sidebar\'s own write redraws nothing', h.rangeExprEl.value, 'B2:E8');
+    h.dispatch({ action: 'state:settingsChanged', active: false, source: 'page',
+      settings: ISSUE328_PAGE_SETTINGS });
+    eq('settings notice skip: a write to a table that is not active redraws nothing',
+      h.rangeExprEl.value, 'B2:E8');
+    eq('settings notice skip: neither notice refreshes the lens preview',
+      h.tabMessages.filter((m) => m.action === 'request:previewSamples').length, 0);
+  } finally {
+    h.restore();
+  }
+})();
+
+// A right-click makes another table active, so the controls must describe
+// that table: the sidebar pulls its settings and lens preview.
+(function issue328_rightClickActivationPullsTheSettings() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('activation pull: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('activation pull: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.rangeExprEl.value = '';
+    h.enabledEl.checked = true;
+    h.tabMessages.length = 0;
+    h.dispatch({ action: 'state:tableActivated' });
+    eq('activation pull: a right-click activation reads the active table\'s settings',
+      h.tabMessages.filter((m) => m.action === 'request:settings').length, 1);
+    eq('activation pull: the controls describe the newly active table',
+      [h.rangeExprEl.value, h.enabledEl.checked], ['B2:E8', false]);
+    eq('activation pull: the lens preview refreshes after the read',
+      h.tabMessages.filter((m) => m.action === 'request:previewSamples').length, 1);
+  } finally {
+    h.restore();
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #328 with the #262 lock: the lock forces the switch on and disables
+// it. The on/off value lives on the table in the application model, so a save
+// under the lock leaves the on/off value out, and the table's value stands.
+// Lifting the lock reads the table's settings back and puts its on/off value
+// on the switch. Until that read answers the switch stays disabled, so a save
+// in the gap carries no leftover forced on (#272's hazard).
+// ---------------------------------------------------------------------------
+(function issue328_aSaveUnderTheLockLeavesTheOnOffValueOut() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lock save: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('lock save: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    eq('lock save: precondition — the lock forces the switch on', h.enabledEl.checked, true);
+    h.tabMessages.length = 0;
+    h.el('dateGranularity').fire('change');
+    const applyMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
+    eq('lock save: the save reaches the wire', applyMsg !== undefined, true);
+    eq('lock save: a save under the lock carries no on/off value',
+      !!applyMsg && Object.prototype.hasOwnProperty.call(applyMsg.settings, 'enabled'), false);
+
+    // A second block lands while the lock already holds.
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    h.tabMessages.length = 0;
+    h.el('dateGranularity').fire('change');
+    const secondMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
+    eq('lock save: a save after a second block still carries no on/off value',
+      !!secondMsg && Object.prototype.hasOwnProperty.call(secondMsg.settings, 'enabled'), false);
+  } finally {
+    h.restore();
+  }
+})();
+
+(function issue328_liftingTheLockReadsTheTablesOnOffValueBack() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lock lift: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('lock lift: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    // Hold the settings read's answer, so the test stands in the gap between
+    // the lift and the answer.
+    const held = [];
+    const answerNow = h.chromeMock.tabs.sendMessage;
+    h.chromeMock.tabs.sendMessage = (tabId, msg, cb) => {
+      if (msg.action === 'request:settings') { held.push(() => answerNow(tabId, msg, cb)); return; }
+      answerNow(tabId, msg, cb);
+    };
+    h.tabMessages.length = 0;
+    h.dispatch({ action: 'state:applyOk' });
+    eq('lock lift: the lift removes the lock', h.bodyClasses.has('table-locked'), false);
+    eq('lock lift: the lift reads the table\'s settings', held.length, 1);
+    eq('lock lift: the switch stays disabled until the read answers', h.enabledEl.disabled, true);
+
+    h.el('dateGranularity').fire('change');
+    const gapMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
+    eq('lock lift: a save in the gap carries no on/off value',
+      !!gapMsg && Object.prototype.hasOwnProperty.call(gapMsg.settings, 'enabled'), false);
+
+    h.chromeMock.tabs.sendMessage = answerNow;
+    held.forEach((answer) => answer());
+    eq('lock lift: the answer puts the table\'s off on the switch', h.enabledEl.checked, false);
+    eq('lock lift: the answer re-enables the switch', h.enabledEl.disabled, false);
+
+    h.tabMessages.length = 0;
+    h.dispatch({ action: 'state:applyOk' });
+    eq('lock lift: an apply with no lock holding reads no settings',
+      h.tabMessages.filter((m) => m.action === 'request:settings').length, 0);
+  } finally {
+    h.restore();
+  }
+})();
+
+// A notice landing under the lock redraws every control except the switch,
+// which shows the lock's forced on. The lift then shows the table's latest
+// on/off value, whichever it is.
+(function issue328_aNoticeUnderTheLockLeavesTheForcedOn() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('lock notice: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('lock notice: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    h.dispatch({ action: 'state:settingsChanged', active: true, source: 'page',
+      settings: Object.assign({}, ISSUE328_PAGE_SETTINGS, { enabled: false }) });
+    eq('lock notice: the switch keeps the forced on under the lock',
+      [h.enabledEl.checked, h.enabledEl.disabled], [true, true]);
+    eq('lock notice: the other controls redraw under the lock', h.rangeExprEl.value, 'C3');
+
+    h.modelSettings.enabled = true;
+    h.dispatch({ action: 'state:applyOk' });
+    eq('lock notice: the lift shows the table\'s latest on/off value (on)', h.enabledEl.checked, true);
+
+    h.dispatch({ action: 'state:applyBlocked', count: 1 });
+    h.modelSettings.enabled = false;
+    h.dispatch({ action: 'state:applyOk' });
+    eq('lock notice: the lift shows the table\'s latest on/off value (off)', h.enabledEl.checked, false);
   } finally {
     h.restore();
   }

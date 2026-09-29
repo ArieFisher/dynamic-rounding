@@ -10,12 +10,25 @@
 const fs = require('fs');
 const path = require('path');
 
+// The content script's one message listener, the bus's. The first
+// registration is the content-script bundle's below; a later eval that
+// leaves this stub in place registers a bus of its own, which stays out.
+let contentMessageListener = null;
 global.chrome = {
   runtime: {
-    onMessage: { addListener: () => {} },
+    onMessage: { addListener: (fn) => { if (!contentMessageListener) contentMessageListener = fn; } },
     sendMessage: () => {}
   }
 };
+
+// Deliver one message to the content script the way Chrome hands the
+// sidebar's request to it, and return the responder's answer. A request no
+// responder answers returns undefined.
+function askContentScript(message) {
+  let answer;
+  contentMessageListener(message, {}, (reply) => { answer = reply; });
+  return answer;
+}
 global.document = {
   addEventListener: () => {},
   querySelectorAll: () => [],   // injectTableToggles calls this; return empty list
@@ -115,6 +128,13 @@ globalThis.trackedTables = trackedTables;
 Object.defineProperty(globalThis, 'toggleStyleInjected', {
   get() { return toggleStyleInjected; },
   set(v) { toggleStyleInjected = v; },
+  configurable: true,
+});
+// highlightStyleInjected is a let as well: the range-pulse CSS test resets it
+// to capture the injection, and an apply earlier in the suite sets it.
+Object.defineProperty(globalThis, 'highlightStyleInjected', {
+  get() { return highlightStyleInjected; },
+  set(v) { highlightStyleInjected = v; },
   configurable: true,
 });
 globalThis.isTableRounded = isTableRounded;

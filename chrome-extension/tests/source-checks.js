@@ -757,7 +757,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: background.js does NOT relay state:tableEnabledChanged when sidebarTabId is null.
+// AC4: background.js does NOT relay the settings notice when sidebarTabId is null.
 //
 // background.js runs in a service-worker context without the DOM and module
 // system our harness uses, so we can't eval() it directly alongside the content
@@ -767,21 +767,19 @@
 //       verify its branching behaviour, confirming the written code is correct.
 // ---------------------------------------------------------------------------
 
-// --- #325 Task 8: the on/off report reaches the sidebar exactly once ---
+// --- #325 Task 8: the settings notice reaches the sidebar exactly once ---
 //
-// The content script broadcasts the on/off report to every extension page,
-// which already includes the open sidebar. The worker used to receive that
-// broadcast and send it again, so the sidebar redrew twice on one fact, and
-// the worker guarded the re-send on holding a sidebar tab number to keep the
-// second delivery from going out with no sidebar open. The relay is gone, and
-// with it the guard it needed. What replaces both: one publisher, one
-// delivery.
+// The content script broadcasts the settings notice to every extension page,
+// which already includes the open sidebar. The worker used to receive the
+// on/off report (retired under #328 for the settings notice) and send it
+// again, so the sidebar redrew twice on one fact. The relay is gone, and with
+// it the guard it needed: one publisher, one delivery.
 (function onOffReportDeliveredOnce() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-  eq('one delivery: the worker subscribes to no on/off report',
-    /subscribe\(\s*'state:tableEnabledChanged'/.test(bgSrc), false);
-  eq('one delivery: the worker publishes no on/off report',
-    /publish\(\s*'state:tableEnabledChanged'/.test(bgSrc), false);
+  eq('one delivery: the worker subscribes to no settings notice',
+    /subscribe\(\s*'state:settingsChanged'/.test(bgSrc), false);
+  eq('one delivery: the worker publishes no settings notice',
+    /publish\(\s*'state:settingsChanged'/.test(bgSrc), false);
   eq('one delivery: the worker makes no wire send of its own for anything',
     bgSrc.includes('chrome.runtime.sendMessage'), false);
 })();
@@ -887,6 +885,10 @@
       // opening read now runs behind (issue #343).
       dataset: {},
       closest()  { return null; },
+      // A right-click activation now reads the settings back and redraws the
+      // controls (issue #328), and the redraw sets the lens control's
+      // attributes.
+      setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
     };
     return el;
   }
@@ -2201,7 +2203,7 @@
     // 2x2 so the target cell (row 1, col 1) sits outside DR_DEFAULTS's
     // simplifyFirstRow/simplifyFirstColumn: false exclusion — DR_DEFAULTS
     // (unlike the no-chrome e2e fixture above) is used as-is here, matching
-    // the settings record a press carries into the apply.
+    // the table's settings a press carries into the apply.
     const table = makeMockTable([
       [{ tag: 'td', text: 'label' }, { tag: 'td', text: 'header' }],
       [{ tag: 'td', text: 'label' }, { tag: 'td', text: '1,234,567' }],
@@ -2229,7 +2231,9 @@
     }
     let threw = null;
     try {
-      sandbox.__DR_STORE.setSettings(sandbox.__DR_DEFAULTS);
+      sandbox.__DR_STORE.setTableSettings(table, sandbox.__DR_DEFAULTS, 'page');
+      // The settings notice above belongs to the write, not the apply.
+      sentMessages.length = 0;
       sandbox.__applySidebarRounding(table);
     } catch (e) {
       threw = e.message;
@@ -2754,8 +2758,8 @@
     /DR_BUS\.publish\(\s*'intent:menuClicked',\s*\{\},\s*\{\s*tabId:/.test(bgSrc), true);
   eq('worker on bus: the page-unload subscriber reads the sending tab from meta',
     /subscribe\(\s*'state:pageUnloaded',\s*\([^)]*meta[^)]*\)/.test(bgSrc), true);
-  eq('worker on bus: the duplicate on/off re-send is gone',
-    bgSrc.includes('tableEnabledChanged'), false);
+  eq('worker on bus: no re-send of the settings notice',
+    bgSrc.includes('settingsChanged'), false);
 })();
 
 // --- #325 Task 9: the content script publishes through the bus ---
@@ -2764,7 +2768,7 @@
   eq('content on bus: no raw chrome.runtime.sendMessage call',
     contentSrc.includes('chrome.runtime.sendMessage'), false);
   for (const topic of ['state:tableActivated', 'state:tableSwitched',
-      'state:tableEnabledChanged', 'state:rangeError', 'state:rangeOk',
+      'state:rangeError', 'state:rangeOk',
       'state:applyBlocked', 'state:applyOk', 'state:previewSamplesChanged',
       'state:pageUnloaded', 'intent:updateMenuLabel']) {
     eq('content on bus: publishes ' + topic,
@@ -2774,8 +2778,13 @@
     /DR_BUS\.subscribe\(\s*'intent:menuClicked'/.test(contentSrc), true);
   eq('content on bus: the sidebar-opened report arrives as a subscription',
     /DR_BUS\.subscribe\(\s*'state:sidebarOpened'/.test(contentSrc), true);
-  eq('content on bus: the one delivery of the on/off report is this publish',
-    contentSrc.split("publish('state:tableEnabledChanged'").length - 1, 1);
+  // The store publishes the settings notice from its one setter; the
+  // controller publishes none of its own.
+  const storeSrc = sourceByName('app/store.js');
+  eq('content on bus: the one delivery of the settings notice is the store publish',
+    storeSrc.split("publish('state:settingsChanged'").length - 1, 1);
+  eq('content on bus: the controller publishes no settings notice of its own',
+    contentSrc.includes("publish('state:settingsChanged'"), false);
 })();
 
 // --- #325 Task 10: the sidebar subscribes instead of listening ---
@@ -2785,7 +2794,7 @@
     sidebarSrc.includes('chrome.runtime.onMessage.addListener'), false);
   for (const topic of ['state:tableActivated', 'intent:closeSidebar', 'state:rangeError',
       'state:rangeOk', 'state:applyBlocked', 'state:applyOk',
-      'state:previewSamplesChanged', 'state:tableSwitched', 'state:tableEnabledChanged']) {
+      'state:previewSamplesChanged', 'state:tableSwitched', 'state:settingsChanged']) {
     eq('sidebar on bus: subscribes to ' + topic,
       sidebarSrc.includes("subscribe('" + topic + "'"), true);
   }

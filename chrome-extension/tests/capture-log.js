@@ -12,10 +12,10 @@
       cellRec.original, ' 8,584,629 ');
     const html = DR_CAPTURE.buildCaptureDocument({
       state: {
-        captureFormat: 6,
+        captureFormat: 7,
         meta: { url: 'https://www.example.com/grid', title: 'G', version: '2.1.70',
           platform: 'test', at: '2026-09-22T16:00:00.000Z' },
-        mark: 'looks-right', remarks: '', settings: { enabled: true }, detectionSettings: null,
+        mark: 'looks-right', remarks: '', detectionSettings: null,
         activeTableIndex: 0, tables: [tableRec], lensPreview: null, fixtureSeed: null,
         sidebarView: null, errorState: { hasError: false, count: 0, rows: [] },
         log: { content: { entries: [], dropped: 0, limit: 50 }, sidebar: { entries: [], dropped: 0, limit: 50 } },
@@ -92,10 +92,10 @@
   const makeFakeStore = (tables, opts) => ({
     getRegisteredTables: () => tables,
     getSelectedTable: () => (opts && opts.selected) || null,
-    getSettings: () => ({ enabled: true, offsetTop: -0.5 }),
     getErrorState: () => (opts && opts.errorState) || { hasError: false, count: 0, rows: [] },
     getTableAppliedFlag: (t) => (opts && opts.flags && opts.flags.get(t)) || 'original',
-    getTableSettings: (t) => (opts && opts.roundOptions && opts.roundOptions.get(t)) || null,
+    getTableSettings: (t) => (opts && opts.tableSettings && opts.tableSettings.get(t)) ||
+      Object.assign({}, DR_DEFAULTS),
     getTableMaxMagnitude: (t) => {
       const m = opts && opts.maxMags && opts.maxMags.get(t);
       return m === undefined ? null : m;
@@ -143,31 +143,33 @@
 
   const originals = new Map([[a1, '98,765']]);
   const flags = new Map([[tableA, 'simplified']]);
-  const roundOptions = new Map([[tableA, { offsetTop: -1, enabled: true }]]);
+  const tableSettings = new Map([[tableA, { offsetTop: -1, enabled: true }]]);
   const maxMags = new Map([[tableB, 4]]);
   const store = makeFakeStore([tableA, tableB],
-    { selected: tableA, originals, flags, roundOptions, maxMags });
+    { selected: tableA, originals, flags, tableSettings, maxMags });
 
   const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 6);
-  eq('capture-state: the settings record is carried verbatim',
-    state.settings, { enabled: true, offsetTop: -0.5 });
+  eq('capture-state: the state carries its format version', state.captureFormat, 7);
+  eq('capture-state: the state holds no page-wide settings; each table carries its own',
+    Object.prototype.hasOwnProperty.call(state, 'settings'), false);
+  eq('capture-state: a table with no settings of its own carries the shipped defaults',
+    state.tables[1].settings, Object.assign({}, DR_DEFAULTS));
   eq('capture-state: every registered table is serialized', state.tables.length, 2);
   eq('capture-state: the bound table is found by index', state.activeTableIndex, 0);
   eq('capture-state: the fixture seed is the bound table\'s markup at capture time, verbatim',
     state.fixtureSeed, '<table><tr><td>99,000</td></tr></table>');
 
   const recA = state.tables[0];
-  eq('capture-state: per-table detail (kind, appliedFlag, lastRoundOptions, maxMagnitude, counts)',
+  eq('capture-state: per-table detail (kind, appliedFlag, settings, maxMagnitude, counts)',
     {
       kind: recA.kind, appliedFlag: recA.appliedFlag,
-      lastRoundOptions: recA.lastRoundOptions, maxMagnitude: recA.maxMagnitude,
+      settings: recA.settings, maxMagnitude: recA.maxMagnitude,
       rowCount: recA.rowCount, columnCount: recA.columnCount,
     },
     {
       kind: 'native', appliedFlag: 'simplified',
-      lastRoundOptions: { offsetTop: -1, enabled: true }, maxMagnitude: null,
+      settings: { offsetTop: -1, enabled: true }, maxMagnitude: null,
       rowCount: 3, columnCount: 2,
     });
   eq('capture-state: a header cell serializes with role th',
@@ -249,7 +251,6 @@
   const store = {
     getRegisteredTables: () => [table],
     getSelectedTable: () => null,
-    getSettings: () => ({}),
     getErrorState: () => ({ hasError: false, count: 0, rows: [] }),
     getTableAppliedFlag: () => 'simplified',
     getTableSettings: () => null,
@@ -315,17 +316,16 @@
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 6,
+    captureFormat: 7,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
     },
     mark: 'looks-right',
     remarks: 'rounded to 99,000\nbut the page stayed 98,765',
-    settings: { enabled: true },
     activeTableIndex: 0,
     tables: [{
-      kind: 'native', appliedFlag: 'simplified', lastRoundOptions: { offsetTop: -0.5 },
+      kind: 'native', appliedFlag: 'simplified', settings: { offsetTop: -0.5 },
       maxMagnitude: null, locked: false, rowCount: 2, columnCount: 1,
       cells: [
         { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null },
@@ -374,7 +374,7 @@
   const merged = buildCaptureDocument({
     state: makeState({
       tables: [{
-        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: {},
+        kind: 'native', appliedFlag: 'simplified', settings: {},
         maxMagnitude: null, locked: false, rowCount: 2, columnCount: 3,
         cells: [
           { row: 0, col: 0, role: 'th', isOutside: false, text: 'Product', original: null },
@@ -401,7 +401,7 @@
   const padded = buildCaptureDocument({
     state: makeState({
       tables: [{
-        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: {},
+        kind: 'native', appliedFlag: 'simplified', settings: {},
         maxMagnitude: null, locked: false, rowCount: 3, columnCount: 3,
         cells: [
           { row: 0, col: 0, role: 'th', isOutside: false, text: 'Product', original: null },
@@ -475,7 +475,7 @@
   const hostile = buildCaptureDocument({
     state: makeState({
       tables: [{
-        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: null,
+        kind: 'native', appliedFlag: 'simplified', settings: null,
         maxMagnitude: null, locked: false, rowCount: 1, columnCount: 1,
         cells: [{
           row: 0, col: 0, role: 'td', isOutside: false,
@@ -509,7 +509,7 @@
   const locked = buildCaptureDocument({
     state: makeState({
       tables: [{
-        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: null,
+        kind: 'native', appliedFlag: 'simplified', settings: null,
         maxMagnitude: null, locked: true, rowCount: 1, columnCount: 1,
         cells: [{ row: 0, col: 0, role: 'td', isOutside: false, text: '99,000', original: null }],
       }],
@@ -581,15 +581,14 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 6,
+    captureFormat: 7,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
     remarks: 'the total rounded away',
-    settings: { enabled: true },
     activeTableIndex: 0,
     tables: [{
-      kind: 'native', appliedFlag: 'simplified', lastRoundOptions: { offsetTop: -0.5 },
+      kind: 'native', appliedFlag: 'simplified', settings: { offsetTop: -0.5 },
       maxMagnitude: null, locked: false, rowCount: 2, columnCount: 1,
       cells: [
         { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null },
@@ -662,10 +661,10 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 6,
+    captureFormat: 7,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
-    mark: 'looks-wrong', remarks: '', settings: { enabled: true }, detectionSettings: null,
+    mark: 'looks-wrong', remarks: '', detectionSettings: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
     sidebarView: null, errorState: null,
     log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
@@ -742,12 +741,11 @@
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 6,
+    captureFormat: 7,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
     remarks: '',
-    settings: { enabled: true },
     activeTableIndex: 0,
     tables: [],
     lensPreview: null,
@@ -765,7 +763,7 @@
   const locked = buildCaptureDocument({
     state: makeState({
       tables: [{
-        kind: 'native', appliedFlag: 'simplified', lastRoundOptions: null,
+        kind: 'native', appliedFlag: 'simplified', settings: null,
         maxMagnitude: null, locked: true, rowCount: 1, columnCount: 2,
         cells: [
           { row: 0, col: 0, role: 'td', isOutside: false,
@@ -789,7 +787,7 @@
   const failed = buildCaptureDocument({
     state: makeState({
       tables: [{
-        kind: 'unknown', appliedFlag: null, lastRoundOptions: null,
+        kind: 'unknown', appliedFlag: null, settings: null,
         maxMagnitude: null, locked: false, rowCount: null, columnCount: null,
         cells: [], error: 'hostile walk',
       }],
@@ -863,7 +861,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 6,
+      captureFormat: 7,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -891,7 +889,6 @@
   const makeFakeStore = () => ({
     getRegisteredTables: () => [],
     getSelectedTable: () => null,
-    getSettings: () => ({}),
     getErrorState: () => ({ hasError: false, count: 0, rows: [] }),
     getTableAppliedFlag: () => 'original',
     getTableSettings: () => null,
@@ -906,8 +903,8 @@
     state.detectionSettings, DR_DETECTION_SETTINGS);
   eq('capture-settings: the state\'s captureFormat equals CAPTURE_FORMAT',
     state.captureFormat, CAPTURE_FORMAT);
-  eq('capture-settings: CAPTURE_FORMAT is 6',
-    CAPTURE_FORMAT, 6);
+  eq('capture-settings: CAPTURE_FORMAT is 7',
+    CAPTURE_FORMAT, 7);
   eq('capture-settings: the returned copy is not the same object as DR_DETECTION_SETTINGS',
     state.detectionSettings !== DR_DETECTION_SETTINGS, true);
 
@@ -937,7 +934,7 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (detectionSettings) => ({
-    captureFormat: 6,
+    captureFormat: 7,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -1003,7 +1000,7 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (over) => Object.assign({
-    captureFormat: 6,
+    captureFormat: 7,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -1038,7 +1035,7 @@
   eq('capture-settings: an absent detectionSettings field renders the absence placeholder in the detection settings section',
     /<h2>Detection settings<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
   eq('capture-settings: the format version still prints in the header when detectionSettings is absent',
-    /<dt>Capture format<\/dt><dd>6<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+    /<dt>Capture format<\/dt><dd>7<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
@@ -1054,7 +1051,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 6,
+      captureFormat: 7,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -1089,19 +1086,18 @@
   const fakeStore = {
     getRegisteredTables: () => [],
     getSelectedTable: () => null,
-    getSettings: () => ({ enabled: true }),
     getErrorState: () => errorState,
   };
   const state = collectCaptureState({ store: fakeStore, adapterFor: () => null });
   eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
-  eq('capture-state: format 6 renames the detection settings key',
-    state.captureFormat, 6);
+  eq('capture-state: format 7 carries each table\'s settings in place of the page-wide settings',
+    state.captureFormat, 7);
 
   const renderState = {
-    captureFormat: 6,
+    captureFormat: 7,
     meta: { url: 'https://www.example.com/p', title: 'P', version: '2.1.70',
       platform: 'test', at: '2026-09-17T16:00:00.000Z' },
-    mark: 'looks-wrong', remarks: '', settings: { enabled: true }, detectionSettings: null,
+    mark: 'looks-wrong', remarks: '', detectionSettings: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
     sidebarView: { enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
       rangeExpr: '', stops: [0], topVal: 0, botVal: 0, coupled: true, status: '',

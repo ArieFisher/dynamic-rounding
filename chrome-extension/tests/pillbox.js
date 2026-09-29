@@ -454,7 +454,7 @@
     // Register a checkbox so syncSwitchForTable doesn't crash
     const input = injectToggleEntry(table);
 
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
+    DR_STORE.setTableSettings(table, { enabled: true }, 'page');
     applySidebarRounding(table);
 
     // After a press turning simplification on, at least one cell is simplified
@@ -1970,30 +1970,26 @@
 // AC2: Clicking the sidebar's enabled toggle still updates the table's pill
 //      state (existing behaviour unchanged — regression guard).
 //
-// AC3: Toggling a table that is NOT lastRightClickedTable does NOT send
-//      state:tableEnabledChanged (no spurious sidebar update).
-//
-// AC4: background.js does NOT relay state:tableEnabledChanged when sidebarTabId is null.
+// AC3: Toggling a table that is NOT lastRightClickedTable sends no spurious
+//      sidebar update.
 //
 // AC5: Existing tests pass (covered by running the full suite without --bail).
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// AC1: Clicking the table's morph pill while sidebar is open sends
-//      state:tableEnabledChanged to runtime, and sidebar's onMessage handler for
-//      state:tableEnabledChanged sets enabledEl.checked = request.enabled.
+// AC1: Clicking the table's morph pill while sidebar is open sends the
+//      settings notice for the active table (issue #328), and the sidebar's
+//      handler for it redraws the switch from the notice's settings.
 //
 // Unit test strategy:
-//   Part A — ui-toggle.js guard: verify state:tableEnabledChanged is sent when
-//     the pressed table is the active one.
-//   Part B — sidebar.js handler (static): verify the source includes the
-//     state:tableEnabledChanged branch that sets enabledEl.checked.
-//   Note: actually exercising sidebar.js in Node requires eval'ing it, which
-//   demands a full sidebar DOM. We test the handler logic indirectly via Part B
-//   static analysis plus the integration guard in Part A.
+//   Part A — the press: verify the settings notice goes out, naming the
+//     active table and carrying the new on/off value.
+//   Part B — sidebar.js handler (static): verify the source subscribes to
+//     the notice and redraws from it. The sidebar suite drives the handler
+//     itself through its harness.
 // ---------------------------------------------------------------------------
 
-(function pillbox_AC1_partA_sendMessageOnActiveTable() {
+(function pillbox_AC1_partA_settingsNoticeOnActiveTable() {
   // Capture sendMessage calls.
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
@@ -2010,30 +2006,32 @@
   // Establish this table as the active one, so the press is an unmoved one.
   lastRightClickedTable = table;
 
-  // Click should publish intent:toggleTable (rounding the table) then send state:tableEnabledChanged.
+  // Click should publish intent:toggleTable, which writes the table's
+  // settings and sends their notice.
   fireMouseClick(buttonEl);
 
   global.chrome.runtime.sendMessage = origSend;
   // Reset global state
   lastRightClickedTable = null;
 
-  const toggleMsg = sent.find(m => m.action === 'state:tableEnabledChanged');
-  eq('AC1 part-A: state:tableEnabledChanged sent when the pressed table is the active one',
-    toggleMsg !== undefined, true);
+  const notice = sent.find(m => m.action === 'state:settingsChanged');
+  eq('AC1 part-A: the settings notice is sent when the pressed table is the active one',
+    notice !== undefined, true);
+  eq('AC1 part-A: the notice names the active table and a page-side writer',
+    notice && [notice.active, notice.source], [true, 'page']);
   // After click on a fresh table, it becomes rounded → enabled should be true.
-  eq('AC1 part-A: state:tableEnabledChanged.enabled reflects new rounded state (true after first click)',
-    toggleMsg && toggleMsg.enabled, true);
+  eq('AC1 part-A: the notice carries the new on/off value (true after first click)',
+    notice && notice.settings.enabled, true);
 })();
 
 (function pillbox_AC1_partB_sidebarHandlerStaticAnalysis() {
-  // Verify sidebar.js source contains the state:tableEnabledChanged handler that sets enabledEl.checked.
+  // Verify sidebar.js source subscribes to the settings notice and redraws
+  // its controls from the notice's settings.
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  eq("AC1 part-B: sidebar.js subscribes to 'state:tableEnabledChanged'",
-    /boundTab\.subscribe\(\s*'state:tableEnabledChanged'/.test(sidebarSrc), true);
-  eq('AC1 part-B: sidebar.js puts the reported value on the switch',
-    sidebarSrc.includes('enabledEl.checked = enabled'), true);
-  eq('AC1 part-B: sidebar.js calls updateDisabledState() after setting checked',
-    sidebarSrc.includes('updateDisabledState()'), true);
+  eq("AC1 part-B: sidebar.js subscribes to 'state:settingsChanged'",
+    /boundTab\.subscribe\(\s*'state:settingsChanged'/.test(sidebarSrc), true);
+  eq('AC1 part-B: sidebar.js redraws its controls from the notice\'s settings',
+    /'state:settingsChanged'[\s\S]{0,300}applySettingsToUI\(settings\)/.test(sidebarSrc), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -2074,10 +2072,9 @@
   injectToggleEntry(table);
 
   const savedSelected = DR_STORE.getSelectedTable();
-  const savedSettings = DR_STORE.getSettings();
   try {
     DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    DR_STORE.setTableSettings(table, { enabled: false }, 'page');
     DR_STORE.setSelectedTable(table);
 
     const wasRounded = isTableRounded(table);
@@ -2092,33 +2089,23 @@
       isTableRounded(table), false);
   } finally {
     DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(savedSettings);
     DR_STORE.setSelectedTable(savedSelected);
   }
 })();
 
 // ---------------------------------------------------------------------------
-// AC3: Guard branching on lastRightClickedTable.
+// AC3: a press on a table that is not the active one moves the active table.
 //
-// SPEC says: "Toggling a table that is NOT lastRightClickedTable does not send
-// state:tableEnabledChanged (no spurious sidebar update)."
-//
-// IMPLEMENTATION BEHAVIOUR (found by adversarial test):
-// When table !== lastRightClickedTable, the click handler first reassigns
-// `lastRightClickedTable = table` (and sends state:tableSwitched), then
-// the state:tableEnabledChanged guard re-checks — and now `table === lastRightClickedTable`
-// is TRUE, so state:tableEnabledChanged IS sent.
-//
-// This is a gap between the spec (AC3) and the implementation. The test below
-// documents the ACTUAL implementation behaviour so the reviewer can decide
-// whether the spec or the code is correct.
+// The spec asked for no spurious sidebar update from such a press. The press
+// makes the pressed table active and sends state:tableSwitched first, so the
+// settings notice that follows names the active table, and the sidebar
+// redraws from it for the table it now describes (issue #328).
 // ---------------------------------------------------------------------------
 
-(function pillbox_AC3_wrongTable_reassignsAndSendsState() {
+(function pillbox_AC3_wrongTable_movesTheActiveTableBeforeTheNotice() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
-
 
   const { table: tableA, buttonEl: buttonA } = makeRealToggleButton([
     [{ tag: 'td', text: 'ColA' },      { tag: 'td', text: 'ColB' }],
@@ -2134,82 +2121,50 @@
 
   fireMouseClick(buttonA);
 
-  const switchMsgs  = sent.filter(m => m.action === 'state:tableSwitched');
-  const toggleMsgs  = sent.filter(m => m.action === 'state:tableEnabledChanged');
+  const actions = sent.map(m => m.action);
+  const notices = sent.filter(m => m.action === 'state:settingsChanged');
   const lrc = lastRightClickedTable;
 
   global.chrome.runtime.sendMessage = origSend;
   lastRightClickedTable = null;
 
-  // Implementation reassigns lastRightClickedTable to the clicked table.
-  eq('AC3 impl: clicking non-lastRightClickedTable reassigns lastRightClickedTable',
+  eq('AC3: clicking non-lastRightClickedTable reassigns lastRightClickedTable',
     lrc === tableA, true);
-
-  // Implementation sends state:tableSwitched for the table switch.
-  eq('AC3 impl: clicking non-lastRightClickedTable sends state:tableSwitched',
-    switchMsgs.length >= 1, true);
-
-  // The AC3 spec ("toggling a non-selected table sends no state:tableEnabledChanged")
-  // is satisfied since issue #251's sync-on-switch: the switch path applies
-  // the model to the new table and returns before the same-table
-  // state:tableEnabledChanged send, and the panel redraws from the model pull that
-  // state:tableSwitched triggers instead.
-  eq('AC3: clicking non-lastRightClickedTable sends NO state:tableEnabledChanged (panel redraws from the model pull)',
-    toggleMsgs.length, 0);
+  eq('AC3: clicking non-lastRightClickedTable sends state:tableSwitched',
+    actions.includes('state:tableSwitched'), true);
+  eq('AC3: the switch reaches the sidebar before the settings notice',
+    actions.indexOf('state:tableSwitched') < actions.indexOf('state:settingsChanged'), true);
+  eq('AC3: the press sends one settings notice, naming the active table',
+    notices.map(n => n.active), [true]);
 })();
 
-// AC3 guard that DOES hold: when lastRightClickedTable is null,
-// the early-exit prevents state:tableEnabledChanged from being sent.
-(function pillbox_AC3_noLastRightClicked_noMessage() {
+// With no table active, a press makes the pressed table the active one, so
+// its settings notice names the active table too.
+(function pillbox_AC3_noLastRightClicked_noticeNamesTheActiveTable() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
   lastRightClickedTable = null; // explicitly null
 
-  const { table, buttonEl } = makeRealToggleButton([
+  const { buttonEl } = makeRealToggleButton([
     [{ tag: 'td', text: 'ColA' },      { tag: 'td', text: 'ColB' }],
     [{ tag: 'td', text: '5,000,000' }, { tag: 'td', text: '200' }],
   ]);
 
-  // lastRightClickedTable remains null; guard `lastRightClickedTable &&` prevents send.
   fireMouseClick(buttonEl);
 
   global.chrome.runtime.sendMessage = origSend;
   lastRightClickedTable = null;
 
-  const toggleMsgs = sent.filter(m => m.action === 'state:tableEnabledChanged');
-  eq('AC3 null-guard: null lastRightClickedTable means state:tableEnabledChanged is NOT sent',
-    toggleMsgs.length, 0);
+  const notices = sent.filter(m => m.action === 'state:settingsChanged');
+  eq('AC3 null active table: the press sends one settings notice, naming the active table',
+    notices.map(n => n.active), [true]);
 })();
 
-// AC3 corollary: when lastRightClickedTable is null (no table right-clicked),
-// clicking any morph pill also does NOT send state:tableEnabledChanged.
-(function pillbox_AC3_noLastRightClicked_noMessage_corollary() {
-  const sent = [];
-  const origSend = global.chrome.runtime.sendMessage;
-  global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
-
-  lastRightClickedTable = null; // explicitly null
-
-  const { table, buttonEl } = makeRealToggleButton([
-    [{ tag: 'td', text: 'ColA' },      { tag: 'td', text: 'ColB' }],
-    [{ tag: 'td', text: '5,000,000' }, { tag: 'td', text: '200' }],
-  ]);
-
-  // lastRightClickedTable remains null; guard `lastRightClickedTable &&` prevents send.
-  fireMouseClick(buttonEl);
-
-  global.chrome.runtime.sendMessage = origSend;
-
-  const toggleMsgs = sent.filter(m => m.action === 'state:tableEnabledChanged');
-  eq('AC3 corollary: null lastRightClickedTable means state:tableEnabledChanged is NOT sent',
-    toggleMsgs.length, 0);
-})();
-
-// AC3 corollary 2: a press on the active table publishes the settings
-// record's new value, whatever the sidebar is doing. Nothing here reads that.
-(function pillbox_AC3_sidebarClosed_noMessage() {
+// AC3 corollary: a press on the active table publishes the table's new
+// settings once, whatever the sidebar is doing. Nothing here reads that.
+(function pillbox_AC3_sidebarClosed_oneNotice() {
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
@@ -2225,15 +2180,13 @@
   global.chrome.runtime.sendMessage = origSend;
   lastRightClickedTable = null;
 
-  const toggleMsgs = sent.filter(m => m.action === 'state:tableEnabledChanged');
-  // Contract moved with the panel-state decoupling (issue #272 family): a
-  // toggle on the CONNECTED table writes the record and reports it even with
-  // the sidebar closed — the controller no longer reads panel visibility.
+  const notices = sent.filter(m => m.action === 'state:settingsChanged');
+  // A press on the active table writes its settings and publishes them even
+  // with the sidebar closed — the controller reads no sidebar visibility.
   // "No spurious sidebar update" still holds because a closed sidebar has no
-  // page to receive the message; background additionally gates its relay on
-  // sidebarTabId (AC4 below).
-  eq('AC3 corollary 2: a press on the active table publishes the settings record once (a closed sidebar has no page to receive it)',
-    toggleMsgs.length, 1);
+  // page to receive the message.
+  eq('AC3 corollary: a press on the active table publishes its settings once (a closed sidebar has no page to receive it)',
+    notices.length, 1);
 })();
 
 // Sprint table-contextmenu-activation
@@ -2556,14 +2509,15 @@
       buttonCreateCount, 1);
     // Exact sequence, not presence. The right-click above CONNECTED this
     // grid, and the panel-state decoupling (issue #272 family) makes a
-    // toggle on the connected table take the record path with the sidebar
-    // closed too: state:applyOk from the apply, state:rangeOk from the round, then the
-    // record report. No intent:updateMenuLabel here only because this minimal
-    // grid's querySelector always returns null, so the enabled branch's
-    // conditional send is skipped — a fixture artifact, not contract.
-    eq('double-invocation: a sidebar-closed intent:menuClicked on the connected grid takes the record path',
+    // toggle on the connected table take the settings path with the sidebar
+    // closed too: the table's settings notice from the write, then
+    // state:applyOk from the apply and state:rangeOk from the round. No
+    // intent:updateMenuLabel here only because this minimal grid's
+    // querySelector always returns null, so the enabled branch's conditional
+    // send is skipped — a fixture artifact, not contract.
+    eq('double-invocation: a sidebar-closed intent:menuClicked on the connected grid takes the settings path',
       sentMessages.slice(beforeMenuClick).map((m) => m.action),
-      ['state:applyOk', 'state:rangeOk', 'state:tableEnabledChanged']);
+      ['state:settingsChanged', 'state:applyOk', 'state:rangeOk']);
   } finally {
     global.document = savedDoc;
     global.chrome = savedChrome;

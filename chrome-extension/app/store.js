@@ -20,14 +20,6 @@
  *                      lastRightClickedTable; sidebar.js's "bound" language
  *                      (setTableBound) names the same idea from the
  *                      sidebar's side. One field, one name: selectedTable.
- *   - settings        The current rounding options (the sidebar's
- *                      checkboxes/sliders/range expression, flattened to one
- *                      object). Initialized from DR_DEFAULTS so the model
- *                      always holds a valid value, even before the sidebar
- *                      has ever been opened. The sidebar is the only writer
- *                      (via the request:applySettings bus topic); the
- *                      controller applies every new value to the selected
- *                      table by subscribing to the resulting state-change.
  *
  *   - errorState      The tab's error state: whether an extension error has
  *                      been recorded on this page, how many, and the last
@@ -44,25 +36,31 @@
  * so the value went stale and stayed stale for the rest of the page's life
  * (#241). No part of the extension reads such a value now.
  *
- * Reads go through the getters below. The only way to change selectedTable
- * or settings is one of the setter methods, and each setter does exactly
- * two things: update the field, then DR_BUS.publish() the field's whole new
- * value as a state-change. No caller can assign these fields directly —
- * there is nothing to assign; the fields are closed over, not exposed.
+ * A page-wide set of settings lived here beside each table's settings until
+ * issue #328 retired it. The sidebar read and wrote that set, so it could
+ * describe settings that did not produce the table on the screen, and going
+ * back to a table could not bring back its settings. Each table's settings,
+ * in its registry entry below, are now the only settings the model holds.
  *
- * The table registry (app-model-registry sprint) is a third field with a
+ * Reads go through the getters below. The only way to change selectedTable
+ * is its setter, which does exactly two things: update the field, then
+ * DR_BUS.publish() the field's whole new value as a state-change. No caller
+ * can assign these fields directly — there is nothing to assign; the fields
+ * are closed over, not exposed.
+ *
+ * The table registry (app-model-registry sprint) is a further field with a
  * different shape and a different update contract — see the section below.
+ * Its one publishing setter is setTableSettings.
  *
  * The store holds no DOM logic and calls no chrome API itself; the one side
- * effect either of the two scalar setters has, beyond updating its own
- * field, is a publish through DR_BUS.
+ * effect a publishing setter has, beyond updating its own field, is a
+ * publish through DR_BUS.
  *
  * Loaded after adapters/messaging.js (DR_BUS) and before ui-toggle.js.
  */
 
 const DR_STORE = (function () {
   let selectedTable = null;
-  let settings = Object.assign({}, DR_DEFAULTS);
 
   // --- Table registry ---
   //
@@ -124,10 +122,12 @@ const DR_STORE = (function () {
         // showing originals"; isTableRounded (ui-toggle.js) is exactly
         // appliedFlag === 'simplified'.
         appliedFlag: 'original',
-        // The table's settings: the options object the most recent
-        // roundTable() call used. The re-apply pass reads it to simplify
-        // redrawn cells with the same parameters, and the capture carries it.
-        // resetTable clears it back to null.
+        // The table's settings: its on/off value and every simplification
+        // option, with the shipped defaults filled in. null until the first
+        // write, and getTableSettings answers the shipped defaults for null.
+        // setTableSettings is the one writer. The sidebar's controls, the
+        // apply, the re-apply pass, and the capture read it; a reset of the
+        // cells leaves it in place.
         settings: null,
         // Virtualized-grid magnitude basis, frozen on first round so a
         // scroll-triggered re-apply cannot shift it. null until roundTable
@@ -155,28 +155,17 @@ const DR_STORE = (function () {
     return selectedTable;
   }
 
-  // Returns a fresh copy — callers may not mutate the store's internal
-  // settings object by mutating what they read.
-  function getSettings() {
-    return Object.assign({}, settings);
-  }
-
   // A view that opens or reconnects (the sidebar re-opening, most notably)
   // pulls this instead of trusting a state-change message it may have
   // missed while it was gone — the bus keeps no history, so a missed
   // publish is gone for good from the bus's point of view.
   function getSnapshot() {
-    return { selectedTable, settings: getSettings(), errorState: getErrorState() };
+    return { selectedTable, errorState: getErrorState() };
   }
 
   function setSelectedTable(table) {
     selectedTable = table;
     DR_BUS.publish('state:selectedTableChanged', { table: selectedTable });
-  }
-
-  function setSettings(newSettings) {
-    settings = Object.assign({}, DR_DEFAULTS, newSettings || {});
-    DR_BUS.publish('state:settingsChanged', { settings: getSettings() });
   }
 
   // --- Error state ---
@@ -201,8 +190,8 @@ const DR_STORE = (function () {
     };
   }
 
-  // The one writer. Like the two scalar setters above: update the field,
-  // then publish the field's whole new value.
+  // The one writer. Like the setter above: update the field, then publish
+  // the field's whole new value.
   function recordError(row) {
     errorRows.push(copyErrorRow(row));
     if (errorRows.length > ERROR_ROW_LIMIT) errorRows.shift();
@@ -212,13 +201,13 @@ const DR_STORE = (function () {
 
   // --- Table registry API ---
   //
-  // No bus publish here: nothing in the app subscribes to "a table was
-  // found" or "a cell's original changed" as an event — the DOM itself is
-  // the view for a table's contents, and the view already redraws it
-  // directly (roundTable/restoreTable write the cells they change). Unlike
-  // selectedTable/settings, the registry is per-table storage consulted
-  // synchronously by the controller, not application-level state a view
-  // redraws itself from.
+  // One bus publish here, from setTableSettings: the sidebar draws a table's
+  // settings. Nothing in the app subscribes to "a table was found" or "a
+  // cell's original changed" as an event — the DOM itself is the view for a
+  // table's contents, and the view already redraws it directly
+  // (roundTable/restoreTable write the cells they change). The rest of the
+  // registry is per-table storage consulted synchronously by the controller,
+  // not application-level state a view redraws itself from.
 
   // registerTable: the "found" moment as far as the toggle UI is concerned —
   // called once, from ui-toggle.js's createToggleForTable, idempotent so a
@@ -295,13 +284,28 @@ const DR_STORE = (function () {
     return entry ? entry.appliedFlag : 'original';
   }
 
-  function setTableSettings(table, opts) {
-    _ensureEntry(table).settings = opts;
+  // Store a table's whole settings, with the shipped defaults filled in, then
+  // publish the settings notice. The notice crosses to the sidebar, so it
+  // carries plain values alone: whether the table is the active one, the
+  // source ('sidebar' for the sidebar's apply, 'page' for every other
+  // writer), and a copy of the stored settings. The sidebar redraws from a
+  // notice for the active table whose source is not its own.
+  function setTableSettings(table, settings, source) {
+    const stored = Object.assign({}, DR_DEFAULTS, settings || {});
+    _ensureEntry(table).settings = stored;
+    DR_BUS.publish('state:settingsChanged', {
+      active: table === selectedTable,
+      source,
+      settings: Object.assign({}, stored),
+    });
   }
 
+  // A copy, so a caller cannot change the stored settings by changing what
+  // it read. A table with no settings yet, or no entry, answers the shipped
+  // defaults.
   function getTableSettings(table) {
     const entry = tableRegistry.get(table);
-    return entry ? entry.settings : null;
+    return Object.assign({}, entry && entry.settings ? entry.settings : DR_DEFAULTS);
   }
 
   function setTableMaxMagnitude(table, mag) {
@@ -329,10 +333,8 @@ const DR_STORE = (function () {
 
   return {
     getSelectedTable,
-    getSettings,
     getSnapshot,
     setSelectedTable,
-    setSettings,
     getErrorState,
     recordError,
     registerTable,

@@ -10,7 +10,7 @@
  *
  * collectCaptureState() turns the application model's registry into the
  * plain-value capture state: for every registered table, its kind, applied
- * flag, last-used rounding options, frozen magnitude, locked state, row and
+ * flag, settings, frozen magnitude, locked state, row and
  * column counts, and every present cell's position, role, displayed text,
  * and original. The bound table also contributes its markup as it stood at
  * capture time, verbatim — the fixture seed, the one piece of markup a
@@ -51,9 +51,11 @@
  * screenshot field: the take's record (taken, format, chars), never the image.
  * Format 6 renames the tuning field to detectionSettings and drops the
  * pillbox auto-collapse delay from it; the pillbox view holds that delay.
+ * Format 7 drops the page-wide settings field and renames each table's
+ * lastRoundOptions to settings: each table carries its own settings.
  */
 
-const CAPTURE_FORMAT = 6;
+const CAPTURE_FORMAT = 7;
 
 function collectCaptureState(deps) {
   const store = (deps && deps.store) || DR_STORE;
@@ -104,7 +106,7 @@ function collectCaptureState(deps) {
     return {
       kind: adapter.isVirtualized() ? 'grid' : 'native',
       appliedFlag: store.getTableAppliedFlag(table),
-      lastRoundOptions: store.getTableSettings(table),
+      settings: store.getTableSettings(table),
       maxMagnitude: store.getTableMaxMagnitude(table),
       locked,
       rowCount: rows.length,
@@ -123,7 +125,7 @@ function collectCaptureState(deps) {
       return {
         kind: 'unknown',
         appliedFlag: null,
-        lastRoundOptions: null,
+        settings: null,
         maxMagnitude: null,
         locked: false,
         rowCount: null,
@@ -136,7 +138,6 @@ function collectCaptureState(deps) {
 
   return {
     captureFormat: CAPTURE_FORMAT,
-    settings: store.getSettings(),
     // A plain copy, not the live object: a later edit to
     // DR_DETECTION_SETTINGS must not reach a state already captured. Read
     // as a bare global, the same rule the detection layer and the controller

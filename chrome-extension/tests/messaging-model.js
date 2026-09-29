@@ -98,16 +98,16 @@
   eq('pull (inverted): content.js no longer applies defaults on state:sidebarOpened',
     /state:sidebarOpened[\s\S]{0,200}applySidebarRounding\([^)]*DR_DEFAULTS/.test(contentSrc), false);
 
-  eq('pull (inverted): content.js applies the model\'s own settings on state:sidebarOpened',
+  eq('pull (inverted): content.js applies the active table\'s own settings on state:sidebarOpened',
     /state:sidebarOpened[\s\S]{0,400}applySidebarRounding\(selected\)/.test(contentSrc) &&
-      /function applySidebarRounding\(requestedTable\)[\s\S]{0,1200}DR_STORE\.getSettings\(\)/.test(contentSrc),
+      /function applySidebarRounding\(requestedTable\)[\s\S]{0,1200}DR_STORE\.getTableSettings\(table\)/.test(contentSrc),
     true);
 
   eq('pull (inverted): sidebar.js no longer handles GET_SIDEBAR_SETTINGS',
     /GET_SIDEBAR_SETTINGS/.test(sidebarSrc), false);
 
-  eq('pull (inverted): content.js answers request:settings with the model\'s settings',
-    /respond\('request:settings'[\s\S]{0,200}DR_STORE\.getSettings\(\)/.test(contentSrc), true);
+  eq('pull (inverted): content.js answers request:settings with the active table\'s settings',
+    /respond\('request:settings'[\s\S]{0,200}DR_STORE\.getTableSettings\(DR_STORE\.getSelectedTable\(\)\)/.test(contentSrc), true);
 
   eq('pull (inverted): sidebar.js asks request:settings on open',
     /DR_BUS\.request\('request:settings'/.test(sidebarSrc), true);
@@ -133,8 +133,10 @@
   eq('unified (superseded by app-model-registry): tableOptions WeakMap no longer declared',
     /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), false);
 
-  eq('registry: the table settings are recorded via DR_STORE.setTableSettings',
-    /DR_STORE\.setTableSettings\(table,\s*opts\)/.test(contentSrc), true);
+  eq('registry: the table settings are recorded via DR_STORE.setTableSettings, in the controller\'s one write',
+    /function writeTableSettings\([\s\S]{0,400}DR_STORE\.setTableSettings\(target,/.test(contentSrc), true);
+  eq('registry: roundTable writes no settings (issue #328)',
+    /function roundTable\([\s\S]{0,300}setTableSettings/.test(contentSrc), false);
 
   eq('unified: the apply re-runs roundTable rather than replaying a cached value',
     // Window sized for the locked-table refusal (issue #262) that sits
@@ -344,16 +346,13 @@
 
 // ---------------------------------------------------------------------------
 // Issue #251 (sync-on-switch): a switch with the sidebar open applies the
-// MODEL's settings to the clicked table — the panel then mirrors the model,
-// and the table matches what the panel shows. Two cells: a non-default
-// offset reaches the new table's rounding pass, and a model holding
-// enabled:false leaves the new table unrounded.
+// clicked table's own settings in the model (issue #328) — the panel then
+// mirrors them, and the table matches what the panel shows. Two cells: a
+// non-default offset reaches the new table's rounding pass, and a table
+// holding enabled:false still simplifies on a press, which reads the screen.
 // ---------------------------------------------------------------------------
 
 (function issue251_switchAppliesModelToNewTable() {
-  const savedSettings = DR_STORE.getSettings();
-  DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { offsetTop: -2, offsetOther: -2 }));
-
   const tableA = makeToggleTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
@@ -368,6 +367,7 @@
     [{ tag: 'td', text: '286' }, { tag: 'td', text: '8,584,629' }],
   ]);
   tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
+  DR_STORE.setTableSettings(tableB, { offsetTop: -2, offsetOther: -2 }, 'page');
 
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = () => {};
@@ -378,22 +378,18 @@
   fireMouseClick(buttonB);
 
   const rounded = tableB._cells.some(c => c.classList.contains('dr-ext-rounded'));
-  const usedOpts = DR_STORE.getTableSettings(tableB);
+  const roundedText = tableB._cells[3].innerText;
 
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
-  DR_STORE.setSettings(savedSettings);
 
-  eq('sync-on-switch: the clicked table is rounded (model enabled is on)',
+  eq('sync-on-switch: the clicked table is rounded (its settings hold enabled on)',
     rounded, true);
-  eq('sync-on-switch: the rounding pass ran with the model\'s offset, not the shipped default',
-    usedOpts && usedOpts.offsetTop, -2);
+  eq('sync-on-switch: the rounding pass ran with the table\'s offset, not the shipped default',
+    roundedText, '8,580,000');
 })();
 
 (function issue251_switchRespectsModelEnabledOff() {
-  const savedSettings = DR_STORE.getSettings();
-  DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
-
   const tableA = makeToggleTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
@@ -407,6 +403,7 @@
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
   tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
+  DR_STORE.setTableSettings(tableB, { enabled: false }, 'page');
 
   const origSendMessage = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = () => {};
@@ -421,11 +418,10 @@
 
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
-  DR_STORE.setSettings(savedSettings);
 
-  eq('press on a different table simplifies it even where the settings record stands at off (part one: the flip reads the screen)',
+  eq('press on a different table simplifies it even where its settings stand at off (part one: the flip reads the screen)',
     rounded, true);
-  eq('press on a different table sets its form to simplified where the record stood at off (part one: the flip reads the screen)',
+  eq('press on a different table sets its form to simplified where its settings stood at off (part one: the flip reads the screen)',
     flag, 'simplified');
 })();
 
@@ -466,10 +462,10 @@
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  eq('locked-switch: the sequence is state:tableSwitched then state:applyBlocked, nothing else',
-    sentMessages.map(m => m.action), ['state:tableSwitched', 'state:applyBlocked']);
+  eq('locked-switch: the sequence is state:tableSwitched, the table\'s settings notice, then state:applyBlocked, nothing else',
+    sentMessages.map(m => m.action), ['state:tableSwitched', 'state:settingsChanged', 'state:applyBlocked']);
   eq('locked-switch: state:applyBlocked carries the unrestorable-cell count',
-    sentMessages[1] && sentMessages[1].count, 1);
+    sentMessages[2] && sentMessages[2].count, 1);
 })();
 
 (function gridPatch_roundWritesEachChangeIntoItsPiece() {
@@ -587,7 +583,7 @@
   const { grid, aNumber } = makePatchGrid();
   const [a, b] = grid.cellEls;
   try {
-    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid patch re-apply (setup): the round wrote the number piece once', aNumber.writes, 1);
 
     reapplyRounding(grid.wrapperEl);
@@ -1486,7 +1482,6 @@ const PENDING_FILL_ROWS = [
   eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
     topicNames.slice().sort(),
     ['intent:selectTable', 'intent:toggleTable', 'state:selectedTableChanged',
-     'state:settingsChanged',
      // The model's error state, published to the toast view in the same context.
      'state:errorRecorded',
      // The sidebar's four requests, each answered by the tab's content script.
@@ -1495,8 +1490,9 @@ const PENDING_FILL_ROWS = [
      // The service worker's four, plus the two it receives (#325).
      'intent:menuClicked', 'state:sidebarOpened', 'intent:closeSidebar',
      'state:sidebarClosed', 'state:pageUnloaded', 'intent:updateMenuLabel',
-     // The content script's eight reports to the sidebar.
-     'state:tableActivated', 'state:tableSwitched', 'state:tableEnabledChanged',
+     // The content script's eight reports to the sidebar, the settings
+     // notice among them (issue #328).
+     'state:settingsChanged', 'state:tableActivated', 'state:tableSwitched',
      'state:rangeError', 'state:rangeOk', 'state:applyBlocked', 'state:applyOk',
      'state:previewSamplesChanged'].sort());
 
@@ -1512,9 +1508,9 @@ const PENDING_FILL_ROWS = [
     'intent:updateMenuLabel': ['intent', 'extension-pages'],
     // The content script's eight reports. Every one broadcasts: the content
     // script holds no tabs interface, and the sidebar is an extension page.
+    'state:settingsChanged': ['state-change', 'extension-pages'],
     'state:tableActivated': ['state-change', 'extension-pages'],
     'state:tableSwitched': ['state-change', 'extension-pages'],
-    'state:tableEnabledChanged': ['state-change', 'extension-pages'],
     'state:rangeError': ['state-change', 'extension-pages'],
     'state:rangeOk': ['state-change', 'extension-pages'],
     'state:applyBlocked': ['state-change', 'extension-pages'],
@@ -1543,12 +1539,8 @@ const PENDING_FILL_ROWS = [
   // answered to decide bound versus unbound, so it is a request.
   eq('DR_BUS.TOPICS: request:applySettings is in the request family',
     topics['request:applySettings'].family, 'request');
-  eq('DR_BUS.TOPICS: state:settingsChanged is in the state-change family',
-    topics['state:settingsChanged'].family, 'state-change');
   eq('DR_BUS.TOPICS: request:applySettings routes to one tab\'s content script (cross-context: sidebar page -> content script)',
     topics['request:applySettings'].route, 'tab');
-  eq('DR_BUS.TOPICS: state:settingsChanged has no route (same-context: model -> controller only)',
-    topics['state:settingsChanged'].route, null);
 
   // Publishing to an unregistered topic is rejected rather than silently
   // dropped, so the registry stays authoritative rather than aspirational.
@@ -1595,12 +1587,13 @@ const PENDING_FILL_ROWS = [
     // it does not listen for what it missed. The store carried a third
     // field, "the sidebar is open", until the 2026-09-14 sidebar-state-
     // removal design retired it (#241); what a reopen pulls is the
-    // selection and the settings.
+    // selection. The settings live on each table (issue #328), so the
+    // snapshot carries no page-wide settings.
     const snapshot = DR_STORE.getSnapshot();
     eq('reconnect: getSnapshot returns the selection to a reconnecting view',
       snapshot.selectedTable, reconnectTable);
-    eq('reconnect: the snapshot carries the settings alongside the selection',
-      snapshot.settings, DR_STORE.getSettings());
+    eq('reconnect: the snapshot carries no page-wide settings',
+      Object.prototype.hasOwnProperty.call(snapshot, 'settings'), false);
     eq('reconnect: the snapshot carries no sidebar-open field — the model holds none',
       Object.prototype.hasOwnProperty.call(snapshot, 'sidebarOpen'), false);
     eq('reconnect: the model exposes no reader for a sidebar-open value',
@@ -1656,10 +1649,10 @@ const PENDING_FILL_ROWS = [
   const storeFieldNames = Array.from(storeSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_STORE');
-  eq('static scan: app/store.js declares its seven private fields (sanity check on the scan itself)',
+  eq('static scan: app/store.js declares its six private fields (sanity check on the scan itself)',
     storeFieldNames.slice().sort(),
     ['ERROR_ROW_LIMIT', 'errorCount', 'errorRows',
-     'registeredTables', 'selectedTable', 'settings', 'tableRegistry'].sort());
+     'registeredTables', 'selectedTable', 'tableRegistry'].sort());
   const storeFieldWrites = storeFieldNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
     return assignRe.test(uiToggleSrcForScan) || assignRe.test(contentSrcForScan);
@@ -1682,16 +1675,14 @@ const PENDING_FILL_ROWS = [
   ]);
   injectToggleEntry(table);
 
-  // The press writes the settings record and moves the active table now
+  // The press writes the table's settings and moves the active table now
   // (2026-09-14 sidebar-state-removal, part one), where the retired
-  // plain-toggle path wrote neither. Both are shared model state, so this
-  // test saves and restores them rather than leaving them for whatever runs
-  // next.
+  // plain-toggle path wrote neither. The active table is shared model
+  // state, so this test saves and restores it rather than leaving it for
+  // whatever runs next.
   const savedSelected = DR_STORE.getSelectedTable();
-  const savedSettings = DR_STORE.getSettings();
   try {
-    DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
+    DR_STORE.setTableSettings(table, { enabled: false }, 'page');
     DR_STORE.setSelectedTable(table);
 
     const wasRounded = isTableRounded(table);
@@ -1712,7 +1703,6 @@ const PENDING_FILL_ROWS = [
       isTableRounded(table), false);
   } finally {
     DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(savedSettings);
     DR_STORE.setSelectedTable(savedSelected);
   }
 })();
@@ -1813,31 +1803,33 @@ const PENDING_FILL_ROWS = [
   // that read it — a press means one thing now, so the two surviving cells
   // are the whole matrix.
   const EXPECTED_SEQUENCES = {
-    // A press on the ACTIVE table. Issue #272 put the settings-record write
-    // at the front of this path: the press calls DR_STORE.setSettings with
-    // the flipped enabled, the state-change subscriber runs the apply, and
-    // the apply's own state:applyOk leads the sequence. state:tableEnabledChanged then
-    // carries the settings record's new value, because no switch went out to
-    // carry it. Byte-identical to the frozen parent capture for this cell.
+    // A press on the ACTIVE table. Issue #272 put the settings write at the
+    // front of this path, and issue #328 put it on the pressed table: the
+    // write's settings notice leads the sequence, carrying the flipped
+    // enabled to the sidebar, and the apply that follows sends its own
+    // state:applyOk.
     'true': [
+      { action: 'state:settingsChanged', active: true, source: 'page',
+        settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
       { action: 'state:applyOk' },
       { action: 'state:rangeOk' },
       { action: 'intent:updateMenuLabel', title: 'Toggle table' },
-      { action: 'state:tableEnabledChanged', enabled: true },
     ],
     // A press on a table that is NOT the active one. Issue #251 made this
-    // path sync the pressed table to the settings record in place of
-    // simplifying it with the shipped defaults. The sidebar-state removal
-    // then made it the only meaning such a press has, whatever the sidebar
-    // is doing.
+    // path apply settings to the pressed table in place of simplifying it
+    // with the shipped defaults, and issue #328 made those the pressed
+    // table's own. The sidebar-state removal made it the only meaning such a
+    // press has, whatever the sidebar is doing.
     //
     // state:tableSwitched leads so the sidebar lifts the previous table's lock
-    // before this table's own state:applyBlocked/state:applyOk lands. No
-    // state:previewSamplesChanged — the sidebar's pull chain ends in the preview
-    // fetch. No state:tableEnabledChanged — the switch's own handler re-reads the
-    // settings record, so a send here would deliver one fact twice.
+    // before this table's own state:applyBlocked/state:applyOk lands, and so
+    // the settings notice after it names the active table. No
+    // state:previewSamplesChanged — the sidebar's pull chain ends in the
+    // preview fetch.
     'false': [
       { action: 'state:tableSwitched' },
+      { action: 'state:settingsChanged', active: true, source: 'page',
+        settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
       { action: 'state:applyOk' },
       { action: 'state:rangeOk' },
       { action: 'intent:updateMenuLabel', title: 'Toggle table' },
@@ -1928,9 +1920,8 @@ const PENDING_FILL_ROWS = [
 (function appModelSelection_busReentrancy_twoTopicCycleSettles() {
   // The second topic was state:sidebarOpenChanged until the 2026-09-14
   // sidebar-state-removal design retired it (#241). state:settingsChanged
-  // takes its place: the controller subscribes to it in production, and that
-  // subscriber applies to whichever table is active, so the fixture clears
-  // the active table first and the production handler no-ops. What the test
+  // takes its place: the content script holds no subscriber of its own for
+  // it (issue #328), so only the fixture's handlers run here. What the test
   // measures — the bus's own delivery under a nested publish — is unchanged.
   const TOPIC_A = 'state:selectedTableChanged';
   const TOPIC_B = 'state:settingsChanged';
@@ -1939,7 +1930,7 @@ const PENDING_FILL_ROWS = [
   let counter = 0;
 
   const unsubA = DR_BUS.subscribe(TOPIC_A, () => {
-    DR_BUS.publish(TOPIC_B, { settings: DR_STORE.getSettings() }); // A's handler always publishes B
+    DR_BUS.publish(TOPIC_B, { active: false, source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); // A's handler always publishes B
   });
   const unsubB = DR_BUS.subscribe(TOPIC_B, () => {
     counter++;
@@ -2190,14 +2181,14 @@ const PENDING_FILL_ROWS = [
     const applyOpts = Object.assign(
       {}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true }, opts);
 
-    DR_STORE.setSettings(Object.assign({}, applyOpts, { enabled: false }));
+    DR_STORE.setTableSettings(grid.wrapperEl, Object.assign({}, applyOpts, { enabled: false }), 'page');
     applySidebarRounding(grid.wrapperEl);
     eq('round trip: the off press clears the display back to "555"',
       cell555.childNodes[0].nodeValue, '555');
     eq('round trip: the off press clears the frozen basis',
       DR_STORE.getTableMaxMagnitude(grid.wrapperEl), null);
 
-    DR_STORE.setSettings(Object.assign({}, applyOpts, { enabled: true }));
+    DR_STORE.setTableSettings(grid.wrapperEl, Object.assign({}, applyOpts, { enabled: true }), 'page');
     applySidebarRounding(grid.wrapperEl);
     eq('round trip: DR_STORE re-freezes from the now-visible magnitude-9 row (9), not the original magnitude-2 basis',
       DR_STORE.getTableMaxMagnitude(grid.wrapperEl), 9);
@@ -2216,7 +2207,7 @@ const PENDING_FILL_ROWS = [
   }
 })();
 
-// --- (g) state:tableEnabledChanged sequence: isTableRounded (claim 4 — now reading
+// --- (g) settings notice sequence: isTableRounded (claim 4 — now reading
 // DR_STORE's appliedFlag instead of a dr-ext-rounded/dataset.drShowingOriginal
 // pair) must report correctly to the sidebar across a full round -> peek-
 // original -> peek-back cycle, not just a single toggle. The pillbox-sprint
@@ -2262,8 +2253,8 @@ const PENDING_FILL_ROWS = [
       DR_BUS.publish('intent:toggleTable', { table }); // peek back
     });
 
-    const toggleMsgs = sent.filter(m => m.action === 'state:tableEnabledChanged');
-    eq('toggle-state cycle: exactly one state:tableEnabledChanged per dispatch (3 total)',
+    const toggleMsgs = sent.filter(m => m.action === 'state:settingsChanged').map(m => m.settings);
+    eq('toggle-state cycle: exactly one settings notice per dispatch (3 total)',
       toggleMsgs.length, 3);
     eq('toggle-state cycle: enabled sequence is true (rounded), false (peek original), true (peek back)',
       toggleMsgs.map(m => m.enabled), [true, false, true]);
@@ -2289,7 +2280,7 @@ const PENDING_FILL_ROWS = [
   DR_STORE.registerTable(table);
   DR_STORE.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
-  DR_STORE.setTableSettings(table, { offsetTop: -1 });
+  DR_STORE.setTableSettings(table, { offsetTop: -1 }, 'page');
   DR_STORE.setTableMaxMagnitude(table, 7);
 
   eq('re-register: table is rounded with state before removal (pre-condition)',
@@ -2313,8 +2304,8 @@ const PENDING_FILL_ROWS = [
     DR_STORE.hasTableOriginal(table, cell), false);
   eq('re-register: getTableOriginal for the old cell reference is undefined, not the stale record',
     DR_STORE.getTableOriginal(table, cell), undefined);
-  eq('re-register: the table settings reset to null (not the leftover options object)',
-    DR_STORE.getTableSettings(table), null);
+  eq('re-register: the table settings reset to the shipped defaults (not the leftover settings)',
+    DR_STORE.getTableSettings(table), Object.assign({}, DR_DEFAULTS));
   eq('re-register: maxMagnitude resets to null (not the leftover frozen value)',
     DR_STORE.getTableMaxMagnitude(table), null);
 })();
@@ -2673,36 +2664,29 @@ const PENDING_FILL_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// A pillbox press on the active table writes the settings record
-// (DR_STORE.settings.enabled), not just the table's cells and the sidebar's
-// switch. Issue #272, leak 1: content.js's same-table intent:toggleTable
-// branch used to simplify the table and send state:tableEnabledChanged
-// without calling setSettings, so any later pull (a sidebar reopen or a table
-// switch) showed the record's stale enabled over the table's truth, and a
-// reopen-style apply silently re-rounded a table the user had toggled off.
+// A pillbox press on the active table writes the table's settings (its
+// enabled), not just the table's cells and the sidebar's switch. Issue #272,
+// leak 1: content.js's same-table intent:toggleTable branch used to simplify
+// the table and send the sidebar its on/off value without writing the
+// settings, so any later pull (a sidebar reopen or a table switch) showed a
+// stale enabled over the table's truth, and a reopen-style apply silently
+// re-rounded a table the user had toggled off.
 //
 // One press path covers the sidebar open and the sidebar closed alike. An
-// earlier gate read sidebar visibility to pick between the record path and a
-// direct one, so a press made with the sidebar closed changed the page without
-// changing the record, and the next open re-imposed the stale record. The
-// 2026-09-14 sidebar-state-removal design retired that gate, so this one test
-// covers both cases. state:tableEnabledChanged goes out either way: the
-// controller publishes the record, a closed sidebar has no page to receive it,
-// and background.js gates its own relay (the AC4 guard).
+// earlier gate read sidebar visibility to pick between the settings path and
+// a direct one, so a press made with the sidebar closed changed the page
+// without changing the settings, and the next open re-imposed the stale
+// settings. The 2026-09-14 sidebar-state-removal design retired that gate, so
+// this one test covers both cases. The settings notice goes out either way: a
+// closed sidebar has no page to receive it.
 // ---------------------------------------------------------------------------
-(function issue272_sameTablePillToggleWritesRecord() {
+(function issue272_sameTablePillToggleWritesTheTablesSettings() {
   const savedSelected = DR_STORE.getSelectedTable();
-  const savedSettings = DR_STORE.getSettings();
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
   try {
-    // Known starting record: enabled on, everything else shipped defaults.
-    // Reset with nothing selected so the state-change subscriber no-ops.
-    DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
-
     const table = makeToggleTable([
       [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
       [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
@@ -2726,60 +2710,44 @@ const PENDING_FILL_ROWS = [
     });
     eq('leak-1: the first pill toggle rounds the connected table',
       isTableRounded(table), true);
-    eq('leak-1: the record follows the pill — enabled true after toggle-on',
-      DR_STORE.getSettings().enabled, true);
+    eq('leak-1: the table\'s settings follow the pill — enabled true after toggle-on',
+      DR_STORE.getTableSettings(table).enabled, true);
 
     withCreateTreeWalker(function () {
       DR_BUS.publish('intent:toggleTable', { table }); // pill: turn rounding off
     });
     eq('leak-1: the second pill toggle restores the table to originals',
       isTableRounded(table), false);
-    eq('leak-1: the record follows the pill — enabled false after toggle-off',
-      DR_STORE.getSettings().enabled, false);
+    eq('leak-1: the table\'s settings follow the pill — enabled false after toggle-off',
+      DR_STORE.getTableSettings(table).enabled, false);
 
-    // The reopen path (state:sidebarOpened runs this same apply) must honor the
-    // record the pill just wrote — not silently re-round the table.
+    // The reopen path (state:sidebarOpened runs this same apply) must honor
+    // the settings the pill just wrote — not silently re-round the table.
     withCreateTreeWalker(function () {
       applySidebarRounding(table);
     });
-    eq('leak-1: a reopen-style apply honors the record — the table stays on originals',
+    eq('leak-1: a reopen-style apply honors the table\'s settings — the table stays on originals',
       isTableRounded(table), false);
 
-    const toggleMsgs = sent.filter((m) => m.action === 'state:tableEnabledChanged');
-    eq('leak-1: one state:tableEnabledChanged per pill toggle, reporting the record — true then false',
-      toggleMsgs.map((m) => m.enabled), [true, false]);
+    const notices = sent.filter((m) => m.action === 'state:settingsChanged');
+    eq('leak-1: one settings notice per pill toggle, carrying the table\'s enabled — true then false',
+      notices.map((m) => m.settings.enabled), [true, false]);
   } finally {
     global.chrome.runtime.sendMessage = origSend;
-    DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(savedSettings);
     DR_STORE.setSelectedTable(savedSelected);
   }
 })();
 
 // A press on a table that is NOT the active one moves the active table to it
-// and writes the settings record. This pinned the opposite, because a third
-// press path handled that case: the press kept the active table where it was
-// and left the settings record alone. The 2026-09-14 sidebar-state-removal
+// and writes the pressed table's settings. This pinned the opposite, because a
+// third press path handled that case: the press kept the active table where
+// it was and left the settings alone. The 2026-09-14 sidebar-state-removal
 // design retired that path (#241). A press means one thing, so it makes the
-// pressed table active and writes the settings record, whatever the sidebar
-// is doing.
-(function pressOnInactiveTableMovesTheActiveTableAndWritesTheRecord() {
-  const savedSelected = DR_STORE.getSelectedTable();
-  const savedSettings = DR_STORE.getSettings();
-  try {
-    DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
-
-    const active = makeToggleTable([
-      [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
-      [{ tag: 'td', text: 'R' }, { tag: 'td', text: '1,000,000' }],
-    ]);
-    injectToggleEntry(active);
-    const other = makeToggleTable([
-      [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
-      [{ tag: 'td', text: 'R' }, { tag: 'td', text: '12,345' }],
-    ]);
-    injectToggleEntry(other);
+// pressed table active and writes its settings, whatever the sidebar is doing.
+(function pressOnInactiveTableMovesTheActiveTableAndWritesItsSettings() {
+  runPressFixture(() => {
+    const active = makePressTable('1,000,000');
+    const other = makePressTable('12,345');
     DR_STORE.setSelectedTable(active);
 
     withCreateTreeWalker(function () {
@@ -2787,52 +2755,48 @@ const PENDING_FILL_ROWS = [
     });
     eq('press on an inactive table: the pressed table simplifies',
       isTableRounded(other), true);
-    eq('press on an inactive table: the settings record follows the press',
-      DR_STORE.getSettings().enabled, true);
+    eq('press on an inactive table: the pressed table\'s settings follow the press',
+      DR_STORE.getTableSettings(other).enabled, true);
     eq('press on an inactive table: the pressed table becomes the active one',
       DR_STORE.getSelectedTable(), other);
     eq('press on an inactive table: the table that was active is left as it was',
       isTableRounded(active), false);
-  } finally {
-    DR_STORE.setSelectedTable(null);
-    DR_STORE.setSettings(savedSettings);
-    DR_STORE.setSelectedTable(savedSelected);
-  }
+  });
 })();
 
-// --- The defect's own symptom. The settings record stands at off and the
-// press lands on a table that is not the active one. Before the fix this took
-// the rebind path and applied the settings record, which at off changed no
+// --- The defect's own symptom. The pressed table's settings stand at off and
+// the press lands on a table that is not the active one. Before the fix this
+// took the rebind path and applied the settings, which at off changed no
 // numbers. The user pressed an on/off control and nothing moved. ---
-(function partOne_pressOnInactiveTableSimplifiesEvenWithTheRecordOff() {
+(function partOne_pressOnInactiveTableSimplifiesEvenWithItsSettingsOff() {
   runPressFixture(({ sent }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const active = makePressTable('1,000,000');
     const pressed = makePressTable('12,345');
+    DR_STORE.setTableSettings(pressed, { enabled: false }, 'page');
     DR_STORE.setSelectedTable(active);
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
 
-    eq('part one: a press on an inactive table simplifies it with the settings record at off',
+    eq('part one: a press on an inactive table simplifies it with its settings at off',
       isTableRounded(pressed), true);
-    eq('part one: the settings record follows that press to on',
-      DR_STORE.getSettings().enabled, true);
+    eq('part one: the pressed table\'s settings follow that press to on',
+      DR_STORE.getTableSettings(pressed).enabled, true);
     eq('part one: the press publishes the switch',
       sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
   });
 })();
 
 // --- Exactly one settings write per press, and the flip direction comes from
-// the screen as it stood BEFORE that write. A press on a raw table with the
-// settings record already at on is the case that catches a second write: read
+// the screen as it stood BEFORE that write. A press on a raw table whose
+// settings already stand at on is the case that catches a second write: read
 // the direction after a first write and the press simplifies, reads
 // "simplified", writes off, and the second apply returns the table to where
 // it started. ---
 (function partOne_onePressOneWriteReadingTheScreenFirst() {
   runPressFixture(({ resetWrites, writes }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
     const active = makePressTable('1,000,000');
     const pressed = makePressTable('12,345');
+    DR_STORE.setTableSettings(pressed, { enabled: true }, 'page');
     DR_STORE.setSelectedTable(active);
     resetWrites();
 
@@ -2840,40 +2804,37 @@ const PENDING_FILL_ROWS = [
 
     eq('part one: a press makes exactly one settings write',
       writes(), 1);
-    eq('part one: a press on a raw table with the settings record at on leaves the table simplified',
+    eq('part one: a press on a raw table with its settings at on leaves the table simplified',
       isTableRounded(pressed), true);
-    eq('part one: the settings record stands at on afterwards',
-      DR_STORE.getSettings().enabled, true);
+    eq('part one: the pressed table\'s settings stand at on afterwards',
+      DR_STORE.getTableSettings(pressed).enabled, true);
   });
 })();
 
-// --- The settings record's change is what applies, and the values it carries
-// are what the table gets. The offset seeded below differs from the shipped
-// default, so a pass run against the defaults fails this. ---
-(function partOne_pressAppliesTheRecordsCurrentValues() {
+// --- The press applies the pressed table's own settings, and the values they
+// carry are what the table gets. The offset seeded below differs from the
+// shipped default, so a pass run against the defaults fails this. ---
+(function partOne_pressAppliesTheTablesCurrentValues() {
   runPressFixture(() => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, {
-      enabled: false, offsetTop: -2, offsetOther: -2,
-    }));
     const active = makePressTable('1,000,000');
     const pressed = makePressTable('8,584,629');
+    DR_STORE.setTableSettings(pressed, { enabled: false, offsetTop: -2, offsetOther: -2 }, 'page');
     DR_STORE.setSelectedTable(active);
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
 
-    const usedOpts = DR_STORE.getTableSettings(pressed);
-    eq('part one: turning simplification on uses the settings record\'s offset',
-      usedOpts && usedOpts.offsetTop, -2);
+    eq('part one: turning simplification on uses the table\'s own offset',
+      pressed._cells[3].innerText, '8,580,000');
   });
 })();
 
 // --- Turning off resets. The form flip this replaced kept the simplified
-// markers and the stored originals, which left the settings record at off
-// while the table kept its simplified bookkeeping. ---
+// markers and the stored originals, which left the settings at off while the
+// table kept its simplified bookkeeping. ---
 (function partOne_pressOffResetsTheTable() {
   runPressFixture(() => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const table = makePressTable('12,345');
+    DR_STORE.setTableSettings(table, { enabled: false }, 'page');
     DR_STORE.setSelectedTable(table);
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
@@ -2882,8 +2843,8 @@ const PENDING_FILL_ROWS = [
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
 
-    eq('part one: after an off press the settings record stands at off',
-      DR_STORE.getSettings().enabled, false);
+    eq('part one: after an off press the table\'s settings stand at off',
+      DR_STORE.getTableSettings(table).enabled, false);
     eq('part one: after an off press no cell carries the simplified marker',
       table._cells.some((c) => c.classList.contains('dr-ext-rounded')), false);
     eq('part one: after an off press no cell has a stored original',
@@ -2891,37 +2852,21 @@ const PENDING_FILL_ROWS = [
   });
 })();
 
-// --- The range expression states rows and columns by position, so it
-// describes the table it was written for. A press that moves the active table
-// clears it; a press on the table that is already active keeps it. ---
-(function partOne_movedPressClearsTheRangeExpression() {
+// --- A range expression the parser rejects stops the apply before any cell
+// changes. Each table holds its own expression (issue #328), so a moved press
+// applies the pressed table's own, and an unparsable expression on another
+// table never reaches it. ---
+(function partOne_aMovedPressIgnoresAnotherTablesUnparsableRangeExpression() {
   runPressFixture(() => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: 'B2' }));
     const active = makePressTable('1,000,000');
     const pressed = makePressTable('12,345');
+    DR_STORE.setTableSettings(active, { enabled: false, rangeExpr: '1a' }, 'page');
     DR_STORE.setSelectedTable(active);
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
 
-    eq('part one: a press that moves the active table clears the range expression',
-      DR_STORE.getSettings().rangeExpr, '');
-  });
-})();
-
-// --- The same clear must happen where the held expression fails to parse.
-// Without it the press stops before any cell changes and the error reaches a
-// sidebar that may stand closed, which leaves the press looking inert. ---
-(function partOne_movedPressClearsAnUnparsableRangeExpression() {
-  runPressFixture(() => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: '1a' }));
-    const active = makePressTable('1,000,000');
-    const pressed = makePressTable('12,345');
-    DR_STORE.setSelectedTable(active);
-
-    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
-
-    eq('part one: a moved press clears a range expression the parser rejects',
-      DR_STORE.getSettings().rangeExpr, '');
+    eq('part one: the pressed table keeps its own blank range expression',
+      DR_STORE.getTableSettings(pressed).rangeExpr, '');
     eq('part one: that press simplifies the whole pressed table',
       isTableRounded(pressed), true);
   });
@@ -2929,26 +2874,24 @@ const PENDING_FILL_ROWS = [
 
 (function partOne_unmovedPressKeepsTheRangeExpression() {
   runPressFixture(() => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: 'B2' }));
     const table = makePressTable('12,345');
+    DR_STORE.setTableSettings(table, { enabled: false, rangeExpr: 'B2' }, 'page');
     DR_STORE.setSelectedTable(table);
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
 
     eq('part one: a press on the already-active table keeps the range expression',
-      DR_STORE.getSettings().rangeExpr, 'B2');
+      DR_STORE.getTableSettings(table).rangeExpr, 'B2');
   });
 })();
 
 // --- A right-click activation writes no settings, so the numbers on a
-// right-clicked table stay as they are. Today's code satisfies this, and the
-// test stands as a regression guard on the clear's placement: move the clear
-// onto activation and this fails, because every settings write publishes and
-// the controller applies to the active table on every publish. ---
+// right-clicked table stay as they are. A settings write applies to its
+// table, so a write on activation would change the numbers. ---
 (function partOne_activationWritesNoSettings() {
   runPressFixture(({ resetWrites, writes }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true, rangeExpr: 'B2' }));
     const table = makePressTable('12,345');
+    DR_STORE.setTableSettings(table, { enabled: true, rangeExpr: 'B2' }, 'page');
     resetWrites();
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:selectTable', { table }); });
@@ -2956,11 +2899,191 @@ const PENDING_FILL_ROWS = [
     eq('part one: a right-click activation makes no settings write',
       writes(), 0);
     eq('part one: a right-click activation leaves the range expression alone',
-      DR_STORE.getSettings().rangeExpr, 'B2');
+      DR_STORE.getTableSettings(table).rangeExpr, 'B2');
     eq('part one: a right-click activation changes no numbers on the table',
       isTableRounded(table), false);
     eq('part one: the activation still moves the active table',
       DR_STORE.getSelectedTable(), table);
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// Issue #328: each table's own settings are the only settings.
+//
+// The application model held one page-wide set of settings beside each
+// table's settings. The sidebar read and wrote the page-wide set, so it could
+// describe settings that did not produce the table on the screen, and going
+// back to a table could not bring back its settings. The rule now: every
+// sidebar change writes the active table's settings, the settings read answers
+// with them, and a table with none starts from the shipped defaults.
+// ---------------------------------------------------------------------------
+
+// 8,584,629 rounds to 10,000,000 at offset 1 (heavy), to 8,580,000 at offset
+// -2 (light), and to 8,500,000 at the shipped default, so each cell shows
+// which settings produced it.
+const ISSUE328_HEAVY = { enabled: true, offsetTop: 1, offsetOther: 1 };
+const ISSUE328_LIGHT = { enabled: true, offsetTop: -2, offsetOther: -2 };
+
+// A table's settings, or an empty object where the model answers none, so a
+// failed read reports as a failed assertion rather than a thrown error.
+function issue328SettingsOf(table) {
+  return DR_STORE.getTableSettings(table) || {};
+}
+
+// The issue's five steps: simplify A heavy, make B active and change it to
+// light, make A active again, then change A.
+(function issue328_twoTablesKeepTheirOwnSettings() {
+  runPressFixture(() => {
+    const tableA = makePressTable('8,584,629');
+    const tableB = makePressTable('8,584,629');
+    withCreateTreeWalker(() => {
+      DR_BUS.publish('intent:selectTable', { table: tableA });
+      askContentScript({ action: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, ISSUE328_HEAVY) });
+      DR_BUS.publish('intent:selectTable', { table: tableB });
+      askContentScript({ action: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, ISSUE328_LIGHT) });
+      DR_BUS.publish('intent:selectTable', { table: tableA });
+    });
+
+    const answer = askContentScript({ action: 'request:settings' });
+    eq('per-table settings: the settings read on A answers A\'s heavy rounding',
+      answer && answer.settings && [answer.settings.offsetTop, answer.settings.offsetOther], [1, 1]);
+    eq('per-table settings: A still shows its heavy rounding after B changed',
+      tableA._cells[3].innerText, '10,000,000');
+    eq('per-table settings: B shows its light rounding',
+      tableB._cells[3].innerText, '8,580,000');
+
+    withCreateTreeWalker(() => {
+      askContentScript({ action: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, ISSUE328_HEAVY, { simplifyFirstColumn: true }) });
+    });
+    eq('per-table settings: a change on A writes A\'s settings',
+      issue328SettingsOf(tableA).simplifyFirstColumn, true);
+    eq('per-table settings: a change on A leaves B\'s settings light',
+      [issue328SettingsOf(tableB).offsetTop, issue328SettingsOf(tableB).simplifyFirstColumn],
+      [-2, DR_DEFAULTS.simplifyFirstColumn]);
+    eq('per-table settings: a change on A leaves B\'s cells light',
+      tableB._cells[3].innerText, '8,580,000');
+  });
+})();
+
+// The settings read answers the active table's settings, and the shipped
+// defaults with no table active. The settings apply with no table active
+// answers, so the sidebar stays bound, and writes nothing.
+(function issue328_theSettingsRequestsReachTheActiveTable() {
+  runPressFixture(() => {
+    const noneActive = askContentScript({ action: 'request:settings' });
+    eq('per-table settings: with no table active the settings read answers the shipped defaults',
+      noneActive && noneActive.settings, Object.assign({}, DR_DEFAULTS));
+
+    const table = makePressTable('12,345');
+    DR_STORE.setTableSettings(table, { rangeExpr: 'B2' }, 'page');
+    DR_STORE.setSelectedTable(table);
+    const active = askContentScript({ action: 'request:settings' });
+    eq('per-table settings: the settings read answers the active table\'s range expression',
+      active && active.settings && active.settings.rangeExpr, 'B2');
+
+    DR_STORE.setSelectedTable(null);
+    const applied = askContentScript({ action: 'request:applySettings',
+      settings: Object.assign({}, DR_DEFAULTS, { rangeExpr: 'A1' }) });
+    eq('per-table settings: the settings apply with no table active still answers',
+      applied, { ok: true });
+    eq('per-table settings: the settings apply with no table active writes no table\'s settings',
+      issue328SettingsOf(table).rangeExpr, 'B2');
+  });
+})();
+
+// Each table keeps its own range expression, so a press that makes a
+// different table active clears neither.
+(function issue328_aMovedPressKeepsBothRangeExpressions() {
+  runPressFixture(() => {
+    const active = makePressTable('1,000,000');
+    const pressed = makePressTable('12,345');
+    DR_STORE.setTableSettings(active, { enabled: false, rangeExpr: 'B2' }, 'page');
+    DR_STORE.setTableSettings(pressed, { enabled: false, rangeExpr: 'B2' }, 'page');
+    DR_STORE.setSelectedTable(active);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
+
+    eq('per-table settings: a moved press keeps the pressed table\'s range expression',
+      issue328SettingsOf(pressed).rangeExpr, 'B2');
+    eq('per-table settings: a moved press keeps the previous table\'s range expression',
+      issue328SettingsOf(active).rangeExpr, 'B2');
+    eq('per-table settings: a moved press flips the pressed table\'s on/off value alone',
+      [issue328SettingsOf(pressed).enabled, issue328SettingsOf(active).enabled],
+      [true, false]);
+  });
+})();
+
+// Turning a table off resets its cells and keeps its settings, so the next
+// press simplifies it again under the settings it had.
+(function issue328_anOffPressKeepsTheTablesSettings() {
+  runPressFixture(() => {
+    const table = makePressTable('8,584,629');
+    DR_STORE.setTableSettings(table, Object.assign({}, ISSUE328_LIGHT, { enabled: false }), 'page');
+    DR_STORE.setSelectedTable(table);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
+    eq('per-table settings: a press simplifies under the table\'s own offsets',
+      table._cells[3].innerText, '8,580,000');
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
+    eq('per-table settings: an off press keeps the table\'s offsets',
+      [issue328SettingsOf(table).enabled, issue328SettingsOf(table).offsetTop], [false, -2]);
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
+    eq('per-table settings: the next on press simplifies under those offsets again',
+      table._cells[3].innerText, '8,580,000');
+  });
+})();
+
+// A shape change registers a fresh table, which carries the replaced table's
+// settings with the range expression cleared: the expression states rows and
+// columns by position, so it points at cells that no longer exist.
+(function issue328_aShapeChangeCarriesTheSettingsAndClearsTheRange() {
+  runPressFixture(() => {
+    const grid = makeDatabaseQueryGrid();
+    registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setTableSettings(grid.scrollPaneEl,
+      Object.assign({}, ISSUE328_LIGHT, { rangeExpr: 'B2' }), 'page');
+    DR_STORE.setSelectedTable(grid.scrollPaneEl);
+    grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 101)));
+
+    let outcome = null;
+    withToggleDocumentMock(function () { outcome = revalidateTableShape(grid.scrollPaneEl); });
+    const carried = (outcome && outcome.table && DR_STORE.getTableSettings(outcome.table)) || {};
+
+    eq('per-table settings: the shape change registers a fresh table (precondition)',
+      outcome && outcome.switched, true);
+    eq('per-table settings: the fresh table\'s range expression is blank',
+      carried.rangeExpr, '');
+    eq('per-table settings: the fresh table keeps the replaced table\'s other settings',
+      [carried.enabled, carried.offsetTop, carried.offsetOther], [true, -2, -2]);
+
+    if (outcome && outcome.table) forgetRegisteredTable(outcome.table);
+  });
+})();
+
+// The settings notice crosses to the sidebar, so it carries plain values
+// alone: whether the table is the active one, which side wrote it, and the
+// table's whole settings. A live table element cannot cross.
+(function issue328_theSettingsNoticeReachesTheExtensionPages() {
+  eq('per-table settings: the settings notice takes the extension-pages route',
+    DR_BUS.TOPICS['state:settingsChanged'].route, 'extension-pages');
+  runPressFixture(({ sent }) => {
+    const active = makePressTable('12,345');
+    const other = makePressTable('9,876');
+    DR_STORE.setSelectedTable(active);
+    sent.length = 0;
+    DR_STORE.setTableSettings(active, { offsetTop: 1 }, 'page');
+    DR_STORE.setTableSettings(other, { offsetTop: -1 }, 'sidebar');
+
+    const notices = sent.filter((m) => m.action === 'state:settingsChanged');
+    eq('per-table settings: each write sends one notice, naming active and source',
+      notices.map((n) => [n.active, n.source]), [[true, 'page'], [false, 'sidebar']]);
+    eq('per-table settings: the notice holds no field beyond the three plain values',
+      notices.length > 0 && Object.keys(notices[0]).sort(), ['action', 'active', 'settings', 'source']);
+    eq('per-table settings: the notice carries the table\'s whole settings, defaults filled in',
+      notices.length > 0 && notices[0].settings, Object.assign({}, DR_DEFAULTS, { offsetTop: 1 }));
   });
 })();
 
@@ -2983,8 +3106,8 @@ const PENDING_FILL_ROWS = [
 //     discarded table was the active one.
 //   - A table with no recorded fingerprint compares against nothing and
 //     counts as a match.
-//   - A shape change on a press counts as a move, so the press clears the
-//     range expression in its one settings write.
+//   - The fresh table carries the replaced table's settings with the range
+//     expression cleared (issue #328).
 //
 // Every expected value below comes from that statement, never from the
 // controller's source.
@@ -2996,7 +3119,6 @@ const PENDING_FILL_ROWS = [
 
 (function shapeFingerprint_criterion1a_aRedrawnRowGroupKeepsTheEntry() {
   runPressFixture(({ sent }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const g = makeScrollingRowgroupGrid(['Region', 'Q1'], [
       ['North', '1,482,391'], ['South', '918,554'], ['East', '55,120'],
     ]);
@@ -3031,7 +3153,6 @@ const PENDING_FILL_ROWS = [
 
 (function shapeFingerprint_criterion1b_aRedrawnGrouplessPaneKeepsTheEntry() {
   runPressFixture(({ sent }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
@@ -3126,7 +3247,6 @@ const PENDING_FILL_ROWS = [
 
 (function shapeFingerprint_criterion2_aRedrawnWiderResultSetPressesFromRaw() {
   runPressFixture(({ sent }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const grid = makeDatabaseQueryGrid();
     const removedPillboxes = registerFingerprintedTable(grid.scrollPaneEl);
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
@@ -3163,7 +3283,7 @@ const PENDING_FILL_ROWS = [
     eq('fingerprint column change: the fresh registration records the new column count',
       DR_STORE.getTableFingerprint(grid.scrollPaneEl).columnCount, 4);
     eq('fingerprint column change: the press after the change turns simplification on',
-      DR_STORE.getSettings().enabled, true);
+      DR_STORE.getTableSettings(grid.scrollPaneEl).enabled, true);
     eq('fingerprint column change: the press reports no apply block',
       sent.filter((m) => m.action === 'state:applyBlocked').length, 0);
     eq('fingerprint column change: the fresh entry\'s form is simplified',
@@ -3181,7 +3301,6 @@ const PENDING_FILL_ROWS = [
 
 (function shapeFingerprint_criterion2_anAddedColumnOverSurvivingCellsPressesFromRaw() {
   runPressFixture(({ sent }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
@@ -3220,7 +3339,6 @@ const PENDING_FILL_ROWS = [
 // entry records.
 (function shapeFingerprint_theDiscardRestoresTheSurvivingCellsFirst() {
   runPressFixture(() => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
@@ -3290,7 +3408,6 @@ const PENDING_FILL_ROWS = [
 
 (function shapeFingerprint_criterion4_aNewResultSetMovesTheRegistrationOutward() {
   runPressFixture(({ sent }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const grid = makeDatabaseQueryGrid();
     withToggleDocumentMock(function () { injectTogglesForAddedNode(grid.wrapperEl); });
     eq('fingerprint move: the page registers the scrolling pane alone (precondition)',
@@ -3402,7 +3519,6 @@ const PENDING_FILL_ROWS = [
 
 (function shapeFingerprint_nothingRegisteringStopsThePressAndClearsTheActiveTable() {
   runPressFixture(({ writes, resetWrites }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
@@ -3428,7 +3544,6 @@ const PENDING_FILL_ROWS = [
 
 (function shapeFingerprint_nothingRegisteringLeavesAnotherActiveTableAlone() {
   runPressFixture(() => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const other = makePressTable('1,000,000');
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
@@ -3451,7 +3566,6 @@ const PENDING_FILL_ROWS = [
 // restore puts the original back, and no entry remains to restore from after.
 (function shapeFingerprint_theNothingRegisteringPathLeavesThePageReadingRaw() {
   runPressFixture(() => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false }));
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
@@ -3482,32 +3596,38 @@ const PENDING_FILL_ROWS = [
   });
 })();
 
-// --- A shape change on a press counts as a move: the range expression states
-// rows and columns by position, so it describes a shape that is gone. ---
+// --- A shape change on a press clears the fresh table's range expression: the
+// expression states rows and columns by position, so it describes a shape
+// that is gone. The press still applies once. ---
 
-(function shapeFingerprint_aShapeChangeOnAPressCountsAsAMove() {
-  runPressFixture(({ sent, writes, resetWrites }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: 'B2' }));
+(function shapeFingerprint_aShapeChangeOnAPressClearsTheRangeExpression() {
+  runPressFixture(({ sent }) => {
     const grid = makeDatabaseQueryGrid();
     registerFingerprintedTable(grid.scrollPaneEl);
+    DR_STORE.setTableSettings(grid.scrollPaneEl, { enabled: false, rangeExpr: 'B2' }, 'page');
     DR_STORE.setSelectedTable(grid.scrollPaneEl);
     grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 101)));
 
     sent.length = 0;
-    resetWrites();
     withToggleDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
+    const fresh = DR_STORE.getSelectedTable();
 
-    eq('fingerprint move: a shape change clears the range expression',
-      DR_STORE.getSettings().rangeExpr, '');
-    eq('fingerprint move: a shape change still makes exactly one settings write', writes(), 1);
+    eq('fingerprint move: a shape change clears the fresh table\'s range expression',
+      fresh && DR_STORE.getTableSettings(fresh).rangeExpr, '');
+    eq('fingerprint move: a shape change still runs exactly one apply',
+      sent.filter((m) => m.action === 'state:applyOk').length, 1);
     eq('fingerprint move: a shape change publishes the table switch once',
       sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
-    eq('fingerprint move: a shape change publishes no enabled-changed report',
-      sent.filter((m) => m.action === 'state:tableEnabledChanged').length, 0);
+    // The carry and the press each send a notice. The last one for the
+    // active table holds the press's on and the cleared range expression.
+    const activeNotices = sent.filter((m) => m.action === 'state:settingsChanged' && m.active);
+    const lastNotice = activeNotices[activeNotices.length - 1];
+    eq('fingerprint move: the last active settings notice holds the press and the cleared range',
+      lastNotice && [lastNotice.settings.enabled, lastNotice.settings.rangeExpr], [true, '']);
 
-    forgetRegisteredTable(grid.scrollPaneEl);
+    if (fresh) forgetRegisteredTable(fresh);
   });
 })();
 
@@ -3517,7 +3637,6 @@ const PENDING_FILL_ROWS = [
 
 (function shapeFingerprint_aLockedTableWhoseShapeChangedRegistersFresh() {
   runPressFixture(({ sent }) => {
-    DR_STORE.setSettings(Object.assign({}, DR_DEFAULTS, { enabled: true }));
     const table = makeToggleTable([
       [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
       [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
@@ -3713,7 +3832,7 @@ const PENDING_FILL_ROWS = [
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 6, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 7, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting logs its own row, and that row lands in the capture',
@@ -4299,8 +4418,8 @@ const PENDING_FILL_ROWS = [
     if (!/^(intent|state|request):[a-z][A-Za-z]*$/.test(topic)) allNamed = false;
   }
   eq('one mechanism: every topic name follows the family:name style', allNamed, true);
-  eq('one mechanism: the table holds all eighteen cross-context topics plus the five same-context ones',
-    Object.keys(DR_BUS.TOPICS).length, 23);
+  eq('one mechanism: the table holds all eighteen cross-context topics plus the four same-context ones',
+    Object.keys(DR_BUS.TOPICS).length, 22);
 })();
 
 // --- #325 Task 12: the moved responders answer through the bus ---
@@ -4433,18 +4552,16 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
     const active = build(rows, { header });
     const other = build(rows, { header });
     const savedSelected = DR_STORE.getSelectedTable();
-    const savedSettings = DR_STORE.getSettings();
     let switches = 0;
     const unsubscribe = DR_BUS.subscribe('state:tableSwitched', () => { switches++; });
     try {
       withToggleDocumentMock(() => {
         createToggleForTable(active.table);
         createToggleForTable(other.table);
-        DR_STORE.setSelectedTable(null);
-        DR_STORE.setSettings(Object.assign({}, RW_OPTS, { simplifyFirstRow: false }));
+        DR_STORE.setTableSettings(active.table, Object.assign({}, RW_OPTS, { simplifyFirstRow: false }), 'page');
         DR_STORE.setSelectedTable(active.table);
         applySidebarRounding(active.table);
-        roundTable(other.table, Object.assign({}, RW_OPTS, { simplifyFirstRow: false }));
+        roundTableUnder(other.table, Object.assign({}, RW_OPTS, { simplifyFirstRow: false }));
 
         other.headerWrite(2, 'Q3');
         page.settle();
@@ -4467,7 +4584,6 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
     } finally {
       unsubscribe();
       DR_STORE.setSelectedTable(null);
-      DR_STORE.setSettings(savedSettings);
       DR_STORE.setSelectedTable(savedSelected);
     }
   });
@@ -4496,7 +4612,7 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
     }
     const before = rwRows('debug', RW_UNROUNDED_ROW);
     try {
-      roundTable(t.table, RW_OPTS);
+      roundTableUnder(t.table, RW_OPTS);
     } finally {
       if (restoreMagnitude) restoreMagnitude();
     }
