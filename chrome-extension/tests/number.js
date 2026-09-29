@@ -710,6 +710,20 @@ eq('resolveNumTop: negative -> fallback',
 eq('resolveNumTop: 2.7 floored to 2',
   resolveNumTop('2.7', 1), 2);
 
+// A blank offset or top-band count falls back to DR_DEFAULTS, the one
+// defaults record, so an edit there reaches every table.
+(function roundingSettingsReadDefaultsRecord() {
+  const saved = { offsetTop: DR_DEFAULTS.offsetTop, numTop: DR_DEFAULTS.numTop };
+  try {
+    DR_DEFAULTS.offsetTop = -1.5;
+    DR_DEFAULTS.numTop = 3;
+    eq('resolveRoundingSettings: blank settings fall back to DR_DEFAULTS',
+      resolveRoundingSettings({}), { offsetTop: -1.5, offsetOther: -1.5, numTop: 3 });
+  } finally {
+    Object.assign(DR_DEFAULTS, saved);
+  }
+})();
+
 // --- Sprint G: range selector ---
 
 // lettersToColIndex
@@ -2385,13 +2399,10 @@ const LADDER_OPTS = {
     fs.readFileSync(path.join(__dirname, '..', 'js', 'round-dynamic-cases.json'), 'utf8')
   );
 
-  // core.js declares these as module-local `const`s, which a direct eval
-  // never leaks to the enclosing scope (only its function declarations do,
-  // which is how toNumber/roundWithOffset/etc. above are reachable). Mirror
-  // the documented defaults here rather than exposing another global just
-  // for this test section.
-  const SHARED_DEFAULT_OFFSET = -0.5;
-  const SHARED_DEFAULT_NUM_TOP = 1;
+  // A case with no offset or top-band count runs at the extension's own
+  // defaults, so the table also checks that those match the other copies.
+  const SHARED_DEFAULT_OFFSET = DR_DEFAULTS.offsetTop;
+  const SHARED_DEFAULT_NUM_TOP = DR_DEFAULTS.numTop;
 
   for (const group of sharedCaseGroups) {
     for (const c of group.cases) {
