@@ -265,7 +265,7 @@ DR_BUS.respond('request:settings', () => {
   const selected = DR_STORE.getSelectedTable();
   return {
     settings: DR_STORE.getTableSettings(selected),
-    locked: !!selected && isTableLocked(selected),
+    locked: !!selected && tableHasUnrestorableCells(selected),
   };
 });
 
@@ -714,19 +714,6 @@ function restoreTable(table) {
     releaseCell(table, cell, kind);
   }
   return unrestorableCount;
-}
-
-// A cell showing the simplified marker with no original in the registry.
-// The restore leaves it as it stands, and one such cell locks the table.
-function isUnrestorableCell(table, cell) {
-  return !DR_STORE.hasTableOriginal(table, cell);
-}
-
-// Whether the table is locked, read without touching the page: the same
-// test the restore runs, over the same marked cells.
-function isTableLocked(table) {
-  return Array.from(table.querySelectorAll('.dr-ext-rounded'))
-    .some((cell) => isUnrestorableCell(table, cell));
 }
 
 // Release one simplified cell: put its original text back into every text
