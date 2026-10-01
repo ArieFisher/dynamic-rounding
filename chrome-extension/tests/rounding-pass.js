@@ -137,8 +137,8 @@ function roundHeaderCellTable(rowsSpec, optsOverrides) {
 }
 
 // A header row of <th> prices over a body of <td> cells: the shape a pricing
-// comparison takes. With the header row in the dataset the max magnitude is
-// 2, so 195 rounds to the nearest 50 and 25 to the nearest 5.
+// comparison takes. At -0.5 each value rounds to half its own order: 195 to
+// the nearest 50, 25 to the nearest 5.
 const PRICE_HEADER_ROWS = [
   [{ tag: 'th', text: 'Plan' },  { tag: 'th', text: '$195' }, { tag: 'th', text: '$550' }],
   [{ tag: 'td', text: 'Users' }, { tag: 'td', text: '25' },   { tag: 'td', text: '40' }],
@@ -158,7 +158,7 @@ const PRICE_HEADER_ROWS = [
 })();
 
 // Row headers holding counts: column A is the <th> column, so the first-column
-// switch governs them. With column A in the dataset the max magnitude is 3.
+// switch governs them. At -0.5, 1,234 rounds to the nearest 500.
 const SEAT_ROWS = [
   [{ tag: 'th', text: 'Seats' }, { tag: 'th', text: 'Price' }],
   [{ tag: 'th', text: '1,234' }, { tag: 'td', text: '99' }],
