@@ -20,6 +20,10 @@ The sidebar opens beside one tab and serves that tab for as long as it is open. 
 
 A tab switch closes the sidebar. The service worker closes it whenever the user leaves the tab it was opened for, and the sidebar closes itself on the switches the worker misses: an idle restart empties the tab number the worker compares against, and a sidebar opened from Chrome's own side-panel control never sets it. Those switches used to leave the sidebar open, showing controls for a page the user had left.
 
+## Header cells follow the switches
+
+A header cell rounds like any other cell. The first-row and first-column switches govern by position: with both off, the top row and the leading column stay raw, whatever tag the page gave their cells, and a header cell outside that row and column rounds under the defaults. A pricing comparison that marks its prices as column headers rounds them when the first-row switch is on, and a volume table that marks its seat counts as row headers rounds them when the first-column switch is on. A grid reads every cell as a data cell, so both table kinds follow this one rule.
+
 ## Offset semantics
 
 The extension uses the same offset model as the rest of the project. As of the `2026-05-28` release, the meaning of fractional offsets is sign-aware: `+0.5` rounds toward half of the next-larger order of magnitude, and `-0.5` rounds toward half of the current order. The result is also floored at the value's own order of magnitude so a large number can never collapse to zero. One platform difference: an out-of-range offset does not throw here — the extension falls back to the default instead. See the [Sheets README](../js/README.md#offset-reference) for the full offset reference and parameter table.
