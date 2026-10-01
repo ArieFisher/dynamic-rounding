@@ -1616,9 +1616,9 @@ function readTableFingerprint(el, opts = {}) {
  * On a native table the adapter's isOutside marks the footer section alone,
  * so the head section is read from the row itself: the row sits in a THEAD,
  * or it holds header cells and no data cell. The second form covers a table
- * written with a leading row of <th> and no explicit head section, which the
- * simplification engine already reads as a header row by skipping every <th>
- * cell it holds.
+ * written with a leading row of <th> and no explicit head section. The pass
+ * reads such a row like any other; the first-row exclusion is what holds it
+ * raw, by position.
  *
  * @param {Element} el
  * @param {NativeTableAdapter|GridAdapter} adapter

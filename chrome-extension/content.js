@@ -982,7 +982,7 @@ function buildCaptureStateResponse() {
 //              the original text back into each piece that still shows
 //              written text and drops the record, so the cell holds only the
 //              page's text, and the pass then treats it as fresh.
-// The pass then classifies every <td> through the classification ladder
+// The pass then classifies every cell through the classification ladder
 // (lib/dr-simplify) and the placement step (placeDecision in lib/dr-table),
 // resolves ambiguous dates per column, finds the max magnitude over the
 // dataset, builds each cell's patches, and writes each cell through the
@@ -1096,7 +1096,7 @@ function resolveRoundingSettings(opts) {
   };
 }
 
-// Classify one <td>: the ladder, then the placement step. isCellWholeLink
+// Classify one cell: the ladder, then the placement step. isCellWholeLink
 // and the superscript ranges are DOM-only checks the pure ladder cannot
 // perform itself (see lib/dr-simplify/ladder.js header), so they pass in as
 // plain data. The step reads the page and writes nothing: the pass writes
@@ -1156,27 +1156,30 @@ function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, ki
   };
 }
 
-// Every <td> of every row, in page order, with its row index and whether its
-// row is an outside row. A <th> is never rounded, but it still holds its
-// column: the column index is the column the browser lays the cell out in
-// (the adapter's reading, see assignGridColumns). A <th scope="row"> IS the
-// table's first column as rendered, so in such a table the leading <td> is
-// column B: "first column" (and range "A") target the header column, not the
-// first data cell after it. An outside row rounds like any other; its
-// entries carry isOutside so its values stay out of the dataset. The count
-// of these cells is what the cell cap measures.
+// Every cell of every row, in page order, with its row index and whether its
+// row is an outside row. A header cell is a cell like any other: the
+// first-row and first-column exclusions govern it by position, whatever tag
+// the page gave it, so a header row of prices rounds when the first-row
+// switch is on and stays raw when it is off. The column index is the column
+// the browser lays the cell out in (the adapter's reading, see
+// assignGridColumns): a <th scope="row"> IS the table's first column as
+// rendered, so in such a table the leading <td> is column B, and "first
+// column" (and range "A") target the header column, not the first data cell
+// after it. An outside row rounds like any other; its entries carry
+// isOutside so its values stay out of the dataset. The count of these cells
+// is what the cell cap measures.
 function tableDataCells(adapterRows) {
   const cells = [];
   for (let r = 0; r < adapterRows.length; r++) {
     const isOutside = !!adapterRows[r].isOutside;
     for (const cellObj of adapterRows[r].getCells()) {
-      if (cellObj.tagName === 'TD') cells.push({ cellObj, rowIndex: r, isOutside });
+      cells.push({ cellObj, rowIndex: r, isOutside });
     }
   }
   return cells;
 }
 
-// Classify every <td> of every row, in page order (see tableDataCells). The
+// Classify every cell of every row, in page order (see tableDataCells). The
 // lens preview runs this step alone: no sort and no writes.
 function classifyTableCells(table, dataCells, opts, ranges, kind) {
   return dataCells.map(({ cellObj, rowIndex, isOutside }) =>
@@ -1295,10 +1298,10 @@ function cellPatches(entry, maxMag, opts, rounding, kind) {
  * @returns {{cells: Array<{entry: object, patches: object[], linkFilteredIdx: number[]|null}>,
  *            maxMag: number|null, landedCells: number, missedCells: number,
  *            cellCount: number, overCap: boolean}}
- *   cells holds every <td> in page order with its patches (empty means the
+ *   cells holds every cell in page order with its patches (empty means the
  *   cell's target text is its original). landedCells counts the written
  *   cells with a landed patch, missedCells the written cells with none.
- *   cellCount counts the <td> cells the pass read. An invalid range
+ *   cellCount counts the cells the pass read. An invalid range
  *   expression or a table with no rows returns no cells and writes nothing;
  *   so does a table above pass.cellCap, with overCap true.
  */

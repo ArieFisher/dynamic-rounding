@@ -4,7 +4,7 @@
 // Sprint first-col-is-a: pin column-index behavior for tables with <th> cells
 //
 // Column index is the cell's position in its row, counting <th> cells:
-//   - <th> cells are never rounded, but they still occupy their column.
+//   - <th> cells round under the same switches as any cell, and they occupy their column.
 //   - rangeExpr "A" maps to the leftmost DOM cell — the <th> in a row-header
 //     table, so the leading <td> there is column "B".
 //   - simplifyFirstColumn gates the leftmost DOM cell, so in a row-header table
@@ -23,7 +23,7 @@
 // --- Test 1: Table with row headers — nothing outside the range is rounded ---
 // Row: [<th>Name</th>, <td>100</td>, <td>200</td>]
 // With rangeExpr = "A" the range covers the <th> column only; neither <td> is
-// in range, and the <th> itself is never rounded.
+// in range, and the <th> holds a name, not a number.
 (function firstColIsA_withRowHeader() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([[
@@ -39,8 +39,8 @@
     };
     roundTable(table, opts);
     const cells = table.rows[0].cells;
-    // <th> Name: must NOT be rounded (it's not a <td>, skipped by the loop entirely)
-    eq('first-col-is-A (row-header table): <th> Name is never rounded',
+    // <th> Name holds no number, so it stays raw.
+    eq('first-col-is-A (row-header table): a <th> holding a name stays raw',
       cells[0].classList.contains('dr-ext-rounded'), false);
     // <td>100 is column B and <td>200 column C — both out of range A
     eq('first-col-is-A (row-header table): <td>100 at column B not rounded',
@@ -81,11 +81,11 @@
 // Regression: selecting "first column" used to enable the *second* rendered
 // column, because only <td> cells were counted and the <th> was invisible to
 // the column index. The <th> is the first column, so the leading <td> (column
-// B) is rounded regardless of the toggle, and the <th> is never rounded.
+// B) is rounded regardless of the toggle, and the <th> holds a name, so it stays raw.
 (function simplifyFirstColumn_withRowHeader() {
   for (const flag of [false, true]) {
     const rows = runRowHeaderTable({ simplifyFirstColumn: flag });
-    eq(`simplifyFirstColumn=${flag} (row-header table): <th> is never rounded`,
+    eq(`simplifyFirstColumn=${flag} (row-header table): a <th> holding a name stays raw`,
       isRounded(rows[0][0]), false);
     eq(`simplifyFirstColumn=${flag} (row-header table): leading <td> is column B, not gated`,
       isRounded(rows[0][1]), true);
@@ -108,6 +108,116 @@
     isRounded(rangeB[0][2]), false);
 })();
 
+
+// ---------------------------------------------------------------------------
+// Header cells follow the switches
+//
+// A header cell rounds like any other cell: the first-row and first-column
+// switches govern by position, whatever tag the page gave the cell. A grid
+// already reads every cell as a data cell, so these assertions hold the
+// native table to the same rule.
+// ---------------------------------------------------------------------------
+
+const HEADER_CELL_OPTS = {
+  enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+  simplifyFirstRow: false, simplifyFirstColumn: false,
+  simplifyMixedPercent: false, simplifyMixedCurrency: true,
+  offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
+  rangeExpr: '',
+};
+
+function roundHeaderCellTable(rowsSpec, optsOverrides) {
+  let rows;
+  withCreateTreeWalker(function () {
+    const table = makeMockTable(rowsSpec);
+    roundTable(table, Object.assign({}, HEADER_CELL_OPTS, optsOverrides));
+    rows = table.rows.map((row) => row.cells);
+  });
+  return rows;
+}
+
+// A header row of <th> prices over a body of <td> cells: the shape a pricing
+// comparison takes. At -0.5 each value rounds to half its own order: 195 to
+// the nearest 50, 25 to the nearest 5.
+const PRICE_HEADER_ROWS = [
+  [{ tag: 'th', text: 'Plan' },  { tag: 'th', text: '$195' }, { tag: 'th', text: '$550' }],
+  [{ tag: 'td', text: 'Users' }, { tag: 'td', text: '25' },   { tag: 'td', text: '40' }],
+];
+
+(function headerCells_theFirstRowSwitchGovernsAHeaderRow() {
+  const off = roundHeaderCellTable(PRICE_HEADER_ROWS, { simplifyFirstRow: false });
+  eq('header cells: with the first-row switch off, a <th> price in row one stays raw',
+    off[0][1].innerText, '$195');
+  eq('header cells: with the first-row switch off, the raw <th> carries no rounded marker',
+    isRounded(off[0][1]), false);
+  const on = roundHeaderCellTable(PRICE_HEADER_ROWS, { simplifyFirstRow: true });
+  eq('header cells: with the first-row switch on, a <th> price in row one rounds',
+    on[0][1].innerText, '$200');
+  eq('header cells: with the first-row switch on, the rounded <th> carries the rounded marker',
+    isRounded(on[0][1]), true);
+})();
+
+// Row headers holding counts: column A is the <th> column, so the first-column
+// switch governs them. At -0.5, 1,234 rounds to the nearest 500.
+const SEAT_ROWS = [
+  [{ tag: 'th', text: 'Seats' }, { tag: 'th', text: 'Price' }],
+  [{ tag: 'th', text: '1,234' }, { tag: 'td', text: '99' }],
+  [{ tag: 'th', text: '5,678' }, { tag: 'td', text: '49' }],
+];
+
+(function headerCells_theFirstColumnSwitchGovernsRowHeaders() {
+  const off = roundHeaderCellTable(SEAT_ROWS, { simplifyFirstColumn: false });
+  eq('header cells: with the first-column switch off, a <th> count in column A stays raw',
+    off[1][0].innerText, '1,234');
+  const on = roundHeaderCellTable(SEAT_ROWS, { simplifyFirstColumn: true });
+  eq('header cells: with the first-column switch on, a <th> count in column A rounds',
+    on[1][0].innerText, '1,000');
+  eq('header cells: with the first-column switch on, the second <th> count rounds too',
+    on[2][0].innerText, '5,500');
+})();
+
+// A header cell outside row one and column A sits under no switch, so it
+// rounds under the defaults like any other cell.
+(function headerCells_aHeaderCellElsewhereRoundsLikeAnyCell() {
+  const rows = roundHeaderCellTable([
+    [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
+    [{ tag: 'td', text: 'North' },  { tag: 'th', text: '1,234,567' }],
+  ]);
+  eq('header cells: a <th> outside row one and column A rounds under the defaults',
+    rows[1][1].innerText, '1,000,000');
+})();
+
+// The shape fingerprint records the header row's texts. Once the extension
+// simplifies a header cell, the fingerprint must read that cell through its
+// stored original, or the extension's own write would read as a page change
+// and discard the entry on the next action.
+(function headerCells_aSimplifiedHeaderCellReadsAsNoShapeChange() {
+  withCreateTreeWalker(function () {
+    const table = makeMockTable(PRICE_HEADER_ROWS);
+    const readOpts = { originalText: (cellEl) => DR_STORE.getTableOriginalText(table, cellEl) };
+    const before = readTableFingerprint(table, readOpts);
+    roundTableUnder(table, Object.assign({}, HEADER_CELL_OPTS, { simplifyFirstRow: true }));
+    eq('header cells: the fingerprint test simplified the header row',
+      table.rows[0].cells[1].innerText, '$200');
+    eq('header cells: the fingerprint reads a simplified header cell through its original',
+      sameTableFingerprint(before, readTableFingerprint(table, readOpts)), true);
+    DR_STORE.unregisterTable(table);
+  });
+})();
+
+// The lens preview samples the cells the table rounds, so a header row joins
+// its pool exactly when the first-row switch lets the row round.
+(function headerCells_theLensPreviewFollowsTheFirstRowSwitch() {
+  withCreateTreeWalker(function () {
+    const table = makeMockTable(PRICE_HEADER_ROWS);
+    const nums = (overrides) =>
+      collectNumericCells(table, Object.assign({}, HEADER_CELL_OPTS, overrides)).map((c) => c.num);
+    eq('header cells: the lens preview leaves a raw header row out',
+      nums({ simplifyFirstRow: false }), [25, 40]);
+    eq('header cells: the lens preview takes a simplified header row in',
+      nums({ simplifyFirstRow: true }), [195, 550, 25, 40]);
+  });
+})();
 // --- 3. Whole-cell short-circuit via roundTable mock ---
 
 (function wholeCellQuoteShortCircuit() {

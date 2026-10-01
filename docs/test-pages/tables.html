@@ -2334,6 +2334,108 @@ TSLA,75,"248.09","18,606.75"
     </script>
   </section>
 
+  <section>
+    <h2>28. Header cells follow the switches</h2>
+    <p class="expect">Expect: a pillbox at load on all three tables. Under the
+      defaults, the header row and the first column stay raw on each, and the
+      "Annual total" row rounds on both pricing tables: $2,340 to $2,500,
+      $4,740 to $4,500, $6,600 to $6,500. In the native table that row is
+      marked up with header cells, and it sits outside the top row and the
+      leading column, so it rounds like any other row. Turn on the first-row
+      switch: the price headers round on both pricing tables, $195 to $200
+      and $395 to $400, and $550 stays. In the volume table, turn on the
+      first-column switch: the seat counts in the row headers round, 1,234 to
+      1,000, 5,678 to 5,500, 12,000 to 10,000.</p>
+    <p class="expect">Before this change, a native table's header cells never
+      changed, whatever the switches held: the price headers stayed raw with
+      the first-row switch on, the seat counts stayed raw with the
+      first-column switch on, and the "Annual total" row stayed raw under
+      every setting. The grid followed the switches already.</p>
+
+    <!--
+      A native table and a grid of the same pricing comparison, with the
+      prices as column headers and, on the native table, a totals row marked
+      up as header cells, plus a native volume table whose row headers hold
+      the seat counts. A header cell on a native table is a cell like any
+      other, and a grid reads every element with the cell role as a cell, so
+      the first-row and first-column exclusions govern both kinds by position
+      alone. The grid's row labels carry the cell role: when a row holds the
+      cell role, the adapter reads those elements alone, so a label carrying
+      the row-header role beside them would drop out of the row.
+    -->
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Plan</th>
+          <th scope="col">Starter $195</th>
+          <th scope="col">Pro $395</th>
+          <th scope="col">Max $550</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">API calls per month</th>
+          <td>24,750</td>
+          <td>248,900</td>
+          <td>2,487,000</td>
+        </tr>
+        <tr>
+          <th scope="row">Seats included</th>
+          <td>5</td>
+          <td>25</td>
+          <td>100</td>
+        </tr>
+        <tr>
+          <th scope="row">Annual total</th>
+          <th>$2,340</th>
+          <th>$4,740</th>
+          <th>$6,600</th>
+        </tr>
+      </tbody>
+    </table>
+    <div class="aria-grid" role="grid" aria-label="Pricing comparison grid">
+      <div class="g-row" role="row">
+        <span role="columnheader">Plan</span>
+        <span role="columnheader">Starter $195</span>
+        <span role="columnheader">Pro $395</span>
+        <span role="columnheader">Max $550</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">API calls per month</span>
+          <span role="cell">24,750</span>
+          <span role="cell">248,900</span>
+          <span role="cell">2,487,000</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Seats included</span>
+          <span role="cell">5</span>
+          <span role="cell">25</span>
+          <span role="cell">100</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Annual total</span>
+          <span role="cell">$2,340</span>
+          <span role="cell">$4,740</span>
+          <span role="cell">$6,600</span>
+        </div>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Seats</th>
+          <th scope="col">Price per seat</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">1,234</th><td>$99</td></tr>
+        <tr><th scope="row">5,678</th><td>$49</td></tr>
+        <tr><th scope="row">12,000</th><td>$29</td></tr>
+      </tbody>
+    </table>
+  </section>
+
 </body>
 
 </html>
