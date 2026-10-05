@@ -117,7 +117,7 @@ A capture from the extension holds real page content, and this repository is pub
 - **Every change that adds a kind of test names the table in that page to test it on.** Give me the section number in the pull request's manual tests and in chat. A test with no table to run it on is a test I cannot run.
 - **A change to a table shape the page already holds needs no new table.** Point at the section that holds it.
 - **A change that turns on a shape the page does not hold gets a new section, in the same branch.** Merged cells are the example: nothing on the page carried one, so no amount of simplifying it could tell the new reading from the old. The measure is whether the shape matters to someone using the extension, not whether the change was large.
-- Each new section states what to expect, and what the result was before the change where that is what makes the difference visible.
+- Each new section states what the table holds and what to expect. Where a passing result looks like nothing happened, it states what a failure looks like, in the present tense. It never states what a setting does to the table, what the extension did before a change, or the issue behind a fixture. A row whose result waits on an open design decision links to that decision's issue. A row label carries "rounds" or "held" only when that row is the exception to the section's expectation.
 
 ### Docs track behavior
 
