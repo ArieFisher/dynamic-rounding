@@ -78,8 +78,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | ambiguous date | An all-numeric date readable two ways: 7/4/99 may be July 4 or April 7. |
 | format hint | The column-level result for ambiguous dates: `month-first`, `day-first`, `mixed`, or `ambiguous`. <br><br>Mixed and ambiguous leave the column unchanged rather than assume a reading. |
 | column post-pass | A second pass for any cell whose reading depends on its whole column. As of this writing, dates are the only instance. |
-| granularity | How coarse a date or time becomes: <br>- dates: year, decade, century, etc.<br>- times: minute, hour, etc. |
-| half-year carry | The equivalent of 'rounding' a date.<br>e.g. A date in July or later 'rounds' up to the next year. |
+| granularity | How coarse a date or time becomes: <br>- dates: month, year, decade, century<br>- times: minute, hour<br><br>A date drops the parts finer than its granularity, so it never leaves its own month, year, decade, or century: December 13, 2096 shows "December 2096", "2096", "2090", or "2000". At month the day goes and the date keeps its own style ("2096-12-13" shows "2096-12"); a date with no day stays as written. Only the date changes, and words around it stay. |
 
 ## Tables on the page
 
