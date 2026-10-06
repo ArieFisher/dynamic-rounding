@@ -96,8 +96,10 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *     rounds.
  *   value: mode-specific payload —
  *     'pure' → { num }
- *     'date' (resolved) → { month, day, year }
- *     'date' (needs the column post-pass) → { ambiguous: { n1, n2, year } },
+ *     'date' (resolved) → { year, month, start, end, dayCut } — see
+ *       parseDateLike in lib/dr-number
+ *     'date' (needs the column post-pass) → { ambiguous } — see
+ *       parseAmbiguousNumericDate in lib/dr-number,
  *       plus pending: 'ambiguous-date'
  *     'extracted' → { matches } — matches still need a caller-side
  *       filterLinkMatches pass; see file header. A unit number holds one
@@ -162,8 +164,7 @@ function classifyCell(input, options) {
     if (ambiguous !== null) {
       return { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { ambiguous } };
     }
-    const parsed = parseDateLike(trimmed);
-    return { mode: 'date', reason: 'simplify', value: { month: parsed.month, day: parsed.day, year: parsed.year } };
+    return { mode: 'date', reason: 'simplify', value: parseDateLike(trimmed) };
   }
 
   if (isTimeLike(trimmed)) {
@@ -273,17 +274,17 @@ function pickDateFormatHint(ambiguousList) {
  * from pickDateFormatHint. MDY/DMY resolve to a concrete date; MIXED/
  * AMBIGUOUS cannot be read safely and downgrade to skip.
  *
- * @param {{value: {ambiguous: {n1:number, n2:number, year:number}}}} decision
+ * @param {{value: {ambiguous: object}}} decision - see parseAmbiguousNumericDate
  * @param {'MDY'|'DMY'|'MIXED'|'AMBIGUOUS'} hint
  * @returns {{mode: string, reason: string, value?: object}}
  */
 function resolveAmbiguousDateDecision(decision, hint) {
-  const { ambiguous } = decision.value;
+  const { n1, n2, year, start, end, n1Cut, n2Cut } = decision.value.ambiguous;
   if (hint === 'MDY') {
-    return { mode: 'date', reason: 'simplify', value: { month: ambiguous.n1, day: ambiguous.n2, year: ambiguous.year } };
+    return { mode: 'date', reason: 'simplify', value: { year, month: n1, start, end, dayCut: n2Cut } };
   }
   if (hint === 'DMY') {
-    return { mode: 'date', reason: 'simplify', value: { month: ambiguous.n2, day: ambiguous.n1, year: ambiguous.year } };
+    return { mode: 'date', reason: 'simplify', value: { year, month: n2, start, end, dayCut: n1Cut } };
   }
   return { mode: 'skip', reason: 'ambiguous-date' };
 }

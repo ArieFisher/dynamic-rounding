@@ -407,33 +407,41 @@
     <h2>4. Dates, times, timestamps</h2>
     <p>Each row holds a date, a time, or a timestamp. The Governed by column
       names the setting that covers the row.</p>
-    <p class="expect">Expect: pillbox at load. Each date rounds to its year. Each
+    <p class="expect">Expect: pillbox at load. Each date shows its own year. Each
       time stays as written until the Times setting is on.</p>
 
     <!--
       Expected output at the shipped defaults: dates on at year granularity, times
       off, and times at hour granularity once switched on.
 
-      Dates round to a year, and a month of July or later carries the year up:
-        2020-07-21                    -> 2021
-        2020/03/15                    -> 2020
-        June 21, 2020                 -> 2020
-        Sept. 4, 1998                 -> 1999
-        June 21st, 2020               -> 2020
-        21 June 2020                  -> 2020
-        2020 June 21                  -> 2020
-        Jun 2020                      -> 2020
-        1998                          -> 1998
-        Paid on 2025-04-02            -> Paid on 2025
+      Each date drops the parts finer than the date granularity, so it never
+      leaves its own month, year, decade, or century. Only the date changes;
+      words around it stay. At month the day goes and the date keeps its own
+      style; a date with no day stays as written.
+                                      year           month
+        2020-07-21                    -> 2020        -> 2020-07
+        2020/03/15                    -> 2020        -> 2020/03
+        June 21, 2020                 -> 2020        -> June 2020
+        Sept. 4, 1998                 -> 1998        -> Sept. 1998
+        June 21st, 2020               -> 2020        -> June 2020
+        21 June 2020                  -> 2020        -> June 2020
+        2020 June 21                  -> 2020        -> 2020 June
+        Jun 2020                      -> 2020        -> Jun 2020
+        1998                          -> 1998        -> 1998
+        Paid on 2025-04-02            -> Paid on 2025 -> Paid on 2025-04
         "2020-07-21"                  -> held back, the whole cell is quoted
+      At decade 2020-07-21 shows 2020 and Sept. 4, 1998 shows 1990; at century
+      they show 2000 and 1900.
 
       All-numeric dates cannot be read on their own, so the column post-pass
       reads the whole column first. Here 7/21/2020 is the only row that settles the
       question: a second part over twelve can only be a day, which fixes the
-      column as month-first and lets the other two rows resolve.
-        7/21/2020                     -> 2021
-        7/4/99                        -> 2000
-        3/9/2021                      -> 2021
+      column as month-first and lets the other rows resolve.
+                                      year           month
+        7/21/2020                     -> 2020        -> 7/2020
+        7/4/99                        -> 1999        -> 7/99
+        3/9/2021                      -> 2021        -> 3/2021
+        Due 3/9/2021                  -> Due 2021    -> Due 3/2021
       A column carrying evidence for both readings is refused rather than guessed.
 
       Clock times round to the hour at the half-hour mark, and the original
@@ -519,6 +527,11 @@
         <tr>
           <th scope="row">All numeric, read from the column</th>
           <td>3/9/2021</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">All numeric, inside a sentence</th>
+          <td>Due 3/9/2021</td>
           <td>Dates</td>
         </tr>
         <tr>
@@ -825,13 +838,14 @@
       part over twelve, which only a day can be. In the second, no cell settles
       the reading. In the third, one cell reads day-first and another
       month-first.</p>
-    <p class="expect">Expect: pillbox at load. The first column rounds to years.
+    <p class="expect">Expect: pillbox at load. The first column shows years.
       The other two columns stay as written.</p>
 
     <!--
       Day-first resolved: 25/04/2020 has a first part over twelve, which can only
       be a day. That fixes the whole column as day-first:
-        25/04/2020 -> 2020,  03/04/2021 -> 2021,  07/08/2020 -> 2021
+        year:  25/04/2020 -> 2020,     03/04/2021 -> 2021,     07/08/2020 -> 2020
+        month: 25/04/2020 -> 04/2020,  03/04/2021 -> 04/2021,  07/08/2020 -> 08/2020
       Ambiguous only: no cell settles the reading, so the column is refused and
       every cell holds.
       Conflicting: 25/04/2021 says day-first, 04/25/2021 says month-first. The

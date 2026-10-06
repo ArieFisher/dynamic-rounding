@@ -38,7 +38,6 @@ const DR_NUMBER = {
   matchUnitNumber,
   getExclusionReason,
   resolveMonthName,
-  normalizeDateCandidate,
   parseDateLike,
   parseAmbiguousNumericDate,
   isDateLike,

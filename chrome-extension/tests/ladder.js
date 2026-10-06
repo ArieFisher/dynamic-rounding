@@ -79,10 +79,11 @@
     { mode: 'skip', reason: 'dates-disabled' });
   eq('classifyCell: unambiguous date-like cell resolves when simplifyDates is true',
     classifyCell({ text: '2020-01-01', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'date', reason: 'simplify', value: { month: 1, day: 1, year: 2020 } });
+    { mode: 'date', reason: 'simplify', value: { year: 2020, month: 1, start: 0, end: 10, dayCut: { start: 7, end: 10 } } });
   eq('classifyCell: ambiguous numeric date returns a pending decision',
     classifyCell({ text: '03/04/2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { ambiguous: { n1: 3, n2: 4, year: 2020 } } });
+    { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { ambiguous: {
+      n1: 3, n2: 4, year: 2020, start: 0, end: 10, n1Cut: { start: 0, end: 3 }, n2Cut: { start: 3, end: 6 } } } });
 })();
 
 (function classifyCell_times() {
@@ -182,12 +183,13 @@
     pickDateFormatHint([{ n1: 25, n2: 4 }, { n1: 3, n2: 25 }]), 'MIXED');
   eq('pickDateFormatHint: neither > 12 -> AMBIGUOUS', pickDateFormatHint([{ n1: 3, n2: 4 }]), 'AMBIGUOUS');
 
+  const ambiguous0304 = parseAmbiguousNumericDate('03/04/2020');
   eq('resolveAmbiguousDateDecision: MDY resolves n1 as month, n2 as day',
-    resolveAmbiguousDateDecision({ value: { ambiguous: { n1: 3, n2: 4, year: 2020 } } }, 'MDY'),
-    { mode: 'date', reason: 'simplify', value: { month: 3, day: 4, year: 2020 } });
+    resolveAmbiguousDateDecision({ value: { ambiguous: ambiguous0304 } }, 'MDY'),
+    { mode: 'date', reason: 'simplify', value: { year: 2020, month: 3, start: 0, end: 10, dayCut: { start: 3, end: 6 } } });
   eq('resolveAmbiguousDateDecision: DMY resolves n2 as month, n1 as day',
-    resolveAmbiguousDateDecision({ value: { ambiguous: { n1: 3, n2: 4, year: 2020 } } }, 'DMY'),
-    { mode: 'date', reason: 'simplify', value: { month: 4, day: 3, year: 2020 } });
+    resolveAmbiguousDateDecision({ value: { ambiguous: ambiguous0304 } }, 'DMY'),
+    { mode: 'date', reason: 'simplify', value: { year: 2020, month: 4, start: 0, end: 10, dayCut: { start: 0, end: 3 } } });
   eq('resolveAmbiguousDateDecision: MIXED downgrades to skip',
     resolveAmbiguousDateDecision({ value: { ambiguous: { n1: 25, n2: 25, year: 2020 } } }, 'MIXED'),
     { mode: 'skip', reason: 'ambiguous-date' });

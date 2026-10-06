@@ -790,8 +790,8 @@ function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
   return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
 }
 
-// Adapts a classifyCell decision to the { mode, num, ambiguous, month, day,
-// year, matches } shape the one simplification pass below reads in its
+// Adapts a classifyCell decision to the { mode, num, ambiguous, date,
+// matches } shape the one simplification pass below reads in its
 // column post-pass, its max magnitude, and its patch step, on both table
 // kinds.
 function decisionToLegacyInfo(decision) {
@@ -800,7 +800,7 @@ function decisionToLegacyInfo(decision) {
   if (decision.mode === 'date') {
     return decision.pending === 'ambiguous-date'
       ? { mode: 'date', ambiguous: decision.value.ambiguous }
-      : { mode: 'date', month: decision.value.month, day: decision.value.day, year: decision.value.year };
+      : { mode: 'date', date: decision.value };
   }
   if (decision.mode === 'time') return { mode: 'time' };
   return { mode: 'skip' };
@@ -1255,11 +1255,8 @@ function cellPatches(entry, maxMag, opts, rounding, kind) {
   const { offsetTop, offsetOther, numTop } = rounding;
   const lead = typeof text === 'string' ? text.length - text.trimStart().length : 0;
   if (info.mode === 'date' || info.mode === 'time') {
-    const prefilled = (info.month !== undefined)
-      ? { month: info.month, day: info.day, year: info.year }
-      : undefined;
     const rounded = info.mode === 'date'
-      ? roundDateText(trimmed, opts.dateGranularity, prefilled)
+      ? roundDateText(trimmed, opts.dateGranularity, info.date)
       : roundTimeText(trimmed, opts.timeGranularity);
     if (rounded === null || rounded === trimmed) return { patches: [], linkFilteredIdx: null };
     if (!layoutPieceHolding(layout, lead, trimmed.length)) {
