@@ -96,7 +96,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *     rounds.
  *   value: mode-specific payload —
  *     'pure' → { num }
- *     'date' (resolved) → { year, month, start, end, dayCut } — see
+ *     'date' (resolved) → { year, start, end, dayCut } — see
  *       parseDateLike in lib/dr-number
  *     'date' (needs the column post-pass) → { ambiguous } — see
  *       parseAmbiguousNumericDate in lib/dr-number,
@@ -279,12 +279,12 @@ function pickDateFormatHint(ambiguousList) {
  * @returns {{mode: string, reason: string, value?: object}}
  */
 function resolveAmbiguousDateDecision(decision, hint) {
-  const { n1, n2, year, start, end, n1Cut, n2Cut } = decision.value.ambiguous;
+  const { year, start, end, n1Cut, n2Cut } = decision.value.ambiguous;
   if (hint === 'MDY') {
-    return { mode: 'date', reason: 'simplify', value: { year, month: n1, start, end, dayCut: n2Cut } };
+    return { mode: 'date', reason: 'simplify', value: { year, start, end, dayCut: n2Cut } };
   }
   if (hint === 'DMY') {
-    return { mode: 'date', reason: 'simplify', value: { year, month: n2, start, end, dayCut: n1Cut } };
+    return { mode: 'date', reason: 'simplify', value: { year, start, end, dayCut: n1Cut } };
   }
   return { mode: 'skip', reason: 'ambiguous-date' };
 }

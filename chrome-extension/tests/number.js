@@ -608,6 +608,14 @@ eq('roundDateText: mixed cell preserves label at month granularity',
   }
 })();
 
+// An ordinal suffix on any part of a date keeps the cell a date, and the
+// suffix goes with the part it follows.
+eq('isDateLike: "2020th" (ordinal on a bare year) -> true', isDateLike('2020th'), true);
+eq('isDateLike: "7/21st/2020" (ordinal on a numeric part) -> true', isDateLike('7/21st/2020'), true);
+eq('roundDateText: "Jun 2015th" at decade -> "2010"', roundDateText('Jun 2015th', 'decade'), '2010');
+eq('roundDateText: "2015-07-21st" at month -> "2015-07"', roundDateText('2015-07-21st', 'month'), '2015-07');
+eq('roundDateText: "2015-07-21st" at year -> "2015"', roundDateText('2015-07-21st', 'year'), '2015');
+
 // The issue's worked example: every granularity cuts, none rounds.
 eq('roundDateText: December 13, 2096 at year -> 2096',
   roundDateText('December 13, 2096', 'year'), '2096');
@@ -1330,7 +1338,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 // ---------------------------------------------------------------------------
 (function dateRoundReturnType() {
   for (const year of [2020, 1975, 2000, 2099]) {
-    const d = { year, month: 12, start: 0, end: 10, dayCut: { start: 7, end: 10 } };
+    const d = { year, start: 0, end: 10, dayCut: { start: 7, end: 10 } };
     for (const gran of ['year', 'decade', 'century']) {
       const result = roundDateText(`${year}-12-31`, gran, d);
       eq(`roundDateText always returns string: passed ${year}-12-31 at ${gran}`,

@@ -226,8 +226,13 @@ const DATE_NOISE_CLASS = `[\\s${SUPERSCRIPT_DIGITS}${FOOTNOTE_MARKERS}]`;
 // marker, a superscript digit) but never a letter or digit.
 const DATE_START = '(?:^|(?<=[^\\w]))';
 const DATE_END = '(?=$|[^\\w])';
-// A day of the month, with an optional ordinal suffix: "21", "21st".
-const DAY = '(\\d{1,2})(?:st|nd|rd|th)?';
+// Any digit run in a date may carry an ordinal suffix ("21st", "2020th"). Each
+// group captures its suffix, so a cut removes the suffix with its digits, and
+// parseInt reads the digits alone.
+const ORD = '(?:st|nd|rd|th)?';
+const DAY = `(\\d{1,2}${ORD})`;
+const MONTH_NUM = `(\\d{2}${ORD})`;
+const YEAR = `(\\d{4}${ORD})`;
 
 // Map lowercase month abbreviation/name prefix → 1-based month number
 const MONTH_NAME_MAP = {
@@ -251,39 +256,40 @@ function resolveMonthName(token) {
 }
 
 // The date shapes parseDateLike reads, in match order. Each regex carries the
-// d flag, so a match holds its groups' positions. `fields` names the group
-// holding the year and the month, and `dayCut` returns the span the month
-// granularity removes: the day with its ordinal suffix and the one separator
-// between it and the rest of the date. A shape with no day has no dayCut.
+// d flag, so a match holds its groups' positions. `year` names the group
+// holding the year, `monthName` the group holding a month name, which must
+// resolve to a month, and `dayCut` returns the span the month granularity
+// removes: the day with its ordinal suffix and the one separator between it
+// and the rest of the date. A shape with no day has no dayCut.
 const DATE_SHAPES = [
   { // ISO dash: 2020-07-21 → cut "-21"
-    re: new RegExp(`${DATE_START}(\\d{4})-(\\d{2})-(\\d{2})${DATE_END}`, 'd'),
-    fields: { year: 1, month: 2 },
+    re: new RegExp(`${DATE_START}${YEAR}-${MONTH_NUM}-${DAY}${DATE_END}`, 'id'),
+    year: 1,
     dayCut: (m) => ({ start: m.indices[2][1], end: m.indices[0][1] }),
   },
   { // ISO slash: 2020/07/21 → cut "/21"
-    re: new RegExp(`${DATE_START}(\\d{4})\\/(\\d{2})\\/(\\d{2})${DATE_END}`, 'd'),
-    fields: { year: 1, month: 2 },
+    re: new RegExp(`${DATE_START}${YEAR}\\/${MONTH_NUM}\\/${DAY}${DATE_END}`, 'id'),
+    year: 1,
     dayCut: (m) => ({ start: m.indices[2][1], end: m.indices[0][1] }),
   },
   { // Month DD, YYYY: June 21, 2020 → cut "21, "
-    re: new RegExp(`${DATE_START}(${MONTH_NAMES})\\s+${DAY},?\\s+(\\d{4})${DATE_END}`, 'id'),
-    fields: { year: 3, month: 1 },
+    re: new RegExp(`${DATE_START}(${MONTH_NAMES})\\s+${DAY},?\\s+${YEAR}${DATE_END}`, 'id'),
+    year: 3, monthName: 1,
     dayCut: (m) => ({ start: m.indices[2][0], end: m.indices[3][0] }),
   },
   { // DD Month YYYY: 21 June 2020 → cut "21 "
-    re: new RegExp(`${DATE_START}${DAY}\\s+(${MONTH_NAMES})\\s+(\\d{4})${DATE_END}`, 'id'),
-    fields: { year: 3, month: 2 },
+    re: new RegExp(`${DATE_START}${DAY}\\s+(${MONTH_NAMES})\\s+${YEAR}${DATE_END}`, 'id'),
+    year: 3, monthName: 2,
     dayCut: (m) => ({ start: m.indices[1][0], end: m.indices[2][0] }),
   },
   { // YYYY Month DD: 2020 June 21 → cut " 21"
-    re: new RegExp(`${DATE_START}(\\d{4})\\s+(${MONTH_NAMES})\\s+${DAY}${DATE_END}`, 'id'),
-    fields: { year: 1, month: 2 },
+    re: new RegExp(`${DATE_START}${YEAR}\\s+(${MONTH_NAMES})\\s+${DAY}${DATE_END}`, 'id'),
+    year: 1, monthName: 2,
     dayCut: (m) => ({ start: m.indices[2][1], end: m.indices[0][1] }),
   },
   { // Month YYYY: Jun 2020
-    re: new RegExp(`${DATE_START}(${MONTH_NAMES})\\s+(\\d{4})${DATE_END}`, 'id'),
-    fields: { year: 2, month: 1 },
+    re: new RegExp(`${DATE_START}(${MONTH_NAMES})\\s+${YEAR}${DATE_END}`, 'id'),
+    year: 2, monthName: 1,
     dayCut: () => null,
   },
 ];
@@ -291,7 +297,11 @@ const DATE_SHAPES = [
 // Bare year: 2020 (1900–2099), the whole cell apart from footnote noise.
 // Strict anchors avoid false positives: "Sales: 2020", "$2,020.00", and
 // "version 2020.1.3" are not dates.
-const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*(\\d{4})${DATE_NOISE_CLASS}*$`, 'd');
+const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}*$`, 'id');
+
+// All-numeric date: N1/N2/Y or N1-N2-Y, with a 2- or 4-digit year.
+const AMBIGUOUS_DATE_RE = new RegExp(
+  `${DATE_START}(\\d{1,2}${ORD})[\\/\\-](\\d{1,2}${ORD})[\\/\\-](\\d{2,4})${ORD}${DATE_END}`, 'id');
 
 /**
  * Parse an unambiguous date inside a trimmed cell text.
@@ -301,7 +311,7 @@ const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*(\\d{4})${DATE_NOISE_CLASS
  *   ISO slash:     2020/07/21
  *   Named-month:   June 21, 2020 / Jun 21st, 2020 / 21 June 2020 / 2020 June 21 / Jun 2020
  *   Bare year:     2020
- * @returns {{year:number, month:number, start:number, end:number,
+ * @returns {{year:number, start:number, end:number,
  *   dayCut:{start:number,end:number}|null}|null}
  *   start and end bound the date in the text; dayCut is the span the month
  *   granularity removes, null when the date holds no day.
@@ -311,12 +321,9 @@ function parseDateLike(text) {
   for (const shape of DATE_SHAPES) {
     const m = shape.re.exec(text);
     if (!m) continue;
-    const monthText = m[shape.fields.month];
-    const month = /^\d+$/.test(monthText) ? parseInt(monthText, 10) : resolveMonthName(monthText);
-    if (month === null) continue;
+    if (shape.monthName && resolveMonthName(m[shape.monthName]) === null) continue;
     return {
-      year: parseInt(m[shape.fields.year], 10),
-      month,
+      year: parseInt(m[shape.year], 10),
       start: m.indices[0][0],
       end: m.indices[0][1],
       dayCut: shape.dayCut(m),
@@ -326,7 +333,7 @@ function parseDateLike(text) {
   if (bare) {
     const y = parseInt(bare[1], 10);
     if (y >= 1900 && y <= 2099) {
-      return { year: y, month: 1, start: bare.indices[1][0], end: bare.indices[1][1], dayCut: null };
+      return { year: y, start: bare.indices[1][0], end: bare.indices[1][1], dayCut: null };
     }
   }
   return null;
@@ -344,7 +351,7 @@ function parseDateLike(text) {
 function parseAmbiguousNumericDate(text) {
   if (typeof text !== 'string') return null;
   // N1/N2/Y or N1-N2-Y (but not YYYY-MM-DD or YYYY/MM/DD which are unambiguous)
-  const m = new RegExp(`${DATE_START}(\\d{1,2})[\\/\\-](\\d{1,2})[\\/\\-](\\d{2,4})${DATE_END}`, 'd').exec(text);
+  const m = AMBIGUOUS_DATE_RE.exec(text);
   if (!m) return null;
   const n1 = parseInt(m[1], 10);
   const n2 = parseInt(m[2], 10);
