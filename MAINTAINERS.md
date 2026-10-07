@@ -12,7 +12,7 @@ Three artifacts carry independent version numbers:
 
 ## How versions move
 
-The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. If the PR touched `python/**` or `chrome-extension/**` — documentation included — it bumps the patch of the matching version file, opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. Nobody edits those two version files by hand.
+The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. If the PR touched `python/**` or `chrome-extension/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. Nobody edits those two version files by hand. To release a minor version, add the `minor` label to the PR before merging it.
 
 The JS version has no automation. It moves by adding a release entry to `js/CHANGELOG.md`.
 

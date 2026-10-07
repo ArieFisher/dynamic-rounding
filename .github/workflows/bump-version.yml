@@ -38,18 +38,23 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # A merged PR labeled "minor" raises the minor version and resets the
+      # patch to 0; any other merged PR raises the patch.
       - name: Bump Python version (python/pyproject.toml)
         if: steps.changes.outputs.python == 'true'
+        env:
+          MINOR: ${{ contains(github.event.pull_request.labels.*.name, 'minor') }}
         run: |
           python3 - <<'PY'
-          import re, pathlib
+          import os, re, pathlib
           p = pathlib.Path("python/pyproject.toml")
           s = p.read_text()
           m = re.search(r'^version\s*=\s*"(\d+)\.(\d+)\.(\d+)"', s, re.MULTILINE)
           if not m:
               raise SystemExit("Could not find version line in python/pyproject.toml")
           maj, minor, patch = map(int, m.groups())
-          new = f"{maj}.{minor}.{patch + 1}"
+          new = (f"{maj}.{minor + 1}.0" if os.environ["MINOR"] == "true"
+                 else f"{maj}.{minor}.{patch + 1}")
           s2 = re.sub(r'^version\s*=\s*"[\d.]+"',
                       f'version = "{new}"', s, count=1, flags=re.MULTILINE)
           p.write_text(s2)
@@ -58,16 +63,22 @@ jobs:
 
       - name: Bump Chrome extension version (chrome-extension/manifest.json)
         if: steps.changes.outputs.chrome == 'true'
+        env:
+          MINOR: ${{ contains(github.event.pull_request.labels.*.name, 'minor') }}
         run: |
           python3 - <<'PY'
-          import json, pathlib
+          import json, os, pathlib
           p = pathlib.Path("chrome-extension/manifest.json")
           mf = json.loads(p.read_text())
           parts = [int(x) for x in mf["version"].split(".")]
-          # Bump the patch (3rd component). Pad to 3 if shorter.
+          # Bump the minor (2nd component) or the patch (3rd). Pad to 3 if shorter.
           while len(parts) < 3:
               parts.append(0)
-          parts[2] += 1
+          if os.environ["MINOR"] == "true":
+              parts[1] += 1
+              parts[2] = 0
+          else:
+              parts[2] += 1
           # If there's a 4th component from earlier runs, drop it on patch bump.
           mf["version"] = ".".join(str(x) for x in parts[:3])
           p.write_text(json.dumps(mf, indent=2) + "\n")
