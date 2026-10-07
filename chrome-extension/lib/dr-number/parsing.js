@@ -214,149 +214,146 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
   return null;
 }
 
-const MONTH_NAMES = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
+// A month name: the full name, its three-letter short form, or "Sept", with
+// an optional dot. A word that only starts like a month ("market") is not one.
+const MONTH_NAMES = '(?:january|february|march|april|may|june|july|august|september|october|november|december' +
+  '|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec)\\.?';
 
-// Regex constants for date candidate normalization
+// Date reading. The reader works on the cell's trimmed text as written, so
+// the positions it returns index that same text.
 const SUPERSCRIPT_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 const SUPERSCRIPT_TAG = 'SUP';
 const FOOTNOTE_MARKERS = '*†‡';
 const DATE_NOISE_CLASS = `[\\s${SUPERSCRIPT_DIGITS}${FOOTNOTE_MARKERS}]`;
-const LEADING_DATE_NOISE_RE = new RegExp(`^${DATE_NOISE_CLASS}+`);
-const TRAILING_DATE_NOISE_RE = new RegExp(`${DATE_NOISE_CLASS}+$`);
-const ORDINAL_SUFFIX_RE = /(\d+)(st|nd|rd|th)/gi;
+// A date may touch any non-word character (a label's colon, a footnote
+// marker, a superscript digit) but never a letter or digit.
+const DATE_START = '(?:^|(?<=[^\\w]))';
+const DATE_END = '(?=$|[^\\w])';
+// Any digit run in a date may carry an ordinal suffix ("21st", "2020th"). Each
+// group captures its suffix, so a cut removes the suffix with its digits, and
+// parseInt reads the digits alone.
+const ORD = '(?:st|nd|rd|th)?';
+const DAY = `(\\d{1,2}${ORD})`;
+const MONTH_NUM = `(\\d{2}${ORD})`;
+const YEAR = `(\\d{4}${ORD})`;
 
-// Map lowercase month abbreviation/name prefix → 1-based month number
-const MONTH_NAME_MAP = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-  jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12
-};
+const isDay = (s) => { const d = parseInt(s, 10); return d >= 1 && d <= 31; };
+const isMonth = (s) => { const n = parseInt(s, 10); return n >= 1 && n <= 12; };
+
+// One date with a known reading: its bounds in the text, its year, and the
+// span the month granularity removes (null when the date holds no day).
+const datePart = (m, year, dayCut) => (
+  { year: parseInt(year, 10), start: m.index, end: m.index + m[0].length, dayCut });
+
+// The date shapes findDates reads; on two matches at the same position the
+// earlier shape wins. Each regex carries the d flag, so a match holds its
+// groups' positions. `read` returns the date, or null for a date that cannot
+// exist (month 13, day 45). A dayCut is the day with its ordinal suffix and
+// the one separator between it and the rest of the date.
+const DATE_SHAPES = [
+  { // ISO dash: 2020-07-21 → cut "-21"
+    re: new RegExp(`${DATE_START}${YEAR}-${MONTH_NUM}-${DAY}${DATE_END}`, 'gid'),
+    read: (m) => (isMonth(m[2]) && isDay(m[3])
+      ? datePart(m, m[1], { start: m.indices[2][1], end: m.indices[0][1] }) : null),
+  },
+  { // ISO slash: 2020/07/21 → cut "/21"
+    re: new RegExp(`${DATE_START}${YEAR}\\/${MONTH_NUM}\\/${DAY}${DATE_END}`, 'gid'),
+    read: (m) => (isMonth(m[2]) && isDay(m[3])
+      ? datePart(m, m[1], { start: m.indices[2][1], end: m.indices[0][1] }) : null),
+  },
+  { // Month DD, YYYY: June 21, 2020 → cut "21, "
+    re: new RegExp(`${DATE_START}(${MONTH_NAMES})\\s+${DAY},?\\s+${YEAR}${DATE_END}`, 'gid'),
+    read: (m) => (isDay(m[2])
+      ? datePart(m, m[3], { start: m.indices[2][0], end: m.indices[3][0] }) : null),
+  },
+  { // DD Month YYYY: 21 June 2020 → cut "21 "
+    re: new RegExp(`${DATE_START}${DAY}\\s+(${MONTH_NAMES})\\s+${YEAR}${DATE_END}`, 'gid'),
+    read: (m) => (isDay(m[1])
+      ? datePart(m, m[3], { start: m.indices[1][0], end: m.indices[2][0] }) : null),
+  },
+  { // YYYY Month DD: 2020 June 21 → cut " 21"
+    re: new RegExp(`${DATE_START}${YEAR}\\s+(${MONTH_NAMES})\\s+${DAY}${DATE_END}`, 'gid'),
+    read: (m) => (isDay(m[3])
+      ? datePart(m, m[1], { start: m.indices[2][1], end: m.indices[0][1] }) : null),
+  },
+  { // Month YYYY: Jun 2020
+    re: new RegExp(`${DATE_START}(${MONTH_NAMES})\\s+${YEAR}${DATE_END}`, 'gid'),
+    read: (m) => datePart(m, m[2], null),
+  },
+  { // All numeric: N1/N2/Y or N1-N2-Y, with a 2- or 4-digit year. Which part
+    // is the day depends on the column (see the column post-pass), so the
+    // date carries both cuts: a part and the separator after it.
+    // 2-digit-year pivot: yy < 50 → 2000+yy, else 1900+yy.
+    re: new RegExp(`${DATE_START}(\\d{1,2}${ORD})[\\/\\-](\\d{1,2}${ORD})[\\/\\-](\\d{2,4})${ORD}${DATE_END}`, 'gid'),
+    read: (m) => {
+      const n1 = parseInt(m[1], 10);
+      const n2 = parseInt(m[2], 10);
+      if (!isDay(m[1]) || !isDay(m[2]) || Math.min(n1, n2) > 12) return null;
+      let year = parseInt(m[3], 10);
+      if (m[3].length === 2) year = year < 50 ? 2000 + year : 1900 + year;
+      return {
+        year, n1, n2,
+        start: m.index,
+        end: m.index + m[0].length,
+        n1Cut: { start: m.indices[1][0], end: m.indices[2][0] },
+        n2Cut: { start: m.indices[2][0], end: m.indices[3][0] },
+      };
+    },
+  },
+];
+
+// Bare year: 2020 (1900–2099), the whole cell apart from footnote noise.
+// Strict anchors avoid false positives: "Sales: 2020", "$2,020.00", and
+// "version 2020.1.3" are not dates.
+const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}*$`, 'id');
 
 /**
- * Resolve a matched month-name token (e.g. "June", "jun.", "Jul") to a 1-based month number.
- * Returns null if not recognised.
- */
-function resolveMonthName(token) {
-  const t = token.toLowerCase().replace(/[.\s]/g, '');
-  // Try exact key first, then 3-letter prefix
-  if (MONTH_NAME_MAP[t] !== undefined) return MONTH_NAME_MAP[t];
-  const prefix3 = t.slice(0, 4); // "sept" is 4 chars
-  if (MONTH_NAME_MAP[prefix3] !== undefined) return MONTH_NAME_MAP[prefix3];
-  const prefix3s = t.slice(0, 3);
-  if (MONTH_NAME_MAP[prefix3s] !== undefined) return MONTH_NAME_MAP[prefix3s];
-  return null;
-}
-
-/**
- * Normalize a trimmed date candidate by stripping leading/trailing superscript digits,
- * footnote markers, and reducing ordinal suffixes (1st→1, 2nd→2, etc.) to bare numbers.
- * Collapses and trims whitespace at the end.
- */
-function normalizeDateCandidate(text) {
-  let s = text;
-  // Strip leading/trailing superscript digits and footnote markers
-  s = s.replace(LEADING_DATE_NOISE_RE, '').replace(TRAILING_DATE_NOISE_RE, '');
-  // Replace ordinal suffixes: "1st" → "1", "21st" → "21", etc.
-  s = s.replace(ORDINAL_SUFFIX_RE, '$1');
-  // Collapse internal whitespace
-  s = s.replace(/\s+/g, ' ').trim();
-  return s;
-}
-
-/**
- * Parse an unambiguous date-like string into {year, month, day}.
- * Returns null for all-numeric N1/N2/Y or N1-N2-Y shapes (handled by parseAmbiguousNumericDate).
- * Supported shapes:
+ * Find every date in a trimmed cell text, left to right. Supported shapes:
  *   ISO dash:      2020-07-21
  *   ISO slash:     2020/07/21
- *   Named-month:   June 21, 2020 / Jun 21, 2020 / 21 June 2020 / 2020 June 21 / Jun 2020
- *   Bare year:     2020
- * Adjacent non-date characters (trailing words, leading labels, footnote superscripts,
- * ordinal suffixes) are tolerated via normalizeDateCandidate + relaxed anchors.
+ *   Named-month:   June 21, 2020 / Jun 21st, 2020 / 21 June 2020 / 2020 June 21 / Jun 2020
+ *   All numeric:   7/21/2020 / 21-07-20 (read by the column post-pass)
+ *   Bare year:     2020, as the whole cell
+ * Each date is one of:
+ *   - a date with a known reading: { year, start, end, dayCut }
+ *   - an all-numeric date: { year, n1, n2, start, end, n1Cut, n2Cut }
+ *     (see isAmbiguousDate)
+ *   - a date that cannot exist ("2020-13-45"): { impossible: true, start, end }
+ * start and end bound the date in the text.
+ * @returns {object[]|null} the dates, or null when the text holds none.
  */
-function parseDateLike(text) {
+function findDates(text) {
   if (typeof text !== 'string') return null;
-  const t = normalizeDateCandidate(text.trim());
-
-  // ISO dash: YYYY-MM-DD (must be 4-digit year first to avoid ambiguous N1-N2-Y)
-  // Boundary-aware: allow surrounding non-word chars but not word chars
-  const isoDash = t.match(/(?:^|(?<=[^\w]))(\d{4})-(\d{2})-(\d{2})(?=$|[^\w])/);
-  if (isoDash) {
-    return { year: parseInt(isoDash[1], 10), month: parseInt(isoDash[2], 10), day: parseInt(isoDash[3], 10), raw: isoDash[0] };
+  const found = [];
+  DATE_SHAPES.forEach((shape, rank) => {
+    for (const m of text.matchAll(shape.re)) found.push({ m, rank, shape });
+  });
+  found.sort((a, b) => a.m.index - b.m.index || a.rank - b.rank);
+  const dates = [];
+  let readTo = 0;
+  for (const { m, shape } of found) {
+    if (m.index < readTo) continue;
+    readTo = m.index + m[0].length;
+    dates.push(shape.read(m) || { impossible: true, start: m.index, end: readTo });
   }
-
-  // ISO slash: YYYY/MM/DD
-  const isoSlash = t.match(/(?:^|(?<=[^\w]))(\d{4})\/(\d{2})\/(\d{2})(?=$|[^\w])/);
-  if (isoSlash) {
-    return { year: parseInt(isoSlash[1], 10), month: parseInt(isoSlash[2], 10), day: parseInt(isoSlash[3], 10), raw: isoSlash[0] };
+  if (dates.length > 0) return dates;
+  const bare = BARE_YEAR_RE.exec(text);
+  if (bare) {
+    const y = parseInt(bare[1], 10);
+    if (y >= 1900 && y <= 2099) {
+      return [{ year: y, start: bare.indices[1][0], end: bare.indices[1][1], dayCut: null }];
+    }
   }
-
-  // Named-month forms (case-insensitive): Month DD, YYYY
-  const mnRe = new RegExp(`(?:^|(?<=[^\\w]))(${MONTH_NAMES})\\s+(\\d{1,2}),?\\s+(\\d{4})(?=$|[^\\w])`, 'i');
-  const mnMatch = t.match(mnRe);
-  if (mnMatch) {
-    const month = resolveMonthName(mnMatch[1]);
-    if (month !== null) return { year: parseInt(mnMatch[3], 10), month, day: parseInt(mnMatch[2], 10), raw: mnMatch[0] };
-  }
-
-  // Day Month Year: 21 June 2020
-  const dmyRe = new RegExp(`(?:^|(?<=[^\\w]))(\\d{1,2})\\s+(${MONTH_NAMES})\\s+(\\d{4})(?=$|[^\\w])`, 'i');
-  const dmyMatch = t.match(dmyRe);
-  if (dmyMatch) {
-    const month = resolveMonthName(dmyMatch[2]);
-    if (month !== null) return { year: parseInt(dmyMatch[3], 10), month, day: parseInt(dmyMatch[1], 10), raw: dmyMatch[0] };
-  }
-
-  // Year Month Day: 2020 June 21
-  const ymdRe = new RegExp(`(?:^|(?<=[^\\w]))(\\d{4})\\s+(${MONTH_NAMES})\\s+(\\d{1,2})(?=$|[^\\w])`, 'i');
-  const ymdMatch = t.match(ymdRe);
-  if (ymdMatch) {
-    const month = resolveMonthName(ymdMatch[2]);
-    if (month !== null) return { year: parseInt(ymdMatch[1], 10), month, day: parseInt(ymdMatch[3], 10), raw: ymdMatch[0] };
-  }
-
-  // Month Year: Jun 2020
-  const myRe = new RegExp(`(?:^|(?<=[^\\w]))(${MONTH_NAMES})\\s+(\\d{4})(?=$|[^\\w])`, 'i');
-  const myMatch = t.match(myRe);
-  if (myMatch) {
-    const month = resolveMonthName(myMatch[1]);
-    if (month !== null) return { year: parseInt(myMatch[2], 10), month, day: 1, raw: myMatch[0] };
-  }
-
-  // Bare year: 2020 (1900–2099) — STRICT anchors preserved to avoid false positives
-  // "Sales: 2020", "$2,020.00", "version 2020.1.3" must all return false
-  const bareYear = t.match(/^(\d{4})$/);
-  if (bareYear) {
-    const y = parseInt(bareYear[1], 10);
-    if (y >= 1900 && y <= 2099) return { year: y, month: 1, day: 1, raw: bareYear[0] };
-  }
-
   return null;
 }
 
-/**
- * Parse an all-numeric ambiguous date: N1/N2/Y or N1-N2-Y.
- * Supports 4-digit and 2-digit years. 2-digit-year pivot: yy < 50 → 2000+yy, else 1900+yy.
- * Adjacent non-date characters are tolerated via normalizeDateCandidate + relaxed anchors.
- * Returns {n1, n2, year} or null.
- */
-function parseAmbiguousNumericDate(text) {
-  if (typeof text !== 'string') return null;
-  const t = normalizeDateCandidate(text.trim());
-  // N1/N2/Y or N1-N2-Y (but not YYYY-MM-DD or YYYY/MM/DD which are unambiguous)
-  // Boundary-aware: allow surrounding non-word chars but not word chars
-  const m = t.match(/(?:^|(?<=[^\w]))(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?=$|[^\w])/);
-  if (!m) return null;
-  const n1 = parseInt(m[1], 10);
-  const n2 = parseInt(m[2], 10);
-  let year = parseInt(m[3], 10);
-  if (m[3].length === 2) {
-    year = year < 50 ? 2000 + year : 1900 + year;
-  }
-  return { n1, n2, year };
+// True for an all-numeric date whose day the column post-pass has yet to pick.
+function isAmbiguousDate(date) {
+  return date.n1 !== undefined;
 }
 
 function isDateLike(text) {
-  return parseDateLike(text) !== null || parseAmbiguousNumericDate(text) !== null;
+  return findDates(text) !== null;
 }
 
 function isTimeLike(text) {
@@ -393,45 +390,39 @@ function isDateTimeLike(text) {
 }
 
 /**
- * Round a date cell to the requested granularity and return a year-only string.
+ * Simplify every date in a cell's text to the requested granularity by
+ * dropping the parts finer than it. Only the dates change; text around them
+ * stays.
+ *   'month'   → removes the day and its separator, keeping the cell's own
+ *               style: "Dec 13, 2096" → "Dec 2096", "2096-12-13" → "2096-12".
+ *               A date with no day stays as written.
+ *   'year'    → the year: 2096.
+ *   'decade'  → the first year of its decade: 2090.
+ *   'century' → the first year of its century: 2000.
  *
- * @param {string} text          - Original cell text.
- * @param {string} granularity   - 'year' | 'decade' | 'century'.
- * @param {{month: number, day: number, year: number}} [prefilled]
- *   Pre-resolved date from the classification pass. If omitted, parseDateLike is called.
- * @returns {string} Always returns a string (the rounded year as digits).
+ * @param {string} text          - The cell's trimmed text.
+ * @param {string} granularity   - 'month' | 'year' | 'decade' | 'century'.
+ * @param {{year:number, start:number, end:number, dayCut:{start:number,end:number}|null}[]} [dates]
+ *   The dates the classification pass read from this text, each with a known
+ *   reading, in text order. If omitted, findDates is called, and text holding
+ *   an all-numeric or impossible date is returned unchanged.
+ * @returns {string}
  */
-function roundDateText(text, granularity, prefilled) {
-  const parsed = parseDateLike(text);
-  const date = parsed || prefilled;
-  if (!date) return text; // fallback: shouldn't happen for mode:'date' cells
-
-  const { year, month } = date;
-
-  // fractional = year + 0.5 if month >= 7, else year + 0
-  const fractional = year + (month >= 7 ? 0.5 : 0);
-
-  let roundedYear;
-  if (granularity === 'decade') {
-    roundedYear = Math.round(fractional / 10) * 10;
-  } else if (granularity === 'century') {
-    roundedYear = Math.round(fractional / 100) * 100;
-  } else {
-    // 'year' or default
-    roundedYear = Math.round(fractional);
-  }
-
-  const roundedYearStr = String(new Date(roundedYear, 0, 1).getFullYear());
-
-  // When the cell has surrounding text (e.g. "Payment Disbursed on: 2025-04-02"),
-  // replace only the matched date portion rather than the entire cell value.
-  if (parsed && parsed.raw) {
-    const rawIdx = text.indexOf(parsed.raw);
-    if (rawIdx >= 0) {
-      return text.slice(0, rawIdx) + roundedYearStr + text.slice(rawIdx + parsed.raw.length);
+function roundDateText(text, granularity, dates) {
+  const list = dates || findDates(text);
+  if (!list || list.some((d) => d.impossible || isAmbiguousDate(d))) return text;
+  const step = granularity === 'century' ? 100 : granularity === 'decade' ? 10 : 1;
+  let out = text;
+  // Right to left, so each edit leaves the positions of the dates before it.
+  for (let i = list.length - 1; i >= 0; i--) {
+    const d = list[i];
+    if (granularity === 'month') {
+      if (d.dayCut) out = out.slice(0, d.dayCut.start) + out.slice(d.dayCut.end);
+    } else {
+      out = out.slice(0, d.start) + String(Math.floor(d.year / step) * step) + out.slice(d.end);
     }
   }
-  return roundedYearStr;
+  return out;
 }
 
 /**

@@ -545,17 +545,17 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 // --- Sprint B: per-type granularity ---
 
 // Date granularity
-// CONTRACT: roundDateText replaces only the date portion of the cell text with the
-// rounded year. For pure date cells the result is a 4-digit year string. For mixed
-// cells (label + date) the surrounding text is preserved and only the date is replaced.
+// CONTRACT: roundDateText drops the parts of the date finer than the granularity
+// and changes only the date portion of the cell text. For mixed cells (label +
+// date) the surrounding text is preserved.
 // The caller (roundTable) compares formattedValue === originalValue to detect no-ops.
 eq('roundDateText: year granularity returns a 4-digit year string',
   roundDateText('2018', 'year'), '2018');
 
-eq('roundDateText: decade rounds bare year 2018 -> 2020',
-  roundDateText('2018', 'decade'), '2020');
+eq('roundDateText: decade cuts bare year 2018 -> 2010',
+  roundDateText('2018', 'decade'), '2010');
 
-eq('roundDateText: century rounds bare year 2018 -> 2000',
+eq('roundDateText: century cuts bare year 2018 -> 2000',
   roundDateText('2018', 'century'), '2000');
 
 eq('roundDateText: decade in "March 14, 2024" returns year string "2020"',
@@ -574,16 +574,76 @@ eq('roundDateText: 2020 at decade granularity still returns "2020" (caller handl
   roundDateText('2020', 'decade'), '2020');
 
 eq('roundDateText: mixed cell preserves label, replaces date (ISO dash, decade)',
-  roundDateText('Payment Disbursed on: 2025-04-02', 'decade'), 'Payment Disbursed on: 2030');
+  roundDateText('Payment Disbursed on: 2025-04-02', 'decade'), 'Payment Disbursed on: 2020');
 
 eq('roundDateText: mixed cell preserves label, replaces date (ISO dash, year)',
-  roundDateText('Due date: 2024-11-15', 'year'), 'Due date: 2025');
+  roundDateText('Due date: 2024-11-15', 'year'), 'Due date: 2024');
 
 eq('roundDateText: mixed cell preserves label, replaces date (named month, decade)',
   roundDateText('Filed: March 14, 2024', 'decade'), 'Filed: 2020');
 
 eq('roundDateText: mixed cell preserves trailing text after date',
   roundDateText('2024-03-14 (estimated)', 'decade'), '2020 (estimated)');
+
+eq('roundDateText: mixed cell preserves label at month granularity',
+  roundDateText('Paid on 2025-04-02', 'month'), 'Paid on 2025-04');
+
+// Month granularity removes the day and keeps the date's own style.
+(function dateMonthGranularity() {
+  const cases = [
+    ['December 13, 2096',   'December 2096'],
+    ['Dec 13, 2096',        'Dec 2096'],
+    ['Sept. 4, 1998',       'Sept. 1998'],
+    ['June 21st, 2020',     'June 2020'],
+    ['21 June 2020',        'June 2020'],
+    ['21st June 2020',      'June 2020'],
+    ['2020 June 21',        '2020 June'],
+    ['2096-12-13',          '2096-12'],
+    ['2096/12/13',          '2096/12'],
+    ['Jun 2020',            'Jun 2020'],
+    ['2096',                '2096'],
+  ];
+  for (const [input, expected] of cases) {
+    eq(`roundDateText: "${input}" at month -> "${expected}"`, roundDateText(input, 'month'), expected);
+  }
+})();
+
+// An ordinal suffix on any part of a date keeps the cell a date, and the
+// suffix goes with the part it follows.
+eq('isDateLike: "2020th" (ordinal on a bare year) -> true', isDateLike('2020th'), true);
+eq('isDateLike: "7/21st/2020" (ordinal on a numeric part) -> true', isDateLike('7/21st/2020'), true);
+eq('roundDateText: "Jun 2015th" at decade -> "2010"', roundDateText('Jun 2015th', 'decade'), '2010');
+eq('roundDateText: "2015-07-21st" at month -> "2015-07"', roundDateText('2015-07-21st', 'month'), '2015-07');
+eq('roundDateText: "2015-07-21st" at year -> "2015"', roundDateText('2015-07-21st', 'year'), '2015');
+
+// Every date in a cell changes; the words and any time of day stay.
+eq('roundDateText: "Jun 2020 - Dec 2020" at year -> "2020 - 2020"',
+  roundDateText('Jun 2020 - Dec 2020', 'year'), '2020 - 2020');
+eq('roundDateText: "June 3, 2021 to Dec 13, 2096" at month -> "June 2021 to Dec 2096"',
+  roundDateText('June 3, 2021 to Dec 13, 2096', 'month'), 'June 2021 to Dec 2096');
+eq('roundDateText: "2019-03-02 and 2096-12-13" at decade -> "2010 and 2090"',
+  roundDateText('2019-03-02 and 2096-12-13', 'decade'), '2010 and 2090');
+
+// A month word must be a month name or its short form.
+eq('isDateLike: "market 21, 2015" (word starting like a month) -> false', isDateLike('market 21, 2015'), false);
+eq('isDateLike: "Marching 4, 2015" -> false', isDateLike('Marching 4, 2015'), false);
+eq('isDateLike: "Sept. 4, 1998" -> true', isDateLike('Sept. 4, 1998'), true);
+eq('isDateLike: "MAY 4, 1998" -> true', isDateLike('MAY 4, 1998'), true);
+
+// A date that cannot exist is found, and marked so the cell holds.
+eq('findDates: "2020-13-45" is impossible', findDates('2020-13-45')[0].impossible, true);
+eq('findDates: "June 45, 2020" is impossible', findDates('June 45, 2020')[0].impossible, true);
+eq('findDates: "45/12/2020" is impossible', findDates('45/12/2020')[0].impossible, true);
+eq('findDates: "13/13/2020" is impossible', findDates('13/13/2020')[0].impossible, true);
+eq('roundDateText: "2020-13-45" stays as written', roundDateText('2020-13-45', 'year'), '2020-13-45');
+
+// The issue's worked example: every granularity cuts, none rounds.
+eq('roundDateText: December 13, 2096 at year -> 2096',
+  roundDateText('December 13, 2096', 'year'), '2096');
+eq('roundDateText: December 13, 2096 at decade -> 2090',
+  roundDateText('December 13, 2096', 'decade'), '2090');
+eq('roundDateText: December 13, 2096 at century -> 2000',
+  roundDateText('December 13, 2096', 'century'), '2000');
 
 // Time granularity
 eq('roundTimeText: minute granularity is a no-op',
@@ -1220,27 +1280,27 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     ['Jun 21, 2020',      'year',      '2020'],
     ['Jun 21, 2020',      'decade',    '2020'],
     ['Jun 21, 2020',      'century',   '2000'],
-    ['Dec 21, 2020',      'year',      '2021'],
+    ['Dec 21, 2020',      'year',      '2020'],
     ['Dec 21, 2020',      'decade',    '2020'],
     ['Dec 21, 2020',      'century',   '2000'],
     ['Jun 21, 2025',      'year',      '2025'],
-    ['Jun 21, 2025',      'decade',    '2030'],
+    ['Jun 21, 2025',      'decade',    '2020'],
     ['Jun 21, 2025',      'century',   '2000'],
     ['Apr 11, 2026',      'year',      '2026'],
-    ['Apr 11, 2026',      'decade',    '2030'],
+    ['Apr 11, 2026',      'decade',    '2020'],
     ['Apr 11, 2026',      'century',   '2000'],
     ['May 9, 2026',       'year',      '2026'],
-    ['May 9, 2026',       'decade',    '2030'],
+    ['May 9, 2026',       'decade',    '2020'],
     ['May 9, 2026',       'century',   '2000'],
     ['Jun 30, 2024',      'year',      '2024'],
     ['Jun 30, 2024',      'decade',    '2020'],
     ['Jun 30, 2024',      'century',   '2000'],
-    ['Jul 1, 2024',       'year',      '2025'],
+    ['Jul 1, 2024',       'year',      '2024'],
     ['Jul 1, 2024',       'decade',    '2020'],
     ['Jul 1, 2024',       'century',   '2000'],
     ['1975',              'year',      '1975'],
-    ['1975',              'decade',    '1980'],
-    ['1975',              'century',   '2000'],
+    ['1975',              'decade',    '1970'],
+    ['1975',              'century',   '1900'],
   ];
 
   for (const [input, gran, expected] of cases) {
@@ -1262,7 +1322,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     '21 June 2020',
   ];
   // Note: '06-21-2020' is an ambiguous numeric date (handled by column auto-detect,
-  // not directly by roundDateText which only handles unambiguous shapes via parseDateLike).
+  // not directly by roundDateText, which holds an all-numeric date it is not given a reading for).
   // It is tested end-to-end via roundTable below — a single-row column with n2=21>12
   // forces MDY → June 21 → identical rounding to the other shapes.
 
@@ -1294,22 +1354,15 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: roundDateText returns a 4-digit year string for pure date cells and
-// prefilled date objects. Test via prefilled date objects (bypassing text parsing).
+// AC4: roundDateText returns a 4-digit year string for a pure date cell read
+// by the classification pass. The date object is passed in, bypassing text parsing.
 // ---------------------------------------------------------------------------
 (function dateRoundReturnType() {
-  // Boundary: Dec 31 → fractional = year + 0.5 (month=12 >= 7)
-  const decDates = [
-    { year: 2020, month: 12, day: 31 },
-    { year: 1975, month: 6,  day: 1  },
-    { year: 2000, month: 1,  day: 1  },
-    { year: 2099, month: 7,  day: 1  },
-  ];
-  for (const d of decDates) {
-    const label = `${d.year}-${d.month}-${d.day}`;
+  for (const year of [2020, 1975, 2000, 2099]) {
+    const d = { year, start: 0, end: 10, dayCut: { start: 7, end: 10 } };
     for (const gran of ['year', 'decade', 'century']) {
-      const result = roundDateText('irrelevant', gran, d);
-      eq(`roundDateText always returns string: prefilled ${label} at ${gran}`,
+      const result = roundDateText(`${year}-12-31`, gran, [d]);
+      eq(`roundDateText always returns string: passed ${year}-12-31 at ${gran}`,
         typeof result === 'string' && /^\d{4}$/.test(result), true);
     }
   }
@@ -1354,22 +1407,14 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// AC9: Boundary semantics — Jun 30 rounds down, Jul 1 rounds up.
+// AC9: Boundary semantics — a date never leaves its own year, decade, or century.
 // ---------------------------------------------------------------------------
 (function dateRoundBoundarySemantics() {
-  // Jun 30: month=6 < 7 → fractional = 2024.0 → round → 2024 (year)
   eq('boundary: Jun 30, 2024 year -> 2024', roundDateText('Jun 30, 2024', 'year'), '2024');
-  // Jul 1: month=7 >= 7 → fractional = 2024.5 → round → 2025 (year)
-  eq('boundary: Jul 1, 2024 year -> 2025', roundDateText('Jul 1, 2024', 'year'), '2025');
-
-  // Jun 30 decade: fractional=2024.0 → 2024/10=202.4 → round→202 → *10=2020
-  eq('boundary: Jun 30, 2024 decade -> 2020', roundDateText('Jun 30, 2024', 'decade'), '2020');
-  // Jul 1 decade: fractional=2024.5 → 2024.5/10=202.45 → round→202 → *10=2020
-  eq('boundary: Jul 1, 2024 decade -> 2020', roundDateText('Jul 1, 2024', 'decade'), '2020');
-
-  // Jun 21, 2025 decade: fractional=2025.0 → 2025/10=202.5 → round→203 (banker's rounds to 202 or 203?)
-  // Math.round(202.5) = 203 in JS → 2030
-  eq('boundary: Jun 21, 2025 decade -> 2030', roundDateText('Jun 21, 2025', 'decade'), '2030');
+  eq('boundary: Jul 1, 2024 year -> 2024', roundDateText('Jul 1, 2024', 'year'), '2024');
+  eq('boundary: Dec 31, 2029 decade -> 2020', roundDateText('Dec 31, 2029', 'decade'), '2020');
+  eq('boundary: Jan 1, 2030 decade -> 2030', roundDateText('Jan 1, 2030', 'decade'), '2030');
+  eq('boundary: Dec 31, 2099 century -> 2000', roundDateText('Dec 31, 2099', 'century'), '2000');
 })();
 
 // ---------------------------------------------------------------------------
@@ -1378,14 +1423,8 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 (function dateRoundStaticAnalysis() {
   const src = allContentSrc; // date parsing now in parsing.js (Phase 2 split)
 
-  eq('static: parseDateLike is defined in content.js',
-    /function\s+parseDateLike\b/.test(src), true);
-  eq('static: parseAmbiguousNumericDate is defined in content.js',
-    /function\s+parseAmbiguousNumericDate\b/.test(src), true);
-  eq('static: roundDateText uses String() conversion for year (no null return for parsed dates)',
-    // The function must use String() to convert the rounded year.
-    // Uses "return text" as fallback for unparseable input.
-    /function roundDateText[\s\S]{0,900}String\(new Date\(/.test(src), true);
+  eq('static: findDates is defined in content.js',
+    /function\s+findDates\b/.test(src), true);
 })();
 
 // ---------------------------------------------------------------------------

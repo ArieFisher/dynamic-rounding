@@ -91,14 +91,16 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *   reason: one of the ladder's rule names — 'out-of-range', 'first-row',
  *     'first-column', 'percent', 'currency', 'quoted', 'identifier', 'link',
  *     'footnote', 'dates-disabled', 'times-disabled', 'mixed-disabled',
- *     'no-number', 'ambiguous-date', 'simplify' for a cell that rounds, or
+ *     'no-number', 'ambiguous-date', 'impossible-date', 'simplify' for a
+ *     cell that rounds, or
  *     'unit' for a unit number (see matchUnitNumber in lib/dr-number), which
  *     rounds.
  *   value: mode-specific payload —
  *     'pure' → { num }
- *     'date' (resolved) → { month, day, year }
- *     'date' (needs the column post-pass) → { ambiguous: { n1, n2, year } },
- *       plus pending: 'ambiguous-date'
+ *     'date' (resolved) → { dates }, each date with a known reading — see
+ *       findDates in lib/dr-number
+ *     'date' (needs the column post-pass) → { dates }, at least one of them
+ *       all-numeric (isAmbiguousDate), plus pending: 'ambiguous-date'
  *     'extracted' → { matches } — matches still need a caller-side
  *       filterLinkMatches pass; see file header. A unit number holds one
  *       match.
@@ -150,20 +152,21 @@ function classifyCell(input, options) {
 
   if (isDateTimeLike(trimmed)) {
     // ISO date-time follows the time instruction (date preserved). Checked
-    // before isDateLike, which would otherwise match a space-separated form.
+    // before findDates, which would otherwise match a space-separated form.
     return options.simplifyTimes
       ? { mode: 'time', reason: 'simplify' }
       : { mode: 'skip', reason: 'times-disabled' };
   }
 
-  if (isDateLike(trimmed)) {
+  const dates = findDates(trimmed);
+  if (dates) {
     if (!options.simplifyDates) return { mode: 'skip', reason: 'dates-disabled' };
-    const ambiguous = parseAmbiguousNumericDate(trimmed);
-    if (ambiguous !== null) {
-      return { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { ambiguous } };
+    // A cell holding a date that cannot exist ("2020-13-45") stays as written.
+    if (dates.some((d) => d.impossible)) return { mode: 'skip', reason: 'impossible-date' };
+    if (dates.some(isAmbiguousDate)) {
+      return { mode: 'date', reason: 'simplify', pending: 'ambiguous-date', value: { dates } };
     }
-    const parsed = parseDateLike(trimmed);
-    return { mode: 'date', reason: 'simplify', value: { month: parsed.month, day: parsed.day, year: parsed.year } };
+    return { mode: 'date', reason: 'simplify', value: { dates } };
   }
 
   if (isTimeLike(trimmed)) {
@@ -270,20 +273,18 @@ function pickDateFormatHint(ambiguousList) {
 /**
  * Turn a pending ambiguous-date decision (classifyCell's pending:
  * 'ambiguous-date') into its final decision, given the column's format hint
- * from pickDateFormatHint. MDY/DMY resolve to a concrete date; MIXED/
- * AMBIGUOUS cannot be read safely and downgrade to skip.
+ * from pickDateFormatHint. MDY/DMY give each all-numeric date of the cell its
+ * day; MIXED/AMBIGUOUS cannot be read safely and downgrade the whole cell to
+ * skip, so a cell never changes some of its dates and holds others.
  *
- * @param {{value: {ambiguous: {n1:number, n2:number, year:number}}}} decision
+ * @param {{value: {dates: object[]}}} decision - see findDates
  * @param {'MDY'|'DMY'|'MIXED'|'AMBIGUOUS'} hint
  * @returns {{mode: string, reason: string, value?: object}}
  */
 function resolveAmbiguousDateDecision(decision, hint) {
-  const { ambiguous } = decision.value;
-  if (hint === 'MDY') {
-    return { mode: 'date', reason: 'simplify', value: { month: ambiguous.n1, day: ambiguous.n2, year: ambiguous.year } };
-  }
-  if (hint === 'DMY') {
-    return { mode: 'date', reason: 'simplify', value: { month: ambiguous.n2, day: ambiguous.n1, year: ambiguous.year } };
-  }
-  return { mode: 'skip', reason: 'ambiguous-date' };
+  if (hint !== 'MDY' && hint !== 'DMY') return { mode: 'skip', reason: 'ambiguous-date' };
+  const dates = decision.value.dates.map((d) => (isAmbiguousDate(d)
+    ? { year: d.year, start: d.start, end: d.end, dayCut: hint === 'MDY' ? d.n2Cut : d.n1Cut }
+    : d));
+  return { mode: 'date', reason: 'simplify', value: { dates } };
 }

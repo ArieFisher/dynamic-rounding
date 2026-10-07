@@ -317,8 +317,8 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// AC3: Two-digit-year US dates via parseAmbiguousNumericDate + roundTable pipeline.
-// We test via roundTable since roundDateText only handles unambiguous (parseDateLike) shapes.
+// AC3: Two-digit-year US dates via findDates + roundTable pipeline.
+// We test via roundTable since an all-numeric date needs the column post-pass.
 // ---------------------------------------------------------------------------
 (function dateRoundTwoDigitYear() {
   // 3/14/24 → 2024-03-14 (yy=24 < 50 → 2024). MDY forced since n2=14 > 12.
@@ -345,8 +345,9 @@ const SEAT_ROWS = [
 
     // 3/14/75 → MDY forced (14 > 12) → 1975-03-14 (yy=75 >= 50 → 1975)
     eq('two-digit-year: 3/14/75 year -> "1975"',   twoDigitTable('3/14/75', 'year'),    '1975');
-    eq('two-digit-year: 3/14/75 decade -> "1980"', twoDigitTable('3/14/75', 'decade'),  '1980');
-    eq('two-digit-year: 3/14/75 century -> "2000"',twoDigitTable('3/14/75', 'century'), '2000');
+    eq('two-digit-year: 3/14/75 decade -> "1970"', twoDigitTable('3/14/75', 'decade'),  '1970');
+    eq('two-digit-year: 3/14/75 century -> "1900"',twoDigitTable('3/14/75', 'century'), '1900');
+    eq('two-digit-year: 3/14/75 month -> "3/75"',  twoDigitTable('3/14/75', 'month'),   '3/75');
   });
 })();
 
@@ -377,34 +378,51 @@ const SEAT_ROWS = [
     }
 
     // --- MDY column (discriminating) ---
-    // '04/13/2022' forces MDY (n2=13 > 12). The sibling '12-03-2022' is discriminating:
-    //   under MDY → Dec 3, fractional=2022.5, year rounds to 2023.
-    //   under DMY → Mar 12, fractional=2022.0, year rounds to 2022.
-    // If the column resolver picks MDY (as it should), the sibling rounds to 2023.
+    // '04/13/2022' forces MDY (n2=13 > 12). At month granularity the sibling
+    // '12-03-2022' is discriminating: MDY keeps the month 12, DMY keeps 03.
     const mdyResult = runDateTable([
       [{ tag: 'td', text: '04/13/2022' }],
       [{ tag: 'td', text: '12-03-2022' }],
-    ], 'year');
-    eq('MDY column: 04/13/2022 rounds to 2022', mdyResult[0][0], '2022');
-    eq('MDY column: 12-03-2022 resolved as MDY (Dec 3 → year 2023, not DMY Mar 12 → 2022)',
-      mdyResult[1][0], '2023');
+    ], 'month');
+    eq('MDY column: 04/13/2022 at month -> 04/2022', mdyResult[0][0], '04/2022');
+    eq('MDY column: 12-03-2022 resolved as MDY (Dec 3 → 12-2022, not DMY Mar 12 → 03-2022)',
+      mdyResult[1][0], '12-2022');
 
     // --- DMY column ---
-    // '13/04/2022' forces DMY (n1=13 > 12). '12-08-2022' under DMY = Aug 12 = 2022.
-    // Under MDY, '12-08-2022' = Dec 8 → year rounds to 2023 (Dec → fractional=2022.5 → round → 2023).
-    // Under DMY, '12-08-2022' = Aug 12 → year rounds to 2022 (Aug → fractional=2022.5 → round → 2023).
-    // Hmm, let's recalculate: Aug → month=8 >= 7 → fractional=2022.5, Math.round(2022.5) = 2023.
-    // And Dec → month=12 >= 7 → fractional=2022.5, same result. Both give 2023 at year granularity.
-    // Better disambiguation: use a month < 7 for DMY path.
-    // '12-03-2022': DMY → month=3 < 7 → fractional=2022.0 → year=2022.
-    //               MDY → month=12 >= 7 → fractional=2022.5 → year=2023.
+    // '13/04/2022' forces DMY (n1=13 > 12). At month granularity the sibling
+    // '12-03-2022' keeps 03 under DMY and 12 under MDY.
     const dmyResult = runDateTable([
       [{ tag: 'td', text: '13/04/2022' }],  // n1=13 forces DMY
-      [{ tag: 'td', text: '12-03-2022' }],  // DMY: day=12, month=Mar → 2022; MDY: month=Dec → 2023
+      [{ tag: 'td', text: '12-03-2022' }],  // DMY: day=12, month=Mar → 03-2022; MDY: month=Dec → 12-2022
+    ], 'month');
+    eq('DMY column: 13/04/2022 at month -> 04/2022', dmyResult[0][0], '04/2022');
+    eq('DMY column: 12-03-2022 resolved as DMY (Mar 12 → 03-2022, not MDY Dec 12 → 12-2022)',
+      dmyResult[1][0], '03-2022');
+
+    // A numeric date with words around it changes in place, so the words stay.
+    const wordsResult = runDateTable([
+      [{ tag: 'td', text: 'Due 7/21/2020' }],
+      [{ tag: 'td', text: '7/4/99' }],
     ], 'year');
-    eq('DMY column: 13/04/2022 rounds to 2022', dmyResult[0][0], '2022');
-    eq('DMY column: 12-03-2022 resolved as DMY (Mar 12 → year 2022, not MDY Dec 12 → 2023)',
-      dmyResult[1][0], '2022');
+    eq('numeric date in words: Due 7/21/2020 at year -> Due 2020', wordsResult[0][0], 'Due 2020');
+    eq('numeric date in words: 7/4/99 at year -> 1999', wordsResult[1][0], '1999');
+
+    // Every numeric date in a cell changes, and a cell's second date counts
+    // toward its column's reading: 7/31/2020 is the only date that settles it.
+    const rangeResult = runDateTable([
+      [{ tag: 'td', text: '7/1/2020 - 7/31/2020' }],
+      [{ tag: 'td', text: '12/31/2020 11:59' }],
+    ], 'month');
+    eq('numeric range: both dates change at month', rangeResult[0][0], '7/2020 - 7/2020');
+    eq('numeric date with a time: the time stays', rangeResult[1][0], '12/2020 11:59');
+
+    // A cell whose numeric date cannot be read holds whole, its named date included.
+    const heldResult = runDateTable([
+      [{ tag: 'td', text: 'Jun 2020 - 03/04/2020' }],
+      [{ tag: 'td', text: '05/06/2021' }],
+    ], 'year');
+    eq('unreadable column: a cell with a named and a numeric date holds whole',
+      heldResult[0][0], 'Jun 2020 - 03/04/2020');
 
     // --- Ambiguous column ---
     // Column where ALL cells have both components <= 12. Cannot auto-detect → mode:'skip'.
@@ -753,7 +771,7 @@ const SEAT_ROWS = [
     try {
       roundTable(table, Object.assign(nativeOnePieceOpts(), { simplifyDates: true, dateGranularity: 'year' }));
       eq('native date cell: a date in one piece rounds, and the piece keeps its whitespace',
-        oneSegments[0].text, ' 2025 ');
+        oneSegments[0].text, ' 2024 ');
       eq('native date cell: a date across pieces keeps its text',
         splitSegments.map((seg) => seg.text).join('|'), '2024-|09-15');
       eq('native date cell: a date across pieces gets no marker',
@@ -1048,7 +1066,7 @@ const SEAT_ROWS = [
 // ---------------------------------------------------------------------------
 
 // --- AC1: simplifyDates=true → date cell is rounded ---
-// Use a bare year "2018" with decade granularity: roundDateText("2018","decade")="2020",
+// Use a bare year "2018" with decade granularity: roundDateText("2018","decade")="2010",
 // so the cell text must change and dr-ext-rounded must be added.
 (function invertPills_AC1_simplifyDatesTrue() {
   withCreateTreeWalker(function() {
@@ -1067,8 +1085,8 @@ const SEAT_ROWS = [
     const cell = table.rows[0].cells[0];
     eq('invert-pills AC1: simplifyDates=true — date cell gets dr-ext-rounded class',
       cell.classList.contains('dr-ext-rounded'), true);
-    eq('invert-pills AC1: simplifyDates=true — date cell text is changed (2018→2020)',
-      cell.innerText, '2020');
+    eq('invert-pills AC1: simplifyDates=true — date cell text is changed (2018→2010)',
+      cell.innerText, '2010');
   });
 })();
 
@@ -1348,8 +1366,8 @@ const SEAT_ROWS = [
     const timeCell = table.rows[0].cells[1];
     eq('ADV AC1/AC4 isolation: simplifyDates=true — date cell IS rounded',
       dateCell.classList.contains('dr-ext-rounded'), true);
-    eq('ADV AC1/AC4 isolation: simplifyDates=true — date cell text changed (2018→2020)',
-      dateCell.innerText, '2020');
+    eq('ADV AC1/AC4 isolation: simplifyDates=true — date cell text changed (2018→2010)',
+      dateCell.innerText, '2010');
     eq('ADV AC4/AC1 isolation: simplifyTimes=false — time cell NOT rounded',
       timeCell.classList.contains('dr-ext-rounded'), false);
     eq('ADV AC4/AC1 isolation: simplifyTimes=false — time cell text unchanged (14:30)',
@@ -1417,10 +1435,10 @@ const SEAT_ROWS = [
     });
     const dateCell = table.rows[0].cells[0];
     const timeCell = table.rows[0].cells[1];
-    eq('ADV both=true: date cell IS rounded (2018→2020)',
+    eq('ADV both=true: date cell IS rounded (2018→2010)',
       dateCell.classList.contains('dr-ext-rounded'), true);
-    eq('ADV both=true: date cell text changed to 2020',
-      dateCell.innerText, '2020');
+    eq('ADV both=true: date cell text changed to 2010',
+      dateCell.innerText, '2010');
     eq('ADV both=true: time cell IS rounded (14:30→15:00)',
       timeCell.classList.contains('dr-ext-rounded'), true);
     eq('ADV both=true: time cell text changed to 15:00',
@@ -3415,7 +3433,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('merge-ladder engine pin: multi-rule fixture applies the exact pinned values',
       applied, [
         ['', 'A', 'B', 'C', 'D', 'E', 'F'],
-        ['Row', '25,000,000', '4,000', '50%', '$1,000,000', '"98765"', '2020'],
+        ['Row', '25,000,000', '4,000', '50%', '$1,000,000', '"98765"', '2020-01'],
         ['Row2', 'Revenue: 5,000,000 units', 'Kalki 2898 AD', '300', '', '', ''],
       ]);
   });

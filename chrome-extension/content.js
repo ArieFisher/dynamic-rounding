@@ -790,17 +790,15 @@ function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
   return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
 }
 
-// Adapts a classifyCell decision to the { mode, num, ambiguous, month, day,
-// year, matches } shape the one simplification pass below reads in its
+// Adapts a classifyCell decision to the { mode, num, dates, ambiguous,
+// matches } shape the one simplification pass below reads in its
 // column post-pass, its max magnitude, and its patch step, on both table
 // kinds.
 function decisionToLegacyInfo(decision) {
   if (decision.mode === 'pure') return { mode: 'pure', num: decision.value.num };
   if (decision.mode === 'extracted') return { mode: 'extracted', matches: decision.value.matches };
   if (decision.mode === 'date') {
-    return decision.pending === 'ambiguous-date'
-      ? { mode: 'date', ambiguous: decision.value.ambiguous }
-      : { mode: 'date', month: decision.value.month, day: decision.value.day, year: decision.value.year };
+    return { mode: 'date', dates: decision.value.dates, ambiguous: decision.pending === 'ambiguous-date' };
   }
   if (decision.mode === 'time') return { mode: 'time' };
   return { mode: 'skip' };
@@ -1202,22 +1200,23 @@ function tableKindPass(adapter) {
 }
 
 // The column post-pass: resolve each ambiguous numeric date against its
-// column's format hint. Grouping runs on the grid column each cell carries,
+// column's format hint. Every all-numeric date in the column counts, the
+// second date of a cell included. Grouping runs on the grid column each cell carries,
 // so one visual column settles one reading for all of its cells — a merge
 // inside the table cannot split a column into two groups that read 7/4/99 as
 // July in one row and April in another.
 function resolveAmbiguousDates(entries) {
-  const isAmbiguous = (info) => info.mode === 'date' && !!info.ambiguous;
+  const isAmbiguous = (info) => info.mode === 'date' && info.ambiguous;
   const readingsByCol = new Map();
   for (const { info, col } of entries) {
     if (!isAmbiguous(info)) continue;
     if (!readingsByCol.has(col)) readingsByCol.set(col, []);
-    readingsByCol.get(col).push(info.ambiguous);
+    readingsByCol.get(col).push(...info.dates.filter(isAmbiguousDate));
   }
   const hintByCol = new Map(Array.from(readingsByCol, ([col, readings]) => [col, pickDateFormatHint(readings)]));
   return entries.map((entry) => {
     if (!isAmbiguous(entry.info)) return entry;
-    const pendingDecision = { value: { ambiguous: entry.info.ambiguous } };
+    const pendingDecision = { value: { dates: entry.info.dates } };
     const info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, hintByCol.get(entry.col)));
     return Object.assign({}, entry, { info });
   });
@@ -1255,11 +1254,8 @@ function cellPatches(entry, maxMag, opts, rounding, kind) {
   const { offsetTop, offsetOther, numTop } = rounding;
   const lead = typeof text === 'string' ? text.length - text.trimStart().length : 0;
   if (info.mode === 'date' || info.mode === 'time') {
-    const prefilled = (info.month !== undefined)
-      ? { month: info.month, day: info.day, year: info.year }
-      : undefined;
     const rounded = info.mode === 'date'
-      ? roundDateText(trimmed, opts.dateGranularity, prefilled)
+      ? roundDateText(trimmed, opts.dateGranularity, info.dates)
       : roundTimeText(trimmed, opts.timeGranularity);
     if (rounded === null || rounded === trimmed) return { patches: [], linkFilteredIdx: null };
     if (!layoutPieceHolding(layout, lead, trimmed.length)) {
