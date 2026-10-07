@@ -6,7 +6,7 @@ Three artifacts carry independent version numbers:
 
 | Artifact | Series | Where the version lives |
 |----------|--------|-------------------------|
-| Chrome extension | 2.1.x | `chrome-extension/manifest.json` |
+| Chrome extension | 2.2.x | `chrome-extension/manifest.json` |
 | Python | 0.2.x | `python/pyproject.toml` — the package reads it back at runtime via `importlib.metadata` |
 | JS (Google Sheets) | 0.3.x | `js/CHANGELOG.md` — the changelog is the version record; `js/round_dynamic.js` carries no version line |
 
