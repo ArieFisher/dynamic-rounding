@@ -1585,7 +1585,7 @@
     // parsing.js
     'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
     'isInRanges', 'resolveOffset', 'resolveNumTop', 'matchUnitNumber', 'getExclusionReason',
-    'resolveMonthName', 'parseDateLike', 'parseAmbiguousNumericDate',
+    'findDates', 'isAmbiguousDate',
     'isDateLike', 'isTimeLike', 'parseISODateTime', 'isDateTimeLike',
     'roundDateText', 'roundISODateTime', 'roundTimeText',
     'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumberInText', 'extractNumbersInText',

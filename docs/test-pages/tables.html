@@ -405,8 +405,9 @@
 
   <section>
     <h2>4. Dates, times, timestamps</h2>
-    <p>Each row holds a date, a time, or a timestamp. The Governed by column
-      names the setting that covers the row.</p>
+    <p>Each row holds a date, a time, or a timestamp, apart from two rows
+      shaped like dates that are not. The Governed by column names the setting
+      that covers the row.</p>
     <p class="expect">Expect: pillbox at load. Each date shows its own year. Each
       time stays as written until the Times setting is on.</p>
 
@@ -415,9 +416,10 @@
       off, and times at hour granularity once switched on.
 
       Each date drops the parts finer than the date granularity, so it never
-      leaves its own month, year, decade, or century. Only the date changes;
-      words around it stay. At month the day goes and the date keeps its own
-      style; a date with no day stays as written.
+      leaves its own month, year, decade, or century. Every date in a cell
+      changes; words and any time of day around them stay. At month the day
+      goes and the date keeps its own style; a date with no day stays as
+      written.
                                       year           month
         2020-07-21                    -> 2020        -> 2020-07
         2020/03/15                    -> 2020        -> 2020/03
@@ -429,7 +431,12 @@
         Jun 2020                      -> 2020        -> Jun 2020
         1998                          -> 1998        -> 1998
         Paid on 2025-04-02            -> Paid on 2025 -> Paid on 2025-04
+        Jun 2020 - Dec 2020           -> 2020 - 2020 -> Jun 2020 - Dec 2020
         "2020-07-21"                  -> held back, the whole cell is quoted
+        2020-13-45                    -> held back, no month 13 exists
+      market 21, 2015 is not a date: "market" is no month name. Its numbers
+      round like any sentence with numbers, and it never shows "market 2015"
+      at month.
       At decade 2020-07-21 shows 2020 and Sept. 4, 1998 shows 1990; at century
       they show 2000 and 1900.
 
@@ -442,6 +449,7 @@
         7/4/99                        -> 1999        -> 7/99
         3/9/2021                      -> 2021        -> 3/2021
         Due 3/9/2021                  -> Due 2021    -> Due 3/2021
+        3/9/2021 11:59                -> 2021 11:59  -> 3/2021 11:59
       A column carrying evidence for both readings is refused rather than guessed.
 
       Clock times round to the hour at the half-hour mark, and the original
@@ -535,9 +543,29 @@
           <td>Dates</td>
         </tr>
         <tr>
+          <th scope="row">All numeric, with a time of day</th>
+          <td>3/9/2021 11:59</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
           <th scope="row">Date inside a sentence</th>
           <td>Paid on 2025-04-02</td>
           <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Two dates in one cell</th>
+          <td>Jun 2020 - Dec 2020</td>
+          <td>Dates</td>
+        </tr>
+        <tr>
+          <th scope="row">Impossible date, held back</th>
+          <td>2020-13-45</td>
+          <td>Nothing</td>
+        </tr>
+        <tr>
+          <th scope="row">Word that starts like a month</th>
+          <td>market 21, 2015</td>
+          <td>Words</td>
         </tr>
         <tr>
           <th scope="row">Quoted, held back</th>

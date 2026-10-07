@@ -317,8 +317,8 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// AC3: Two-digit-year US dates via parseAmbiguousNumericDate + roundTable pipeline.
-// We test via roundTable since roundDateText only handles unambiguous (parseDateLike) shapes.
+// AC3: Two-digit-year US dates via findDates + roundTable pipeline.
+// We test via roundTable since an all-numeric date needs the column post-pass.
 // ---------------------------------------------------------------------------
 (function dateRoundTwoDigitYear() {
   // 3/14/24 → 2024-03-14 (yy=24 < 50 → 2024). MDY forced since n2=14 > 12.
@@ -406,6 +406,23 @@ const SEAT_ROWS = [
     ], 'year');
     eq('numeric date in words: Due 7/21/2020 at year -> Due 2020', wordsResult[0][0], 'Due 2020');
     eq('numeric date in words: 7/4/99 at year -> 1999', wordsResult[1][0], '1999');
+
+    // Every numeric date in a cell changes, and a cell's second date counts
+    // toward its column's reading: 7/31/2020 is the only date that settles it.
+    const rangeResult = runDateTable([
+      [{ tag: 'td', text: '7/1/2020 - 7/31/2020' }],
+      [{ tag: 'td', text: '12/31/2020 11:59' }],
+    ], 'month');
+    eq('numeric range: both dates change at month', rangeResult[0][0], '7/2020 - 7/2020');
+    eq('numeric date with a time: the time stays', rangeResult[1][0], '12/2020 11:59');
+
+    // A cell whose numeric date cannot be read holds whole, its named date included.
+    const heldResult = runDateTable([
+      [{ tag: 'td', text: 'Jun 2020 - 03/04/2020' }],
+      [{ tag: 'td', text: '05/06/2021' }],
+    ], 'year');
+    eq('unreadable column: a cell with a named and a numeric date holds whole',
+      heldResult[0][0], 'Jun 2020 - 03/04/2020');
 
     // --- Ambiguous column ---
     // Column where ALL cells have both components <= 12. Cannot auto-detect → mode:'skip'.

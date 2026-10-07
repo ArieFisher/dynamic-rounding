@@ -616,6 +616,27 @@ eq('roundDateText: "Jun 2015th" at decade -> "2010"', roundDateText('Jun 2015th'
 eq('roundDateText: "2015-07-21st" at month -> "2015-07"', roundDateText('2015-07-21st', 'month'), '2015-07');
 eq('roundDateText: "2015-07-21st" at year -> "2015"', roundDateText('2015-07-21st', 'year'), '2015');
 
+// Every date in a cell changes; the words and any time of day stay.
+eq('roundDateText: "Jun 2020 - Dec 2020" at year -> "2020 - 2020"',
+  roundDateText('Jun 2020 - Dec 2020', 'year'), '2020 - 2020');
+eq('roundDateText: "June 3, 2021 to Dec 13, 2096" at month -> "June 2021 to Dec 2096"',
+  roundDateText('June 3, 2021 to Dec 13, 2096', 'month'), 'June 2021 to Dec 2096');
+eq('roundDateText: "2019-03-02 and 2096-12-13" at decade -> "2010 and 2090"',
+  roundDateText('2019-03-02 and 2096-12-13', 'decade'), '2010 and 2090');
+
+// A month word must be a month name or its short form.
+eq('isDateLike: "market 21, 2015" (word starting like a month) -> false', isDateLike('market 21, 2015'), false);
+eq('isDateLike: "Marching 4, 2015" -> false', isDateLike('Marching 4, 2015'), false);
+eq('isDateLike: "Sept. 4, 1998" -> true', isDateLike('Sept. 4, 1998'), true);
+eq('isDateLike: "MAY 4, 1998" -> true', isDateLike('MAY 4, 1998'), true);
+
+// A date that cannot exist is found, and marked so the cell holds.
+eq('findDates: "2020-13-45" is impossible', findDates('2020-13-45')[0].impossible, true);
+eq('findDates: "June 45, 2020" is impossible', findDates('June 45, 2020')[0].impossible, true);
+eq('findDates: "45/12/2020" is impossible', findDates('45/12/2020')[0].impossible, true);
+eq('findDates: "13/13/2020" is impossible', findDates('13/13/2020')[0].impossible, true);
+eq('roundDateText: "2020-13-45" stays as written', roundDateText('2020-13-45', 'year'), '2020-13-45');
+
 // The issue's worked example: every granularity cuts, none rounds.
 eq('roundDateText: December 13, 2096 at year -> 2096',
   roundDateText('December 13, 2096', 'year'), '2096');
@@ -1301,7 +1322,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     '21 June 2020',
   ];
   // Note: '06-21-2020' is an ambiguous numeric date (handled by column auto-detect,
-  // not directly by roundDateText which only handles unambiguous shapes via parseDateLike).
+  // not directly by roundDateText, which holds an all-numeric date it is not given a reading for).
   // It is tested end-to-end via roundTable below — a single-row column with n2=21>12
   // forces MDY → June 21 → identical rounding to the other shapes.
 
@@ -1340,7 +1361,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   for (const year of [2020, 1975, 2000, 2099]) {
     const d = { year, start: 0, end: 10, dayCut: { start: 7, end: 10 } };
     for (const gran of ['year', 'decade', 'century']) {
-      const result = roundDateText(`${year}-12-31`, gran, d);
+      const result = roundDateText(`${year}-12-31`, gran, [d]);
       eq(`roundDateText always returns string: passed ${year}-12-31 at ${gran}`,
         typeof result === 'string' && /^\d{4}$/.test(result), true);
     }
@@ -1402,10 +1423,8 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 (function dateRoundStaticAnalysis() {
   const src = allContentSrc; // date parsing now in parsing.js (Phase 2 split)
 
-  eq('static: parseDateLike is defined in content.js',
-    /function\s+parseDateLike\b/.test(src), true);
-  eq('static: parseAmbiguousNumericDate is defined in content.js',
-    /function\s+parseAmbiguousNumericDate\b/.test(src), true);
+  eq('static: findDates is defined in content.js',
+    /function\s+findDates\b/.test(src), true);
 })();
 
 // ---------------------------------------------------------------------------
