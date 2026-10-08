@@ -2731,7 +2731,20 @@ function rwEl(tagName, attrs, children) {
     get className() { return Array.from(classes).join(' '); },
     get children() { return el.childNodes.filter((node) => node.nodeType === 1); },
     get textContent() { return rwTextNodesOf(el).map((node) => node.nodeValue).join(''); },
-    get innerText() { return el.textContent; },
+    // The browser leaves a hidden element's text out of its ancestors'
+    // rendered text, and an element that is hidden itself, or sits inside a
+    // hidden one, answers with its whole text.
+    get innerText() {
+      for (let at = el; at && at.nodeType === 1; at = at.parentNode) {
+        if (at.getAttribute('hidden') !== null) return el.textContent;
+      }
+      return (function visible(node) {
+        return node.childNodes.map((child) => {
+          if (child.nodeType === 3) return child.nodeValue;
+          return child.getAttribute('hidden') !== null ? '' : visible(child);
+        }).join('');
+      })(el);
+    },
     get innerHTML() {
       const markup = el.childNodes.map(rwSerialize).join('');
       snapshots.set(markup, el.childNodes.map(rwClone));
@@ -2771,13 +2784,91 @@ function rwEl(tagName, attrs, children) {
 }
 
 // A cell's contents: a string is one text piece; an array lists pieces, each
-// a string for a bare text piece or { tag, text } for a piece inside its own
-// element.
+// a string for a bare text piece or { tag, text, hidden } for a piece inside
+// its own element, hidden when the page hides that element.
 function rwPieces(spec) {
   const items = Array.isArray(spec) ? spec : [spec];
   return items.map((item) => (typeof item === 'string'
     ? rwText(item)
-    : rwEl(item.tag, {}, [rwText(item.text)])));
+    : rwEl(item.tag, item.hidden ? { hidden: '' } : {}, [rwText(item.text)])));
+}
+
+/**
+ * Draw one table of either kind from the same sections, each feature in its
+ * native form or its grid form.
+ *
+ * A section is { part, rows, grouped }. On a native table the part picks the
+ * wrapper: 'head' a <thead>, 'body' a <tbody>, 'foot' a <tfoot>, and 'bare'
+ * none, so the rows sit in the <table> itself. On a grid, a grouped section
+ * draws its rows inside one row group and any other section draws them in
+ * the grid itself. A row is a list of cell specs, or { cells, hidden } for a
+ * row the page hides. A cell spec is a pieces spec (see rwPieces), or
+ * { pieces, header, colSpan, rowSpan, hidden }: header 'col' draws a <th> or
+ * the column-header role, 'row' a <th scope="row"> or the row-header role;
+ * the spans draw the merge attributes of each kind; hidden draws a hidden
+ * cell.
+ *
+ * @param {'native'|'grid'} kind
+ * @param {Array<{part: string, rows: Array, grouped?: boolean}>} sections
+ * @param {{caption?: string, gridRole?: string, cellRole?: string}} [opts]
+ * @returns {{table: object, sectionEls: object[]}} sectionEls holds each
+ *   section's wrapper, or the table itself for a section with none.
+ */
+function rwDrawTable(kind, sections, opts) {
+  const options = opts || {};
+  const isNative = kind === 'native';
+  const isCellObject = (spec) => spec !== null && typeof spec === 'object' && !Array.isArray(spec) && 'pieces' in spec;
+  const makeCell = (spec) => {
+    const cell = isCellObject(spec) ? spec : { pieces: spec };
+    const attrs = {};
+    if (isNative) {
+      if (cell.header === 'row') attrs.scope = 'row';
+      if (cell.colSpan) attrs.colspan = String(cell.colSpan);
+      if (cell.rowSpan) attrs.rowspan = String(cell.rowSpan);
+    } else {
+      attrs.role = cell.header === 'col' ? 'columnheader'
+        : cell.header === 'row' ? 'rowheader'
+          : (options.cellRole || 'cell');
+      if (cell.colSpan) attrs['aria-colspan'] = String(cell.colSpan);
+      if (cell.rowSpan) attrs['aria-rowspan'] = String(cell.rowSpan);
+    }
+    if (cell.hidden) attrs.hidden = '';
+    const tag = isNative ? (cell.header ? 'th' : 'td') : 'div';
+    const el = rwEl(tag, attrs, rwPieces(cell.pieces));
+    // A native cell answers its spans as properties, the way the browser
+    // reflects the attributes.
+    if (isNative && cell.colSpan) el.colSpan = cell.colSpan;
+    if (isNative && cell.rowSpan) el.rowSpan = cell.rowSpan;
+    return el;
+  };
+  const makeRow = (row) => {
+    const spec = Array.isArray(row) ? { cells: row } : row;
+    const attrs = isNative ? {} : { role: 'row' };
+    if (spec.hidden) attrs.hidden = '';
+    return rwEl(isNative ? 'tr' : 'div', attrs, spec.cells.map(makeCell));
+  };
+  const NATIVE_WRAPPERS = { head: 'thead', body: 'tbody', foot: 'tfoot', bare: null };
+  const children = [];
+  const wrappers = sections.map((section) => {
+    const rowEls = section.rows.map(makeRow);
+    const wrapperTag = isNative ? NATIVE_WRAPPERS[section.part] : (section.grouped ? 'div' : null);
+    if (wrapperTag === undefined) throw new Error(`rwDrawTable: no native wrapper for part ${section.part}`);
+    if (!wrapperTag) {
+      children.push(...rowEls);
+      return null;
+    }
+    const wrapper = rwEl(wrapperTag, isNative ? {} : { role: 'rowgroup' }, rowEls);
+    children.push(wrapper);
+    return wrapper;
+  });
+  if (options.caption !== undefined) {
+    children.unshift(rwEl(isNative ? 'caption' : 'div', isNative ? {} : { role: 'caption' },
+      [rwText(options.caption)]));
+  }
+  const table = isNative
+    ? rwEl('table', {}, children)
+    : rwEl('div', { role: options.gridRole || 'grid' }, children);
+  return { table, sectionEls: wrappers.map((wrapper) => wrapper || table) };
 }
 
 /**
@@ -2793,25 +2884,13 @@ function rwPieces(spec) {
 function rwBuildTable(kind, rows, opts) {
   const header = (opts && opts.header) || null;
   const isNative = kind === 'native';
-  const makeCell = (spec) => rwEl(isNative ? 'td' : 'div', isNative ? {} : { role: 'cell' }, rwPieces(spec));
-  const makeRow = (specs) => rwEl(isNative ? 'tr' : 'div', isNative ? {} : { role: 'row' }, specs.map(makeCell));
-  const dataRows = rows.map(makeRow);
-  let body;
-  let table;
-  if (isNative) {
-    body = rwEl('tbody', {}, dataRows);
-    const head = header
-      ? [rwEl('thead', {}, [rwEl('tr', {}, header.map((text) => rwEl('th', {}, [rwText(text)])))])]
-      : [];
-    table = rwEl('table', {}, head.concat([body]));
-  } else {
-    const headerRow = header
-      ? [rwEl('div', { role: 'row' }, header.map((text) => rwEl('div', { role: 'columnheader' }, [rwText(text)])))]
-      : [];
-    body = header ? rwEl('div', { role: 'rowgroup' }, dataRows) : null;
-    table = rwEl('div', { role: 'grid' }, header ? headerRow.concat([body]) : dataRows);
-    if (!header) body = table;
-  }
+  const headSection = header
+    ? [{ part: 'head', rows: [header.map((text) => ({ pieces: text, header: 'col' }))] }]
+    : [];
+  const { table, sectionEls } = rwDrawTable(kind,
+    headSection.concat([{ part: 'body', rows, grouped: !!header }]));
+  const body = sectionEls[sectionEls.length - 1];
+  const makeRow = (specs) => rwDrawTable(kind, [{ part: 'bare', rows: [specs] }]).table.children[0];
   const rowEl = (r) => body.children[r];
   const cell = (r, c) => rowEl(r).children[c];
   return {
