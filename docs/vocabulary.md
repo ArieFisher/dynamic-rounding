@@ -92,6 +92,8 @@ One term per concept, across every platform and every document. Use the [Retired
 | native table | A `<table>` element. |
 | header cell | A cell the page marks as a header: a `<th>` on a native table, or an element with the row-header or column-header role on a grid. It rounds like any other cell, and the first-row and first-column exclusions govern it by position, whatever tag the page gave it. The shape fingerprint reads a header row through the originals, so a header cell the extension simplified still reads as the text the page drew. On a grid, an element with the row-header role or the column-header role is a cell beside the cell role and the grid-cell role, in document order, and rounds under the same two exclusions. |
 | grid | A table built from generic elements with ARIA roles instead of `<table>`. |
+| table feature | One piece of table markup the HTML standard or the accessibility standard defines: a header cell, a row label, a row group, a footer row, a merged cell, a caption, a hidden row. |
+| pair | One table feature in its native form beside its grid form, e.g. a `<th scope="row">` beside an element with the row-header role. The design doc's table kind pairs list holds every pair with its state: same, different, not yet tested, or no pair, for a feature with one form only. |
 | row group | The wrapper that holds a grid's data rows — the grid analog of a table body. Row discovery uses it to identify the row shape, then takes every matching row across the whole grid; membership in a row group never keeps a row out of rounding — only the first-row and first-column exclusion defaults do that. |
 | outside row | In a grid that has at least one row group: a row outside every row group. In a native table: a row in the footer section. A grid with no row group has no outside rows (its groupless rows are orphan rows). An outside row rounds like any other row, and its values stay out of the dataset: they never reach the max magnitude or the lens preview. |
 | virtualized grid | A grid that keeps only its visible rows in the page, creating and destroying rows as the user scrolls. |
@@ -207,6 +209,7 @@ Terms for reviews, plans, and discussion.
 | test piece | One file of the extension's test suite, in the tests folder beside the runner. A piece does not run alone: it reads the setup and helpers other pieces define. |
 | order list | The runner's one list of test pieces, in run order. A piece in the folder missing from the list, or a listed piece missing from the folder, stops the run with an error. |
 | joined suite | The text of every test piece, in order-list order, run as one script in one shared scope. A function one piece defines is callable from every piece, and state one piece leaves behind reaches the pieces after it. The checks that scan the suite's own text read the joined suite. |
+| comparison test | A test that draws the same values once as a native table and once as a grid, runs detection and the simplification on both, and checks that both are found or both are missed, that the same cells change, and that each changed cell reads the same text. Each tested pair has one. |
 | cost | What a change uses up (units may be: lines, risk, review time, runtime, etc.) |
 | benefit | What the user or the maintainer gains from a change. |
 
