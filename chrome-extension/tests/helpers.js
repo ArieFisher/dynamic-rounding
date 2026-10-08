@@ -1890,7 +1890,7 @@ function makeRowgroupRoleGrid(headerTexts, dataRows, summaryTexts) {
     const row = makeElementNode('g-row', cellEls);
     row.children = cellEls;
     row.querySelectorAll = function(sel) {
-      if (sel === '[role="cell"]') return cellEls;
+      if (sel === GRID_CELL_SELECTOR) return cellEls;
       return [];
     };
     return row;
@@ -2202,7 +2202,7 @@ function makeScrollingRowgroupGrid(headerTexts, dataRows) {
     const cellEls = cellTexts.map(makeGridCellWithTextNode);
     const row = makeElementNode('g-row', cellEls);
     row.children = cellEls;
-    row.querySelectorAll = (sel) => (sel === '[role="cell"]' ? cellEls : []);
+    row.querySelectorAll = (sel) => (sel === GRID_CELL_SELECTOR ? cellEls : []);
     return row;
   }
   const headerRow = makeRoleRow(headerTexts);
@@ -2832,6 +2832,42 @@ function rwBuildTable(kind, rows, opts) {
     },
     rowTexts: () => body.children.map((row) => row.children.map((c) => c.textContent)),
   };
+}
+
+/**
+ * Draw a grid in the order-summary shape: a header row of two column-header
+ * elements, then one row group whose rows each hold one row-header label
+ * beside one cell-role amount. The third label nests a button and a tooltip
+ * the way a storefront's duties row does, so the label's text pieces sit
+ * under extra elements. Invented values at magnitudes 0 and 1.
+ */
+function rwBuildLabelledGrid() {
+  const headerRow = rwEl('div', { role: 'row' }, [
+    rwEl('div', { role: 'columnheader' }, [rwText('Item')]),
+    rwEl('div', { role: 'columnheader' }, [rwText('Amount')]),
+  ]);
+  const label = (text) => rwEl('div', { role: 'rowheader' }, [rwEl('span', {}, [rwText(text)])]);
+  const dutiesLabel = rwEl('div', { role: 'rowheader' }, [
+    rwEl('div', {}, [
+      rwEl('span', {}, [rwText('Duties')]),
+      rwEl('button', { type: 'button', 'aria-label': 'Why duties apply' }, [
+        rwEl('span', { 'aria-hidden': 'true' }, []),
+      ]),
+      rwEl('div', { role: 'tooltip', 'aria-hidden': 'true' }, [rwText('Shipped from another country.')]),
+    ]),
+  ]);
+  const amount = (text) => rwEl('div', { role: 'cell' }, [rwEl('span', {}, [rwText(text)])]);
+  const row = (labelEl, text) => rwEl('div', { role: 'row' }, [labelEl, amount(text)]);
+  const rowEls = [
+    row(label('Subtotal · 2 items'), '$48.60'),
+    row(label('Shipping'), '$12.00'),
+    row(dutiesLabel, '$7.35'),
+    row(label('Taxes'), '$9.84'),
+    row(label('Total'), 'CAD$77.79'),
+  ];
+  const group = rwEl('div', { role: 'rowgroup' }, rowEls);
+  const table = rwEl('div', { role: 'table' }, [headerRow, group]);
+  return { table, rowEls: [headerRow].concat(rowEls) };
 }
 
 /**
