@@ -22,7 +22,7 @@ A tab switch closes the sidebar. The service worker closes it whenever the user 
 
 ## Header cells follow the switches
 
-A header cell rounds like any other cell. The first-row and first-column switches govern by position: with both off, the top row and the leading column stay raw, whatever tag the page gave their cells, and a header cell outside that row and column rounds under the defaults. A pricing comparison that marks its prices as column headers rounds them when the first-row switch is on, and a volume table that marks its seat counts as row headers rounds them when the first-column switch is on. A grid reads every cell as a data cell, so both table kinds follow this one rule.
+A header cell rounds like any other cell. The first-row and first-column switches govern by position: with both off, the top row and the leading column stay raw, whatever tag the page gave their cells, and a header cell outside that row and column rounds under the defaults. A pricing comparison that marks its prices as column headers rounds them when the first-row switch is on, and a volume table that marks its seat counts as row headers rounds them when the first-column switch is on. A grid reads an element with the cell role, the grid-cell role, the row-header role, or the column-header role as a cell, in document order, so a row label with the row-header role is the first column, and both table kinds follow this one rule.
 
 ## Offset semantics
 

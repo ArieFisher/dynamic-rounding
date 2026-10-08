@@ -698,17 +698,14 @@
       /chain root/i.test(readmeDetectionPoint), true);
 })();
 
-// TA5: source-scan — no role="gridcell" or data-row-index literals in content.js
-// The adapters read role="cell" / data-row / data-index instead.
+// TA5: source-scan — no data-row-index literal in content.js
+// The adapters read data-row / data-index instead.
 (function sourceNoLegacySelectors() {
   const contentSrc = sourceByName('content.js');
   if (contentSrc === null) {
     eq('grid-adapter AC4: source file content.js present in manifest', false, true);
     return;
   }
-
-  eq('grid-adapter AC4: no role="gridcell" literal remains in content.js',
-    contentSrc.includes('role="gridcell"'), false);
 
   eq('grid-adapter AC4: no data-row-index literal remains in content.js',
     contentSrc.includes('data-row-index'), false);

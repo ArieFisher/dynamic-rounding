@@ -1229,7 +1229,7 @@ const supTestOpts = {
 // TableAdapter abstraction
 // AC2 — NativeTableAdapter round-trip test
 // AC3 — GridAdapter stub no-throw test
-// AC4 — source scan: no role="gridcell" or data-row-index literals in content.js
+// AC4 — source scan: no data-row-index literal in content.js
 // ---------------------------------------------------------------------------
 
 // TA1: NativeTableAdapter round-trip
@@ -2259,7 +2259,7 @@ const supTestOpts = {
     const row = makeElementNode('g-row', cellEls);
     row.children = cellEls;
     row.querySelectorAll = function(sel) {
-      return sel === '[role="cell"]' ? cellEls : [];
+      return sel === GRID_CELL_SELECTOR ? cellEls : [];
     };
     return row;
   }
@@ -2288,6 +2288,67 @@ const supTestOpts = {
   eq('row-universe: two rowgroups — all five rows come back in document order',
     rows.map(function(r) { return r.getCells()[0].getText(); }).join(','),
     'Region,North,South,Subtotal,West');
+})();
+
+// #513: a row label carrying the row-header role beside cell-role elements
+// is a cell, so it counts as column A the way a native table's row header
+// does. The grid is the order-summary shape with invented values.
+(function gridHeaderRoles_rowHeaderLabelIsColumnA() {
+  const g = rwBuildLabelledGrid();
+  const rows = makeAdapter(g.table).getRows();
+  const texts = rows.map((row) => row.getCells().map((cell) => cell.getText().trim()));
+  eq('#513: every body row reads two cells, the label first',
+    texts.slice(1).map((row) => row.length), [2, 2, 2, 2, 2]);
+  eq('#513: the label column holds the visible labels, tooltip text included under the nested label',
+    texts.slice(1).map((row) => row[0]),
+    ['Subtotal · 2 items', 'Shipping', 'DutiesShipped from another country.', 'Taxes', 'Total']);
+  eq('#513: the amount column holds the amounts',
+    texts.slice(1).map((row) => row[1]),
+    ['$48.60', '$12.00', '$7.35', '$9.84', 'CAD$77.79']);
+  eq('#513: the header row still reads its two column headers',
+    texts[0], ['Item', 'Amount']);
+})();
+
+// #513: a header row that holds a cell-role corner beside column-header
+// elements reads every one of them, in document order.
+(function gridHeaderRoles_cornerCellBesideColumnHeaders() {
+  const headerRow = rwEl('div', { role: 'row' }, [
+    rwEl('div', { role: 'cell' }, [rwText('')]),
+    rwEl('div', { role: 'columnheader' }, [rwText('Q1')]),
+    rwEl('div', { role: 'columnheader' }, [rwText('Q2')]),
+  ]);
+  const dataRow = rwEl('div', { role: 'row' }, [
+    rwEl('div', { role: 'rowheader' }, [rwText('North')]),
+    rwEl('div', { role: 'cell' }, [rwText('1,482,391')]),
+    rwEl('div', { role: 'cell' }, [rwText('918,554')]),
+  ]);
+  const table = rwEl('div', { role: 'grid' }, [headerRow, rwEl('div', { role: 'rowgroup' }, [dataRow])]);
+  const rows = makeAdapter(table).getRows();
+  eq('#513: the corner cell and both column headers come back as three cells',
+    rows[0].getCells().map((cell) => cell.getText()), ['', 'Q1', 'Q2']);
+  eq('#513: the data row reads label and two amounts',
+    rows[1].getCells().map((cell) => cell.getText()), ['North', '1,482,391', '918,554']);
+})();
+
+// #513: an interactive grid tags its values with the grid-cell role. A row
+// label with the row-header role beside them reads with every value, and
+// the grid still passes the data test.
+(function gridHeaderRoles_rowHeaderBesideGridCells() {
+  const headerRow = rwEl('div', { role: 'row' }, [
+    rwEl('div', { role: 'columnheader' }, [rwText('Region')]),
+    rwEl('div', { role: 'columnheader' }, [rwText('Q1')]),
+  ]);
+  const dataRow = (label, value) => rwEl('div', { role: 'row' }, [
+    rwEl('div', { role: 'rowheader' }, [rwText(label)]),
+    rwEl('div', { role: 'gridcell' }, [rwText(value)]),
+  ]);
+  const group = rwEl('div', { role: 'rowgroup' }, [dataRow('North', '1,482,391'), dataRow('South', '918,554')]);
+  const table = rwEl('div', { role: 'grid' }, [headerRow, group]);
+  const rows = makeAdapter(table).getRows();
+  eq('#513 grid cells: each row reads its label and its value',
+    rows.map((row) => row.getCells().map((cell) => cell.getText())),
+    [['Region', 'Q1'], ['North', '1,482,391'], ['South', '918,554']]);
+  eq('#513 grid cells: the grid passes the data test', isDataTable(table), true);
 })();
 
 // Detection: the row universe starts at the header row, and a wide header

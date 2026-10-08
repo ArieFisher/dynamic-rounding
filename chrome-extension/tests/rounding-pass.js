@@ -2799,6 +2799,40 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     !!(results[7] && results[7].patches.length > 0), true);
 })();
 
+// #513: on the order-summary shape, the shipped defaults hold the header
+// row and the label column and round every amount. Results are row-major
+// over six rows of two cells. Invented values: under -0.5 at max magnitude
+// 1, $48.60 → $50, $12.00 → $10, $7.35 → $7.5, $9.84 → $10, CAD$77.79 → CAD$80.
+(function gridHeaderRoles_amountsRoundUnderDefaults() {
+  const g = rwBuildLabelledGrid();
+  const { cells: results, maxMag } = simplifyTableCells(g.table, registryAdapter(g.table).getRows(),
+    Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+  eq('#513 defaults: six rows of two cells are classified', results.length, 12);
+  eq('#513 defaults: the max magnitude comes from the amounts', maxMag, 1);
+  eq('#513 defaults: the header row holds',
+    [0, 1].map((i) => results[i] && results[i].patches.length), [0, 0]);
+  eq('#513 defaults: the label column holds on every body row',
+    [2, 4, 6, 8, 10].map((i) => results[i] && results[i].patches.length), [0, 0, 0, 0, 0]);
+  eq('#513 defaults: every amount rounds',
+    [3, 5, 7, 9, 11].map((i) => !!(results[i] && results[i].patches.length > 0)), [true, true, true, true, true]);
+})();
+
+// #513: with the first-column switch on, the label column is the column the
+// switch releases: the label sits at column 0 of each result row, and the
+// amounts round as before.
+(function gridHeaderRoles_firstColumnSwitchReachesTheLabels() {
+  const g = rwBuildLabelledGrid();
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstColumn: true });
+  const { cells: results } = simplifyTableCells(g.table, registryAdapter(g.table).getRows(), opts,
+    { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+  eq('#513 first column on: the subtotal label is the first cell of the first body row',
+    !!results[2] && results[2].entry.cellObj.getText().trim().startsWith('Subtotal'), true);
+  eq('#513 first column on: the labels take no change',
+    [2, 4, 6, 8, 10].map((i) => results[i] && results[i].patches.length), [0, 0, 0, 0, 0]);
+  eq('#513 first column on: the amounts still round',
+    [3, 5, 7, 9, 11].map((i) => !!(results[i] && results[i].patches.length > 0)), [true, true, true, true, true]);
+})();
+
 // Outside rows: the lens preview pool draws from the dataset only.
 (function gridOutsideRow_staysOutOfPreview() {
   const g = makeRowgroupRoleGrid(

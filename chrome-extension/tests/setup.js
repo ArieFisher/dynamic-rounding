@@ -204,6 +204,7 @@ globalThis.revalidateTableShape = revalidateTableShape;
 globalThis.makeAdapter = makeAdapter;
 globalThis.NativeTableAdapter = NativeTableAdapter;
 globalThis.GridAdapter = GridAdapter;
+globalThis.GRID_CELL_SELECTOR = GRID_CELL_SELECTOR;
 // Expose the lib/dr-table package bundle, mirroring DR_NUMBER below.
 globalThis.DR_TABLE = DR_TABLE;
 // Expose the lib/dr-simplify package bundle (the classification ladder),
