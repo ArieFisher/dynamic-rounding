@@ -160,7 +160,7 @@ function extractCastingBullets(doc, text) {
 }
 
 // --- Extractor 4: the Google Sheets test-tab spec -------------------------
-// Every `| =IF(...) | ... |` row names an input, an optional offset, and an
+// Every `| =IF(...) | ... |` row holds an input, an optional offset, and an
 // expected value; the sheet built from this doc must agree with the library.
 function extractSheetsTab(doc, text) {
   let found = 0;

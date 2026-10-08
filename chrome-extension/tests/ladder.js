@@ -201,7 +201,7 @@
     { mode: 'skip', reason: 'ambiguous-date' });
 })();
 
-// --- Identifier shapes (issue #426) ---
+// --- Identifier shapes ---
 //
 // A cell whose whole text is an identifier shape (a phone number, an IP
 // address, a web or email address, an ISBN, a postal code, or digit groups
@@ -262,7 +262,7 @@ const IDENTIFIER_NEAR_MISSES = [
     classifyCell({ text: '21 June 2020', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS).mode, 'date');
 })();
 
-// --- Identifier shapes inside text (issue #465) ---
+// --- Identifier shapes inside text ---
 //
 // Inside an extracted cell, a span matching an identifier shape holds its
 // digits, and every other number in the cell rounds. Digit groups split by

@@ -50,8 +50,8 @@ const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE)
 
 // --- Ports: pluggable defaults for environment-sensitive reads ---
 // Each accepts an optional `opts` bag on the calling function; every default
-// below mirrors this file's pre-port behavior exactly when the real browser
-// globals are present, and degrades to a safe, working default when they are
+// below reads the real browser globals when they are present, and degrades
+// to a safe, working default when they are
 // not — that degradation, not a thrown error, is what lets detection run
 // standalone (a Node script, a unit test, a future non-extension host).
 
@@ -590,7 +590,7 @@ class GridAdapter {
     });
     // A grid declares a merge through the accessibility attributes, the only
     // spans its markup carries; a grid that declares none numbers its columns
-    // by read position, as it did before this rule (issue #330).
+    // by read position.
     const plan = assignGridColumns(
       rowCellEls.map((cellEls) => cellEls.map(gridCellSpans)));
 
@@ -1189,7 +1189,7 @@ function placeDecision(decision, text, layout, opts = {}) {
 // --- Table/grid detection predicates ---
 // Decide whether an element is a roundable table/grid. Grouped with the adapters
 // because they read DOM shape and lean on the GRID_* constants and makeAdapter
-// defined above. Consumed by the toggle UI (ui-toggle.js) and the engine.
+// defined above. Consumed by the pillbox view (ui-toggle.js) and the engine.
 
 /**
  * Heuristic test: does `el` look like a data grid built from non-table elements?
@@ -1397,9 +1397,6 @@ function findTargetTable(el, opts = {}) {
   return null;
 }
 
-// Left-offset threshold (px) below which an element is treated as
-// deliberately off-screen hidden: DR_DETECTION_SETTINGS.offscreenLeftPx.
-
 /**
  * Return the nearest *positioned* ancestor of `el` (or `el` itself if it is
  * positioned).  An element is "positioned" when its CSS position is one of
@@ -1478,7 +1475,7 @@ function isPhantomA11yTable(table, opts = {}) {
       if (node.getAttribute('aria-hidden') === 'true') return true;
     }
     node = node.parentElement || node.parentNode || null;
-    // Stop at document root (no parentElement means we've left the element tree)
+    // Stop at document root (no parentElement means the walk has left the element tree)
     if (node && typeof node.tagName === 'undefined') break;
   }
 

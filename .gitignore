@@ -23,7 +23,7 @@ docs/private/
 !.agent/skills/
 
 # Root-level markdown is an allowlist. Every stray that reached this repo was a
-# root .md: a scan report, a scratch design doc, a generated PR message. To add
+# root .md: a scan report, a scratch design doc, a generated pull request message. To add
 # a root document on purpose, add a negation below.
 /*.md
 !/README.md
@@ -33,7 +33,7 @@ docs/private/
 !/MAINTAINERS.md
 
 # Agent and tool output. Reports about the local toolchain describe the
-# developer's machine, not this project, and belong nowhere near a public repo.
+# developer's machine, not this project, and belong nowhere near a public repository.
 *-baseline.md
 *_baseline.md
 *-report.md

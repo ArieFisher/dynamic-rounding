@@ -136,7 +136,7 @@ const DR_BUS = (function () {
     //
     // The settings apply is a request rather than a one-way publish: the
     // content script writes the active table's settings and answers, and the
-    // sidebar reads whether anyone answered at all to decide bound versus
+    // sidebar reads whether anyone answered at all to determine bound versus
     // unbound. The answer's value is never read. The other three read the
     // model: the active table's settings, its preview samples, and the
     // capture state.
@@ -145,9 +145,8 @@ const DR_BUS = (function () {
     'request:previewSamples': { family: REQUEST, route: ROUTE_TAB },
     'request:captureState': { family: REQUEST, route: ROUTE_TAB },
     // The service worker's four topics. The two it publishes to a tab carry
-    // an explicit tab number: the menu-click tab and the sidebar's tab are
-    // each the worker's to name, and neither is guaranteed to be the active
-    // one at the moment of the send.
+    // an explicit tab number: neither the menu-click tab nor the sidebar's tab
+    // is guaranteed to be the active tab at the moment of the send.
     'intent:menuClicked': { family: INTENT, route: ROUTE_TAB },
     'state:sidebarOpened': { family: STATE_CHANGE, route: ROUTE_TAB },
     'intent:closeSidebar': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
@@ -156,7 +155,7 @@ const DR_BUS = (function () {
     // sidebar was opened for.
     'state:pageUnloaded': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'intent:updateMenuLabel': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
-    // The content script's reports to the sidebar. Every one takes the
+    // The content script's topics for the sidebar. Every one takes the
     // broadcast carrier: the content script holds no tabs interface, and the
     // sidebar is an extension page.
     //
@@ -197,7 +196,7 @@ const DR_BUS = (function () {
   // is load-bearing: which tab a content script sent from, which the service
   // worker checks against the tab the sidebar was opened for. The bus passes
   // that one number and keeps Chrome's record out of its own contract. A
-  // same-context publish reports null, and so does a message from an extension
+  // same-context publish carries null, and so does a message from an extension
   // page — neither has a tab.
   function senderTabId(sender) {
     return sender && sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : null;
@@ -224,7 +223,7 @@ const DR_BUS = (function () {
   // through a store setter) before returning — same-context delivery is
   // synchronous (see the header), so that nested publish() runs on top of
   // this one's still-live stack frame. A cycle with no caller-side guard
-  // would recurse until the real call stack overflows (issue #240). This
+  // would recurse until the real call stack overflows. This
   // cap allows any legitimate shallow chain (the deepest in production, the
   // intent:selectTable -> state:selectedTableChanged hop, reaches 2; a
   // guarded two-topic bounce-back reaches 4, but only in the reentrancy
@@ -233,10 +232,6 @@ const DR_BUS = (function () {
   const MAX_PUBLISH_DEPTH = 20;
   let publishDepth = 0;
 
-  // The route determines the carrier. Before this, publish() tested which
-  // Chrome interface existed in the publishing context and inferred the
-  // carrier from that, and a topic whose audience did not match the inference
-  // had no way to record the mismatch.
   function relay(topic, payload, route, opts) {
     const message = Object.assign({ action: topic }, payload);
     if (route === ROUTE_EXTENSION_PAGES) {
@@ -263,8 +258,7 @@ const DR_BUS = (function () {
   // A tab-routed send needs a tab number. The caller supplies one through
   // opts.tabId where it holds one — only the service worker does, for the
   // menu-click tab and the sidebar's tab, neither guaranteed to be active.
-  // Otherwise the bus queries the active tab, which is the lookup the sidebar
-  // repeated before each of its own sends.
+  // Otherwise the bus queries the active tab.
   //
   // onReply, when given, receives the responder's answer, or undefined when
   // nothing answered: no tab, no content script on it, or no responder
@@ -317,8 +311,8 @@ const DR_BUS = (function () {
     // A request topic's responder returns an answer, and publish() has nowhere
     // to put one: it would send the message, the responder would answer, and
     // the answer would go nowhere, with nothing logged and nothing failed.
-    // request() and respond() each reject a topic of the wrong family already;
-    // this is the third pairing (#340).
+    // request() and respond() each reject a topic of the wrong family; this
+    // check covers publish().
     if (TOPICS[topic].family === REQUEST) {
       throw new Error('DR_BUS: publish() cannot carry a request-family topic; "' +
         topic + '" is answered, and publish() discards the answer — use request()');

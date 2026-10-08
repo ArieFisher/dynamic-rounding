@@ -23,22 +23,22 @@
 // Letters: digits welded to letters belong to an identifier, not a measurement
 // ("XR47182913MKB07", "MKB07", "Q3"). Mining them produces a rounded value that
 // still looks like a valid identifier, so the corruption is undetectable.
-// Refusing the leading digit is enough to drop the whole run, because every
+// Rejecting the leading digit is enough to drop the whole run, because every
 // later position inside it is itself preceded by a digit.
 //
-// Dot/comma: stops the scan re-entering a number it just refused — without
+// Dot/comma: stops the scan re-entering a number it just rejected — without
 // them "abc1,200" would skip "1,200" and then match the bare "200".
 //
-// The guard also decides when a leading "-" is a minus sign rather than a
+// The guard also determines when a leading "-" is a minus sign rather than a
 // separator. In "2022-04", "555-1234" or "10-20" the hyphen follows a digit, so
 // it is rejected as a sign; the digits after it still match on their own and
 // stay positive. Genuine negatives ("down -1,200 units") are preceded by
-// whitespace or punctuation and are unaffected. Note that en-dash ranges
-// ("₹615.71–623.33 crore") never relied on this — "-?" only ever matched an
-// ASCII hyphen — so hyphen-typed ranges now behave like en-dash ones.
+// whitespace or punctuation and are unaffected. En-dash ranges
+// ("₹615.71–623.33 crore") never reach this rule — "-?" matches an ASCII
+// hyphen alone — so hyphen-typed ranges behave like en-dash ones.
 //
 // The run takes every comma and dot that sits between digits, so the number
-// shape test in toNumber (core.js) judges the whole run: "1.234,56" and
+// shape test in toNumber (core.js) tests the whole run: "1.234,56" and
 // "12.03.2024" come through whole and read as no number, and the text stays
 // as written. A pattern that stopped at the first dot would take "1.234" and
 // round it.
@@ -647,7 +647,7 @@ function matchBracketedNumber(text) {
 // A number bound to an era marker is a calendar year — a date — so it must be
 // rounded by date logic (decade/century), never by the numeric offset. These
 // helpers locate such year tokens so they can be excluded from numeric magnitude
-// detection, numeric rounding, and the sidebar preview examples (issue #4).
+// detection, numeric rounding, and the lens preview samples.
 // Period-less markers must be UPPERCASE. Bare lowercase forms ("ad", "bp",
 // "ah", "ce", "bc") collide with ordinary English words and abbreviations
 // ("ad hoc", "120 bp" basis points, "ah") and must not be read as years.

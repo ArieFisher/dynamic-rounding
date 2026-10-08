@@ -21,7 +21,7 @@ set -uo pipefail
 # The policy is one table: Retired synonyms in docs/vocabulary.md. Its Pattern
 # column is the repository's only list of retired synonyms, and this script
 # keeps no second copy. A row whose Pattern cell is not a backtick-wrapped
-# expression carries no pattern, and the human sweep owns that row.
+# expression carries no pattern, and that row is left to the human sweep.
 #
 # How to write a pattern — word boundaries per edge, the collocation rule, and
 # the patterns already rejected — sits under that table, beside the patterns.
@@ -84,10 +84,10 @@ EXEMPT_PATHS='^docs/sprint-logs/|^docs/sprint-plans/|^docs/research/|^js/CHANGEL
 # --------------------------------------------------------------------------
 
 # The pattern list is the whole policy, and an empty or broken list reports the
-# same silence as clean prose. These checks turn that silence into a refusal,
+# same silence as clean prose. These checks turn that silence into a failure,
 # on every run of the gate rather than only when the self-test runs in CI. The
-# list now arrives from a markdown table, so a renamed heading or a reshaped
-# row lands here too: it reads as an empty list, and the gate refuses.
+# list comes from a markdown table, so a renamed heading or a reshaped row
+# lands here too: it reads as an empty list, and the gate fails.
 
 # A sentence the gate must be able to see. It belongs to no living doc, so a
 # real change never carries it. When the pattern it matches retires, point the

@@ -309,7 +309,7 @@ eq('extract: comma after the first number is left out of the match',
     out, '50–5,000 range');
 })();
 
-// --- Splice safety: rounding doesn't affect later match indices because we go right-to-left ---
+// --- Splice safety: rounding does not affect later match indices because we go right-to-left ---
 (function spliceSafety() {
   // Numbers that change length when rounded: 8,584,629 (9 chars) -> 8,500,000 (9 chars, same).
   // Pick one that changes length: 286 (3) -> 300 (3) same. Use 9,876 -> 10,000 (length grows).
@@ -358,7 +358,7 @@ eq('pure cell write: percent suffix preserved',
 eq('pure cell write: parens-negative preserved',
   writePureCell(-500, '(523)'), '(500)');
 
-// --- Sprint A: exclusion checkboxes ---
+// --- Exclusion checkboxes ---
 
 eq('isDateLike: bare 4-digit year', isDateLike('2018'), true);
 
@@ -408,7 +408,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 })();
 
 (function exclusionDates() {
-  // Dates/times are no longer exclusion reasons — getExclusionReason never returns
+  // Dates and times are not exclusion reasons — getExclusionReason never returns
   // 'dates' or 'times' regardless of simplifyDates/simplifyTimes setting.
   const opts = { simplifyDates: true };
   eq('exclude: year cell with simplifyDates=true is NOT excluded (returns null)',
@@ -420,7 +420,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 })();
 
 (function exclusionTimes() {
-  // Times are no longer an exclusion reason — simplifyTimes only controls the
+  // Times are not an exclusion reason — simplifyTimes only controls the
   // classification pass, not getExclusionReason.
   eq('exclude: time cell with simplifyTimes=true is NOT excluded (returns null)',
     getExclusionReason('14:30', 1, { simplifyTimes: true }), null);
@@ -452,7 +452,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     getExclusionReason('₹615', 1, {}), 'currency');
 })();
 
-// --- Sprint sidebar-restructure: simplifyFirstRow ---
+// --- simplifyFirstRow ---
 
 (function simplifyFirstRowTests() {
   // simplifyFirstRow=false: row 0 must be excluded regardless of cell content
@@ -472,7 +472,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'firstRow');
 })();
 
-// --- Sprint sidebar-restructure: simplifyMixedCells semantics ---
+// --- simplifyMixedCells semantics ---
 
 (function simplifyMixedCellsTests() {
   // With simplifyMixedCells=true, a cell with a number AND a word should be rounded
@@ -510,7 +510,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
   })();
 })();
 
-// --- Sprint sidebar-restructure: simplifyMixedPercent / simplifyMixedCurrency round-trip ---
+// --- simplifyMixedPercent / simplifyMixedCurrency round-trip ---
 
 (function simplifyMixedPercentRoundTrip() {
   // simplifyMixedCurrency: true -> currency cells are NOT excluded
@@ -528,7 +528,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
 })();
 
 // First-match-wins priority: firstRow beats firstColumn beats percent beats currency
-// (dates/times are no longer exclusion reasons)
+// (dates and times are not exclusion reasons)
 (function exclusionPriority() {
   const opts = {
     simplifyFirstRow: false, simplifyFirstColumn: false, simplifyDates: true, simplifyTimes: true,
@@ -542,7 +542,7 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     getExclusionReason('2018', 1, opts, 1), null);
 })();
 
-// --- Sprint B: per-type granularity ---
+// --- Per-type granularity ---
 
 // Date granularity
 // CONTRACT: roundDateText drops the parts of the date finer than the granularity
@@ -637,7 +637,7 @@ eq('findDates: "45/12/2020" is impossible', findDates('45/12/2020')[0].impossibl
 eq('findDates: "13/13/2020" is impossible', findDates('13/13/2020')[0].impossible, true);
 eq('roundDateText: "2020-13-45" stays as written', roundDateText('2020-13-45', 'year'), '2020-13-45');
 
-// The issue's worked example: every granularity cuts, none rounds.
+// A worked example: every granularity cuts, none rounds.
 eq('roundDateText: December 13, 2096 at year -> 2096',
   roundDateText('December 13, 2096', 'year'), '2096');
 eq('roundDateText: December 13, 2096 at decade -> 2090',
@@ -731,7 +731,7 @@ eq('roundTimeText: ISO datetime 23:15 hour rounds down to 23:00 (same day)',
 eq('roundTimeText: ISO datetime minute is idempotent on space form',
   roundTimeText('2025-11-26 16:16', 'minute'), '2025-11-26 16:16');
 
-// --- Sprint C: advanced parameter resolvers ---
+// --- Advanced parameter resolvers ---
 
 eq('resolveOffset: null -> fallback', resolveOffset(null, -0.5), -0.5);
 
@@ -784,7 +784,7 @@ eq('resolveNumTop: 2.7 floored to 2',
   }
 })();
 
-// --- Sprint G: range selector ---
+// --- Range selector ---
 
 // lettersToColIndex
 eq('lettersToColIndex: A -> 0', lettersToColIndex('A'), 0);
@@ -911,15 +911,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   eq('isInRanges: between rects', isInRanges(2, 2, ranges), false);
 })();
 
-// NOTE: End-to-end investigation (sprint partial-range-fix attempt 2) confirmed the parser
-// is correct — parseRangeExpr("D:E") correctly yields {colMin:3,colMax:4,...}. The actual
-// highlight-on-wrong-columns symptom reported by the user (D:E rounds the wrong data columns)
-// is caused by an off-by-one in the DOM cell-index mapping: rows[r].cells includes the
-// <th scope="row"> row-header at c=0, so the user's column letter D (index 3) resolves to the
-// 3rd DOM cell, which is the *3rd data column*, not the 4th. That bug is tracked and fixed by
-// this sprint (`first-col-is-a`) — column-letter → DOM-index mapping skips row-header <th>s.
-
-// --- Sprint partial-range-fix: adversarial parser regression tests ---
+// --- Adversarial range parser tests ---
 
 // Primary bug report: f4:g8 (lowercase partial-range)
 (function sprint_f4g8_lowercase() {
@@ -975,7 +967,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   eq('sprint partial-range-fix: "B:D5" rowMax=4', rng && rng.rowMax, 4);
 })();
 
-// Regression guard: previously-working shapes must still pass
+// Regression guard: the basic shapes still pass
 (function sprint_regression_A() {
   const r = parseRangeExpr('A');
   eq('sprint regression: "A" still works', r,
@@ -1027,7 +1019,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 // A cell like <td><span style="display:none">700023000</span>+2.3%</td>
 // The implementation reads cell.innerText (which browsers exclude hidden text from).
 // We model this by making cell.innerText = '+2.3%' only (hidden span excluded).
-// toNumber('+2.3%') -> null (percent), and with simplifyMixedPercent unset it's excluded entirely.
+// toNumber('+2.3%') -> null (percent), and with simplifyMixedPercent unset it is excluded entirely.
 // The large hidden number 700023000 must NOT appear in any extracted matches.
 (function ac4_hiddenSortkeyNotExtracted() {
   // Simulate: innerText is what the browser returns (no hidden text).
@@ -1072,7 +1064,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint exclude-numbers-in-quotes
+// Numbers inside quotes
 // ---------------------------------------------------------------------------
 
 // --- 1. getQuoteMaskedRanges unit tests ---
@@ -1177,7 +1169,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 
 (function quoteRegressionGuards() {
   // 5a. cell.innerText || cell.textContent is the read source (static analysis).
-  // Lives in the NativeTableAdapter (lib/dr-table/detect.js) after the Phase 2 split.
+  // Lives in the NativeTableAdapter (lib/dr-table/detect.js).
   const contentSrc = allContentSrc;
   eq('regression: read source is cell.innerText || cell.textContent',
     contentSrc.includes('cell.innerText || cell.textContent'), true);
@@ -1203,15 +1195,15 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   } else {
     passed++;
   }
-  // The content scripts MUST define getQuoteMaskedRanges (now in parsing.js)
+  // The content scripts MUST define getQuoteMaskedRanges (in parsing.js)
   eq('regression: content scripts define getQuoteMaskedRanges',
     contentSrc.includes('function getQuoteMaskedRanges('), true);
-  // ...and overlapsQuoteRange (now in parsing.js)
+  // ...and overlapsQuoteRange (in parsing.js)
   eq('regression: content scripts define overlapsQuoteRange',
     contentSrc.includes('function overlapsQuoteRange('), true);
 })();
 
-// --- Sprint decimal-precision-display: trailing zeros ---
+// --- Trailing zeros ---
 
 // trailing zeros always stripped regardless of the original decimal count
 eq('formatNumber: trailing zeros stripped on whole number',
@@ -1231,7 +1223,7 @@ eq('formatNumber: trailing zeros stripped on whole number from "1.00"',
 eq('formatNumber: |rounded|>=10 writes no decimals',
   formatNumber(12, '12'), '12');
 
-// --- Sprint trim-trailing-zeros (chrome-extension): whole-number short-circuit ---
+// --- Whole-number short-circuit ---
 
 // a pure cell write drops trailing zeros for whole-number results under 10
 eq('pure cell write: whole number 1 from "1.04" -> "1"',
@@ -1267,7 +1259,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   formatNumber(1, '1.04'), '1');
 
 // =============================================================================
-// Sprint date-round-to-year-display tests
+// Date rounding to year display tests
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -1421,15 +1413,15 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 // Additional: static analysis — new functions exist in content.js
 // ---------------------------------------------------------------------------
 (function dateRoundStaticAnalysis() {
-  const src = allContentSrc; // date parsing now in parsing.js (Phase 2 split)
+  const src = allContentSrc; // date parsing lives in parsing.js
 
   eq('static: findDates is defined in content.js',
     /function\s+findDates\b/.test(src), true);
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint half-step-floor-chrome: Features 1 (sign-aware half-step),
-// 2 (value-OoM floor), 3 (X_FLOOR_THRESHOLD-gated x-floor)
+// Sign-aware half-step, value-OoM floor, and the X_FLOOR_THRESHOLD-gated
+// x-floor
 // ---------------------------------------------------------------------------
 (function halfStepFloorGrid() {
   // 27-cell grid: {87M, 47M, 17M} x {+2, +1.5, +1, +0.5, 0, -0.5, -1, -1.5, -2}
@@ -1498,7 +1490,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 (function xFloorThresholdFlip() {
   // Re-eval content.js with X_FLOOR_THRESHOLD = 0 to confirm the x-floor
   // gates on the constant. We sandbox the patched source so the eq()
-  // assertions below don't disturb the live extension globals.
+  // assertions below do not disturb the live extension globals.
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const contentSrc = sourceByName('content.js');
   if (roundingSrc === null || contentSrc === null || coreCode === null ||
@@ -1546,7 +1538,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint date-tolerant-detection: isDateLike with adjacent text and markers
+// IsDateLike with adjacent text and markers
 // ---------------------------------------------------------------------------
 
 (function sprintDateTolerance() {
@@ -1632,7 +1624,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint refactor/simplify-naming-unification — Adversarial contract lock-in
+// Simplify naming — adversarial contract lock-in
 // ---------------------------------------------------------------------------
 
 (function simplifyNamingUnification() {
@@ -1800,7 +1792,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint advanced-preview-redesign
+// Lens preview layout
 // AC1: formatOomLabel exhaustive suffix-boundary check
 // AC2: formatStrategyHeader structure + "(i.e. …)" clause correctness
 // AC3: renderBotBand DESCENDING sort (real DOM-stub eval)
@@ -1876,9 +1868,9 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   eq('AC1-oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
 
   // -------------------------------------------------------------------------
-  // AC2: formatStrategyHeader structure. Per issue #1 the descriptive
-  // "(i.e. a half of 1M)" clause was removed — the header is now exactly
-  // "<oomLabel> → nearest <stepLabel>" with no clause, for every stop.
+  // AC2: formatStrategyHeader structure. The header is exactly
+  // "<oomLabel> → nearest <stepLabel>" with no "(i.e. …)" clause, for every
+  // stop.
   // We derive the expected step independently via stepForOffset/formatStep.
   // -------------------------------------------------------------------------
 
@@ -2179,7 +2171,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   eq('AC4-top: top example num cell has no nested step label',
     topExamplePair._children[2]._children.length, 0);
 
-  // AC4-strip (issue #3): the "from" shows the bare number, not the original
+  // AC4-strip: the "from" shows the bare number, not the original
   // surrounding text. renderTopBand keys off row.num, so a row whose original
   // was "₹2,000 crore" still renders just "e.g. 2,000".
   const stripBandEl = makeBandEl();
@@ -2255,7 +2247,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     /\.step-label\s*\{\s*color:\s*#b3623d/.test(sidebarHtmlSrc), true);
 
   // AC4d: oom-label span is still appended inside the from-span for non-zero
-  // rows of the bottom band (kept per the issue #3 decision).
+  // rows of the bottom band.
   const oomLabelBandEl = makeBandEl();
   realRenderBotBand(oomLabelBandEl, [{ num: 5000, original: '5,000' }], -0.5, 3);
   const fromSpan = oomLabelBandEl._appended[0]._children[0];
@@ -2282,7 +2274,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 })();
 
 // -------------------------------------------------------------------------
-// AC2: formatStrategyHeader — exhaustive mag=3 (1k+) table. Per issue #1 the
+// AC2: formatStrategyHeader — exhaustive mag=3 (1k+) table. The
 // header is exactly "<oomLabel> → nearest <stepLabel>" for every offset stop,
 // with no "(i.e. …)" clause and no "×" multiplier.
 // -------------------------------------------------------------------------
@@ -2466,7 +2458,7 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// Settings live in DR_STORE, one set per table (issue #328): a table with none
+// Settings live in DR_STORE, one set per table: a table with none
 // reads as the shipped defaults, setTableSettings stores the whole settings
 // with the defaults filled in and publishes the whole new value, and
 // getTableSettings reads back a copy.
@@ -2503,10 +2495,9 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-settings, AC2: the preview band and the table must round
-// the same cell to the same value once a setting changes — the bug this
-// sprint fixes was extractPreviewSamples reading DR_DEFAULTS while roundTable
-// read the model, so they disagreed the moment a slider moved off default.
+// AC2: the lens preview and the table must round the same cell to the same
+// value once a setting changes: extractPreviewSamples and roundTable both
+// read the table's settings.
 // ---------------------------------------------------------------------------
 (function appModelSettings_previewAndTableAgreeOnLiveSettings() {
   const customSettings = Object.assign({}, DR_DEFAULTS, {
@@ -2567,9 +2558,9 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-settings, AC5: settings survive a sidebar close and
+// AC5: settings survive a sidebar close and
 // reopen — pulled from the model (request:settings), not reset to DR_DEFAULTS.
-// The settings live on the active table (issue #328), so the reopen's read
+// The settings live on the active table, so the reopen's read
 // answers that table's settings.
 // ---------------------------------------------------------------------------
 (function appModelSettings_settingsSurviveSidebarReconnect() {
@@ -2606,22 +2597,17 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-settings, bucket-2 fix: a pulled enabled:false must survive
+// A pulled enabled:false must survive
 // sidebar reopen when the reopen lands on a TABLE THAT IS BOUND. This drives
 // sidebar.js's real pullSettingsAndApplyToUI() -> applySettingsToUI() ->
 // fetchPreviewSamples() chain end to end (same eval harness shape as
 // appModelSettings_settingsPublish_deliveryFeedback_behavioral above).
 //
-// The bug (as found): pullSettingsAndApplyToUI applied the pulled settings
-// (correctly setting enabledEl.checked = false), then called
-// fetchPreviewSamples(), whose response callback called setTableBound(true)
-// once request:previewSamples resolved with a bound table — and setTableBound's
-// bound branch unconditionally did `enabledEl.checked = DR_DEFAULTS.enabled
-// !== false`, which is true, clobbering the pulled false. Sprint 9 patched
-// it by threading the pulled settings through fetchPreviewSamples; issue
-// #251 then removed the bound branch's default write entirely, which made
-// the threading unnecessary. This test stays as the regression pin either
-// way: a pulled enabled:false must survive the reopen.
+// The pin: pullSettingsAndApplyToUI applies the pulled settings, then calls
+// fetchPreviewSamples(), whose response callback calls setTableBound(true)
+// once request:previewSamples resolves with a bound table. setTableBound's
+// bound branch must not write the main switch, so the pulled false survives
+// the reopen.
 // ---------------------------------------------------------------------------
 (function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
@@ -2749,7 +2735,7 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-settings, adversarial: the full wire path, not the store
+// Adversarial: the full wire path, not the store
 // directly. appModelSettings_previewAndTableAgreeOnLiveSettings (above) calls
 // DR_STORE.setTableSettings() straight from the test — it never exercises
 // content.js's own onMessage listener or the settings apply's responder,
@@ -2954,9 +2940,8 @@ const LADDER_OPTS = {
 })();
 
 (function currencies_roundingKeepsTheSign() {
-  // Before the collapse, the write-back carried its own four-symbol chain, so
-  // a cell marked with any other currency rounded and lost its sign outright.
-  // The pure number span now steps past every sign the one list names.
+  // The pure number span steps past every sign the one list names, so a cell
+  // marked with any listed currency keeps its sign.
   for (const { name, signs } of CURRENCIES) {
     for (const sign of signs) {
       eq('currencies: rounding keeps "' + sign + '" (' + name + ')',
@@ -2990,8 +2975,8 @@ const LADDER_OPTS = {
   eq('currencies: a picture sign with a letter left beside it does not read ("a€45")',
     toNumber('a€45'), null);
 
-  // Regression: the currency exclusion once fired on any capital R, so a
-  // plain text cell was skipped as currency with the setting off.
+  // The currency exclusion must not fire on a capital R inside a word, so a
+  // plain text cell is not skipped as currency with the setting off.
   const currencyOff = { simplifyFirstRow: true, simplifyFirstColumn: true,
     simplifyMixedPercent: true, simplifyMixedCurrency: false };
   eq('currencies: "Revenue 45" is not a currency cell',
@@ -3075,12 +3060,11 @@ eq('bracketed: a bracket pair holding more than the number is not a whole-text m
   ],
   [null, null, null]);
 
-// --- Decimal comma: strict US reading (issue #487) ---
+// --- Decimal comma: strict US reading ---
 // The number format function returns the marks a number uses, US style for
 // now. The number shape test accepts a group mark only in the group shape
 // and only before the decimal mark. A run with no group mark goes to the
-// conversion as before, so a second dot still fails there. Before this
-// change the clean-up deleted every comma, so "13,63€" read as 1363.
+// conversion, so a second dot still fails there.
 
 eq('number format function: returns the US marks',
   numberFormat(), { group: ',', decimal: '.' });
@@ -3124,8 +3108,8 @@ eq('number reader: US-style values read as before',
   [1234, 1234.56, 0.125]);
 
 // Inside text, the digit run takes every comma and dot between digits, so
-// the number shape test judges the whole run. Before this change the
-// pattern took "1.234" from "1.234,56" and "12.03" from "12.03.2024".
+// the number shape test tests the whole run. A pattern that stopped at the
+// first dot would take "1.234" from "1.234,56" and "12.03" from "12.03.2024".
 eq('decimal comma in text: "13,63€ (includes 2,37€ VAT)" holds no number',
   extractNumbersInText('13,63€ (includes 2,37€ VAT)'), []);
 
@@ -3162,7 +3146,7 @@ eq('decimal comma: "1,234.56 EUR" is a unit number, as before',
     ['1,234.56', '0.125'].map((text) => decide(text).mode), ['pure', 'pure']);
 })();
 
-// --- One write-back path (issue #487) ---
+// --- One write-back path ---
 // Every number is patched in place, digits only, grouped with the marks the
 // number format function returns. A pure cell's number span leaves out its
 // leading format marks and sign characters and its trailing format marks,

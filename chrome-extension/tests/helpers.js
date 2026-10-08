@@ -50,8 +50,8 @@ function makeMockTable(rowsSpec, querySelectorResult) {
 }
 
 // Simplify a table under the given settings the way the apply does: the
-// settings land on the table first, so the re-apply pass reads them back
-// (issue #328). roundTable alone writes no settings.
+// settings land on the table first, so the re-apply pass reads them back.
+// roundTable alone writes no settings.
 function roundTableUnder(table, opts) {
   DR_STORE.setTableSettings(table, opts, 'page');
   return roundTable(table, DR_STORE.getTableSettings(table));
@@ -147,7 +147,7 @@ function makeLinkCell(anchors, outsideText) {
     // querySelectorAll('a') returns the anchor objects we built
     querySelectorAll: (sel) => sel === 'a' ? anchorObjs : [],
     contains: (node) => anchorObjs.includes(node),
-    // classList / dataset stubs so makeMockTable-level code won't crash
+    // classList / dataset stubs so makeMockTable-level code will not crash
     classList: {
       _classes: [],
       add(cls) { this._classes.push(cls); },
@@ -339,13 +339,10 @@ function makeMockButton() {
 }
 
 // ---------------------------------------------------------------------------
-// Sprint layout-table-exclusion: isDataTable heuristic
+// isDataTable: the data test
 // ---------------------------------------------------------------------------
 //
-// isDataTable(table) returns true iff:
-//   - table.rows.length >= 2
-//   - at least one row has cells.length >= 2
-//   - at least one cell has numeric textContent (format marks and commas stripped + parseFloat + isFinite)
+// isDataTable(table) runs the data test; docs/vocabulary.md states the rule.
 //
 // Helper: build a minimal table stub for isDataTable.
 // rowsSpec: array of arrays of textContent strings.
@@ -418,7 +415,7 @@ function withReactiveCreateTreeWalker(fn) {
   }
 }
 
-// Issue #403, test page Table 21. A cell whose markup carries line breaks
+// Test page Table 21. A cell whose markup carries line breaks
 // and indentation around its text: the browser collapses them in the
 // rendered text the classifier reads, and the patch step counts positions in
 // the flat text, where they remain. The rendered read below collapses the
@@ -432,7 +429,7 @@ function makePrettyPrintedCell(segments) {
   return cell;
 }
 
-// Issue #430: a native table's pure, date, and time cells take the same
+// A native table's pure, date, and time cells take the same
 // three steps as every other cell — classify, place, patch. A value whose
 // characters sit in one text piece rounds through the patch writer, with its
 // rendered position converted to the flat text. A value that crosses a piece
@@ -1301,7 +1298,7 @@ function makeE2EGridWrapper(rowData) {
     return [];
   };
 
-  // Override wrapper querySelector so isTableRounded / syncSwitchForTable don't throw.
+  // Override wrapper querySelector so isTableRounded / syncSwitchForTable do not throw.
   grid.wrapperEl.querySelector = function(sel) {
     if (sel === '.dr-ext-rounded') {
       return allCells.find(function(c) { return c.classList.contains('dr-ext-rounded'); }) || null;
@@ -1439,14 +1436,14 @@ function makeOnScreenTable() {
 }
 
 // =============================================================================
-// Sprint filter-pass1-native: Pass 1 guard skips phantom a11y tables
+// Pass 1 guard skips accessibility artifacts
 // =============================================================================
 //
 // injectTableToggles() Pass 1 calls document.querySelectorAll('table') and skips
 // any table for which isPhantomA11yTable(table) is true, then calls
 // createToggleForTable(table) only for the survivors.
 //
-// A toggle was created iff tableToggles.has(table) becomes true afterwards.
+// A pillbox was created iff tableToggles.has(table) becomes true afterwards.
 //
 // For each test we:
 //   1. Temporarily replace global.document.querySelectorAll so Pass 1 sees our
@@ -1454,10 +1451,10 @@ function makeOnScreenTable() {
 //   2. Temporarily stub document.createElement + document.body.appendChild so
 //      createToggleForTable can run without errors.
 //   3. Reset tableToggles / trackedTables for each run by deleting entries we
-//      added (WeakMap doesn't expose a clear(), so we track which table objects
+//      added (WeakMap does not expose a clear(), so we track which table objects
 //      we inserted and delete them by re-using the objects).
 //
-// CRITICAL: phantom tables must pass isDataTable() so the only reason they
+// CRITICAL: accessibility artifacts must pass isDataTable() so the only reason they
 // would be skipped is the isPhantomA11yTable guard, not the isDataTable gate.
 // Real on-screen tables must fail isPhantomA11yTable but pass isDataTable.
 //
@@ -1512,7 +1509,7 @@ function makePass1DataTable(opts) {
 
 // Run injectTableToggles() with a controlled list of tables returned by
 // document.querySelectorAll('table'). Stubs away document.createElement and
-// document.body.appendChild so createToggleForTable doesn't throw in Node.
+// document.body.appendChild so createToggleForTable does not throw in Node.
 // Restores all globals afterwards. Returns { tables } (same array for inspection).
 function runPass1WithTables(tables) {
   const origQSA      = global.document.querySelectorAll;
@@ -1565,7 +1562,7 @@ function runPass1WithTables(tables) {
   global.document.body = { appendChild() {} };
   global.document.documentElement = { appendChild() {} };
 
-  // Reset toggleStyleInjected so ensureToggleStyleInjected doesn't try document.head
+  // Reset toggleStyleInjected so ensureToggleStyleInjected does not try document.head
   const origToggleStyleInjected = toggleStyleInjected;
   toggleStyleInjected = true; // skip style injection (would need document.head)
 
@@ -1583,7 +1580,7 @@ function runPass1WithTables(tables) {
 }
 
 // Helper: clean up tableToggles / trackedTables for a list of table objects so
-// they don't pollute subsequent tests.
+// they do not pollute subsequent tests.
 function cleanupPass1Tables(tables) {
   for (const t of tables) {
     if (tableToggles.has(t)) {
@@ -1594,13 +1591,13 @@ function cleanupPass1Tables(tables) {
 }
 
 // ---------------------------------------------------------------------------
-// Sprint loosen-pass2-aria: Pass 2 phantom-table gate in injectTableToggles
+// Pass 2 accessibility artifact guard in injectTableToggles
 // ---------------------------------------------------------------------------
 //
-// The spec change: Pass 2 now skips an ARIA grid ONLY when it contains at
-// least one REAL (non-phantom) <table>.  A grid that contains only phantom
-// a11y tables (aria-hidden, offscreen, or svg-chart-wrapped) must be picked up
-// by Pass 2 and get a toggle.
+// Pass 2 (the nomination step) skips an ARIA grid ONLY when it contains at
+// least one REAL <table>, one that is not an accessibility artifact. A grid
+// that contains only accessibility artifacts (aria-hidden, offscreen, or
+// svg-chart-wrapped) must be picked up by Pass 2 and get a pillbox.
 //
 // Helper: build a minimal ARIA grid element (div with role="grid" or role="table")
 // with a proper classList and the querySelectorAll('table') that returns a given
@@ -1658,7 +1655,7 @@ function makeAriaGrid(embeddedTables) {
   };
 }
 
-// Helper: build a minimal phantom embedded table (aria-hidden on self → isPhantomA11yTable true)
+// Helper: build a minimal embedded accessibility artifact (aria-hidden on self → isPhantomA11yTable true)
 function makePhantomEmbeddedTable() {
   return makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
 }
@@ -2276,13 +2273,13 @@ function makeCrowdedNest() {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #251: the sidebar mirrors the model's settings on any table switch.
+// The sidebar mirrors the model's settings on any table switch.
 // A shared harness (same eval shape as the reopen-bound test above, plus an
 // onMessage capture and a rangeExpr capture) drives sidebar.js's real
 // onMessage handler. The model holds enabled:false and a non-default
-// rangeExpr; each scenario first drifts the controls away from the model —
-// exactly what the old code left behind — then delivers the message under
-// test and asserts the panel snapped back to the model.
+// rangeExpr; each scenario first drifts the controls away from the model,
+// then delivers the message under test and asserts the sidebar snapped back
+// to the model.
 // ---------------------------------------------------------------------------
 function makeIssue251SidebarHarness() {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
@@ -2299,7 +2296,7 @@ function makeIssue251SidebarHarness() {
         listeners[type].push(fn);
       },
       // fire: drive a captured listener the way a real control event would —
-      // lets a test trigger sidebar.js's applyNow path (issue #272 tests).
+      // lets a test trigger sidebar.js's applyNow path.
       fire(type, evt) { (listeners[type] || []).forEach((fn) => fn(evt)); },
       removeEventListener() {},
       classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
@@ -2333,7 +2330,7 @@ function makeIssue251SidebarHarness() {
 
   // Memoized: sidebar.js grabs each control once at module level and attaches
   // listeners to it; a test must be able to reach that SAME element (via
-  // el(id) on the returned harness) to fire those listeners (issue #272).
+  // el(id) on the returned harness) to fire those listeners.
   const elsById = { status: statusEl, enabled: enabledEl, rangeExpr: rangeExprEl };
   const captureDoc = {
     addEventListener() {},
@@ -2349,9 +2346,9 @@ function makeIssue251SidebarHarness() {
 
   // The model's settings differ from the shipped defaults on two controls,
   // so a handler that pulls is distinguishable from one that resets: after
-  // any refresh the panel must show enabled:false and rangeExpr 'B2:E8'.
+  // any refresh the sidebar must show enabled:false and rangeExpr 'B2:E8'.
   const modelSettings = Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: 'B2:E8' });
-  // The lock state the settings read answers with (#500); a test that
+  // The lock state the settings read answers with; a test that
   // changes it changes the next answer.
   const readAnswer = { locked: false };
   let onMessageHandler = null;
@@ -2445,20 +2442,12 @@ function recentLogRows() {
 }
 
 // ===========================================================================
-// One meaning for a pillbox press (2026-09-14 sidebar-state-removal, part one)
+// One meaning for a pillbox press
 // ===========================================================================
 //
-// A press made three different things happen, and which one it made happen
-// turned on a value the page could not keep true: whether the sidebar stood
-// open. Only the service worker could correct that value, and the correction
-// needed a tab number the service worker lost on an idle restart and on an
-// ordinary sidebar close. Once the value went stale, a press on a second
-// table silently became "move the sidebar here" for the rest of the page's
-// life. With the page-wide on/off value at off, such a press changed
-// no numbers at all, so the pillbox read as intermittent (#241).
-//
-// The rule now: a press makes the pressed table active and flips its form
-// from what the screen shows, writing the table's settings once.
+// The rule: a press makes the pressed table active and flips its form from
+// what the screen shows, writing the table's settings once. The press reads
+// nothing about the sidebar.
 //
 // A helper, because every case below needs the same two things reset: the
 // active table and the messages a press sends. Each case's tables are its
@@ -2531,7 +2520,7 @@ function makeIsolatedModel() {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #325 — every cross-context topic on the event bus.
+// Every cross-context topic on the event bus.
 //
 // A shared sandbox harness for the bus tests below. adapters/messaging.js has
 // no DOM dependency, so it runs in its own vm context with only the Chrome
@@ -2630,7 +2619,7 @@ function withHiddenCellTreeWalker(cell, fn) {
   try { fn(); } finally { delete global.document.createTreeWalker; }
 }
 
-// The worked example from the issue: a label column merged down over two rows,
+// A label column merged down over two rows,
 // and a total row merged across the first two columns.
 function makeMergedSpanTable() {
   return makeMockTable([

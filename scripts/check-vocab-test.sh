@@ -5,9 +5,9 @@
 # The vocabulary gate's whole policy is the Retired synonyms table in
 # docs/vocabulary.md. These cases plant a retired synonym and require the gate
 # to catch it, plant clean and exempt content and require the gate to pass it,
-# and damage that table and require the gate to refuse. The gate's preflight is
-# what makes the last group possible: a broken policy used to read as clean
-# prose.
+# and damage that table and require the gate to fail. The gate's preflight is
+# what makes the last group possible: without it a broken policy would read as
+# clean prose.
 #
 # Every case runs in a scratch git repository carrying a copy of the real
 # vocabulary, so the catch and pass cases run against the shipped patterns. Run
@@ -79,12 +79,12 @@ expect_block() {
 
 # expect_refusal <case name> <replacement table rows> <message>
 # Replaces the vocabulary with a Retired synonyms table built from the given
-# rows, stages clean prose, and requires the gate to refuse with exit 2. A
+# rows, stages clean prose, and requires the gate to fail with exit 2. A
 # damaged policy that exits 0 is the failure these cases exist to catch: the
 # gate would approve every commit while seeing nothing.
 #
 # The message argument is what keeps the cases independent. Every preflight
-# branch refuses with the same exit code, so a case that checked only the code
+# branch fails with the same exit code, so a case that checked only the code
 # would pass when its own branch was deleted and a later branch caught the
 # damage instead. Matching the branch's own words pins each case to one branch.
 #
@@ -163,13 +163,13 @@ expect_block "collocation: tied as coupled"         docs/design.md   'The switch
 expect_pass  "tied in its own sense passes"         docs/design.md   'The release cadence is tied to the academic calendar.'
 
 # Preflight. The Retired synonyms table is the one input nothing else checks,
-# so each way of breaking it must produce a refusal, not a clean bill.
+# so each way of breaking it must produce a failure, not a clean bill.
 #
 # The malformed fixture keeps a valid pattern that matches the canary. Without
 # it the case passes for the wrong reason: a lone bad pattern matches nothing,
-# the canary check fires, and the gate refuses whether or not it can tell a
+# the canary check fires, and the gate fails whether or not it can tell a
 # broken expression from an absent one. The valid pattern satisfies the canary
-# so only the malformed check is left to produce the refusal.
+# so only the malformed check is left to produce the failure.
 canary_row='| pillbox | table toggle | Only data tables get a pillbox. | `\btable toggle` |'
 
 expect_refusal "table with no pattern cell refuses" \

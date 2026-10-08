@@ -8,13 +8,13 @@
 // Constants
 // Format marks dropped before a text reads as a number: currency signs,
 // whitespace, and percent signs. A comma stays, so GROUP_SHAPE_REGEX can
-// judge where it stands.
+// test where it stands.
 const CLEAN_REGEX = /[$€£¥\s%]/g;
 const PARENS_REGEX = /^\((.+)\)$/;
 // The group shape in US style: a first group of one to three digits, then
 // comma groups of exactly three. A comma counts only in this shape and only
 // before the decimal dot, so "13,63" and "1.234,56" are not numbers. A run
-// with no comma goes to Number() as before. Matches the chrome extension's
+// with no comma goes to Number(). Matches the chrome extension's
 // number shape test in lib/dr-number/core.js.
 const GROUP_SHAPE_REGEX = /^[+-]?\d{1,3}(?:,\d{3})+$/;
 // Unicode dash/minus variants normalized to an ASCII "-" before parsing, so a
@@ -193,19 +193,19 @@ function roundWithOffset(num, offset) {
   // Add epsilon to handle floating point inaccuracies
   const raw = Math.round(absnum / step + EPSILON) * step;
 
-  // Feature 2: floor result at the value's own order of magnitude.
+  // Floor the result at the value's own order of magnitude.
   const floor_oom = Math.pow(10, current_mag);
   let result = Math.max(raw, floor_oom);
 
-  // Feature 3: for non-integer offsets, also floor at the integer-offset result
-  // when the integer part is large enough.
+  // For non-integer offsets, also floor at the integer-offset result when the
+  // integer part is large enough.
   if (!isInteger && Math.abs(Math.trunc(offset)) >= X_FLOOR_THRESHOLD) {
     const x_int = Math.trunc(offset);
     const floor_x = Math.abs(roundWithOffset(absnum, x_int));
     result = Math.max(result, floor_x);
   }
 
-  // Re-apply the float-cleanup the previous implementation did.
+  // Round away float noise on a result of 10 or more and on a whole result.
   if (result >= 10 || result % 1 === 0) {
     result = Math.round(result);
   }

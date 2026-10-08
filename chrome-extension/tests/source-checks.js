@@ -1,6 +1,6 @@
 // Checks that read source files, the manifest, bundles, or the living docs as text.
 
-// --- Sprint icon-no-sidebar: manifest + background invariants ---
+// --- Manifest + background invariants ---
 // NOTE: These are static-analysis proxies only. Whether the toolbar icon
 // actually disappears in Chrome, and whether the context menu visually works,
 // cannot be verified in this Node harness — those require a live browser.
@@ -16,7 +16,7 @@
   eq('manifest: no "action" key (toolbar icon suppressed)',
     Object.prototype.hasOwnProperty.call(manifest, 'action'), false);
 
-  // 2. "side_panel" must still be present — the panel itself must remain registered.
+  // 2. "side_panel" must still be present — the sidebar itself must remain registered.
   eq('manifest: "side_panel" key still present',
     Object.prototype.hasOwnProperty.call(manifest, 'side_panel'), true);
 
@@ -44,11 +44,9 @@
     /^\d+\.\d+\.\d+$/.test(manifest.version), true);
 })();
 
-// --- AC6: scope guard removed — was a git-diff-based assertion that
-// presumed a single-commit sprint and breaks in a stacked-PR world.
-// The content-based regression guards in the quote and decimal blocks
-// (which assert no sibling files contain new identifiers) cover the same
-// intent without depending on git history shape.
+// --- AC6: the content-based regression guards in the quote and decimal
+// blocks (which assert no sibling files contain new identifiers) cover scope
+// without depending on git history shape.
 
 // --- Static analysis: link-aware functions are defined and exported ---
 (function ac_staticAnalysis() {
@@ -69,7 +67,7 @@
     filterLinkMatches({ innerText: '100', querySelectorAll: () => [] }, []).length, 0);
 })();
 
-// --- Sprint decimal-precision-display: regression guards ---
+// --- Regression guards ---
 
 (function sprintRegressionGuards() {
   const manifestPath = path.join(__dirname, 'manifest.json');
@@ -97,7 +95,7 @@
     fsStat.existsSync(pythonDir), true);
 })();
 
-// --- Sprint sidebar-defaults-and-layout ---
+// --- Sidebar defaults and layout ---
 
 (function sprintSidebarDefaultsAndLayout() {
   const sidebarPath = path.join(__dirname, 'sidebar.html');
@@ -115,7 +113,7 @@
     return;
   }
 
-  // AC1/AC2: Sidebar UI defaults now live in constants.js (single source of
+  // AC1/AC2: Sidebar UI defaults live in constants.js (single source of
   // truth shared with content.js). The HTML must NOT hard-code checked /
   // selected attributes — they would shadow the JS-applied defaults.
   eq('sidebar-defaults: simplifyMixedCells default is true in DR_DEFAULTS',
@@ -151,9 +149,6 @@
       'ui-toggle.js', 'ui-toast.js', 'content.js',
     ]), true);
 
-  // AC3: (sidebar-tidyup) the old "section-heading" with "Include numbers in cells containing:"
-  // was removed in the sidebar-tidyup sprint — no replacement test needed here.
-
   // AC4a: rangeSection div has "hidden" attribute.
   eq('sidebar-defaults: rangeSection has hidden attribute',
     /<div[^>]*id="rangeSection"[^>]*hidden/.test(sidebarHtml) ||
@@ -163,7 +158,7 @@
   eq('sidebar-defaults: rangeSection markup still present in HTML',
     sidebarHtml.includes('id="rangeSection"'), true);
 
-  // AC5: parseRangeExpr is still defined (now in parsing.js after Phase 2 split).
+  // AC5: parseRangeExpr is defined (in parsing.js).
   eq('sidebar-defaults: content scripts still define parseRangeExpr',
     /function parseRangeExpr\b/.test(allContentSrc), true);
 
@@ -204,7 +199,7 @@
 // --- Regression guard: content.js declares the new infrastructure ---
 
 (function atToggle_contentJsDeclarations() {
-  // Toggle widget infrastructure lives in ui-toggle.js after the Phase 2 split;
+  // Pillbox infrastructure lives in ui-toggle.js;
   // scan the combined content-script source so the contract is location-agnostic.
   const src = allContentSrc;
   eq('auto-table-toggle: declares tableToggles WeakMap',
@@ -231,7 +226,7 @@
 //       :focus-visible rule with `outline` and `!important`.
 
 (function accessibilityAC2_focusVisibleCSS() {
-  const src = allContentSrc; // toggle CSS now in ui-toggle.js (Phase 2 split)
+  const src = allContentSrc; // pillbox CSS lives in ui-toggle.js
 
   eq('accessibility AC2: content.js CSS contains :focus-visible selector',
     src.includes(':focus-visible'), true);
@@ -258,7 +253,7 @@
 // Soft check: the constant names TOGGLE_DOT_PX etc. appear in the CSS template block.
 
 (function morphAC_constantsUsedInCSS() {
-  const src = allContentSrc; // toggle geometry now in ui-toggle.js (Phase 2 split)
+  const src = allContentSrc; // pillbox geometry lives in ui-toggle.js
 
   // The CSS function body should contain interpolations of the constants, not bare literals.
   // We extract the ensureToggleStyleInjected function body as a rough string.
@@ -340,9 +335,8 @@
   eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
   eq('sidebar.html does not load content-only ui-toast.js', sidebarHtml.includes('ui-toast.js'), false);
 
-  // NOTE: the main bootstrap eval() (the setup piece) no longer concatenates
-  // coreCode/parsingCode/detectCode/uiToggleCode/code directly — it evals
-  // the manifest-driven contentScriptBundle instead (see the
+  // NOTE: the main bootstrap eval() (the setup piece) evals the
+  // manifest-driven contentScriptBundle (see the
   // manifestDrivenSourceLoading self-test below for that ordering guarantee).
   // This assertion instead checks that later per-layer eval sites in the suite
   // (e.g. the x-floor sandbox concatenation) still reference those variables
@@ -363,7 +357,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint sidebar-tidyup: flat toggle list, new defaults, switch wrappers
+// Flat toggle list, new defaults, switch wrappers
 // ---------------------------------------------------------------------------
 
 (function sprintSidebarTidyup() {
@@ -487,7 +481,7 @@
 })();
 
 // =============================================================================
-// Sprint sidebar-pill-left: toggle switch appears left of label in every row
+// Toggle switch appears left of label in every row
 // =============================================================================
 //
 // Acceptance criteria:
@@ -615,14 +609,14 @@
 })();
 
 // --- Old keys (excludeDates / excludeTimes) must be absent from content.js and constants.js ---
-// These were renamed to simplifyDates/simplifyTimes in this sprint.
-// If the old names are still present as property assignments or conditions, the
+// The keys are simplifyDates/simplifyTimes.
+// If the old names are present as property assignments or conditions, the
 // inversion is incomplete and rounding behaviour would be controlled by the wrong key.
 (function invertPills_oldKeysAbsent() {
   const contentSrc = sourceByName('content.js');
-  // Sprint merge-ladder moved the simplifyDates/simplifyTimes option reads
-  // (and every other classification-ladder rule) out of content.js and into
-  // lib/dr-simplify/ladder.js; content.js now only calls classifyCell.
+  // The simplifyDates/simplifyTimes option reads (and every other
+  // classification-ladder rule) live in lib/dr-simplify/ladder.js; content.js
+  // only calls classifyCell.
   const ladderSrc = sourceByName('lib/dr-simplify/ladder.js');
   if (contentSrc === null || constantsCode === null || ladderSrc === null) {
     eq('invert-pills regression: source files present in manifest', false, true);
@@ -649,7 +643,7 @@
     /\bexcludeTimes\b/.test(ladderSrc), false);
 
   // Conversely, simplifyDates and simplifyTimes MUST appear in each file.
-  // content.js references them only transitively now (via opts passed to
+  // content.js references them only transitively (via opts passed to
   // classifyCell) — the ladder is the actual point of use.
   eq('invert-pills regression: lib/dr-simplify/ladder.js references simplifyDates',
     /\bsimplifyDates\b/.test(ladderSrc), true);
@@ -705,8 +699,7 @@
 })();
 
 // TA5: source-scan — no role="gridcell" or data-row-index literals in content.js
-// Per AC4 of the grid-adapter sprint, these stale Sprint 1 selectors must have
-// been replaced by role="cell" / data-row / data-index.
+// The adapters read role="cell" / data-row / data-index instead.
 (function sourceNoLegacySelectors() {
   const contentSrc = sourceByName('content.js');
   if (contentSrc === null) {
@@ -760,20 +753,19 @@
 // AC4: background.js does NOT relay the settings notice when sidebarTabId is null.
 //
 // background.js runs in a service-worker context without the DOM and module
-// system our harness uses, so we can't eval() it directly alongside the content
+// system our harness uses, so we cannot eval() it directly alongside the content
 // scripts. Instead we test the guard at two levels:
 //   (a) Static analysis: the source contains the null-guard exactly as specced.
 //   (b) Extracted-logic test: inline a minimal reproduction of the guard and
 //       verify its branching behaviour, confirming the written code is correct.
 // ---------------------------------------------------------------------------
 
-// --- #325 Task 8: the settings notice reaches the sidebar exactly once ---
+// --- The settings notice reaches the sidebar exactly once ---
 //
 // The content script broadcasts the settings notice to every extension page,
-// which already includes the open sidebar. The worker used to receive the
-// on/off report (retired under #328 for the settings notice) and send it
-// again, so the sidebar redrew twice on one fact. The relay is gone, and with
-// it the guard it needed: one publisher, one delivery.
+// which already includes the open sidebar. A worker relay would deliver it
+// twice, so the sidebar would redraw twice on one fact: one publisher, one
+// delivery.
 (function onOffReportDeliveredOnce() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
   eq('one delivery: the worker subscribes to no settings notice',
@@ -785,7 +777,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint extract-dr-table (adversarial hardening): static purity scan.
+// Static purity scan.
 // Detection functions (findTargetTable, findTables, looksLikeGrid, isDataTable,
 // isPhantomA11yTable) must never write to the page — no classList.add,
 // createElement, appendChild, or createToggleForTable inside their bodies.
@@ -845,8 +837,8 @@
       remove(cls) { bodyClasses.delete(cls); },
       add(cls)    { bodyClasses.add(cls); },
       contains(cls) { return bodyClasses.has(cls); },
-      // The sidebar's opening read runs after the tab lookup now, and it
-      // reaches this on the way (issue #343). Without it the eval stops
+      // The sidebar's opening read runs after the tab lookup, and it
+      // reaches this on the way. Without it the eval stops
       // before the lookup and the sidebar binds to no tab.
       toggle(cls, force) {
         if (force === undefined) {
@@ -882,11 +874,11 @@
       matches()  { return false; },
       // The sidebar tags its status message with a source and clears the tag
       // again. Without this the eval stops there, before the tab lookup the
-      // opening read now runs behind (issue #343).
+      // opening read runs behind.
       dataset: {},
       closest()  { return null; },
-      // A right-click activation now reads the settings back and redraws the
-      // controls (issue #328), and the redraw sets the lens control's
+      // A right-click activation reads the settings back and redraws the
+      // controls, and the redraw sets the lens control's
       // attributes.
       setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
     };
@@ -913,8 +905,8 @@
       onMessage: { addListener: () => {} },
       sendMessage: () => {},
     },
-    // The sidebar records the tab it was opened for and acts only on reports
-    // from that tab (issue #343), so this harness answers with one. No
+    // The sidebar records the tab it was opened for and acts only on messages
+    // from that tab, so this harness answers with one. No
     // sendMessage: the opening read then goes unanswered and the sidebar
     // falls to its unbound state, which is what this section already assumed.
     tabs: {
@@ -986,12 +978,11 @@
   global.window   = savedWindow;
 })();
 
-// AC4 (runtime): the worker relays no activation report into a tab, whether or
-// not it holds a sidebar tab number. The relay retired before #325; what #325
-// changes is where the claim is read from — the worker holds no message
-// listener of its own now, so the listener under test is the bus's, and the
-// worker's own subscriptions are the only thing that could act on an arriving
-// topic. It subscribes to no activation report, so nothing does.
+// AC4 (runtime): the worker relays no activation topic into a tab, whether or
+// not it holds a sidebar tab number. The worker holds no message listener of
+// its own, so the listener under test is the bus's, and the worker's own
+// subscriptions are the only thing that could act on an arriving topic. It
+// subscribes to no activation topic, so nothing does.
 (function tableContextmenuActivation_backgroundRelay() {
   const sentTabMessages = [];
   let capturedBgHandler = null;
@@ -1065,14 +1056,14 @@
 })();
 
 // ---------------------------------------------------------------------------
-// END Sprint table-contextmenu-activation tests
+// END right-click activation tests
 // ---------------------------------------------------------------------------
 
-// Sprint advanced-lower-dot-brown: linked-state bot thumb/label colour change
+// Linked-state bot thumb/label colour change
 // AC1. Linked-state bot thumb background is #c48a6a (brown), NOT grey #9aa0a6.
 // AC2. Decoupled-state bot thumb is still #b3623d (unchanged).
 // AC3. Linked-state bot LABEL color matches the linked thumb (same hex #c48a6a).
-// AC4. Old grey #9aa0a6 no longer appears for either of these two rules.
+// AC4. Grey #9aa0a6 appears in neither of these two rules.
 // AC5. The linked brown (#c48a6a) is lighter than the decoupled brown (#b3623d).
 // ---------------------------------------------------------------------------
 
@@ -1084,7 +1075,7 @@
     /\.dual-thumb\.bot\.linked\s*\{[^}]*background\s*:\s*#c48a6a/.test(sidebarHtml), true);
 
   // --- AC1 (negative): .dual-thumb.bot.linked does NOT use grey #9aa0a6 ---
-  // Extract the specific rule so we don't false-positive on other rules.
+  // Extract the specific rule so we do not false-positive on other rules.
   const linkedThumbRuleMatch = sidebarHtml.match(/\.dual-thumb\.bot\.linked\s*\{[^}]*\}/);
   const linkedThumbRule = linkedThumbRuleMatch ? linkedThumbRuleMatch[0] : '';
   eq('lower-dot-brown AC1 neg: .dual-thumb.bot.linked rule does not contain #9aa0a6',
@@ -1114,7 +1105,7 @@
   eq('lower-dot-brown AC3 consistency: linked label hex === linked thumb hex',
     linkedLabelHex, linkedThumbHex);
 
-  // --- AC4: Old grey #9aa0a6 no longer appears in either of these two rules ---
+  // --- AC4: Grey #9aa0a6 appears in neither of these two rules ---
   // (linked thumb rule checked above; now check the linked label rule)
   const linkedLabelRuleMatch = sidebarHtml.match(/#sliderBlock\.linked[^{]*\.lbl\.bot\s*\{[^}]*\}/);
   const linkedLabelRule = linkedLabelRuleMatch ? linkedLabelRuleMatch[0] : '';
@@ -1140,10 +1131,10 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint sidebar-preview-and-controls
-// AC1 (Bug #2): request:applySettings sends a synchronous response
-// AC2 (Bug #3): formatStrategyHeader re-basing — mag=3 exhaustive table
-// AC3 (Bug #1): embedded-in-text numbers feed maxMag
+// Sidebar lens preview and controls
+// AC1: request:applySettings sends a synchronous response
+// AC2: formatStrategyHeader re-basing — mag=3 exhaustive table
+// AC3: embedded-in-text numbers feed maxMag
 // ---------------------------------------------------------------------------
 
 // -------------------------------------------------------------------------
@@ -1247,10 +1238,9 @@
     eq('AC1-src: source file content.js present in manifest', false, true);
     return;
   }
-  // The branch became a responder in issue #325. A responder answers by
-  // returning, so the acknowledgement now reads as a return of the answer
-  // rather than a sendResponse call. The behavior it guards is unchanged: the
-  // asker must receive something, because receiving nothing is what unbinds
+  // The branch is a responder. A responder answers by returning, so the
+  // acknowledgement reads as a return of the answer rather than a
+  // sendResponse call. The asker must receive something, because receiving nothing is what unbinds
   // the sidebar.
   eq('AC1-src: the request:applySettings responder returns an answer',
     /DR_BUS\.respond\(\s*'request:applySettings'[\s\S]{0,300}return \{/.test(contentSrc), true);
@@ -1266,14 +1256,11 @@
 // is reachable only through chrome.tabs.sendMessage(tabId, ...). Two rules
 // follow, and both are asserted at runtime rather than by source regex:
 //
-//   1. Closing the sidebar notifies the sidebar page alone. A second send,
-//      aimed at the tab, used to tell the content script to clear its own
-//      copy of "the sidebar is open". The 2026-09-14 sidebar-state-removal
-//      design retired that copy (#241), and the content script registers no
-//      branch for this message, so the tab-directed send would deliver to
-//      nothing.
+//   1. Closing the sidebar notifies the sidebar page alone. The content
+//      script registers no branch for this message, so a tab-directed send
+//      would deliver to nothing.
 //   2. state:tableActivated must not be relayed into the tab. content.js already
-//      sends it with runtime.sendMessage, which the panel receives directly.
+//      sends it with runtime.sendMessage, which the sidebar receives directly.
 //      Relaying it to sidebarTabId delivers it to a content script that has no
 //      handler for that action.
 // ---------------------------------------------------------------------------
@@ -1286,7 +1273,7 @@
   // so with it absent the menu handler never awaits and runs to completion
   // synchronously, letting us assert without async plumbing.
   //
-  // The worker runs on the bus (#325), so the bus source goes into the same
+  // The worker runs on the bus, so the bus source goes into the same
   // function scope ahead of it, standing in for the importScripts the browser
   // runs. The stub's chrome interfaces follow Chrome's callback contract, which
   // is the one the bus calls: chrome.tabs.query must exist even though every
@@ -1391,7 +1378,7 @@
       navCtx.tabSends.some(s => s.msg.action === 'intent:closeSidebar'), false);
 
     // A removed tab: the close must not surface an error. The broadcast is
-    // all that goes out now, and the stub rejects it, so this pins the
+    // all that goes out, and the stub rejects it, so this pins the
     // service worker's own catch.
     const goneCtx = loadBackground({ closeSidebarUnreceived: true });
     openPanel(goneCtx);
@@ -1425,7 +1412,7 @@
     // tab, and the worker holding no tab number reports none either, so a
     // guard comparing the two alone would match nothing against nothing and
     // broadcast the close. An idle restart reaches this state: Chrome clears
-    // the worker's variables while the panel stays open.
+    // the worker's variables while the sidebar stays open.
     unload({});
     eq('page unload: an extension page closes nothing while no sidebar is open', closes(), 0);
 
@@ -1475,14 +1462,14 @@
   // AC1: no content-script filename literal reaches readFileSync/path.join
   // anywhere in the suite, whether directly (`readFileSync('content.js')`,
   // or `path.join(__dirname, 'content.js')` assigned to a path variable
-  // that's read next) or indirectly (a hardcoded array mixing content-script
+  // that is read next) or indirectly (a hardcoded array mixing content-script
   // names with other names, later iterated by a loop that reads via
   // readFileSync/path.join). A loop-variable read fed by the manifest itself
   // (`readFileSync(path.join(__dirname, file))` where `file` comes from
   // contentScriptFiles) is allowed — only a hardcoded name is a violation.
   // Guarded lookups (sourceByName(...), contentScriptSources.get(...)) and
   // eq()/comment text that merely name a file are not reads and are stripped
-  // first so they can't hide a real violation or false-positive one.
+  // first so they cannot hide a real violation or false-positive one.
   const testsSelfSource = SUITE_SOURCE;
   const literalAlternation = CONTENT_SCRIPT_FILES.join('|').replace(/\./g, '\\.');
   const literalNamePattern = new RegExp(`['"](${literalAlternation})['"]`);
@@ -1549,28 +1536,14 @@
   // vacuously pass instead of catching a real regression.
   // NOTE: this count changes when a content-script package is added to or
   // removed from manifest.json; update it alongside the manifest edit.
-  // Sprint extract-dr-number replaced rounding.js/core.js/parsing.js with the
-  // four-file lib/dr-number package (rounding.js, core.js, parsing.js,
-  // index.js), raising the count from 7 to 8. Sprint extract-dr-table then
-  // replaced dom-adapters.js with the two-file lib/dr-table package
-  // (detect.js, index.js), raising the count from 8 to 9. Sprint merge-ladder
-  // then added the two-file lib/dr-simplify package (ladder.js, index.js),
-  // raising the count from 9 to 11. Sprint app-model-selection then added
-  // adapters/messaging.js and app/store.js, raising the count from 11 to 13.
-  // The capture feature then added the log buffer (lib/dr-log/index.js) and
-  // the three-file lib/dr-capture package (state.js, render.js, index.js),
-  // raising the count from 13 to 17. The error-surfacing feature then added
-  // the toast view (ui-toast.js), raising the count from 17 to 18. The
-  // identifier shapes (lib/dr-number/identifiers.js) then raised it from 18
-  // to 19.
   eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 19 files today',
     manifest.content_scripts[0].js.length, 19);
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint extract-dr-number: the pure number-logic package now lives under
-// lib/dr-number/ (rounding.js, core.js, parsing.js, index.js). These two
-// tests are the discipline checks the sprint calls for: (a) index.js's only
+// The pure number-logic package lives under
+// lib/dr-number/ (rounding.js, core.js, parsing.js, identifiers.js,
+// index.js). These two tests are the package discipline checks: (a) index.js's only
 // job — assigning every public function onto one DR_NUMBER bundle — actually
 // happened, and (b) every lib/ content script the manifest lists loads before
 // any non-lib content script, so the package boundary shows up in load order,
@@ -1605,10 +1578,9 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint delete-dead-code removed ROUND_DYNAMIC, singleValueMode, datasetMode,
-// and validateOffset from core.js as unreachable: nothing in the extension
-// ever called ROUND_DYNAMIC or the two mode functions it dispatched to, and
-// validateOffset only existed to serve them. These typeof checks read the
+// ROUND_DYNAMIC, singleValueMode, datasetMode, and validateOffset belong to
+// the Sheets library, not the extension: nothing in the extension calls
+// them. These typeof checks read the
 // bare names the main eval's function declarations leave in this module's
 // scope (the same sloppy-mode leak DR_NUMBER's helpers rely on before their
 // explicit globalThis bridge) — so a reintroduced declaration in core.js
@@ -1688,7 +1660,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint extract-dr-table: table detection now lives under lib/dr-table/
+// Table detection lives under lib/dr-table/
 // (detect.js, index.js), mirroring the lib/dr-number package structure and
 // discipline checks above. Four groups of tests:
 //   1. DR_TABLE bundle discipline (mirrors drNumberBundleIsPublished /
@@ -1698,7 +1670,7 @@
 //      right criterion here the way it is for the pure lib/dr-number files).
 //   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
 //   3. VendorProfiles: a custom list replaces (not merges with) the default.
-//   4. findTables' tableFilter: default drops a phantom a11y table; a
+//   4. findTables' tableFilter: default drops a accessibility artifacts; a
 //      pass-through filter keeps it.
 // ---------------------------------------------------------------------------
 (function drTableBundleIsPublished() {
@@ -1750,10 +1722,10 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint detection-constants: every detection setting and both lookup
-// lists now have one home, the detection settings (DR_DETECTION_SETTINGS, in
-// the configuration file constants.js), with no behavior change. The
-// pillbox auto-collapse delay, once beside them, lives in the pillbox view
+// Every detection setting and both lookup
+// lists have one home, the detection settings (DR_DETECTION_SETTINGS, in
+// the configuration file constants.js). The
+// pillbox auto-collapse delay lives in the pillbox view
 // (ui-toggle.js) as its own constant: the view alone reads it. Four groups
 // of tests:
 //   1. Source scan: none of the eight retired names carries a second
@@ -2037,24 +2009,19 @@
 })();
 
 // =============================================================================
-// Sprint merge-ladder: lib/dr-simplify classification ladder
+// Lib/dr-simplify classification ladder
 // =============================================================================
 //
-// Before this sprint the classification ladder existed as two hand-kept-in-
-// sync copies: the engine's per-cell loop in content.js (itself duplicated
-// between the native-<table> path and computeGridRoundedValues, which
-// documented itself as needing to match the native path "EXACTLY") and a much
-// thinner copy in the sidebar preview-sample extractor (collectNumericCells /
-// extractPreviewSamples) that skipped most of the rules outright. All three
-// now call classifyCell (lib/dr-simplify/ladder.js).
+// The engine's per-cell pass in content.js and the lens preview extractor
+// (collectNumericCells / extractPreviewSamples) both call classifyCell
+// (lib/dr-simplify/ladder.js).
 //
 // This section has three parts:
 //   1. Package discipline — mirrors the DR_NUMBER/DR_TABLE checks.
 //   2. classifyCell unit tests — one per ladder rule, exercised directly with
 //      plain data (no DOM), matching the file's PURE contract.
-//   3. Divergence tests — the preview extractor used to skip almost every
-//      rule below; each test pins the MERGED (engine-wins) behavior and
-//      documents what the old preview copy did instead.
+//   3. Divergence tests — each test pins the MERGED (engine-wins) behavior
+//      the lens preview extractor follows.
 
 // --- 1. Package discipline ---
 
@@ -2087,7 +2054,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint engine-returns-results: static purity scan.
+// Static purity scan.
 // The simplification engine (roundTable, the one simplification pass —
 // simplifyTableCells, classifyTableCell, cellPatches — and
 // reapplyRounding) must never call chrome.* directly — it returns result
@@ -2132,25 +2099,18 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint engine-returns-results: pin the exact state:rangeOk/state:rangeError message
+// Pin the exact state:rangeOk/state:rangeError message
 // sequence for one full apply (applySidebarRounding -> roundTable ->
 // sendRangeStatusMessage -> chrome.runtime.sendMessage).
 //
-// The flow used to start at a plain-toggle helper, which the 2026-09-14
-// sidebar-state-removal design retired (#241). The apply is the one path to
-// roundTable now, so it drives the flow here. It leads with its own state:applyOk,
-// which the retired helper never sent; the state:rangeOk/state:rangeError and
-// intent:updateMenuLabel tail is byte-identical to the frozen capture.
+// The apply is the one path to roundTable, so it drives the flow here. It
+// leads with its own state:applyOk, then the state:rangeOk/state:rangeError
+// and intent:updateMenuLabel tail.
 //
-// Before this sprint, roundTable sent state:rangeError/state:rangeOk itself. Now the
-// engine returns { applied, rangeStatus, error } and the controller sends the
-// message. The two expected sequences below (one per range-validity branch)
-// were verified byte-for-byte against content.js as it stood at commit
-// 4340bd1 (the refactor/merge-ladder tip this sprint branched from) by
-// running that commit's real content.js through this same vm harness and
-// diffing the captured chrome.runtime.sendMessage sequence against the one
-// captured here. They were identical. This test pins that verified sequence
-// so a future change cannot silently drop or duplicate a message.
+// The engine returns { applied, rangeStatus, error } and the controller
+// sends the message. The two expected sequences below (one per
+// range-validity branch) are literals, so a future change cannot silently
+// drop or duplicate a message.
 // ---------------------------------------------------------------------------
 (function engineReturnsResults_rangeStatusMessageSequence() {
   const contentSrc = sourceByName('content.js');
@@ -2284,15 +2244,12 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint toggle-split: ui-toggle.js splits into drawing (render from state,
+// Ui-toggle.js splits into drawing (render from state,
 // hold only view-transient state) and publishing (intents on DR_BUS in place
-// of calls into the controller). The click handler used to call the
-// controller's plain-toggle helper straight from the view.
+// of calls into the controller).
 //
-// The forbidden list named that helper and the form-flip helper it reached
-// until the 2026-09-14 sidebar-state-removal design retired both (#241). A
-// list of names that exist nowhere cannot fail, so the list now names the
-// controller entry points that DO exist: a view calling any of these reaches
+// A list of names that exist nowhere cannot fail, so the forbidden list
+// names the controller entry points that DO exist: a view calling any of these reaches
 // past the intent and around the one press path.
 // ---------------------------------------------------------------------------
 (function toggleSplit_viewCallsNoControllerFunctionDirectly() {
@@ -2322,9 +2279,9 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #262 (static): the locked presentation exists in the stylesheets.
+// The locked presentation exists in the stylesheets (static).
 // body.table-locked must dim and mute the settings area and the title-row
-// switch in sidebar.html; the on-page pill's locked look lives in
+// switch in sidebar.html; the on-page pillbox's locked look lives in
 // ui-toggle.js's injected style.
 // ---------------------------------------------------------------------------
 (function lockedPresentation_stylesExist() {
@@ -2356,8 +2313,7 @@
       continue;
     }
     // Strip line comments and block comments before scanning, so a comment
-    // that merely mentions the old pattern (documenting the sprint's own
-    // removal of it) cannot trip the lock.
+    // that merely mentions the pattern cannot trip the lock.
     const withoutComments = src
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^[ \t]*\/\/.*$/gm, '');
@@ -2367,8 +2323,8 @@
   }
 })();
 
-// --- (d) The shared-ownership guard comment is gone from content.js — the
-// flag it warned about no longer has two independent writers to coordinate. ---
+// --- (d) The shared-ownership guard comment is absent from content.js — the
+// flag it warned about has no two independent writers to coordinate. ---
 (function registrySprint_guardCommentRemoved() {
   const contentSrc = sourceByName('content.js');
   eq('registry: the old showing-original shared-ownership guard comment is gone',
@@ -2758,7 +2714,7 @@
     /DR_LOG\.warn\([^)]*ocked/.test(uiToggleCode || ''), true);
 })();
 
-// --- #325 Task 8: the service worker runs on the bus ---
+// --- The service worker runs on the bus ---
 (function workerRunsOnBus() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
   eq('worker on bus: importScripts loads the messaging adapter',
@@ -2775,7 +2731,7 @@
     bgSrc.includes('settingsChanged'), false);
 })();
 
-// --- #325 Task 9: the content script publishes through the bus ---
+// --- The content script publishes through the bus ---
 (function contentPublishesThroughBus() {
   const contentSrc = sourceByName('content.js');
   eq('content on bus: no raw chrome.runtime.sendMessage call',
@@ -2800,7 +2756,7 @@
     contentSrc.includes("publish('state:settingsChanged'"), false);
 })();
 
-// --- #325 Task 10: the sidebar subscribes instead of listening ---
+// --- The sidebar subscribes instead of listening ---
 (function sidebarSubscribesThroughBus() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   eq('sidebar on bus: no chrome.runtime.onMessage listener of its own',
@@ -2815,7 +2771,7 @@
     /DR_BUS\.publish\(\s*'state:sidebarClosed'/.test(sidebarSrc), true);
 })();
 
-// --- The sidebar's one-tab rule, driven end to end (issue #343) -------------
+// --- The sidebar's one-tab rule, driven end to end -------------
 //
 // The section above drives the unit directly, so it passes whether or not the
 // sidebar ever calls it. This one evaluates the whole sidebar against stubs,
@@ -2940,7 +2896,7 @@
     if (typeof messageListener !== 'function') return;
 
     // Between opening and binding. Nothing may go out to a page yet: the
-    // sidebar has no tab to compare an answer or a report against, and an
+    // sidebar has no tab to compare an answer or a message against, and an
     // activation arriving now would have nothing to compare either.
     eq('bound tab wiring: the sidebar asked which tab it was opened for',
       queryCalls, 1);

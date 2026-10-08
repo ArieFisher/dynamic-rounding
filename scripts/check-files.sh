@@ -3,7 +3,7 @@
 # Gate on files entering the repository.
 #
 # Two checks: the file belongs to this project, and it carries no credentials.
-# Nothing here judges file size — that is a repo-weight question, not a
+# Nothing here checks file size — that is a repository-weight question, not a
 # relevancy one, and it is tracked separately.
 #
 # Modes:
@@ -18,7 +18,7 @@ set -uo pipefail
 # --------------------------------------------------------------------------
 
 # Directories a new file may live in. A path under none of these is rejected,
-# which is what stops a stray report or scratch doc at the repo root.
+# which is what stops a stray report or scratch doc at the repository root.
 ALLOWED_DIRS=(
   chrome-extension/
   js/
@@ -31,7 +31,7 @@ ALLOWED_DIRS=(
   .agent/skills/
 )
 
-# Files that may sit at the repo root, where nothing else may.
+# Files that may sit at the repository root, where nothing else may.
 ALLOWED_ROOT_FILES=(
   README.md
   CLAUDE.md

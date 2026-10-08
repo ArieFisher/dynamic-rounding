@@ -1,7 +1,7 @@
 // Finding tables and grids, adapters, text pieces, and patches (lib/dr-table).
 
 // ---------------------------------------------------------------------------
-// Sprint exclude-numbers-in-links
+// Numbers inside links
 // ---------------------------------------------------------------------------
 
 // --- AC1: Cell whose entire content is inside <a> is left unrounded ---
@@ -147,16 +147,14 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Regression: DEFAULT_NUMERIC_PROBE must stay byte-equivalent to the old
-// pre-extraction predicate (trim -> strip format marks and commas -> parseFloat ->
-// isFinite). A prior version of this probe delegated to DR_NUMBER.toNumber,
-// which uses Number() plus unicode-minus/parenthesized-negative handling and
-// disagrees with parseFloat on exactly these shapes: date-only, time-only,
-// and value-with-unit cells (parseFloat accepts a numeric prefix; Number does
-// not), and accounting-negative cells (Number, via the parens rewrite, parses
-// them; parseFloat does not). Each assertion below fails against the
-// DR_NUMBER-delegating probe and passes against the restored parseFloat-based
-// one — verified by running this file against the pre-fix commit.
+// DEFAULT_NUMERIC_PROBE must stay the parseFloat predicate (trim -> strip
+// format marks and commas -> parseFloat -> isFinite). DR_NUMBER.toNumber
+// uses Number() plus unicode-minus/bracketed-negative handling and disagrees
+// with parseFloat on exactly these shapes: date-only, time-only, and
+// value-with-unit cells (parseFloat accepts a numeric prefix; Number does
+// not), and accounting-negative cells (Number, via the bracket rewrite,
+// parses them; parseFloat does not). Each assertion below fails against a
+// probe that delegates to DR_NUMBER.toNumber.
 // ---------------------------------------------------------------------------
 
 // Date-only column: parseFloat('2024-01-15') -> 2024 (numeric prefix) -> true.
@@ -277,7 +275,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint exclude-exponents: <sup>-aware number masking
+// <sup>-aware number masking
 // ---------------------------------------------------------------------------
 //
 // Helpers for building mock cells that contain <sup> children.
@@ -570,7 +568,7 @@ const supTestOpts = {
 
 // =============================================================================
 // Grid Detection — looksLikeGrid() and findTargetTable() unit tests
-// Sprint: grid-detection  Spec: docs/sprint-plans/grid-support.md §6
+// Spec: docs/sprint-plans/grid-support.md §6
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -907,10 +905,9 @@ const supTestOpts = {
 })();
 
 // FT5: findTargetTable — returns already-found ancestor without re-walking
-// If an ancestor is already known per opts.isSeen (app-model-registry sprint
-// replaced the closest('.dr-ext-grid') read with an injected isSeen check —
-// see lib/dr-table/detect.js), it must be returned immediately without
-// calling looksLikeGrid again.
+// If an ancestor is already known per opts.isSeen (see
+// lib/dr-table/detect.js), it must be returned immediately without calling
+// looksLikeGrid again.
 (function findTargetTable_returnsAlreadyTaggedGrid() {
   withFindTargetEnv([], function() {
     const existingGrid = makeWalkEl({ display: 'flex' });
@@ -934,13 +931,10 @@ const supTestOpts = {
   });
 })();
 
-// FT6: findTargetTable — REPORTS a new grid via { handle, isNew: true } and
-// does not mark it itself (sprint extract-dr-table: detection moved to
-// lib/dr-table and now only reports; the caller — content.js's
-// markAndToggleIfNewGrid — owns the dr-ext-grid write and the widget build).
-// This test used to assert findTargetTable itself added the class (AC2 under
-// the old contract); it is reworked here to assert the new split instead:
-// findTargetTable must resolve the new grid AND must leave it unmarked.
+// FT6: findTargetTable — returns a new grid via { handle, isNew: true } and
+// does not mark it itself; the caller — content.js's markAndToggleIfNewGrid —
+// writes dr-ext-grid and builds the pillbox. findTargetTable must resolve the
+// new grid AND must leave it unmarked.
 (function findTargetTable_reportsNewGridWithoutMarking() {
   withFindTargetEnv([], function() {
     const makeRows5 = () => [
@@ -973,7 +967,7 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint right-click-registers: the nomination step runs from the clicked
+// Right-click registration: the nomination step runs from the clicked
 // element's chain root.
 // Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.5 and the
 // right-click-registers block in §5; decision D1.
@@ -1232,7 +1226,7 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint grid-adapter: TableAdapter abstraction
+// TableAdapter abstraction
 // AC2 — NativeTableAdapter round-trip test
 // AC3 — GridAdapter stub no-throw test
 // AC4 — source scan: no role="gridcell" or data-row-index literals in content.js
@@ -1303,7 +1297,7 @@ const supTestOpts = {
 
   eq('TA1b: native adapter cell exposes no setText',
     cell.setText, undefined);
-  // applyPatches is the grid cell's write, the name such a loop reaches now.
+  // applyPatches is the grid cell's write, the name such a loop would reach.
   eq('TA1b: native adapter cell exposes no applyPatches',
     cell.applyPatches, undefined);
 
@@ -1670,10 +1664,10 @@ const supTestOpts = {
 //
 // Source-level assertion: the cell object both kinds share, the patch
 // writer, the piece restore, and the controller's restore hold no
-// innerHTML= assignment. Since #421 a native restore writes text pieces too,
-// so no write path on either kind assigns markup.
+// innerHTML= assignment. A native restore writes text pieces too, so no
+// write path on either kind assigns markup.
 //
-// This test encodes the hard rule from the sprint brief:
+// This test encodes the hard rule:
 //   "The grid write must be nodeValue-only."
 (function gr6j_gridWrite_sourceGuard_noInnerHTML() {
   const src = allContentSrc;
@@ -1691,7 +1685,7 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint add-phantom-a11y-predicate: isPhantomA11yTable
+// Accessibility artifact predicate: isPhantomA11yTable
 // ---------------------------------------------------------------------------
 //
 // isPhantomA11yTable(table) returns true when ANY of three signals holds:
@@ -1920,8 +1914,8 @@ const supTestOpts = {
     isPhantomA11yTable({}), false);
 })();
 
-// --- pass1-filter AC1: phantom tables (aria-hidden ancestor) get NO toggle ---
-// Build N=3 phantom tables (aria-hidden parent), all valid data tables.
+// --- pass1-filter AC1: accessibility artifacts (aria-hidden ancestor) get NO pillbox ---
+// Build N=3 accessibility artifacts (aria-hidden parent), all valid data tables.
 // After Pass 1 none of them should be in tableToggles.
 
 (function pass1Filter_ariaHiddenPhantoms_zeroToggles() {
@@ -1942,10 +1936,10 @@ const supTestOpts = {
 
   const phantoms = [makeAriaHiddenPhantom(), makeAriaHiddenPhantom(), makeAriaHiddenPhantom()];
 
-  // Sanity: each phantom is a valid data table (isDataTable guard is NOT the cause of skip)
+  // Sanity: each artifact is a valid data table (isDataTable guard is NOT the cause of skip)
   eq('pass1-filter: phantom aria-hidden table satisfies isDataTable (sanity)',
     isDataTable(phantoms[0]), true);
-  // Sanity: each phantom is detected as phantom
+  // Sanity: each artifact is detected as an artifact
   eq('pass1-filter: phantom aria-hidden table isPhantomA11yTable is true (sanity)',
     isPhantomA11yTable(phantoms[0]), true);
 
@@ -1958,8 +1952,8 @@ const supTestOpts = {
   cleanupPass1Tables(phantoms);
 })();
 
-// --- pass1-filter AC1: phantom tables (off-screen left) get NO toggle ---
-// Build N=2 phantom tables with positioned ancestor left=-10000px.
+// --- pass1-filter AC1: accessibility artifacts (off-screen left) get NO pillbox ---
+// Build N=2 accessibility artifacts with positioned ancestor left=-10000px.
 
 (function pass1Filter_offscreenLeftPhantoms_zeroToggles() {
   function makeOffscreenPhantom() {
@@ -2025,11 +2019,11 @@ const supTestOpts = {
   cleanupPass1Tables([realTable]);
 })();
 
-// --- pass1-filter adversarial: mix of phantom + real tables in one Pass 1 run ---
+// --- pass1-filter adversarial: mix of artifacts + real tables in one Pass 1 run ---
 // Only the real tables should get toggles; count equals exactly the number of real tables.
 
 (function pass1Filter_mixedFixture_onlyRealTablesGetToggles() {
-  // Two phantom tables (aria-hidden ancestor)
+  // Two accessibility artifacts (aria-hidden ancestor)
   function makeAriaHiddenPhantom() {
     const t = makePass1DataTable();
     const hiddenParent = {
@@ -2044,7 +2038,7 @@ const supTestOpts = {
     return t;
   }
 
-  // One phantom with off-screen left
+  // One artifact with off-screen left
   function makeOffscreenPhantom() {
     const t = makePass1DataTable();
     const posAnc = {
@@ -2104,7 +2098,7 @@ const supTestOpts = {
   cleanupPass1Tables(allTables);
 })();
 
-// --- pass1-filter: Pass 1 skips phantom but does NOT skip a non-data real table ---
+// --- pass1-filter: Pass 1 skips artifacts but does NOT skip a non-data real table ---
 // (edge: if a real table fails isDataTable, no toggle either — confirm the skip
 // here is from isDataTable, not from isPhantomA11yTable)
 (function pass1Filter_nonDataRealTable_noToggle() {
@@ -2133,7 +2127,7 @@ const supTestOpts = {
     classList: { _c:[], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
   };
 
-  // Confirm isPhantomA11yTable is false (skip is NOT from the phantom guard)
+  // Confirm isPhantomA11yTable is false (skip is NOT from the artifact guard)
   eq('pass1-filter: non-data real table isPhantomA11yTable is false (sanity)',
     isPhantomA11yTable(nonDataTable), false);
   // Confirm isDataTable is false
@@ -2167,7 +2161,7 @@ const supTestOpts = {
   const afterFirst = tableToggles.has(realTable);
 
   // Second run — table already in tableToggles; Pass 1 should skip it.
-  // We verify the toggle isn't re-inserted: since WeakMap.set overwrites,
+  // We verify the toggle is not re-inserted: since WeakMap.set overwrites,
   // a re-create would swap the button object, so we check its identity holds.
   const buttonAfterFirst = tableToggles.get(realTable);
   runPass1WithTables([realTable]);
@@ -2182,7 +2176,7 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint grid-rowgroup-tr-extraction: GridAdapter._getRowEls handles ARIA grids
+// GridAdapter._getRowEls handles ARIA grids
 // whose data rows are bare <tr> inside a [role="rowgroup"], with header/summary
 // rows OUTSIDE the rowgroup (e.g. Kaggle's Data Explorer). Standard ARIA only.
 // ---------------------------------------------------------------------------
@@ -2226,8 +2220,8 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint grid-first-row-literal: a rowgroup picks the row shape, not the row
-// set. The rows found inside it decide the winning selector; the row list is
+// A rowgroup picks the row shape, not the row
+// set. The rows found inside it determine the winning selector; the row list is
 // then the whole grid's matches for that selector, so header and summary rows
 // outside the group are rows like any other. Only the shipped first-row and
 // first-column defaults hold rows: the header row holds because it is the
@@ -2296,10 +2290,10 @@ const supTestOpts = {
     'Region,North,South,Subtotal,West');
 })();
 
-// Detection: the row universe now starts at the header row, and a wide
-// header of text labels must not exhaust the data-test sample before the
-// scan reaches a data row (review finding: a six-column sales grid whose
-// data rows lead with four text cells lost its pillbox).
+// Detection: the row universe starts at the header row, and a wide header
+// of text labels must not exhaust the data-test budget before the scan
+// reaches a data row (a six-column sales grid whose data rows lead with four
+// text cells keeps its pillbox).
 (function gridRowUniverse_isDataTable_wideHeader() {
   const g = makeRowgroupRoleGrid(
     ['Region', 'Country', 'Segment', 'Channel', 'Units', 'Revenue'],
@@ -2311,19 +2305,16 @@ const supTestOpts = {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint data-test-budget: the data test spends one budget of
+// The data test spends one budget of
 // DR_DETECTION_SETTINGS.dataTestCellBudget cell reads, walked in document order and
-// stopped at the first number, on native tables and grids alike. It replaces
-// the retired per-row sample on grids and the retired unbounded scan on
-// native tables. isDataTable and DR_DETECTION_SETTINGS.dataTestCellBudget live in
+// stopped at the first number, on native tables and grids alike.
+// isDataTable and DR_DETECTION_SETTINGS.dataTestCellBudget live in
 // chrome-extension/lib/dr-table/detect.js and chrome-extension/constants.js.
 // ---------------------------------------------------------------------------
 
 // AC1: a grid whose first data row leads with eleven text cells before its
-// first number. Under the retired ten-cell-per-row sample this grid failed
-// the data test, because the sample never reached the twelfth cell. The
-// budget walks every cell in document order, so the number still falls
-// inside it.
+// first number. The budget walks every cell in document order, so the
+// number still falls inside it.
 (function dataTestBudget_grid_numberInTwelfthColumnPasses() {
   const header = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
   const firstDataRow = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', '42'];
@@ -2370,9 +2361,8 @@ const supTestOpts = {
     isDataTable(table), true);
 })();
 
-// Goal, native tables: the retired rule left native tables unbounded, so a
-// number far past 1000 cells would have passed. The budget applies to native tables and
-// grids alike, so this table fails.
+// Goal, native tables: the budget applies to native tables and grids alike,
+// so a table whose first number sits far past 1000 cells fails.
 (function dataTestBudget_nativeTable_farPastBudgetFails() {
   const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
   const cols = 100;
@@ -2448,18 +2438,8 @@ const supTestOpts = {
     sandbox.results && sandbox.results.firstIsNew, true);
 })();
 
-// The detection settings' expected contents. Nine values are the pre-move
-// ones, hand-copied from origin/main's lib/dr-table/detect.js (read via
-// `git show origin/main:chrome-extension/lib/dr-table/detect.js`) and the
-// design doc's key table; the detection-constants sprint moved them and
-// changed none of them. A tenth moved value, the pillbox auto-collapse
-// delay, went back to the pillbox view as its own constant: the view alone
-// reads it, and it shapes nothing detection finds. Three keys have no
-// pre-move value: nestingDepth, the
-// nomination step's configured depth from the grid-nesting-rule sprint;
-// dataTestCellBudget, the data test's cell budget from the data-test-budget
-// sprint; and pendingRetestCap, a pending table's re-test cap from the
-// pending-retest sprint. Key order matches constants.js's DR_DETECTION_SETTINGS
+// The detection settings' expected values, written out as literals, so the
+// pin catches a change to any value. Key order matches constants.js's DR_DETECTION_SETTINGS
 // declaration, so the JSON.stringify-based eq() comparison below is not
 // order-sensitive noise.
 const PRE_MOVE_DETECTION_SETTINGS = {
@@ -2688,9 +2668,9 @@ const PRE_MOVE_DETECTION_SETTINGS = {
     !!(caught && /DR_DETECTION_SETTINGS/.test(caught.message)), true);
 })();
 
-// findTables' tableFilter: default (isPhantomA11yTable) drops a phantom a11y
-// table; a pass-through filter keeps it. reuses makePass1DataTable / the
-// aria-hidden phantom shape from the pass1-filter suite above.
+// findTables' tableFilter: default (isPhantomA11yTable) drops an accessibility
+// artifact; a pass-through filter keeps it. reuses makePass1DataTable / the
+// aria-hidden artifact shape from the pass1-filter suite above.
 (function findTables_tableFilterDefaultVsPassThrough() {
   const phantomTable = makePass1DataTable();
   const hiddenParent = {
@@ -2719,7 +2699,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 })();
 
 // =============================================================================
-// Sprint grid-nesting-rule: one registration per grid, at the configured depth
+// One registration per grid, at the configured depth
 // Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.3 and the
 // grid-nesting-rule block in §5; decision D2 in
 // docs/sprint-plans/grid-detection-recovery.md.
@@ -3062,7 +3042,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 })();
 
 // =============================================================================
-// Sprint shape-fingerprint: the reader, the comparison, and the chain-root walk
+// The shape fingerprint: the reader, the comparison, and the chain-root walk
 // Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.6 and the
 // shape-fingerprint block in §5; decision D7 in
 // docs/sprint-plans/grid-detection-recovery.md; the shape fingerprint row in
@@ -3272,7 +3252,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 })();
 
 // =============================================================================
-// Sprint pending-retest: the nomination step reports one nest at a time
+// Pending tables: the nomination step returns one nest at a time
 // Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.3 and §3.4.
 // =============================================================================
 //
@@ -3378,23 +3358,12 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-selection (adversarial hardening): parent-equivalence pin.
-// The contextmenu handler in content.js is the one call site both branches
-// implement: the pre-model code wrote a bare `lastRightClickedTable = table`
-// file-level let; HEAD calls DR_STORE.setSelectedTable(table) instead. The
-// expected sendMessage sequences below are LITERALS captured from the parent
-// branch (refactor/engine-returns-results, commit 35a5f52) by running its
-// real contextmenu listener in this same harness, and were verified
-// byte-identical to HEAD's output at review time. Freezing them keeps this
-// pin alive on main and in shallow CI checkouts, where the parent ref does
-// not exist for `git show`.
+// Contextmenu activation pin. The contextmenu handler in content.js calls
+// DR_STORE.setSelectedTable(table). The expected message sequence below is a
+// literal, so the pin holds on main and in shallow CI checkouts.
 // ---------------------------------------------------------------------------
 (function appModelSelection_parentEquivalence_contextmenuSelectionFlow() {
-  // One sequence. This ran twice, once with the page's copy of "the sidebar
-  // is open" set each way, and produced the identical sequence both times,
-  // because the contextmenu handler never read that value. The 2026-09-14
-  // sidebar-state-removal design retired the value (#241), so the two runs
-  // collapse into one.
+  // One sequence: the contextmenu handler reads nothing about the sidebar.
   const PARENT_EXPECTED_SEQUENCE = [{ action: 'state:tableActivated' }];
 
   // Minimal fixture the contextmenu handler's findTargetTable() walk-up
@@ -3468,7 +3437,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint hidden-cells: the data test and the engine read a hidden cell's raw
+// Hidden cells: the data test and the engine read a hidden cell's raw
 // text, and a hidden fragment inside a visible cell stays out of the read.
 //
 // A hidden native cell is modeled as a mock cell whose rendered text
@@ -3654,7 +3623,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #330: a merged cell shifts the columns after it
+// A merged cell shifts the columns after it
 //
 // A cell's column number is its grid column — the column the browser lays the
 // cell out in — not its position in the row read. A cell merged across

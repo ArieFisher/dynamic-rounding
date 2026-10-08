@@ -5,9 +5,7 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
-// The bus, and nothing else. The settings contract in constants.js was loaded
-// here for the shared topic-name list alone, and the bus holds the topic table
-// now; no other constant in that file reaches this context.
+// The bus alone: no constant in constants.js reaches this context.
 importScripts('adapters/messaging.js');
 
 let sidebarTabId = null;
@@ -27,8 +25,8 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "dr-action") {
-    // The menu-click tab is the one the right-click happened in, which the
-    // bus's active-tab lookup would only find by accident. Name it.
+    // The right-click happened in the menu-click tab. The bus's active-tab
+    // lookup can return a different tab, so the publish passes the tab number.
     DR_BUS.publish('intent:menuClicked', {}, { tabId: tab.id });
     return;
   }
@@ -43,20 +41,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     }
     sidebarTabId = tab.id;
     // The item does both things its title states: the same toggle "Toggle
-    // table" sends, then the sidebar-opened report. The toggle goes first, so
-    // the sidebar's re-read on open reads the toggled settings.
+    // table" publishes, then the sidebar-opened topic. The toggle goes first,
+    // so the sidebar's re-read on open reads the toggled settings.
     DR_BUS.publish('intent:menuClicked', {}, { tabId: tab.id });
     DR_BUS.publish('state:sidebarOpened', {}, { tabId: tab.id });
   }
 });
 
 function closeSidebarIfOpen() {
-  // One leg, aimed at the sidebar page: the broadcast reaches every extension
-  // page, and the sidebar closes itself on it. A second leg used to go to the
-  // content script through its tab, so the page could clear its own copy of
-  // "the sidebar is open" — the 2026-09-14 sidebar-state-removal design
-  // retired that copy along with everything that read it (#241), and the
-  // content script has no subscriber for this topic now.
+  // The broadcast reaches every extension page, and the sidebar closes itself
+  // on it. The content script has no subscriber for this topic.
   DR_BUS.publish('intent:closeSidebar', {});
   sidebarTabId = null;
 }
@@ -96,9 +90,6 @@ DR_BUS.subscribe('state:sidebarClosed', () => {
   sidebarTabId = null;
 });
 
-// The on/off report needs no relay here. The content script's single publish
-// already reaches the sidebar, so the re-send this worker used to make was a
-// second delivery of one fact.
-//
-// The table-activation report needs no relay either. The content script
-// broadcasts it to every extension page, which is where the sidebar reads it.
+// The on/off topic and the table-activation topic need no relay here. The
+// content script broadcasts each to every extension page, so its one publish
+// reaches the sidebar.

@@ -230,7 +230,7 @@
     errState.tables[1].cells.length, 1);
 })();
 
-// The per-cell marker flag reaches the cell record (#304). The serializer
+// The per-cell marker flag reaches the cell record. The serializer
 // already reads the rounded marker to compute the locked pairing; the
 // renderer needs it per cell to tell a lost original (marker, original: null)
 // from a cell that was never rounded (no marker, original: null).
@@ -727,7 +727,7 @@
     }).includes('<img class="cap-shot" src="data:image/png;base64,iVBORw0KGgo="'), true);
 })();
 
-// --- lib/dr-capture: the renderer keeps the state's absences (#304) ---
+// --- lib/dr-capture: the renderer keeps the state's absences ---
 //
 // The state records three kinds of absence honestly; the page a human reads
 // must present each as an absence, never as something it is not: a lost
@@ -826,7 +826,7 @@
     hostileMark.includes('<span>constructor</span>'), true);
 })();
 
-// --- lib/dr-capture: the size warning (#306) ---
+// --- lib/dr-capture: the size warning ---
 //
 // A capture has no size bound — the full-detail default is deliberate — so
 // the form shows an estimate before the save when the pulled state is
@@ -855,8 +855,8 @@
     has ? sizeWarning(nearlyBig) : 'missing', null);
 })();
 
-// The header once stated what the file holds (#310). The product owner
-// retired the line as stating the obvious; this pin keeps it out.
+// The header carries no line stating what the file holds, which would state
+// the obvious. This pin keeps it out.
 (function captureHeaderCarriesNoCaveat() {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({

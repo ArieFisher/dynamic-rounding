@@ -25,7 +25,7 @@
 // "usd" do not. A sign written in letters takes that same token rule on
 // whichever end carries the letter, so the rand's "R" counts in "R45" and
 // not in "Revenue", and the krone's "kr" counts in "kr45" and not in
-// "krona". A sign written as a picture counts anywhere, as it always has.
+// "krona". A sign written as a picture counts anywhere.
 // Several currencies share a sign, and one currency may carry several;
 // both collapse to one entry in the derived lists below.
 const CURRENCIES = [
@@ -77,7 +77,7 @@ const CURRENCY_SIGN_ALTERNATION = CURRENCY_SIGNS
 // One currency sign, anywhere in a text.
 const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 
-// Constants owned by the coercion + magnitude layer.
+// Constants of the coercion and magnitude layer.
 // The one format-mark list: a character that sits beside a number without
 // belonging to it — a currency sign, a percent sign, and whitespace. The
 // signs come from CURRENCIES above, so a new row reaches this list too.
@@ -89,7 +89,7 @@ const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 // it here would strip it before PARENS_REGEX below could read it.
 const FORMAT_MARK_ALTERNATION = '(?:' + CURRENCY_SIGN_ALTERNATION + '|[\\s%])';
 // Everything dropped from a text before it reads as a number: the format
-// marks alone. A group mark stays, so the number shape test below can judge
+// marks alone. A group mark stays, so the number shape test below can test
 // where it stands.
 const CLEAN_REGEX = new RegExp(FORMAT_MARK_ALTERNATION, 'g');
 const PARENS_REGEX = /^\((.+)\)$/;

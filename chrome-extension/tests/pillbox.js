@@ -1,6 +1,6 @@
 // The pillbox on each data table (ui-toggle.js).
 
-// --- Sprint range-pulse-border: animation parameters and dispatch ---
+// --- Animation parameters and dispatch ---
 
 // CSS string: capture style.textContent from ensureHighlightStyleInjected().
 // We patch document.createElement to intercept the style element before injection.
@@ -20,7 +20,7 @@
     }
     return el;
   };
-  // Stub appendChild so the injection doesn't throw (document.head is undefined in stub).
+  // Stub appendChild so the injection does not throw (document.head is undefined in stub).
   const origHead = document.head;
   const origDocEl = document.documentElement;
   document.documentElement = { appendChild: () => {} };
@@ -30,7 +30,7 @@
   // Restore stubs.
   document.createElement = origCreate;
   document.documentElement = origDocEl;
-  // Re-set guard so later paths don't re-inject against the real (absent) DOM.
+  // Re-set guard so later paths do not re-inject against the real (absent) DOM.
   highlightStyleInjected = true;
 
   eq('rangePulse CSS: animation duration is 0.6s',
@@ -77,7 +77,7 @@
     rows: []  // no rows => no cells => matchedCells.length === 0 => fallback
   };
 
-  // A valid non-null ranges array that can't match anything in an empty table.
+  // A valid non-null ranges array that cannot match anything in an empty table.
   const ranges = [{ colMin: 0, colMax: 2, rowMin: 0, rowMax: 5 }];
   flashRangePulse(mockTable, ranges);
 
@@ -99,9 +99,9 @@
 
 (function atToggle_isTableRounded_afterRound() {
   // Directly inject the rounded class AND set the registry's appliedFlag to
-  // simulate a rounded table (don't run the full roundTable pipeline which
-  // requires tree walkers etc.) — isTableRounded reads DR_STORE's appliedFlag
-  // (app-model-registry sprint), not the class, so both are set here the way
+  // simulate a rounded table (do not run the full roundTable pipeline which
+  // requires tree walkers etc.) — isTableRounded reads DR_STORE's appliedFlag,
+  // not the class, so both are set here the way
   // roundTable itself would leave them.
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
@@ -122,19 +122,14 @@
 })();
 
 // --- AC5: isTableRounded after the reset restores originals ---
-// A form flip used to take a table back to its original values while keeping
-// its simplified markers and stored originals in place. The 2026-09-14
-// sidebar-state-removal design retired that flip (#241): turning
-// simplification off resets the table outright. This pins the reset against
-// the same three observables the flip was pinned against, plus the two the
-// flip left behind — the marker and the stored original.
+// Turning simplification off resets the table outright. This pins the reset
+// against three observables, plus the marker and the stored original, which
+// the reset clears.
 
 (function atToggle_isTableRounded_afterReset() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   // Simulate a post-roundTable state: cell has rounded class + a registry
-  // original record (app-model-registry sprint — this used to be
-  // cell.dataset.originalHtml), and the registry's appliedFlag is
-  // 'simplified'.
+  // original record, and the registry's appliedFlag is 'simplified'.
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
   DR_STORE.setTableOriginal(table, cell, { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
@@ -147,7 +142,7 @@
     configurable: true,
   });
 
-  // Inject toggle entry (proper button stub) so syncSwitchForTable doesn't crash
+  // Inject toggle entry (proper button stub) so syncSwitchForTable does not crash
   injectToggleEntry(table);
 
   resetTable(table);
@@ -182,7 +177,7 @@
   // Mark table as rounded. A registry record accompanies the marker:
   // production rounded/showing-original states always carry one (roundTable
   // writes it; the keepEntry restore preserves it). A marker WITHOUT a
-  // record is the locked re-injection state (issue #262), tested in the
+  // record is the locked re-injection state, tested in the
   // re-injection suite.
   table._cells[0].classList.add('dr-ext-rounded');
   DR_STORE.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
@@ -360,8 +355,7 @@
 // wrapper.right - padding (not wrapper.right). The wrapper offsets are therefore:
 //   wrapperLeft = (rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX) - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX
 //   wrapperTop  = (rect.top   + scrollY + TOGGLE_DOT_OVERLAP_PX)  - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX
-// (Note: this corrects a math error in the merged plan §3.6, which double-counted
-// padding on the horizontal axis. See sprint log for the deviation.)
+// One padding term per axis, not two.
 // All arithmetic is done in terms of the exposed globalThis constants.
 
 (function atToggle_positionToggle_anchorGeometry_noScroll() {
@@ -434,10 +428,7 @@
 
 // --- AC3 / AC4: the two directions of a press ---
 // A press on a raw table simplifies it; a press on a simplified table resets
-// it. These two ran against a plain-toggle helper that chose between the
-// directions itself; the 2026-09-14 sidebar-state-removal design retired the
-// helper along with the third press path it served (#241), so each direction
-// is driven here through the call the surviving path makes.
+// it. Each direction is driven here through the call the press path makes.
 // We verify the outcome on the table rather than inspecting private calls.
 
 (function atToggle_press_onFreshTable() {
@@ -451,7 +442,7 @@
     ]);
     // Must have querySelectorAll on individual cells (used by roundTable → filterLinkMatches)
     table._cells.forEach(c => { c.querySelectorAll = () => []; });
-    // Register a checkbox so syncSwitchForTable doesn't crash
+    // Register a checkbox so syncSwitchForTable does not crash
     const input = injectToggleEntry(table);
 
     DR_STORE.setTableSettings(table, { enabled: true }, 'page');
@@ -544,7 +535,7 @@
 })();
 
 // =============================================================================
-// Sprint accessibility-pass tests
+// Accessibility tests
 // =============================================================================
 
 // --- accessibility AC1: aria-label on toggle button ---
@@ -717,7 +708,7 @@
   Object.defineProperty(cell, 'innerHTML', {
     get(){return htmlVal;}, set(v){htmlVal=v;}, configurable: true
   });
-  // Registry-backed setup (app-model-registry sprint): restoreTable reads
+  // Registry-backed setup: restoreTable reads
   // the pre-round original from DR_STORE, not a dataset attribute, so the
   // fixture must register one for the cell to be genuinely restorable — a
   // dr-ext-rounded class with no registry entry is the unrestorable case
@@ -736,10 +727,10 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint offscreen-hidden-table-suppression: visibility gate in positionToggle
+// Visibility gate in positionToggle
 // ---------------------------------------------------------------------------
 //
-// positionToggle now hides the toggle label (labelEl.style.display = 'none')
+// positionToggle hides the toggle label (labelEl.style.display = 'none')
 // when the table is offscreen or invisible, and shows it (labelEl.style.display = '')
 // when the table is normally visible.
 //
@@ -819,7 +810,7 @@
 })();
 
 // =============================================================================
-// Sprint expanding-toggle: new AC tests
+// New AC tests
 // =============================================================================
 
 // --- Knob travel derivation ---
@@ -1493,7 +1484,7 @@
 })();
 
 // =============================================================================
-// Sprint sidebar-table-rebind: createToggleForTable click rebind logic
+// CreateToggleForTable click rebind logic
 // =============================================================================
 //
 // Helper: create a real toggle button via createToggleForTable with DOM stubs,
@@ -1540,14 +1531,12 @@
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  // 1a. lastRightClickedTable must now be tableB
+  // 1a. lastRightClickedTable must be tableB
   eq('rebind AC1 mouse: lastRightClickedTable rebound to tableB',
     reboundToB_mouse, true);
 
-  // 1b. state:tableSwitched dispatched exactly once. Issue #251 renamed the
-  // switch message from RESET_SIDEBAR_TO_DEFAULTS: the sidebar's handler now
-  // pulls the model's settings, and the old name described the defaults
-  // reset that fix removed.
+  // 1b. state:tableSwitched dispatched exactly once. The sidebar's handler
+  // pulls the model's settings.
   const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
   eq('rebind AC1 mouse: state:tableSwitched dispatched exactly once',
     switchCalls.length, 1);
@@ -1741,13 +1730,9 @@
 // ---------------------------------------------------------------------------
 // AC4: closing the sidebar leaves a later press unchanged.
 //
-// This used to pin the opposite: the close flipped a page-held flag to false
-// and the flag gated the switch. The 2026-09-14 sidebar-state-removal design
-// retired both the flag and the gate (#241), and the close message stops at
-// the sidebar page — the content script has no handler for it. The pin that
-// carries weight now is that a press after a close behaves exactly like a
-// press before one, which is the defect's own cure: a page whose flag went
-// stale used to take the rebind path forever.
+// The close message stops at the sidebar page — the content script has no
+// handler for it. A press after a close behaves exactly like a press before
+// one: the press reads nothing about the sidebar.
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_AC4_closeChangesNothingForALaterPress() {
@@ -1765,7 +1750,7 @@
 
   lastRightClickedTable = tableA;
 
-  // The close reaches the sidebar page alone now, so there is nothing to
+  // The close reaches the sidebar page alone, so there is nothing to
   // deliver here — the content script registers no branch for it. That
   // absence is asserted at the source, next to the other retirements.
   eq('rebind AC4: the content script registers no branch for the close message',
@@ -1804,7 +1789,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// AC1: ARIA grid with ONLY phantom tables → Pass 2 adds dr-ext-grid + toggle
+// AC1: ARIA grid with ONLY accessibility artifacts → Pass 2 adds dr-ext-grid + pillbox
 // ---------------------------------------------------------------------------
 (function pass2aria_AC1_onlyPhantomTables_getsToggle() {
   const phantom1 = makePhantomEmbeddedTable();
@@ -1852,7 +1837,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Adversarial AC2-mix: grid with phantom + one real → still bows out
+// Adversarial AC2-mix: grid with an artifact + one real table → still skipped
 // ---------------------------------------------------------------------------
 (function pass2aria_adversarial_mixedPhantomAndReal_bowsOut() {
   const phantom = makePhantomEmbeddedTable();
@@ -1877,7 +1862,7 @@
 
 // ---------------------------------------------------------------------------
 // Adversarial: grid with NO embedded tables → Pass 2 adds class + toggle
-// (no embedded tables means .some(!phantom) is false — empty array)
+// (no embedded tables means .some(!artifact) is false — empty array)
 // ---------------------------------------------------------------------------
 (function pass2aria_adversarial_noEmbeddedTables_getsToggle() {
   const grid = makeAriaGrid([]);
@@ -1903,8 +1888,8 @@
 // ---------------------------------------------------------------------------
 (function pass2aria_adversarial_alreadyTagged_skipped() {
   const grid = makeAriaGrid([]);
-  grid.classList.add('dr-ext-grid'); // pre-tag it (style hook only, no longer read as state)
-  DR_STORE.registerTable(grid); // the actual "already found" signal pass 2 now checks
+  grid.classList.add('dr-ext-grid'); // pre-tag it (style hook only, not read as state)
+  DR_STORE.registerTable(grid); // the "already found" signal pass 2 checks
 
   withToggleDocumentMock(function() {
     global.document.querySelectorAll = function(sel) {
@@ -1917,7 +1902,7 @@
   });
 
   // Already tagged → skipped → tableToggles should NOT have a new entry
-  // (we can't assert .has() false on a pre-existing toggle since none was injected,
+  // (we cannot assert .has() false on a pre-existing toggle since none was injected,
   // but we CAN verify the grid was not re-registered via trackedTables)
   eq('pass2-aria: already-tagged grid is NOT added to trackedTables again',
     tableToggles.has(grid), false);
@@ -1961,14 +1946,14 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint pillbox-bidirectional-sync: acceptance criteria
+// Acceptance criteria
 //
-// AC1: Clicking the table's morph pill while sidebar is open changes
+// AC1: Clicking the table's pillbox while sidebar is open changes
 //      enabledEl.checked to match the table's new rounded/unrounded state
 //      (sidebar handler updates the checkbox).
 //
-// AC2: Clicking the sidebar's enabled toggle still updates the table's pill
-//      state (existing behaviour unchanged — regression guard).
+// AC2: Clicking the sidebar's enabled switch still updates the table's pillbox
+//      state (regression guard).
 //
 // AC3: Toggling a table that is NOT lastRightClickedTable sends no spurious
 //      sidebar update.
@@ -1978,7 +1963,7 @@
 
 // ---------------------------------------------------------------------------
 // AC1: Clicking the table's pillbox while sidebar is open sends the
-//      settings notice for the active table (issue #328), and the sidebar's
+//      settings notice for the active table, and the sidebar's
 //      handler for it redraws the switch from the notice's settings.
 //
 // Unit test strategy:
@@ -2035,8 +2020,8 @@
 })();
 
 // ---------------------------------------------------------------------------
-// AC2: Clicking the sidebar's enabled toggle still updates the table's pill
-//      state (regression guard — existing path unchanged).
+// AC2: Clicking the sidebar's enabled switch still updates the table's pillbox
+//      state (regression guard).
 //
 // The sidebar-to-table path goes through content.js's request:applySettings
 // message handler. We test: (a) static guard the handler exists, (b) dynamic
@@ -2059,9 +2044,7 @@
   eq('AC2 regression: sidebar.js still references enabledEl',
     sidebarSrc.includes('enabledEl'), true);
 
-  // Dynamic guard: a press still takes a table on and back off. This ran
-  // against a plain-toggle helper until the 2026-09-14 sidebar-state-removal
-  // design retired it (#241); the press itself is the path now, so the intent
+  // Dynamic guard: a press still takes a table on and back off; the intent
   // drives it. DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn),
   // so only [row1, col1] is processed. Use 12,345, which rounds to 10,000.
   const table = makeToggleTable([
@@ -2099,7 +2082,7 @@
 // The spec asked for no spurious sidebar update from such a press. The press
 // makes the pressed table active and sends state:tableSwitched first, so the
 // settings notice that follows marks the active table, and the sidebar
-// redraws from it for the table it now describes (issue #328).
+// redraws from it for the table it now describes.
 // ---------------------------------------------------------------------------
 
 (function pillbox_AC3_wrongTable_movesTheActiveTableBeforeTheNotice() {
@@ -2189,7 +2172,7 @@
     notices.length, 1);
 })();
 
-// Sprint table-contextmenu-activation
+// Right-click activation
 // ---------------------------------------------------------------------------
 // AC1: Right-clicking a table causes flashTargetedTable to run on that table.
 // AC2: state:tableActivated onMessage in sidebar.js calls flashSidebarContainer.
@@ -2223,8 +2206,7 @@
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // AC1 (source): contextmenu handler calls flashTargetedTable(table) inside
-  // the `if (found)` guard. Sprint extract-dr-table: findTargetTable now
-  // reports { handle, isNew } instead of the table itself, so the handler
+  // the `if (found)` guard. findTargetTable returns { handle, isNew }, so the handler
   // guards on `found` and derives `table` from markAndToggleIfNewGrid(found)
   // before flashing it.
   // Pattern: `if (found) { ... flashTargetedTable(table) ...` within the handler.
@@ -2261,9 +2243,8 @@
     true);
 
   // AC4 (source): the worker neither publishes nor subscribes to the activation
-  // report. The sidebar receives it straight from the content script over the
-  // broadcast carrier, so the old relay only ever delivered it to a content
-  // script with no handler. Runtime coverage lives in backgroundMessageRouting.
+  // topic. The sidebar receives it straight from the content script over the
+  // broadcast carrier. Runtime coverage lives in backgroundMessageRouting.
   eq('table-activation AC4 source: the worker does not publish the activation report',
     /publish\(\s*'state:tableActivated'/.test(bgSrc), false);
   eq('table-activation AC4 source: the worker does not subscribe to it either',
@@ -2378,16 +2359,14 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint extract-dr-table (adversarial hardening): end-to-end double-invocation
+// End-to-end double-invocation
 // coverage through the REAL captured content.js listeners — not a direct call
 // to markAndToggleIfNewGrid with a hand-built {handle, isNew} object (that is
 // already covered above, but only exercises the wrapper in isolation).
 //
-// Before this sprint, findTargetTable itself wrote the dr-ext-grid marker
-// inline, so a table seen twice never grew a second widget. That guard now
-// lives across two calls (findTargetTable reports isNew; the caller's
-// markAndToggleIfNewGrid marks+builds only when isNew). This test proves the
-// split still reproduces the old guarantee end-to-end: firing the actual
+// The guard against a second pillbox lives across two calls (findTargetTable
+// returns isNew; the caller's markAndToggleIfNewGrid marks+builds only when
+// isNew). This test proves the guard end-to-end: firing the actual
 // captured 'contextmenu' listener twice on the same never-before-seen grid,
 // and then firing the actual captured 'intent:menuClicked' onMessage listener
 // against that same target, builds exactly one toggle widget.
@@ -2491,9 +2470,9 @@
     eq('double-invocation: first contextmenu builds exactly one toggle widget',
       buttonCreateCount, 1);
 
-    // --- Second right-click on the SAME target: findTargetTable now resolves
-    // this grid via case 2 (closest('.dr-ext-grid')), since it is already
-    // marked -- the replacement for the old inline-write re-entry guard. ---
+    // --- Second right-click on the SAME target: findTargetTable resolves
+    // this grid via case 2 (the opts.isSeen walk-up), since it is already
+    // registered. ---
     clickTarget.closest = function(sel) { return sel === '.dr-ext-grid' ? gridEl : null; };
     contextmenuHandler({ target: clickTarget });
 
@@ -2508,7 +2487,7 @@
     eq('double-invocation: intent:menuClicked on an already-marked grid builds NO widget',
       buttonCreateCount, 1);
     // Exact sequence, not presence. The right-click above CONNECTED this
-    // grid, and the panel-state decoupling (issue #272 family) makes a
+    // grid, and the press path, which reads nothing about the sidebar, makes a
     // toggle on the connected table take the settings path with the sidebar
     // closed too: the table's settings notice from the write, then
     // state:applyOk from the apply and state:rangeOk from the round. No
@@ -2526,7 +2505,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint right-click-registers (controller level): the right-click handler
+// The right-click handler
 // registers what the new route resolves and makes it active.
 // Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.5 and the
 // right-click-registers block in §5; decision D1.
@@ -2740,7 +2719,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint grid-first-row-literal: the range pulse numbers rows the same way
+// The range pulse numbers rows the same way
 // the engine gates them — by literal row number — so on a rowgroup grid the
 // pulse frames the rows the engine actually touches, not the rows one slot
 // below them.

@@ -64,7 +64,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint sidebar-settings-pull-and-unified-toggle (v1.12.0)
+// Sidebar settings pull and unified toggle
 // ---------------------------------------------------------------------------
 
 (function sprintSidebarPullAndUnifiedToggle() {
@@ -75,10 +75,9 @@
   }
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
-  // --- Sprint app-model-settings inverted this pull: settings now live in
-  // DR_STORE (content-script context), so content.js applies from its own
-  // model instead of polling the sidebar, and the sidebar asks content.js
-  // for the current value instead of answering that old poll. ---
+  // --- Settings live in DR_STORE (content-script context), so content.js
+  // applies from its own model, and the sidebar asks content.js for the
+  // current value. ---
 
   eq('pull (inverted): content.js no longer sends GET_SIDEBAR_SETTINGS',
     /chrome\.runtime\.sendMessage\(\s*\{\s*action:\s*['"]GET_SIDEBAR_SETTINGS['"]/.test(contentSrc), false);
@@ -116,15 +115,14 @@
   eq('unified: data-rounded-value attribute no longer written',
     /data-rounded-value|dataset\.roundedValue/.test(contentSrc), false);
 
-  // app-model-registry sprint: native-table originals (html/value/supRanges/
-  // linkFilteredIdx) and the per-table round options moved off page
-  // attributes / a file-level WeakMap into DR_STORE's table registry — see
-  // the "table registry" test section below for the full replacement suite.
+  // Native-table originals (value/supRanges/linkFilteredIdx) and the
+  // per-table settings live in DR_STORE's table registry — see the "table
+  // registry" test section below for the full suite.
   eq('unified (superseded by app-model-registry): dataset.originalHtml is no longer written',
     /dataset\.originalHtml\s*=/.test(contentSrc), false);
 
-  // #421: both kinds record one shape through the registry port, and the
-  // native markup copy is gone.
+  // Both kinds record one shape through the registry port, with no markup
+  // copy.
   eq('registry: every cell\'s originals are recorded via DR_STORE.setTableOriginal, through the registry port',
     /set\(cellEl, record\)\s*\{\s*DR_STORE\.setTableOriginal\(table, cellEl, record\);/.test(contentSrc) &&
       !/html:\s*cell\.innerHTML/.test(contentSrc), true);
@@ -138,14 +136,14 @@
     /function roundTable\([\s\S]{0,300}setTableSettings/.test(contentSrc), false);
 
   eq('unified: the apply re-runs roundTable rather than replaying a cached value',
-    // Window sized for the locked-table refusal (issue #262) that sits
+    // Window sized for the locked-table refusal that sits
     // between the function head and the round call.
     /function applySidebarRounding[\s\S]{0,2200}roundTable\(/.test(contentSrc), true);
 
   // --- Display simplification: "35.0" → "35" when value unchanged but format would ---
 
   withCreateTreeWalker(function() {
-    // Row contains a large number to anchor max_mag=3 so 35 doesn't get rounded
+    // Row contains a large number to anchor max_mag=3 so 35 does not get rounded
     // away from itself (35 with offset -0.5 → 35), AND a "35.0" cell that should
     // be re-formatted to "35".
     const table = makeMockTable([[
@@ -190,8 +188,8 @@
 
 // Regression: test page Table 8, "Linked number in text". The cell reads
 // "See <a>ref 12</a>, total 9,850". The linked 12 holds and 9,850 rounds,
-// with no patch left unlanded. Before the fix the number scan took "12,"
-// as the match string: the link filter could not find it in one text node
+// with no patch left unlanded. A number scan that took "12," as the match
+// string would break both steps: the link filter could not find it in one text node
 // (the comma sits in the next node) and kept the linked number, and the
 // patch step found "12" where it expected "12," and skipped it, logging
 // "1 of 2 extracted-cell patches did not land".
@@ -221,8 +219,8 @@
       eq('table 8 linked reference: the cell records as simplified',
         cell.classList.contains('dr-ext-rounded'), true);
       // The registry record holds the flat-text index of every match that
-      // survived the link filter. Without the fix the linked "12," survived
-      // too and this read [8, 18]; the log-row count below can miss that
+      // survived the link filter. A scan that kept the linked "12," would
+      // read [8, 18]; the log-row count below can miss that
       // when the 50-row buffer drops an older patch row on the same push.
       eq('table 8 linked reference: only the plain number survives the link filter',
         DR_STORE.getTableOriginal(table, cell).linkFilteredIdx, [18]);
@@ -344,8 +342,8 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #251 (sync-on-switch): a switch with the sidebar open applies the
-// clicked table's own settings in the model (issue #328) — the sidebar then
+// Sync on switch: a switch with the sidebar open applies the
+// clicked table's own settings in the model — the sidebar then
 // mirrors them, and the table matches what the sidebar shows. Two cells: a
 // non-default offset reaches the new table's rounding pass, and a table
 // holding enabled:false still simplifies on a press, which reads the screen.
@@ -424,17 +422,17 @@
     flag, 'simplified');
 })();
 
-// Switching onto a LOCKED table (issue #262): the clicked table carries a
+// Switching onto a LOCKED table: the clicked table carries a
 // dr-ext-rounded cell with no registry original, so the switch apply's
 // resetTable refuses. The pin here is the ORDER — state:tableSwitched must leave
 // before state:applyBlocked, because the sidebar lifts the PREVIOUS table's lock
 // on state:tableSwitched and the new table's state:applyBlocked must land after that
-// lift to re-lock the panel. A send moved after the apply would leave a
-// stuck table showing an unlocked panel with nothing failing.
+// lift to re-lock the sidebar. A send moved after the apply would leave a
+// unrestorable table showing an unlocked sidebar with nothing failing.
 //
-// The intent is published straight onto the bus: the view refuses clicks on
-// a locked pill (issue #263's aria-disabled guard), but a table can become
-// unrestorable between pill syncs, so the controller's own entry point must
+// The intent is published straight onto the bus: the view ignores clicks on
+// a locked pillbox (its aria-disabled guard), but a table can become
+// unrestorable between pillbox syncs, so the controller's own entry point must
 // hold the order on its own.
 (function issue251_switchOntoLockedTablePinsMessageOrder() {
   const tableA = makeToggleTable([
@@ -551,7 +549,7 @@
   }
 })();
 
-// Issue #423: a cell the page redrew with fewer pieces is a rewritten cell.
+// A cell the page redrew with fewer pieces is a rewritten cell.
 // The restore keeps the page's text in it and drops its record and marker,
 // so nothing counts unrestorable and the table never locks over it.
 (function gridPatch_aCellWithFewerPiecesKeepsThePagesText() {
@@ -596,7 +594,7 @@
 
     // The page changes the piece's text in place. The piece shows neither
     // its original nor its written text, so the cell is a rewritten cell and
-    // simplifies the page's value fresh (#421).
+    // simplifies the page's value fresh.
     b.childNodes[0].nodeValue = ' 7,318,204.5 ';
     reapplyRounding(grid.wrapperEl);
     eq('grid patch re-apply: a piece whose text the page changed simplifies the page\'s value',
@@ -735,7 +733,7 @@
 // (innerHTML incompatible with nodeValue-only write model).
 // ---------------------------------------------------------------------------
 (function e2e_gr4_extractedModeSkippedOnGrid() {
-  // Two rows so simplifyFirstRow:false (default) doesn't exclude everything.
+  // Two rows so simplifyFirstRow:false (default) does not exclude everything.
   // Row 0: skipped (simplifyFirstRow:false).
   // Row 1: mixed-text cell → extracted mode → skipped on grid;
   //        pure-numeric cell → pure mode → rounded.
@@ -838,10 +836,8 @@
 // ---------------------------------------------------------------------------
 // GV8: Exclusion-gate parity — re-apply HONORS firstRow / firstColumn gates.
 //
-// Regression guard for the BLOCK: before the fix, reapplyRounding recomputed
-// max_mag over an unfiltered cell set and wrote excluded cells.  After the fix
-// (computeGridRoundedValues shared path), excluded cells get no patches and
-// are never written.
+// Excluded cells get no patches and are never written by reapplyRounding,
+// and the max magnitude comes from the filtered cell set.
 //
 // Grid layout (2 rows × 2 cols):
 //   row 0:  'Header'     '999999'     ← row 0 excluded by simplifyFirstRow:false
@@ -1048,7 +1044,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint pending-retest: a grid that arrives before its rows registers when
+// A grid that arrives before its rows registers when
 // the rows arrive.
 // Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.4 and the
 // pending-retest block in §5; the re-test cap's reasoning in §6.
@@ -1349,7 +1345,7 @@ const PENDING_FILL_ROWS = [
 
 // --- Adversarial: a re-test that finds the depth crowded ends the record ---
 //
-// A crowded nest registers nothing, by the product decision in issue #373, and
+// A crowded nest registers nothing, by product decision, and
 // it registers nothing on every later re-test for the same reason. Holding the
 // record would leave an observer re-testing a shape whose answer cannot change
 // until the page rebuilds it.
@@ -1441,7 +1437,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-selection: the application model (app/store.js, DR_STORE)
+// The application model (app/store.js, DR_STORE)
 // and the typed event bus (adapters/messaging.js, DR_BUS). The selected
 // table and the sidebar-open flag moved out of content.js's file-level lets
 // into DR_STORE; ui-toggle.js reports an intent through DR_BUS instead of
@@ -1469,8 +1465,8 @@ const PENDING_FILL_ROWS = [
 
   // --- (a) discipline: DR_BUS.TOPICS enumerates every topic with a family,
   // and no topic falls outside the two families. ---
-  // Issue #325 added the third family, request: a topic whose one responder
-  // returns an answer to the publisher.
+  // The third family, request: a topic whose one responder returns an
+  // answer to the publisher.
   const KNOWN_FAMILIES = ['intent', 'state-change', 'request'];
   const topics = DR_BUS.TOPICS;
   const topicNames = Object.keys(topics);
@@ -1486,11 +1482,11 @@ const PENDING_FILL_ROWS = [
      // The sidebar's four requests, each answered by the tab's content script.
      'request:applySettings', 'request:settings', 'request:previewSamples',
      'request:captureState',
-     // The service worker's four, plus the two it receives (#325).
+     // The service worker's four, plus the two it receives.
      'intent:menuClicked', 'state:sidebarOpened', 'intent:closeSidebar',
      'state:sidebarClosed', 'state:pageUnloaded', 'intent:updateMenuLabel',
      // The content script's eight reports to the sidebar, the settings
-     // notice among them (issue #328).
+     // notice among them.
      'state:settingsChanged', 'state:tableActivated', 'state:tableSwitched',
      'state:rangeError', 'state:rangeOk', 'state:applyBlocked', 'state:applyOk',
      'state:previewSamplesChanged'].sort());
@@ -1525,17 +1521,16 @@ const PENDING_FILL_ROWS = [
   }
   eq('DR_BUS.TOPICS: intent:selectTable is in the intent family',
     topics['intent:selectTable'].family, 'intent');
-  // Sprint toggle-split: the toggle view's click handler changes no table
+  // The toggle view's click handler changes no table
   // itself — it publishes intent:toggleTable, and content.js (the sole
   // subscriber) determines what a committed toggle does.
   eq('DR_BUS.TOPICS: intent:toggleTable is in the intent family',
     topics['intent:toggleTable'].family, 'intent');
   eq('DR_BUS.TOPICS: state:selectedTableChanged is in the state-change family',
     topics['state:selectedTableChanged'].family, 'state-change');
-  // The sidebar's settings apply. It carried the intent family and the
-  // request:applySettings name on the wire until issue #325; the content
-  // script always answered it, and the sidebar always read whether anyone
-  // answered to decide bound versus unbound, so it is a request.
+  // The sidebar's settings apply. The content script answers it, and the
+  // sidebar reads whether anyone answered to determine bound versus unbound,
+  // so it is a request.
   eq('DR_BUS.TOPICS: request:applySettings is in the request family',
     topics['request:applySettings'].family, 'request');
   eq('DR_BUS.TOPICS: request:applySettings routes to one tab\'s content script (cross-context: sidebar page -> content script)',
@@ -1583,10 +1578,8 @@ const PENDING_FILL_ROWS = [
     DR_STORE.setSelectedTable(reconnectTable);
 
     // No message is replayed here on purpose — a reconnecting view pulls,
-    // it does not listen for what it missed. The store carried a third
-    // field, "the sidebar is open", until the 2026-09-14 sidebar-state-
-    // removal design retired it (#241); what a reopen pulls is the
-    // selection. The settings live on each table (issue #328), so the
+    // it does not listen for what it missed. What a reopen pulls is the
+    // active table. The settings live on each table, so the
     // snapshot carries no page-wide settings.
     const snapshot = DR_STORE.getSnapshot();
     eq('reconnect: getSnapshot returns the selection to a reconnecting view',
@@ -1634,9 +1627,8 @@ const PENDING_FILL_ROWS = [
   // --- (e) hardening: the scan above only catches writes to content.js's
   // SURVIVING top-level bindings. It has a blind spot — a name that moved OUT
   // of content.js into DR_STORE (selectedTable) is invisible to
-  // that scan once it is gone from content.js's own declaration list, so a
-  // file that reintroduces a bare assignment to that name (exactly the old
-  // anti-pattern this sprint removed) would slip through undetected. Close
+  // that scan, so a file that reintroduces a bare assignment to that name
+  // would slip through undetected. Close
   // that gap by scanning for writes to DR_STORE's own private field names,
   // read directly from app/store.js rather than from content.js.
   //
@@ -1644,7 +1636,7 @@ const PENDING_FILL_ROWS = [
   // anchoring on that indentation (rather than a bare \b(?:let|const) scan
   // anywhere in the file) is what keeps this from also matching the `const
   // entry = ...` locals declared inside the table-registry getters/setters
-  // (app-model-registry sprint) — those are per-call temporaries, not fields.
+  // — those are per-call temporaries, not fields.
   const storeFieldNames = Array.from(storeSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_STORE');
@@ -1661,7 +1653,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint toggle-split: publishing intent:toggleTable is content.js's only
+// Publishing intent:toggleTable is content.js's only
 // path to running a press — prove the wiring end to end (mirrors the
 // intent:selectTable behavioral pin in the app-model-selection block above).
 // ---------------------------------------------------------------------------
@@ -1674,9 +1666,7 @@ const PENDING_FILL_ROWS = [
   ]);
   injectToggleEntry(table);
 
-  // The press writes the table's settings and moves the active table now
-  // (2026-09-14 sidebar-state-removal, part one), where the retired
-  // plain-toggle path wrote neither. The active table is shared model
+  // The press writes the table's settings and moves the active table. The active table is shared model
   // state, so this test saves and restores it rather than leaving it for
   // whatever runs next.
   const savedSelected = DR_STORE.getSelectedTable();
@@ -1707,16 +1697,12 @@ const PENDING_FILL_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint toggle-split: KNOWN BUG FIX — flashRangePulse used to read
-// table.rows/row.cells directly, which only exist on native <table>
-// elements. On a div-based grid Array.from(undefined) threw a TypeError,
-// aborting the caller mid-flow (reverting the fix crashes this suite rather
-// than failing an assertion). flashRangePulse now enumerates cells through the same TableAdapter
-// (makeAdapter) the rounding engine and preview already use, so a grid's
-// cells are found the same way a native table's are. This test fails
-// without the fix: matchedCells.length would be 0 for the grid case below,
-// and the (missing/whole-grid) fallback flash would not carry the
-// range-restricted geometry asserted here.
+// flashRangePulse enumerates cells through the same TableAdapter
+// (makeAdapter) the rounding engine and preview use, so a grid's cells are
+// found the same way a native table's are. Reading table.rows/row.cells
+// directly, which only exist on native <table> elements, would throw a
+// TypeError on a div-based grid and crash this suite rather than fail an
+// assertion.
 // ---------------------------------------------------------------------------
 (function toggleSplit_rangeFlashWorksOnGrids() {
   // 2x2 div-based grid (no ARIA roles, no vendor classes — the plain
@@ -1770,25 +1756,17 @@ const PENDING_FILL_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint toggle-split (adversarial hardening): CLICK-HANDLER PARENT-EQUIVALENCE
-// PIN across the full guard matrix. The consolidation claims that collapsing
-// ui-toggle.js's two inlined click branches (mouse/keyboard, touch second-tap)
-// down to one `DR_BUS.publish('intent:toggleTable', { table })` line each,
-// with content.js's new intent:toggleTable subscriber running the same
-// guarded body both branches used to run inline, produces the identical
-// observable chrome.runtime.sendMessage sequence as before. This pin proves
-// that claim across {same table, different table} x {sidebar open, closed},
-// for both click branches — not just that a guard's boolean outcome matches
-// (the AC1-AC4 rebind tests above already cover that), but that the ORDER
-// and full contents of every dispatched message are unchanged.
+// CLICK-HANDLER PARENT-EQUIVALENCE
+// PIN across the full guard matrix. ui-toggle.js's two click branches
+// (mouse/keyboard, touch second-tap) each publish one
+// `DR_BUS.publish('intent:toggleTable', { table })`, and content.js's
+// intent:toggleTable subscriber runs the press. This pin checks
+// {same table, different table} for both click branches — not just that a
+// guard's boolean outcome matches (the AC1-AC4 rebind tests above already
+// cover that), but the ORDER and full contents of every dispatched message.
 //
-// The expected sequences below are LITERALS captured by running the REAL
-// click handler from both this sprint's parent (refactor/app-model-selection,
-// the last commit with the guard/dispatch logic inlined per click branch in
-// ui-toggle.js) and HEAD against this same fixture and harness, and verified
-// byte-identical at review time. Frozen here rather than re-derived via
-// `git show` at test-run time, matching the rationale in commit 394afa7: a
-// shallow checkout or CI runner may not have the parent ref available.
+// The expected sequences below are LITERALS, so the pin holds in a shallow
+// checkout or CI runner.
 // ---------------------------------------------------------------------------
 (function toggleSplit_parentEquivalence_toggleClickSequences() {
   // Keyed by sameTable — mouse and touch second-tap produce the identical
@@ -1796,15 +1774,11 @@ const PENDING_FILL_ROWS = [
   // equality is itself part of what this pin proves: see the per-mode
   // assertions below, which check mouse and touch against the same literal.
   //
-  // The matrix used to carry a second dimension, whether the sidebar stood
-  // open, and four cells. The 2026-09-14 sidebar-state-removal design
-  // retired the value that dimension varied (#241), and with it the branch
-  // that read it — a press means one thing now, so the two surviving cells
-  // are the whole matrix.
+  // A press reads nothing about the sidebar, so these two cells are the
+  // whole matrix.
   const EXPECTED_SEQUENCES = {
-    // A press on the ACTIVE table. Issue #272 put the settings write at the
-    // front of this path, and issue #328 put it on the pressed table: the
-    // write's settings notice leads the sequence, carrying the flipped
+    // A press on the ACTIVE table. The settings write comes first and lands
+    // on the pressed table: the write's settings notice leads the sequence, carrying the flipped
     // enabled to the sidebar, and the apply that follows sends its own
     // state:applyOk.
     'true': [
@@ -1814,11 +1788,8 @@ const PENDING_FILL_ROWS = [
       { action: 'state:rangeOk' },
       { action: 'intent:updateMenuLabel', title: 'Toggle table' },
     ],
-    // A press on a table that is NOT the active one. Issue #251 made this
-    // path apply settings to the pressed table in place of simplifying it
-    // with the shipped defaults, and issue #328 made those the pressed
-    // table's own. The sidebar-state removal made it the only meaning such a
-    // press has, whatever the sidebar is doing.
+    // A press on a table that is NOT the active one applies the pressed
+    // table's own settings to it, whatever the sidebar is doing.
     //
     // state:tableSwitched leads so the sidebar lifts the previous table's lock
     // before this table's own state:applyBlocked/state:applyOk lands, and the
@@ -1882,7 +1853,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-selection (adversarial hardening): statelessness. The bus
+// Statelessness. The bus
 // keeps no last-value cache and no delivery history (see adapters/messaging.js
 // header) — a subscriber that attaches AFTER a publish must never see that
 // publish, unlike an EventEmitter with replay or a BehaviorSubject.
@@ -1909,7 +1880,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-selection (adversarial hardening): reentrancy. Same-context
+// Reentrancy. Same-context
 // delivery is synchronous (see adapters/messaging.js header), so a subscribed
 // handler may itself call DR_BUS.publish() for a different topic before
 // returning. A two-topic cycle — A's handler publishes B; B's handler
@@ -1917,11 +1888,9 @@ const PENDING_FILL_ROWS = [
 // must settle without an infinite loop or a stack overflow.
 // ---------------------------------------------------------------------------
 (function appModelSelection_busReentrancy_twoTopicCycleSettles() {
-  // The second topic was state:sidebarOpenChanged until the 2026-09-14
-  // sidebar-state-removal design retired it (#241). state:settingsChanged
-  // takes its place: the content script holds no subscriber of its own for
-  // it (issue #328), so only the fixture's handlers run here. What the test
-  // measures — the bus's own delivery under a nested publish — is unchanged.
+  // The second topic is state:settingsChanged: the content script holds no
+  // subscriber of its own for it, so only the fixture's handlers run here.
+  // The test measures the bus's own delivery under a nested publish.
   const TOPIC_A = 'state:selectedTableChanged';
   const TOPIC_B = 'state:settingsChanged';
   const savedSelected = DR_STORE.getSelectedTable();
@@ -1956,7 +1925,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // =============================================================================
-// Sprint app-model-registry: the registry of found tables, per-cell originals,
+// The registry of found tables, per-cell originals,
 // and the simplified/original flag live in DR_STORE; the dr-ext-grid marker
 // class becomes a style hook only.
 // =============================================================================
@@ -2039,11 +2008,9 @@ const PENDING_FILL_ROWS = [
 // --- (e) A full simplify → off → simplify cycle returns the cell to the
 // exact original text and then to the exact same simplified text.
 //
-// The off step used to keep the registry's stored original and re-round from
-// it. The 2026-09-14 sidebar-state-removal design retired that form flip
-// (#241): off resets, which clears the record, and the re-simplify reads the
+// Off resets, which clears the record, and the re-simplify reads the
 // restored cell and writes a fresh record. The assertions read what the user
-// sees, which is unchanged. The record's lifetime changes with it. ---
+// sees. ---
 (function registrySprint_originalsSurviveOffAndOnCycle() {
   withCreateTreeWalker(function () {
     const table = makeToggleTable([
@@ -2091,10 +2058,7 @@ const PENDING_FILL_ROWS = [
   });
 })();
 
-// --- (f) Grid magnitude basis freeze: DELIBERATE BEHAVIOR CHANGE from the
-// parent branch (refactor/app-model-settings), where computeGridRoundedValues
-// took no frozenMaxMag parameter and reapplyRounding recomputed max_mag
-// from whatever was visible on every scroll re-apply. HEAD's roundTable
+// --- (f) Grid magnitude basis freeze: roundTable
 // freezes max_mag on first sight into DR_STORE.setTableMaxMagnitude and every
 // later reapplyRounding reuses that frozen value (see the frozenMaxMag
 // entry in the pass settings header above simplifyTableCells in content.js).
@@ -2148,13 +2112,10 @@ const PENDING_FILL_ROWS = [
 // (resetTable sets maxMagnitude back to null) and re-freezes fresh from
 // whatever is visible at the moment of the second press — it does NOT
 // preserve the basis established by the first round. This is the registry's
-// actual behavior (#257), documented here so a reviewer can judge whether
+// actual behavior, documented here so a reviewer can judge whether
 // "frozen at first sight" was meant to survive a round trip.
 //
-// The round trip used to run through a form flip that kept the table's
-// markers. The 2026-09-14 sidebar-state-removal design retired that flip
-// (#241) in favor of a reset, and both clear the frozen basis the same way,
-// so the behavior under test is unchanged — only the driver is. ---
+// The round trip runs through a reset, which clears the frozen basis. ---
 (function registrySprint_offAndOnRoundTripReFreezesRatherThanPreserving() {
   let ctx;
   try {
@@ -2206,13 +2167,11 @@ const PENDING_FILL_ROWS = [
   }
 })();
 
-// --- (g) settings notice sequence: isTableRounded (claim 4 — now reading
-// DR_STORE's appliedFlag instead of a dr-ext-rounded/dataset.drShowingOriginal
-// pair) must report correctly to the sidebar across a full round -> peek-
-// original -> peek-back cycle, not just a single toggle. The pillbox-sprint
-// AC1 test above pins one click; the toggle-split parent-equivalence guard
-// matrix pins one intent:toggleTable dispatch. Neither exercises the 3-step
-// peek cycle this sprint's registry model actually has to get right. ---
+// --- (g) settings notice sequence: isTableRounded (reading DR_STORE's
+// appliedFlag) must report correctly to the sidebar across a full round ->
+// peek-original -> peek-back cycle, not just a single toggle. The pillbox
+// AC1 test above pins one click; the guard matrix pins one
+// intent:toggleTable dispatch. Neither exercises the 3-step peek cycle. ---
 (function registrySprint_tableToggleStateAcrossPeekCycle() {
   const savedSelected = DR_STORE.getSelectedTable();
   const sent = [];
@@ -2309,7 +2268,7 @@ const PENDING_FILL_ROWS = [
     DR_STORE.getTableMaxMagnitude(table), null);
 })();
 
-// --- Sprint shape-fingerprint: the registry's fingerprint field. The entry
+// --- The registry's fingerprint field. The entry
 // carries the shape the table had when it registered, and the pillbox view's
 // builder is its one writer. Spec: the shape-fingerprint block in
 // docs/sprint-plans/grid-detection-recovery-v2.md §5, and the shape
@@ -2479,7 +2438,7 @@ const PENDING_FILL_ROWS = [
   }
 })();
 
-// Issue #506: the page removing the active table clears the active table and
+// The page removing the active table clears the active table and
 // tells the sidebar to re-read, so the sidebar shows the no-table state
 // instead of describing a table that is gone. Removing any other table leaves
 // the active table where it is. Same fixture as the removal test above: the
@@ -2547,7 +2506,7 @@ const PENDING_FILL_ROWS = [
   }
 })();
 
-// --- Sprint shape-fingerprint: the teardown both the removal observer and the
+// --- The teardown both the removal observer and the
 // mismatch path run. One function discards a table's registration and every
 // per-table resource the extension holds beside it: the pillbox, the resize
 // observer, a virtualized grid's re-apply observer and its pending timer, the
@@ -2606,7 +2565,7 @@ const PENDING_FILL_ROWS = [
   }
 })();
 
-// --- Sprint pending-retest, criterion 4: a pending container removed from the
+// --- Criterion 4: a pending container removed from the
 // page leaves no observer and no timer.
 // Spec: docs/sprint-plans/grid-detection-recovery-v2.md, the pending-retest
 // block in §5 — "The removal branch of the table observer drops a pending
@@ -2732,18 +2691,12 @@ const PENDING_FILL_ROWS = [
 
 // ---------------------------------------------------------------------------
 // A pillbox press on the active table writes the table's settings (its
-// enabled), not just the table's cells and the sidebar's switch. Issue #272,
-// leak 1: content.js's same-table intent:toggleTable branch used to simplify
-// the table and send the sidebar its on/off value without writing the
-// settings, so any later pull (a sidebar reopen or a table switch) showed a
-// stale enabled over the table's truth, and a reopen-style apply silently
-// re-rounded a table the user had toggled off.
+// enabled), not just the table's cells and the sidebar's switch. A press
+// that changed the cells without writing the settings would leave any later
+// pull (a sidebar reopen or a table switch) showing a stale enabled over the
+// table's truth.
 //
-// One press path covers the sidebar open and the sidebar closed alike. An
-// earlier gate read sidebar visibility to pick between the settings path and
-// a direct one, so a press made with the sidebar closed changed the page
-// without changing the settings, and the next open re-imposed the stale
-// settings. The 2026-09-14 sidebar-state-removal design retired that gate, so
+// One press path covers the sidebar open and the sidebar closed alike, so
 // this one test covers both cases. The settings notice goes out either way: a
 // closed sidebar has no page to receive it.
 // ---------------------------------------------------------------------------
@@ -2773,7 +2726,7 @@ const PENDING_FILL_ROWS = [
     });
 
     withCreateTreeWalker(function () {
-      DR_BUS.publish('intent:toggleTable', { table }); // pill: turn rounding on
+      DR_BUS.publish('intent:toggleTable', { table }); // pillbox: turn rounding on
     });
     eq('leak-1: the first pill toggle rounds the connected table',
       isTableRounded(table), true);
@@ -2781,7 +2734,7 @@ const PENDING_FILL_ROWS = [
       DR_STORE.getTableSettings(table).enabled, true);
 
     withCreateTreeWalker(function () {
-      DR_BUS.publish('intent:toggleTable', { table }); // pill: turn rounding off
+      DR_BUS.publish('intent:toggleTable', { table }); // pillbox: turn rounding off
     });
     eq('leak-1: the second pill toggle restores the table to originals',
       isTableRounded(table), false);
@@ -2806,11 +2759,9 @@ const PENDING_FILL_ROWS = [
 })();
 
 // A press on a table that is NOT the active one moves the active table to it
-// and writes the pressed table's settings. This pinned the opposite, because a
-// third press path handled that case: the press kept the active table where
-// it was and left the settings alone. The 2026-09-14 sidebar-state-removal
-// design retired that path (#241). A press means one thing, so it makes the
-// pressed table active and writes its settings, whatever the sidebar is doing.
+// and writes the pressed table's settings. A press means one thing, so it
+// makes the pressed table active and writes its settings, whatever the
+// sidebar is doing.
 (function pressOnInactiveTableMovesTheActiveTableAndWritesItsSettings() {
   runPressFixture(() => {
     const active = makePressTable('1,000,000');
@@ -2831,10 +2782,10 @@ const PENDING_FILL_ROWS = [
   });
 })();
 
-// --- The defect's own symptom. The pressed table's settings stand at off and
-// the press lands on a table that is not the active one. Before the fix this
-// took the rebind path and applied the settings, which at off changed no
-// numbers. The user pressed an on/off control and nothing moved. ---
+// --- The pressed table's settings stand at off and the press lands on a
+// table that is not the active one. The press must turn the table on: a press
+// that only re-applied the settings at off would change no numbers, and the
+// user would press an on/off control and see nothing move. ---
 (function partOne_pressOnInactiveTableSimplifiesEvenWithItsSettingsOff() {
   runPressFixture(({ sent }) => {
     const active = makePressTable('1,000,000');
@@ -2920,7 +2871,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // --- A range expression the parser rejects stops the apply before any cell
-// changes. Each table holds its own expression (issue #328), so a moved press
+// changes. Each table holds its own expression, so a moved press
 // applies the pressed table's own, and an unparsable expression on another
 // table never reaches it. ---
 (function partOne_aMovedPressIgnoresAnotherTablesUnparsableRangeExpression() {
@@ -2975,12 +2926,9 @@ const PENDING_FILL_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #328: each table's own settings are the only settings.
+// Each table's own settings are the only settings.
 //
-// The application model held one page-wide set of settings beside each
-// table's settings. The sidebar read and wrote the page-wide set, so it could
-// describe settings that did not produce the table on the screen, and going
-// back to a table could not bring back its settings. The rule now: every
+// The rule: every
 // sidebar change writes the active table's settings, the settings read answers
 // with them, and a table with none starts from the shipped defaults.
 // ---------------------------------------------------------------------------
@@ -2997,7 +2945,7 @@ function issue328SettingsOf(table) {
   return DR_STORE.getTableSettings(table) || {};
 }
 
-// The issue's five steps: simplify A heavy, make B active and change it to
+// Five steps: simplify A heavy, make B active and change it to
 // light, make A active again, then change A.
 (function issue328_twoTablesKeepTheirOwnSettings() {
   runPressFixture(() => {
@@ -3149,7 +3097,7 @@ function issue328SettingsOf(table) {
 })();
 
 // The settings read carries the active table's lock state, so the sidebar
-// learns the lock whenever it reads (#500). A table is locked while a cell
+// learns the lock whenever it reads. A table is locked while a cell
 // shows the simplified marker and the registry holds no original for it. The
 // read changes nothing on the page.
 (function issue500_theSettingsReadCarriesTheLockState() {
@@ -3251,7 +3199,7 @@ function issue328SettingsOf(table) {
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint shape-fingerprint: the comparison at the two controller entry points
+// The comparison at the two controller entry points
 // Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.6 and the
 // shape-fingerprint block in §5; decision D7 in
 // docs/sprint-plans/grid-detection-recovery.md.
@@ -3270,7 +3218,7 @@ function issue328SettingsOf(table) {
 //   - A table with no recorded fingerprint compares against nothing and
 //     counts as a match.
 //   - The fresh table is a new table: it reads the shipped defaults and shows
-//     raw (issue #328).
+//     raw.
 //
 // Every expected value below comes from that statement, never from the
 // controller's source.
@@ -3963,8 +3911,8 @@ function issue328SettingsOf(table) {
 // A grid cell that builds its text from several pieces — a number and a unit
 // in separate nodes — displays all of them. findCellTextNode answers with one
 // deepest text node (the write path's patch target); the displayed-text read
-// answers with the cell's whole text, matching the native read. Regression
-// for #303: "1,234<span>%</span>" recorded text: "%".
+// answers with the cell's whole text, matching the native read:
+// "1,234<span>%</span>" must not record the text "%".
 (function captureDisplayedTextReadsWholeCell() {
   const makePort = () => {
     const m = new Map();
@@ -4085,7 +4033,7 @@ function issue328SettingsOf(table) {
 
 // --- capture follow-ups: the pull guard, the glyph pin, the header line ---
 
-// #305: the serializer guards per table; the response composer's
+// The serializer guards per table; the response composer's
 // lens-preview step is the one step after it that walks the bound table.
 // Unguarded, a throw there discards the whole page-side half — the
 // serialized registry, the fixture seed, and the log rows.
@@ -4207,10 +4155,9 @@ function issue328SettingsOf(table) {
 // ---------------------------------------------------------------------------
 // The bus's topic table is the one declaration of every topic name.
 //
-// A name written out again at a call site is the defect the shared list was
-// built to remove: one mistyped character produced a message no listener
-// matched, with no error and no log row. The list retired into the bus's
-// table, and the bus builds every wire message itself, so no context file
+// A name written out again at a call site risks a mistyped character, which
+// produces a message no listener matches, with no error and no log row. The
+// bus builds every wire message itself from its table, so no context file
 // needs a name of its own. These pin both halves.
 // ---------------------------------------------------------------------------
 
@@ -4243,7 +4190,7 @@ function issue328SettingsOf(table) {
     unused, []);
 })();
 
-// --- #325 Task 1: the topic table carries a route ---
+// --- The topic table carries a route ---
 (function busTableCarriesRoute() {
   const VALID_ROUTES = [null, 'extension-pages', 'tab'];
   let allHaveFamily = true;
@@ -4264,13 +4211,13 @@ function issue328SettingsOf(table) {
   eq('bus table: no topic carries the retired wireAction field', noWireAction, true);
 })();
 
-// --- #325 Task 1: the route picks the carrier, not the publishing context ---
+// --- The route picks the carrier, not the publishing context ---
 (function busRoutePicksCarrier() {
-  // The old transport sniff inferred the carrier from which Chrome interface
-  // the publishing context held. The route no longer lets it.
+  // The carrier never follows from which Chrome interface the publishing
+  // context holds.
 
   // A tab-routed topic with no explicit tab number: the bus runs the active-tab
-  // lookup the sidebar used to repeat before each of its own sends. The payload
+  // lookup. The payload
   // here is the bus's contract under test, not the topic's production payload —
   // the menu click carries none.
   const b = makeBusSandbox();
@@ -4313,8 +4260,8 @@ function issue328SettingsOf(table) {
     f.sent.pages.length === 1 ? f.sent.pages[0].action : null, 'intent:closeSidebar');
 
   // An extension-pages publish from a context with no chrome.tabs reaches its
-  // audience: that carrier needs none. This is the case the sniff got wrong —
-  // it read the absent interface as a reason to pick the other carrier.
+  // audience: that carrier needs none. An absent interface is no reason to
+  // pick the other carrier.
   const g = makeBusSandbox({ noTabs: true });
   g.bus.publish('state:pageUnloaded', {});
   eq('bus route: an extension-pages topic sends from a context with no chrome.tabs',
@@ -4327,12 +4274,12 @@ function issue328SettingsOf(table) {
     e.sent.pages.length + e.sent.tabs.length, 0);
 })();
 
-// --- #340: publish() refuses a request topic rather than dropping its answer ---
+// --- publish() throws on a request topic rather than dropping its answer ---
 //
-// The ask refuses a topic recorded one-way and the answering registration
-// refuses a topic recorded as a question. The one-way send had no matching
-// refusal: handed a question it sent the message, the responder answered, and
-// the answer went nowhere, with nothing logged and nothing failed.
+// The ask throws on a topic recorded one-way and the answering registration
+// throws on a topic recorded as a question. The one-way send throws too:
+// handed a question, it would send the message, the responder would answer,
+// and the answer would go nowhere, with nothing logged and nothing failed.
 (function busPublishRefusesRequestTopic() {
   const a = makeBusSandbox();
   let message = '';
@@ -4347,7 +4294,7 @@ function issue328SettingsOf(table) {
   eq('one-way guard: and nothing goes out on either carrier',
     a.sent.pages.length + a.sent.tabs.length, 0);
 
-  // The two siblings, unchanged: each of the three pairings now refuses.
+  // The two siblings: each of the three pairings throws.
   const b = makeBusSandbox();
   let askThrew = false;
   try { b.bus.request('intent:menuClicked', {}, () => {}); } catch (e) { askThrew = true; }
@@ -4357,14 +4304,13 @@ function issue328SettingsOf(table) {
   eq('one-way guard: respond() still refuses a one-way topic', respondThrew, true);
 })();
 
-// --- #325 Task 2: a subscriber learns the sending tab ---
+// --- A subscriber learns the sending tab ---
 //
 // The service worker's page-unload handler reads the sending tab's number off
 // Chrome's sender record and acts only when that tab is the one the sidebar
-// was opened for. The bus handed subscribers the payload alone, and a payload
-// cannot carry the number — a content script does not hold its own. Without
-// this argument, moving that topic onto the bus would close the sidebar on a
-// page unload in any tab.
+// was opened for. A payload cannot carry the number — a content script does
+// not hold its own. Without this argument, the bus would close the sidebar
+// on a page unload in any tab.
 (function busSubscriberReceivesSenderTab() {
   const a = makeBusSandbox();
   const sameContext = [];
@@ -4398,7 +4344,7 @@ function issue328SettingsOf(table) {
     seenPayload === null ? null : Object.keys(seenPayload).sort().join(','), 'settings');
 })();
 
-// --- #325 Task 3: request and respond ---
+// --- Request and respond ---
 (function busRequestReplyRoundTrip() {
   // The asking side: the answer chrome hands back reaches the callback.
   const a = makeBusSandbox({ reply: { settings: { k: 9 } } });
@@ -4555,12 +4501,10 @@ function issue328SettingsOf(table) {
     secondThrew, null);
 })();
 
-// --- #325 Task 5: the settings apply is a request, not a publish ---
+// --- The settings apply is a request, not a publish ---
 //
-// It always carried a reply. The sidebar never read the reply's value, only
-// whether anyone answered, and the bus served that through a second reply
-// shape — a delivery-outcome callback beside the answer path. Two reply shapes
-// in one component is the clutter issue #325 exists to remove.
+// The sidebar never reads the reply's value, only whether anyone answered,
+// and the bus serves that through its one reply path.
 (function settingsApplyUsesRequestPath() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const contentSrc = sourceByName('content.js');
@@ -4598,12 +4542,11 @@ function issue328SettingsOf(table) {
     sawAnswer, true);
 })();
 
-// --- #325 Task 12: one mechanism, one topic list ---
+// --- One mechanism, one topic list ---
 //
-// The end state of the move. Two delivery mechanisms carried the eighteen
-// cross-context topics; one carries all of them now. These pin the four facts
-// that make that true, so a new raw send or a second listener fails here
-// rather than reintroducing the split.
+// One delivery mechanism carries every cross-context topic. These pin the
+// four facts that make that true, so a new raw send or a second listener
+// fails here.
 (function oneMechanismRemains() {
   const contentSrc = sourceByName('content.js');
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
@@ -4638,10 +4581,10 @@ function issue328SettingsOf(table) {
     Object.keys(DR_BUS.TOPICS).length, 22);
 })();
 
-// --- #325 Task 12: the moved responders answer through the bus ---
+// --- The responders answer through the bus ---
 //
 // The preview-samples branch carries a rule the source assertions above
-// cannot see: with no table selected it answers a pair of nulls rather than
+// cannot see: with no table active it answers a pair of nulls rather than
 // nothing, because the sidebar reads a null samples field as the unbound
 // state. This drives the content script's own bus listener the way Chrome
 // does, in an isolated eval so the shared-scope model stays untouched.
@@ -4698,13 +4641,12 @@ function issue328SettingsOf(table) {
     !!(settingsAnswer && settingsAnswer.settings), true);
 })();
 
-// --- #325: a moved topic is deliverable inside the context that publishes it ---
+// --- A cross-context topic is deliverable inside the context that publishes it ---
 //
 // publish() hands the topic to same-context subscribers before it reaches the
 // carrier. Every topic here crosses contexts, so one context publishing a topic
-// it also subscribes to would run its own handler on the way out — a delivery
-// the old inline listeners could not make, because a context never received its
-// own send. No topic pairs that way today, and this fails at the commit if one
+// it also subscribes to would run its own handler on the way out. No topic
+// pairs that way today, and this fails at the commit if one
 // starts to.
 (function noContextPublishesWhatItSubscribes() {
   // Keyed by context, not by file: the content script's context loads

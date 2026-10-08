@@ -11,25 +11,24 @@ const statusEl = document.getElementById('status');
 
 const NO_TABLE_CLASS = 'no-table';
 const NO_TABLE_STATUS_MSG = 'Right-click a table to connect it here.';
-// Shown when the content script refuses an apply because the table's
+// Shown when the content script blocks an apply because the table's
 // registry originals did not survive a content-script re-injection (the
-// APPLY_BLOCKED message — see content.js's applySidebarRounding guard).
+// state:applyBlocked topic — see content.js's applySidebarRounding guard).
 const APPLY_BLOCKED_STATUS_MSG = 'This table\'s original values are no longer available. Reload the page, then apply settings again.';
 
 
-// ---- The sidebar serves one tab (issue #343) ----
+// ---- The sidebar serves one tab ----
 //
-// A content script reports by broadcast, because the sidebar is an extension
-// page and a broadcast is what reaches one. A broadcast names no tab, so the
-// sidebar acted on every report it received: a background tab re-simplifying
-// its rows redrew the sidebar, and a blocked apply there locked it against a
-// table the user could not see, under a notice naming no page.
+// A content script publishes by broadcast, because the sidebar is an
+// extension page and a broadcast is what reaches one. A broadcast names no
+// tab, so without a filter a background tab re-simplifying its rows would
+// redraw the sidebar, and a blocked apply there would lock it against a table
+// the user cannot see.
 //
 // The bound tab is the tab the sidebar was opened for, and the sidebar serves
-// that tab alone. It is a second, separate fact from the tab number the
-// service worker holds, not one fact stored twice: the worker's answers which
-// tab to close the sidebar for, and this one answers which tab the sidebar is
-// showing.
+// that tab alone. It is a separate fact from the tab number the service
+// worker holds: the worker's number answers which tab to close the sidebar
+// for, and this one answers which tab the sidebar is showing.
 //
 // The tabs interface and the bus arrive as parameters so the whole concern
 // runs in the suite with stubs, without the sidebar's page elements.
@@ -37,10 +36,10 @@ function createBoundTab(tabsApi, bus) {
   let boundTabId = null;
   let boundWindowId = null;
 
-  // A report belongs to the bound tab only when the two numbers match. A
-  // report carrying no tab came from an extension page rather than a content
+  // A message belongs to the bound tab only when the two numbers match. A
+  // message carrying no tab came from an extension page rather than a content
   // script, and belongs to no tab at all. Before the lookup answers there is
-  // nothing to compare against, so a report arriving in that window is
+  // nothing to compare against, so a message arriving in that window is
   // dropped; resolve() runs the sidebar's opening read afterwards, and that
   // read carries the current truth.
   function ownsReport(meta) {
@@ -50,7 +49,7 @@ function createBoundTab(tabsApi, bus) {
   return {
     // Record the tab the sidebar was opened for, and the window holding it,
     // then run onReady. The order is load-bearing: the read reaches the page,
-    // the page reports back, and a report arriving before the tab number
+    // the page publishes back, and a message arriving before the tab number
     // exists has nothing to be compared against. No tab to bind to leaves the
     // number unset and still runs the read, which falls to the unbound state
     // on its own when nothing answers it.
@@ -82,7 +81,7 @@ function createBoundTab(tabsApi, bus) {
       }
     },
 
-    // Subscribe to one of the content script's reports. Every such report
+    // Subscribe to one of the content script's topics. Every such message
     // passes through here, so the comparison lives in one place rather than
     // at each of the eight subscriptions.
     subscribe(topic, handler) {
@@ -92,20 +91,6 @@ function createBoundTab(tabsApi, bus) {
       });
     },
 
-    // Close the sidebar when the tab it was opened for stops being the one in
-    // front. The service worker closes it on the ordinary route and misses
-    // two: an idle restart empties the tab number it compares against, and a
-    // sidebar opened from Chrome's own side-panel control never sets it. On
-    // those routes the sidebar survived the switch and kept showing controls
-    // for a page the user had left. Closing here gives a tab switch one
-    // outcome, whichever route it takes.
-    //
-    // A side panel belongs to one browser window, and the activation event
-    // fires for every window. An activation in another window leaves the
-    // bound tab where it was — still the front tab of its own window — so it
-    // is passed over. A tabs interface reporting no window leaves the
-    // comparison on the tab alone.
-    //
     // The window the bound tab sits in: null before the lookup answers, and
     // null when the tabs interface reports no window. The screenshot take
     // passes this window, whose front tab is the bound tab by construction —
@@ -114,6 +99,20 @@ function createBoundTab(tabsApi, bus) {
       return boundWindowId;
     },
 
+    // Close the sidebar when the tab it was opened for stops being the one in
+    // front. The service worker closes it on the ordinary route and misses
+    // two: an idle restart empties the tab number it compares against, and a
+    // sidebar opened from Chrome's own side-panel control never sets it. On
+    // those routes the sidebar would otherwise survive the switch and keep
+    // showing controls for a page the user left. Closing here gives a tab
+    // switch one outcome, whichever route it takes.
+    //
+    // A side panel belongs to one browser window, and the activation event
+    // fires for every window. An activation in another window leaves the
+    // bound tab where it was — still the front tab of its own window — so it
+    // is passed over. A tabs interface reporting no window leaves the
+    // comparison on the tab alone.
+    //
     // With no tab recorded there is nothing to have left, so nothing closes.
     onSwitchAway(onLeft) {
       if (!tabsApi || !tabsApi.onActivated ||
@@ -135,8 +134,8 @@ function setTableBound(isBound) {
   document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
   if (!isBound) {
     // No active table: there is nothing for rounding to act on, so flip the
-    // main toggle to its off state rather than dimming the whole sidebar.
-    // Any lock belonged to the table that just went away (issue #262), and
+    // main switch to its off state rather than dimming the whole sidebar.
+    // Any lock belonged to the table that just went away, and
     // the message written below is unsourced — drop a stale source tag so
     // applyNow's delivery-success clear can still collect it.
     document.body.classList.remove('table-locked');
@@ -145,8 +144,8 @@ function setTableBound(isBound) {
     enabledEl.checked = false;
     statusEl.textContent = NO_TABLE_STATUS_MSG;
   } else {
-    // A table is now bound. The main toggle is not touched here: the model
-    // is its source (issue #251) — applySettingsToUI on a pull, or
+    // A table is now bound. The main switch is not touched here: the model
+    // is its source — applySettingsToUI on a pull, or
     // applyDefaultsToUI on the pull's fallback, has already set it, and a
     // bind must not reset it to the shipped default.
     if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
@@ -170,7 +169,7 @@ const dateGranularityEl = document.getElementById('dateGranularity');
 const timeGranularityEl = document.getElementById('timeGranularity');
 const rangeExprEl = document.getElementById('rangeExpr');
 
-// ----- Variant F: linked dual-thumb sliders -----
+// ----- Linked dual-thumb sliders -----
 // Stops are ordered so the *rounding strategy* changes monotonically across the
 // track (finest step on the left, coarsest on the right), NOT by offset value.
 // stepForOffset is non-monotonic in the offset because half-step offsets
@@ -225,7 +224,7 @@ function renderSliders() {
   renderPreviewBands();
 }
 
-// ----- Preview band -----
+// ----- Lens preview -----
 const topBandEl = document.getElementById('topBand');
 const botBandEl = document.getElementById('botBand');
 let cachedSamples = null;
@@ -374,7 +373,7 @@ function renderTopBand(el, rows, offset) {
 
   const from = document.createElement('span');
   from.className = 'from';
-  // Bare original number (text stripped per #3), prefixed "e.g." per #1.
+  // Bare original number, prefixed "e.g.".
   from.textContent = 'e.g. ' + formatOriginal(row.num);
   example.appendChild(from);
 
@@ -415,7 +414,7 @@ function renderBotBand(el, rows, offset, maxMag) {
     pair.className = 'pair';
 
     // "from" cell: "266,453 (100k+)" where the OoM label is brown. The bare
-    // original number is shown (surrounding text stripped per #3).
+    // original number is shown, without its surrounding text.
     const from = document.createElement('span');
     from.className = 'from';
     from.textContent = formatOriginal(row.num);
@@ -460,10 +459,10 @@ function renderPreviewBands() {
   renderBotBand(botBandEl, cachedSamples.bottom, botVal, cachedMaxMag);
 }
 
-// Refreshes the preview bands from the selected table; the bound/unbound
+// Refreshes the lens preview from the active table; the bound/unbound
 // state is a side effect of the response (samples !== null means bound).
-// The main toggle is not written on the bound path: setTableBound(true)
-// leaves it to the settings apply that ran before this call (issue #251),
+// The main switch is not written on the bound path: setTableBound(true)
+// leaves it to the settings apply that ran before this call,
 // so no pulled value needs threading back in after the bind resolves.
 function fetchPreviewSamples() {
   DR_BUS.request('request:previewSamples', {}, (answer) => {
@@ -572,11 +571,10 @@ if (botThumb) {
 }
 
 function currentSettings() {
-  // A disabled switch shows no value of the table's: under the #262 lock it
+  // A disabled switch shows no value of the table's: under the lock it
   // shows a forced ON that is display only, until a settings read answering
   // unlocked lands. A save then (the sliders stay usable) leaves the on/off
-  // value out, and the content script's merge keeps the table's own value
-  // (issue #272).
+  // value out, and the content script's merge keeps the table's own value.
   const settings = {};
   if (!enabledEl.disabled) settings.enabled = enabledEl.checked;
   for (const id in CHECKBOX_TO_SETTING) {
@@ -586,8 +584,8 @@ function currentSettings() {
   if (dateGranularityEl) settings.dateGranularity = dateGranularityEl.value;
   if (timeGranularityEl) settings.timeGranularity = timeGranularityEl.value;
   // Always emit concrete numbers — never null/blank — so content.js never falls
-  // back to the "offset_other inherits from offset_top" branch (the original
-  // bleed bug). num_top is no longer surfaced in the UI; pin it to 1.
+  // back to the "offset_other inherits from offset_top" branch. numTop has no
+  // sidebar control; pin it to 1.
   settings.offsetTop = topVal;
   settings.offsetOther = botVal;
   settings.numTop = 1;
@@ -597,8 +595,8 @@ function currentSettings() {
 
 function updateDisabledState() {
   optionsSection.classList.toggle('disabled', !enabledEl.checked);
-  // Granularity dropdown only matters when the row's toggle is on
-  // (i.e. that type's cells are bucketed by the selected granularity).
+  // Granularity dropdown only matters when the row's switch is on
+  // (i.e. that type's cells are bucketed by the chosen granularity).
   if (dateGranularityEl) {
     dateGranularityEl.disabled = !document.getElementById('simplifyDates').checked;
   }
@@ -614,8 +612,7 @@ function updateDisabledState() {
 //
 // The answer's value is never read — only whether one arrived. Nothing
 // answering means no content script on the tab, which is exactly the unbound
-// state. That is the same fact chrome.runtime.lastError carried before issue
-// #325, reaching the same callback by the bus's one reply path.
+// state.
 //
 // On an answer, clear only an unsourced stale message (the no-table reminder).
 // A sourced message — a range error, an apply-blocked notice — is cleared by
@@ -647,7 +644,7 @@ for (const id in CHECKBOX_TO_SETTING) {
 if (dateGranularityEl) dateGranularityEl.addEventListener('change', applyNow);
 if (timeGranularityEl) timeGranularityEl.addEventListener('change', applyNow);
 
-// Apply on any range-expression keystroke (the previous live-update behavior).
+// Apply on any range-expression keystroke.
 if (rangeExprEl) rangeExprEl.addEventListener('input', applyNow);
 
 document.body.addEventListener('click', (e) => {
@@ -711,17 +708,16 @@ boundTab.subscribe('state:applyBlocked', () => {
   showLock();
 });
 
-// The lock reaches the sidebar two ways: the report after a blocked apply,
-// and the settings read's answer (#500). Both run this one step.
+// The lock reaches the sidebar two ways: the notice after a blocked apply,
+// and the settings read's answer. Both run this one step.
 function showLock() {
   statusEl.textContent = APPLY_BLOCKED_STATUS_MSG;
   statusEl.dataset.source = 'blocked';
-  // Issue #262: the connected table is stuck showing simplified values.
-  // Show that truth and stop accepting input: main toggle ON and
+  // The bound table is unrestorable and shows simplified values.
+  // Show that truth and stop accepting input: main switch ON and
   // disabled, settings area dimmed via body.table-locked (sidebar.html).
   // The forced ON is display only: the table's on/off value stays in the
-  // application model, and a save leaves the disabled switch out (issue
-  // #272).
+  // application model, and a save leaves the disabled switch out.
   document.body.classList.add('table-locked');
   enabledEl.checked = true;
   enabledEl.disabled = true;
@@ -747,8 +743,8 @@ boundTab.subscribe('state:applyOk', () => {
 
 boundTab.subscribe('state:previewSamplesChanged', () => {
   // Stale view: re-read the active table's settings, then the previews (the
-  // pull chain ends in fetchPreviewSamples). A bare preview fetch here used
-  // to reset the main toggle to the shipped default (issue #251).
+  // pull chain ends in fetchPreviewSamples). A bare preview fetch here would
+  // reset the main switch to the shipped default.
   pullSettingsAndApplyToUI();
 });
 
@@ -757,8 +753,7 @@ boundTab.subscribe('state:tableSwitched', () => {
   // A table switch: the lock, if any, belonged to the previous table. The
   // read answers the new table's lock state with its settings, so the lock
   // lifts or stays by what the new table holds. The sidebar mirrors the new
-  // active table's settings (issue #251); it does not reset to the shipped
-  // defaults.
+  // active table's settings; it does not reset to the shipped defaults.
   try {
     pullSettingsAndApplyToUI();
   } catch (e) {
@@ -776,7 +771,7 @@ window.addEventListener('unload', () => {
 // supplied the values.
 function applySettingsToUI(settings) {
   const s = Object.assign({}, DR_DEFAULTS, settings || {});
-  // The #262 lock forces the main toggle ON + disabled while the bound
+  // The lock forces the main switch ON + disabled while the bound
   // table's originals are unrestorable. A settings notice or a read answering
   // locked must not write the table's on/off value over that forced ON; a
   // read answering unlocked lifts the lock first (pullSettingsAndApplyToUI).
@@ -804,7 +799,7 @@ function applySettingsToUI(settings) {
 }
 
 // Seed the UI from the shared defaults so the sidebar and content.js never
-// drift apart even before a table has ever been selected (this file's own
+// drift apart even before a table has ever been activated (this file's own
 // fallback when the live pull below fails).
 function applyDefaultsToUI() {
   applySettingsToUI(DR_DEFAULTS);
@@ -813,15 +808,15 @@ function applyDefaultsToUI() {
 // Reconnect, table switch, right-click activation, lock lift, or stale-view
 // refresh: pull the active table's settings from content.js (the one holder
 // of settings) rather than resetting to shipped defaults — neither a
-// close/reopen nor a switch may lose what the user configured (issue #251).
+// close/reopen nor a switch may lose what the user configured.
 // No active tab, no content script yet, or no response at all falls back to
-// defaults, same as before this pull existed.
+// defaults.
 //
-// The answer also carries whether the active table is locked (#500). The
+// The answer also carries whether the active table is locked. The
 // sidebar sets or lifts the lock from it before the settings reach the
 // controls, so the switch shows the lock's forced ON or the table's own
 // value. The read is the lock's route in whenever the sidebar asks: on
-// start, on a right-click, on a table switch. The report after a blocked
+// start, on a right-click, on a table switch. The notice after a blocked
 // apply covers a lock that arrives while the sidebar is open.
 //
 // fetchPreviewSamples runs only after the pull settles (success or fallback),
@@ -1046,10 +1041,9 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
     content: pageState ? pageState.log || null : null,
     sidebar: DR_LOG.snapshot(),
   };
-  // A failure while building or saving the file used to surface as the
-  // finish button doing nothing. It now reports on the status line and is
-  // logged; the form stays open with the typed remarks, so a retry costs
-  // nothing.
+  // A failure while building or saving the file shows on the status line
+  // and is logged; the form stays open with the typed remarks, so a retry
+  // costs nothing.
   try {
     const html = DR_CAPTURE.buildCaptureDocument({
       state: state,
@@ -1123,13 +1117,13 @@ setTableBound(false);
 if (rangeExprEl) rangeExprEl.value = '';
 
 // Record the tab this sidebar was opened for, then make the opening read.
-// The order is load-bearing: the read reaches the page, the page reports
-// back, and a report arriving before the tab number exists has nothing to be
-// compared against and is dropped.
+// The order is load-bearing: the read reaches the page, the page publishes
+// back, and a message arriving before the tab number exists has nothing to
+// be compared against and is dropped.
 //
-// Pulls live settings, then (see above) pulls preview samples for whichever
-// table the user has right-clicked. If no table was targeted, content.js
-// returns nulls and the bands render the prompt.
+// Pulls live settings, then (see above) pulls preview samples for the active
+// table. With no active table, content.js returns nulls and the sidebar
+// shows the no-table prompt.
 boundTab.resolve(() => {
   pullSettingsAndApplyToUI();
   // Registered here for the same reason the read runs here: an activation

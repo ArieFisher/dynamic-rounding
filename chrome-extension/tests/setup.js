@@ -66,7 +66,7 @@ global.Node = { ELEMENT_NODE: 1 };
 // renaming a content script only requires a manifest update. We evaluate
 // them together here, and re-expose DR_DEFAULTS on globalThis so test
 // assertions outside the eval can read it.
-// We also expose the per-table toggle infrastructure declared with const/let
+// We also expose the per-table pillbox infrastructure declared with const/let
 // inside the eval'd code so the auto-table-toggle test section can access them.
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
 const contentScriptFiles = manifest.content_scripts[0].js;
@@ -100,8 +100,8 @@ global.importScripts = () => {};
 const messagingCode = sourceByName('adapters/messaging.js');
 const storeCode = sourceByName('app/store.js');
 const uiToggleCode = sourceByName('ui-toggle.js');
-// Combined source for "source-includes" assertions that no longer care which
-// content-script file a symbol physically lives in after the Phase 2 split.
+// Combined source for "source-includes" assertions that do not care which
+// content-script file holds a symbol.
 const allContentSrc = contentScriptBundle;
 eval(contentScriptBundle + `
 globalThis.DR_DEFAULTS = DR_DEFAULTS;
@@ -121,7 +121,7 @@ globalThis.DR_CAPTURE = DR_CAPTURE;
 // Expose the renderer's glyph map so the glyph pin can compare it against
 // the sidebar's buttons.
 globalThis.CAPTURE_MARK_GLYPHS = CAPTURE_MARK_GLYPHS;
-// Expose toggle infrastructure for tests
+// Expose pillbox infrastructure for tests
 globalThis.tableToggles = tableToggles;
 globalThis.trackedTables = trackedTables;
 // toggleStyleInjected is a let; expose a getter/setter so tests can reset it.
@@ -156,7 +156,7 @@ globalThis.DEFAULT_NUMERIC_PROBE = DEFAULT_NUMERIC_PROBE;
 globalThis.eraYearDigitRanges = eraYearDigitRanges;
 globalThis.formatStep = formatStep;
 globalThis.stepForOffset = stepForOffset;
-// Expose new toggle geometry constants (all are const, so direct assignment works)
+// Expose the pillbox geometry constants (all are const, so direct assignment works)
 globalThis.TOGGLE_DOT_PX = TOGGLE_DOT_PX;
 globalThis.TOGGLE_PILL_WIDTH_PX = TOGGLE_PILL_WIDTH_PX;
 globalThis.TOGGLE_PILL_HEIGHT_PX = TOGGLE_PILL_HEIGHT_PX;
@@ -175,15 +175,9 @@ Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   set(v) { _globalTapCollapseAdded = v; },
   configurable: true,
 });
-// lastRightClickedTable no longer exists as a binding in content.js (sprint
-// app-model-selection moved it into DR_STORE) — this shim keeps every
-// existing test working unmodified by proxying the old name onto the
-// store's getter/setter pair, exactly like the toggleStyleInjected/
+// lastRightClickedTable proxies the active table onto DR_STORE's
+// getter/setter pair, exactly like the toggleStyleInjected/
 // _globalTapCollapseAdded shims above proxy onto their own file-level lets.
-//
-// A second shim proxied a sidebarOpen field beside it. The 2026-09-14
-// sidebar-state-removal design retired that field (#241), so the shim and
-// every assignment to it are gone from this file.
 Object.defineProperty(globalThis, 'lastRightClickedTable', {
   get() { return DR_STORE.getSelectedTable(); },
   set(v) { DR_STORE.setSelectedTable(v); },
@@ -229,13 +223,13 @@ globalThis.reapplyObservers = reapplyObservers;
 globalThis.reapplyTimers = reapplyTimers;
 globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.gridRedrawDelayMs;
 // Expose the nomination step (lib/dr-table/detect.js) for the nesting and
-// pending-table suites. The step reports outcomes findTables drops, so the
+// pending-table suites. The step returns outcomes findTables drops, so the
 // suites read them here rather than through findTables.
 globalThis.chainRootOf = chainRootOf;
 globalThis.nominateNest = nominateNest;
 globalThis.nominateNests = nominateNests;
 // Expose the controller's pending-table state and the three functions that
-// hold, re-test, and drop a pending record (sprint pending-retest). The
+// hold, re-test, and drop a pending record. The
 // content-script bundle evaluates in its own scope, so the pending suite
 // reaches these names only through this list.
 globalThis.consumeNominations = consumeNominations;
@@ -246,24 +240,21 @@ globalThis.pendingRoots = pendingRoots;
 globalThis.pendingObservers = pendingObservers;
 globalThis.pendingRetestTimers = pendingRetestTimers;
 globalThis.pendingRetestCounts = pendingRetestCounts;
-// Expose phantom a11y predicate and its threshold constant for tests
+// Expose the accessibility artifact predicate and its threshold constant for tests
 globalThis.isPhantomA11yTable = isPhantomA11yTable;
 globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_DETECTION_SETTINGS.offscreenLeftPx;
-// Expose content.js's badge/marker call-site wrapper (sprint extract-dr-table)
-// for direct unit testing.
+// Expose content.js's marker call-site wrapper for direct unit testing.
 globalThis.markAndToggleIfNewGrid = markAndToggleIfNewGrid;
-// Expose the DR_STORE-backed originals port (app-model-registry sprint) so
-// grid-adapter tests can build an adapter the same way roundTable/
-// collectNumericCells/computeGridRoundedValues do in production — a plain
+// Expose the DR_STORE-backed originals port so grid-adapter tests can build
+// an adapter the same way roundTable and collectNumericCells do in
+// production (registryAdapter) — a plain
 // makeAdapter(el) with no opts uses lib/dr-table's private default port
 // instead, which is invisible to DR_STORE and would make a test's setup
 // silently diverge from what the real call sites do.
 globalThis.registryOriginalsPort = registryOriginalsPort;
 globalThis.restoreTable = restoreTable;
-// resetTable is the one way off simplified since the 2026-09-14 sidebar-
-// state-removal design retired the form flip that kept a table's markers
-// (#241). Tests that used to reach the original values through that flip
-// call this instead.
+// resetTable is the one way back to raw, so tests reach the original values
+// through it.
 globalThis.resetTable = resetTable;
 globalThis.applySidebarRounding = applySidebarRounding;
 `);
@@ -283,21 +274,15 @@ function eq(name, actual, expected) {
 }
 
 // The tab every sidebar harness below binds to. The sidebar records the tab
-// it was opened for and acts only on reports from that tab (issue #343), so
-// a harness's tab-query stub and the sender it dispatches reports from have
+// it was opened for and acts only on messages from that tab, so a
+// harness's tab-query stub and the sender it dispatches messages from have
 // to name one number. Both read it here so they cannot drift.
 const SIDEBAR_HARNESS_TAB = 42;
 const FROM_SIDEBAR_TAB = { tab: { id: SIDEBAR_HARNESS_TAB } };
 
-// Stub constructors so the module-level MutationObserver / ResizeObserver usage
-// at content.js load time does not throw in Node. The stubs are injected BEFORE
-// the eval, but since we patch globalThis here (after the eval), we need to work
-// around the fact the eval already ran. In practice the guards in content.js
-// (`if (typeof MutationObserver !== 'undefined')`) check the global at eval time.
-// The eval has already run successfully (MutationObserver was undefined → guarded).
-// These stubs are only needed for any test that directly calls createToggleForTable,
-// which itself calls `new ResizeObserver(...)`. We therefore stub ResizeObserver
-// on globalThis before those tests run.
+// The same observer stubs as above, installed again after the eval. Every
+// test that calls createToggleForTable, which constructs a ResizeObserver,
+// reads these.
 global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
 global.MutationObserver = class { observe() {} disconnect() {} };
 global.Node = { ELEMENT_NODE: 1 };

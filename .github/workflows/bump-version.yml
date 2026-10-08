@@ -79,7 +79,7 @@ jobs:
               parts[2] = 0
           else:
               parts[2] += 1
-          # If there's a 4th component from earlier runs, drop it on patch bump.
+          # A 4th component, if present, drops on every bump.
           mf["version"] = ".".join(str(x) for x in parts[:3])
           p.write_text(json.dumps(mf, indent=2) + "\n")
           print(f"chrome-extension/manifest.json: bumped to {mf['version']}")
@@ -123,14 +123,14 @@ jobs:
             --body "Automated version bump triggered by merge of PR #${{ github.event.pull_request.number }}." \
             --base main \
             --head "$BUMP_BRANCH")
-          # main requires the PR checks to pass, and they take a minute or two
-          # from PR creation, so wait for GitHub's merge-state verdict before
+          # main requires the pull request checks to pass, and they take a minute
+          # or two from pull request creation, so wait for GitHub's merge-state verdict before
           # merging. CLEAN, HAS_HOOKS, and UNSTABLE all mean the merge will be
           # accepted. DIRTY (a conflict) and BEHIND (main advanced past the
           # bump) are terminal, so they end the run at once. BLOCKED covers
           # pending and failed checks alike, so a failed check waits out the
-          # deadline. On timeout, leave the PR and the branch for a human, as
-          # on any other refusal.
+          # deadline. On timeout, leave the pull request and the branch for a
+          # human, as on any other failed merge.
           READY=""
           for attempt in $(seq 1 40); do
             STATE=$(gh pr view "$PR_URL" --json mergeStateStatus \
