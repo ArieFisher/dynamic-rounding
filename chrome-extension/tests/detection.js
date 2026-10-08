@@ -1229,7 +1229,7 @@ const supTestOpts = {
 // TableAdapter abstraction
 // AC2 — NativeTableAdapter round-trip test
 // AC3 — GridAdapter stub no-throw test
-// AC4 — source scan: no role="gridcell" or data-row-index literals in content.js
+// AC4 — source scan: no data-row-index literal in content.js
 // ---------------------------------------------------------------------------
 
 // TA1: NativeTableAdapter round-trip
