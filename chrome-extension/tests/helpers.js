@@ -3046,3 +3046,91 @@ function eachRewriteKind(kinds, run) {
     });
   }
 }
+
+// Read the list of table kind pairs from the design doc: each row's key,
+// state, and note. Every failure to find the list returns null, so a renamed
+// heading or a reshaped row fails the run rather than leaving nothing to
+// compare.
+function tkReadPairList() {
+  const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
+  const lines = designMd.split('\n');
+  const start = lines.findIndex((line) => line.trim() === '### Table kind pairs');
+  if (start === -1) return null;
+  const header = lines.findIndex((line, i) => i > start && line.startsWith('| Key |'));
+  if (header === -1) return null;
+  const columns = lines[header].split('|').slice(1, -1).map((cell) => cell.trim());
+  const rows = [];
+  for (let i = header + 2; i < lines.length && lines[i].startsWith('|'); i++) {
+    const cells = lines[i].split('|').slice(1, -1).map((cell) => cell.trim());
+    if (cells.length !== columns.length) return null;
+    const row = {};
+    columns.forEach((name, c) => { row[name] = cells[c]; });
+    const key = /^`([a-z-]+)`$/.exec(row.Key);
+    if (!key) return null;
+    rows.push({ key: key[1], state: row.State, note: row.Note });
+  }
+  return rows.length > 0 ? rows : null;
+}
+
+// Every cell of a table, by row and grid column, with the text it holds.
+function tkCellTexts(table) {
+  const cells = [];
+  makeAdapter(table).getRows().forEach((row, r) => {
+    for (const cell of row.getCells()) cells.push({ at: `${r}:${cell.columnIndex}`, text: cell.el.textContent });
+  });
+  return cells;
+}
+
+// One kind's reading of one pair under one settings object: each data table
+// detection finds, in the order it finds them, with each cell's text before
+// and after that table alone is simplified. Each table is simplified on a
+// fresh drawing, so a table nested in another reads the same whichever one
+// the user turns on.
+function tkRead(kind, pair, settings) {
+  const foundIn = (table) => findTables(rwEl('div', {}, [table]))
+    .map((found) => found.handle).filter((el) => isDataTable(el));
+  const count = foundIn(rwDrawTable(kind, pair.sections, pair.opts).table).length;
+  const tables = [];
+  for (let i = 0; i < count; i++) {
+    withRewritePage(() => {
+      const handle = foundIn(rwDrawTable(kind, pair.sections, pair.opts).table)[i];
+      const before = tkCellTexts(handle);
+      try {
+        roundTableUnder(handle, settings);
+        tables.push(tkCellTexts(handle).map((cell, c) => ({
+          at: cell.at, text: cell.text, changed: !before[c] || before[c].text !== cell.text,
+        })));
+      } finally {
+        resetTable(handle);
+        forgetRegisteredTable(handle);
+      }
+    });
+  }
+  return { found: count > 0, tables };
+}
+
+// The differences between the two kinds' readings, one line each. An empty
+// list means the pair gives the same result.
+function tkCompare(native, grid) {
+  if (native.tables.length !== grid.tables.length) {
+    return [`native finds ${native.tables.length} data table(s), grid finds ${grid.tables.length}`];
+  }
+  const differences = [];
+  native.tables.forEach((nativeCells, t) => {
+    const where = native.tables.length > 1 ? `table ${t} ` : '';
+    const gridCells = grid.tables[t];
+    const gridAt = new Map(gridCells.map((cell) => [cell.at, cell]));
+    const nativeAt = new Map(nativeCells.map((cell) => [cell.at, cell]));
+    for (const cell of nativeCells) {
+      const other = gridAt.get(cell.at);
+      if (!other) differences.push(`${where}${cell.at}: grid has no cell`);
+      else if (cell.changed !== other.changed || cell.text !== other.text) {
+        differences.push(`${where}${cell.at}: native "${cell.text}"${cell.changed ? ' (changed)' : ''}, grid "${other.text}"${other.changed ? ' (changed)' : ''}`);
+      }
+    }
+    for (const cell of gridCells) {
+      if (!nativeAt.has(cell.at)) differences.push(`${where}${cell.at}: native has no cell`);
+    }
+  });
+  return differences;
+}
