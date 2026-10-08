@@ -2330,6 +2330,27 @@ const supTestOpts = {
     rows[1].getCells().map((cell) => cell.getText()), ['North', '1,482,391', '918,554']);
 })();
 
+// #513: an interactive grid tags its values with the grid-cell role. A row
+// label with the row-header role beside them reads with every value, and
+// the grid still passes the data test.
+(function gridHeaderRoles_rowHeaderBesideGridCells() {
+  const headerRow = rwEl('div', { role: 'row' }, [
+    rwEl('div', { role: 'columnheader' }, [rwText('Region')]),
+    rwEl('div', { role: 'columnheader' }, [rwText('Q1')]),
+  ]);
+  const dataRow = (label, value) => rwEl('div', { role: 'row' }, [
+    rwEl('div', { role: 'rowheader' }, [rwText(label)]),
+    rwEl('div', { role: 'gridcell' }, [rwText(value)]),
+  ]);
+  const group = rwEl('div', { role: 'rowgroup' }, [dataRow('North', '1,482,391'), dataRow('South', '918,554')]);
+  const table = rwEl('div', { role: 'grid' }, [headerRow, group]);
+  const rows = makeAdapter(table).getRows();
+  eq('#513 grid cells: each row reads its label and its value',
+    rows.map((row) => row.getCells().map((cell) => cell.getText())),
+    [['Region', 'Q1'], ['North', '1,482,391'], ['South', '918,554']]);
+  eq('#513 grid cells: the grid passes the data test', isDataTable(table), true);
+})();
+
 // Detection: the row universe starts at the header row, and a wide header
 // of text labels must not exhaust the data-test budget before the scan
 // reaches a data row (a six-column sales grid whose data rows lead with four

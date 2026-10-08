@@ -2589,16 +2589,16 @@ TSLA,75,"248.09","18,606.75"
         Expect: the same five amounts round. A failure rounds nothing,
         because column B names nothing.</li>
       <li><b>Turn on the first-column switch.</b> Expect: the labels stay as
-        written; "Subtotal · 2 items" keeps its 2.</li>
+        written; "Subtotal · 2 items" keeps its 2. A failure rounds the 2 or changes a label.</li>
     </ol>
 
     <!--
       The shape of a storefront order summary: a grid with the table role,
       a header row outside the row group, and body rows whose label carries
       the row-header role beside one cell-role amount. The row-header and
-      column-header roles count as cells beside the cell role, in document
-      order, so the label is column A and the amounts are column B on both
-      table kinds.
+      column-header roles count as cells beside the cell and grid-cell
+      roles, in document order, so the label is column A and the amounts are
+      column B on both table kinds.
     -->
     <div class="aria-grid" role="table" aria-label="Order summary">
       <div class="g-row" role="row">

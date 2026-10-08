@@ -2827,6 +2827,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
   eq('#513 first column on: the subtotal label is the first cell of the first body row',
     !!results[2] && results[2].entry.cellObj.getText().trim().startsWith('Subtotal'), true);
+  eq('#513 first column on: the labels take no change',
+    [2, 4, 6, 8, 10].map((i) => results[i] && results[i].patches.length), [0, 0, 0, 0, 0]);
   eq('#513 first column on: the amounts still round',
     [3, 5, 7, 9, 11].map((i) => !!(results[i] && results[i].patches.length > 0)), [true, true, true, true, true]);
 })();

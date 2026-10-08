@@ -46,12 +46,13 @@
 /** CSS selector for the cheap load-time ARIA pass. */
 const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
 /**
- * CSS selector for a grid row's cells. The cell role holds a value; the
+ * CSS selector for a grid row's cells. The cell role holds a value on a
+ * static table and the grid-cell role holds one on an interactive grid; the
  * row-header role labels the row and the column-header role labels a column.
- * All three count as cells, in document order, so a labelled row's label is
+ * All four count as cells, in document order, so a labelled row's label is
  * column A the way a native table's row header is.
  */
-const GRID_CELL_SELECTOR = '[role="cell"], [role="rowheader"], [role="columnheader"]';
+const GRID_CELL_SELECTOR = '[role="cell"], [role="gridcell"], [role="rowheader"], [role="columnheader"]';
 /** Node.ELEMENT_NODE, with a fallback for contexts with no `Node` global (its value, 1, is part of the DOM spec and never changes). */
 const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE) || 1;
 
@@ -504,7 +505,6 @@ class GridAdapter {
   /**
    * Extract cell elements from a row element.
    * Prefers GRID_CELL_SELECTOR matches, then .dg--cell; else direct children.
-   * (The legacy role "gridcell" is NOT used — per spike amendment 2, only role="cell" is correct.)
    * @param {Element} rowEl
    * @returns {Element[]}
    */

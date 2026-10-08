@@ -1003,7 +1003,6 @@ function makeGridWrapper(rowData, opts) {
     // querySelectorAll stubs on the row element (used by GridAdapter._getCellEls)
     row.querySelectorAll = function(sel) {
       if (useDgClasses && sel === '.dg--cell') return cellEls;
-      if (sel === '[role="cell"]') return [];
       return [];
     };
 
@@ -1841,7 +1840,6 @@ function makeTrRow(cellTexts) {
   row.tagName = 'TR';
   row.children = cellEls;
   row.querySelectorAll = function(sel) {
-    if (sel === '[role="cell"]' || sel === '.dg--cell') return [];
     return [];
   };
   return row;
