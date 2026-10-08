@@ -25,6 +25,7 @@ const PIECES = [
   'pillbox.js',
   'detection.js',
   'rounding-pass.js',
+  'table-kinds.js',
   'sidebar.js',
   'messaging-model.js',
   'capture-log.js',

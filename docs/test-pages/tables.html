@@ -226,6 +226,53 @@
     #id-text-grid .g-row {
       grid-template-columns: 240px 420px 110px;
     }
+
+    /* Section 30: a native table and a grid side by side. A row or cell the
+       page hides stays hidden on a grid, whose rows draw as CSS grids. */
+    .pair {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      align-items: flex-start;
+    }
+
+    .pair figure {
+      margin: 0;
+    }
+
+    .pair figcaption {
+      font-size: 0.85em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    #pairs .aria-grid .g-row {
+      grid-template-columns: 120px;
+      grid-auto-columns: 110px;
+    }
+
+    #pairs .aria-grid [role="gridcell"],
+    #pairs .aria-grid [role="caption"] {
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      padding: 6px 10px;
+    }
+
+    #pairs .aria-grid [hidden] {
+      display: none;
+    }
+
+    /* Header cells alone draw bold on a light ground, as on a native table. */
+    #pairs .aria-grid .g-row > :first-child {
+      background: none;
+      font-weight: normal;
+    }
+
+    #pairs .aria-grid .g-row > [role="columnheader"],
+    #pairs .aria-grid .g-row > [role="rowheader"] {
+      background: var(--head);
+      font-weight: 600;
+    }
   </style>
 </head>
 
@@ -2633,6 +2680,1147 @@ TSLA,75,"248.09","18,606.75"
         </div>
       </div>
     </div>
+  </section>
+
+  <section id="pairs">
+    <h2>30. Native tables and grids side by side</h2>
+    <p>One subsection per table feature: the same values drawn once as a
+      native table and once as a grid. The design doc's table kind pairs list
+      names each feature and holds the state of its comparison test.</p>
+    <p class="expect">Expect: a pillbox at load on every table, and the two
+      tables of each subsection showing the same values after every step.</p>
+
+    <h3>30a. Data cells <code>data-cell</code></h3>
+    <p>Two body rows of data cells: the native table in a body section, the
+      grid with the table role, its cells with the cell role, in a row
+      group.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the North row
+        stays raw as the first row, and the South row rounds: 2,734 to 2,500,
+        6,051 to 6,000.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30b. Data cells of an interactive grid <code>grid-cell</code></h3>
+    <p>The same rows; the grid carries the grid role, and its cells the
+      grid-cell role.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the North row
+        stays raw as the first row, and the South row rounds: 2,734 to 2,500,
+        6,051 to 6,000.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="grid" aria-label="Units by region">
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="gridcell">North</span>
+              <span role="gridcell">4,821</span>
+              <span role="gridcell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="gridcell">South</span>
+              <span role="gridcell">2,734</span>
+              <span role="gridcell">6,051</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30c. Rows with no body section <code>ungrouped-rows</code></h3>
+    <p>The same rows written straight into the table: no body section on the
+      native table, no row group on the grid.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the North row
+        stays raw as the first row, and the South row rounds: 2,734 to 2,500,
+        6,051 to 6,000.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <tr>
+            <td>North</td>
+            <td>4,821</td>
+            <td>9,187</td>
+          </tr>
+          <tr>
+            <td>South</td>
+            <td>2,734</td>
+            <td>6,051</td>
+          </tr>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="cell">North</span>
+            <span role="cell">4,821</span>
+            <span role="cell">9,187</span>
+          </div>
+          <div class="g-row" role="row">
+            <span role="cell">South</span>
+            <span role="cell">2,734</span>
+            <span role="cell">6,051</span>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30d. Header row in a head section <code>column-header</code></h3>
+    <p>A header row of four header cells, the last holding a count, above two
+      body rows. The native header row sits in a head section; the grid header
+      row sits outside the row group.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
+        stays raw, and 4,821 to 5,000, 9,187 to 9,000, 1,234 to 1,000, 2,734
+        to 2,500, 6,051 to 6,000, 5,678 to 5,500.</li>
+      <li><b>Turn on the first-row and first-column switches on both tables,
+        and pull the sidebar's two offsets apart on both: largest numbers at
+        -1, all other numbers at 0.</b> Expect: both tables show the same
+        values. The result waits on <a
+        href="https://github.com/ArieFisher/dynamic-rounding/issues/526">#526</a>.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+              <th scope="col">Target 25,000</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+              <td>1,234</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+              <td>5,678</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+            <span role="columnheader">Target 25,000</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+              <span role="cell">1,234</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+              <span role="cell">5,678</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30e. Header row in a row group <code>head-group</code></h3>
+    <p>The same header row and body rows. The grid header row sits in a row
+      group of its own.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
+        stays raw, and 4,821 to 5,000, 9,187 to 9,000, 1,234 to 1,000, 2,734
+        to 2,500, 6,051 to 6,000, 5,678 to 5,500.</li>
+      <li><b>Turn on the first-row and first-column switches on both tables,
+        and pull the sidebar's two offsets apart on both: largest numbers at
+        -1, all other numbers at 0.</b> Expect on both tables: 4,821 to 5,000,
+        9,187 to 9,000, 1,234 to 1,000, 2,734 to 3,000, 6,051 to 6,000, 5,678
+        to 6,000. A failure shows any of these at the nearest hundred on one
+        table.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+              <th scope="col">Target 25,000</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+              <td>1,234</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+              <td>5,678</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="columnheader">Region</span>
+              <span role="columnheader">2023</span>
+              <span role="columnheader">2024</span>
+              <span role="columnheader">Target 25,000</span>
+            </div>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+              <span role="cell">1,234</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+              <span role="cell">5,678</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30f. Header row with no head section <code>header-row-in-body</code></h3>
+    <p>The same header row and body rows written straight into the table, with
+      no head section and no row group.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
+        stays raw, and 4,821 to 5,000, 9,187 to 9,000, 1,234 to 1,000, 2,734
+        to 2,500, 6,051 to 6,000, 5,678 to 5,500.</li>
+      <li><b>Turn on the first-row and first-column switches on both tables,
+        and pull the sidebar's two offsets apart on both: largest numbers at
+        -1, all other numbers at 0.</b> Expect on both tables: 4,821 to 5,000,
+        9,187 to 9,000, 1,234 to 1,000, 2,734 to 3,000, 6,051 to 6,000, 5,678
+        to 6,000. A failure shows any of these at the nearest hundred on one
+        table.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <tr>
+            <th scope="col">Region</th>
+            <th scope="col">2023</th>
+            <th scope="col">2024</th>
+            <th scope="col">Target 25,000</th>
+          </tr>
+          <tr>
+            <td>North</td>
+            <td>4,821</td>
+            <td>9,187</td>
+            <td>1,234</td>
+          </tr>
+          <tr>
+            <td>South</td>
+            <td>2,734</td>
+            <td>6,051</td>
+            <td>5,678</td>
+          </tr>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+            <span role="columnheader">Target 25,000</span>
+          </div>
+          <div class="g-row" role="row">
+            <span role="cell">North</span>
+            <span role="cell">4,821</span>
+            <span role="cell">9,187</span>
+            <span role="cell">1,234</span>
+          </div>
+          <div class="g-row" role="row">
+            <span role="cell">South</span>
+            <span role="cell">2,734</span>
+            <span role="cell">6,051</span>
+            <span role="cell">5,678</span>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30g. Row labels <code>row-header</code></h3>
+    <p>A header row above two body rows whose labels are row headers.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
+        and the labels stay raw, and 4,821 to 5,000, 9,187 to 9,000, 2,734 to
+        2,500, 6,051 to 6,000.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">North</th>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <th scope="row">South</th>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="rowheader">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="rowheader">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30h. Empty corner above the row labels <code>corner-cell</code></h3>
+    <p>The same table with an empty data cell at the left of the header
+      row.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
+        and the labels stay raw, and 4,821 to 5,000, 9,187 to 9,000, 2,734 to
+        2,500, 6,051 to 6,000.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <td></td>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">North</th>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <th scope="row">South</th>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="cell"></span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="rowheader">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="rowheader">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30i. Several body sections <code>body-groups</code></h3>
+    <p>A header row above two body rows, each body row in a body section or
+      row group of its own.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
+        stays raw, and 4,821 to 5,000, 9,187 to 9,000, 2,734 to 2,500, 6,051
+        to 6,000.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+          </tbody>
+          <tbody>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30j. Total row in a footer <code>footer-row</code></h3>
+    <p>A header row, two body rows, and a total row: a footer section on the
+      native table, a row after the row group on the grid.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
+        stays raw, 4,821 to 5,000, 9,187 to 9,000, 2,734 to 2,500, 6,051 to
+        6,000, and the totals round 17,555 to 20,000, 15,238 to 15,000.</li>
+      <li><b>Turn on the first-row and first-column switches on both tables,
+        and pull the sidebar's two offsets apart on both: largest numbers at
+        -1, all other numbers at 0.</b> Expect on both tables: 4,821 to 4,800,
+        9,187 to 9,200, 2,734 to 2,700, 6,051 to 6,100, 17,555 to 18,000,
+        15,238 to 15,000. A failure shows a body value at the nearest thousand
+        on one table.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td>17,555</td>
+              <td>15,238</td>
+            </tr>
+          </tfoot>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+            </div>
+          </div>
+          <div class="g-row" role="row">
+            <span role="cell">Total</span>
+            <span role="cell">17,555</span>
+            <span role="cell">15,238</span>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30k. Total row in a footer group <code>footer-group</code></h3>
+    <p>The same rows; the grid total row sits in a row group of its own.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
+        stays raw, 4,821 to 5,000, 9,187 to 9,000, 2,734 to 2,500, 6,051 to
+        6,000, and the totals round 17,555 to 20,000, 15,238 to 15,000.</li>
+      <li><b>Turn on the first-row and first-column switches on both tables,
+        and pull the sidebar's two offsets apart on both: largest numbers at
+        -1, all other numbers at 0.</b> Expect: both tables show the same
+        values. The result waits on <a
+        href="https://github.com/ArieFisher/dynamic-rounding/issues/526">#526</a>.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td>17,555</td>
+              <td>15,238</td>
+            </tr>
+          </tfoot>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+            </div>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">Total</span>
+              <span role="cell">17,555</span>
+              <span role="cell">15,238</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30l. Cell merged across columns <code>merged-across</code></h3>
+    <p>A header row and three body rows; the last row’s label covers two
+      columns.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
+        and "Both regions" stay raw, 4,821 to 5,000, 9,187 to 9,000, 2,734 to
+        2,500, 6,051 to 6,000, and 15,238 rounds to 15,000.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+            <tr>
+              <td colspan="2">Both regions</td>
+              <td>15,238</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell" aria-colspan="2" style="grid-column: span 2">Both regions</span>
+              <span role="cell">15,238</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30m. Cell merged down rows <code>merged-down</code></h3>
+    <p>A header row and three body rows; the &quot;North&quot; label covers
+      two rows.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
+        and the labels stay raw, 4,821 to 5,000, 9,187 to 9,000, 2,734 to
+        2,500, 6,051 to 6,000, 3,906 to 4,000, and 1,478 to 1,500. A failure
+        leaves 2,734 raw as a first-column cell.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td rowspan="2">North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>3,906</td>
+              <td>1,478</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell" aria-rowspan="2">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell" style="grid-column-start: 2">2,734</span>
+              <span role="cell" style="grid-column-start: 3">6,051</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">3,906</span>
+              <span role="cell">1,478</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30n. Caption <code>caption</code></h3>
+    <p>A header row and two body rows under a caption that holds a count.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the caption
+        and the header row stay as written, and 4,821 to 5,000, 9,187 to
+        9,000, 2,734 to 2,500, 6,051 to 6,000.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <caption>Units sold, 2023 to 2024: 45,678 in all</caption>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div role="caption">Units sold, 2023 to 2024: 45,678 in all</div>
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30o. Table inside a cell <code>nested-table</code></h3>
+    <p>A header row and two body rows; the last cell of the North row holds a
+      table of two quarters.</p>
+    <ol class="expect">
+      <li><b>At load.</b> Expect: a pillbox on the outer table and on the
+        inner table, on both kinds. The grid result waits on <a
+        href="https://github.com/ArieFisher/dynamic-rounding/issues/527">#527</a>.</li>
+      <li><b>Turn on every pillbox.</b> Expect on both kinds: the outer table
+        rounds 4,821 to 5,000, 9,187 to 9,000, 2,734 to 2,500, 6,051 to 6,000,
+        and the inner table rounds 3,587 to 3,500.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+              <th scope="col">By quarter</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+              <td>
+                <table>
+                  <tbody>
+                    <tr>
+                      <td>Q1</td>
+                      <td>1,234</td>
+                    </tr>
+                    <tr>
+                      <td>Q2</td>
+                      <td>3,587</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+            <span role="columnheader">By quarter</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+              <span role="cell">
+                <div class="aria-grid" role="table" aria-label="Units by quarter">
+                  <div role="rowgroup">
+                    <div class="g-row" role="row">
+                      <span role="cell">Q1</span>
+                      <span role="cell">1,234</span>
+                    </div>
+                    <div class="g-row" role="row">
+                      <span role="cell">Q2</span>
+                      <span role="cell">3,587</span>
+                    </div>
+                  </div>
+                </div>
+              </span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+              <span role="cell"></span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30p. Hidden row <code>hidden-row</code></h3>
+    <p>A header row, two body rows, and a hidden third row holding 17,555 and
+      15,238.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: the hidden row
+        stays hidden, and 4,821 to 5,000, 9,187 to 9,000, 2,734 to 2,500,
+        6,051 to 6,000.</li>
+      <li><b>Turn on the first-row and first-column switches on both tables,
+        and pull the sidebar's two offsets apart on both: largest numbers at
+        -1, all other numbers at 0.</b> Expect on both tables: 4,821 to 5,000,
+        9,187 to 9,000, 2,734 to 3,000, 6,051 to 6,000. A failure shows any of
+        these at the nearest hundred on one table.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td>6,051</td>
+            </tr>
+            <tr hidden>
+              <td>West</td>
+              <td>17,555</td>
+              <td>15,238</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell">6,051</span>
+            </div>
+            <div class="g-row" role="row" hidden>
+              <span role="cell">West</span>
+              <span role="cell">17,555</span>
+              <span role="cell">15,238</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30q. Hidden cell <code>hidden-cell</code></h3>
+    <p>A header row and two body rows; the last cell of the South row, 17,555,
+      is hidden.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: 4,821 to
+        5,000, 9,187 to 9,000, 2,734 to 2,500.</li>
+      <li><b>Turn on the first-row and first-column switches on both tables,
+        and pull the sidebar's two offsets apart on both: largest numbers at
+        -1, all other numbers at 0.</b> Expect on both tables: 4,821 to 5,000,
+        9,187 to 9,000, 2,734 to 3,000. A failure shows any of these at the
+        nearest hundred on one table.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td>2,734</td>
+              <td hidden>17,555</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell">2,734</span>
+              <span role="cell" hidden>17,555</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
+    <h3>30r. Hidden text inside a visible cell <code>hidden-fragment</code></h3>
+    <p>A header row and two body rows; the South row’s 2,734 carries a hidden
+      sort key, &quot;000000002734&quot;, ahead of it.</p>
+    <ol class="expect">
+      <li><b>Turn on both pillboxes.</b> Expect on both tables: 4,821 to
+        5,000, 9,187 to 9,000, 2,734 to 2,500, 6,051 to 6,000. The result
+        waits on <a
+        href="https://github.com/ArieFisher/dynamic-rounding/issues/525">#525</a>.</li>
+    </ol>
+    <div class="pair">
+      <figure>
+        <figcaption>Native table</figcaption>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Region</th>
+              <th scope="col">2023</th>
+              <th scope="col">2024</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>North</td>
+              <td>4,821</td>
+              <td>9,187</td>
+            </tr>
+            <tr>
+              <td>South</td>
+              <td><span hidden>000000002734</span>2,734</td>
+              <td>6,051</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+      <figure>
+        <figcaption>Grid</figcaption>
+        <div class="aria-grid" role="table" aria-label="Units by region">
+          <div class="g-row" role="row">
+            <span role="columnheader">Region</span>
+            <span role="columnheader">2023</span>
+            <span role="columnheader">2024</span>
+          </div>
+          <div role="rowgroup">
+            <div class="g-row" role="row">
+              <span role="cell">North</span>
+              <span role="cell">4,821</span>
+              <span role="cell">9,187</span>
+            </div>
+            <div class="g-row" role="row">
+              <span role="cell">South</span>
+              <span role="cell"><span hidden>000000002734</span>2,734</span>
+              <span role="cell">6,051</span>
+            </div>
+          </div>
+        </div>
+      </figure>
+    </div>
+
   </section>
 
 </body>
