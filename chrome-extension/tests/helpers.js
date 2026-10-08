@@ -2772,7 +2772,18 @@ function rwEl(tagName, attrs, children) {
     getBoundingClientRect() { return { top: 10, left: 10, right: 410, bottom: 210, width: 400, height: 200 }; },
   };
   if (el.tagName === 'TABLE') {
-    Object.defineProperty(el, 'rows', { get() { return dgDescendantsMatching(el, 'tr'); } });
+    // The table's own rows, as the browser orders them: the head section's
+    // first, the footer section's last. A table nested in a cell keeps its
+    // rows to itself.
+    Object.defineProperty(el, 'rows', {
+      get() {
+        const rowsOf = (section) => section.children.filter((child) => child.tagName === 'TR');
+        const own = (tag) => el.children.filter((child) => child.tagName === tag).flatMap(rowsOf);
+        const middle = el.children.flatMap((child) => (child.tagName === 'TR' ? [child]
+          : child.tagName === 'TBODY' ? rowsOf(child) : []));
+        return own('THEAD').concat(middle, own('TFOOT'));
+      },
+    });
   }
   if (el.tagName === 'TR') {
     Object.defineProperty(el, 'cells', {
@@ -2803,10 +2814,11 @@ function rwPieces(spec) {
  * draws its rows inside one row group and any other section draws them in
  * the grid itself. A row is a list of cell specs, or { cells, hidden } for a
  * row the page hides. A cell spec is a pieces spec (see rwPieces), or
- * { pieces, header, colSpan, rowSpan, hidden }: header 'col' draws a <th> or
- * the column-header role, 'row' a <th scope="row"> or the row-header role;
- * the spans draw the merge attributes of each kind; hidden draws a hidden
- * cell.
+ * { pieces, header, colSpan, rowSpan, hidden, nested }: header 'col' draws a
+ * <th> or the column-header role, 'row' a <th scope="row"> or the row-header
+ * role; the spans draw the merge attributes of each kind; hidden draws a
+ * hidden cell; nested, { sections, opts }, draws a table of the same kind
+ * inside the cell, after its pieces.
  *
  * @param {'native'|'grid'} kind
  * @param {Array<{part: string, rows: Array, grouped?: boolean}>} sections
@@ -2834,7 +2846,8 @@ function rwDrawTable(kind, sections, opts) {
     }
     if (cell.hidden) attrs.hidden = '';
     const tag = isNative ? (cell.header ? 'th' : 'td') : 'div';
-    const el = rwEl(tag, attrs, rwPieces(cell.pieces));
+    const nested = cell.nested ? [rwDrawTable(kind, cell.nested.sections, cell.nested.opts).table] : [];
+    const el = rwEl(tag, attrs, rwPieces(cell.pieces).concat(nested));
     // A native cell answers its spans as properties, the way the browser
     // reflects the attributes.
     if (isNative && cell.colSpan) el.colSpan = cell.colSpan;

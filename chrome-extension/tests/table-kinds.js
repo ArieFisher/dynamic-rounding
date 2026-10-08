@@ -142,6 +142,17 @@ const TK_PAIRS = {
       { part: 'body', rows: [TK_BODY[0], ['South', '2,734', { pieces: '17,555', hidden: true }]], grouped: true },
     ],
   },
+  'nested-table': {
+    sections: [
+      { part: 'head', rows: [TK_HEADER.concat([{ pieces: 'By quarter', header: 'col' }])] },
+      { part: 'body', rows: [
+        ['North', '4,821', '9,187', { pieces: [], nested: {
+          sections: [{ part: 'body', rows: [['Q1', '1,234'], ['Q2', '3,587']], grouped: true }],
+        } }],
+        ['South', '2,734', '6,051', ''],
+      ], grouped: true },
+    ],
+  },
   'hidden-fragment': {
     sections: [
       { part: 'head', rows: [TK_HEADER] },
@@ -167,54 +178,57 @@ function tkCellTexts(table) {
   return cells;
 }
 
-// One kind's reading of one pair under one settings object: whether
-// detection finds a data table, and each cell's text before and after the
-// simplification.
+// One kind's reading of one pair under one settings object: each data table
+// detection finds, in the order it finds them, with each cell's text before
+// and after that table alone is simplified. Each table is simplified on a
+// fresh drawing, so a table nested in another reads the same whichever one
+// the user turns on.
 function tkRead(kind, pair, settings) {
-  let reading = null;
-  withRewritePage(() => {
-    const { table } = rwDrawTable(kind, pair.sections, pair.opts);
-    const root = rwEl('div', {}, [table]);
-    const handle = findTables(root).map((found) => found.handle).find((el) => isDataTable(el)) || null;
-    if (!handle) { reading = { found: false }; return; }
-    const before = tkCellTexts(handle);
-    try {
-      roundTableUnder(handle, settings);
-      const after = tkCellTexts(handle);
-      reading = {
-        found: true,
-        cells: after.map((cell, i) => ({
-          at: cell.at, text: cell.text, changed: !before[i] || before[i].text !== cell.text,
-        })),
-      };
-    } finally {
-      resetTable(handle);
-      forgetRegisteredTable(handle);
-    }
-  });
-  return reading;
+  const foundIn = (table) => findTables(rwEl('div', {}, [table]))
+    .map((found) => found.handle).filter((el) => isDataTable(el));
+  const count = foundIn(rwDrawTable(kind, pair.sections, pair.opts).table).length;
+  const tables = [];
+  for (let i = 0; i < count; i++) {
+    withRewritePage(() => {
+      const handle = foundIn(rwDrawTable(kind, pair.sections, pair.opts).table)[i];
+      const before = tkCellTexts(handle);
+      try {
+        roundTableUnder(handle, settings);
+        tables.push(tkCellTexts(handle).map((cell, c) => ({
+          at: cell.at, text: cell.text, changed: !before[c] || before[c].text !== cell.text,
+        })));
+      } finally {
+        resetTable(handle);
+        forgetRegisteredTable(handle);
+      }
+    });
+  }
+  return { found: count > 0, tables };
 }
 
 // The differences between the two kinds' readings, one line each. An empty
 // list means the pair gives the same result.
 function tkCompare(native, grid) {
-  if (native.found !== grid.found) {
-    return [`native ${native.found ? 'found' : 'missed'}, grid ${grid.found ? 'found' : 'missed'}`];
+  if (native.tables.length !== grid.tables.length) {
+    return [`native finds ${native.tables.length} data table(s), grid finds ${grid.tables.length}`];
   }
-  if (!native.found) return [];
   const differences = [];
-  const gridAt = new Map(grid.cells.map((cell) => [cell.at, cell]));
-  const nativeAt = new Map(native.cells.map((cell) => [cell.at, cell]));
-  for (const cell of native.cells) {
-    const other = gridAt.get(cell.at);
-    if (!other) differences.push(`${cell.at}: grid has no cell`);
-    else if (cell.changed !== other.changed || cell.text !== other.text) {
-      differences.push(`${cell.at}: native "${cell.text}"${cell.changed ? ' (changed)' : ''}, grid "${other.text}"${other.changed ? ' (changed)' : ''}`);
+  native.tables.forEach((nativeCells, t) => {
+    const where = native.tables.length > 1 ? `table ${t} ` : '';
+    const gridCells = grid.tables[t];
+    const gridAt = new Map(gridCells.map((cell) => [cell.at, cell]));
+    const nativeAt = new Map(nativeCells.map((cell) => [cell.at, cell]));
+    for (const cell of nativeCells) {
+      const other = gridAt.get(cell.at);
+      if (!other) differences.push(`${where}${cell.at}: grid has no cell`);
+      else if (cell.changed !== other.changed || cell.text !== other.text) {
+        differences.push(`${where}${cell.at}: native "${cell.text}"${cell.changed ? ' (changed)' : ''}, grid "${other.text}"${other.changed ? ' (changed)' : ''}`);
+      }
     }
-  }
-  for (const cell of grid.cells) {
-    if (!nativeAt.has(cell.at)) differences.push(`${cell.at}: native has no cell`);
-  }
+    for (const cell of gridCells) {
+      if (!nativeAt.has(cell.at)) differences.push(`${where}${cell.at}: native has no cell`);
+    }
+  });
   return differences;
 }
 

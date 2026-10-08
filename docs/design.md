@@ -314,6 +314,7 @@ A capture that shows a table feature this list lacks adds a row.
 | `merged-across` | Cell merged across columns | `colspan` | `aria-colspan` | same | |
 | `merged-down` | Cell merged down rows | `rowspan` | `aria-rowspan` | same | |
 | `caption` | Caption | `<caption>` | `caption` role inside the grid | same | |
+| `nested-table` | Table inside a cell | a `<table>` in a `<td>` | a grid in a `cell` | different | #527 |
 | `hidden-row` | Hidden row | `<tr hidden>` | `row` with `hidden` | same | |
 | `hidden-cell` | Hidden cell | `<td hidden>` | `cell` with `hidden` | same | |
 | `hidden-fragment` | Hidden text inside a visible cell, such as a sort key | a hidden `<span>` in a `<td>` | a hidden `<span>` in a `cell` | different | #525 |
