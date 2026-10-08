@@ -351,7 +351,7 @@ function renderBoundTable(state, lockedStatusText) {
     renderCapTable(table, 'originals') +
     // The state records each cell's column but not how far a merge reaches,
     // so both renderings and the JSON place every cell in its own slot and
-    // leave the rest of a merge blank (#309's named limit).
+    // leave the rest of a merge blank.
     renderNote('Cell spans are not recorded: a merged cell renders in the ' +
       'column it starts at, and the columns it covers render blank, here ' +
       'and in the state below.');
@@ -412,7 +412,7 @@ function renderDetectionSettingsRows(settings) {
   }).join('');
 }
 
-// The detection settings in force at capture time (D8): every key of
+// The detection settings in force at capture time: every key of
 // state.detectionSettings with its value, so a looks-wrong capture shows
 // the values detection ran under. A failed state pull leaves
 // detectionSettings null; the section still renders, with one row holding

@@ -64,36 +64,15 @@ const DR_STORE = (function () {
 
   // --- Table registry ---
   //
-  // Before this sprint, "which tables/grids has the extension found" lived
-  // in three places at once: a WeakMap and a Set in ui-toggle.js
-  // (tableToggles, trackedTables), and the dr-ext-grid marker class read
-  // back with classList.contains/closest wherever a caller needed to know
-  // "have I already handled this element" (ui-toggle.js, content.js,
-  // lib/dr-table/detect.js's findTargetTable). Per-table rounding state
-  // (the original values a cell had before rounding, the simplified/
-  // original flag, the last-used round options, and — for virtualized grids
-  // — the frozen magnitude basis) lived on page attributes
-  // (dataset.originalValue/originalHtml/drOriginal/drSupRanges/
-  // drLinkFilteredIdx/drShowingOriginal) and in two more file-level WeakMaps
-  // in content.js (tableOptions, plus the grid observer/timer maps). This
-  // registry is the single place all of that now lives.
-  //
-  // Shape: WeakMap<table, entry>. A plain WeakMap, not a Map, is the right
-  // primitive for the entries themselves — a table removed from the page
-  // without an explicit unregisterTable() call (a bug, or a host page that
-  // detaches a node some other way) still lets its entry go instead of
-  // leaking for the life of the tab. WeakMap cannot be enumerated, and
-  // content.js's removal observer needs enumeration — it walks a removed
-  // subtree looking for tables it was tracking. (ui-toggle.js's own
-  // scroll/resize repositioning does NOT read this Set; it iterates its own
-  // trackedTables Set instead — see ui-toggle.js.) Rather than a
-  // WeakRef-based companion (which needs its own periodic sweep to reclaim
-  // dead refs, and this codebase has no such sweep loop anywhere), the
-  // enumerable companion here is a plain Set kept in exact lockstep with the
-  // WeakMap by registerTable/unregisterTable — the same two call sites that
-  // already tear down this table's other per-table resources (the re-apply
-  // observer and its timer, tableResizeObservers), so no new leak surface is
-  // introduced beyond what those call sites already had to get right.
+  // Shape: WeakMap<table, entry>. A table removed from the page without an
+  // unregisterTable() call (a host page that detaches a node some other way)
+  // still lets its entry go instead of leaking for the life of the tab. A
+  // WeakMap cannot be enumerated, and content.js's removal observer walks a
+  // removed subtree for registered tables, so a plain Set holds the same
+  // tables. registerTable and unregisterTable write both, at the call sites
+  // that tear down the table's other per-table resources (the re-apply
+  // observer and its timer, tableResizeObservers). ui-toggle.js's scroll and
+  // resize repositioning iterates its own trackedTables Set, not this one.
   const tableRegistry = new WeakMap();
   const registeredTables = new Set();
 
@@ -109,18 +88,14 @@ const DR_STORE = (function () {
         // extension's last write (see applyPatches in
         // lib/dr-table/detect.js). The cell objects' reads, the pass's cell
         // sort, and the one piece restore (releaseCell in content.js) are
-        // the readers. A WeakMap, not a Map,
-        // for the same reason tableRegistry itself is one: nothing
-        // enumerates a table's originals (only .get/.set/.has/.delete by a
-        // specific cell), so there is no companion Set to keep in lockstep
-        // here, and a cell recycled out of the page by the host (grid
-        // virtualization, a framework re-render) lets its entry go instead
-        // of accumulating for the life of the table's registration.
+        // the readers. A WeakMap with no companion Set: nothing enumerates a
+        // table's originals, and a cell the host recycles out of the page
+        // (grid virtualization, a framework re-render) lets its entry go
+        // instead of accumulating for the life of the table's registration.
         originals: new WeakMap(),
-        // 'original' | 'simplified' — replaces dataset.drShowingOriginal.
-        // 'original' covers both "never rounded" and "rounded, currently
-        // showing originals"; isTableRounded (ui-toggle.js) is exactly
-        // appliedFlag === 'simplified'.
+        // The table's form: 'original' | 'simplified'. 'original' covers both
+        // "never rounded" and "rounded, currently showing originals";
+        // isTableRounded (ui-toggle.js) is exactly appliedFlag === 'simplified'.
         appliedFlag: 'original',
         // The table's settings: its on/off value and every simplification
         // option, with the shipped defaults filled in. null until the first
@@ -202,7 +177,7 @@ const DR_STORE = (function () {
   // --- Table registry API ---
   //
   // One bus publish here, from setTableSettings: the sidebar draws a table's
-  // settings. Nothing in the app subscribes to "a table was found" or "a
+  // settings. Nothing in the application subscribes to "a table was found" or "a
   // cell's original changed" as an event — the DOM itself is the view for a
   // table's contents, and the view already redraws it directly
   // (roundTable/restoreTable write the cells they change). The rest of the
@@ -226,9 +201,8 @@ const DR_STORE = (function () {
     registeredTables.delete(table);
   }
 
-  // hasTable: the one check every former dr-ext-grid class read or
-  // tableToggles.has() "have I already handled this element" check now
-  // goes through.
+  // hasTable: the one check for "has the extension already handled this
+  // element".
   function hasTable(table) {
     return tableRegistry.has(table);
   }
@@ -276,9 +250,8 @@ const DR_STORE = (function () {
     _ensureEntry(table).appliedFlag = flag;
   }
 
-  // Defaults to 'original' with no entry — a table never registered has
-  // never been rounded, same as isTableRounded's old "no .dr-ext-rounded
-  // cell found" default.
+  // Defaults to 'original' with no entry: a table never registered has never
+  // been rounded.
   function getTableAppliedFlag(table) {
     const entry = tableRegistry.get(table);
     return entry ? entry.appliedFlag : 'original';

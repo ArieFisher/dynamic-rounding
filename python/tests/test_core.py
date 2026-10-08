@@ -26,7 +26,7 @@ class TestSingleMode:
         assert round_dynamic(87654321, offset=1) == 100000000
     
     def test_offset_negative_one_point_five(self):
-        # Offset -1.5 under new sign-aware semantics with the x-floor (Feature 3):
+        # Offset -1.5 with the x-floor:
         # the half-step result (87_500_000) is floored by the integer-offset
         # result at trunc(-1.5) = -1, which yields 88_000_000. So the x-floor
         # raises -1.5 up to match -1.
@@ -190,7 +190,7 @@ class TestOffsetSignDirection:
         assert round_dynamic(87654321, offset=0.5) == 100000000
 
     def test_negative_half_keeps_legacy_behavior(self):
-        # -0.5 preserves the default behavior used historically.
+        # -0.5 is the default offset.
         assert round_dynamic(87654321, offset=-0.5) == 90000000
 
     def test_positive_and_negative_half_differ(self):
@@ -246,8 +246,8 @@ class TestTrailingZeros:
 
 
 # ---------------------------------------------------------------------------
-# Sprint half-step-floor-python: Features 1 (sign-aware half-step),
-# 2 (value-OoM floor), and 3 (X_FLOOR_THRESHOLD-gated x-floor).
+# Sign-aware half-step, value-OoM floor, and the X_FLOOR_THRESHOLD-gated
+# x-floor.
 # ---------------------------------------------------------------------------
 
 
@@ -339,7 +339,7 @@ class TestQuarterStep:
         (17054321, -0.25,  17500000),
         (87054321,  1.25, 100000000),   # x-floor at rd(87M, 1) = 100M
         (87054321, -1.25,  87000000),   # step 250K; x-floor at rd(87M, -1) = 87M
-        # Previously-dropped small-value quarter-step, recomputed under formula B:
+        # Small-value quarter-step:
         # OoM=0, target_mag=1, f=0.25, step=2.5; round(1.13/2.5)=0 -> floored to 10^0 = 1.
         (1.13, 0.25, 1),
     ])

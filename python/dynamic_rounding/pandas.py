@@ -24,13 +24,13 @@ from . import _round_with_offset, _validate_offset, _preserve_type, DEFAULT_OFFS
 # extension's lib/dr-number/core.js, the source of truth for this behavior.
 # Format marks dropped before a text reads as a number: currency signs,
 # whitespace, and percent signs. A comma stays, so GROUP_SHAPE_REGEX can
-# judge where it stands.
+# test where it stands.
 CLEAN_REGEX = re.compile(r'[$€£¥\s%]')
 PARENS_REGEX = re.compile(r'^\((.+)\)$')
 # The group shape in US style: a first group of one to three digits, then
 # comma groups of exactly three. A comma counts only in this shape and only
 # before the decimal dot, so "13,63" and "1.234,56" are not numbers. A run
-# with no comma goes to float() as before. [0-9] rather than \d, because \d
+# with no comma goes to float(). [0-9] rather than \d, because \d
 # matches non-ASCII digits in Python.
 GROUP_SHAPE_REGEX = re.compile(r'^[+-]?[0-9]{1,3}(?:,[0-9]{3})+$')
 # Unicode dash/minus variants normalized to an ASCII "-" before parsing, so a
@@ -89,7 +89,7 @@ def _parse_number(value) -> Optional[float]:
         # float() normalizes non-ASCII digits (e.g. fullwidth "５０") to their
         # numeric value, but JS's Number() does not. Reject non-ASCII strings
         # here so this parser passes them through unchanged, matching the
-        # chrome extension and js/round_dynamic.js (the source of truth).
+        # chrome extension (the source of truth) and js/round_dynamic.js.
         if not cleaned.isascii():
             return None
         if not _is_number_shape(cleaned):

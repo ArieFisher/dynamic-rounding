@@ -141,7 +141,7 @@ policy_array() {
 
 echo 'check-files.sh self-test'
 
-# A stray at the repo root is rejected on path. This is the species that
+# A stray at the repository root is rejected on path. This is the species that
 # already reached main once.
 repo=$(scratch_repo)
 printf 'notes\n' > "$repo/security-audit.md"

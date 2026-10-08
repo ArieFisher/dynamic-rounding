@@ -214,11 +214,11 @@ def _round_with_offset(value: float, offset: float) -> float:
         step = f * (10 ** target_mag)
 
     raw = round(absval / step + EPSILON) * step
-    floor_oom = 10 ** current_mag  # Feature 2: value-OoM floor
+    floor_oom = 10 ** current_mag  # value-OoM floor
 
     result = max(raw, floor_oom)
 
-    # Feature 3: x-floor for fractional offsets with large integer part
+    # x-floor for fractional offsets with a large integer part
     if not float(offset).is_integer():
         x_int = math.trunc(offset)
         if abs(x_int) >= X_FLOOR_THRESHOLD:

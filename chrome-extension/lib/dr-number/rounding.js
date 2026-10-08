@@ -102,8 +102,8 @@ function formatStep(step) {
 }
 
 function trimNum(n) {
-  // Up to 3 significant digits, but avoid scientific notation for the values
-  // formatStep actually produces (steps are powers of 10 or half-decades).
+  // Up to 3 decimal places, but avoid scientific notation for the values
+  // formatStep produces (steps are 1, 2.5, or 5 times a power of 10).
   const rounded = Math.round(n * 1000) / 1000;
   let s = String(rounded);
   if (s.indexOf("e") !== -1) {

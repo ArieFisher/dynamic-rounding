@@ -165,7 +165,7 @@ const POSTAL_CODE_PATTERN = [
   '\\d{5}-\\d{4}',
 ].join('|');
 
-// The one list of identifier shapes. Each entry names the shape and carries
+// The one list of identifier shapes. Each entry holds the shape's name and
 // its whole-cell test — a pattern anchored to the whole cell, or a function
 // for a shape with a rule beyond its pattern — and its span pattern for text
 // with words, or null when the shape counts only as a whole cell.

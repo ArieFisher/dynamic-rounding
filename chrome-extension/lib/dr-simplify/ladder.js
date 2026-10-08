@@ -196,7 +196,7 @@ function classifyCell(input, options) {
   // A bracketed number ("(1,234)", "$(1,234)") is one number whose minus sign
   // is written as the brackets around it. Its digits alone change, which is
   // the extracted write, so the brackets stay where the page put them — and a
-  // page that gives a bracket its own text piece no longer holds the cell
+  // page that gives a bracket its own text piece does not hold the cell
   // back, because the placement step then measures the digits alone. It
   // rounds whatever the words setting holds, as a pure cell does. A cell with
   // a <sup> takes the footnote path below instead, so its exponent stays

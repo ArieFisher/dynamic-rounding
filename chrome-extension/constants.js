@@ -28,9 +28,9 @@ const DR_DEFAULTS = {
   simplifyTimes: false,
   dateGranularity: 'year',
   timeGranularity: 'hour',
-  // Concrete numeric defaults (Variant F UI always sends concrete numbers, never
-  // null/blank). num_top is no longer surfaced in the UI but stays here as the
-  // contract with content.js / the right-click toggle.
+  // Concrete numbers, never null or blank: the sidebar always sends numbers.
+  // numTop has no sidebar control; it stays here as the contract with
+  // content.js and the right-click toggle.
   offsetTop: -0.5,
   offsetOther: -0.5,
   numTop: 1,

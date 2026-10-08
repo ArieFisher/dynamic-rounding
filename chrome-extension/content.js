@@ -5,13 +5,9 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
-// Constants
-// CLEAN_REGEX, PARENS_REGEX, and VALIDATION_LIMIT live in core.js (loaded ahead of this file); they are used
-// here too via shared global scope.
-
-// EPSILON, X_FLOOR_THRESHOLD, roundWithOffset, and roundCellSetAware live in
-// rounding.js, loaded by manifest content_scripts ahead of this file. The
-// sidebar loads rounding.js separately via a script tag in sidebar.html.
+// roundWithOffset and roundCellSetAware live in rounding.js, loaded by
+// manifest content_scripts ahead of this file. The sidebar loads rounding.js
+// separately via a script tag in sidebar.html.
 
 // DR_DEFAULTS is loaded from constants.js (declared first in manifest content_scripts).
 // It is shared with sidebar.js so the sidebar UI's initial state and the
@@ -21,8 +17,8 @@
 // data-dr-capture on its document element, because the capture is itself a
 // page with a real table and — with file access enabled — Chrome injects
 // this content script into it. On such a page the controller stands down:
-// no contextmenu selection, no load-time scan, no observer, so no table in
-// a capture is ever registered, selected, or rounded. A capture must show
+// no right-click activation, no load-time scan, no observer, so no table in
+// a capture is ever registered, activated, or rounded. A capture must show
 // what was captured, never what this extension would do to it. Page rules
 // cannot enforce this (a page's Content-Security-Policy does not apply to
 // an extension's injected code), so the guard sits here.
@@ -30,21 +26,12 @@ const IS_CAPTURE_PAGE = !!(typeof document !== 'undefined' && document.documentE
   document.documentElement.dataset && document.documentElement.dataset.drCapture !== undefined);
 
 let lastRightClickedElement = null;
-// The active table lives in DR_STORE now, not as a file-level binding here.
-// It may hold a <table> element or a div-based grid root — any element
-// carrying class dr-ext-grid or returned by findTargetTable's .handle — so
-// every caller that once assumed HTMLTableElement must tolerate any Element.
-// A second field beside it held whether the sidebar stood open until the
-// 2026-09-14 sidebar-state-removal design retired it (#241).
-// ui-toggle.js used to assign the active
-// table directly into this file's `let lastRightClickedTable`; it now
-// publishes an intent instead (see the DR_BUS.subscribe call below), and
-// every read and write in this file goes through DR_STORE's getters and
-// setters.
+// The active table lives in DR_STORE. It may hold a <table> element or a
+// div-based grid root — any element carrying class dr-ext-grid or returned by
+// findTargetTable's .handle — so every caller must accept any Element.
 
-// The controller is the sole subscriber to intent topics. ui-toggle.js
-// publishes 'intent:selectTable' instead of writing this file's variables
-// directly; this is where that intent turns into a model change.
+// The controller is the sole subscriber to intent topics. This is where the
+// activate intent turns into a model change.
 DR_BUS.subscribe('intent:selectTable', ({ table }) => {
   DR_STORE.setSelectedTable(table);
 });
@@ -66,7 +53,7 @@ function writeTableSettings(table, patch, source) {
 // extension error: it lands in the model's error state, whose state change
 // the toast view (ui-toast.js) draws and the capture carries. Debug and info
 // rows stay out. The level list lives in the log module, which uses the same
-// list to decide which rows carry a stack trace. The listener lives here and
+// list to determine which rows carry a stack trace. The listener lives here and
 // not in the log module because the log module loads before the model and
 // the bus and reaches neither. A row recorded inside a bus handler publishes
 // one level deeper; the toast view never logs, so the chain ends there.
@@ -75,12 +62,12 @@ DR_LOG.onRow((row) => {
 });
 
 // The sidebar's settings apply: write the active table's settings and apply
-// them. The sidebar leaves the on/off value out while the #262 lock forces its
+// them. The sidebar leaves the on/off value out while the lock forces its
 // switch on, and the merge keeps the table's own value then. The shape check
 // runs before the write, so a change landing on a table the page refilled
 // writes the fresh registration, and a shape change that registers nothing
-// stops the write. With no table active nothing is written. The answer's only
-// job is to exist: the sidebar reads that someone answered and stays bound.
+// stops the write. With no table active nothing is written. The answer carries
+// no data: the sidebar reads that someone answered and stays bound.
 DR_BUS.respond('request:applySettings', ({ settings }) => {
   const active = DR_STORE.getSelectedTable();
   const target = active && revalidateTableShape(active).table;
@@ -88,28 +75,17 @@ DR_BUS.respond('request:applySettings', ({ settings }) => {
   return { ok: true };
 });
 
-// ui-toggle.js's click handler reports every committed toggle activation
+// ui-toggle.js's click handler publishes every committed toggle activation
 // (an immediate mouse/keyboard click, or the second tap of a touch/pen
-// two-tap) as this one intent. The menu toggle reports the same intent from
-// its MENU_CLICKED listener below. This is where that intent turns into one
-// controller action, and there is exactly one.
-//
-// Three branches used to live here (2026-09-14 spec, part one). The first
-// read the application model's copy of whether the sidebar stood open, to
-// determine whether a press on a different table meant "rebind the sidebar"
-// or "turn this table on", and it was the extension's only reader of that
-// value. The page could not keep the value true to the sidebar: the service
-// worker lost the tab number it needed to send the correction, both on an
-// idle restart and on an ordinary close, so a press on a second table
-// silently became a rebind for the rest of the page's life (#241). The
-// value, its model field, and its state-change topic are all gone, and this
-// path reads nothing about the sidebar.
+// two-tap) as this one intent. The menu toggle publishes the same intent from
+// its intent:menuClicked subscriber below. This is where that intent turns
+// into one controller action, and there is exactly one.
 //
 // The rules, in the order they matter:
 //
 //   1. The flip direction comes from the screen BEFORE any write. The
 //      settings write below applies to the table, so a direction read
-//      afterward would read our own output: a press on a raw table would
+//      afterward would read the write's own output: a press on a raw table would
 //      simplify it, then read "simplified" and write off, and the second
 //      apply would reset it — the press would land back where it started.
 //   2. Activation precedes the write, so the sidebar receives the new
@@ -124,7 +100,7 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
   // Rule 0: the shape check runs before rule 1's screen read. A press on a
   // table the page has refilled therefore reads the fresh entry's raw form
   // and turns simplification on, where a read of the discarded entry would
-  // report a simplification of values no longer on the screen. The press
+  // find a simplification of values no longer on the screen. The press
   // continues on the element the check returns, which is a different element
   // where a new result set moved the registration. A shape change that
   // registers nothing stops the press here.
@@ -136,7 +112,7 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
   const nextEnabled = !isTableRounded(target);
 
   if (!revalidated.switched && target !== DR_STORE.getSelectedTable()) {
-    // Rule 2. Reported as an intent rather than written here, so one intent
+    // Rule 2. Published as an intent rather than written here, so one intent
     // stays the single place a table becomes active even when a second
     // intent (toggle) is what triggered it. A shape change published both of
     // these from the check above, so this block covers the ordinary moved
@@ -148,10 +124,6 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
   // Rule 3: one write.
   writeTableSettings(target, { enabled: nextEnabled }, 'page');
 });
-
-// Each table's settings, the frozen grid magnitude basis, the simplified/original flag, and every cell's pre-round
-// original now live in DR_STORE's per-table registry entry (app/store.js) —
-// not a file-level WeakMap here.
 
 // Re-apply observer state, one entry per simplified table of either kind
 // (see watchTable).
@@ -181,11 +153,9 @@ const pendingRetestCounts = new WeakMap();
 const pendingRoots = new Set();
 
 
-// findTargetTable() only reports what it found; it never writes the
-// dr-ext-grid marker or builds the toggle widget. When it discovers a grid
-// root for the first time (found.isNew), this caller does both, exactly as
-// findTargetTable used to do internally before the sprint that split
-// detection into lib/dr-table.
+// findTargetTable() only returns what it found; it never writes the
+// dr-ext-grid marker or builds the pillbox. When it finds a grid root for the
+// first time (found.isNew), this caller does both.
 function markAndToggleIfNewGrid(found) {
   if (found.isNew) {
     found.handle.classList.add('dr-ext-grid');
@@ -194,10 +164,9 @@ function markAndToggleIfNewGrid(found) {
   return found.handle;
 }
 
-// Every findTargetTable() call site passes DR_STORE.hasTable as isSeen —
-// detection stays decoupled from the model (see lib/dr-table/detect.js), but
-// the controller is exactly where "have we found this" ought to answer from
-// the registry rather than the dr-ext-grid marker class.
+// Every findTargetTable() call site passes DR_STORE.hasTable as isSeen:
+// detection stays decoupled from the model (see lib/dr-table/detect.js), and
+// the controller answers "found already" from the registry.
 document.addEventListener('contextmenu', (event) => {
   if (IS_CAPTURE_PAGE) return;
   lastRightClickedElement = event.target;
@@ -211,11 +180,9 @@ document.addEventListener('contextmenu', (event) => {
   }
 }, true);
 
-// roundTable (the simplification engine) no longer sends chrome messages
-// itself — it returns { applied, rangeStatus: 'ok'|'error', error } and
-// leaves messaging to the controller. Every call site sends the same
-// RANGE_ERROR/RANGE_OK message the engine used to send, unconditionally,
-// so observable messaging is unchanged.
+// roundTable (the simplification engine) publishes nothing itself: it returns
+// { applied, rangeStatus: 'ok'|'error', error }, and its call site publishes
+// the range status through this function.
 function sendRangeStatusMessage(result) {
   if (result.rangeStatus === 'error') {
     DR_BUS.publish('state:rangeError', { error: result.error });
@@ -224,8 +191,8 @@ function sendRangeStatusMessage(result) {
   }
 }
 
-// The menu item reports the same intent a pillbox press reports, so both run
-// the one controller path above (issue #275). The right-click that opened the
+// The menu item publishes the same intent a pillbox press publishes, so both
+// run the one controller path above. The right-click that opened the
 // menu already made the table active (the contextmenu handler's
 // setSelectedTable), so the press lands as an unmoved one: it flips the
 // table's on/off value.
@@ -260,7 +227,7 @@ DR_BUS.subscribe('state:sidebarOpened', () => {
 // nothing. The settings read answers the active table's settings; with no
 // table active, the model answers the shipped defaults. It also answers
 // whether the active table is locked, so a sidebar that missed the one-time
-// report after an apply still shows the lock on its next read (#500).
+// notice after an apply still shows the lock on its next read.
 DR_BUS.respond('request:settings', () => {
   const selected = DR_STORE.getSelectedTable();
   return {
@@ -269,7 +236,7 @@ DR_BUS.respond('request:settings', () => {
   };
 });
 
-// No selected table answers nulls rather than nothing: the sidebar reads a
+// No active table answers nulls rather than nothing: the sidebar reads a
 // null samples field as the unbound state, and an unanswered request reaches
 // it as that same unbound state by a different path.
 DR_BUS.respond('request:previewSamples', () => {
@@ -298,7 +265,7 @@ function applySidebarRounding(table) {
   ensureHighlightStyleInjected();
   const unrestorableCount = resetTable(table);
   if (unrestorableCount > 0) {
-    // The refusal case: at least one cell's registry original is gone (a content-script re-injection — see
+    // The blocked case: at least one cell's registry original is gone (a content-script re-injection — see
     // restoreTable's KNOWN ACCEPTED COST doc). Running roundTable now would
     // round the already-rounded text, stamp a false "Original: ..." title
     // over the one attribute that still holds the truth, and record the
@@ -332,8 +299,8 @@ function applySidebarRounding(table) {
 // scanners route their grid pass through here — the load-time scan in the
 // pillbox view (injectTableToggles) and the added-node pass below — so the
 // pending record and its clearing sit behind the step's outcome and never in
-// a caller. The step reports; this is where a report becomes a registration
-// or a watch.
+// a caller. The step returns outcomes; this is where an outcome becomes a
+// registration or a watch.
 //
 // The step's results hold grids alone: each scanner's own pass 1 covers native
 // <table> elements, and the nomination step's two guards keep a native table
@@ -352,8 +319,8 @@ function consumeNominations(results) {
 //                registers nothing for such a nest, so no watch holds it.
 //   'registered' the nest already holds a registered element, so a second
 //                registration would put a second pillbox on one grid.
-// A registration through another path — right-click, once that sprint lands —
-// leaves the pending record standing until the next re-test returns
+// A registration through another path (a right-click) leaves the pending
+// record standing until the next re-test returns
 // 'registered', which drops it here.
 function consumeNomination({ chainRoot, selected, outcome }) {
   if (outcome === 'selected') {
@@ -435,13 +402,13 @@ function dropPendingTable(chainRoot) {
   pendingRoots.delete(chainRoot);
 }
 
-// Detect and attach toggles for tables and grids inside (or equal to) a node
-// added to the page. Pass 1 covers native <table> elements, skipping the
-// accessibility artifacts issue #128 calls out, so a dynamically rendered
+// Detect and attach pillboxes for tables and grids inside (or equal to) a node
+// added to the page. Pass 1 covers native <table> elements, skipping
+// accessibility artifacts, so a dynamically rendered
 // single-page-application grid is found and an off-screen chart fallback is
 // not. Pass 2 hands the grids to the nomination step in the detection layer
 // (nominateNests), which lists the added node itself when it carries a grid or
-// table role, walks out to the node's chain root, and reports one outcome per
+// table role, walks out to the node's chain root, and returns one outcome per
 // nest — the same step the load-time scan runs. The walk out matters here: a
 // node added inside a wrapper already in the page re-evaluates the whole nest
 // rather than registering itself, and it is the route by which a pending
@@ -450,7 +417,7 @@ function dropPendingTable(chainRoot) {
 // independently of the live MutationObserver wiring below.
 function injectTogglesForAddedNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
-  // Pass 1: native <table> elements; phantom a11y tables are skipped.
+  // Pass 1: native <table> elements; accessibility artifacts are skipped.
   if (node.tagName === 'TABLE' && !DR_STORE.hasTable(node) && !isPhantomA11yTable(node)) {
     createToggleForTable(node);
   }
@@ -483,7 +450,7 @@ function fingerprintReadOpts(table) {
 // A mismatch means the page put different content in this element — a new
 // result set, a different column set — so the entry describes data no longer
 // on the screen: its cell originals belong to cells that are gone, and its
-// form reports a simplification of values no one can see. The entry is
+// form records a simplification of values no longer on the screen. The entry is
 // discarded whole, and the nomination step re-runs from the nest's chain
 // root, because a new result set can change which element of the nest passes
 // the data test: a pinned pane that now holds two columns puts two elements
@@ -536,7 +503,7 @@ function revalidateTableShape(table, opts = {}) {
   // place leaves the extension's own simplified text on those surviving
   // cells, with its marker class on them. Discarding the entry first would
   // drop the originals behind that text: the fresh registration would read
-  // the simplified values as the cells' own, the apply would report every
+  // the simplified values as the cells' own, the apply would count every
   // one of them unrestorable, and the table would stand locked with no route
   // back. Restoring first puts raw text in every surviving cell, so the
   // fresh registration records its fingerprint over raw text and starts raw.
@@ -555,7 +522,7 @@ function revalidateTableShape(table, opts = {}) {
     if (handle.tagName !== 'TABLE') handle.classList.add('dr-ext-grid');
     createToggleForTable(handle);
     // createToggleForTable registers only what passes the data test, so the
-    // registry is what reports whether this element registered.
+    // registry records whether this element registered.
     if (!fresh && DR_STORE.hasTable(handle)) fresh = handle;
   }
 
@@ -585,7 +552,7 @@ function revalidateTableShape(table, opts = {}) {
 //
 // A discarded active table stops being active, and the sidebar re-reads: it
 // finds no active table and shows the no-table state, where it would
-// otherwise describe an entry that is gone (#506). A shape change that
+// otherwise describe an entry that is gone. A shape change that
 // registers a fresh table makes that table active right after, and the
 // sidebar's read, which lands after this handler finishes, reads it.
 function teardownTableEntry(table, reason) {
@@ -619,12 +586,9 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        // Find every table/grid this removed subtree contains by walking
-        // DR_STORE's registered tables (the enumerable companion to its
-        // WeakMap registry) instead of querying for the dr-ext-grid marker
-        // class — the registry is the single "have we found this" answer
-        // now, and it covers native tables too, so one loop replaces the
-        // old tagName check + two separate querySelectorAll passes.
+        // Find every registered table or grid this removed subtree contains
+        // by walking DR_STORE's registered tables (the enumerable companion
+        // to its WeakMap registry), which cover both table kinds.
         for (const table of DR_STORE.getRegisteredTables()) {
           const contained = table === node ||
             (typeof node.contains === 'function' && node.contains(table));
@@ -645,7 +609,7 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
     }
   });
 
-  // Start injecting toggles
+  // Start the load-time scan
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       injectTableToggles();
@@ -661,15 +625,14 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
   }
 }
 
-// --- End per-table toggle switch infrastructure ---
+// --- End per-table pillbox infrastructure ---
 
 // registryOriginalsPort adapts DR_STORE's per-table registry entry to the
 // OriginalsPort interface both adapters expect (see lib/dr-table/detect.js)
-// — the one place a cell's record leaves the page (grid records used to be
-// dataset.drOriginal) and enters the application model. Every makeAdapter()
-// call below that reads or writes a simplified cell passes this, so every
-// read and every write goes through the same store. It carries the cell's
-// whole record (see applyPatches in detect.js).
+// — the one place a cell's record leaves the page and enters the application
+// model. Every makeAdapter() call below that reads or writes a simplified
+// cell passes this, so every read and every write goes through the registry.
+// It carries the cell's whole record (see applyPatches in detect.js).
 function registryOriginalsPort(table) {
   return {
     has(cellEl) { return DR_STORE.hasTableOriginal(table, cellEl); },
@@ -679,8 +642,7 @@ function registryOriginalsPort(table) {
 }
 
 // Restore a table's simplified cells to their originals, reading from
-// DR_STORE's registry instead of page attributes (dataset.originalValue/
-// originalHtml/drOriginal used to carry this). One piece restore serves
+// DR_STORE's registry. One piece restore serves
 // both table kinds: each marked cell goes through releaseCell, which puts
 // the original text back into every text piece that still shows the
 // extension's written text. A patch changes only text, never tags, so the
@@ -696,10 +658,9 @@ function registryOriginalsPort(table) {
 // restore never writes a number the page no longer shows.
 //
 // KNOWN ACCEPTED COST: registry-held originals do not survive Chrome
-// re-injecting the content script, which page attributes did (a reload of
-// the content script is a fresh DR_STORE, so re-detection just rebuilds the
-// registry from the current DOM instead of resuming from stale data — the
-// sprint judged that an acceptable trade for a single restore path).
+// re-injecting the content script. A re-injected content script starts a
+// fresh DR_STORE, so re-detection rebuilds the registry from the current
+// DOM. The cost is accepted in exchange for a single restore path.
 //
 // A cell with no registry entry (the accepted-cost case above) is left
 // completely untouched: its dr-ext-rounded marker, its title (the last
@@ -804,7 +765,7 @@ function decisionToLegacyInfo(decision) {
   return { mode: 'skip' };
 }
 
-// --- Preview-band sample extraction (consumed by sidebar via IPC) ---
+// --- Lens preview sample extraction (read by the sidebar over request:previewSamples) ---
 
 // The lens preview's sample pool: each number the table rounds in its
 // dataset, with its cell's trimmed text. The preview classifies through the
@@ -845,13 +806,13 @@ function collectNumericCells(table, options) {
   return out;
 }
 
-// Pick up to 2 large-magnitude + 3 smaller-magnitude representative samples
-// for the sidebar preview band. Bucketed by magnitude (floor(log10|num|)) so
-// the band shows the actual offset_top vs offset_other split that
-// roundCellSetAware will apply to the table.
+// Pick up to 2 top-band samples and one sample per other-band magnitude for
+// the lens preview. Bucketed by magnitude (floor(log10|num|)) so the lens
+// preview shows the offset_top and offset_other split that roundCellSetAware
+// applies to the table.
 function extractPreviewSamples(table) {
-  // The table's own settings, not shipped defaults — otherwise the preview
-  // band and the table disagree the moment the sidebar's slider or
+  // The table's own settings, not shipped defaults — otherwise the lens
+  // preview and the table disagree the moment the sidebar's slider or
   // checkboxes diverge from DR_DEFAULTS.
   const liveSettings = DR_STORE.getTableSettings(table);
   const cells = collectNumericCells(table, liveSettings);
@@ -863,7 +824,7 @@ function extractPreviewSamples(table) {
   const otherOffset = typeof liveSettings.offsetOther === 'number' ? liveSettings.offsetOther : -0.5;
 
   // Reorder a magnitude bucket so cells that visibly *change* under the band's
-  // default offset come first. Picking the raw document-order cell can land on
+  // offset come first. Picking the raw document-order cell can land on
   // an already-round value (e.g. 250,000,000 → 250,000,000), making the preview
   // row look like rounding does nothing. Array.prototype.sort is stable, so
   // cells with the same "demonstrates rounding" verdict keep document order.
@@ -1101,7 +1062,7 @@ function resolveRoundingSettings(opts) {
 // the debug row for a split value (entry.isSplit) after classification.
 //
 // A simplified cell classifies its stored original rather than the rounded
-// text now showing (issue #2), on either kind: the cell object's getText()
+// text now showing, on either kind: the cell object's getText()
 // and getPieceLayout() answer from its record. The pass and the lens
 // preview read alike. Each read below measured against that text takes the
 // record's copy:
@@ -1484,8 +1445,7 @@ function roundTable(table, options) {
   }
   const adapter = registryAdapter(table);
   const adapterRows = adapter.getRows();
-  // Clean stub path: if the adapter returns no rows (e.g. GridAdapter stub),
-  // return early without throwing.
+  // A table with no rows returns early without throwing.
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
   const kind = tableKindPass(adapter);
 
@@ -1498,7 +1458,7 @@ function roundTable(table, options) {
   // back to null, so a fresh roundTable() call (e.g. re-rounding after
   // settings change) freezes again from its own first sight rather than
   // reusing a stale value. A cell whose patches all skipped never counts
-  // toward the form (#301, #315).
+  // toward the form.
   const { landedCells, cellCount } = simplifyTableCells(table, adapterRows, opts, {
     kind,
     frozenMaxMag: null,
@@ -1513,7 +1473,6 @@ function roundTable(table, options) {
   return { applied: true, rangeStatus: 'ok' };
 }
 
-// findMaxMagnitude and toNumber (plus VALIDATION_LIMIT, CLEAN_REGEX,
-// PARENS_REGEX) live in core.js, loaded by
-// manifest content_scripts ahead of this file. The sidebar loads core.js
-// separately via a script tag in sidebar.html.
+// findMaxMagnitude lives in core.js, loaded by manifest content_scripts ahead
+// of this file. The sidebar loads core.js separately via a script tag in
+// sidebar.html.

@@ -40,7 +40,7 @@ const TOGGLE_DOT_OVERLAP_PX = 8;
 const TOGGLE_DOT_OVERHANG_PX = 2;
 const TOGGLE_COLOR_ON = '#3d85c6';
 const TOGGLE_COLOR_OFF = '#cccccc';
-// Hover text for a locked pill — see tableHasUnrestorableCells. Wording
+// Hover text for a locked pillbox — see tableHasUnrestorableCells. Wording
 // mirrors sidebar.js's APPLY_BLOCKED_STATUS_MSG.
 const LOCKED_TOGGLE_TITLE = 'This table\'s original values are no longer available. Reload the page to change it.';
 // Touch and pen: an expanded pillbox collapses on its own after this delay.
@@ -48,7 +48,7 @@ const LOCKED_TOGGLE_TITLE = 'This table\'s original values are no longer availab
 // settings.
 const PILLBOX_AUTO_COLLAPSE_MS = 3000;
 
-// --- Per-table toggle switch infrastructure ---
+// --- Per-table pillbox infrastructure ---
 
 /** WeakMap from HTMLTableElement → HTMLButtonElement (the morph button) */
 const tableToggles = new WeakMap();
@@ -59,22 +59,19 @@ const trackedTables = new Set();
 /** WeakMap from HTMLTableElement → ResizeObserver for the toggle */
 const tableResizeObservers = new WeakMap();
 
-// isTableRounded used to read two page states directly: whether any cell
-// carried the dr-ext-rounded class, and whether table.dataset.drShowingOriginal
-// was 'true' (issue #245). Both now live in DR_STORE's per-table registry
-// entry as a single appliedFlag — 'simplified' only when roundTable actually
-// changed a cell and the table isn't currently showing originals.
+// The registry entry's appliedFlag is 'simplified' only when roundTable
+// changed a cell and the table is not showing originals.
 function isTableRounded(table) {
   return DR_STORE.getTableAppliedFlag(table) === 'simplified';
 }
 
-// A locked table (issue #262) shows cells wearing dr-ext-rounded that
-// DR_STORE has no original for. Only a content-script re-injection produces
-// that pairing (see restoreTable's KNOWN ACCEPTED COST comment in
-// content.js): the class survives in the page, the registry did not. Such a
-// table is stuck showing simplified text — nothing in this instance can
-// restore it, and re-rounding would destroy the title attribute's surviving
-// originals — so every control over it renders locked. Evaluated live on
+// A locked table shows cells wearing dr-ext-rounded that DR_STORE has no
+// original for. Only a content-script re-injection produces that pairing
+// (see restoreTable's KNOWN ACCEPTED COST comment in content.js): the class
+// survives in the page, the registry did not. Such a table is unrestorable —
+// nothing in this instance can restore it, and re-rounding would destroy the
+// title attribute's surviving originals — so every control over it renders
+// locked. Evaluated live on
 // each sync: if the site re-renders the table with fresh cells, the marker
 // class disappears with the old cells and the lock lifts by itself.
 function tableHasUnrestorableCells(table) {
@@ -98,7 +95,7 @@ function syncSwitchForTable(table) {
   if (tableHasUnrestorableCells(table)) {
     // The screen shows simplified text (pressed) and no control here can
     // change that (disabled) — see tableHasUnrestorableCells. Log the
-    // transition only, not every sync of an already-locked pill.
+    // transition only, not every sync of an already-locked pillbox.
     if (!button.classList.contains('dr-ext-morph-locked')) {
       DR_LOG.warn("Dynamic Rounding: table locked; its original values are no longer available.");
     }
@@ -185,7 +182,7 @@ function ensureToggleStyleInjected() {
       }
     }
     .dr-ext-morph:focus-visible { outline: 2px solid ${TOGGLE_COLOR_ON}!important; outline-offset: 2px; }
-    /* Locked pill (issue #262): dimmed dot, no expand, no knob, explaining
+    /* Locked pillbox: dimmed dot, no expand, no knob, explaining
        cursor. These rules sit last so they win the equal-specificity race
        against the hover/expanded/focus-visible rules above. */
     .dr-ext-morph.dr-ext-morph-locked { cursor: not-allowed; }
@@ -232,9 +229,8 @@ function positionToggle(table, buttonEl) {
 let _globalTapCollapseAdded = false;
 
 function createToggleForTable(table) {
-  // For native <table> elements use isDataTable() (via NativeTableAdapter).
-  // For div-based grid roots use isDataTable() via GridAdapter now that getRows() is implemented.
-  // looksLikeGrid() is no longer used here — it remains available for findTargetTable walk-up.
+  // isDataTable() reads native tables through NativeTableAdapter and grids
+  // through GridAdapter.
   if (!isDataTable(table)) return;
   ensureToggleStyleInjected();
 
@@ -297,7 +293,7 @@ function createToggleForTable(table) {
         button.classList.add('expanded');
         scheduleAutoCollapse();
       } else {
-        // Second tap: report the toggle intent, refresh collapse timer
+        // Second tap: publish the toggle intent, refresh collapse timer
         DR_BUS.publish('intent:toggleTable', { table });
         scheduleAutoCollapse();
       }
@@ -315,10 +311,8 @@ function createToggleForTable(table) {
   // Stop mousedown propagation to avoid triggering host-page handlers
   button.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  // Store button in WeakMap and table in tracked set (view-only bookkeeping —
-  // the button element itself, and the reposition-on-scroll list). The
-  // "found" registration these two used to also stand in for now goes
-  // through DR_STORE's table registry, the one place that concept lives.
+  // View-only bookkeeping: the button element, and the reposition-on-scroll
+  // list. DR_STORE's table registry holds the "found" registration.
   tableToggles.set(table, button);
   trackedTables.add(table);
   DR_STORE.registerTable(table);
@@ -339,7 +333,7 @@ function createToggleForTable(table) {
   // Render the initial state through the same sync every later state change
   // uses. On a fresh table this keeps aria-pressed 'false' exactly as set
   // above; on a re-injected page whose table still wears rounded markers
-  // (see tableHasUnrestorableCells) the pill must arrive locked-and-selected
+  // (see tableHasUnrestorableCells) the pillbox must arrive locked and pressed
   // instead of claiming an unrounded table.
   syncSwitchForTable(table);
 
@@ -367,7 +361,7 @@ function createToggleForTable(table) {
 
 // The load-time scan. Pass 1 covers native <table> elements. Pass 2 hands the
 // grids to the nomination step in the detection layer (nominateNests), which
-// reports one outcome per nest — the same step the added-node pass in
+// returns one outcome per nest — the same step the added-node pass in
 // content.js runs, so one page and one added subtree register the same
 // element. This view holds no scan of its own.
 //
@@ -379,7 +373,7 @@ function createToggleForTable(table) {
 // two files share one scope, and this call runs at DOMContentLoaded, after
 // every content script has loaded.
 function injectTableToggles() {
-  // Pass 1: native <table> elements; phantom a11y tables are skipped.
+  // Pass 1: native <table> elements; accessibility artifacts are skipped.
   document.querySelectorAll('table').forEach(table => {
     if (isPhantomA11yTable(table)) return;
     if (!DR_STORE.hasTable(table)) {
@@ -387,8 +381,8 @@ function injectTableToggles() {
     }
   });
   // Pass 2: the nomination step. createToggleForTable re-runs the data test
-  // the step already ran; this view accepts the second read so detection keeps
-  // reporting and this view keeps registering.
+  // the step already ran; this view accepts the second read so the detection
+  // layer only nominates and this view alone registers.
   consumeNominations(nominateNests(document, { isSeen: DR_STORE.hasTable }));
 }
 

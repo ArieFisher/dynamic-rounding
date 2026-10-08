@@ -450,7 +450,7 @@
         3/9/2021                      -> 2021        -> 3/2021
         Due 3/9/2021                  -> Due 2021    -> Due 3/2021
         3/9/2021 11:59                -> 2021 11:59  -> 3/2021 11:59
-      A column carrying evidence for both readings is refused rather than guessed.
+      A column carrying evidence for both readings stays unchanged rather than guessed.
 
       Clock times round to the hour at the half-hour mark, and the original
       meridiem style, hour padding, and seconds field are all preserved:
@@ -630,7 +630,7 @@
       shows as 35.</p>
 
     <!--
-      Accounting negative   (1,234,567)  -> reads as a negative, comes back in parens
+      Accounting negative   (1,234,567)  -> reads as a negative, comes back in brackets
       Unicode minus         −8,700       -> reads as a negative; the rounded value
                                             comes back with an ASCII hyphen
       Explicit plus         +12.5%       -> the plus survives on a positive result
@@ -874,10 +874,10 @@
       be a day. That fixes the whole column as day-first:
         year:  25/04/2020 -> 2020,     03/04/2021 -> 2021,     07/08/2020 -> 2020
         month: 25/04/2020 -> 04/2020,  03/04/2021 -> 04/2021,  07/08/2020 -> 08/2020
-      Ambiguous only: no cell settles the reading, so the column is refused and
-      every cell holds.
+      Ambiguous only: no cell settles the reading, so the column stays
+      unchanged and every cell holds.
       Conflicting: 25/04/2021 says day-first, 04/25/2021 says month-first. The
-      column is refused rather than guessed.
+      column stays unchanged rather than guessed.
     -->
     <table>
       <thead>
@@ -917,7 +917,7 @@
     <!--
       The load-time scan picks up any role="grid" or role="table" element that
       passes the data test. The row group picks the row shape: the rows found
-      inside it decide the selector, and every match across the whole grid
+      inside it determine the selector, and every match across the whole grid
       counts as a row, so the header and Total rows are rows like any other.
       Grid cells have no th concept: every cell is data. The header row holds
       because it is the grid's literal first row. The Total row is an outside
@@ -1205,8 +1205,8 @@
 
     <!--
       Exercises the mutation observer: nodes added after the initial scan are
-      re-checked with the same native-table and ARIA passes, including the
-      phantom filtering.
+      re-checked with the same native-table pass and nomination step as the
+      load-time scan, including the accessibility artifact filter.
     -->
     <button type="button" id="add-table-btn">Add a table</button>
     <div id="dynamic-slot"></div>
@@ -1247,7 +1247,7 @@
 
     <h3>16a. Marked hidden for assistive technology</h3>
     <p class="expect">The table is left visible here on purpose.</p>
-    <!-- aria-hidden on the table itself, or any ancestor, is a phantom signal. -->
+    <!-- aria-hidden on the table itself, or any ancestor, marks an accessibility artifact. -->
     <table aria-hidden="true">
       <tr>
         <th>Series</th>
@@ -1294,7 +1294,7 @@
       for.</p>
     <!--
       A table sharing a positioned ancestor with a labeled SVG is read as the
-      chart's accessibility fallback and refused.
+      chart's accessibility fallback and skipped.
     -->
     <div style="position: relative; border: 1px dashed #cccccc; padding: 12px;">
       <svg aria-label="Quarterly revenue chart" width="220" height="80" role="img">
@@ -1511,7 +1511,7 @@ TSLA,75,"248.09","18,606.75"
     </ol>
 
     <!--
-      2026        -> a header merged across two columns; headers never round
+      2026        -> a header merged across two columns; the first row, so it stays raw
       Total       -> merged across the first two columns
       1,140,043   -> the total's own cell, column C
     -->

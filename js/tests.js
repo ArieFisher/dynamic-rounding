@@ -95,14 +95,14 @@ test('87654321, offset=0', ROUND_DYNAMIC(87654321, 0), 90000000);
 test('87654321, offset=1', ROUND_DYNAMIC(87654321, 1), 100000000);
 test('87654321, offset=-1', ROUND_DYNAMIC(87654321, -1), 88000000);
 test('87654321, offset=-2', ROUND_DYNAMIC(87654321, -2), 87700000);
-// +0.5 under new semantics: step = 0.5 * 10^(cm+1). For 87654321 (cm=7), step=5e7.
+// +0.5: step = 0.5 * 10^(cm+1). For 87654321 (cm=7), step=5e7.
 // raw = round(87654321/5e7)*5e7 = round(1.75)*5e7 = 2*5e7 = 1e8. floor_oom=1e7. result=1e8.
 // |trunc(0.5)|=0 < X_FLOOR_THRESHOLD=1, so x-floor is skipped.
 test('87654321, offset=0.5', ROUND_DYNAMIC(87654321, 0.5), 100000000);
-// -0.5 preserves prior behavior: step = 0.5 * 10^cm = 5e6.
+// -0.5: step = 0.5 * 10^cm = 5e6.
 // raw = round(87654321/5e6)*5e6 = 18*5e6 = 90000000. floor_oom=1e7. result=90000000.
 test('87654321, offset=-0.5', ROUND_DYNAMIC(87654321, -0.5), 90000000);
-// -1.5: step = 0.5 * 10^(cm-1) = 500000. raw=87500000. floor_oom=1e7. x-floor (x_int=-1): rd(v,-1)=87700000? cm=7, step=1e6, raw=round(87.654)*1e6=88e6. So floor_x=88M. result=max(87.5M, 88M)=88M.
+// -1.5: step = 0.5 * 10^(cm-1) = 500000. raw=87500000. floor_oom=1e7. x-floor (x_int=-1): rd(v,-1) has cm=7, step=1e6, raw=round(87.654)*1e6=88e6, so floor_x=88M. result=max(87.5M, 88M)=88M.
 test('87654321, offset=-1.5', ROUND_DYNAMIC(87654321, -1.5), 88000000);
 // -2.5: step = 0.5 * 10^(cm-2) = 50000. raw = round(87654321/50000)*50000 = 1753*50000 = 87650000. x-floor x_int=-2: rd(v,-2)=87700000 (step=1e5, round(876.54)=877, 877*1e5=87700000). result=max(87650000, 87700000)=87700000.
 test('87654321, offset=-2.5', ROUND_DYNAMIC(87654321, -2.5), 87700000);
@@ -120,7 +120,7 @@ test('0.35, offset=-1', ROUND_DYNAMIC(0.35, -1), 0.35);
 test('0.047, offset=0', ROUND_DYNAMIC(0.047, 0), 0.05);
 test('0.0083, offset=0', ROUND_DYNAMIC(0.0083, 0), 0.008);
 
-// Default offset (now -0.5)
+// Default offset (-0.5)
 test('4308910, default', ROUND_DYNAMIC(4308910), 4500000);
 test('0.35, default', ROUND_DYNAMIC(0.35), 0.35);
 test('0.047, default', ROUND_DYNAMIC(0.047), 0.045);
@@ -165,7 +165,7 @@ const gcpData = [
 // Defaults: offset_top=-0.5, offset_other=-0.5, num_top=1
 // Mag 6 gets offset=-0.5, others get offset=-0.5
 testArray('GCP defaults', ROUND_DYNAMIC(gcpData), [
-    [4500000],   // mag 6, offset=-0.5, base=500k
+    [4500000],   // mag 6, offset=-0.5, step=500k
     [4000000],   // mag 6, offset=-0.5
     [1000000],   // mag 6, offset=-0.5
     [1000000],   // mag 5, offset=-0.5
@@ -196,9 +196,9 @@ testArray('GCP offset_other fallback', ROUND_DYNAMIC(gcpData, -1), [
 ]);
 
 // offset_top=-1, offset_other=0, num_top=1
-// Mag 6 gets offset=-1 (base=100k), others get offset=0
+// Mag 6 gets offset=-1 (step=100k), others get offset=0
 testArray('GCP offset_top=-1', ROUND_DYNAMIC(gcpData, -1, 0, 1), [
-    [4400000],   // mag 6, offset=-1, base=100k
+    [4400000],   // mag 6, offset=-1, step=100k
     [3900000],
     [1000000],
     [1000000],   // mag 5, offset=0
@@ -218,14 +218,14 @@ testArray('GCP offset_other=-1', ROUND_DYNAMIC(gcpData, -0.5, -1, 1), [
     [4500000],   // mag 6, offset=-0.5
     [4000000],
     [1000000],
-    [980000],    // mag 5, offset=-1, base=10k
+    [980000],    // mag 5, offset=-1, step=10k
     [820000],
-    [84000],     // mag 4, offset=-1, base=1k
+    [84000],     // mag 4, offset=-1, step=1k
     [42000],
     [22000],
-    [1500],      // mag 3, offset=-1, base=100
+    [1500],      // mag 3, offset=-1, step=100
     [1100],
-    [67],        // mag 1, offset=-1, base=1
+    [67],        // mag 1, offset=-1, step=1
     [43]
 ]);
 
@@ -235,7 +235,7 @@ testArray('GCP num_top=2', ROUND_DYNAMIC(gcpData, -0.5, 0, 2), [
     [4500000],   // mag 6, offset=-0.5
     [4000000],
     [1000000],
-    [1000000],   // mag 5, offset=-0.5, base=50k
+    [1000000],   // mag 5, offset=-0.5, step=50k
     [800000],    // mag 5, offset=-0.5
     [80000],     // mag 4, offset=0
     [40000],
@@ -257,10 +257,10 @@ const decimalsData = [
 // Defaults: offset_top=-0.5, offset_other=-0.5, num_top=1
 // Mag -1 gets offset=-0.5, others get offset=-0.5
 testArray('Decimals defaults', ROUND_DYNAMIC(decimalsData), [
-    [0.35],      // mag -1, offset=-0.5, base=0.05
+    [0.35],      // mag -1, offset=-0.5, step=0.05
     [0.10],      // mag -1, offset=-0.5
-    [0.045],      // mag -2, offset=-0.5, base=0.005
-    [0.0085]      // mag -3, offset=-0.5, base=0.0005
+    [0.045],      // mag -2, offset=-0.5, step=0.005
+    [0.0085]      // mag -3, offset=-0.5, step=0.0005
 ]);
 
 // Mixed data with non-numeric values
@@ -344,7 +344,7 @@ test('0.00099, offset=0', ROUND_DYNAMIC(0.00099, 0), 0.001);
 test('999999999, offset=0', ROUND_DYNAMIC(999999999, 0), 1000000000);
 test('1000000001, offset=0', ROUND_DYNAMIC(1000000001, 0), 1000000000);
 
-// Sign-aware half-step: +0.5 and -0.5 are now distinct steps (Feature 1).
+// Sign-aware half-step: +0.5 and -0.5 are distinct steps.
 // +0.5 → step at next-coarser OoM; -0.5 → step at current OoM.
 test('87654321 offset=+0.5 distinct from -0.5',
     ROUND_DYNAMIC(87654321, 0.5) !== ROUND_DYNAMIC(87654321, -0.5), true);
@@ -355,7 +355,7 @@ test('87654321 offset=+0.5 > offset=-0.5',
 test('-999, offset=0', ROUND_DYNAMIC(-999, 0), -1000);
 test('-1001, offset=0', ROUND_DYNAMIC(-1001, 0), -1000);
 
-// Floating point edge case (the epsilon fix) - tests offset=0 specifically
+// Floating point edge case (EPSILON) - tests offset=0 specifically
 test('0.35 rounds to 0.4 not 0.3', ROUND_DYNAMIC(0.35, 0), 0.4);
 test('0.45 rounds to 0.5', ROUND_DYNAMIC(0.45, 0), 0.5);
 test('0.25 rounds to 0.3', ROUND_DYNAMIC(0.25, 0), 0.3);
@@ -375,7 +375,7 @@ testThrows('offset=-21 throws', () => ROUND_DYNAMIC(1000, -21), 'offset must be 
 testThrows('offset=100 throws', () => ROUND_DYNAMIC(1000, 100), 'offset must be between -20 and 20');
 testThrows('offset=-100 throws', () => ROUND_DYNAMIC(1000, -100), 'offset must be between -20 and 20');
 
-// Large offsets no longer collapse to 0 — Feature 2 floors at value's own OoM.
+// Large offsets floor at the value's own OoM instead of collapsing to 0.
 // 9999 has cm=3 → floor_oom=1000; raw rounds to 0; result = max(0, 1000) = 1000.
 test('offset=2 floors at value OoM', ROUND_DYNAMIC(9999, 2), 1000);
 // 9999, offset=2.5: half-step, target=cm+ceil(2.5)=6, step=5e5. raw=0. floor_oom=1000. x-floor: |trunc(2.5)|=2>=1, x_int=2, floor_x=rd(9999,2)=1000. result=1000.
@@ -421,15 +421,15 @@ testArray('Empty array', ROUND_DYNAMIC([]), []);
 console.log('=== Trailing Zeros (|result| < 10) ===\n');
 
 // Whole-number results between -10 and 10 must be integers (no trailing zeros).
-// Under new semantics, +0.5 steps at the NEXT-coarser OoM, and Feature 2 floors
-// at the value's own OoM, so for v in [1,10) most +0.5 / +0.25 calls land at 1.
+// +0.5 steps at the NEXT-coarser OoM, and the result floors at the value's
+// own OoM, so for v in [1,10) most +0.5 / +0.25 calls land at 1.
 test('1.13 offset=0.5 → integer 1', ROUND_DYNAMIC(1.13, 0.5) === 1, true);
 test('1.76 offset=0.5 → integer 1 (floor_oom)', ROUND_DYNAMIC(1.76, 0.5) === 1, true);
 test('1.0 offset=0.5 → integer 1', ROUND_DYNAMIC(1.0, 0.5) === 1, true);
 test('1.0 offset=0.25 → integer 1', ROUND_DYNAMIC(1.0, 0.25) === 1, true);
 test('negative -1.13 offset=0.5 → integer -1', ROUND_DYNAMIC(-1.13, 0.5) === -1, true);
 
-// -0.5 (and other negative half-steps) preserves prior trailing-zero / float behavior.
+// -0.5 (and other negative half-steps) keep a fractional result as a float.
 test('1.42 offset=-0.5 → 1.5 (float)', ROUND_DYNAMIC(1.42, -0.5), 1.5);
 test('1.32 offset=-0.5 → 1.5 (float)', ROUND_DYNAMIC(1.32, -0.5), 1.5);
 // +0.25 with the generalized fractional formula: step = 0.25 * 10^(cm+1).
@@ -476,12 +476,12 @@ testArray('2D multi-column', ROUND_DYNAMIC(multiColumn), [
 // Sort-safe with single value as "range" - not valid usage, omitting test
 
 // =============================================================================
-// HALF-STEP + FLOOR SEMANTICS (Features 1, 2, 3)
+// HALF-STEP + FLOOR SEMANTICS
 // =============================================================================
 
 console.log('=== Half-step + Floor Semantics ===\n');
 
-// 27-cell verification grid from the sprint plan:
+// 27-cell verification grid:
 // {87,054,321; 47,054,321; 17,054,321} × {+2, +1.5, +1, +0.5, 0, -0.5, -1, -1.5, -2}
 const gridCases = [
     // [value, offset, expected]
@@ -521,7 +521,6 @@ for (const [v, off, expected] of gridCases) {
 }
 
 // Monotonicity property: for sorted input, output is non-decreasing.
-// (This is the fundamental property the originating bug violated.)
 function assertMonotonic(label, values, offset) {
     const sorted = [...values].sort((a, b) => a - b);
     const rounded = sorted.map(v => ROUND_DYNAMIC(v, offset));
@@ -535,7 +534,7 @@ function assertMonotonic(label, values, offset) {
     test(`monotonic ${label} offset=${offset}`, ok, true);
 }
 
-// Originating-bug inputs from sprint plan.
+// Inputs spread across five magnitudes, from 73 to 400,000.
 const originatingValues = [73, 4591, 63538, 162583, 400000];
 assertMonotonic('originating', originatingValues, 1);
 assertMonotonic('originating', originatingValues, 0.5);
@@ -572,7 +571,7 @@ console.log('=== X_FLOOR_THRESHOLD flip ===\n');
         failures.push({ name: 'threshold patch applied', actual: 'no replacement', expected: 'patched source' });
         return;
     }
-    // Isolate via a Function so the new const doesn't collide with the outer scope.
+    // Isolate via a Function so the new const does not collide with the outer scope.
     const sandbox = new Function(patched + '; return { ROUND_DYNAMIC: ROUND_DYNAMIC, roundWithOffset: roundWithOffset };')();
     const RD = sandbox.ROUND_DYNAMIC;
 
@@ -580,14 +579,14 @@ console.log('=== X_FLOOR_THRESHOLD flip ===\n');
     test('threshold=0: rd(17054321, 0.5) → 20M', RD(17054321, 0.5), 20000000);
     // And rd(47054321, 0.5) should still be 50M (x-floor at rd(v,0)=50M matches raw).
     test('threshold=0: rd(47054321, 0.5) → 50M', RD(47054321, 0.5), 50000000);
-    // -0.5 with threshold=0 now floors at rd(v, 0): rd(87054321, -0.5) raw=85M, x-floor=90M.
+    // -0.5 with threshold=0 floors at rd(v, 0): rd(87054321, -0.5) raw=85M, x-floor=90M.
     test('threshold=0: rd(87054321, -0.5) → 90M', RD(87054321, -0.5), 90000000);
     // Sanity: default-threshold (1) behavior of rd(17054321, 0.5) is 10M (no x-floor).
     test('threshold=1 (default): rd(17054321, 0.5) → 10M', ROUND_DYNAMIC(17054321, 0.5), 10000000);
 })();
 
 // =============================================================================
-// QUARTER-STEP SEMANTICS (Feature 1 generalized)
+// QUARTER-STEP SEMANTICS
 // =============================================================================
 
 console.log('=== Quarter-step semantics (Feature 1 generalized) ===\n');
@@ -596,8 +595,8 @@ console.log('=== Quarter-step semantics (Feature 1 generalized) ===\n');
 //   target_mag = current_mag + ceil(offset)
 //   f          = |offset - trunc(offset)|
 //   step       = f * 10^target_mag
-// Then floor at floor_oom = 10^current_mag (Feature 2) and at
-// rd(value, trunc(offset)) when |trunc(offset)| >= X_FLOOR_THRESHOLD (Feature 3).
+// Then floor at floor_oom = 10^current_mag and at
+// rd(value, trunc(offset)) when |trunc(offset)| >= X_FLOOR_THRESHOLD.
 const quarterCases = [
     // [value, offset, expected]
     [87054321,  0.25,  75000000],   // step 2.5e7, round(87M/25M)=3 → 75M, floor_oom=1e7

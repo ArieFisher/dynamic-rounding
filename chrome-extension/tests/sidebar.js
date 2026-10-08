@@ -8,30 +8,26 @@
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_sourceLevel() {
-  // Click-handler rebind logic now spans content.js + ui-toggle.js (Phase 2);
-  // scan the combined content-script source. Sprint app-model-selection moved
-  // the active-table reference into DR_STORE (app/store.js) — ui-toggle.js
-  // publishes an intent instead of writing content.js's variables directly, and
-  // content.js's own writes go through DR_STORE's setters instead of a bare
-  // assignment. These assertions were updated in that sprint to check the new
-  // structure instead of the old direct-assignment one.
+  // Click-handler rebind logic spans content.js + ui-toggle.js; scan the
+  // combined content-script source. The active-table reference lives in
+  // DR_STORE (app/store.js): ui-toggle.js publishes an intent, and content.js's
+  // own writes go through DR_STORE's setters.
   const contentSrc = allContentSrc;
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const storeSrc = sourceByName('app/store.js') || '';
 
-  // Whether the sidebar is open: retired by the 2026-09-14 sidebar-state-
-  // removal design (#241). These four scans pinned the field, the two
-  // handler calls that wrote it, and the one guard that read it; each now
-  // pins its absence, in the same place, so a reintroduction anywhere in the
-  // extension fails here rather than at some later symptom.
+  // Whether the sidebar is open: no context holds this value. These four
+  // scans pin the absence of the field, the two handler calls that would
+  // write it, and the one guard that would read it, so a reintroduction
+  // anywhere in the extension fails here rather than at some later symptom.
   //
-  // Scanning for the NAMES rather than for a shape is deliberate: the defect
-  // was a page-held copy of a fact only another context could correct, and
-  // any spelling of that copy brings the defect back. The scan therefore
+  // Scanning for the NAMES rather than for a shape is deliberate: a
+  // page-held copy of a fact only another context can correct goes stale,
+  // and any spelling of that copy brings the defect back. The scan therefore
   // covers the whole extension, service worker and sidebar included, not
   // just the content script.
   const SIDEBAR_STATE_NAMES = /sidebarOpen|isSidebarOpen|setSidebarOpen|state:sidebarOpenChanged/;
-  // The bus topic for "the sidebar was opened" (#325) shares the scan's
+  // The bus topic for "the sidebar was opened" shares the scan's
   // prefix and is a different thing: an event that happened, named once, not
   // a stored answer to "is it open". Its exact spelling is struck from the
   // source before the scan, so every other name carrying the prefix — a bare
@@ -59,7 +55,7 @@
   // carries no branch for it at all.
   eq('sidebar-state removal: state:sidebarOpened still tells the sidebar to re-read',
     /state:sidebarOpened[\s\S]{0,700}state:previewSamplesChanged/.test(contentSrc), true);
-  // The topic moved onto the bus (#325), so the needle is its bus name: a
+  // The topic moved onto the bus, so the needle is its bus name: a
   // reintroduced subscription in the content script is what this catches.
   eq('sidebar-state removal: content.js registers no branch for the close message',
     /intent:closeSidebar/.test(sourceByName('content.js') || ''), false);
@@ -74,12 +70,10 @@
   eq('sidebar-state removal: the intent:toggleTable handler reads the screen for its flip direction',
     /intent:toggleTable'[\s\S]{0,1200}!isTableRounded\(target\)/.test(contentSrc), true);
 
-  // content.js: sprint toggle-split consolidated the mouse and touch click
-  // branches' controller logic (which used to each carry their own switch
-  // send) into one intent:toggleTable subscriber in content.js, so the
-  // literal now appears once, not per branch. Issue #251 renamed the switch
-  // message from RESET_SIDEBAR_TO_DEFAULTS to state:tableSwitched — the sidebar's
-  // handler pulls the model's settings instead of resetting to defaults.
+  // content.js: the mouse and touch click branches share one
+  // intent:toggleTable subscriber in content.js, so the literal appears once,
+  // not per branch. On state:tableSwitched the sidebar's handler pulls the
+  // model's settings instead of resetting to defaults.
   const switchCount = (contentSrc.match(/state:tableSwitched/g) || []).length;
   eq('rebind source: state:tableSwitched is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
     switchCount >= 1, true);
@@ -87,9 +81,8 @@
     /RESET_SIDEBAR_TO_DEFAULTS/.test(contentSrc), false);
 
   // content.js: the intent:toggleTable handler's rebind branch publishes the
-  // select-table intent instead of assigning DR_STORE's field directly —
-  // sprint toggle-split moved this call out of ui-toggle.js along with the
-  // rest of the rebind logic, but it stays a published intent rather than a
+  // select-table intent instead of assigning DR_STORE's field directly. It
+  // stays a published intent rather than a
   // direct DR_STORE.setSelectedTable() call, keeping one place ("select
   // this table") for any caller of that concern, controller included.
   eq('rebind source: intent:toggleTable publishes intent:selectTable in the rebind block instead of writing DR_STORE directly',
@@ -100,7 +93,7 @@
     false);
 
   // sidebar.js: the state:tableSwitched subscriber re-reads the model's
-  // settings (issue #251) instead of resetting the controls to the shipped
+  // settings instead of resetting the controls to the shipped
   // defaults. The block is isolated to the subscriber's own body, so the
   // negative pins below cover the whole handler and nothing beyond it.
   const switchHandlerMatch = sidebarSrc.match(
@@ -116,7 +109,7 @@
         /function liftLockAndPullSettings\(\) \{[^}]*pullSettingsAndApplyToUI\(\)/.test(sidebarSrc)), true);
 
   // sidebar.js: state:tableSwitched handler does NOT reset the controls to the
-  // shipped defaults — that reset is what desynced the panel from the model.
+  // shipped defaults — that reset is what desynced the sidebar from the model.
   eq('rebind source: sidebar.js state:tableSwitched handler does NOT call applyDefaultsToUI()',
     /applyDefaultsToUI\s*\(\)/.test(switchHandlerBlock), false);
 
@@ -310,8 +303,7 @@
 
   // -----------------------------------------------------------------
   // REGRESSION GUARD: formatOriginal must TRUNCATE, never ROUND.
-  // These assertions pin the production function against the bug where
-  // toFixed() was used (which rounds), causing e.g. 1.7999999999 -> '1.8'.
+  // A toFixed() implementation rounds, turning e.g. 1.7999999999 into '1.8'.
   // All cases below would fail under a rounding implementation.
   // -----------------------------------------------------------------
 
@@ -361,7 +353,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint sidebar-no-table-state
+// Sidebar no-table state
 // Tests for the "no table bound" state in sidebar.js.
 //
 // sidebar.js cannot be eval'd wholesale without a full browser DOM, but we
@@ -407,7 +399,7 @@
     /setTableBound\(answer\.samples\s*!==\s*null\)/.test(sidebarSrc), true);
 
   // AC2 gap check: the sidebar handles state:previewSamplesChanged by calling
-  // pullSettingsAndApplyToUI() (issue #251: every refresh re-reads the
+  // pullSettingsAndApplyToUI() (every refresh re-reads the
   // model's settings first; its chain ends in fetchPreviewSamples, which
   // calls setTableBound inside its callback). There is NO direct
   // setTableBound call in the state:previewSamplesChanged handler, and no
@@ -427,9 +419,9 @@
   // full browser environment; flagged here for reviewer awareness.
 
   // AC4 (static): the no-table state must NOT dim/disable the sidebar sections.
-  // Behaviour changed — instead of greying the whole sidebar, the main toggle is
-  // flipped off (covered by the behavioural tests below). Guard against the old
-  // dimming rules being reintroduced.
+  // Instead of greying the whole sidebar, the main switch is flipped off
+  // (covered by the behavioural tests below). Guard against dimming rules
+  // being reintroduced.
   eq('no-table AC4: sidebar.html does NOT dim #optionsSection under body.no-table',
     /body\.no-table\s+#optionsSection/.test(sidebarHtml), false);
 
@@ -578,7 +570,7 @@
         statusEl.textContent, 'Right-click a table to connect it here.');
     }
 
-    // Toggle-off behaviour: setTableBound(false) flips the main pill to off
+    // Toggle-off behaviour: setTableBound(false) flips the main switch to off
     // (rather than dimming the sidebar) and runs updateDisabledState.
     {
       const { enabledEl, setTableBound, getUpdateDisabledCalls } = makeEnv(undefined, true);
@@ -589,14 +581,14 @@
         getUpdateDisabledCalls() >= 1, true);
     }
 
-    // Bind leaves the pill alone (issue #251): the settings apply that runs
+    // Bind leaves the switch alone: the settings apply that runs
     // before the bind resolves — applySettingsToUI on a pull, or
-    // applyDefaultsToUI on the pull's fallback — is the pill's only writer
-    // for the bound state. A bind that reset the pill to the shipped default
-    // is what desynced the panel from the model.
+    // applyDefaultsToUI on the pull's fallback — is the switch's only writer
+    // for the bound state. A bind that reset the switch to the shipped default
+    // would desync the sidebar from the model.
     {
       const { enabledEl, setTableBound } = makeEnv(undefined, true);
-      setTableBound(false);      // init: no table yet → pill off
+      setTableBound(false);      // init: no table yet → switch off
       enabledEl.checked = false; // the model pull applied enabled:false
       setTableBound(true);       // table resolved → bind must not touch it
       eq('no-table toggle: setTableBound(true) leaves the pill to the pulled value on bind',
@@ -618,9 +610,9 @@
       /enabledEl\.checked\s*=\s*false/.test(setTableBoundFnBody), true);
     eq('no-table toggle: sidebar.js setTableBound calls updateDisabledState',
       /updateDisabledState\(\)/.test(setTableBoundFnBody), true);
-    // Issue #251: the bound branch must not reset the pill to the shipped
+    // The bound branch must not reset the switch to the shipped
     // default — the model (or the pull's explicit defaults fallback) is the
-    // pill's only source once a table is bound.
+    // switch's only source once a table is bound.
     eq('no-table toggle: sidebar.js setTableBound no longer references DR_DEFAULTS anywhere (issue #251)',
       /DR_DEFAULTS/.test(setTableBoundFnBody), false);
 
@@ -640,7 +632,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint dots-tick-alignment: pct() mapping and CSS vertical alignment
+// Pct() mapping and CSS vertical alignment
 // ---------------------------------------------------------------------------
 
 (function sprintDotsTickAlignment() {
@@ -659,7 +651,7 @@
     // The 9 stops in strategy-monotonic order (k=0..8), mirroring STOPS:
     const stops = [-2, -1.5, -1, -0.25, -0.5, 0, 0.25, 0.5, 1];
     const N = stops.length;
-    // pct() now closes over STOPS and snap(); supply both so the extracted body
+    // pct() closes over STOPS and snap(); supply both so the extracted body
     // runs standalone. snap() is the nearest-stop fallback for non-stop inputs.
     const snap = (v) => stops.reduce((b, s) => Math.abs(s - v) < Math.abs(b - v) ? s : b, stops[0]);
     const pctRaw = new Function('STOPS', 'snap', 'v', pctMatch[1]);
@@ -757,7 +749,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-settings (issue #240): the depth guard itself. The cycle
+// The depth guard itself. The cycle
 // above is self-limiting (a caller-side counter stops it after one bounce);
 // this one is NOT — neither handler has a stop condition, so without the
 // bus's own guard this would recurse until the real call stack overflows.
@@ -804,17 +796,12 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-settings, adversarial: wire-payload parity with the parent
-// branch's sendToActiveTab (refactor/app-model-selection, before this sprint
-// inverted the transport). The message body itself is unchanged — {action,
-// settings}, same field names, same nesting, no extra bus-envelope fields —
-// but sendToActiveTab always passed chrome.tabs.sendMessage a THIRD argument,
-// a response callback, and used it to react to delivery: clear statusEl on
-// success, setTableBound(false) on chrome.runtime.lastError (no content
-// script on the tab). adapters/messaging.js's publish() relay calls
-// chrome.tabs.sendMessage with only two arguments — no callback — so that
-// reaction is silently gone for the settings-apply path: a real Chrome would
-// also log an "Unchecked runtime.lastError" warning on every failed delivery.
+// Adversarial: wire-payload shape of the settings apply. The message body is
+// {action, settings}, same field names, same nesting, no extra bus-envelope
+// fields, and chrome.tabs.sendMessage receives a THIRD argument, a response
+// callback, which the sidebar uses to react to delivery: clear statusEl on
+// success, setTableBound(false) when nothing answers (no content script on
+// the tab).
 // This isolates DR_BUS in its own vm sandbox (messaging.js has no DOM
 // dependency) and pins the call shape directly, independent of sidebar.js's
 // heavier DOM requirements.
@@ -838,9 +825,8 @@
   vm.createContext(sandbox);
   vm.runInContext(constantsCode + '\n' + messagingCode + '\nthis.__DR_BUS = DR_BUS;', sandbox);
 
-  // The settings apply is a request (#325), so the ask is what puts it on the
-  // wire. Both verbs build the same envelope through the same tab carrier, so
-  // this still pins the shape the old sendToActiveTab sent.
+  // The settings apply is a request, so the ask is what puts it on the
+  // wire. Both verbs build the same envelope through the same tab carrier.
   sandbox.__DR_BUS.request('request:applySettings',
     { settings: { offsetTop: -2, rangeExpr: 'A1:B2' } }, () => {});
 
@@ -849,9 +835,7 @@
   if (sentCalls.length !== 1) return;
 
   const [tabId, msg, callback] = sentCalls[0];
-  // Issue #325 put the topic name itself on the wire, in the same action field
-  // the transport already used. The name changed; the field and the envelope
-  // shape did not.
+  // The topic name itself travels on the wire, in the action field.
   eq('wire payload: message action is the topic name',
     msg.action, 'request:applySettings');
   eq('wire payload: message field names are exactly {action, settings} — no extra bus-envelope fields',
@@ -859,11 +843,10 @@
   eq('wire payload: settings payload is nested exactly as sendToActiveTab sent it, unchanged',
     JSON.stringify(msg.settings), JSON.stringify({ offsetTop: -2, rangeExpr: 'A1:B2' }));
 
-  // ADVERSARIAL regression pin (see PR notes): the parent's sendToActiveTab
-  // always passed a response callback (chrome.tabs.sendMessage's 3rd
-  // argument) and used it to reflect delivery failure back into the UI
-  // (setTableBound(false) on chrome.runtime.lastError) and to clear statusEl
-  // on success. This only pins the MECHANISM — that publish() still passes a
+  // ADVERSARIAL pin: the ask passes a response callback
+  // (chrome.tabs.sendMessage's 3rd argument), which reflects delivery failure
+  // back into the UI (setTableBound(false) when nothing answers) and clears
+  // statusEl on success. This only pins the MECHANISM — that the ask passes a
   // callback — not the behavior; see appModelSettings_settingsPublish_
   // deliveryFeedback_behavioral below for the behavioral coverage.
   eq('wire payload: the ask passes a response callback to chrome.tabs.sendMessage, matching sendToActiveTab\'s delivery-failure handling (regression — see PR notes)',
@@ -871,13 +854,12 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint app-model-settings, adversarial fix (behavioral): the pin above only
-// proves publish() PASSES a callback to chrome.tabs.sendMessage — it says
-// nothing about what that callback does. This drives sidebar.js's real
-// applyNow() -> DR_BUS.publish() path end to end and checks the two
-// behaviors refactor/app-model-selection's sendToActiveTab had: a failed
-// delivery (chrome.runtime.lastError) must unbind the sidebar via
-// setTableBound(false); a successful delivery must clear #status.
+// Adversarial (behavioral): the pin above only proves the ask PASSES a
+// callback to chrome.tabs.sendMessage — it says nothing about what that
+// callback does. This drives sidebar.js's real applyNow() ->
+// DR_BUS.request() path end to end and checks two behaviors: a failed
+// delivery must unbind the sidebar via setTableBound(false); a successful
+// delivery must clear #status.
 // ---------------------------------------------------------------------------
 (function appModelSettings_settingsPublish_deliveryFeedback_behavioral() {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
@@ -1030,8 +1012,8 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #254 (sidebar side): the state:applyBlocked / state:applyOk notice lifecycle.
-// The content script refuses a sidebar apply on a table whose registry
+// Sidebar side: the state:applyBlocked / state:applyOk notice lifecycle.
+// The content script blocks a sidebar apply on a table whose registry
 // originals did not survive re-injection (see the re-injection suite's
 // scenario C) and sends state:applyBlocked; every non-refused apply sends
 // state:applyOk. This drives sidebar.js's real onMessage handler and applyNow's
@@ -1118,7 +1100,7 @@
         if (typeof cb !== 'function') return;
         if (queuedLastError) cb(undefined);
         // The settings read answers the way the page does: settings, and
-        // the lock state, unlocked once an apply has worked (#500).
+        // the lock state, unlocked once an apply has worked.
         else if (msg.action === 'request:settings') cb({ settings: {}, locked: false });
         else cb({ ok: true });
       },
@@ -1198,8 +1180,8 @@
     eq('apply-blocked notice: an unsourced stale status still clears on delivery success',
       statusEl.textContent, '');
 
-    // --- Issue #262: state:applyBlocked also locks the panel. The connected
-    // table is stuck showing simplified values, so the main toggle must
+    // --- state:applyBlocked also locks the sidebar. The bound table is
+    // unrestorable and shows simplified values, so the main switch must
     // show ON (the truth) and stop accepting input, and the settings area
     // dims via body.table-locked. state:applyOk, a table switch
     // (state:tableSwitched), and unbinding (delivery failure →
@@ -1256,9 +1238,9 @@
     eq('switch-pull: sidebar onMessage handler was captured', h.hasHandler(), true);
     if (h.evalError !== null || !h.hasHandler()) return;
 
-    // Drift the panel away from the model: the pill shows on (as the old
-    // defaults reset left it), the range expression is blank, and the
-    // previous table's apply left the panel locked.
+    // Drift the sidebar away from the model: the switch shows on (as a
+    // defaults reset would leave it), the range expression is blank, and the
+    // previous table's apply left the sidebar locked.
     h.enabledEl.checked = true;
     h.rangeExprEl.value = '';
     h.dispatch({ action: 'state:applyBlocked', count: 1 });
@@ -1301,8 +1283,8 @@
     eq('refresh-pull: sidebar onMessage handler was captured', h.hasHandler(), true);
     if (h.evalError !== null || !h.hasHandler()) return;
 
-    // Drift the pill on, then deliver the stale-view signal. The old bare
-    // preview fetch ended in setTableBound(true), which reset the pill to
+    // Drift the switch on, then deliver the stale-view signal. A bare
+    // preview fetch would end in setTableBound(true) and reset the switch to
     // the shipped default (on) — the model says off.
     h.enabledEl.checked = true;
     h.dispatch({ action: 'state:previewSamplesChanged' });
@@ -1325,8 +1307,8 @@
     eq('lock-vs-pull: sidebar onMessage handler was captured', h.hasHandler(), true);
     if (h.evalError !== null || !h.hasHandler()) return;
 
-    // Issue #262's lock forces the main toggle ON + disabled (the bound
-    // table is stuck simplified). A settings pull that resolves while the
+    // The lock forces the main switch ON + disabled (the bound table is
+    // unrestorable and shows simplified values). A settings pull that resolves while the
     // lock is displayed — a table switch's pull whose apply just re-blocked —
     // must not write the model's enabled:false over the lock's forced ON.
     // Ordering here mirrors the wire: state:applyBlocked lands, then the
@@ -1335,7 +1317,7 @@
     eq('lock-vs-pull: precondition — state:applyBlocked locked the panel',
       h.bodyClasses.has('table-locked'), true);
 
-    // The table is still locked, so the page's read answers locked (#500).
+    // The table is still locked, so the page's read answers locked.
     h.readAnswer.locked = true;
     h.dispatch({ action: 'state:previewSamplesChanged' });
     eq('lock-vs-pull: the pull leaves the locked toggle ON — the table IS simplified',
@@ -1349,8 +1331,8 @@
   }
 })();
 
-// Issue #500: the lock reaches the sidebar through the settings read, so a
-// sidebar that missed the one-time "blocked" report still shows the lock.
+// The lock reaches the sidebar through the settings read, so a sidebar that
+// missed the one-time "blocked" notice still shows the lock.
 // Case 2: the sidebar opens on a locked table, and its opening read answers
 // locked.
 (function issue500_aReadAnsweringLockedLocksTheSidebar() {
@@ -1410,14 +1392,13 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #275: the context-menu toggle must go through the same controller
-// branch a pill click uses. The right-click that opens the menu already
-// connects the table (the contextmenu handler calls setSelectedTable), so
-// with the sidebar open, "Toggle table" on that table must write the
-// table's settings and send them (the settings notice, issue #328) — the
-// #272 contract. Before the fix, intent:menuClicked simplified the table
-// directly: the page changed, the settings and the sidebar both went stale,
-// and the next reopen or switch re-imposed the stale settings. Fresh-eval fixture modeled on the
+// The context-menu toggle must go through the same controller branch a
+// pillbox press uses. The right-click that opens the menu already activates
+// the table (the contextmenu handler calls setSelectedTable), so with the
+// sidebar open, "Toggle table" on that table must write the table's settings
+// and send them (the settings notice). A menu path that simplified the table
+// directly would leave the settings and the sidebar stale, and the next
+// reopen or switch would re-impose the stale settings. Fresh-eval fixture modeled on the
 // double-invocation test above; same minimal grid, real captured handlers.
 // ---------------------------------------------------------------------------
 (function issue275_menuToggleOnConnectedTableWritesRecord() {
@@ -1526,13 +1507,11 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #272, leak 2: the #262 lock's forced ON must be display-only. Before
-// the fix, a save under the lock wrote the forced ON into the settings —
-// silently discarding the user's off — and the forced ON outlived the lock
-// until the next pull. The sidebar held a copy of the on/off value under the
-// lock to guard this until issue #328 moved the value onto the table in the
-// application model; the issue328 lock tests below pin the save, the lift,
-// and a notice under the lock. These two keep the lock's edges.
+// The lock's forced ON must be display-only. A save under the lock that
+// wrote the forced ON into the settings would silently discard the user's
+// off, and the forced ON would outlive the lock until the next pull. The
+// issue328 lock tests below pin the save, the lift, and a notice under the
+// lock. These two keep the lock's edges.
 // ---------------------------------------------------------------------------
 
 // Unbinding while locked (a save whose delivery fails runs setTableBound(false))
@@ -1569,7 +1548,7 @@
 })();
 
 // A pull resolving under the lock reads the table's enabled:false. The display
-// must not change (pinned by the #251 lock-vs-pull test above), and the lift
+// must not change (pinned by the lock-vs-pull test above), and the lift
 // shows the table's value, not the value the switch showed before the lock.
 (function issue272_pullUnderLockLeavesTheLiftToTheTable() {
   const h = makeIssue251SidebarHarness();
@@ -1584,7 +1563,7 @@
 
     h.enabledEl.checked = true;
     h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    // The table is still locked, so the read answers locked (#500).
+    // The table is still locked, so the read answers locked.
     h.readAnswer.locked = true;
     h.dispatch({ action: 'state:previewSamplesChanged' });
     eq('lock-pull: the pull leaves the locked switch on (display-only)',
@@ -1600,10 +1579,9 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #328: the settings notice reaches the sidebar, and the sidebar
-// redraws from it. The content script sent narrower notices by hand, one per
-// kind of change, so a writer that sent none left the sidebar showing stale
-// values. A notice carries whether its table is the active one and which side
+// The settings notice reaches the sidebar, and the sidebar redraws from it.
+// The model publishes it after every write, so no writer can leave the
+// sidebar showing stale values. A notice carries whether its table is the active one and which side
 // wrote it. The sidebar redraws from a notice for the active table that
 // something other than the sidebar wrote. It skips its own writes, because an
 // echo arriving after a newer keystroke or slider step would overwrite that
@@ -1689,12 +1667,12 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 })();
 
 // ---------------------------------------------------------------------------
-// Issue #328 with the #262 lock: the lock forces the switch on and disables
+// The settings notice with the lock: the lock forces the switch on and disables
 // it. The on/off value lives on the table in the application model, so a save
 // under the lock leaves the on/off value out, and the table's value stands.
 // Lifting the lock reads the table's settings back and puts its on/off value
 // on the switch. Until that read answers the switch stays disabled, so a save
-// in the gap carries no leftover forced on (#272's hazard).
+// in the gap carries no leftover forced on.
 // ---------------------------------------------------------------------------
 (function issue328_aSaveUnderTheLockLeavesTheOnOffValueOut() {
   const h = makeIssue251SidebarHarness();
@@ -1748,7 +1726,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     };
     h.tabMessages.length = 0;
     h.dispatch({ action: 'state:applyOk' });
-    // The read's answer carries the lock state (#500), so the lock holds
+    // The read's answer carries the lock state, so the lock holds
     // until the answer lands.
     eq('lock lift: the lock holds until the read answers', h.bodyClasses.has('table-locked'), true);
     eq('lock lift: the lift reads the table\'s settings', held.length, 1);
@@ -1875,7 +1853,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
       !/state\.screenshotDataUrl/.test(sidebarJsSrc), true);
 })();
 
-// #308: the mark glyphs live in two machine copies — the sidebar's buttons
+// The mark glyphs live in two machine copies — the sidebar's buttons
 // and the renderer's map — and one copy cannot read the other (static
 // markup against a content-script constant). This pin holds them together:
 // a glyph change that lands in one place fails here, naming the other.
@@ -1905,7 +1883,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     DR_CAPTURE.markLabel('constructor'), 'constructor');
 })();
 
-// --- The sidebar serves one tab (issue #343) --------------------------------
+// --- The sidebar serves one tab --------------------------------
 //
 // A content script reports by broadcast, and a broadcast reaches the sidebar
 // whatever tab it came from. The sidebar acted on every report it received,
@@ -2065,9 +2043,8 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
   // The service worker closes the sidebar when the tab it was opened for
   // stops being the front tab, and misses two routes: an idle restart empties
   // the tab number it compares against, and a sidebar opened from Chrome's
-  // own side-panel control never sets it. On those routes the sidebar used to
-  // survive the switch and keep showing controls for a page the user had
-  // left. It closes itself now, so a tab switch has one outcome.
+  // own side-panel control never sets it. On those routes the sidebar closes
+  // itself, so a tab switch has one outcome.
   (function closesOnSwitchAway() {
     const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
     const boundTab = createBoundTab(tabs, makeBus());
@@ -2117,7 +2094,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
   })();
 
   // A tabs interface with no activation event must not throw. The sidebar
-  // then never closes itself, which is its behavior before this change.
+  // then never closes itself.
   (function noActivationEvent() {
     const bus = makeBus();
     const boundTab = createBoundTab({ query: (q, cb) => cb([{ id: OWN_TAB }]) }, bus);

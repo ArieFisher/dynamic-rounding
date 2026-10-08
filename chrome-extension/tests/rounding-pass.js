@@ -1,7 +1,7 @@
 // Rounding a whole table: roundTable, restore, the re-apply observer, and the lens preview (content.js).
 
 // ---------------------------------------------------------------------------
-// Sprint first-col-is-a: pin column-index behavior for tables with <th> cells
+// Pin column-index behavior for tables with <th> cells
 //
 // Column index is the cell's position in its row, counting <th> cells:
 //   - <th> cells round under the same switches as any cell, and they occupy their column.
@@ -17,7 +17,7 @@
 // ---------------------------------------------------------------------------
 
 // roundTable calls document.createTreeWalker (via collectTextPieces).
-// We need to stub that too so the "apply rounding" path doesn't crash.
+// We need to stub that too so the "apply rounding" path does not crash.
 // Stub createTreeWalker to return a walker that finds the cell's single text node.
 
 // --- Test 1: Table with row headers — nothing outside the range is rounded ---
@@ -78,9 +78,8 @@
 })();
 
 // --- Test 3: simplifyFirstColumn gates the <th>, not the leading <td> ---
-// Regression: selecting "first column" used to enable the *second* rendered
-// column, because only <td> cells were counted and the <th> was invisible to
-// the column index. The <th> is the first column, so the leading <td> (column
+// The <th> counts toward the column index, so "first column" means the <th>,
+// not the second rendered column. The <th> is the first column, so the leading <td> (column
 // B) is rounded regardless of the toggle, and the <th> holds a name, so it stays raw.
 (function simplifyFirstColumn_withRowHeader() {
   for (const flag of [false, true]) {
@@ -243,7 +242,7 @@ const SEAT_ROWS = [
   });
 })();
 
-// --- 3b. Era-marked years are not parameter-rounded by roundTable (issue #4) ---
+// --- 3b. Era-marked years are not parameter-rounded by roundTable ---
 
 (function eraYearNotParameterRounded() {
   withCreateTreeWalker(function() {
@@ -271,7 +270,7 @@ const SEAT_ROWS = [
   });
 })();
 
-// --- 3c. A silently failed extracted patch records nothing (#301) ---
+// --- 3c. A silently failed extracted patch records nothing ---
 //
 // The patch step skips silently when the number is not at its flat-text
 // position in the live nodes (the text moved between classification and
@@ -460,7 +459,7 @@ const SEAT_ROWS = [
     eq('non-date passthrough: "hello" stays unchanged', runSingleCell('hello'), 'hello');
     // "14 March" has no year → isDateLike returns false → treated as a word-embedded number
     // simplifyMixedCells=false in our setup, so it skips non-numeric text.
-    // Let's just verify it doesn't get the rounded class.
+    // Let us just verify it does not get the rounded class.
     const tbl = makeMockTable([[{ tag: 'td', text: '14 March' }]]);
     tbl.rows[0].cells[0].querySelectorAll = () => [];
     roundTable(tbl, {
@@ -477,7 +476,7 @@ const SEAT_ROWS = [
 })();
 
 // =============================================================================
-// Sprint sidebar-preview-band: formatStep, collectNumericCells, extractPreviewSamples
+// FormatStep, collectNumericCells, extractPreviewSamples
 // =============================================================================
 
 (function previewBand_formatStep() {
@@ -534,9 +533,8 @@ const SEAT_ROWS = [
   //
   // The data sits at row >= 1 / column >= 1 behind a TH header row and a TH
   // label column: DR_DEFAULTS.simplifyFirstRow/simplifyFirstColumn are both
-  // false, and since sprint merge-ladder the preview now honours that
-  // exclusion (see the merge-ladder divergence tests below) the way the
-  // engine always did — a row-0/column-0 <td> would be dropped, same as it
+  // false, and the preview honours that exclusion (see the merge-ladder
+  // divergence tests below) the way the engine does — a row-0/column-0 <td> would be dropped, same as it
   // would be when actually rounding the table.
   function tdCell(text) {
     return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
@@ -588,8 +586,7 @@ const SEAT_ROWS = [
   eq('onePerOom: bottom[0] is the 100+ value (123)', result.samples.bottom[0].num, 123);
   eq('onePerOom: bottom[1] is the 10+ value, abs of -12', result.samples.bottom[1].num, -12);
 
-  // No cap: five distinct lower magnitudes yield five bottom rows (old code
-  // capped the band at 3).
+  // No cap: five distinct lower magnitudes yield five bottom rows.
   const deep = {
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C'), thCell('D'), thCell('E'), thCell('F')] },
@@ -805,7 +802,7 @@ const SEAT_ROWS = [
   });
 })();
 
-// Issues #452 and #461: a native table runs the stacked-cell test, as a grid
+// A native table runs the stacked-cell test, as a grid
 // does. A native cell classifies its rendered text, which shows whether two
 // pieces sit on separate lines or run together, so a digit beside a digit
 // across two pieces reads as two numbers only when the rendered text shows
@@ -1053,7 +1050,7 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint invert-datetime-pills: simplifyDates / simplifyTimes boolean wiring
+// SimplifyDates / simplifyTimes boolean wiring
 //
 // Acceptance criteria verified here:
 //   AC1: simplifyDates=true  → date cell IS rounded (dr-ext-rounded added, text changed)
@@ -1236,7 +1233,7 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint invert-datetime-pills: adversarial tests
+// Adversarial tests
 //
 // These tests are written from the SPEC, not the implementation.
 // Adversarial focus: prove the boolean polarity is correct (true=simplify,
@@ -1475,10 +1472,9 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// content.js markAndToggleIfNewGrid — the badge/marker call-site wrapper that
-// replaced findTargetTable's old internal mutation. It owns exactly what
-// findTargetTable used to do inline: write the dr-ext-grid marker and build
-// the toggle widget, but only for a first-time (isNew) discovery.
+// content.js markAndToggleIfNewGrid — the marker call-site wrapper. It
+// writes the dr-ext-grid marker and builds the pillbox, but only for a
+// first-time (isNew) discovery.
 // ---------------------------------------------------------------------------
 (function markAndToggleIfNewGrid_newGridGetsMarkedAndWidget() {
   withFindTargetEnv([], function() {
@@ -1514,7 +1510,7 @@ const SEAT_ROWS = [
 })();
 
 // =============================================================================
-// Sprint grid-rounding tests
+// Grid rounding tests
 // Spec: docs/sprint-plans/grid-support-v2.md §2 D3 + §4 "grid-rounding"
 // =============================================================================
 
@@ -1539,7 +1535,7 @@ const SEAT_ROWS = [
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Grid patch writes (#120). A grid cell's change lands as a patch to the one
+// Grid patch writes. A grid cell's change lands as a patch to the one
 // text piece that holds the changed characters, and the cell's originals
 // record holds each touched piece's text by piece index.
 //
@@ -1601,7 +1597,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
 })();
 
 // ---------------------------------------------------------------------------
-// Stacked cells and unit numbers on grids (#120). A grid cell's text is its
+// Stacked cells and unit numbers on grids. A grid cell's text is its
 // flat text. A stacked cell holds whole numbers in separate text pieces, and
 // each rounds in its own piece. A unit number's digits change and its suffix
 // or currency code stays. Extracted cells stay unchanged on grids.
@@ -1618,9 +1614,8 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
 
 const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: true, simplifyDates: true });
 
-// "Revenue 500 units" and "DT1234" now round like any extracted cell (issue
-// #120), but both show unchanged pieces here for reasons that have nothing
-// to do with the flag removal: 500 already sits on the step this dataset's
+// "Revenue 500 units" and "DT1234" round like any extracted cell, but both
+// show unchanged pieces here: 500 already sits on the step this dataset's
 // magnitude rounds to, so it formats back to itself, and "DT1234"'s digits
 // sit glued to a letter with no separator, so the number extractor never
 // finds them at all — on a grid or a native table alike.
@@ -1749,7 +1744,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // simplification off (test page section 25). A grid reads the gap between
 // two pieces from the cell's rendered text, as a native table does, so one
 // number that inline styling splits ("6,7" plain, "18,245" in bold) stays
-// unchanged (issue #479). Before, the grid rounded it to "65" and "20,000".
+// unchanged. Before, the grid rounded it to "65" and "20,000".
 (function gridStacked_sameCellsAsTheNativeTable() {
   const grid = makeE2EGridWrapper([['$337.91', '125126', '6,718,245']]);
   const [a, b, c] = grid.cellEls;
@@ -1838,7 +1833,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // 4.91, 125, and 126, so the max magnitude is 2.
 //   a: a number beside a <sup> footnote, glued together with no separator:
 //      the base number rounds and the footnote digits stay, exactly as a
-//      native table already rounds this shape (issue #120) — the digit run
+//      native table already rounds this shape — the digit run
 //      right after the <sup> is never even a candidate match, since the
 //      number extractor never starts a match right after a letter
 //   b: a stacked year above a year: each piece reads as a date
@@ -1945,7 +1940,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // A rounded stacked cell that the page redraws with fewer pieces is a
-// rewritten cell (#423). Its one remaining piece shows the extension's
+// rewritten cell. Its one remaining piece shows the extension's
 // written text for the first stored piece, so it matches that piece by text
 // and takes its original back before the record drops: the re-apply then
 // simplifies the cell from 125, the lens preview reads 125, and reset puts
@@ -2220,9 +2215,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // ---------------------------------------------------------------------------
-// Grid form honesty (#315): the per-cell write reports whether it landed,
+// Grid form honesty: the per-cell write reports whether it landed,
 // and the table's form counts confirmed writes — the same rule as the
-// extracted-cell fix (#301). A grid cell can classify as roundable through
+// extracted-cell fix. A grid cell can classify as roundable through
 // the whole-text fallback yet hold no text piece for the nodeValue write to
 // patch; such a write skips, and a skipped write must not flip the form.
 // ---------------------------------------------------------------------------
@@ -2365,7 +2360,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     // Track re-apply call count by spying on reapplyTimers writes inside flush.
     let reapplyCalls = 0;
     const origRAGR = global.reapplyRounding;
-    // We can't easily intercept the closure directly; instead count timer fires.
+    // We cannot easily intercept the closure directly; instead count timer fires.
     // Each non-cancelled timer fires reapplyRounding once.
     flushTimers(pendingTimers);
     // If any additional timers were scheduled by the re-apply itself, they would appear here.
@@ -2457,14 +2452,14 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('GV5: observer disconnected after resetTable',
       obs.disconnectCount >= 1, true);
 
-    // Now simulate a mutation — the observer callback fires (it's the same object,
-    // but it's been disconnected so in the real DOM it would not fire; here we
+    // Now simulate a mutation — the observer callback fires (it is the same object,
+    // but it has been disconnected so in the real DOM it would not fire; here we
     // call it manually to prove the debounce logic does NOT schedule a new timer
-    // because reapplyObservers / tableOptions no longer has the wrapper).
+    // because reapplyObservers no longer has the wrapper).
     const timerCountBefore = pendingTimers.length;
     obs.trigger([{ type: 'childList' }]);
-    // The callback still fires (we're calling it directly), but reapplyRounding
-    // will bail harmlessly because tableOptions no longer has the wrapper.
+    // The callback still fires (we are calling it directly), but reapplyRounding
+    // will bail harmlessly because reapplyObservers no longer has the wrapper.
     // The debounce timer IS still scheduled by the closure (the closure holds wrapperEl).
     // Flush it and confirm no rounding occurred.
     flushTimers(pendingTimers);
@@ -2487,18 +2482,14 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // ---------------------------------------------------------------------------
-// GV5b (Regression #cstif9): a press turning simplification off on a
-// virtualized grid restores pristine values; a grid re-apply observer must NOT
-// re-round them. Before the fix, the observer saw the restore writes'
-// characterData mutations and re-rounded the cells ~100ms later, making them
-// flash original then snap back to simplified and leaving the recorded form
-// disconnected from the DOM.
+// GV5b: a press turning simplification off on a virtualized grid restores
+// pristine values; a grid re-apply observer must NOT re-round them. An
+// observer that saw the restore writes' characterData mutations would
+// re-round the cells ~100ms later, making them flash original then snap back
+// to simplified and leaving the recorded form disconnected from the DOM.
 //
-// The off direction used to be a form flip that kept the grid's markers and
-// left its observer connected, and the appliedFlag guard inside the re-apply
-// was what held the line. The 2026-09-14 sidebar-state-removal design retired
-// that flip (#241): off is a reset, which disconnects the observer and clears
-// the stored options. The regression is therefore blocked twice over, and this
+// Off is a reset, which disconnects the observer and clears the stored
+// options, and the appliedFlag guard inside the re-apply also bails. This
 // test drives a mutation through anyway — the stub calls the callback whether
 // or not the observer was disconnected, so the re-apply's own bail is still
 // what the assertions read.
@@ -2560,7 +2551,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // ---------------------------------------------------------------------------
-// GV6: a native <table> gets the same re-apply observer a grid gets (#421),
+// GV6: a native <table> gets the same re-apply observer a grid gets,
 // watching the table element itself.
 // ---------------------------------------------------------------------------
 (function gv6_nativeTable_getsTheReapplyObserver() {
@@ -2666,17 +2657,17 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint observer-phantom-filter (issue #128): MutationObserver added-node path
-// applies the SAME phantom filtering as injectTableToggles.
+// MutationObserver added-node path
+// applies the SAME accessibility artifact filter as injectTableToggles.
 //
-// The initial-load fix only touched injectTableToggles(). Kaggle is a React SPA
-// that renders its Data Explorer grid AFTER load, so detection runs through the
+// Kaggle is a React single-page application that renders its Data Explorer
+// grid AFTER load, so detection runs through the
 // MutationObserver added-node handler — extracted here as injectTogglesForAddedNode().
 // These tests drive that function directly with element-node stubs.
 // ---------------------------------------------------------------------------
 
 // AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
-// <table>s are phantom chart a11y tables → gets dr-ext-grid + a toggle.
+// <table>s are chart accessibility artifacts → gets dr-ext-grid + a pillbox.
 (function observer_AC1_addedGridOnlyPhantomTables_getsToggle() {
   const phantom1 = makePhantomEmbeddedTable();
   const phantom2 = makePhantomEmbeddedTable();
@@ -2695,7 +2686,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // AC2: an added grid wrapping a REAL table → observer bows out (no class/toggle
 // on the grid itself; the real embedded table is owned by Pass 1).
 (function observer_AC2_addedGridRealTable_bowsOut() {
-  const realTbl = makePass1DataTable(); // non-phantom, has .rows for isDataTable
+  const realTbl = makePass1DataTable(); // not an artifact, has .rows for isDataTable
   const grid = asAddedGridNode(makeAriaGrid([realTbl]));
 
   withToggleDocumentMock(function() {
@@ -2710,8 +2701,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   cleanupPass1Tables([realTbl]);
 })();
 
-// AC3: a phantom native <table> reached via querySelectorAll on the added node
-// gets NO toggle (Pass 1 phantom skip in the observer path).
+// AC3: an accessibility artifact <table> reached via querySelectorAll on the
+// added node gets NO pillbox (Pass 1 artifact skip in the observer path).
 (function observer_AC3_addedSubtreePhantomTable_noToggle() {
   const phantom = makePhantomEmbeddedTable();
   const container = {
@@ -2960,7 +2951,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // -------------------------------------------------------------------------
-// Issue #4: era-marked years are dates, not offset-rounded numbers.
+// Era-marked years are dates, not offset-rounded numbers.
 // eraYearDigitRanges locates each year token bound to an era marker;
 // collectNumericCells / extractPreviewSamples must exclude such tokens from
 // magnitude detection and the preview examples.
@@ -3027,8 +3018,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   eq('era-collect: 1,050,000,000 (real number) still collected',
     nums.includes(1050000000), true);
 
-  // Regression: "~3,420 ad hoc" — "ad" was being read as the AD era marker, so
-  // the 3,420 was dropped and the cell never rounded. It must now be collected.
+  // "~3,420 ad hoc": a lowercase "ad" is not the AD era marker, so the 3,420
+  // must be collected.
   const adHocCells = collectNumericCells({
     rows: [
       { cells: [thCell(''), thCell('A'), thCell('B')] },
@@ -3057,10 +3048,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // -------------------------------------------------------------------------
-// Issue #2: when a native table is already simplified, collectNumericCells
-// reads the stored original (DR_STORE's table registry, app-model-registry
-// sprint — this used to be dataset.originalValue) rather than the rounded
-// text now showing in the cell.
+// When a native table is already simplified, collectNumericCells reads the
+// stored original (DR_STORE's table registry) rather than the rounded text
+// showing in the cell.
 // -------------------------------------------------------------------------
 (function originalValueOnSimplifiedTable() {
   // A rounded native cell: innerText shows the rounded "3,000,000" but the true
@@ -3168,13 +3158,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 //
 // Every fixture below hides its numeric data behind a TH header row and a TH
 // label column so the first-row/first-column rule (itself one of the
-// divergences, tested explicitly first) doesn't confound the others.
+// divergences, tested explicitly first) does not confound the others.
 
 (function mergeLadderDivergence_outOfRange() {
-  // OLD preview copy: collectNumericCells never parsed rangeExpr or checked
-  // isInRanges — every numeric cell was sampled regardless of the sidebar's
-  // range restriction. The merged ladder now applies isInRanges exactly like
-  // the engine.
+  // The preview honours the sidebar's range restriction: the merged ladder
+  // applies isInRanges exactly like the engine.
   function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
   function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
@@ -3192,9 +3180,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 (function mergeLadderDivergence_firstRow() {
-  // OLD preview copy: walked every <td> with no row/column awareness — a
-  // numeric header-row <td> was sampled like any other cell. The merged
-  // ladder applies getExclusionReason's first-row rule exactly like the
+  // A numeric header-row <td> is not sampled: the merged ladder applies
+  // getExclusionReason's first-row rule exactly like the
   // engine, whose DR_DEFAULTS ships simplifyFirstRow: false.
   function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
   const table = {
@@ -3222,9 +3209,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 (function mergeLadderDivergence_percentGating() {
-  // OLD preview copy: never checked simplifyMixedPercent — a percent cell was
-  // always sampled as a pure number, even with the sidebar's percent toggle
-  // off. The merged ladder applies getExclusionReason's percent rule.
+  // With the sidebar's percent switch off, a percent cell is not sampled: the
+  // merged ladder applies getExclusionReason's percent rule.
   function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
   function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
@@ -3257,7 +3243,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 
 (function mergeLadderDivergence_quotedCell() {
   // OLD preview copy had no whole-cell-quote check — toNumber('"12345"')
-  // fails (quotes aren't stripped), so it fell into the mixed-text fallback
+  // fails (quotes are not stripped), so it fell into the mixed-text fallback
   // and extractNumbersInText happily found "12345" inside the quotes,
   // sampling a cell the engine treats as literal text and never touches.
   function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
@@ -3289,9 +3275,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 (function mergeLadderDivergence_wholeCellLink() {
-  // OLD preview copy never called isCellWholeLink — a pure numeric cell whose
-  // entire visible text is a hyperlink (e.g. a linked page number) was
-  // sampled like any other pure number, even though the engine leaves it
+  // A pure numeric cell whose entire visible text is a hyperlink (e.g. a
+  // linked page number) is not sampled, because the engine leaves it
   // untouched.
   function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const linkCell = makeLinkCell(['42'], null);
@@ -3324,11 +3309,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 (function mergeLadderDivergence_superscriptMasking() {
-  // OLD preview copy never checked cell.querySelector('sup') — a whole-cell
-  // exponent like "10<sup>12</sup>" (flattened innerText "1012") was parsed
-  // as the single pure number 1012, a wrong value the engine never produces
-  // (the engine masks the exponent and, finding nothing left to round,
-  // leaves the cell untouched entirely).
+  // A whole-cell exponent like "10<sup>12</sup>" (flattened innerText
+  // "1012") must not be sampled as the single pure number 1012, a wrong value
+  // the engine never produces (the engine masks the exponent and, finding
+  // nothing left to round, leaves the cell untouched entirely).
   function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   withSupCreateTreeWalker(() => {
     const supCell = makeSuperscriptCell([
@@ -3367,11 +3351,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 
 (function mergeLadderParity_datesAndTimesStillExcludedFromPreview() {
   // Deliberate, UNCHANGED scope restriction (not a divergence fix): the
-  // preview band is about numeric magnitude/offset, so mode:'date' and
+  // lens preview is about numeric magnitude/offset, so mode:'date' and
   // mode:'time' decisions from the ladder are excluded from the sample pool
   // even though the ladder classifies them and the engine would simplify
-  // them. The old preview copy also excluded dates/times (via its own
-  // isDateLike/isTimeLike/isDateTimeLike checks) — this is parity, not a fix.
+  // them.
   function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
   function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
@@ -3388,9 +3371,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 //
 // The divergence tests above pin the PREVIEW path against the merged ladder.
 // They say nothing about the ENGINE path (roundTable's native-table loop),
-// which is what actually writes values into a page. Before this sprint the
-// native loop carried its own inline copy of every rule below; classifyCell
-// now makes every one of those decisions instead. A single fixture that
+// which is what actually writes values into a page; classifyCell makes every
+// one of those decisions there too. A single fixture that
 // exercises several rules together, with the exact applied cell text pinned,
 // catches a future change to the ladder's shared logic (rule order,
 // max_mag interaction, formatting) that a per-rule unit test run in
@@ -3446,7 +3428,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const quantity = '1,613,245';
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
 
-  // A cell with words holds its phone number and rounds its count (issue #465).
+  // A cell with words holds its phone number and rounds its count.
   const inText = 'Call 416-555-1234 about 1,613,245 units';
   const inTextRounded = 'Call 416-555-1234 about 1,500,000 units';
 
@@ -3478,9 +3460,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     collectNumericCells(previewTable).map((c) => c.num), [1613245]);
 })();
 
-// Issue #487: a cart totals table in European style, minimized and
-// synthetic. Before the change the clean-up deleted every comma, so "7,42€"
-// read as 742 and rounded to "700€". Every cell now stays as written on
+// A cart totals table in European style, minimized and synthetic. "7,42€"
+// must not read as 742 and round to "700€". Every cell stays as written on
 // both table kinds, and the pass writes its usual debug row.
 (function decimalComma_cartTableStaysAsWritten() {
   const rows = [
@@ -3517,10 +3498,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   }
 })();
 
-// Issue #487: one write-back path. Every number is patched in place, digits
-// only, grouped with US marks, and the characters around it stay where the
-// page put them. Before the change a number inside words kept no group mark
-// ("up 10000 units") while a pure cell was rebuilt with an ASCII minus sign.
+// One write-back path. Every number is patched in place, digits only,
+// grouped with US marks, and the characters around it stay where the page
+// put them: a number inside words gets its group mark ("up 10,000 units"),
+// and a pure cell keeps its own minus sign.
 (function oneWriteBackPath_onEveryTableKind() {
   const cells = ['up 12345 units', '$12345', '(1,234)', '+5%', '$ 1,234', '1 234 567', '35.0', '−1,234'];
   const expected = ['up 10,000 units', '$10,000', '(1,000)', '+5%', '$ 1,000', '1,000,000', '35', '−1,000'];
@@ -3544,7 +3525,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // ---------------------------------------------------------------------------
-// Sprint engine-returns-results: the engine runs end-to-end with NO `chrome`
+// The engine runs end-to-end with NO `chrome`
 // global present at all — not even a stub. This loads the real content-script
 // bundle in a vm sandbox that never defines `chrome`. The only top-level
 // statement in content.js that unconditionally touches chrome — registering
@@ -3648,13 +3629,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // replaced" pattern, distinct from this extension's own nodeValue-patch-in-
 // place write model) -> on press.
 //
-// The off step used to be a form flip that kept every marker and stored
-// original in place. The 2026-09-14 sidebar-state-removal design retired it
-// (#241): off resets, which restores every cell still in the grid and drops
-// its record. The recycling scenario is unchanged — a brand-new element was
-// never in the registry either way — and the last assertion below moves with
-// the change: the recycled-away cell's record is dropped at the off press
-// rather than surviving until the element is collectible.
+// Off resets, which restores every cell still in the grid and drops its
+// record. A brand-new element was never in the registry, and the last
+// assertion below pins that the recycled-away cell's record is dropped at
+// the off press rather than surviving until the element is collectible.
 //
 // Uses a live-scanning querySelectorAll (walks wrapper.children -> row
 // .children each call) instead of makeE2EGridWrapper's snapshot list, so
@@ -3736,7 +3714,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // A re-injected instance still cannot recover the true original from its
 // own (empty) registry — that half of the KNOWN ACCEPTED COST comment on
 // restoreTable (content.js) holds. What this test pins is the consequence
-// the sprint did NOT accept: an unrestorable cell must be left exactly as
+// that is NOT accepted: an unrestorable cell must be left exactly as
 // found — marker, title, and text untouched — instead of resetTable
 // stripping the marker and title off a cell it could not actually restore,
 // and instead of a restore followed by a re-run of roundTable over
@@ -3774,8 +3752,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const { table: table1, dataCell: dataCell1 } = makeReinjectionFixtureTable('12,345');
   const { table: table2, dataCell: dataCell2 } = makeReinjectionFixtureTable('67,890');
   const { table: table3, dataCell: dataCell3 } = makeReinjectionFixtureTable('54,321');
-  // Scenario D fixtures (issue #262): table5 is rounded by instance 1 and
-  // then untouched — the pill's wrong-on-arrival case. table6 starts
+  // Scenario D fixtures: table5 is rounded by instance 1 and
+  // then untouched — the pillbox's wrong-on-arrival case. table6 starts
   // unrounded and is later rounded BY instance 2 itself — the sanity case
   // proving the lock keys on missing registry records, not on "rounded".
   const { table: table5, dataCell: dataCell5 } = makeReinjectionFixtureTable('9,876');
@@ -3880,8 +3858,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 
     // --- Scenario A: the user's most natural recovery action is "reset"
     // (or an equivalent toggle-to-original click). Drive the SAME
-    // production primitive (resetTable) the sprint's own restoreTable
-    // KNOWN ACCEPTED COST comment discusses. ---
+    // production primitive (resetTable) the restoreTable KNOWN ACCEPTED COST
+    // comment discusses. ---
     const unrestorableCount = global.__ri2_resetTable(table1);
 
     eq('re-injection reset: resetTable reports the one cell it could not restore',
@@ -3895,8 +3873,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('re-injection reset: appliedFlag stays \'simplified\' — the truthful state, since the screen still shows rounded text',
       global.__ri2_DR_STORE.getTableAppliedFlag(table1), 'simplified');
 
-    // --- Scenario B: the toggle-click path (not covered before this fix) —
-    // drives the exact wiring a real click on the toggle switch uses
+    // --- Scenario B: the pillbox-press path —
+    // drives the exact wiring a real press on the pillbox uses
     // (ui-toggle.js's click handler publishes this same intent), end to
     // end through content.js's intent:toggleTable subscriber, the settings
     // write it makes, and the apply that follows. One click on a
@@ -3911,14 +3889,14 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('re-injection click path: one click leaves the displayed text unchanged',
       dataCell2.innerText, roundedText2);
 
-    // --- Scenario C (issue #254): the sidebar apply path — the one other
+    // --- Scenario C: the sidebar apply path — the one other
     // resetTable caller. Drives the real wiring end to end: a sidebar
     // settings change reaches the request:applySettings responder, which
     // writes the active table's settings and calls applySidebarRounding on
-    // it. Before the fix this ran roundTable over the already-rounded text — stamping
-    // a false "Original: <rounded value>" title over the surviving truth
-    // and recording the rounded value as the registry original of record.
-    // It must refuse instead, and tell the sidebar why nothing changed.
+    // it. Running roundTable over the already-rounded text would stamp a
+    // false "Original: <rounded value>" title over the surviving truth and
+    // record the rounded value as the registry original of record. The apply
+    // must block instead, and tell the sidebar why nothing changed.
     //
     // The new settings must DIFFER from the ones instance 1 rounded with:
     // re-rounding under identical settings is a value-preserving no-op the
@@ -3950,14 +3928,14 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('re-injection sidebar apply: no state:rangeOk/state:rangeError — roundTable never ran',
       sentMessages.some((m) => m.action === 'state:rangeOk' || m.action === 'state:rangeError'), false);
 
-    // --- Scenario D (issue #262): the on-page pill on a locked table. A
+    // --- Scenario D: the on-page pillbox on a locked table. A
     // table is locked when it shows cells wearing dr-ext-rounded that the
-    // registry has no record for — the post-re-injection state. The pill
-    // must render selected AND locked on arrival (before any interaction):
+    // registry has no record for — the post-re-injection state. The pillbox
+    // must render pressed AND locked on arrival (before any interaction):
     // aria-pressed 'true' because the screen shows simplified text,
     // aria-disabled 'true' plus a hover title because nothing here can
     // change it. A table instance 2 rounded ITSELF (registry records
-    // present) must stay a normal, unlocked pill — the lock keys on
+    // present) must stay a normal, unlocked pillbox — the lock keys on
     // missing records, not on "rounded". ---
     const stub5 = makeMockButton();
     global.__ri2_tableToggles.set(table5, stub5);
@@ -3989,13 +3967,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('re-injection pill: a table THIS instance rounded carries no locked class',
       stub6.classList.contains('dr-ext-morph-locked'), false);
 
-    // --- Scenario E (issue #262): toggle clicks on a locked table must not
-    // oscillate the pillbox. Before the fix, alternating clicks flipped
-    // appliedFlag between 'simplified' and 'original' (both restore branches
-    // no-op on cells without registry records), so the pillbox toggled
-    // visually while the table never changed, and the on/off notice of the time
-    // carried enabled:false to the sidebar under a visibly simplified
-    // table. ---
+    // --- Scenario E: toggle clicks on a locked table must not
+    // oscillate the pillbox. Alternating clicks must not flip appliedFlag
+    // between 'simplified' and 'original' (both restore branches no-op on
+    // cells without registry records), which would toggle the pillbox
+    // visually while the table never changed. ---
     const stub2 = makeMockButton();
     global.__ri2_tableToggles.set(table2, stub2);
     sentMessages.length = 0;
@@ -4019,8 +3995,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
       dataCell2.title, roundedTitle2);
 
     const notices = sentMessages.filter((m) => m.action === 'state:settingsChanged');
-    // Issue #272 changed this contract, and issue #328 kept it: the settings
-    // notice carries the table's settings — the value the click wrote — not
+    // The settings notice carries the table's settings — the value the click wrote — not
     // the locked table's display state. Each click asks to turn the table
     // off, because the screen shows it simplified, so the table's settings
     // and each notice go false. The sidebar guards its own display: each
@@ -4155,7 +4130,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // =============================================================================
-// Issue #421: cells the page rewrites
+// Cells the page rewrites
 //
 // While a table is simplified, the page can write a new value into a cell. A
 // pass sorts each cell into one of three groups: fresh (no stored originals),
@@ -4535,7 +4510,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
-// Issue #423: a grid cell the page redraws with fewer text pieces is a
+// A grid cell the page redraws with fewer text pieces is a
 // rewritten cell. It drops its originals and simplifies fresh, so a restore
 // never stops on it and the table never locks over it.
 (function rewrite423_aCellRedrawnWithFewerPiecesSimplifiesFresh() {
