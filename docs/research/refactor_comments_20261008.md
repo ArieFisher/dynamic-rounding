@@ -40,7 +40,7 @@ JSDoc blocks were excluded from this pass. Several hold history or stale facts a
 
 ## Proposed diff
 
-Each hunk below carries the reviewer's recommendation, then the reconciliation.
+The independent review was skipped at the product manager's direction: the reviewer model was out of usage credits. Every hunk below is applied as proposed.
 
 ### `.github/workflows/bump-version.yml`
 
@@ -56,7 +56,7 @@ Each hunk below carries the reviewer's recommendation, then the reconciliation.
            p.write_text(json.dumps(mf, indent=2) + "\n")
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H002
 
@@ -80,7 +80,7 @@ Reviewer: _pending_
            for attempt in $(seq 1 40); do
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `.gitignore`
 
@@ -96,7 +96,7 @@ Reviewer: _pending_
  /*.md
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H004
 
@@ -110,7 +110,7 @@ Reviewer: _pending_
  *_baseline.md
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/adapters/messaging.js`
 
@@ -126,7 +126,7 @@ Reviewer: _pending_
      // model: the active table's settings, its preview samples, and the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H006
 
@@ -143,7 +143,7 @@ Reviewer: _pending_
      'state:sidebarOpened': { family: STATE_CHANGE, route: ROUTE_TAB },
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H007
 
@@ -157,7 +157,7 @@ Reviewer: _pending_
      // sidebar is an extension page.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H008
 
@@ -171,7 +171,7 @@ Reviewer: _pending_
    function senderTabId(sender) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H009
 
@@ -185,7 +185,7 @@ Reviewer: _pending_
    // intent:selectTable -> state:selectedTableChanged hop, reaches 2; a
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H010
 
@@ -201,7 +201,7 @@ Reviewer: _pending_
      const message = Object.assign({ action: topic }, payload);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H011
 
@@ -216,7 +216,7 @@ Reviewer: _pending_
    // onReply, when given, receives the responder's answer, or undefined when
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H012
 
@@ -232,7 +232,7 @@ Reviewer: _pending_
        throw new Error('DR_BUS: publish() cannot carry a request-family topic; "' +
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/app/store.js`
 
@@ -285,7 +285,7 @@ Reviewer: _pending_
    const registeredTables = new Set();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H014
 
@@ -316,7 +316,7 @@ Reviewer: _pending_
          // The table's settings: its on/off value and every simplification
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H015
 
@@ -330,7 +330,7 @@ Reviewer: _pending_
    // table's contents, and the view already redraws it directly
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H016
 
@@ -347,7 +347,7 @@ Reviewer: _pending_
      return tableRegistry.has(table);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H017
 
@@ -364,7 +364,7 @@ Reviewer: _pending_
      const entry = tableRegistry.get(table);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/background.js`
 
@@ -381,7 +381,7 @@ Reviewer: _pending_
  importScripts('adapters/messaging.js');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H019
 
@@ -397,7 +397,7 @@ Reviewer: _pending_
      return;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H020
 
@@ -413,7 +413,7 @@ Reviewer: _pending_
      DR_BUS.publish('state:sidebarOpened', {}, { tabId: tab.id });
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H021
 
@@ -433,7 +433,7 @@ Reviewer: _pending_
    sidebarTabId = null;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H022
 
@@ -452,7 +452,7 @@ Reviewer: _pending_
 +// reaches the sidebar.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/constants.js`
 
@@ -472,7 +472,7 @@ Reviewer: _pending_
    offsetOther: -0.5,
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/content.js`
 
@@ -496,7 +496,7 @@ Reviewer: _pending_
  // DR_DEFAULTS is loaded from constants.js (declared first in manifest content_scripts).
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H025
 
@@ -512,7 +512,7 @@ Reviewer: _pending_
  // cannot enforce this (a page's Content-Security-Policy does not apply to
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H026
 
@@ -545,7 +545,7 @@ Reviewer: _pending_
    DR_STORE.setSelectedTable(table);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H027
 
@@ -559,7 +559,7 @@ Reviewer: _pending_
  // the bus and reaches neither. A row recorded inside a bus handler publishes
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H028
 
@@ -580,7 +580,7 @@ Reviewer: _pending_
    const active = DR_STORE.getSelectedTable();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H029
 
@@ -612,7 +612,7 @@ Reviewer: _pending_
  // The rules, in the order they matter:
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H030
 
@@ -626,7 +626,7 @@ Reviewer: _pending_
  //      apply would reset it — the press would land back where it started.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H031
 
@@ -640,7 +640,7 @@ Reviewer: _pending_
    // where a new result set moved the registration. A shape change that
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H032
 
@@ -654,7 +654,7 @@ Reviewer: _pending_
      // intent (toggle) is what triggered it. A shape change published both of
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H033
 
@@ -670,7 +670,7 @@ Reviewer: _pending_
  // (see watchTable).
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H034
 
@@ -690,7 +690,7 @@ Reviewer: _pending_
    if (found.isNew) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H035
 
@@ -709,7 +709,7 @@ Reviewer: _pending_
    if (IS_CAPTURE_PAGE) return;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H036
 
@@ -729,7 +729,7 @@ Reviewer: _pending_
    if (result.rangeStatus === 'error') {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H037
 
@@ -745,7 +745,7 @@ Reviewer: _pending_
  // setSelectedTable), so the press lands as an unmoved one: it flips the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H038
 
@@ -759,7 +759,7 @@ Reviewer: _pending_
    const selected = DR_STORE.getSelectedTable();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H039
 
@@ -773,7 +773,7 @@ Reviewer: _pending_
  // it as that same unbound state by a different path.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H040
 
@@ -787,7 +787,7 @@ Reviewer: _pending_
      // round the already-rounded text, stamp a false "Original: ..." title
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H041
 
@@ -803,7 +803,7 @@ Reviewer: _pending_
  // The step's results hold grids alone: each scanner's own pass 1 covers native
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H042
 
@@ -819,7 +819,7 @@ Reviewer: _pending_
  function consumeNomination({ chainRoot, selected, outcome }) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H043
 
@@ -842,7 +842,7 @@ Reviewer: _pending_
  // node added inside a wrapper already in the page re-evaluates the whole nest
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H044
 
@@ -856,7 +856,7 @@ Reviewer: _pending_
      createToggleForTable(node);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H045
 
@@ -870,7 +870,7 @@ Reviewer: _pending_
  // root, because a new result set can change which element of the nest passes
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H046
 
@@ -884,7 +884,7 @@ Reviewer: _pending_
    // back. Restoring first puts raw text in every surviving cell, so the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H047
 
@@ -898,7 +898,7 @@ Reviewer: _pending_
    }
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H048
 
@@ -912,7 +912,7 @@ Reviewer: _pending_
  // sidebar's read, which lands after this handler finishes, reads it.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H049
 
@@ -933,7 +933,7 @@ Reviewer: _pending_
            const contained = table === node ||
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H050
 
@@ -947,7 +947,7 @@ Reviewer: _pending_
      document.addEventListener('DOMContentLoaded', () => {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H051
 
@@ -973,7 +973,7 @@ Reviewer: _pending_
    return {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H052
 
@@ -988,7 +988,7 @@ Reviewer: _pending_
  // the original text back into every text piece that still shows the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H053
 
@@ -1007,7 +1007,7 @@ Reviewer: _pending_
  // A cell with no registry entry (the accepted-cost case above) is left
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H054
 
@@ -1021,7 +1021,7 @@ Reviewer: _pending_
  // The lens preview's sample pool: each number the table rounds in its
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H055
 
@@ -1046,7 +1046,7 @@ Reviewer: _pending_
    const liveSettings = DR_STORE.getTableSettings(table);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H056
 
@@ -1060,7 +1060,7 @@ Reviewer: _pending_
    // row look like rounding does nothing. Array.prototype.sort is stable, so
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H057
 
@@ -1074,7 +1074,7 @@ Reviewer: _pending_
  // preview read alike. Each read below measured against that text takes the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H058
 
@@ -1089,7 +1089,7 @@ Reviewer: _pending_
    const kind = tableKindPass(adapter);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H059
 
@@ -1103,7 +1103,7 @@ Reviewer: _pending_
      kind,
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H060
 
@@ -1120,7 +1120,7 @@ Reviewer: _pending_
 +// sidebar.html.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/lib/dr-capture/render.js`
 
@@ -1136,7 +1136,7 @@ Reviewer: _pending_
        'column it starts at, and the columns it covers render blank, here ' +
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H062
 
@@ -1150,7 +1150,7 @@ Reviewer: _pending_
  // the values detection ran under. A failed state pull leaves
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/lib/dr-number/core.js`
 
@@ -1166,7 +1166,7 @@ Reviewer: _pending_
  // both collapse to one entry in the derived lists below.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H064
 
@@ -1180,7 +1180,7 @@ Reviewer: _pending_
  // belonging to it — a currency sign, a percent sign, and whitespace. The
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H065
 
@@ -1194,7 +1194,7 @@ Reviewer: _pending_
  const CLEAN_REGEX = new RegExp(FORMAT_MARK_ALTERNATION, 'g');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/lib/dr-number/identifiers.js`
 
@@ -1210,7 +1210,7 @@ Reviewer: _pending_
  // for a shape with a rule beyond its pattern — and its span pattern for text
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/lib/dr-number/parsing.js`
 
@@ -1247,7 +1247,7 @@ Reviewer: _pending_
  // as written. A pattern that stopped at the first dot would take "1.234" and
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H068
 
@@ -1261,7 +1261,7 @@ Reviewer: _pending_
  // "ah", "ce", "bc") collide with ordinary English words and abbreviations
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/lib/dr-number/rounding.js`
 
@@ -1279,7 +1279,7 @@ Reviewer: _pending_
    let s = String(rounded);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/lib/dr-simplify/ladder.js`
 
@@ -1295,7 +1295,7 @@ Reviewer: _pending_
    // rounds whatever the words setting holds, as a pure cell does. A cell with
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/lib/dr-table/detect.js`
 
@@ -1313,7 +1313,7 @@ Reviewer: _pending_
  // standalone (a Node script, a unit test, a future non-extension host).
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H072
 
@@ -1327,7 +1327,7 @@ Reviewer: _pending_
        rowCellEls.map((cellEls) => cellEls.map(gridCellSpans)));
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H073
 
@@ -1341,7 +1341,7 @@ Reviewer: _pending_
  /**
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H074
 
@@ -1356,7 +1356,7 @@ Reviewer: _pending_
   * Return the nearest *positioned* ancestor of `el` (or `el` itself if it is
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H075
 
@@ -1370,7 +1370,7 @@ Reviewer: _pending_
    }
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/sidebar.html`
 
@@ -1386,7 +1386,7 @@ Reviewer: _pending_
        position: relative;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H077
 
@@ -1400,7 +1400,7 @@ Reviewer: _pending_
        display: flex;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H078
 
@@ -1418,7 +1418,7 @@ Reviewer: _pending_
        display: grid;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H079
 
@@ -1436,7 +1436,7 @@ Reviewer: _pending_
      body.table-locked #optionsSection,
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/sidebar.js`
 
@@ -1480,7 +1480,7 @@ Reviewer: _pending_
  // The tabs interface and the bus arrive as parameters so the whole concern
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H081
 
@@ -1499,7 +1499,7 @@ Reviewer: _pending_
    // read carries the current truth.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H082
 
@@ -1513,7 +1513,7 @@ Reviewer: _pending_
      // number unset and still runs the read, which falls to the unbound state
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H083
 
@@ -1527,7 +1527,7 @@ Reviewer: _pending_
      // at each of the eight subscriptions.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H084
 
@@ -1557,7 +1557,7 @@ Reviewer: _pending_
      // A side panel belongs to one browser window, and the activation event
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H085
 
@@ -1577,7 +1577,7 @@ Reviewer: _pending_
      onSwitchAway(onLeft) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H086
 
@@ -1593,7 +1593,7 @@ Reviewer: _pending_
      // applyNow's delivery-success clear can still collect it.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H087
 
@@ -1609,7 +1609,7 @@ Reviewer: _pending_
      // bind must not reset it to the shipped default.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H088
 
@@ -1623,7 +1623,7 @@ Reviewer: _pending_
  // track (finest step on the left, coarsest on the right), NOT by offset value.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H089
 
@@ -1637,7 +1637,7 @@ Reviewer: _pending_
  const botBandEl = document.getElementById('botBand');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H090
 
@@ -1651,7 +1651,7 @@ Reviewer: _pending_
    example.appendChild(from);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H091
 
@@ -1665,7 +1665,7 @@ Reviewer: _pending_
      from.className = 'from';
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H092
 
@@ -1684,7 +1684,7 @@ Reviewer: _pending_
  function fetchPreviewSamples() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H093
 
@@ -1703,7 +1703,7 @@ Reviewer: _pending_
    if (!enabledEl.disabled) settings.enabled = enabledEl.checked;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H094
 
@@ -1719,7 +1719,7 @@ Reviewer: _pending_
    settings.offsetOther = botVal;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H095
 
@@ -1735,7 +1735,7 @@ Reviewer: _pending_
      dateGranularityEl.disabled = !document.getElementById('simplifyDates').checked;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H096
 
@@ -1750,7 +1750,7 @@ Reviewer: _pending_
  // On an answer, clear only an unsourced stale message (the no-table reminder).
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H097
 
@@ -1763,7 +1763,7 @@ Reviewer: _pending_
  if (rangeExprEl) rangeExprEl.addEventListener('input', applyNow);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H098
 
@@ -1791,7 +1791,7 @@ Reviewer: _pending_
    enabledEl.checked = true;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H099
 
@@ -1807,7 +1807,7 @@ Reviewer: _pending_
  });
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H100
 
@@ -1822,7 +1822,7 @@ Reviewer: _pending_
      pullSettingsAndApplyToUI();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H101
 
@@ -1836,7 +1836,7 @@ Reviewer: _pending_
    // locked must not write the table's on/off value over that forced ON; a
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H102
 
@@ -1850,7 +1850,7 @@ Reviewer: _pending_
  function applyDefaultsToUI() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H103
 
@@ -1875,7 +1875,7 @@ Reviewer: _pending_
  //
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H104
 
@@ -1894,7 +1894,7 @@ Reviewer: _pending_
      const html = DR_CAPTURE.buildCaptureDocument({
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H105
 
@@ -1919,7 +1919,7 @@ Reviewer: _pending_
    pullSettingsAndApplyToUI();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/capture-log.js`
 
@@ -1935,7 +1935,7 @@ Reviewer: _pending_
  // renderer needs it per cell to tell a lost original (marker, original: null)
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H107
 
@@ -1949,7 +1949,7 @@ Reviewer: _pending_
  // The state records three kinds of absence honestly; the page a human reads
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H108
 
@@ -1963,7 +1963,7 @@ Reviewer: _pending_
  // A capture has no size bound — the full-detail default is deliberate — so
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H109
 
@@ -1979,7 +1979,7 @@ Reviewer: _pending_
    if (typeof globalThis.DR_CAPTURE !== 'object') return;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/detection.js`
 
@@ -1994,7 +1994,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H111
 
@@ -2023,7 +2023,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H112
 
@@ -2037,7 +2037,7 @@ Reviewer: _pending_
  //
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H113
 
@@ -2050,7 +2050,7 @@ Reviewer: _pending_
  // =============================================================================
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H114
 
@@ -2069,7 +2069,7 @@ Reviewer: _pending_
    withFindTargetEnv([], function() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H115
 
@@ -2092,7 +2092,7 @@ Reviewer: _pending_
    withFindTargetEnv([], function() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H116
 
@@ -2106,7 +2106,7 @@ Reviewer: _pending_
  // Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.5 and the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H117
 
@@ -2120,7 +2120,7 @@ Reviewer: _pending_
  // AC3 — GridAdapter stub no-throw test
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H118
 
@@ -2134,7 +2134,7 @@ Reviewer: _pending_
      cell.applyPatches, undefined);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H119
 
@@ -2153,7 +2153,7 @@ Reviewer: _pending_
  (function gr6j_gridWrite_sourceGuard_noInnerHTML() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H120
 
@@ -2167,7 +2167,7 @@ Reviewer: _pending_
  //
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H121
 
@@ -2182,7 +2182,7 @@ Reviewer: _pending_
  // After Pass 1 none of them should be in tableToggles.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H122
 
@@ -2200,7 +2200,7 @@ Reviewer: _pending_
      isPhantomA11yTable(phantoms[0]), true);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H123
 
@@ -2216,7 +2216,7 @@ Reviewer: _pending_
  (function pass1Filter_offscreenLeftPhantoms_zeroToggles() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H124
 
@@ -2235,7 +2235,7 @@ Reviewer: _pending_
      const t = makePass1DataTable();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H125
 
@@ -2249,7 +2249,7 @@ Reviewer: _pending_
      const t = makePass1DataTable();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H126
 
@@ -2263,7 +2263,7 @@ Reviewer: _pending_
  // here is from isDataTable, not from isPhantomA11yTable)
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H127
 
@@ -2277,7 +2277,7 @@ Reviewer: _pending_
      isPhantomA11yTable(nonDataTable), false);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H128
 
@@ -2291,7 +2291,7 @@ Reviewer: _pending_
    const buttonAfterFirst = tableToggles.get(realTable);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H129
 
@@ -2305,7 +2305,7 @@ Reviewer: _pending_
  // rows OUTSIDE the rowgroup (e.g. Kaggle's Data Explorer). Standard ARIA only.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H130
 
@@ -2321,7 +2321,7 @@ Reviewer: _pending_
  // outside the group are rows like any other. Only the shipped first-row and
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H131
 
@@ -2341,7 +2341,7 @@ Reviewer: _pending_
    const g = makeRowgroupRoleGrid(
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H132
 
@@ -2371,7 +2371,7 @@ Reviewer: _pending_
    const header = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H133
 
@@ -2388,7 +2388,7 @@ Reviewer: _pending_
    const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H134
 
@@ -2414,7 +2414,7 @@ Reviewer: _pending_
  // order-sensitive noise.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H135
 
@@ -2432,7 +2432,7 @@ Reviewer: _pending_
    const phantomTable = makePass1DataTable();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H136
 
@@ -2446,7 +2446,7 @@ Reviewer: _pending_
  // grid-nesting-rule block in §5; decision D2 in
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H137
 
@@ -2460,7 +2460,7 @@ Reviewer: _pending_
  // shape-fingerprint block in §5; decision D7 in
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H138
 
@@ -2474,7 +2474,7 @@ Reviewer: _pending_
  // =============================================================================
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H139
 
@@ -2506,7 +2506,7 @@ Reviewer: _pending_
    const PARENT_EXPECTED_SEQUENCE = [{ action: 'state:tableActivated' }];
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H140
 
@@ -2520,7 +2520,7 @@ Reviewer: _pending_
  //
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H141
 
@@ -2534,7 +2534,7 @@ Reviewer: _pending_
  // A cell's column number is its grid column — the column the browser lays the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/helpers.js`
 
@@ -2552,7 +2552,7 @@ Reviewer: _pending_
    DR_STORE.setTableSettings(table, opts, 'page');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H143
 
@@ -2566,7 +2566,7 @@ Reviewer: _pending_
        _classes: [],
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H144
 
@@ -2587,7 +2587,7 @@ Reviewer: _pending_
  // Helper: build a minimal table stub for isDataTable.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H145
 
@@ -2601,7 +2601,7 @@ Reviewer: _pending_
  // rendered text the classifier reads, and the patch step counts positions in
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H146
 
@@ -2615,7 +2615,7 @@ Reviewer: _pending_
  // characters sit in one text piece rounds through the patch writer, with its
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H147
 
@@ -2629,7 +2629,7 @@ Reviewer: _pending_
      if (sel === '.dr-ext-rounded') {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H148
 
@@ -2643,7 +2643,7 @@ Reviewer: _pending_
  //
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H149
 
@@ -2657,7 +2657,7 @@ Reviewer: _pending_
  // For each test we:
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H150
 
@@ -2675,7 +2675,7 @@ Reviewer: _pending_
  // Real on-screen tables must fail isPhantomA11yTable but pass isDataTable.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H151
 
@@ -2689,7 +2689,7 @@ Reviewer: _pending_
  function runPass1WithTables(tables) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H152
 
@@ -2703,7 +2703,7 @@ Reviewer: _pending_
    toggleStyleInjected = true; // skip style injection (would need document.head)
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H153
 
@@ -2717,7 +2717,7 @@ Reviewer: _pending_
    for (const t of tables) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H154
 
@@ -2741,7 +2741,7 @@ Reviewer: _pending_
  // Helper: build a minimal ARIA grid element (div with role="grid" or role="table")
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H155
 
@@ -2755,7 +2755,7 @@ Reviewer: _pending_
    return makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H156
 
@@ -2778,7 +2778,7 @@ Reviewer: _pending_
  function makeIssue251SidebarHarness() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H157
 
@@ -2792,7 +2792,7 @@ Reviewer: _pending_
        removeEventListener() {},
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H158
 
@@ -2806,7 +2806,7 @@ Reviewer: _pending_
    const captureDoc = {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H159
 
@@ -2823,7 +2823,7 @@ Reviewer: _pending_
    const readAnswer = { locked: false };
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H160
 
@@ -2853,7 +2853,7 @@ Reviewer: _pending_
  // A helper, because every case below needs the same two things reset: the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H161
 
@@ -2867,7 +2867,7 @@ Reviewer: _pending_
  // A shared sandbox harness for the bus tests below. adapters/messaging.js has
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H162
 
@@ -2881,7 +2881,7 @@ Reviewer: _pending_
  function makeMergedSpanTable() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/ladder.js`
 
@@ -2897,7 +2897,7 @@ Reviewer: _pending_
  // A cell whose whole text is an identifier shape (a phone number, an IP
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H164
 
@@ -2911,7 +2911,7 @@ Reviewer: _pending_
  // Inside an extracted cell, a span matching an identifier shape holds its
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/messaging-model.js`
 
@@ -2926,7 +2926,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H166
 
@@ -2945,7 +2945,7 @@ Reviewer: _pending_
    eq('pull (inverted): content.js no longer sends GET_SIDEBAR_SETTINGS',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H167
 
@@ -2971,7 +2971,7 @@ Reviewer: _pending_
      /set\(cellEl, record\)\s*\{\s*DR_STORE\.setTableOriginal\(table, cellEl, record\);/.test(contentSrc) &&
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H168
 
@@ -2985,7 +2985,7 @@ Reviewer: _pending_
      /function applySidebarRounding[\s\S]{0,2200}roundTable\(/.test(contentSrc), true);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H169
 
@@ -2999,7 +2999,7 @@ Reviewer: _pending_
      // be re-formatted to "35".
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H170
 
@@ -3015,7 +3015,7 @@ Reviewer: _pending_
  // patch step found "12" where it expected "12," and skipped it, logging
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H171
 
@@ -3031,7 +3031,7 @@ Reviewer: _pending_
        eq('table 8 linked reference: only the plain number survives the link filter',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H172
 
@@ -3047,7 +3047,7 @@ Reviewer: _pending_
  // non-default offset reaches the new table's rounding pass, and a table
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H173
 
@@ -3076,7 +3076,7 @@ Reviewer: _pending_
  (function issue251_switchOntoLockedTablePinsMessageOrder() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H174
 
@@ -3090,7 +3090,7 @@ Reviewer: _pending_
  // so nothing counts unrestorable and the table never locks over it.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H175
 
@@ -3104,7 +3104,7 @@ Reviewer: _pending_
      reapplyRounding(grid.wrapperEl);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H176
 
@@ -3118,7 +3118,7 @@ Reviewer: _pending_
    // Row 1: mixed-text cell → extracted mode → skipped on grid;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H177
 
@@ -3136,7 +3136,7 @@ Reviewer: _pending_
  // Grid layout (2 rows × 2 cols):
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H178
 
@@ -3150,7 +3150,7 @@ Reviewer: _pending_
  // Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.4 and the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H179
 
@@ -3164,7 +3164,7 @@ Reviewer: _pending_
  // record would leave an observer re-testing a shape whose answer cannot change
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H180
 
@@ -3178,7 +3178,7 @@ Reviewer: _pending_
  // table and the sidebar-open flag moved out of content.js's file-level lets
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H181
 
@@ -3194,7 +3194,7 @@ Reviewer: _pending_
    const topics = DR_BUS.TOPICS;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H182
 
@@ -3213,7 +3213,7 @@ Reviewer: _pending_
       'state:rangeError', 'state:rangeOk', 'state:applyBlocked', 'state:applyOk',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H183
 
@@ -3227,7 +3227,7 @@ Reviewer: _pending_
    // subscriber) determines what a committed toggle does.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H184
 
@@ -3246,7 +3246,7 @@ Reviewer: _pending_
      topics['request:applySettings'].family, 'request');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H185
 
@@ -3264,7 +3264,7 @@ Reviewer: _pending_
      const snapshot = DR_STORE.getSnapshot();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H186
 
@@ -3281,7 +3281,7 @@ Reviewer: _pending_
    // read directly from app/store.js rather than from content.js.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H187
 
@@ -3295,7 +3295,7 @@ Reviewer: _pending_
      .map((m) => m[1])
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H188
 
@@ -3309,7 +3309,7 @@ Reviewer: _pending_
  // intent:selectTable behavioral pin in the app-model-selection block above).
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H189
 
@@ -3325,7 +3325,7 @@ Reviewer: _pending_
    // whatever runs next.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H190
 
@@ -3353,7 +3353,7 @@ Reviewer: _pending_
  (function toggleSplit_rangeFlashWorksOnGrids() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H191
 
@@ -3394,7 +3394,7 @@ Reviewer: _pending_
  (function toggleSplit_parentEquivalence_toggleClickSequences() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H192
 
@@ -3419,7 +3419,7 @@ Reviewer: _pending_
      // state:applyOk.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H193
 
@@ -3438,7 +3438,7 @@ Reviewer: _pending_
      // state:tableSwitched leads so the sidebar lifts the previous table's lock
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H194
 
@@ -3452,7 +3452,7 @@ Reviewer: _pending_
  // header) — a subscriber that attaches AFTER a publish must never see that
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H195
 
@@ -3466,7 +3466,7 @@ Reviewer: _pending_
  // handler may itself call DR_BUS.publish() for a different topic before
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H196
 
@@ -3486,7 +3486,7 @@ Reviewer: _pending_
    const TOPIC_B = 'state:settingsChanged';
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H197
 
@@ -3500,7 +3500,7 @@ Reviewer: _pending_
  // class becomes a style hook only.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H198
 
@@ -3519,7 +3519,7 @@ Reviewer: _pending_
    withCreateTreeWalker(function () {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H199
 
@@ -3536,7 +3536,7 @@ Reviewer: _pending_
  // later reapplyRounding reuses that frozen value (see the frozenMaxMag
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H200
 
@@ -3557,7 +3557,7 @@ Reviewer: _pending_
    let ctx;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H201
 
@@ -3581,7 +3581,7 @@ Reviewer: _pending_
    const savedSelected = DR_STORE.getSelectedTable();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H202
 
@@ -3595,7 +3595,7 @@ Reviewer: _pending_
  // builder is its one writer. Spec: the shape-fingerprint block in
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H203
 
@@ -3609,7 +3609,7 @@ Reviewer: _pending_
  // instead of describing a table that is gone. Removing any other table leaves
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H204
 
@@ -3623,7 +3623,7 @@ Reviewer: _pending_
  // per-table resource the extension holds beside it: the pillbox, the resize
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H205
 
@@ -3637,7 +3637,7 @@ Reviewer: _pending_
  // Spec: docs/sprint-plans/grid-detection-recovery-v2.md, the pending-retest
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H206
 
@@ -3666,7 +3666,7 @@ Reviewer: _pending_
  // closed sidebar has no page to receive it.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H207
 
@@ -3680,7 +3680,7 @@ Reviewer: _pending_
      eq('leak-1: the first pill toggle rounds the connected table',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H208
 
@@ -3694,7 +3694,7 @@ Reviewer: _pending_
      eq('leak-1: the second pill toggle restores the table to originals',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H209
 
@@ -3714,7 +3714,7 @@ Reviewer: _pending_
    runPressFixture(() => {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H210
 
@@ -3734,7 +3734,7 @@ Reviewer: _pending_
    runPressFixture(({ sent }) => {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H211
 
@@ -3748,7 +3748,7 @@ Reviewer: _pending_
  // table never reaches it. ---
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H212
 
@@ -3768,7 +3768,7 @@ Reviewer: _pending_
  // with them, and a table with none starts from the shipped defaults.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H213
 
@@ -3782,7 +3782,7 @@ Reviewer: _pending_
  (function issue328_twoTablesKeepTheirOwnSettings() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H214
 
@@ -3796,7 +3796,7 @@ Reviewer: _pending_
  // read changes nothing on the page.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H215
 
@@ -3810,7 +3810,7 @@ Reviewer: _pending_
  // shape-fingerprint block in §5; decision D7 in
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H216
 
@@ -3824,7 +3824,7 @@ Reviewer: _pending_
  // Every expected value below comes from that statement, never from the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H217
 
@@ -3840,7 +3840,7 @@ Reviewer: _pending_
    const makePort = () => {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H218
 
@@ -3854,7 +3854,7 @@ Reviewer: _pending_
  // Unguarded, a throw there discards the whole page-side half — the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H219
 
@@ -3873,7 +3873,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H220
 
@@ -3887,7 +3887,7 @@ Reviewer: _pending_
    const VALID_ROUTES = [null, 'extension-pages', 'tab'];
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H221
 
@@ -3910,7 +3910,7 @@ Reviewer: _pending_
    // the menu click carries none.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H222
 
@@ -3926,7 +3926,7 @@ Reviewer: _pending_
    g.bus.publish('state:pageUnloaded', {});
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H223
 
@@ -3949,7 +3949,7 @@ Reviewer: _pending_
    const a = makeBusSandbox();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H224
 
@@ -3963,7 +3963,7 @@ Reviewer: _pending_
    let askThrew = false;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H225
 
@@ -3987,7 +3987,7 @@ Reviewer: _pending_
    const a = makeBusSandbox();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H226
 
@@ -4001,7 +4001,7 @@ Reviewer: _pending_
    // The asking side: the answer chrome hands back reaches the callback.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H227
 
@@ -4022,7 +4022,7 @@ Reviewer: _pending_
    const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H228
 
@@ -4044,7 +4044,7 @@ Reviewer: _pending_
    const contentSrc = sourceByName('content.js');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H229
 
@@ -4062,7 +4062,7 @@ Reviewer: _pending_
  // state. This drives the content script's own bus listener the way Chrome
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H230
 
@@ -4084,7 +4084,7 @@ Reviewer: _pending_
  (function noContextPublishesWhatItSubscribes() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/number.js`
 
@@ -4100,7 +4100,7 @@ Reviewer: _pending_
    // Numbers that change length when rounded: 8,584,629 (9 chars) -> 8,500,000 (9 chars, same).
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H232
 
@@ -4114,7 +4114,7 @@ Reviewer: _pending_
  eq('isDateLike: bare 4-digit year', isDateLike('2018'), true);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H233
 
@@ -4128,7 +4128,7 @@ Reviewer: _pending_
    const opts = { simplifyDates: true };
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H234
 
@@ -4142,7 +4142,7 @@ Reviewer: _pending_
    eq('exclude: time cell with simplifyTimes=true is NOT excluded (returns null)',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H235
 
@@ -4156,7 +4156,7 @@ Reviewer: _pending_
  (function simplifyFirstRowTests() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H236
 
@@ -4170,7 +4170,7 @@ Reviewer: _pending_
  (function simplifyMixedCellsTests() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H237
 
@@ -4184,7 +4184,7 @@ Reviewer: _pending_
  (function simplifyMixedPercentRoundTrip() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H238
 
@@ -4198,7 +4198,7 @@ Reviewer: _pending_
    const opts = {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H239
 
@@ -4212,7 +4212,7 @@ Reviewer: _pending_
  // Date granularity
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H240
 
@@ -4226,7 +4226,7 @@ Reviewer: _pending_
    roundDateText('December 13, 2096', 'year'), '2096');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H241
 
@@ -4240,7 +4240,7 @@ Reviewer: _pending_
  eq('resolveOffset: null -> fallback', resolveOffset(null, -0.5), -0.5);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H242
 
@@ -4254,7 +4254,7 @@ Reviewer: _pending_
  // lettersToColIndex
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H243
 
@@ -4276,7 +4276,7 @@ Reviewer: _pending_
  // Primary bug report: f4:g8 (lowercase partial-range)
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H244
 
@@ -4290,7 +4290,7 @@ Reviewer: _pending_
    const r = parseRangeExpr('A');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H245
 
@@ -4304,7 +4304,7 @@ Reviewer: _pending_
  (function ac4_hiddenSortkeyNotExtracted() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H246
 
@@ -4317,7 +4317,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H247
 
@@ -4331,7 +4331,7 @@ Reviewer: _pending_
    eq('regression: read source is cell.innerText || cell.textContent',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H248
 
@@ -4355,7 +4355,7 @@ Reviewer: _pending_
  // trailing zeros always stripped regardless of the original decimal count
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H249
 
@@ -4369,7 +4369,7 @@ Reviewer: _pending_
  // a pure cell write drops trailing zeros for whole-number results under 10
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H250
 
@@ -4382,7 +4382,7 @@ Reviewer: _pending_
  // =============================================================================
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H251
 
@@ -4396,7 +4396,7 @@ Reviewer: _pending_
    eq('static: findDates is defined in content.js',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H252
 
@@ -4412,7 +4412,7 @@ Reviewer: _pending_
  (function halfStepFloorGrid() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H253
 
@@ -4426,7 +4426,7 @@ Reviewer: _pending_
    const contentSrc = sourceByName('content.js');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H254
 
@@ -4439,7 +4439,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H255
 
@@ -4452,7 +4452,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H256
 
@@ -4466,7 +4466,7 @@ Reviewer: _pending_
  // AC2: formatStrategyHeader structure + "(i.e. …)" clause correctness
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H257
 
@@ -4484,7 +4484,7 @@ Reviewer: _pending_
    // -------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H258
 
@@ -4498,7 +4498,7 @@ Reviewer: _pending_
    // was "₹2,000 crore" still renders just "e.g. 2,000".
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H259
 
@@ -4512,7 +4512,7 @@ Reviewer: _pending_
    realRenderBotBand(oomLabelBandEl, [{ num: 5000, original: '5,000' }], -0.5, 3);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H260
 
@@ -4526,7 +4526,7 @@ Reviewer: _pending_
  // with no "(i.e. …)" clause and no "×" multiplier.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H261
 
@@ -4540,7 +4540,7 @@ Reviewer: _pending_
  // with the defaults filled in and publishes the whole new value, and
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H262
 
@@ -4559,7 +4559,7 @@ Reviewer: _pending_
  (function appModelSettings_previewAndTableAgreeOnLiveSettings() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H263
 
@@ -4576,7 +4576,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H264
 
@@ -4590,7 +4590,7 @@ Reviewer: _pending_
  // sidebar.js's real pullSettingsAndApplyToUI() -> applySettingsToUI() ->
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H265
 
@@ -4617,7 +4617,7 @@ Reviewer: _pending_
  (function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H266
 
@@ -4631,7 +4631,7 @@ Reviewer: _pending_
  // DR_STORE.setTableSettings() straight from the test — it never exercises
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H267
 
@@ -4648,7 +4648,7 @@ Reviewer: _pending_
      for (const sign of signs) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H268
 
@@ -4664,7 +4664,7 @@ Reviewer: _pending_
      simplifyMixedPercent: true, simplifyMixedCurrency: false };
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H269
 
@@ -4684,7 +4684,7 @@ Reviewer: _pending_
  eq('number format function: returns the US marks',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H270
 
@@ -4700,7 +4700,7 @@ Reviewer: _pending_
    extractNumbersInText('13,63€ (includes 2,37€ VAT)'), []);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H271
 
@@ -4714,7 +4714,7 @@ Reviewer: _pending_
  // number format function returns. A pure cell's number span leaves out its
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/pillbox.js`
 
@@ -4730,7 +4730,7 @@ Reviewer: _pending_
  // CSS string: capture style.textContent from ensureHighlightStyleInjected().
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H273
 
@@ -4744,7 +4744,7 @@ Reviewer: _pending_
    const origDocEl = document.documentElement;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H274
 
@@ -4757,7 +4757,7 @@ Reviewer: _pending_
    highlightStyleInjected = true;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H275
 
@@ -4771,7 +4771,7 @@ Reviewer: _pending_
    flashRangePulse(mockTable, ranges);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H276
 
@@ -4789,7 +4789,7 @@ Reviewer: _pending_
    const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H277
 
@@ -4818,7 +4818,7 @@ Reviewer: _pending_
    cell.classList.add('dr-ext-rounded');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H278
 
@@ -4831,7 +4831,7 @@ Reviewer: _pending_
    injectToggleEntry(table);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H279
 
@@ -4845,7 +4845,7 @@ Reviewer: _pending_
    table._cells[0].classList.add('dr-ext-rounded');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H280
 
@@ -4859,7 +4859,7 @@ Reviewer: _pending_
  // All arithmetic is done in terms of the exposed globalThis constants.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H281
 
@@ -4875,7 +4875,7 @@ Reviewer: _pending_
  // We verify the outcome on the table rather than inspecting private calls.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H282
 
@@ -4888,7 +4888,7 @@ Reviewer: _pending_
      const input = injectToggleEntry(table);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H283
 
@@ -4901,7 +4901,7 @@ Reviewer: _pending_
  // =============================================================================
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H284
 
@@ -4915,7 +4915,7 @@ Reviewer: _pending_
    // fixture must register one for the cell to be genuinely restorable — a
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H285
 
@@ -4933,7 +4933,7 @@ Reviewer: _pending_
  // when the table is normally visible.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H286
 
@@ -4946,7 +4946,7 @@ Reviewer: _pending_
  // =============================================================================
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H287
 
@@ -4960,7 +4960,7 @@ Reviewer: _pending_
  //
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H288
 
@@ -4983,7 +4983,7 @@ Reviewer: _pending_
    eq('rebind AC1 mouse: state:tableSwitched dispatched exactly once',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H289
 
@@ -5004,7 +5004,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H290
 
@@ -5018,7 +5018,7 @@ Reviewer: _pending_
    // absence is asserted at the source, next to the other retirements.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H291
 
@@ -5032,7 +5032,7 @@ Reviewer: _pending_
  (function pass2aria_AC1_onlyPhantomTables_getsToggle() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H292
 
@@ -5046,7 +5046,7 @@ Reviewer: _pending_
  (function pass2aria_adversarial_mixedPhantomAndReal_bowsOut() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H293
 
@@ -5060,7 +5060,7 @@ Reviewer: _pending_
  (function pass2aria_adversarial_noEmbeddedTables_getsToggle() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H294
 
@@ -5076,7 +5076,7 @@ Reviewer: _pending_
    withToggleDocumentMock(function() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H295
 
@@ -5090,7 +5090,7 @@ Reviewer: _pending_
    eq('pass2-aria: already-tagged grid is NOT added to trackedTables again',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H296
 
@@ -5114,7 +5114,7 @@ Reviewer: _pending_
  // AC3: Toggling a table that is NOT lastRightClickedTable sends no spurious
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H297
 
@@ -5128,7 +5128,7 @@ Reviewer: _pending_
  //
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H298
 
@@ -5144,7 +5144,7 @@ Reviewer: _pending_
  // The sidebar-to-table path goes through content.js's request:applySettings
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H299
 
@@ -5160,7 +5160,7 @@ Reviewer: _pending_
    // so only [row1, col1] is processed. Use 12,345, which rounds to 10,000.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H300
 
@@ -5173,7 +5173,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H301
 
@@ -5187,7 +5187,7 @@ Reviewer: _pending_
  // AC1: Right-clicking a table causes flashTargetedTable to run on that table.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H302
 
@@ -5202,7 +5202,7 @@ Reviewer: _pending_
    // before flashing it.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H303
 
@@ -5219,7 +5219,7 @@ Reviewer: _pending_
      /publish\(\s*'state:tableActivated'/.test(bgSrc), false);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H304
 
@@ -5245,7 +5245,7 @@ Reviewer: _pending_
  // and then firing the actual captured 'intent:menuClicked' onMessage listener
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H305
 
@@ -5263,7 +5263,7 @@ Reviewer: _pending_
      contextmenuHandler({ target: clickTarget });
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H306
 
@@ -5277,7 +5277,7 @@ Reviewer: _pending_
      // closed too: the table's settings notice from the write, then
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H307
 
@@ -5291,7 +5291,7 @@ Reviewer: _pending_
  // Spec: docs/sprint-plans/grid-detection-recovery-v2.md §3.5 and the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H308
 
@@ -5305,7 +5305,7 @@ Reviewer: _pending_
  // pulse frames the rows the engine actually touches, not the rows one slot
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/rounding-pass.js`
 
@@ -5321,7 +5321,7 @@ Reviewer: _pending_
  // Column index is the cell's position in its row, counting <th> cells:
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H310
 
@@ -5334,7 +5334,7 @@ Reviewer: _pending_
  // Stub createTreeWalker to return a walker that finds the cell's single text node.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H311
 
@@ -5351,7 +5351,7 @@ Reviewer: _pending_
  (function simplifyFirstColumn_withRowHeader() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H312
 
@@ -5365,7 +5365,7 @@ Reviewer: _pending_
  (function eraYearNotParameterRounded() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H313
 
@@ -5379,7 +5379,7 @@ Reviewer: _pending_
  // The patch step skips silently when the number is not at its flat-text
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H314
 
@@ -5393,7 +5393,7 @@ Reviewer: _pending_
      tbl.rows[0].cells[0].querySelectorAll = () => [];
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H315
 
@@ -5406,7 +5406,7 @@ Reviewer: _pending_
  // =============================================================================
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H316
 
@@ -5423,7 +5423,7 @@ Reviewer: _pending_
    function tdCell(text) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H317
 
@@ -5438,7 +5438,7 @@ Reviewer: _pending_
      rows: [
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H318
 
@@ -5452,7 +5452,7 @@ Reviewer: _pending_
  // pieces sit on separate lines or run together, so a digit beside a digit
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H319
 
@@ -5466,7 +5466,7 @@ Reviewer: _pending_
  // Acceptance criteria verified here:
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H320
 
@@ -5480,7 +5480,7 @@ Reviewer: _pending_
  // These tests are written from the SPEC, not the implementation.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H321
 
@@ -5499,7 +5499,7 @@ Reviewer: _pending_
  (function markAndToggleIfNewGrid_newGridGetsMarkedAndWidget() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H322
 
@@ -5513,7 +5513,7 @@ Reviewer: _pending_
  // =============================================================================
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H323
 
@@ -5527,7 +5527,7 @@ Reviewer: _pending_
  // record holds each touched piece's text by piece index.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H324
 
@@ -5541,7 +5541,7 @@ Reviewer: _pending_
  // each rounds in its own piece. A unit number's digits change and its suffix
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H325
 
@@ -5558,7 +5558,7 @@ Reviewer: _pending_
  // sit glued to a letter with no separator, so the number extractor never
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H326
 
@@ -5572,7 +5572,7 @@ Reviewer: _pending_
    const grid = makeE2EGridWrapper([['$337.91', '125126', '6,718,245']]);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H327
 
@@ -5586,7 +5586,7 @@ Reviewer: _pending_
  //      number extractor never starts a match right after a letter
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H328
 
@@ -5600,7 +5600,7 @@ Reviewer: _pending_
  // and takes its original back before the record drops: the re-apply then
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H329
 
@@ -5617,7 +5617,7 @@ Reviewer: _pending_
  // patch; such a write skips, and a skipped write must not flip the form.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H330
 
@@ -5631,7 +5631,7 @@ Reviewer: _pending_
      flushTimers(pendingTimers);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H331
 
@@ -5656,7 +5656,7 @@ Reviewer: _pending_
      // Flush it and confirm no rounding occurred.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H332
 
@@ -5687,7 +5687,7 @@ Reviewer: _pending_
  // or not the observer was disconnected, so the re-apply's own bail is still
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H333
 
@@ -5701,7 +5701,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H334
 
@@ -5722,7 +5722,7 @@ Reviewer: _pending_
  // These tests drive that function directly with element-node stubs.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H335
 
@@ -5736,7 +5736,7 @@ Reviewer: _pending_
    const phantom1 = makePhantomEmbeddedTable();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H336
 
@@ -5749,7 +5749,7 @@ Reviewer: _pending_
    const grid = asAddedGridNode(makeAriaGrid([realTbl]));
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H337
 
@@ -5765,7 +5765,7 @@ Reviewer: _pending_
    const phantom = makePhantomEmbeddedTable();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H338
 
@@ -5779,7 +5779,7 @@ Reviewer: _pending_
  // collectNumericCells / extractPreviewSamples must exclude such tokens from
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H339
 
@@ -5795,7 +5795,7 @@ Reviewer: _pending_
      rows: [
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H340
 
@@ -5814,7 +5814,7 @@ Reviewer: _pending_
  (function originalValueOnSimplifiedTable() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H341
 
@@ -5836,7 +5836,7 @@ Reviewer: _pending_
    function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H342
 
@@ -5853,7 +5853,7 @@ Reviewer: _pending_
    function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H343
 
@@ -5870,7 +5870,7 @@ Reviewer: _pending_
    function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H344
 
@@ -5884,7 +5884,7 @@ Reviewer: _pending_
    // sampling a cell the engine treats as literal text and never touches.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H345
 
@@ -5901,7 +5901,7 @@ Reviewer: _pending_
    function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H346
 
@@ -5922,7 +5922,7 @@ Reviewer: _pending_
    withSupCreateTreeWalker(() => {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H347
 
@@ -5941,7 +5941,7 @@ Reviewer: _pending_
    function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H348
 
@@ -5958,7 +5958,7 @@ Reviewer: _pending_
  // catches a future change to the ladder's shared logic (rule order,
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H349
 
@@ -5972,7 +5972,7 @@ Reviewer: _pending_
    const inTextRounded = 'Call 416-555-1234 about 1,500,000 units';
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H350
 
@@ -5989,7 +5989,7 @@ Reviewer: _pending_
  (function decimalComma_cartTableStaysAsWritten() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H351
 
@@ -6009,7 +6009,7 @@ Reviewer: _pending_
    const cells = ['up 12345 units', '$12345', '(1,234)', '+5%', '$ 1,234', '1 234 567', '35.0', '−1,234'];
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H352
 
@@ -6023,7 +6023,7 @@ Reviewer: _pending_
  // bundle in a vm sandbox that never defines `chrome`. The only top-level
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H353
 
@@ -6046,7 +6046,7 @@ Reviewer: _pending_
  // Uses a live-scanning querySelectorAll (walks wrapper.children -> row
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H354
 
@@ -6060,7 +6060,7 @@ Reviewer: _pending_
  // stripping the marker and title off a cell it could not actually restore,
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H355
 
@@ -6076,7 +6076,7 @@ Reviewer: _pending_
    // proving the lock keys on missing registry records, not on "rounded".
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H356
 
@@ -6091,7 +6091,7 @@ Reviewer: _pending_
      const unrestorableCount = global.__ri2_resetTable(table1);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H357
 
@@ -6107,7 +6107,7 @@ Reviewer: _pending_
      // end through content.js's intent:toggleTable subscriber, the settings
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H358
 
@@ -6132,7 +6132,7 @@ Reviewer: _pending_
      // The new settings must DIFFER from the ones instance 1 rounded with:
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H359
 
@@ -6156,7 +6156,7 @@ Reviewer: _pending_
      const stub5 = makeMockButton();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H360
 
@@ -6180,7 +6180,7 @@ Reviewer: _pending_
      global.__ri2_tableToggles.set(table2, stub2);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H361
 
@@ -6195,7 +6195,7 @@ Reviewer: _pending_
      // off, because the screen shows it simplified, so the table's settings
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H362
 
@@ -6209,7 +6209,7 @@ Reviewer: _pending_
  // While a table is simplified, the page can write a new value into a cell. A
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H363
 
@@ -6223,7 +6223,7 @@ Reviewer: _pending_
  // never stops on it and the table never locks over it.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/setup.js`
 
@@ -6239,7 +6239,7 @@ Reviewer: _pending_
  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H365
 
@@ -6255,7 +6255,7 @@ Reviewer: _pending_
  eval(contentScriptBundle + `
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H366
 
@@ -6269,7 +6269,7 @@ Reviewer: _pending_
  globalThis.trackedTables = trackedTables;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H367
 
@@ -6283,7 +6283,7 @@ Reviewer: _pending_
  globalThis.TOGGLE_PILL_WIDTH_PX = TOGGLE_PILL_WIDTH_PX;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H368
 
@@ -6306,7 +6306,7 @@ Reviewer: _pending_
    get() { return DR_STORE.getSelectedTable(); },
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H369
 
@@ -6320,7 +6320,7 @@ Reviewer: _pending_
  globalThis.chainRootOf = chainRootOf;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H370
 
@@ -6334,7 +6334,7 @@ Reviewer: _pending_
  // reaches these names only through this list.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H371
 
@@ -6360,7 +6360,7 @@ Reviewer: _pending_
  // instead, which is invisible to DR_STORE and would make a test's setup
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H372
 
@@ -6378,7 +6378,7 @@ Reviewer: _pending_
  globalThis.applySidebarRounding = applySidebarRounding;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H373
 
@@ -6410,7 +6410,7 @@ Reviewer: _pending_
  global.MutationObserver = class { observe() {} disconnect() {} };
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/sidebar.js`
 
@@ -6460,7 +6460,7 @@ Reviewer: _pending_
    // a stored answer to "is it open". Its exact spelling is struck from the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H375
 
@@ -6474,7 +6474,7 @@ Reviewer: _pending_
    eq('sidebar-state removal: content.js registers no branch for the close message',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H376
 
@@ -6496,7 +6496,7 @@ Reviewer: _pending_
    eq('rebind source: state:tableSwitched is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H377
 
@@ -6513,7 +6513,7 @@ Reviewer: _pending_
    // this table") for any caller of that concern, controller included.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H378
 
@@ -6527,7 +6527,7 @@ Reviewer: _pending_
    // negative pins below cover the whole handler and nothing beyond it.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H379
 
@@ -6541,7 +6541,7 @@ Reviewer: _pending_
      /applyDefaultsToUI\s*\(\)/.test(switchHandlerBlock), false);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H380
 
@@ -6556,7 +6556,7 @@ Reviewer: _pending_
    // -----------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H381
 
@@ -6570,7 +6570,7 @@ Reviewer: _pending_
  //
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H382
 
@@ -6584,7 +6584,7 @@ Reviewer: _pending_
    // calls setTableBound inside its callback). There is NO direct
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H383
 
@@ -6602,7 +6602,7 @@ Reviewer: _pending_
      /body\.no-table\s+#optionsSection/.test(sidebarHtml), false);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H384
 
@@ -6616,7 +6616,7 @@ Reviewer: _pending_
      {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H385
 
@@ -6641,7 +6641,7 @@ Reviewer: _pending_
        setTableBound(true);       // table resolved → bind must not touch it
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H386
 
@@ -6658,7 +6658,7 @@ Reviewer: _pending_
        /DR_DEFAULTS/.test(setTableBoundFnBody), false);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H387
 
@@ -6671,7 +6671,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H388
 
@@ -6685,7 +6685,7 @@ Reviewer: _pending_
      const snap = (v) => stops.reduce((b, s) => Math.abs(s - v) < Math.abs(b - v) ? s : b, stops[0]);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H389
 
@@ -6699,7 +6699,7 @@ Reviewer: _pending_
  // this one is NOT — neither handler has a stop condition, so without the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H390
 
@@ -6728,7 +6728,7 @@ Reviewer: _pending_
  // dependency) and pins the call shape directly, independent of sidebar.js's
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H391
 
@@ -6745,7 +6745,7 @@ Reviewer: _pending_
      { settings: { offsetTop: -2, rangeExpr: 'A1:B2' } }, () => {});
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H392
 
@@ -6761,7 +6761,7 @@ Reviewer: _pending_
      msg.action, 'request:applySettings');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H393
 
@@ -6782,7 +6782,7 @@ Reviewer: _pending_
    // deliveryFeedback_behavioral below for the behavioral coverage.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H394
 
@@ -6807,7 +6807,7 @@ Reviewer: _pending_
  (function appModelSettings_settingsPublish_deliveryFeedback_behavioral() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H395
 
@@ -6823,7 +6823,7 @@ Reviewer: _pending_
  // scenario C) and sends state:applyBlocked; every non-refused apply sends
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H396
 
@@ -6837,7 +6837,7 @@ Reviewer: _pending_
          else cb({ ok: true });
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H397
 
@@ -6853,7 +6853,7 @@ Reviewer: _pending_
      // dims via body.table-locked. state:applyOk, a table switch
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H398
 
@@ -6871,7 +6871,7 @@ Reviewer: _pending_
      h.rangeExprEl.value = '';
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H399
 
@@ -6887,7 +6887,7 @@ Reviewer: _pending_
      h.enabledEl.checked = true;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H400
 
@@ -6903,7 +6903,7 @@ Reviewer: _pending_
      // must not write the model's enabled:false over the lock's forced ON.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H401
 
@@ -6917,7 +6917,7 @@ Reviewer: _pending_
      h.dispatch({ action: 'state:previewSamplesChanged' });
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H402
 
@@ -6933,7 +6933,7 @@ Reviewer: _pending_
  // locked.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H403
 
@@ -6960,7 +6960,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H404
 
@@ -6983,7 +6983,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H405
 
@@ -6997,7 +6997,7 @@ Reviewer: _pending_
  (function issue272_pullUnderLockLeavesTheLiftToTheTable() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H406
 
@@ -7011,7 +7011,7 @@ Reviewer: _pending_
      h.dispatch({ action: 'state:previewSamplesChanged' });
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H407
 
@@ -7030,7 +7030,7 @@ Reviewer: _pending_
  // something other than the sidebar wrote. It skips its own writes, because an
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H408
 
@@ -7050,7 +7050,7 @@ Reviewer: _pending_
  (function issue328_aSaveUnderTheLockLeavesTheOnOffValueOut() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H409
 
@@ -7064,7 +7064,7 @@ Reviewer: _pending_
      eq('lock lift: the lock holds until the read answers', h.bodyClasses.has('table-locked'), true);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H410
 
@@ -7078,7 +7078,7 @@ Reviewer: _pending_
  // markup against a content-script constant). This pin holds them together:
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H411
 
@@ -7092,7 +7092,7 @@ Reviewer: _pending_
  // A content script reports by broadcast, and a broadcast reaches the sidebar
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H412
 
@@ -7109,7 +7109,7 @@ Reviewer: _pending_
      const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H413
 
@@ -7123,7 +7123,7 @@ Reviewer: _pending_
      const bus = makeBus();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/tests/source-checks.js`
 
@@ -7139,7 +7139,7 @@ Reviewer: _pending_
  // actually disappears in Chrome, and whether the context menu visually works,
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H415
 
@@ -7153,7 +7153,7 @@ Reviewer: _pending_
      Object.prototype.hasOwnProperty.call(manifest, 'side_panel'), true);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H416
 
@@ -7173,7 +7173,7 @@ Reviewer: _pending_
  // --- Static analysis: link-aware functions are defined and exported ---
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H417
 
@@ -7187,7 +7187,7 @@ Reviewer: _pending_
  (function sprintRegressionGuards() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H418
 
@@ -7201,7 +7201,7 @@ Reviewer: _pending_
  (function sprintSidebarDefaultsAndLayout() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H419
 
@@ -7215,7 +7215,7 @@ Reviewer: _pending_
    // selected attributes — they would shadow the JS-applied defaults.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H420
 
@@ -7230,7 +7230,7 @@ Reviewer: _pending_
    eq('sidebar-defaults: rangeSection has hidden attribute',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H421
 
@@ -7244,7 +7244,7 @@ Reviewer: _pending_
      /function parseRangeExpr\b/.test(allContentSrc), true);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H422
 
@@ -7258,7 +7258,7 @@ Reviewer: _pending_
    const src = allContentSrc;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H423
 
@@ -7272,7 +7272,7 @@ Reviewer: _pending_
    eq('accessibility AC2: content.js CSS contains :focus-visible selector',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H424
 
@@ -7286,7 +7286,7 @@ Reviewer: _pending_
    // The CSS function body should contain interpolations of the constants, not bare literals.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H425
 
@@ -7303,7 +7303,7 @@ Reviewer: _pending_
    // This assertion instead checks that later per-layer eval sites in the suite
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H426
 
@@ -7316,7 +7316,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H427
 
@@ -7330,7 +7330,7 @@ Reviewer: _pending_
  //
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H428
 
@@ -7355,7 +7355,7 @@ Reviewer: _pending_
    if (contentSrc === null || constantsCode === null || ladderSrc === null) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H429
 
@@ -7369,7 +7369,7 @@ Reviewer: _pending_
    eq('invert-pills regression: lib/dr-simplify/ladder.js references simplifyDates',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H430
 
@@ -7384,7 +7384,7 @@ Reviewer: _pending_
    const contentSrc = sourceByName('content.js');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H431
 
@@ -7398,7 +7398,7 @@ Reviewer: _pending_
  //   (a) Static analysis: the source contains the null-guard exactly as specced.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H432
 
@@ -7421,7 +7421,7 @@ Reviewer: _pending_
    const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H433
 
@@ -7435,7 +7435,7 @@ Reviewer: _pending_
  // isPhantomA11yTable) must never write to the page — no classList.add,
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H434
 
@@ -7451,7 +7451,7 @@ Reviewer: _pending_
        toggle(cls, force) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H435
 
@@ -7471,7 +7471,7 @@ Reviewer: _pending_
        setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H436
 
@@ -7487,7 +7487,7 @@ Reviewer: _pending_
      // falls to its unbound state, which is what this section already assumed.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H437
 
@@ -7510,7 +7510,7 @@ Reviewer: _pending_
    const sentTabMessages = [];
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H438
 
@@ -7533,7 +7533,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H439
 
@@ -7547,7 +7547,7 @@ Reviewer: _pending_
    const linkedThumbRule = linkedThumbRuleMatch ? linkedThumbRuleMatch[0] : '';
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H440
 
@@ -7561,7 +7561,7 @@ Reviewer: _pending_
    const linkedLabelRuleMatch = sidebarHtml.match(/#sliderBlock\.linked[^{]*\.lbl\.bot\s*\{[^}]*\}/);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H441
 
@@ -7580,7 +7580,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H442
 
@@ -7599,7 +7599,7 @@ Reviewer: _pending_
    eq('AC1-src: the request:applySettings responder returns an answer',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H443
 
@@ -7623,7 +7623,7 @@ Reviewer: _pending_
  //      handler for that action.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H444
 
@@ -7637,7 +7637,7 @@ Reviewer: _pending_
    // runs. The stub's chrome interfaces follow Chrome's callback contract, which
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H445
 
@@ -7651,7 +7651,7 @@ Reviewer: _pending_
      const goneCtx = loadBackground({ closeSidebarUnreceived: true });
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H446
 
@@ -7665,7 +7665,7 @@ Reviewer: _pending_
      eq('page unload: an extension page closes nothing while no sidebar is open', closes(), 0);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H447
 
@@ -7679,7 +7679,7 @@ Reviewer: _pending_
    // readFileSync/path.join). A loop-variable read fed by the manifest itself
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H448
 
@@ -7693,7 +7693,7 @@ Reviewer: _pending_
    const literalAlternation = CONTENT_SCRIPT_FILES.join('|').replace(/\./g, '\\.');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H449
 
@@ -7719,7 +7719,7 @@ Reviewer: _pending_
      manifest.content_scripts[0].js.length, 19);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H450
 
@@ -7737,7 +7737,7 @@ Reviewer: _pending_
  // happened, and (b) every lib/ content script the manifest lists loads before
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H451
 
@@ -7756,7 +7756,7 @@ Reviewer: _pending_
  // scope (the same sloppy-mode leak DR_NUMBER's helpers rely on before their
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H452
 
@@ -7770,7 +7770,7 @@ Reviewer: _pending_
  // discipline checks above. Four groups of tests:
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H453
 
@@ -7784,7 +7784,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H454
 
@@ -7804,7 +7804,7 @@ Reviewer: _pending_
  // of tests:
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H455
 
@@ -7830,7 +7830,7 @@ Reviewer: _pending_
  // This section has three parts:
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H456
 
@@ -7847,7 +7847,7 @@ Reviewer: _pending_
  // --- 1. Package discipline ---
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H457
 
@@ -7861,7 +7861,7 @@ Reviewer: _pending_
  // simplifyTableCells, classifyTableCell, cellPatches — and
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H458
 
@@ -7900,7 +7900,7 @@ Reviewer: _pending_
  (function engineReturnsResults_rangeStatusMessageSequence() {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H459
 
@@ -7925,7 +7925,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H460
 
@@ -7942,7 +7942,7 @@ Reviewer: _pending_
  // ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H461
 
@@ -7957,7 +7957,7 @@ Reviewer: _pending_
        .replace(/\/\*[\s\S]*?\*\//g, '')
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H462
 
@@ -7973,7 +7973,7 @@ Reviewer: _pending_
    const contentSrc = sourceByName('content.js');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H463
 
@@ -7987,7 +7987,7 @@ Reviewer: _pending_
    const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H464
 
@@ -8001,7 +8001,7 @@ Reviewer: _pending_
    const contentSrc = sourceByName('content.js');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H465
 
@@ -8015,7 +8015,7 @@ Reviewer: _pending_
    const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H466
 
@@ -8029,7 +8029,7 @@ Reviewer: _pending_
  // The section above drives the unit directly, so it passes whether or not the
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H467
 
@@ -8043,7 +8043,7 @@ Reviewer: _pending_
      eq('bound tab wiring: the sidebar asked which tab it was opened for',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `chrome-extension/ui-toggle.js`
 
@@ -8059,7 +8059,7 @@ Reviewer: _pending_
  const LOCKED_TOGGLE_TITLE = 'This table\'s original values are no longer available. Reload the page to change it.';
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H469
 
@@ -8073,7 +8073,7 @@ Reviewer: _pending_
  /** WeakMap from HTMLTableElement → HTMLButtonElement (the morph button) */
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H470
 
@@ -8110,7 +8110,7 @@ Reviewer: _pending_
  // class disappears with the old cells and the lock lifts by itself.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H471
 
@@ -8124,7 +8124,7 @@ Reviewer: _pending_
        DR_LOG.warn("Dynamic Rounding: table locked; its original values are no longer available.");
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H472
 
@@ -8138,7 +8138,7 @@ Reviewer: _pending_
         against the hover/expanded/focus-visible rules above. */
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H473
 
@@ -8155,7 +8155,7 @@ Reviewer: _pending_
    ensureToggleStyleInjected();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H474
 
@@ -8169,7 +8169,7 @@ Reviewer: _pending_
          scheduleAutoCollapse();
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H475
 
@@ -8187,7 +8187,7 @@ Reviewer: _pending_
    trackedTables.add(table);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H476
 
@@ -8201,7 +8201,7 @@ Reviewer: _pending_
    syncSwitchForTable(table);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H477
 
@@ -8215,7 +8215,7 @@ Reviewer: _pending_
  // element. This view holds no scan of its own.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H478
 
@@ -8229,7 +8229,7 @@ Reviewer: _pending_
      if (isPhantomA11yTable(table)) return;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H479
 
@@ -8245,7 +8245,7 @@ Reviewer: _pending_
  }
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `docs/test-pages/tables.html`
 
@@ -8261,7 +8261,7 @@ Reviewer: _pending_
        Clock times round to the hour at the half-hour mark, and the original
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H481
 
@@ -8275,7 +8275,7 @@ Reviewer: _pending_
                                              comes back with an ASCII hyphen
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H482
 
@@ -8294,7 +8294,7 @@ Reviewer: _pending_
      <table>
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H483
 
@@ -8308,7 +8308,7 @@ Reviewer: _pending_
        Grid cells have no th concept: every cell is data. The header row holds
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H484
 
@@ -8324,7 +8324,7 @@ Reviewer: _pending_
      <button type="button" id="add-table-btn">Add a table</button>
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H485
 
@@ -8338,7 +8338,7 @@ Reviewer: _pending_
        <tr>
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H486
 
@@ -8352,7 +8352,7 @@ Reviewer: _pending_
      <div style="position: relative; border: 1px dashed #cccccc; padding: 12px;">
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H487
 
@@ -8366,7 +8366,7 @@ Reviewer: _pending_
        1,140,043   -> the total's own cell, column C
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `js/doc-tests.js`
 
@@ -8382,7 +8382,7 @@ Reviewer: _pending_
  function extractSheetsTab(doc, text) {
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `js/round_dynamic.js`
 
@@ -8398,7 +8398,7 @@ Reviewer: _pending_
  const PARENS_REGEX = /^\((.+)\)$/;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H490
 
@@ -8412,7 +8412,7 @@ Reviewer: _pending_
  const GROUP_SHAPE_REGEX = /^[+-]?\d{1,3}(?:,\d{3})+$/;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H491
 
@@ -8433,7 +8433,7 @@ Reviewer: _pending_
      const x_int = Math.trunc(offset);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H492
 
@@ -8447,7 +8447,7 @@ Reviewer: _pending_
      result = Math.round(result);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `js/tests.js`
 
@@ -8472,7 +8472,7 @@ Reviewer: _pending_
  // -2.5: step = 0.5 * 10^(cm-2) = 50000. raw = round(87654321/50000)*50000 = 1753*50000 = 87650000. x-floor x_int=-2: rd(v,-2)=87700000 (step=1e5, round(876.54)=877, 877*1e5=87700000). result=max(87650000, 87700000)=87700000.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H494
 
@@ -8486,7 +8486,7 @@ Reviewer: _pending_
  test('0.35, default', ROUND_DYNAMIC(0.35), 0.35);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H495
 
@@ -8500,7 +8500,7 @@ Reviewer: _pending_
      [1000000],   // mag 6, offset=-0.5
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H496
 
@@ -8517,7 +8517,7 @@ Reviewer: _pending_
      [1000000],
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H497
 
@@ -8541,7 +8541,7 @@ Reviewer: _pending_
  ]);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H498
 
@@ -8555,7 +8555,7 @@ Reviewer: _pending_
      [80000],     // mag 4, offset=0
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H499
 
@@ -8573,7 +8573,7 @@ Reviewer: _pending_
  ]);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H500
 
@@ -8587,7 +8587,7 @@ Reviewer: _pending_
  test('87654321 offset=+0.5 distinct from -0.5',
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H501
 
@@ -8601,7 +8601,7 @@ Reviewer: _pending_
  test('0.45 rounds to 0.5', ROUND_DYNAMIC(0.45, 0), 0.5);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H502
 
@@ -8615,7 +8615,7 @@ Reviewer: _pending_
  test('offset=2 floors at value OoM', ROUND_DYNAMIC(9999, 2), 1000);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H503
 
@@ -8631,7 +8631,7 @@ Reviewer: _pending_
  test('1.76 offset=0.5 → integer 1 (floor_oom)', ROUND_DYNAMIC(1.76, 0.5) === 1, true);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H504
 
@@ -8645,7 +8645,7 @@ Reviewer: _pending_
  test('1.32 offset=-0.5 → 1.5 (float)', ROUND_DYNAMIC(1.32, -0.5), 1.5);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H505
 
@@ -8665,7 +8665,7 @@ Reviewer: _pending_
  const gridCases = [
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H506
 
@@ -8678,7 +8678,7 @@ Reviewer: _pending_
      const sorted = [...values].sort((a, b) => a - b);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H507
 
@@ -8692,7 +8692,7 @@ Reviewer: _pending_
  assertMonotonic('originating', originatingValues, 1);
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H508
 
@@ -8706,7 +8706,7 @@ Reviewer: _pending_
      const RD = sandbox.ROUND_DYNAMIC;
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H509
 
@@ -8720,7 +8720,7 @@ Reviewer: _pending_
      // Sanity: default-threshold (1) behavior of rd(17054321, 0.5) is 10M (no x-floor).
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H510
 
@@ -8733,7 +8733,7 @@ Reviewer: _pending_
  // =============================================================================
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H511
 
@@ -8749,7 +8749,7 @@ Reviewer: _pending_
      // [value, offset, expected]
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `python/dynamic_rounding/__init__.py`
 
@@ -8770,7 +8770,7 @@ Reviewer: _pending_
          x_int = math.trunc(offset)
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `python/dynamic_rounding/pandas.py`
 
@@ -8786,7 +8786,7 @@ Reviewer: _pending_
  PARENS_REGEX = re.compile(r'^\((.+)\)$')
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H514
 
@@ -8800,7 +8800,7 @@ Reviewer: _pending_
  GROUP_SHAPE_REGEX = re.compile(r'^[+-]?[0-9]{1,3}(?:,[0-9]{3})+$')
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H515
 
@@ -8814,7 +8814,7 @@ Reviewer: _pending_
              return None
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `python/tests/test_core.py`
 
@@ -8830,7 +8830,7 @@ Reviewer: _pending_
          # result at trunc(-1.5) = -1, which yields 88_000_000. So the x-floor
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H517
 
@@ -8843,7 +8843,7 @@ Reviewer: _pending_
          assert round_dynamic(87654321, offset=-0.5) == 90000000
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H518
 
@@ -8858,7 +8858,7 @@ Reviewer: _pending_
  # ---------------------------------------------------------------------------
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H519
 
@@ -8872,7 +8872,7 @@ Reviewer: _pending_
          (1.13, 0.25, 1),
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `scripts/check-files-test.sh`
 
@@ -8888,7 +8888,7 @@ Reviewer: _pending_
  repo=$(scratch_repo)
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `scripts/check-files.sh`
 
@@ -8904,7 +8904,7 @@ Reviewer: _pending_
  #
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H522
 
@@ -8918,7 +8918,7 @@ Reviewer: _pending_
    chrome-extension/
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H523
 
@@ -8932,7 +8932,7 @@ Reviewer: _pending_
    README.md
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `scripts/check-vocab-test.sh`
 
@@ -8952,7 +8952,7 @@ Reviewer: _pending_
  # Every case runs in a scratch git repository carrying a copy of the real
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H525
 
@@ -8972,7 +8972,7 @@ Reviewer: _pending_
  # damage instead. Matching the branch's own words pins each case to one branch.
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H526
 
@@ -8993,7 +8993,7 @@ Reviewer: _pending_
  canary_row='| pillbox | table toggle | Only data tables get a pillbox. | `\btable toggle` |'
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 ### `scripts/check-vocab.sh`
 
@@ -9009,7 +9009,7 @@ Reviewer: _pending_
  # How to write a pattern — word boundaries per edge, the collocation rule, and
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
 
 #### H528
 
@@ -9028,4 +9028,4 @@ Reviewer: _pending_
  # A sentence the gate must be able to see. It belongs to no living doc, so a
 ```
 
-Reviewer: _pending_
+Reviewer: none. Reconciliation: applied as proposed.
