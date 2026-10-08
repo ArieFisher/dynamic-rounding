@@ -40,11 +40,12 @@ const TK_TOTAL = ['Total', '17,555', '15,238'];
 const tkLabelled = (rows) => rows.map(([label, ...values]) => [{ pieces: label, header: 'row' }].concat(values));
 
 // One entry per tested pair: the sections both kinds draw, and the drawing
-// options. A grid draws a section with grouped set inside a row group.
+// options. A grid draws a section with grouped set inside a row group, and
+// carries the table role with cell-role cells unless the pair names other
+// roles.
 const TK_PAIRS = {
   'data-cell': {
     sections: [{ part: 'body', rows: TK_BODY, grouped: true }],
-    opts: { gridRole: 'table', cellRole: 'cell' },
   },
   'grid-cell': {
     sections: [{ part: 'body', rows: TK_BODY, grouped: true }],

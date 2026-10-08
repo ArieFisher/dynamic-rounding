@@ -3085,15 +3085,17 @@ function tkCellTexts(table) {
 // detection finds, in the order it finds them, with each cell's text before
 // and after that table alone is simplified. Each table is simplified on a
 // fresh drawing, so a table nested in another reads the same whichever one
-// the user turns on.
+// the user turns on. A grid carries the table role unless the pair names
+// another, since the cell role belongs inside it.
 function tkRead(kind, pair, settings) {
+  const drawOpts = Object.assign({ gridRole: 'table' }, pair.opts);
   const foundIn = (table) => findTables(rwEl('div', {}, [table]))
     .map((found) => found.handle).filter((el) => isDataTable(el));
-  const count = foundIn(rwDrawTable(kind, pair.sections, pair.opts).table).length;
+  const count = foundIn(rwDrawTable(kind, pair.sections, drawOpts).table).length;
   const tables = [];
   for (let i = 0; i < count; i++) {
     withRewritePage(() => {
-      const handle = foundIn(rwDrawTable(kind, pair.sections, pair.opts).table)[i];
+      const handle = foundIn(rwDrawTable(kind, pair.sections, drawOpts).table)[i];
       const before = tkCellTexts(handle);
       try {
         roundTableUnder(handle, settings);
