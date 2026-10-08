@@ -11,8 +11,11 @@
 // missed, the same cells change, and each changed cell reads the same text on
 // both. Cells line up by row and grid column, so a feature that moves a cell
 // on one kind shows as a difference. Each pair runs under the shipped
-// defaults and again with the first-row and first-column switches on, so a
-// difference the two exclusions hide still shows.
+// defaults, and again with the first-row and first-column switches on and
+// the top band rounding finer than the other band. The second run shows a
+// difference the two exclusions hide, and a difference in the dataset: under
+// the shipped defaults both bands round at the same offset, so the max
+// magnitude changes no result.
 //
 // Invented values. The body values sit at magnitude 3 and the totals at
 // magnitude 4, so a total that joins the dataset on one kind and stays out
@@ -46,8 +49,14 @@ function tkReadPairList() {
   return rows.length > 0 ? rows : null;
 }
 
-// Common rows. A header row, two body rows, and a total row.
+// Common rows. A header row, two body rows, and a total row. The header
+// pairs draw a header row whose last cell holds a count at magnitude 4, so a
+// header row that joins the dataset on one kind and stays out of it on the
+// other changes how the body rounds; every other pair draws the plain header
+// row, so its own feature is the only thing that differs.
 const TK_HEADER = [{ pieces: 'Region', header: 'col' }, { pieces: '2023', header: 'col' }, { pieces: '2024', header: 'col' }];
+const TK_COUNTED_HEADER = TK_HEADER.concat([{ pieces: 'Target 25,000', header: 'col' }]);
+const TK_COUNTED_BODY = [['North', '4,821', '9,187', '1,234'], ['South', '2,734', '6,051', '5,678']];
 const TK_BODY = [['North', '4,821', '9,187'], ['South', '2,734', '6,051']];
 const TK_TOTAL = ['Total', '17,555', '15,238'];
 const tkLabelled = (rows) => rows.map(([label, ...values]) => [{ pieces: label, header: 'row' }].concat(values));
@@ -67,13 +76,13 @@ const TK_PAIRS = {
     sections: [{ part: 'bare', rows: TK_BODY }],
   },
   'column-header': {
-    sections: [{ part: 'head', rows: [TK_HEADER] }, { part: 'body', rows: TK_BODY, grouped: true }],
+    sections: [{ part: 'head', rows: [TK_COUNTED_HEADER] }, { part: 'body', rows: TK_COUNTED_BODY, grouped: true }],
   },
   'head-group': {
-    sections: [{ part: 'head', rows: [TK_HEADER], grouped: true }, { part: 'body', rows: TK_BODY, grouped: true }],
+    sections: [{ part: 'head', rows: [TK_COUNTED_HEADER], grouped: true }, { part: 'body', rows: TK_COUNTED_BODY, grouped: true }],
   },
   'header-row-in-body': {
-    sections: [{ part: 'bare', rows: [TK_HEADER].concat(TK_BODY) }],
+    sections: [{ part: 'bare', rows: [TK_COUNTED_HEADER].concat(TK_COUNTED_BODY) }],
   },
   'row-header': {
     sections: [{ part: 'head', rows: [TK_HEADER] }, { part: 'body', rows: tkLabelled(TK_BODY), grouped: true }],
@@ -143,8 +152,10 @@ const TK_PAIRS = {
 
 const TK_SETTINGS = [
   { name: 'the shipped defaults', opts: Object.assign({}, DR_DEFAULTS) },
-  { name: 'the first-row and first-column switches on',
-    opts: Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true }) },
+  { name: 'both switches on and a finer top band',
+    opts: Object.assign({}, DR_DEFAULTS, {
+      simplifyFirstRow: true, simplifyFirstColumn: true, offsetTop: -1, offsetOther: 0,
+    }) },
 ];
 
 // Every cell of a table, by row and grid column, with the text it holds.

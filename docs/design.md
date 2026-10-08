@@ -287,7 +287,7 @@ The algorithm exists three times — the Sheets library, the Python package, and
 
 ### Table kind pairs
 
-A native table and a grid are one product: a reader sees a table and never learns which markup drew it, so every table feature must give the same result in both kinds. Each table feature a page can use comes in a native form and a grid form, and the two forms of one feature make a pair. A comparison test draws the same values once in each form, runs detection and the simplification on both, and checks three things: both tables are found or both are missed, the same cells change, and each changed cell reads the same text. Cells line up by row and grid column. Each comparison runs under the shipped defaults and again with the first-row and first-column switches on.
+A native table and a grid are one product: a reader sees a table and never learns which markup drew it, so every table feature must give the same result in both kinds. Each table feature a page can use comes in a native form and a grid form, and the two forms of one feature make a pair. A comparison test draws the same values once in each form, runs detection and the simplification on both, and checks three things: both tables are found or both are missed, the same cells change, and each changed cell reads the same text. Cells line up by row and grid column. Each comparison runs under the shipped defaults, and again with the first-row and first-column switches on and the top band rounding finer than the other band. The shipped defaults round both bands at the same offset, so only the second run shows a difference in which values feed the max magnitude.
 
 This table is the one list of pairs. The extension's test suite reads it: the Key column names a pair's comparison test, and the State column holds the result the test expects.
 
@@ -303,14 +303,14 @@ A capture that shows a table feature this list lacks adds a row.
 | `data-cell` | Data cell | `<td>` in a `<tbody>` | `cell` role in a `rowgroup`, inside the `table` role | same | |
 | `grid-cell` | Data cell of an interactive grid | `<td>` in a `<tbody>` | `gridcell` role in a `rowgroup`, inside the `grid` role | same | |
 | `ungrouped-rows` | Rows with no body section | `<tr>` directly in the `<table>` | `row` role directly in the grid | same | |
-| `column-header` | Header row in a head section | `<th>` cells in a `<thead>` | `columnheader` cells in a row outside every `rowgroup` | same | |
+| `column-header` | Header row in a head section | `<th>` cells in a `<thead>` | `columnheader` cells in a row outside every `rowgroup` | different | #526 |
 | `head-group` | Header row in a row group | `<th>` cells in a `<thead>` | `columnheader` cells in a row inside its own `rowgroup` | same | |
 | `header-row-in-body` | Header row with no head section | a leading row of `<th>` cells, with no `<thead>` | a leading row of `columnheader` cells, with no `rowgroup` | same | |
 | `row-header` | Row label | `<th scope="row">` | `rowheader` role | same | |
 | `corner-cell` | Empty corner above the row labels | an empty `<td>` in the header row | an empty `cell` in the header row | same | |
 | `body-groups` | Several body sections | several `<tbody>` | several `rowgroup` | same | |
 | `footer-row` | Total row in a footer | `<tr>` in a `<tfoot>` | a row after the `rowgroup`, outside it | same | |
-| `footer-group` | Total row in a footer group | `<tr>` in a `<tfoot>` | a row in its own `rowgroup`, after the body's | same | |
+| `footer-group` | Total row in a footer group | `<tr>` in a `<tfoot>` | a row in its own `rowgroup`, after the body's | different | #526 |
 | `merged-across` | Cell merged across columns | `colspan` | `aria-colspan` | same | |
 | `merged-down` | Cell merged down rows | `rowspan` | `aria-rowspan` | same | |
 | `caption` | Caption | `<caption>` | `caption` role inside the grid | same | |
