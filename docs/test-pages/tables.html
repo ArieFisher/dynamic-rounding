@@ -132,6 +132,7 @@
     }
 
     .aria-grid [role="columnheader"],
+    .aria-grid [role="rowheader"],
     .aria-grid [role="cell"],
     .aria-grid .g-cell {
       border-right: 1px solid var(--rule);
@@ -2496,9 +2497,8 @@ TSLA,75,"248.09","18,606.75"
       the seat counts. A header cell on a native table is a cell like any
       other, and a grid reads every element with the cell role as a cell, so
       the first-row and first-column exclusions govern both kinds by position
-      alone. The grid's row labels carry the cell role: when a row holds the
-      cell role, the adapter reads those elements alone, so a label carrying
-      the row-header role beside them would drop out of the row.
+      alone. The grid's row labels carry the cell role here; section 29 holds
+      the shape whose labels carry the row-header role.
     -->
     <table>
       <thead>
@@ -2571,6 +2571,68 @@ TSLA,75,"248.09","18,606.75"
         <tr><th scope="row">12,000</th><td>$29</td></tr>
       </tbody>
     </table>
+  </section>
+
+  <section>
+    <h2>29. A grid whose row labels carry the row-header role</h2>
+    <p>An order summary as a grid: a header row of two column headers, then
+      five rows that each hold one label with the row-header role beside one
+      amount with the cell role. The "Duties" label holds a button and a
+      tooltip beside its text.</p>
+    <p class="expect">Expect: a pillbox at load.</p>
+    <ol class="expect">
+      <li><b>Under the defaults.</b> Expect: the header row and the labels
+        stay raw, and every amount rounds: $48.60 to $50, $12.00 to $10,
+        $7.35 to $7.5, $9.84 to $10, CAD$77.79 to CAD$80. A failure leaves
+        every amount as written, with no visible reason.</li>
+      <li><b>Open the sidebar and set the range expression to B2:B6.</b>
+        Expect: the same five amounts round. A failure rounds nothing,
+        because column B names nothing.</li>
+      <li><b>Turn on the first-column switch.</b> Expect: the labels stay as
+        written; "Subtotal · 2 items" keeps its 2.</li>
+    </ol>
+
+    <!--
+      The shape of a storefront order summary: a grid with the table role,
+      a header row outside the row group, and body rows whose label carries
+      the row-header role beside one cell-role amount. The row-header and
+      column-header roles count as cells beside the cell role, in document
+      order, so the label is column A and the amounts are column B on both
+      table kinds.
+    -->
+    <div class="aria-grid" role="table" aria-label="Order summary">
+      <div class="g-row" role="row">
+        <span role="columnheader">Item</span>
+        <span role="columnheader">Amount</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="rowheader">Subtotal · 2 items</span>
+          <span role="cell">$48.60</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Shipping</span>
+          <span role="cell">$12.00</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Duties
+            <button type="button" aria-label="Why duties apply"
+              aria-describedby="duties-tooltip">?</button>
+            <span id="duties-tooltip" role="tooltip" hidden>Shipped from
+              another country, so duties apply.</span>
+          </span>
+          <span role="cell">$7.35</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Taxes</span>
+          <span role="cell">$9.84</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="rowheader">Total</span>
+          <span role="cell">CAD$77.79</span>
+        </div>
+      </div>
+    </div>
   </section>
 
 </body>
