@@ -959,8 +959,9 @@
     <h2>10. ARIA grid with row groups</h2>
     <p class="expect">Expect: pillbox at load. The header row and the Region
       column stay as written. Every other row rounds, the Total row below the
-      row group included. The Total values do not count toward the max
-      magnitude and never appear in the lens preview.</p>
+      row group included, and its values appear in the lens preview. The
+      Total values share magnitude 6 with the body values, so every value
+      rounds as it does in a table without a Total row.</p>
 
     <!--
       The load-time scan picks up any role="grid" or role="table" element that
@@ -969,9 +970,9 @@
       counts as a row, so the header and Total rows are rows like any other.
       Grid cells have no th concept: every cell is data. The header row holds
       because it is the grid's literal first row. The Total row is an outside
-      row: it rounds against the dataset without joining it, so its values
-      never set the max magnitude and never reach the lens preview. A native
-      table's footer rows get the same treatment.
+      row, and every row joins the dataset, so its values feed the max
+      magnitude and the lens preview like any other row's. The shape
+      fingerprint is the one reader of the outside-row mark.
     -->
     <div class="aria-grid" role="grid" aria-label="Quarterly sessions by region">
       <div class="g-row" role="row">
