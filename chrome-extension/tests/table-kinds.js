@@ -33,7 +33,7 @@ const TK_TESTED_STATES = ['same', 'different'];
 // other changes how the body rounds; every other pair draws the plain header
 // row, so its own feature is the only thing that differs.
 const TK_HEADER = [{ pieces: 'Region', header: 'col' }, { pieces: '2023', header: 'col' }, { pieces: '2024', header: 'col' }];
-const TK_COUNTED_HEADER = TK_HEADER.concat([{ pieces: 'Target 25,000', header: 'col' }]);
+const TK_COUNTED_HEADER = TK_HEADER.concat([{ pieces: 'Target 25,317', header: 'col' }]);
 const TK_COUNTED_BODY = [['North', '4,821', '9,187', '1,234'], ['South', '2,734', '6,051', '5,678']];
 const TK_BODY = [['North', '4,821', '9,187'], ['South', '2,734', '6,051']];
 const TK_TOTAL = ['Total', '17,555', '15,238'];
