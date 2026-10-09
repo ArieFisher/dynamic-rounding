@@ -1,0 +1,86 @@
+{
+  "title": "Grid Reading Gaps",
+  "base_branch": "main",
+  "created": "2026-10-09",
+  "source_markdown": "docs/sprint-plans/grid-reading-gaps.md",
+  "repo_conventions": {
+    "version_files": [
+      {
+        "path": "chrome-extension/manifest.json",
+        "format": "dotted integers in `version` key, one to four integers, no pre-release suffix; bumped by the merge-time workflow — sprint branches must not touch it"
+      },
+      {
+        "path": "python/pyproject.toml",
+        "format": "semver in `version` key; bumped by the merge-time workflow — sprint branches must not touch it; no sprint here changes python/"
+      }
+    ],
+    "version_bump_policy": "merge-workflow",
+    "test_command": "node chrome-extension/tests.js && node js/tests.js && node js/doc-tests.js",
+    "gate_command": "scripts/check-files.sh --staged && scripts/check-vocab.sh --staged",
+    "branch_naming": "fix/<label>, refactor/<label>, chore/<label>, feature/<label>, docs/<label> by change type, as each sprint's branch field states; never claude/ or session/",
+    "dependent_policy": "after-merge",
+    "base_branch_writes": "pull-request",
+    "commit_convention": "Conventional Commits (fix:, refactor:, feat:, docs:, test:); a vocabulary definition lands as its own docs: commit on the sprint branch; no attribution trailer and no generated-by line",
+    "pr_template": "AGENTS.md, section Pull requests",
+    "vocabulary": "docs/vocabulary.md is the canon; read it in full before the first tool call, sweep new prose at every commit, and define a new concept on the branch that makes it real",
+    "docs_rule": "A behavior change updates every living doc it invalidates on the same branch; each sprint's dev notes name its docs. Regression fixtures are synthetic and minimized; a raw capture never enters the repository. Every sprint names the section of docs/test-pages/tables.html for its manual test."
+  },
+  "sprints": [
+    {
+      "label": "dataset-takes-every-row",
+      "branch": "fix/dataset-takes-every-row",
+      "goal": "Every row of a table feeds the dataset, header, body, and total alike, on a native table and on a grid.",
+      "scope": "In chrome-extension/content.js, datasetMaxMagnitude and collectNumericCells stop skipping an outside row, and the outside-row argument leaves tableDataCells, classifyTableCells, and classifyTableCell. In chrome-extension/lib/dr-table/detect.js, the native adapter's footer mark goes; the grid adapter keeps its mark for the shape fingerprint's header-row read. In chrome-extension/lib/dr-capture/state.js, the per-cell isOutside field goes and CAPTURE_FORMAT becomes 8. In docs/design.md, the column-header and footer-group pairs become same and their notes clear. Tests in chrome-extension/tests/ follow, including the format pins. Living docs: the dataset, outside row, row group, and shape fingerprint entries in docs/vocabulary.md; the Rows, row groups, and outside rows section and the extension's dataset paragraph in chrome-extension/README.md; the fingerprint sentence and the pair list in docs/design.md; the expectation text of sections 30d, 30j, and 30k in docs/test-pages/tables.html, which names the result in place of the link to #526.",
+      "out_of_scope": "Which cells the first-row, first-column, currency, and percent exclusions skip. The frozen magnitude of a virtualized grid. The shape fingerprint's header-row rule. #525. The Sheets and Python libraries.",
+      "acceptance_criteria": [
+        "With both switches on and the sidebar's offsets apart, a header row, a body row, and a total row each set the max magnitude on a native table and on a grid, shown by a test per row kind per table kind that fails on main where the rule differs.",
+        "The column-header and footer-group comparison tests find no difference under both settings, and the design doc lists both pairs as same.",
+        "No code path reads an outside-row mark to decide whether a value joins the dataset or the lens preview pool.",
+        "A grid that groups its data rows still records its header row's texts in its shape fingerprint, and a native table's fingerprint is unchanged.",
+        "The living docs and sections 30d, 30j, and 30k state the rule; the suites pass."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "No new constant. isOutside appears in 11 places in content.js, 15 in detect.js, 24 in tests/capture-log.js, and 2 in state.js; the capture-log mentions are fixtures that follow the format change, and the suite pins the capture format as a literal 7 at about twenty sites. The grid adapter's _getRowEls stays for pinned-pane stitching. Pitfall: the comparison harness shows sameness only; it cannot show that a total row joins. The direct tests must assert the max magnitude on each kind. A native table with a footer and offsets apart changes what a user sees (a body value can move from the top band to the other band), which follows from the rule and needs no extra flag. The pull request states the capture format bump as the one visible change to the capture file. If the developer finds a reader of the per-cell field, the field stays and the pull request says why. Manual test: sections 30d, 30j, and 30k. The vocabulary changes land as their own docs: commit. Merge order: second, after grid-in-cell-nest; bring main into the branch before its checks run."
+    },
+    {
+      "label": "grid-in-cell-nest",
+      "branch": "fix/grid-in-cell-nest",
+      "goal": "A grid inside a cell of another grid registers as a table of its own, and so does the grid around it, as two native tables do.",
+      "scope": "In chrome-extension/lib/dr-table/detect.js, the upward walk that finds a chain root (_chainRootOf), the walk that counts depth (_depthInChain), and the nest membership in nominateNest stop at an element carrying a cell role, reading the existing cell role list. Tests in chrome-extension/tests/. In docs/design.md, the nested-table pair becomes same; the Detection paragraph states the cell boundary. In docs/vocabulary.md, the chain root, containment chain, nesting depth, and qualifying element entries state it. In chrome-extension/README.md, the first detection point states it. In docs/test-pages/tables.html, the expectation text of section 30o names the result in place of the link to #527.",
+      "out_of_scope": "The nesting depth value. Vendor profiles. A native table inside a grid cell. The pending-table cap. Which element a right-click resolves in a registered nest beyond the two cases in the acceptance criteria.",
+      "acceptance_criteria": [
+        "The nested-table comparison finds two data tables on the native page and two on the grid page, and the design doc lists the pair as same.",
+        "A right-click inside the inner grid resolves the inner grid, and a right-click in another cell of the outer grid resolves the outer grid.",
+        "The Databricks-shaped fixture still registers exactly one table, its scrolling pane, at the configured depth, and a nest whose panes sit outside any cell follows the depth rule unchanged.",
+        "A second run of the nomination step over a page that registered both grids registers nothing new.",
+        "The living docs and section 30o state the rule; the suites pass."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "The cell role list is GRID_CELL_SELECTOR in detect.js; reuse it and add no second list. Pitfall: nominateNest lists every qualifying element under the chain root and then checks isSeen across that list. If membership ignores the stop, a registered inner grid makes the outer nest report registered and the outer grid never registers. The public chainRootOf first finds the nearest qualifying element, crossing cells freely, then calls _chainRootOf; the stop belongs in _chainRootOf. A pending table keeps one observer per chain root, so two roots under one subtree hold two observers; confirm the removal branch drops each. gridWalkDepthCap still bounds both walks. Manual test: section 30o. The vocabulary changes land as their own docs: commit. Merge order: first; the pair list and the test page's section 30 are shared with dataset-takes-every-row."
+    },
+    {
+      "label": "column-first-grid",
+      "branch": "fix/column-first-grid",
+      "goal": "A grid whose children are columns is found on right-click and read with rows as rows and cells as cells (issue #511, path 1).",
+      "scope": "In chrome-extension/lib/dr-table/detect.js: the direction read as one function and one new member on the style probe port, with a default for a probe that lacks it; looksLikeGrid's alignment step measures along the axis on which a row's cells line up; the grid adapter's children fallback turns a side-by-side grid so row r holds the r-th item of every column, in column order, each cell's grid column equal to its column's position. Tests in chrome-extension/tests/. In docs/test-pages/tables.html, a new section 31 holds a column-first grid with no role whose label column is wider than its data columns, and states what to expect. Living docs: docs/vocabulary.md defines row-first grid and column-first grid and widens the geometry probe entry; docs/design.md's Detection paragraph and chrome-extension/README.md's detection point and probe step describe the direction read; the pair list in docs/design.md gains a column-first row, state no pair, with a note that a native table lists its cells row by row.",
+      "out_of_scope": "The header row of the captured pricing table, which sits in a sibling grid (#418). A grid losing its entry on a shape change (#394). Columns that a narrow window hides. Vendor profiles and the nesting depth. A new detection setting, unless the developer finds one unavoidable.",
+      "acceptance_criteria": [
+        "A column-first grid with no role and a label column wider than its data columns passes the probe, a right-click inside it registers it, and the test that shows this fails on main first.",
+        "The grid reads as rows: with N columns of M items, the adapter returns M rows of N cells in column order, a range expression naming column B reaches the second column, and the first-column exclusion governs the label column.",
+        "Every grid that reads today as row-first reads the same afterward: section 12's grid and the existing detection tests pass unchanged, and a row-first grid whose rows use display: contents, which have no box, reads row-first.",
+        "A set of side-by-side children whose first cells do not line up across rows fails the probe.",
+        "The direction read skips a hidden child: a grid whose second child has no box reads by the next child that has one.",
+        "A probe that lacks the new member reads row-first.",
+        "Section 31, the living docs, and the pair list state the result; the suites pass."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "The direction read: the boxes of the first two children that hold a box; the same top with a larger left means column-first; anything else, including too few boxes, means row-first. Constant: reuse gridColumnWidthSample from the detection settings for the direction read's cap; add no literal. The capture prints the detection settings, so a new key would reach the capture file. Write the failing probe test first. Tests in tests/detection.js build probes with only the computed-style and offset-width members at many sites; the default for a probe that lacks the new member keeps them green. Adapters are built fresh on each use, so the direction read runs on each getRows call and the pass cap bounds its cost. The turned read feeds the data test, the pass, the lens preview, and the capture through the adapter alone. Rows come from the columns whose item count equals the modal count, the same candidate rule the probe's third step applies. The turned read applies to any grid whose rows come from the children fallback, marked or not. The ElevenLabs reproduction in the issue holds the markup facts: seven children, a label column and six tier columns, each holding one wrapper per feature row. Build the fixture from invented values and the same structure, with the label column's cells wider. Side effect accepted by the product manager: a row of five or more equal-width cards that carry a number reads as columns. Manual test: section 31 on the test page, then the live pricing page. With no header row, the first feature row stays raw until the first-row switch is on (#418). The vocabulary changes land as their own docs: commit. Merge order: last; bring main into the branch first because it shares the grid adapter's row reading with dataset-takes-every-row."
+    }
+  ]
+}
