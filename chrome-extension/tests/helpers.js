@@ -3136,3 +3136,169 @@ function tkCompare(native, grid) {
   });
   return differences;
 }
+
+// A box as a page reports it for one element: its position and size in
+// pixels.
+function makeBoxRect(top, left, width, height) {
+  return { top, left, width, height, right: left + width, bottom: top + height };
+}
+
+// The rectangle a page reports for an element that draws no box: a hidden
+// element, or a `display: contents` row.
+function makeNoBoxRect() {
+  return makeBoxRect(0, 0, 0, 0);
+}
+
+// One grid element whose box is `rect` and whose text follows its live text
+// pieces, the way a page element's textContent does after a write.
+function makeBoxedNode(className, childNodes, rect) {
+  const node = makeDgNode('DIV', className, null, childNodes);
+  node.getBoundingClientRect = () => rect;
+  node.offsetWidth = rect.width;
+  const text = () => gridCellTextPieces(node).map((piece) => piece.nodeValue).join('');
+  Object.defineProperty(node, 'textContent', { get: text, set() {}, configurable: true });
+  Object.defineProperty(node, 'innerText', { get: text, set() {}, configurable: true });
+  return node;
+}
+
+// The plan comparison section 31 of the manual test page holds, column by
+// column: a label column, then one column per plan. Invented values.
+function planGridColumns() {
+  return [
+    ['Feature', 'Credits per month', 'Voice slots', 'Audio minutes', 'Price per month'],
+    ['Free', '12,500', '4', '18', '$0.00'],
+    ['Starter', '36,200', '12', '52', '$6.50'],
+    ['Creator', '118,400', '35', '163', '$23.75'],
+    ['Pro', '547,300', '140', '694', '$98.40'],
+    ['Scale', '1,962,800', '615', '2,370', '$331.20'],
+    ['Business', '7,214,600', '1,480', '8,140', '$1,286.90'],
+  ];
+}
+
+/**
+ * Draw a column-first grid: no role and no vendor class, each child a column
+ * drawn beside the one before it, each column holding one item per row, and
+ * each item wrapping one span that holds its text. columns[c][r] is the r-th
+ * item of column c, and the first column is the label column. Each column and
+ * item carries the display a flex column draws with, for the harnesses that
+ * read display from the element.
+ *
+ * opts.labelWidth, opts.columnWidth: the label column's width and every other
+ *   column's width in pixels (240 and 120), so the label column is wider.
+ * opts.itemHeight: every item's height in pixels (40).
+ * opts.firstItemHeights: each column's first item height, by column position.
+ * opts.hiddenColumns: positions of columns that draw no box.
+ *
+ * @returns {{gridEl: object, columnEls: object[], itemEls: object[][],
+ *            spanAt: (c: number, r: number) => object,
+ *            textAt: (c: number, r: number) => string}}
+ */
+function makeColumnFirstGrid(columns, opts = {}) {
+  const labelWidth = opts.labelWidth === undefined ? 240 : opts.labelWidth;
+  const columnWidth = opts.columnWidth === undefined ? 120 : opts.columnWidth;
+  const itemHeight = opts.itemHeight === undefined ? 40 : opts.itemHeight;
+  const hidden = new Set(opts.hiddenColumns || []);
+  const top = 100;
+  let left = 0;
+  let tallest = 0;
+  const itemEls = [];
+  const columnEls = columns.map((texts, c) => {
+    const width = c === 0 ? labelWidth : columnWidth;
+    const isHidden = hidden.has(c);
+    let itemTop = top;
+    const items = texts.map((text, r) => {
+      const height = (r === 0 && opts.firstItemHeights) ? opts.firstItemHeights[c] : itemHeight;
+      const rect = isHidden ? makeNoBoxRect() : makeBoxRect(itemTop, left, width, height);
+      itemTop += height;
+      const span = makeBoxedNode('', [makeTextNode(text)], rect);
+      const item = makeBoxedNode('plan-item', [span], rect);
+      item._display = 'block';
+      return item;
+    });
+    const rect = isHidden ? makeNoBoxRect() : makeBoxRect(top, left, width, itemTop - top);
+    if (!isHidden) left += width;
+    tallest = Math.max(tallest, itemTop - top);
+    itemEls.push(items);
+    const column = makeBoxedNode(c === 0 ? 'plan-column plan-labels' : 'plan-column', items, rect);
+    column._display = 'flex';
+    return column;
+  });
+  const gridEl = makeBoxedNode('plan-grid', columnEls, makeBoxRect(top, 0, left, tallest));
+  gridEl._display = 'grid';
+  return {
+    gridEl, columnEls, itemEls,
+    spanAt: (c, r) => itemEls[c][r].children[0],
+    textAt: (c, r) => itemEls[c][r].textContent,
+  };
+}
+
+/**
+ * Draw a row-first grid: no role and no vendor class, each child a row drawn
+ * below the one before it, each row holding its cells side by side.
+ * rows[r][c] is cell c of row r. opts.contentsRows draws every row with
+ * `display: contents`, so a row draws no box and its cells sit straight in
+ * the grid's layout.
+ *
+ * @returns {{gridEl: object, rowEls: object[], cellAt: (r: number, c: number) => object}}
+ */
+function makeRowFirstGrid(rows, opts = {}) {
+  const cellWidth = 120;
+  const rowHeight = 32;
+  const top = 100;
+  const rowEls = rows.map((texts, r) => {
+    const rowTop = top + r * rowHeight;
+    const cells = texts.map((text, c) => {
+      const cell = makeBoxedNode('plain-cell', [makeTextNode(text)], makeBoxRect(rowTop, c * cellWidth, cellWidth, rowHeight));
+      cell._display = 'block';
+      return cell;
+    });
+    const rect = opts.contentsRows ? makeNoBoxRect() : makeBoxRect(rowTop, 0, cellWidth * texts.length, rowHeight);
+    const row = makeBoxedNode('plain-row', cells, rect);
+    row._display = opts.contentsRows ? 'contents' : 'flex';
+    return row;
+  });
+  const gridEl = makeBoxedNode('plain-grid', rowEls, makeBoxRect(top, 0, cellWidth * 4, rowHeight * rows.length));
+  gridEl._display = 'grid';
+  return { gridEl, rowEls, cellAt: (r, c) => rowEls[r].children[c] };
+}
+
+// The unmarked grid section 12 of the manual test page holds, row by row.
+function unmarkedGridRows() {
+  return [
+    ['Product', 'Units', 'Returns', 'Net'],
+    ['Anvils', '64,120', '1,833', '62,287'],
+    ['Springs', '31,507', '402', '31,105'],
+    ['Magnets', '18,266', '951', '17,315'],
+    ['Rockets', '7,414', '1,208', '6,206'],
+    ['Decoys', '2,893', '77', '2,816'],
+    ['Glue', '640', '12', '628'],
+  ];
+}
+
+// Each row's cell texts as the grid adapter reads them.
+function adapterRowTexts(adapter) {
+  return adapter.getRows().map((row) => row.getCells().map((cell) => cell.getText()));
+}
+
+// A style probe with the computed-style and offset-width members only: the
+// shape a probe built before the box member existed holds.
+function makeBoxlessStyleProbe() {
+  return {
+    getComputedStyle(el) { return { display: (el && el._display) || 'block', visibility: 'visible' }; },
+    getOffsetWidth(el) { return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1; },
+  };
+}
+
+// A style probe that reads display from the element and boxes from its
+// rectangle, counting every box read in `boxReads`.
+function makeCountingBoxProbe() {
+  const probe = makeBoxlessStyleProbe();
+  probe.boxReads = [];
+  probe.getBox = (el) => {
+    probe.boxReads.push(el);
+    const rect = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null;
+    if (!rect || !(rect.width > 0 || rect.height > 0)) return null;
+    return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+  };
+  return probe;
+}

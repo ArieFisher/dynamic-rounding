@@ -3744,3 +3744,376 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('#330: a grid that declares no merge numbers its columns by read position',
     adapterColumnsOf(grid.wrapperEl), [[0, 1], [0, 1]]);
 })();
+
+// =============================================================================
+// Column-first grids (issue #511)
+// Spec: docs/sprint-plans/grid-reading-gaps.md §3.3 and the column-first-grid
+// sprint. A column-first grid's children are columns drawn side by side; a
+// row-first grid's children are rows drawn one below another. The direction
+// read takes the boxes of the first two children that draw a box, among at
+// most gridColumnWidthSample children: the same top with a larger left reads
+// column-first, and anything else reads row-first.
+// =============================================================================
+
+// Run fn with the bare getComputedStyle reading each element's own display,
+// the read the default style probe makes in a page.
+function withElementDisplays(fn) {
+  const saved = global.getComputedStyle;
+  global.getComputedStyle = (el) => ({ display: (el && el._display) || 'block', visibility: 'visible' });
+  try { fn(); } finally { global.getComputedStyle = saved; }
+}
+
+// --- The probe and the right-click ---
+
+(function columnFirst_theProbePassesTheGridWithAWiderLabelColumn() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  withElementDisplays(() => {
+    eq('column-first: a column-first grid with no role and a wider label column passes the geometry probe',
+      looksLikeGrid(plan.gridEl), true);
+  });
+})();
+
+(function columnFirst_theWalkUpResolvesTheWholeGrid() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  withFindTargetEnv([], () => {
+    plan.gridEl.parentElement = global.document.body;
+    const found = findTargetTable(plan.spanAt(1, 1), { isSeen: () => false });
+    eq('column-first: a right-click walk from a value resolves the whole grid',
+      !!found && found.handle === plan.gridEl, true);
+    eq('column-first: the walk resolves no single column',
+      !!found && plan.columnEls.includes(found.handle), false);
+  });
+})();
+
+(function columnFirst_aRightClickRegistersTheGrid() {
+  withRightClickSandbox(function (ctx) {
+    const plan = makeColumnFirstGrid(planGridColumns());
+    plan.gridEl.parentElement = global.document.body;
+    eq('column-first right-click: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: plan.spanAt(5, 1) });
+
+    eq('column-first right-click: the grid enters the registry',
+      ctx.store.hasTable(plan.gridEl), true);
+    eq('column-first right-click: the grid becomes the active table',
+      ctx.store.getSelectedTable() === plan.gridEl, true);
+    eq('column-first right-click: the registry holds the grid alone',
+      ctx.store.getRegisteredTables().map((el) => el === plan.gridEl), [true]);
+    eq('column-first right-click: the grid carries a pillbox',
+      ctx.tableToggles.has(plan.gridEl), true);
+    eq('column-first right-click: no column carries a pillbox',
+      plan.columnEls.some((column) => ctx.tableToggles.has(column)), false);
+  });
+})();
+
+// --- The turned read ---
+
+(function columnFirst_theAdapterReadsRowsAsRows() {
+  const columns = planGridColumns();
+  const plan = makeColumnFirstGrid(columns);
+  const rows = makeAdapter(plan.gridEl).getRows();
+  eq('column-first read: seven columns of five items read as five rows',
+    rows.length, 5);
+  eq('column-first read: every row holds seven cells',
+    rows.map((row) => row.getCells().length), [7, 7, 7, 7, 7]);
+  eq('column-first read: row r holds the r-th item of every column, in column order',
+    adapterRowTexts(makeAdapter(plan.gridEl)),
+    columns[0].map((_, r) => columns.map((column) => column[r])));
+  eq('column-first read: each cell is the item element itself',
+    rows[2].getCells().map((cell) => cell.el === plan.itemEls[cell.columnIndex][2]),
+    [true, true, true, true, true, true, true]);
+  eq('column-first read: each cell\'s grid column is its column\'s position',
+    rows.map((row) => row.getCells().map((cell) => cell.columnIndex)),
+    [0, 1, 2, 3, 4].map(() => [0, 1, 2, 3, 4, 5, 6]));
+  eq('column-first read: no turned row is an outside row',
+    rows.map((row) => row.isOutside), [false, false, false, false, false]);
+})();
+
+(function columnFirst_aRangeNamingColumnBReachesTheSecondColumn() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  const before = planGridColumns();
+  try {
+    roundTableUnder(plan.gridEl, Object.assign({}, DR_DEFAULTS, { rangeExpr: 'B2:B5' }));
+    eq('column-first range: B2:B5 changes the Free plan\'s credits',
+      plan.textAt(1, 1) !== '12,500', true);
+    const others = [];
+    before.forEach((column, c) => column.forEach((text, r) => {
+      if (c === 1) return;
+      if (plan.textAt(c, r) !== text) others.push(`${c},${r}`);
+    }));
+    eq('column-first range: B2:B5 leaves every item outside the second column as written',
+      others, []);
+    eq('column-first range: B2:B5 leaves the Free plan\'s name as written',
+      plan.textAt(1, 0), 'Free');
+  } finally {
+    DR_STORE.unregisterTable(plan.gridEl);
+  }
+})();
+
+(function columnFirst_theDefaultsRoundTheBodyAndHoldTheLabels() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  const before = planGridColumns();
+  try {
+    roundTableUnder(plan.gridEl, DR_DEFAULTS);
+    eq('column-first defaults: 1,962,800 shows 2,000,000',
+      plan.textAt(5, 1), '2,000,000');
+    eq('column-first defaults: the label column stays as written',
+      before[0].map((_, r) => plan.textAt(0, r)), before[0]);
+    eq('column-first defaults: the plan names stay as written',
+      before.map((_, c) => plan.textAt(c, 0)), before.map((column) => column[0]));
+  } finally {
+    DR_STORE.unregisterTable(plan.gridEl);
+  }
+})();
+
+// A label column that carries numbers, so the first-column switch shows on it.
+function numericLabelColumns() {
+  return [
+    ['Code', '4,812,377', '3,906,154', '2,775,031', '1,648,902'],
+    ['North', '8,584,629', '7,318,204', '2,140,663', '1,234,567'],
+    ['South', '6,431,708', '5,902,113', '3,377,250', '2,861,449'],
+    ['East', '9,104,236', '4,417,852', '1,906,374', '3,520,618'],
+    ['West', '7,763,091', '6,285,940', '4,049,517', '2,318,775'],
+  ];
+}
+
+(function columnFirst_theFirstColumnSwitchGovernsTheLabelColumn() {
+  const columns = numericLabelColumns();
+  const held = makeColumnFirstGrid(numericLabelColumns());
+  try {
+    roundTableUnder(held.gridEl, Object.assign({}, DR_DEFAULTS, { simplifyFirstColumn: false }));
+    eq('column-first first column off: the label column\'s values stay as written',
+      [1, 2, 3, 4].map((r) => held.textAt(0, r)), columns[0].slice(1));
+    eq('column-first first column off: every data column\'s values change',
+      [1, 2, 3, 4].every((c) => [1, 2, 3, 4].every((r) => held.textAt(c, r) !== columns[c][r])), true);
+  } finally {
+    DR_STORE.unregisterTable(held.gridEl);
+  }
+  const released = makeColumnFirstGrid(numericLabelColumns());
+  try {
+    roundTableUnder(released.gridEl, Object.assign({}, DR_DEFAULTS, { simplifyFirstColumn: true }));
+    eq('column-first first column on: the label column\'s values change',
+      [1, 2, 3, 4].map((r) => released.textAt(0, r) !== columns[0][r]), [true, true, true, true]);
+    eq('column-first first column on: 4,812,377 in the label column shows 5,000,000',
+      released.textAt(0, 1), '5,000,000');
+  } finally {
+    DR_STORE.unregisterTable(released.gridEl);
+  }
+})();
+
+// --- The turned read feeds every consumer through the adapter ---
+
+(function columnFirst_theDataTestReadsTheTurnedGrid() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  eq('column-first consumers: the data test passes the grid', isDataTable(plan.gridEl), true);
+})();
+
+(function columnFirst_theLensPreviewPoolReadsTheTurnedGrid() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  eq('column-first consumers: the lens preview pool under B2:B5 holds the Free plan\'s values',
+    collectNumericCells(plan.gridEl, { rangeExpr: 'B2:B5' }).map((cell) => cell.num), [12500, 4, 18]);
+  eq('column-first consumers: the lens preview pool under C2 holds the Starter plan\'s credits',
+    collectNumericCells(plan.gridEl, { rangeExpr: 'C2' }).map((cell) => cell.num), [36200]);
+})();
+
+(function columnFirst_theCaptureReadsTheTurnedGrid() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  try {
+    roundTableUnder(plan.gridEl, Object.assign({}, DR_DEFAULTS, { rangeExpr: 'B2:B5' }));
+    const state = collectCaptureState({ store: DR_STORE });
+    const tableRec = state.tables[DR_STORE.getRegisteredTables().indexOf(plan.gridEl)];
+    eq('column-first capture: the grid records five rows', tableRec && tableRec.rowCount, 5);
+    eq('column-first capture: the grid records seven columns', tableRec && tableRec.columnCount, 7);
+    const at = (r, c) => tableRec.cells.find((cell) => cell.row === r && cell.col === c);
+    eq('column-first capture: row 0 column 1 holds the Free plan\'s name',
+      at(0, 1) && at(0, 1).text, 'Free');
+    eq('column-first capture: row 1 column 0 holds the credits label',
+      at(1, 0) && at(1, 0).text, 'Credits per month');
+    eq('column-first capture: row 1 column 1 records the Free plan\'s original credits',
+      at(1, 1) && at(1, 1).original, '12,500');
+    eq('column-first capture: row 1 column 2 records no original',
+      at(1, 2) && at(1, 2).original, null);
+  } finally {
+    DR_STORE.unregisterTable(plan.gridEl);
+  }
+})();
+
+// --- Row-first grids read the same ---
+
+(function rowFirst_section12GridReadsAsRows() {
+  const rows = unmarkedGridRows();
+  const grid = makeRowFirstGrid(rows);
+  withElementDisplays(() => {
+    eq('row-first: section 12\'s grid passes the geometry probe', looksLikeGrid(grid.gridEl), true);
+  });
+  eq('row-first: section 12\'s grid reads as seven rows of four cells, row by row',
+    adapterRowTexts(makeAdapter(grid.gridEl)), rows);
+  eq('row-first: each row of section 12\'s grid keeps its row element\'s cells',
+    makeAdapter(grid.gridEl).getRows()[3].getCells().map((cell) => cell.el === grid.cellAt(3, cell.columnIndex)),
+    [true, true, true, true]);
+})();
+
+(function rowFirst_section12GridRegistersOnRightClick() {
+  withRightClickSandbox(function (ctx) {
+    const grid = makeRowFirstGrid(unmarkedGridRows());
+    grid.gridEl.parentElement = global.document.body;
+    if (typeof ctx.contextmenuHandler !== 'function') {
+      eq('row-first right-click: the contextmenu handler was captured', typeof ctx.contextmenuHandler, 'function');
+      return;
+    }
+    ctx.contextmenuHandler({ target: grid.cellAt(2, 1) });
+    eq('row-first right-click: section 12\'s grid enters the registry as the active table',
+      ctx.store.hasTable(grid.gridEl) && ctx.store.getSelectedTable() === grid.gridEl, true);
+  });
+})();
+
+(function rowFirst_contentsRowsReadAsRows() {
+  const rows = unmarkedGridRows();
+  const grid = makeRowFirstGrid(rows, { contentsRows: true });
+  eq('row-first contents rows: rows that draw no box read row by row',
+    adapterRowTexts(makeAdapter(grid.gridEl)), rows);
+  withElementDisplays(() => {
+    eq('row-first contents rows: the grid passes the geometry probe', looksLikeGrid(grid.gridEl), true);
+  });
+})();
+
+// --- The alignment step on a column-first grid ---
+
+(function columnFirst_firstCellsThatDoNotLineUpFailTheProbe() {
+  const ragged = makeColumnFirstGrid(planGridColumns(), { firstItemHeights: [40, 64, 28, 52, 90, 36, 71] });
+  const even = makeColumnFirstGrid(planGridColumns(), { firstItemHeights: [40, 40, 40, 40, 40, 40, 40] });
+  withElementDisplays(() => {
+    eq('column-first alignment: side-by-side children whose first cells do not line up fail the probe',
+      looksLikeGrid(ragged.gridEl), false);
+    eq('column-first alignment: the same children with first cells that line up pass the probe',
+      looksLikeGrid(even.gridEl), true);
+  });
+})();
+
+// --- The direction read skips a child with no box ---
+
+(function columnFirst_theDirectionReadSkipsAHiddenSecondChild() {
+  const plan = makeColumnFirstGrid(planGridColumns(), { hiddenColumns: [1] });
+  eq('column-first hidden child: a hidden second column leaves the read column-first, by the third column\'s box',
+    makeAdapter(plan.gridEl).getRows().length, 5);
+  eq('column-first hidden child: row 1 opens with the credits label',
+    adapterRowTexts(makeAdapter(plan.gridEl))[1][0], 'Credits per month');
+})();
+
+(function columnFirst_theDirectionReadSkipsAHiddenFirstChild() {
+  const plan = makeColumnFirstGrid(planGridColumns(), { hiddenColumns: [0] });
+  eq('column-first hidden child: a hidden first column leaves the read column-first, by the next two boxes',
+    makeAdapter(plan.gridEl).getRows().length, 5);
+})();
+
+(function rowFirst_aHiddenSecondRowReadsByTheNextRowBelow() {
+  const rows = unmarkedGridRows();
+  const grid = makeRowFirstGrid(rows);
+  grid.rowEls[1].getBoundingClientRect = () => makeNoBoxRect();
+  eq('row-first hidden child: a hidden second row leaves the read row-first, by the third row\'s box',
+    adapterRowTexts(makeAdapter(grid.gridEl)), rows);
+})();
+
+// --- A probe without the box member ---
+
+(function columnFirst_aProbeWithoutTheBoxMemberReadsRowFirst() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  const probe = makeBoxlessStyleProbe();
+  const rows = makeAdapter(plan.gridEl, { styleProbe: probe }).getRows();
+  eq('no box member: the adapter reads each column as a row',
+    rows.length, 7);
+  eq('no box member: the first row holds the label column\'s items',
+    rows[0].getCells().map((cell) => cell.getText()), planGridColumns()[0]);
+  eq('no box member: the geometry probe measures widths, and the wider label column fails it',
+    looksLikeGrid(plan.gridEl, { styleProbe: probe }), false);
+  eq('no box member: the data test reads the grid row-first and still finds a number',
+    isDataTable(plan.gridEl, { styleProbe: probe }), true);
+})();
+
+// --- The cap on the direction read ---
+
+// Twelve children of two cells each. Only the children at the positions in
+// `boxed` draw a box, side by side on one top.
+function makeSparselyBoxedGrid(boxed) {
+  const children = [];
+  for (let i = 0; i < 12; i++) {
+    const at = boxed.indexOf(i);
+    const rect = at >= 0 ? makeBoxRect(100, 200 * at, 200, 80) : makeNoBoxRect();
+    const cells = [`Item ${i}`, String(100 + i)].map((text) => makeBoxedNode('cell', [makeTextNode(text)], rect));
+    children.push(makeBoxedNode('child', cells, rect));
+  }
+  const gridEl = makeBoxedNode('sparse-grid', children, makeBoxRect(100, 0, 400, 80));
+  gridEl._display = 'grid';
+  return gridEl;
+}
+
+(function directionRead_inspectsAtMostTheSampleCap() {
+  const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
+  const gridEl = makeSparselyBoxedGrid([cap, cap + 1]);
+  const probe = makeCountingBoxProbe();
+  const rows = makeAdapter(gridEl, { styleProbe: probe }).getRows();
+  eq('direction read cap: the read inspects at most gridColumnWidthSample children',
+    probe.boxReads.length <= cap, true);
+  eq('direction read cap: the read inspects no child past the cap',
+    probe.boxReads.some((el) => gridEl.children.indexOf(el) >= cap), false);
+  eq('direction read cap: with no box inside the cap the read answers row-first',
+    rows.length, 12);
+})();
+
+(function directionRead_oneBoxInsideTheCapReadsRowFirst() {
+  const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
+  const gridEl = makeSparselyBoxedGrid([cap - 1, cap]);
+  eq('direction read cap: one box inside the cap answers row-first',
+    makeAdapter(gridEl, { styleProbe: makeCountingBoxProbe() }).getRows().length, 12);
+})();
+
+(function directionRead_twoBoxesInsideTheCapReadColumnFirst() {
+  const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
+  const gridEl = makeSparselyBoxedGrid([cap - 2, cap - 1]);
+  const probe = makeCountingBoxProbe();
+  const rows = makeAdapter(gridEl, { styleProbe: probe }).getRows();
+  eq('direction read cap: two side-by-side boxes as the last two children inside the cap read column-first',
+    rows.map((row) => row.getCells().length), [12, 12]);
+  eq('direction read cap: the read stops at the second box',
+    probe.boxReads.length, cap);
+})();
+
+// --- Edge cases ---
+
+(function columnFirst_aColumnWithADifferentItemCountStaysOut() {
+  const columns = planGridColumns();
+  columns[2] = columns[2].slice(0, 4);
+  const plan = makeColumnFirstGrid(columns);
+  const texts = adapterRowTexts(makeAdapter(plan.gridEl));
+  eq('column-first unequal counts: rows come from the five-item columns',
+    texts.length, 5);
+  eq('column-first unequal counts: every row holds one cell per five-item column',
+    texts.map((row) => row.length), [6, 6, 6, 6, 6]);
+  eq('column-first unequal counts: the four-item column stays out of every row',
+    texts.some((row) => row.includes('Starter') || row.includes('36,200')), false);
+  eq('column-first unequal counts: row 1 reads the five-item columns in order',
+    texts[1], ['Credits per month', '12,500', '118,400', '547,300', '1,962,800', '7,214,600']);
+})();
+
+(function columnFirst_aSingleChildReadsAsOneRow() {
+  const plan = makeColumnFirstGrid([planGridColumns()[1]]);
+  const rows = makeAdapter(plan.gridEl).getRows();
+  eq('single child: a grid with one child reads row-first as one row', rows.length, 1);
+  withElementDisplays(() => {
+    eq('single child: the geometry probe rejects a grid with one child', looksLikeGrid(plan.gridEl), false);
+  });
+})();
+
+(function columnFirst_equalWidthCardsReadAsColumns() {
+  const cards = [['Basic', '9'], ['Plus', '19'], ['Team', '49'], ['Office', '99'], ['Enterprise', '249']];
+  const grid = makeColumnFirstGrid(cards, { labelWidth: 160, columnWidth: 160 });
+  withElementDisplays(() => {
+    eq('cards: five equal-width cards that carry a number pass the geometry probe',
+      looksLikeGrid(grid.gridEl), true);
+  });
+  eq('cards: five equal-width cards read as columns, two rows of five cells',
+    adapterRowTexts(makeAdapter(grid.gridEl)),
+    [['Basic', 'Plus', 'Team', 'Office', 'Enterprise'], ['9', '19', '49', '99', '249']]);
+})();
