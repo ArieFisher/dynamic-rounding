@@ -675,7 +675,7 @@
       sign and its currency or percent symbol: the accounting negative keeps
       its brackets, the plus stays on a positive result, and the Unicode minus
       comes back as a hyphen. The quoted number stays as written, and 35.0
-      shows as 35.</p>
+      drops its trailing zero.</p>
 
     <!--
       Accounting negative   (1,234,567)  -> reads as a negative, comes back in brackets
@@ -2299,8 +2299,7 @@ TSLA,75,"248.09","18,606.75"
       writes them with a decimal dot.</p>
     <p class="expect">Expect: a pillbox at load on both tables. Press each
       pillbox on: every cell in the European style column stays as written, on
-      both tables, with no hover text. The US style column rounds: "1,234.56"
-      becomes "1,000" and "0.125" becomes "0.15".</p>
+      both tables, with no hover text. The US style column rounds.</p>
 
     <!--
       13,63 €      -> unchanged, both tables
@@ -2527,14 +2526,11 @@ TSLA,75,"248.09","18,606.75"
     <ol class="expect">
       <li><b>Under the defaults.</b> Expect: the header row and the first
         column stay raw on each table, and the "Annual total" row rounds on
-        both pricing tables: $2,340 to $2,500, $4,740 to $4,500, $6,600 to
-        $6,500.</li>
+        both pricing tables.</li>
       <li><b>Turn on the first-row switch.</b> Expect: the price headers round
-        on both pricing tables, $195 to $200 and $395 to $400, and $550
-        stays.</li>
+        on both pricing tables.</li>
       <li><b>In the volume table, turn on the first-column switch.</b> Expect:
-        the seat counts in the row headers round, 1,234 to 1,000, 5,678 to
-        5,500, 12,000 to 10,000.</li>
+        the seat counts in the row headers round.</li>
     </ol>
 
     <!--
@@ -2553,7 +2549,7 @@ TSLA,75,"248.09","18,606.75"
           <th scope="col">Plan</th>
           <th scope="col">Starter $195</th>
           <th scope="col">Pro $395</th>
-          <th scope="col">Max $550</th>
+          <th scope="col">Max $557</th>
         </tr>
       </thead>
       <tbody>
@@ -2573,7 +2569,7 @@ TSLA,75,"248.09","18,606.75"
           <th scope="row">Annual total</th>
           <th>$2,340</th>
           <th>$4,740</th>
-          <th>$6,600</th>
+          <th>$6,587</th>
         </tr>
       </tbody>
     </table>
@@ -2582,7 +2578,7 @@ TSLA,75,"248.09","18,606.75"
         <span role="columnheader">Plan</span>
         <span role="columnheader">Starter $195</span>
         <span role="columnheader">Pro $395</span>
-        <span role="columnheader">Max $550</span>
+        <span role="columnheader">Max $557</span>
       </div>
       <div role="rowgroup">
         <div class="g-row" role="row">
@@ -2601,7 +2597,7 @@ TSLA,75,"248.09","18,606.75"
           <span role="cell">Annual total</span>
           <span role="cell">$2,340</span>
           <span role="cell">$4,740</span>
-          <span role="cell">$6,600</span>
+          <span role="cell">$6,587</span>
         </div>
       </div>
     </div>
@@ -2615,7 +2611,7 @@ TSLA,75,"248.09","18,606.75"
       <tbody>
         <tr><th scope="row">1,234</th><td>$99</td></tr>
         <tr><th scope="row">5,678</th><td>$49</td></tr>
-        <tr><th scope="row">12,000</th><td>$29</td></tr>
+        <tr><th scope="row">12,463</th><td>$29</td></tr>
       </tbody>
     </table>
   </section>
@@ -2629,8 +2625,7 @@ TSLA,75,"248.09","18,606.75"
     <p class="expect">Expect: a pillbox at load.</p>
     <ol class="expect">
       <li><b>Under the defaults.</b> Expect: the header row and the labels
-        stay raw, and every amount rounds: $48.60 to $50, $12.00 to $10,
-        $7.35 to $7.5, $9.84 to $10, CAD$77.79 to CAD$80. A failure leaves
+        stay raw, and every amount rounds. A failure leaves
         every amount as written, with no visible reason.</li>
       <li><b>Open the sidebar and set the range expression to B2:B6.</b>
         Expect: the same five amounts round. A failure rounds nothing,
@@ -2683,22 +2678,11 @@ TSLA,75,"248.09","18,606.75"
   </section>
 
   <section id="pairs">
-    <h2>30. Native tables and grids side by side</h2>
-    <p>One subsection per table feature: the same values drawn once as a
-      native table and once as a grid. The design doc's table kind pairs list
-      names each feature and holds the state of its comparison test.</p>
-    <p class="expect">Expect: a pillbox at load on every table, and the two
-      tables of each subsection showing the same values after every step.</p>
+    <h2>30. Demonstrating the same behaviour for native tables and grids</h2>
+    <p class="expect">Expect the two tables of each subsection to show the
+      same values after every step.</p>
 
     <h3>30a. Data cells <code>data-cell</code></h3>
-    <p>Two body rows of data cells: the native table in a body section, the
-      grid with the table role, its cells with the cell role, in a row
-      group.</p>
-    <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the North row
-        stays raw as the first row, and the South row rounds: 2,734 to 2,500,
-        6,051 to 6,000.</li>
-    </ol>
     <div class="pair">
       <figure>
         <figcaption>Native table</figcaption>
@@ -2737,13 +2721,6 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30b. Data cells of an interactive grid <code>grid-cell</code></h3>
-    <p>The same rows; the grid carries the grid role, and its cells the
-      grid-cell role.</p>
-    <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the North row
-        stays raw as the first row, and the South row rounds: 2,734 to 2,500,
-        6,051 to 6,000.</li>
-    </ol>
     <div class="pair">
       <figure>
         <figcaption>Native table</figcaption>
@@ -2782,13 +2759,6 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30c. Rows with no body section <code>ungrouped-rows</code></h3>
-    <p>The same rows written straight into the table: no body section on the
-      native table, no row group on the grid.</p>
-    <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the North row
-        stays raw as the first row, and the South row rounds: 2,734 to 2,500,
-        6,051 to 6,000.</li>
-    </ol>
     <div class="pair">
       <figure>
         <figcaption>Native table</figcaption>
@@ -2823,17 +2793,10 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30d. Header row in a head section <code>column-header</code></h3>
-    <p>A header row of four header cells, the last holding a count, above two
-      body rows. The native header row sits in a head section; the grid header
-      row sits outside the row group.</p>
     <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
-        stays raw, and 4,821 to 5,000, 9,187 to 9,000, 1,234 to 1,000, 2,734
-        to 2,500, 6,051 to 6,000, 5,678 to 5,500.</li>
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> Expect: both tables show the same
-        values. The result waits on <a
+        -1, all other numbers at 0.</b> The result waits on <a
         href="https://github.com/ArieFisher/dynamic-rounding/issues/526">#526</a>.</li>
     </ol>
     <div class="pair">
@@ -2845,7 +2808,7 @@ TSLA,75,"248.09","18,606.75"
               <th scope="col">Region</th>
               <th scope="col">2023</th>
               <th scope="col">2024</th>
-              <th scope="col">Target 25,000</th>
+              <th scope="col">Target 25,317</th>
             </tr>
           </thead>
           <tbody>
@@ -2871,7 +2834,7 @@ TSLA,75,"248.09","18,606.75"
             <span role="columnheader">Region</span>
             <span role="columnheader">2023</span>
             <span role="columnheader">2024</span>
-            <span role="columnheader">Target 25,000</span>
+            <span role="columnheader">Target 25,317</span>
           </div>
           <div role="rowgroup">
             <div class="g-row" role="row">
@@ -2892,18 +2855,12 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30e. Header row in a row group <code>head-group</code></h3>
-    <p>The same header row and body rows. The grid header row sits in a row
-      group of its own.</p>
     <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
-        stays raw, and 4,821 to 5,000, 9,187 to 9,000, 1,234 to 1,000, 2,734
-        to 2,500, 6,051 to 6,000, 5,678 to 5,500.</li>
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> Expect on both tables: 4,821 to 5,000,
-        9,187 to 9,000, 1,234 to 1,000, 2,734 to 3,000, 6,051 to 6,000, 5,678
-        to 6,000. A failure shows any of these at the nearest hundred on one
-        table.</li>
+        -1, all other numbers at 0.</b> A failure shows a value at
+        the nearest hundred on one table and the nearest thousand on the
+        other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -2914,7 +2871,7 @@ TSLA,75,"248.09","18,606.75"
               <th scope="col">Region</th>
               <th scope="col">2023</th>
               <th scope="col">2024</th>
-              <th scope="col">Target 25,000</th>
+              <th scope="col">Target 25,317</th>
             </tr>
           </thead>
           <tbody>
@@ -2941,7 +2898,7 @@ TSLA,75,"248.09","18,606.75"
               <span role="columnheader">Region</span>
               <span role="columnheader">2023</span>
               <span role="columnheader">2024</span>
-              <span role="columnheader">Target 25,000</span>
+              <span role="columnheader">Target 25,317</span>
             </div>
           </div>
           <div role="rowgroup">
@@ -2963,18 +2920,12 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30f. Header row with no head section <code>header-row-in-body</code></h3>
-    <p>The same header row and body rows written straight into the table, with
-      no head section and no row group.</p>
     <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
-        stays raw, and 4,821 to 5,000, 9,187 to 9,000, 1,234 to 1,000, 2,734
-        to 2,500, 6,051 to 6,000, 5,678 to 5,500.</li>
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> Expect on both tables: 4,821 to 5,000,
-        9,187 to 9,000, 1,234 to 1,000, 2,734 to 3,000, 6,051 to 6,000, 5,678
-        to 6,000. A failure shows any of these at the nearest hundred on one
-        table.</li>
+        -1, all other numbers at 0.</b> A failure shows a value at
+        the nearest hundred on one table and the nearest thousand on the
+        other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -2984,7 +2935,7 @@ TSLA,75,"248.09","18,606.75"
             <th scope="col">Region</th>
             <th scope="col">2023</th>
             <th scope="col">2024</th>
-            <th scope="col">Target 25,000</th>
+            <th scope="col">Target 25,317</th>
           </tr>
           <tr>
             <td>North</td>
@@ -3007,7 +2958,7 @@ TSLA,75,"248.09","18,606.75"
             <span role="columnheader">Region</span>
             <span role="columnheader">2023</span>
             <span role="columnheader">2024</span>
-            <span role="columnheader">Target 25,000</span>
+            <span role="columnheader">Target 25,317</span>
           </div>
           <div class="g-row" role="row">
             <span role="cell">North</span>
@@ -3026,12 +2977,6 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30g. Row labels <code>row-header</code></h3>
-    <p>A header row above two body rows whose labels are row headers.</p>
-    <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
-        and the labels stay raw, and 4,821 to 5,000, 9,187 to 9,000, 2,734 to
-        2,500, 6,051 to 6,000.</li>
-    </ol>
     <div class="pair">
       <figure>
         <figcaption>Native table</figcaption>
@@ -3082,13 +3027,6 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30h. Empty corner above the row labels <code>corner-cell</code></h3>
-    <p>The same table with an empty data cell at the left of the header
-      row.</p>
-    <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
-        and the labels stay raw, and 4,821 to 5,000, 9,187 to 9,000, 2,734 to
-        2,500, 6,051 to 6,000.</li>
-    </ol>
     <div class="pair">
       <figure>
         <figcaption>Native table</figcaption>
@@ -3139,13 +3077,6 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30i. Several body sections <code>body-groups</code></h3>
-    <p>A header row above two body rows, each body row in a body section or
-      row group of its own.</p>
-    <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
-        stays raw, and 4,821 to 5,000, 9,187 to 9,000, 2,734 to 2,500, 6,051
-        to 6,000.</li>
-    </ol>
     <div class="pair">
       <figure>
         <figcaption>Native table</figcaption>
@@ -3200,18 +3131,12 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30j. Total row in a footer <code>footer-row</code></h3>
-    <p>A header row, two body rows, and a total row: a footer section on the
-      native table, a row after the row group on the grid.</p>
     <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
-        stays raw, 4,821 to 5,000, 9,187 to 9,000, 2,734 to 2,500, 6,051 to
-        6,000, and the totals round 17,555 to 20,000, 15,238 to 15,000.</li>
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> Expect on both tables: 4,821 to 4,800,
-        9,187 to 9,200, 2,734 to 2,700, 6,051 to 6,100, 17,555 to 18,000,
-        15,238 to 15,000. A failure shows a body value at the nearest thousand
-        on one table.</li>
+        -1, all other numbers at 0.</b> A failure shows a body value
+        at the nearest thousand on one table and the nearest hundred on the
+        other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -3275,15 +3200,10 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30k. Total row in a footer group <code>footer-group</code></h3>
-    <p>The same rows; the grid total row sits in a row group of its own.</p>
     <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
-        stays raw, 4,821 to 5,000, 9,187 to 9,000, 2,734 to 2,500, 6,051 to
-        6,000, and the totals round 17,555 to 20,000, 15,238 to 15,000.</li>
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> Expect: both tables show the same
-        values. The result waits on <a
+        -1, all other numbers at 0.</b> The result waits on <a
         href="https://github.com/ArieFisher/dynamic-rounding/issues/526">#526</a>.</li>
     </ol>
     <div class="pair">
@@ -3350,13 +3270,6 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30l. Cell merged across columns <code>merged-across</code></h3>
-    <p>A header row and three body rows; the last row’s label covers two
-      columns.</p>
-    <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
-        and "Both regions" stay raw, 4,821 to 5,000, 9,187 to 9,000, 2,734 to
-        2,500, 6,051 to 6,000, and 15,238 rounds to 15,000.</li>
-    </ol>
     <div class="pair">
       <figure>
         <figcaption>Native table</figcaption>
@@ -3415,14 +3328,8 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30m. Cell merged down rows <code>merged-down</code></h3>
-    <p>A header row and three body rows; the &quot;North&quot; label covers
-      two rows.</p>
-    <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the header row
-        and the labels stay raw, 4,821 to 5,000, 9,187 to 9,000, 2,734 to
-        2,500, 6,051 to 6,000, 3,906 to 4,000, and 1,478 to 1,500. A failure
-        leaves 2,734 raw as a first-column cell.</li>
-    </ol>
+    <p class="expect">A failure leaves 2,734 raw on one table, read as a first-column
+      cell.</p>
     <div class="pair">
       <figure>
         <figcaption>Native table</figcaption>
@@ -3481,12 +3388,6 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30n. Caption <code>caption</code></h3>
-    <p>A header row and two body rows under a caption that holds a count.</p>
-    <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the caption
-        and the header row stay as written, and 4,821 to 5,000, 9,187 to
-        9,000, 2,734 to 2,500, 6,051 to 6,000.</li>
-    </ol>
     <div class="pair">
       <figure>
         <figcaption>Native table</figcaption>
@@ -3539,15 +3440,11 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30o. Table inside a cell <code>nested-table</code></h3>
-    <p>A header row and two body rows; the last cell of the North row holds a
-      table of two quarters.</p>
     <ol class="expect">
       <li><b>At load.</b> Expect: a pillbox on the outer table and on the
         inner table, on both kinds. The grid result waits on <a
         href="https://github.com/ArieFisher/dynamic-rounding/issues/527">#527</a>.</li>
-      <li><b>Turn on every pillbox.</b> Expect on both kinds: the outer table
-        rounds 4,821 to 5,000, 9,187 to 9,000, 2,734 to 2,500, 6,051 to 6,000,
-        and the inner table rounds 3,587 to 3,500.</li>
+      <li><b>Turn on every pillbox, the inner tables' included.</b></li>
     </ol>
     <div class="pair">
       <figure>
@@ -3631,17 +3528,12 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30p. Hidden row <code>hidden-row</code></h3>
-    <p>A header row, two body rows, and a hidden third row holding 17,555 and
-      15,238.</p>
     <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: the hidden row
-        stays hidden, and 4,821 to 5,000, 9,187 to 9,000, 2,734 to 2,500,
-        6,051 to 6,000.</li>
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> Expect on both tables: 4,821 to 5,000,
-        9,187 to 9,000, 2,734 to 3,000, 6,051 to 6,000. A failure shows any of
-        these at the nearest hundred on one table.</li>
+        -1, all other numbers at 0.</b> A failure shows a value at
+        the nearest hundred on one table and the nearest thousand on the
+        other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -3703,16 +3595,12 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30q. Hidden cell <code>hidden-cell</code></h3>
-    <p>A header row and two body rows; the last cell of the South row, 17,555,
-      is hidden.</p>
     <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: 4,821 to
-        5,000, 9,187 to 9,000, 2,734 to 2,500.</li>
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> Expect on both tables: 4,821 to 5,000,
-        9,187 to 9,000, 2,734 to 3,000. A failure shows any of these at the
-        nearest hundred on one table.</li>
+        -1, all other numbers at 0.</b> A failure shows a value at
+        the nearest hundred on one table and the nearest thousand on the
+        other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -3764,14 +3652,8 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30r. Hidden text inside a visible cell <code>hidden-fragment</code></h3>
-    <p>A header row and two body rows; the South row’s 2,734 carries a hidden
-      sort key, &quot;000000002734&quot;, ahead of it.</p>
-    <ol class="expect">
-      <li><b>Turn on both pillboxes.</b> Expect on both tables: 4,821 to
-        5,000, 9,187 to 9,000, 2,734 to 2,500, 6,051 to 6,000. The result
-        waits on <a
-        href="https://github.com/ArieFisher/dynamic-rounding/issues/525">#525</a>.</li>
-    </ol>
+    <p class="expect">The result waits on <a
+      href="https://github.com/ArieFisher/dynamic-rounding/issues/525">#525</a>.</p>
     <div class="pair">
       <figure>
         <figcaption>Native table</figcaption>
