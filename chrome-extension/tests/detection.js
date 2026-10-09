@@ -3442,6 +3442,411 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     chainRootOf(makeDgNode('DIV', 'plain-element', null, [])), null);
 })();
 
+// =============================================================================
+// A cell bounds a nest
+// Spec: docs/sprint-plans/grid-reading-gaps.md §3.2 and the grid-in-cell-nest
+// block in §5; issue #527.
+// =============================================================================
+//
+// The rule these assertions pin, in the specification's words:
+//   - A walk upward from a qualifying element ends at the first element
+//     carrying a cell role, so a grid inside a cell is its own chain root.
+//   - The nest's membership test uses the same stop, so a grid inside a cell
+//     never counts as a member of the outer grid's nest, and the outer nest's
+//     already-registered check never reads the inner grid.
+//   - A vendor grid's panes sit outside any cell, so the nesting depth still
+//     picks the scrolling pane there.
+//   - A right-click inside the inner grid resolves the inner grid, and a
+//     right-click in another cell of the outer grid resolves the outer grid.
+//   - Each grid reads its own rows and cells and leaves out the other's.
+//
+// Every expected value below comes from that statement, never from the
+// detection layer's source. Invented values.
+
+// The inner table: two body rows of a label beside a number.
+const CN_INNER = {
+  sections: [{ part: 'body', rows: [['Q1', '1,234'], ['Q2', '3,587']], grouped: true }],
+};
+
+// A table whose first body row's last cell holds `nested`, drawn in the
+// pair's grid form unless `kind` names the native form.
+function cnSections(nested) {
+  return [
+    { part: 'head', rows: [[
+      { pieces: 'Region', header: 'col' }, { pieces: '2023', header: 'col' },
+      { pieces: 'By quarter', header: 'col' },
+    ]] },
+    { part: 'body', rows: [
+      ['North', '4,821', { pieces: [], nested }],
+      ['South', '2,734', ''],
+    ], grouped: true },
+  ];
+}
+
+// A host holding one outer grid with a grid inside one of its cells. The
+// outer grid carries `outerRole`, the inner grid `innerRole`.
+function cnGridInCell(outerRole, innerRole) {
+  const inner = Object.assign({}, CN_INNER, { opts: { gridRole: innerRole || 'grid' } });
+  const outer = rwDrawTable('grid', cnSections(inner), { gridRole: outerRole || 'grid' }).table;
+  const host = rwEl('div', {}, [outer]);
+  const innerEl = outer.querySelectorAll(GRID_ARIA_SELECTOR_TEXT)[0];
+  const rowsOf = (gridEl) => dgDescendantsMatching(gridEl, '[role="row"]');
+  return {
+    host, outer, inner: innerEl,
+    // The outer grid's North row cell holding the inner grid, its South row
+    // number cell, and the inner grid's second-row number cell.
+    holdingCell: rowsOf(outer)[1].children[2],
+    outerSouthCell: rowsOf(outer).filter((row) => !innerEl.contains(row))[2].children[1],
+    innerCell: rowsOf(innerEl)[1].children[1],
+  };
+}
+
+// The texts of every cell a table reads through its adapter, row by row.
+function cnAdapterTexts(tableEl) {
+  return makeAdapter(tableEl).getRows().map((row) => row.getCells().map((cell) => cell.getText()));
+}
+
+// The cell elements a table reads through its adapter.
+function cnAdapterCellEls(tableEl) {
+  return makeAdapter(tableEl).getRows().flatMap((row) => row.getCells().map((cell) => cell.el));
+}
+
+// --- Detection: both grids register ---
+
+(function cellNest_aGridInsideACellRegistersBesideTheGridAroundIt() {
+  const page = cnGridInCell();
+
+  eq('cell nest: the fixture puts the inner grid inside a cell of the outer grid (sanity)',
+    page.inner.parentElement === page.holdingCell && page.holdingCell.getAttribute('role') === 'cell', true);
+  eq('cell nest: both grids pass the data test (sanity)',
+    [isDataTable(page.outer), isDataTable(page.inner)], [true, true]);
+
+  const handles = findTables(page.host).map((r) => r.handle);
+  eq('cell nest: a page holding a grid inside a cell of another grid reports two tables',
+    handles.length, 2);
+  eq('cell nest: the two tables are the outer grid and the inner grid, in document order',
+    handles.length === 2 && handles[0] === page.outer && handles[1] === page.inner, true);
+
+  eq('cell nest: the inner grid is its own chain root',
+    chainRootOf(page.inner) === page.inner, true);
+  eq('cell nest: a cell of the inner grid sits in the inner grid\'s nest',
+    chainRootOf(page.innerCell) === page.inner, true);
+  eq('cell nest: a cell of the outer grid sits in the outer grid\'s nest',
+    chainRootOf(page.outerSouthCell) === page.outer, true);
+
+  const outerResult = nominateNest(page.outer);
+  eq('cell nest: the outer nest selects the outer grid', outerResult.selected === page.outer, true);
+  eq('cell nest: the outer nest\'s chain holds the outer grid alone', outerResult.chainSize, 1);
+  const innerResult = nominateNest(page.inner);
+  eq('cell nest: the inner nest selects the inner grid', innerResult.selected === page.inner, true);
+  eq('cell nest: the inner nest\'s chain holds the inner grid alone', innerResult.chainSize, 1);
+
+  const results = nominateNests(page.host);
+  eq('cell nest: the nomination step reports one result per grid',
+    results.map((r) => [r.chainRoot === page.outer || r.chainRoot === page.inner, r.outcome]),
+    [[true, 'selected'], [true, 'selected']]);
+})();
+
+// --- Right-click: each grid resolves itself ---
+
+(function cellNest_aRightClickResolvesTheGridItLandsIn() {
+  const page = cnGridInCell();
+  const fresh = { isSeen: () => false };
+
+  const inInner = findTargetTable(page.innerCell, fresh);
+  eq('cell nest: a right-click inside the inner grid resolves the inner grid',
+    inInner !== null && inInner.handle === page.inner, true);
+  eq('cell nest: that resolution reports isNew', inInner !== null && inInner.isNew, true);
+
+  const inOuter = findTargetTable(page.outerSouthCell, fresh);
+  eq('cell nest: a right-click in another cell of the outer grid resolves the outer grid',
+    inOuter !== null && inOuter.handle === page.outer, true);
+
+  const onHoldingCell = findTargetTable(page.holdingCell, fresh);
+  eq('cell nest: a right-click on the cell holding the inner grid, outside the inner grid, resolves the outer grid',
+    onHoldingCell !== null && onHoldingCell.handle === page.outer, true);
+
+  const registered = new Set([page.outer, page.inner]);
+  const both = { isSeen: (el) => registered.has(el) };
+  const inInnerRegistered = findTargetTable(page.innerCell, both);
+  eq('cell nest: with both grids registered, a right-click inside the inner grid resolves the inner grid',
+    inInnerRegistered !== null && inInnerRegistered.handle === page.inner && !inInnerRegistered.isNew, true);
+  const inOuterRegistered = findTargetTable(page.outerSouthCell, both);
+  eq('cell nest: with both grids registered, a right-click in another cell of the outer grid resolves the outer grid',
+    inOuterRegistered !== null && inOuterRegistered.handle === page.outer && !inOuterRegistered.isNew, true);
+})();
+
+// --- A second run registers nothing new ---
+//
+// The nest's already-registered check reads only the nest's own members. A
+// check that read every qualifying element under the chain root would find a
+// registered inner grid and leave the outer grid unregistered.
+
+(function cellNest_aSecondRunRegistersNothingNew() {
+  const page = cnGridInCell();
+
+  const both = new Set([page.outer, page.inner]);
+  eq('cell nest: with both grids registered, every nest reports the registered outcome',
+    nominateNests(page.host, { isSeen: (el) => both.has(el) }).map((r) => r.outcome),
+    ['registered', 'registered']);
+  eq('cell nest: with both grids registered, a second run reports no table',
+    findTables(page.host, { isSeen: (el) => both.has(el) }).length, 0);
+
+  const innerOnly = findTables(page.host, { isSeen: (el) => el === page.inner });
+  eq('cell nest: a registered inner grid leaves the outer grid to register',
+    innerOnly.map((r) => r.handle === page.outer), [true]);
+  const outerOnly = findTables(page.host, { isSeen: (el) => el === page.outer });
+  eq('cell nest: a registered outer grid leaves the inner grid to register',
+    outerOnly.map((r) => r.handle === page.inner), [true]);
+})();
+
+(function cellNest_theLoadTimeScanRegistersBothGridsOnce() {
+  const page = cnGridInCell();
+  const before = DR_STORE.getRegisteredTables().length;
+  const runScan = () => withToggleDocumentMock(function () {
+    global.document.querySelectorAll = function (sel) {
+      if (sel === GRID_ARIA_SELECTOR_TEXT) return page.host.querySelectorAll(sel);
+      return [];
+    };
+    injectTableToggles();
+  });
+
+  try {
+    runScan();
+    const added = DR_STORE.getRegisteredTables().slice(before);
+    eq('cell nest: the load-time scan adds two registry entries', added.length, 2);
+    eq('cell nest: the load-time scan registers the outer grid and the inner grid',
+      [added.includes(page.outer), added.includes(page.inner)], [true, true]);
+    eq('cell nest: each grid carries a pillbox',
+      [tableToggles.has(page.outer), tableToggles.has(page.inner)], [true, true]);
+
+    const afterFirst = DR_STORE.getRegisteredTables().length;
+    runScan();
+    eq('cell nest: a second load-time scan adds no registry entry',
+      DR_STORE.getRegisteredTables().length, afterFirst);
+  } finally {
+    forgetRegisteredTable(page.outer);
+    forgetRegisteredTable(page.inner);
+  }
+})();
+
+// --- The database query shape: the depth rule holds outside cells ---
+
+(function cellNest_theDatabaseQueryShapeInsideACellStillRegistersItsScrollingPane() {
+  const grid = makeDatabaseQueryGrid();
+  const outer = rwDrawTable('grid', [
+    { part: 'body', rows: [['North', '4,821', ''], ['South', '2,734', '6,051']], grouped: true },
+  ]).table;
+  const holdingCell = dgDescendantsMatching(outer, '[role="row"]')[0].children[2];
+  rwSetChildren(holdingCell, [grid.wrapperEl]);
+  const host = rwEl('div', {}, [outer]);
+
+  const handles = findTables(host).map((r) => r.handle);
+  eq('cell nest: an outer grid holding the database query shape in a cell reports two tables',
+    handles.length, 2);
+  eq('cell nest: the outer grid registers',
+    handles.includes(outer), true);
+  eq('cell nest: the database query shape inside the cell registers its scrolling pane',
+    handles.includes(grid.scrollPaneEl), true);
+  eq('cell nest: neither the wrapper nor the pinned pane registers',
+    handles.includes(grid.wrapperEl) || handles.includes(grid.pinnedPaneEl), false);
+  eq('cell nest: a right-click in the scrolling pane resolves the scrolling pane',
+    findTargetTable(grid.scrollRowEls[1].children[1], { isSeen: () => false }).handle === grid.scrollPaneEl,
+    true);
+})();
+
+// A cell role on an ancestor of the chain root, with no grid around it, ends
+// the walk above the nest and leaves the nest as it is.
+(function cellNest_aCellRoleAboveTheChainRootLeavesTheNestAsItIs() {
+  const grid = makeDatabaseQueryGrid();
+  const strayCell = rwEl('div', { role: 'cell' }, [grid.wrapperEl]);
+  rwEl('div', {}, [strayCell]);
+
+  eq('cell nest: a cell role above the wrapper leaves the wrapper the chain root',
+    chainRootOf(grid.scrollRowEls[0].children[0]) === grid.wrapperEl, true);
+  eq('cell nest: a cell role above the wrapper still selects the scrolling pane at the configured depth',
+    findTables(strayCell).map((r) => r.handle === grid.scrollPaneEl), [true]);
+  const result = nominateNest(grid.wrapperEl);
+  eq('cell nest: the nest still holds the wrapper and the scrolling pane in its chain',
+    [result.outcome, result.chainSize], ['selected', 2]);
+  eq('cell nest: depth 0 still selects the wrapper',
+    findTables(strayCell, { nestingDepth: 0 }).map((r) => r.handle === grid.wrapperEl), [true]);
+
+  const lone = makeLoneGrid();
+  rwEl('div', { role: 'gridcell' }, [lone]);
+  eq('cell nest: a lone grid under a grid-cell role is its own chain root',
+    chainRootOf(lone.children[0].children[0]) === lone, true);
+})();
+
+// --- Three levels of nesting ---
+
+(function cellNest_threeLevelsRegisterThreeTables() {
+  const innermostSpec = Object.assign({}, CN_INNER);
+  const middleSpec = {
+    sections: [{ part: 'body', rows: [
+      ['Q1', '1,234', { pieces: [], nested: innermostSpec }],
+      ['Q2', '3,587', '9,016'],
+    ], grouped: true }],
+  };
+  const outer = rwDrawTable('grid', cnSections(middleSpec)).table;
+  const host = rwEl('div', {}, [outer]);
+  const [middle, innermost] = outer.querySelectorAll(GRID_ARIA_SELECTOR_TEXT);
+  const rowsOf = (gridEl) => dgDescendantsMatching(gridEl, '[role="row"]');
+  const ownRows = (gridEl, nestedEl) => rowsOf(gridEl).filter((row) => !nestedEl || !nestedEl.contains(row));
+
+  eq('cell nest: the fixture nests three grids, each inside a cell of the one around it (sanity)',
+    [middle.parentElement.getAttribute('role'), innermost.parentElement.getAttribute('role')], ['cell', 'cell']);
+
+  const handles = findTables(host).map((r) => r.handle);
+  eq('cell nest: three nested grids report three tables', handles.length, 3);
+  eq('cell nest: the three tables are the three grids, outermost first',
+    handles.length === 3 && handles[0] === outer && handles[1] === middle && handles[2] === innermost, true);
+
+  const fresh = { isSeen: () => false };
+  eq('cell nest: a right-click in the innermost grid resolves the innermost grid',
+    findTargetTable(rowsOf(innermost)[0].children[1], fresh).handle === innermost, true);
+  eq('cell nest: a right-click in another cell of the middle grid resolves the middle grid',
+    findTargetTable(ownRows(middle, innermost)[1].children[2], fresh).handle === middle, true);
+  eq('cell nest: a right-click in another cell of the outer grid resolves the outer grid',
+    findTargetTable(ownRows(outer, middle)[2].children[1], fresh).handle === outer, true);
+
+  eq('cell nest: the outer grid reads its own three rows',
+    cnAdapterTexts(outer).map((row) => row.slice(0, 2)), [['Region', '2023'], ['North', '4,821'], ['South', '2,734']]);
+  eq('cell nest: the middle grid reads its own two rows',
+    cnAdapterTexts(middle).map((row) => row.slice(0, 2)), [['Q1', '1,234'], ['Q2', '3,587']]);
+  eq('cell nest: the innermost grid reads its own two rows',
+    cnAdapterTexts(innermost), [['Q1', '1,234'], ['Q2', '3,587']]);
+  eq('cell nest: no cell the outer grid reads sits inside the middle grid',
+    cnAdapterCellEls(outer).some((el) => middle.contains(el)), false);
+  eq('cell nest: no cell the middle grid reads sits inside the innermost grid',
+    cnAdapterCellEls(middle).some((el) => innermost.contains(el)), false);
+
+  const all = new Set([outer, middle, innermost]);
+  eq('cell nest: with all three grids registered, a second run reports no table',
+    findTables(host, { isSeen: (el) => all.has(el) }).length, 0);
+})();
+
+// --- A grid inside a cell of a native table ---
+//
+// A native cell carries no cell role, so the walk up from the grid passes
+// through it and the grid stays its own chain root. Both tables register.
+// The right-click route for this shape stays out: its first step returns the
+// nearest native table, and the plan leaves the mixed-kind case open.
+
+(function cellNest_aGridInsideANativeCellRegistersBesideTheNativeTable() {
+  const nativeTable = rwDrawTable('native', cnSections(undefined)).table;
+  const grid = rwDrawTable('grid', CN_INNER.sections).table;
+  const holdingCell = nativeTable.rows[1].cells[2];
+  rwSetChildren(holdingCell, [grid]);
+  const host = rwEl('div', {}, [nativeTable]);
+
+  const handles = findTables(host).map((r) => r.handle);
+  eq('cell nest: a native table holding a grid in a cell reports two tables', handles.length, 2);
+  eq('cell nest: the native table reports first and the grid second',
+    handles.length === 2 && handles[0] === nativeTable && handles[1] === grid, true);
+  eq('cell nest: the grid inside the native cell is its own chain root',
+    chainRootOf(grid) === grid, true);
+  eq('cell nest: the native table reads its own three rows',
+    cnAdapterTexts(nativeTable).map((row) => row.slice(0, 2)),
+    [['Region', '2023'], ['North', '4,821'], ['South', '2,734']]);
+  eq('cell nest: the grid inside the native cell reads its own two rows',
+    cnAdapterTexts(grid), [['Q1', '1,234'], ['Q2', '3,587']]);
+})();
+
+// =============================================================================
+// The grid adapter reads its own rows and cells
+// =============================================================================
+//
+// A grid's rows, row groups, cells, and scrolling pane are its own when no
+// element carrying a cell role sits between them and the grid. Whatever sits
+// inside one of the grid's cells belongs to the table nested there.
+
+(function cellNest_theOuterGridReadsOnlyItsOwnCells() {
+  for (const [outerRole, innerRole] of [['grid', 'grid'], ['table', 'table'], ['table', 'grid']]) {
+    const page = cnGridInCell(outerRole, innerRole);
+    const label = `an outer ${outerRole} role holding an inner ${innerRole} role`;
+
+    eq(`cell nest adapter, ${label}: the outer grid reads its three own rows`,
+      cnAdapterTexts(page.outer).length, 3);
+    eq(`cell nest adapter, ${label}: the outer grid reads its own cell texts`,
+      cnAdapterTexts(page.outer).map((row) => row.slice(0, 2)),
+      [['Region', '2023'], ['North', '4,821'], ['South', '2,734']]);
+    eq(`cell nest adapter, ${label}: each outer row reads three cells`,
+      makeAdapter(page.outer).getRows().map((row) => row.getCells().length), [3, 3, 3]);
+    eq(`cell nest adapter, ${label}: no cell the outer grid reads sits inside the inner grid`,
+      cnAdapterCellEls(page.outer).some((el) => page.inner.contains(el)), false);
+    eq(`cell nest adapter, ${label}: the outer grid reads the cell holding the inner grid as one cell`,
+      cnAdapterCellEls(page.outer).includes(page.holdingCell), true);
+    eq(`cell nest adapter, ${label}: the inner grid reads its own two rows`,
+      cnAdapterTexts(page.inner), [['Q1', '1,234'], ['Q2', '3,587']]);
+    eq(`cell nest adapter, ${label}: every cell the inner grid reads sits inside the inner grid`,
+      cnAdapterCellEls(page.inner).every((el) => page.inner.contains(el) && el !== page.inner), true);
+  }
+})();
+
+// A grid with no nesting reads every row and cell as before.
+(function cellNest_anOrdinaryGridReadsAsBefore() {
+  const grid = rwDrawTable('grid', [
+    { part: 'head', rows: [[{ pieces: 'Region', header: 'col' }, { pieces: '2023', header: 'col' }, { pieces: '2024', header: 'col' }]] },
+    { part: 'body', rows: [[{ pieces: 'North', header: 'row' }, '4,821', '9,187'], ['South', '2,734', '6,051']], grouped: true },
+    { part: 'foot', rows: [['Total', '7,555', '15,238']] },
+  ]).table;
+  rwEl('div', {}, [grid]);
+
+  eq('cell nest adapter: an ordinary grid reads every row and cell',
+    cnAdapterTexts(grid),
+    [['Region', '2023', '2024'], ['North', '4,821', '9,187'], ['South', '2,734', '6,051'], ['Total', '7,555', '15,238']]);
+  eq('cell nest adapter: an ordinary grid reads every cell element it holds',
+    cnAdapterCellEls(grid).length, dgDescendantsMatching(grid, GRID_CELL_SELECTOR).length);
+
+  const queryGrid = makeDatabaseQueryGrid();
+  eq('cell nest adapter: the database query wrapper still stitches the pinned gutter first',
+    cnAdapterTexts(queryGrid.wrapperEl)[0], ['1', 'alpha', '7,318,204', '284.51']);
+})();
+
+// The read of a grid's own rows and cells resolves each element between a
+// match and the grid once per query, so the role checks it runs grow with the
+// size of the tree. Each element's `matches` counts its calls; the bound is a
+// fixed multiple of the element count.
+(function cellNest_ownDescendantsWorkGrowsLinearlyWithTheTree() {
+  const PER_ELEMENT_BOUND = 20;
+  const row = (n) => rwEl('div', { role: 'row' }, [
+    rwEl('div', { role: 'cell' }, [rwText(`Item ${n}`)]),
+    rwEl('div', { role: 'cell' }, [rwText(String(1000 + n))]),
+  ]);
+  const rowsOf = (count) => Array.from({ length: count }, (_, n) => row(n));
+  // Wrap `inner` in `levels` elements, each built by `wrap`.
+  const nestIn = (levels, wrap, inner) => Array.from({ length: levels })
+    .reduce((children) => [wrap(children)], inner);
+  // Count every `matches` call on every element of the tree.
+  const countMatches = (root) => {
+    const counter = { calls: 0, elements: 0 };
+    (function visit(el) {
+      counter.elements++;
+      const original = el.matches;
+      el.matches = (selector) => { counter.calls++; return original(selector); };
+      el.children.forEach(visit);
+    })(root);
+    return counter;
+  };
+
+  const cases = [
+    { name: 'plain elements above the rows', rows: 500,
+      grid: rwEl('div', { role: 'grid' }, nestIn(200, (children) => rwEl('div', {}, children), rowsOf(500))) },
+    { name: 'row groups nested in row groups above the rows', rows: 300,
+      grid: rwEl('div', { role: 'grid' }, nestIn(60, (children) => rwEl('div', { role: 'rowgroup' }, children), rowsOf(300))) },
+  ];
+  for (const { name, rows, grid } of cases) {
+    rwEl('div', {}, [grid]);
+    const counter = countMatches(grid);
+    const read = makeAdapter(grid).getRows().map((r) => r.getCells().length);
+    eq(`cell nest adapter, ${name}: the grid reads every row`, read.length, rows);
+    eq(`cell nest adapter, ${name}: each row reads its two cells`, read.every((count) => count === 2), true);
+    eq(`cell nest adapter, ${name}: the role checks grow with the size of the tree`,
+      counter.calls < PER_ELEMENT_BOUND * counter.elements, true);
+  }
+})();
+
 // ---------------------------------------------------------------------------
 // Contextmenu activation pin. The contextmenu handler in content.js calls
 // DR_STORE.setSelectedTable(table). The expected message sequence below is a
