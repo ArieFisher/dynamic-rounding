@@ -1842,7 +1842,11 @@
     querySelector(sel) {
       return sel === '.my-lib-scroll-container' ? scrollEl : null;
     },
+    querySelectorAll(sel) {
+      return sel === '.my-lib-scroll-container' ? [scrollEl] : [];
+    },
   };
+  scrollEl.parentElement = wrapperEl;
   const customProfiles = [
     { name: 'my-lib', classToken: 'my-lib-', scrollContainerSelectors: ['.my-lib-scroll-container'], pinnedPaneSelectors: [] },
   ];
