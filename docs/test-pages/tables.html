@@ -165,6 +165,39 @@
       padding: 6px 10px;
     }
 
+    .plan-grid {
+      display: flex;
+      width: fit-content;
+      border-top: 1px solid var(--rule);
+      border-left: 1px solid var(--rule);
+      line-height: 1.25;
+    }
+
+    .plan-column {
+      display: flex;
+      flex-direction: column;
+      width: 110px;
+    }
+
+    .plan-column.plan-labels {
+      width: 220px;
+    }
+
+    .plan-item {
+      box-sizing: border-box;
+      height: 32px;
+      padding: 6px 10px;
+      white-space: nowrap;
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .plan-item:first-child,
+    .plan-labels .plan-item {
+      background: var(--head);
+      font-weight: 600;
+    }
+
     .dg--table-wrapper {
       display: flex;
       width: 460px;
@@ -3703,6 +3736,84 @@ TSLA,75,"248.09","18,606.75"
       </figure>
     </div>
 
+  </section>
+
+  <section>
+    <h2>31. A grid listed column by column</h2>
+    <p>A plan comparison with no table element and no role, drawn as seven
+      columns side by side: a label column, wider than the rest, then one
+      column per plan. Each column holds one item per row: the plan name on
+      top, then one value per feature.</p>
+    <p class="expect">Expect: no pillbox at load.</p>
+    <ol class="expect">
+      <li><b>Right-click any value.</b> Expect: a pillbox appears on the whole
+        grid. A failure shows no pillbox.</li>
+      <li><b>Turn the grid on under the defaults.</b> Expect: the plan names
+        and the feature labels stay raw, and the large values round:
+        1,962,800 shows 2,000,000.</li>
+      <li><b>Open the sidebar and set the range expression to B2:B5.</b>
+        Expect: the Free column's values round, so 12,500 changes, and every
+        other plan's values show as written. A failure changes the Credits
+        row across the Starter, Creator, and Pro plans instead.</li>
+    </ol>
+
+    <!--
+      Seven children side by side, each a column of five items with one span
+      apiece. The label column is wider than the plan columns, so the first
+      cells of the children differ in width; the first cells of the columns
+      share a height, because every item has a fixed height.
+    -->
+    <div class="plan-grid">
+      <div class="plan-column plan-labels">
+        <div class="plan-item"><span>Feature</span></div>
+        <div class="plan-item"><span>Credits per month</span></div>
+        <div class="plan-item"><span>Voice slots</span></div>
+        <div class="plan-item"><span>Audio minutes</span></div>
+        <div class="plan-item"><span>Price per month</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Free</span></div>
+        <div class="plan-item"><span>12,500</span></div>
+        <div class="plan-item"><span>4</span></div>
+        <div class="plan-item"><span>18</span></div>
+        <div class="plan-item"><span>$0.00</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Starter</span></div>
+        <div class="plan-item"><span>36,200</span></div>
+        <div class="plan-item"><span>12</span></div>
+        <div class="plan-item"><span>52</span></div>
+        <div class="plan-item"><span>$6.50</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Creator</span></div>
+        <div class="plan-item"><span>118,400</span></div>
+        <div class="plan-item"><span>35</span></div>
+        <div class="plan-item"><span>163</span></div>
+        <div class="plan-item"><span>$23.75</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Pro</span></div>
+        <div class="plan-item"><span>547,300</span></div>
+        <div class="plan-item"><span>140</span></div>
+        <div class="plan-item"><span>694</span></div>
+        <div class="plan-item"><span>$98.40</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Scale</span></div>
+        <div class="plan-item"><span>1,962,800</span></div>
+        <div class="plan-item"><span>615</span></div>
+        <div class="plan-item"><span>2,370</span></div>
+        <div class="plan-item"><span>$331.20</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Business</span></div>
+        <div class="plan-item"><span>7,214,600</span></div>
+        <div class="plan-item"><span>1,480</span></div>
+        <div class="plan-item"><span>8,140</span></div>
+        <div class="plan-item"><span>$1,286.90</span></div>
+      </div>
+    </div>
   </section>
 
 </body>
