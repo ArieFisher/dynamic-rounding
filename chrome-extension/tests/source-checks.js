@@ -2949,3 +2949,26 @@
   eq('currencies: no content script outside the one list spells out the currency signs',
     offenders, []);
 })();
+
+(function everyRow_theOutsideRowMarkFeedsNoDatasetRead() {
+  // Every row joins the dataset and the lens preview pool, so no content
+  // script reads the outside-row mark to choose which values join them. The
+  // mark's one reader is the shape fingerprint's header-row read on a grid
+  // (firstRow.isOutside); the grid adapter sets the mark, and its pinned-pane
+  // stitching copies it onto each stitched row. Comment lines are skipped, so
+  // a prose mention of the mark is no reader.
+  const codeLines = (src) => src.split('\n').filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line));
+  const filesWithTheMark = [];
+  const reads = [];
+  for (const [file, src] of contentScriptSources) {
+    const lines = codeLines(src);
+    if (lines.some((line) => /\bisOutside\b/.test(line))) filesWithTheMark.push(file);
+    for (const line of lines) {
+      for (const match of line.match(/[\w$.]*\.isOutside\b/g) || []) reads.push(`${file}: ${match}`);
+    }
+  }
+  eq('every row: the grid adapter\'s file is the one content script whose code holds the outside-row mark',
+    filesWithTheMark, ['lib/dr-table/detect.js']);
+  eq('every row: the shape fingerprint\'s header-row read is the one reader of the outside-row mark',
+    reads, ['lib/dr-table/detect.js: firstRow.isOutside']);
+})();

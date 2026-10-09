@@ -3181,8 +3181,8 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     grouplessReading.headerTexts, null);
 })();
 
-// The three native-table forms. The adapter's outside-row mark names the
-// footer section on a native table, so the head section is read from the row.
+// The three native-table forms. A native table's adapter carries no
+// outside-row mark, so the head section is read from the row.
 (function shapeFingerprint_aNativeTablesHeaderRowIsItsHeadSectionOrItsHeaderCells() {
   const headSection = makeHeadSectionTable(['Region', 'Q1'], [['North', '1,482,391']]);
   eq('fingerprint reader: a native table whose first row sits in a head section carries header texts',
@@ -3211,6 +3211,30 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   ]);
   eq('fingerprint reader: a first row holding one data cell beside a header cell carries no header texts',
     readTableFingerprint(mixedFirstRow).headerTexts, null);
+})();
+
+// Every row joins the dataset, and the shape fingerprint still reads a
+// grid's header row from the outside-row mark. One drawing per kind: a header
+// row in a head section (a grid draws it outside every row group), body rows
+// in a body section (a grid draws them in a row group), and a total row in a
+// footer section (a grid draws it after the row group, outside it). A total
+// row outside every group carries the same mark as the header row, so the
+// reading takes the first row alone. Invented values.
+(function shapeFingerprint_theHeaderRowReadHoldsWithEveryRowInTheDataset() {
+  const draw = (kind, withHead) => rwDrawTable(kind, (withHead
+    ? [{ part: 'head', rows: [[{ pieces: 'Region', header: 'col' }, { pieces: 'Q1', header: 'col' }]] }]
+    : []).concat([
+    { part: 'body', rows: [['North', '1,482,391'], ['South', '918,554']], grouped: true },
+    { part: 'foot', rows: [['Total', '2,400,945']] },
+  ])).table;
+  for (const kind of ['native', 'grid']) {
+    eq(`fingerprint reader (${kind}): a table with a header row, grouped body rows, and a total row carries the header row's texts`,
+      readTableFingerprint(draw(kind, true)), { columnCount: 2, headerTexts: ['Region', 'Q1'] });
+  }
+  for (const kind of ['native', 'grid']) {
+    eq(`fingerprint reader (${kind}): a table whose first row is a body row and whose total row is last carries no header texts`,
+      readTableFingerprint(draw(kind, false)), { columnCount: 2, headerTexts: null });
+  }
 })();
 
 (function shapeFingerprint_theOriginalsPortReadsPastTheExtensionsOwnWrites() {

@@ -166,6 +166,17 @@ const TK_SETTINGS = [
     list.filter((row) => ['not yet tested', 'no pair'].includes(row.state) && !row.note).map((row) => row.key), []);
 })();
 
+// Every row joins the dataset on both kinds, so a header row outside every
+// row group and a total row in a row group of its own give the native
+// result. The design doc lists both pairs as same, and the test below then
+// finds no difference under either settings object.
+(function tablekinds_theEveryRowPairsAreSame() {
+  const list = tkReadPairList() || [];
+  eq('every row: the design doc lists the column-header and footer-group pairs as same',
+    ['column-header', 'footer-group'].map((key) => (list.find((row) => row.key === key) || {}).state),
+    ['same', 'same']);
+})();
+
 (function tablekinds_eachPairMatchesItsRecordedState() {
   const list = tkReadPairList() || [];
   for (const row of list) {
