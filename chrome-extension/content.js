@@ -774,9 +774,9 @@ function decisionToLegacyInfo(decision) {
 // table rounds it. The step reads each simplified cell's stored original
 // (see classifyTableCell) and writes nothing. The filters over its result
 // keep what the lens preview samples. Every row counts, header, body, and
-// total alike; empty cells stay out. Pure and extracted results alone count: the lens preview is about numeric
-// magnitude and offset, so dates and times stay out even though the ladder
-// classifies them.
+// total alike; empty cells stay out. Pure and extracted results alone
+// count: the lens preview is about numeric magnitude and offset, so dates
+// and times stay out even though the ladder classifies them.
 //
 // options defaults to DR_DEFAULTS when the caller passes none (tests exercise
 // the ladder's option-gated rules directly this way); the real call site,
@@ -1112,17 +1112,17 @@ function classifyTableCell(table, cellObj, rowIndex, opts, ranges, kind) {
   };
 }
 
-// Every cell of every row, in page order, with its row index. A header cell is a cell like any other: the
-// first-row and first-column exclusions govern it by position, whatever tag
-// the page gave it, so a header row of prices rounds when the first-row
-// switch is on and stays raw when it is off. The column index is the column
-// the browser lays the cell out in (the adapter's reading, see
-// assignGridColumns): a <th scope="row"> IS the table's first column as
-// rendered, so in such a table the leading <td> is column B, and "first
-// column" (and range "A") target the header column, not the first data cell
-// after it. Every row's values join the dataset, header, body, and total
-// alike, on both table kinds. The count of these cells is what the cell cap
-// measures.
+// Every cell of every row, in page order, with its row index. A header
+// cell is a cell like any other: the first-row and first-column exclusions
+// govern it by position, whatever tag the page gave it, so a header row of
+// prices rounds when the first-row switch is on and stays raw when it is
+// off. The column index is the column the browser lays the cell out in (the
+// adapter's reading, see assignGridColumns): a <th scope="row"> IS the
+// table's first column as rendered, so in such a table the leading <td> is
+// column B, and "first column" (and range "A") target the header column, not
+// the first data cell after it. Every row's values join the dataset,
+// header, body, and total alike, on both table kinds. The count of these
+// cells is what the cell cap measures.
 function tableDataCells(adapterRows) {
   const cells = [];
   for (let r = 0; r < adapterRows.length; r++) {
