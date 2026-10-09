@@ -21,7 +21,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | Parameter | Description |
 | --- | --- |
 | value | The number or the set of numbers to round. |
-| dataset | In set-aware: the values the max magnitude comes from. An outside row rounds against the dataset; its own values stay out of it. The Sheets function takes it as a cell range; the Python function takes it as the `data` list. |
+| dataset | In set-aware: the values the max magnitude comes from. In the extension, every row of a table joins it, header, body, and total alike, on a native table and a grid. The Sheets function takes it as a cell range; the Python function takes it as the `data` list. |
 | offset | Magnitude adjustment (single mode). |
 | offset_top | Magnitude adjustment for the top band. |
 | offset_other | Magnitude adjustment for the other band. |
@@ -94,8 +94,8 @@ One term per concept, across every platform and every document. Use the [Retired
 | grid | A table built from generic elements with ARIA roles instead of `<table>`. |
 | table feature | One piece of table markup the HTML standard or the accessibility standard defines: a header cell, a row label, a row group, a footer row, a merged cell, a caption, a hidden row. |
 | pair | One table feature in its native form beside its grid form, e.g. a `<th scope="row">` beside an element with the row-header role. The design doc's table kind pairs list holds every pair with its state: same, different, not yet tested, or no pair, for a feature with one form only. |
-| row group | The wrapper that holds a grid's data rows — the grid analog of a table body. Row discovery uses it to identify the row shape, then takes every matching row across the whole grid; membership in a row group never keeps a row out of rounding — only the first-row and first-column exclusion defaults do that. |
-| outside row | In a grid that has at least one row group: a row outside every row group. In a native table: a row in the footer section. A grid with no row group has no outside rows (its groupless rows are orphan rows). An outside row rounds like any other row, and its values stay out of the dataset: they never reach the max magnitude or the lens preview. |
+| row group | The wrapper that holds a grid's data rows — the grid analog of a table body. Row discovery uses it to identify the row shape, then takes every matching row across the whole grid; membership in a row group never keeps a row out of rounding or out of the dataset — only the first-row and first-column exclusion defaults do that. |
+| outside row | In a grid that has at least one row group: a row outside every row group. A grid with no row group has no outside rows (its groupless rows are orphan rows). An outside row rounds like any other row, and its values join the dataset like any other row's. The shape fingerprint alone reads it: a grid whose first row is an outside row has a header row. |
 | virtualized grid | A grid that keeps only its visible rows in the page, creating and destroying rows as the user scrolls. |
 | vendor grid | A grid built by a known third-party library, recognized by its class names instead of the geometry probe. |
 | qualifying element | An element carrying a grid or table role that passes the two guards the nomination step applies: it is not a native table, and it holds no native table other than accessibility artifacts. The data test has not run on it yet. A qualifying element inside an element carrying a cell role heads a nest of its own. |
