@@ -773,10 +773,8 @@ function decisionToLegacyInfo(decision) {
 // below), on the kind the pass picks, so a cell appears here only if the
 // table rounds it. The step reads each simplified cell's stored original
 // (see classifyTableCell) and writes nothing. The filters over its result
-// keep what the lens preview samples. Outside rows stay out, because an
-// outside row rounds against the dataset without joining it; empty cells
-// stay out. Pure and
-// extracted results alone count: the lens preview is about numeric
+// keep what the lens preview samples. Every row counts, header, body, and
+// total alike; empty cells stay out. Pure and extracted results alone count: the lens preview is about numeric
 // magnitude and offset, so dates and times stay out even though the ladder
 // classifies them.
 //
@@ -795,8 +793,8 @@ function collectNumericCells(table, options) {
   const entries = classifyTableCells(table, tableDataCells(adapter.getRows()), opts, rangeParse.ranges,
     tableKindPass(adapter));
   const out = [];
-  for (const { trimmed, info, isOutside } of entries) {
-    if (isOutside || !trimmed) continue;
+  for (const { trimmed, info } of entries) {
+    if (!trimmed) continue;
     if (info.mode === 'pure') {
       if (info.num !== 0 && isFinite(info.num)) out.push({ text: trimmed, num: info.num });
     } else if (info.mode === 'extracted') {
@@ -1077,7 +1075,7 @@ function resolveRoundingSettings(opts) {
 // isWholeLink stays a live read: rounding patches text-node values and
 // never adds or removes an <a>, so the anchor text and the cell text move
 // together, and a whole-link cell never rounds in the first place.
-function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, kind) {
+function classifyTableCell(table, cellObj, rowIndex, opts, ranges, kind) {
   const cell = cellObj.el;
   const record = DR_STORE.getTableOriginal(table, cell) || null;
   const text = cellObj.getText();
@@ -1109,14 +1107,12 @@ function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, ki
     isSplit: kind.splitReasons.includes(placed.reason),
     layout,
     col: cellObj.columnIndex,
-    isOutside,
     hasSuperscript,
     superscriptRanges,
   };
 }
 
-// Every cell of every row, in page order, with its row index and whether its
-// row is an outside row. A header cell is a cell like any other: the
+// Every cell of every row, in page order, with its row index. A header cell is a cell like any other: the
 // first-row and first-column exclusions govern it by position, whatever tag
 // the page gave it, so a header row of prices rounds when the first-row
 // switch is on and stays raw when it is off. The column index is the column
@@ -1124,15 +1120,14 @@ function classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, ki
 // assignGridColumns): a <th scope="row"> IS the table's first column as
 // rendered, so in such a table the leading <td> is column B, and "first
 // column" (and range "A") target the header column, not the first data cell
-// after it. An outside row rounds like any other; its entries carry
-// isOutside so its values stay out of the dataset. The count of these cells
-// is what the cell cap measures.
+// after it. Every row's values join the dataset, header, body, and total
+// alike, on both table kinds. The count of these cells is what the cell cap
+// measures.
 function tableDataCells(adapterRows) {
   const cells = [];
   for (let r = 0; r < adapterRows.length; r++) {
-    const isOutside = !!adapterRows[r].isOutside;
     for (const cellObj of adapterRows[r].getCells()) {
-      cells.push({ cellObj, rowIndex: r, isOutside });
+      cells.push({ cellObj, rowIndex: r });
     }
   }
   return cells;
@@ -1141,8 +1136,8 @@ function tableDataCells(adapterRows) {
 // Classify every cell of every row, in page order (see tableDataCells). The
 // lens preview runs this step alone: no sort and no writes.
 function classifyTableCells(table, dataCells, opts, ranges, kind) {
-  return dataCells.map(({ cellObj, rowIndex, isOutside }) =>
-    classifyTableCell(table, cellObj, rowIndex, isOutside, opts, ranges, kind));
+  return dataCells.map(({ cellObj, rowIndex }) =>
+    classifyTableCell(table, cellObj, rowIndex, opts, ranges, kind));
 }
 
 // The pass's sort (see the section header): release every rewritten cell,
@@ -1184,12 +1179,10 @@ function resolveAmbiguousDates(entries) {
 }
 
 // The max magnitude over the dataset: every pure cell's number and each
-// number of an extracted cell, outside rows left out — they round against
-// the dataset without joining it.
+// number of an extracted cell, from every row of the table.
 function datasetMaxMagnitude(entries) {
   const allNums = [];
-  for (const { info, isOutside } of entries) {
-    if (isOutside) continue;
+  for (const { info } of entries) {
     if (info.mode === 'pure') allNums.push(info.num);
     else if (info.mode === 'extracted') {
       for (const m of info.matches) allNums.push(m.num);

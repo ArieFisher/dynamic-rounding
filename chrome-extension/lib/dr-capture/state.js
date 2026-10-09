@@ -53,9 +53,11 @@
  * pillbox auto-collapse delay from it; the pillbox view holds that delay.
  * Format 7 drops the page-wide settings field and renames each table's
  * lastRoundOptions to settings: each table carries its own settings.
+ * Format 8 drops each cell's isOutside field: every row joins the dataset,
+ * so no reader of the field remains.
  */
 
-const CAPTURE_FORMAT = 7;
+const CAPTURE_FORMAT = 8;
 
 function collectCaptureState(deps) {
   const store = (deps && deps.store) || DR_STORE;
@@ -73,7 +75,6 @@ function collectCaptureState(deps) {
     const cells = [];
     for (let r = 0; r < rows.length; r++) {
       const rowCells = rows[r].getCells();
-      const isOutside = !!rows[r].isOutside;
       for (let c = 0; c < rowCells.length; c++) {
         const cellObj = rowCells[c];
         // The table's width is the rightmost grid column any cell reaches,
@@ -93,7 +94,6 @@ function collectCaptureState(deps) {
           row: r,
           col: cellObj.columnIndex,
           role: cellObj.tagName === 'TH' ? 'th' : 'td',
-          isOutside,
           text: cellObj.getDisplayedText(),
           original,
           // Per cell, so the renderer can tell a lost original (marker,

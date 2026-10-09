@@ -353,10 +353,6 @@ class NativeTableAdapter {
   getElement() { return this.el; }
   isVirtualized() { return false; }
   getRows() {
-    // isOutside marks a footer-section row — the native analog of a grid row
-    // outside the row group. Outside rows round like any other, but their
-    // values stay out of the dataset: consumers skip them when computing the
-    // max magnitude and the lens preview pool.
     const rowEls = Array.from(this.el.rows);
     // One pass over the spans numbers every cell by its grid column, before
     // any text is read; a cell then carries the number its consumers gate on.
@@ -364,8 +360,6 @@ class NativeTableAdapter {
       rowEls.map((row) => Array.from(row.cells).map(nativeCellSpans)));
     const port = this.originalsPort;
     return rowEls.map((row, r) => ({
-      isOutside: !!((row.parentElement || row.parentNode) &&
-        (row.parentElement || row.parentNode).tagName === 'TFOOT'),
       getCells() {
         return Array.from(row.cells).map((cell, c) => {
           // A native cell classifies its rendered text, and the screen shows
@@ -450,8 +444,9 @@ class GridAdapter {
    * this list IS the row's literal row number.
    *
    * isOutside marks the rows not inside any rowgroup. An outside row rounds
-   * like any other, but its values stay out of the dataset: consumers skip it
-   * when computing the max magnitude and the lens preview pool.
+   * like any other and its values join the dataset like any other. The shape
+   * fingerprint is the mark's one reader: it reads a grid's header row from
+   * it (see _hasHeaderRow).
    *
    * @param {Element} container
    * @returns {{el: Element, isOutside: boolean}[]}
@@ -1617,8 +1612,8 @@ function readTableFingerprint(el, opts = {}) {
  * database query grid takes — has a data row first, and a scroll redraws it,
  * so its text describes the rows on the screen rather than the table.
  *
- * On a native table the adapter's isOutside marks the footer section alone,
- * so the head section is read from the row itself: the row sits in a THEAD,
+ * A native table's adapter carries no outside-row mark, so the head section
+ * is read from the row itself: the row sits in a THEAD,
  * or it holds header cells and no data cell. The second form covers a table
  * written with a leading row of <th> and no explicit head section. The pass
  * reads such a row like any other; the first-row exclusion is what holds it
@@ -1626,7 +1621,7 @@ function readTableFingerprint(el, opts = {}) {
  *
  * @param {Element} el
  * @param {NativeTableAdapter|GridAdapter} adapter
- * @param {{isOutside: boolean, getCells(): object[]}} firstRow
+ * @param {{isOutside?: boolean, getCells(): object[]}} firstRow
  * @returns {boolean}
  */
 function _hasHeaderRow(el, adapter, firstRow) {
