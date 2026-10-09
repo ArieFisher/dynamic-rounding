@@ -70,6 +70,11 @@ const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE)
  * vertical-align check). With no real getComputedStyle, assumes a normal,
  * visible, statically-positioned block element — the jsdom-less default that
  * lets detection keep running instead of reasoning from an absent style.
+ *
+ * getBox returns an element's box ({top, left, width, height}) or null when
+ * the element draws no box: a hidden element, or a `display: contents` row.
+ * The direction read (isColumnFirst) and the column-first alignment step read
+ * it. A probe without getBox reads every grid as row-first.
  */
 const DEFAULT_STYLE_PROBE = {
   getComputedStyle(el) {
@@ -81,7 +86,69 @@ const DEFAULT_STYLE_PROBE = {
   getOffsetWidth(el) {
     return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1;
   },
+  getBox(el) {
+    if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+    let rect = null;
+    try { rect = el.getBoundingClientRect(); } catch (e) { return null; }
+    if (!rect || !(rect.width > 0 || rect.height > 0)) return null;
+    return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+  },
 };
+
+/**
+ * The children of an element whose own child count is the most common
+ * non-zero count, with that count and how many children hold it. The geometry
+ * probe takes these children as its candidate rows (or candidate columns, on a
+ * column-first grid), and the grid adapter's turned read takes them as its
+ * columns, so the two read the same set.
+ *
+ * @param {Element[]} children
+ * @returns {{childCountFreq: Map<number, number>, modalChildCount: number, modalFreq: number, candidates: Element[]}}
+ */
+function childCountCandidates(children) {
+  const childCountFreq = new Map();
+  for (const child of children) {
+    const cc = child.children ? child.children.length : 0;
+    childCountFreq.set(cc, (childCountFreq.get(cc) || 0) + 1);
+  }
+  let modalChildCount = 0;
+  let modalFreq = 0;
+  for (const [cc, freq] of childCountFreq) {
+    if (freq > modalFreq && cc > 0) { modalFreq = freq; modalChildCount = cc; }
+  }
+  const candidates = modalFreq > 0
+    ? children.filter((c) => c.children && c.children.length === modalChildCount)
+    : [];
+  return { childCountFreq, modalChildCount, modalFreq, candidates };
+}
+
+/**
+ * The direction read: whether an element's children run side by side as
+ * columns (a column-first grid) instead of stacking as rows (a row-first
+ * grid). It reads the boxes of the first two children that draw a box,
+ * skipping a hidden child or a `display: contents` row, among at most
+ * DR_DETECTION_SETTINGS.gridColumnWidthSample children. The same top with a
+ * larger left means column-first. Anything else means row-first: a different
+ * top, fewer than two boxes within the sample, or a probe without getBox. The
+ * geometry probe and the grid adapter both call this, so the two read one
+ * direction for one grid.
+ *
+ * @param {Element[]} children
+ * @param {object} styleProbe
+ * @returns {boolean}
+ */
+function isColumnFirst(children, styleProbe) {
+  if (!styleProbe || typeof styleProbe.getBox !== 'function') return false;
+  const sample = children.slice(0, DR_DETECTION_SETTINGS.gridColumnWidthSample);
+  const boxes = [];
+  for (const child of sample) {
+    const box = styleProbe.getBox(child);
+    if (box) boxes.push(box);
+    if (boxes.length === 2) break;
+  }
+  if (boxes.length < 2) return false;
+  return boxes[1].top === boxes[0].top && boxes[1].left > boxes[0].left;
+}
 
 /**
  * NumericProbe: parses a cell's text to a number for the "does this look
@@ -434,6 +501,7 @@ class GridAdapter {
     this.el = el;
     this.vendorProfiles = opts.vendorProfiles || GRID_VENDOR_PROFILES;
     this.originalsPort = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
+    this.styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   }
   getElement() { return this.el; }
   isVirtualized() { return true; }
@@ -503,14 +571,17 @@ class GridAdapter {
    * fingerprint is the mark's one reader: it reads a grid's header row from
    * it (see _hasHeaderRow).
    *
+   * A row from the children fallback on a column-first grid has no row
+   * element: its entry holds el: null and cellEls, the row's cells in column
+   * order (see _childRowEntries).
+   *
    * @param {Element} container
-   * @returns {{el: Element, isOutside: boolean}[]}
+   * @returns {{el: Element|null, isOutside: boolean, cellEls?: Element[]}[]}
    */
   _getRowEntries(container) {
     if (!container) return [];
     if (!container.querySelectorAll) {
-      const kids = container.children ? Array.from(container.children) : [];
-      return kids.map((el) => ({ el, isOutside: false }));
+      return this._childRowEntries(container);
     }
     // Every query reads the container's own elements alone: a row group, a
     // row, or a cell inside one of the grid's cells belongs to a table nested
@@ -537,11 +608,33 @@ class GridAdapter {
     // fallback stays narrow — the first group's children only — rather than
     // guessing at rows among the container's mixed children; the whole-grid
     // row universe above applies only to rows a selector can name.
-    const first = scopes[0];
-    if (first && first.children) {
-      return Array.from(first.children).map((el) => ({ el, isOutside: false }));
+    return this._childRowEntries(scopes[0]);
+  }
+
+  /**
+   * Rows from an element's children, the fallback when no row selector
+   * matches. On a row-first grid each child is a row. On a column-first grid
+   * (see isColumnFirst) each child is a column, and the read turns the grid:
+   * row r holds the r-th item of every column, in column order. The columns
+   * are the children holding the most common item count, the geometry
+   * probe's candidate rule (see childCountCandidates), so a column with a
+   * different count stays out and every row holds one cell per column.
+   *
+   * @param {Element} parent
+   * @returns {{el: Element|null, isOutside: boolean, cellEls?: Element[]}[]}
+   */
+  _childRowEntries(parent) {
+    if (!parent || !parent.children) return [];
+    const children = Array.from(parent.children);
+    if (!isColumnFirst(children, this.styleProbe)) {
+      return children.map((el) => ({ el, isOutside: false }));
     }
-    return [];
+    const { modalChildCount, candidates: columns } = childCountCandidates(children);
+    const rows = [];
+    for (let r = 0; r < modalChildCount; r++) {
+      rows.push({ el: null, isOutside: false, cellEls: columns.map((column) => column.children[r]) });
+    }
+    return rows;
   }
 
   /**
@@ -580,7 +673,7 @@ class GridAdapter {
    * @returns {string}
    */
   _getRowKey(rowEl, domIndex) {
-    if (rowEl.dataset) {
+    if (rowEl && rowEl.dataset) {
       if (rowEl.dataset.row !== undefined) return rowEl.dataset.row;
       if (rowEl.dataset.index !== undefined) return rowEl.dataset.index;
     }
@@ -641,7 +734,10 @@ class GridAdapter {
     // pinned pane's cells, then the scrolling pane's. Read once here so the
     // column plan below and the cell objects below that count in the same
     // row shape, and so a row is queried for its cells once, not twice.
-    const rowCellEls = scrollEntries.map(({ el: rowEl }, idx) => {
+    // A turned row (a column-first grid's children fallback) carries its
+    // cells and no row element, so it takes no pinned cells.
+    const rowCellEls = scrollEntries.map(({ el: rowEl, cellEls }, idx) => {
+      if (cellEls) return cellEls;
       const scrollKey = adapter._getRowKey(rowEl, idx);
       // Find the matching pinned row (by data-row / data-index / DOM index).
       const pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
@@ -1255,8 +1351,8 @@ function placeDecision(decision, text, layout, opts = {}) {
  * Heuristic test: does `el` look like a data grid built from non-table elements?
  *
  * Applies a cheap-first ladder (S2/S4). Steps 1–5 are pure DOM/CSS reads with no
- * geometry; step 6 (offsetWidth) is guarded by all prior steps and runs only on
- * a bounded sample of column-0 cells.
+ * geometry; step 6 (the direction read and the alignment step) is guarded by
+ * all prior steps and runs only on a bounded sample of first cells.
  *
  * Short-circuit ACCEPT (skip step 6) when el carries:
  *   - role="grid" or role="table"  (ARIA)
@@ -1281,15 +1377,13 @@ function looksLikeGrid(el, opts = {}) {
   // "Share class" = majority of children have the same first className token.
   // "Child shape" = most children have the same number of children.
   const classFreq = new Map();
-  const childCountFreq = new Map();
   for (const child of children) {
     const cls = (child.className && typeof child.className === 'string')
       ? child.className.trim().split(/\s+/)[0]
       : '';
     classFreq.set(cls, (classFreq.get(cls) || 0) + 1);
-    const cc = child.children.length;
-    childCountFreq.set(cc, (childCountFreq.get(cc) || 0) + 1);
   }
+  const { childCountFreq, modalFreq, candidates: candidateRows } = childCountCandidates(children);
   const maxClassCount = Math.max(...classFreq.values());
   const maxChildCount = Math.max(...childCountFreq.values());
   // At least DR_DETECTION_SETTINGS.gridRepetitionShare of children must share a class
@@ -1300,16 +1394,9 @@ function looksLikeGrid(el, opts = {}) {
 
   // --- Step 3: Consistent cell count — candidate rows have equal child counts ---
   // The modal child count must appear in at least DR_DETECTION_SETTINGS.gridRepetitionShare
-  // of the children.
-  let modalChildCount = 0;
-  let modalFreq = 0;
-  for (const [cc, freq] of childCountFreq) {
-    if (freq > modalFreq && cc > 0) { modalFreq = freq; modalChildCount = cc; }
-  }
+  // of the children. Candidate rows: children whose child count equals the
+  // modal (candidate columns, on a column-first grid).
   if (modalFreq < repetitionFloor) return false;
-
-  // Candidate rows: children whose child count equals the modal.
-  const candidateRows = children.filter(c => c.children.length === modalChildCount);
 
   // --- Step 4: Layout — display is grid or flex ---
   const computedForDisplay = styleProbe.getComputedStyle(el);
@@ -1334,17 +1421,25 @@ function looksLikeGrid(el, opts = {}) {
   const elClass = (el.className && typeof el.className === 'string') ? el.className : '';
   if (vendorProfiles.some(profile => elClass.includes(profile.classToken))) return true;
 
-  // --- Step 6: Column-width alignment — sample offsetWidth of column-0 cells ---
-  // Bounded to DR_DETECTION_SETTINGS.gridColumnWidthSample rows; only runs when all prior
-  // steps passed.
+  // --- Step 6: Alignment — sample the first cell of each candidate ---
+  // Measures along the axis on which the cells of one row line up. On a
+  // row-first grid the candidates are rows, and the first cells of the rows
+  // form column A, so their widths agree. On a column-first grid (see
+  // isColumnFirst) the candidates are columns, and the first cells of the
+  // columns form the first row, so their heights agree. Bounded to
+  // DR_DETECTION_SETTINGS.gridColumnWidthSample candidates; only runs when all
+  // prior steps passed.
   const sample = candidateRows.slice(0, DR_DETECTION_SETTINGS.gridColumnWidthSample);
-  const widths = sample.map(row => row.children[0] ? styleProbe.getOffsetWidth(row.children[0]) : -1)
-                       .filter(w => w > 0);
-  if (widths.length < 2) return true; // too few rows to measure — benefit of the doubt
-  const firstWidth = widths[0];
-  // Accept when the sampled-width agreement meets DR_DETECTION_SETTINGS.gridColumnWidthAgreement.
-  const matchCount = widths.filter(w => w === firstWidth).length;
-  return matchCount / widths.length >= DR_DETECTION_SETTINGS.gridColumnWidthAgreement;
+  const extentOf = isColumnFirst(children, styleProbe)
+    ? (cell) => { const box = styleProbe.getBox(cell); return box ? box.height : -1; }
+    : (cell) => styleProbe.getOffsetWidth(cell);
+  const extents = sample.map(row => row.children[0] ? extentOf(row.children[0]) : -1)
+                        .filter(w => w > 0);
+  if (extents.length < 2) return true; // too few candidates to measure — benefit of the doubt
+  const firstExtent = extents[0];
+  // Accept when the sampled agreement meets DR_DETECTION_SETTINGS.gridColumnWidthAgreement.
+  const matchCount = extents.filter(w => w === firstExtent).length;
+  return matchCount / extents.length >= DR_DETECTION_SETTINGS.gridColumnWidthAgreement;
 }
 
 /**
