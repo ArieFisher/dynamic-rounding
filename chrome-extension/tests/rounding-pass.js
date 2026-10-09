@@ -2782,20 +2782,20 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     !!(results[5] && results[5].patches.length > 0), true);
 })();
 
-// Outside rows: a row outside the row group rounds, but its values stay out
-// of the dataset — they never feed the max magnitude or the lens preview.
-(function gridOutsideRow_staysOutOfDataset() {
-  // Total is a magnitude ABOVE the data (7 vs 6): if it fed the basis, the
-  // max magnitude would read 7.
+// Outside rows: a row outside the row group rounds, and its values join the
+// dataset like any other row's.
+(function gridOutsideRow_joinsTheDataset() {
+  // Total is a magnitude ABOVE the data (7 vs 6): it feeds the max magnitude,
+  // so the max magnitude reads 7.
   const g = makeRowgroupRoleGrid(
     ['Region', 'Q1'],
     [['North', '1,482,391'], ['South', '918,554']],
     ['Total', '24,009,450']
   );
   const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
-  eq('outside-row: the max magnitude comes from the data rows alone',
-    maxMag, 6);
-  eq('outside-row: the outside row still rounds against that dataset',
+  eq('outside-row: the outside summary row sets the max magnitude',
+    maxMag, 7);
+  eq('outside-row: the outside row still rounds',
     !!(results[7] && results[7].patches.length > 0), true);
 })();
 
@@ -2833,8 +2833,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     [3, 5, 7, 9, 11].map((i) => !!(results[i] && results[i].patches.length > 0)), [true, true, true, true, true]);
 })();
 
-// Outside rows: the lens preview pool draws from the dataset only.
-(function gridOutsideRow_staysOutOfPreview() {
+// Outside rows: the lens preview pool draws from every row, the outside row
+// included.
+(function gridOutsideRow_joinsThePreview() {
   const g = makeRowgroupRoleGrid(
     ['Region', 'Q1'],
     [['North', '1482391'], ['South', '918554']],
@@ -2843,16 +2844,15 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const cells = collectNumericCells(g.wrapperEl);
   eq('outside-row: lens preview pool includes the first data row value',
     cells.some(function(c) { return c.num === 1482391; }), true);
-  eq('outside-row: lens preview pool leaves the outside row value out',
-    cells.some(function(c) { return c.num === 2400945; }), false);
+  eq('outside-row: lens preview pool includes the outside row value',
+    cells.some(function(c) { return c.num === 2400945; }), true);
 })();
 
-// Pin: only the footer section carries the outside mark on native tables.
-// A header-section row's td values still feed the dataset — the deliberate
-// scope of the outside-row rule (Arie approved footer-only). The offsets are
-// pulled apart: with the thead value (magnitude 8) in the basis, the body
-// value (magnitude 7) is the other band (nearest 1M → 88,000,000); marking
-// THEAD outside would flip it to the top band (nearest 5M → 90,000,000).
+// A header-section row's td values feed the dataset. The offsets are pulled
+// apart: with the thead value (magnitude 8) in the basis, the body value
+// (magnitude 7) is the other band (nearest 1M → 88,000,000); a header row
+// left out of the dataset would put it on the top band (nearest 5M →
+// 90,000,000).
 (function nativeHeaderRow_staysInDataset() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([
@@ -2873,10 +2873,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   });
 })();
 
-// Pin: when a table's only numbers sit in outside rows, the dataset is empty
-// (max magnitude null) and every outside value takes the other-band offset —
-// the accepted edge, recorded so the next reader need not re-derive it.
-(function gridOutsideRow_emptyDatasetTakesOtherOffset() {
+// When a table's only number sits in an outside row, that row alone makes
+// the dataset: it sets the max magnitude, so the value is the top band and
+// takes the top-band offset (nearest 5M → 25,000,000), never the other-band
+// offset (nearest 1M → 24,000,000).
+(function gridOutsideRow_aloneMakesTheDataset() {
   const g = makeRowgroupRoleGrid(
     ['Region', 'Q1'],
     [['North', 'n/a']],
@@ -2884,19 +2885,19 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   );
   const opts = Object.assign({}, DR_DEFAULTS, { offsetTop: -0.5, offsetOther: -1 });
   const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), opts, { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
-  eq('outside-row: a dataset of outside rows alone is empty',
-    maxMag, null);
-  eq('outside-row: with an empty dataset the outside value takes the other-band offset',
-    results[5] && results[5].patches[0] && results[5].patches[0].newNum, '24,000,000');
+  eq('outside-row: an outside row alone sets the max magnitude',
+    maxMag, 7);
+  eq('outside-row: an outside row alone takes the top-band offset',
+    results[5] && results[5].patches[0] && results[5].patches[0].newNum, '25,000,000');
 })();
 
-// Outside rows, native analog: a footer-section row rounds but stays out of
-// the dataset. The offsets are pulled apart so the basis is visible in the
-// output: with the footer value (magnitude 8) out of the basis, the body
-// value (magnitude 7) is the top band and takes offset_top (nearest 5M →
-// 90,000,000); if the footer fed the basis, the body value would take
-// offset_other (nearest 1M → 88,000,000).
-(function nativeFooterRow_staysOutOfDataset() {
+// Outside rows, native analog: a footer-section row rounds and joins the
+// dataset. The offsets are pulled apart so the basis is visible in the
+// output: with the footer value (magnitude 8) in the basis, the body value
+// (magnitude 7) is the other band and takes offset_other (nearest 1M →
+// 88,000,000); a footer left out of the basis would put the body value on
+// the top band (nearest 5M → 90,000,000).
+(function nativeFooterRow_joinsTheDataset() {
   withCreateTreeWalker(function() {
     const table = makeMockTable([
       [{ tag: 'td', text: '87,654,321' }],
@@ -2911,11 +2912,85 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
       rangeExpr: ''
     };
     roundTable(table, opts);
-    eq('outside-row (native): the body value rounds on the top band — the footer value did not raise the basis',
-      table.rows[0].cells[0].innerText, '90,000,000');
-    eq('outside-row (native): the footer row still rounds against the dataset',
+    eq('outside-row (native): the body value rounds on the other band, because the footer value raised the max magnitude',
+      table.rows[0].cells[0].innerText, '88,000,000');
+    eq('outside-row (native): the footer row still rounds',
       table.rows[1].cells[0].innerText, '1,000,000,000');
   });
+})();
+
+// Every row feeds the dataset, header, body, and total alike, on a native
+// table and a grid. One drawing per case, the same sections on both kinds: a
+// header row in a head section (a grid draws it outside every row group), two
+// body rows in a body section (a grid draws them in a row group), and a total
+// row in a footer section (a grid draws it after the row group, outside it).
+// Each case puts the one magnitude-7 value in one row kind; every other
+// number sits at magnitude 6. Both switches are on, so no exclusion holds the
+// header row or the label column, and the offsets sit apart: at max
+// magnitude 6 the body value 1,234,567 is the top band (nearest 500,000 →
+// 1,000,000); at max magnitude 7 it is the other band (nearest 100,000 →
+// 1,200,000). Invented values.
+const EVERY_ROW_OPTS = Object.assign({}, DR_DEFAULTS, {
+  simplifyFirstRow: true, simplifyFirstColumn: true, offsetTop: -0.5, offsetOther: -1, numTop: 1,
+});
+const EVERY_ROW_LARGE = '24,009,450';
+
+function everyRowDraw(kind, largeIn) {
+  const pick = (rowKind, otherwise) => (largeIn === rowKind ? EVERY_ROW_LARGE : otherwise);
+  return rwDrawTable(kind, [
+    { part: 'head', rows: [[{ pieces: 'Region', header: 'col' }, { pieces: pick('header', 'Units'), header: 'col' }]] },
+    { part: 'body', rows: [['North', '1,234,567'], ['South', pick('body', '918,554')]], grouped: true },
+    { part: 'foot', rows: [['Total', pick('total', '2,153,121')]] },
+  ]).table;
+}
+
+// One case's reading: the max magnitude the pass computes, and the text the
+// first body row's value shows after the table is simplified.
+function everyRowRead(kind, largeIn) {
+  let reading = null;
+  withRewritePage(() => {
+    const table = everyRowDraw(kind, largeIn);
+    try {
+      const { maxMag } = simplifyTableCells(table, registryAdapter(table).getRows(), EVERY_ROW_OPTS,
+        { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+      roundTableUnder(table, EVERY_ROW_OPTS);
+      const bodyValue = tkCellTexts(table).find((cell) => cell.at === '1:1');
+      reading = { maxMag, bodyValue: bodyValue ? bodyValue.text : null };
+    } finally {
+      resetTable(table);
+      forgetRegisteredTable(table);
+    }
+  });
+  return reading;
+}
+
+(function everyRow_eachRowKindSetsTheMaxMagnitudeOnBothKinds() {
+  for (const kind of ['native', 'grid']) {
+    eq(`every row (${kind}): with no magnitude-7 value the max magnitude is 6 and the body value takes the top-band offset`,
+      everyRowRead(kind, null), { maxMag: 6, bodyValue: '1,000,000' });
+    for (const rowKind of ['header', 'body', 'total']) {
+      eq(`every row (${kind}): a ${rowKind} row sets the max magnitude, so the body value takes the other-band offset`,
+        everyRowRead(kind, rowKind), { maxMag: 7, bodyValue: '1,200,000' });
+    }
+  }
+})();
+
+// The lens preview pool takes every row's values on both kinds: the header
+// row's, the body rows', and the total row's.
+(function everyRow_theLensPreviewPoolTakesEveryRow() {
+  for (const kind of ['native', 'grid']) {
+    for (const rowKind of ['header', 'total']) {
+      withRewritePage(() => {
+        const table = everyRowDraw(kind, rowKind);
+        try {
+          eq(`every row (${kind}): the lens preview pool holds the ${rowKind} row's value`,
+            collectNumericCells(table, EVERY_ROW_OPTS).some((cell) => cell.num === 24009450), true);
+        } finally {
+          forgetRegisteredTable(table);
+        }
+      });
+    }
+  }
 })();
 
 // -------------------------------------------------------------------------

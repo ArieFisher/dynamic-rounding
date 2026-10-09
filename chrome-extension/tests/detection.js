@@ -3181,8 +3181,8 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     grouplessReading.headerTexts, null);
 })();
 
-// The three native-table forms. The adapter's outside-row mark names the
-// footer section on a native table, so the head section is read from the row.
+// The three native-table forms. A native table's adapter carries no
+// outside-row mark, so the head section is read from the row.
 (function shapeFingerprint_aNativeTablesHeaderRowIsItsHeadSectionOrItsHeaderCells() {
   const headSection = makeHeadSectionTable(['Region', 'Q1'], [['North', '1,482,391']]);
   eq('fingerprint reader: a native table whose first row sits in a head section carries header texts',
@@ -3211,6 +3211,30 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   ]);
   eq('fingerprint reader: a first row holding one data cell beside a header cell carries no header texts',
     readTableFingerprint(mixedFirstRow).headerTexts, null);
+})();
+
+// Every row joins the dataset, and the shape fingerprint still reads a
+// grid's header row from the outside-row mark. One drawing per kind: a header
+// row in a head section (a grid draws it outside every row group), body rows
+// in a body section (a grid draws them in a row group), and a total row in a
+// footer section (a grid draws it after the row group, outside it). A total
+// row outside every group carries the same mark as the header row, so the
+// reading takes the first row alone. Invented values.
+(function shapeFingerprint_theHeaderRowReadHoldsWithEveryRowInTheDataset() {
+  const draw = (kind, withHead) => rwDrawTable(kind, (withHead
+    ? [{ part: 'head', rows: [[{ pieces: 'Region', header: 'col' }, { pieces: 'Q1', header: 'col' }]] }]
+    : []).concat([
+    { part: 'body', rows: [['North', '1,482,391'], ['South', '918,554']], grouped: true },
+    { part: 'foot', rows: [['Total', '2,400,945']] },
+  ])).table;
+  for (const kind of ['native', 'grid']) {
+    eq(`fingerprint reader (${kind}): a table with a header row, grouped body rows, and a total row carries the header row's texts`,
+      readTableFingerprint(draw(kind, true)), { columnCount: 2, headerTexts: ['Region', 'Q1'] });
+  }
+  for (const kind of ['native', 'grid']) {
+    eq(`fingerprint reader (${kind}): a table whose first row is a body row and whose total row is last carries no header texts`,
+      readTableFingerprint(draw(kind, false)), { columnCount: 2, headerTexts: null });
+  }
 })();
 
 (function shapeFingerprint_theOriginalsPortReadsPastTheExtensionsOwnWrites() {
@@ -3416,6 +3440,411 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     chainRootOf(grid.wrapperEl) === grid.wrapperEl, true);
   eq('nomination: a plain element with no qualifying ancestor has no chain root',
     chainRootOf(makeDgNode('DIV', 'plain-element', null, [])), null);
+})();
+
+// =============================================================================
+// A cell bounds a nest
+// Spec: docs/sprint-plans/grid-reading-gaps.md §3.2 and the grid-in-cell-nest
+// block in §5; issue #527.
+// =============================================================================
+//
+// The rule these assertions pin, in the specification's words:
+//   - A walk upward from a qualifying element ends at the first element
+//     carrying a cell role, so a grid inside a cell is its own chain root.
+//   - The nest's membership test uses the same stop, so a grid inside a cell
+//     never counts as a member of the outer grid's nest, and the outer nest's
+//     already-registered check never reads the inner grid.
+//   - A vendor grid's panes sit outside any cell, so the nesting depth still
+//     picks the scrolling pane there.
+//   - A right-click inside the inner grid resolves the inner grid, and a
+//     right-click in another cell of the outer grid resolves the outer grid.
+//   - Each grid reads its own rows and cells and leaves out the other's.
+//
+// Every expected value below comes from that statement, never from the
+// detection layer's source. Invented values.
+
+// The inner table: two body rows of a label beside a number.
+const CN_INNER = {
+  sections: [{ part: 'body', rows: [['Q1', '1,234'], ['Q2', '3,587']], grouped: true }],
+};
+
+// A table whose first body row's last cell holds `nested`, drawn in the
+// pair's grid form unless `kind` names the native form.
+function cnSections(nested) {
+  return [
+    { part: 'head', rows: [[
+      { pieces: 'Region', header: 'col' }, { pieces: '2023', header: 'col' },
+      { pieces: 'By quarter', header: 'col' },
+    ]] },
+    { part: 'body', rows: [
+      ['North', '4,821', { pieces: [], nested }],
+      ['South', '2,734', ''],
+    ], grouped: true },
+  ];
+}
+
+// A host holding one outer grid with a grid inside one of its cells. The
+// outer grid carries `outerRole`, the inner grid `innerRole`.
+function cnGridInCell(outerRole, innerRole) {
+  const inner = Object.assign({}, CN_INNER, { opts: { gridRole: innerRole || 'grid' } });
+  const outer = rwDrawTable('grid', cnSections(inner), { gridRole: outerRole || 'grid' }).table;
+  const host = rwEl('div', {}, [outer]);
+  const innerEl = outer.querySelectorAll(GRID_ARIA_SELECTOR_TEXT)[0];
+  const rowsOf = (gridEl) => dgDescendantsMatching(gridEl, '[role="row"]');
+  return {
+    host, outer, inner: innerEl,
+    // The outer grid's North row cell holding the inner grid, its South row
+    // number cell, and the inner grid's second-row number cell.
+    holdingCell: rowsOf(outer)[1].children[2],
+    outerSouthCell: rowsOf(outer).filter((row) => !innerEl.contains(row))[2].children[1],
+    innerCell: rowsOf(innerEl)[1].children[1],
+  };
+}
+
+// The texts of every cell a table reads through its adapter, row by row.
+function cnAdapterTexts(tableEl) {
+  return makeAdapter(tableEl).getRows().map((row) => row.getCells().map((cell) => cell.getText()));
+}
+
+// The cell elements a table reads through its adapter.
+function cnAdapterCellEls(tableEl) {
+  return makeAdapter(tableEl).getRows().flatMap((row) => row.getCells().map((cell) => cell.el));
+}
+
+// --- Detection: both grids register ---
+
+(function cellNest_aGridInsideACellRegistersBesideTheGridAroundIt() {
+  const page = cnGridInCell();
+
+  eq('cell nest: the fixture puts the inner grid inside a cell of the outer grid (sanity)',
+    page.inner.parentElement === page.holdingCell && page.holdingCell.getAttribute('role') === 'cell', true);
+  eq('cell nest: both grids pass the data test (sanity)',
+    [isDataTable(page.outer), isDataTable(page.inner)], [true, true]);
+
+  const handles = findTables(page.host).map((r) => r.handle);
+  eq('cell nest: a page holding a grid inside a cell of another grid reports two tables',
+    handles.length, 2);
+  eq('cell nest: the two tables are the outer grid and the inner grid, in document order',
+    handles.length === 2 && handles[0] === page.outer && handles[1] === page.inner, true);
+
+  eq('cell nest: the inner grid is its own chain root',
+    chainRootOf(page.inner) === page.inner, true);
+  eq('cell nest: a cell of the inner grid sits in the inner grid\'s nest',
+    chainRootOf(page.innerCell) === page.inner, true);
+  eq('cell nest: a cell of the outer grid sits in the outer grid\'s nest',
+    chainRootOf(page.outerSouthCell) === page.outer, true);
+
+  const outerResult = nominateNest(page.outer);
+  eq('cell nest: the outer nest selects the outer grid', outerResult.selected === page.outer, true);
+  eq('cell nest: the outer nest\'s chain holds the outer grid alone', outerResult.chainSize, 1);
+  const innerResult = nominateNest(page.inner);
+  eq('cell nest: the inner nest selects the inner grid', innerResult.selected === page.inner, true);
+  eq('cell nest: the inner nest\'s chain holds the inner grid alone', innerResult.chainSize, 1);
+
+  const results = nominateNests(page.host);
+  eq('cell nest: the nomination step reports one result per grid',
+    results.map((r) => [r.chainRoot === page.outer || r.chainRoot === page.inner, r.outcome]),
+    [[true, 'selected'], [true, 'selected']]);
+})();
+
+// --- Right-click: each grid resolves itself ---
+
+(function cellNest_aRightClickResolvesTheGridItLandsIn() {
+  const page = cnGridInCell();
+  const fresh = { isSeen: () => false };
+
+  const inInner = findTargetTable(page.innerCell, fresh);
+  eq('cell nest: a right-click inside the inner grid resolves the inner grid',
+    inInner !== null && inInner.handle === page.inner, true);
+  eq('cell nest: that resolution reports isNew', inInner !== null && inInner.isNew, true);
+
+  const inOuter = findTargetTable(page.outerSouthCell, fresh);
+  eq('cell nest: a right-click in another cell of the outer grid resolves the outer grid',
+    inOuter !== null && inOuter.handle === page.outer, true);
+
+  const onHoldingCell = findTargetTable(page.holdingCell, fresh);
+  eq('cell nest: a right-click on the cell holding the inner grid, outside the inner grid, resolves the outer grid',
+    onHoldingCell !== null && onHoldingCell.handle === page.outer, true);
+
+  const registered = new Set([page.outer, page.inner]);
+  const both = { isSeen: (el) => registered.has(el) };
+  const inInnerRegistered = findTargetTable(page.innerCell, both);
+  eq('cell nest: with both grids registered, a right-click inside the inner grid resolves the inner grid',
+    inInnerRegistered !== null && inInnerRegistered.handle === page.inner && !inInnerRegistered.isNew, true);
+  const inOuterRegistered = findTargetTable(page.outerSouthCell, both);
+  eq('cell nest: with both grids registered, a right-click in another cell of the outer grid resolves the outer grid',
+    inOuterRegistered !== null && inOuterRegistered.handle === page.outer && !inOuterRegistered.isNew, true);
+})();
+
+// --- A second run registers nothing new ---
+//
+// The nest's already-registered check reads only the nest's own members. A
+// check that read every qualifying element under the chain root would find a
+// registered inner grid and leave the outer grid unregistered.
+
+(function cellNest_aSecondRunRegistersNothingNew() {
+  const page = cnGridInCell();
+
+  const both = new Set([page.outer, page.inner]);
+  eq('cell nest: with both grids registered, every nest reports the registered outcome',
+    nominateNests(page.host, { isSeen: (el) => both.has(el) }).map((r) => r.outcome),
+    ['registered', 'registered']);
+  eq('cell nest: with both grids registered, a second run reports no table',
+    findTables(page.host, { isSeen: (el) => both.has(el) }).length, 0);
+
+  const innerOnly = findTables(page.host, { isSeen: (el) => el === page.inner });
+  eq('cell nest: a registered inner grid leaves the outer grid to register',
+    innerOnly.map((r) => r.handle === page.outer), [true]);
+  const outerOnly = findTables(page.host, { isSeen: (el) => el === page.outer });
+  eq('cell nest: a registered outer grid leaves the inner grid to register',
+    outerOnly.map((r) => r.handle === page.inner), [true]);
+})();
+
+(function cellNest_theLoadTimeScanRegistersBothGridsOnce() {
+  const page = cnGridInCell();
+  const before = DR_STORE.getRegisteredTables().length;
+  const runScan = () => withToggleDocumentMock(function () {
+    global.document.querySelectorAll = function (sel) {
+      if (sel === GRID_ARIA_SELECTOR_TEXT) return page.host.querySelectorAll(sel);
+      return [];
+    };
+    injectTableToggles();
+  });
+
+  try {
+    runScan();
+    const added = DR_STORE.getRegisteredTables().slice(before);
+    eq('cell nest: the load-time scan adds two registry entries', added.length, 2);
+    eq('cell nest: the load-time scan registers the outer grid and the inner grid',
+      [added.includes(page.outer), added.includes(page.inner)], [true, true]);
+    eq('cell nest: each grid carries a pillbox',
+      [tableToggles.has(page.outer), tableToggles.has(page.inner)], [true, true]);
+
+    const afterFirst = DR_STORE.getRegisteredTables().length;
+    runScan();
+    eq('cell nest: a second load-time scan adds no registry entry',
+      DR_STORE.getRegisteredTables().length, afterFirst);
+  } finally {
+    forgetRegisteredTable(page.outer);
+    forgetRegisteredTable(page.inner);
+  }
+})();
+
+// --- The database query shape: the depth rule holds outside cells ---
+
+(function cellNest_theDatabaseQueryShapeInsideACellStillRegistersItsScrollingPane() {
+  const grid = makeDatabaseQueryGrid();
+  const outer = rwDrawTable('grid', [
+    { part: 'body', rows: [['North', '4,821', ''], ['South', '2,734', '6,051']], grouped: true },
+  ]).table;
+  const holdingCell = dgDescendantsMatching(outer, '[role="row"]')[0].children[2];
+  rwSetChildren(holdingCell, [grid.wrapperEl]);
+  const host = rwEl('div', {}, [outer]);
+
+  const handles = findTables(host).map((r) => r.handle);
+  eq('cell nest: an outer grid holding the database query shape in a cell reports two tables',
+    handles.length, 2);
+  eq('cell nest: the outer grid registers',
+    handles.includes(outer), true);
+  eq('cell nest: the database query shape inside the cell registers its scrolling pane',
+    handles.includes(grid.scrollPaneEl), true);
+  eq('cell nest: neither the wrapper nor the pinned pane registers',
+    handles.includes(grid.wrapperEl) || handles.includes(grid.pinnedPaneEl), false);
+  eq('cell nest: a right-click in the scrolling pane resolves the scrolling pane',
+    findTargetTable(grid.scrollRowEls[1].children[1], { isSeen: () => false }).handle === grid.scrollPaneEl,
+    true);
+})();
+
+// A cell role on an ancestor of the chain root, with no grid around it, ends
+// the walk above the nest and leaves the nest as it is.
+(function cellNest_aCellRoleAboveTheChainRootLeavesTheNestAsItIs() {
+  const grid = makeDatabaseQueryGrid();
+  const strayCell = rwEl('div', { role: 'cell' }, [grid.wrapperEl]);
+  rwEl('div', {}, [strayCell]);
+
+  eq('cell nest: a cell role above the wrapper leaves the wrapper the chain root',
+    chainRootOf(grid.scrollRowEls[0].children[0]) === grid.wrapperEl, true);
+  eq('cell nest: a cell role above the wrapper still selects the scrolling pane at the configured depth',
+    findTables(strayCell).map((r) => r.handle === grid.scrollPaneEl), [true]);
+  const result = nominateNest(grid.wrapperEl);
+  eq('cell nest: the nest still holds the wrapper and the scrolling pane in its chain',
+    [result.outcome, result.chainSize], ['selected', 2]);
+  eq('cell nest: depth 0 still selects the wrapper',
+    findTables(strayCell, { nestingDepth: 0 }).map((r) => r.handle === grid.wrapperEl), [true]);
+
+  const lone = makeLoneGrid();
+  rwEl('div', { role: 'gridcell' }, [lone]);
+  eq('cell nest: a lone grid under a grid-cell role is its own chain root',
+    chainRootOf(lone.children[0].children[0]) === lone, true);
+})();
+
+// --- Three levels of nesting ---
+
+(function cellNest_threeLevelsRegisterThreeTables() {
+  const innermostSpec = Object.assign({}, CN_INNER);
+  const middleSpec = {
+    sections: [{ part: 'body', rows: [
+      ['Q1', '1,234', { pieces: [], nested: innermostSpec }],
+      ['Q2', '3,587', '9,016'],
+    ], grouped: true }],
+  };
+  const outer = rwDrawTable('grid', cnSections(middleSpec)).table;
+  const host = rwEl('div', {}, [outer]);
+  const [middle, innermost] = outer.querySelectorAll(GRID_ARIA_SELECTOR_TEXT);
+  const rowsOf = (gridEl) => dgDescendantsMatching(gridEl, '[role="row"]');
+  const ownRows = (gridEl, nestedEl) => rowsOf(gridEl).filter((row) => !nestedEl || !nestedEl.contains(row));
+
+  eq('cell nest: the fixture nests three grids, each inside a cell of the one around it (sanity)',
+    [middle.parentElement.getAttribute('role'), innermost.parentElement.getAttribute('role')], ['cell', 'cell']);
+
+  const handles = findTables(host).map((r) => r.handle);
+  eq('cell nest: three nested grids report three tables', handles.length, 3);
+  eq('cell nest: the three tables are the three grids, outermost first',
+    handles.length === 3 && handles[0] === outer && handles[1] === middle && handles[2] === innermost, true);
+
+  const fresh = { isSeen: () => false };
+  eq('cell nest: a right-click in the innermost grid resolves the innermost grid',
+    findTargetTable(rowsOf(innermost)[0].children[1], fresh).handle === innermost, true);
+  eq('cell nest: a right-click in another cell of the middle grid resolves the middle grid',
+    findTargetTable(ownRows(middle, innermost)[1].children[2], fresh).handle === middle, true);
+  eq('cell nest: a right-click in another cell of the outer grid resolves the outer grid',
+    findTargetTable(ownRows(outer, middle)[2].children[1], fresh).handle === outer, true);
+
+  eq('cell nest: the outer grid reads its own three rows',
+    cnAdapterTexts(outer).map((row) => row.slice(0, 2)), [['Region', '2023'], ['North', '4,821'], ['South', '2,734']]);
+  eq('cell nest: the middle grid reads its own two rows',
+    cnAdapterTexts(middle).map((row) => row.slice(0, 2)), [['Q1', '1,234'], ['Q2', '3,587']]);
+  eq('cell nest: the innermost grid reads its own two rows',
+    cnAdapterTexts(innermost), [['Q1', '1,234'], ['Q2', '3,587']]);
+  eq('cell nest: no cell the outer grid reads sits inside the middle grid',
+    cnAdapterCellEls(outer).some((el) => middle.contains(el)), false);
+  eq('cell nest: no cell the middle grid reads sits inside the innermost grid',
+    cnAdapterCellEls(middle).some((el) => innermost.contains(el)), false);
+
+  const all = new Set([outer, middle, innermost]);
+  eq('cell nest: with all three grids registered, a second run reports no table',
+    findTables(host, { isSeen: (el) => all.has(el) }).length, 0);
+})();
+
+// --- A grid inside a cell of a native table ---
+//
+// A native cell carries no cell role, so the walk up from the grid passes
+// through it and the grid stays its own chain root. Both tables register.
+// The right-click route for this shape stays out: its first step returns the
+// nearest native table, and the plan leaves the mixed-kind case open.
+
+(function cellNest_aGridInsideANativeCellRegistersBesideTheNativeTable() {
+  const nativeTable = rwDrawTable('native', cnSections(undefined)).table;
+  const grid = rwDrawTable('grid', CN_INNER.sections).table;
+  const holdingCell = nativeTable.rows[1].cells[2];
+  rwSetChildren(holdingCell, [grid]);
+  const host = rwEl('div', {}, [nativeTable]);
+
+  const handles = findTables(host).map((r) => r.handle);
+  eq('cell nest: a native table holding a grid in a cell reports two tables', handles.length, 2);
+  eq('cell nest: the native table reports first and the grid second',
+    handles.length === 2 && handles[0] === nativeTable && handles[1] === grid, true);
+  eq('cell nest: the grid inside the native cell is its own chain root',
+    chainRootOf(grid) === grid, true);
+  eq('cell nest: the native table reads its own three rows',
+    cnAdapterTexts(nativeTable).map((row) => row.slice(0, 2)),
+    [['Region', '2023'], ['North', '4,821'], ['South', '2,734']]);
+  eq('cell nest: the grid inside the native cell reads its own two rows',
+    cnAdapterTexts(grid), [['Q1', '1,234'], ['Q2', '3,587']]);
+})();
+
+// =============================================================================
+// The grid adapter reads its own rows and cells
+// =============================================================================
+//
+// A grid's rows, row groups, cells, and scrolling pane are its own when no
+// element carrying a cell role sits between them and the grid. Whatever sits
+// inside one of the grid's cells belongs to the table nested there.
+
+(function cellNest_theOuterGridReadsOnlyItsOwnCells() {
+  for (const [outerRole, innerRole] of [['grid', 'grid'], ['table', 'table'], ['table', 'grid']]) {
+    const page = cnGridInCell(outerRole, innerRole);
+    const label = `an outer ${outerRole} role holding an inner ${innerRole} role`;
+
+    eq(`cell nest adapter, ${label}: the outer grid reads its three own rows`,
+      cnAdapterTexts(page.outer).length, 3);
+    eq(`cell nest adapter, ${label}: the outer grid reads its own cell texts`,
+      cnAdapterTexts(page.outer).map((row) => row.slice(0, 2)),
+      [['Region', '2023'], ['North', '4,821'], ['South', '2,734']]);
+    eq(`cell nest adapter, ${label}: each outer row reads three cells`,
+      makeAdapter(page.outer).getRows().map((row) => row.getCells().length), [3, 3, 3]);
+    eq(`cell nest adapter, ${label}: no cell the outer grid reads sits inside the inner grid`,
+      cnAdapterCellEls(page.outer).some((el) => page.inner.contains(el)), false);
+    eq(`cell nest adapter, ${label}: the outer grid reads the cell holding the inner grid as one cell`,
+      cnAdapterCellEls(page.outer).includes(page.holdingCell), true);
+    eq(`cell nest adapter, ${label}: the inner grid reads its own two rows`,
+      cnAdapterTexts(page.inner), [['Q1', '1,234'], ['Q2', '3,587']]);
+    eq(`cell nest adapter, ${label}: every cell the inner grid reads sits inside the inner grid`,
+      cnAdapterCellEls(page.inner).every((el) => page.inner.contains(el) && el !== page.inner), true);
+  }
+})();
+
+// A grid with no nesting reads every row and cell as before.
+(function cellNest_anOrdinaryGridReadsAsBefore() {
+  const grid = rwDrawTable('grid', [
+    { part: 'head', rows: [[{ pieces: 'Region', header: 'col' }, { pieces: '2023', header: 'col' }, { pieces: '2024', header: 'col' }]] },
+    { part: 'body', rows: [[{ pieces: 'North', header: 'row' }, '4,821', '9,187'], ['South', '2,734', '6,051']], grouped: true },
+    { part: 'foot', rows: [['Total', '7,555', '15,238']] },
+  ]).table;
+  rwEl('div', {}, [grid]);
+
+  eq('cell nest adapter: an ordinary grid reads every row and cell',
+    cnAdapterTexts(grid),
+    [['Region', '2023', '2024'], ['North', '4,821', '9,187'], ['South', '2,734', '6,051'], ['Total', '7,555', '15,238']]);
+  eq('cell nest adapter: an ordinary grid reads every cell element it holds',
+    cnAdapterCellEls(grid).length, dgDescendantsMatching(grid, GRID_CELL_SELECTOR).length);
+
+  const queryGrid = makeDatabaseQueryGrid();
+  eq('cell nest adapter: the database query wrapper still stitches the pinned gutter first',
+    cnAdapterTexts(queryGrid.wrapperEl)[0], ['1', 'alpha', '7,318,204', '284.51']);
+})();
+
+// The read of a grid's own rows and cells resolves each element between a
+// match and the grid once per query, so the role checks it runs grow with the
+// size of the tree. Each element's `matches` counts its calls; the bound is a
+// fixed multiple of the element count.
+(function cellNest_ownDescendantsWorkGrowsLinearlyWithTheTree() {
+  const PER_ELEMENT_BOUND = 20;
+  const row = (n) => rwEl('div', { role: 'row' }, [
+    rwEl('div', { role: 'cell' }, [rwText(`Item ${n}`)]),
+    rwEl('div', { role: 'cell' }, [rwText(String(1000 + n))]),
+  ]);
+  const rowsOf = (count) => Array.from({ length: count }, (_, n) => row(n));
+  // Wrap `inner` in `levels` elements, each built by `wrap`.
+  const nestIn = (levels, wrap, inner) => Array.from({ length: levels })
+    .reduce((children) => [wrap(children)], inner);
+  // Count every `matches` call on every element of the tree.
+  const countMatches = (root) => {
+    const counter = { calls: 0, elements: 0 };
+    (function visit(el) {
+      counter.elements++;
+      const original = el.matches;
+      el.matches = (selector) => { counter.calls++; return original(selector); };
+      el.children.forEach(visit);
+    })(root);
+    return counter;
+  };
+
+  const cases = [
+    { name: 'plain elements above the rows', rows: 500,
+      grid: rwEl('div', { role: 'grid' }, nestIn(200, (children) => rwEl('div', {}, children), rowsOf(500))) },
+    { name: 'row groups nested in row groups above the rows', rows: 300,
+      grid: rwEl('div', { role: 'grid' }, nestIn(60, (children) => rwEl('div', { role: 'rowgroup' }, children), rowsOf(300))) },
+  ];
+  for (const { name, rows, grid } of cases) {
+    rwEl('div', {}, [grid]);
+    const counter = countMatches(grid);
+    const read = makeAdapter(grid).getRows().map((r) => r.getCells().length);
+    eq(`cell nest adapter, ${name}: the grid reads every row`, read.length, rows);
+    eq(`cell nest adapter, ${name}: each row reads its two cells`, read.every((count) => count === 2), true);
+    eq(`cell nest adapter, ${name}: the role checks grow with the size of the tree`,
+      counter.calls < PER_ELEMENT_BOUND * counter.elements, true);
+  }
 })();
 
 // ---------------------------------------------------------------------------
@@ -3743,4 +4172,377 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     makeGridWrapper([['4.91', '5,432.1'], ['12', '34']], { useDgClasses: true }), {});
   eq('#330: a grid that declares no merge numbers its columns by read position',
     adapterColumnsOf(grid.wrapperEl), [[0, 1], [0, 1]]);
+})();
+
+// =============================================================================
+// Column-first grids (issue #511)
+// Spec: docs/sprint-plans/grid-reading-gaps.md §3.3 and the column-first-grid
+// sprint. A column-first grid's children are columns drawn side by side; a
+// row-first grid's children are rows drawn one below another. The direction
+// read takes the boxes of the first two children that draw a box, among at
+// most gridColumnWidthSample children: the same top with a larger left reads
+// column-first, and anything else reads row-first.
+// =============================================================================
+
+// Run fn with the bare getComputedStyle reading each element's own display,
+// the read the default style probe makes in a page.
+function withElementDisplays(fn) {
+  const saved = global.getComputedStyle;
+  global.getComputedStyle = (el) => ({ display: (el && el._display) || 'block', visibility: 'visible' });
+  try { fn(); } finally { global.getComputedStyle = saved; }
+}
+
+// --- The probe and the right-click ---
+
+(function columnFirst_theProbePassesTheGridWithAWiderLabelColumn() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  withElementDisplays(() => {
+    eq('column-first: a column-first grid with no role and a wider label column passes the geometry probe',
+      looksLikeGrid(plan.gridEl), true);
+  });
+})();
+
+(function columnFirst_theWalkUpResolvesTheWholeGrid() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  withFindTargetEnv([], () => {
+    plan.gridEl.parentElement = global.document.body;
+    const found = findTargetTable(plan.spanAt(1, 1), { isSeen: () => false });
+    eq('column-first: a right-click walk from a value resolves the whole grid',
+      !!found && found.handle === plan.gridEl, true);
+    eq('column-first: the walk resolves no single column',
+      !!found && plan.columnEls.includes(found.handle), false);
+  });
+})();
+
+(function columnFirst_aRightClickRegistersTheGrid() {
+  withRightClickSandbox(function (ctx) {
+    const plan = makeColumnFirstGrid(planGridColumns());
+    plan.gridEl.parentElement = global.document.body;
+    eq('column-first right-click: the contextmenu handler was captured',
+      typeof ctx.contextmenuHandler, 'function');
+    if (typeof ctx.contextmenuHandler !== 'function') return;
+
+    ctx.contextmenuHandler({ target: plan.spanAt(5, 1) });
+
+    eq('column-first right-click: the grid enters the registry',
+      ctx.store.hasTable(plan.gridEl), true);
+    eq('column-first right-click: the grid becomes the active table',
+      ctx.store.getSelectedTable() === plan.gridEl, true);
+    eq('column-first right-click: the registry holds the grid alone',
+      ctx.store.getRegisteredTables().map((el) => el === plan.gridEl), [true]);
+    eq('column-first right-click: the grid carries a pillbox',
+      ctx.tableToggles.has(plan.gridEl), true);
+    eq('column-first right-click: no column carries a pillbox',
+      plan.columnEls.some((column) => ctx.tableToggles.has(column)), false);
+  });
+})();
+
+// --- The turned read ---
+
+(function columnFirst_theAdapterReadsRowsAsRows() {
+  const columns = planGridColumns();
+  const plan = makeColumnFirstGrid(columns);
+  const rows = makeAdapter(plan.gridEl).getRows();
+  eq('column-first read: seven columns of five items read as five rows',
+    rows.length, 5);
+  eq('column-first read: every row holds seven cells',
+    rows.map((row) => row.getCells().length), [7, 7, 7, 7, 7]);
+  eq('column-first read: row r holds the r-th item of every column, in column order',
+    adapterRowTexts(makeAdapter(plan.gridEl)),
+    columns[0].map((_, r) => columns.map((column) => column[r])));
+  eq('column-first read: each cell is the item element itself',
+    rows[2].getCells().map((cell) => cell.el === plan.itemEls[cell.columnIndex][2]),
+    [true, true, true, true, true, true, true]);
+  eq('column-first read: each cell\'s grid column is its column\'s position',
+    rows.map((row) => row.getCells().map((cell) => cell.columnIndex)),
+    [0, 1, 2, 3, 4].map(() => [0, 1, 2, 3, 4, 5, 6]));
+  eq('column-first read: no turned row is an outside row',
+    rows.map((row) => row.isOutside), [false, false, false, false, false]);
+})();
+
+(function columnFirst_aRangeNamingColumnBReachesTheSecondColumn() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  const before = planGridColumns();
+  try {
+    roundTableUnder(plan.gridEl, Object.assign({}, DR_DEFAULTS, { rangeExpr: 'B2:B5' }));
+    eq('column-first range: B2:B5 changes the Free plan\'s credits',
+      plan.textAt(1, 1) !== '12,500', true);
+    const others = [];
+    before.forEach((column, c) => column.forEach((text, r) => {
+      if (c === 1) return;
+      if (plan.textAt(c, r) !== text) others.push(`${c},${r}`);
+    }));
+    eq('column-first range: B2:B5 leaves every item outside the second column as written',
+      others, []);
+    eq('column-first range: B2:B5 leaves the Free plan\'s name as written',
+      plan.textAt(1, 0), 'Free');
+  } finally {
+    DR_STORE.unregisterTable(plan.gridEl);
+  }
+})();
+
+(function columnFirst_theDefaultsRoundTheBodyAndHoldTheLabels() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  const before = planGridColumns();
+  try {
+    roundTableUnder(plan.gridEl, DR_DEFAULTS);
+    eq('column-first defaults: 1,962,800 shows 2,000,000',
+      plan.textAt(5, 1), '2,000,000');
+    eq('column-first defaults: the label column stays as written',
+      before[0].map((_, r) => plan.textAt(0, r)), before[0]);
+    eq('column-first defaults: the plan names stay as written',
+      before.map((_, c) => plan.textAt(c, 0)), before.map((column) => column[0]));
+  } finally {
+    DR_STORE.unregisterTable(plan.gridEl);
+  }
+})();
+
+// A label column that carries numbers, so the first-column switch shows on it.
+function numericLabelColumns() {
+  return [
+    ['Code', '4,812,377', '3,906,154', '2,775,031', '1,648,902'],
+    ['North', '8,584,629', '7,318,204', '2,140,663', '1,234,567'],
+    ['South', '6,431,708', '5,902,113', '3,377,250', '2,861,449'],
+    ['East', '9,104,236', '4,417,852', '1,906,374', '3,520,618'],
+    ['West', '7,763,091', '6,285,940', '4,049,517', '2,318,775'],
+  ];
+}
+
+(function columnFirst_theFirstColumnSwitchGovernsTheLabelColumn() {
+  const columns = numericLabelColumns();
+  const held = makeColumnFirstGrid(numericLabelColumns());
+  try {
+    roundTableUnder(held.gridEl, Object.assign({}, DR_DEFAULTS, { simplifyFirstColumn: false }));
+    eq('column-first first column off: the label column\'s values stay as written',
+      [1, 2, 3, 4].map((r) => held.textAt(0, r)), columns[0].slice(1));
+    eq('column-first first column off: every data column\'s values change',
+      [1, 2, 3, 4].every((c) => [1, 2, 3, 4].every((r) => held.textAt(c, r) !== columns[c][r])), true);
+  } finally {
+    DR_STORE.unregisterTable(held.gridEl);
+  }
+  const released = makeColumnFirstGrid(numericLabelColumns());
+  try {
+    roundTableUnder(released.gridEl, Object.assign({}, DR_DEFAULTS, { simplifyFirstColumn: true }));
+    eq('column-first first column on: the label column\'s values change',
+      [1, 2, 3, 4].map((r) => released.textAt(0, r) !== columns[0][r]), [true, true, true, true]);
+    eq('column-first first column on: 4,812,377 in the label column shows 5,000,000',
+      released.textAt(0, 1), '5,000,000');
+  } finally {
+    DR_STORE.unregisterTable(released.gridEl);
+  }
+})();
+
+// --- The turned read feeds every consumer through the adapter ---
+
+(function columnFirst_theDataTestReadsTheTurnedGrid() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  eq('column-first consumers: the data test passes the grid', isDataTable(plan.gridEl), true);
+})();
+
+(function columnFirst_theLensPreviewPoolReadsTheTurnedGrid() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  eq('column-first consumers: the lens preview pool under B2:B5 holds the Free plan\'s values',
+    collectNumericCells(plan.gridEl, { rangeExpr: 'B2:B5' }).map((cell) => cell.num), [12500, 4, 18]);
+  eq('column-first consumers: the lens preview pool under C2 holds the Starter plan\'s credits',
+    collectNumericCells(plan.gridEl, { rangeExpr: 'C2' }).map((cell) => cell.num), [36200]);
+})();
+
+(function columnFirst_theCaptureReadsTheTurnedGrid() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  try {
+    roundTableUnder(plan.gridEl, Object.assign({}, DR_DEFAULTS, { rangeExpr: 'B2:B5' }));
+    const state = collectCaptureState({ store: DR_STORE });
+    const tableRec = state.tables[DR_STORE.getRegisteredTables().indexOf(plan.gridEl)];
+    eq('column-first capture: the grid records five rows', tableRec && tableRec.rowCount, 5);
+    eq('column-first capture: the grid records seven columns', tableRec && tableRec.columnCount, 7);
+    const at = (r, c) => tableRec.cells.find((cell) => cell.row === r && cell.col === c);
+    eq('column-first capture: row 0 column 1 holds the Free plan\'s name',
+      at(0, 1) && at(0, 1).text, 'Free');
+    eq('column-first capture: row 1 column 0 holds the credits label',
+      at(1, 0) && at(1, 0).text, 'Credits per month');
+    eq('column-first capture: row 1 column 1 records the Free plan\'s original credits',
+      at(1, 1) && at(1, 1).original, '12,500');
+    eq('column-first capture: row 1 column 2 records no original',
+      at(1, 2) && at(1, 2).original, null);
+  } finally {
+    DR_STORE.unregisterTable(plan.gridEl);
+  }
+})();
+
+// --- Row-first grids read the same ---
+
+(function rowFirst_section12GridReadsAsRows() {
+  const rows = unmarkedGridRows();
+  const grid = makeRowFirstGrid(rows);
+  withElementDisplays(() => {
+    eq('row-first: section 12\'s grid passes the geometry probe', looksLikeGrid(grid.gridEl), true);
+  });
+  eq('row-first: section 12\'s grid reads as seven rows of four cells, row by row',
+    adapterRowTexts(makeAdapter(grid.gridEl)), rows);
+  eq('row-first: each row of section 12\'s grid keeps its row element\'s cells',
+    makeAdapter(grid.gridEl).getRows()[3].getCells().map((cell) => cell.el === grid.cellAt(3, cell.columnIndex)),
+    [true, true, true, true]);
+})();
+
+(function rowFirst_section12GridRegistersOnRightClick() {
+  withRightClickSandbox(function (ctx) {
+    const grid = makeRowFirstGrid(unmarkedGridRows());
+    grid.gridEl.parentElement = global.document.body;
+    if (typeof ctx.contextmenuHandler !== 'function') {
+      eq('row-first right-click: the contextmenu handler was captured', typeof ctx.contextmenuHandler, 'function');
+      return;
+    }
+    ctx.contextmenuHandler({ target: grid.cellAt(2, 1) });
+    eq('row-first right-click: section 12\'s grid enters the registry as the active table',
+      ctx.store.hasTable(grid.gridEl) && ctx.store.getSelectedTable() === grid.gridEl, true);
+  });
+})();
+
+(function rowFirst_contentsRowsReadAsRows() {
+  const rows = unmarkedGridRows();
+  const grid = makeRowFirstGrid(rows, { contentsRows: true });
+  eq('row-first contents rows: rows that draw no box read row by row',
+    adapterRowTexts(makeAdapter(grid.gridEl)), rows);
+  withElementDisplays(() => {
+    eq('row-first contents rows: the grid passes the geometry probe', looksLikeGrid(grid.gridEl), true);
+  });
+})();
+
+// --- The alignment step on a column-first grid ---
+
+(function columnFirst_firstCellsThatDoNotLineUpFailTheProbe() {
+  const ragged = makeColumnFirstGrid(planGridColumns(), { firstItemHeights: [40, 64, 28, 52, 90, 36, 71] });
+  const even = makeColumnFirstGrid(planGridColumns(), { firstItemHeights: [40, 40, 40, 40, 40, 40, 40] });
+  withElementDisplays(() => {
+    eq('column-first alignment: side-by-side children whose first cells do not line up fail the probe',
+      looksLikeGrid(ragged.gridEl), false);
+    eq('column-first alignment: the same children with first cells that line up pass the probe',
+      looksLikeGrid(even.gridEl), true);
+  });
+})();
+
+// --- The direction read skips a child with no box ---
+
+(function columnFirst_theDirectionReadSkipsAHiddenSecondChild() {
+  const plan = makeColumnFirstGrid(planGridColumns(), { hiddenColumns: [1] });
+  eq('column-first hidden child: a hidden second column leaves the read column-first, by the third column\'s box',
+    makeAdapter(plan.gridEl).getRows().length, 5);
+  eq('column-first hidden child: row 1 opens with the credits label',
+    adapterRowTexts(makeAdapter(plan.gridEl))[1][0], 'Credits per month');
+})();
+
+(function columnFirst_theDirectionReadSkipsAHiddenFirstChild() {
+  const plan = makeColumnFirstGrid(planGridColumns(), { hiddenColumns: [0] });
+  eq('column-first hidden child: a hidden first column leaves the read column-first, by the next two boxes',
+    makeAdapter(plan.gridEl).getRows().length, 5);
+})();
+
+(function rowFirst_aHiddenSecondRowReadsByTheNextRowBelow() {
+  const rows = unmarkedGridRows();
+  const grid = makeRowFirstGrid(rows);
+  grid.rowEls[1].getBoundingClientRect = () => makeNoBoxRect();
+  eq('row-first hidden child: a hidden second row leaves the read row-first, by the third row\'s box',
+    adapterRowTexts(makeAdapter(grid.gridEl)), rows);
+})();
+
+// --- A probe without the box member ---
+
+(function columnFirst_aProbeWithoutTheBoxMemberReadsRowFirst() {
+  const plan = makeColumnFirstGrid(planGridColumns());
+  const probe = makeBoxlessStyleProbe();
+  const rows = makeAdapter(plan.gridEl, { styleProbe: probe }).getRows();
+  eq('no box member: the adapter reads each column as a row',
+    rows.length, 7);
+  eq('no box member: the first row holds the label column\'s items',
+    rows[0].getCells().map((cell) => cell.getText()), planGridColumns()[0]);
+  eq('no box member: the geometry probe measures widths, and the wider label column fails it',
+    looksLikeGrid(plan.gridEl, { styleProbe: probe }), false);
+  eq('no box member: the data test reads the grid row-first and still finds a number',
+    isDataTable(plan.gridEl, { styleProbe: probe }), true);
+})();
+
+// --- The cap on the direction read ---
+
+// Twelve children of two cells each. Only the children at the positions in
+// `boxed` draw a box, side by side on one top.
+function makeSparselyBoxedGrid(boxed) {
+  const children = [];
+  for (let i = 0; i < 12; i++) {
+    const at = boxed.indexOf(i);
+    const rect = at >= 0 ? makeBoxRect(100, 200 * at, 200, 80) : makeNoBoxRect();
+    const cells = [`Item ${i}`, String(100 + i)].map((text) => makeBoxedNode('cell', [makeTextNode(text)], rect));
+    children.push(makeBoxedNode('child', cells, rect));
+  }
+  const gridEl = makeBoxedNode('sparse-grid', children, makeBoxRect(100, 0, 400, 80));
+  gridEl._display = 'grid';
+  return gridEl;
+}
+
+(function directionRead_inspectsAtMostTheSampleCap() {
+  const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
+  const gridEl = makeSparselyBoxedGrid([cap, cap + 1]);
+  const probe = makeCountingBoxProbe();
+  const rows = makeAdapter(gridEl, { styleProbe: probe }).getRows();
+  eq('direction read cap: the read inspects at most gridColumnWidthSample children',
+    probe.boxReads.length <= cap, true);
+  eq('direction read cap: the read inspects no child past the cap',
+    probe.boxReads.some((el) => gridEl.children.indexOf(el) >= cap), false);
+  eq('direction read cap: with no box inside the cap the read answers row-first',
+    rows.length, 12);
+})();
+
+(function directionRead_oneBoxInsideTheCapReadsRowFirst() {
+  const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
+  const gridEl = makeSparselyBoxedGrid([cap - 1, cap]);
+  eq('direction read cap: one box inside the cap answers row-first',
+    makeAdapter(gridEl, { styleProbe: makeCountingBoxProbe() }).getRows().length, 12);
+})();
+
+(function directionRead_twoBoxesInsideTheCapReadColumnFirst() {
+  const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
+  const gridEl = makeSparselyBoxedGrid([cap - 2, cap - 1]);
+  const probe = makeCountingBoxProbe();
+  const rows = makeAdapter(gridEl, { styleProbe: probe }).getRows();
+  eq('direction read cap: two side-by-side boxes as the last two children inside the cap read column-first',
+    rows.map((row) => row.getCells().length), [12, 12]);
+  eq('direction read cap: the read stops at the second box',
+    probe.boxReads.length, cap);
+})();
+
+// --- Edge cases ---
+
+(function columnFirst_aColumnWithADifferentItemCountStaysOut() {
+  const columns = planGridColumns();
+  columns[2] = columns[2].slice(0, 4);
+  const plan = makeColumnFirstGrid(columns);
+  const texts = adapterRowTexts(makeAdapter(plan.gridEl));
+  eq('column-first unequal counts: rows come from the five-item columns',
+    texts.length, 5);
+  eq('column-first unequal counts: every row holds one cell per five-item column',
+    texts.map((row) => row.length), [6, 6, 6, 6, 6]);
+  eq('column-first unequal counts: the four-item column stays out of every row',
+    texts.some((row) => row.includes('Starter') || row.includes('36,200')), false);
+  eq('column-first unequal counts: row 1 reads the five-item columns in order',
+    texts[1], ['Credits per month', '12,500', '118,400', '547,300', '1,962,800', '7,214,600']);
+})();
+
+(function columnFirst_aSingleChildReadsAsOneRow() {
+  const plan = makeColumnFirstGrid([planGridColumns()[1]]);
+  const rows = makeAdapter(plan.gridEl).getRows();
+  eq('single child: a grid with one child reads row-first as one row', rows.length, 1);
+  withElementDisplays(() => {
+    eq('single child: the geometry probe rejects a grid with one child', looksLikeGrid(plan.gridEl), false);
+  });
+})();
+
+(function columnFirst_equalWidthCardsReadAsColumns() {
+  const cards = [['Basic', '9'], ['Plus', '19'], ['Team', '49'], ['Office', '99'], ['Enterprise', '249']];
+  const grid = makeColumnFirstGrid(cards, { labelWidth: 160, columnWidth: 160 });
+  withElementDisplays(() => {
+    eq('cards: five equal-width cards that carry a number pass the geometry probe',
+      looksLikeGrid(grid.gridEl), true);
+  });
+  eq('cards: five equal-width cards read as columns, two rows of five cells',
+    adapterRowTexts(makeAdapter(grid.gridEl)),
+    [['Basic', 'Plus', 'Team', 'Office', 'Enterprise'], ['9', '19', '49', '99', '249']]);
 })();

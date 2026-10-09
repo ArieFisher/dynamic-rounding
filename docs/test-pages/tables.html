@@ -165,6 +165,39 @@
       padding: 6px 10px;
     }
 
+    .plan-grid {
+      display: flex;
+      width: fit-content;
+      border-top: 1px solid var(--rule);
+      border-left: 1px solid var(--rule);
+      line-height: 1.25;
+    }
+
+    .plan-column {
+      display: flex;
+      flex-direction: column;
+      width: 110px;
+    }
+
+    .plan-column.plan-labels {
+      width: 220px;
+    }
+
+    .plan-item {
+      box-sizing: border-box;
+      height: 32px;
+      padding: 6px 10px;
+      white-space: nowrap;
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .plan-item:first-child,
+    .plan-labels .plan-item {
+      background: var(--head);
+      font-weight: 600;
+    }
+
     .dg--table-wrapper {
       display: flex;
       width: 460px;
@@ -959,8 +992,9 @@
     <h2>10. ARIA grid with row groups</h2>
     <p class="expect">Expect: pillbox at load. The header row and the Region
       column stay as written. Every other row rounds, the Total row below the
-      row group included. The Total values do not count toward the max
-      magnitude and never appear in the lens preview.</p>
+      row group included, and its values appear in the lens preview. The
+      Total values share magnitude 6 with the body values, so every value
+      rounds as it does in a table without a Total row.</p>
 
     <!--
       The load-time scan picks up any role="grid" or role="table" element that
@@ -969,9 +1003,9 @@
       counts as a row, so the header and Total rows are rows like any other.
       Grid cells have no th concept: every cell is data. The header row holds
       because it is the grid's literal first row. The Total row is an outside
-      row: it rounds against the dataset without joining it, so its values
-      never set the max magnitude and never reach the lens preview. A native
-      table's footer rows get the same treatment.
+      row, and every row joins the dataset, so its values feed the max
+      magnitude and the lens preview like any other row's. The shape
+      fingerprint is the one reader of the outside-row mark.
     -->
     <div class="aria-grid" role="grid" aria-label="Quarterly sessions by region">
       <div class="g-row" role="row">
@@ -2796,8 +2830,10 @@ TSLA,75,"248.09","18,606.75"
     <ol class="expect">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> The result waits on <a
-        href="https://github.com/ArieFisher/dynamic-rounding/issues/526">#526</a>.</li>
+        -1, all other numbers at 0.</b> Both tables show "Target 25,000" in
+        the header row and every body value at the nearest thousand. A failure
+        shows a body value at the nearest hundred on one table and the nearest
+        thousand on the other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -3134,9 +3170,10 @@ TSLA,75,"248.09","18,606.75"
     <ol class="expect">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> A failure shows a body value
-        at the nearest thousand on one table and the nearest hundred on the
-        other.</li>
+        -1, all other numbers at 0.</b> Both tables show every body value and
+        every total at the nearest thousand: the total row shows 18,000 and
+        15,000. A failure shows a body value at the nearest thousand on one
+        table and the nearest hundred on the other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -3203,8 +3240,10 @@ TSLA,75,"248.09","18,606.75"
     <ol class="expect">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> The result waits on <a
-        href="https://github.com/ArieFisher/dynamic-rounding/issues/526">#526</a>.</li>
+        -1, all other numbers at 0.</b> Both tables show every body value and
+        every total at the nearest thousand: the total row shows 18,000 and
+        15,000. A failure shows a body value at the nearest thousand on one
+        table and the nearest hundred on the other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -3442,8 +3481,8 @@ TSLA,75,"248.09","18,606.75"
     <h3>30o. Table inside a cell <code>nested-table</code></h3>
     <ol class="expect">
       <li><b>At load.</b> Expect: a pillbox on the outer table and on the
-        inner table, on both kinds. The grid result waits on <a
-        href="https://github.com/ArieFisher/dynamic-rounding/issues/527">#527</a>.</li>
+        inner table, on both kinds: four pillboxes in all. A failure shows
+        one pillbox on the grid side, on the inner grid alone.</li>
       <li><b>Turn on every pillbox, the inner tables' included.</b></li>
     </ol>
     <div class="pair">
@@ -3703,6 +3742,84 @@ TSLA,75,"248.09","18,606.75"
       </figure>
     </div>
 
+  </section>
+
+  <section>
+    <h2>31. A grid listed column by column</h2>
+    <p>A plan comparison with no table element and no role, drawn as seven
+      columns side by side: a label column, wider than the rest, then one
+      column per plan. Each column holds one item per row: the plan name on
+      top, then one value per feature.</p>
+    <p class="expect">Expect: no pillbox at load.</p>
+    <ol class="expect">
+      <li><b>Right-click any value.</b> Expect: a pillbox appears on the whole
+        grid. A failure shows no pillbox.</li>
+      <li><b>Turn the grid on under the defaults.</b> Expect: the plan names
+        and the feature labels stay raw, and the large values round:
+        1,962,800 shows 2,000,000.</li>
+      <li><b>Open the sidebar and set the range expression to B2:B5.</b>
+        Expect: the Free column's values round, so 12,500 changes, and every
+        other plan's values show as written. A failure changes the Credits
+        row across the Starter, Creator, and Pro plans instead.</li>
+    </ol>
+
+    <!--
+      Seven children side by side, each a column of five items with one span
+      apiece. The label column is wider than the plan columns, so the first
+      cells of the children differ in width; the first cells of the columns
+      share a height, because every item has a fixed height.
+    -->
+    <div class="plan-grid">
+      <div class="plan-column plan-labels">
+        <div class="plan-item"><span>Feature</span></div>
+        <div class="plan-item"><span>Credits per month</span></div>
+        <div class="plan-item"><span>Voice slots</span></div>
+        <div class="plan-item"><span>Audio minutes</span></div>
+        <div class="plan-item"><span>Price per month</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Free</span></div>
+        <div class="plan-item"><span>12,500</span></div>
+        <div class="plan-item"><span>4</span></div>
+        <div class="plan-item"><span>18</span></div>
+        <div class="plan-item"><span>$0.00</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Starter</span></div>
+        <div class="plan-item"><span>36,200</span></div>
+        <div class="plan-item"><span>12</span></div>
+        <div class="plan-item"><span>52</span></div>
+        <div class="plan-item"><span>$6.50</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Creator</span></div>
+        <div class="plan-item"><span>118,400</span></div>
+        <div class="plan-item"><span>35</span></div>
+        <div class="plan-item"><span>163</span></div>
+        <div class="plan-item"><span>$23.75</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Pro</span></div>
+        <div class="plan-item"><span>547,300</span></div>
+        <div class="plan-item"><span>140</span></div>
+        <div class="plan-item"><span>694</span></div>
+        <div class="plan-item"><span>$98.40</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Scale</span></div>
+        <div class="plan-item"><span>1,962,800</span></div>
+        <div class="plan-item"><span>615</span></div>
+        <div class="plan-item"><span>2,370</span></div>
+        <div class="plan-item"><span>$331.20</span></div>
+      </div>
+      <div class="plan-column">
+        <div class="plan-item"><span>Business</span></div>
+        <div class="plan-item"><span>7,214,600</span></div>
+        <div class="plan-item"><span>1,480</span></div>
+        <div class="plan-item"><span>8,140</span></div>
+        <div class="plan-item"><span>$1,286.90</span></div>
+      </div>
+    </div>
   </section>
 
 </body>

@@ -70,6 +70,11 @@ const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE)
  * vertical-align check). With no real getComputedStyle, assumes a normal,
  * visible, statically-positioned block element — the jsdom-less default that
  * lets detection keep running instead of reasoning from an absent style.
+ *
+ * getBox returns an element's box ({top, left, width, height}) or null when
+ * the element draws no box: a hidden element, or a `display: contents` row.
+ * The direction read (isColumnFirst) and the column-first alignment step read
+ * it. A probe without getBox reads every grid as row-first.
  */
 const DEFAULT_STYLE_PROBE = {
   getComputedStyle(el) {
@@ -81,7 +86,69 @@ const DEFAULT_STYLE_PROBE = {
   getOffsetWidth(el) {
     return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1;
   },
+  getBox(el) {
+    if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+    let rect = null;
+    try { rect = el.getBoundingClientRect(); } catch (e) { return null; }
+    if (!rect || !(rect.width > 0 || rect.height > 0)) return null;
+    return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+  },
 };
+
+/**
+ * The children of an element whose own child count is the most common
+ * non-zero count, with that count and how many children hold it. The geometry
+ * probe takes these children as its candidate rows (or candidate columns, on a
+ * column-first grid), and the grid adapter's turned read takes them as its
+ * columns, so the two read the same set.
+ *
+ * @param {Element[]} children
+ * @returns {{childCountFreq: Map<number, number>, modalChildCount: number, modalFreq: number, candidates: Element[]}}
+ */
+function childCountCandidates(children) {
+  const childCountFreq = new Map();
+  for (const child of children) {
+    const cc = child.children ? child.children.length : 0;
+    childCountFreq.set(cc, (childCountFreq.get(cc) || 0) + 1);
+  }
+  let modalChildCount = 0;
+  let modalFreq = 0;
+  for (const [cc, freq] of childCountFreq) {
+    if (freq > modalFreq && cc > 0) { modalFreq = freq; modalChildCount = cc; }
+  }
+  const candidates = modalFreq > 0
+    ? children.filter((c) => c.children && c.children.length === modalChildCount)
+    : [];
+  return { childCountFreq, modalChildCount, modalFreq, candidates };
+}
+
+/**
+ * The direction read: whether an element's children run side by side as
+ * columns (a column-first grid) instead of stacking as rows (a row-first
+ * grid). It reads the boxes of the first two children that draw a box,
+ * skipping a hidden child or a `display: contents` row, among at most
+ * DR_DETECTION_SETTINGS.gridColumnWidthSample children. The same top with a
+ * larger left means column-first. Anything else means row-first: a different
+ * top, fewer than two boxes within the sample, or a probe without getBox. The
+ * geometry probe and the grid adapter both call this, so the two read one
+ * direction for one grid.
+ *
+ * @param {Element[]} children
+ * @param {object} styleProbe
+ * @returns {boolean}
+ */
+function isColumnFirst(children, styleProbe) {
+  if (!styleProbe || typeof styleProbe.getBox !== 'function') return false;
+  const sample = children.slice(0, DR_DETECTION_SETTINGS.gridColumnWidthSample);
+  const boxes = [];
+  for (const child of sample) {
+    const box = styleProbe.getBox(child);
+    if (box) boxes.push(box);
+    if (boxes.length === 2) break;
+  }
+  if (boxes.length < 2) return false;
+  return boxes[1].top === boxes[0].top && boxes[1].left > boxes[0].left;
+}
 
 /**
  * NumericProbe: parses a cell's text to a number for the "does this look
@@ -353,10 +420,6 @@ class NativeTableAdapter {
   getElement() { return this.el; }
   isVirtualized() { return false; }
   getRows() {
-    // isOutside marks a footer-section row — the native analog of a grid row
-    // outside the row group. Outside rows round like any other, but their
-    // values stay out of the dataset: consumers skip them when computing the
-    // max magnitude and the lens preview pool.
     const rowEls = Array.from(this.el.rows);
     // One pass over the spans numbers every cell by its grid column, before
     // any text is read; a cell then carries the number its consumers gate on.
@@ -364,8 +427,6 @@ class NativeTableAdapter {
       rowEls.map((row) => Array.from(row.cells).map(nativeCellSpans)));
     const port = this.originalsPort;
     return rowEls.map((row, r) => ({
-      isOutside: !!((row.parentElement || row.parentNode) &&
-        (row.parentElement || row.parentNode).tagName === 'TFOOT'),
       getCells() {
         return Array.from(row.cells).map((cell, c) => {
           // A native cell classifies its rendered text, and the screen shows
@@ -380,11 +441,67 @@ class NativeTableAdapter {
   }
 }
 
+/**
+ * Whether an element carries a cell role, per GRID_CELL_SELECTOR. A cell
+ * bounds a table: a grid inside a cell of another grid is a table of its own,
+ * the way a native table inside a cell is. Every walk that sorts elements
+ * between two nested grids reads this one predicate: the walks that find a
+ * chain root and count nesting depth, and the grid adapter's reads of its own
+ * rows and cells. An element stub with no `matches` counts as no cell.
+ *
+ * @param {Element} el
+ * @returns {boolean}
+ */
+function _isCellAncestor(el) {
+  if (!el || typeof el.matches !== 'function') return false;
+  try { return !!el.matches(GRID_CELL_SELECTOR); } catch (e) { return false; }
+}
+
+/**
+ * The descendants of `root` matching `selector` that belong to `root` itself:
+ * those with no ancestor carrying a cell role between them and `root`. A
+ * match inside a cell of `root` belongs to a table nested in that cell, which
+ * is a table of its own, so a grid reads its own rows and cells the way a
+ * native table's rows leave out a table nested in one of its cells. The walk
+ * from a match starts at its parent and ends at `root`, which holds the
+ * match, or at the first cell.
+ *
+ * One call resolves each ancestor once: the walk records the answer for every
+ * element it passes, and a later walk that reaches a recorded element takes
+ * its answer and stops. The work grows with the size of the tree under
+ * `root`, not with the matches times their depth.
+ *
+ * @param {Element} root
+ * @param {string} selector
+ * @returns {Element[]}
+ */
+function _ownDescendants(root, selector) {
+  if (!root || typeof root.querySelectorAll !== 'function') return [];
+  // Element → whether a cell sits between it (itself included) and `root`.
+  const insideCell = new Map();
+  const isInsideCell = (start) => {
+    const passed = [];
+    let at = start;
+    let answer = false;
+    while (at && at !== root) {
+      if (insideCell.has(at)) { answer = insideCell.get(at); break; }
+      passed.push(at);
+      if (_isCellAncestor(at)) { answer = true; break; }
+      at = at.parentElement || at.parentNode;
+    }
+    for (const el of passed) insideCell.set(el, answer);
+    return answer;
+  };
+  return Array.from(root.querySelectorAll(selector))
+    .filter((match) => !isInsideCell(match.parentElement || match.parentNode));
+}
+
 class GridAdapter {
   constructor(el, opts = {}) {
     this.el = el;
     this.vendorProfiles = opts.vendorProfiles || GRID_VENDOR_PROFILES;
     this.originalsPort = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
+    this.styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   }
   getElement() { return this.el; }
   isVirtualized() { return true; }
@@ -402,7 +519,7 @@ class GridAdapter {
       '[role="grid"]',
     ];
     for (const sel of knownSelectors) {
-      const found = el.querySelector && el.querySelector(sel);
+      const found = _ownDescendants(el, sel)[0];
       if (found) return found;
     }
     // Check if the element itself matches a known selector
@@ -424,7 +541,7 @@ class GridAdapter {
     const pinnedSelectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
     const el = this.el;
     for (const sel of pinnedSelectors) {
-      const found = el.querySelector && el.querySelector(sel);
+      const found = _ownDescendants(el, sel)[0];
       if (found && found !== scrollContainer) return found;
     }
     return null;
@@ -450,33 +567,40 @@ class GridAdapter {
    * this list IS the row's literal row number.
    *
    * isOutside marks the rows not inside any rowgroup. An outside row rounds
-   * like any other, but its values stay out of the dataset: consumers skip it
-   * when computing the max magnitude and the lens preview pool.
+   * like any other and its values join the dataset like any other. The shape
+   * fingerprint is the mark's one reader: it reads a grid's header row from
+   * it (see _hasHeaderRow).
+   *
+   * A row from the children fallback on a column-first grid has no row
+   * element: its entry holds el: null and cellEls, the row's cells in column
+   * order (see _childRowEntries).
    *
    * @param {Element} container
-   * @returns {{el: Element, isOutside: boolean}[]}
+   * @returns {{el: Element|null, isOutside: boolean, cellEls?: Element[]}[]}
    */
   _getRowEntries(container) {
     if (!container) return [];
     if (!container.querySelectorAll) {
-      const kids = container.children ? Array.from(container.children) : [];
-      return kids.map((el) => ({ el, isOutside: false }));
+      return this._childRowEntries(container);
     }
-    const rowgroups = container.querySelectorAll('[role="rowgroup"]');
-    const isGrouped = !!(rowgroups && rowgroups.length > 0);
-    const scopes = isGrouped ? Array.from(rowgroups) : [container];
+    // Every query reads the container's own elements alone: a row group, a
+    // row, or a cell inside one of the grid's cells belongs to a table nested
+    // in that cell.
+    const rowgroups = _ownDescendants(container, '[role="rowgroup"]');
+    const isGrouped = rowgroups.length > 0;
+    const scopes = isGrouped ? rowgroups : [container];
 
     for (const sel of ['[role="row"]', '.dg--virtual-row', 'tr']) {
       let rows = [];
       for (const scope of scopes) {
-        if (scope.querySelectorAll) rows = rows.concat(Array.from(scope.querySelectorAll(sel)));
+        rows = rows.concat(_ownDescendants(scope, sel));
       }
       if (rows.length === 0) continue;
       if (!isGrouped) return rows.map((el) => ({ el, isOutside: false }));
       // The winning selector's full universe, not just the in-group matches;
       // a universe row not inside any group is an outside row.
       const inGroup = new Set(rows);
-      return Array.from(container.querySelectorAll(sel))
+      return _ownDescendants(container, sel)
         .map((el) => ({ el, isOutside: !inGroup.has(el) }));
     }
     // Fallback: repetitive children of the first scope. When row groups are
@@ -484,11 +608,33 @@ class GridAdapter {
     // fallback stays narrow — the first group's children only — rather than
     // guessing at rows among the container's mixed children; the whole-grid
     // row universe above applies only to rows a selector can name.
-    const first = scopes[0];
-    if (first && first.children) {
-      return Array.from(first.children).map((el) => ({ el, isOutside: false }));
+    return this._childRowEntries(scopes[0]);
+  }
+
+  /**
+   * Rows from an element's children, the fallback when no row selector
+   * matches. On a row-first grid each child is a row. On a column-first grid
+   * (see isColumnFirst) each child is a column, and the read turns the grid:
+   * row r holds the r-th item of every column, in column order. The columns
+   * are the children holding the most common item count, the geometry
+   * probe's candidate rule (see childCountCandidates), so a column with a
+   * different count stays out and every row holds one cell per column.
+   *
+   * @param {Element} parent
+   * @returns {{el: Element|null, isOutside: boolean, cellEls?: Element[]}[]}
+   */
+  _childRowEntries(parent) {
+    if (!parent || !parent.children) return [];
+    const children = Array.from(parent.children);
+    if (!isColumnFirst(children, this.styleProbe)) {
+      return children.map((el) => ({ el, isOutside: false }));
     }
-    return [];
+    const { modalChildCount, candidates: columns } = childCountCandidates(children);
+    const rows = [];
+    for (let r = 0; r < modalChildCount; r++) {
+      rows.push({ el: null, isOutside: false, cellEls: columns.map((column) => column.children[r]) });
+    }
+    return rows;
   }
 
   /**
@@ -510,10 +656,10 @@ class GridAdapter {
    */
   _getCellEls(rowEl) {
     if (!rowEl) return [];
-    let cells = rowEl.querySelectorAll && rowEl.querySelectorAll(GRID_CELL_SELECTOR);
-    if (cells && cells.length > 0) return Array.from(cells);
-    cells = rowEl.querySelectorAll && rowEl.querySelectorAll('.dg--cell');
-    if (cells && cells.length > 0) return Array.from(cells);
+    let cells = _ownDescendants(rowEl, GRID_CELL_SELECTOR);
+    if (cells.length > 0) return cells;
+    cells = _ownDescendants(rowEl, '.dg--cell');
+    if (cells.length > 0) return cells;
     // Fallback: direct children
     if (rowEl.children) return Array.from(rowEl.children);
     return [];
@@ -527,7 +673,7 @@ class GridAdapter {
    * @returns {string}
    */
   _getRowKey(rowEl, domIndex) {
-    if (rowEl.dataset) {
+    if (rowEl && rowEl.dataset) {
       if (rowEl.dataset.row !== undefined) return rowEl.dataset.row;
       if (rowEl.dataset.index !== undefined) return rowEl.dataset.index;
     }
@@ -588,7 +734,10 @@ class GridAdapter {
     // pinned pane's cells, then the scrolling pane's. Read once here so the
     // column plan below and the cell objects below that count in the same
     // row shape, and so a row is queried for its cells once, not twice.
-    const rowCellEls = scrollEntries.map(({ el: rowEl }, idx) => {
+    // A turned row (a column-first grid's children fallback) carries its
+    // cells and no row element, so it takes no pinned cells.
+    const rowCellEls = scrollEntries.map(({ el: rowEl, cellEls }, idx) => {
+      if (cellEls) return cellEls;
       const scrollKey = adapter._getRowKey(rowEl, idx);
       // Find the matching pinned row (by data-row / data-index / DOM index).
       const pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
@@ -1202,8 +1351,8 @@ function placeDecision(decision, text, layout, opts = {}) {
  * Heuristic test: does `el` look like a data grid built from non-table elements?
  *
  * Applies a cheap-first ladder (S2/S4). Steps 1–5 are pure DOM/CSS reads with no
- * geometry; step 6 (offsetWidth) is guarded by all prior steps and runs only on
- * a bounded sample of column-0 cells.
+ * geometry; step 6 (the direction read and the alignment step) is guarded by
+ * all prior steps and runs only on a bounded sample of first cells.
  *
  * Short-circuit ACCEPT (skip step 6) when el carries:
  *   - role="grid" or role="table"  (ARIA)
@@ -1228,15 +1377,13 @@ function looksLikeGrid(el, opts = {}) {
   // "Share class" = majority of children have the same first className token.
   // "Child shape" = most children have the same number of children.
   const classFreq = new Map();
-  const childCountFreq = new Map();
   for (const child of children) {
     const cls = (child.className && typeof child.className === 'string')
       ? child.className.trim().split(/\s+/)[0]
       : '';
     classFreq.set(cls, (classFreq.get(cls) || 0) + 1);
-    const cc = child.children.length;
-    childCountFreq.set(cc, (childCountFreq.get(cc) || 0) + 1);
   }
+  const { childCountFreq, modalFreq, candidates: candidateRows } = childCountCandidates(children);
   const maxClassCount = Math.max(...classFreq.values());
   const maxChildCount = Math.max(...childCountFreq.values());
   // At least DR_DETECTION_SETTINGS.gridRepetitionShare of children must share a class
@@ -1247,16 +1394,9 @@ function looksLikeGrid(el, opts = {}) {
 
   // --- Step 3: Consistent cell count — candidate rows have equal child counts ---
   // The modal child count must appear in at least DR_DETECTION_SETTINGS.gridRepetitionShare
-  // of the children.
-  let modalChildCount = 0;
-  let modalFreq = 0;
-  for (const [cc, freq] of childCountFreq) {
-    if (freq > modalFreq && cc > 0) { modalFreq = freq; modalChildCount = cc; }
-  }
+  // of the children. Candidate rows: children whose child count equals the
+  // modal (candidate columns, on a column-first grid).
   if (modalFreq < repetitionFloor) return false;
-
-  // Candidate rows: children whose child count equals the modal.
-  const candidateRows = children.filter(c => c.children.length === modalChildCount);
 
   // --- Step 4: Layout — display is grid or flex ---
   const computedForDisplay = styleProbe.getComputedStyle(el);
@@ -1281,17 +1421,25 @@ function looksLikeGrid(el, opts = {}) {
   const elClass = (el.className && typeof el.className === 'string') ? el.className : '';
   if (vendorProfiles.some(profile => elClass.includes(profile.classToken))) return true;
 
-  // --- Step 6: Column-width alignment — sample offsetWidth of column-0 cells ---
-  // Bounded to DR_DETECTION_SETTINGS.gridColumnWidthSample rows; only runs when all prior
-  // steps passed.
+  // --- Step 6: Alignment — sample the first cell of each candidate ---
+  // Measures along the axis on which the cells of one row line up. On a
+  // row-first grid the candidates are rows, and the first cells of the rows
+  // form column A, so their widths agree. On a column-first grid (see
+  // isColumnFirst) the candidates are columns, and the first cells of the
+  // columns form the first row, so their heights agree. Bounded to
+  // DR_DETECTION_SETTINGS.gridColumnWidthSample candidates; only runs when all
+  // prior steps passed.
   const sample = candidateRows.slice(0, DR_DETECTION_SETTINGS.gridColumnWidthSample);
-  const widths = sample.map(row => row.children[0] ? styleProbe.getOffsetWidth(row.children[0]) : -1)
-                       .filter(w => w > 0);
-  if (widths.length < 2) return true; // too few rows to measure — benefit of the doubt
-  const firstWidth = widths[0];
-  // Accept when the sampled-width agreement meets DR_DETECTION_SETTINGS.gridColumnWidthAgreement.
-  const matchCount = widths.filter(w => w === firstWidth).length;
-  return matchCount / widths.length >= DR_DETECTION_SETTINGS.gridColumnWidthAgreement;
+  const extentOf = isColumnFirst(children, styleProbe)
+    ? (cell) => { const box = styleProbe.getBox(cell); return box ? box.height : -1; }
+    : (cell) => styleProbe.getOffsetWidth(cell);
+  const extents = sample.map(row => row.children[0] ? extentOf(row.children[0]) : -1)
+                        .filter(w => w > 0);
+  if (extents.length < 2) return true; // too few candidates to measure — benefit of the doubt
+  const firstExtent = extents[0];
+  // Accept when the sampled agreement meets DR_DETECTION_SETTINGS.gridColumnWidthAgreement.
+  const matchCount = extents.filter(w => w === firstExtent).length;
+  return matchCount / extents.length >= DR_DETECTION_SETTINGS.gridColumnWidthAgreement;
 }
 
 /**
@@ -1617,8 +1765,8 @@ function readTableFingerprint(el, opts = {}) {
  * database query grid takes — has a data row first, and a scroll redraws it,
  * so its text describes the rows on the screen rather than the table.
  *
- * On a native table the adapter's isOutside marks the footer section alone,
- * so the head section is read from the row itself: the row sits in a THEAD,
+ * A native table's adapter carries no outside-row mark, so the head section
+ * is read from the row itself: the row sits in a THEAD,
  * or it holds header cells and no data cell. The second form covers a table
  * written with a leading row of <th> and no explicit head section. The pass
  * reads such a row like any other; the first-row exclusion is what holds it
@@ -1626,7 +1774,7 @@ function readTableFingerprint(el, opts = {}) {
  *
  * @param {Element} el
  * @param {NativeTableAdapter|GridAdapter} adapter
- * @param {{isOutside: boolean, getCells(): object[]}} firstRow
+ * @param {{isOutside?: boolean, getCells(): object[]}} firstRow
  * @returns {boolean}
  */
 function _hasHeaderRow(el, adapter, firstRow) {
@@ -1723,9 +1871,10 @@ function _isQualifyingAncestor(el, tableFilter, opts) {
 /**
  * Walk up from `el` to its chain root: the outermost qualifying ancestor of
  * the nest `el` sits in. The walk is bounded by DR_DETECTION_SETTINGS.gridWalkDepthCap DOM
- * levels and stops at the document body, and it continues past an ancestor
- * that carries no role, because a nest may put a plain wrapper between two
- * qualifying elements. An element with no parent is its own chain root.
+ * levels and stops at the document body and at the first ancestor carrying a
+ * cell role, and it continues past an ancestor that carries no role, because
+ * a nest may put a plain wrapper between two qualifying elements. An element
+ * with no parent, or whose parent is a cell, is its own chain root.
  *
  * @param {Element} el
  * @param {(table: Element, opts: object) => boolean} tableFilter
@@ -1739,6 +1888,7 @@ function _chainRootOf(el, tableFilter, opts) {
   let current = el.parentElement || el.parentNode || null;
   let depth = 0;
   while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
+    if (_isCellAncestor(current)) break;
     if (_isQualifyingAncestor(current, tableFilter, opts)) chainRoot = current;
     current = current.parentElement || current.parentNode || null;
     depth++;
@@ -1752,6 +1902,9 @@ function _chainRootOf(el, tableFilter, opts) {
  * root itself sits at depth 0, an element directly under it at depth 1.
  * Returns -1 when the walk leaves the nest without reaching the chain root,
  * so the caller drops the element rather than filing it at a wrong depth.
+ * An ancestor carrying a cell role below the chain root ends the walk the
+ * same way: the element heads a nest of its own and is no member of this
+ * one.
  *
  * @param {Element} el
  * @param {Element} chainRoot
@@ -1766,6 +1919,7 @@ function _depthInChain(el, chainRoot, tableFilter, opts) {
   let steps = 0;
   while (current && steps < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
     if (current === chainRoot) return count + 1;
+    if (_isCellAncestor(current)) return -1;
     if (_isQualifyingAncestor(current, tableFilter, opts)) count++;
     current = current.parentElement || current.parentNode || null;
     steps++;
@@ -1802,15 +1956,18 @@ function _selectAtNestingDepth(byDepth, configuredDepth) {
 
 /**
  * The chain root of the nest `el` sits in: the outermost qualifying element
- * at or above `el`, or null when no qualifying element sits within
- * DR_DETECTION_SETTINGS.gridWalkDepthCap levels of `el`.
+ * at or above `el` that no cell separates from the nearest one, or null when
+ * no qualifying element sits within DR_DETECTION_SETTINGS.gridWalkDepthCap
+ * levels of `el`.
  *
  * This is the public form of the private _chainRootOf walk. _chainRootOf
  * takes a qualifying element and returns the outermost qualifying element
- * above it; this wrapper first finds the nearest qualifying element at or
- * above an arbitrary one, which is what a caller holding a clicked cell, an
- * added node, or a registered table has. The walk starts at `el` itself, so a
- * call on a qualifying element returns that element's own chain root.
+ * above it, stopping at the first cell. This wrapper first finds the nearest
+ * qualifying element at or above an arbitrary element — a clicked cell, an
+ * added node, or a registered table — and that first walk crosses cells, so a
+ * click in a cell reaches the grid holding the cell. The walk starts at `el`
+ * itself, so a call on a qualifying element returns that element's own chain
+ * root.
  *
  * @param {Element} el
  * @param {{
@@ -1840,7 +1997,9 @@ function chainRootOf(el, opts = {}) {
  * Run the nomination step on the one nest `chainRoot` heads and report the
  * outcome.
  *
- * The nest is `chainRoot` plus every qualifying element under it. The chain
+ * The nest is `chainRoot` plus every qualifying element under it that no
+ * cell separates from it: a qualifying element inside a cell heads a nest of
+ * its own. The chain
  * is the nest's elements that pass the data test, grouped by nesting depth;
  * _selectAtNestingDepth applies DR_DETECTION_SETTINGS.nestingDepth with decision D2's two
  * edge rules.
@@ -1883,25 +2042,30 @@ function nominateNest(chainRoot, opts = {}) {
   const isSeen = opts.isSeen || (() => false);
   const configuredDepth = opts.nestingDepth ?? DR_DETECTION_SETTINGS.nestingDepth;
 
+  // The nest's members, each with its nesting depth. A qualifying element
+  // whose walk up crosses a cell before it reaches the chain root heads a
+  // nest of its own, so _depthInChain returns -1 and the element stays out of
+  // this nest: a registered grid inside a cell never makes the grid around it
+  // read as registered.
   const nested = typeof chainRoot.querySelectorAll === 'function'
     ? Array.from(chainRoot.querySelectorAll(GRID_ARIA_SELECTOR)) : [];
   const nest = [chainRoot].concat(nested)
-    .filter((el) => _passesAriaGuards(el, tableFilter, opts));
+    .filter((el) => _passesAriaGuards(el, tableFilter, opts))
+    .map((el) => ({ el, depth: _depthInChain(el, chainRoot, tableFilter, opts) }))
+    .filter((member) => member.depth >= 0);
 
   // A nest holding a registered element registers nothing: the scan already
   // ran over it, and a second registration would put a second pillbox on one
   // grid.
-  if (nest.some((el) => isSeen(el))) {
+  if (nest.some(({ el }) => isSeen(el))) {
     return { chainRoot, selected: null, outcome: 'registered', chainSize: 0 };
   }
 
   // The chain — the nest's elements that pass the data test, by depth.
   const byDepth = new Map();
   let chainSize = 0;
-  for (const el of nest) {
+  for (const { el, depth } of nest) {
     if (!isDataTable(el, opts)) continue;
-    const depth = _depthInChain(el, chainRoot, tableFilter, opts);
-    if (depth < 0) continue;
     chainSize++;
     if (!byDepth.has(depth)) byDepth.set(depth, []);
     byDepth.get(depth).push(el);
