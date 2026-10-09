@@ -112,7 +112,7 @@ Example with `num_top = 1`:
 
 The selected offset is then passed to the rounding logic.
 
-**The extension's dataset:** in a table, the max magnitude comes only from cells that are inside the range expression, not excluded (first row, first column, currency, percent), classified as numbers the table rounds (pure cells, unit numbers, bracketed numbers, each number of a stacked cell, and each number of an extracted cell on a native table), and not in an outside row. A header cell counts like any other cell: the exclusions govern it by position, whatever tag the page gave it. An outside row — a grid row outside every row group, or a native table's `<tfoot>` row — rounds against the dataset without joining it: its values never feed the max magnitude or the lens preview. On a virtualized grid the max magnitude freezes when simplification is first applied, so scrolling new rows into view does not shift it. A native table computes it again on every pass, so a larger value the page writes or adds changes the rounding of the whole table.
+**The extension's dataset:** in a table, the max magnitude comes only from cells that are inside the range expression, not excluded (first row, first column, currency, percent), classified as numbers the table rounds (pure cells, unit numbers, bracketed numbers, each number of a stacked cell, and each number of an extracted cell on a native table). A header cell counts like any other cell: the exclusions govern it by position, whatever tag the page gave it. Every row joins the dataset, header, body, and total alike, on a native table and a grid: the markup around a row, a head section, a footer section, or a row group, never changes whether its values feed the max magnitude or the lens preview. On a virtualized grid the max magnitude freezes when simplification is first applied, so scrolling new rows into view does not shift it. A native table computes it again on every pass, so a larger value the page writes or adds changes the rounding of the whole table.
 
 **Where a cell sits:** every rule that gates a cell by column reads the cell's grid column, computed once for the whole table before any text is read. The adapter walks the rows in order with a column cursor: a cell merged across advances the cursor by its whole width, and a cell merged down holds its columns on the rows below it, so the cursor skips a held column. Both table kinds run that one walk, over the spans the markup declares on a native table and the spans the accessibility attributes declare on a grid. A grid that declares no span numbers its columns by read position, which is the same answer. Without this walk a merge inside the data area shifts every cell after it, and the shift moves the exclusions and the range expression onto the wrong cells and changes the step the whole table rounds at, including its unmerged rows.
 
@@ -303,14 +303,14 @@ A capture that shows a table feature this list lacks adds a row.
 | `data-cell` | Data cell | `<td>` in a `<tbody>` | `cell` role in a `rowgroup`, inside the `table` role | same | |
 | `grid-cell` | Data cell of an interactive grid | `<td>` in a `<tbody>` | `gridcell` role in a `rowgroup`, inside the `grid` role | same | |
 | `ungrouped-rows` | Rows with no body section | `<tr>` directly in the `<table>` | `row` role directly in the grid | same | |
-| `column-header` | Header row in a head section | `<th>` cells in a `<thead>` | `columnheader` cells in a row outside every `rowgroup` | different | #526 |
+| `column-header` | Header row in a head section | `<th>` cells in a `<thead>` | `columnheader` cells in a row outside every `rowgroup` | same | |
 | `head-group` | Header row in a row group | `<th>` cells in a `<thead>` | `columnheader` cells in a row inside its own `rowgroup` | same | |
 | `header-row-in-body` | Header row with no head section | a leading row of `<th>` cells, with no `<thead>` | a leading row of `columnheader` cells, with no `rowgroup` | same | |
 | `row-header` | Row label | `<th scope="row">` | `rowheader` role | same | |
 | `corner-cell` | Empty corner above the row labels | an empty `<td>` in the header row | an empty `cell` in the header row | same | |
 | `body-groups` | Several body sections | several `<tbody>` | several `rowgroup` | same | |
 | `footer-row` | Total row in a footer | `<tr>` in a `<tfoot>` | a row after the `rowgroup`, outside it | same | |
-| `footer-group` | Total row in a footer group | `<tr>` in a `<tfoot>` | a row in its own `rowgroup`, after the body's | different | #526 |
+| `footer-group` | Total row in a footer group | `<tr>` in a `<tfoot>` | a row in its own `rowgroup`, after the body's | same | |
 | `merged-across` | Cell merged across columns | `colspan` | `aria-colspan` | same | |
 | `merged-down` | Cell merged down rows | `rowspan` | `aria-rowspan` | same | |
 | `caption` | Caption | `<caption>` | `caption` role inside the grid | same | |

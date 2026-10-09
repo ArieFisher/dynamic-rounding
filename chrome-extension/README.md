@@ -126,7 +126,7 @@ The extension abstracts both shapes behind a `TableAdapter` interface (`lib/dr-t
 
 Row discovery uses a grid's row groups (`role="rowgroup"`, the ARIA analog of `<tbody>`) to pick the row shape, then takes every matching row across the whole grid, in document order. A row's position in that list is its literal row number, so "first row" always means the grid's top row — the first-row exclusion and range expressions count header and summary rows like any other.
 
-A row outside every row group — or, on a native table, a `<tfoot>` row — is an outside row: it rounds like any other row, but its values stay out of the dataset. They never feed the max magnitude or the lens preview.
+A row outside every row group is an outside row. It rounds like any other row, and its values join the dataset like any other row's. Every row feeds the max magnitude and the lens preview, header, body, and total alike, on a native table and a grid. The shape fingerprint reads the outside-row mark to find a grid's header row.
 
 On virtualized grids, the max magnitude freezes when simplification is first applied (the magnitude freeze); a native table computes it again on every pass. The data test spends one budget of 1000 cell reads, in document order, stopping at the first number; the budget applies on native tables and grids alike.
 
