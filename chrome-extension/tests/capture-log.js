@@ -12,7 +12,7 @@
       cellRec.original, ' 8,584,629 ');
     const html = DR_CAPTURE.buildCaptureDocument({
       state: {
-        captureFormat: 7,
+        captureFormat: 8,
         meta: { url: 'https://www.example.com/grid', title: 'G', version: '2.1.70',
           platform: 'test', at: '2026-09-22T16:00:00.000Z' },
         mark: 'looks-right', remarks: '', detectionSettings: null,
@@ -150,7 +150,7 @@
 
   const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 7);
+  eq('capture-state: the state carries its format version', state.captureFormat, 8);
   eq('capture-state: the state holds no page-wide settings; each table carries its own',
     Object.prototype.hasOwnProperty.call(state, 'settings'), false);
   eq('capture-state: a table with no settings of its own carries the shipped defaults',
@@ -174,14 +174,19 @@
     });
   eq('capture-state: a header cell serializes with role th',
     recA.cells[0],
-    { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null, wearsMarker: false });
+    { row: 0, col: 0, role: 'th', text: 'Amount', original: null, wearsMarker: false });
   eq('capture-state: a simplified cell carries displayed text AND its original',
     recA.cells[1],
-    { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765', wearsMarker: true });
+    { row: 1, col: 0, role: 'td', text: '99,000', original: '98,765', wearsMarker: true });
   eq('capture-state: a cell with no stored original serializes original: null',
     recA.cells[2].original, null);
-  eq('capture-state: an outside row keeps its flag',
-    recA.cells[3].isOutside, true);
+  // The fake adapter marks the third row outside, the way the grid adapter
+  // marks a row outside every row group. The cell record carries no outside
+  // field: every row joins the dataset, so the capture holds nothing to tell.
+  eq('capture-state: a cell of a row the adapter marks outside serializes like any other cell',
+    recA.cells[3], { row: 2, col: 0, role: 'td', text: 'Total', original: null, wearsMarker: false });
+  eq('capture-state: no cell record carries an outside field',
+    recA.cells.filter((cell) => Object.prototype.hasOwnProperty.call(cell, 'isOutside')).length, 0);
   eq('capture-state: a marked cell WITH its original does not lock the table',
     recA.locked, false);
 
@@ -260,7 +265,6 @@
   const adapterFor = () => ({
     isVirtualized: () => false,
     getRows: () => table._rows.map((row) => ({
-      isOutside: false,
       getCells: () => row.cells.map((cell) => ({
         el: cell.el,
         tagName: 'TD',
@@ -316,7 +320,7 @@
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 7,
+    captureFormat: 8,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
@@ -328,8 +332,8 @@
       kind: 'native', appliedFlag: 'simplified', settings: { offsetTop: -0.5 },
       maxMagnitude: null, locked: false, rowCount: 2, columnCount: 1,
       cells: [
-        { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null },
-        { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' },
+        { row: 0, col: 0, role: 'th', text: 'Amount', original: null },
+        { row: 1, col: 0, role: 'td', text: '99,000', original: '98,765' },
       ],
     }],
     lensPreview: { samples: { top: [{ original: '98,765', num: 98765 }], bottom: [] }, maxMag: 4 },
@@ -377,11 +381,11 @@
         kind: 'native', appliedFlag: 'simplified', settings: {},
         maxMagnitude: null, locked: false, rowCount: 2, columnCount: 3,
         cells: [
-          { row: 0, col: 0, role: 'th', isOutside: false, text: 'Product', original: null },
-          { row: 0, col: 1, role: 'th', isOutside: false, text: 'Units', original: null },
-          { row: 0, col: 2, role: 'th', isOutside: false, text: 'Revenue', original: null },
-          { row: 1, col: 0, role: 'th', isOutside: false, text: 'Total', original: null },
-          { row: 1, col: 2, role: 'td', isOutside: false, text: '1,000,000', original: '1,140,043' },
+          { row: 0, col: 0, role: 'th', text: 'Product', original: null },
+          { row: 0, col: 1, role: 'th', text: 'Units', original: null },
+          { row: 0, col: 2, role: 'th', text: 'Revenue', original: null },
+          { row: 1, col: 0, role: 'th', text: 'Total', original: null },
+          { row: 1, col: 2, role: 'td', text: '1,000,000', original: '1,140,043' },
         ],
       }],
     }),
@@ -404,10 +408,10 @@
         kind: 'native', appliedFlag: 'simplified', settings: {},
         maxMagnitude: null, locked: false, rowCount: 3, columnCount: 3,
         cells: [
-          { row: 0, col: 0, role: 'th', isOutside: false, text: 'Product', original: null },
-          { row: 0, col: 1, role: 'th', isOutside: false, text: 'Units', original: null },
-          { row: 0, col: 2, role: 'th', isOutside: false, text: 'Revenue', original: null },
-          { row: 2, col: 0, role: 'th', isOutside: false, text: 'Total', original: null },
+          { row: 0, col: 0, role: 'th', text: 'Product', original: null },
+          { row: 0, col: 1, role: 'th', text: 'Units', original: null },
+          { row: 0, col: 2, role: 'th', text: 'Revenue', original: null },
+          { row: 2, col: 0, role: 'th', text: 'Total', original: null },
         ],
       }],
     }),
@@ -469,7 +473,7 @@
       !html.includes('To extract the state'), true);
   eq('capture-render: the island round-trips the whole state',
     islandJson(html).tables[0].cells[1],
-    { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' });
+    { row: 1, col: 0, role: 'td', text: '99,000', original: '98,765' });
 
   // Hostile payloads: cell text and title attribute.
   const hostile = buildCaptureDocument({
@@ -478,7 +482,7 @@
         kind: 'native', appliedFlag: 'simplified', settings: null,
         maxMagnitude: null, locked: false, rowCount: 1, columnCount: 1,
         cells: [{
-          row: 0, col: 0, role: 'td', isOutside: false,
+          row: 0, col: 0, role: 'td',
           text: '"><img src=x onerror=alert(1)>',
           original: 'a"b<c>&d\'e',
         }],
@@ -511,7 +515,7 @@
       tables: [{
         kind: 'native', appliedFlag: 'simplified', settings: null,
         maxMagnitude: null, locked: true, rowCount: 1, columnCount: 1,
-        cells: [{ row: 0, col: 0, role: 'td', isOutside: false, text: '99,000', original: null }],
+        cells: [{ row: 0, col: 0, role: 'td', text: '99,000', original: null }],
       }],
     }),
     lockedStatusText: LOCKED_TEXT,
@@ -581,7 +585,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 7,
+    captureFormat: 8,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -591,8 +595,8 @@
       kind: 'native', appliedFlag: 'simplified', settings: { offsetTop: -0.5 },
       maxMagnitude: null, locked: false, rowCount: 2, columnCount: 1,
       cells: [
-        { row: 0, col: 0, role: 'th', isOutside: false, text: 'Amount', original: null },
-        { row: 1, col: 0, role: 'td', isOutside: false, text: '99,000', original: '98,765' },
+        { row: 0, col: 0, role: 'th', text: 'Amount', original: null },
+        { row: 1, col: 0, role: 'td', text: '99,000', original: '98,765' },
       ],
     }],
     lensPreview: null,
@@ -661,7 +665,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 7,
+    captureFormat: 8,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong', remarks: '', detectionSettings: null,
@@ -741,7 +745,7 @@
   const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 7,
+    captureFormat: 8,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -766,9 +770,9 @@
         kind: 'native', appliedFlag: 'simplified', settings: null,
         maxMagnitude: null, locked: true, rowCount: 1, columnCount: 2,
         cells: [
-          { row: 0, col: 0, role: 'td', isOutside: false,
+          { row: 0, col: 0, role: 'td',
             text: '99,000', original: null, wearsMarker: true },
-          { row: 0, col: 1, role: 'td', isOutside: false,
+          { row: 0, col: 1, role: 'td',
             text: 'n/a', original: null, wearsMarker: false },
         ],
       }],
@@ -861,7 +865,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 7,
+      captureFormat: 8,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -903,8 +907,8 @@
     state.detectionSettings, DR_DETECTION_SETTINGS);
   eq('capture-settings: the state\'s captureFormat equals CAPTURE_FORMAT',
     state.captureFormat, CAPTURE_FORMAT);
-  eq('capture-settings: CAPTURE_FORMAT is 7',
-    CAPTURE_FORMAT, 7);
+  eq('capture-settings: CAPTURE_FORMAT is 8',
+    CAPTURE_FORMAT, 8);
   eq('capture-settings: the returned copy is not the same object as DR_DETECTION_SETTINGS',
     state.detectionSettings !== DR_DETECTION_SETTINGS, true);
 
@@ -934,7 +938,7 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (detectionSettings) => ({
-    captureFormat: 7,
+    captureFormat: 8,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -1000,7 +1004,7 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (over) => Object.assign({
-    captureFormat: 7,
+    captureFormat: 8,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -1035,7 +1039,7 @@
   eq('capture-settings: an absent detectionSettings field renders the absence placeholder in the detection settings section',
     /<h2>Detection settings<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
   eq('capture-settings: the format version still prints in the header when detectionSettings is absent',
-    /<dt>Capture format<\/dt><dd>7<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+    /<dt>Capture format<\/dt><dd>8<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
@@ -1051,7 +1055,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 7,
+      captureFormat: 8,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
@@ -1090,11 +1094,11 @@
   };
   const state = collectCaptureState({ store: fakeStore, adapterFor: () => null });
   eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
-  eq('capture-state: format 7 carries each table\'s settings in place of the page-wide settings',
-    state.captureFormat, 7);
+  eq('capture-state: format 8 carries each table\'s settings in place of the page-wide settings',
+    state.captureFormat, 8);
 
   const renderState = {
-    captureFormat: 7,
+    captureFormat: 8,
     meta: { url: 'https://www.example.com/p', title: 'P', version: '2.1.70',
       platform: 'test', at: '2026-09-17T16:00:00.000Z' },
     mark: 'looks-wrong', remarks: '', detectionSettings: null,
