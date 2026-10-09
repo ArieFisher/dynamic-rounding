@@ -39,10 +39,11 @@ Merge #535 first, #536 second, and #537 last. A later merge brings `main` into i
 
 ### Review findings not yet filed as issues
 
-- Design doc: the dataset paragraph limits extracted cells to native tables, and a grid's extracted cell feeds the dataset too. Docs only, low priority.
 - A right-click inside a grid nested in a native table cell resolves the native table. It belongs beside the plan's open question on a native table inside a grid cell. Low priority.
 
-Both wait on the product manager's approval to file.
+It waits on the product manager's approval to file.
+
+The design doc sentence that limited extracted cells in the dataset to native tables is fixed on the #536 branch, in its own `docs:` commit.
 
 ### FYI
 
