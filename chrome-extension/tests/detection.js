@@ -3780,6 +3780,49 @@ function cnAdapterCellEls(tableEl) {
     cnAdapterTexts(queryGrid.wrapperEl)[0], ['1', 'alpha', '7,318,204', '284.51']);
 })();
 
+// The read of a grid's own rows and cells resolves each element between a
+// match and the grid once per query, so the role checks it runs grow with the
+// size of the tree. Each element's `matches` counts its calls; the bound is a
+// fixed multiple of the element count.
+(function cellNest_ownDescendantsWorkGrowsLinearlyWithTheTree() {
+  const PER_ELEMENT_BOUND = 20;
+  const row = (n) => rwEl('div', { role: 'row' }, [
+    rwEl('div', { role: 'cell' }, [rwText(`Item ${n}`)]),
+    rwEl('div', { role: 'cell' }, [rwText(String(1000 + n))]),
+  ]);
+  const rowsOf = (count) => Array.from({ length: count }, (_, n) => row(n));
+  // Wrap `inner` in `levels` elements, each built by `wrap`.
+  const nestIn = (levels, wrap, inner) => Array.from({ length: levels })
+    .reduce((children) => [wrap(children)], inner);
+  // Count every `matches` call on every element of the tree.
+  const countMatches = (root) => {
+    const counter = { calls: 0, elements: 0 };
+    (function visit(el) {
+      counter.elements++;
+      const original = el.matches;
+      el.matches = (selector) => { counter.calls++; return original(selector); };
+      el.children.forEach(visit);
+    })(root);
+    return counter;
+  };
+
+  const cases = [
+    { name: 'plain elements above the rows', rows: 500,
+      grid: rwEl('div', { role: 'grid' }, nestIn(200, (children) => rwEl('div', {}, children), rowsOf(500))) },
+    { name: 'row groups nested in row groups above the rows', rows: 300,
+      grid: rwEl('div', { role: 'grid' }, nestIn(60, (children) => rwEl('div', { role: 'rowgroup' }, children), rowsOf(300))) },
+  ];
+  for (const { name, rows, grid } of cases) {
+    rwEl('div', {}, [grid]);
+    const counter = countMatches(grid);
+    const read = makeAdapter(grid).getRows().map((r) => r.getCells().length);
+    eq(`cell nest adapter, ${name}: the grid reads every row`, read.length, rows);
+    eq(`cell nest adapter, ${name}: each row reads its two cells`, read.every((count) => count === 2), true);
+    eq(`cell nest adapter, ${name}: the role checks grow with the size of the tree`,
+      counter.calls < PER_ELEMENT_BOUND * counter.elements, true);
+  }
+})();
+
 // ---------------------------------------------------------------------------
 // Contextmenu activation pin. The contextmenu handler in content.js calls
 // DR_STORE.setSelectedTable(table). The expected message sequence below is a

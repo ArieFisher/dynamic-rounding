@@ -402,8 +402,13 @@ function _isCellAncestor(el) {
  * match inside a cell of `root` belongs to a table nested in that cell, which
  * is a table of its own, so a grid reads its own rows and cells the way a
  * native table's rows leave out a table nested in one of its cells. The walk
- * from a match ends at `root`, which holds the match, so the walk is bounded
- * by the depth of the match under `root`.
+ * from a match starts at its parent and ends at `root`, which holds the
+ * match, or at the first cell.
+ *
+ * One call resolves each ancestor once: the walk records the answer for every
+ * element it passes, and a later walk that reaches a recorded element takes
+ * its answer and stops. The work grows with the size of the tree under
+ * `root`, not with the matches times their depth.
  *
  * @param {Element} root
  * @param {string} selector
@@ -411,12 +416,23 @@ function _isCellAncestor(el) {
  */
 function _ownDescendants(root, selector) {
   if (!root || typeof root.querySelectorAll !== 'function') return [];
-  return Array.from(root.querySelectorAll(selector)).filter((match) => {
-    for (let at = match.parentElement || match.parentNode; at && at !== root; at = at.parentElement || at.parentNode) {
-      if (_isCellAncestor(at)) return false;
+  // Element → whether a cell sits between it (itself included) and `root`.
+  const insideCell = new Map();
+  const isInsideCell = (start) => {
+    const passed = [];
+    let at = start;
+    let answer = false;
+    while (at && at !== root) {
+      if (insideCell.has(at)) { answer = insideCell.get(at); break; }
+      passed.push(at);
+      if (_isCellAncestor(at)) { answer = true; break; }
+      at = at.parentElement || at.parentNode;
     }
-    return true;
-  });
+    for (const el of passed) insideCell.set(el, answer);
+    return answer;
+  };
+  return Array.from(root.querySelectorAll(selector))
+    .filter((match) => !isInsideCell(match.parentElement || match.parentNode));
 }
 
 class GridAdapter {
