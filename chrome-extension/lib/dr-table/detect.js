@@ -420,10 +420,6 @@ class NativeTableAdapter {
   getElement() { return this.el; }
   isVirtualized() { return false; }
   getRows() {
-    // isOutside marks a footer-section row — the native analog of a grid row
-    // outside the row group. Outside rows round like any other, but their
-    // values stay out of the dataset: consumers skip them when computing the
-    // max magnitude and the lens preview pool.
     const rowEls = Array.from(this.el.rows);
     // One pass over the spans numbers every cell by its grid column, before
     // any text is read; a cell then carries the number its consumers gate on.
@@ -431,8 +427,6 @@ class NativeTableAdapter {
       rowEls.map((row) => Array.from(row.cells).map(nativeCellSpans)));
     const port = this.originalsPort;
     return rowEls.map((row, r) => ({
-      isOutside: !!((row.parentElement || row.parentNode) &&
-        (row.parentElement || row.parentNode).tagName === 'TFOOT'),
       getCells() {
         return Array.from(row.cells).map((cell, c) => {
           // A native cell classifies its rendered text, and the screen shows
@@ -445,6 +439,61 @@ class NativeTableAdapter {
       },
     }));
   }
+}
+
+/**
+ * Whether an element carries a cell role, per GRID_CELL_SELECTOR. A cell
+ * bounds a table: a grid inside a cell of another grid is a table of its own,
+ * the way a native table inside a cell is. Every walk that sorts elements
+ * between two nested grids reads this one predicate: the walks that find a
+ * chain root and count nesting depth, and the grid adapter's reads of its own
+ * rows and cells. An element stub with no `matches` counts as no cell.
+ *
+ * @param {Element} el
+ * @returns {boolean}
+ */
+function _isCellAncestor(el) {
+  if (!el || typeof el.matches !== 'function') return false;
+  try { return !!el.matches(GRID_CELL_SELECTOR); } catch (e) { return false; }
+}
+
+/**
+ * The descendants of `root` matching `selector` that belong to `root` itself:
+ * those with no ancestor carrying a cell role between them and `root`. A
+ * match inside a cell of `root` belongs to a table nested in that cell, which
+ * is a table of its own, so a grid reads its own rows and cells the way a
+ * native table's rows leave out a table nested in one of its cells. The walk
+ * from a match starts at its parent and ends at `root`, which holds the
+ * match, or at the first cell.
+ *
+ * One call resolves each ancestor once: the walk records the answer for every
+ * element it passes, and a later walk that reaches a recorded element takes
+ * its answer and stops. The work grows with the size of the tree under
+ * `root`, not with the matches times their depth.
+ *
+ * @param {Element} root
+ * @param {string} selector
+ * @returns {Element[]}
+ */
+function _ownDescendants(root, selector) {
+  if (!root || typeof root.querySelectorAll !== 'function') return [];
+  // Element → whether a cell sits between it (itself included) and `root`.
+  const insideCell = new Map();
+  const isInsideCell = (start) => {
+    const passed = [];
+    let at = start;
+    let answer = false;
+    while (at && at !== root) {
+      if (insideCell.has(at)) { answer = insideCell.get(at); break; }
+      passed.push(at);
+      if (_isCellAncestor(at)) { answer = true; break; }
+      at = at.parentElement || at.parentNode;
+    }
+    for (const el of passed) insideCell.set(el, answer);
+    return answer;
+  };
+  return Array.from(root.querySelectorAll(selector))
+    .filter((match) => !isInsideCell(match.parentElement || match.parentNode));
 }
 
 class GridAdapter {
@@ -470,7 +519,7 @@ class GridAdapter {
       '[role="grid"]',
     ];
     for (const sel of knownSelectors) {
-      const found = el.querySelector && el.querySelector(sel);
+      const found = _ownDescendants(el, sel)[0];
       if (found) return found;
     }
     // Check if the element itself matches a known selector
@@ -492,7 +541,7 @@ class GridAdapter {
     const pinnedSelectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
     const el = this.el;
     for (const sel of pinnedSelectors) {
-      const found = el.querySelector && el.querySelector(sel);
+      const found = _ownDescendants(el, sel)[0];
       if (found && found !== scrollContainer) return found;
     }
     return null;
@@ -518,8 +567,9 @@ class GridAdapter {
    * this list IS the row's literal row number.
    *
    * isOutside marks the rows not inside any rowgroup. An outside row rounds
-   * like any other, but its values stay out of the dataset: consumers skip it
-   * when computing the max magnitude and the lens preview pool.
+   * like any other and its values join the dataset like any other. The shape
+   * fingerprint is the mark's one reader: it reads a grid's header row from
+   * it (see _hasHeaderRow).
    *
    * A row from the children fallback on a column-first grid has no row
    * element: its entry holds el: null and cellEls, the row's cells in column
@@ -533,21 +583,24 @@ class GridAdapter {
     if (!container.querySelectorAll) {
       return this._childRowEntries(container);
     }
-    const rowgroups = container.querySelectorAll('[role="rowgroup"]');
-    const isGrouped = !!(rowgroups && rowgroups.length > 0);
-    const scopes = isGrouped ? Array.from(rowgroups) : [container];
+    // Every query reads the container's own elements alone: a row group, a
+    // row, or a cell inside one of the grid's cells belongs to a table nested
+    // in that cell.
+    const rowgroups = _ownDescendants(container, '[role="rowgroup"]');
+    const isGrouped = rowgroups.length > 0;
+    const scopes = isGrouped ? rowgroups : [container];
 
     for (const sel of ['[role="row"]', '.dg--virtual-row', 'tr']) {
       let rows = [];
       for (const scope of scopes) {
-        if (scope.querySelectorAll) rows = rows.concat(Array.from(scope.querySelectorAll(sel)));
+        rows = rows.concat(_ownDescendants(scope, sel));
       }
       if (rows.length === 0) continue;
       if (!isGrouped) return rows.map((el) => ({ el, isOutside: false }));
       // The winning selector's full universe, not just the in-group matches;
       // a universe row not inside any group is an outside row.
       const inGroup = new Set(rows);
-      return Array.from(container.querySelectorAll(sel))
+      return _ownDescendants(container, sel)
         .map((el) => ({ el, isOutside: !inGroup.has(el) }));
     }
     // Fallback: repetitive children of the first scope. When row groups are
@@ -603,10 +656,10 @@ class GridAdapter {
    */
   _getCellEls(rowEl) {
     if (!rowEl) return [];
-    let cells = rowEl.querySelectorAll && rowEl.querySelectorAll(GRID_CELL_SELECTOR);
-    if (cells && cells.length > 0) return Array.from(cells);
-    cells = rowEl.querySelectorAll && rowEl.querySelectorAll('.dg--cell');
-    if (cells && cells.length > 0) return Array.from(cells);
+    let cells = _ownDescendants(rowEl, GRID_CELL_SELECTOR);
+    if (cells.length > 0) return cells;
+    cells = _ownDescendants(rowEl, '.dg--cell');
+    if (cells.length > 0) return cells;
     // Fallback: direct children
     if (rowEl.children) return Array.from(rowEl.children);
     return [];
@@ -1712,8 +1765,8 @@ function readTableFingerprint(el, opts = {}) {
  * database query grid takes — has a data row first, and a scroll redraws it,
  * so its text describes the rows on the screen rather than the table.
  *
- * On a native table the adapter's isOutside marks the footer section alone,
- * so the head section is read from the row itself: the row sits in a THEAD,
+ * A native table's adapter carries no outside-row mark, so the head section
+ * is read from the row itself: the row sits in a THEAD,
  * or it holds header cells and no data cell. The second form covers a table
  * written with a leading row of <th> and no explicit head section. The pass
  * reads such a row like any other; the first-row exclusion is what holds it
@@ -1721,7 +1774,7 @@ function readTableFingerprint(el, opts = {}) {
  *
  * @param {Element} el
  * @param {NativeTableAdapter|GridAdapter} adapter
- * @param {{isOutside: boolean, getCells(): object[]}} firstRow
+ * @param {{isOutside?: boolean, getCells(): object[]}} firstRow
  * @returns {boolean}
  */
 function _hasHeaderRow(el, adapter, firstRow) {
@@ -1818,9 +1871,10 @@ function _isQualifyingAncestor(el, tableFilter, opts) {
 /**
  * Walk up from `el` to its chain root: the outermost qualifying ancestor of
  * the nest `el` sits in. The walk is bounded by DR_DETECTION_SETTINGS.gridWalkDepthCap DOM
- * levels and stops at the document body, and it continues past an ancestor
- * that carries no role, because a nest may put a plain wrapper between two
- * qualifying elements. An element with no parent is its own chain root.
+ * levels and stops at the document body and at the first ancestor carrying a
+ * cell role, and it continues past an ancestor that carries no role, because
+ * a nest may put a plain wrapper between two qualifying elements. An element
+ * with no parent, or whose parent is a cell, is its own chain root.
  *
  * @param {Element} el
  * @param {(table: Element, opts: object) => boolean} tableFilter
@@ -1834,6 +1888,7 @@ function _chainRootOf(el, tableFilter, opts) {
   let current = el.parentElement || el.parentNode || null;
   let depth = 0;
   while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
+    if (_isCellAncestor(current)) break;
     if (_isQualifyingAncestor(current, tableFilter, opts)) chainRoot = current;
     current = current.parentElement || current.parentNode || null;
     depth++;
@@ -1847,6 +1902,9 @@ function _chainRootOf(el, tableFilter, opts) {
  * root itself sits at depth 0, an element directly under it at depth 1.
  * Returns -1 when the walk leaves the nest without reaching the chain root,
  * so the caller drops the element rather than filing it at a wrong depth.
+ * An ancestor carrying a cell role below the chain root ends the walk the
+ * same way: the element heads a nest of its own and is no member of this
+ * one.
  *
  * @param {Element} el
  * @param {Element} chainRoot
@@ -1861,6 +1919,7 @@ function _depthInChain(el, chainRoot, tableFilter, opts) {
   let steps = 0;
   while (current && steps < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
     if (current === chainRoot) return count + 1;
+    if (_isCellAncestor(current)) return -1;
     if (_isQualifyingAncestor(current, tableFilter, opts)) count++;
     current = current.parentElement || current.parentNode || null;
     steps++;
@@ -1897,15 +1956,18 @@ function _selectAtNestingDepth(byDepth, configuredDepth) {
 
 /**
  * The chain root of the nest `el` sits in: the outermost qualifying element
- * at or above `el`, or null when no qualifying element sits within
- * DR_DETECTION_SETTINGS.gridWalkDepthCap levels of `el`.
+ * at or above `el` that no cell separates from the nearest one, or null when
+ * no qualifying element sits within DR_DETECTION_SETTINGS.gridWalkDepthCap
+ * levels of `el`.
  *
  * This is the public form of the private _chainRootOf walk. _chainRootOf
  * takes a qualifying element and returns the outermost qualifying element
- * above it; this wrapper first finds the nearest qualifying element at or
- * above an arbitrary one, which is what a caller holding a clicked cell, an
- * added node, or a registered table has. The walk starts at `el` itself, so a
- * call on a qualifying element returns that element's own chain root.
+ * above it, stopping at the first cell. This wrapper first finds the nearest
+ * qualifying element at or above an arbitrary element — a clicked cell, an
+ * added node, or a registered table — and that first walk crosses cells, so a
+ * click in a cell reaches the grid holding the cell. The walk starts at `el`
+ * itself, so a call on a qualifying element returns that element's own chain
+ * root.
  *
  * @param {Element} el
  * @param {{
@@ -1935,7 +1997,9 @@ function chainRootOf(el, opts = {}) {
  * Run the nomination step on the one nest `chainRoot` heads and report the
  * outcome.
  *
- * The nest is `chainRoot` plus every qualifying element under it. The chain
+ * The nest is `chainRoot` plus every qualifying element under it that no
+ * cell separates from it: a qualifying element inside a cell heads a nest of
+ * its own. The chain
  * is the nest's elements that pass the data test, grouped by nesting depth;
  * _selectAtNestingDepth applies DR_DETECTION_SETTINGS.nestingDepth with decision D2's two
  * edge rules.
@@ -1978,25 +2042,30 @@ function nominateNest(chainRoot, opts = {}) {
   const isSeen = opts.isSeen || (() => false);
   const configuredDepth = opts.nestingDepth ?? DR_DETECTION_SETTINGS.nestingDepth;
 
+  // The nest's members, each with its nesting depth. A qualifying element
+  // whose walk up crosses a cell before it reaches the chain root heads a
+  // nest of its own, so _depthInChain returns -1 and the element stays out of
+  // this nest: a registered grid inside a cell never makes the grid around it
+  // read as registered.
   const nested = typeof chainRoot.querySelectorAll === 'function'
     ? Array.from(chainRoot.querySelectorAll(GRID_ARIA_SELECTOR)) : [];
   const nest = [chainRoot].concat(nested)
-    .filter((el) => _passesAriaGuards(el, tableFilter, opts));
+    .filter((el) => _passesAriaGuards(el, tableFilter, opts))
+    .map((el) => ({ el, depth: _depthInChain(el, chainRoot, tableFilter, opts) }))
+    .filter((member) => member.depth >= 0);
 
   // A nest holding a registered element registers nothing: the scan already
   // ran over it, and a second registration would put a second pillbox on one
   // grid.
-  if (nest.some((el) => isSeen(el))) {
+  if (nest.some(({ el }) => isSeen(el))) {
     return { chainRoot, selected: null, outcome: 'registered', chainSize: 0 };
   }
 
   // The chain — the nest's elements that pass the data test, by depth.
   const byDepth = new Map();
   let chainSize = 0;
-  for (const el of nest) {
+  for (const { el, depth } of nest) {
     if (!isDataTable(el, opts)) continue;
-    const depth = _depthInChain(el, chainRoot, tableFilter, opts);
-    if (depth < 0) continue;
     chainSize++;
     if (!byDepth.has(depth)) byDepth.set(depth, []);
     byDepth.get(depth).push(el);

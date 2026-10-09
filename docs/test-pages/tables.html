@@ -992,8 +992,9 @@
     <h2>10. ARIA grid with row groups</h2>
     <p class="expect">Expect: pillbox at load. The header row and the Region
       column stay as written. Every other row rounds, the Total row below the
-      row group included. The Total values do not count toward the max
-      magnitude and never appear in the lens preview.</p>
+      row group included, and its values appear in the lens preview. The
+      Total values share magnitude 6 with the body values, so every value
+      rounds as it does in a table without a Total row.</p>
 
     <!--
       The load-time scan picks up any role="grid" or role="table" element that
@@ -1002,9 +1003,9 @@
       counts as a row, so the header and Total rows are rows like any other.
       Grid cells have no th concept: every cell is data. The header row holds
       because it is the grid's literal first row. The Total row is an outside
-      row: it rounds against the dataset without joining it, so its values
-      never set the max magnitude and never reach the lens preview. A native
-      table's footer rows get the same treatment.
+      row, and every row joins the dataset, so its values feed the max
+      magnitude and the lens preview like any other row's. The shape
+      fingerprint is the one reader of the outside-row mark.
     -->
     <div class="aria-grid" role="grid" aria-label="Quarterly sessions by region">
       <div class="g-row" role="row">
@@ -2829,8 +2830,10 @@ TSLA,75,"248.09","18,606.75"
     <ol class="expect">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> The result waits on <a
-        href="https://github.com/ArieFisher/dynamic-rounding/issues/526">#526</a>.</li>
+        -1, all other numbers at 0.</b> Both tables show "Target 25,000" in
+        the header row and every body value at the nearest thousand. A failure
+        shows a body value at the nearest hundred on one table and the nearest
+        thousand on the other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -3167,9 +3170,10 @@ TSLA,75,"248.09","18,606.75"
     <ol class="expect">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> A failure shows a body value
-        at the nearest thousand on one table and the nearest hundred on the
-        other.</li>
+        -1, all other numbers at 0.</b> Both tables show every body value and
+        every total at the nearest thousand: the total row shows 18,000 and
+        15,000. A failure shows a body value at the nearest thousand on one
+        table and the nearest hundred on the other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -3236,8 +3240,10 @@ TSLA,75,"248.09","18,606.75"
     <ol class="expect">
       <li><b>Turn on the first-row and first-column switches on both tables,
         and pull the sidebar's two offsets apart on both: largest numbers at
-        -1, all other numbers at 0.</b> The result waits on <a
-        href="https://github.com/ArieFisher/dynamic-rounding/issues/526">#526</a>.</li>
+        -1, all other numbers at 0.</b> Both tables show every body value and
+        every total at the nearest thousand: the total row shows 18,000 and
+        15,000. A failure shows a body value at the nearest thousand on one
+        table and the nearest hundred on the other.</li>
     </ol>
     <div class="pair">
       <figure>
@@ -3475,8 +3481,8 @@ TSLA,75,"248.09","18,606.75"
     <h3>30o. Table inside a cell <code>nested-table</code></h3>
     <ol class="expect">
       <li><b>At load.</b> Expect: a pillbox on the outer table and on the
-        inner table, on both kinds. The grid result waits on <a
-        href="https://github.com/ArieFisher/dynamic-rounding/issues/527">#527</a>.</li>
+        inner table, on both kinds: four pillboxes in all. A failure shows
+        one pillbox on the grid side, on the inner grid alone.</li>
       <li><b>Turn on every pillbox, the inner tables' included.</b></li>
     </ol>
     <div class="pair">

@@ -3996,7 +3996,7 @@ function issue328SettingsOf(table) {
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 7, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 8, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting logs its own row, and that row lands in the capture',

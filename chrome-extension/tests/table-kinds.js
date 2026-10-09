@@ -166,6 +166,17 @@ const TK_SETTINGS = [
     list.filter((row) => ['not yet tested', 'no pair'].includes(row.state) && !row.note).map((row) => row.key), []);
 })();
 
+// Every row joins the dataset on both kinds, so a header row outside every
+// row group and a total row in a row group of its own give the native
+// result. The design doc lists both pairs as same, and the test below then
+// finds no difference under either settings object.
+(function tablekinds_theEveryRowPairsAreSame() {
+  const list = tkReadPairList() || [];
+  eq('every row: the design doc lists the column-header and footer-group pairs as same',
+    ['column-header', 'footer-group'].map((key) => (list.find((row) => row.key === key) || {}).state),
+    ['same', 'same']);
+})();
+
 (function tablekinds_eachPairMatchesItsRecordedState() {
   const list = tkReadPairList() || [];
   for (const row of list) {
@@ -185,5 +196,20 @@ const TK_SETTINGS = [
       eq(`#524 ${row.key}: the recorded difference still shows; a fix updates the list to same`,
         differences.length > 0, true);
     }
+  }
+})();
+
+// #527: a table inside a cell is a table of its own on both kinds. The
+// comparison above passes when both kinds find the same number of tables,
+// so this case pins the number: the outer table and the inner table.
+(function tablekinds_aTableInsideACellIsTwoTablesOnBothKinds() {
+  const row = (tkReadPairList() || []).find((entry) => entry.key === 'nested-table');
+  eq('#527 the design doc lists the nested-table pair as same', row && row.state, 'same');
+  for (const settings of TK_SETTINGS) {
+    const pair = TK_PAIRS['nested-table'];
+    eq(`#527 under ${settings.name}: the native page holds two data tables`,
+      tkRead('native', pair, settings.opts).tables.length, 2);
+    eq(`#527 under ${settings.name}: the grid page holds two data tables`,
+      tkRead('grid', pair, settings.opts).tables.length, 2);
   }
 })();
