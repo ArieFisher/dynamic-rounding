@@ -2919,6 +2919,80 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   });
 })();
 
+// Every row feeds the dataset, header, body, and total alike, on a native
+// table and a grid. One drawing per case, the same sections on both kinds: a
+// header row in a head section (a grid draws it outside every row group), two
+// body rows in a body section (a grid draws them in a row group), and a total
+// row in a footer section (a grid draws it after the row group, outside it).
+// Each case puts the one magnitude-7 value in one row kind; every other
+// number sits at magnitude 6. Both switches are on, so no exclusion holds the
+// header row or the label column, and the offsets sit apart: at max
+// magnitude 6 the body value 1,234,567 is the top band (nearest 500,000 →
+// 1,000,000); at max magnitude 7 it is the other band (nearest 100,000 →
+// 1,200,000). Invented values.
+const EVERY_ROW_OPTS = Object.assign({}, DR_DEFAULTS, {
+  simplifyFirstRow: true, simplifyFirstColumn: true, offsetTop: -0.5, offsetOther: -1, numTop: 1,
+});
+const EVERY_ROW_LARGE = '24,009,450';
+
+function everyRowDraw(kind, largeIn) {
+  const pick = (rowKind, otherwise) => (largeIn === rowKind ? EVERY_ROW_LARGE : otherwise);
+  return rwDrawTable(kind, [
+    { part: 'head', rows: [[{ pieces: 'Region', header: 'col' }, { pieces: pick('header', 'Units'), header: 'col' }]] },
+    { part: 'body', rows: [['North', '1,234,567'], ['South', pick('body', '918,554')]], grouped: true },
+    { part: 'foot', rows: [['Total', pick('total', '2,153,121')]] },
+  ]).table;
+}
+
+// One case's reading: the max magnitude the pass computes, and the text the
+// first body row's value shows after the table is simplified.
+function everyRowRead(kind, largeIn) {
+  let reading = null;
+  withRewritePage(() => {
+    const table = everyRowDraw(kind, largeIn);
+    try {
+      const { maxMag } = simplifyTableCells(table, registryAdapter(table).getRows(), EVERY_ROW_OPTS,
+        { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+      roundTableUnder(table, EVERY_ROW_OPTS);
+      const bodyValue = tkCellTexts(table).find((cell) => cell.at === '1:1');
+      reading = { maxMag, bodyValue: bodyValue ? bodyValue.text : null };
+    } finally {
+      resetTable(table);
+      forgetRegisteredTable(table);
+    }
+  });
+  return reading;
+}
+
+(function everyRow_eachRowKindSetsTheMaxMagnitudeOnBothKinds() {
+  for (const kind of ['native', 'grid']) {
+    eq(`every row (${kind}): with no magnitude-7 value the max magnitude is 6 and the body value takes the top-band offset`,
+      everyRowRead(kind, null), { maxMag: 6, bodyValue: '1,000,000' });
+    for (const rowKind of ['header', 'body', 'total']) {
+      eq(`every row (${kind}): a ${rowKind} row sets the max magnitude, so the body value takes the other-band offset`,
+        everyRowRead(kind, rowKind), { maxMag: 7, bodyValue: '1,200,000' });
+    }
+  }
+})();
+
+// The lens preview pool takes every row's values on both kinds: the header
+// row's, the body rows', and the total row's.
+(function everyRow_theLensPreviewPoolTakesEveryRow() {
+  for (const kind of ['native', 'grid']) {
+    for (const rowKind of ['header', 'total']) {
+      withRewritePage(() => {
+        const table = everyRowDraw(kind, rowKind);
+        try {
+          eq(`every row (${kind}): the lens preview pool holds the ${rowKind} row's value`,
+            collectNumericCells(table, EVERY_ROW_OPTS).some((cell) => cell.num === 24009450), true);
+        } finally {
+          forgetRegisteredTable(table);
+        }
+      });
+    }
+  }
+})();
+
 // -------------------------------------------------------------------------
 // AC3 (Bug #1): embedded-in-text numbers feed maxMag.
 // A table whose only large values are embedded in mixed-text cells (like
