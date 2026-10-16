@@ -47,6 +47,15 @@ const LOCKED_TOGGLE_TITLE = 'This table\'s original values are no longer availab
 // This view alone reads it, so it lives here and not in the detection
 // settings.
 const PILLBOX_AUTO_COLLAPSE_MS = 3000;
+// The clip test reads at most this many ancestors on its walk from a table up
+// to the page body, one style read each, on every reposition. The cap bounds
+// that cost per table. Real pages nest a table well under 100 ancestors deep,
+// so the cap holds the cost down without cutting the walk short. Ancestors
+// past it count as cutting off nothing: a deeper table's pillbox still moves
+// with every scroll, and shows wherever its table's corner sits.
+const PILLBOX_CLIP_WALK_CAP = 100;
+// Overflow values that cut off an element's content at its box.
+const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 
 // --- Per-table pillbox infrastructure ---
 
@@ -198,13 +207,39 @@ function ensureToggleStyleInjected() {
   toggleStyleInjected = true;
 }
 
+// The pillbox sits in the page body, outside every page area, so the
+// positioning hides it while its spot is out of a page area's view. This
+// test returns true when the point (x, y), in
+// window coordinates, sits outside the box of an ancestor that cuts off its
+// content on that axis. The walk stops at the page body, whose overflow the
+// window scroll covers, and at PILLBOX_CLIP_WALK_CAP ancestors.
+function isPillboxSpotClipped(table, x, y) {
+  let el = table.parentElement;
+  for (let i = 0; el && el !== document.body && i < PILLBOX_CLIP_WALK_CAP; i++) {
+    const style = window.getComputedStyle(el);
+    const clipsX = CLIPPING_OVERFLOW.has(style.overflowX);
+    const clipsY = CLIPPING_OVERFLOW.has(style.overflowY);
+    if (clipsX || clipsY) {
+      const box = el.getBoundingClientRect();
+      if (clipsX && (x < box.left || x > box.right)) return true;
+      if (clipsY && (y < box.top || y > box.bottom)) return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
 function positionToggle(table, buttonEl) {
   const rect = table.getBoundingClientRect();
   const computedStyle = window.getComputedStyle(table);
+  // The centre of the dot, which sits over the table's top-right corner.
+  const spotX = rect.right + TOGGLE_DOT_OVERHANG_PX - TOGGLE_DOT_PX / 2;
+  const spotY = rect.top + TOGGLE_DOT_OVERLAP_PX - TOGGLE_DOT_PX / 2;
   if (
     (rect.width === 0 && rect.height === 0) ||
     computedStyle.display === 'none' ||
-    computedStyle.visibility === 'hidden'
+    computedStyle.visibility === 'hidden' ||
+    isPillboxSpotClipped(table, spotX, spotY)
   ) {
     buttonEl.style.display = 'none';
     return;
@@ -386,27 +421,25 @@ function injectTableToggles() {
   consumeNominations(nominateNests(document, { isSeen: DR_STORE.hasTable }));
 }
 
-// Reposition all tracked toggles on scroll/resize
+function repositionAllToggles() {
+  for (const table of trackedTables) {
+    const button = tableToggles.get(table);
+    if (button) {
+      positionToggle(table, button);
+    }
+  }
+}
+
+// Reposition all tracked toggles on scroll/resize. A scroll event fires on the
+// element that scrolled and does not bubble, so the scroll listener runs in
+// the capture phase: it runs on a page area's scroll as well as the window's.
+// The browser fires at most one scroll event per scrolling element per frame.
 let _scrollResizeListenersAdded = false;
 function ensureScrollResizeListeners() {
   if (_scrollResizeListenersAdded) return;
   _scrollResizeListenersAdded = true;
-  window.addEventListener('scroll', () => {
-    for (const table of trackedTables) {
-      const button = tableToggles.get(table);
-      if (button) {
-        positionToggle(table, button);
-      }
-    }
-  }, { passive: true });
-  window.addEventListener('resize', () => {
-    for (const table of trackedTables) {
-      const button = tableToggles.get(table);
-      if (button) {
-        positionToggle(table, button);
-      }
-    }
-  }, { passive: true });
+  window.addEventListener('scroll', repositionAllToggles, { capture: true, passive: true });
+  window.addEventListener('resize', repositionAllToggles, { passive: true });
 }
 
 let highlightStyleInjected = false;

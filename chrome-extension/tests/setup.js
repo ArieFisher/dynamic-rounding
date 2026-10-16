@@ -169,6 +169,14 @@ globalThis.TOGGLE_DOT_OVERHANG_PX = TOGGLE_DOT_OVERHANG_PX;
 globalThis.TOGGLE_COLOR_ON = TOGGLE_COLOR_ON;
 globalThis.TOGGLE_COLOR_OFF = TOGGLE_COLOR_OFF;
 globalThis.PILLBOX_AUTO_COLLAPSE_MS = PILLBOX_AUTO_COLLAPSE_MS;
+globalThis.PILLBOX_CLIP_WALK_CAP = PILLBOX_CLIP_WALK_CAP;
+globalThis.ensureScrollResizeListeners = ensureScrollResizeListeners;
+// _scrollResizeListenersAdded is a let; expose getter/setter so tests can reset it.
+Object.defineProperty(globalThis, '_scrollResizeListenersAdded', {
+  get() { return _scrollResizeListenersAdded; },
+  set(v) { _scrollResizeListenersAdded = v; },
+  configurable: true,
+});
 // _globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
 Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   get() { return _globalTapCollapseAdded; },

@@ -165,6 +165,20 @@
       padding: 6px 10px;
     }
 
+    /* A page area that scrolls on its own, as a chat column does, and a box
+       inside it that scrolls sideways around a table wider than the box. */
+    .scroll-area {
+      height: 280px;
+      overflow-y: auto;
+      border: 1px solid var(--rule);
+      padding: 16px;
+    }
+
+    .sideways-box {
+      max-width: 480px;
+      overflow-x: auto;
+    }
+
     .plan-grid {
       display: flex;
       width: fit-content;
@@ -3818,6 +3832,102 @@ TSLA,75,"248.09","18,606.75"
         <div class="plan-item"><span>1,480</span></div>
         <div class="plan-item"><span>8,140</span></div>
         <div class="plan-item"><span>$1,286.90</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>32. Tables inside a scrolling page area</h2>
+    <p>A framed area that scrolls on its own, apart from the page. It holds a
+      native table at its top, then a grid, then a table wider than the box
+      around it, which scrolls sideways.</p>
+    <p class="expect">Expect: a pillbox at load on the native table alone. The
+      grid and the wide table sit below the area's bottom edge.</p>
+    <ol class="expect">
+      <li><b>Scroll inside the area.</b> Expect: each pillbox stays on its
+        table's top-right corner as the table moves, and the grid's pillbox
+        appears once the grid's top comes into view. A failure leaves a
+        pillbox in place while its table moves away.</li>
+      <li><b>Scroll on until the native table's top passes the area's top
+        edge.</b> Expect: its pillbox disappears. A failure shows the pillbox
+        outside the area, over the page above it.</li>
+      <li><b>Scroll until the wide table is in view.</b> Expect: no pillbox
+        while the table's right edge sits past the box. Scroll the box
+        sideways to its end: the pillbox appears at the table's top-right
+        corner.</li>
+      <li><b>Scroll the page itself.</b> Expect: the pillboxes in view move
+        with the area.</li>
+    </ol>
+
+    <div class="scroll-area">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Region</th>
+            <th scope="col">Orders</th>
+            <th scope="col">Revenue</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>North</td><td>1,284</td><td>$786,562</td></tr>
+          <tr><td>South</td><td>912</td><td>$396,514</td></tr>
+          <tr><td>East</td><td>1,733</td><td>$1,122,098</td></tr>
+          <tr><td>West</td><td>655</td><td>$270,138</td></tr>
+        </tbody>
+      </table>
+
+      <p>Text between the tables, so the grid starts below the area's bottom
+        edge.</p>
+      <p>More text between the tables.</p>
+      <p>More text between the tables.</p>
+      <p>More text between the tables.</p>
+
+      <div class="aria-grid" role="table" aria-label="Shipments by warehouse">
+        <div class="g-row" role="row">
+          <span role="columnheader">Warehouse</span>
+          <span role="columnheader">Parcels</span>
+          <span role="columnheader">Weight (kg)</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Toronto</span>
+          <span role="cell">48,213</span>
+          <span role="cell">592,999</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Montreal</span>
+          <span role="cell">23,846</span>
+          <span role="cell">275,893</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Calgary</span>
+          <span role="cell">9,417</span>
+          <span role="cell">130,424</span>
+        </div>
+      </div>
+
+      <p>Text between the tables.</p>
+      <p>More text between the tables.</p>
+
+      <div class="sideways-box">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Quarter</th>
+              <th scope="col">Q1</th>
+              <th scope="col">Q2</th>
+              <th scope="col">Q3</th>
+              <th scope="col">Q4</th>
+              <th scope="col">Q5</th>
+              <th scope="col">Q6</th>
+              <th scope="col">Q7</th>
+              <th scope="col">Q8</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Units</td><td>14,382</td><td>16,504</td><td>18,215</td><td>21,447</td><td>19,336</td><td>22,708</td><td>25,911</td><td>27,102</td></tr>
+            <tr><td>Returns</td><td>412</td><td>388</td><td>506</td><td>671</td><td>593</td><td>702</td><td>815</td><td>844</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </section>

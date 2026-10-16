@@ -14,6 +14,12 @@ A table no one has turned on reads off, so the sidebar's switch shows off over a
 
 A press on a locked table publishes nothing. A table locks when its original values are lost, which happens when a content script re-injection empties the registry. The right-click menu item is the one way to act on such a table. The sidebar reads whether the active table is locked each time it reads the table's settings, which includes when it opens and when a right-click or a press makes another table active. A locked table therefore shows the locked notice and a switch forced on, whichever way the sidebar was opened.
 
+## Where the pillbox sits
+
+The pillbox sits over the table's top-right corner and follows it through every scroll: the window's, and a scroll inside a page area such as a chat column. It shows only while that corner is in view. When the table's top passes above the edge of a page area that scrolls, its pillbox disappears, the way a pillbox on a page that scrolls as a whole leaves the screen with its table. A table wider than a box that scrolls sideways shows its pillbox once the reader scrolls the box to the table's right edge.
+
+The pillbox sits in the page body, outside the page's own markup, because an element added inside a framework-built page's markup can crash the page on its next redraw, the same reason every cell write is a patch. A scrolling area therefore cannot cut the pillbox off, and the hiding rule above does that job.
+
 ## The sidebar serves one tab
 
 The sidebar opens beside one tab and serves that tab for as long as it is open. It acts on what that tab's page reports and drops what any other tab reports, so a table changing in a background tab never moves the sidebar's controls or locks them against a page the user cannot see.
