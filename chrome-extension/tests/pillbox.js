@@ -809,6 +809,229 @@
     labelEl.style.display, '');
 })();
 
+// ---------------------------------------------------------------------------
+// Clip gate in positionToggle: a table inside a scrolling page area
+// ---------------------------------------------------------------------------
+//
+// A web application such as a chat page scrolls a page area, not the window.
+// The pillbox sits in the page body, so the area's edges never cut it off.
+// positionToggle hides the pillbox while the dot's centre sits outside the box
+// of any ancestor whose overflow cuts off its content, on the axis that
+// ancestor cuts. The dot's centre sits TOGGLE_DOT_PX / 2 inside the table's
+// top-right corner, less the overhang and overlap.
+
+// Builds table → ancestors[0] → ancestors[1] → … → body. Each ancestor spec
+// holds its overflow on both axes and its box.
+function withClipChain(ancestorSpecs, tableRect, fn) {
+  const body = { _name: 'body', parentElement: null };
+  const ancestors = ancestorSpecs.map((spec) => ({
+    _spec: spec,
+    getBoundingClientRect() { return spec.box; },
+  }));
+  for (let i = 0; i < ancestors.length; i++) {
+    ancestors[i].parentElement = ancestors[i + 1] || body;
+  }
+  const table = {
+    parentElement: ancestors[0] || body,
+    getBoundingClientRect() { return tableRect; },
+  };
+  const styleReads = [];
+  const origGetComputedStyle = global.window.getComputedStyle;
+  const origBody = global.document.body;
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.getComputedStyle = (el) => {
+    styleReads.push(el);
+    const spec = el._spec || {};
+    return {
+      display: 'block', visibility: 'visible',
+      overflowX: spec.overflowX || 'visible',
+      overflowY: spec.overflowY || 'visible',
+    };
+  };
+  global.document.body = body;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+  try {
+    fn({ table, body, ancestors, styleReads });
+  } finally {
+    global.window.getComputedStyle = origGetComputedStyle;
+    global.document.body = origBody;
+    global.window.scrollX = origScrollX;
+    global.window.scrollY = origScrollY;
+  }
+}
+
+// The scrolling page area spans 100 to 700 down the screen. The dot's centre
+// sits 3 px below the table's top edge.
+const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 1000, height: 600 };
+
+(function clipGate_tableTopScrolledAboveAreaTop_hidden() {
+  withClipChain(
+    [{ overflowX: 'hidden', overflowY: 'auto', box: CLIP_PANEL_BOX }],
+    { top: 40, bottom: 400, left: 100, right: 900, width: 800, height: 360 },
+    ({ table }) => {
+      const buttonEl = { style: {} };
+      positionToggle(table, buttonEl);
+      eq('clipGate: a table whose top scrolled above its scrolling area hides its pillbox',
+        buttonEl.style.display, 'none');
+    });
+})();
+
+(function clipGate_tableBelowAreaBottom_hidden() {
+  withClipChain(
+    [{ overflowX: 'hidden', overflowY: 'auto', box: CLIP_PANEL_BOX }],
+    { top: 900, bottom: 1300, left: 100, right: 900, width: 800, height: 400 },
+    ({ table }) => {
+      const buttonEl = { style: {} };
+      positionToggle(table, buttonEl);
+      eq('clipGate: a table below its scrolling area\'s bottom edge hides its pillbox',
+        buttonEl.style.display, 'none');
+    });
+})();
+
+(function clipGate_tableTopInsideArea_shownAndPlaced() {
+  const tableRect = { top: 200, bottom: 500, left: 100, right: 900, width: 800, height: 300 };
+  withClipChain(
+    [{ overflowX: 'hidden', overflowY: 'auto', box: CLIP_PANEL_BOX }],
+    tableRect,
+    ({ table }) => {
+      const buttonEl = { style: {} };
+      positionToggle(table, buttonEl);
+      eq('clipGate: a table whose top sits inside its scrolling area shows its pillbox',
+        buttonEl.style.display, '');
+      eq('clipGate: that pillbox sits at the table\'s top-right corner',
+        [parseFloat(buttonEl.style.left), parseFloat(buttonEl.style.top)],
+        [tableRect.right + TOGGLE_DOT_OVERHANG_PX - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX,
+         tableRect.top + TOGGLE_DOT_OVERLAP_PX - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX]);
+    });
+})();
+
+(function clipGate_wideTableRightEdgePastSidewaysBox_hidden() {
+  // A box that scrolls sideways around a table wider than it, inside a page
+  // area that scrolls down. The table's top is in view; its right edge is not.
+  withClipChain(
+    [
+      { overflowX: 'auto', overflowY: 'hidden', box: { top: 150, bottom: 450, left: 50, right: 650, width: 600, height: 300 } },
+      { overflowX: 'hidden', overflowY: 'auto', box: CLIP_PANEL_BOX },
+    ],
+    { top: 150, bottom: 450, left: 50, right: 1250, width: 1200, height: 300 },
+    ({ table }) => {
+      const buttonEl = { style: {} };
+      positionToggle(table, buttonEl);
+      eq('clipGate: a wide table whose right edge sits past its sideways-scrolling box hides its pillbox',
+        buttonEl.style.display, 'none');
+    });
+})();
+
+(function clipGate_axisWithVisibleOverflow_neverHides() {
+  // The ancestor cuts off sideways only; the table's top sits above it, on
+  // the axis the ancestor leaves open. A browser keeps one axis visible only
+  // beside clip: it computes visible beside hidden, scroll, or auto as auto.
+  withClipChain(
+    [{ overflowX: 'clip', overflowY: 'visible', box: CLIP_PANEL_BOX }],
+    { top: 40, bottom: 400, left: 100, right: 900, width: 800, height: 360 },
+    ({ table }) => {
+      const buttonEl = { style: {} };
+      positionToggle(table, buttonEl);
+      eq('clipGate: an ancestor that cuts off one axis never hides the pillbox on the other',
+        buttonEl.style.display, '');
+    });
+})();
+
+(function clipGate_visibleOverflowAncestor_neverHides() {
+  withClipChain(
+    [{ overflowX: 'visible', overflowY: 'visible', box: CLIP_PANEL_BOX }],
+    { top: 40, bottom: 400, left: 100, right: 900, width: 800, height: 360 },
+    ({ table }) => {
+      const buttonEl = { style: {} };
+      positionToggle(table, buttonEl);
+      eq('clipGate: an ancestor that cuts off nothing never hides the pillbox',
+        buttonEl.style.display, '');
+    });
+})();
+
+(function clipGate_walkStopsAtBody() {
+  // The window scroll covers the body and the root element, so the walk
+  // never reads either: a body set to cut off its content hides nothing.
+  withClipChain([], { top: 40, bottom: 400, left: 100, right: 900, width: 800, height: 360 },
+    ({ table, body, styleReads }) => {
+      body._spec = { overflowX: 'hidden', overflowY: 'hidden', box: CLIP_PANEL_BOX };
+      body.getBoundingClientRect = () => CLIP_PANEL_BOX;
+      const buttonEl = { style: {} };
+      positionToggle(table, buttonEl);
+      eq('clipGate: the walk stops at the page body, so the body\'s overflow hides nothing',
+        buttonEl.style.display, '');
+      eq('clipGate: the walk never reads the page body\'s style',
+        styleReads.includes(body), false);
+    });
+})();
+
+(function clipGate_walkCap() {
+  // PILLBOX_CLIP_WALK_CAP plain ancestors, then one that would hide the
+  // pillbox. The walk stops at the cap and never reaches it.
+  const plain = Array.from({ length: PILLBOX_CLIP_WALK_CAP }, () => ({ box: CLIP_PANEL_BOX }));
+  const specs = plain.concat([{ overflowX: 'hidden', overflowY: 'auto', box: CLIP_PANEL_BOX }]);
+  withClipChain(specs, { top: 40, bottom: 400, left: 100, right: 900, width: 800, height: 360 },
+    ({ table, ancestors, styleReads }) => {
+      const buttonEl = { style: {} };
+      positionToggle(table, buttonEl);
+      eq('clipGate: an ancestor past the walk cap hides nothing',
+        buttonEl.style.display, '');
+      eq('clipGate: the walk reads no ancestor past the cap',
+        styleReads.includes(ancestors[PILLBOX_CLIP_WALK_CAP]), false);
+    });
+})();
+
+// ---------------------------------------------------------------------------
+// Scroll wiring: a scroll inside a page area moves every pillbox
+// ---------------------------------------------------------------------------
+//
+// A scroll event fires on the element that scrolled and does not bubble, so a
+// plain window listener runs on the window's own scroll alone. The capture
+// phase on the window runs on every scroll on the page.
+
+(function scrollWiring_captureListenerRepositionsEveryPillbox() {
+  const listeners = [];
+  const origAdd = global.window.addEventListener;
+  const origFlag = _scrollResizeListenersAdded;
+  const savedTracked = Array.from(trackedTables);
+  global.window.addEventListener = (type, handler, options) => {
+    listeners.push({ type, handler, options });
+  };
+  _scrollResizeListenersAdded = false;
+  trackedTables.clear();
+  const tableRect = { top: 200, bottom: 500, left: 100, right: 900, width: 800, height: 300 };
+  const table = { getBoundingClientRect() { return tableRect; } };
+  const buttonEl = { style: {} };
+  tableToggles.set(table, buttonEl);
+  trackedTables.add(table);
+  const origScrollX = global.window.scrollX;
+  const origScrollY = global.window.scrollY;
+  global.window.scrollX = 0;
+  global.window.scrollY = 0;
+  try {
+    ensureScrollResizeListeners();
+    const scroll = listeners.find((l) => l.type === 'scroll');
+    eq('scrollWiring: the scroll listener runs in the capture phase',
+      Boolean(scroll && scroll.options && scroll.options.capture), true);
+    // An inner page area scrolls: the event's target is that area, not the
+    // document.
+    if (scroll) scroll.handler({ type: 'scroll', target: { _name: 'chat column' } });
+    eq('scrollWiring: a scroll inside a page area repositions the pillbox',
+      parseFloat(buttonEl.style.top),
+      tableRect.top + TOGGLE_DOT_OVERLAP_PX - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX);
+  } finally {
+    global.window.addEventListener = origAdd;
+    _scrollResizeListenersAdded = origFlag;
+    trackedTables.clear();
+    savedTracked.forEach((t) => trackedTables.add(t));
+    tableToggles.delete(table);
+    global.window.scrollX = origScrollX;
+    global.window.scrollY = origScrollY;
+  }
+})();
+
 // =============================================================================
 // New AC tests
 // =============================================================================
