@@ -446,10 +446,13 @@ let highlightStyleInjected = false;
 function ensureHighlightStyleInjected() {
   if (highlightStyleInjected) return;
   const style = document.createElement('style');
+  // The whole-table outline sits inside the table's edge: a page box that
+  // cuts off its content at the table's edge, such as a chat page's table
+  // card, would cut off an outline drawn outside it.
   style.textContent = `
     @keyframes drExtTargetFlash {
-      0%   { outline: 2px solid rgba(66, 133, 244, 0.95); outline-offset: 2px; }
-      100% { outline: 2px solid rgba(66, 133, 244, 0);    outline-offset: 2px; }
+      0%   { outline: 2px solid rgba(66, 133, 244, 0.95); outline-offset: -2px; }
+      100% { outline: 2px solid rgba(66, 133, 244, 0);    outline-offset: -2px; }
     }
     .dr-ext-target-flash {
       animation: drExtTargetFlash 1s ease-out;

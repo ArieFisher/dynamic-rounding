@@ -43,6 +43,18 @@
 
   eq('rangePulse CSS: .dr-ext-target-flash class still present (no regression)',
     capturedCss !== null && capturedCss.includes('dr-ext-target-flash'), true);
+
+  // The whole-table pulse draws its outline inside the table's edge, so a box
+  // around the table that cuts off its content at the table's edge never cuts
+  // the outline off. Every outline offset in the whole-table keyframes is
+  // negative.
+  const flashKeyframes = capturedCss &&
+    (capturedCss.match(/@keyframes drExtTargetFlash\s*\{[\s\S]*?\n\s*\}/) || [])[0];
+  const flashOffsets = flashKeyframes
+    ? Array.from(flashKeyframes.matchAll(/outline-offset:\s*(-?\d+)px/g), (m) => Number(m[1]))
+    : [];
+  eq('rangePulse CSS: the whole-table pulse outline sits inside the table edge',
+    flashOffsets.length > 0 && flashOffsets.every((px) => px < 0), true);
 })();
 
 // Dispatch: flashRangePulse(table, null) must delegate to flashTargetedTable,

@@ -179,6 +179,20 @@
       overflow-x: auto;
     }
 
+    /* A rounded card whose edges sit against the table it holds and cut off
+       whatever spills past them, as a chat page's table card does. */
+    .edge-card {
+      width: fit-content;
+      overflow: hidden;
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+
+    .edge-card table,
+    .edge-card .aria-grid {
+      margin-bottom: 0;
+    }
+
     .plan-grid {
       display: flex;
       width: fit-content;
@@ -3928,6 +3942,63 @@ TSLA,75,"248.09","18,606.75"
             <tr><td>Returns</td><td>412</td><td>388</td><td>506</td><td>671</td><td>593</td><td>702</td><td>815</td><td>844</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>33. Tables inside a card that cuts off its edges</h2>
+    <p>A native table and a grid, each inside a rounded card whose edges sit
+      against the table and cut off whatever spills past them.</p>
+    <p class="expect">Expect: a pillbox at load on each.</p>
+    <ol class="expect">
+      <li><b>Right-click a value in the native table.</b> Expect: a blue
+        outline flashes on all four sides of the table, just inside the
+        card's edge. A failure shows a blue line on one side alone, or no
+        line.</li>
+      <li><b>Right-click a value in the grid.</b> Expect: the same outline on
+        all four sides of the grid.</li>
+    </ol>
+
+    <div class="edge-card">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Code</th>
+            <th scope="col">Meaning</th>
+            <th scope="col">Last 90 days</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>DE</td><td>Declined</td><td>48,213</td></tr>
+          <tr><td>CP</td><td>Credit pending</td><td>39,402</td></tr>
+          <tr><td>AP</td><td>Approved</td><td>35,117</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="edge-card">
+      <div class="aria-grid" role="table" aria-label="Decisions by code">
+        <div class="g-row" role="row">
+          <span role="columnheader">Code</span>
+          <span role="columnheader">Meaning</span>
+          <span role="columnheader">Yesterday</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">DE</span>
+          <span role="cell">Declined</span>
+          <span role="cell">152</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">CP</span>
+          <span role="cell">Credit pending</span>
+          <span role="cell">106</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">AP</span>
+          <span role="cell">Approved</span>
+          <span role="cell">98</span>
+        </div>
       </div>
     </div>
   </section>
