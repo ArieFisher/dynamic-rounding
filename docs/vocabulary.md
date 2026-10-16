@@ -113,6 +113,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | cell cap | The most cells one pass of the re-apply observer reads: a native table's cells, a grid's visible cells. The detection settings hold it as `reapplyCellCap`, 10,000 today, which keeps a pass under 100 ms. Above it the pass writes nothing, the observer stops for that table, and one debug row records the stop, with no toast. The first simplification has no cell cap. |
 | orphan row | A row sitting directly inside a grid with no row group. <br>Detection still finds it. <br>Orphan always means a missing parent, never a missing referent; a handle whose table is gone is a dead handle. <br><br>- Parent: the wrapper element a row normally sits inside, the row group. <br>- Referent: the thing a name or key stands for; a handle's referent is its table<br>- Handle: defined under Parts of the extension. <br><br>two failures: 'orphan' means the wrapper is missing; 'dead' means the referent is missing. |
 | literal row number | A row's position counting every row in the table, rows outside a row group included (header and summary rows). <br><br>The first-row exclusion and range expressions number rows this way, so "first row" always means the table's top row. |
+| page area | A box on a page that holds part of its content and scrolls on its own, apart from the window, such as a chat column or a results panel. It cuts off what sits past its edges. A pillbox shows only while its table's top-right corner sits inside every page area around the table. |
 
 ## Acting on a table
 
