@@ -1297,7 +1297,7 @@ function registryAdapter(table) {
 
 // --- The re-apply observer ---
 //
-// One watcher for every simplified table, native or grid: a MutationObserver
+// One watcher for every table that is on, native or grid: a MutationObserver
 // on the table's watched element (a native table itself, a grid's scroll
 // container), for added and removed nodes and for text changes anywhere
 // under it. A grid redraws rows on scroll and cells on sort; a page rewrites
@@ -1305,12 +1305,12 @@ function registryAdapter(table) {
 //
 // The observer is off during the extension's own writes, the restore
 // included: a pass disconnects it before it writes and reconnects it after,
-// and a reset stops it before the restore writes. A pass while the form is
-// raw writes nothing. A burst of page edits collapses into one pass: each
-// change restarts the redraw delay, and a burst that never goes quiet runs
-// its pass once it has lasted the longest wait (reapplyMaxWaitMs in the
-// detection settings). A table above the cell cap (reapplyCellCap) takes no
-// observer, and a pass that finds its table above the cap stops the observer.
+// and a reset stops it before the restore writes. A burst of page edits
+// collapses into one pass: each change restarts the redraw delay, and a
+// burst that never goes quiet runs its pass once it has lasted the longest
+// wait (reapplyMaxWaitMs in the detection settings). A table above the cell
+// cap (reapplyCellCap) takes no observer, and a pass that finds its table
+// above the cap stops the observer.
 
 const OBSERVED_CHANGES = { childList: true, characterData: true, subtree: true };
 
@@ -1387,15 +1387,18 @@ function reapplyRounding(table) {
   }
 }
 
-// The pass itself. It writes nothing while the table's form is raw. The
-// shape check runs before any cell is sorted: a table the page refilled with
-// a different shape re-detects as a new table, raw and under the shipped
-// defaults, and the pass stops there. Otherwise the pass runs the one
-// simplification pass under the table's own settings and its magnitude
+// The pass itself. It runs while the table is on, whatever the first
+// simplification changed: only the apply of a table that is on starts the
+// observer, and the reset that turns a table off stops it. A table turned on
+// with nothing to simplify therefore simplifies a number the page adds later.
+// The shape check runs before any cell is sorted: a table the page refilled
+// with a different shape re-detects as a new table, raw and under the
+// shipped defaults, and the pass stops there. Otherwise the pass runs the
+// one simplification pass under the table's own settings and its magnitude
 // freeze, if it holds one, so a grid's scroll never shifts its rounding
-// basis, and a native table's max magnitude follows the page's values.
+// basis, and a native table's max magnitude follows the page's values. A
+// pass that simplifies a cell records the table as simplified.
 function runReapplyPass(table) {
-  if (DR_STORE.getTableAppliedFlag(table) !== 'simplified') return;
   const wasActive = DR_STORE.getSelectedTable() === table;
   const revalidated = revalidateTableShape(table, { activates: wasActive });
   if (revalidated.switched || revalidated.table !== table) return;
@@ -1407,6 +1410,7 @@ function runReapplyPass(table) {
     writes: 'reapply',
     cellCap: DR_DETECTION_SETTINGS.reapplyCellCap,
   });
+  if (result.landedCells > 0) DR_STORE.setTableAppliedFlag(table, 'simplified');
   if (result.overCap) {
     unwatchTable(table);
     logAboveCellCap(result.cellCount);

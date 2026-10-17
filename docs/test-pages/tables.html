@@ -1662,12 +1662,13 @@ TSLA,75,"248.09","18,606.75"
 
   <section>
     <h2>23. Cells the page rewrites</h2>
-    <p>Each table in this section changes its own values after the extension
-      simplifies it, the way a live dashboard or a scrolling grid does. Reload
+    <p>Each table in this section changes its own values after its pillbox is
+      pressed on, the way a live dashboard or a scrolling grid does. Reload
       the page to start any part again.</p>
     <p class="expect">Expect: a pillbox at load on 23a's two tables, 23c's
-      grid, and 23d's table. The extension simplifies each change within a
-      moment, and a restore shows the values the page last wrote.</p>
+      grid, 23d's table, and 23e's table. The extension simplifies each
+      change within a moment, and a restore shows the values the page last
+      wrote.</p>
 
     <h3>23a. One native table and one grid holding the same values</h3>
     <p>Every button rewrites the same cell in both tables, so the two results
@@ -2126,6 +2127,39 @@ TSLA,75,"248.09","18,606.75"
           // The second column: the first column holds under the shipped
           // first-column default.
           overCap.tBodies[0].rows[0].cells[1].textContent = '777,777';
+        });
+      })();
+    </script>
+
+    <h3>23e. A table with nothing to simplify that gains a number</h3>
+    <p>Every value is a round thousand, so the table holds nothing to
+      simplify. The button writes 8,584,629 into East, Units.</p>
+    <ol class="expect">
+      <li><b>Press its pillbox on.</b> Expect: the table pillbox and the
+        sidebar pillbox show on, and every value stays as written.</li>
+      <li><b>Press Write a new number.</b> Expect: East, Units shows 8,500,000
+        within a moment, and the other values stay as written. A failure
+        leaves 8,584,629 on the screen.</li>
+    </ol>
+    <div class="rw-buttons">
+      <button type="button" id="rw-gain-write">Write a new number</button>
+    </div>
+
+    <table id="rw-gain">
+      <thead>
+        <tr><th scope="col">Region</th><th scope="col">Units</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">North</th><td>1,000</td></tr>
+        <tr><th scope="row">South</th><td>2,000</td></tr>
+        <tr><th scope="row">East</th><td>3,000</td></tr>
+      </tbody>
+    </table>
+    <script>
+      (function () {
+        var table = document.getElementById('rw-gain');
+        document.getElementById('rw-gain-write').addEventListener('click', function () {
+          table.tBodies[0].rows[2].cells[1].textContent = '8,584,629';
         });
       })();
     </script>
