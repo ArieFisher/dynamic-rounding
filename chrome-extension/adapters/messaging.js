@@ -162,8 +162,8 @@ const DR_BUS = (function () {
     // The settings notice: the model (app/store.js) publishes it after every
     // write of a table's settings, whatever the writer. Every write targets
     // the active table. It states which side wrote it and carries the table's
-    // whole settings; the sidebar redraws from it. The content script
-    // publishes it and holds no subscriber of its own.
+    // whole settings; the sidebar redraws from it, and the table pillbox view in
+    // the same content script redraws the active table's pillbox from it.
     'state:settingsChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableActivated': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableSwitched': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },

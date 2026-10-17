@@ -64,11 +64,11 @@
   // value. The behavioral pins live in the part-one block further down; this
   // one holds the line at the source, so a reintroduced guard fails here.
   // The handler names the element it acts on `target`: the shape-fingerprint
-  // check ahead of the screen read returns the pressed table on a match and
+  // check ahead of the on/off value read returns the pressed table on a match and
   // the freshly registered element on a mismatch, and the flip direction
   // comes from whichever one the press continues on.
-  eq('sidebar-state removal: the intent:toggleTable handler reads the screen for its flip direction',
-    /intent:toggleTable'[\s\S]{0,1200}!isTableRounded\(target\)/.test(contentSrc), true);
+  eq('sidebar-state removal: the intent:toggleTable handler reads the on/off value for its flip direction',
+    /intent:toggleTable'[\s\S]{0,1200}!isTableOn\(target\)/.test(contentSrc), true);
 
   // content.js: the mouse and touch click branches share one
   // intent:toggleTable subscriber in content.js, so the literal appears once,
