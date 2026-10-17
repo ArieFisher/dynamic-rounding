@@ -1597,6 +1597,59 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
 })();
 
 // ---------------------------------------------------------------------------
+// A table turned on while it holds nothing to simplify keeps its re-apply
+// observer, and a page change that brings in a number simplifies it. The
+// table pillbox and the sidebar pillbox show on for such a table, so the
+// screen must follow once a number arrives. Both table kinds run the one
+// re-apply pass; each kind gets a case.
+(function reapply_onTableThatGainsANumberSimplifiesIt_grid() {
+  const grid = makeE2EGridWrapper([
+    ['north', 'south'],
+    ['east', 'west'],
+  ]);
+  const [a] = grid.cellEls;
+  const aText = makeCountingTextNode('pending');
+  setGridCellPieces(a, [aText]);
+  try {
+    roundTableUnder(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { enabled: true }));
+    eq('re-apply on a table that gains a number (grid, setup): the first pass simplifies nothing',
+      showsSimplified(grid.wrapperEl), false);
+    aText.nodeValue = '8,584,629';
+    reapplyRounding(grid.wrapperEl);
+    eq('re-apply on a table that gains a number (grid): the new number simplifies',
+      aText.nodeValue, '8,500,000');
+    eq('re-apply on a table that gains a number (grid): the table shows simplified values',
+      showsSimplified(grid.wrapperEl), true);
+  } finally {
+    DR_STORE.unregisterTable(grid.wrapperEl);
+  }
+})();
+
+(function reapply_onTableThatGainsANumberSimplifiesIt_native() {
+  withCreateTreeWalker(function() {
+    const table = makeToggleTable([
+      [{ tag: 'td', text: 'north' }, { tag: 'td', text: 'south' }],
+      [{ tag: 'td', text: 'east' }, { tag: 'td', text: 'pending' }],
+    ]);
+    table._cells.forEach((c) => { c.querySelectorAll = () => []; });
+    const cell = table._cells[3];
+    try {
+      roundTableUnder(table, Object.assign({}, DR_DEFAULTS, { enabled: true }));
+      eq('re-apply on a table that gains a number (native, setup): the first pass simplifies nothing',
+        showsSimplified(table), false);
+      cell.innerText = '8,584,629';
+      cell.textContent = '8,584,629';
+      reapplyRounding(table);
+      eq('re-apply on a table that gains a number (native): the new number simplifies',
+        cell.innerText, '8,500,000');
+      eq('re-apply on a table that gains a number (native): the table shows simplified values',
+        showsSimplified(table), true);
+    } finally {
+      DR_STORE.unregisterTable(table);
+    }
+  });
+})();
+
 // Stacked cells and unit numbers on grids. A grid cell's text is its
 // flat text. A stacked cell holds whole numbers in separate text pieces, and
 // each rounds in its own piece. A unit number's digits change and its suffix

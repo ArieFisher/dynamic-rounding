@@ -19,8 +19,8 @@ function withTextPiece(cell) {
   return cell;
 }
 
-// True when the screen shows simplified values: roundTable changed a cell and
-// the table is not showing originals. The table pillbox shows the on/off value
+// True when the screen shows simplified values: a pass changed a cell and the
+// table is not showing originals. The table pillbox shows the on/off value
 // instead (isTableOn), so a test of what a pass did to the screen reads this.
 function showsSimplified(table) {
   return DR_STORE.getTableAppliedFlag(table) === 'simplified';
