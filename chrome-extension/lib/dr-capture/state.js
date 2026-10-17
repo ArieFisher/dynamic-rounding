@@ -10,8 +10,7 @@
  *
  * collectCaptureState() turns the application model's registry into the
  * plain-value capture state: for every registered table, its kind, applied
- * flag, settings, frozen magnitude, locked state, row and
- * column counts, and every present cell's position, role, displayed text,
+ * flag, settings, frozen magnitude, row and column counts, and every present cell's position, role, displayed text,
  * and original. The bound table also contributes its markup as it stood at
  * capture time, verbatim — the fixture seed, the one piece of markup a
  * capture carries.
@@ -25,9 +24,7 @@
  * storage-shape knowledge.
  *
  * The state records absence honestly: a cell wearing the rounded marker with
- * no stored original serializes as original: null and flips the table's
- * locked flag — the same pairing tableHasUnrestorableCells (ui-toggle.js)
- * reads, produced only by a content-script re-injection — and the serializer
+ * no stored original serializes as original: null, and the serializer
  * never reconstructs a value. A virtualized grid contributes only the rows
  * present in the DOM at capture time; the state carries its frozen
  * magnitude as part of the evidence.
@@ -55,9 +52,11 @@
  * lastRoundOptions to settings: each table carries its own settings.
  * Format 8 drops each cell's isOutside field: every row joins the dataset,
  * so no reader of the field remains.
+ * Format 9 drops each table's locked field and the sidebar view's locked
+ * field: the extension no longer locks a table.
  */
 
-const CAPTURE_FORMAT = 8;
+const CAPTURE_FORMAT = 9;
 
 function collectCaptureState(deps) {
   const store = (deps && deps.store) || DR_STORE;
@@ -71,7 +70,6 @@ function collectCaptureState(deps) {
     const adapter = adapterFor(table);
     const rows = adapter.getRows();
     let columnCount = 0;
-    let locked = false;
     const cells = [];
     for (let r = 0; r < rows.length; r++) {
       const rowCells = rows[r].getCells();
@@ -85,11 +83,9 @@ function collectCaptureState(deps) {
         const originalText = store.getTableOriginalText(table, cellObj.el);
         const original = originalText === undefined ? null : originalText;
         // GRID_ROUNDED_CLASS (lib/dr-table/detect.js) marks every rounded
-        // cell, native and grid alike. The marker with no original behind it
-        // is the locked pairing.
+        // cell, native and grid alike.
         const wearsMarker = !!(cellObj.el && cellObj.el.classList &&
           cellObj.el.classList.contains(GRID_ROUNDED_CLASS));
-        if (wearsMarker && original === null) locked = true;
         cells.push({
           row: r,
           col: cellObj.columnIndex,
@@ -108,7 +104,6 @@ function collectCaptureState(deps) {
       appliedFlag: store.getTableAppliedFlag(table),
       settings: store.getTableSettings(table),
       maxMagnitude: store.getTableMaxMagnitude(table),
-      locked,
       rowCount: rows.length,
       columnCount,
       cells,
@@ -127,7 +122,6 @@ function collectCaptureState(deps) {
         appliedFlag: null,
         settings: null,
         maxMagnitude: null,
-        locked: false,
         rowCount: null,
         columnCount: null,
         cells: [],

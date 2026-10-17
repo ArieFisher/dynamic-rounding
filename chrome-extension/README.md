@@ -12,7 +12,7 @@ Each table holds its own settings, the range expression included. A press change
 
 A table no one has turned on reads off, so the sidebar's switch shows off over a raw table, and opening the sidebar on its own changes nothing on the page. The right-click menu holds two items. "Toggle table" makes the same press on the table right-clicked. "Toggle and open sidebar" makes that press, then opens the sidebar.
 
-A press on a locked table publishes nothing. A table locks when its original values are lost, which happens when a content script re-injection empties the registry. The right-click menu item is the one way to act on such a table. The sidebar reads whether the active table is locked each time it reads the table's settings, which includes when it opens and when a right-click or a press makes another table active. A locked table therefore shows the locked notice and a switch forced on, whichever way the sidebar was opened.
+A table loses its original values when a content script re-injection empties the registry while the table shows simplified values. The extension then reads the simplified values on the screen as the originals: turning the table on simplifies them again, and the hover text shows a simplified value as the original. A page reload clears it.
 
 ## Where the pillbox sits
 
@@ -22,7 +22,7 @@ The pillbox sits in the page body, outside the page's own markup, because an ele
 
 ## The sidebar serves one tab
 
-The sidebar opens beside one tab and serves that tab for as long as it is open. It acts on what that tab's page reports and drops what any other tab reports, so a table changing in a background tab never moves the sidebar's controls or locks them against a page the user cannot see.
+The sidebar opens beside one tab and serves that tab for as long as it is open. It acts on what that tab's page reports and drops what any other tab reports, so a table changing in a background tab never moves the sidebar's controls for a page the user cannot see.
 
 A tab switch closes the sidebar. The service worker closes it whenever the user leaves the tab it was opened for, and the sidebar closes itself on the switches the worker misses: an idle restart empties the tab number the worker compares against, and a sidebar opened from Chrome's own side-panel control never sets it. Those switches used to leave the sidebar open, showing controls for a page the user had left.
 
@@ -86,7 +86,7 @@ The sidebar's capture section writes a bug report as one self-contained HTML fil
 
 One capture holds, in reading order: the mark and remarks; a likeness of the sidebar as it stood; a screenshot of the bound tab's visible area, taken under the activeTab grant the right-click menu item gives (without the grant the section says so and the file still saves); the bound table rendered twice — as displayed, with originals revealed on hover, and again with the originals themselves; a registry list of every table found, the bound one marked; the detection settings in force at capture time; the log rows of both extension contexts, each warning or error row with its stack trace folded under it, each frame in the short form Chrome's extension error page uses (the extension's own log buffer — the page's console is never read); the tab's error state; the bound table's markup as it stood at capture time, as the fixture seed; and the whole capture state as machine-readable JSON in a hidden block. A thin line separates the sections, and a sentence or two about how to read the file render as a note: smaller, italic, opening with "Note:". The file declares a Content-Security-Policy that forbids scripts and remote fetches, so it is safe to attach anywhere.
 
-The capture records absence honestly. With no table bound, the state says so and the capture still saves. On a locked table (originals lost to a re-injection), cells record no originals and the locked wording appears — values are never reconstructed. A virtualized grid contributes the rows present at capture time, with its frozen max magnitude as part of the evidence.
+The capture records absence honestly. With no table bound, the state says so and the capture still saves. A cell whose original was lost to a re-injection records no original — values are never reconstructed. A virtualized grid contributes the rows present at capture time, with its frozen max magnitude as part of the evidence.
 
 A capture page is exempt from the extension's own detection. The saved file is itself a page with a real table, and with file access enabled the content script runs on it; the file therefore carries a capture marker (a page attribute on its document element), and the content script stands down on any page carrying it — no controls, no selection, no rounding. A capture shows what was captured, never what the extension would do to it.
 

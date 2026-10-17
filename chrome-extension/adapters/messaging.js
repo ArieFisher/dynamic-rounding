@@ -169,8 +169,6 @@ const DR_BUS = (function () {
     'state:tableSwitched': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:rangeError': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:rangeOk': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
-    'state:applyBlocked': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
-    'state:applyOk': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:previewSamplesChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
   };
 

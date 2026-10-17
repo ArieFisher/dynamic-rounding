@@ -40,9 +40,6 @@ const TOGGLE_DOT_OVERLAP_PX = 8;
 const TOGGLE_DOT_OVERHANG_PX = 2;
 const TOGGLE_COLOR_ON = '#3d85c6';
 const TOGGLE_COLOR_OFF = '#cccccc';
-// Hover text for a locked pillbox — see tableHasUnrestorableCells. Wording
-// mirrors sidebar.js's APPLY_BLOCKED_STATUS_MSG.
-const LOCKED_TOGGLE_TITLE = 'This table\'s original values are no longer available. Reload the page to change it.';
 // Touch and pen: an expanded pillbox collapses on its own after this delay.
 // This view alone reads it, so it lives here and not in the detection
 // settings.
@@ -74,49 +71,9 @@ function isTableRounded(table) {
   return DR_STORE.getTableAppliedFlag(table) === 'simplified';
 }
 
-// A locked table shows cells wearing dr-ext-rounded that DR_STORE has no
-// original for. Only a content-script re-injection produces that pairing
-// (see restoreTable's KNOWN ACCEPTED COST comment in content.js): the class
-// survives in the page, the registry did not. Such a table is unrestorable —
-// nothing in this instance can restore it, and re-rounding would destroy the
-// title attribute's surviving originals — so every control over it renders
-// locked. Evaluated live on
-// each sync: if the site re-renders the table with fresh cells, the marker
-// class disappears with the old cells and the lock lifts by itself.
-function tableHasUnrestorableCells(table) {
-  for (const cell of table.querySelectorAll('.dr-ext-rounded')) {
-    if (isUnrestorableCell(table, cell)) return true;
-  }
-  return false;
-}
-
-// A cell showing the simplified marker with no original in the registry.
-// The pillbox, the sidebar's settings read, and the restore in content.js
-// all read this one test: the restore leaves such a cell as it stands, and
-// one such cell locks the table.
-function isUnrestorableCell(table, cell) {
-  return !DR_STORE.hasTableOriginal(table, cell);
-}
-
 function syncSwitchForTable(table) {
   const button = tableToggles.get(table);
   if (!button) return;
-  if (tableHasUnrestorableCells(table)) {
-    // The screen shows simplified text (pressed) and no control here can
-    // change that (disabled) — see tableHasUnrestorableCells. Log the
-    // transition only, not every sync of an already-locked pillbox.
-    if (!button.classList.contains('dr-ext-morph-locked')) {
-      DR_LOG.warn("Dynamic Rounding: table locked; its original values are no longer available.");
-    }
-    button.setAttribute('aria-pressed', 'true');
-    button.setAttribute('aria-disabled', 'true');
-    button.classList.add('dr-ext-morph-locked');
-    button.title = LOCKED_TOGGLE_TITLE;
-    return;
-  }
-  button.removeAttribute('aria-disabled');
-  button.classList.remove('dr-ext-morph-locked');
-  button.removeAttribute('title');
   button.setAttribute('aria-pressed', isTableRounded(table) ? 'true' : 'false');
 }
 
@@ -191,17 +148,6 @@ function ensureToggleStyleInjected() {
       }
     }
     .dr-ext-morph:focus-visible { outline: 2px solid ${TOGGLE_COLOR_ON}!important; outline-offset: 2px; }
-    /* Locked pillbox: dimmed dot, no expand, no knob, explaining
-       cursor. These rules sit last so they win the equal-specificity race
-       against the hover/expanded/focus-visible rules above. */
-    .dr-ext-morph.dr-ext-morph-locked { cursor: not-allowed; }
-    .dr-ext-morph.dr-ext-morph-locked .dr-ext-morph-visible {
-      width: ${TOGGLE_DOT_PX}px;
-      height: ${TOGGLE_DOT_PX}px;
-      border-radius: 50%;
-      opacity: .55;
-    }
-    .dr-ext-morph.dr-ext-morph-locked .dr-ext-morph-knob { opacity: 0; }
   `;
   (document.head || document.documentElement).appendChild(style);
   toggleStyleInjected = true;
@@ -316,11 +262,6 @@ function createToggleForTable(table) {
   // (view-transient), never the press logic.
   button.addEventListener('click', (e) => {
     e.stopPropagation();
-    // A locked pillbox (aria-disabled — see syncSwitchForTable) publishes
-    // nothing: no expand, no intent. The controller's apply blocks a locked
-    // table as well. The view stops here so it never animates an interaction
-    // the apply then blocks.
-    if (button.getAttribute('aria-disabled') === 'true') return;
     const pType = button.dataset.pointerType;
     if (pType === 'touch' || pType === 'pen') {
       if (!button.classList.contains('expanded')) {
@@ -364,13 +305,6 @@ function createToggleForTable(table) {
   }));
   DR_LOG.debug("Dynamic Rounding: registered " +
     (table.tagName === 'TABLE' ? 'native table' : 'grid') + ".");
-
-  // Render the initial state through the same sync every later state change
-  // uses. On a fresh table this keeps aria-pressed 'false' exactly as set
-  // above; on a re-injected page whose table still wears rounded markers
-  // (see tableHasUnrestorableCells) the pillbox must arrive locked and pressed
-  // instead of claiming an unrounded table.
-  syncSwitchForTable(table);
 
   // Set up ResizeObserver for repositioning
   const ro = new ResizeObserver(() => {

@@ -105,7 +105,7 @@
     /GET_SIDEBAR_SETTINGS/.test(sidebarSrc), false);
 
   eq('pull (inverted): content.js answers request:settings with the active table\'s settings',
-    /respond\('request:settings'[\s\S]{0,100}const selected = DR_STORE\.getSelectedTable\(\)[\s\S]{0,100}DR_STORE\.getTableSettings\(selected\)/.test(contentSrc), true);
+    /respond\('request:settings'[\s\S]{0,100}DR_STORE\.getTableSettings\(DR_STORE\.getSelectedTable\(\)\)/.test(contentSrc), true);
 
   eq('pull (inverted): sidebar.js asks request:settings on open',
     /DR_BUS\.request\('request:settings'/.test(sidebarSrc), true);
@@ -136,9 +136,7 @@
     /function roundTable\([\s\S]{0,300}setTableSettings/.test(contentSrc), false);
 
   eq('unified: the apply re-runs roundTable rather than replaying a cached value',
-    // Window sized for the locked-table refusal that sits
-    // between the function head and the round call.
-    /function applySidebarRounding[\s\S]{0,2200}roundTable\(/.test(contentSrc), true);
+    /function applySidebarRounding[\s\S]{0,600}roundTable\(/.test(contentSrc), true);
 
   // --- Display simplification: "35.0" → "35" when value unchanged but format would ---
 
@@ -422,49 +420,6 @@
     flag, 'simplified');
 })();
 
-// Switching onto a LOCKED table: the clicked table carries a
-// dr-ext-rounded cell with no registry original, so the switch apply's
-// resetTable refuses. The pin here is the ORDER — state:tableSwitched must leave
-// before state:applyBlocked, because the sidebar lifts the PREVIOUS table's lock
-// on state:tableSwitched and the new table's state:applyBlocked must land after that
-// lift to re-lock the sidebar. A send moved after the apply would leave a
-// unrestorable table showing an unlocked sidebar with nothing failing.
-//
-// The intent is published straight onto the bus: the view ignores clicks on
-// a locked pillbox (its aria-disabled guard), but a table can become
-// unrestorable between pillbox syncs, so the controller's own entry point must
-// hold the order on its own.
-(function issue251_switchOntoLockedTablePinsMessageOrder() {
-  const tableA = makeToggleTable([
-    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
-    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
-  ]);
-  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
-  const tableB = makeToggleTable([
-    [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
-    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
-  ]);
-  tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
-  // The unrestorable pairing: rounded class, no DR_STORE original.
-  tableB._cells[2].classList.add('dr-ext-rounded');
-
-  const sentMessages = [];
-  const origSendMessage = global.chrome.runtime.sendMessage;
-  global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
-
-  lastRightClickedTable = tableA;
-
-  DR_BUS.publish('intent:toggleTable', { table: tableB });
-
-  global.chrome.runtime.sendMessage = origSendMessage;
-  lastRightClickedTable = null;
-
-  eq('locked-switch: the sequence is state:tableSwitched, the table\'s settings notice, then state:applyBlocked, nothing else',
-    sentMessages.map(m => m.action), ['state:tableSwitched', 'state:settingsChanged', 'state:applyBlocked']);
-  eq('locked-switch: state:applyBlocked carries the unrestorable-cell count',
-    sentMessages[2] && sentMessages[2].count, 1);
-})();
-
 (function gridPatch_roundWritesEachChangeIntoItsPiece() {
   const { grid } = makePatchGrid();
   const [a, b, c, d] = grid.cellEls;
@@ -532,8 +487,7 @@
   const [a, b, c, d] = grid.cellEls;
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    const unrestorable = resetTable(grid.wrapperEl);
-    eq('grid patch reset: every cell restores', unrestorable, 0);
+    resetTable(grid.wrapperEl);
     eq('grid patch reset: each piece holds its original text again',
       [pieceTextsOf(a), pieceTextsOf(b), pieceTextsOf(c), pieceTextsOf(d)],
       [[' ', '8,584,629', ' '], [' 7,318,204 '], ['$', '2,140,663'], ['1,234,567']]);
@@ -551,7 +505,7 @@
 
 // A cell the page redrew with fewer pieces is a rewritten cell.
 // The restore keeps the page's text in it and drops its record and marker,
-// so nothing counts unrestorable and the table never locks over it.
+// so no cell is left unrestorable.
 (function gridPatch_aCellWithFewerPiecesKeepsThePagesText() {
   const { grid } = makePatchGrid();
   const [a, b] = grid.cellEls;
@@ -560,8 +514,7 @@
     // The page redraws cell a with one piece; the record's pieces no longer
     // line up with the cell's.
     setGridCellPieces(a, [makeTextNode('9,100,000')]);
-    const unrestorable = resetTable(grid.wrapperEl);
-    eq('grid patch reset: a cell redrawn with fewer pieces counts as restored', unrestorable, 0);
+    resetTable(grid.wrapperEl);
     eq('grid patch reset: the redrawn cell keeps the page\'s text',
       pieceTextsOf(a), ['9,100,000']);
     eq('grid patch reset: the redrawn cell drops its marker and record',
@@ -1485,10 +1438,10 @@ const PENDING_FILL_ROWS = [
      // The service worker's four, plus the two it receives.
      'intent:menuClicked', 'state:sidebarOpened', 'intent:closeSidebar',
      'state:sidebarClosed', 'state:pageUnloaded', 'intent:updateMenuLabel',
-     // The content script's eight reports to the sidebar, the settings
+     // The content script's six reports to the sidebar, the settings
      // notice among them.
      'state:settingsChanged', 'state:tableActivated', 'state:tableSwitched',
-     'state:rangeError', 'state:rangeOk', 'state:applyBlocked', 'state:applyOk',
+     'state:rangeError', 'state:rangeOk',
      'state:previewSamplesChanged'].sort());
 
   // Every moved topic, each with the family and route the topic table states.
@@ -1501,15 +1454,13 @@ const PENDING_FILL_ROWS = [
     'state:sidebarClosed': ['state-change', 'extension-pages'],
     'state:pageUnloaded': ['state-change', 'extension-pages'],
     'intent:updateMenuLabel': ['intent', 'extension-pages'],
-    // The content script's eight reports. Every one broadcasts: the content
+    // The content script's six reports. Every one broadcasts: the content
     // script holds no tabs interface, and the sidebar is an extension page.
     'state:settingsChanged': ['state-change', 'extension-pages'],
     'state:tableActivated': ['state-change', 'extension-pages'],
     'state:tableSwitched': ['state-change', 'extension-pages'],
     'state:rangeError': ['state-change', 'extension-pages'],
     'state:rangeOk': ['state-change', 'extension-pages'],
-    'state:applyBlocked': ['state-change', 'extension-pages'],
-    'state:applyOk': ['state-change', 'extension-pages'],
     'state:previewSamplesChanged': ['state-change', 'extension-pages'],
   };
   for (const name of Object.keys(WORKER_TOPICS)) {
@@ -1779,28 +1730,25 @@ const PENDING_FILL_ROWS = [
   const EXPECTED_SEQUENCES = {
     // A press on the ACTIVE table. The settings write comes first and lands
     // on the pressed table: the write's settings notice leads the sequence, carrying the flipped
-    // enabled to the sidebar, and the apply that follows sends its own
-    // state:applyOk.
+    // enabled to the sidebar, and the apply that follows sends the range
+    // status.
     'true': [
       { action: 'state:settingsChanged', source: 'page',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
-      { action: 'state:applyOk' },
       { action: 'state:rangeOk' },
       { action: 'intent:updateMenuLabel', title: 'Toggle table' },
     ],
     // A press on a table that is NOT the active one applies the pressed
     // table's own settings to it, whatever the sidebar is doing.
     //
-    // state:tableSwitched leads so the sidebar lifts the previous table's lock
-    // before this table's own state:applyBlocked/state:applyOk lands, and the
-    // settings notice after it describes the newly active table. No
+    // state:tableSwitched leads, so the settings notice after it describes the
+    // newly active table. No
     // state:previewSamplesChanged — the sidebar's pull chain ends in the
     // preview fetch.
     'false': [
       { action: 'state:tableSwitched' },
       { action: 'state:settingsChanged', source: 'page',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
-      { action: 'state:applyOk' },
       { action: 'state:rangeOk' },
       { action: 'intent:updateMenuLabel', title: 'Toggle table' },
     ],
@@ -3088,40 +3036,11 @@ function issue328SettingsOf(table) {
     sent.length = 0;
     withCreateTreeWalker(() => askContentScript({ action: 'state:sidebarOpened' }));
     eq('sidebar open: no apply runs on the simplified table',
-      sent.filter((m) => m.action === 'state:applyOk' || m.action === 'state:applyBlocked').length, 0);
+      sent.filter((m) => ['state:rangeOk', 'state:rangeError', 'intent:updateMenuLabel'].includes(m.action)).length, 0);
     eq('sidebar open: the simplified cells stay as the toggle left them',
       [isTableRounded(table), table._cells[3].innerText], [true, simplified]);
     eq('sidebar open: the sidebar is told to re-read the active table',
       sent.some((m) => m.action === 'state:previewSamplesChanged'), true);
-  });
-})();
-
-// The settings read carries the active table's lock state, so the sidebar
-// learns the lock whenever it reads. A table is locked while a cell
-// shows the simplified marker and the registry holds no original for it. The
-// read changes nothing on the page.
-(function issue500_theSettingsReadCarriesTheLockState() {
-  runPressFixture(() => {
-    eq('lock on read: no active table answers unlocked',
-      askContentScript({ action: 'request:settings' }).locked, false);
-
-    const table = makePressTable('8,584,629');
-    DR_STORE.setSelectedTable(table);
-    eq('lock on read: a raw table answers unlocked',
-      askContentScript({ action: 'request:settings' }).locked, false);
-
-    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
-    eq('lock on read: a simplified table whose originals the registry holds answers unlocked',
-      askContentScript({ action: 'request:settings' }).locked, false);
-
-    // The unrestorable pairing: the marker stays, the original goes.
-    const cell = table._cells[3];
-    DR_STORE.deleteTableOriginal(table, cell);
-    const shown = cell.innerText;
-    eq('lock on read: a marked cell with no original answers locked',
-      askContentScript({ action: 'request:settings' }).locked, true);
-    eq('lock on read: the read leaves the cell as it stood',
-      [cell.classList.contains('dr-ext-rounded'), cell.innerText], [true, shown]);
   });
 })();
 
@@ -3395,8 +3314,6 @@ function issue328SettingsOf(table) {
       DR_STORE.getTableFingerprint(grid.scrollPaneEl).columnCount, 4);
     eq('fingerprint column change: the press after the change turns simplification on',
       DR_STORE.getTableSettings(grid.scrollPaneEl).enabled, true);
-    eq('fingerprint column change: the press reports no apply block',
-      sent.filter((m) => m.action === 'state:applyBlocked').length, 0);
     eq('fingerprint column change: the fresh entry\'s form is simplified',
       isTableRounded(grid.scrollPaneEl), true);
     eq('fingerprint column change: the fresh entry\'s originals carry the new column\'s text',
@@ -3434,8 +3351,6 @@ function issue328SettingsOf(table) {
 
     eq('fingerprint added column: the pane registers fresh',
       DR_STORE.hasTable(grid.scrollPaneEl), true);
-    eq('fingerprint added column: the press reports no apply block',
-      sent.filter((m) => m.action === 'state:applyBlocked').length, 0);
     eq('fingerprint added column: the fresh entry\'s originals carry the new column\'s text',
       DR_STORE.getTableOriginalText(grid.scrollPaneEl, addedCell), '412,905');
     eq('fingerprint added column: the fresh entry\'s originals carry a surviving cell\'s raw text',
@@ -3735,7 +3650,7 @@ function issue328SettingsOf(table) {
     eq('fingerprint move: the fresh table holds the shipped defaults with the press\'s on',
       fresh && DR_STORE.getTableSettings(fresh), Object.assign({}, DR_DEFAULTS, { enabled: true }));
     eq('fingerprint move: a shape change still runs exactly one apply',
-      sent.filter((m) => m.action === 'state:applyOk').length, 1);
+      sent.filter((m) => m.action === 'state:rangeOk' || m.action === 'state:rangeError').length, 1);
     eq('fingerprint move: a shape change publishes the table switch once',
       sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
     const notices = sent.filter((m) => m.action === 'state:settingsChanged');
@@ -3789,64 +3704,6 @@ function issue328SettingsOf(table) {
       DR_STORE.getSelectedTable() === table, true);
     eq('refilled apply: the table holds the written settings',
       DR_STORE.getTableSettings(table), written);
-
-    forgetRegisteredTable(table);
-  });
-})();
-
-// --- The second entry point: a sidebar change. The shape check runs before
-// the write and its apply's reset, so a locked table whose content the page
-// replaced registers fresh and the apply proceeds. ---
-
-(function shapeFingerprint_aLockedTableWhoseShapeChangedRegistersFresh() {
-  runPressFixture(({ sent }) => {
-    const table = makeToggleTable([
-      [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
-      [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
-    ]);
-    // The unrestorable pairing: a cell wearing the simplified marker that the
-    // registry holds no original for.
-    table._cells[3].classList.add('dr-ext-rounded');
-    const removedPillboxes = registerFingerprintedTable(table);
-    DR_STORE.setSelectedTable(table);
-
-    sent.length = 0;
-    withCreateTreeWalker(function () {
-      withToggleDocumentMock(function () {
-        applySidebarRounding(table);
-      });
-    });
-    eq('fingerprint lock: the locked table blocks the apply before the change (precondition)',
-      sent.filter((m) => m.action === 'state:applyBlocked').length, 1);
-
-    // The page replaces the result: fresh cells, and a different header text.
-    const replacement = makeToggleTable([
-      [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q2' }],
-      [{ tag: 'td', text: 'South' }, { tag: 'td', text: '918,554' }],
-    ]);
-    table.rows = replacement.rows;
-    table._cells = replacement._cells;
-
-    sent.length = 0;
-    withCreateTreeWalker(function () {
-      withToggleDocumentMock(function () {
-        askContentScript({ action: 'request:applySettings',
-          settings: DR_STORE.getTableSettings(table) });
-      });
-    });
-
-    eq('fingerprint lock: the replaced table publishes no apply block',
-      sent.filter((m) => m.action === 'state:applyBlocked').length, 0);
-    eq('fingerprint lock: the replaced table registers fresh',
-      DR_STORE.hasTable(table), true);
-    eq('fingerprint lock: the fresh fingerprint carries the new header text',
-      DR_STORE.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q2'] });
-    eq('fingerprint lock: the discard takes the old pillbox off the page',
-      removedPillboxes.length, 1);
-    eq('fingerprint lock: the apply reports success',
-      sent.filter((m) => m.action === 'state:applyOk').length, 1);
-    eq('fingerprint lock: the apply publishes one table switch',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
 
     forgetRegisteredTable(table);
   });
@@ -3996,7 +3853,7 @@ function issue328SettingsOf(table) {
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 8, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 9, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting logs its own row, and that row lands in the capture',
@@ -4577,8 +4434,8 @@ function issue328SettingsOf(table) {
     if (!/^(intent|state|request):[a-z][A-Za-z]*$/.test(topic)) allNamed = false;
   }
   eq('one mechanism: every topic name follows the family:name style', allNamed, true);
-  eq('one mechanism: the table holds all eighteen cross-context topics plus the four same-context ones',
-    Object.keys(DR_BUS.TOPICS).length, 22);
+  eq('one mechanism: the table holds all sixteen cross-context topics plus the four same-context ones',
+    Object.keys(DR_BUS.TOPICS).length, 20);
 })();
 
 // --- The responders answer through the bus ---

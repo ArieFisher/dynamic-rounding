@@ -62,12 +62,11 @@ DR_LOG.onRow((row) => {
 });
 
 // The sidebar's settings apply: write the active table's settings and apply
-// them. The sidebar leaves the on/off value out while the lock forces its
-// switch on, and the merge keeps the table's own value then. The shape check
-// runs before the write, so a change landing on a table the page refilled
-// writes the fresh registration, and a shape change that registers nothing
-// stops the write. With no table active nothing is written. The answer carries
-// no data: the sidebar reads that someone answered and stays bound.
+// them. The shape check runs before the write, so a change landing on a
+// table the page refilled writes the fresh registration, and a shape change
+// that registers nothing stops the write. With no table active nothing is
+// written. The answer carries no data: the sidebar reads that someone
+// answered and stays bound.
 DR_BUS.respond('request:applySettings', ({ settings }) => {
   const active = DR_STORE.getSelectedTable();
   const target = active && revalidateTableShape(active).table;
@@ -89,8 +88,8 @@ DR_BUS.respond('request:applySettings', ({ settings }) => {
 //      simplify it, then read "simplified" and write off, and the second
 //      apply would reset it — the press would land back where it started.
 //   2. Activation precedes the write, so the sidebar receives the new
-//      active table before the settings notice and any APPLY_BLOCKED/
-//      APPLY_OK for it. The existing suite pins that order.
+//      active table before the settings notice for it. The existing suite
+//      pins that order.
 //   3. Exactly one settings write per press: the flipped on/off value, onto
 //      the pressed table's own settings. Every other setting, the range
 //      expression included, keeps the table's value, because each table
@@ -225,15 +224,9 @@ DR_BUS.subscribe('state:sidebarOpened', () => {
 // The sidebar's three reads of the model. Each answers from the tab's own
 // copy — the sidebar holds none of its own, so a close and reopen loses
 // nothing. The settings read answers the active table's settings; with no
-// table active, the model answers the shipped defaults. It also answers
-// whether the active table is locked, so a sidebar that missed the one-time
-// notice after an apply still shows the lock on its next read.
+// table active, the model answers the shipped defaults.
 DR_BUS.respond('request:settings', () => {
-  const selected = DR_STORE.getSelectedTable();
-  return {
-    settings: DR_STORE.getTableSettings(selected),
-    locked: !!selected && tableHasUnrestorableCells(selected),
-  };
+  return { settings: DR_STORE.getTableSettings(DR_STORE.getSelectedTable()) };
 });
 
 // No active table answers nulls rather than nothing: the sidebar reads a
@@ -256,29 +249,16 @@ window.addEventListener('pagehide', () => {
 //
 // Every caller runs the shape check first and passes the table it returns,
 // so a table the page refilled is discarded and registered fresh rather than
-// reset against originals that belong to cells no longer on the screen. The
-// locked path below depends on that order for the same reason: a locked
-// table whose shape changed is a replaced table, and its lost originals stop
-// mattering once the entry holding them is gone.
+// reset against originals that belong to cells no longer on the screen.
+//
+// An unrestorable cell (see restoreTable's KNOWN ACCEPTED COST) keeps its
+// simplified text through the reset, and the simplification pass then reads
+// that text as the cell's own: it simplifies it again and records it as the
+// original. The cost is accepted; a page reload clears it.
 function applySidebarRounding(table) {
   const opts = DR_STORE.getTableSettings(table);
   ensureHighlightStyleInjected();
-  const unrestorableCount = resetTable(table);
-  if (unrestorableCount > 0) {
-    // The blocked case: at least one cell's registry original is gone (a content-script re-injection — see
-    // restoreTable's KNOWN ACCEPTED COST doc). Running roundTable now would
-    // round the already-rounded text, stamp a false "Original: ..." title
-    // over the one attribute that still holds the truth, and record the
-    // rounded value as the registry original of record. resetTable already
-    // left every such cell untouched and the appliedFlag truthful; tell the
-    // sidebar why nothing changed and stop. APPLY_OK below clears the
-    // notice once an apply works again (a table switch, or the site
-    // re-rendered the table with fresh cells).
-    DR_LOG.warn("Dynamic Rounding: apply blocked; " + unrestorableCount + " cell(s) unrestorable.");
-    DR_BUS.publish('state:applyBlocked', { count: unrestorableCount });
-    return;
-  }
-  DR_BUS.publish('state:applyOk', {});
+  resetTable(table);
   if (opts.enabled !== false) {
     const result = roundTable(table, opts);
     sendRangeStatusMessage(result);
@@ -503,10 +483,10 @@ function revalidateTableShape(table, opts = {}) {
   // place leaves the extension's own simplified text on those surviving
   // cells, with its marker class on them. Discarding the entry first would
   // drop the originals behind that text: the fresh registration would read
-  // the simplified values as the cells' own, the apply would count every
-  // one of them unrestorable, and the table would stand locked with no route
-  // back. Restoring first puts raw text in every surviving cell, so the
-  // fresh registration records its fingerprint over raw text and starts raw.
+  // the simplified values as the cells' own, and every one of them would be
+  // unrestorable, with no route back to its original. Restoring first puts
+  // raw text in every surviving cell, so the fresh registration records its
+  // fingerprint over raw text and starts raw.
   // A cell whose original is gone stays as it is, the same as any other
   // restore. The originals go back into the cells and nowhere else, so none
   // of them reaches the fresh entry.
@@ -669,8 +649,8 @@ function registryOriginalsPort(table) {
 // of those for a cell that was NOT actually restored would claim a recovery
 // that did not happen and destroy data that was still recoverable by eye
 // even though the registry could no longer recover it programmatically.
-// Returns the count of cells left unrestored, so a caller can tell a
-// genuine restore from a no-op one.
+// Returns the count of cells left unrestored; the reset sets the applied
+// flag from it.
 function restoreTable(table) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
   if (roundedCells.length === 0) return 0;
@@ -684,6 +664,12 @@ function restoreTable(table) {
     releaseCell(table, cell, kind);
   }
   return unrestorableCount;
+}
+
+// A cell showing the simplified marker with no original in the registry.
+// The restore leaves such a cell as it stands.
+function isUnrestorableCell(table, cell) {
+  return !DR_STORE.hasTableOriginal(table, cell);
 }
 
 // Release one simplified cell: put its original text back into every text
@@ -700,11 +686,10 @@ function releaseCell(table, cell, kind) {
   if (kind.hoverText) cell.removeAttribute('title');
 }
 
-// Returns the count of cells restoreTable could not restore (see its doc).
-// A non-zero count means the screen still shows rounded text for at least
-// one cell, so appliedFlag is left at 'simplified' — the truthful state —
-// instead of 'original', which would claim a clean reset that did not
-// happen for every cell.
+// When restoreTable leaves a cell unrestored (see its doc), the screen still
+// shows rounded text for that cell, so appliedFlag is left at 'simplified' —
+// the truthful state — instead of 'original', which would claim a clean
+// reset that did not happen for every cell.
 function resetTable(table) {
   // The re-apply observer stops BEFORE the cell restore, so the restore's
   // own writes run no pass and a queued pass cannot fire after the reset.
@@ -717,7 +702,6 @@ function resetTable(table) {
   const unrestorableCount = restoreTable(table);
   DR_STORE.setTableAppliedFlag(table, unrestorableCount > 0 ? 'simplified' : 'original');
   syncSwitchForTable(table);
-  return unrestorableCount;
 }
 
 // --- Shared adapters between the classification ladder (lib/dr-simplify)
