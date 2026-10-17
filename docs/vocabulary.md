@@ -39,7 +39,7 @@ One term per concept, across every platform and every document. Use the [Retired
 | menu toggle | The "Toggle table" item in the extension's right-click menu. Toggles the active table. |
 | pulse | A brief highlight flashed over the cells a toggle or apply changed, as visual feedback. <br><br>It covers the range expression's cells; with a blank range expression it covers the whole table. |
 | lens | A simplified data set with different assumptions (parameters). |
-| lens control | The sidebar control (under 'advanced' as of this writing) where the user can change `offset_top` and `offset_other`. |
+| lens control | The sidebar control at the top of the sidebar, under the title, where the user can change `offset_top` and `offset_other`. |
 | lens preview | Sample values from different OoM, before and after simplification. |
 | sample | One value shown in the lens preview. |
 | toast | The on-page notice for the newest extension error: one element at the page's bottom right holding the log row's text, removed by a click or after five seconds. A second row replaces the text and restarts the delay, so a warning that repeats shows one toast. |
