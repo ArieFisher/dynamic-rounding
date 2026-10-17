@@ -971,12 +971,13 @@
 
   <section>
     <h2>9. Ambiguous date columns</h2>
-    <p>Three columns of all-numeric dates. In the first, one cell has a first
-      part over twelve, which only a day can be. In the second, no cell settles
-      the reading. In the third, one cell reads day-first and another
-      month-first.</p>
-    <p class="expect">Expect: pillbox at load. The first column shows years.
-      The other two columns stay as written.</p>
+    <p>A column of row labels, then three columns of all-numeric dates. In the
+      first date column, one cell has a first part over twelve, which only a
+      day can be. In the second, no cell settles the reading. In the third, one
+      cell reads day-first and another month-first.</p>
+    <p class="expect">Expect: pillbox at load. The first date column shows
+      years. The row labels and the other two date columns stay as
+      written.</p>
 
     <!--
       Day-first resolved: 25/04/2020 has a first part over twelve, which can only
@@ -991,6 +992,7 @@
     <table>
       <thead>
         <tr>
+          <th scope="col">Case</th>
           <th scope="col">Day-first resolved</th>
           <th scope="col">Ambiguous, held</th>
           <th scope="col">Conflicting, held</th>
@@ -998,16 +1000,19 @@
       </thead>
       <tbody>
         <tr>
+          <th scope="row">First</th>
           <td>25/04/2020</td>
           <td>03/04/2020</td>
           <td>25/04/2021</td>
         </tr>
         <tr>
+          <th scope="row">Second</th>
           <td>03/04/2021</td>
           <td>05/06/2021</td>
           <td>04/25/2021</td>
         </tr>
         <tr>
+          <th scope="row">Third</th>
           <td>07/08/2020</td>
           <td>02/03/2019</td>
           <td>06/07/2020</td>

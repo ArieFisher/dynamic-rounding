@@ -65,7 +65,10 @@
       margin-bottom: 20px;
       transition: opacity 0.15s;
     }
-    .section.disabled {
+    #optionsSection {
+      transition: opacity 0.15s;
+    }
+    #optionsSection.disabled {
       opacity: 0.4;
       pointer-events: none;
     }
@@ -274,6 +277,11 @@
       animation: drSidebarFlash 0.6s ease-in-out;
     }
     /* ----- Capture ----- */
+    /* The section has no title. The padding holds the gap a section title
+       takes: one 15px line of 12px text plus its 8px bottom margin. */
+    #captureSection {
+      padding-top: 23px;
+    }
     .capture-marks {
       display: flex;
       gap: 8px;
@@ -345,81 +353,7 @@
     </label>
   </div>
 
-  <div class="section" id="optionsSection">
-    <div class="toggle-row">
-      <label class="switch">
-        <input type="checkbox" id="simplifyMixedCells">
-        <span class="slider"></span>
-      </label>
-      <span class="toggle-label">words</span>
-    </div>
-    <hr class="divider">
-    <div class="toggle-row">
-      <label class="switch">
-        <input type="checkbox" id="simplifyMixedCurrency">
-        <span class="slider"></span>
-      </label>
-      <span class="toggle-label">currencies</span>
-    </div>
-    <div class="toggle-row">
-      <label class="switch">
-        <input type="checkbox" id="simplifyMixedPercent">
-        <span class="slider"></span>
-      </label>
-      <span class="toggle-label">percentages</span>
-    </div>
-    <div class="toggle-row">
-      <label class="switch">
-        <input type="checkbox" id="simplifyDates">
-        <span class="slider"></span>
-      </label>
-      <span class="toggle-label">dates</span>
-      <select id="dateGranularity" disabled>
-        <option value="month">month</option>
-        <option value="year">year</option>
-        <option value="decade">decade</option>
-        <option value="century">century</option>
-      </select>
-    </div>
-    <div class="toggle-row">
-      <label class="switch">
-        <input type="checkbox" id="simplifyTimes">
-        <span class="slider"></span>
-      </label>
-      <span class="toggle-label">times</span>
-      <select id="timeGranularity" disabled>
-        <option value="hour">hour</option>
-        <option value="minute">minute</option>
-      </select>
-    </div>
-    <hr class="divider">
-    <div class="toggle-row">
-      <label class="switch">
-        <input type="checkbox" id="simplifyFirstRow">
-        <span class="slider"></span>
-      </label>
-      <span class="toggle-label">first row</span>
-    </div>
-    <div class="toggle-row">
-      <label class="switch">
-        <input type="checkbox" id="simplifyFirstColumn">
-        <span class="slider"></span>
-      </label>
-      <span class="toggle-label">first column</span>
-    </div>
-  </div>
-
-  <div class="section" id="rangeSection" hidden>
-    <div class="section-title">Range</div>
-    <input type="text" id="rangeExpr" placeholder="(blank = whole table)" autocomplete="off">
-    <div class="range-help">
-      <code>A</code>, <code>A:D</code>, <code>1:10</code>, <code>B2:E8</code>,
-      or <code>{A1:E8, G3:G}</code>
-    </div>
-  </div>
-
-  <details class="advanced section" id="advancedSection">
-    <summary>Advanced</summary>
+  <div class="section" id="lensSection">
     <div class="slider-block" id="sliderBlock">
       <div class="label-row">
         <span class="lbl top" id="topLabel">largest numbers</span>
@@ -442,12 +376,87 @@
       </div>
       <div class="results-band" id="botBand"></div>
     </div>
+  </div>
+
+  <details class="advanced section" id="advancedSection">
+    <summary>Advanced</summary>
+    <div id="optionsSection">
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="simplifyMixedCells">
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">words</span>
+      </div>
+      <hr class="divider">
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="simplifyMixedCurrency">
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">currencies</span>
+      </div>
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="simplifyMixedPercent">
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">percentages</span>
+      </div>
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="simplifyDates">
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">dates</span>
+        <select id="dateGranularity" disabled>
+          <option value="month">month</option>
+          <option value="year">year</option>
+          <option value="decade">decade</option>
+          <option value="century">century</option>
+        </select>
+      </div>
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="simplifyTimes">
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">times</span>
+        <select id="timeGranularity" disabled>
+          <option value="hour">hour</option>
+          <option value="minute">minute</option>
+        </select>
+      </div>
+      <hr class="divider">
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="simplifyFirstRow">
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">first row</span>
+      </div>
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="simplifyFirstColumn">
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">first column</span>
+      </div>
+    </div>
   </details>
+
+  <div class="section" id="rangeSection" hidden>
+    <div class="section-title">Range</div>
+    <input type="text" id="rangeExpr" placeholder="(blank = whole table)" autocomplete="off">
+    <div class="range-help">
+      <code>A</code>, <code>A:D</code>, <code>1:10</code>, <code>B2:E8</code>,
+      or <code>{A1:E8, G3:G}</code>
+    </div>
+  </div>
 
   <div class="status" id="status">Right-click a table to connect it here.</div>
 
   <div class="section" id="captureSection">
-    <div class="section-title">Capture</div>
     <div class="capture-marks" aria-label="Capture mark">
       <button type="button" class="capture-mark" data-mark="looks-right" aria-pressed="false" title="Looks right">&#128077;</button>
       <button type="button" class="capture-mark" data-mark="not-sure" aria-pressed="false" title="Not sure">&#129300;</button>
