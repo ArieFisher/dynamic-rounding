@@ -40,9 +40,7 @@
  *
  * The sidebar likeness is deliberately crude — positions and states, no
  * pixel fidelity. The JSON island carries the precision; the likeness only
- * has to show what stood where. Status wording (the locked
- * message) arrives as a value from the caller, so this file holds no copy
- * of text that already lives elsewhere.
+ * has to show what stood where.
  */
 
 const CAPTURE_CSP = [
@@ -96,7 +94,7 @@ const CAPTURE_STYLES = [
   '.cap-table th { background: #f2f2f2; }',
   '.cap-simplified { text-decoration: underline dotted #3d85c6; cursor: help; }',
   '.cap-lost { color: #8a6d3b; font-style: italic; }',
-  '.cap-locked, .cap-empty { color: #8a6d3b; background: #fcf8e3; padding: 6px 10px; border-radius: 4px; margin: 8px 0; }',
+  '.cap-empty { color: #8a6d3b; background: #fcf8e3; padding: 6px 10px; border-radius: 4px; margin: 8px 0; }',
   '.cap-switch { display: flex; justify-content: space-between; margin: 2px 0; }',
   '.cap-switch b { font-weight: 600; }',
   '.cap-rail { position: relative; height: 6px; background: #ddd; border-radius: 3px; margin: 18px 4px 22px; }',
@@ -320,7 +318,7 @@ function renderCapTable(table, mode) {
 // The bound table twice: as displayed, then with the originals, so both
 // forms are readable without hovering. The hover reveal on the displayed
 // copy stays for cell-by-cell comparison.
-function renderBoundTable(state, lockedStatusText) {
+function renderBoundTable(state) {
   const table = state.activeTableIndex === null || state.activeTableIndex === undefined
     ? null
     : state.tables[state.activeTableIndex];
@@ -336,15 +334,11 @@ function renderBoundTable(state, lockedStatusText) {
       escapeHtml(table.error || '') +
       '. The state below records everything the extension had.</p>';
   }
-  const lockedHtml = table.locked
-    ? '<p class="cap-locked">' + escapeHtml(lockedStatusText || '') + '</p>'
-    : '';
   const caption = escapeHtml(table.kind) + ' table, ' +
     escapeHtml(String(table.rowCount)) + ' row(s) × ' +
     escapeHtml(String(table.columnCount)) + ' column(s), showing ' +
     escapeHtml(table.appliedFlag === 'simplified' ? 'simplified values' : 'original values');
   return '<h3>' + caption + '</h3>' +
-    lockedHtml +
     renderCapTable(table, 'displayed') +
     renderNote('Hover a dotted cell to see its original.') +
     '<h3>The same table, with the originals</h3>' +
@@ -366,8 +360,7 @@ function renderRegistrySection(state) {
     const label = table.kind === 'unknown'
       ? 'serialization failed: ' + (table.error || '')
       : table.kind + ', ' + table.rowCount + ' row(s) × ' + table.columnCount +
-        ' column(s), form: ' + (table.appliedFlag === 'simplified' ? 'simplified' : 'raw') +
-        (table.locked ? ', locked' : '');
+        ' column(s), form: ' + (table.appliedFlag === 'simplified' ? 'simplified' : 'raw');
     return '<div class="cap-switch"><span>#' + (index + 1) + ' — ' + escapeHtml(label) +
       '</span><b>' + (bound ? 'bound' : '') + '</b></div>';
   }).join('');
@@ -456,7 +449,7 @@ function renderScreenshotSection(state, dataUrl) {
 // The sidebar likeness: positions and states from plain values, rendered
 // open, under this file's own stylesheet — no page CSS, no cloned nodes,
 // and deliberately crude. The JSON island carries the precision.
-function renderSidebarLikeness(state, lockedStatusText) {
+function renderSidebarLikeness(state) {
   const view = state.sidebarView;
   if (!view) {
     return '<div class="cap-panel"><p class="cap-empty">No sidebar view state was recorded.</p></div>';
@@ -504,7 +497,6 @@ function renderSidebarLikeness(state, lockedStatusText) {
     '<h3>Lens preview</h3>' +
     bandRows(lens.top) +
     bandRows(lens.bottom) +
-    (view.locked ? '<p class="cap-locked">' + escapeHtml(lockedStatusText || '') + '</p>' : '') +
     '<p class="cap-status">' + escapeHtml(displayValue(view.status)) + '</p>' +
     '</div>';
 }
@@ -591,9 +583,7 @@ function renderFixtureSeed(state) {
 /**
  * The whole capture document. input.state is the full capture state — it
  * becomes the JSON island verbatim, and every visible section renders from
- * it. input.lockedStatusText is the locked-table wording, passed in as a
- * value because it already lives in the sidebar and the pill title.
- * input.screenshotDataUrl is the screenshot the sidebar took, passed beside
+ * it. input.screenshotDataUrl is the screenshot the sidebar took, passed beside
  * the state so the JSON island never carries the image. The sections stack
  * in reading order: the mark and remarks, the sidebar likeness, the
  * screenshot, the bound table, the registry, the detection settings, the logs,
@@ -601,7 +591,6 @@ function renderFixtureSeed(state) {
  */
 function buildCaptureDocument(input) {
   const state = input.state;
-  const lockedStatusText = input.lockedStatusText;
   const screenshotDataUrl = input.screenshotDataUrl;
   const meta = state.meta || {};
   // data-dr-capture is the capture marker: a saved capture holds a real
@@ -619,9 +608,9 @@ function buildCaptureDocument(input) {
     renderCaptureHeader(state) +
     '<main>' +
     renderMarkAndRemarks(state) +
-    '<section><h2>Sidebar</h2>' + renderSidebarLikeness(state, lockedStatusText) + '</section>' +
+    '<section><h2>Sidebar</h2>' + renderSidebarLikeness(state) + '</section>' +
     renderScreenshotSection(state, screenshotDataUrl) +
-    '<section><h2>Bound table</h2>' + renderBoundTable(state, lockedStatusText) + '</section>' +
+    '<section><h2>Bound table</h2>' + renderBoundTable(state) + '</section>' +
     renderRegistrySection(state) +
     renderDetectionSettingsSection(state) +
     renderCaptureLogs(state) +

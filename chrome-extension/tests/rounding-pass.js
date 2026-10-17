@@ -1666,7 +1666,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('grid stacked: an untouched "$" piece holds the same original and written text',
       DR_STORE.getTableOriginal(grid.wrapperEl, dollar).pieces,
       [{ text: '$', written: '$' }, { text: '337.91', written: '350' }]);
-    eq('grid stacked: reset restores every cell', resetTable(grid.wrapperEl), 0);
+    resetTable(grid.wrapperEl);
+    eq('grid stacked: reset restores every cell', DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
     eq('grid stacked: reset puts every piece back', grid.cellEls.map(pieceTextsOf), originalPieces);
     eq('grid stacked: reset clears every record',
       grid.cellEls.some((cell) => DR_STORE.hasTableOriginal(grid.wrapperEl, cell)), false);
@@ -1944,7 +1945,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // written text for the first stored piece, so it matches that piece by text
 // and takes its original back before the record drops: the re-apply then
 // simplifies the cell from 125, the lens preview reads 125, and reset puts
-// 125 back and counts nothing unrestorable.
+// 125 back and leaves nothing unrestorable.
 (function gridStacked_aRoundedCellThatLostAPiece() {
   const grid = makeE2EGridWrapper([['125126']]);
   const [cell] = grid.cellEls;
@@ -1961,7 +1962,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
       { threw: null, pieces: ['150'], original: '125' });
     eq('grid stacked: the lens preview reads the matched original in a cell that lost a piece',
       collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((c) => c.num), [125]);
-    eq('grid stacked: reset counts nothing unrestorable after a cell lost a piece', resetTable(grid.wrapperEl), 0);
+    resetTable(grid.wrapperEl);
+    eq('grid stacked: reset leaves nothing unrestorable after a cell lost a piece',
+      DR_STORE.getTableAppliedFlag(grid.wrapperEl), 'original');
     eq('grid stacked: reset puts the matched original back', pieceTextsOf(cell), ['125']);
   } finally {
     DR_STORE.unregisterTable(grid.wrapperEl);
@@ -3820,17 +3823,14 @@ function everyRowRead(kind, largeIn) {
 // exactly that: instance 1 rounds the tables; instance 2 (fresh registry,
 // same already-rounded DOM) is what a real re-injected script would face.
 //
-// A re-injected instance still cannot recover the true original from its
-// own (empty) registry — that half of the KNOWN ACCEPTED COST comment on
-// restoreTable (content.js) holds. What this test pins is the consequence
-// that is NOT accepted: an unrestorable cell must be left exactly as
-// found — marker, title, and text untouched — instead of resetTable
-// stripping the marker and title off a cell it could not actually restore,
-// and instead of a restore followed by a re-run of roundTable over
-// already-rounded text, stamping a FALSE "Original: ..." title over the
-// one attribute that still held the truth. Scenario A drives resetTable
-// directly (the "reset" recovery action); scenario B drives the actual
-// toggle-click wiring end to end. ---
+// A re-injected instance cannot recover the true original from its own
+// (empty) registry — the KNOWN ACCEPTED COST comment on restoreTable
+// (content.js). Scenario A pins the reset: an unrestorable cell is left
+// exactly as found — marker, title, and text untouched — instead of
+// resetTable stripping the marker and title off a cell it could not
+// actually restore. Scenario B pins the accepted cost of an apply with the
+// table on: the pass reads the cell's simplified text as its own, simplifies
+// it again, and records that text as the original. ---
 (function registrySprint_reinjectionUnrestorableResetStaysTruthful() {
   function makeReinjectionFixtureTable(dataText) {
     const table = makeToggleTable([
@@ -3859,16 +3859,11 @@ function everyRowRead(kind, largeIn) {
   }
 
   const { table: table1, dataCell: dataCell1 } = makeReinjectionFixtureTable('12,345');
-  const { table: table2, dataCell: dataCell2 } = makeReinjectionFixtureTable('67,890');
   const { table: table3, dataCell: dataCell3 } = makeReinjectionFixtureTable('54,321');
-  // Scenario D fixtures: table5 is rounded by instance 1 and
-  // then untouched — the pillbox's wrong-on-arrival case. table6 starts
-  // unrounded and is later rounded BY instance 2 itself — the sanity case
-  // proving the lock keys on missing registry records, not on "rounded".
-  const { table: table5, dataCell: dataCell5 } = makeReinjectionFixtureTable('9,876');
+  // Scenario C fixture: table6 starts unrounded and is later rounded BY
+  // instance 2 itself.
   const { table: table6 } = makeReinjectionFixtureTable('8,765');
   const trueOriginal1 = '12,345';
-  const trueOriginal2 = '67,890';
   const trueOriginal3 = '54,321';
 
   // A minimal document shared by every eval'd instance below — this is the
@@ -3921,13 +3916,9 @@ function everyRowRead(kind, largeIn) {
       globalThis.__ri1_isTableRounded = isTableRounded;
     `);
     global.__ri1_roundTable(table1, DR_DEFAULTS);
-    global.__ri1_roundTable(table2, DR_DEFAULTS);
     global.__ri1_roundTable(table3, DR_DEFAULTS);
-    global.__ri1_roundTable(table5, DR_DEFAULTS);
     const roundedText1 = dataCell1.innerText;
     const roundedTitle1 = dataCell1.title;
-    const roundedText2 = dataCell2.innerText;
-    const roundedTitle2 = dataCell2.title;
     const roundedText3 = dataCell3.innerText;
     const roundedTitle3 = dataCell3.title;
 
@@ -3948,7 +3939,7 @@ function everyRowRead(kind, largeIn) {
     // dr-ext-rounded) but this eval's DR_STORE is BRAND NEW — instance 1's
     // registry (and its stored true originals) is unreachable garbage now,
     // exactly as a real content-script reload would leave it. Its bus
-    // listener is kept, so scenario C can deliver the sidebar's apply the
+    // listener is kept, so scenario B can deliver the sidebar's apply the
     // way Chrome does. ---
     let ri2Listener = null;
     global.chrome.runtime.onMessage.addListener = (fn) => { ri2Listener = fn; };
@@ -3956,7 +3947,6 @@ function everyRowRead(kind, largeIn) {
       globalThis.__ri2_isTableRounded = isTableRounded;
       globalThis.__ri2_resetTable = resetTable;
       globalThis.__ri2_DR_STORE = DR_STORE;
-      globalThis.__ri2_DR_BUS = DR_BUS;
       globalThis.__ri2_roundTable = roundTable;
       globalThis.__ri2_syncSwitchForTable = syncSwitchForTable;
       globalThis.__ri2_tableToggles = tableToggles;
@@ -3969,10 +3959,8 @@ function everyRowRead(kind, largeIn) {
     // (or an equivalent toggle-to-original click). Drive the SAME
     // production primitive (resetTable) the restoreTable KNOWN ACCEPTED COST
     // comment discusses. ---
-    const unrestorableCount = global.__ri2_resetTable(table1);
+    global.__ri2_resetTable(table1);
 
-    eq('re-injection reset: resetTable reports the one cell it could not restore',
-      unrestorableCount, 1);
     eq('re-injection reset: the dr-ext-rounded marker SURVIVES — the screen still shows rounded text, so the marker must stay truthful instead of claiming a clean reset that did not happen',
       dataCell1.classList.contains('dr-ext-rounded'), true);
     eq('re-injection reset: the title attribute SURVIVES — it is the last remaining copy of the true original and must not be stripped when nothing was actually restored',
@@ -3982,144 +3970,51 @@ function everyRowRead(kind, largeIn) {
     eq('re-injection reset: appliedFlag stays \'simplified\' — the truthful state, since the screen still shows rounded text',
       global.__ri2_DR_STORE.getTableAppliedFlag(table1), 'simplified');
 
-    // --- Scenario B: the pillbox-press path —
-    // drives the exact wiring a real press on the pillbox uses
-    // (ui-toggle.js's click handler publishes this same intent), end to
-    // end through content.js's intent:toggleTable subscriber, the settings
-    // write it makes, and the apply that follows. One click on a
-    // re-injected, already-rounded table must not double-round the text or
-    // stamp a false title over it. ---
-    global.__ri2_DR_BUS.publish('intent:toggleTable', { table: table2 });
-
-    eq('re-injection click path: one click after re-injection does not strip the dr-ext-rounded marker',
-      dataCell2.classList.contains('dr-ext-rounded'), true);
-    eq('re-injection click path: one click does not rewrite the title with a false original (no double-round)',
-      dataCell2.title, roundedTitle2);
-    eq('re-injection click path: one click leaves the displayed text unchanged',
-      dataCell2.innerText, roundedText2);
-
-    // --- Scenario C: the sidebar apply path — the one other
-    // resetTable caller. Drives the real wiring end to end: a sidebar
+    // --- Scenario B: the sidebar apply with the table on, on a table holding
+    // an unrestorable cell. Drives the real wiring end to end: a sidebar
     // settings change reaches the request:applySettings responder, which
-    // writes the active table's settings and calls applySidebarRounding on
-    // it. Running roundTable over the already-rounded text would stamp a
-    // false "Original: <rounded value>" title over the surviving truth and
-    // record the rounded value as the registry original of record. The apply
-    // must block instead, and tell the sidebar why nothing changed.
+    // writes the active table's settings and runs the apply. The reset leaves
+    // the cell's simplified text in place, and the pass then reads that text
+    // as the cell's own: it simplifies it again and records it as the
+    // original. That cost is accepted; a page reload clears it.
     //
-    // The new settings must DIFFER from the ones instance 1 rounded with:
+    // The new settings differ from the ones instance 1 rounded with:
     // re-rounding under identical settings is a value-preserving no-op the
-    // engine skips, which would hide the title-stamping this test exists
-    // to catch. offsetTop 1 re-rounds instance 1's '55,000' to '100,000',
-    // so an unguarded apply visibly rewrites the cell and its title. ---
+    // engine skips. offsetTop 1 re-rounds instance 1's text to a coarser
+    // value, so the second simplification shows in the cell and its title. ---
     const sentMessages = [];
     global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
     global.__ri2_DR_STORE.setSelectedTable(table3);
-    ri2Listener({ action: 'request:applySettings', settings: Object.assign({}, DR_DEFAULTS, { offsetTop: 1 }) },
+    ri2Listener({ action: 'request:applySettings', settings: Object.assign({}, DR_DEFAULTS, { enabled: true, offsetTop: 1 }) },
       {}, () => {});
 
-    eq('re-injection sidebar apply: the dr-ext-rounded marker survives',
+    eq('re-injection sidebar apply: the apply simplifies the unrestorable cell\'s displayed text again',
+      dataCell3.innerText !== roundedText3, true);
+    eq('re-injection sidebar apply: the registry records the simplified text as the cell\'s original',
+      global.__ri2_DR_STORE.getTableOriginalText(table3, dataCell3), roundedText3);
+    eq('re-injection sidebar apply: the title holds the simplified text as the original',
+      dataCell3.title, `Original: ${roundedText3}`);
+    eq('re-injection sidebar apply: the cell keeps the simplified marker',
       dataCell3.classList.contains('dr-ext-rounded'), true);
-    eq('re-injection sidebar apply: the title still holds the TRUE original — not a re-stamped "Original: <rounded value>"',
-      dataCell3.title, roundedTitle3);
-    eq('re-injection sidebar apply: the displayed text is unchanged (no double-round)',
-      dataCell3.innerText, roundedText3);
-    eq('re-injection sidebar apply: appliedFlag stays \'simplified\' — the screen still shows rounded text',
+    eq('re-injection sidebar apply: appliedFlag reads \'simplified\'',
       global.__ri2_DR_STORE.getTableAppliedFlag(table3), 'simplified');
-    eq('re-injection sidebar apply: the registry records NO original for the unrestorable cell — a rounded value must not become the original of record',
-      global.__ri2_DR_STORE.getTableOriginal(table3, dataCell3), undefined);
-    eq('re-injection sidebar apply: exactly one state:applyBlocked notice is sent',
-      sentMessages.filter((m) => m.action === 'state:applyBlocked').length, 1);
-    eq('re-injection sidebar apply: the state:applyBlocked notice carries the unrestorable-cell count',
-      (sentMessages.find((m) => m.action === 'state:applyBlocked') || {}).count, 1);
-    eq('re-injection sidebar apply: no state:applyOk — the apply was refused',
-      sentMessages.some((m) => m.action === 'state:applyOk'), false);
-    eq('re-injection sidebar apply: no state:rangeOk/state:rangeError — roundTable never ran',
-      sentMessages.some((m) => m.action === 'state:rangeOk' || m.action === 'state:rangeError'), false);
+    eq('re-injection sidebar apply: the apply runs the simplification pass, which sends the range status',
+      sentMessages.some((m) => m.action === 'state:rangeOk' || m.action === 'state:rangeError'), true);
+    eq('re-injection sidebar apply: no blocked-apply notice is sent',
+      sentMessages.some((m) => m.action === 'state:applyBlocked'), false);
 
-    // --- Scenario D: the on-page pillbox on a locked table. A
-    // table is locked when it shows cells wearing dr-ext-rounded that the
-    // registry has no record for — the post-re-injection state. The pillbox
-    // must render pressed AND locked on arrival (before any interaction):
-    // aria-pressed 'true' because the screen shows simplified text,
-    // aria-disabled 'true' plus a hover title because nothing here can
-    // change it. A table instance 2 rounded ITSELF (registry records
-    // present) must stay a normal, unlocked pillbox — the lock keys on
-    // missing records, not on "rounded". ---
-    const stub5 = makeMockButton();
-    global.__ri2_tableToggles.set(table5, stub5);
-    global.__ri2_syncSwitchForTable(table5);
-
-    eq('re-injection pill: locked table renders selected on arrival (screen shows simplified text)',
-      stub5.getAttribute('aria-pressed'), 'true');
-    eq('re-injection pill: locked table renders aria-disabled',
-      stub5.getAttribute('aria-disabled'), 'true');
-    eq('re-injection pill: locked table carries the locked marker class',
-      stub5.classList.contains('dr-ext-morph-locked'), true);
-    eq('re-injection pill: locked table explains itself on hover',
-      typeof stub5.title === 'string' && stub5.title.includes('Reload the page'), true);
-
+    // --- Scenario C: the pillbox sync on fresh and simplified tables. ---
     const stub6 = makeMockButton();
     global.__ri2_tableToggles.set(table6, stub6);
     global.__ri2_syncSwitchForTable(table6);
     eq('re-injection pill: an unrounded table renders unselected',
       stub6.getAttribute('aria-pressed'), 'false');
-    eq('re-injection pill: an unrounded table is not locked',
-      stub6.getAttribute('aria-disabled'), null);
 
     global.__ri2_roundTable(table6, DR_DEFAULTS);
     global.__ri2_syncSwitchForTable(table6);
     eq('re-injection pill: a table THIS instance rounded renders selected',
       stub6.getAttribute('aria-pressed'), 'true');
-    eq('re-injection pill: a table THIS instance rounded is NOT locked — its registry records exist',
-      stub6.getAttribute('aria-disabled'), null);
-    eq('re-injection pill: a table THIS instance rounded carries no locked class',
-      stub6.classList.contains('dr-ext-morph-locked'), false);
-
-    // --- Scenario E: toggle clicks on a locked table must not
-    // oscillate the pillbox. Alternating clicks must not flip appliedFlag
-    // between 'simplified' and 'original' (both restore branches no-op on
-    // cells without registry records), which would toggle the pillbox
-    // visually while the table never changed. ---
-    const stub2 = makeMockButton();
-    global.__ri2_tableToggles.set(table2, stub2);
-    sentMessages.length = 0;
-
-    global.__ri2_DR_BUS.publish('intent:toggleTable', { table: table2 });
-    eq('re-injection toggle click 1: appliedFlag stays \'simplified\' — the truthful state',
-      global.__ri2_DR_STORE.getTableAppliedFlag(table2), 'simplified');
-    eq('re-injection toggle click 1: the pill stays selected',
-      stub2.getAttribute('aria-pressed'), 'true');
-
-    global.__ri2_DR_BUS.publish('intent:toggleTable', { table: table2 });
-    eq('re-injection toggle click 2: appliedFlag still \'simplified\' — no oscillation',
-      global.__ri2_DR_STORE.getTableAppliedFlag(table2), 'simplified');
-    eq('re-injection toggle click 2: the pill still selected — no oscillation',
-      stub2.getAttribute('aria-pressed'), 'true');
-    eq('re-injection toggle clicks: the pill is locked',
-      stub2.getAttribute('aria-disabled'), 'true');
-    eq('re-injection toggle clicks: displayed text never changed',
-      dataCell2.innerText, roundedText2);
-    eq('re-injection toggle clicks: the title still holds the true original',
-      dataCell2.title, roundedTitle2);
-
-    const notices = sentMessages.filter((m) => m.action === 'state:settingsChanged');
-    // The settings notice carries the table's settings — the value the click wrote — not
-    // the locked table's display state. Each click asks to turn the table
-    // off, because the screen shows it simplified, so the table's settings
-    // and each notice go false. The sidebar guards its own display: each
-    // click's state:applyBlocked lands after its notice, so the lock's forced
-    // ON is the last thing the sidebar shows, and the lift reads the table's
-    // off back — pinned by the issue328 sidebar-harness tests.
-    eq('re-injection toggle clicks: each click\'s settings notice carries the table\'s off, as the click asked',
-      notices.map((m) => m.settings.enabled), [false, false]);
-    eq('re-injection toggle clicks: the table\'s settings hold the user\'s off, even though the locked table cannot change',
-      global.__ri2_DR_STORE.getTableSettings(table2).enabled, false);
-    const actionSeq = sentMessages.map((m) => m.action);
-    eq('re-injection toggle clicks: the last click\'s state:applyBlocked follows its settings notice — the sidebar ends locked',
-      actionSeq.lastIndexOf('state:settingsChanged') !== -1 &&
-      actionSeq.lastIndexOf('state:settingsChanged') < actionSeq.lastIndexOf('state:applyBlocked'), true);
-  } finally {
+    } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
@@ -4621,7 +4516,7 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
 
 // A grid cell the page redraws with fewer text pieces is a
 // rewritten cell. It drops its originals and simplifies fresh, so a restore
-// never stops on it and the table never locks over it.
+// never leaves it unrestorable.
 (function rewrite423_aCellRedrawnWithFewerPiecesSimplifiesFresh() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build([
@@ -4634,10 +4529,10 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
     eq(`#423 fewer pieces (${kind}): the redrawn cell simplifies its new value`, t.text(0, 0), '8,800');
     eq(`#423 fewer pieces (${kind}): the stored original is the redrawn value`,
       DR_STORE.getTableOriginalText(t.table, t.cell(0, 0)), '8,765');
-    const unrestorable = resetTable(t.table);
-    eq(`#423 fewer pieces (${kind}): the restore counts no cell unrestorable and puts back the redrawn value`,
-      { unrestorable, text: t.text(0, 0), form: DR_STORE.getTableAppliedFlag(t.table) },
-      { unrestorable: 0, text: '8,765', form: 'original' });
+    resetTable(t.table);
+    eq(`#423 fewer pieces (${kind}): the restore leaves no cell unrestorable and puts back the redrawn value`,
+      { text: t.text(0, 0), form: DR_STORE.getTableAppliedFlag(t.table) },
+      { text: '8,765', form: 'original' });
   });
 })();
 
@@ -4679,9 +4574,10 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
       t.text(0, 0), '1,600,000 to 1,600,000');
     t.redraw(0, 0, [{ tag: 'b', text: '1,600,000' }, ' to ', { tag: 'b', text: '1,600,000' },
       { tag: 'i', text: ' est.' }]);
-    const unrestorable = resetTable(t.table);
+    resetTable(t.table);
     eq(`#421 duplicate written text (${kind}): a restore before any pass puts each original back in order`,
-      { unrestorable, text: t.text(0, 0) }, { unrestorable: 0, text: '1,613,245 to 1,587,002 est.' });
+      { form: DR_STORE.getTableAppliedFlag(t.table), text: t.text(0, 0) },
+      { form: 'original', text: '1,613,245 to 1,587,002 est.' });
   });
 })();
 
@@ -4695,9 +4591,9 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
     ]);
     roundTableUnder(t.table, RW_OPTS);
     t.redraw(0, 0, '8,765');
-    const unrestorable = resetTable(t.table);
-    eq(`#423 fewer pieces, early restore (${kind}): the page's text stays and nothing counts unrestorable`,
-      { unrestorable, text: t.text(0, 0), marked: t.cell(0, 0).classList.contains('dr-ext-rounded') },
-      { unrestorable: 0, text: '8,765', marked: false });
+    resetTable(t.table);
+    eq(`#423 fewer pieces, early restore (${kind}): the page's text stays and no cell is unrestorable`,
+      { form: DR_STORE.getTableAppliedFlag(t.table), text: t.text(0, 0), marked: t.cell(0, 0).classList.contains('dr-ext-rounded') },
+      { form: 'original', text: '8,765', marked: false });
   });
 })();

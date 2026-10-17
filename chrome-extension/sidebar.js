@@ -11,10 +11,6 @@ const statusEl = document.getElementById('status');
 
 const NO_TABLE_CLASS = 'no-table';
 const NO_TABLE_STATUS_MSG = 'Right-click a table to connect it here.';
-// Shown when the content script blocks an apply because the table's
-// registry originals did not survive a content-script re-injection (the
-// state:applyBlocked topic — see content.js's applySidebarRounding guard).
-const APPLY_BLOCKED_STATUS_MSG = 'This table\'s original values are no longer available. Reload the page, then apply settings again.';
 
 
 // ---- The sidebar serves one tab ----
@@ -22,8 +18,7 @@ const APPLY_BLOCKED_STATUS_MSG = 'This table\'s original values are no longer av
 // A content script publishes by broadcast, because the sidebar is an
 // extension page and a broadcast is what reaches one. A broadcast names no
 // tab, so without a filter a background tab re-simplifying its rows would
-// redraw the sidebar, and a blocked apply there would lock it against a table
-// the user cannot see.
+// redraw the sidebar against a table the user cannot see.
 //
 // The bound tab is the tab the sidebar was opened for, and the sidebar serves
 // that tab alone. It is a separate fact from the tab number the service
@@ -135,11 +130,8 @@ function setTableBound(isBound) {
   if (!isBound) {
     // No active table: there is nothing for rounding to act on, so flip the
     // main switch to its off state rather than dimming the whole sidebar.
-    // Any lock belonged to the table that just went away, and
-    // the message written below is unsourced — drop a stale source tag so
+    // The message written below is unsourced — drop a stale source tag so
     // applyNow's delivery-success clear can still collect it.
-    document.body.classList.remove('table-locked');
-    enabledEl.disabled = false;
     delete statusEl.dataset.source;
     enabledEl.checked = false;
     statusEl.textContent = NO_TABLE_STATUS_MSG;
@@ -571,12 +563,7 @@ if (botThumb) {
 }
 
 function currentSettings() {
-  // A disabled switch shows no value of the table's: under the lock it
-  // shows a forced ON that is display only, until a settings read answering
-  // unlocked lands. A save then (the sliders stay usable) leaves the on/off
-  // value out, and the content script's merge keeps the table's own value.
-  const settings = {};
-  if (!enabledEl.disabled) settings.enabled = enabledEl.checked;
+  const settings = { enabled: enabledEl.checked };
   for (const id in CHECKBOX_TO_SETTING) {
     const el = document.getElementById(id);
     if (el) settings[CHECKBOX_TO_SETTING[id]] = el.checked;
@@ -615,7 +602,7 @@ function updateDisabledState() {
 // state.
 //
 // On an answer, clear only an unsourced stale message (the no-table reminder).
-// A sourced message — a range error, an apply-blocked notice — is cleared by
+// A sourced message — a range error — is cleared by
 // its own topic and must survive this callback: Chrome does not guarantee
 // whether this answer or the content script's status message arrives first.
 function applyNow() {
@@ -703,44 +690,6 @@ boundTab.subscribe('state:rangeOk', () => {
   }
 });
 
-boundTab.subscribe('state:applyBlocked', () => {
-  DR_LOG.warn('Dynamic Rounding: apply blocked received; panel locked.');
-  showLock();
-});
-
-// The lock reaches the sidebar two ways: the notice after a blocked apply,
-// and the settings read's answer. Both run this one step.
-function showLock() {
-  statusEl.textContent = APPLY_BLOCKED_STATUS_MSG;
-  statusEl.dataset.source = 'blocked';
-  // The bound table is unrestorable and shows simplified values.
-  // Show that truth and stop accepting input: main switch ON and
-  // disabled, settings area dimmed via body.table-locked (sidebar.html).
-  // The forced ON is display only: the table's on/off value stays in the
-  // application model, and a save leaves the disabled switch out.
-  document.body.classList.add('table-locked');
-  enabledEl.checked = true;
-  enabledEl.disabled = true;
-  updateDisabledState();
-}
-
-// The settings read answered unlocked: drop the lock and its notice, so the
-// settings the read carries reach the switch.
-function clearLock() {
-  document.body.classList.remove('table-locked');
-  if (statusEl.dataset.source === 'blocked') {
-    statusEl.textContent = '';
-    delete statusEl.dataset.source;
-  }
-}
-
-// Every successful apply sends this. Only an apply that ends a lock reads the
-// settings back, so an ordinary apply sends no read. The read's answer lifts
-// the lock and puts the table's on/off value back on the switch.
-boundTab.subscribe('state:applyOk', () => {
-  if (document.body.classList.contains('table-locked')) pullSettingsAndApplyToUI();
-});
-
 boundTab.subscribe('state:previewSamplesChanged', () => {
   // Stale view: re-read the active table's settings, then the previews (the
   // pull chain ends in fetchPreviewSamples). A bare preview fetch here would
@@ -750,10 +699,8 @@ boundTab.subscribe('state:previewSamplesChanged', () => {
 
 boundTab.subscribe('state:tableSwitched', () => {
   DR_LOG.debug('Dynamic Rounding: table switch received.');
-  // A table switch: the lock, if any, belonged to the previous table. The
-  // read answers the new table's lock state with its settings, so the lock
-  // lifts or stays by what the new table holds. The sidebar mirrors the new
-  // active table's settings; it does not reset to the shipped defaults.
+  // A table switch: the sidebar mirrors the new active table's settings; it
+  // does not reset to the shipped defaults.
   try {
     pullSettingsAndApplyToUI();
   } catch (e) {
@@ -771,16 +718,7 @@ window.addEventListener('unload', () => {
 // supplied the values.
 function applySettingsToUI(settings) {
   const s = Object.assign({}, DR_DEFAULTS, settings || {});
-  // The lock forces the main switch ON + disabled while the bound
-  // table's originals are unrestorable. A settings notice or a read answering
-  // locked must not write the table's on/off value over that forced ON; a
-  // read answering unlocked lifts the lock first (pullSettingsAndApplyToUI).
-  // Outside the lock the switch takes the table's value and accepts input
-  // again. Every other control mirrors the settings either way.
-  if (!document.body.classList.contains('table-locked')) {
-    enabledEl.checked = s.enabled !== false;
-    enabledEl.disabled = false;
-  }
+  enabledEl.checked = s.enabled !== false;
   for (const id in CHECKBOX_TO_SETTING) {
     const el = document.getElementById(id);
     if (el) el.checked = !!s[CHECKBOX_TO_SETTING[id]];
@@ -805,19 +743,12 @@ function applyDefaultsToUI() {
   applySettingsToUI(DR_DEFAULTS);
 }
 
-// Reconnect, table switch, right-click activation, lock lift, or stale-view
+// Reconnect, table switch, right-click activation, or stale-view
 // refresh: pull the active table's settings from content.js (the one holder
 // of settings) rather than resetting to shipped defaults — neither a
 // close/reopen nor a switch may lose what the user configured.
 // No active tab, no content script yet, or no response at all falls back to
 // defaults.
-//
-// The answer also carries whether the active table is locked. The
-// sidebar sets or lifts the lock from it before the settings reach the
-// controls, so the switch shows the lock's forced ON or the table's own
-// value. The read is the lock's route in whenever the sidebar asks: on
-// start, on a right-click, on a table switch. The notice after a blocked
-// apply covers a lock that arrives while the sidebar is open.
 //
 // fetchPreviewSamples runs only after the pull settles (success or fallback),
 // never in parallel with it: fetchPreviewSamples's own setTableBound call is
@@ -829,7 +760,6 @@ function pullSettingsAndApplyToUI() {
     if (!answer || !answer.settings) {
       applyDefaultsToUI();
     } else {
-      if (answer.locked) showLock(); else clearLock();
       applySettingsToUI(answer.settings);
     }
     fetchPreviewSamples();
@@ -949,7 +879,6 @@ function collectSidebarView() {
     coupled: linked,
     status: statusEl.textContent,
     noTable: document.body.classList.contains(NO_TABLE_CLASS),
-    locked: document.body.classList.contains('table-locked'),
     lensPreview: {
       top: topBandEl ? Array.from(topBandEl.children).map((n) => n.textContent) : [],
       bottom: botBandEl ? Array.from(botBandEl.children).map((n) => n.textContent) : [],
@@ -1047,7 +976,6 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   try {
     const html = DR_CAPTURE.buildCaptureDocument({
       state: state,
-      lockedStatusText: APPLY_BLOCKED_STATUS_MSG,
       screenshotDataUrl: shot ? shot.dataUrl : null,
     });
     saveCaptureFile({
@@ -1066,7 +994,7 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   foldCaptureForm();
   if (captureRemarksEl) captureRemarksEl.value = '';
   // The saved flash uses the unsourced-status convention applyNow's delivery
-  // callback established: sourced messages (range error, apply blocked)
+  // callback established: sourced messages (a range error)
   // always win the line.
   if (!statusEl.dataset.source) {
     statusEl.textContent = 'Capture saved.';

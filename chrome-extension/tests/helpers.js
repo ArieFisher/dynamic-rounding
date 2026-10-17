@@ -2346,9 +2346,6 @@ function makeIssue251SidebarHarness() {
   // so a handler that pulls is distinguishable from one that resets: after
   // any refresh the sidebar must show enabled:false and rangeExpr 'B2:E8'.
   const modelSettings = Object.assign({}, DR_DEFAULTS, { enabled: false, rangeExpr: 'B2:E8' });
-  // The lock state the settings read answers with; a test that
-  // changes it changes the next answer.
-  const readAnswer = { locked: false };
   let onMessageHandler = null;
   const tabMessages = [];
   const captureChrome = {
@@ -2362,7 +2359,7 @@ function makeIssue251SidebarHarness() {
       sendMessage(tabId, msg, cb) {
         tabMessages.push(msg);
         if (msg.action === 'request:settings') {
-          cb({ settings: modelSettings, locked: readAnswer.locked });
+          cb({ settings: modelSettings });
         } else if (msg.action === 'request:previewSamples') {
           cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
@@ -2400,7 +2397,6 @@ function makeIssue251SidebarHarness() {
     // The object the settings read answers with; a test that changes a field
     // changes the next answer.
     modelSettings,
-    readAnswer,
     chromeMock: captureChrome,
     el(id) { return elsById[id]; },
     dispatch(msg) { onMessageHandler(msg, FROM_SIDEBAR_TAB, () => {}); },

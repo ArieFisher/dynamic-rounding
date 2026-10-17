@@ -2105,8 +2105,8 @@
 // sendRangeStatusMessage -> chrome.runtime.sendMessage).
 //
 // The apply is the one path to roundTable, so it drives the flow here. It
-// leads with its own state:applyOk, then the state:rangeOk/state:rangeError
-// and intent:updateMenuLabel tail.
+// sends the state:rangeOk/state:rangeError and intent:updateMenuLabel
+// messages.
 //
 // The engine returns { applied, rangeStatus, error } and the controller
 // sends the message. The two expected sequences below (one per
@@ -2219,10 +2219,9 @@
   const okRun = runFullToggleFlow(undefined);
   eq('range-status sequence (valid range): the apply does not throw',
     okRun.threw, null);
-  eq('range-status sequence (valid range): exact message sequence matches parent-branch capture, behind the apply\'s own state:applyOk',
+  eq('range-status sequence (valid range): exact message sequence matches parent-branch capture',
     okRun.sentMessages,
     [
-      { action: 'state:applyOk' },
       { action: 'state:rangeOk' },
       { action: 'intent:updateMenuLabel', title: 'Toggle table' },
     ]);
@@ -2234,10 +2233,9 @@
   const errorRun = runFullToggleFlow('1a');
   eq('range-status sequence (invalid range): the apply does not throw',
     errorRun.threw, null);
-  eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture, behind the apply\'s own state:applyOk',
+  eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture',
     errorRun.sentMessages,
     [
-      { action: 'state:applyOk' },
       { action: 'state:rangeError', error: 'Invalid range: "1a"' },
     ]);
   eq('range-status sequence (invalid range): the cell was NOT rounded',
@@ -2277,24 +2275,6 @@
   // The click handler publishes the press as an intent instead.
   eq('toggle-split: ui-toggle.js publishes intent:toggleTable from the click handler',
     /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiToggleSrc), true);
-})();
-
-// ---------------------------------------------------------------------------
-// The locked presentation exists in the stylesheets (static).
-// body.table-locked must dim and mute the settings area and the title-row
-// switch in sidebar.html; the on-page pillbox's locked look lives in
-// ui-toggle.js's injected style.
-// ---------------------------------------------------------------------------
-(function lockedPresentation_stylesExist() {
-  const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  eq('locked styles: sidebar.html styles body.table-locked',
-    sidebarHtmlSrc.includes('body.table-locked'), true);
-  eq('locked styles: the locked sidebar blocks pointer input (pointer-events: none present in the table-locked block)',
-    /body\.table-locked[^}]*\{[^}]*pointer-events:\s*none/.test(sidebarHtmlSrc), true);
-  eq('locked styles: ui-toggle.js styles the locked pill class',
-    uiToggleCode !== null && uiToggleCode.includes('.dr-ext-morph-locked'), true);
-  eq('locked styles: the locked pill shows a not-allowed cursor',
-    uiToggleCode !== null && /\.dr-ext-morph-locked[^}]*\{[^}]*cursor:\s*not-allowed/.test(uiToggleCode), true);
 })();
 
 // --- (c) Static lock: no production read of the dr-ext-grid marker class as
@@ -2709,10 +2689,6 @@
     /console\.debug\(/.test(detectCode || ''), false);
   eq('dr-log: registration logs a row (ui-toggle.js)',
     /DR_LOG\.debug\([^)]*egistered/.test(uiToggleCode || ''), true);
-  eq('dr-log: a blocked apply logs a warn row (content.js)',
-    /DR_LOG\.warn\([^)]*locked/.test(sourceByName('content.js') || ''), true);
-  eq('dr-log: a table turning locked logs a warn row (ui-toggle.js)',
-    /DR_LOG\.warn\([^)]*ocked/.test(uiToggleCode || ''), true);
 })();
 
 // --- The service worker runs on the bus ---
@@ -2739,7 +2715,7 @@
     contentSrc.includes('chrome.runtime.sendMessage'), false);
   for (const topic of ['state:tableActivated', 'state:tableSwitched',
       'state:rangeError', 'state:rangeOk',
-      'state:applyBlocked', 'state:applyOk', 'state:previewSamplesChanged',
+      'state:previewSamplesChanged',
       'state:pageUnloaded', 'intent:updateMenuLabel']) {
     eq('content on bus: publishes ' + topic,
       contentSrc.includes("publish('" + topic + "'"), true);
@@ -2763,7 +2739,7 @@
   eq('sidebar on bus: no chrome.runtime.onMessage listener of its own',
     sidebarSrc.includes('chrome.runtime.onMessage.addListener'), false);
   for (const topic of ['state:tableActivated', 'intent:closeSidebar', 'state:rangeError',
-      'state:rangeOk', 'state:applyBlocked', 'state:applyOk',
+      'state:rangeOk',
       'state:previewSamplesChanged', 'state:tableSwitched', 'state:settingsChanged']) {
     eq('sidebar on bus: subscribes to ' + topic,
       sidebarSrc.includes("subscribe('" + topic + "'"), true);
@@ -2914,17 +2890,17 @@
       typeof activationListener, 'function');
     if (typeof activationListener !== 'function') return;
 
-    // A locked-table report from another tab must not reach the controls.
-    // The lock is the loudest of the eight reports: it writes the status and
-    // stops the sidebar accepting input.
-    messageListener({ action: 'state:applyBlocked' }, { tab: { id: OTHER_TAB } }, () => {});
-    eq('bound tab wiring: a lock reported by another tab does not lock the sidebar',
-      bodyClasses.has('table-locked'), false);
+    // A range error reported from another tab must not reach the controls.
+    // The report writes the status line.
+    statusEl.textContent = '';
+    messageListener({ action: 'state:rangeError', error: 'from another tab' }, { tab: { id: OTHER_TAB } }, () => {});
+    eq('bound tab wiring: a range error reported by another tab leaves the status line alone',
+      statusEl.textContent, '');
 
     // The same report from the bound tab does reach them.
-    messageListener({ action: 'state:applyBlocked' }, { tab: { id: BOUND_TAB } }, () => {});
-    eq('bound tab wiring: a lock reported by the bound tab locks the sidebar',
-      bodyClasses.has('table-locked'), true);
+    messageListener({ action: 'state:rangeError', error: 'from the bound tab' }, { tab: { id: BOUND_TAB } }, () => {});
+    eq('bound tab wiring: a range error reported by the bound tab writes the status line',
+      statusEl.textContent, 'from the bound tab');
 
     // Switching to another tab in the sidebar's own window closes it.
     eq('bound tab wiring: the sidebar is open before any switch', closes, 0);

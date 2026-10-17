@@ -101,12 +101,8 @@
   const switchHandlerBlock = switchHandlerMatch ? switchHandlerMatch[1] : '';
   eq('rebind source: sidebar.js state:tableSwitched handler block was isolated (sanity check on the scan itself)',
     switchHandlerBlock.length > 0, true);
-  // The handler lifts the lock through liftLockAndPullSettings, whose own
-  // body runs the pull.
   eq('rebind source: sidebar.js state:tableSwitched handler calls pullSettingsAndApplyToUI()',
-    /pullSettingsAndApplyToUI\(\)/.test(switchHandlerBlock) ||
-      (/liftLockAndPullSettings\(\)/.test(switchHandlerBlock) &&
-        /function liftLockAndPullSettings\(\) \{[^}]*pullSettingsAndApplyToUI\(\)/.test(sidebarSrc)), true);
+    /pullSettingsAndApplyToUI\(\)/.test(switchHandlerBlock), true);
 
   // sidebar.js: state:tableSwitched handler does NOT reset the controls to the
   // shipped defaults — that reset is what desynced the sidebar from the model.
@@ -480,8 +476,6 @@
         function setTableBound(isBound) {
           document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
           if (!isBound) {
-            document.body.classList.remove('table-locked');
-            enabledEl.disabled = false;
             delete statusEl.dataset.source;
             enabledEl.checked = false;
             statusEl.textContent = NO_TABLE_STATUS_MSG;
@@ -1011,221 +1005,6 @@
   }
 })();
 
-// ---------------------------------------------------------------------------
-// Sidebar side: the state:applyBlocked / state:applyOk notice lifecycle.
-// The content script blocks a sidebar apply on a table whose registry
-// originals did not survive re-injection (see the re-injection suite's
-// scenario C) and sends state:applyBlocked; every non-refused apply sends
-// state:applyOk. This drives sidebar.js's real onMessage handler and applyNow's
-// real delivery callback, in the same eval harness as the delivery-feedback
-// test above, and pins:
-//   - state:applyBlocked shows the user-visible notice in #status (source-tagged);
-//   - the notice survives applyNow's delivery-success clear — Chrome does
-//     not guarantee whether the response callback or the content script's
-//     status message lands first, so the clear must skip sourced messages;
-//   - state:applyOk clears the notice, and ONLY the notice (a range error's
-//     source tag is not its to clear), mirroring state:rangeOk;
-//   - an unsourced stale status still clears on delivery success (the
-//     behavior the delivery-feedback test above pins is preserved).
-// ---------------------------------------------------------------------------
-(function sidebarApplyBlocked_noticeLifecycle() {
-  const roundingSrc = sourceByName('lib/dr-number/rounding.js');
-  const coreSrc = sourceByName('lib/dr-number/core.js');
-  if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
-    eq('apply-blocked notice: source files (defaults/rounding/core/messaging) present in manifest',
-      false, true);
-    return;
-  }
-
-  // The attribute stubs serve the controls' redraw, which a lock lift runs
-  // when its settings read answers.
-  function makeEl() {
-    return {
-      addEventListener() {}, removeEventListener() {},
-      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
-      style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
-      appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
-      getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
-      matches() { return false; }, closest() { return null; }, dataset: {},
-      setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
-    };
-  }
-
-  const statusEl = makeEl();
-  const enabledEl = makeEl();
-  enabledEl.checked = true;
-  let enabledChangeHandler = null;
-  enabledEl.addEventListener = function (type, fn) { if (type === 'change') enabledChangeHandler = fn; };
-
-  const bodyClasses = new Set();
-  const captureBody = {
-    classList: {
-      add(cls) { bodyClasses.add(cls); },
-      remove(cls) { bodyClasses.delete(cls); },
-      contains(cls) { return bodyClasses.has(cls); },
-      toggle(cls, force) {
-        if (force === undefined) {
-          if (bodyClasses.has(cls)) bodyClasses.delete(cls); else bodyClasses.add(cls);
-        } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
-      },
-    },
-    addEventListener() {},
-    get offsetWidth() { return 0; },
-  };
-
-  const captureDoc = {
-    addEventListener() {},
-    querySelectorAll: () => [],
-    readyState: 'complete',
-    body: captureBody,
-    getElementById(id) {
-      if (id === 'status') return statusEl;
-      if (id === 'enabled') return enabledEl;
-      return makeEl();
-    },
-    createElement() { return makeEl(); },
-  };
-
-  let onMessageHandler = null;
-  let queuedLastError = null;
-  const captureChrome = {
-    runtime: {
-      onMessage: { addListener(fn) { onMessageHandler = fn; } },
-      sendMessage() {},
-      get lastError() { return queuedLastError; },
-    },
-    tabs: {
-      query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
-      sendMessage(tabId, msg, cb) {
-        if (typeof cb !== 'function') return;
-        if (queuedLastError) cb(undefined);
-        // The settings read answers the way the page does: settings, and
-        // the lock state, unlocked once an apply has worked.
-        else if (msg.action === 'request:settings') cb({ settings: {}, locked: false });
-        else cb({ ok: true });
-      },
-    },
-  };
-
-  const savedDoc = global.document;
-  const savedChrome = global.chrome;
-  const savedWindow = global.window;
-  global.document = captureDoc;
-  global.chrome = captureChrome;
-  global.window = { addEventListener() {}, close() {}, getComputedStyle: () => ({ display: 'block' }) };
-
-  try {
-    try {
-      eval(
-        constantsCode + '\n' +
-        roundingSrc + '\n' +
-        coreSrc + '\n' +
-        messagingCode + '\n' +
-        fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8')
-      );
-    } catch (e) {
-      // sidebar.js's module-level settings/preview pull can throw past this
-      // point in this stub environment — both the onMessage listener and the
-      // 'change' listener register before that runs.
-    }
-
-    eq('apply-blocked notice: sidebar onMessage handler was captured',
-      typeof onMessageHandler, 'function');
-    eq('apply-blocked notice: sidebar\'s enabled-checkbox change handler was captured',
-      typeof enabledChangeHandler, 'function');
-    if (typeof onMessageHandler !== 'function' || typeof enabledChangeHandler !== 'function') return;
-
-    // --- state:applyBlocked shows the notice, tagged with its source. ---
-    statusEl.textContent = '';
-    delete statusEl.dataset.source;
-    onMessageHandler({ action: 'state:applyBlocked', count: 3 }, FROM_SIDEBAR_TAB, () => {});
-    eq('apply-blocked notice: state:applyBlocked sets the user-visible notice in #status',
-      statusEl.textContent,
-      'This table\'s original values are no longer available. Reload the page, then apply settings again.');
-    eq('apply-blocked notice: the notice is tagged with its source',
-      statusEl.dataset.source, 'blocked');
-
-    // --- The notice survives applyNow's delivery-success clear. ---
-    enabledChangeHandler();
-    eq('apply-blocked notice: a delivery-success clear does NOT wipe the notice (message/response ordering is not guaranteed)',
-      statusEl.textContent,
-      'This table\'s original values are no longer available. Reload the page, then apply settings again.');
-
-    // --- state:rangeOk does not clear it either (source mismatch). ---
-    onMessageHandler({ action: 'state:rangeOk' }, FROM_SIDEBAR_TAB, () => {});
-    eq('apply-blocked notice: state:rangeOk leaves the blocked notice alone',
-      statusEl.textContent,
-      'This table\'s original values are no longer available. Reload the page, then apply settings again.');
-
-    // --- state:applyOk clears it. ---
-    onMessageHandler({ action: 'state:applyOk' }, FROM_SIDEBAR_TAB, () => {});
-    eq('apply-blocked notice: state:applyOk clears the notice',
-      statusEl.textContent, '');
-    eq('apply-blocked notice: state:applyOk removes the source tag',
-      statusEl.dataset.source, undefined);
-
-    // --- state:applyOk leaves a range error alone (source mismatch, mirroring
-    // state:rangeOk's own guard). ---
-    onMessageHandler({ action: 'state:rangeError', error: 'Invalid range expression.' }, FROM_SIDEBAR_TAB, () => {});
-    onMessageHandler({ action: 'state:applyOk' }, FROM_SIDEBAR_TAB, () => {});
-    eq('apply-blocked notice: state:applyOk leaves a range error alone',
-      statusEl.textContent, 'Invalid range expression.');
-    onMessageHandler({ action: 'state:rangeOk' }, FROM_SIDEBAR_TAB, () => {});
-
-    // --- An unsourced stale status still clears on delivery success — the
-    // delivery-feedback behavior pinned above is preserved. ---
-    statusEl.textContent = 'a stale status message';
-    delete statusEl.dataset.source;
-    enabledChangeHandler();
-    eq('apply-blocked notice: an unsourced stale status still clears on delivery success',
-      statusEl.textContent, '');
-
-    // --- state:applyBlocked also locks the sidebar. The bound table is
-    // unrestorable and shows simplified values, so the main switch must
-    // show ON (the truth) and stop accepting input, and the settings area
-    // dims via body.table-locked. state:applyOk, a table switch
-    // (state:tableSwitched), and unbinding (delivery failure →
-    // setTableBound(false)) each lift the lock. ---
-    enabledEl.checked = false;
-    enabledEl.disabled = false;
-    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, FROM_SIDEBAR_TAB, () => {});
-    eq('sidebar lock: state:applyBlocked adds body.table-locked',
-      bodyClasses.has('table-locked'), true);
-    eq('sidebar lock: state:applyBlocked forces the main toggle ON — the table IS simplified',
-      enabledEl.checked, true);
-    eq('sidebar lock: state:applyBlocked disables the main toggle',
-      enabledEl.disabled, true);
-
-    onMessageHandler({ action: 'state:applyOk' }, FROM_SIDEBAR_TAB, () => {});
-    eq('sidebar lock: state:applyOk lifts the lock',
-      bodyClasses.has('table-locked'), false);
-    eq('sidebar lock: state:applyOk re-enables the main toggle',
-      enabledEl.disabled, false);
-
-    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, FROM_SIDEBAR_TAB, () => {});
-    onMessageHandler({ action: 'state:tableSwitched' }, FROM_SIDEBAR_TAB, () => {});
-    eq('sidebar lock: a table switch (state:tableSwitched) lifts the lock',
-      bodyClasses.has('table-locked'), false);
-    eq('sidebar lock: a table switch re-enables the main toggle',
-      enabledEl.disabled, false);
-
-    onMessageHandler({ action: 'state:applyBlocked', count: 1 }, FROM_SIDEBAR_TAB, () => {});
-    queuedLastError = { message: 'Could not establish connection.' };
-    enabledChangeHandler();
-    queuedLastError = null;
-    eq('sidebar lock: unbinding (delivery failure) lifts the lock',
-      bodyClasses.has('table-locked'), false);
-    eq('sidebar lock: unbinding re-enables the main toggle for the no-table state',
-      enabledEl.disabled, false);
-    eq('sidebar lock: unbinding drops the stale source tag — the no-table message it writes is unsourced',
-      statusEl.dataset.source, undefined);
-  } finally {
-    global.document = savedDoc;
-    global.chrome = savedChrome;
-    global.window = savedWindow;
-  }
-})();
-
 (function issue251_tableSwitchMirrorsModelSettings() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
@@ -1239,20 +1018,12 @@
     if (h.evalError !== null || !h.hasHandler()) return;
 
     // Drift the sidebar away from the model: the switch shows on (as a
-    // defaults reset would leave it), the range expression is blank, and the
-    // previous table's apply left the sidebar locked.
+    // defaults reset would leave it) and the range expression is blank.
     h.enabledEl.checked = true;
     h.rangeExprEl.value = '';
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    eq('switch-pull: precondition — the previous table\'s state:applyBlocked locked the panel',
-      h.bodyClasses.has('table-locked'), true);
 
-    // The switch message: lift the lock, re-read the model.
+    // The switch message: re-read the model.
     h.dispatch({ action: 'state:tableSwitched' });
-    eq('switch-pull: a table switch lifts the lock',
-      h.bodyClasses.has('table-locked'), false);
-    eq('switch-pull: a table switch re-enables the main toggle',
-      h.enabledEl.disabled, false);
     eq('switch-pull: the main toggle mirrors the model\'s enabled:false after a switch',
       h.enabledEl.checked, false);
     // The claim here is that the sidebar MIRRORS the application model. A
@@ -1290,102 +1061,6 @@
     h.dispatch({ action: 'state:previewSamplesChanged' });
     eq('refresh-pull: the main toggle mirrors the model\'s enabled:false after a preview refresh',
       h.enabledEl.checked, false);
-  } finally {
-    h.restore();
-  }
-})();
-
-(function issue251_lockOutlivesAPullResolvingUnderIt() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('lock-vs-pull: source files (defaults/rounding/core/messaging) present in manifest',
-      false, true);
-    return;
-  }
-  try {
-    eq('lock-vs-pull: sidebar.js loaded with no stub gaps', h.evalError, null);
-    eq('lock-vs-pull: sidebar onMessage handler was captured', h.hasHandler(), true);
-    if (h.evalError !== null || !h.hasHandler()) return;
-
-    // The lock forces the main switch ON + disabled (the bound table is
-    // unrestorable and shows simplified values). A settings pull that resolves while the
-    // lock is displayed — a table switch's pull whose apply just re-blocked —
-    // must not write the model's enabled:false over the lock's forced ON.
-    // Ordering here mirrors the wire: state:applyBlocked lands, then the
-    // stale-view refresh runs its pull.
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    eq('lock-vs-pull: precondition — state:applyBlocked locked the panel',
-      h.bodyClasses.has('table-locked'), true);
-
-    // The table is still locked, so the page's read answers locked.
-    h.readAnswer.locked = true;
-    h.dispatch({ action: 'state:previewSamplesChanged' });
-    eq('lock-vs-pull: the pull leaves the locked toggle ON — the table IS simplified',
-      h.enabledEl.checked, true);
-    eq('lock-vs-pull: the pull leaves the locked toggle disabled',
-      h.enabledEl.disabled, true);
-    eq('lock-vs-pull: the lock itself survives the pull',
-      h.bodyClasses.has('table-locked'), true);
-  } finally {
-    h.restore();
-  }
-})();
-
-// The lock reaches the sidebar through the settings read, so a sidebar that
-// missed the one-time "blocked" notice still shows the lock.
-// Case 2: the sidebar opens on a locked table, and its opening read answers
-// locked.
-(function issue500_aReadAnsweringLockedLocksTheSidebar() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('lock on read: source files (defaults/rounding/core/messaging) present in manifest',
-      false, true);
-    return;
-  }
-  try {
-    eq('lock on read: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null || !h.hasHandler()) return;
-    eq('lock on read: precondition — the opening read left the sidebar unlocked',
-      h.bodyClasses.has('table-locked'), false);
-
-    h.readAnswer.locked = true;
-    h.dispatch({ action: 'state:previewSamplesChanged' });
-    eq('lock on read: a read answering locked locks the sidebar',
-      h.bodyClasses.has('table-locked'), true);
-    eq('lock on read: the locked switch shows on and takes no input',
-      [h.enabledEl.checked, h.enabledEl.disabled], [true, true]);
-    eq('lock on read: the sidebar shows the locked notice',
-      [h.statusEl.textContent.includes('no longer available'), h.statusEl.dataset.source], [true, 'blocked']);
-  } finally {
-    h.restore();
-  }
-})();
-
-// Case 1: a right-click on an unlocked table after a locked one. The
-// right-click runs no apply, so no "worked" report arrives; the read it
-// triggers answers unlocked and lifts the lock.
-(function issue500_aReadAnsweringUnlockedLiftsTheLock() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('lock lift on read: source files (defaults/rounding/core/messaging) present in manifest',
-      false, true);
-    return;
-  }
-  try {
-    eq('lock lift on read: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null || !h.hasHandler()) return;
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    eq('lock lift on read: precondition — the sidebar is locked',
-      h.bodyClasses.has('table-locked'), true);
-
-    h.readAnswer.locked = false;
-    h.dispatch({ action: 'state:tableActivated' });
-    eq('lock lift on read: a read answering unlocked lifts the lock',
-      h.bodyClasses.has('table-locked'), false);
-    eq('lock lift on read: the switch shows the table\'s own value and takes input',
-      [h.enabledEl.checked, h.enabledEl.disabled], [false, false]);
-    eq('lock lift on read: the locked notice clears',
-      [h.statusEl.textContent, h.statusEl.dataset.source], ['', undefined]);
   } finally {
     h.restore();
   }
@@ -1507,78 +1182,6 @@
 })();
 
 // ---------------------------------------------------------------------------
-// The lock's forced ON must be display-only. A save under the lock that
-// wrote the forced ON into the settings would silently discard the user's
-// off, and the forced ON would outlive the lock until the next pull. The
-// issue328 lock tests below pin the save, the lift, and a notice under the
-// lock. These two keep the lock's edges.
-// ---------------------------------------------------------------------------
-
-// Unbinding while locked (a save whose delivery fails runs setTableBound(false))
-// ends the lock with the no-table off. A later state:applyOk finds no lock to
-// lift, so it reads nothing back and restores no stale ON over that off.
-(function issue272_unbindWhileLockedEndsTheLock() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('unbind-locked: source files (defaults/rounding/core/messaging) present in manifest',
-      false, true);
-    return;
-  }
-  try {
-    eq('unbind-locked: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
-    h.enabledEl.checked = true;
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    // A save whose delivery fails: nothing answers applyNow's request, and it
-    // unbinds the sidebar (setTableBound(false)), which ends the lock.
-    h.chromeMock.runtime.lastError = { message: 'no receiving end' };
-    h.el('dateGranularity').fire('change');
-    h.chromeMock.runtime.lastError = null;
-    eq('unbind-locked: the failed delivery unbinds and lifts the lock',
-      h.bodyClasses.has('table-locked'), false);
-    eq('unbind-locked: the no-table state forces the switch off',
-      h.enabledEl.checked, false);
-    h.dispatch({ action: 'state:applyOk' });
-    eq('unbind-locked: a later state:applyOk leaves the no-table off',
-      h.enabledEl.checked, false);
-  } finally {
-    h.restore();
-  }
-})();
-
-// A pull resolving under the lock reads the table's enabled:false. The display
-// must not change (pinned by the lock-vs-pull test above), and the lift
-// shows the table's value, not the value the switch showed before the lock.
-(function issue272_pullUnderLockLeavesTheLiftToTheTable() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('lock-pull: source files (defaults/rounding/core/messaging) present in manifest',
-      false, true);
-    return;
-  }
-  try {
-    eq('lock-pull: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
-    h.enabledEl.checked = true;
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    // The table is still locked, so the read answers locked.
-    h.readAnswer.locked = true;
-    h.dispatch({ action: 'state:previewSamplesChanged' });
-    eq('lock-pull: the pull leaves the locked switch on (display-only)',
-      h.enabledEl.checked, true);
-    // An apply worked, so the table is no longer locked.
-    h.readAnswer.locked = false;
-    h.dispatch({ action: 'state:applyOk' });
-    eq('lock-pull: the lift shows the table\'s off, not the pre-lock drift',
-      h.enabledEl.checked, false);
-  } finally {
-    h.restore();
-  }
-})();
-
-// ---------------------------------------------------------------------------
 // The settings notice reaches the sidebar, and the sidebar redraws from it.
 // The model publishes it after every write, so no writer can leave the
 // sidebar showing stale values. A notice carries whether its table is the active one and which side
@@ -1666,125 +1269,6 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
   }
 })();
 
-// ---------------------------------------------------------------------------
-// The settings notice with the lock: the lock forces the switch on and disables
-// it. The on/off value lives on the table in the application model, so a save
-// under the lock leaves the on/off value out, and the table's value stands.
-// Lifting the lock reads the table's settings back and puts its on/off value
-// on the switch. Until that read answers the switch stays disabled, so a save
-// in the gap carries no leftover forced on.
-// ---------------------------------------------------------------------------
-(function issue328_aSaveUnderTheLockLeavesTheOnOffValueOut() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('lock save: source files (defaults/rounding/core/messaging) present in manifest', false, true);
-    return;
-  }
-  try {
-    eq('lock save: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    eq('lock save: precondition — the lock forces the switch on', h.enabledEl.checked, true);
-    h.tabMessages.length = 0;
-    h.el('dateGranularity').fire('change');
-    const applyMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
-    eq('lock save: the save reaches the wire', applyMsg !== undefined, true);
-    eq('lock save: a save under the lock carries no on/off value',
-      !!applyMsg && Object.prototype.hasOwnProperty.call(applyMsg.settings, 'enabled'), false);
-
-    // A second block lands while the lock already holds.
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    h.tabMessages.length = 0;
-    h.el('dateGranularity').fire('change');
-    const secondMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
-    eq('lock save: a save after a second block still carries no on/off value',
-      !!secondMsg && Object.prototype.hasOwnProperty.call(secondMsg.settings, 'enabled'), false);
-  } finally {
-    h.restore();
-  }
-})();
-
-(function issue328_liftingTheLockReadsTheTablesOnOffValueBack() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('lock lift: source files (defaults/rounding/core/messaging) present in manifest', false, true);
-    return;
-  }
-  try {
-    eq('lock lift: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    // Hold the settings read's answer, so the test stands in the gap between
-    // the lift and the answer.
-    const held = [];
-    const answerNow = h.chromeMock.tabs.sendMessage;
-    h.chromeMock.tabs.sendMessage = (tabId, msg, cb) => {
-      if (msg.action === 'request:settings') { held.push(() => answerNow(tabId, msg, cb)); return; }
-      answerNow(tabId, msg, cb);
-    };
-    h.tabMessages.length = 0;
-    h.dispatch({ action: 'state:applyOk' });
-    // The read's answer carries the lock state, so the lock holds
-    // until the answer lands.
-    eq('lock lift: the lock holds until the read answers', h.bodyClasses.has('table-locked'), true);
-    eq('lock lift: the lift reads the table\'s settings', held.length, 1);
-    eq('lock lift: the switch stays disabled until the read answers', h.enabledEl.disabled, true);
-
-    h.el('dateGranularity').fire('change');
-    const gapMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
-    eq('lock lift: a save in the gap carries no on/off value',
-      !!gapMsg && Object.prototype.hasOwnProperty.call(gapMsg.settings, 'enabled'), false);
-
-    h.chromeMock.tabs.sendMessage = answerNow;
-    held.forEach((answer) => answer());
-    eq('lock lift: the unlocked answer removes the lock', h.bodyClasses.has('table-locked'), false);
-    eq('lock lift: the answer puts the table\'s off on the switch', h.enabledEl.checked, false);
-    eq('lock lift: the answer re-enables the switch', h.enabledEl.disabled, false);
-
-    h.tabMessages.length = 0;
-    h.dispatch({ action: 'state:applyOk' });
-    eq('lock lift: an apply with no lock holding reads no settings',
-      h.tabMessages.filter((m) => m.action === 'request:settings').length, 0);
-  } finally {
-    h.restore();
-  }
-})();
-
-// A notice landing under the lock redraws every control except the switch,
-// which shows the lock's forced on. The lift then shows the table's latest
-// on/off value, whichever it is.
-(function issue328_aNoticeUnderTheLockLeavesTheForcedOn() {
-  const h = makeIssue251SidebarHarness();
-  if (!h) {
-    eq('lock notice: source files (defaults/rounding/core/messaging) present in manifest', false, true);
-    return;
-  }
-  try {
-    eq('lock notice: sidebar.js loaded with no stub gaps', h.evalError, null);
-    if (h.evalError !== null) return;
-
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    h.dispatch({ action: 'state:settingsChanged', source: 'page',
-      settings: Object.assign({}, ISSUE328_PAGE_SETTINGS, { enabled: false }) });
-    eq('lock notice: the switch keeps the forced on under the lock',
-      [h.enabledEl.checked, h.enabledEl.disabled], [true, true]);
-    eq('lock notice: the other controls redraw under the lock', h.rangeExprEl.value, 'C3');
-
-    h.modelSettings.enabled = true;
-    h.dispatch({ action: 'state:applyOk' });
-    eq('lock notice: the lift shows the table\'s latest on/off value (on)', h.enabledEl.checked, true);
-
-    h.dispatch({ action: 'state:applyBlocked', count: 1 });
-    h.modelSettings.enabled = false;
-    h.dispatch({ action: 'state:applyOk' });
-    eq('lock notice: the lift shows the table\'s latest on/off value (off)', h.enabledEl.checked, false);
-  } finally {
-    h.restore();
-  }
-})();
-
 (function captureSizeNoteGlue() {
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
@@ -1833,9 +1317,11 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
   eq('capture-ui: nothing saves without a pressed mark',
     /function saveCapture\(\)[\s\S]{0,200}if \(captureMark === null\) return;/.test(sidebarJsSrc),
     true);
-  eq('capture-ui: the renderer receives the locked wording as a value, not a copy',
-    /buildCaptureDocument\(\{[\s\S]{0,120}lockedStatusText: APPLY_BLOCKED_STATUS_MSG/.test(sidebarJsSrc),
-    true);
+  eq('capture-ui: the renderer receives no locked wording',
+    /lockedStatusText/.test(sidebarJsSrc), false);
+  const sidebarViewBody = (sidebarJsSrc.match(/function collectSidebarView\(\) \{([\s\S]*?)\n\}\n/) || [])[1];
+  eq('capture-ui: the sidebar view carries no locked field',
+    typeof sidebarViewBody === 'string' && !/\blocked:/.test(sidebarViewBody), true);
   eq('capture-ui: the filename comes from the package helper and carries the mark',
     /DR_CAPTURE\.filenameFor\(\{[^}]*mark: mark/.test(sidebarJsSrc), true);
   eq('capture-ui: the sidebar\'s own log snapshot travels beside the content script\'s',
@@ -1887,8 +1373,8 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 //
 // A content script reports by broadcast, and a broadcast reaches the sidebar
 // whatever tab it came from. The sidebar acted on every report it received,
-// so a background tab re-simplifying its rows redrew the sidebar and a
-// blocked apply there locked it against a table the user could not see.
+// so a background tab re-simplifying its rows redrew the sidebar against a
+// table the user could not see.
 //
 // createBoundTab holds the whole concern and takes its tabs interface and its
 // bus as parameters, so this section drives the real source with stubs
@@ -1954,14 +1440,14 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     const bus = makeBus();
     const boundTab = createBoundTab(tabs, bus);
     const seen = [];
-    boundTab.subscribe('state:applyOk', () => { seen.push('report'); });
+    boundTab.subscribe('state:rangeOk', () => { seen.push('report'); });
     boundTab.resolve(() => { order.push('opening read'); });
 
     eq('bound tab: the opening read runs after the tab lookup',
       order, ['query', 'opening read']);
 
     // The recorded tab is read through the only thing that uses it.
-    bus.deliver('state:applyOk', {}, OWN_TAB);
+    bus.deliver('state:rangeOk', {}, OWN_TAB);
     eq('bound tab: resolve records the tab the sidebar was opened for',
       seen, ['report']);
   })();
@@ -1985,13 +1471,13 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     const bus = makeBus();
     const boundTab = createBoundTab(makeTabs([]), bus);
     const seen = [];
-    boundTab.subscribe('state:applyOk', () => { seen.push('report'); });
+    boundTab.subscribe('state:rangeOk', () => { seen.push('report'); });
     let ran = false;
     boundTab.resolve(() => { ran = true; });
 
     eq('bound tab: no active tab still runs the opening read', ran, true);
 
-    bus.deliver('state:applyOk', {}, OWN_TAB);
+    bus.deliver('state:rangeOk', {}, OWN_TAB);
     eq('bound tab: with no tab recorded every report is dropped', seen, []);
   })();
 
@@ -2002,19 +1488,19 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     boundTab.resolve(() => {});
 
     const seen = [];
-    boundTab.subscribe('state:applyBlocked', (payload) => { seen.push(payload); });
+    boundTab.subscribe('state:rangeError', (payload) => { seen.push(payload); });
 
-    bus.deliver('state:applyBlocked', { from: 'own' }, OWN_TAB);
+    bus.deliver('state:rangeError', { from: 'own' }, OWN_TAB);
     eq('bound tab: a report from the bound tab reaches its handler',
       seen, [{ from: 'own' }]);
 
-    bus.deliver('state:applyBlocked', { from: 'other' }, OTHER_TAB);
+    bus.deliver('state:rangeError', { from: 'other' }, OTHER_TAB);
     eq('bound tab: a report from another tab is dropped',
       seen, [{ from: 'own' }]);
 
     // An extension page has no tab. Nothing a content script sends looks
     // like this, and a report that does belongs to no tab at all.
-    bus.deliver('state:applyBlocked', { from: 'an extension page' }, null);
+    bus.deliver('state:rangeError', { from: 'an extension page' }, null);
     eq('bound tab: a report carrying no tab is dropped',
       seen, [{ from: 'own' }]);
   })();
@@ -2106,8 +1592,8 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 
     // Reports still reach the sidebar; only the self-close is missing.
     const seen = [];
-    boundTab.subscribe('state:applyOk', () => { seen.push('report'); });
-    bus.deliver('state:applyOk', {}, OWN_TAB);
+    boundTab.subscribe('state:rangeOk', () => { seen.push('report'); });
+    bus.deliver('state:rangeOk', {}, OWN_TAB);
     eq('bound tab: reports still reach the sidebar with no activation event',
       seen, ['report']);
   })();

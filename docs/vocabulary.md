@@ -130,7 +130,6 @@ One term per concept, across every platform and every document. Use the [Retired
 | rewritten cell | A simplified cell whose text the page changed: a text piece shows neither its original nor its written text, or the cell holds a different count of text pieces. A pass puts the originals back into the pieces that still show written text, drops the cell's originals, and simplifies the cell again from the page's text. When the count of text pieces changed, a piece matches its stored piece by written text, in page order, instead of by position. |
 | restore | Put the originals back into every text piece that still shows its written text. A text piece the page rewrote keeps the page's text, so a restore never writes a number the page no longer shows. |
 | unrestorable | Originals lost or never captured. The table cannot be restored. |
-| locked | The state of a table's controls when the application will not apply simplify settings to it. <br><br>e.g. when its originals are unrestorable, changes do not apply. |
 | bound | The sidebar's association with one table: the table whose table settings its controls read from and write to. |
 | active | The table user actions target. <br>The most recently right-clicked table, or the most recent table whose pillbox was pressed. The sidebar binds the active table, and a sidebar change writes the active table's table settings. A table whose registry entry is discarded stops being active: the page removed it, or reshaped it into something that no longer counts as a table. The page then has no active table until the next right-click or press. |
 | activate | Make a table active: right-click it, or press its pillbox. |
@@ -270,6 +269,6 @@ bare "panel's" (Chrome's own side panel, whose close event this repository
 describes).
 
 Two rows have no pattern on purpose. "state" keeps senses this vocabulary
-defines, among them a locked table's state. "report" carries the capture
+defines, among them the error state. "report" carries the capture
 section's own phrasing — a capture is a bug report — so any pattern sparing
 that phrase would catch almost nothing.

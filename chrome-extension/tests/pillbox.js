@@ -189,7 +189,7 @@
   // Mark table as rounded. A registry record accompanies the marker:
   // production rounded/showing-original states always carry one (roundTable
   // writes it; the keepEntry restore preserves it). A marker WITHOUT a
-  // record is the locked re-injection state, tested in the
+  // record is the unrestorable re-injection state, tested in the
   // re-injection suite.
   table._cells[0].classList.add('dr-ext-rounded');
   DR_STORE.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
@@ -736,6 +736,75 @@
   // After click: table shows originals (appliedFlag 'original' in DR_STORE), aria-pressed='false'
   eq('accessibility AC3: button click (mouse, was-rounded) sets aria-pressed="false"',
     buttonEl.getAttribute('aria-pressed'), 'false');
+})();
+
+// --- An unrestorable cell leaves the pillbox an ordinary control ---
+// A table that arrives with a cell wearing the simplified marker and no
+// stored original (the re-injection state, see restoreTable's KNOWN ACCEPTED
+// COST in content.js) gets a pillbox like any other table: no disabled state,
+// no extra class, and a press publishes the toggle intent.
+(function unrestorableCellPillboxTakesPresses() {
+  const appendedToBody = [];
+  const origCreateEl = global.document.createElement;
+  const origDocBody = global.document.body;
+  const origDocEl = global.document.documentElement;
+  global.document.createElement = (tag) => {
+    const attrs = {};
+    const listeners = {};
+    const classes = [];
+    return {
+      _tag: tag, type: '', className: '', style: {}, _children: [], _listeners: listeners,
+      dataset: {}, parentElement: null, textContent: '',
+      classList: {
+        add(x) { if (!classes.includes(x)) classes.push(x); },
+        remove(x) { const i = classes.indexOf(x); if (i >= 0) classes.splice(i, 1); },
+        contains(x) { return classes.includes(x); },
+        toggle(x) { return classes.includes(x); },
+      },
+      appendChild(ch) { this._children.push(ch); ch.parentElement = this; return ch; },
+      addEventListener(evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },
+      setAttribute(n, v) { attrs[n] = v; },
+      getAttribute(n) { return Object.prototype.hasOwnProperty.call(attrs, n) ? attrs[n] : null; },
+      removeAttribute(n) { delete attrs[n]; },
+      contains() { return false; },
+      dispatchEvent(evt) { (listeners[evt.type] || []).forEach((fn) => fn(evt)); },
+    };
+  };
+  global.document.body = {
+    appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; },
+  };
+  global.document.documentElement = { appendChild() {} };
+  toggleStyleInjected = false;
+
+  const published = [];
+  const unsubscribe = DR_BUS.subscribe('intent:toggleTable', ({ table: pressed }) => { published.push(pressed); });
+  try {
+    const table = makeToggleTable([
+      [{ tag: 'td', text: '50,000' }, { tag: 'td', text: '100' }],
+      [{ tag: 'td', text: '200' },    { tag: 'td', text: '300' }],
+    ]);
+    table._cells.forEach((c) => { c.querySelectorAll = () => []; });
+    // The marker with no stored original: the unrestorable pairing.
+    table._cells[0].classList.add('dr-ext-rounded');
+
+    createToggleForTable(table);
+    const buttonEl = appendedToBody.find((e) => e._tag === 'button');
+    eq('unrestorable cell pillbox: the pillbox carries no aria-disabled',
+      buttonEl.getAttribute('aria-disabled'), null);
+    eq('unrestorable cell pillbox: the pillbox carries no class beyond its own',
+      buttonEl.classList.contains('dr-ext-morph-locked'), false);
+
+    buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', stopPropagation() {} });
+    (buttonEl._listeners.click || []).forEach((fn) => fn({ stopPropagation() {}, type: 'click' }));
+    eq('unrestorable cell pillbox: a press publishes intent:toggleTable for the table',
+      published.length === 1 && published[0] === table, true);
+  } finally {
+    unsubscribe();
+    global.document.createElement = origCreateEl;
+    global.document.body = origDocBody;
+    global.document.documentElement = origDocEl;
+    toggleStyleInjected = true;
+  }
 })();
 
 // ---------------------------------------------------------------------------
@@ -2632,7 +2701,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     classList: gridClassList, parentElement: null, parentNode: null,
     // applySidebarRounding calls table.querySelector(...) directly, with no `&&`
     // guard, so this must exist (returning "not already rounded"), and
-    // syncSwitchForTable's lock check scans querySelectorAll the same way
+    // the restore scans querySelectorAll the same way
     // (returning "no rounded cells").
     querySelector() { return null; },
     querySelectorAll() { return []; },
@@ -2725,13 +2794,13 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     // grid, and the press path, which reads nothing about the sidebar, makes a
     // toggle on the connected table take the settings path with the sidebar
     // closed too: the table's settings notice from the write, then
-    // state:applyOk from the apply and state:rangeOk from the round. No
-    // intent:updateMenuLabel here only because this minimal grid's
-    // querySelector always returns null, so the enabled branch's conditional
-    // send is skipped — a fixture artifact, not contract.
+    // state:rangeOk from the round. No intent:updateMenuLabel here only
+    // because this minimal grid's querySelector always returns null, so the
+    // enabled branch's conditional send is skipped — a fixture artifact, not
+    // contract.
     eq('double-invocation: a sidebar-closed intent:menuClicked on the connected grid takes the settings path',
       sentMessages.slice(beforeMenuClick).map((m) => m.action),
-      ['state:settingsChanged', 'state:applyOk', 'state:rangeOk']);
+      ['state:settingsChanged', 'state:rangeOk']);
   } finally {
     global.document = savedDoc;
     global.chrome = savedChrome;

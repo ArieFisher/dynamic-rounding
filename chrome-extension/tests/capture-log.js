@@ -12,7 +12,7 @@
       cellRec.original, ' 8,584,629 ');
     const html = DR_CAPTURE.buildCaptureDocument({
       state: {
-        captureFormat: 8,
+        captureFormat: 9,
         meta: { url: 'https://www.example.com/grid', title: 'G', version: '2.1.70',
           platform: 'test', at: '2026-09-22T16:00:00.000Z' },
         mark: 'looks-right', remarks: '', detectionSettings: null,
@@ -20,7 +20,6 @@
         sidebarView: null, errorState: { hasError: false, count: 0, rows: [] },
         log: { content: { entries: [], dropped: 0, limit: 50 }, sidebar: { entries: [], dropped: 0, limit: 50 } },
       },
-      lockedStatusText: '',
     });
     const originalsTable = (html.split('with the originals')[1] || '').split('</table>')[0];
     eq('grid patch capture: the originals rendering shows the cell\'s original',
@@ -76,9 +75,9 @@
 // state: every registered table in full detail, plus the bound table's raw
 // markup as the fixture seed. Dependencies arrive as parameters with working
 // defaults (deps.store, deps.adapterFor), so these tests drive the function
-// with stand-ins and no DOM. Locked honesty is pinned here: a cell wearing
-// the rounded marker with no stored original serializes as original: null
-// and flips the table's locked flag — never a reconstructed value.
+// with stand-ins and no DOM. Absence honesty is pinned here: a cell wearing
+// the rounded marker with no stored original serializes as original: null,
+// never a reconstructed value.
 
 (function captureStateSerializer() {
   eq('capture-state: collectCaptureState loads in the content-script bundle',
@@ -150,7 +149,7 @@
 
   const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
 
-  eq('capture-state: the state carries its format version', state.captureFormat, 8);
+  eq('capture-state: the state carries its format version', state.captureFormat, 9);
   eq('capture-state: the state holds no page-wide settings; each table carries its own',
     Object.prototype.hasOwnProperty.call(state, 'settings'), false);
   eq('capture-state: a table with no settings of its own carries the shipped defaults',
@@ -187,23 +186,25 @@
     recA.cells[3], { row: 2, col: 0, role: 'td', text: 'Total', original: null, wearsMarker: false });
   eq('capture-state: no cell record carries an outside field',
     recA.cells.filter((cell) => Object.prototype.hasOwnProperty.call(cell, 'isOutside')).length, 0);
-  eq('capture-state: a marked cell WITH its original does not lock the table',
-    recA.locked, false);
+  eq('capture-state: a table record carries no locked field',
+    Object.prototype.hasOwnProperty.call(recA, 'locked'), false);
 
   const recB = state.tables[1];
   eq('capture-state: a virtualized grid serializes as kind grid with its frozen magnitude',
     { kind: recB.kind, maxMagnitude: recB.maxMagnitude }, { kind: 'grid', maxMagnitude: 4 });
 
-  // Locked honesty: the marker with no original behind it.
-  const lockedCell = makeCellEl(true);
-  const tableL = { _rows: [{ cells: [{ el: lockedCell, text: '99,000' }] }] };
-  const lockedState = collectCaptureState({
+  // Absence honesty: the marker with no original behind it.
+  const lostCell = makeCellEl(true);
+  const tableL = { _rows: [{ cells: [{ el: lostCell, text: '99,000' }] }] };
+  const lostState = collectCaptureState({
     store: makeFakeStore([tableL], {}),
     adapterFor: fakeAdapterFor,
   });
-  eq('capture-state: a rounded marker with no stored original locks the table and stays null',
-    { locked: lockedState.tables[0].locked, original: lockedState.tables[0].cells[0].original },
-    { locked: true, original: null });
+  eq('capture-state: a rounded marker with no stored original stays null and flags no table',
+    { hasLocked: Object.prototype.hasOwnProperty.call(lostState.tables[0], 'locked'),
+      original: lostState.tables[0].cells[0].original,
+      wearsMarker: lostState.tables[0].cells[0].wearsMarker },
+    { hasLocked: false, original: null, wearsMarker: true });
 
   // Empty registry: an honest nothing.
   const emptyState = collectCaptureState({
@@ -236,7 +237,7 @@
 })();
 
 // The per-cell marker flag reaches the cell record. The serializer
-// already reads the rounded marker to compute the locked pairing; the
+// reads the rounded marker per cell; the
 // renderer needs it per cell to tell a lost original (marker, original: null)
 // from a cell that was never rounded (no marker, original: null).
 (function captureStateCarriesMarkerFlag() {
@@ -280,7 +281,7 @@
   eq('capture-state: an unmarked cell record carries wearsMarker false',
     { wearsMarker: cells[1].wearsMarker, original: cells[1].original },
     { wearsMarker: false, original: null });
-  eq('capture-state: a lost original keeps the locked pairing readable per cell',
+  eq('capture-state: a lost original keeps the marker and null pairing readable per cell',
     { wearsMarker: cells[2].wearsMarker, original: cells[2].original },
     { wearsMarker: true, original: null });
 })();
@@ -317,10 +318,9 @@
 
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const filenameFor = DR_CAPTURE.filenameFor;
-  const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 8,
+    captureFormat: 9,
     meta: {
       url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z',
@@ -330,7 +330,7 @@
     activeTableIndex: 0,
     tables: [{
       kind: 'native', appliedFlag: 'simplified', settings: { offsetTop: -0.5 },
-      maxMagnitude: null, locked: false, rowCount: 2, columnCount: 1,
+      maxMagnitude: null, rowCount: 2, columnCount: 1,
       cells: [
         { row: 0, col: 0, role: 'th', text: 'Amount', original: null },
         { row: 1, col: 0, role: 'td', text: '99,000', original: '98,765' },
@@ -343,7 +343,7 @@
       dateGranularity: 'year', timeGranularity: 'hour', rangeExpr: '',
       stops: [-2, -1.5, -1, -0.5, -0.25, 0, 0.25, 0.5, 1],
       topVal: -0.5, botVal: -0.5, coupled: true,
-      status: '', noTable: false, locked: false,
+      status: '', noTable: false,
       lensPreview: { top: ['98,765'], bottom: [] },
     },
     log: {
@@ -368,7 +368,7 @@
       .replace(/&amp;/g, '&'));
   };
 
-  const html = buildCaptureDocument({ state: makeState(), lockedStatusText: LOCKED_TEXT });
+  const html = buildCaptureDocument({ state: makeState() });
 
 // --- The capture rendering places a cell under its own column ---
 
@@ -379,7 +379,7 @@
     state: makeState({
       tables: [{
         kind: 'native', appliedFlag: 'simplified', settings: {},
-        maxMagnitude: null, locked: false, rowCount: 2, columnCount: 3,
+        maxMagnitude: null, rowCount: 2, columnCount: 3,
         cells: [
           { row: 0, col: 0, role: 'th', text: 'Product', original: null },
           { row: 0, col: 1, role: 'th', text: 'Units', original: null },
@@ -389,7 +389,6 @@
         ],
       }],
     }),
-    lockedStatusText: '',
   });
   const rows = merged.match(/<tr>[\s\S]*?<\/tr>/g) || [];
   eq('#330: a cell the state records at a later column renders under that column',
@@ -406,7 +405,7 @@
     state: makeState({
       tables: [{
         kind: 'native', appliedFlag: 'simplified', settings: {},
-        maxMagnitude: null, locked: false, rowCount: 3, columnCount: 3,
+        maxMagnitude: null, rowCount: 3, columnCount: 3,
         cells: [
           { row: 0, col: 0, role: 'th', text: 'Product', original: null },
           { row: 0, col: 1, role: 'th', text: 'Units', original: null },
@@ -415,7 +414,6 @@
         ],
       }],
     }),
-    lockedStatusText: '',
   });
   const rows = padded.match(/<tr>[\s\S]*?<\/tr>/g) || [];
   eq('#330: the columns a merge covers render blank even at the table\'s right edge',
@@ -480,7 +478,7 @@
     state: makeState({
       tables: [{
         kind: 'native', appliedFlag: 'simplified', settings: null,
-        maxMagnitude: null, locked: false, rowCount: 1, columnCount: 1,
+        maxMagnitude: null, rowCount: 1, columnCount: 1,
         cells: [{
           row: 0, col: 0, role: 'td',
           text: '"><img src=x onerror=alert(1)>',
@@ -488,7 +486,6 @@
         }],
       }],
     }),
-    lockedStatusText: LOCKED_TEXT,
   });
   eq('capture-render: hostile cell text appears only escaped',
     hostile.includes('<img'), false);
@@ -502,26 +499,11 @@
   const hostileSeed = '</pre><script>alert(1)</script>\r\n<table><tr><td>1</td></tr></table>';
   const seeded = buildCaptureDocument({
     state: makeState({ fixtureSeed: hostileSeed }),
-    lockedStatusText: LOCKED_TEXT,
   });
   eq('capture-render: a hostile seed cannot break out of the island or add a script',
     seeded.toLowerCase().includes('<script'), false);
   eq('capture-render: the island returns the hostile seed byte-exact',
     islandJson(seeded).fixtureSeed, hostileSeed);
-
-  // Locked table: the wording arrives as a value (no third copy) and renders.
-  const locked = buildCaptureDocument({
-    state: makeState({
-      tables: [{
-        kind: 'native', appliedFlag: 'simplified', settings: null,
-        maxMagnitude: null, locked: true, rowCount: 1, columnCount: 1,
-        cells: [{ row: 0, col: 0, role: 'td', text: '99,000', original: null }],
-      }],
-    }),
-    lockedStatusText: LOCKED_TEXT,
-  });
-  eq('capture-render: a locked table renders the locked wording passed in as a value',
-    locked.includes('This table&#39;s original values are no longer available'), true);
 
   // Console section: both contexts labeled; an empty buffer is a finding.
   eq('capture-render: both log sections render, and an empty one says so',
@@ -531,7 +513,6 @@
   // No table bound: the capture stays honest instead of refusing.
   const unbound = buildCaptureDocument({
     state: makeState({ activeTableIndex: null, tables: [], fixtureSeed: null }),
-    lockedStatusText: LOCKED_TEXT,
   });
   eq('capture-render: an unbound capture says no table was bound',
     unbound.includes('No table was bound'), true);
@@ -585,7 +566,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 8,
+    captureFormat: 9,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -593,7 +574,7 @@
     activeTableIndex: 0,
     tables: [{
       kind: 'native', appliedFlag: 'simplified', settings: { offsetTop: -0.5 },
-      maxMagnitude: null, locked: false, rowCount: 2, columnCount: 1,
+      maxMagnitude: null, rowCount: 2, columnCount: 1,
       cells: [
         { row: 0, col: 0, role: 'th', text: 'Amount', original: null },
         { row: 1, col: 0, role: 'td', text: '99,000', original: '98,765' },
@@ -603,7 +584,7 @@
     sidebarView: {
       enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
       rangeExpr: '', stops: [-1, 0, 1], topVal: 0, botVal: 0, coupled: true,
-      status: '', noTable: false, locked: false,
+      status: '', noTable: false,
       lensPreview: { top: ['98,765'], bottom: [] },
     },
     log: {
@@ -613,7 +594,7 @@
     page: { url: 'https://www.example.com/prices', title: 'Prices' },
     fixtureSeed: '<table><tr><td>98,765</td></tr></table>',
   }, over || {});
-  const html = buildCaptureDocument({ state: makeState(), lockedStatusText: '' });
+  const html = buildCaptureDocument({ state: makeState() });
   const header = html.slice(html.indexOf('<header>'), html.indexOf('</header>'));
 
   // The whole header shape is pinned, so no sentence re-enters it unseen.
@@ -643,7 +624,6 @@
     (html.match(/<p class="cap-note">Note: /g) || []).length, 4);
   const unbound = buildCaptureDocument({
     state: makeState({ activeTableIndex: null, tables: [], fixtureSeed: null }),
-    lockedStatusText: '',
   });
   eq('capture-render: an unbound capture carries the one note that always applies',
     (unbound.match(/<p class="cap-note">Note: /g) || []).length === 1 &&
@@ -665,7 +645,7 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
   const makeState = (over) => Object.assign({
-    captureFormat: 8,
+    captureFormat: 9,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong', remarks: '', detectionSettings: null,
@@ -686,7 +666,7 @@
   const jpeg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDA==';
   const taken = { taken: true, format: 'jpeg', chars: jpeg.length };
   const html = buildCaptureDocument({
-    state: makeState({ screenshot: taken }), lockedStatusText: '', screenshotDataUrl: jpeg,
+    state: makeState({ screenshot: taken }), screenshotDataUrl: jpeg,
   });
   eq('capture-render: the screenshot renders as an image from the data URL passed beside the state',
     html.includes('<img class="cap-shot" src="' + jpeg + '"'), true);
@@ -703,12 +683,12 @@
 
   const failed = buildCaptureDocument({
     state: makeState({ screenshot: { taken: false, reason: 'activeTab was not granted' } }),
-    lockedStatusText: '', screenshotDataUrl: null,
+    screenshotDataUrl: null,
   });
   eq('capture-render: a failed screenshot renders as an absence with the reason',
     failed.includes('<p class="cap-empty">No screenshot: activeTab was not granted.</p>') &&
       !failed.includes('<img class="cap-shot"'), true);
-  const absent = buildCaptureDocument({ state: makeState(), lockedStatusText: '' });
+  const absent = buildCaptureDocument({ state: makeState() });
   eq('capture-render: an absent screenshot record renders as an absence',
     absent.includes('<p class="cap-empty">No screenshot was recorded.</p>') &&
       !absent.includes('<img class="cap-shot"'), true);
@@ -718,7 +698,7 @@
   const hostile = ['javascript:alert(1)', 'data:text/html;base64,AAAA',
     'data:image/png;base64,AAAA" onerror="alert(1)', ''];
   const hostileOut = hostile.map((value) => buildCaptureDocument({
-    state: makeState({ screenshot: taken }), lockedStatusText: '', screenshotDataUrl: value,
+    state: makeState({ screenshot: taken }), screenshotDataUrl: value,
   }));
   eq('capture-render: a value outside the image data URL shape never reaches the img src',
     hostileOut.every((out) => !out.includes('<img class="cap-shot"') && !out.includes('onerror') &&
@@ -727,7 +707,7 @@
   eq('capture-render: a png data URL renders like a jpeg one',
     buildCaptureDocument({
       state: makeState({ screenshot: { taken: true, format: 'png', chars: 26 } }),
-      lockedStatusText: '', screenshotDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      screenshotDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
     }).includes('<img class="cap-shot" src="data:image/png;base64,iVBORw0KGgo="'), true);
 })();
 
@@ -742,10 +722,9 @@
 (function captureRendererAbsenceHonesty() {
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
-  const LOCKED_TEXT = 'This table\'s original values are no longer available. Reload the page to change it.';
 
   const makeState = (over) => Object.assign({
-    captureFormat: 8,
+    captureFormat: 9,
     meta: { url: 'https://www.example.com/prices', title: 'Prices',
       version: '2.1.50', platform: 'test-platform', at: '2026-09-09T18:00:00.000Z' },
     mark: 'looks-wrong',
@@ -762,13 +741,13 @@
     fixtureSeed: null,
   }, over || {});
 
-  // A locked table: the marker with no original behind it. The originals view
+  // A lost original: the marker with no original behind it. The originals view
   // renders the absence, never the displayed (rounded) value.
-  const locked = buildCaptureDocument({
+  const lost = buildCaptureDocument({
     state: makeState({
       tables: [{
         kind: 'native', appliedFlag: 'simplified', settings: null,
-        maxMagnitude: null, locked: true, rowCount: 1, columnCount: 2,
+        maxMagnitude: null, rowCount: 1, columnCount: 2,
         cells: [
           { row: 0, col: 0, role: 'td',
             text: '99,000', original: null, wearsMarker: true },
@@ -777,11 +756,10 @@
         ],
       }],
     }),
-    lockedStatusText: LOCKED_TEXT,
   });
   // The originals table alone: from its heading to its closing tag. The JSON
   // island later in the document carries the displayed value by design.
-  const originalsTable = (locked.split('with the originals')[1] || '').split('</table>')[0];
+  const originalsTable = (lost.split('with the originals')[1] || '').split('</table>')[0];
   eq('capture-render: a lost original renders as lost, never as the displayed value',
     /original lost/.test(originalsTable) && !originalsTable.includes('99,000'), true);
   eq('capture-render: a never-rounded cell still shows its text in the originals view',
@@ -792,11 +770,10 @@
     state: makeState({
       tables: [{
         kind: 'unknown', appliedFlag: null, settings: null,
-        maxMagnitude: null, locked: false, rowCount: null, columnCount: null,
+        maxMagnitude: null, rowCount: null, columnCount: null,
         cells: [], error: 'hostile walk',
       }],
     }),
-    lockedStatusText: LOCKED_TEXT,
   });
   const boundHalf = failed.split('<h2>Registry')[0];
   eq('capture-render: an error record on the bound table renders as a failure notice with its error text',
@@ -811,7 +788,6 @@
     state: makeState({
       log: { content: null, sidebar: { entries: [], dropped: 0, limit: 50 } },
     }),
-    lockedStatusText: LOCKED_TEXT,
   });
   eq('capture-render: a missing log snapshot renders as a failed state pull',
     pullFailed.includes('state pull failed'), true);
@@ -822,7 +798,6 @@
   // name must not reach the document as a glyph.
   const hostileMark = buildCaptureDocument({
     state: makeState({ mark: 'constructor' }),
-    lockedStatusText: LOCKED_TEXT,
   });
   eq('capture-render: a mark outside the three words resolves no glyph',
     hostileMark.includes('[native code]'), false);
@@ -865,13 +840,12 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 8,
+      captureFormat: 9,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
       log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
     },
-    lockedStatusText: '',
   });
   eq('capture-header: the header carries no share caveat',
     html.includes('Share it as you would share the page.'), false);
@@ -907,8 +881,8 @@
     state.detectionSettings, DR_DETECTION_SETTINGS);
   eq('capture-settings: the state\'s captureFormat equals CAPTURE_FORMAT',
     state.captureFormat, CAPTURE_FORMAT);
-  eq('capture-settings: CAPTURE_FORMAT is 8',
-    CAPTURE_FORMAT, 8);
+  eq('capture-settings: CAPTURE_FORMAT is 9',
+    CAPTURE_FORMAT, 9);
   eq('capture-settings: the returned copy is not the same object as DR_DETECTION_SETTINGS',
     state.detectionSettings !== DR_DETECTION_SETTINGS, true);
 
@@ -938,7 +912,7 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (detectionSettings) => ({
-    captureFormat: 8,
+    captureFormat: 9,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -957,7 +931,7 @@
       pinnedPaneSelectors: ['.nv--pinned-pane'],
     }],
   };
-  const visible = visibleHalf(buildCaptureDocument({ state: baseState(settings), lockedStatusText: '' }));
+  const visible = visibleHalf(buildCaptureDocument({ state: baseState(settings) }));
 
   eq('capture-settings: a scalar detection setting renders in the visible half',
     visible.includes('4242'), true);
@@ -981,7 +955,7 @@
     }],
   };
   const hostileVisible = visibleHalf(
-    buildCaptureDocument({ state: baseState(hostileSettings), lockedStatusText: '' }));
+    buildCaptureDocument({ state: baseState(hostileSettings) }));
 
   eq('capture-settings: a hostile profile field never renders a literal script tag in the visible half',
     hostileVisible.toLowerCase().includes('<script>'), false);
@@ -1004,7 +978,7 @@
   const buildCaptureDocument = DR_CAPTURE.buildCaptureDocument;
 
   const baseState = (over) => Object.assign({
-    captureFormat: 8,
+    captureFormat: 9,
     meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
     mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
     tables: [], lensPreview: null, sidebarView: null,
@@ -1015,7 +989,7 @@
   let threwWithNull = false;
   let htmlWithNull = '';
   try {
-    htmlWithNull = buildCaptureDocument({ state: baseState({ detectionSettings: null }), lockedStatusText: '' });
+    htmlWithNull = buildCaptureDocument({ state: baseState({ detectionSettings: null }) });
   } catch (e) {
     threwWithNull = true;
   }
@@ -1027,7 +1001,7 @@
   let threwWithAbsent = false;
   let htmlWithAbsent = '';
   try {
-    htmlWithAbsent = buildCaptureDocument({ state: stateWithAbsentSettings, lockedStatusText: '' });
+    htmlWithAbsent = buildCaptureDocument({ state: stateWithAbsentSettings });
   } catch (e) {
     threwWithAbsent = true;
   }
@@ -1039,7 +1013,7 @@
   eq('capture-settings: an absent detectionSettings field renders the absence placeholder in the detection settings section',
     /<h2>Detection settings<\/h2>[\s\S]{0,80}—/.test(visibleHalf(htmlWithAbsent)), true);
   eq('capture-settings: the format version still prints in the header when detectionSettings is absent',
-    /<dt>Capture format<\/dt><dd>8<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
+    /<dt>Capture format<\/dt><dd>9<\/dd>/.test(visibleHalf(htmlWithAbsent)), true);
 
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const fnStart = sidebarJsSrc.indexOf('function assembleAndSaveCapture');
@@ -1055,14 +1029,13 @@
   if (typeof globalThis.DR_CAPTURE !== 'object') return;
   const html = DR_CAPTURE.buildCaptureDocument({
     state: {
-      captureFormat: 8,
+      captureFormat: 9,
       meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
       mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
       tables: [], lensPreview: null, sidebarView: null,
       log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
       detectionSettings: { exampleScalarSetting: 1 },
     },
-    lockedStatusText: '',
   });
   const headingMatch = /<h2>Detection settings<\/h2>/.exec(html);
   const stateBlockIndex = html.indexOf('id="capture-state"');
@@ -1094,18 +1067,18 @@
   };
   const state = collectCaptureState({ store: fakeStore, adapterFor: () => null });
   eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
-  eq('capture-state: format 8 carries each table\'s settings in place of the page-wide settings',
-    state.captureFormat, 8);
+  eq('capture-state: the state carries format 9',
+    state.captureFormat, 9);
 
   const renderState = {
-    captureFormat: 8,
+    captureFormat: 9,
     meta: { url: 'https://www.example.com/p', title: 'P', version: '2.1.70',
       platform: 'test', at: '2026-09-17T16:00:00.000Z' },
     mark: 'looks-wrong', remarks: '', detectionSettings: null,
     activeTableIndex: null, tables: [], lensPreview: null, fixtureSeed: null,
     sidebarView: { enabled: true, switches: {}, dateGranularity: 'year', timeGranularity: 'hour',
       rangeExpr: '', stops: [0], topVal: 0, botVal: 0, coupled: true, status: '',
-      noTable: true, locked: false, lensPreview: { top: [], bottom: [] } },
+      noTable: true, lensPreview: { top: [], bottom: [] } },
     errorState: errorState,
     log: {
       content: {
@@ -1120,7 +1093,7 @@
       sidebar: { entries: [], dropped: 0, limit: 50 },
     },
   };
-  const html = DR_CAPTURE.buildCaptureDocument({ state: renderState, lockedStatusText: '' });
+  const html = DR_CAPTURE.buildCaptureDocument({ state: renderState });
   const visible = html.slice(0, html.indexOf('id="capture-state"'));
   eq('capture-render: a row\'s stack trace renders under the row, folded, each frame in the short form',
     /traced row[\s\S]{0,200}<details[\s\S]{0,200}content\.js:1523:18 \(roundTable\)/.test(visible) &&
