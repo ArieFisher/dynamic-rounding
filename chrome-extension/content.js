@@ -62,10 +62,11 @@ DR_LOG.onRow((row) => {
 });
 
 // The sidebar's settings apply: write the active table's settings and apply
-// them. The shape check runs before the write, so a change landing on a table the page refilled
-// writes the fresh registration, and a shape change that registers nothing
-// stops the write. With no table active nothing is written. The answer carries
-// no data: the sidebar reads that someone answered and stays bound.
+// them. The shape check runs before the write, so a change landing on a
+// table the page refilled writes the fresh registration, and a shape change
+// that registers nothing stops the write. With no table active nothing is
+// written. The answer carries no data: the sidebar reads that someone
+// answered and stays bound.
 DR_BUS.respond('request:applySettings', ({ settings }) => {
   const active = DR_STORE.getSelectedTable();
   const target = active && revalidateTableShape(active).table;
@@ -483,8 +484,9 @@ function revalidateTableShape(table, opts = {}) {
   // cells, with its marker class on them. Discarding the entry first would
   // drop the originals behind that text: the fresh registration would read
   // the simplified values as the cells' own, and every one of them would be
-  // unrestorable, with no route back to its original. Restoring first puts raw text in every surviving cell, so the
-  // fresh registration records its fingerprint over raw text and starts raw.
+  // unrestorable, with no route back to its original. Restoring first puts
+  // raw text in every surviving cell, so the fresh registration records its
+  // fingerprint over raw text and starts raw.
   // A cell whose original is gone stays as it is, the same as any other
   // restore. The originals go back into the cells and nowhere else, so none
   // of them reaches the fresh entry.
@@ -647,8 +649,8 @@ function registryOriginalsPort(table) {
 // of those for a cell that was NOT actually restored would claim a recovery
 // that did not happen and destroy data that was still recoverable by eye
 // even though the registry could no longer recover it programmatically.
-// Returns the count of cells left unrestored, so the reset can tell a
-// genuine restore from a no-op one.
+// Returns the count of cells left unrestored; the reset sets the applied
+// flag from it.
 function restoreTable(table) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
   if (roundedCells.length === 0) return 0;
