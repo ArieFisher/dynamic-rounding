@@ -82,11 +82,11 @@ DR_BUS.respond('request:applySettings', ({ settings }) => {
 //
 // The rules, in the order they matter:
 //
-//   1. The flip direction comes from the screen BEFORE any write. The
-//      settings write below applies to the table, so a direction read
-//      afterward would read the write's own output: a press on a raw table would
-//      simplify it, then read "simplified" and write off, and the second
-//      apply would reset it — the press would land back where it started.
+//   1. The flip direction comes from the table's on/off value, the one the
+//      table pillbox shows, read BEFORE any write. A read afterward would
+//      return the write's own value: for an off table the handler would
+//      write on, then read on and write off, and the table would end where
+//      it started.
 //   2. Activation precedes the write, so the sidebar receives the new
 //      active table before the settings notice for it. The existing suite
 //      pins that order.
@@ -96,19 +96,20 @@ DR_BUS.respond('request:applySettings', ({ settings }) => {
 //      holds its own. The write's settings notice carries the new value to
 //      the sidebar, and the write runs the single apply.
 DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
-  // Rule 0: the shape check runs before rule 1's screen read. A press on a
-  // table the page has refilled therefore reads the fresh entry's raw form
-  // and turns simplification on, where a read of the discarded entry would
-  // find a simplification of values no longer on the screen. The press
-  // continues on the element the check returns, which is a different element
-  // where a new result set moved the registration. A shape change that
-  // registers nothing stops the press here.
+  // Rule 0: the shape check runs before rule 1's read. For a press on a
+  // table the page has refilled, the handler therefore reads the fresh
+  // entry, which holds the shipped defaults, and turns simplification on,
+  // where a read of the discarded entry would find a setting for values no
+  // longer on the screen. The handler continues on the element the check
+  // returns, which is a different element where a new result set moved the
+  // registration. The handler stops here when the check registers nothing
+  // after a shape change.
   const revalidated = revalidateTableShape(pressedTable);
   if (!revalidated.table) return;
   const target = revalidated.table;
 
-  // Rule 1: read the screen first.
-  const nextEnabled = !isTableRounded(target);
+  // Rule 1: read the on/off value first.
+  const nextEnabled = !isTableOn(target);
 
   if (!revalidated.switched && target !== DR_STORE.getSelectedTable()) {
     // Rule 2. Published as an intent rather than written here, so one intent
@@ -272,7 +273,6 @@ function applySidebarRounding(table) {
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   flashRangePulse(table, rangeParse.error ? null : rangeParse.ranges);
-  syncSwitchForTable(table);
 }
 
 // The one consumer of the nomination step's per-nest outcomes. Both live
@@ -701,7 +701,6 @@ function resetTable(table) {
 
   const unrestorableCount = restoreTable(table);
   DR_STORE.setTableAppliedFlag(table, unrestorableCount > 0 ? 'simplified' : 'original');
-  syncSwitchForTable(table);
 }
 
 // --- Shared adapters between the classification ladder (lib/dr-simplify)
@@ -1442,7 +1441,6 @@ function roundTable(table, options) {
     writes: 'first',
   });
   DR_STORE.setTableAppliedFlag(table, landedCells > 0 ? 'simplified' : 'original');
-  syncSwitchForTable(table);
 
   // The re-apply observer attaches AFTER the first simplification, so the
   // writes above run no pass.

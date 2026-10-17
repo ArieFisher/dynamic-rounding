@@ -19,6 +19,13 @@ function withTextPiece(cell) {
   return cell;
 }
 
+// True when the screen shows simplified values: roundTable changed a cell and
+// the table is not showing originals. The table pillbox shows the on/off value
+// instead (isTableOn), so a test of what a pass did to the screen reads this.
+function showsSimplified(table) {
+  return DR_STORE.getTableAppliedFlag(table) === 'simplified';
+}
+
 function makeMockCell(tag, text) {
   return withTextPiece({
     tagName: tag.toUpperCase(),
@@ -192,7 +199,7 @@ function withLinkCreateTreeWalker(fn) {
 }
 
 /**
- * Build a minimal table DOM stub that isTableRounded, restoreTable, and
+ * Build a minimal table DOM stub that showsSimplified, restoreTable, and
  * roundTable can consume. Returns an object that looks like a real HTMLTableElement
  * for the purposes of these functions.
  *
@@ -1297,7 +1304,7 @@ function makeE2EGridWrapper(rowData) {
     return [];
   };
 
-  // Override wrapper querySelector so isTableRounded / syncSwitchForTable do not throw.
+  // Override wrapper querySelector so showsSimplified / syncSwitchForTable do not throw.
   grid.wrapperEl.querySelector = function(sel) {
     if (sel === '.dr-ext-rounded') {
       return allCells.find(function(c) { return c.classList.contains('dr-ext-rounded'); }) || null;

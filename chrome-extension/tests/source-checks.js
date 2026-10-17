@@ -180,8 +180,8 @@
 // --- Static analysis: all new functions are defined ---
 
 (function atToggle_staticAnalysis() {
-  eq('auto-table-toggle: isTableRounded is defined',
-    typeof isTableRounded, 'function');
+  eq('auto-table-toggle: isTableOn is defined',
+    typeof isTableOn, 'function');
   eq('auto-table-toggle: syncSwitchForTable is defined',
     typeof syncSwitchForTable, 'function');
   eq('auto-table-toggle: positionToggle is defined',
@@ -206,8 +206,8 @@
     /const\s+tableToggles\s*=\s*new\s+WeakMap/.test(src), true);
   eq('auto-table-toggle: declares trackedTables Set',
     /const\s+trackedTables\s*=\s*new\s+Set/.test(src), true);
-  eq('auto-table-toggle: defines isTableRounded',
-    /function\s+isTableRounded\b/.test(src), true);
+  eq('auto-table-toggle: defines isTableOn',
+    /function\s+isTableOn\b/.test(src), true);
   eq('auto-table-toggle: defines syncSwitchForTable',
     /function\s+syncSwitchForTable\b/.test(src), true);
   eq('auto-table-toggle: defines positionToggle',

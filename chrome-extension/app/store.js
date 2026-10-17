@@ -94,8 +94,9 @@ const DR_STORE = (function () {
         // instead of accumulating for the life of the table's registration.
         originals: new WeakMap(),
         // The table's form: 'original' | 'simplified'. 'original' covers both
-        // "never rounded" and "rounded, currently showing originals";
-        // isTableRounded (ui-toggle.js) is exactly appliedFlag === 'simplified'.
+        // "never rounded" and "rounded, currently showing originals". It
+        // records what the screen shows; the table pillbox shows the on/off
+        // value instead (isTableOn in ui-toggle.js).
         appliedFlag: 'original',
         // The table's settings: its on/off value and every simplification
         // option, with the shipped defaults filled in. null until the first
@@ -263,7 +264,8 @@ const DR_STORE = (function () {
   // The notice crosses to the sidebar, so it carries plain values alone: the
   // source ('sidebar' for the sidebar's apply, 'page' for every other writer)
   // and a copy of the stored settings. The sidebar redraws from a notice
-  // whose source is not its own.
+  // whose source is not its own, and the table pillbox view redraws the active
+  // table's pillbox from every notice.
   function setTableSettings(table, settings, source) {
     const stored = Object.assign({}, DR_DEFAULTS, settings || {});
     _ensureEntry(table).settings = stored;

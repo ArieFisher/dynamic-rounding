@@ -2063,7 +2063,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     return [];
   };
 
-  // Also need querySelector for isTableRounded's call after reset
+  // Also need querySelector for showsSimplified's call after reset
   grid.wrapperEl.querySelector = function(sel) {
     if (sel === '.dr-ext-rounded') return null; // after reset, none
     return null;
@@ -3913,7 +3913,7 @@ function everyRowRead(kind, largeIn) {
     // path's fresh round. ---
     eval(contentScriptBundle + `
       globalThis.__ri1_roundTable = roundTable;
-      globalThis.__ri1_isTableRounded = isTableRounded;
+      globalThis.__ri1_showsSimplified = (t) => DR_STORE.getTableAppliedFlag(t) === 'simplified';
     `);
     global.__ri1_roundTable(table1, DR_DEFAULTS);
     global.__ri1_roundTable(table3, DR_DEFAULTS);
@@ -3930,7 +3930,7 @@ function everyRowRead(kind, largeIn) {
     eq('re-injection (pre): instance 1 actually rounded the cell away from the true original',
       roundedText1 !== trueOriginal1, true);
     eq('re-injection (pre): instance 1 reports the table as rounded',
-      global.__ri1_isTableRounded(table1), true);
+      global.__ri1_showsSimplified(table1), true);
     eq('re-injection (pre): the title attribute holds the true original',
       roundedTitle1, `Original: ${trueOriginal1}`);
 
@@ -3944,7 +3944,7 @@ function everyRowRead(kind, largeIn) {
     let ri2Listener = null;
     global.chrome.runtime.onMessage.addListener = (fn) => { ri2Listener = fn; };
     eval(contentScriptBundle + `
-      globalThis.__ri2_isTableRounded = isTableRounded;
+      globalThis.__ri2_showsSimplified = (t) => DR_STORE.getTableAppliedFlag(t) === 'simplified';
       globalThis.__ri2_resetTable = resetTable;
       globalThis.__ri2_DR_STORE = DR_STORE;
       globalThis.__ri2_roundTable = roundTable;
@@ -3953,7 +3953,7 @@ function everyRowRead(kind, largeIn) {
     `);
 
     eq('re-injection: a fresh instance reports the table as NOT rounded, despite the DOM still showing rounded text — a state/display mismatch the moment re-injection happens',
-      global.__ri2_isTableRounded(table1), false);
+      global.__ri2_showsSimplified(table1), false);
 
     // --- Scenario A: the user's most natural recovery action is "reset"
     // (or an equivalent toggle-to-original click). Drive the SAME
@@ -4008,6 +4008,7 @@ function everyRowRead(kind, largeIn) {
     eq('re-injection pill: an unrounded table renders unselected',
       stub6.getAttribute('aria-pressed'), 'false');
 
+    global.__ri2_DR_STORE.setTableSettings(table6, { enabled: true }, 'page');
     global.__ri2_roundTable(table6, DR_DEFAULTS);
     global.__ri2_syncSwitchForTable(table6);
     eq('re-injection pill: a table THIS instance rounded renders selected',

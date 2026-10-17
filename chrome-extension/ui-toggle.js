@@ -24,8 +24,9 @@
  * DOM reference to each table's button, for aria-pressed updates and
  * scroll/resize repositioning. A user action (click/tap) reports an intent
  * on DR_BUS instead of calling a content.js function directly; content.js
- * is the sole subscriber and owns what happens next. All load-time-executing
- * wiring (observers, listeners) stays in content.js. Loaded before content.js.
+ * is the sole subscriber and owns what happens next. This view redraws the
+ * table pillbox from the model's settings notice; every other load-time-executing wiring
+ * (observers, listeners) stays in content.js. Loaded before content.js.
  */
 
 // Toggle geometry constants
@@ -65,17 +66,29 @@ const trackedTables = new Set();
 /** WeakMap from HTMLTableElement → ResizeObserver for the toggle */
 const tableResizeObservers = new WeakMap();
 
-// The registry entry's appliedFlag is 'simplified' only when roundTable
-// changed a cell and the table is not showing originals.
-function isTableRounded(table) {
-  return DR_STORE.getTableAppliedFlag(table) === 'simplified';
+// The table pillbox shows the table's on/off value, the same value the
+// sidebar pillbox shows, so the two always agree. The press handler in
+// content.js reads this value and writes its opposite. A table that is on
+// with no cell to simplify still shows on.
+function isTableOn(table) {
+  return DR_STORE.getTableSettings(table).enabled === true;
 }
 
 function syncSwitchForTable(table) {
   const button = tableToggles.get(table);
   if (!button) return;
-  button.setAttribute('aria-pressed', isTableRounded(table) ? 'true' : 'false');
+  button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
 }
+
+// The table pillbox view redraws the table pillbox from the model's settings notice,
+// as the sidebar redraws the sidebar pillbox. The model publishes the notice on every settings write, and
+// every write targets the active table, so this subscriber redraws the active
+// table's pillbox. The bus delivers the notice to this subscriber in the same
+// context, before the controller applies the written settings.
+DR_BUS.subscribe('state:settingsChanged', () => {
+  const active = DR_STORE.getSelectedTable();
+  if (active) syncSwitchForTable(active);
+});
 
 let toggleStyleInjected = false;
 function ensureToggleStyleInjected() {

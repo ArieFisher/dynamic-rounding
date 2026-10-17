@@ -4,7 +4,7 @@ This extension applies the `ROUND_DYNAMIC` algorithm to tables on any website. E
 
 ## What a pillbox press does
 
-A press makes the pressed table the active one and flips its form from what the screen shows: a raw table simplifies, a simplified table goes back to its original values. It writes that table's settings once, and that write is what reaches the table, so the pillbox, the sidebar's switch, and the right-click menu item all act through one path.
+On a press, the extension makes the pressed table the active one and writes the opposite of its on/off value: a table that is off turns on and simplifies, a table that is on turns off and goes back to its original values. The table pillbox and the sidebar pillbox both show that value, so the two always agree. A table that is on with no cell to simplify under its settings still shows on, and the extension writes off on the next press. The extension writes that table's settings once, and applies them on that write, so the table pillbox, the sidebar pillbox, and the right-click menu item all act through one path.
 
 Two consequences follow. Turning simplification on uses the table's own settings, which a sidebar session may have changed since the last press. Turning it off resets the table: the simplified markers and the stored originals go, and a later press simplifies again from scratch.
 

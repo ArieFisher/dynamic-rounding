@@ -137,7 +137,7 @@ Object.defineProperty(globalThis, 'highlightStyleInjected', {
   set(v) { highlightStyleInjected = v; },
   configurable: true,
 });
-globalThis.isTableRounded = isTableRounded;
+globalThis.isTableOn = isTableOn;
 globalThis.syncSwitchForTable = syncSwitchForTable;
 globalThis.positionToggle = positionToggle;
 globalThis.createToggleForTable = createToggleForTable;

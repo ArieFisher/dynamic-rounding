@@ -99,46 +99,46 @@
 
 // --- Helpers ---
 
-// --- AC5: isTableRounded returns false for a fresh table ---
+// --- AC5: showsSimplified returns false for a fresh table ---
 
-(function atToggle_isTableRounded_freshTable() {
+(function atToggle_showsSimplified_freshTable() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  eq('auto-table-toggle: isTableRounded(fresh table) is false',
-    isTableRounded(table), false);
+  eq('auto-table-toggle: showsSimplified(fresh table) is false',
+    showsSimplified(table), false);
 })();
 
-// --- AC5: isTableRounded returns true after roundTable marks cells ---
+// --- AC5: showsSimplified returns true after roundTable marks cells ---
 
-(function atToggle_isTableRounded_afterRound() {
+(function atToggle_showsSimplified_afterRound() {
   // Directly inject the rounded class AND set the registry's appliedFlag to
   // simulate a rounded table (do not run the full roundTable pipeline which
-  // requires tree walkers etc.) — isTableRounded reads DR_STORE's appliedFlag,
+  // requires tree walkers etc.) — showsSimplified reads DR_STORE's appliedFlag,
   // not the class, so both are set here the way
   // roundTable itself would leave them.
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
   DR_STORE.setTableAppliedFlag(table, 'simplified');
-  eq('auto-table-toggle: isTableRounded(table with .dr-ext-rounded cell) is true',
-    isTableRounded(table), true);
+  eq('auto-table-toggle: showsSimplified(table with .dr-ext-rounded cell) is true',
+    showsSimplified(table), true);
 })();
 
-// --- AC5: isTableRounded returns false when appliedFlag !== 'simplified' ---
+// --- AC5: showsSimplified returns false when appliedFlag !== 'simplified' ---
 // (the restore path sets this before it rewrites cells)
 
-(function atToggle_isTableRounded_showingOriginal() {
+(function atToggle_showsSimplified_showingOriginal() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
   DR_STORE.setTableAppliedFlag(table, 'original');
-  eq('auto-table-toggle: isTableRounded is false when appliedFlag is "original"',
-    isTableRounded(table), false);
+  eq('auto-table-toggle: showsSimplified is false when appliedFlag is "original"',
+    showsSimplified(table), false);
 })();
 
-// --- AC5: isTableRounded after the reset restores originals ---
+// --- AC5: showsSimplified after the reset restores originals ---
 // Turning simplification off resets the table outright. This pins the reset
 // against three observables, plus the marker and the stored original, which
 // the reset clears.
 
-(function atToggle_isTableRounded_afterReset() {
+(function atToggle_showsSimplified_afterReset() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   // Simulate a post-roundTable state: cell has rounded class + a registry
   // original record, and the registry's appliedFlag is 'simplified'.
@@ -159,8 +159,8 @@
 
   resetTable(table);
 
-  eq('auto-table-toggle: after the reset, isTableRounded is false',
-    isTableRounded(table), false);
+  eq('auto-table-toggle: after the reset, showsSimplified is false',
+    showsSimplified(table), false);
   eq('auto-table-toggle: after the reset, appliedFlag is "original"',
     DR_STORE.getTableAppliedFlag(table), 'original');
   eq('auto-table-toggle: the reset clears the simplified marker, where the form flip kept it',
@@ -169,7 +169,7 @@
     DR_STORE.hasTableOriginal(table, cell), false);
 })();
 
-// --- AC6: syncSwitchForTable sets aria-pressed on the button to match isTableRounded ---
+// --- AC6: syncSwitchForTable sets aria-pressed on the button to match isTableOn ---
 
 (function atToggle_syncSwitch_ariaFalseWhenNotRounded() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
@@ -194,6 +194,7 @@
   table._cells[0].classList.add('dr-ext-rounded');
   DR_STORE.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
+  DR_STORE.setTableSettings(table, { enabled: true }, 'page');
 
   syncSwitchForTable(table);
   eq('auto-table-toggle: syncSwitchForTable sets aria-pressed="true" on rounded table',
@@ -454,11 +455,18 @@
     ]);
     // Must have querySelectorAll on individual cells (used by roundTable → filterLinkMatches)
     table._cells.forEach(c => { c.querySelectorAll = () => []; });
-    // Register a checkbox so syncSwitchForTable does not crash
     const input = injectToggleEntry(table);
 
-    DR_STORE.setTableSettings(table, { enabled: true }, 'page');
-    applySidebarRounding(table);
+    // The press path's write: the pressed table is active, the model stores
+    // the setting and publishes the notice, and the controller applies it.
+    const savedSelected = DR_STORE.getSelectedTable();
+    DR_STORE.setSelectedTable(table);
+    try {
+      DR_STORE.setTableSettings(table, { enabled: true }, 'page');
+      applySidebarRounding(table);
+    } finally {
+      DR_STORE.setSelectedTable(savedSelected);
+    }
 
     // After a press turning simplification on, at least one cell is simplified
     const hasRounded = table._cells.some(c => c.classList.contains('dr-ext-rounded'));
@@ -487,8 +495,17 @@
   });
 
   const input = injectToggleEntry(table);
-
-  resetTable(table);
+  const savedSelected = DR_STORE.getSelectedTable();
+  DR_STORE.setSelectedTable(table);
+  try {
+    DR_STORE.setTableSettings(table, { enabled: true }, 'page');
+    // The press path's write of off, then the controller's apply, which
+    // resets the table.
+    DR_STORE.setTableSettings(table, { enabled: false }, 'page');
+    applySidebarRounding(table);
+  } finally {
+    DR_STORE.setSelectedTable(savedSelected);
+  }
 
   // After turning simplification off: appliedFlag must be 'original' (AC4)
   eq('auto-table-toggle: a press on a simplified table sets appliedFlag=original (AC4)',
@@ -498,9 +515,9 @@
     input.getAttribute('aria-pressed'), 'false');
 })();
 
-// --- AC5: isTableRounded sequence: false → true → false via full toggle cycle ---
+// --- AC5: showsSimplified sequence: false → true → false via full toggle cycle ---
 
-(function atToggle_isTableRounded_fullCycle() {
+(function atToggle_showsSimplified_fullCycle() {
   withCreateTreeWalker(function() {
     // Two-row table: row 0 is excluded by default (DR_DEFAULTS.simplifyFirstRow=false), row 1 has
     // large numbers that WILL be rounded so the test exercises the true → false transition.
@@ -512,19 +529,19 @@
     const input = injectToggleEntry(table);
 
     // 1. Initially false
-    eq('auto-table-toggle: isTableRounded is false before roundTable',
-      isTableRounded(table), false);
+    eq('auto-table-toggle: showsSimplified is false before roundTable',
+      showsSimplified(table), false);
 
     // 2. After roundTable → true (if any cell changed)
     roundTable(table, Object.assign({}, DR_DEFAULTS));
-    const afterRound = isTableRounded(table);
+    const afterRound = showsSimplified(table);
     // Note: roundTable may or may not mark cells depending on inputs.
     // We accept that: if it DID mark cells, it must be true; otherwise still false.
-    // Either way isTableRounded must equal whether any cell has .dr-ext-rounded AND
+    // Either way showsSimplified must equal whether any cell has .dr-ext-rounded AND
     // drShowingOriginal is not 'true'.
     const expectedAfterRound = table.querySelector('.dr-ext-rounded') !== null
                                 && table.dataset.drShowingOriginal !== 'true';
-    eq('auto-table-toggle: isTableRounded after roundTable matches .dr-ext-rounded presence',
+    eq('auto-table-toggle: showsSimplified after roundTable matches .dr-ext-rounded presence',
       afterRound, expectedAfterRound);
 
     // 3. After the reset → false
@@ -540,8 +557,8 @@
         }
       });
       resetTable(table);
-      eq('auto-table-toggle: isTableRounded is false after the reset (AC5)',
-        isTableRounded(table), false);
+      eq('auto-table-toggle: showsSimplified is false after the reset (AC5)',
+        showsSimplified(table), false);
     }
   });
 })();
@@ -728,6 +745,7 @@
   // scenario than the one this test means to exercise.
   DR_STORE.setTableOriginal(table, cell, { value: '50000', pieces: [{ text: '50000', written: '50000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
+  DR_STORE.setTableSettings(table, { enabled: true }, 'page');
 
   // Fire click via handlers
   const clickHandlers = buttonEl._listeners['click'] || [];
@@ -1141,6 +1159,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   // Registry record present — see atToggle_syncSwitch_ariaTrueWhenRounded.
   DR_STORE.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableAppliedFlag(table, 'simplified');
+  DR_STORE.setTableSettings(table, { enabled: true }, 'page');
   const button = injectToggleEntry(table);
   syncSwitchForTable(table);
   eq('expanding-toggle: syncSwitchForTable rounded table → aria-pressed="true"',
@@ -2359,16 +2378,16 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     DR_STORE.setTableSettings(table, { enabled: false }, 'page');
     DR_STORE.setSelectedTable(table);
 
-    const wasRounded = isTableRounded(table);
+    const wasRounded = showsSimplified(table);
     withCreateTreeWalker(function() { DR_BUS.publish('intent:toggleTable', { table }); });
-    const isNowRounded = isTableRounded(table);
+    const isNowRounded = showsSimplified(table);
 
     eq('AC2 regression: a press takes a raw table to simplified',
       !wasRounded && isNowRounded, true);
 
     withCreateTreeWalker(function() { DR_BUS.publish('intent:toggleTable', { table }); });
     eq('AC2 regression: a second press takes it back to its original values',
-      isTableRounded(table), false);
+      showsSimplified(table), false);
   } finally {
     DR_STORE.setSelectedTable(null);
     DR_STORE.setSelectedTable(savedSelected);

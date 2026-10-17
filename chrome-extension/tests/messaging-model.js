@@ -1625,11 +1625,11 @@ const PENDING_FILL_ROWS = [
     DR_STORE.setTableSettings(table, { enabled: false }, 'page');
     DR_STORE.setSelectedTable(table);
 
-    const wasRounded = isTableRounded(table);
+    const wasRounded = showsSimplified(table);
     withCreateTreeWalker(function () {
       DR_BUS.publish('intent:toggleTable', { table });
     });
-    const isNowRounded = isTableRounded(table);
+    const isNowRounded = showsSimplified(table);
 
     eq('toggle-split: publishing intent:toggleTable runs the press (table becomes simplified)',
       !wasRounded && isNowRounded, true);
@@ -1640,7 +1640,7 @@ const PENDING_FILL_ROWS = [
       DR_BUS.publish('intent:toggleTable', { table });
     });
     eq('toggle-split: publishing intent:toggleTable again takes the table back to its original values',
-      isTableRounded(table), false);
+      showsSimplified(table), false);
   } finally {
     DR_STORE.setSelectedTable(null);
     DR_STORE.setSelectedTable(savedSelected);
@@ -1991,16 +1991,16 @@ const PENDING_FILL_ROWS = [
     resetTable(table); // the press that turns simplification off
     eq('registry cycle: cell shows the exact original text after the off press',
       cell.textContent, '8,584,629');
-    eq('registry cycle: isTableRounded is false while the original text shows',
-      isTableRounded(table), false);
+    eq('registry cycle: showsSimplified is false while the original text shows',
+      showsSimplified(table), false);
     eq('registry cycle: the off press clears the stored original, where the form flip kept it',
       DR_STORE.hasTableOriginal(table, cell), false);
 
     roundTable(table, opts); // the press that turns it back on
     eq('registry cycle: cell is simplified again after the on press',
       cell.textContent, roundedText);
-    eq('registry cycle: isTableRounded is true again after the on press',
-      isTableRounded(table), true);
+    eq('registry cycle: showsSimplified is true again after the on press',
+      showsSimplified(table), true);
     eq('registry cycle: the on press writes a fresh stored original from the restored text',
       DR_STORE.getTableOriginalText(table, cell), '8,584,629');
   });
@@ -2115,7 +2115,7 @@ const PENDING_FILL_ROWS = [
   }
 })();
 
-// --- (g) settings notice sequence: isTableRounded (reading DR_STORE's
+// --- (g) settings notice sequence: showsSimplified (reading DR_STORE's
 // appliedFlag) must report correctly to the sidebar across a full round ->
 // peek-original -> peek-back cycle, not just a single toggle. The pillbox
 // AC1 test above pins one click; the guard matrix pins one
@@ -2164,8 +2164,8 @@ const PENDING_FILL_ROWS = [
       toggleMsgs.length, 3);
     eq('toggle-state cycle: enabled sequence is true (rounded), false (peek original), true (peek back)',
       toggleMsgs.map(m => m.enabled), [true, false, true]);
-    eq('toggle-state cycle: isTableRounded agrees with the last reported state',
-      isTableRounded(table), true);
+    eq('toggle-state cycle: showsSimplified agrees with the last reported state',
+      showsSimplified(table), true);
   } finally {
     global.chrome.runtime.sendMessage = origSend;
     DR_STORE.setSelectedTable(savedSelected);
@@ -2677,7 +2677,7 @@ const PENDING_FILL_ROWS = [
       DR_BUS.publish('intent:toggleTable', { table }); // pillbox: turn rounding on
     });
     eq('leak-1: the first pill toggle rounds the connected table',
-      isTableRounded(table), true);
+      showsSimplified(table), true);
     eq('leak-1: the table\'s settings follow the pillbox — enabled true after toggle-on',
       DR_STORE.getTableSettings(table).enabled, true);
 
@@ -2685,7 +2685,7 @@ const PENDING_FILL_ROWS = [
       DR_BUS.publish('intent:toggleTable', { table }); // pillbox: turn rounding off
     });
     eq('leak-1: the second pill toggle restores the table to originals',
-      isTableRounded(table), false);
+      showsSimplified(table), false);
     eq('leak-1: the table\'s settings follow the pillbox — enabled false after toggle-off',
       DR_STORE.getTableSettings(table).enabled, false);
 
@@ -2695,7 +2695,7 @@ const PENDING_FILL_ROWS = [
       applySidebarRounding(table);
     });
     eq('leak-1: a later apply honors the table\'s settings — the table stays on originals',
-      isTableRounded(table), false);
+      showsSimplified(table), false);
 
     const notices = sent.filter((m) => m.action === 'state:settingsChanged');
     eq('leak-1: one settings notice per pillbox toggle, carrying the table\'s enabled — true then false',
@@ -2720,13 +2720,13 @@ const PENDING_FILL_ROWS = [
       DR_BUS.publish('intent:toggleTable', { table: other });
     });
     eq('press on an inactive table: the pressed table simplifies',
-      isTableRounded(other), true);
+      showsSimplified(other), true);
     eq('press on an inactive table: the pressed table\'s settings follow the press',
       DR_STORE.getTableSettings(other).enabled, true);
     eq('press on an inactive table: the pressed table becomes the active one',
       DR_STORE.getSelectedTable(), other);
     eq('press on an inactive table: the table that was active is left as it was',
-      isTableRounded(active), false);
+      showsSimplified(active), false);
   });
 })();
 
@@ -2744,7 +2744,7 @@ const PENDING_FILL_ROWS = [
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table: pressed }); });
 
     eq('part one: a press on an inactive table simplifies it with its settings at off',
-      isTableRounded(pressed), true);
+      showsSimplified(pressed), true);
     eq('part one: the pressed table\'s settings follow that press to on',
       DR_STORE.getTableSettings(pressed).enabled, true);
     eq('part one: the press publishes the switch',
@@ -2753,12 +2753,10 @@ const PENDING_FILL_ROWS = [
 })();
 
 // --- Exactly one settings write per press, and the flip direction comes from
-// the screen as it stood BEFORE that write. A press on a raw table whose
-// settings already stand at on is the case that catches a second write: read
-// the direction after a first write and the press simplifies, reads
-// "simplified", writes off, and the second apply returns the table to where
-// it started. ---
-(function partOne_onePressOneWriteReadingTheScreenFirst() {
+// the table's on/off value as it stood BEFORE that write. For a raw table
+// whose settings already stand at on, the handler writes off: the table
+// pillbox shows that table as on, the same as the sidebar pillbox. ---
+(function partOne_onePressOneWriteReadingTheSettingFirst() {
   runPressFixture(({ resetWrites, writes }) => {
     const active = makePressTable('1,000,000');
     const pressed = makePressTable('12,345');
@@ -2770,11 +2768,63 @@ const PENDING_FILL_ROWS = [
 
     eq('part one: a press makes exactly one settings write',
       writes(), 1);
-    eq('part one: a press on a raw table with its settings at on leaves the table simplified',
-      isTableRounded(pressed), true);
-    eq('part one: the pressed table\'s settings stand at on afterwards',
-      DR_STORE.getTableSettings(pressed).enabled, true);
+    eq('part one: a raw table with its settings at on ends at off after one press',
+      DR_STORE.getTableSettings(pressed).enabled, false);
+    eq('part one: the table stays raw after that press',
+      showsSimplified(pressed), false);
   });
+})();
+
+// --- A table with nothing to simplify. The table pillbox and the sidebar
+// pillbox show the one on/off value, so such a table stands at on after the
+// first press and at off after the next, though no cell changes either way. ---
+(function partOne_pressesOnATableWithNothingToSimplifyAlternate() {
+  runPressFixture(() => {
+    const table = makePressTable('no digits');
+    DR_STORE.setSelectedTable(table);
+    const pillbox = tableToggles.get(table);
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
+    eq('nothing to simplify: the settings stand at on after the first press',
+      DR_STORE.getTableSettings(table).enabled, true);
+    eq('nothing to simplify: no cell changes on the first press',
+      showsSimplified(table), false);
+    eq('nothing to simplify: the table pillbox shows on after the first press',
+      pillbox.getAttribute('aria-pressed'), 'true');
+
+    withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
+    eq('nothing to simplify: the settings stand at off after the second press',
+      DR_STORE.getTableSettings(table).enabled, false);
+    eq('nothing to simplify: the table pillbox shows off after the second press',
+      pillbox.getAttribute('aria-pressed'), 'false');
+  });
+})();
+
+// --- The table pillbox redraws from the model's settings notice. A sidebar
+// write reaches the table pillbox with no redraw call from the controller,
+// on a table with nothing to simplify, where the screen never changes. ---
+(function tablePillboxRedrawsFromTheSettingsNotice() {
+  runPressFixture(() => {
+    const table = makePressTable('no digits');
+    DR_BUS.publish('intent:selectTable', { table });
+    const pillbox = tableToggles.get(table);
+
+    withCreateTreeWalker(() => {
+      askContentScript({ action: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) });
+    });
+    eq('settings notice: the table pillbox shows on after the sidebar writes on',
+      pillbox.getAttribute('aria-pressed'), 'true');
+
+    withCreateTreeWalker(() => {
+      askContentScript({ action: 'request:applySettings',
+        settings: Object.assign({}, DR_DEFAULTS, { enabled: false }) });
+    });
+    eq('settings notice: the table pillbox shows off after the sidebar writes off',
+      pillbox.getAttribute('aria-pressed'), 'false');
+  });
+  eq('settings notice: the controller holds no direct table pillbox redraw',
+    /syncSwitchForTable\(/.test(sourceByName('content.js') || 'syncSwitchForTable('), false);
 })();
 
 // --- The press applies the pressed table's own settings, and the values they
@@ -2805,7 +2855,7 @@ const PENDING_FILL_ROWS = [
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
     eq('part one: the first press simplifies the active table (precondition)',
-      isTableRounded(table), true);
+      showsSimplified(table), true);
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
 
@@ -2834,7 +2884,7 @@ const PENDING_FILL_ROWS = [
     eq('part one: the pressed table keeps its own blank range expression',
       DR_STORE.getTableSettings(pressed).rangeExpr, '');
     eq('part one: that press simplifies the whole pressed table',
-      isTableRounded(pressed), true);
+      showsSimplified(pressed), true);
   });
 })();
 
@@ -2867,7 +2917,7 @@ const PENDING_FILL_ROWS = [
     eq('part one: a right-click activation leaves the range expression alone',
       DR_STORE.getTableSettings(table).rangeExpr, 'B2');
     eq('part one: a right-click activation changes no numbers on the table',
-      isTableRounded(table), false);
+      showsSimplified(table), false);
     eq('part one: the activation still moves the active table',
       DR_STORE.getSelectedTable(), table);
   });
@@ -3020,7 +3070,7 @@ function issue328SettingsOf(table) {
       DR_STORE.getTableSettings(table).enabled, false);
     withCreateTreeWalker(() => askContentScript({ action: 'state:sidebarOpened' }));
     eq('defaults: opening the sidebar on an untouched table leaves it raw',
-      [isTableRounded(table), table._cells[3].innerText], [false, '8,584,629']);
+      [showsSimplified(table), table._cells[3].innerText], [false, '8,584,629']);
   });
 })();
 
@@ -3038,7 +3088,7 @@ function issue328SettingsOf(table) {
     eq('sidebar open: no apply runs on the simplified table',
       sent.filter((m) => ['state:rangeOk', 'state:rangeError', 'intent:updateMenuLabel'].includes(m.action)).length, 0);
     eq('sidebar open: the simplified cells stay as the toggle left them',
-      [isTableRounded(table), table._cells[3].innerText], [true, simplified]);
+      [showsSimplified(table), table._cells[3].innerText], [true, simplified]);
     eq('sidebar open: the sidebar is told to re-read the active table',
       sent.some((m) => m.action === 'state:previewSamplesChanged'), true);
   });
@@ -3288,7 +3338,7 @@ function issue328SettingsOf(table) {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
     eq('fingerprint column change: the first press simplifies the pane (precondition)',
-      isTableRounded(grid.scrollPaneEl), true);
+      showsSimplified(grid.scrollPaneEl), true);
     eq('fingerprint column change: that press stored originals (precondition)',
       DR_STORE.hasTableOriginal(grid.scrollPaneEl, countCell), true);
 
@@ -3315,7 +3365,7 @@ function issue328SettingsOf(table) {
     eq('fingerprint column change: the press after the change turns simplification on',
       DR_STORE.getTableSettings(grid.scrollPaneEl).enabled, true);
     eq('fingerprint column change: the fresh entry\'s form is simplified',
-      isTableRounded(grid.scrollPaneEl), true);
+      showsSimplified(grid.scrollPaneEl), true);
     eq('fingerprint column change: the fresh entry\'s originals carry the new column\'s text',
       DR_STORE.getTableOriginalText(grid.scrollPaneEl, addedCell), '412,905');
 
@@ -3338,7 +3388,7 @@ function issue328SettingsOf(table) {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
     eq('fingerprint added column: the first press simplifies the pane (precondition)',
-      isTableRounded(grid.scrollPaneEl), true);
+      showsSimplified(grid.scrollPaneEl), true);
 
     const added = ['6,204,118', '412,905', '88,340', '9,127', '1,006', '771'];
     grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, added[i]));
@@ -3422,7 +3472,7 @@ function issue328SettingsOf(table) {
         rowEl.children.some((cellEl) => DR_STORE.hasTableOriginal(grid.scrollPaneEl, cellEl))),
       false);
     eq('fingerprint originals: the fresh entry\'s form is raw',
-      isTableRounded(grid.scrollPaneEl), false);
+      showsSimplified(grid.scrollPaneEl), false);
 
     forgetRegisteredTable(grid.scrollPaneEl);
   });
@@ -4501,10 +4551,12 @@ function issue328SettingsOf(table) {
 // --- A cross-context topic is deliverable inside the context that publishes it ---
 //
 // publish() hands the topic to same-context subscribers before it reaches the
-// carrier. Every topic here crosses contexts, so one context publishing a topic
-// it also subscribes to would run its own handler on the way out. No topic
-// pairs that way today, and this fails at the commit if one
-// starts to.
+// carrier. Every topic here crosses contexts, so one context publishing an
+// intent or a request it also receives would run its own handler on the way
+// out. No such topic pairs that way today, and this fails at the commit if
+// one starts to. State-change topics stay out of the scan: the model publishes
+// a state change, and every view redraws from it, including a view in the
+// model's own context, such as the table pillbox.
 (function noContextPublishesWhatItSubscribes() {
   // Keyed by context, not by file: the content script's context loads
   // ui-toggle.js and app/store.js into the same scope as content.js, so a
@@ -4515,7 +4567,8 @@ function issue328SettingsOf(table) {
     'the sidebar': fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8'),
     'the service worker': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),
   };
-  const CROSSING = Object.keys(DR_BUS.TOPICS).filter((t) => DR_BUS.TOPICS[t].route !== null);
+  const CROSSING = Object.keys(DR_BUS.TOPICS).filter((t) =>
+    DR_BUS.TOPICS[t].route !== null && DR_BUS.TOPICS[t].family !== 'state-change');
   eq('one direction: the scan has cross-context topics to check (fails closed on an empty table)',
     CROSSING.length > 0, true);
   const bothEnds = [];
@@ -4528,7 +4581,7 @@ function issue328SettingsOf(table) {
       if (publishes && receives) bothEnds.push(context + ' -> ' + topic);
     }
   }
-  eq('one direction: no context both publishes and receives the same crossing topic',
+  eq('one direction: no context both publishes and receives the same crossing intent or request',
     bothEnds, []);
 })();
 
@@ -4586,7 +4639,7 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
         eq(`#421 shape change (${kind}): the changed table registers fresh with the new header`,
           (DR_STORE.getTableFingerprint(other.table) || {}).headerTexts, ['Region', 'Q1', 'Q3']);
         eq(`#421 shape change (${kind}): the changed table shows raw, under the shipped defaults`,
-          { rounded: isTableRounded(other.table), texts: other.rowTexts(),
+          { rounded: showsSimplified(other.table), texts: other.rowTexts(),
             settings: DR_STORE.getTableSettings(other.table) },
           { rounded: false, texts: [['North', '1,234', '5,678'], ['South', '2,468', '3,579']],
             settings: Object.assign({}, DR_DEFAULTS) });
@@ -4596,7 +4649,7 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
         eq(`#421 shape change (${kind}): a change on the active table moves the active table to the fresh entry`,
           { selected: DR_STORE.getSelectedTable() === active.table, switches }, { selected: true, switches: 1 });
         eq(`#421 shape change (${kind}): the active table shows raw, under the shipped defaults`,
-          { rounded: isTableRounded(active.table), texts: active.rowTexts(),
+          { rounded: showsSimplified(active.table), texts: active.rowTexts(),
             settings: DR_STORE.getTableSettings(active.table) },
           { rounded: false, texts: [['North', '1,234', '5,678'], ['South', '2,468', '3,579']],
             settings: Object.assign({}, DR_DEFAULTS) });
