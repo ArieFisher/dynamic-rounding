@@ -10,7 +10,7 @@ Two consequences follow. Turning simplification on uses the table's own settings
 
 Each table holds its own settings, the range expression included. A press changes the table's on/off value alone, so moving the active table leaves every table's range expression in place, and the sidebar shows the settings of whichever table is active.
 
-A table no one has turned on reads off, so the sidebar's switch shows off over a raw table, and opening the sidebar on its own changes nothing on the page. The right-click menu holds two items. "Toggle table" makes the same press on the table right-clicked. "Toggle and open sidebar" makes that press, then opens the sidebar.
+A table no one has turned on reads off, so the sidebar pillbox shows off over a raw table, and opening the sidebar on its own changes nothing on the page. The right-click menu holds two items. "Toggle table" makes the same press on the table right-clicked. "Toggle and open sidebar" makes that press, then opens the sidebar.
 
 A table loses its original values when a content script re-injection empties the registry while the table shows simplified values. The extension then reads the simplified values on the screen as the originals: turning the table on simplifies them again, and the hover text shows a simplified value as the original. A page reload clears it.
 

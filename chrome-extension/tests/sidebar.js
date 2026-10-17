@@ -64,7 +64,7 @@
   // value. The behavioral pins live in the part-one block further down; this
   // one holds the line at the source, so a reintroduced guard fails here.
   // The handler names the element it acts on `target`: the shape-fingerprint
-  // check ahead of the screen read returns the pressed table on a match and
+  // check ahead of the on/off value read returns the pressed table on a match and
   // the freshly registered element on a mismatch, and the flip direction
   // comes from whichever one the press continues on.
   eq('sidebar-state removal: the intent:toggleTable handler reads the on/off value for its flip direction',
