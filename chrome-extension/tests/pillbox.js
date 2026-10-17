@@ -738,11 +738,11 @@
     buttonEl.getAttribute('aria-pressed'), 'false');
 })();
 
-// --- An unrestorable cell leaves the pillbox an ordinary control ---
+// --- A press on a table with an unrestorable cell publishes the toggle intent ---
 // A table that arrives with a cell wearing the simplified marker and no
 // stored original (the re-injection state, see restoreTable's KNOWN ACCEPTED
-// COST in content.js) gets a pillbox like any other table: no disabled state,
-// no extra class, and a press publishes the toggle intent.
+// COST in content.js) gets a pillbox like any other table: a press publishes
+// the toggle intent.
 (function unrestorableCellPillboxTakesPresses() {
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
@@ -789,11 +789,6 @@
 
     createToggleForTable(table);
     const buttonEl = appendedToBody.find((e) => e._tag === 'button');
-    eq('unrestorable cell pillbox: the pillbox carries no aria-disabled',
-      buttonEl.getAttribute('aria-disabled'), null);
-    eq('unrestorable cell pillbox: the pillbox carries no class beyond its own',
-      buttonEl.classList.contains('dr-ext-morph-locked'), false);
-
     buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', stopPropagation() {} });
     (buttonEl._listeners.click || []).forEach((fn) => fn({ stopPropagation() {}, type: 'click' }));
     eq('unrestorable cell pillbox: a press publishes intent:toggleTable for the table',

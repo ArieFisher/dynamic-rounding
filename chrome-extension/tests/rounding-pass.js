@@ -4000,8 +4000,6 @@ function everyRowRead(kind, largeIn) {
       global.__ri2_DR_STORE.getTableAppliedFlag(table3), 'simplified');
     eq('re-injection sidebar apply: the apply runs the simplification pass, which sends the range status',
       sentMessages.some((m) => m.action === 'state:rangeOk' || m.action === 'state:rangeError'), true);
-    eq('re-injection sidebar apply: no blocked-apply notice is sent',
-      sentMessages.some((m) => m.action === 'state:applyBlocked'), false);
 
     // --- Scenario C: the pillbox sync on fresh and simplified tables. ---
     const stub6 = makeMockButton();

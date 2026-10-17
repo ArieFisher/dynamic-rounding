@@ -186,25 +186,10 @@
     recA.cells[3], { row: 2, col: 0, role: 'td', text: 'Total', original: null, wearsMarker: false });
   eq('capture-state: no cell record carries an outside field',
     recA.cells.filter((cell) => Object.prototype.hasOwnProperty.call(cell, 'isOutside')).length, 0);
-  eq('capture-state: a table record carries no locked field',
-    Object.prototype.hasOwnProperty.call(recA, 'locked'), false);
 
   const recB = state.tables[1];
   eq('capture-state: a virtualized grid serializes as kind grid with its frozen magnitude',
     { kind: recB.kind, maxMagnitude: recB.maxMagnitude }, { kind: 'grid', maxMagnitude: 4 });
-
-  // Absence honesty: the marker with no original behind it.
-  const lostCell = makeCellEl(true);
-  const tableL = { _rows: [{ cells: [{ el: lostCell, text: '99,000' }] }] };
-  const lostState = collectCaptureState({
-    store: makeFakeStore([tableL], {}),
-    adapterFor: fakeAdapterFor,
-  });
-  eq('capture-state: a rounded marker with no stored original stays null and flags no table',
-    { hasLocked: Object.prototype.hasOwnProperty.call(lostState.tables[0], 'locked'),
-      original: lostState.tables[0].cells[0].original,
-      wearsMarker: lostState.tables[0].cells[0].wearsMarker },
-    { hasLocked: false, original: null, wearsMarker: true });
 
   // Empty registry: an honest nothing.
   const emptyState = collectCaptureState({

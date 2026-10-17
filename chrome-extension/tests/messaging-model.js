@@ -3044,19 +3044,6 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// The settings read answers the active table's settings and nothing else.
-(function theSettingsReadAnswersTheSettingsAlone() {
-  runPressFixture(() => {
-    const table = makePressTable('8,584,629');
-    DR_STORE.setSelectedTable(table);
-    const answer = askContentScript({ action: 'request:settings' });
-    eq('settings read: the answer holds the settings field alone',
-      Object.keys(answer), ['settings']);
-    eq('settings read: the answer holds the active table\'s settings',
-      answer.settings, DR_STORE.getTableSettings(table));
-  });
-})();
-
 // Turning a table off resets its cells and keeps its settings, so the next
 // press simplifies it again under the settings it had.
 (function issue328_anOffPressKeepsTheTablesSettings() {

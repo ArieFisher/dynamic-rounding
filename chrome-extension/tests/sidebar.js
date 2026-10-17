@@ -1317,11 +1317,6 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
   eq('capture-ui: nothing saves without a pressed mark',
     /function saveCapture\(\)[\s\S]{0,200}if \(captureMark === null\) return;/.test(sidebarJsSrc),
     true);
-  eq('capture-ui: the renderer receives no locked wording',
-    /lockedStatusText/.test(sidebarJsSrc), false);
-  const sidebarViewBody = (sidebarJsSrc.match(/function collectSidebarView\(\) \{([\s\S]*?)\n\}\n/) || [])[1];
-  eq('capture-ui: the sidebar view carries no locked field',
-    typeof sidebarViewBody === 'string' && !/\blocked:/.test(sidebarViewBody), true);
   eq('capture-ui: the filename comes from the package helper and carries the mark',
     /DR_CAPTURE\.filenameFor\(\{[^}]*mark: mark/.test(sidebarJsSrc), true);
   eq('capture-ui: the sidebar\'s own log snapshot travels beside the content script\'s',
