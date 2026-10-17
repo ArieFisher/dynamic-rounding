@@ -1799,6 +1799,33 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
       /DR_LOG\.warn\([^)]*save failed/.test(sidebarJsSrc), true);
 })();
 
+// --- sidebar: section order ---
+//
+// The lens control sits first, under the title. The switches sit inside the
+// Advanced section, which starts closed. The capture section carries no title.
+
+(function sidebarSectionOrder() {
+  const html = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
+  const body = html.slice(html.indexOf('<body>'));
+  const at = (marker) => body.indexOf(marker);
+  const advancedOpen = at('id="advancedSection"');
+  const advancedClose = at('</details>');
+
+  eq('section order: the lens control precedes the Advanced section',
+    at('id="lensSection"') !== -1 && at('id="sliderBlock"') > at('id="lensSection"') &&
+      at('id="sliderBlock"') < advancedOpen,
+    true);
+  eq('section order: the switches sit inside the Advanced section',
+    at('id="optionsSection"') > advancedOpen && at('id="simplifyFirstColumn"') < advancedClose,
+    true);
+  eq('section order: the Advanced section starts closed',
+    /<details[^>]*id="advancedSection"[^>]*>/.exec(body)[0].includes(' open'), false);
+  eq('section order: the switches still dim when the main switch is off',
+    /#optionsSection\.disabled\s*\{[^}]*opacity/.test(html), true);
+  eq('section order: the capture section carries no section title',
+    /id="captureSection"[^>]*>\s*<div class="capture-marks"/.test(body), true);
+})();
+
 // --- sidebar: the capture section and its glue ---
 //
 // The suite never executes sidebar.js (it is asserted as source text — the
