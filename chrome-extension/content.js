@@ -125,7 +125,7 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
   writeTableSettings(target, { enabled: nextEnabled }, 'page');
 });
 
-// Re-apply observer state, one entry per simplified table of either kind
+// Re-apply observer state, one entry per table that is on, of either kind
 // (see watchTable).
 // reapplyObservers: table → { observer, target }: the MutationObserver and
 //                   the element it watches, a native table itself or a grid's

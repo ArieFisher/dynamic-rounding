@@ -1617,7 +1617,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
     aText.nodeValue = '8,584,629';
     reapplyRounding(grid.wrapperEl);
     eq('re-apply on a table that gains a number (grid): the new number simplifies',
-      aText.nodeValue !== '8,584,629', true);
+      aText.nodeValue, '8,500,000');
     eq('re-apply on a table that gains a number (grid): the table shows simplified values',
       showsSimplified(grid.wrapperEl), true);
   } finally {
@@ -1641,7 +1641,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
       cell.textContent = '8,584,629';
       reapplyRounding(table);
       eq('re-apply on a table that gains a number (native): the new number simplifies',
-        cell.innerText !== '8,584,629', true);
+        cell.innerText, '8,500,000');
       eq('re-apply on a table that gains a number (native): the table shows simplified values',
         showsSimplified(table), true);
     } finally {
