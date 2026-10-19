@@ -4,6 +4,7 @@
 **Created:** 2026-10-19
 **Base branch:** main
 **Slug:** lens-metrics
+**Issue:** #560
 
 Three figures that describe what the lens the lens control shows does to the
 active table's dataset: rounding error, distinct values, and significant
