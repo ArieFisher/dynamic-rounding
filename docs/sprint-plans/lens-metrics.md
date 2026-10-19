@@ -186,8 +186,14 @@ the table is the active one. The sidebar then re-reads the active table's
 settings and the pool, and redraws the lens preview and the metrics. The
 observer already collapses a burst of page edits into one pass, so the sidebar
 re-reads once per burst. This closes the lens preview's staleness in the same
-change, because the two share the one path. The product manager has not yet
-chosen this over leaving the figures stale; §6 holds the question.
+change, because the two share the one path. The product manager approved this
+on 2026-10-19 over leaving the figures stale. The cost is one extra read of the
+active table per burst while the sidebar is open: the content script walks the
+cells through the classification step again to answer the pool request. If a
+large virtualized grid scrolled without pause shows that cost, the pass can
+attach the numbers it already classified to the message instead, so the
+sidebar re-reads nothing; the sprint measures first and changes that only on a
+measured cost.
 
 ### 3.7 The decisions on record
 
@@ -317,10 +323,10 @@ One sprint, no dependents.
 
 Product calls, each with the recommendation the plan assumes:
 
-1. **Staleness after the page loads new data.** §3.6 has the re-apply pass tell
-   the sidebar, which also fixes the lens preview. The alternative leaves the
-   figures stale until the next sidebar open or slider move, as the lens
-   preview is today. Recommended: §3.6.
+1. **Staleness after the page loads new data.** Decided 2026-10-19: §3.6, the
+   re-apply pass tells the sidebar, which also fixes the lens preview. The
+   alternative, figures stale until the next sidebar open or slider move as the
+   lens preview is today, was put to the product manager and not taken.
 2. **An empty pool** (dates only, or a range that leaves nothing in): blank
    values, as the lens preview is blank. Recommended.
 3. **Zero** in a cell with words joins the pool: one digit, no error
@@ -352,3 +358,7 @@ Product calls, each with the recommendation the plan assumes:
 - 2026-10-19: The capture carries the figures and the pairs behind them.
 - 2026-10-19: The metrics module takes pairs alone, so every surface uses it
   without coupling; a case table under `js/` is the contract across platforms.
+- 2026-10-19: The re-apply pass tells the sidebar the pool changed (§3.6),
+  approved by the product manager after the cost was put to him: one extra
+  classification walk per burst while the sidebar is open, measured before any
+  change to push the pool instead.
