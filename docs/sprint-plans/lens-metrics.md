@@ -1,6 +1,6 @@
 # Sprint Plan: Lens Metrics
 
-**Status:** DRAFT — awaiting the product manager's approval
+**Status:** APPROVED 2026-10-19
 **Created:** 2026-10-19
 **Base branch:** main
 **Slug:** lens-metrics
@@ -321,20 +321,21 @@ One sprint, no dependents.
 
 ## 6. Open Questions
 
-Product calls, each with the recommendation the plan assumes:
+None. Every product call is decided; the list stays as the record.
 
 1. **Staleness after the page loads new data.** Decided 2026-10-19: §3.6, the
    re-apply pass tells the sidebar, which also fixes the lens preview. The
    alternative, figures stale until the next sidebar open or slider move as the
    lens preview is today, was put to the product manager and not taken.
-2. **An empty pool** (dates only, or a range that leaves nothing in): blank
-   values, as the lens preview is blank. Recommended.
-3. **Zero** in a cell with words joins the pool: one digit, no error
-   contribution, one distinct value. Recommended.
-4. **A tiny error:** one decimal place shows 0.04% as 0.0%. Recommended.
-5. **A grid that scrolls:** the figures follow the visible rows under §3.6.
-   The alternative, freezing the figures at the first pass, would describe rows
-   no longer on the screen. Recommended: follow the visible rows.
+2. **An empty pool** (dates only, or a range that leaves nothing in). Decided
+   2026-10-19: blank values, as the lens preview is blank.
+3. **Zero** in a cell with words joins the pool. Decided 2026-10-19: one digit,
+   no error contribution, one distinct value.
+4. **A tiny error.** Decided 2026-10-19: one decimal place, so 0.04% shows as
+   0.0%.
+5. **A grid that scrolls.** Decided 2026-10-19: the figures follow the visible
+   rows under §3.6. The alternative, freezing the figures at the first pass,
+   would describe rows no longer on the screen, and was not taken.
 
 ## 7. Out of Scope
 
@@ -362,3 +363,7 @@ Product calls, each with the recommendation the plan assumes:
   approved by the product manager after the cost was put to him: one extra
   classification walk per burst while the sidebar is open, measured before any
   change to push the pool instead.
+- 2026-10-19: Questions 2 to 5 of §6 decided at the recommended answers
+  (blank values on an empty pool, zero as one digit, one decimal place, a
+  scrolling grid follows its visible rows). The plan is approved; the build
+  starts on `feature/lens-metrics`.
