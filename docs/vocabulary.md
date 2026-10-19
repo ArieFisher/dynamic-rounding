@@ -28,6 +28,18 @@ One term per concept, across every platform and every document. Use the [Retired
 | num_top | How many magnitudes below max magnitude still count as the top band. |
 | enforce_numeric | Python only. If `True`, raises `ValueError` for non-numeric input. |
 
+## Lens metrics
+
+Figures that describe what one lens does to one dataset. Each one reads a list of pairs, an original value beside its simplified value, and nothing else: no settings, no table, no page. Which values join the list, and how each one was simplified, is the caller's business. In the extension the list is the dataset, each value simplified as the table would simplify it under the lens the lens control shows.
+
+| Term | Meaning |
+| --- | --- |
+| lens metrics | The three figures the sidebar shows for the active table under the lens the lens control shows: rounding error, distinct values, and significant digits. They describe the lens, so they move with the lens control whether the table is on or off, and the capture carries them. Not built yet; `docs/sprint-plans/lens-metrics.md` holds the plan. |
+| rounding error | How far a lens moves a dataset, as one share: the sum of each value's absolute difference between original and simplified, divided by the sum of the absolute originals. 4.3% means the simplified values sit 4.3% of the dataset's size away from the originals. The sum weights each value by its size, so the largest values set most of the figure. The mean rounding error divides the same sum by the count of values instead; the sidebar shows the share alone. |
+| distinct values | The count of different values in a set, by value: 20 and 20.0 are one value, 20 and -20 are two. The figure reads original and simplified side by side, 9 → 5, because a lens lowers it by merging values that round to the same result. It can only fall where two values share a magnitude, so a dataset with low crowding keeps it near the original count under every lens. |
+| significant digits | Of one value: its digits with the trailing zeros dropped, the sign, the decimal mark, and leading zeros ignored. 4,250,000 has 3, 4,000,000 has 1, 0.0625 has 3, and 0 counts as 1. The metric is the mean over a set, shown original and simplified side by side, 7.0 → 1.7: how much of each number a reader must read. It falls as a lens coarsens, and it moves where distinct values cannot: 4,250,000 and 4,000,000 are each one distinct value, with three digits against one. |
+| crowding | A property of a dataset, not of a lens: the count of values divided by the count of magnitudes that hold at least one value. Nine values across two magnitudes give 4.5; nine values across five give 1.8. It says whether distinct values can move on that dataset, because two values merge only inside one magnitude. Nothing displays it. |
+
 ## UI Elements
 
 | Term | Meaning |
