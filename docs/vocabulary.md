@@ -228,6 +228,8 @@ Terms for reviews, plans, and discussion.
 | comparison test | A test that draws the same values once as a native table and once as a grid, runs detection and the simplification on both, and checks that both are found or both are missed, that the same cells change, and that each changed cell reads the same text. Each tested pair has one. |
 | cost | What a change uses up (units may be: lines, risk, review time, runtime, etc.) |
 | benefit | What the user or the maintainer gains from a change. |
+| help card | The box Google Sheets shows while a user types `=ROUND_DYNAMIC(`. Sheets builds it from the function's JSDoc: the description lines, including the `[VERSION]` line, and one line per parameter. |
+| bump workflow | The automation that runs after every merged pull request, raises the version of each package the pull request touched, and merges the version-bump pull request itself. One table in its script lists the packages and their version files. |
 
 ## Retired synonyms
 

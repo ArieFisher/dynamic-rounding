@@ -34,7 +34,8 @@ scratch_tree() {
   dir=$(mktemp -d "${TMPDIR:-/tmp}/bump-versions-test.XXXXXX") || exit 2
   [ -n "$dir" ] || exit 2
   scratch_dirs+=("$dir")
-  mkdir -p "$dir/python" "$dir/chrome-extension"
+  mkdir -p "$dir/python" "$dir/chrome-extension" "$dir/js"
+  cp "$ROOT/js/round_dynamic.js" "$ROOT/js/CHANGELOG.md" "$dir/js/"
   sed -E "s/^version = \"[0-9.]+\"/version = \"$1\"/" \
     "$ROOT/python/pyproject.toml" > "$dir/python/pyproject.toml"
   sed -E "s/^  \"version\": \"[0-9.]+\"/  \"version\": \"$2\"/" \
@@ -111,6 +112,31 @@ if (cd "$dir" && printf 'chrome-extension/x.js\n' | "$BUMP" false >/dev/null 2>&
   record_fail "a missing version file fails" "script exited 0"
 else
   record_pass "a missing version file fails"
+fi
+
+dir=$(scratch_tree 0.2.5 2.2.13)
+sed -i -E 's/^ \* \[VERSION\] [0-9.]+$/ * [VERSION] 0.3.0/' "$dir/js/round_dynamic.js"
+before=$(cat "$dir/js/CHANGELOG.md")
+out=$(cd "$dir" && printf 'js/README.md\n' | "$BUMP" true 2>/dev/null | tr '\n' ' ')
+today=$(date -u +%Y-%m-%d)
+if [ "$out" != "js/round_dynamic.js js/CHANGELOG.md " ]; then
+  record_fail "a js change raises the JSDoc version and releases the changelog" "wrote [$out]"
+elif ! grep -qx ' \* \[VERSION\] 0.4.0' "$dir/js/round_dynamic.js"; then
+  record_fail "a js change raises the JSDoc version and releases the changelog" "JSDoc version not 0.4.0"
+elif [ "$(cat "$dir/js/CHANGELOG.md")" != "${before/\#\# \[Unreleased\]/## [Unreleased]
+
+## [0.4.0] - $today}" ]; then
+  record_fail "a js change raises the JSDoc version and releases the changelog" "changelog not released as 0.4.0"
+else
+  record_pass "a js change raises the JSDoc version and releases the changelog"
+fi
+
+dir=$(scratch_tree 0.2.5 2.2.13)
+sed -i 's/^## \[Unreleased\]$/## Unreleased/' "$dir/js/CHANGELOG.md"
+if (cd "$dir" && printf 'js/x.js\n' | "$BUMP" false >/dev/null 2>&1); then
+  record_fail "a changelog with no Unreleased heading fails" "script exited 0"
+else
+  record_pass "a changelog with no Unreleased heading fails"
 fi
 
 printf '%d passed, %d failed\n' "$passed" "$failed"
