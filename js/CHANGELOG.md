@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-22
+
 ### Added (2026-10-22)
 
 - **Version on the help card**: the `ROUND_DYNAMIC` help card in Sheets shows a `[VERSION]` line. The bump workflow raises it after every merge that touches the Sheets function and writes the matching release heading in this changelog.
