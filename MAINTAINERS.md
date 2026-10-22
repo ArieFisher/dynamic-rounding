@@ -8,13 +8,11 @@ Three artifacts carry independent version numbers:
 |----------|--------|-------------------------|
 | Chrome extension | 2.2.x | `chrome-extension/manifest.json` |
 | Python | 0.2.x | `python/pyproject.toml` — the package reads it back at runtime via `importlib.metadata` |
-| JS (Google Sheets) | 0.3.x | `js/CHANGELOG.md` — the changelog is the version record; `js/round_dynamic.js` carries no version line |
+| JS (Google Sheets) | 0.3.x | `js/round_dynamic.js` — the `[VERSION]` line in the `ROUND_DYNAMIC` JSDoc, which the Sheets help card shows |
 
 ## How versions move
 
-The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. `scripts/bump-versions.py` holds the table of packages and their version files. If the PR touched `python/**` or `chrome-extension/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. Nobody edits those two version files by hand. To release a minor version, add the `minor` label to the PR before merging it.
-
-The JS version has no automation. It moves by adding a release entry to `js/CHANGELOG.md`.
+The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. `scripts/bump-versions.py` holds the table of packages and their version files. If the PR touched `python/**`, `chrome-extension/**`, or `js/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. For JS it also turns the `## [Unreleased]` heading in `js/CHANGELOG.md` into the new version's heading. Nobody edits those version lines or release headings by hand. To release a minor version, add the `minor` label to the PR before merging it.
 
 ## Releasing
 
@@ -24,8 +22,7 @@ Merging to `main` is the release. Distribution is load-unpacked from the repo; t
 
 ### JavaScript (Google Sheets)
 
-1. Add a release entry to `js/CHANGELOG.md` (this is the version bump)
-2. Update the [template spreadsheet](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) with the new `js/round_dynamic.js`
+The bump workflow has already moved the version line and the changelog heading by merge time. Update the [template spreadsheet](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) with the new `js/round_dynamic.js`.
 
 ### Python
 
