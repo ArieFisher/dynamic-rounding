@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-23
+
 ### Changed (2026-10-23)
 
 - **Text cells read like extension cells**: `ROUND_DYNAMIC` reads each text value through the Chrome extension's classification ladder and table step. Numbers inside text, unit numbers, and bracketed numbers round their digits in place; identifier shapes, dates, and times stay as written. A number still returns a number.
