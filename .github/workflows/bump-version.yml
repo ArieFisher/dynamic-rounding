@@ -23,6 +23,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # The bump runs the Sheets build after it raises the JS version.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+
       - name: Configure git identity
         run: |
           git config user.name "github-actions[bot]"

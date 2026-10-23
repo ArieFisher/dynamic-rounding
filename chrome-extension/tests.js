@@ -26,6 +26,7 @@ const PIECES = [
   'detection.js',
   'rounding-pass.js',
   'table-kinds.js',
+  'table-step.js',
   'sidebar.js',
   'messaging-model.js',
   'capture-log.js',

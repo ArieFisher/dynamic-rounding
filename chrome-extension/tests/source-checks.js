@@ -142,7 +142,7 @@
       'lib/dr-number/parsing.js', 'lib/dr-number/identifiers.js',
       'lib/dr-number/index.js',
       'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-      'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
+      'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
       'lib/dr-capture/index.js',
       'adapters/messaging.js', 'app/store.js',
@@ -306,14 +306,15 @@
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
   const js = manifest.content_scripts[0].js;
   const after = (a, b) => js.indexOf(a) > -1 && js.indexOf(b) > -1 && js.indexOf(a) < js.indexOf(b);
-  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < dr-simplify index.js < messaging.js < store.js < ui-toggle.js < ui-toast.js < content.js',
+  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < table.js < dr-simplify index.js < messaging.js < store.js < ui-toggle.js < ui-toast.js < content.js',
     after('lib/dr-number/rounding.js', 'lib/dr-number/core.js') &&
     after('lib/dr-number/core.js', 'lib/dr-number/parsing.js') &&
     after('lib/dr-number/parsing.js', 'lib/dr-number/index.js') &&
     after('lib/dr-number/index.js', 'lib/dr-table/detect.js') &&
     after('lib/dr-table/detect.js', 'lib/dr-table/index.js') &&
     after('lib/dr-table/index.js', 'lib/dr-simplify/ladder.js') &&
-    after('lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js') &&
+    after('lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js') &&
+    after('lib/dr-simplify/table.js', 'lib/dr-simplify/index.js') &&
     after('lib/dr-simplify/index.js', 'adapters/messaging.js') &&
     after('adapters/messaging.js', 'app/store.js') &&
     after('app/store.js', 'ui-toggle.js') &&
@@ -1451,7 +1452,7 @@
     'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
     'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
     'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-    'lib/dr-simplify/ladder.js', 'lib/dr-simplify/index.js',
+    'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
     'adapters/messaging.js', 'app/store.js',
     'ui-toggle.js', 'ui-toast.js', 'content.js',
   ];
@@ -1533,8 +1534,8 @@
   // vacuously pass instead of catching a real regression.
   // NOTE: this count changes when a content-script package is added to or
   // removed from manifest.json; update it alongside the manifest edit.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 19 files today',
-    manifest.content_scripts[0].js.length, 19);
+  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 20 files today',
+    manifest.content_scripts[0].js.length, 20);
 })();
 
 // ---------------------------------------------------------------------------
@@ -2028,14 +2029,17 @@
 
 (function drSimplifyBundleMatchesSourceDeclarations() {
   const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
-  const declaredNames = ladderCode === null ? [] :
-    [...ladderCode.matchAll(FUNCTION_DECL_RE)].map((m) => m[1]).sort();
+  const tableStepCode = sourceByName('lib/dr-simplify/table.js');
+  const declaredNames = [ladderCode, tableStepCode]
+    .flatMap((code) => (code === null ? [] : [...code.matchAll(FUNCTION_DECL_RE)].map((m) => m[1])))
+    .sort();
   eq('lib/dr-simplify/ladder.js: source present in manifest', ladderCode !== null, true);
+  eq('lib/dr-simplify/table.js: source present in manifest', tableStepCode !== null, true);
   eq('lib/dr-simplify bundle: ladder.js declared at least one top-level function',
     declaredNames.length > 0, true);
   eq('lib/dr-simplify/index.js: DR_SIMPLIFY exists on the global scope after the main eval',
     typeof globalThis.DR_SIMPLIFY, 'object');
-  eq('lib/dr-simplify bundle: DR_SIMPLIFY keys are exactly the top-level functions declared in ladder.js',
+  eq('lib/dr-simplify bundle: DR_SIMPLIFY keys are exactly the top-level functions declared in ladder.js and table.js',
     Object.keys(globalThis.DR_SIMPLIFY || {}).sort(), declaredNames);
   eq('lib/dr-simplify bundle: every DR_SIMPLIFY entry is itself a function',
     declaredNames.every((n) => typeof (globalThis.DR_SIMPLIFY || {})[n] === 'function'), true);

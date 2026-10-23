@@ -59,6 +59,12 @@ Keep scratch work outside the repo. `docs/private/` is git-ignored if you want i
 
 ### JavaScript (Google Sheets)
 
+`js/round_dynamic.js` is generated, so never edit it by hand. Edit its sources, `js/src/` and the shared library files the build script lists, then rebuild it from the repository root and commit the result:
+```bash
+node scripts/build-sheets.js
+```
+CI runs `node scripts/build-sheets.js --check` and fails when the committed file differs from the build. The shared library files are part of the Sheets library, so rebuild after a change to one of them as well.
+
 Run the test suite:
 ```bash
 cd js

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dynamic Rounding",
-  "version": "2.2.13",
+  "version": "2.2.14",
   "description": "Applies dynamic rounding to tables on arbitrary websites.",
   "permissions": [
     "contextMenus",
@@ -28,6 +28,7 @@
         "lib/dr-table/detect.js",
         "lib/dr-table/index.js",
         "lib/dr-simplify/ladder.js",
+        "lib/dr-simplify/table.js",
         "lib/dr-simplify/index.js",
         "lib/dr-capture/state.js",
         "lib/dr-capture/render.js",
