@@ -230,7 +230,9 @@ Terms for reviews, plans, and discussion.
 | cost | What a change uses up (units may be: lines, risk, review time, runtime, etc.) |
 | benefit | What the user or the maintainer gains from a change. |
 | help card | The box Google Sheets shows while a user types `=ROUND_DYNAMIC(`. Sheets builds it from the function's JSDoc: the description lines, including the `[VERSION]` line, and one line per parameter. |
-| bump workflow | The automation that runs after every merged pull request, raises the version of each package the pull request touched, and merges the version-bump pull request itself. One table in its script lists the packages and their version files. |
+| bump workflow | The automation that runs after every merged pull request, raises the version of each package the pull request touched, and merges the version-bump pull request itself. One table in its script lists the packages, their version files, and the build each version file feeds. |
+| Sheets build | The script that writes the Sheets library, the one file a user pastes into Apps Script, by joining the license header, the shared library files it lists, and the Sheets entry source: the code only Sheets holds, `ROUND_DYNAMIC` and its help card among it. Its list is the one list of shared files the Sheets library holds. The committed Sheets library is its output, and its check fails the tests on any pull request whose committed file differs from the build. |
+| Sheets entry source | The hand-written source of the code only Sheets holds: `ROUND_DYNAMIC`, its help card text, the `[VERSION]` line, and the default offsets. The Sheets build joins it last, after the shared library files. A change to the Sheets function is an edit to this source followed by a rebuild. |
 
 ## Retired synonyms
 

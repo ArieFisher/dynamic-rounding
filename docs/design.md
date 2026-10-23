@@ -283,7 +283,7 @@ Tables carry no identifier. A topic inside the content script carries the live e
 
 ### Reuse across platforms
 
-The algorithm exists three times — the Sheets library, the Python package, and the extension's number package — and one shared case table runs in all three suites, so a change in one platform fails the other two until the three agree. That case table is the whole of the contract holding the three together. The Python library ships as a package; the Sheets library is pasted into a spreadsheet; the extension has no build step and no package file, so no tool guards its internal boundaries.
+The rounding arithmetic exists twice — the Python package and the extension's number package — and the Sheets library takes the extension's copy. Sheets runs one pasted file, so the Sheets build writes that file by joining the license header, the shared library files it lists, and the Sheets entry source, which holds `ROUND_DYNAMIC` and the Sheets-only number reader. CI fails when the committed Sheets file differs from the build, so a pull request that changes a shared file also holds the rebuilt Sheets file. One shared case table runs in the Sheets, extension, and Python suites, so a change in one platform fails the others until all agree; for Python that case table is the whole of the contract. The Python library ships as a package; the Sheets library is pasted into a spreadsheet; the extension has no build step and no package file, so no tool guards its internal boundaries.
 
 ### Table kind pairs
 

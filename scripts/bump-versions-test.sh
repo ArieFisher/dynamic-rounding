@@ -27,20 +27,32 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Creates a scratch tree with the real version files, then sets the given
-# versions on them: scratch_tree PYTHON_VERSION CHROME_VERSION.
+# Creates a scratch tree with the real version files and the Sheets build's
+# script and sources, then sets the given versions on the python and chrome
+# files: scratch_tree PYTHON_VERSION CHROME_VERSION.
 scratch_tree() {
   local dir
   dir=$(mktemp -d "${TMPDIR:-/tmp}/bump-versions-test.XXXXXX") || exit 2
   [ -n "$dir" ] || exit 2
   scratch_dirs+=("$dir")
-  mkdir -p "$dir/python" "$dir/chrome-extension" "$dir/js"
+  mkdir -p "$dir/python" "$dir/chrome-extension" "$dir/js" "$dir/scripts"
   cp "$ROOT/js/round_dynamic.js" "$ROOT/js/CHANGELOG.md" "$dir/js/"
+  cp -R "$ROOT/js/src" "$dir/js/"
+  cp -R "$ROOT/chrome-extension/lib" "$dir/chrome-extension/"
+  cp "$ROOT/scripts/build-sheets.js" "$dir/scripts/"
   sed -E "s/^version = \"[0-9.]+\"/version = \"$1\"/" \
     "$ROOT/python/pyproject.toml" > "$dir/python/pyproject.toml"
   sed -E "s/^  \"version\": \"[0-9.]+\"/  \"version\": \"$2\"/" \
     "$ROOT/chrome-extension/manifest.json" > "$dir/chrome-extension/manifest.json"
   printf '%s\n' "$dir"
+}
+
+# Edits a file in place with sed, the same way under GNU and BSD sed:
+# edit_in_place FILE SED_ARGS...
+edit_in_place() {
+  local file=$1
+  shift
+  sed "$@" "$file" > "$file.edit" && mv "$file.edit" "$file"
 }
 
 record_pass() { passed=$((passed + 1)); printf '  pass  %s\n' "$1"; }
@@ -99,7 +111,7 @@ else
 fi
 
 dir=$(scratch_tree 0.2.5 2.2.13)
-sed -i '/^version = /d' "$dir/python/pyproject.toml"
+edit_in_place "$dir/python/pyproject.toml" '/^version = /d'
 if (cd "$dir" && printf 'python/x.py\n' | "$BUMP" false >/dev/null 2>&1); then
   record_fail "a version file with no version line fails" "script exited 0"
 else
@@ -114,25 +126,42 @@ else
   record_pass "a missing version file fails"
 fi
 
+# The JSDoc version line lives in the Sheets entry source; the bump rebuilds
+# the Sheets file from it, so the built file carries the new version and the
+# build's check passes.
 dir=$(scratch_tree 0.2.5 2.2.13)
-sed -i -E 's/^ \* \[VERSION\] [0-9.]+$/ * [VERSION] 0.3.0/' "$dir/js/round_dynamic.js"
+edit_in_place "$dir/js/src/entry.js" -E 's/^ \* \[VERSION\] [0-9.]+$/ * [VERSION] 0.3.0/'
+(cd "$dir" && node scripts/build-sheets.js >/dev/null)
 before=$(cat "$dir/js/CHANGELOG.md")
 out=$(cd "$dir" && printf 'js/README.md\n' | "$BUMP" true 2>/dev/null | tr '\n' ' ')
 today=$(date -u +%Y-%m-%d)
-if [ "$out" != "js/round_dynamic.js js/CHANGELOG.md " ]; then
-  record_fail "a js change raises the JSDoc version and releases the changelog" "wrote [$out]"
+name="a js change raises the JSDoc version, rebuilds the Sheets file, and releases the changelog"
+if [ "$out" != "js/src/entry.js js/round_dynamic.js js/CHANGELOG.md " ]; then
+  record_fail "$name" "wrote [$out]"
+elif ! grep -qx ' \* \[VERSION\] 0.4.0' "$dir/js/src/entry.js"; then
+  record_fail "$name" "entry source JSDoc version not 0.4.0"
 elif ! grep -qx ' \* \[VERSION\] 0.4.0' "$dir/js/round_dynamic.js"; then
-  record_fail "a js change raises the JSDoc version and releases the changelog" "JSDoc version not 0.4.0"
+  record_fail "$name" "built file JSDoc version not 0.4.0"
+elif ! (cd "$dir" && node scripts/build-sheets.js --check 2>/dev/null); then
+  record_fail "$name" "the build check fails after the bump"
 elif [ "$(cat "$dir/js/CHANGELOG.md")" != "${before/\#\# \[Unreleased\]/## [Unreleased]
 
 ## [0.4.0] - $today}" ]; then
-  record_fail "a js change raises the JSDoc version and releases the changelog" "changelog not released as 0.4.0"
+  record_fail "$name" "changelog not released as 0.4.0"
 else
-  record_pass "a js change raises the JSDoc version and releases the changelog"
+  record_pass "$name"
 fi
 
 dir=$(scratch_tree 0.2.5 2.2.13)
-sed -i 's/^## \[Unreleased\]$/## Unreleased/' "$dir/js/CHANGELOG.md"
+rm "$dir/scripts/build-sheets.js"
+if (cd "$dir" && printf 'js/x.js\n' | "$BUMP" false >/dev/null 2>&1); then
+  record_fail "a failed Sheets build after a js bump fails" "script exited 0"
+else
+  record_pass "a failed Sheets build after a js bump fails"
+fi
+
+dir=$(scratch_tree 0.2.5 2.2.13)
+edit_in_place "$dir/js/CHANGELOG.md" 's/^## \[Unreleased\]$/## Unreleased/'
 if (cd "$dir" && printf 'js/x.js\n' | "$BUMP" false >/dev/null 2>&1); then
   record_fail "a changelog with no Unreleased heading fails" "script exited 0"
 else

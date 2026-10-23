@@ -8,11 +8,11 @@ Three artifacts carry independent version numbers:
 |----------|--------|-------------------------|
 | Chrome extension | 2.2.x | `chrome-extension/manifest.json` |
 | Python | 0.2.x | `python/pyproject.toml` — the package reads it back at runtime via `importlib.metadata` |
-| JS (Google Sheets) | 0.3.x | `js/round_dynamic.js` — the `[VERSION]` line in the `ROUND_DYNAMIC` JSDoc, which the Sheets help card shows |
+| JS (Google Sheets) | 0.3.x | `js/src/entry.js` — the `[VERSION]` line in the `ROUND_DYNAMIC` JSDoc, which the Sheets help card shows. The Sheets build copies it into the generated `js/round_dynamic.js` |
 
 ## How versions move
 
-The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. `scripts/bump-versions.py` holds the table of packages and their version files. If the PR touched `python/**`, `chrome-extension/**`, or `js/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. For JS it also turns the `## [Unreleased]` heading in `js/CHANGELOG.md` into the new version's heading. Nobody edits those version lines or release headings by hand. To release a minor version, add the `minor` label to the PR before merging it.
+The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. `scripts/bump-versions.py` holds the table of packages and their version files. If the PR touched `python/**`, `chrome-extension/**`, or `js/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. For JS it also runs the Sheets build (`node scripts/build-sheets.js`), so the version-bump PR carries a `js/round_dynamic.js` that matches the build, and turns the `## [Unreleased]` heading in `js/CHANGELOG.md` into the new version's heading. Nobody edits those version lines or release headings by hand. To release a minor version, add the `minor` label to the PR before merging it.
 
 ## Releasing
 
