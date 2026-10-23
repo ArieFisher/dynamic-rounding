@@ -1,10 +1,14 @@
 /**
  * DynamicRounding shared rounding helpers
  *
- * Loaded by both content.js (page context, via manifest content_scripts) and
- * sidebar.js (extension side-panel context, via <script> tag). Must remain
- * framework-free and side-effect-free: no chrome.*, no DOM access. All
- * symbols land on the global object of whichever script loads this file.
+ * The one copy of the rounding arithmetic, read by three scripts: the
+ * content script (page context, via manifest content_scripts), the sidebar
+ * (extension side-panel context, via <script> tag), and the Google Sheets
+ * library, which scripts/build-sheets.js writes by joining this file with
+ * the rest of the shared library and the Sheets entry source. Must remain
+ * framework-free and side-effect-free: no chrome.*, no DOM access, no Node
+ * module code. All symbols land on the global scope of whichever script
+ * holds this file.
  */
 
 const EPSILON = 1e-9;

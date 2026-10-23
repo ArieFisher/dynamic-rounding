@@ -134,26 +134,18 @@ function extractOffsetTable(doc, text) {
   return found;
 }
 
-// --- Extractor 3: numeric-casting bullets --------------------------------
-// - `"<string>"` → <number>   documents toNumber(), not end-to-end rounding.
-// - `"<string>"` → `"<string>"`   documents a pass-through: toNumber() reads
-//   no number, and ROUND_DYNAMIC returns the input unchanged.
-function extractCastingBullets(doc, text) {
+// --- Extractor 3: text-cell bullets ---------------------------------------
+// - `"<string>"` → `"<string>"`   ROUND_DYNAMIC at the default offset returns
+//   that text.
+// - `"<string>"` → <number>   ROUND_DYNAMIC at the default offset returns
+//   that number.
+function extractTextCellBullets(doc, text) {
   let found = 0;
   const re = /^- `"([^"]*)"` (?:→|->) (?:(-?[\d.,]+)|`"([^"]*)"`)/gm;
   for (const m of text.matchAll(re)) {
     const input = m[1];
-    if (m[3] !== undefined) {
-      const actual = ROUND_DYNAMIC(input);
-      record(m[3] === input && toNumber(input) === null && actual === input,
-        `${doc}: ROUND_DYNAMIC(${JSON.stringify(input)}) -> expected ${JSON.stringify(m[3])} unchanged, got ${JSON.stringify(actual)}`);
-      found++;
-      continue;
-    }
-    const expected = parseNumber(m[2]);
-    const actual = toNumber(input);
-    record(actual === expected,
-      `${doc}: toNumber(${JSON.stringify(input)}) -> expected ${expected}, got ${actual}`);
+    const expected = m[3] !== undefined ? m[3] : parseNumber(m[2]);
+    checkPair(doc, input, undefined, expected);
     found++;
   }
   return found;
@@ -175,9 +167,14 @@ function extractSheetsTab(doc, text) {
   };
 
   let pendingOffsets = null;
+  // A section whose label row says "format the Input and Expected cells as plain text"
+  // holds text in every Input cell, digits alone included ("2020").
+  let plainTextInputs = false;
 
   for (const rawLine of text.split('\n')) {
     const line = rawLine.replace(/\\/g, '');
+    if (line.startsWith('| Section ')) plainTextInputs = false;
+    if (line.includes('format the Input and Expected cells as plain text')) plainTextInputs = true;
     if (!line.startsWith('| =IF(')) {
       // A "With custom params" block holds its offsets on a parameter row
       // above the range formula (C27:E27), not on the formula row itself.
@@ -225,8 +222,11 @@ function extractSheetsTab(doc, text) {
       checkPair(doc, input, parseOffset(c[3]), expected);
       found++;
     } else if ((c[4] || '').startsWith('=ROUND_DYNAMIC')) { // input-handling layout: input, expected
-      const input = parseNumber(c[2]) !== null && !/[$€£¥,%()\s−]/.test(c[2]) ? parseNumber(c[2]) : c[2];
-      const expected = parseNumber(c[5]) !== null ? parseNumber(c[5]) : c[5];
+      // An input in a plain-text section, or with a format mark, is text, and
+      // a text input returns text, so its expected value is read as written.
+      const isText = plainTextInputs || parseNumber(c[2]) === null || /[$€£¥,%()\s−]/.test(c[2]);
+      const input = isText ? c[2] : parseNumber(c[2]);
+      const expected = typeof input === 'string' || parseNumber(c[5]) === null ? c[5] : parseNumber(c[5]);
       checkPair(doc, input, undefined, expected);
       found++;
     }
@@ -289,7 +289,7 @@ const sheetsTab = read('js/tests-googlesheets-tab.md');
 
 assertMinCount('js/README.md (formulas)', extractFormulaPairs('js/README.md', jsReadme), 5);
 assertMinCount('js/README.md (offset table)', extractOffsetTable('js/README.md', jsReadme), 5);
-assertMinCount('js/README.md (casting)', extractCastingBullets('js/README.md', jsReadme), 5);
+assertMinCount('js/README.md (text cells)', extractTextCellBullets('js/README.md', jsReadme), 5);
 assertMinCount('docs/design.md (offset table)', extractOffsetTable('docs/design.md', design), 5);
 assertMinCount('python/README.md', extractPythonPairs('python/README.md', pyReadme), 7);
 assertMinCount('python/README.md (offset table)', extractOffsetTable('python/README.md', pyReadme), 5);
