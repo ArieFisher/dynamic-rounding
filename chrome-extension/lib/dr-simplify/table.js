@@ -30,10 +30,10 @@
  * its own per-cell data beside them.
  *
  * Page work stays with the caller: the magnitude freeze a grid keeps across
- * scrolls, the check that a changed date or time does not straddle two text
- * pieces, the link filter, and the write of patches into text pieces. A date
- * or time cell's patch covers its trimmed text, so the patch's index and the
- * length of its numStr are the span the caller's straddle check reads.
+ * scrolls, the check that a changed date or time sits in one text piece, the
+ * link filter, and the write of patches into text pieces. A date or time
+ * cell's patch covers its trimmed text, so the patch's index and the length
+ * of its numStr are the span that check reads.
  */
 
 // Adapts a classifyCell decision to the { mode, num, dates, ambiguous,

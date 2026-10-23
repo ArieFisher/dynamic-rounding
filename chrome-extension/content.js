@@ -1128,7 +1128,7 @@ function tableKindPass(adapter) {
 
 // One cell's patches as the page takes them: the table step's patches
 // (tablePatches, lib/dr-simplify/table.js), less a changed date or time that
-// crosses a piece boundary. A date or time cell's one patch covers its
+// does not sit in one text piece. A date or time cell's one patch covers its
 // trimmed text; when no single text piece holds that span, the cell stays as
 // written and the pass writes the kind's debug row.
 function cellPatches(stepCell, kind) {
