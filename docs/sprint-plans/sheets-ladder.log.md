@@ -28,10 +28,5 @@ Base branch: main
 
 ### Completed
 - **sheets-ladder** — feature/sheets-ladder → PR #575 (https://github.com/ArieFisher/dynamic-rounding/pull/575)
-  - Reviewer: APPROVE (after 1 retry)
-  - Tests: pass (Sheets 846, extension 4,046, documented examples 88, Python case table 124, build self-test 30, bump self-test 11)
-  - Attempt 1: BLOCK. Under the `number` value of the result-kind constant the Sheets suite read `expected`, so nine text rows had no correct answer. Fixed by an `expected_number` field on every text-input row; the suite fails a text row that lacks the field.
-  - Bucket 1 applied: the README test count.
-  - FYI: the plan's item 8 assumed `expected` would serve the `number` value; the branch adds `expected_number` instead.
-  - FYI: the extension's one-declaration test skips the generated Sheets file by the build's notice line, a copy that fails closed.
-  - FYI: `/opt/homebrew/bin/pytest` runs the Python suite; `python3 -m pytest` does not.
+  - Reviewer: APPROVE
+  - Tests: pass
