@@ -736,22 +736,17 @@ function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
 
 // --- Lens preview sample extraction (read by the sidebar over request:previewSamples) ---
 
-// The lens preview's sample pool: each number the table rounds in its
-// dataset, with its cell's trimmed text. The preview classifies through the
-// classification step the one simplification pass runs (classifyTableCells
-// below), on the kind the pass picks, so a cell appears here only if the
-// table rounds it. The step reads each simplified cell's stored original
-// (see classifyTableCell) and writes nothing. The filters over its result
-// keep what the lens preview samples. Every row counts, header, body, and
-// total alike; empty cells stay out. Pure and extracted results alone
-// count: the lens preview is about numeric magnitude and offset, so dates
-// and times stay out even though the ladder classifies them.
+// The lens preview's classified cells: every cell of the table's dataset,
+// classified through the classification step the one simplification pass
+// runs (classifyTableCells below), on the kind the pass picks. The step reads
+// each simplified cell's stored original (see classifyTableCell) and writes
+// nothing. Every row counts, header, body, and total alike.
 //
 // options defaults to DR_DEFAULTS when the caller passes none (tests exercise
 // the ladder's option-gated rules directly this way); the real call site,
 // extractPreviewSamples below, passes the table's own settings so the lens
 // preview classifies cells exactly as roundTable will.
-function collectNumericCells(table, options) {
+function classifyPreviewCells(table, options) {
   const opts = Object.assign({}, DR_DEFAULTS, options || {});
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   // An invalid range expression makes the engine round nothing at all
@@ -759,8 +754,16 @@ function collectNumericCells(table, options) {
   // of falling back to "whole table".
   if (rangeParse.error) return [];
   const adapter = registryAdapter(table);
-  const entries = classifyTableCells(table, tableDataCells(adapter.getRows()), opts, rangeParse.ranges,
+  return classifyTableCells(table, tableDataCells(adapter.getRows()), opts, rangeParse.ranges,
     tableKindPass(adapter));
+}
+
+// The lens preview's sample pool: each number the table rounds in its
+// dataset, with its cell's trimmed text, so a cell appears here only if the
+// table rounds it. Empty cells stay out. Pure and extracted results alone
+// count: the lens preview is about numeric magnitude and offset, so dates and
+// times stay out even though the ladder classifies them.
+function numericPreviewCells(entries) {
   const out = [];
   for (const { trimmed, info } of entries) {
     if (!trimmed) continue;
@@ -776,16 +779,19 @@ function collectNumericCells(table, options) {
 // Pick up to 2 top-band samples and one sample per other-band magnitude for
 // the lens preview. Bucketed by magnitude (floor(log10|num|)) so the lens
 // preview shows the offset_top and offset_other split that roundCellSetAware
-// applies to the table.
+// applies to the table. The max magnitude comes from the table step's
+// datasetMaxMagnitude, the one the simplification pass rounds against.
 function extractPreviewSamples(table) {
   // The table's own settings, not shipped defaults — otherwise the lens
   // preview and the table disagree the moment the sidebar's slider or
   // checkboxes diverge from DR_DEFAULTS.
   const liveSettings = DR_STORE.getTableSettings(table);
-  const cells = collectNumericCells(table, liveSettings);
+  const entries = classifyPreviewCells(table, liveSettings);
+  const cells = numericPreviewCells(entries);
   if (cells.length === 0) {
     return { samples: { top: [], bottom: [] }, maxMag: null };
   }
+  const maxMag = datasetMaxMagnitude(entries);
   const numTop = liveSettings.numTop || 1;
   const topOffset = typeof liveSettings.offsetTop === 'number' ? liveSettings.offsetTop : -0.5;
   const otherOffset = typeof liveSettings.offsetOther === 'number' ? liveSettings.offsetOther : -0.5;
@@ -802,10 +808,8 @@ function extractPreviewSamples(table) {
   });
 
   const byMag = new Map();
-  let maxMag = null;
   for (const c of cells) {
     const mag = Math.floor(Math.log10(Math.abs(c.num)));
-    if (maxMag === null || mag > maxMag) maxMag = mag;
     if (!byMag.has(mag)) byMag.set(mag, []);
     byMag.get(mag).push(c);
   }
