@@ -122,6 +122,16 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 ---
 
+## Building
+
+`round_dynamic.js` is generated: do not edit it by hand. The Sheets build joins three sources into it: the license header and the Sheets entry source in [`src/`](./src/), and the shared library files the build script lists, which live in the Chrome extension's number package. The entry source holds `ROUND_DYNAMIC`, its help card text, and the `[VERSION]` line. Edit a source, then rebuild from the repository root and commit the rebuilt file:
+
+```bash
+node scripts/build-sheets.js
+```
+
+`node scripts/build-sheets.js --check` exits with an error when the committed `round_dynamic.js` differs from the build. CI runs it on every pull request and fails the run when a source changed without a rebuild.
+
 ## Testing
 
 Run the test suite:
