@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-23
+
 ### Changed (2026-10-23)
 
 - **Built from the shared library**: the Sheets file is now generated from the Chrome extension's shared rounding code and the Sheets entry source. `ROUND_DYNAMIC` returns what it returned before.

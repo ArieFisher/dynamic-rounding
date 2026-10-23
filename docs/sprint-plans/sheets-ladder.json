@@ -1,0 +1,92 @@
+{
+  "title": "Sheets cells handled like extension cells",
+  "base_branch": "main",
+  "created": "2026-10-23",
+  "source_markdown": "docs/sprint-plans/sheets-ladder.md",
+  "repo_conventions": {
+    "version_files": [
+      {
+        "path": "chrome-extension/manifest.json",
+        "format": "dotted integers in `version` key; bumped by the merge-time workflow — sprint branches must not touch it"
+      },
+      {
+        "path": "python/pyproject.toml",
+        "format": "semver in `version` key; bumped by the merge-time workflow — sprint branches must not touch it; no sprint here changes python/"
+      },
+      {
+        "path": "js/round_dynamic.js",
+        "format": "the ` * [VERSION] x.y.z` line; bumped by the merge-time workflow — sprint branches must not change the version number. The chore sprint may move the line into the Sheets entry source and point the bump at it, keeping the number unchanged"
+      }
+    ],
+    "version_bump_policy": "merge-workflow",
+    "test_command": "node chrome-extension/tests.js && node js/tests.js && node js/doc-tests.js",
+    "gate_command": "scripts/check-files.sh --staged && scripts/check-vocab.sh --staged",
+    "branch_naming": "refactor/<label>, chore/<label>, feature/<label> by change type, as each sprint's branch field states; never claude/ or session/",
+    "dependent_policy": "after-merge",
+    "base_branch_writes": "pull-request",
+    "commit_convention": "Conventional Commits (refactor:, chore:, feat:, docs:, test:); a vocabulary definition lands as its own docs: commit on the sprint branch; no attribution trailer and no generated-by line",
+    "pr_template": "AGENTS.md, section Pull requests",
+    "vocabulary": "docs/vocabulary.md is the canon; read it in full before the first tool call, sweep new prose at every commit, and define a new concept on the branch that makes it real",
+    "docs_rule": "A behavior change updates every living doc it invalidates on the same branch; each sprint's dev notes name its docs. docs/test-pages/tables.html does not apply to Sheets; a sprint that changes no extension behavior names no section and says why."
+  },
+  "sprints": [
+    {
+      "label": "shared-table-step",
+      "branch": "refactor/shared-table-step",
+      "goal": "The table step that runs after classification (date post-pass, max magnitude, patches) lives in the shared library, and the extension calls it.",
+      "scope": "Move the page-free part of resolveAmbiguousDates, datasetMaxMagnitude, and cellPatches (and the helpers they alone use, such as decisionToLegacyInfo) out of chrome-extension/content.js into lib/dr-simplify as one table step: classified cells and rounding settings in, each cell's patches and the max magnitude out. The step takes a frozen max magnitude when one is given. Four parts stay in content.js because each reads the page: the magnitude freeze a grid keeps across scrolls (the store write), the check that a changed date or time does not straddle two text pieces (layoutPieceHolding and its debug row), the link filter, and the write of patches into text pieces. content.js calls the shared step; DR_SIMPLIFY lists its public names. The new file joins every load list that loads lib/dr-simplify (manifest content_scripts, the test setup, any source check). Living docs: the architecture description in docs/design.md and chrome-extension/README.md where they say where the table-level steps run.",
+      "out_of_scope": "Any behavior change in the extension. The Sheets file and its tests. A text splice for plain strings. The range expression, exclusions, and classification inputs. Python.",
+      "acceptance_criteria": [
+        "The shared step holds no reference to the page, the DOM, chrome.*, DR_STORE, or DR_LOG, and a test loads lib/dr-number and lib/dr-simplify alone (no content.js) and runs the step on plain classified cells: a pure cell, an extracted cell with two numbers, an ambiguous date column, and a skip cell, each returning the patches the extension writes today.",
+        "Given a frozen max magnitude, the step rounds against it and does not compute its own.",
+        "content.js no longer declares resolveAmbiguousDates, datasetMaxMagnitude, or the page-free part of cellPatches; one definition of each rule exists in the repository.",
+        "The straddle check still drops a changed date that crosses two text pieces and writes its debug row, shown by an existing or new test.",
+        "The extension, Sheets, and documented-example suites pass with no change to an existing expectation."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "The functions sit near content.js line 1140; simplifyTableCells and writeTableCells call them. cellPatches today takes kind only for the date-split debug row; the straddle check needs the layout, so the shared step can return a date or time patch with its span and content.js drops it when layoutPieceHolding fails, or the step can take a predicate argument that defaults to true. Pick the one with fewer moving parts and say why in the pull request. A refactor changes no expectation: if a test must change, stop and record why. No new constant. No vocabulary change expected; if the step needs a name in prose, use an existing term or define it as its own docs: commit. Manual test: none on the test page, because extension behavior does not change; the pull request says so. Merge order: either order with sheets-library-build; feature sheets-ladder waits on both."
+    },
+    {
+      "label": "sheets-library-build",
+      "branch": "chore/sheets-library-build",
+      "goal": "The Sheets file is built from the shared library, and CI fails when the committed Sheets file differs from the build.",
+      "scope": "A build script (Node, under scripts/) that writes js/round_dynamic.js by concatenating the license header, the shared library files the Sheets entry needs, and a hand-written Sheets entry source. A --check mode that exits non-zero when the committed file differs from the build, run in .github/workflows/tests.yml. The Sheets entry source holds ROUND_DYNAMIC, singleValueMode, datasetMode, validateOffset, the default offset constants, the [VERSION] line, and the custom-function JSDoc. This sprint includes chrome-extension/lib/dr-number/rounding.js only, and removes from the Sheets source the copies it replaces: roundWithOffset, roundCellSetAware, EPSILON, X_FLOOR_THRESHOLD. toNumber, isNumberShape, findMaxMagnitude, and their constants stay in the Sheets source for now, because the library's copies in core.js read the full currency list and that widening belongs to the feature sprint. The list of library files the build includes lives in one place, the build script. The version bump keeps working: the bump writes the version line where it lives (scripts/bump-versions.py row for js/) and the bump workflow rebuilds and stages the built file, so the check passes after every bump; scripts/bump-versions-test.sh covers it. Living docs: js/README.md and CONTRIBUTING.md or MAINTAINERS.md state that js/round_dynamic.js is generated, which file to edit, and the build command; docs/design.md where it describes the Sheets library as a separate copy.",
+      "out_of_scope": "Any change in what ROUND_DYNAMIC returns. core.js, parsing.js, identifiers.js, and the ladder in the build. The Sheets input step, the result-kind constant, the case table. The extension's own load lists.",
+      "acceptance_criteria": [
+        "Running the build on a clean checkout writes a js/round_dynamic.js byte-identical to the committed one, and --check exits zero.",
+        "Editing a library file the build includes, or the Sheets entry source, without rebuilding makes --check exit non-zero with a message that names the build command; a test shows both.",
+        "The built file declares each function and constant once: no duplicate top-level name, shown by a test that parses the built file's top-level declarations.",
+        "The built file runs as one Apps Script file: it holds no require, import, export, module, or process reference, and the Sheets suite loads it by eval as today.",
+        "After a simulated version bump, the built file carries the new version and --check exits zero; scripts/bump-versions-test.sh covers it.",
+        "CI runs the check on every pull request to main.",
+        "The Sheets, extension, and documented-example suites pass with no change to an existing expectation."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "rounding.js's roundWithOffset and roundCellSetAware match the Sheets copies line for line in behavior; the Sheets copy wraps the floor in Math.abs over an already-positive value. rounding.js also declares stepForOffset, formatStep, and trimNum, which the Sheets entry does not call; including the whole file is expected. A const declared twice in one Apps Script file is a syntax error, which is why the duplicate-name test exists. The new source file needs a place check-files.sh accepts; if the policy blocks it, change the policy block in the same change and say why. The version line has one home: if it moves to the entry source, the bump row points there and the built file carries it through the build. The Sheets help card (#564) reads the version; confirm it still does. Node version in CI is 26; use only the standard library. Manual test: paste the built file into the template spreadsheet and confirm ROUND_DYNAMIC returns what it returned before; no test-page section applies, because the extension does not change. Merge order: either order with shared-table-step."
+    },
+    {
+      "label": "sheets-ladder",
+      "branch": "feature/sheets-ladder",
+      "goal": "ROUND_DYNAMIC in Google Sheets reads each text cell through the extension's classification ladder and table step, and returns text for a text cell.",
+      "scope": "Per the plan's items 2, 4, 5, 6, and 8 and its Behavior changes section. The build includes the rest of lib/dr-number and lib/dr-simplify, and the Sheets source drops its own toNumber, isNumberShape, findMaxMagnitude, CLEAN_REGEX, DASH_REGEX, PARENS_REGEX, GROUP_SHAPE_REGEX, and VALIDATION_LIMIT. A Sheets input step sorts each value: a number rounds as today and returns a number; a date object, a boolean, and an empty cell pass through; text goes through classifyCell, then the shared table step, then a text splice that applies a cell's patches last patch first. The result-kind constant in the Sheets settings block, value text: a pure or bracketed text cell returns the write-back's text; under number it returns the rounded value. Fixed settings: numbers inside text, mixed currency, and mixed percent on; dates and times off; first row and first column rounded; no range expression; offsets from the formula parameters. js/round-dynamic-cases.json gains a Sheets text-result field on each text-input row and new rows for numbers inside text, unit numbers, bracketed numbers, identifier shapes, and date and time text that passes through; js/tests.js reads the field that matches the constant; the extension and Python suites keep reading expected. Living docs: js/README.md (numeric casting, the currency-sign line, the result kind, the behavior changes), docs/design.md, js/tests-googlesheets-tab.md, python/README.md where it compares with Sheets.",
+      "out_of_scope": "Python behavior. A user override for the fixed settings. Reading a source cell's format. Format copy into the destination cell. Extension behavior.",
+      "acceptance_criteria": [
+        "\"about 1,234 users\" returns \"about 1,000 users\", \"4.91tn\" rounds as the extension rounds it, and \"$1,011\" returns the text \"$1,000\" under the text value of the constant and 1000 under the number value.",
+        "\"(1,234)\" returns \"(1,000)\" under text and -1000 under number; a cell with words or a unit number returns text under both values.",
+        "A plain number returns a number, rounded as today; a date object, a boolean, and an empty cell return unchanged.",
+        "A phone number, an identifier shape, and date or time text return unchanged; \"Q3 2020\" returns \"Q3 2,000\" and \"2020\" as text returns \"2020\".",
+        "In dataset mode, the max magnitude spans every number in the range, numbers inside text included, and the first row and first column round.",
+        "\"R47\" and \"CAD45.67\" round, and the README's currency-sign line states the full currency list.",
+        "The built file declares each name once and --check passes; the Sheets suite runs the shared case rows through the field that matches the constant; the extension, Python, and documented-example suites pass."
+      ],
+      "depends_on": ["shared-table-step", "sheets-library-build"],
+      "version_bump": "minor",
+      "complexity": "L",
+      "dev_notes": "Runtime features (lookbehind, named groups, the d flag, Intl.NumberFormat) were checked in Apps Script V8 on 2026-10-23. classifyCell's page-only inputs default off; pass none. A custom function receives the value, not the display: a currency-formatted 1234 arrives as a number and rounds as a number. About forty shared case rows expect numeric text to return a number; under text those rows read the new field. The minor bump comes from the merge workflow; do not touch the version line. Manual test: paste the built file into the template spreadsheet and run the plan's Verification list; no test-page section applies. The vocabulary entry for the result kind lands as its own docs: commit. Carried from run 1 review: (a) the extension test that pins one declaration of each table-step function walks js/ and fails once the build adds lib/dr-simplify/table.js; it must skip the generated Sheets file. (b) The header comments of lib/dr-number/rounding.js and core.js predate the Sheets build (core.js calls the Sheets file a separate, unrelated entry point); rewrite both when the build adds core.js. (c) The table step takes per cell text, info (decisionToLegacyInfo of classifyCell's decision), and col, and settings offsetTop, offsetOther, numTop, dateGranularity, timeGranularity; a date or time patch comes back with its span and the extension drops it when no single text piece holds it, which Sheets does not need."
+    }
+  ]
+}
