@@ -734,20 +734,6 @@ function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
   return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
 }
 
-// Adapts a classifyCell decision to the { mode, num, dates, ambiguous,
-// matches } shape the one simplification pass below reads in its
-// column post-pass, its max magnitude, and its patch step, on both table
-// kinds.
-function decisionToLegacyInfo(decision) {
-  if (decision.mode === 'pure') return { mode: 'pure', num: decision.value.num };
-  if (decision.mode === 'extracted') return { mode: 'extracted', matches: decision.value.matches };
-  if (decision.mode === 'date') {
-    return { mode: 'date', dates: decision.value.dates, ambiguous: decision.pending === 'ambiguous-date' };
-  }
-  if (decision.mode === 'time') return { mode: 'time' };
-  return { mode: 'skip' };
-}
-
 // --- Lens preview sample extraction (read by the sidebar over request:previewSamples) ---
 
 // The lens preview's sample pool: each number the table rounds in its
@@ -923,9 +909,11 @@ function buildCaptureStateResponse() {
 //              written text and drops the record, so the cell holds only the
 //              page's text, and the pass then treats it as fresh.
 // The pass then classifies every cell through the classification ladder
-// (lib/dr-simplify) and the placement step (placeDecision in lib/dr-table),
-// resolves ambiguous dates per column, finds the max magnitude over the
-// dataset, builds each cell's patches, and writes each cell through the
+// (lib/dr-simplify) and the placement step (placeDecision in lib/dr-table).
+// The table step (tablePatches in lib/dr-simplify/table.js) then resolves
+// ambiguous dates per column, finds the max magnitude over the dataset, and
+// builds each cell's patches. The pass drops a changed date or time that
+// crosses a piece boundary (cellPatches) and writes each cell through the
 // patch writer, cell by cell in page order. The writer gives every piece
 // whose live text differs from its target the target, so a held cell with
 // nothing changed takes no write, a piece redrawn to its original takes the
@@ -977,10 +965,10 @@ function buildCaptureStateResponse() {
 //                 the detection settings' reapplyCellCap; the first
 //                 simplification passes none.
 //
-// A cell's writes follow its patches in the same loop, so a native table's
-// debug rows keep their page order. The patch step reads only what
-// classification captured, never the page, so a write to one cell leaves the
-// patches of the cells after it unchanged.
+// A cell's piece-boundary check and its writes run in the same loop, so a
+// native table's debug rows keep their page order. The table step reads only
+// what classification captured, never the page, so a write to one cell
+// leaves the patches of the cells after it unchanged.
 
 const NATIVE_TABLE_PASS = {
   splitReasons: ['pieces', 'split'],
@@ -1138,86 +1126,20 @@ function tableKindPass(adapter) {
   return adapter.isVirtualized() ? GRID_TABLE_PASS : NATIVE_TABLE_PASS;
 }
 
-// The column post-pass: resolve each ambiguous numeric date against its
-// column's format hint. Every all-numeric date in the column counts, the
-// second date of a cell included. Grouping runs on the grid column each cell carries,
-// so one visual column settles one reading for all of its cells — a merge
-// inside the table cannot split a column into two groups that read 7/4/99 as
-// July in one row and April in another.
-function resolveAmbiguousDates(entries) {
-  const isAmbiguous = (info) => info.mode === 'date' && info.ambiguous;
-  const readingsByCol = new Map();
-  for (const { info, col } of entries) {
-    if (!isAmbiguous(info)) continue;
-    if (!readingsByCol.has(col)) readingsByCol.set(col, []);
-    readingsByCol.get(col).push(...info.dates.filter(isAmbiguousDate));
+// One cell's patches as the page takes them: the table step's patches
+// (tablePatches, lib/dr-simplify/table.js), less a changed date or time that
+// crosses a piece boundary. A date or time cell's one patch covers its
+// trimmed text; when no single text piece holds that span, the cell stays as
+// written and the pass writes the kind's debug row.
+function cellPatches(stepCell, kind) {
+  const { entry, patches } = stepCell;
+  const isDateOrTime = entry.info.mode === 'date' || entry.info.mode === 'time';
+  if (isDateOrTime && patches.length > 0 &&
+      !layoutPieceHolding(entry.layout, patches[0].index, patches[0].numStr.length)) {
+    DR_LOG.debug(kind.dateSplitRow);
+    return { patches: [], linkFilteredIdx: null };
   }
-  const hintByCol = new Map(Array.from(readingsByCol, ([col, readings]) => [col, pickDateFormatHint(readings)]));
-  return entries.map((entry) => {
-    if (!isAmbiguous(entry.info)) return entry;
-    const pendingDecision = { value: { dates: entry.info.dates } };
-    const info = decisionToLegacyInfo(resolveAmbiguousDateDecision(pendingDecision, hintByCol.get(entry.col)));
-    return Object.assign({}, entry, { info });
-  });
-}
-
-// The max magnitude over the dataset: every pure cell's number and each
-// number of an extracted cell, from every row of the table.
-function datasetMaxMagnitude(entries) {
-  const allNums = [];
-  for (const { info } of entries) {
-    if (info.mode === 'pure') allNums.push(info.num);
-    else if (info.mode === 'extracted') {
-      for (const m of info.matches) allNums.push(m.num);
-    }
-  }
-  return findMaxMagnitude([allNums]);
-}
-
-// One cell's patches, positioned in the text the cell classified: empty for a
-// skip cell, an unchanged value, or a changed date or time that crosses a
-// piece boundary. A date or time cell takes one patch: its trimmed text,
-// replaced whole, while the piece keeps its own whitespace. Every number
-// takes the one write-back, formatNumber, patched in place. A pure cell
-// takes one patch over its number span (pureNumberSpan), so its sign,
-// currency sign, and percent sign stay where the page put them; the patch
-// compares the written digits to the span, which catches a number that is
-// unchanged but whose display simplifies (e.g. "35.0" to "35"). An extracted
-// cell — a unit number, a stacked cell, or numbers inside words, links, or a
-// <sup> — takes one patch per changed number, and linkFilteredIdx holds the
-// positions of the numbers the link filter kept.
-function cellPatches(entry, maxMag, opts, rounding, kind) {
-  const { text, trimmed, info, layout } = entry;
-  const { offsetTop, offsetOther, numTop } = rounding;
-  const lead = typeof text === 'string' ? text.length - text.trimStart().length : 0;
-  if (info.mode === 'date' || info.mode === 'time') {
-    const rounded = info.mode === 'date'
-      ? roundDateText(trimmed, opts.dateGranularity, info.dates)
-      : roundTimeText(trimmed, opts.timeGranularity);
-    if (rounded === null || rounded === trimmed) return { patches: [], linkFilteredIdx: null };
-    if (!layoutPieceHolding(layout, lead, trimmed.length)) {
-      DR_LOG.debug(kind.dateSplitRow);
-      return { patches: [], linkFilteredIdx: null };
-    }
-    return { patches: [{ index: lead, numStr: trimmed, newNum: rounded }], linkFilteredIdx: null };
-  }
-  if (info.mode === 'pure') {
-    const roundedValue = roundCellSetAware(info.num, info.num, maxMag, offsetTop, offsetOther, numTop);
-    const span = pureNumberSpan(text);
-    const newNum = formatNumber(roundedValue, span.numStr);
-    const patches = newNum === span.numStr ? [] : [{ index: span.index, numStr: span.numStr, newNum }];
-    return { patches, linkFilteredIdx: null };
-  }
-  if (info.mode === 'extracted') {
-    const patches = [];
-    for (const m of info.matches) {
-      const rounded = roundCellSetAware(m.num, m.num, maxMag, offsetTop, offsetOther, numTop);
-      const newNum = formatNumber(rounded, m.numStr);
-      if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
-    }
-    return { patches, linkFilteredIdx: info.matches.map((m) => m.index) };
-  }
-  return { patches: [], linkFilteredIdx: null };
+  return { patches, linkFilteredIdx: stepCell.linkFilteredIdx };
 }
 
 /**
@@ -1253,12 +1175,12 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   for (const entry of classified) {
     if (entry.isSplit) DR_LOG.debug(kind.splitRow);
   }
-  const entries = resolveAmbiguousDates(classified);
-  const frozen = pass.frozenMaxMag;
-  const maxMag = (frozen !== undefined && frozen !== null) ? frozen : datasetMaxMagnitude(entries);
+  const settings = Object.assign(resolveRoundingSettings(opts),
+    { dateGranularity: opts.dateGranularity, timeGranularity: opts.timeGranularity });
+  const { maxMag, cells: stepCells } = tablePatches(classified, settings, pass.frozenMaxMag);
   if (writes === 'first' && kind.freezesMaxMagnitude) DR_STORE.setTableMaxMagnitude(table, maxMag);
 
-  const written = writeTableCells(table, entries, { maxMag, opts, kind, writes });
+  const written = writeTableCells(table, stepCells, { kind, writes });
   if (writes === 'first' && written.missedCells > 0) {
     DR_LOG.debug(unroundedCellsRow(written.missedCells, written.landedCells + written.missedCells));
   }
@@ -1267,16 +1189,17 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   return Object.assign(written, { maxMag, cellCount: dataCells.length, overCap: false });
 }
 
-// The pass's patch and write loop, cell by cell in page order. A held cell
-// with no patch, or with no landed patch, shows its original as its target,
-// so it is released: its record, marker class, and hover text go.
-function writeTableCells(table, entries, { maxMag, opts, kind, writes }) {
-  const rounding = resolveRoundingSettings(opts);
+// The pass's write loop over the table step's cells, cell by cell in page
+// order. A held cell with no patch, or with no landed patch, shows its
+// original as its target, so it is released: its record, marker class, and
+// hover text go.
+function writeTableCells(table, stepCells, { kind, writes }) {
   const cells = [];
   let landedCells = 0;
   let missedCells = 0;
-  for (const entry of entries) {
-    const { patches, linkFilteredIdx } = cellPatches(entry, maxMag, opts, rounding, kind);
+  for (const stepCell of stepCells) {
+    const { entry } = stepCell;
+    const { patches, linkFilteredIdx } = cellPatches(stepCell, kind);
     const flat = flatPatches(patches, entry.layout);
     cells.push({ entry, patches: flat, linkFilteredIdx });
     if (writes === 'none') continue;
