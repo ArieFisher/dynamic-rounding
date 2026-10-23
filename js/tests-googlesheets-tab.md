@@ -33,14 +33,14 @@
 | \=IF(D32=E32, "✓", "✗") | 1234 | *(spills)* | 1,000 | 1,000 |  |  |  |
 |  |  |  |  |  |  |  |  |
 | Section 3: Input Handling |  |  |  |  |  |  |  |
-|  | **Input Handling** |  |  |  |  |  |  |
+|  | **Input Handling** |  |  |  |  | *//format B38, B40:B42, E38, and E40:E42 as plain text* |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
-| \=IF(D37=E37, "✓", "✗") | $ (500.00) | `=FORMULATEXT(D37)` | `=ROUND_DYNAMIC(B37)` | \-500 |  | Note: accounting format |  |
-| \=IF(D38=E38, "✓", "✗") | (500) | `=FORMULATEXT(D38)` | `=ROUND_DYNAMIC(B38)` | \-500 |  | Note: string representation of accounting format |  |
-| \=IF(D39=E39, "✓", "✗") | \-$500.00 | `=FORMULATEXT(D39)` | `=ROUND_DYNAMIC(B39)` | \-500 |  | Note: currency format |  |
-| \=IF(D40=E40, "✓", "✗") | $1,234.56 | `=FORMULATEXT(D40)` | `=ROUND_DYNAMIC(B40)` | 1000 |  | \="ISTEXT(B40)= " & ISTEXT(B40) |  |
-| \=IF(D41=E41, "✓", "✗") | €4,500 | `=FORMULATEXT(D41)` | `=ROUND_DYNAMIC(B41)` | 4500 |  | \="ISTEXT(B41)= " & ISTEXT(B41) |  |
-| \=IF(D42=E42, "✓", "✗") | 1,234,567 | `=FORMULATEXT(D42)` | `=ROUND_DYNAMIC(B42)` | 1000000 |  | \="ISTEXT(B42)= " & ISTEXT(B42) |  |
+| \=IF(D37=E37, "✓", "✗") | \-500 | `=FORMULATEXT(D37)` | `=ROUND_DYNAMIC(B37)` | \-500 |  | Note: a number in accounting format; the cell shows $ (500.00) |  |
+| \=IF(D38=E38, "✓", "✗") | (500) | `=FORMULATEXT(D38)` | `=ROUND_DYNAMIC(B38)` | (500) |  | Note: text in accounting form; the brackets stay |  |
+| \=IF(D39=E39, "✓", "✗") | \-500 | `=FORMULATEXT(D39)` | `=ROUND_DYNAMIC(B39)` | \-500 |  | Note: a number in currency format; the cell shows -$500.00 |  |
+| \=IF(D40=E40, "✓", "✗") | $1,234.56 | `=FORMULATEXT(D40)` | `=ROUND_DYNAMIC(B40)` | $1,000 |  | \="ISTEXT(B40)= " & ISTEXT(B40) |  |
+| \=IF(D41=E41, "✓", "✗") | €4,500 | `=FORMULATEXT(D41)` | `=ROUND_DYNAMIC(B41)` | €4,500 |  | \="ISTEXT(B41)= " & ISTEXT(B41) |  |
+| \=IF(D42=E42, "✓", "✗") | 1,234,567 | `=FORMULATEXT(D42)` | `=ROUND_DYNAMIC(B42)` | 1,000,000 |  | \="ISTEXT(B42)= " & ISTEXT(B42) |  |
 | \=IF(D43=E43, "✓", "✗") | TRUE | `=FORMULATEXT(D43)` | `=ROUND_DYNAMIC(B43)` | TRUE |  | \="ISLOGICAL(B43)=" & ISLOGICAL(B43) |  |
 | \=IF(ISREF(D44), "✓", "✗") | \#REF\! | `=FORMULATEXT(D44)` | `=ROUND_DYNAMIC(B44)` | \#REF\! |  | \="ISREF(B44)= " & ISREF(B44) |  |
 |  |  |  |  |  |  |  |  |
@@ -53,8 +53,22 @@
 | \=IF(E52=F52, "✓", "✗") | 9393 | \-20 | `=FORMULATEXT(E52)` | `=ROUND_DYNAMIC(B52, C52)` | 9393 |  |  |
 |  |  |  |  |  |  |  |  |
 | Section 5: Parsing edge cases |  |  |  |  |  |  |  |
-|  | **Parsing edge cases** |  |  |  |  | *//format the Input cells as plain text* |  |
+|  | **Parsing edge cases** |  |  |  |  | *//format the Input and Expected cells as plain text* |  |
 |  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
-| \=IF(D57=E57, "✓", "✗") | 50% | `=FORMULATEXT(D57)` | `=ROUND_DYNAMIC(B57)` | 50 |  | Note: percent sign stripped, not scaled; enter as text |  |
-| \=IF(D58=E58, "✓", "✗") | −502 | `=FORMULATEXT(D58)` | `=ROUND_DYNAMIC(B58)` | \-500 |  | Note: the "long minus" sign (U+2212) normalizes to ASCII and the value parses as a regular number |  |
+| \=IF(D57=E57, "✓", "✗") | 50% | `=FORMULATEXT(D57)` | `=ROUND_DYNAMIC(B57)` | 50% |  | Note: the percent sign stays, and the number is not scaled |  |
+| \=IF(D58=E58, "✓", "✗") | −502 | `=FORMULATEXT(D58)` | `=ROUND_DYNAMIC(B58)` | −500 |  | Note: the "long minus" sign (U+2212) reads as a minus sign and stays |  |
 | \=IF(D59=E59, "✓", "✗") | $ | `=FORMULATEXT(D59)` | `=ROUND_DYNAMIC(B59)` | $ |  | Note: symbol-only string passes through, not 0 |  |
+|  |  |  |  |  |  |  |  |
+| Section 6: Text cells |  |  |  |  |  |  |  |
+|  | **Text cells** |  |  |  |  | *//format the Input and Expected cells as plain text* |  |
+|  | **Input** | **Formula** | **Result** | **Expected** |  | **Note:** |  |
+| \=IF(D64=E64, "✓", "✗") | about 1,234 users | `=FORMULATEXT(D64)` | `=ROUND_DYNAMIC(B64)` | about 1,000 users |  | Note: a number inside text rounds in place |  |
+| \=IF(D65=E65, "✓", "✗") | 4.91tn | `=FORMULATEXT(D65)` | `=ROUND_DYNAMIC(B65)` | 5tn |  | Note: a unit number keeps its magnitude suffix |  |
+| \=IF(D66=E66, "✓", "✗") | CAD45.67 | `=FORMULATEXT(D66)` | `=ROUND_DYNAMIC(B66)` | CAD45 |  | Note: a unit number keeps its currency code |  |
+| \=IF(D67=E67, "✓", "✗") | R47 | `=FORMULATEXT(D67)` | `=ROUND_DYNAMIC(B67)` | R45 |  | Note: a currency sign written in letters |  |
+| \=IF(D68=E68, "✓", "✗") | (1,234) | `=FORMULATEXT(D68)` | `=ROUND_DYNAMIC(B68)` | (1,000) |  | Note: a bracketed number keeps its brackets |  |
+| \=IF(D69=E69, "✓", "✗") | $1,011 | `=FORMULATEXT(D69)` | `=ROUND_DYNAMIC(B69)` | $1,000 |  | \="ISTEXT(D69)= " & ISTEXT(D69) |  |
+| \=IF(D70=E70, "✓", "✗") | 416-555-1234 | `=FORMULATEXT(D70)` | `=ROUND_DYNAMIC(B70)` | 416-555-1234 |  | Note: a phone number stays |  |
+| \=IF(D71=E71, "✓", "✗") | Q3 2020 | `=FORMULATEXT(D71)` | `=ROUND_DYNAMIC(B71)` | Q3 2,000 |  | Note: a year inside text rounds |  |
+| \=IF(D72=E72, "✓", "✗") | 2020 | `=FORMULATEXT(D72)` | `=ROUND_DYNAMIC(B72)` | 2020 |  | Note: a bare year typed as text reads as a date, and dates stay |  |
+| \=IF(D73=E73, "✓", "✗") | 2024-01-15 | `=FORMULATEXT(D73)` | `=ROUND_DYNAMIC(B73)` | 2024-01-15 |  | Note: date text stays |  |

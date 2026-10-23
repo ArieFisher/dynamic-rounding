@@ -83,20 +83,44 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 ## Input Handling
 
-**Numeric casting:** Formatted strings are parsed automatically:
-- `"4,428,910.41"` → 4428910.41
-- `"$1,200"` → 1200
-- `"(500)"` → -500 (accounting format)
-- `"50%"` → 50 (the percent sign is stripped, not scaled)
-- `"1 200"` → 1200 (spaces read as thousands separators)
-- `"−500"` → -500 (Unicode dash and minus variants read as a negative sign)
-- `"13,63"` → `"13,63"` (passes through unchanged: a comma counts only in the group shape, so a European decimal comma is not read)
-- `"1.234,56"` → `"1.234,56"` (passes through unchanged: a comma after the decimal dot is not read)
-- Supports `$`, `€`, `£`, `¥`
+`ROUND_DYNAMIC` sorts each value by its type. A custom function receives a cell's value and nothing about the cell's format, so a currency-formatted 1,234 arrives as the number 1234, and a value typed as text arrives as text.
 
-**Commas:** A comma groups thousands only in the group shape: a first group of one to three digits, then groups of exactly three, all before the decimal dot. `"1,234"` and `"1,234.56"` read as numbers. Any other comma makes the string non-numeric, so `"987,5"` and `"1,234,56"` pass through unchanged. The dot is the only decimal mark.
+**Numbers:** A number rounds and returns a number, so other formulas still read it. The result takes the formula cell's format, not the source cell's. A percent-formatted 12.3% arrives as 0.123 and rounds to 0.1, which shows as 10% when the formula cell carries a percent format.
 
-**Non-numeric values:** Pass through unchanged. A string with no digits at all — a lone currency symbol or separator like `"$"` or `","` — also passes through instead of reading as `0`.
+**Text:** Text goes through the classification ladder the Chrome extension reads a table cell with. The digits of each number round in place, and every other character stays where it was typed. The rounded digits are grouped with commas and lose their trailing zeros.
+- `"$1,011"` → `"$1,000"`
+- `"about 1,234 users"` → `"about 1,000 users"`
+- `"1234"` → `"1,000"`
+- `"$500.00"` → `"$500"`
+- `"12.5%"` → `"15%"` (the percent sign stays, and the number is not scaled)
+- `"(1,234)"` → `"(1,000)"` (a bracketed number: the brackets are its minus sign, and they stay)
+- `"−1234"` → `"−1,000"` (Unicode dash and minus variants read as a minus sign)
+- `"4.91tn"` → `"5tn"` (a unit number: its magnitude suffix stays)
+- `"CAD45.67"` → `"CAD45"` (a unit number: its currency code stays)
+- `"R47"` → `"R45"` (a currency sign written in letters)
+- `"Q3 2020"` → `"Q3 2,000"` (a year inside text rounds)
+- `"2020"` → `"2020"` (a bare year typed as text reads as a date, and dates stay)
+- `"2024-01-15"` → `"2024-01-15"` (dates and times stay)
+- `"416-555-1234"` → `"416-555-1234"` (an identifier shape stays)
+- `"Call 416-555-1234 about 1,613,245 units"` → `"Call 416-555-1234 about 1,500,000 units"` (inside text, the identifier shape keeps its digits)
+- `"13,63"` → `"13,63"` (a comma counts only in the group shape, so a European decimal comma is not read)
+- `"1.234,56"` → `"1.234,56"` (a comma after the decimal dot is not read)
+
+**Currency signs:** Every sign and code in the currency list (`CURRENCIES` in [`lib/dr-number/core.js`](../chrome-extension/lib/dr-number/core.js)), letter signs included. A sign written in letters counts only as its own token, so the rand's "R" counts in "R47" and not in "Revenue". A currency code beside a number makes a unit number, so "CAD45.67" and "1,234 USD" round.
+
+**Identifier shapes:** A phone number, an IP address, a web or email address, an ISBN, a postal code, and digit groups split by spaces outside thousands grouping stay as written.
+
+**Result kind:** A text cell that holds one number returns text: a pure cell such as `"$1,011"` or `"12.5%"`, and a bracketed number such as `"(1,234)"`. The sign the user typed stays, as it does in the Chrome extension. A text result stays text in every cell format: `ISNUMBER` returns FALSE, and `SUM` over a range and charts skip it. The `+` operator and `VALUE` read `"$10,000"` when the sign matches the sheet's locale and return `#VALUE!` when it does not. To get a number back, enter the value as a number. The constant `RESULT_KIND` in the Sheets library holds this choice. Its other value, `'number'`, returns the rounded value (1000, 15, -1000) and drops the sign. A cell with words or a unit number returns text under both values.
+
+**Fixed settings:** Numbers inside text, currency, and percent round. Dates and times stay as written. The first row and the first column round, so the whole dataset rounds. No formula parameter changes these.
+
+**Dataset mode:** The max magnitude spans every number in the range: each number cell, and each number read inside a text cell.
+
+**Commas:** A comma groups thousands only in the group shape: a first group of one to three digits, then groups of exactly three, all before the decimal dot. `"1,234"` and `"1,234.56"` read as numbers. Any other comma leaves that run unread, so `"987,5"` and `"1,234,56"` pass through unchanged. The dot is the only decimal mark.
+
+**Text with no number:** Passes through unchanged. A string with no digits at all — a lone currency symbol or separator like `"$"` or `","` — also passes through instead of reading as `0`.
+
+**Dates and booleans:** A date cell and a boolean pass through unchanged.
 
 **Empty/null values:** Return empty string.
 
@@ -124,7 +148,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 ## Building
 
-`round_dynamic.js` is generated: do not edit it by hand. The Sheets build joins three sources into it: the license header and the Sheets entry source in [`src/`](./src/), and the shared library files the build script lists, which live in the Chrome extension's number package. The entry source holds `ROUND_DYNAMIC`, its help card text, and the `[VERSION]` line. Edit a source, then rebuild from the repository root and commit the rebuilt file:
+`round_dynamic.js` is generated: do not edit it by hand. The Sheets build joins three sources into it: the license header and the Sheets entry source in [`src/`](./src/), and the shared library files the build script lists, which live in the Chrome extension's library: the rounding arithmetic, the number reader, the classification ladder, and the table step. The entry source holds `ROUND_DYNAMIC`, its help card text, the `[VERSION]` line, the fixed settings, the result kind, and the step that sorts each value by its type. Edit a source, then rebuild from the repository root and commit the rebuilt file:
 
 ```bash
 node scripts/build-sheets.js
@@ -140,8 +164,8 @@ Run the test suite:
 node tests.js
 ```
 
-The test suite (260 tests) covers:
-- Single mode: offset variations, magnitudes, string parsing
+The test suite (282 tests) covers:
+- Single mode: offset variations, magnitudes, text cells
 - Dataset mode: default/custom parameters, mixed data types
 - Date/time handling: dates pass through unchanged
 - Parameter validation: offset must be between -20 and 20
@@ -153,7 +177,7 @@ The test suite (260 tests) covers:
 
 ## Note: decimal precision in Sheets
 
-`ROUND_DYNAMIC` returns numeric values. Google Sheets custom functions cannot set a cell's number format from within the function itself — that capability is reserved for bound scripts and installable triggers, not for custom functions called from a cell formula.
+For a number cell, `ROUND_DYNAMIC` returns a numeric value. Google Sheets custom functions cannot set a cell's number format from within the function itself — that capability is reserved for bound scripts and installable triggers, not for custom functions called from a cell formula.
 
 As a result, if your offset parameter implies a specific number of decimal places, you may need to manually set the cell's number format to display the intended precision.
 
