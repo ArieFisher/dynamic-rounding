@@ -5,7 +5,7 @@
  * The committed Sheets library is the build's output, so these cases check
  * the build and its check from outside: the committed file matches a build of
  * the committed sources, the check fails on every kind of stale file and
- * names the build command, and the built file runs as one Apps Script file.
+ * prints the build command, and the built file runs as one Apps Script file.
  *
  * Cases that edit a source run in a scratch copy of the build script and its
  * sources, so the real tree never changes. The list of shared library files
@@ -67,7 +67,7 @@ function readRoot(name) {
 }
 
 // The shared library files the build includes, read from the section markers
-// in a built file. Every marker but the entry source's names one.
+// in a built file. Every marker but the entry source's holds one.
 function libraryFiles(built) {
   const files = [...built.matchAll(SECTION_MARKER)].map((m) => m[1]);
   if (files.length === 0 || files[files.length - 1] !== ENTRY) {
@@ -333,7 +333,7 @@ function cleanCheckoutCases() {
   });
 }
 
-// Requires the check to fail on a scratch tree, to name the build command,
+// Requires the check to fail on a scratch tree, to print the build command,
 // and to leave the stale file as it found it.
 function expectStale(name, edit) {
   check(name, () => {
@@ -344,7 +344,7 @@ function expectStale(name, edit) {
     const result = runBuild(dir, ['--check']);
     if (result.status === 0) return 'the check exited 0';
     if (!(result.stdout + result.stderr).includes(BUILD_COMMAND)) {
-      return 'the message does not name `' + BUILD_COMMAND + '`: ' + result.stderr;
+      return 'the message does not hold `' + BUILD_COMMAND + '`: ' + result.stderr;
     }
     const after = fs.existsSync(output) ? fs.readFileSync(output) : null;
     if (String(before) !== String(after)) return 'the check wrote the Sheets file';
@@ -406,7 +406,7 @@ function staleCases() {
   });
 }
 
-// The declaration read must catch what the built-file cases rely on it for,
+// The declaration read must catch what the built-file cases use it for,
 // or a broken read would pass every built file.
 function declarationReadCases() {
   const fixture = [
@@ -479,7 +479,7 @@ function builtFileCases() {
     return null;
   });
 
-  check('the Sheets file runs by eval with no Node globals and ROUND_DYNAMIC answers', () => {
+  check('the Sheets file runs by eval with no Node globals and ROUND_DYNAMIC returns a value', () => {
     const context = vm.createContext({});
     vm.runInContext(built, context, { filename: OUTPUT });
     const single = vm.runInContext('ROUND_DYNAMIC(1234)', context);
