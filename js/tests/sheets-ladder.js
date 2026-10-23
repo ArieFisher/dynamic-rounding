@@ -248,4 +248,30 @@ module.exports = function runSheetsLadder(h) {
     for (const kind of RESULT_KINDS) {
         testExact(`result kind: the suite holds a field for the value '${kind}'`, typeof h.RESULT_KIND_FIELD[kind], 'string');
     }
+
+    // The whole shared case table under each value of the result kind, read
+    // the way the suite reads it: `expected` for a row of numbers, and the
+    // value's field for a row that holds text. A flip of the constant needs
+    // no change to the case table, so every row holds a correct expectation
+    // under both values.
+    for (const kind of RESULT_KINDS) {
+        const RD = kinds[kind].ROUND_DYNAMIC;
+        const field = h.RESULT_KIND_FIELD[kind];
+        for (const group of h.sharedCaseGroups) {
+            for (const c of group.cases) {
+                const name = `[${kind}, shared] ${group.description}: ${JSON.stringify(c.input)}`;
+                const rowField = h.holdsText(c.input) ? field : 'expected';
+                if (!(rowField in c)) {
+                    h.fail(name, `no ${rowField} field`, `a ${rowField} field`);
+                    continue;
+                }
+                const { input, params } = c;
+                if (Array.isArray(input)) {
+                    testArrayExact(name, RD(input, params.offset_top, params.offset_other, params.num_top), c[rowField]);
+                } else {
+                    testExact(name, RD(input, params.offset_top), c[rowField]);
+                }
+            }
+        }
+    }
 };
