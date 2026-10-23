@@ -134,11 +134,12 @@ test('non-numeric string', ROUND_DYNAMIC('Cloud CDN'), 'Cloud CDN');
 test('negative -4308910', ROUND_DYNAMIC(-4308910), -4500000);
 test('negative -42.66', ROUND_DYNAMIC(-42.66), -45);
 
-// String parsing (uses default offset=-0.5)
-test('currency $1234.56', ROUND_DYNAMIC('$1,234.56'), 1000);
-test('commas 1,234,567', ROUND_DYNAMIC('1,234,567'), 1000000);
-test('accounting (500)', ROUND_DYNAMIC('(500)'), -500);
-test('euro €1234', ROUND_DYNAMIC('€1,234'), 1000);
+// Text that holds one number (uses default offset=-0.5) returns text under
+// the result kind 'text': the digits round and the signs stay.
+test('currency $1234.56', ROUND_DYNAMIC('$1,234.56'), '$1,000');
+test('commas 1,234,567', ROUND_DYNAMIC('1,234,567'), '1,000,000');
+test('accounting (500)', ROUND_DYNAMIC('(500)'), '(500)');
+test('euro €1234', ROUND_DYNAMIC('€1,234'), '€1,000');
 
 // =============================================================================
 // DATASET MODE TESTS
@@ -629,16 +630,44 @@ test('87054321 offset=+0.25 < offset=-0.25 (this value)',
 // =============================================================================
 // SHARED ROUNDING CASE TABLE (js/round-dynamic-cases.json)
 // =============================================================================
-// This table is generated from the chrome extension's own parsing/rounding
-// path (the source of truth) and is also run against chrome-extension/tests.js
-// and python/tests/. It exists so the three copies of dynamic rounding stay
-// in agreement instead of drifting silently.
+// The table also runs against chrome-extension/tests.js and python/tests/.
+// It exists so the three platforms stay in agreement instead of drifting
+// silently. Every row's `expected` holds what the number reader alone
+// returns: the rounded number, or the input when it reads no number. A row
+// whose input holds text also holds `expected_text`, what ROUND_DYNAMIC
+// returns under the result kind 'text'. This suite reads the field that
+// matches the built file's RESULT_KIND, and the other two suites read
+// `expected`.
 
 console.log('=== Shared Case Table ===\n');
 
 const sharedCaseGroups = JSON.parse(
     fs.readFileSync(path.join(__dirname, 'round-dynamic-cases.json'), 'utf8')
 );
+
+// The result kind the built file holds. A file with no RESULT_KIND line, or
+// a value with no field below, fails the run instead of reading `expected`.
+const resultKindMatch = code.match(/^const RESULT_KIND = '(\w+)';$/m);
+const RESULT_KIND_FIELD = { text: 'expected_text', number: 'expected' };
+if (!resultKindMatch || !RESULT_KIND_FIELD[resultKindMatch[1]]) {
+    console.log('round_dynamic.js holds no RESULT_KIND line this suite reads');
+    process.exit(1);
+}
+const resultKindField = RESULT_KIND_FIELD[resultKindMatch[1]];
+const holdsText = (input) => (Array.isArray(input) ? input.some((v) => typeof v === 'string') : typeof input === 'string');
+
+// The expected value for this suite: `expected` for a row of numbers, and
+// the result kind's field for a row that holds text. A text row that lacks
+// the field fails.
+function sheetsExpected(c, name) {
+    if (!holdsText(c.input)) return c.expected;
+    if (!(resultKindField in c)) {
+        failed++;
+        failures.push({ name, actual: 'no ' + resultKindField + ' field', expected: 'a ' + resultKindField + ' field' });
+        return undefined;
+    }
+    return c[resultKindField];
+}
 
 // Exact equality, not the tolerant `test()` helper: this table exists partly
 // to catch IEEE-754 float-noise drift (e.g. 7.199999999999999 vs 7.2), and
@@ -675,8 +704,10 @@ function testArrayExact(name, actual, expected) {
 
 for (const group of sharedCaseGroups) {
     for (const c of group.cases) {
-        const { input, params, expected } = c;
+        const { input, params } = c;
         const name = `[shared] ${group.description}: ${JSON.stringify(input)}`;
+        const expected = sheetsExpected(c, name);
+        if (expected === undefined) continue;
         if (Array.isArray(input)) {
             // Dataset mode: ROUND_DYNAMIC(range, offset_top, offset_other, num_top)
             const actual = ROUND_DYNAMIC(input, params.offset_top, params.offset_other, params.num_top);

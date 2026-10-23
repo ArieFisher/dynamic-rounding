@@ -1,13 +1,15 @@
 /**
  * DynamicRounding domain core (coercion + magnitude helpers).
  *
- * Loaded by both content.js (page context, via manifest content_scripts) and
- * sidebar.js (extension side-panel context, via <script> tag), AFTER rounding.js
- * and BEFORE content.js. Must remain framework-free and side-effect-free: no
- * chrome.*, no DOM access. All symbols land on the global object of whichever
- * script loads this file, so both contexts share the same findMaxMagnitude and
- * toNumber. This is the extension's own copy; the standalone js/round_dynamic.js
- * implements a separate, unrelated entry point for Google Sheets.
+ * Read by three scripts, each AFTER rounding.js: the content script (page
+ * context, via manifest content_scripts), the sidebar (extension side-panel
+ * context, via <script> tag), and the Google Sheets library, which
+ * scripts/build-sheets.js writes by joining this file with the rest of the
+ * shared library and the Sheets entry source. Must remain framework-free and
+ * side-effect-free: no chrome.*, no DOM access, no Node module code. All
+ * symbols land on the global scope of whichever script holds this file, so
+ * the extension and the Sheets library share one currency list, one
+ * findMaxMagnitude, and one toNumber.
  *
  * The arithmetic primitives (roundWithOffset, roundCellSetAware) live in
  * rounding.js, which must load before this file.
