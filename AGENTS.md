@@ -140,7 +140,18 @@ A pull request body, commit message, or issue that explains an exposure is itsel
 
 Never run a secret-listing or secret-reading command, including its `--help` form. When unsure whether a command touches secrets, exclude it and say why.
 
+### Notes for the next editor
+
+A note for whoever edits a piece of code goes in a comment beside that code, because that is where the editor looks. This covers review findings, warnings about a test, and any constraint on how the code may change. A pull request body, an issue, or a sprint log holds such a note only as a pointer to the comment.
+
 ## GitHub
+
+### Text on GitHub
+
+These rules cover every text that reaches GitHub: commit messages, pull request titles and bodies, issues, comments, and sprint logs.
+
+- **No local toolchain.** Never describe a machine's setup: which tools are installed, their paths, or which command works on one machine and not another. Include one only after I confirm it.
+- **State a fact once.** When another pull request, issue, or commit already states a fact, link to it.
 
 ### Branching and staging
 
