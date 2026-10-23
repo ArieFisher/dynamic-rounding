@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-22
+
+### Added (2026-10-22)
+
+- **Version on the help card**: the `ROUND_DYNAMIC` help card in Sheets shows a `[VERSION]` line. The bump workflow raises it after every merge that touches the Sheets function and writes the matching release heading in this changelog.
+
 ### Changed (2026-09-28)
 
 - **A comma counts only in the group shape**: a first group of one to three digits, then groups of exactly three, before the decimal dot. Any other comma makes the string non-numeric, so it passes through unchanged. A European decimal comma is not read. The chrome extension and the Python port take the same rule.

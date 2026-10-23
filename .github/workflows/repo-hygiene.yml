@@ -24,6 +24,9 @@ jobs:
       - name: Self-test the vocabulary gate
         run: bash scripts/check-vocab-test.sh
 
+      - name: Self-test the version bump script
+        run: bash scripts/bump-versions-test.sh
+
       - name: Gate files added by this pull request
         if: github.event_name == 'pull_request'
         env:
