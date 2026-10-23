@@ -7,7 +7,7 @@
 - Python — see [python/pyproject.toml](../python/pyproject.toml)
 - Chrome extension — see [chrome-extension/manifest.json](../chrome-extension/manifest.json)
 
-The three platforms share one contract: `js/round-dynamic-cases.json`, a case table that runs in the Sheets suite, the extension suite, and the Python suite, so a rounding change in one platform fails tests in the others until all three agree.
+The three platforms share one contract: `js/round-dynamic-cases.json`, a case table that runs in the Sheets suite, the extension suite, and the Python suite, so a rounding change in one platform fails tests in the others until all three agree. Each row's `expected` holds what the number reader alone returns, and the extension and Python suites read it. A row whose input holds text also holds `expected_text` and `expected_number`, the Sheets result under each value of the result kind; the Sheets suite reads the one that matches the constant.
 
 ## Features
 
@@ -18,17 +18,18 @@ The three platforms share one contract: `js/round-dynamic-cases.json`, a case ta
 3. **Sign-Aware:** Handles negative numbers natively without mathematical errors.
 
 4. **Robust:** Handles empty strings, zeros, nulls, and dates without crashing.
-   - *Google Sheets:* Non-numeric values pass through unchanged. Empty/null returns `""`. Dates pass through.
+   - *Google Sheets:* A number rounds and returns a number. Text goes through the Chrome extension's classification ladder and returns text: numbers inside text, unit numbers, and bracketed numbers round their digits in place, and identifier shapes, dates, and times stay as written. Text with no number passes through unchanged. Empty/null returns `""`. Date cells and booleans pass through.
    - *Python:* Non-numeric values pass through unchanged by default. `None` returns `None`.
-   - *Chrome extension:* A cell the classification ladder refuses is left untouched. Date cells are actively simplified (to the year by default); time cells are opt-in. A unit number — one number with a magnitude suffix (k, m, b, t, bn, tn) or a listed currency code such as CAD — rounds its digits and keeps the rest. A bracketed number — the accounting negative, "(1,234)" — rounds its digits too, and the brackets stay where the page put them. A cell whose whole text is an identifier shape — a phone number, an IP address, a web or email address, an ISBN, a postal code, or digit groups split by spaces outside thousands grouping — stays as written. Inside a cell with words, the same shapes keep their digits and the other numbers round; spaced digit groups and an ISBN without the word "ISBN" count only as a whole cell. Google Sheets and Python do not read suffixes or codes, and they read "416 555 1234" as one number (#464).
+   - *Chrome extension:* A cell the classification ladder refuses is left untouched. Date cells are actively simplified (to the year by default); time cells are opt-in. A unit number — one number with a magnitude suffix (k, m, b, t, bn, tn) or a listed currency code such as CAD — rounds its digits and keeps the rest. A bracketed number — the accounting negative, "(1,234)" — rounds its digits too, and the brackets stay where the page put them. A cell whose whole text is an identifier shape — a phone number, an IP address, a web or email address, an ISBN, a postal code, or digit groups split by spaces outside thousands grouping — stays as written. Inside a cell with words, the same shapes keep their digits and the other numbers round; spaced digit groups and an ISBN without the word "ISBN" count only as a whole cell. Google Sheets reads text cells the same way. Python does not read suffixes or codes, and it reads "416 555 1234" as one number (#464).
 
-5. **String Parsing:** Formatted strings are parsed automatically, identically on all three platforms:
-   - Currency symbols: `$`, `€`, `£`, `¥`
+5. **String Parsing:** Formatted strings are read automatically. The number reader takes these rules on all three platforms, apart from the currency signs:
+   - Currency signs: the Chrome extension and Google Sheets read the full currency list, letter signs included ("R47"); Python reads `$`, `€`, `£`, `¥`
    - Thousands separators: spaces, and commas in the group shape. A comma groups thousands only in the group shape — a first group of one to three digits, then groups of exactly three — and only before the decimal mark. The dot is the decimal mark. Any other arrangement is non-numeric and passes through: "13,63", "987,5", "1,234,56" and "1.234,56" are not numbers, so a European decimal comma is not read. The three platforms read alike.
-   - Percent signs: `50%` → 50 (stripped, not scaled)
+   - Percent signs: `50%` reads as 50 (stripped, not scaled)
    - Unicode dash and minus variants: read as a negative sign
-   - Accounting negatives: `(500)` → `-500`
+   - Accounting negatives: `(500)` reads as -500
    - A string with no digits (`"$"`, `","`) is non-numeric and passes through
+   - *What returns:* Python returns the rounded number. Google Sheets and the Chrome extension write the rounded digits back into the text and keep every other character, so `"$1,234"` returns `"$1,000"` (in Sheets, the result kind governs this; see the [Sheets README](../js/README.md#input-handling))
    - *Where:* Google Sheets (built in), Python (pandas module), Chrome extension (built in)
 
 6. **Type Preservation (Python):** Returns `int` when the input was `int` and the result is whole, and when the result is whole and under 10; otherwise returns `float`.
@@ -114,6 +115,8 @@ The selected offset is then passed to the rounding logic.
 
 **The extension's dataset:** in a table, the max magnitude comes only from cells that are inside the range expression, not excluded (first row, first column, currency, percent), classified as numbers the table rounds (pure cells, unit numbers, bracketed numbers, each number of a stacked cell, and each number of an extracted cell). A header cell counts like any other cell: the exclusions govern it by position, whatever tag the page gave it. Every row joins the dataset, header, body, and total alike, on a native table and a grid: the markup around a row, a head section, a footer section, or a row group, never changes whether its values feed the max magnitude or the lens preview. On a virtualized grid the max magnitude freezes when simplification is first applied, so scrolling new rows into view does not shift it. A native table computes it again on every pass, so a larger value the page writes or adds changes the rounding of the whole table.
 
+**The Sheets dataset:** in a range, the max magnitude comes from every number: each number cell, and each number the classification ladder reads in a text cell, numbers inside text, unit numbers, and bracketed numbers included. Sheets excludes nothing: the first row and the first column round, and so do currency and percent text.
+
 **Where a cell sits:** every rule that gates a cell by column reads the cell's grid column, computed once for the whole table before any text is read. The adapter walks the rows in order with a column cursor: a cell merged across advances the cursor by its whole width, and a cell merged down holds its columns on the rows below it, so the cursor skips a held column. Both table kinds run that one walk, over the spans the markup declares on a native table and the spans the accessibility attributes declare on a grid. A grid that declares no span numbers its columns by read position, which is the same answer. Without this walk a merge inside the data area shifts every cell after it, and the shift moves the exclusions and the range expression onto the wrong cells and changes the step the whole table rounds at, including its unmerged rows.
 
 ## Rounding Logic
@@ -187,10 +190,10 @@ The result is trimmed to 12 significant digits (ties round away from zero) — t
 |----------|---------------|--------|------------------|
 | Non-numeric input | Pass through | Pass through (or error if `enforce_numeric=True`) | Cell left untouched |
 | Null/empty input | Returns `""` | Returns `None` | Cell left untouched |
-| String parsing | Built-in | Pandas module only | Built-in |
+| String parsing | Built-in: the classification ladder, as in the extension | Pandas module only; a whole string as one number | Built-in: the classification ladder |
 | Out-of-range offset | Throws | Raises `ValueError` | Falls back to the default |
-| Dates | Pass through | Pass through | Simplified to the year by default; times opt-in |
-| Type preservation | N/A (Sheets handles types) | int → int when result is whole | Writes text; trailing zeros trimmed |
+| Dates | Date cells and date text pass through | Pass through | Simplified to the year by default; times opt-in |
+| Type preservation | A number returns a number; text returns text, trailing zeros trimmed | int → int when result is whole | Writes text; trailing zeros trimmed |
 
 ### Performance Optimization
 
@@ -283,7 +286,7 @@ Tables carry no identifier. A topic inside the content script carries the live e
 
 ### Reuse across platforms
 
-The rounding arithmetic exists twice — the Python package and the extension's number package — and the Sheets library takes the extension's copy. Sheets runs one pasted file, so the Sheets build writes that file by joining the license header, the shared library files it lists, and the Sheets entry source, which holds `ROUND_DYNAMIC` and the Sheets-only number reader. CI fails when the committed Sheets file differs from the build, so a pull request that changes a shared file also holds the rebuilt Sheets file. One shared case table runs in the Sheets, extension, and Python suites, so a change in one platform fails the others until all agree; for Python that case table is the whole of the contract. The Python library ships as a package; the Sheets library is pasted into a spreadsheet; the extension has no build step and no package file, so no tool guards its internal boundaries.
+The rounding arithmetic exists twice — the Python package and the extension's number package — and the Sheets library takes the extension's copy, with its number reader, classification ladder, and table step. Sheets runs one pasted file, so the Sheets build writes that file by joining the license header, the shared library files it lists, and the Sheets entry source, which holds `ROUND_DYNAMIC`, the fixed settings, the result kind, and the Sheets input step. The page-free table step is what lets Sheets read a range the way the extension reads a table; the extension keeps the four parts that read the page. CI fails when the committed Sheets file differs from the build, so a pull request that changes a shared file also holds the rebuilt Sheets file. One shared case table runs in the Sheets, extension, and Python suites, so a change in one platform fails the others until all agree; for Python that case table is the whole of the contract. The Python library ships as a package; the Sheets library is pasted into a spreadsheet; the extension has no build step and no package file, so no tool guards its internal boundaries.
 
 ### Table kind pairs
 

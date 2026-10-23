@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-23
+
+### Changed (2026-10-23)
+
+- **Text cells read like extension cells**: `ROUND_DYNAMIC` reads each text value through the Chrome extension's classification ladder and table step. Numbers inside text, unit numbers, and bracketed numbers round their digits in place; identifier shapes, dates, and times stay as written. A number still returns a number.
+  Before: `ROUND_DYNAMIC("about 1,234 users")` → `"about 1,234 users"`
+  After: `ROUND_DYNAMIC("about 1,234 users")` → `"about 1,000 users"`
+- **A text cell that holds one number returns text**: the typed sign stays, as it does in the extension. The `RESULT_KIND` constant holds this choice.
+  Before: `ROUND_DYNAMIC("$1,011")` → `1000`
+  After: `ROUND_DYNAMIC("$1,011")` → `"$1,000"`
+- **A year inside text rounds**, and a bare year typed as text stays, because dates are off. A year typed as a number rounds, as before.
+  Before: `ROUND_DYNAMIC("2020")` → `2000`
+  After: `ROUND_DYNAMIC("2020")` → `"2020"`
+- **The full currency list**: every sign and code the extension reads, letter signs included, in place of `$`, `€`, `£`, `¥`.
+  Before: `ROUND_DYNAMIC("R47")` → `"R47"`
+  After: `ROUND_DYNAMIC("R47")` → `"R45"`
+- **Identifier shapes stay**: digit groups split by spaces read as an identifier.
+  Before: `ROUND_DYNAMIC("416 555 1234")` → `4000000000`
+  After: `ROUND_DYNAMIC("416 555 1234")` → `"416 555 1234"`
+
 ## [0.3.2] - 2026-10-23
 
 ### Changed (2026-10-23)

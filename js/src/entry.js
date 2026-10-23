@@ -1,39 +1,41 @@
 // The Sheets entry source: the code only the Google Sheets library holds.
 // scripts/build-sheets.js joins it after the shared library files it lists,
-// so roundWithOffset and roundCellSetAware here come from
-// chrome-extension/lib/dr-number/rounding.js.
-
-// Constants
-// Format marks dropped before a text reads as a number: currency signs,
-// whitespace, and percent signs. A comma stays, so GROUP_SHAPE_REGEX can
-// test where it stands.
-const CLEAN_REGEX = /[$€£¥\s%]/g;
-const PARENS_REGEX = /^\((.+)\)$/;
-// The group shape in US style: a first group of one to three digits, then
-// comma groups of exactly three. A comma counts only in this shape and only
-// before the decimal dot, so "13,63" and "1.234,56" are not numbers. A run
-// with no comma goes to Number(). Matches the chrome extension's
-// number shape test in lib/dr-number/core.js.
-const GROUP_SHAPE_REGEX = /^[+-]?\d{1,3}(?:,\d{3})+$/;
-// Unicode dash/minus variants normalized to an ASCII "-" before parsing, so a
-// leading unusual dash (e.g. a pasted en dash or minus sign) reads as a
-// negative sign instead of failing to parse. Matches the chrome extension's
-// lib/dr-number/core.js, the source of truth for this behavior.
-const DASH_REGEX = /[‐-―−﹘﹣－]/g;
+// so every other name here (the number reader, the classification ladder,
+// the table step, the rounding) comes from chrome-extension/lib.
 
 // parameters' default values
 const DEFAULT_OFFSET_TOP = -0.5; // in all modes, by default, round to the nearest half order of magnitude
 const DEFAULT_NUM_TOP = 1; // in dataset-aware modes, by default, round numbers that are in the top 1 order of magnitude to DEFAULT_OFFSET_TOP
 
-// Internal constants
-const VALIDATION_LIMIT = 20; // arbitrarily chosen as a 'sane' limit for the order of magnitude offset (i.e. +-20 orders of magnitude)
+// Settings
+// The result kind: what a text cell that holds one number returns, a pure
+// cell ("$1,011", "12.5%") or a bracketed number ("(1,234)").
+//   'text'   returns the write-back's text, "$1,000": the typed sign stays.
+//   'number' returns the rounded value, 1000: the typed sign goes.
+// A cell with words or a unit number returns text under both values.
+const RESULT_KIND = 'text';
+
+// The classification ladder's options, fixed: the Sheets function takes no
+// switches. Numbers inside text, mixed currency, and mixed percent round, as
+// the extension's defaults do. Dates and times stay as written, so the table
+// step never receives a date or a time cell. The first row and the first
+// column round, so the whole dataset rounds.
+const SHEETS_LADDER_OPTIONS = Object.freeze({
+  simplifyFirstRow: true,
+  simplifyFirstColumn: true,
+  simplifyMixedCells: true,
+  simplifyMixedCurrency: true,
+  simplifyMixedPercent: true,
+  simplifyDates: false,
+  simplifyTimes: false,
+});
 
 /**
  * Dynamic rounding against each number's order of magnitude.
  * [MODE 1] single value: =ROUND_DYNAMIC(value, [offset])
  * [MODE 2] dataset: =ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
- * [VERSION] 0.3.2
+ * [VERSION] 0.3.3
  *
  * @param {number|Array} values The value or range of values to round.
  * @param {number} offset_top The OoM offset for the single value, or, the numbers in the largest order of magnitude of a dataset (default -0.5).
@@ -55,19 +57,14 @@ function ROUND_DYNAMIC(values, offset_top, offset_other, num_top) {
 }
 
 /**
- * Single mode: rounds one value based on its own magnitude.
+ * Single mode: rounds one value based on its own magnitude. A text value
+ * takes the same path as a one-cell dataset, rounded at the one offset.
  */
 function singleValueMode(value, offset) {
   offset = (offset === undefined || offset === "") ? DEFAULT_OFFSET_TOP : offset;
   validateOffset(offset, "offset");
-
-  if (value === "" || value === null) return "";
-
-  const num = toNumber(value);
-  if (num === null) return value; // pass through non-numeric
-  if (num === 0) return 0;
-
-  return roundWithOffset(num, offset);
+  const settings = { offsetTop: offset, offsetOther: offset, numTop: DEFAULT_NUM_TOP };
+  return roundValues([[value]], settings)[0][0];
 }
 
 /**
@@ -86,74 +83,74 @@ function datasetMode(range, offset_top, offset_other, num_top) {
   if (!Array.isArray(range[0])) {
     range = [range];
   }
-
-  //Parse range to numbers one time...
-  const numericRange = range.map(row => row.map(cell => toNumber(cell)));
-  // ... then use to:
-  //  a. find max magnitude
-  const max_mag = findMaxMagnitude(numericRange);
-  //  b. round each cell
-  return range.map((row, r) =>
-    row.map((cell, c) => roundCellSetAware(cell, numericRange[r][c], max_mag, offset_top, offset_other, num_top))
-  );
+  return roundValues(range, { offsetTop: offset_top, offsetOther: offset_other, numTop: num_top });
 }
 
 /**
- * Finds the maximum magnitude (order of magnitude) in a 2D array of numbers.
- * Assumes input is already parsed via toNumber().
+ * The Sheets input step: sort each value by its type, round the dataset,
+ * and return each cell as a value Sheets writes.
+ *   number      a finite one rounds and returns a number; one that is not
+ *               finite returns unchanged
+ *   text        the classification ladder reads it, the table step rounds
+ *               it, and the text returns with its patches applied
+ *   "" or null  returns ""
+ *   anything else (a date, a boolean) returns unchanged
+ * The max magnitude spans every number in the range: the number cells and
+ * every number the ladder reads in a text cell.
  */
-function findMaxMagnitude(numericRange) {
-  let max_mag = null;
-  for (let row of numericRange) {
-    for (let num of row) {
-      if (num !== null && num !== 0 && isFinite(num)) {
-        const mag = Math.floor(Math.log10(Math.abs(num)));
-        if (max_mag === null || mag > max_mag) {
-          max_mag = mag;
-        }
-      }
+function roundValues(range, settings) {
+  const numberEntries = [];
+  const textEntries = [];
+  range.forEach((row, r) => row.forEach((value, c) => {
+    if (typeof value === "number" && isFinite(value)) {
+      numberEntries.push({ r, c, info: { mode: "pure", num: value } });
+    } else if (typeof value === "string" && value !== "") {
+      const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
+        SHEETS_LADDER_OPTIONS);
+      textEntries.push({ r, c, text: value, col: c, info: decisionToLegacyInfo(decision) });
     }
+  }));
+  const maxMag = datasetMaxMagnitude(numberEntries.concat(textEntries));
+  const roundNumber = (num) => roundCellSetAware(num, num, maxMag,
+    settings.offsetTop, settings.offsetOther, settings.numTop);
+
+  const results = new Map();
+  for (const { r, c, info } of numberEntries) {
+    results.set(r + "," + c, roundNumber(info.num));
   }
-  return max_mag;
+  for (const { entry, patches } of tablePatches(textEntries, settings, maxMag).cells) {
+    results.set(entry.r + "," + entry.c, textResult(entry, patches, roundNumber));
+  }
+  return range.map((row, r) => row.map((value, c) => {
+    const key = r + "," + c;
+    if (results.has(key)) return results.get(key);
+    return value === "" || value === null ? "" : value;
+  }));
 }
 
 /**
- * The number shape test in US style: true when every comma in the run sits
- * in the group shape before the decimal dot, or the run holds no comma.
+ * A text cell's result under the result kind. Under 'number', a pure cell or
+ * a bracketed number returns its rounded value; every other text cell
+ * returns its text with the patches applied.
  */
-function isNumberShape(run) {
-  const at = run.indexOf(".");
-  const whole = at === -1 ? run : run.slice(0, at);
-  const fraction = at === -1 ? "" : run.slice(at + 1);
-  if (fraction.includes(",")) return false;
-  if (!whole.includes(",")) return true;
-  return GROUP_SHAPE_REGEX.test(whole);
+function textResult(entry, patches, roundNumber) {
+  if (RESULT_KIND === "number") {
+    if (entry.info.mode === "pure") return roundNumber(entry.info.num);
+    const bracketed = entry.info.mode === "extracted" ? matchBracketedNumber(entry.text) : null;
+    if (bracketed) return roundNumber(bracketed.num);
+  }
+  return applyPatches(entry.text, patches);
 }
 
 /**
- * Attempts to convert a value to a number.
- * Handles formatted strings with comma groups, currency symbols, etc.
- * Returns the number if successful, null otherwise.
+ * Apply a cell's patches to its text, last patch first, so each earlier
+ * patch's position still counts into the text as the ladder read it.
  */
-function toNumber(value) {
-  if (typeof value === "number") {
-    return isFinite(value) ? value : null;
-  }
-  if (typeof value === "string" && value.trim() !== "") {
-    // Remove common formatting: currency symbols, spaces, percent signs,
-    // parentheses for negatives, and normalize unusual dash/minus characters
-    // to an ASCII "-" first so they parse as a sign. Then test the comma
-    // groups and drop them.
-    const cleaned = value.trim()
-      .replace(DASH_REGEX, "-")
-      .replace(CLEAN_REGEX, "")
-      .replace(PARENS_REGEX, "-$1"); // (100) -> -100
-    if (cleaned === "") return null;
-    if (!isNumberShape(cleaned)) return null;
-    const parsed = Number(cleaned.split(",").join(""));
-    return isFinite(parsed) ? parsed : null;
-  }
-  return null;
+function applyPatches(text, patches) {
+  return patches
+    .slice()
+    .sort((a, b) => b.index - a.index)
+    .reduce((out, p) => out.slice(0, p.index) + p.newNum + out.slice(p.index + p.numStr.length), text);
 }
 
 /**

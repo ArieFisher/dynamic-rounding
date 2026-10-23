@@ -683,6 +683,44 @@ const SEAT_ROWS = [
   eq('extractPreviewSamples (empty): bottom length 0', result.samples.bottom.length, 0);
 })();
 
+(function previewBand_extractPreviewSamples_tableStepMaxMagnitude() {
+  // The lens preview splits its samples under the max magnitude the table
+  // step's datasetMaxMagnitude returns for the classified cells, the one the
+  // simplification pass rounds against. A stub returning 3 for a dataset
+  // whose largest number has magnitude 7 moves 27,000,000 and 4,080 into the
+  // top band and leaves 312 in the other band.
+  function tdCell(text) {
+    return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
+  }
+  function thCell(text) {
+    return withTextPiece({ tagName: 'TH', innerText: text, textContent: text });
+  }
+  const table = {
+    rows: [
+      { cells: [thCell(''), thCell('A'), thCell('B'), thCell('C')] },
+      { cells: [thCell('Row'), tdCell('27,000,000'), tdCell('4,080'), tdCell('312')] },
+    ],
+  };
+  const realDatasetMaxMagnitude = datasetMaxMagnitude;
+  const passed = [];
+  datasetMaxMagnitude = (entries) => { passed.push(entries); return 3; };
+  let result;
+  try {
+    result = extractPreviewSamples(table);
+  } finally {
+    datasetMaxMagnitude = realDatasetMaxMagnitude;
+  }
+  eq('extractPreviewSamples (table step max magnitude): one call', passed.length, 1);
+  eq('extractPreviewSamples (table step max magnitude): the call reads the classified cells',
+    (passed[0] || []).filter((entry) => entry.info.mode === 'pure').map((entry) => entry.info.num),
+    [27000000, 4080, 312]);
+  eq('extractPreviewSamples (table step max magnitude): maxMag is the table step\'s', result.maxMag, 3);
+  eq('extractPreviewSamples (table step max magnitude): top band', result.samples.top.map((row) => row.num),
+    [27000000, 4080]);
+  eq('extractPreviewSamples (table step max magnitude): other band', result.samples.bottom.map((row) => row.num),
+    [312]);
+})();
+
 // ---------------------------------------------------------------------------
 // Regression: collectNumericCells must classify a rounded cell's stored
 // original text (dataset.originalValue) using ranges/filters measured against

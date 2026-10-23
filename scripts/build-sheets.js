@@ -3,8 +3,9 @@
  * The Sheets build: writes js/round_dynamic.js, the one file a user pastes
  * into Apps Script, from its sources.
  *
- * Apps Script takes the library as one pasted file, and the rounding code
- * lives once, in the extension's number package. This script joins, in order,
+ * Apps Script takes the library as one pasted file, and the rounding code,
+ * the number reader, the classification ladder, and the table step live
+ * once, in the extension's library. This script joins, in order,
  * the license header, the shared library files in LIBRARY_FILES, and the
  * Sheets entry source. LIBRARY_FILES is the one list of shared files the
  * Sheets library holds.
@@ -27,8 +28,15 @@ const ROOT = path.join(__dirname, '..');
 const OUTPUT = 'js/round_dynamic.js';
 const HEADER = 'js/src/header.js';
 const ENTRY = 'js/src/entry.js';
+// In load order: each file reads, as it loads, only names the files above
+// it declare.
 const LIBRARY_FILES = [
   'chrome-extension/lib/dr-number/rounding.js',
+  'chrome-extension/lib/dr-number/core.js',
+  'chrome-extension/lib/dr-number/parsing.js',
+  'chrome-extension/lib/dr-number/identifiers.js',
+  'chrome-extension/lib/dr-simplify/ladder.js',
+  'chrome-extension/lib/dr-simplify/table.js',
 ];
 const BUILD_COMMAND = 'node scripts/build-sheets.js';
 

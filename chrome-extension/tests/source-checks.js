@@ -2015,7 +2015,7 @@
 // =============================================================================
 //
 // The engine's per-cell pass in content.js and the lens preview extractor
-// (collectNumericCells / extractPreviewSamples) both call classifyCell
+// (classifyPreviewCells / extractPreviewSamples) both call classifyCell
 // (lib/dr-simplify/ladder.js).
 //
 // This section has three parts:
