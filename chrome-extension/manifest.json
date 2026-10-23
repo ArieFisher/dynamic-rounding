@@ -28,6 +28,7 @@
         "lib/dr-table/detect.js",
         "lib/dr-table/index.js",
         "lib/dr-simplify/ladder.js",
+        "lib/dr-simplify/table.js",
         "lib/dr-simplify/index.js",
         "lib/dr-capture/state.js",
         "lib/dr-capture/render.js",
