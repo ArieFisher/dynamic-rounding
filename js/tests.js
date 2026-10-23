@@ -647,7 +647,8 @@ const sharedCaseGroups = JSON.parse(
 
 // The result kind the built file holds. A file with no RESULT_KIND line, or
 // a value with no field below, fails the run instead of reading `expected`.
-const resultKindMatch = code.match(/^const RESULT_KIND = '(\w+)';$/m);
+const RESULT_KIND_LINE = /^const RESULT_KIND = '(\w+)';$/m;
+const resultKindMatch = code.match(RESULT_KIND_LINE);
 const RESULT_KIND_FIELD = { text: 'expected_text', number: 'expected' };
 if (!resultKindMatch || !RESULT_KIND_FIELD[resultKindMatch[1]]) {
     console.log('round_dynamic.js holds no RESULT_KIND line this suite reads');
@@ -718,6 +719,18 @@ for (const group of sharedCaseGroups) {
         }
     }
 }
+
+// =============================================================================
+// SHEETS INPUT STEP AND RESULT KIND (js/tests/sheets-ladder.js)
+// =============================================================================
+
+console.log('=== Sheets Input Step and Result Kind ===\n');
+
+require('./tests/sheets-ladder.js')({
+    code, sharedCaseGroups, RESULT_KIND_LINE, RESULT_KIND_FIELD, resultKindField, holdsText,
+    testExact, testArrayExact,
+    fail: (name, actual, expected) => { failed++; failures.push({ name, actual, expected }); },
+});
 
 // =============================================================================
 // RESULTS
