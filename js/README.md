@@ -140,7 +140,7 @@ Run the test suite:
 node tests.js
 ```
 
-The test suite (256 tests) covers:
+The test suite (260 tests) covers:
 - Single mode: offset variations, magnitudes, string parsing
 - Dataset mode: default/custom parameters, mixed data types
 - Date/time handling: dates pass through unchanged
