@@ -164,14 +164,14 @@ Run the test suite:
 node tests.js
 ```
 
-The test suite (282 tests) covers:
+The test suite (846 tests) covers:
 - Single mode: offset variations, magnitudes, text cells
 - Dataset mode: default/custom parameters, mixed data types
 - Date/time handling: dates pass through unchanged
 - Parameter validation: offset must be between -20 and 20
 - Edge cases: undefined, NaN, Infinity, booleans, empty arrays
 - Half-step, quarter-step, and floor semantics, including the `X_FLOOR_THRESHOLD` flip
-- The shared case table (`round-dynamic-cases.json`) — the cross-platform contract that also runs against the Chrome extension and the Python port
+- The shared case table (`round-dynamic-cases.json`) — the cross-platform contract that also runs against the Chrome extension and the Python port. Each row's `expected` holds what the number reader alone returns, and the extension and Python suites read it. A row whose input holds text also holds `expected_text` and `expected_number`, the Sheets result under each value of the result kind. For a text row this suite reads the field that matches `RESULT_KIND`, so flipping the constant needs no change to the table
 
 ---
 

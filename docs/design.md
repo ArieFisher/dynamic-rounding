@@ -7,7 +7,7 @@
 - Python — see [python/pyproject.toml](../python/pyproject.toml)
 - Chrome extension — see [chrome-extension/manifest.json](../chrome-extension/manifest.json)
 
-The three platforms share one contract: `js/round-dynamic-cases.json`, a case table that runs in the Sheets suite, the extension suite, and the Python suite, so a rounding change in one platform fails tests in the others until all three agree.
+The three platforms share one contract: `js/round-dynamic-cases.json`, a case table that runs in the Sheets suite, the extension suite, and the Python suite, so a rounding change in one platform fails tests in the others until all three agree. Each row's `expected` holds what the number reader alone returns, and the extension and Python suites read it. A row whose input holds text also holds `expected_text` and `expected_number`, the Sheets result under each value of the result kind; the Sheets suite reads the one that matches the constant.
 
 ## Features
 

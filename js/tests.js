@@ -634,10 +634,11 @@ test('87054321 offset=+0.25 < offset=-0.25 (this value)',
 // It exists so the three platforms stay in agreement instead of drifting
 // silently. Every row's `expected` holds what the number reader alone
 // returns: the rounded number, or the input when it reads no number. A row
-// whose input holds text also holds `expected_text`, what ROUND_DYNAMIC
-// returns under the result kind 'text'. This suite reads the field that
-// matches the built file's RESULT_KIND, and the other two suites read
-// `expected`.
+// whose input holds text also holds two Sheets fields: `expected_text`, what
+// ROUND_DYNAMIC returns under the result kind 'text', and `expected_number`,
+// what it returns under 'number'. For a text row this suite reads the field
+// that matches the built file's RESULT_KIND; for a row of numbers it reads
+// `expected`. The other two suites read `expected` on every row.
 
 console.log('=== Shared Case Table ===\n');
 
@@ -646,10 +647,10 @@ const sharedCaseGroups = JSON.parse(
 );
 
 // The result kind the built file holds. A file with no RESULT_KIND line, or
-// a value with no field below, fails the run instead of reading `expected`.
+// a value with no field below, fails the run.
 const RESULT_KIND_LINE = /^const RESULT_KIND = '(\w+)';$/m;
 const resultKindMatch = code.match(RESULT_KIND_LINE);
-const RESULT_KIND_FIELD = { text: 'expected_text', number: 'expected' };
+const RESULT_KIND_FIELD = { text: 'expected_text', number: 'expected_number' };
 if (!resultKindMatch || !RESULT_KIND_FIELD[resultKindMatch[1]]) {
     console.log('round_dynamic.js holds no RESULT_KIND line this suite reads');
     process.exit(1);

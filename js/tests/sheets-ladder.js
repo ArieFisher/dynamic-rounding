@@ -251,8 +251,9 @@ module.exports = function runSheetsLadder(h) {
 
     // The whole shared case table under each value of the result kind, read
     // the way the suite reads it: `expected` for a row of numbers, and the
-    // value's field for a row that holds text. A flip of the constant needs
-    // no change to the case table, so every row holds a correct expectation
+    // value's field for a row that holds text (`expected_text` under 'text',
+    // `expected_number` under 'number'). A flip of the constant needs no
+    // change to the case table, so every row holds a correct expectation
     // under both values.
     for (const kind of RESULT_KINDS) {
         const RD = kinds[kind].ROUND_DYNAMIC;
