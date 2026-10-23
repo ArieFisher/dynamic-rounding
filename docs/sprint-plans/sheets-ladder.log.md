@@ -11,7 +11,7 @@ Base branch: main
   - Reviewer: APPROVE (after 0 retries)
   - Tests: pass (extension 4,024, Sheets 260, documented examples 69)
   - Bucket 1 applied: the one-piece check described in the vocabulary's words in the table step header and the content script.
-  - Bucket 3, held for the product manager's yes: the lens preview computes its own max magnitude inline, a copy of the rule that predates this run, without the zero guard for extracted numbers.
+  - Bucket 3: the lens preview held its own copy of the max magnitude rule, #571, fixed by #573.
   - FYI: the one changed expected value is the manifest file count, 19 to 20.
 - **sheets-library-build** — chore/sheets-library-build → PR #568 (https://github.com/ArieFisher/dynamic-rounding/pull/568)
   - Reviewer: APPROVE (after 0 retries)
