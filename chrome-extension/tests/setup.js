@@ -144,7 +144,9 @@ globalThis.createToggleForTable = createToggleForTable;
 globalThis.injectTableToggles = injectTableToggles;
 globalThis.injectTogglesForAddedNode = injectTogglesForAddedNode;
 globalThis.isDataTable = isDataTable;
-globalThis.collectNumericCells = collectNumericCells;
+// The lens preview's sample pool for one table, built from the two steps
+// extractPreviewSamples runs, so a test reads the pool without the bucketing.
+globalThis.collectNumericCells = (table, options) => numericPreviewCells(classifyPreviewCells(table, options));
 globalThis.extractPreviewSamples = extractPreviewSamples;
 // The one currency list and what it derives, so the currency suite reads the
 // canon rather than restating any part of it.
