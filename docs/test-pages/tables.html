@@ -525,22 +525,24 @@
       off, and times at hour granularity once switched on.
 
       Each date drops the parts finer than the date granularity, so it never
-      leaves its own month, year, decade, or century. Every date in a cell
-      changes; words and any time of day around them stay. At month the day
-      goes and the date keeps its own style; a date with no day stays as
-      written.
-                                      year           month
-        2020-07-21                    -> 2020        -> 2020-07
-        2020/03/15                    -> 2020        -> 2020/03
-        June 21, 2020                 -> 2020        -> June 2020
-        Sept. 4, 1998                 -> 1998        -> Sept. 1998
-        June 21st, 2020               -> 2020        -> June 2020
-        21 June 2020                  -> 2020        -> June 2020
-        2020 June 21                  -> 2020        -> 2020 June
-        Jun 2020                      -> 2020        -> Jun 2020
-        1998                          -> 1998        -> 1998
-        Paid on 2025-04-02            -> Paid on 2025 -> Paid on 2025-04
-        Jun 2020 - Dec 2020           -> 2020 - 2020 -> Jun 2020 - Dec 2020
+      leaves its own month, quarter, year, decade, or century. Every date in a
+      cell changes; words and any time of day around them stay. At month the
+      day goes and the date keeps its own style; a date with no day stays as
+      written. At quarter the date becomes its quarter and full year, with the
+      quarter on the side of the year where the month stood; a date with no
+      month stays as written.
+                                      year           month                quarter
+        2020-07-21                    -> 2020        -> 2020-07           -> 2020 Q3
+        2020/03/15                    -> 2020        -> 2020/03           -> 2020 Q1
+        June 21, 2020                 -> 2020        -> June 2020         -> Q2 2020
+        Sept. 4, 1998                 -> 1998        -> Sept. 1998        -> Q3 1998
+        June 21st, 2020               -> 2020        -> June 2020         -> Q2 2020
+        21 June 2020                  -> 2020        -> June 2020         -> Q2 2020
+        2020 June 21                  -> 2020        -> 2020 June         -> 2020 Q2
+        Jun 2020                      -> 2020        -> Jun 2020          -> Q2 2020
+        1998                          -> 1998        -> 1998              -> 1998
+        Paid on 2025-04-02            -> Paid on 2025 -> Paid on 2025-04  -> Paid on 2025 Q2
+        Jun 2020 - Dec 2020           -> 2020 - 2020 -> Jun 2020 - Dec 2020 -> Q2 2020 - Q4 2020
         "2020-07-21"                  -> held back, the whole cell is quoted
         2020-13-45                    -> held back, no month 13 exists
       market 21, 2015 is not a date: "market" is no month name. Its numbers
@@ -553,12 +555,12 @@
       reads the whole column first. Here 7/21/2020 is the only row that settles the
       question: a second part over twelve can only be a day, which fixes the
       column as month-first and lets the other rows resolve.
-                                      year           month
-        7/21/2020                     -> 2020        -> 7/2020
-        7/4/99                        -> 1999        -> 7/99
-        3/9/2021                      -> 2021        -> 3/2021
-        Due 3/9/2021                  -> Due 2021    -> Due 3/2021
-        3/9/2021 11:59                -> 2021 11:59  -> 3/2021 11:59
+                                      year           month         quarter
+        7/21/2020                     -> 2020        -> 7/2020     -> Q3 2020
+        7/4/99                        -> 1999        -> 7/99       -> Q3 1999
+        3/9/2021                      -> 2021        -> 3/2021     -> Q1 2021
+        Due 3/9/2021                  -> Due 2021    -> Due 3/2021 -> Due Q1 2021
+        3/9/2021 11:59                -> 2021 11:59  -> 3/2021 11:59 -> Q1 2021 11:59
       A column carrying evidence for both readings stays unchanged rather than guessed.
 
       Clock times round to the hour at the half-hour mark, and the original
@@ -984,6 +986,7 @@
       be a day. That fixes the whole column as day-first:
         year:  25/04/2020 -> 2020,     03/04/2021 -> 2021,     07/08/2020 -> 2020
         month: 25/04/2020 -> 04/2020,  03/04/2021 -> 04/2021,  07/08/2020 -> 08/2020
+        quarter: 25/04/2020 -> Q2 2020, 03/04/2021 -> Q2 2021, 07/08/2020 -> Q3 2020
       Ambiguous only: no cell settles the reading, so the column stays
       unchanged and every cell holds.
       Conflicting: 25/04/2021 says day-first, 04/25/2021 says month-first. The

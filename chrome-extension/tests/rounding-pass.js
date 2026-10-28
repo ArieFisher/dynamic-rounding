@@ -347,6 +347,7 @@ const SEAT_ROWS = [
     eq('two-digit-year: 3/14/75 decade -> "1970"', twoDigitTable('3/14/75', 'decade'),  '1970');
     eq('two-digit-year: 3/14/75 century -> "1900"',twoDigitTable('3/14/75', 'century'), '1900');
     eq('two-digit-year: 3/14/75 month -> "3/75"',  twoDigitTable('3/14/75', 'month'),   '3/75');
+    eq('two-digit-year: 3/14/75 quarter -> "Q1 1975"', twoDigitTable('3/14/75', 'quarter'), 'Q1 1975');
   });
 })();
 
@@ -397,6 +398,21 @@ const SEAT_ROWS = [
     eq('DMY column: 13/04/2022 at month -> 04/2022', dmyResult[0][0], '04/2022');
     eq('DMY column: 12-03-2022 resolved as DMY (Mar 12 → 03-2022, not MDY Dec 12 → 12-2022)',
       dmyResult[1][0], '03-2022');
+
+    // At quarter the column's reading sets which part is the month:
+    // '12-03-2022' is Q4 when month-first and Q1 when day-first.
+    const mdyQuarter = runDateTable([
+      [{ tag: 'td', text: '04/13/2022' }],
+      [{ tag: 'td', text: '12-03-2022' }],
+    ], 'quarter');
+    eq('MDY column: 04/13/2022 at quarter -> Q2 2022', mdyQuarter[0][0], 'Q2 2022');
+    eq('MDY column: 12-03-2022 at quarter -> Q4 2022', mdyQuarter[1][0], 'Q4 2022');
+    const dmyQuarter = runDateTable([
+      [{ tag: 'td', text: '13/04/2022' }],
+      [{ tag: 'td', text: '12-03-2022' }],
+    ], 'quarter');
+    eq('DMY column: 13/04/2022 at quarter -> Q2 2022', dmyQuarter[0][0], 'Q2 2022');
+    eq('DMY column: 12-03-2022 at quarter -> Q1 2022', dmyQuarter[1][0], 'Q1 2022');
 
     // A numeric date with words around it changes in place, so the words stay.
     const wordsResult = runDateTable([
