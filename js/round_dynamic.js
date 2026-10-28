@@ -646,7 +646,7 @@ const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}
  *   Bare year:     2020, as the whole cell
  * Each date is one of:
  *   - a date with a known reading: { year, month, monthFirst, start, end, dayCut }
- *     (month is null for a bare year)
+ *     (a bare year holds month null and no monthFirst)
  *   - an all-numeric date: { year, n1, n2, start, end, n1Cut, n2Cut }
  *     (see isAmbiguousDate)
  *   - a date that cannot exist ("2020-13-45"): { impossible: true, start, end }
@@ -737,7 +737,7 @@ function isDateTimeLike(text) {
  *
  * @param {string} text          - The cell's trimmed text.
  * @param {string} granularity   - 'month' | 'quarter' | 'year' | 'decade' | 'century'.
- * @param {{year:number, month:number|null, monthFirst:boolean, start:number, end:number,
+ * @param {{year:number, month:number|null, monthFirst?:boolean, start:number, end:number,
  *   dayCut:{start:number,end:number}|null}[]} [dates]
  *   The dates the classification pass read from this text, each with a known
  *   reading, in text order. If omitted, findDates is called, and text holding
