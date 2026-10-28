@@ -1807,7 +1807,7 @@ const SHEETS_LADDER_OPTIONS = Object.freeze({
  * [MODE 1] single value: =ROUND_DYNAMIC(value, [offset])
  * [MODE 2] dataset: =ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
- * [VERSION] 0.3.3
+ * [VERSION] 0.3.4
  *
  * @param {number|Array} values The value or range of values to round.
  * @param {number} offset_top The OoM offset for the single value, or, the numbers in the largest order of magnitude of a dataset (default -0.5).
