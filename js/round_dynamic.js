@@ -544,6 +544,9 @@ function getExclusionReason(text, columnIndex, options, rowIndex) {
 // an optional dot. A word that only starts like a month ("market") is not one.
 const MONTH_NAMES = '(?:january|february|march|april|may|june|july|august|september|october|november|december' +
   '|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec)\\.?';
+// A month name's number, read from its first three letters.
+const MONTH_NUMBERS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+const monthNumber = (name) => MONTH_NUMBERS[name.slice(0, 3).toLowerCase()];
 
 // Date reading. The reader works on the cell's trimmed text as written, so
 // the positions it returns index that same text.
@@ -566,10 +569,11 @@ const YEAR = `(\\d{4}${ORD})`;
 const isDay = (s) => { const d = parseInt(s, 10); return d >= 1 && d <= 31; };
 const isMonth = (s) => { const n = parseInt(s, 10); return n >= 1 && n <= 12; };
 
-// One date with a known reading: its bounds in the text, its year, and the
-// span the month granularity removes (null when the date holds no day).
-const datePart = (m, year, dayCut) => (
-  { year: parseInt(year, 10), start: m.index, end: m.index + m[0].length, dayCut });
+// One date with a known reading: its bounds in the text, its year, its month
+// (1 to 12), whether the month stands before the year, and the span the month
+// granularity removes (null when the date holds no day).
+const datePart = (m, year, month, monthFirst, dayCut) => (
+  { year: parseInt(year, 10), month, monthFirst, start: m.index, end: m.index + m[0].length, dayCut });
 
 // The date shapes findDates reads; on two matches at the same position the
 // earlier shape wins. Each regex carries the d flag, so a match holds its
@@ -580,31 +584,31 @@ const DATE_SHAPES = [
   { // ISO dash: 2020-07-21 → cut "-21"
     re: new RegExp(`${DATE_START}${YEAR}-${MONTH_NUM}-${DAY}${DATE_END}`, 'gid'),
     read: (m) => (isMonth(m[2]) && isDay(m[3])
-      ? datePart(m, m[1], { start: m.indices[2][1], end: m.indices[0][1] }) : null),
+      ? datePart(m, m[1], parseInt(m[2], 10), false, { start: m.indices[2][1], end: m.indices[0][1] }) : null),
   },
   { // ISO slash: 2020/07/21 → cut "/21"
     re: new RegExp(`${DATE_START}${YEAR}\\/${MONTH_NUM}\\/${DAY}${DATE_END}`, 'gid'),
     read: (m) => (isMonth(m[2]) && isDay(m[3])
-      ? datePart(m, m[1], { start: m.indices[2][1], end: m.indices[0][1] }) : null),
+      ? datePart(m, m[1], parseInt(m[2], 10), false, { start: m.indices[2][1], end: m.indices[0][1] }) : null),
   },
   { // Month DD, YYYY: June 21, 2020 → cut "21, "
     re: new RegExp(`${DATE_START}(${MONTH_NAMES})\\s+${DAY},?\\s+${YEAR}${DATE_END}`, 'gid'),
     read: (m) => (isDay(m[2])
-      ? datePart(m, m[3], { start: m.indices[2][0], end: m.indices[3][0] }) : null),
+      ? datePart(m, m[3], monthNumber(m[1]), true, { start: m.indices[2][0], end: m.indices[3][0] }) : null),
   },
   { // DD Month YYYY: 21 June 2020 → cut "21 "
     re: new RegExp(`${DATE_START}${DAY}\\s+(${MONTH_NAMES})\\s+${YEAR}${DATE_END}`, 'gid'),
     read: (m) => (isDay(m[1])
-      ? datePart(m, m[3], { start: m.indices[1][0], end: m.indices[2][0] }) : null),
+      ? datePart(m, m[3], monthNumber(m[2]), true, { start: m.indices[1][0], end: m.indices[2][0] }) : null),
   },
   { // YYYY Month DD: 2020 June 21 → cut " 21"
     re: new RegExp(`${DATE_START}${YEAR}\\s+(${MONTH_NAMES})\\s+${DAY}${DATE_END}`, 'gid'),
     read: (m) => (isDay(m[3])
-      ? datePart(m, m[1], { start: m.indices[2][1], end: m.indices[0][1] }) : null),
+      ? datePart(m, m[1], monthNumber(m[2]), false, { start: m.indices[2][1], end: m.indices[0][1] }) : null),
   },
   { // Month YYYY: Jun 2020
     re: new RegExp(`${DATE_START}(${MONTH_NAMES})\\s+${YEAR}${DATE_END}`, 'gid'),
-    read: (m) => datePart(m, m[2], null),
+    read: (m) => datePart(m, m[2], monthNumber(m[1]), true, null),
   },
   { // All numeric: N1/N2/Y or N1-N2-Y, with a 2- or 4-digit year. Which part
     // is the day depends on the column (see the column post-pass), so the
@@ -641,7 +645,8 @@ const BARE_YEAR_RE = new RegExp(`^${DATE_NOISE_CLASS}*${YEAR}${DATE_NOISE_CLASS}
  *   All numeric:   7/21/2020 / 21-07-20 (read by the column post-pass)
  *   Bare year:     2020, as the whole cell
  * Each date is one of:
- *   - a date with a known reading: { year, start, end, dayCut }
+ *   - a date with a known reading: { year, month, monthFirst, start, end, dayCut }
+ *     (month is null for a bare year)
  *   - an all-numeric date: { year, n1, n2, start, end, n1Cut, n2Cut }
  *     (see isAmbiguousDate)
  *   - a date that cannot exist ("2020-13-45"): { impossible: true, start, end }
@@ -667,7 +672,7 @@ function findDates(text) {
   if (bare) {
     const y = parseInt(bare[1], 10);
     if (y >= 1900 && y <= 2099) {
-      return [{ year: y, start: bare.indices[1][0], end: bare.indices[1][1], dayCut: null }];
+      return [{ year: y, month: null, start: bare.indices[1][0], end: bare.indices[1][1], dayCut: null }];
     }
   }
   return null;
@@ -722,13 +727,18 @@ function isDateTimeLike(text) {
  *   'month'   → removes the day and its separator, keeping the cell's own
  *               style: "Dec 13, 2096" → "Dec 2096", "2096-12-13" → "2096-12".
  *               A date with no day stays as written.
+ *   'quarter' → replaces the date with its quarter and full year, on the
+ *               side of the year where the month stood: "Dec 13, 2096" →
+ *               "Q4 2096", "2096-12-13" → "2096 Q4". A date with no month
+ *               stays as written.
  *   'year'    → the year: 2096.
  *   'decade'  → the first year of its decade: 2090.
  *   'century' → the first year of its century: 2000.
  *
  * @param {string} text          - The cell's trimmed text.
- * @param {string} granularity   - 'month' | 'year' | 'decade' | 'century'.
- * @param {{year:number, start:number, end:number, dayCut:{start:number,end:number}|null}[]} [dates]
+ * @param {string} granularity   - 'month' | 'quarter' | 'year' | 'decade' | 'century'.
+ * @param {{year:number, month:number|null, monthFirst:boolean, start:number, end:number,
+ *   dayCut:{start:number,end:number}|null}[]} [dates]
  *   The dates the classification pass read from this text, each with a known
  *   reading, in text order. If omitted, findDates is called, and text holding
  *   an all-numeric or impossible date is returned unchanged.
@@ -744,6 +754,10 @@ function roundDateText(text, granularity, dates) {
     const d = list[i];
     if (granularity === 'month') {
       if (d.dayCut) out = out.slice(0, d.dayCut.start) + out.slice(d.dayCut.end);
+    } else if (granularity === 'quarter') {
+      if (!d.month) continue;
+      const q = 'Q' + Math.ceil(d.month / 3);
+      out = out.slice(0, d.start) + (d.monthFirst ? q + ' ' + d.year : d.year + ' ' + q) + out.slice(d.end);
     } else {
       out = out.slice(0, d.start) + String(Math.floor(d.year / step) * step) + out.slice(d.end);
     }
@@ -1582,7 +1596,7 @@ function pickDateFormatHint(ambiguousList) {
  * Turn a pending ambiguous-date decision (classifyCell's pending:
  * 'ambiguous-date') into its final decision, given the column's format hint
  * from pickDateFormatHint. MDY/DMY give each all-numeric date of the cell its
- * day; MIXED/AMBIGUOUS cannot be read safely and downgrade the whole cell to
+ * day and month; MIXED/AMBIGUOUS cannot be read safely and downgrade the whole cell to
  * skip, so a cell never changes some of its dates and holds others.
  *
  * @param {{value: {dates: object[]}}} decision - see findDates
@@ -1592,7 +1606,8 @@ function pickDateFormatHint(ambiguousList) {
 function resolveAmbiguousDateDecision(decision, hint) {
   if (hint !== 'MDY' && hint !== 'DMY') return { mode: 'skip', reason: 'ambiguous-date' };
   const dates = decision.value.dates.map((d) => (isAmbiguousDate(d)
-    ? { year: d.year, start: d.start, end: d.end, dayCut: hint === 'MDY' ? d.n2Cut : d.n1Cut }
+    ? { year: d.year, month: hint === 'MDY' ? d.n1 : d.n2, monthFirst: true,
+      start: d.start, end: d.end, dayCut: hint === 'MDY' ? d.n2Cut : d.n1Cut }
     : d));
   return { mode: 'date', reason: 'simplify', value: { dates } };
 }

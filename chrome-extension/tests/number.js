@@ -608,6 +608,30 @@ eq('roundDateText: mixed cell preserves label at month granularity',
   }
 })();
 
+// At quarter a date becomes its quarter and full year, on the side of the
+// year where the month stood. A date with no month stays as written.
+(function quarterCases() {
+  const cases = [
+    ['Feb 15, 2025',        'Q1 2025'],
+    ['Sept. 4, 1998',       'Q3 1998'],
+    ['June 21st, 2020',     'Q2 2020'],
+    ['15 Feb 2025',         'Q1 2025'],
+    ['2025 Feb 15',         '2025 Q1'],
+    ['2025-02-15',          '2025 Q1'],
+    ['2025/12/15',          '2025 Q4'],
+    ['August 2025',         'Q3 2025'],
+    ['MAY 2025',            'Q2 2025'],
+    ['2025-04-01',          '2025 Q2'],
+    ['2025-03-31',          '2025 Q1'],
+    ['2025',                '2025'],
+    ['Paid on 2025-04-02',  'Paid on 2025 Q2'],
+    ['Jun 2020 - Dec 2020', 'Q2 2020 - Q4 2020'],
+  ];
+  for (const [input, expected] of cases) {
+    eq(`roundDateText: "${input}" at quarter -> "${expected}"`, roundDateText(input, 'quarter'), expected);
+  }
+})();
+
 // An ordinal suffix on any part of a date keeps the cell a date, and the
 // suffix goes with the part it follows.
 eq('isDateLike: "2020th" (ordinal on a bare year) -> true', isDateLike('2020th'), true);
@@ -615,6 +639,8 @@ eq('isDateLike: "7/21st/2020" (ordinal on a numeric part) -> true', isDateLike('
 eq('roundDateText: "Jun 2015th" at decade -> "2010"', roundDateText('Jun 2015th', 'decade'), '2010');
 eq('roundDateText: "2015-07-21st" at month -> "2015-07"', roundDateText('2015-07-21st', 'month'), '2015-07');
 eq('roundDateText: "2015-07-21st" at year -> "2015"', roundDateText('2015-07-21st', 'year'), '2015');
+eq('roundDateText: "2015-07-21st" at quarter -> "2015 Q3"', roundDateText('2015-07-21st', 'quarter'), '2015 Q3');
+eq('roundDateText: "Jun 2015th" at quarter -> "Q2 2015"', roundDateText('Jun 2015th', 'quarter'), 'Q2 2015');
 
 // Every date in a cell changes; the words and any time of day stay.
 eq('roundDateText: "Jun 2020 - Dec 2020" at year -> "2020 - 2020"',

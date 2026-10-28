@@ -274,7 +274,7 @@ function pickDateFormatHint(ambiguousList) {
  * Turn a pending ambiguous-date decision (classifyCell's pending:
  * 'ambiguous-date') into its final decision, given the column's format hint
  * from pickDateFormatHint. MDY/DMY give each all-numeric date of the cell its
- * day; MIXED/AMBIGUOUS cannot be read safely and downgrade the whole cell to
+ * day and month; MIXED/AMBIGUOUS cannot be read safely and downgrade the whole cell to
  * skip, so a cell never changes some of its dates and holds others.
  *
  * @param {{value: {dates: object[]}}} decision - see findDates
@@ -284,7 +284,8 @@ function pickDateFormatHint(ambiguousList) {
 function resolveAmbiguousDateDecision(decision, hint) {
   if (hint !== 'MDY' && hint !== 'DMY') return { mode: 'skip', reason: 'ambiguous-date' };
   const dates = decision.value.dates.map((d) => (isAmbiguousDate(d)
-    ? { year: d.year, start: d.start, end: d.end, dayCut: hint === 'MDY' ? d.n2Cut : d.n1Cut }
+    ? { year: d.year, month: hint === 'MDY' ? d.n1 : d.n2, monthFirst: true,
+      start: d.start, end: d.end, dayCut: hint === 'MDY' ? d.n2Cut : d.n1Cut }
     : d));
   return { mode: 'date', reason: 'simplify', value: { dates } };
 }
