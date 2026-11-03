@@ -147,84 +147,159 @@
 })();
 
 // ---------------------------------------------------------------------------
-// DEFAULT_NUMERIC_PROBE must stay the parseFloat predicate (trim -> strip
-// format marks and commas -> parseFloat -> isFinite). DR_NUMBER.toNumber
-// uses Number() plus unicode-minus/bracketed-negative handling and disagrees
-// with parseFloat on exactly these shapes: date-only, time-only, and
-// value-with-unit cells (parseFloat accepts a numeric prefix; Number does
-// not), and accounting-negative cells (Number, via the bracket rewrite,
-// parses them; parseFloat does not). Each assertion below fails against a
-// probe that delegates to DR_NUMBER.toNumber.
+// The data test counts a cell when the classification ladder rounds it with
+// every switch on and no range expression: a date, a time, a unit number, a
+// bracketed number, and a number after words count; a cell whose only digits
+// form a phone number does not, and a whole-link cell does not. The test
+// reads no table settings, so a table passes or fails the same way whatever
+// its switches hold.
 // ---------------------------------------------------------------------------
 
-// Date-only column: parseFloat('2024-01-15') -> 2024 (numeric prefix) -> true.
-// DR_NUMBER.toNumber('2024-01-15') -> Number('2024-01-15') -> NaN -> false.
 (function isDataTable_dateOnlyColumn() {
   const table = makeIsDataTable([
     ['Date',       'Owner'],
     ['2024-01-15', 'Alice'],
   ]);
-  eq('isDataTable: date-only column ("2024-01-15") -> true (matches old parseFloat predicate)',
+  eq('isDataTable: date-only column ("2024-01-15") -> true (a date rounds)',
     isDataTable(table), true);
 })();
 
-// Slash-formatted date column: same parseFloat-prefix argument as above.
 (function isDataTable_slashDateColumn() {
   const table = makeIsDataTable([
     ['Date',        'Owner'],
     ['15/03/2024',  'Bob'],
   ]);
-  eq('isDataTable: slash date column ("15/03/2024") -> true (matches old parseFloat predicate)',
+  eq('isDataTable: slash date column ("15/03/2024") -> true (a date rounds)',
     isDataTable(table), true);
 })();
 
-// Time-only column: parseFloat('09:30') -> 9 (numeric prefix) -> true.
-// DR_NUMBER.toNumber('09:30') -> Number('09:30') -> NaN -> false.
 (function isDataTable_timeOnlyColumn() {
   const table = makeIsDataTable([
     ['Time',  'Event'],
     ['09:30', 'Standup'],
   ]);
-  eq('isDataTable: time-only column ("09:30") -> true (matches old parseFloat predicate)',
+  eq('isDataTable: time-only column ("09:30") -> true (a time rounds)',
     isDataTable(table), true);
 })();
 
-// Value-with-unit column: the probe's strip removes the space ("3.5 kg" -> "3.5kg"),
-// then parseFloat('3.5kg') -> 3.5 -> true.
-// DR_NUMBER.toNumber('3.5 kg') -> Number('3.5kg') -> NaN -> false.
 (function isDataTable_unitSuffixColumn() {
   const table = makeIsDataTable([
     ['Weight', 'Item'],
     ['3.5 kg', 'Box'],
   ]);
-  eq('isDataTable: unit-suffix column ("3.5 kg") -> true (matches old parseFloat predicate)',
+  eq('isDataTable: unit-suffix column ("3.5 kg") -> true (the number beside the word rounds)',
     isDataTable(table), true);
 })();
 
-// All-text table: no cell parses as numeric under either probe -> false.
-// (Distinct fixture from isDataTable_3x3_allText above, kept local to this
-// regression block so it reads as a self-contained before/after set.)
 (function isDataTable_allTextColumn() {
   const table = makeIsDataTable([
     ['Status', 'Owner'],
     ['Open',   'Alice'],
   ]);
-  eq('isDataTable: all-text table -> false (no cell parses as numeric under either probe)',
+  eq('isDataTable: all-text table -> false (no cell holds a value the extension can round)',
     isDataTable(table), false);
 })();
 
-// Accounting-negative cell: the probe's strip + parseFloat leaves the
-// parentheses in place; parseFloat('(1,234)' -> '(1234)') -> NaN -> false.
-// DR_NUMBER.toNumber rewrites "(1234)" -> "-1234" -> -1234 -> true. Verify
-// against the parent branch's own behavior (git show refactor/extract-dr-number)
-// before asserting: the parent's predicate also returns false here.
 (function isDataTable_accountingNegativeColumn() {
   const table = makeIsDataTable([
     ['Amount',   'Item'],
     ['(1,234)',  'Refund'],
   ]);
-  eq('isDataTable: accounting-negative cell ("(1,234)") -> false (matches parent-branch predicate)',
+  eq('isDataTable: accounting-negative cell ("(1,234)") -> true (a bracketed number rounds)',
+    isDataTable(table), true);
+})();
+
+(function dataTest_aNumberAfterWordsCounts() {
+  const table = makeIsDataTable([
+    ['Name', 'Note'],
+    ['Tami', 'I am 68.5 years old'],
+  ]);
+  eq('data test: a table whose only number sits after words ("I am 68.5 years old") passes',
+    isDataTable(table), true);
+})();
+
+(function dataTest_aClockTimeBesideWordsCountsByItsOtherNumber() {
+  const table = makeIsDataTable([
+    ['Name', 'Seen'],
+    ['Tami', 'Seen 3:44 PM (37 minutes ago)'],
+  ]);
+  eq('data test: a table whose cell holds a clock time and "37 minutes ago" passes',
+    isDataTable(table), true);
+})();
+
+(function dataTest_aPhoneNumberAloneFails() {
+  const table = makeIsDataTable([
+    ['Name', 'Phone'],
+    ['Tami', '416-555-1234'],
+    ['Oren', '(647) 555-0198'],
+  ]);
+  eq('data test: a table whose only digits form a phone number fails',
     isDataTable(table), false);
+})();
+
+(function dataTest_aDateAloneCounts() {
+  const table = makeIsDataTable([
+    ['Name', 'Joined'],
+    ['Tami', 'Nov 3'],
+  ]);
+  eq('data test: a table whose only number sits in a date ("Nov 3") passes',
+    isDataTable(table), true);
+})();
+
+(function dataTest_aPureNumberCounts() {
+  const table = makeIsDataTable([
+    ['Name', 'Sales'],
+    ['Tami', '$1,234'],
+  ]);
+  eq('data test: a table holding a pure cell ("$1,234") passes',
+    isDataTable(table), true);
+})();
+
+(function dataTest_aWholeLinkCellFails() {
+  const linkCell = {
+    textContent: '42', innerText: '42',
+    querySelectorAll: (sel) => (sel === 'a' ? [{ innerText: '42' }] : []),
+  };
+  const table = { rows: [
+    { cells: [{ textContent: 'Name' }, { textContent: 'Page' }] },
+    { cells: [{ textContent: 'Tami' }, linkCell] },
+  ] };
+  eq('data test: a table whose only number is a whole-link cell fails',
+    isDataTable(table), false);
+})();
+
+(function dataTest_readsNoTableSettings() {
+  // The shipped defaults hold the Times switch off. The data test reads
+  // every switch as on, so a clock time still counts.
+  eq('data test: the shipped defaults hold the Times switch off, so the case below is not vacuous',
+    DR_DEFAULTS.simplifyTimes, false);
+  const dates = makeIsDataTable([['Name', 'Joined'], ['Tami', '2026-11-03']]);
+  const times = makeIsDataTable([['Name', 'Seen'], ['Tami', '3:44 PM']]);
+  eq('data test: a table whose only number sits in an ISO date passes',
+    isDataTable(dates), true);
+  eq('data test: a table whose only number sits in a clock time passes',
+    isDataTable(times), true);
+})();
+
+(function dataTest_aGridGivesTheSameResult() {
+  eq('data test: a grid whose only number sits after words passes',
+    isDataTable(makeGridWrapper([['Name', 'Note'], ['Tami', 'I am 68.5 years old']]).wrapperEl), true);
+  eq('data test: a grid whose only digits form a phone number fails',
+    isDataTable(makeGridWrapper([['Name', 'Phone'], ['Tami', '416-555-1234']]).wrapperEl), false);
+})();
+
+// The geometry probe's numeric step reads the same rule as the data test.
+(function geometryProbe_numericStepReadsTheDataTestRule() {
+  const makeEl = (texts) => ({
+    className: '',
+    getAttribute: (name) => (name === 'role' ? 'grid' : null),
+    children: texts.map((text) => ({ className: 'row', children: [{ textContent: 'Tami' }, { textContent: text }] })),
+  });
+  const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
+  eq('geometry probe: rows whose only number sits after words pass the numeric step',
+    looksLikeGrid(makeEl(Array(5).fill('I am 68.5 years old')), { styleProbe: gridProbe }), true);
+  eq('geometry probe: rows whose only digits form a phone number fail the numeric step',
+    looksLikeGrid(makeEl(Array(5).fill('416-555-1234')), { styleProbe: gridProbe }), false);
 })();
 
 (function mapRenderedToFlat_positions() {
@@ -1127,7 +1202,7 @@ const supTestOpts = {
 // --- AC4: a registered table resolves at the registry route ---
 //
 // The proof goes through the ports the resolver takes, not through the
-// source text: opts.numericProbe counts the data-test reads the nomination
+// source text: opts.cellProbe counts the data-test reads the nomination
 // step would spend, so a zero count shows the step spent none, and
 // opts.isSeen records the elements the resolver asked the registry about.
 // The last pair of assertions runs the same click with nothing registered,
@@ -1139,10 +1214,10 @@ const supTestOpts = {
   const cell = grid.scrollRowEls[3].children[1];
 
   const asked = [];
-  const registryProbe = makeCountingNumericProbe();
+  const registryProbe = makeCountingCellProbe();
   const result = findTargetTable(cell, {
     isSeen: (el) => { asked.push(el); return el === grid.scrollPaneEl; },
-    numericProbe: registryProbe,
+    cellProbe: registryProbe,
   });
 
   eq('findTargetTable AC4: a click inside a registered scrolling pane resolves it',
@@ -1156,8 +1231,8 @@ const supTestOpts = {
   eq('findTargetTable AC4: no step asks the registry about the wrapper',
     asked.includes(grid.wrapperEl), false);
 
-  const freshProbe = makeCountingNumericProbe();
-  const freshResult = findTargetTable(cell, { isSeen: () => false, numericProbe: freshProbe });
+  const freshProbe = makeCountingCellProbe();
+  const freshResult = findTargetTable(cell, { isSeen: () => false, cellProbe: freshProbe });
   eq('findTargetTable AC4: the same click with nothing registered reaches the nomination step',
     freshResult !== null && freshResult.handle === grid.scrollPaneEl, true);
   eq('findTargetTable AC4: and that resolution does spend data-test reads',
@@ -2434,9 +2509,19 @@ const supTestOpts = {
     isDataTable(table), false);
 })();
 
-// jsdom-less criterion: detect.js is evaluated with its two dependencies —
-// constants.js, for DR_DETECTION_SETTINGS, and lib/dr-number/core.js, for the
-// currency signs the numeric probe strips — and nothing else, in a vm context with no
+// The detection layer and the files it reads, in manifest order:
+// constants.js for DR_DETECTION_SETTINGS, the number library for the cell
+// read, and the classification ladder, which the data test's cell probe
+// runs. Each is framework-free, so the sandboxes below carry no browser
+// dependency.
+const detectionSandboxCode = [
+  constantsCode, coreCode, parsingCode, sourceByName('lib/dr-number/identifiers.js'),
+  detectCode, ladderCode,
+].join('\n');
+
+// jsdom-less criterion: detect.js is evaluated with the files it reads —
+// constants.js, the number library, and the classification ladder — and
+// nothing else, in a vm context with no
 // `chrome`, no `window`, and no `getComputedStyle` at all, against a minimal
 // fake document holding one plain <table>. Detection must still find the
 // table and must not throw — this is the acceptance bar for "runs under
@@ -2462,16 +2547,14 @@ const supTestOpts = {
     },
   };
 
-  // The sandbox carries ONLY fakeDoc/fakeTable and whatever constantsCode,
-  // coreCode and detectCode themselves declare — no window, no
-  // getComputedStyle, no chrome, no document global. constantsCode is plain
-  // values only and coreCode is framework-free and side-effect-free, so
-  // prepending them costs the sandbox no browser dependency.
+  // The sandbox carries ONLY fakeDoc/fakeTable and whatever the files in
+  // detectionSandboxCode declare — no window, no getComputedStyle, no
+  // chrome, no document global.
   const sandbox = { fakeDoc, fakeTable, results: null, threw: null };
   const ctx = vm.createContext(sandbox);
 
   vm.runInContext(
-    constantsCode + '\n' + coreCode + '\n' + detectCode + `
+    detectionSandboxCode + `
     try {
       var found = findTables(fakeDoc);
       results = {
@@ -2534,11 +2617,8 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 };
 
 // jsdom-less criterion, extended: one vm sandbox with no
-// chrome/window/getComputedStyle evaluates the configuration file
-// (constants.js), the number core (lib/dr-number/core.js, for the currency
-// signs the numeric probe strips) and then the detection layer
-// (lib/dr-table/detect.js). The
-// test pins DR_DETECTION_SETTINGS's values against PRE_MOVE_DETECTION_SETTINGS above and runs
+// chrome/window/getComputedStyle evaluates the detection layer and the
+// files it reads (detectionSandboxCode above). The test pins DR_DETECTION_SETTINGS's values against PRE_MOVE_DETECTION_SETTINGS above and runs
 // looksLikeGrid, findTargetTable, isPhantomA11yTable, and isDataTable against
 // fixtures whose expected outcome holds only when each moved value reads at
 // its pre-move value: a wrong read (a stale copy, a transposed value, a wrong
@@ -2553,7 +2633,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   const ctx = vm.createContext(sandbox);
 
   vm.runInContext(
-    constantsCode + '\n' + coreCode + '\n' + detectCode + `
+    detectionSandboxCode + `
     try {
       outcomes.settingsKeys = Object.keys(DR_DETECTION_SETTINGS).sort();
       outcomes.settings = DR_DETECTION_SETTINGS;

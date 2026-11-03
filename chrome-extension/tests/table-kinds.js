@@ -213,3 +213,22 @@ const TK_SETTINGS = [
       tkRead('grid', pair, settings.opts).tables.length, 2);
   }
 })();
+
+// The data test gives the same result on both kinds: a table whose only
+// number sits after words is a data table, and a table whose only digits
+// form a phone number is not.
+(function tablekinds_theDataTestReadsTheSameCellsOnBothKinds() {
+  const cases = [
+    { name: 'a number after words', value: 'I am 68.5 years old', found: true },
+    { name: 'a phone number alone', value: '416-555-1234', found: false },
+    { name: 'a date alone', value: 'Nov 3', found: true },
+    { name: 'a pure number', value: '1,234', found: true },
+  ];
+  for (const { name, value, found } of cases) {
+    const pair = { sections: [{ part: 'body', rows: [['Name', 'Note'], ['Tami', value]], grouped: true }] };
+    eq(`data test, ${name}: the native table ${found ? 'passes' : 'fails'}`,
+      tkRead('native', pair, DR_DEFAULTS).found, found);
+    eq(`data test, ${name}: the grid ${found ? 'passes' : 'fails'}`,
+      tkRead('grid', pair, DR_DEFAULTS).found, found);
+  }
+})();

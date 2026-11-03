@@ -150,37 +150,66 @@ function isColumnFirst(children, styleProbe) {
   return boxes[1].top === boxes[0].top && boxes[1].left > boxes[0].left;
 }
 
+// The switches the cell probe reads: every one on, so the data test reads no
+// table's settings and a table passes or fails the same way whatever its
+// switches hold.
+const CELL_PROBE_OPTIONS = Object.freeze({
+  simplifyFirstRow: true,
+  simplifyFirstColumn: true,
+  simplifyMixedPercent: true,
+  simplifyMixedCurrency: true,
+  simplifyDates: true,
+  simplifyTimes: true,
+  simplifyMixedCells: true,
+});
+
 /**
- * NumericProbe: parses a cell's text to a number for the "does this look
- * numeric" checks in looksLikeGrid/isDataTable. This default is a
- * port of the predicate detection used before the lib/dr-table extraction:
- * strip currency signs, commas, percent signs and whitespace, then
- * parseFloat. The strip reads FORMAT_MARK_ALTERNATION (core.js), so the
- * probe admits exactly the currency signs CURRENCIES lists. It also strips
- * every comma, with no number shape test, because it tests only whether a
- * cell looks numeric: "1,234" and "13,63" both count. It deliberately does
- * NOT delegate to DR_NUMBER.toNumber — that parser's unicode-minus and
- * parenthesized-negative handling changes which tables are detected (dates,
- * times, and unit-suffixed cells lose their toggle; accounting negatives gain
- * one). A caller that wants DR_NUMBER-aware detection passes a custom probe
- * via opts.numericProbe.
+ * CellProbe: whether a cell holds a value the extension can round. The data
+ * test (isDataTable) and the geometry probe's numeric step (looksLikeGrid)
+ * both ask it, so one rule decides what counts on native tables and grids.
  *
- * The strip is built on the first parse, not at load: this file reads no
- * core.js constant at load, so evaluating it alone fails first on the
- * detection settings (see the detection settings tests).
+ * The default runs the classification ladder (classifyCell,
+ * lib/dr-simplify/ladder.js) with every switch on and no range expression,
+ * and counts the cell when the decision's mode is anything but 'skip',
+ * a pending ambiguous date included. So "I am 68.5 years old" counts. A
+ * cell whose only digits form a phone number holds an identifier shape,
+ * which stays as written, so it adds nothing to the test.
+ *
+ * The DOM inputs come from the cell element, the way the rounding pass
+ * computes them (classifyTableCell in content.js). A whole-link cell, which
+ * never rounds, adds nothing, and a footnote marker stays masked:
+ *   isWholeLink        isCellWholeLink(cellEl)
+ *   superscriptRanges  getSuperscriptRanges(cellEl, { text })
+ *   digitsSpanPieces   counted over the cell's live text pieces
+ * The last two measure the live cell. The pass takes a simplified cell's
+ * stored copy instead; on a cell the extension has not written, the two
+ * reads hold the same text.
+ * The row and column positions are 0: with the first-row and first-column
+ * switches on and no range expression, the ladder reads no position.
+ *
+ * classifyCell loads after this file (manifest order), so the probe reads
+ * it at call time, never at load: this file reads no other file's constant
+ * at load, so evaluating it alone fails first on the detection settings
+ * (see the detection settings tests). A caller that counts or replaces the
+ * reads passes its own probe via opts.cellProbe.
  */
-const DEFAULT_NUMERIC_PROBE = (() => {
-  let strip = null;
-  return {
-    parse(text) {
-      if (strip === null) strip = new RegExp('(?:' + FORMAT_MARK_ALTERNATION + '|,)', 'g');
-      const cleaned = String(text).trim().replace(strip, '');
-      if (cleaned === '') return null;
-      const parsed = parseFloat(cleaned);
-      return isFinite(parsed) ? parsed : null;
-    },
-  };
-})();
+const DEFAULT_CELL_PROBE = {
+  rounds(text, cellEl) {
+    const hasSuperscript = !!(typeof cellEl.querySelector === 'function' && cellEl.querySelector('sup'));
+    const digitPieces = collectTextPieces(cellEl).filter((piece) => /\d/.test(piece.nodeValue || '')).length;
+    const decision = classifyCell({
+      text,
+      rowIndex: 0,
+      columnIndex: 0,
+      ranges: null,
+      isWholeLink: isCellWholeLink(cellEl),
+      hasSuperscript,
+      superscriptRanges: hasSuperscript ? getSuperscriptRanges(cellEl, { text }) : [],
+      digitsSpanPieces: digitPieces > 1,
+    }, CELL_PROBE_OPTIONS);
+    return decision.mode !== 'skip';
+  },
+};
 
 // VendorProfiles: known third-party grid libraries. `classToken` short-
 // circuits looksLikeGrid's geometry probe; `scrollContainerSelectors` /
@@ -304,7 +333,7 @@ const GRID_ROUNDED_CLASS = 'dr-ext-rounded';
 /**
  * OriginalsPort: pluggable per-cell storage for a simplified cell's record,
  * which both adapters' cell objects read and write, following the same
- * port-with-a-working-default pattern as StyleProbe/NumericProbe above. The
+ * port-with-a-working-default pattern as StyleProbe/CellProbe above. The
  * default is a private WeakMap<cellEl, record> — correct for a standalone or
  * test caller with no application model to hand in. content.js's real call
  * sites inject a port backed by DR_STORE's per-table registry entry (see
@@ -1360,13 +1389,13 @@ function placeDecision(decision, text, layout, opts = {}) {
  *     GRID_VENDOR_PROFILES — "dg--" or "ag-")
  *
  * @param {Element} el
- * @param {{styleProbe?: object, numericProbe?: object, vendorProfiles?: object[]}} [opts]
+ * @param {{styleProbe?: object, cellProbe?: object, vendorProfiles?: object[]}} [opts]
  * @returns {boolean}
  */
 function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
-  const numericProbe = opts.numericProbe || DEFAULT_NUMERIC_PROBE;
+  const cellProbe = opts.cellProbe || DEFAULT_CELL_PROBE;
   const vendorProfiles = opts.vendorProfiles || GRID_VENDOR_PROFILES;
 
   // --- Step 1: Child count ≥ DR_DETECTION_SETTINGS.gridMinChildren ---
@@ -1403,14 +1432,14 @@ function looksLikeGrid(el, opts = {}) {
   const display = (computedForDisplay && computedForDisplay.display) || '';
   if (!DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)) return false;
 
-  // --- Step 5: Numeric content — ≥ 1 cell parses as a finite number (mandatory) ---
+  // --- Step 5: Numeric content — ≥ 1 cell holds a value the extension can
+  // round, the data test's rule (see DEFAULT_CELL_PROBE) (mandatory) ---
   let hasNumeric = false;
   outer:
   for (const row of candidateRows) {
     for (const cell of Array.from(row.children)) {
       const text = (cell.textContent || '').trim();
-      const parsed = text === '' ? null : numericProbe.parse(text);
-      if (parsed !== null && isFinite(parsed)) { hasNumeric = true; break outer; }
+      if (text !== '' && cellProbe.rounds(text, cell)) { hasNumeric = true; break outer; }
     }
   }
   if (!hasNumeric) return false;
@@ -1475,7 +1504,7 @@ function looksLikeGrid(el, opts = {}) {
  * Returns null if nothing found.
  *
  * @param {Element} el
- * @param {{styleProbe?: object, numericProbe?: object, vendorProfiles?: object[], doc?: Document, isSeen?: (handle: Element) => boolean}} [opts]
+ * @param {{styleProbe?: object, cellProbe?: object, vendorProfiles?: object[], doc?: Document, isSeen?: (handle: Element) => boolean}} [opts]
  * @returns {{handle: Element, isNew: boolean}|null}
  */
 function findTargetTable(el, opts = {}) {
@@ -1672,11 +1701,11 @@ function isPhantomA11yTable(table, opts = {}) {
 
 /**
  * @param {Element} table
- * @param {{numericProbe?: object, vendorProfiles?: object[]}} [opts]
+ * @param {{cellProbe?: object, vendorProfiles?: object[]}} [opts]
  * @returns {boolean}
  */
 function isDataTable(table, opts = {}) {
-  const numericProbe = opts.numericProbe || DEFAULT_NUMERIC_PROBE;
+  const cellProbe = opts.cellProbe || DEFAULT_CELL_PROBE;
   const adapter = makeAdapter(table, opts);
   const rows = adapter.getRows();
   if (rows.length < 2) return false;
@@ -1691,8 +1720,9 @@ function isDataTable(table, opts = {}) {
   // The scan spends one budget of DR_DETECTION_SETTINGS.dataTestCellBudget cell reads,
   // counted across every row and cell in document order, on native tables
   // and grids alike. An empty cell counts as a read. The scan returns true
-  // at the first cell that parses as a finite number, and returns false once
-  // it has spent the budget with no number found.
+  // at the first cell holding a value the extension can round (see
+  // DEFAULT_CELL_PROBE), and returns false once it has spent the budget with
+  // no such cell found.
   let cellsRead = 0;
   for (let i = 0; i < rows.length; i++) {
     const cells = rows[i].getCells();
@@ -1701,8 +1731,7 @@ function isDataTable(table, opts = {}) {
       cellsRead++;
       const text = cells[j].getText().trim();
       if (text === '') continue;
-      const parsed = numericProbe.parse(text);
-      if (parsed !== null && isFinite(parsed)) return true;
+      if (cellProbe.rounds(text, cells[j].el)) return true;
     }
   }
   return false;
@@ -2033,7 +2062,7 @@ function chainRootOf(el, opts = {}) {
  *   tableFilter?: (table: Element) => boolean,
  *   isSeen?: (handle: Element) => boolean,
  *   nestingDepth?: number, doc?: Document,
- *   styleProbe?: object, numericProbe?: object, vendorProfiles?: object[],
+ *   styleProbe?: object, cellProbe?: object, vendorProfiles?: object[],
  * }} [opts]
  * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}}
  */
@@ -2098,7 +2127,7 @@ function nominateNest(chainRoot, opts = {}) {
  *   tableFilter?: (table: Element) => boolean,
  *   isSeen?: (handle: Element) => boolean,
  *   nestingDepth?: number, doc?: Document,
- *   styleProbe?: object, numericProbe?: object, vendorProfiles?: object[],
+ *   styleProbe?: object, cellProbe?: object, vendorProfiles?: object[],
  * }} [opts]
  * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}[]}
  */
@@ -2144,7 +2173,7 @@ function nominateNests(root, opts = {}) {
  *   tableFilter?: (table: Element) => boolean,
  *   isSeen?: (handle: Element) => boolean,
  *   nestingDepth?: number, doc?: Document,
- *   styleProbe?: object, numericProbe?: object, vendorProfiles?: object[],
+ *   styleProbe?: object, cellProbe?: object, vendorProfiles?: object[],
  * }} [opts]
  * @returns {{handle: Element, isNew: boolean}[]}
  */

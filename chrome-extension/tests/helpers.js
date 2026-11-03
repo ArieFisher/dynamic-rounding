@@ -858,18 +858,15 @@ function makeCountingStyleProbe() {
   return probe;
 }
 
-// A counting stand-in for the data test's numeric probe. It parses the way
-// the detection layer's default probe does and records every read, so a
-// test can state how many cells one resolution read.
-function makeCountingNumericProbe() {
+// A counting stand-in for the data test's cell probe. It answers through the
+// detection layer's default probe and records every read, so a test can
+// state how many cells one resolution read.
+function makeCountingCellProbe() {
   const probe = {
     calls: 0,
-    parse(text) {
+    rounds(text, cellEl) {
       probe.calls++;
-      const cleaned = String(text).trim().replace(/[$€£¥,\s%]/g, '');
-      if (cleaned === '') return null;
-      const parsed = parseFloat(cleaned);
-      return isFinite(parsed) ? parsed : null;
+      return DEFAULT_CELL_PROBE.rounds(text, cellEl);
     },
   };
   return probe;
