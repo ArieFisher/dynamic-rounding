@@ -363,8 +363,10 @@ function isDateLike(text) {
 
 // The one clock-time shape: HH:MM or HH:MM:SS. A whole-cell time adds an
 // optional AM/PM; a time inside text is the same digits with no digit or
-// colon on either side, so "123:45" and "16:9" never read as times.
-const CLOCK_TIME_SOURCE = '\\d{1,2}:\\d{2}(?::\\d{2})?';
+// colon on either side, so "123:45" and "16:9" never read as times. The
+// groups hold the hour, the minutes, and the seconds, and roundTimeText
+// reads them with the AM/PM group after them.
+const CLOCK_TIME_SOURCE = '(\\d{1,2}):(\\d{2})(?::(\\d{2}))?';
 const WHOLE_CELL_TIME_RE = new RegExp('^' + CLOCK_TIME_SOURCE + '(\\s*[ap]\\.?m\\.?)?$', 'i');
 const CLOCK_TIME_IN_TEXT_RE = new RegExp('(?<![\\d:])' + CLOCK_TIME_SOURCE + '(?![\\d:])', 'g');
 
@@ -375,7 +377,7 @@ function isTimeLike(text) {
 /**
  * Return {start, end} ranges (offsets into `text`) of every clock time inside
  * the text ("9:45 - 11:45 AM" holds two). Each range covers the digits and
- * colons alone; a meridiem holds no digit to mask.
+ * colons alone; an AM/PM holds no digit to mask.
  */
 function clockTimeRanges(text) {
   if (typeof text !== 'string') return [];
@@ -496,7 +498,7 @@ function roundTimeText(text, granularity) {
   if (granularity === 'minute' || !granularity) return null;
   if (granularity !== 'hour') return null;
   const trimmed = text.trim();
-  const m = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(\s*[ap]\.?m\.?)?$/i);
+  const m = trimmed.match(WHOLE_CELL_TIME_RE);
   if (!m) return null;
   const origHourStr = m[1];
   const origHour = parseInt(origHourStr, 10);

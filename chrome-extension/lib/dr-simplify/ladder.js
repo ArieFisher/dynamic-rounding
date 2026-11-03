@@ -67,9 +67,10 @@ function filterMaskedMatches(matches, ranges) {
  * The masked ranges are one list, so a new kind of text whose
  * numbers stay as written is one more source here. superscriptRanges is
  * caller-supplied plain data (see file header); pass [] when the cell
- * carries no <sup>. The identifier scan reads the text with each superscript
- * span blanked to spaces, so a footnote marker right after a phone number
- * ("416-555-1234<sup>1</sup>") never joins its digits; the blanks keep every
+ * carries no <sup>. The identifier scan and the clock-time scan read the
+ * text with each superscript span blanked to spaces, so a footnote marker
+ * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
+ * ("18:30<sup>2</sup>") never joins its digits; the blanks keep every
  * position in place.
  */
 function extractSimplifyMatches(text, superscriptRanges) {
@@ -81,7 +82,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
     ...getIdentifierMaskedRanges(shapeText),
     ...superscripts,
     ...eraYearDigitRanges(text),
-    ...clockTimeRanges(text),
+    ...clockTimeRanges(shapeText),
   ];
   return filterMaskedMatches(extractNumbersInText(text), masked);
 }
