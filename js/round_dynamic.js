@@ -687,9 +687,28 @@ function isDateLike(text) {
   return findDates(text) !== null;
 }
 
+// The one clock-time shape: HH:MM or HH:MM:SS. A whole-cell time adds an
+// optional AM/PM; a time inside text is the same digits with no digit or
+// colon on either side, so "123:45" and "16:9" never read as times. The
+// groups hold the hour, the minutes, and the seconds, and roundTimeText
+// reads them with the AM/PM group after them.
+const CLOCK_TIME_SOURCE = '(\\d{1,2}):(\\d{2})(?::(\\d{2}))?';
+const WHOLE_CELL_TIME_RE = new RegExp('^' + CLOCK_TIME_SOURCE + '(\\s*[ap]\\.?m\\.?)?$', 'i');
+const CLOCK_TIME_IN_TEXT_RE = new RegExp('(?<![\\d:])' + CLOCK_TIME_SOURCE + '(?![\\d:])', 'g');
+
 function isTimeLike(text) {
-  // HH:MM or HH:MM:SS, optional AM/PM
-  return /^\d{1,2}:\d{2}(:\d{2})?(\s*[ap]\.?m\.?)?$/i.test(text);
+  return WHOLE_CELL_TIME_RE.test(text);
+}
+
+/**
+ * Return {start, end} ranges (offsets into `text`) of every clock time inside
+ * the text ("9:45 - 11:45 AM" holds two). Each range covers the digits and
+ * colons alone; an AM/PM holds no digit to mask.
+ */
+function clockTimeRanges(text) {
+  if (typeof text !== 'string') return [];
+  return Array.from(text.matchAll(CLOCK_TIME_IN_TEXT_RE),
+    (m) => ({ start: m.index, end: m.index + m[0].length }));
 }
 
 /**
@@ -805,7 +824,7 @@ function roundTimeText(text, granularity) {
   if (granularity === 'minute' || !granularity) return null;
   if (granularity !== 'hour') return null;
   const trimmed = text.trim();
-  const m = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(\s*[ap]\.?m\.?)?$/i);
+  const m = trimmed.match(WHOLE_CELL_TIME_RE);
   if (!m) return null;
   const origHourStr = m[1];
   const origHour = parseInt(origHourStr, 10);
@@ -1383,13 +1402,16 @@ function filterMaskedMatches(matches, ranges) {
  * link filter: pull numbers out of `text` and drop each one inside a masked
  * range — a quoted span, an identifier span ("Call 416-555-1234"; see
  * getIdentifierMaskedRanges in lib/dr-number/identifiers.js), a superscript
- * span, or an era-marked year (issue #4 — "2898 AD" is a date, not a
- * quantity). The masked ranges are one list, so a new kind of text whose
+ * span, an era-marked year (issue #4 — "2898 AD" is a date, not a
+ * quantity), or a clock time ("9:45 - 11:45 AM"; its hour and minutes are
+ * not quantities, and it stays as written whatever the Times setting holds).
+ * The masked ranges are one list, so a new kind of text whose
  * numbers stay as written is one more source here. superscriptRanges is
  * caller-supplied plain data (see file header); pass [] when the cell
- * carries no <sup>. The identifier scan reads the text with each superscript
- * span blanked to spaces, so a footnote marker right after a phone number
- * ("416-555-1234<sup>1</sup>") never joins its digits; the blanks keep every
+ * carries no <sup>. The identifier scan and the clock-time scan read the
+ * text with each superscript span blanked to spaces, so a footnote marker
+ * right after a phone number ("416-555-1234<sup>1</sup>") or a clock time
+ * ("18:30<sup>2</sup>") never joins its digits; the blanks keep every
  * position in place.
  */
 function extractSimplifyMatches(text, superscriptRanges) {
@@ -1401,6 +1423,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
     ...getIdentifierMaskedRanges(shapeText),
     ...superscripts,
     ...eraYearDigitRanges(text),
+    ...clockTimeRanges(shapeText),
   ];
   return filterMaskedMatches(extractNumbersInText(text), masked);
 }

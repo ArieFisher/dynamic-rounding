@@ -156,6 +156,7 @@ globalThis.CURRENCY_CODES = CURRENCY_CODES;
 globalThis.CLEAN_REGEX = CLEAN_REGEX;
 globalThis.DEFAULT_NUMERIC_PROBE = DEFAULT_NUMERIC_PROBE;
 globalThis.eraYearDigitRanges = eraYearDigitRanges;
+globalThis.clockTimeRanges = clockTimeRanges;
 globalThis.formatStep = formatStep;
 globalThis.stepForOffset = stepForOffset;
 // Expose the pillbox geometry constants (all are const, so direct assignment works)

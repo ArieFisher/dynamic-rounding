@@ -103,6 +103,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 - `"2024-01-15"` → `"2024-01-15"` (dates and times stay)
 - `"416-555-1234"` → `"416-555-1234"` (an identifier shape stays)
 - `"Call 416-555-1234 about 1,613,245 units"` → `"Call 416-555-1234 about 1,500,000 units"` (inside text, the identifier shape keeps its digits)
+- `"Doors at 11:45, 1,613,245 seats"` → `"Doors at 11:45, 1,500,000 seats"` (inside text, a clock time keeps its digits)
 - `"13,63"` → `"13,63"` (a comma counts only in the group shape, so a European decimal comma is not read)
 - `"1.234,56"` → `"1.234,56"` (a comma after the decimal dot is not read)
 

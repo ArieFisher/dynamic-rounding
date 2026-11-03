@@ -41,6 +41,7 @@ const DR_NUMBER = {
   isAmbiguousDate,
   isDateLike,
   isTimeLike,
+  clockTimeRanges,
   parseISODateTime,
   isDateTimeLike,
   roundDateText,
