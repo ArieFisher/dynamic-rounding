@@ -166,7 +166,7 @@ const CELL_PROBE_OPTIONS = Object.freeze({
 /**
  * CellProbe: whether a cell holds a value the extension can round. The data
  * test (isDataTable) and the geometry probe's numeric step (looksLikeGrid)
- * both ask it, so one rule decides what counts on native tables and grids.
+ * both run it, so one rule holds on native tables and grids.
  *
  * The default runs the classification ladder (classifyCell,
  * lib/dr-simplify/ladder.js) with every switch on and no range expression,
