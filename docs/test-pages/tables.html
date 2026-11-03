@@ -518,7 +518,8 @@
       shaped like dates that are not. The Governed by column names the setting
       that covers the row.</p>
     <p class="expect">Expect: pillbox at load. Each date shows its own year. Each
-      time stays as written until the Times setting is on.</p>
+      time stays as written until the Times setting is on. The clock range
+      stays as written with Times on or off.</p>
 
     <!--
       Expected output at the shipped defaults: dates on at year granularity, times
@@ -570,6 +571,9 @@
         3:45 PM                       -> 4:00 PM
         11:58 p.m.                    -> 12:00 a.m.
         09:05                         -> 09:00
+      A clock time inside other text stays as written with Times on or off:
+        9:45 - 11:45 AM               -> 9:45 - 11:45 AM
+      A failure reads 9:45 - 10:45 AM.
 
       Timestamps are matched before dates, follow the time setting, and keep their
       date. Seconds, milliseconds, and the zone offset are dropped. Rounding up
@@ -707,6 +711,11 @@
           <th scope="row">Clock, padded hour</th>
           <td>09:05</td>
           <td>Times</td>
+        </tr>
+        <tr>
+          <th scope="row">Clock range, held back</th>
+          <td>9:45 - 11:45 AM</td>
+          <td>Nothing</td>
         </tr>
         <tr>
           <th scope="row">Timestamp, T separator</th>

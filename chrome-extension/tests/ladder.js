@@ -341,6 +341,43 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
     extractNumbersInText('@2020vision has 1,613,245 fans').map((m) => m.numStr), ['1,613,245']);
 })();
 
+// A clock time inside text keeps its digits, whatever the Times setting
+// holds, and the cell's other numbers round. A cell holding one clock time
+// and nothing else follows the Times setting (see the time rows above).
+const CLOCK_TIME_SPAN_CELLS = [
+  ['9:45 - 11:45 AM', []],
+  ['11:45 AM - 1:00 PM', []],
+  ['8:00-9:00', []],
+  ['Meeting at 11:45 for 1,613,245 holders', ['1,613,245']],
+  ['Doors 18:30:15, 2,734 seats', ['2,734']],
+  ['Opens 9:15am, 4,821 tickets', ['4,821']],
+];
+
+const CLOCK_TIME_SPAN_NEAR_MISSES = [
+  ['Ratio 16:9 on 4,821 screens', ['16', '9', '4,821']],
+  ['Score 123:45 after 2,734 games', ['123', '45', '2,734']],
+];
+
+(function clockTimes_holdTheirDigitsInsideText() {
+  const extractedNumbers = (text, opts) => {
+    const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
+    if (decision.mode === 'extracted') return decision.value.matches.map((m) => m.numStr);
+    return decision.reason === 'no-number' ? [] : decision;
+  };
+  const timesOn = Object.assign({}, LADDER_OPTS, { simplifyTimes: true });
+  for (const [text, expected] of CLOCK_TIME_SPAN_CELLS) {
+    eq(`clock time inside text: "${text}" rounds only its quantity`, extractedNumbers(text, LADDER_OPTS), expected);
+    eq(`clock time inside text: "${text}" rounds only its quantity with Times on`, extractedNumbers(text, timesOn), expected);
+  }
+  for (const [text, expected] of CLOCK_TIME_SPAN_NEAR_MISSES) {
+    eq(`clock time inside text: "${text}" rounds every number`, extractedNumbers(text, LADDER_OPTS), expected);
+  }
+  eq('clock time inside text: ranges cover each time\'s digits and leave the meridiem out',
+    clockTimeRanges('9:45 - 11:45 AM'), [{ start: 0, end: 4 }, { start: 7, end: 12 }]);
+  eq('clock time inside text: a text with no clock time has no ranges',
+    clockTimeRanges('About 1,613,245 people'), []);
+})();
+
 // =============================================================================
 // Bracketed numbers — the accounting minus sign
 // =============================================================================
