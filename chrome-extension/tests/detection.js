@@ -302,6 +302,49 @@
     looksLikeGrid(makeEl(Array(5).fill('416-555-1234')), { styleProbe: gridProbe }), false);
 })();
 
+// The numeric step reads each cell through the rounding pass's per-cell
+// read, so a number inside a link inside words and a number split across
+// text pieces count for nothing there, the way they count for nothing in
+// the data test. A plain number in the same place passes, so neither
+// failure comes from the grid's shape.
+(function geometryProbe_numericStepCountsOnlyACellThatRounds() {
+  const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
+  const gridOf = (pieces) => rwEl('div', { role: 'grid' }, Array.from({ length: 5 }, () =>
+    rwEl('div', {}, [rwEl('div', {}, rwPieces('Tami')), rwEl('div', {}, rwPieces(pieces))])));
+  withRewritePage(() => {
+    eq('geometry probe: rows whose only number is a plain "42" pass the numeric step',
+      looksLikeGrid(gridOf('42'), { styleProbe: gridProbe }), true);
+    eq('geometry probe: rows whose only number sits inside a link inside words fail the numeric step',
+      looksLikeGrid(gridOf(['see ', { tag: 'a', text: 'page 42' }]), { styleProbe: gridProbe }), false);
+    eq('geometry probe: rows whose only number is split as "1" and a bold "23" fail the numeric step',
+      looksLikeGrid(gridOf(['1', { tag: 'b', text: '23' }]), { styleProbe: gridProbe }), false);
+    eq('geometry probe: rows whose only number is split as "4." and "91" fail the numeric step',
+      looksLikeGrid(gridOf(['4.', { tag: 'span', text: '91' }]), { styleProbe: gridProbe }), false);
+  });
+})();
+
+// The numeric step spends the data test's budget of cell reads, walked row
+// by row. Rows of ten cells each: a number at the budget-th cell passes, and
+// the same grid with its only number one cell past the budget fails.
+(function geometryProbe_numericStepSpendsTheDataTestBudget() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const cols = 10;
+  const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
+  const gridWithNumberAt = (position) => ({
+    className: '',
+    getAttribute: (name) => (name === 'role' ? 'grid' : null),
+    children: Array.from({ length: Math.ceil(position / cols) }, (_, r) => ({
+      className: 'row',
+      children: Array.from({ length: cols }, (__, c) =>
+        withTextPiece({ textContent: r * cols + c + 1 === position ? '42' : 'text' })),
+    })),
+  });
+  eq('geometry probe: rows whose only number sits at the budget-th cell pass the numeric step',
+    looksLikeGrid(gridWithNumberAt(budget), { styleProbe: gridProbe }), true);
+  eq('geometry probe: rows whose only number sits one cell past the budget fail the numeric step',
+    looksLikeGrid(gridWithNumberAt(budget + 1), { styleProbe: gridProbe }), false);
+})();
+
 (function mapRenderedToFlat_positions() {
   eq('mapRenderedToFlat: equal texts map each position to itself',
     mapRenderedToFlat('a 1', 'a 1'), [0, 1, 2]);

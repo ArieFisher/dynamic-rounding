@@ -232,3 +232,29 @@ const TK_SETTINGS = [
       tkRead('grid', pair, DR_DEFAULTS).found, found);
   }
 })();
+
+// The data test reads each cell through the rounding pass's per-cell read,
+// so a table passes only when a cell in it rounds. A number inside a link
+// inside words, a number split across text pieces, and a column whose
+// ambiguous dates no day above 12 settles round nowhere, so each table
+// fails. A stacked cell, a linked number beside a plain number, and an
+// ambiguous date whose column holds a day above 12 each round, so each table
+// passes. Each case runs on both kinds.
+(function tablekinds_theDataTestCountsOnlyACellThatRounds() {
+  const cases = [
+    { name: 'a number inside a link inside words', rows: [['Tami', ['see ', { tag: 'a', text: 'page 42' }]]], found: false },
+    { name: 'a number split as "1" and a bold "23"', rows: [['Tami', ['1', { tag: 'b', text: '23' }]]], found: false },
+    { name: 'a number split as "4." and "91"', rows: [['Tami', ['4.', { tag: 'span', text: '91' }]]], found: false },
+    { name: 'a column holding only "03/04/2020"', rows: [['Tami', '03/04/2020']], found: false },
+    { name: 'a stacked cell', rows: [['Tami', ['125', ' ', '126']]], found: true },
+    { name: 'a linked number beside a plain number', rows: [['Tami', [{ tag: 'a', text: 'Order 12' }, ' holds 340 units']]], found: true },
+    { name: '"03/04/2020" above "15/03/2024"', rows: [['Tami', '03/04/2020'], ['Oren', '15/03/2024']], found: true },
+  ];
+  for (const { name, rows, found } of cases) {
+    const pair = { sections: [{ part: 'body', rows: [['Name', 'Note']].concat(rows), grouped: true }] };
+    eq(`data test, ${name}: the native table ${found ? 'passes' : 'fails'}`,
+      tkRead('native', pair, DR_DEFAULTS).found, found);
+    eq(`data test, ${name}: the grid ${found ? 'passes' : 'fails'}`,
+      tkRead('grid', pair, DR_DEFAULTS).found, found);
+  }
+})();
