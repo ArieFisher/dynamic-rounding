@@ -694,14 +694,6 @@ class GridAdapter {
   }
 
   /**
-   * Build one grid cell's cell object (see makeGridCellObj).
-   * @param {Element} cellEl
-   */
-  _makeCellObj(cellEl) {
-    return makeGridCellObj(cellEl, this.originalsPort);
-  }
-
-  /**
    * Return stitched rows from the grid: pinned cells first, then scroll cells.
    * Each row exposes getCells() → array of cell objects.
    */
@@ -748,7 +740,7 @@ class GridAdapter {
       isOutside,
       getCells() {
         return rowCellEls[idx].map((cellEl, c) => Object.assign(
-          columnPlacement(plan[idx], c), adapter._makeCellObj(cellEl)));
+          columnPlacement(plan[idx], c), makeGridCellObj(cellEl, adapter.originalsPort)));
       },
     }));
   }
@@ -1762,9 +1754,9 @@ function isPhantomA11yTable(table, opts = {}) {
  *
  * The walk spends one budget of DR_DETECTION_SETTINGS.dataTestCellBudget
  * cell reads, counted across every row and cell in order; an empty cell
- * counts as a read. It returns true at the first cell that counts. An
- * ambiguous date waits for its column: the walk keeps each one with its
- * grid column, and once the rows end or the budget runs out, the column
+ * counts as a read. It returns true at the first cell that counts. The walk
+ * holds each ambiguous date with its grid column, and once the rows end or
+ * the budget runs out, the column
  * post-pass (resolveAmbiguousDates) reads them, so a pending date counts
  * only when the post-pass resolves it to a reading. The post-pass reads the
  * dates within the budget alone.

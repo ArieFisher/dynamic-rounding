@@ -7,18 +7,9 @@
 // A mock cell's one text piece, the way a page element holds its text: a
 // text node child whose value reads and writes the cell's text. The placement
 // step reads a native cell's text pieces, so a mock cell with no text node
-// would hold no piece for a value to sit in.
+// would hold no piece for a value to sit in. The node holds no link back to
+// the cell: eq compares through JSON.stringify, which throws on a cycle.
 function withTextPiece(cell) {
-  withUnlinkedTextPiece(cell);
-  cell.childNodes[0].parentNode = cell;
-  cell.childNodes[0].parentElement = cell;
-  return cell;
-}
-
-// The same text piece with no link back to the cell, for a mock cell a test
-// compares through eq: eq compares through JSON.stringify, which throws on a
-// cycle.
-function withUnlinkedTextPiece(cell) {
   cell.childNodes = [{
     nodeType: 3,
     get nodeValue() { return cell.textContent; },
@@ -231,7 +222,7 @@ function makeToggleTableCell(s) {
     querySelectorAll: () => [],
     removeAttribute() {},
   };
-  return withUnlinkedTextPiece(cell);
+  return withTextPiece(cell);
 }
 
 /**
@@ -646,7 +637,7 @@ function makeExtractedCell(segments) {
  * @param {number} [width=100] — offsetWidth of the cell (for column-0 width probe)
  */
 function makeGridCell(text, width) {
-  return withUnlinkedTextPiece({
+  return withTextPiece({
     textContent: text,
     offsetWidth: (width === undefined ? 100 : width),
     children: [],
@@ -876,7 +867,7 @@ function makeNativeTableEl(rowsSpec) {
   const el = {
     tagName: 'TABLE',
     rows: rowsSpec.map(rowSpec => ({
-      cells: rowSpec.map(s => withUnlinkedTextPiece({
+      cells: rowSpec.map(s => withTextPiece({
         tagName: (s.tag || 'td').toUpperCase(),
         innerText: s.text,
         textContent: s.text,
@@ -1466,19 +1457,19 @@ function makePass1DataTable(opts) {
   const style  = opts.style  || {};
   const rows = [
     { cells: [
-        withUnlinkedTextPiece({ tagName: 'TD', innerText: '10000', textContent: '10000', innerHTML: '10000',
+        withTextPiece({ tagName: 'TD', innerText: '10000', textContent: '10000', innerHTML: '10000',
           classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
           dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} }),
-        withUnlinkedTextPiece({ tagName: 'TD', innerText: '20000', textContent: '20000', innerHTML: '20000',
+        withTextPiece({ tagName: 'TD', innerText: '20000', textContent: '20000', innerHTML: '20000',
           classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
           dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} }),
       ]
     },
     { cells: [
-        withUnlinkedTextPiece({ tagName: 'TD', innerText: '30000', textContent: '30000', innerHTML: '30000',
+        withTextPiece({ tagName: 'TD', innerText: '30000', textContent: '30000', innerHTML: '30000',
           classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
           dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} }),
-        withUnlinkedTextPiece({ tagName: 'TD', innerText: '40000', textContent: '40000', innerHTML: '40000',
+        withTextPiece({ tagName: 'TD', innerText: '40000', textContent: '40000', innerHTML: '40000',
           classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
           dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} }),
       ]

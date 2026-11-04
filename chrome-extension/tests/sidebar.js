@@ -1077,7 +1077,7 @@
 // double-invocation test above; same minimal grid, real captured handlers.
 // ---------------------------------------------------------------------------
 (function issue275_menuToggleOnConnectedTableWritesRecord() {
-  function makeCell(text) { return withUnlinkedTextPiece({ nodeType: 1, textContent: text, children: [] }); }
+  function makeCell(text) { return withTextPiece({ nodeType: 1, textContent: text, children: [] }); }
   function makeRow(texts) { return { nodeType: 1, className: 'row', children: texts.map(makeCell) }; }
   const rows = [
     makeRow(['A', '100']), makeRow(['B', '200']), makeRow(['C', '300']),

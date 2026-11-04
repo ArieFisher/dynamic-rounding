@@ -1706,8 +1706,8 @@ const supTestOpts = {
     })()
   );
 
-  // Directly call _makeCellObj to get a cell object for our empty cell
-  const cellObj = adapter._makeCellObj(emptyCell);
+  // Directly call makeGridCellObj to get a cell object for our empty cell
+  const cellObj = makeGridCellObj(emptyCell, adapter.originalsPort);
 
   let threw = false;
   try {

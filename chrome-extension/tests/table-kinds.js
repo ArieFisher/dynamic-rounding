@@ -235,8 +235,8 @@ const TK_SETTINGS = [
 
 // The data test reads each cell through the rounding pass's per-cell read,
 // so a table passes only when a cell in it rounds. A number inside a link
-// inside words, a number split across text pieces, and a column whose
-// ambiguous dates no day above 12 settles round nowhere, so each table
+// inside words, a number split across text pieces, and a column of
+// ambiguous dates with no day above 12 each round nowhere, so each table
 // fails. A stacked cell, a linked number beside a plain number, and an
 // ambiguous date whose column holds a day above 12 each round, so each table
 // passes. Each case runs on both kinds.

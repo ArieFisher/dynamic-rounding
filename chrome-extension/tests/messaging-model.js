@@ -3765,7 +3765,7 @@ function issue328SettingsOf(table) {
 // Two reads serve it. (1) Adapter cells gain getDisplayedText(): the live
 // rendered text, never the originals port — on a rounded grid getText()
 // answers with the ORIGINAL (the engine's contract; see the port-preferring
-// read in GridAdapter._makeCellObj), so a capture reading getText() would
+// read in makeGridCellObj), so a capture reading getText() would
 // lie about the screen. (2) The registry stores a cell's original in two
 // shapes (grid: { value, pieces, ... }; native: { html, value, ... });
 // DR_STORE.getTableOriginalText() resolves the difference in one place and
@@ -3799,7 +3799,7 @@ function issue328SettingsOf(table) {
   const adapter = new GridAdapter({}, { originalsPort: makePort() });
 
   // Grid cell, unrounded: displayed text equals the engine's read.
-  const fresh = adapter._makeCellObj(makeGridCellEl('98,765'));
+  const fresh = makeGridCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
   eq('capture-reads: an unrounded grid cell\'s displayed text equals its engine text',
     typeof fresh.getDisplayedText === 'function'
       ? { displayed: fresh.getDisplayedText(), engine: fresh.getText() } : null,
@@ -3807,7 +3807,7 @@ function issue328SettingsOf(table) {
 
   // Grid cell, rounded: the engine's read answers with the original through
   // the port; the displayed read answers with what the screen shows now.
-  const rounded = adapter._makeCellObj(makeGridCellEl('98,765'));
+  const rounded = makeGridCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
   rounded.applyPatches([{ index: 0, numStr: '98,765', newNum: '99,000' }]);
   eq('capture-reads: a rounded grid cell keeps engine text = original, displayed text = live',
     typeof rounded.getDisplayedText === 'function'
@@ -3835,13 +3835,13 @@ function issue328SettingsOf(table) {
     textContent: wholeText,
   });
 
-  const numberThenUnit = adapter._makeCellObj(
-    makePiecedCellEl([textNode('1,234'), span('%')], '1,234%'));
+  const numberThenUnit = makeGridCellObj(
+    makePiecedCellEl([textNode('1,234'), span('%')], '1,234%'), adapter.originalsPort);
   eq('capture-reads: a grid cell of number-then-unit pieces displays the whole text',
     numberThenUnit.getDisplayedText(), '1,234%');
 
-  const unitThenNumber = adapter._makeCellObj(
-    makePiecedCellEl([span('$'), textNode('1,234')], '$1,234'));
+  const unitThenNumber = makeGridCellObj(
+    makePiecedCellEl([span('$'), textNode('1,234')], '$1,234'), adapter.originalsPort);
   eq('capture-reads: a grid cell of unit-then-number pieces displays the whole text',
     unitThenNumber.getDisplayedText(), '$1,234');
 })();
