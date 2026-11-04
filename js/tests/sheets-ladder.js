@@ -140,11 +140,14 @@ module.exports = function runSheetsLadder(h) {
         ['time text with seconds', '14:05:30'],
         ['a date and time', '2024-06-15T10:30:00'],
         ['a bare year typed as text', '2020'],
+        ['a code with a leading zero', '0012345678'],
     ];
     for (const [label, input] of unchanged) everyKind(`${label} "${input}" stays`, input, input);
     everyKind('a year inside text "Q3 2020" rounds', 'Q3 2020', 'Q3 2,000');
     everyKind('inside text, a phone number keeps its digits and the other number rounds',
         'Call 416-555-1234 about 1,613,245 units', 'Call 416-555-1234 about 1,500,000 units');
+    everyKind('inside text, a code with a leading zero keeps its digits and the other number rounds',
+        'Account 00012345 holds 1,613,245', 'Account 00012345 holds 1,500,000');
     for (const kind of RESULT_KINDS) {
         testArrayExact(`[${kind}] dataset mode: identifier shapes and date and time text in one range stay`,
             kinds[kind].ROUND_DYNAMIC([['416-555-1234', '2024-01-15', '9:30', '2020', 'Q3 2020']]),
@@ -166,8 +169,8 @@ module.exports = function runSheetsLadder(h) {
         testArrayExact(`[${kind}] max magnitude: a larger unit number puts a plain number outside the top band`,
             RD([[1600, '98,765 USD']], -0.5, 0, 1), [[2000, '100,000 USD']]);
         testArrayExact(`[${kind}] max magnitude: identifier shapes and date text add no number`,
-            RD([[160, '416-555-1234', '2024-01-15', '2020', '9:30', '192.168.0.1']], -0.5, 0, 1),
-            [[150, '416-555-1234', '2024-01-15', '2020', '9:30', '192.168.0.1']]);
+            RD([[160, '416-555-1234', '2024-01-15', '2020', '9:30', '192.168.0.1', '0012345678']], -0.5, 0, 1),
+            [[150, '416-555-1234', '2024-01-15', '2020', '9:30', '192.168.0.1', '0012345678']]);
         testArrayExact(`[${kind}] max magnitude: an empty cell, a boolean, and a date add no number`,
             RD([[160, '', true, date]], -0.5, 0, 1), [[150, '', true, date]]);
     }

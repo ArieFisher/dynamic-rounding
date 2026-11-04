@@ -180,12 +180,13 @@ function classifyCell(input, options) {
   }
 
   // An identifier shape (a phone number, an IP address, a web or email
-  // address, an ISBN, a postal code, or a digit run split by whitespace that
-  // is not thousands grouping) reads as a code, not a quantity, so the whole
-  // cell stays as written. Checked after the date and time checks above, so
-  // a date the date parser reads ("21 June 2020") stays a date, and before
-  // the bracketed-number check below, since a phone number's bracketed area
-  // code ("(416) 555-1234") is not that bracket's minus sign.
+  // address, an ISBN, a postal code, a digit run with a leading zero, or a
+  // digit run split by whitespace that is not thousands grouping) reads as a
+  // code, not a quantity, so the whole cell stays as written. Checked after
+  // the date and time checks above, so a date the date parser reads ("21
+  // June 2020") stays a date, and before the bracketed-number check below,
+  // since a phone number's bracketed area code ("(416) 555-1234") is not
+  // that bracket's minus sign.
   // matchIdentifierShape (lib/dr-number/identifiers.js) holds the one list of
   // shapes; this is the one place that reads it. digitsSpanPieces comes from
   // the caller's piece layout, so a stacked cell's join of several numbers

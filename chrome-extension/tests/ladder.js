@@ -207,10 +207,11 @@
 // --- Identifier shapes ---
 //
 // A cell whose whole text is an identifier shape (a phone number, an IP
-// address, a web or email address, an ISBN, a postal code, or digit groups
-// split by whitespace outside thousands grouping) stays as written, and so
-// does one with a currency sign, a sign, or brackets around it. The "still
-// rounds" rows pin the near misses each shape must leave alone.
+// address, a web or email address, an ISBN, a postal code, a digit run with
+// a leading zero, or digit groups split by whitespace outside thousands
+// grouping) stays as written, and so does one with a currency sign, a sign,
+// or brackets around it. The "still rounds" rows pin the near misses each
+// shape must leave alone.
 const IDENTIFIER_SHAPE_CELLS = [
   ['416 555 1234', 'phone-number'],
   ['+1 416 555 1234', 'phone-number'],
@@ -243,6 +244,15 @@ const IDENTIFIER_SHAPE_CELLS = [
   ['$978-0-306-40615-7', 'isbn'],
   ['(416-555-1234)', 'phone-number'],
   ['$192.168.0.1', 'ip-address'],
+  ['007', 'leading-zero'],
+  ['01234', 'leading-zero'],
+  ['02134', 'leading-zero'],
+  ['0012345678', 'leading-zero'],
+  ['-0123', 'leading-zero'],
+  ['+007', 'leading-zero'],
+  ['\u22120123', 'leading-zero'],
+  ['(0123)', 'leading-zero'],
+  ['$0123', 'leading-zero'],
 ];
 
 const IDENTIFIER_NEAR_MISSES = [
@@ -251,6 +261,7 @@ const IDENTIFIER_NEAR_MISSES = [
   '100-200', '192.5', '1.5', '90210', '1234567890', '9780306406157',
   '$1,613,245', '4.91tn', 'About 1,613,245 people',
   '$ 1234567890', '(1 234 567)', '$1 234 567', '-1 234 567',
+  '0', '0.5', '0.0625', '0123.45', '012,345', '-0.5',
 ];
 
 (function identifierShapes_matchTheWholeCell() {
@@ -295,6 +306,11 @@ const IDENTIFIER_SPAN_CELLS = [
   ['Ship to M5V 2T6, 1,506,220 parcels', ['1,506,220']],
   ['Ship to SW1A 1AA, 1,002,466 parcels', ['1,002,466']],
   ['Ship to 90210-1234, 440,193 parcels', ['440,193']],
+  ['Account 00012345 holds 1,613,245', ['1,613,245']],
+  ['Ref #007 for 918,554 units', ['918,554']],
+  ['Ship to 02134, 440,193 parcels', ['440,193']],
+  ['Part -0123 for 918,554 units', ['918,554']],
+  ['Employee ID 0000123, late again, owes 918,554', ['918,554']],
 ];
 
 const IDENTIFIER_SPAN_NEAR_MISSES = [
@@ -306,6 +322,8 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
   ['Range 100-200 of 1,613,245', ['100', '200', '1,613,245']],
   ['Zip 90210 has 93,662 people', ['90210', '93,662']],
   ['Host 192.168.0.1.5 served 12 requests', ['12']],
+  ['Sold 1,034,567 units at 0.5 each', ['1,034,567', '0.5']],
+  ['Price 0123.45 for 4,567 units', ['0123.45', '4,567']],
 ];
 
 (function identifierShapes_holdTheirDigitsInsideText() {
