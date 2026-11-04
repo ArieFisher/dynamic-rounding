@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Before: `ROUND_DYNAMIC("$ 4165 5512")` → `"$ 40,000,000"`
   After: `ROUND_DYNAMIC("$ 4165 5512")` → `"$ 4165 5512"`
 
+## [0.3.6] - 2026-11-04
+
 ## [0.3.5] - 2026-11-03
 
 ## [0.3.4] - 2026-10-28

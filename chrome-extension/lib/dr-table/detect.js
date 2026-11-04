@@ -11,8 +11,10 @@
  * The TableAdapter abstraction (NativeTableAdapter / GridAdapter, chosen by
  * makeAdapter) gives the engine a uniform row/cell interface over native
  * <table> elements and div-based virtual grids. Also holds the grid-shape
- * constants, the placement step (placeDecision), and the
- * structure-preserving cell-write helpers (applyExtractedPatches,
+ * constants, the placement step (placeDecision), the per-cell
+ * classification the pass, the lens preview, and the data test share
+ * (classifyTableCell),
+ * and the structure-preserving cell-write helpers (applyExtractedPatches,
  * restoreTextPieces, getSuperscriptRanges, link filtering). Loaded by
  * manifest content_scripts before content.js.
  *
@@ -26,10 +28,10 @@
  * match, write the dr-ext-grid marker (a style hook only, from here on) and
  * construct the widget.
  *
- * Every environment-sensitive read (computed style, offsetWidth, number
- * parsing, the vendor grid selectors, `document` itself) goes through a
- * small port with a working default, so the functions below run under a
- * plain Node/jsdom-less context with no Chrome globals and no `window`.
+ * Every environment-sensitive read (computed style, offsetWidth, the vendor
+ * grid selectors, `document` itself) goes through a small port with a
+ * working default, so the functions below run under a plain Node/jsdom-less
+ * context with no Chrome globals and no `window`.
  *
  * Every detection setting this file reads — the child-count floor, the walk-depth
  * cap, the column-width sample size and agreement threshold, the repetition
@@ -150,38 +152,6 @@ function isColumnFirst(children, styleProbe) {
   return boxes[1].top === boxes[0].top && boxes[1].left > boxes[0].left;
 }
 
-/**
- * NumericProbe: parses a cell's text to a number for the "does this look
- * numeric" checks in looksLikeGrid/isDataTable. This default is a
- * port of the predicate detection used before the lib/dr-table extraction:
- * strip currency signs, commas, percent signs and whitespace, then
- * parseFloat. The strip reads FORMAT_MARK_ALTERNATION (core.js), so the
- * probe admits exactly the currency signs CURRENCIES lists. It also strips
- * every comma, with no number shape test, because it tests only whether a
- * cell looks numeric: "1,234" and "13,63" both count. It deliberately does
- * NOT delegate to DR_NUMBER.toNumber — that parser's unicode-minus and
- * parenthesized-negative handling changes which tables are detected (dates,
- * times, and unit-suffixed cells lose their toggle; accounting negatives gain
- * one). A caller that wants DR_NUMBER-aware detection passes a custom probe
- * via opts.numericProbe.
- *
- * The strip is built on the first parse, not at load: this file reads no
- * core.js constant at load, so evaluating it alone fails first on the
- * detection settings (see the detection settings tests).
- */
-const DEFAULT_NUMERIC_PROBE = (() => {
-  let strip = null;
-  return {
-    parse(text) {
-      if (strip === null) strip = new RegExp('(?:' + FORMAT_MARK_ALTERNATION + '|,)', 'g');
-      const cleaned = String(text).trim().replace(strip, '');
-      if (cleaned === '') return null;
-      const parsed = parseFloat(cleaned);
-      return isFinite(parsed) ? parsed : null;
-    },
-  };
-})();
-
 // VendorProfiles: known third-party grid libraries. `classToken` short-
 // circuits looksLikeGrid's geometry probe; `scrollContainerSelectors` /
 // `pinnedPaneSelectors` resolve GridAdapter's scroll and pinned panes. A
@@ -190,6 +160,16 @@ const DEFAULT_NUMERIC_PROBE = (() => {
 // The read sits at the top level, so a missing DR_DETECTION_SETTINGS object fails at
 // load, before GridAdapter or looksLikeGrid runs.
 const GRID_VENDOR_PROFILES = DR_DETECTION_SETTINGS.vendorProfiles;
+
+// The settings the data test classifies a cell under: every option in the
+// settings contract (DR_DEFAULTS) whose name starts with "simplify", each one
+// on. The test reads no table's settings, so a table passes or fails the same
+// way whatever its switches hold, and a switch added to the contract reaches
+// the test with no edit here. The read sits below the DR_DETECTION_SETTINGS
+// read above, so this file evaluated with neither global fails on the
+// detection settings first.
+const DETECTION_OPTIONS = Object.freeze(Object.fromEntries(
+  Object.keys(DR_DEFAULTS).filter((key) => key.startsWith('simplify')).map((key) => [key, true])));
 
 // --- TableAdapter abstraction ---
 // Two adapter classes provide a uniform row/cell interface over both native
@@ -304,7 +284,7 @@ const GRID_ROUNDED_CLASS = 'dr-ext-rounded';
 /**
  * OriginalsPort: pluggable per-cell storage for a simplified cell's record,
  * which both adapters' cell objects read and write, following the same
- * port-with-a-working-default pattern as StyleProbe/NumericProbe above. The
+ * port-with-a-working-default pattern as StyleProbe above. The
  * default is a private WeakMap<cellEl, record> — correct for a standalone or
  * test caller with no application model to hand in. content.js's real call
  * sites inject a port backed by DR_STORE's per-table registry entry (see
@@ -348,6 +328,9 @@ function makeCellObj(cellEl, port, reads) {
   return {
     el: cellEl,
     tagName: reads.tagName,
+    // The cell's record through the originals port; null until the cell is
+    // simplified.
+    getRecord: recordOf,
     getText,
     getDisplayedText: reads.displayedText,
     // The cell's pieces as getText() saw them, for the placement step (see
@@ -494,6 +477,36 @@ function _ownDescendants(root, selector) {
   };
   return Array.from(root.querySelectorAll(selector))
     .filter((match) => !isInsideCell(match.parentElement || match.parentNode));
+}
+
+/**
+ * Build one grid cell's cell object (see makeCellObj). The grid adapter and
+ * the geometry probe's numeric step both build grid cells through it, so the
+ * two read a cell's text the same way. Every write patches text pieces
+ * through nodeValue — never textContent/innerHTML/appendChild/removeChild.
+ * @param {Element} cellEl
+ * @param {{has: Function, get: Function, set: Function}} port
+ * @returns {{getText(): string, getPieceLayout(): object|null,
+ *            applyPatches(patches: object[], opts?: {value?: string, linkFilteredIdx?: number[]|null, supRanges?: {start:number,end:number}[]|null}): number,
+ *            getDisplayedText(): string, getRecord(): object|null, el: Element, tagName: string}}
+ */
+function makeGridCellObj(cellEl, port) {
+  return makeCellObj(cellEl, port, {
+    // Grid cells are treated as data cells (no <th> concept).
+    tagName: 'TD',
+    // The cell's flat text, i.e. the join of its text pieces in page
+    // order, the coordinate space every patch position counts in. A cell
+    // with no text piece reads its textContent, which a page element holds
+    // empty in that case.
+    liveText() {
+      const pieces = collectTextPieces(cellEl);
+      if (pieces.length === 0) return cellEl.textContent || '';
+      return pieces.map((piece) => piece.nodeValue).join('');
+    },
+    // The cell's whole live text, never the originals port.
+    displayedText() { return cellEl.textContent || ''; },
+    rendered: false,
+  });
 }
 
 class GridAdapter {
@@ -681,33 +694,6 @@ class GridAdapter {
   }
 
   /**
-   * Build one grid cell's cell object (see makeCellObj). Every write patches
-   * text pieces through nodeValue — never textContent/innerHTML/appendChild/removeChild.
-   * @param {Element} cellEl
-   * @returns {{getText(): string, getPieceLayout(): object|null,
-   *            applyPatches(patches: object[], opts?: {value?: string, linkFilteredIdx?: number[]|null, supRanges?: {start:number,end:number}[]|null}): number,
-   *            getDisplayedText(): string, el: Element, tagName: string}}
-   */
-  _makeCellObj(cellEl) {
-    return makeCellObj(cellEl, this.originalsPort, {
-      // Grid cells are treated as data cells (no <th> concept).
-      tagName: 'TD',
-      // The cell's flat text, i.e. the join of its text pieces in page
-      // order, the coordinate space every patch position counts in. A cell
-      // with no text piece reads its textContent, which a page element holds
-      // empty in that case.
-      liveText() {
-        const pieces = collectTextPieces(cellEl);
-        if (pieces.length === 0) return cellEl.textContent || '';
-        return pieces.map((piece) => piece.nodeValue).join('');
-      },
-      // The cell's whole live text, never the originals port.
-      displayedText() { return cellEl.textContent || ''; },
-      rendered: false,
-    });
-  }
-
-  /**
    * Return stitched rows from the grid: pinned cells first, then scroll cells.
    * Each row exposes getCells() → array of cell objects.
    */
@@ -754,7 +740,7 @@ class GridAdapter {
       isOutside,
       getCells() {
         return rowCellEls[idx].map((cellEl, c) => Object.assign(
-          columnPlacement(plan[idx], c), adapter._makeCellObj(cellEl)));
+          columnPlacement(plan[idx], c), makeGridCellObj(cellEl, adapter.originalsPort)));
       },
     }));
   }
@@ -900,6 +886,93 @@ function filterLinkMatches(cell, matches) {
     const inAnchor = [...anchors].some(a => (a.innerText || a.textContent || '').includes(numStr));
     return !inAnchor;
   });
+}
+
+// classifyCell (lib/dr-simplify) applies every text-only filter to a mixed-
+// text cell's candidate matches (quote spans, superscript spans, era years)
+// but cannot filter out numbers embedded inside an <a> element itself — that
+// needs filterLinkMatches above, which walks real text nodes. Since every
+// one of these filters is an independent per-match predicate, running
+// this one after the ladder's own filters yields the same final set as
+// running all of them together (see lib/dr-simplify/ladder.js header). If
+// filtering empties the match list, the cell downgrades to skip.
+// staleFilteredIndices: when the caller is classifying a cell's *stored*
+// pre-round text (the record's value, read through the cell object's
+// getRecord) rather than the live cell, the live text no longer contains
+// the original numStr values, so filterLinkMatches' substring search
+// against live text nodes cannot locate them (and its fallback silently
+// keeps everything, dropping the link filter with no signal). The
+// simplification pass already ran filterLinkMatches once, against the live
+// text, at the moment it rounded the cell; the caller passes the surviving
+// match indices from that run here (see the registry record's
+// linkFilteredIdx, stored by the cell object's applyPatches) so the same
+// filter outcome applies instead of being silently skipped.
+function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
+  if (decision.mode !== 'extracted') return decision;
+  const filtered = staleFilteredIndices
+    ? decision.value.matches.filter((m) => staleFilteredIndices.has(m.index))
+    : filterLinkMatches(cell, decision.value.matches);
+  if (filtered.length === 0) return { mode: 'skip', reason: decision.reason };
+  return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
+}
+
+// Classify one cell: the ladder, then the placement step. isCellWholeLink
+// and the superscript ranges are DOM-only checks the pure ladder cannot
+// perform itself (see lib/dr-simplify/ladder.js header), so they pass in as
+// plain data. The step reads the page and writes nothing: the pass writes
+// the debug row for a split value (entry.placedReason) after classification.
+//
+// A simplified cell classifies its stored original rather than the rounded
+// text now showing, on either kind: the cell object's getText()
+// and getPieceLayout() answer from its record. The pass and the lens
+// preview read alike. Each read below measured against that text takes the
+// record's copy:
+//   superscriptRanges  the record's supRanges, because rounding shrinks or
+//                      grows the live text around the <sup>. A record with
+//                      none measures the live cell against the stored text.
+//   link filter        the record's linkFilteredIdx, the positions of the
+//                      numbers the link filter kept when the cell rounded,
+//                      because the filter's substring search cannot find
+//                      the original numbers in the rounded live text. A
+//                      record with none runs the live filter.
+// isWholeLink stays a live read: rounding patches text-node values and
+// never adds or removes an <a>, so the anchor text and the cell text move
+// together, and a whole-link cell never rounds in the first place.
+function classifyTableCell(cellObj, rowIndex, opts, ranges) {
+  const cell = cellObj.el;
+  const record = cellObj.getRecord();
+  const text = cellObj.getText();
+  const layout = cellObj.getPieceLayout();
+  const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
+  const superscriptRanges = hasSuperscript
+    ? ((record && record.supRanges) || getSuperscriptRanges(cell, { text }))
+    : [];
+  // A stacked cell's pieces each hold a number, and its joined text is not
+  // one spaced identifier (see matchIdentifierShape).
+  const digitsSpanPieces = !!layout && layout.original.filter((piece) => /\d/.test(piece)).length > 1;
+  const classified = classifyCell({
+    text,
+    rowIndex,
+    columnIndex: cellObj.columnIndex,
+    ranges,
+    isWholeLink: isCellWholeLink(cell),
+    hasSuperscript,
+    superscriptRanges,
+    digitsSpanPieces,
+  }, opts);
+  const placed = placeDecision(classified, text, layout, { hasSuperscript });
+  const keptIndices = (record && record.linkFilteredIdx) ? new Set(record.linkFilteredIdx) : null;
+  return {
+    cellObj,
+    text,
+    trimmed: typeof text === 'string' ? text.trim() : '',
+    info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, keptIndices)),
+    placedReason: placed.reason,
+    layout,
+    col: cellObj.columnIndex,
+    hasSuperscript,
+    superscriptRanges,
+  };
 }
 
 /**
@@ -1360,13 +1433,12 @@ function placeDecision(decision, text, layout, opts = {}) {
  *     GRID_VENDOR_PROFILES — "dg--" or "ag-")
  *
  * @param {Element} el
- * @param {{styleProbe?: object, numericProbe?: object, vendorProfiles?: object[]}} [opts]
+ * @param {{styleProbe?: object, originalsPort?: object, vendorProfiles?: object[]}} [opts]
  * @returns {boolean}
  */
 function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
-  const numericProbe = opts.numericProbe || DEFAULT_NUMERIC_PROBE;
   const vendorProfiles = opts.vendorProfiles || GRID_VENDOR_PROFILES;
 
   // --- Step 1: Child count ≥ DR_DETECTION_SETTINGS.gridMinChildren ---
@@ -1403,17 +1475,18 @@ function looksLikeGrid(el, opts = {}) {
   const display = (computedForDisplay && computedForDisplay.display) || '';
   if (!DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)) return false;
 
-  // --- Step 5: Numeric content — ≥ 1 cell parses as a finite number (mandatory) ---
-  let hasNumeric = false;
-  outer:
-  for (const row of candidateRows) {
-    for (const cell of Array.from(row.children)) {
-      const text = (cell.textContent || '').trim();
-      const parsed = text === '' ? null : numericProbe.parse(text);
-      if (parsed !== null && isFinite(parsed)) { hasNumeric = true; break outer; }
-    }
-  }
-  if (!hasNumeric) return false;
+  // --- Step 5: Numeric content — ≥ 1 cell the data test counts (see
+  // holdsRoundableCell) (mandatory) ---
+  // The cells are the candidate rows' children, each read as a grid cell
+  // and placed in the column of its position among its row's children.
+  const port = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
+  const probeRows = candidateRows.map((row) => ({
+    getCells() {
+      return Array.from(row.children).map((cellEl, c) =>
+        Object.assign({ columnIndex: c }, makeGridCellObj(cellEl, port)));
+    },
+  }));
+  if (!holdsRoundableCell(probeRows)) return false;
 
   // --- Short-circuit ACCEPT before geometry probe ---
   const role = el.getAttribute && el.getAttribute('role');
@@ -1475,7 +1548,7 @@ function looksLikeGrid(el, opts = {}) {
  * Returns null if nothing found.
  *
  * @param {Element} el
- * @param {{styleProbe?: object, numericProbe?: object, vendorProfiles?: object[], doc?: Document, isSeen?: (handle: Element) => boolean}} [opts]
+ * @param {{styleProbe?: object, vendorProfiles?: object[], doc?: Document, isSeen?: (handle: Element) => boolean}} [opts]
  * @returns {{handle: Element, isNew: boolean}|null}
  */
 function findTargetTable(el, opts = {}) {
@@ -1671,12 +1744,49 @@ function isPhantomA11yTable(table, opts = {}) {
 }
 
 /**
+ * Whether the rows hold a cell the extension can round: the cell read of the
+ * data test (isDataTable) and of the geometry probe's numeric step
+ * (looksLikeGrid). Each cell goes through classifyTableCell, the function
+ * the rounding pass calls for every cell, under DETECTION_OPTIONS (every
+ * switch on) and no range expression. A cell counts when its decision is not
+ * skip, so a whole-link cell, a cell holding only an identifier shape, a
+ * number inside a link, and a number split across text pieces add nothing.
+ *
+ * The walk spends one budget of DR_DETECTION_SETTINGS.dataTestCellBudget
+ * cell reads, counted across every row and cell in order; an empty cell
+ * counts as a read. It returns true at the first cell that counts. The walk
+ * holds each ambiguous date with its grid column, and once the rows end or
+ * the budget runs out, the column
+ * post-pass (resolveAmbiguousDates) reads them, so a pending date counts
+ * only when the post-pass resolves it to a reading. The post-pass reads the
+ * dates within the budget alone.
+ *
+ * @param {{getCells(): object[]}[]} rows - rows of cell objects, each
+ *   carrying its grid column (columnIndex)
+ * @returns {boolean}
+ */
+function holdsRoundableCell(rows) {
+  const pending = [];
+  let cellsRead = 0;
+  walk:
+  for (let i = 0; i < rows.length; i++) {
+    for (const cellObj of rows[i].getCells()) {
+      if (cellsRead >= DR_DETECTION_SETTINGS.dataTestCellBudget) break walk;
+      cellsRead++;
+      const { info, col } = classifyTableCell(cellObj, i, DETECTION_OPTIONS, null);
+      if (info.mode === 'date' && info.ambiguous) pending.push({ info, col });
+      else if (info.mode !== 'skip') return true;
+    }
+  }
+  return resolveAmbiguousDates(pending).some((entry) => entry.info.mode !== 'skip');
+}
+
+/**
  * @param {Element} table
- * @param {{numericProbe?: object, vendorProfiles?: object[]}} [opts]
+ * @param {{originalsPort?: object, vendorProfiles?: object[]}} [opts]
  * @returns {boolean}
  */
 function isDataTable(table, opts = {}) {
-  const numericProbe = opts.numericProbe || DEFAULT_NUMERIC_PROBE;
   const adapter = makeAdapter(table, opts);
   const rows = adapter.getRows();
   if (rows.length < 2) return false;
@@ -1688,24 +1798,7 @@ function isDataTable(table, opts = {}) {
     }
   }
   if (!hasMultipleColumns) return false;
-  // The scan spends one budget of DR_DETECTION_SETTINGS.dataTestCellBudget cell reads,
-  // counted across every row and cell in document order, on native tables
-  // and grids alike. An empty cell counts as a read. The scan returns true
-  // at the first cell that parses as a finite number, and returns false once
-  // it has spent the budget with no number found.
-  let cellsRead = 0;
-  for (let i = 0; i < rows.length; i++) {
-    const cells = rows[i].getCells();
-    for (let j = 0; j < cells.length; j++) {
-      if (cellsRead >= DR_DETECTION_SETTINGS.dataTestCellBudget) return false;
-      cellsRead++;
-      const text = cells[j].getText().trim();
-      if (text === '') continue;
-      const parsed = numericProbe.parse(text);
-      if (parsed !== null && isFinite(parsed)) return true;
-    }
-  }
-  return false;
+  return holdsRoundableCell(rows);
 }
 
 /**
@@ -2033,7 +2126,7 @@ function chainRootOf(el, opts = {}) {
  *   tableFilter?: (table: Element) => boolean,
  *   isSeen?: (handle: Element) => boolean,
  *   nestingDepth?: number, doc?: Document,
- *   styleProbe?: object, numericProbe?: object, vendorProfiles?: object[],
+ *   styleProbe?: object, vendorProfiles?: object[],
  * }} [opts]
  * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}}
  */
@@ -2098,7 +2191,7 @@ function nominateNest(chainRoot, opts = {}) {
  *   tableFilter?: (table: Element) => boolean,
  *   isSeen?: (handle: Element) => boolean,
  *   nestingDepth?: number, doc?: Document,
- *   styleProbe?: object, numericProbe?: object, vendorProfiles?: object[],
+ *   styleProbe?: object, vendorProfiles?: object[],
  * }} [opts]
  * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}[]}
  */
@@ -2144,7 +2237,7 @@ function nominateNests(root, opts = {}) {
  *   tableFilter?: (table: Element) => boolean,
  *   isSeen?: (handle: Element) => boolean,
  *   nestingDepth?: number, doc?: Document,
- *   styleProbe?: object, numericProbe?: object, vendorProfiles?: object[],
+ *   styleProbe?: object, vendorProfiles?: object[],
  * }} [opts]
  * @returns {{handle: Element, isNew: boolean}[]}
  */

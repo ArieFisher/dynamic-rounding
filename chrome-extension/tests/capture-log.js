@@ -38,13 +38,13 @@
   };
   const port = makePort();
   const adapter = new GridAdapter({}, { originalsPort: port });
-  if (typeof adapter._makeCellObj(makeElementNode('', [])).applyPatches !== 'function') {
+  if (typeof makeGridCellObj(makeElementNode('', []), adapter.originalsPort).applyPatches !== 'function') {
     eq('grid patch write: the grid cell object exposes applyPatches', false, true);
     return;
   }
 
   const el = makeGridCellWithTextNode('A 100 B 200');
-  const cellObj = adapter._makeCellObj(el);
+  const cellObj = makeGridCellObj(el, adapter.originalsPort);
   eq('grid patch write: the write returns its landed count',
     cellObj.applyPatches([
       { index: 2, numStr: '100', newNum: '90' },
@@ -60,7 +60,7 @@
   // keeps each piece's original, and records each piece's new written text.
   // A piece the later write leaves at its original goes back to it.
   const twoEl = makeElementNode('', [makeTextNode('100'), makeTextNode(' 200')]);
-  const two = adapter._makeCellObj(twoEl);
+  const two = makeGridCellObj(twoEl, adapter.originalsPort);
   two.applyPatches([{ index: 0, numStr: '100', newNum: '90' }]);
   two.applyPatches([{ index: 4, numStr: '200', newNum: '250' }]);
   eq('grid patch write: a later write records each piece\'s original and its new written text',

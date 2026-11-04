@@ -2950,12 +2950,11 @@ const LADDER_OPTS = {
       getExclusionReason('450 ' + code, 1, currencyOff, 1), 'currency');
   }
 
-  // The data test's numeric probe strips exactly the signs the reader strips.
-  // Before the collapse it carried its own shorter list, so a rupee cell read
-  // as a number for the reader and as text for the probe.
+  // The data test reads a cell through the number reader, so a table whose
+  // only number carries any sign the reader strips is a data table.
   for (const sign of CURRENCY_SIGNS) {
-    eq('currencies: the numeric probe reads "' + sign + '450" like the number reader does',
-      DEFAULT_NUMERIC_PROBE.parse(sign + '450'), 450);
+    eq('currencies: the data test passes a table whose only number is "' + sign + '450"',
+      isDataTable(makeIsDataTable([['Item', 'Price'], ['Box', sign + '450']])), true);
   }
 
   // The sign-only piece test admits every sign, so a cell that draws its sign
