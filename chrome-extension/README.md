@@ -63,7 +63,7 @@ A financial statement writes a negative as a bracket pair: "(1,234)" is −1,234
 
 ## Identifier shapes
 
-Some text names a thing instead of counting it. A cell whose whole text matches one of these shapes stays as written, on HTML tables and grids alike, whatever the sidebar's "words" setting holds:
+Some text names a thing instead of counting it. A cell whose whole text matches one of these shapes stays as written, on HTML tables and grids alike, whatever the sidebar's "words" setting holds. A currency sign, a percent sign, a sign, or brackets around the shape count as part of the cell, so "$ 4165 5512" and "(416-555-1234)" stay as written too:
 
 - A phone number with dashes, dots, spaces, or a bracketed area code: "416-555-1234", "416.555.1234", "416 555 1234", "+1 416 555 1234", "(416) 555-1234", "(416)555-1234", "1-800-555-0199".
 - Digit groups split by spaces outside thousands grouping: "4165 5512", "44 20 7946 0958". Thousands grouping (a first group of one to three digits, then groups of exactly three) reads as one number for every shape, so "1 234 567" and "1 234 567 890" round. A comma groups thousands in the same shape, and only before the decimal dot; see [Commas and decimal marks](#commas-and-decimal-marks). A stacked cell whose numbers sit in separate pieces of the markup ("1500" above "1600") rounds number by number, since its joined text is several numbers.

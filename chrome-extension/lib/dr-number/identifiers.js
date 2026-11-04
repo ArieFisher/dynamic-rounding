@@ -10,31 +10,42 @@
  * a phone number, an IP address, a web or email address, an ISBN, a postal
  * code, or digit groups split by whitespace outside thousands grouping.
  *
- * Each shape is one pattern read two ways. matchIdentifierShape tests a
- * cell's whole trimmed text, anchored with `^...$`; classifyCell
- * (lib/dr-simplify/ladder.js) skips the cell (reason: 'identifier') on a
- * match, before the bracketed-number check and after the date and time
- * checks, so a date the date parser reads ("21 June 2020") stays a date. A
- * text in thousands grouping ("1 234 567 890") is a quantity for every shape
- * and never matches. getIdentifierMaskedRanges finds the same shapes inside
- * a cell with words ("Call 416-555-1234 about 1,613,245 units"), and
- * extractSimplifyMatches drops every number inside one, so the identifier
- * stays as written and the other numbers round. Two differences inside text:
- * digit groups split by spaces alone never count there ("in 2024 12 stores"
- * holds two numbers), and an ISBN counts only after the word "ISBN".
+ * One check finds every code in a cell: findIdentifiers searches the cell's
+ * text once for every shape and records, for each code it finds, whether the
+ * code fills the cell. A code fills the cell when nothing stands around it
+ * but the format marks, signs, and brackets the pure number span steps past
+ * (PURE_LEAD_PATTERN and PURE_TRAIL_PATTERN in parsing.js), so "(416)
+ * 555-1234" and "$ 416-555-1234" fill their cells. A text in thousands
+ * grouping ("1 234 567 890") is a quantity, and no code fills it.
  *
- * Every repeat in every pattern matches each character one way only, and a
- * span inside text starts only where a shape can start, so every test runs
- * in time linear in the text's length.
+ * The ladder reads the one result two ways. matchIdentifierShape returns the
+ * name of a code that fills the cell, and classifyCell
+ * (lib/dr-simplify/ladder.js) skips that cell (reason: 'identifier'), after
+ * the date and time checks, so a date the date parser reads ("21 June 2020")
+ * stays a date, and before the bracketed-number check. getIdentifierMaskedRanges
+ * returns the codes that count inside a cell with words ("Call 416-555-1234
+ * about 1,613,245 units"), and extractSimplifyMatches drops every number
+ * inside one, so the code stays as written and the other numbers round.
  *
- * Each shape's pattern comes first; the list, which builds both readings of
- * each pattern, and its two lookups close the file.
+ * Some codes count only when they fill the cell, because inside a sentence
+ * the same characters are as likely to be several numbers: digit groups
+ * split by spaces alone ("in 2024 12 stores" holds two numbers), and an ISBN
+ * without the word "ISBN".
  *
- * Loaded by manifest content_scripts BEFORE lib/dr-number/index.js, which
- * reads every function here into DR_NUMBER as it loads. Nothing here reads
- * another file at load time, and ladder.js calls these functions only while
- * classifying a cell, after every content script has loaded. All symbols land
- * on the shared global scope, the same convention core.js and parsing.js use.
+ * Every repeat in every pattern matches each character one way only, a code
+ * inside text starts only where a shape can start, and every test of the
+ * text around a code is anchored at both ends, so every test runs in time
+ * linear in the text's length.
+ *
+ * Each shape's pattern comes first; the list, the one search, and its two
+ * readings close the file.
+ *
+ * Loaded by manifest content_scripts AFTER lib/dr-number/parsing.js, whose
+ * two patterns build the fill tests here at load time, and BEFORE
+ * lib/dr-number/index.js, which reads every function here into DR_NUMBER as
+ * it loads. The Sheets build joins the files in the same order. All symbols
+ * land on the shared global scope, the same convention core.js and
+ * parsing.js use.
  */
 
 // Where a shape inside text may start and end: not right after a letter, a
@@ -44,14 +55,17 @@
 // ("call 416-555-1234.") still ends it.
 const SPAN_START = '(?<![\\w.])';
 const SPAN_END = '(?![\\w]|\\.\\w)';
-// A span inside text made of digits, whitespace, and "+" alone is digit
-// groups split by spaces, which count only as a whole cell.
+// A code made of digits, whitespace, and "+" alone is digit groups split by
+// spaces, which count only when they fill the cell.
 const SPACED_DIGITS_ONLY_RE = /^[+\d\s]+$/;
 
-// The two readings of one pattern: anchored to a whole cell, and found
-// anywhere inside text between the span edges above.
-const wholeCellRe = (pattern, flags = '') => new RegExp(`^(?:${pattern})$`, flags);
+// A code found anywhere inside text between the edges above.
 const spanRe = (pattern, flags = '') => new RegExp(`${SPAN_START}(?:${pattern})${SPAN_END}`, `${flags}g`);
+// The text before and after a code that fills its cell, and a pattern that
+// fills the cell on its own.
+const CELL_LEAD_RE = new RegExp(`^${PURE_LEAD_PATTERN}$`);
+const CELL_TRAIL_RE = new RegExp(`^${PURE_TRAIL_PATTERN}$`);
+const fillingRe = (pattern, flags = '') => new RegExp(`^${PURE_LEAD_PATTERN}(?:${pattern})${PURE_TRAIL_PATTERN}$`, flags);
 
 // --- Phone numbers ---
 // Two written shapes: digits split by dashes, dots, or spaces in a 3-3-4
@@ -72,21 +86,12 @@ const PHONE_NUMBER_PATTERN = '\\+?(?:1[-.\\s]?)?\\d{3}[-.\\s]\\d{3}[-.\\s]\\d{4}
 // that grouping, alongside the plain ASCII space. Anything else with
 // whitespace between two digits — a first group over 3 digits, a later group
 // not exactly 3 — is not that shape, so it reads as an identifier instead of
-// a quantity. Whole-cell only: it has no span pattern.
-const GROUPED_DIGITS_GENERAL_RE = /^[+-]?\d+(?:\s+\d+)+(?:\.\d+)?$/;
-const GROUPED_DIGITS_QUANTITY_RE = /^[+-]?\d{1,3}(?:\s+\d{3})+(?:\.\d+)?$/;
-
-/**
- * True when trimmed is a whole cell of digit groups split by whitespace
- * ("4165 5512", "44 20 7946 0958") with its digits in one text piece.
- * matchIdentifierShape has already turned away the thousands-grouping shape
- * ("1 234 567", "12 345.67"), which keeps rounding as a pure cell. A grid's
- * stacked cell ("1500" above "1600") joins its pieces with whitespace, and
- * that join is several numbers, not one spaced identifier.
- */
-function isGroupedDigitIdentifier(trimmed, digitsSpanPieces) {
-  return !digitsSpanPieces && GROUPED_DIGITS_GENERAL_RE.test(trimmed);
-}
+// a quantity. It counts only when it fills the cell, and only when the
+// cell's digits sit in one text piece: a grid's stacked cell ("1500" above
+// "1600") joins its pieces with whitespace, and that join is several
+// numbers, not one spaced identifier.
+const GROUPED_DIGITS_RE = fillingRe('\\d+(?:\\s+\\d+)+(?:\\.\\d+)?');
+const GROUPED_DIGITS_QUANTITY_RE = fillingRe('\\d{1,3}(?:\\s+\\d{3})+(?:\\.\\d+)?');
 
 // --- IP addresses ---
 // IPv4: four dot-separated groups, each 0-255. "192.5" and "1.5" are two
@@ -136,22 +141,13 @@ const WEB_OR_EMAIL_PATTERN = `${WEB_PATTERN}|(?<!\\S)(?:${EMAIL_PATTERN})`;
 // imprint) without hardcoding one. Without the "ISBN" word the digits must
 // carry a dash or a space, the way an ISBN is printed: a bare 10- or
 // 13-digit run ("1234567890") is a quantity written without thousands
-// commas, and keeps rounding. Inside text the word is required.
+// commas, and keeps rounding. An ISBN with the word counts anywhere; one
+// without it counts only when it fills the cell.
 // The colon takes the whitespace before it, so a run of whitespace after the
 // word has one way to match.
 const ISBN_PREFIX_PATTERN = 'isbn(?:-1[03])?(?:\\s*:)?\\s*';
 const ISBN_BODY_PATTERN = '97[89](?:[- ]?\\d){10}|\\d(?:[- ]?\\d){8}[- ]?[\\dX]';
-const ISBN_RE = wholeCellRe(`(${ISBN_PREFIX_PATTERN})?(?:${ISBN_BODY_PATTERN})`, 'i');
-
-/**
- * True when trimmed is a whole cell holding an ISBN-10 or ISBN-13: with the
- * leading "ISBN" word and any separators, or without the word and with at
- * least one dash or space between its digits.
- */
-function isIsbnShape(trimmed) {
-  const match = ISBN_RE.exec(trimmed);
-  return match !== null && (match[1] !== undefined || /[- ]/.test(trimmed));
-}
+const ISBN_WITHOUT_WORD_RE = fillingRe(`(${ISBN_BODY_PATTERN})`, 'i');
 
 // --- Postal codes ---
 // Canadian (letter-digit-letter, digit-letter-digit: "M5V 2T6"), UK (one or
@@ -165,58 +161,75 @@ const POSTAL_CODE_PATTERN = [
   '\\d{5}-\\d{4}',
 ].join('|');
 
-// The one list of identifier shapes. Each entry holds the shape's name and
-// its whole-cell test — a pattern anchored to the whole cell, or a function
-// for a shape with a rule beyond its pattern — and its span pattern for text
-// with words, or null when the shape counts only as a whole cell.
-// matchIdentifierShape and getIdentifierMaskedRanges read it alone —
-// classifyCell and extractSimplifyMatches hold no separate copy, and a new
-// shape is one more entry here. A test function takes the trimmed text and
-// whether the cell's digits span several text pieces. Phone numbers come
-// before grouped digits so "416 555 1234" takes the phone name.
+// The one list of identifier shapes. Each entry holds the shape's name, its
+// pattern for a code anywhere in the text, and, for a shape with a form that
+// counts only when it fills the cell, a test of the whole text for that form.
+// The test takes the text and whether the cell's digits span several text
+// pieces. findIdentifiers reads the list alone, and a new shape is one more
+// entry here. Phone numbers come before grouped digits so "416 555 1234"
+// takes the phone name.
 const IDENTIFIER_SHAPES = [
-  { name: 'phone-number', whole: wholeCellRe(PHONE_NUMBER_PATTERN), span: spanRe(PHONE_NUMBER_PATTERN) },
-  { name: 'grouped-digits', whole: isGroupedDigitIdentifier, span: null },
-  { name: 'ip-address', whole: wholeCellRe(IP_ADDRESS_PATTERN), span: spanRe(IP_ADDRESS_PATTERN) },
-  { name: 'web-or-email-address', whole: wholeCellRe(WEB_OR_EMAIL_PATTERN, 'i'), span: spanRe(WEB_OR_EMAIL_PATTERN, 'i') },
-  { name: 'isbn', whole: isIsbnShape, span: spanRe(`${ISBN_PREFIX_PATTERN}(?:${ISBN_BODY_PATTERN})`, 'i') },
-  { name: 'postal-code', whole: wholeCellRe(POSTAL_CODE_PATTERN), span: spanRe(POSTAL_CODE_PATTERN) },
+  { name: 'phone-number', span: spanRe(PHONE_NUMBER_PATTERN) },
+  { name: 'grouped-digits', fillsOnly: (text, digitsSpanPieces) => !digitsSpanPieces && GROUPED_DIGITS_RE.test(text) },
+  { name: 'ip-address', span: spanRe(IP_ADDRESS_PATTERN) },
+  { name: 'web-or-email-address', span: spanRe(WEB_OR_EMAIL_PATTERN, 'i') },
+  {
+    name: 'isbn',
+    span: spanRe(`${ISBN_PREFIX_PATTERN}(?:${ISBN_BODY_PATTERN})`, 'i'),
+    fillsOnly: (text) => /[- ]/.test((ISBN_WITHOUT_WORD_RE.exec(text) || [])[1] || ''),
+  },
+  { name: 'postal-code', span: spanRe(POSTAL_CODE_PATTERN) },
 ];
 
 /**
- * The name of the identifier shape trimmed's whole text matches, or null. A
- * text in thousands grouping is a quantity and matches no shape, so a ten- or
- * thirteen-digit value written "1 234 567 890" never reads as an ISBN.
- * @param {string} trimmed - already-trimmed cell text
+ * Every code in text, in list order: its shape's name, its {start, end} in
+ * the flat-text positions extractNumbersInText reports, whether it fills the
+ * cell, and whether it counts inside a cell with words. Codes from different
+ * shapes may overlap.
+ * @param {string} text
+ * @param {boolean} [digitsSpanPieces] - true when the cell's digits sit in
+ *   more than one text piece
+ * @returns {{name: string, start: number, end: number, fillsCell: boolean, inText: boolean}[]}
+ */
+function findIdentifiers(text, digitsSpanPieces = false) {
+  if (typeof text !== 'string') return [];
+  const quantity = GROUPED_DIGITS_QUANTITY_RE.test(text);
+  const codes = [];
+  for (const shape of IDENTIFIER_SHAPES) {
+    for (const match of shape.span ? text.matchAll(shape.span) : []) {
+      const start = match.index;
+      const end = start + match[0].length;
+      const fillsCell = !quantity
+        && CELL_LEAD_RE.test(text.slice(0, start)) && CELL_TRAIL_RE.test(text.slice(end));
+      codes.push({ name: shape.name, start, end, fillsCell, inText: !SPACED_DIGITS_ONLY_RE.test(match[0]) });
+    }
+    if (shape.fillsOnly && !quantity && shape.fillsOnly(text, digitsSpanPieces)) {
+      codes.push({ name: shape.name, start: 0, end: text.length, fillsCell: true, inText: false });
+    }
+  }
+  return codes;
+}
+
+/**
+ * The name of the first code that fills the cell, or null. A text in
+ * thousands grouping is a quantity, so a ten- or thirteen-digit value
+ * written "1 234 567 890" never reads as an ISBN.
+ * @param {string} text - cell text
  * @param {boolean} [digitsSpanPieces] - true when the cell's digits sit in
  *   more than one text piece
  * @returns {string|null}
  */
-function matchIdentifierShape(trimmed, digitsSpanPieces = false) {
-  if (GROUPED_DIGITS_QUANTITY_RE.test(trimmed)) return null;
-  const shape = IDENTIFIER_SHAPES.find((s) => (typeof s.whole === 'function'
-    ? s.whole(trimmed, digitsSpanPieces)
-    : s.whole.test(trimmed)));
-  return shape ? shape.name : null;
+function matchIdentifierShape(text, digitsSpanPieces = false) {
+  const code = findIdentifiers(text, digitsSpanPieces).find((c) => c.fillsCell);
+  return code ? code.name : null;
 }
 
 /**
- * The {start, end} ranges of every identifier shape inside text, in the same
- * flat-text positions extractNumbersInText reports. Ranges from different
- * shapes may overlap; extractSimplifyMatches drops a number that touches
- * any.
+ * The {start, end} ranges of every code that counts inside a cell with
+ * words. extractSimplifyMatches drops a number that touches any.
  * @param {string} text
  * @returns {{start: number, end: number}[]}
  */
 function getIdentifierMaskedRanges(text) {
-  if (typeof text !== 'string') return [];
-  const ranges = [];
-  for (const shape of IDENTIFIER_SHAPES) {
-    if (!shape.span) continue;
-    for (const match of text.matchAll(shape.span)) {
-      if (SPACED_DIGITS_ONLY_RE.test(match[0])) continue;
-      ranges.push({ start: match.index, end: match.index + match[0].length });
-    }
-  }
-  return ranges;
+  return findIdentifiers(text).filter((c) => c.inText).map(({ start, end }) => ({ start, end }));
 }

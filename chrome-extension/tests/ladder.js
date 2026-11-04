@@ -208,8 +208,9 @@
 //
 // A cell whose whole text is an identifier shape (a phone number, an IP
 // address, a web or email address, an ISBN, a postal code, or digit groups
-// split by whitespace outside thousands grouping) stays as written. The
-// "still rounds" rows pin the near misses each shape must leave alone.
+// split by whitespace outside thousands grouping) stays as written, and so
+// does one with a currency sign, a sign, or brackets around it. The "still
+// rounds" rows pin the near misses each shape must leave alone.
 const IDENTIFIER_SHAPE_CELLS = [
   ['416 555 1234', 'phone-number'],
   ['+1 416 555 1234', 'phone-number'],
@@ -237,6 +238,11 @@ const IDENTIFIER_SHAPE_CELLS = [
   ['SW1A 1AA', 'postal-code'],
   ['M1 1AE', 'postal-code'],
   ['90210-1234', 'postal-code'],
+  ['$ 4165 5512', 'grouped-digits'],
+  ['(978 0 306 40615 7)', 'grouped-digits'],
+  ['$978-0-306-40615-7', 'isbn'],
+  ['(416-555-1234)', 'phone-number'],
+  ['$192.168.0.1', 'ip-address'],
 ];
 
 const IDENTIFIER_NEAR_MISSES = [
@@ -244,6 +250,7 @@ const IDENTIFIER_NEAR_MISSES = [
   '1 234 567 890', '9 780 306 406 157',
   '100-200', '192.5', '1.5', '90210', '1234567890', '9780306406157',
   '$1,613,245', '4.91tn', 'About 1,613,245 people',
+  '$ 1234567890', '(1 234 567)', '$1 234 567', '-1 234 567',
 ];
 
 (function identifierShapes_matchTheWholeCell() {
