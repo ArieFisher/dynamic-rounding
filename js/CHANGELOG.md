@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A code with a currency sign or brackets around it stays as written**: a phone number, an ISBN, or another identifier shape that fills the cell apart from a currency sign, a percent sign, a sign, or brackets stays, as it already did inside text.
+  Before: `ROUND_DYNAMIC("$ 4165 5512")` → `"$ 40,000,000"`
+  After: `ROUND_DYNAMIC("$ 4165 5512")` → `"$ 4165 5512"`
+
 ## [0.3.5] - 2026-11-03
 
 ## [0.3.4] - 2026-10-28
