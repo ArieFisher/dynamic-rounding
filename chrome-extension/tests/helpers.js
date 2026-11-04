@@ -9,10 +9,18 @@
 // step reads a native cell's text pieces, so a mock cell with no text node
 // would hold no piece for a value to sit in.
 function withTextPiece(cell) {
+  withUnlinkedTextPiece(cell);
+  cell.childNodes[0].parentNode = cell;
+  cell.childNodes[0].parentElement = cell;
+  return cell;
+}
+
+// The same text piece with no link back to the cell, for a mock cell a test
+// compares through eq: eq compares through JSON.stringify, which throws on a
+// cycle.
+function withUnlinkedTextPiece(cell) {
   cell.childNodes = [{
     nodeType: 3,
-    parentNode: cell,
-    parentElement: cell,
     get nodeValue() { return cell.textContent; },
     set nodeValue(v) { cell.textContent = v; cell.innerText = v; },
   }];
@@ -207,7 +215,7 @@ function withLinkCreateTreeWalker(fn) {
  * @param {Object} [extra] — additional properties to merge onto the table stub
  */
 function makeToggleTableCell(s) {
-  return {
+  const cell = {
     tagName: s.tag.toUpperCase(),
     innerText: s.text,
     textContent: s.text,
@@ -223,6 +231,7 @@ function makeToggleTableCell(s) {
     querySelectorAll: () => [],
     removeAttribute() {},
   };
+  return withUnlinkedTextPiece(cell);
 }
 
 /**
@@ -356,7 +365,7 @@ function makeMockButton() {
 function makeIsDataTable(rowsSpec) {
   return {
     rows: rowsSpec.map(rowTexts => ({
-      cells: rowTexts.map(text => ({ textContent: text }))
+      cells: rowTexts.map(text => withTextPiece({ textContent: text }))
     }))
   };
 }
@@ -637,12 +646,12 @@ function makeExtractedCell(segments) {
  * @param {number} [width=100] — offsetWidth of the cell (for column-0 width probe)
  */
 function makeGridCell(text, width) {
-  return {
+  return withUnlinkedTextPiece({
     textContent: text,
     offsetWidth: (width === undefined ? 100 : width),
     children: [],
     nodeType: 1,
-  };
+  });
 }
 
 /**
@@ -881,7 +890,7 @@ function makeNativeTableEl(rowsSpec) {
   const el = {
     tagName: 'TABLE',
     rows: rowsSpec.map(rowSpec => ({
-      cells: rowSpec.map(s => ({
+      cells: rowSpec.map(s => withUnlinkedTextPiece({
         tagName: (s.tag || 'td').toUpperCase(),
         innerText: s.text,
         textContent: s.text,
@@ -1471,21 +1480,21 @@ function makePass1DataTable(opts) {
   const style  = opts.style  || {};
   const rows = [
     { cells: [
-        { tagName: 'TD', innerText: '10000', textContent: '10000', innerHTML: '10000',
+        withUnlinkedTextPiece({ tagName: 'TD', innerText: '10000', textContent: '10000', innerHTML: '10000',
           classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
-          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
-        { tagName: 'TD', innerText: '20000', textContent: '20000', innerHTML: '20000',
+          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} }),
+        withUnlinkedTextPiece({ tagName: 'TD', innerText: '20000', textContent: '20000', innerHTML: '20000',
           classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
-          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
+          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} }),
       ]
     },
     { cells: [
-        { tagName: 'TD', innerText: '30000', textContent: '30000', innerHTML: '30000',
+        withUnlinkedTextPiece({ tagName: 'TD', innerText: '30000', textContent: '30000', innerHTML: '30000',
           classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
-          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
-        { tagName: 'TD', innerText: '40000', textContent: '40000', innerHTML: '40000',
+          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} }),
+        withUnlinkedTextPiece({ tagName: 'TD', innerText: '40000', textContent: '40000', innerHTML: '40000',
           classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
-          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} },
+          dataset: {}, title: '', querySelectorAll: ()=>[], removeAttribute(){} }),
       ]
     },
   ];
@@ -1613,14 +1622,13 @@ function makeAriaGrid(embeddedTables) {
 
   // Build two rows × two numeric cells so isDataTable returns true.
   function makeGridCell(text) {
-    return {
+    return withTextPiece({
       tagName: 'DIV',
       textContent: text,
       dataset: {},
       classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
       querySelectorAll() { return []; },
-      childNodes: [],
-    };
+    });
   }
   function makeGridRow(texts) {
     const cellEls = texts.map(makeGridCell);

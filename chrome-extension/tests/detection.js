@@ -256,13 +256,13 @@
 })();
 
 (function dataTest_aWholeLinkCellFails() {
-  const linkCell = {
+  const linkCell = withTextPiece({
     textContent: '42', innerText: '42',
     querySelectorAll: (sel) => (sel === 'a' ? [{ innerText: '42' }] : []),
-  };
+  });
   const table = { rows: [
-    { cells: [{ textContent: 'Name' }, { textContent: 'Page' }] },
-    { cells: [{ textContent: 'Tami' }, linkCell] },
+    { cells: [withTextPiece({ textContent: 'Name' }), withTextPiece({ textContent: 'Page' })] },
+    { cells: [withTextPiece({ textContent: 'Tami' }), linkCell] },
   ] };
   eq('data test: a table whose only number is a whole-link cell fails',
     isDataTable(table), false);
@@ -293,7 +293,7 @@
   const makeEl = (texts) => ({
     className: '',
     getAttribute: (name) => (name === 'role' ? 'grid' : null),
-    children: texts.map((text) => ({ className: 'row', children: [{ textContent: 'Tami' }, { textContent: text }] })),
+    children: texts.map((text) => ({ className: 'row', children: [withTextPiece({ textContent: 'Tami' }), withTextPiece({ textContent: text })] })),
   });
   const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
   eq('geometry probe: rows whose only number sits after words pass the numeric step',
@@ -2536,8 +2536,8 @@ const detectionSandboxCode = [
   const fakeTable = {
     tagName: 'TABLE',
     rows: [
-      { cells: [{ textContent: 'Name' }, { textContent: '100' }] },
-      { cells: [{ textContent: 'Foo' },  { textContent: '200' }] },
+      { cells: [withTextPiece({ textContent: 'Name' }), withTextPiece({ textContent: '100' })] },
+      { cells: [withTextPiece({ textContent: 'Foo' }),  withTextPiece({ textContent: '200' })] },
     ],
   };
   const fakeDoc = {
@@ -2638,7 +2638,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
       outcomes.settingsKeys = Object.keys(DR_DETECTION_SETTINGS).sort();
       outcomes.settings = DR_DETECTION_SETTINGS;
 
-      function makeCell(text, width) { return { textContent: text, offsetWidth: width }; }
+      function makeCell(text, width) { return { textContent: text, offsetWidth: width, childNodes: [{ nodeType: 3, nodeValue: text }] }; }
       function makeRow(cls, cells) { return { className: cls, children: cells }; }
       function makeEl(rows) { return { className: '', children: rows, getAttribute: () => null }; }
       const gridStyleProbe = {
@@ -2728,8 +2728,8 @@ const PRE_MOVE_DETECTION_SETTINGS = {
       outcomes.isDataTableStillFindsANumericTable = isDataTable({
         tagName: 'TABLE',
         rows: [
-          { cells: [{ textContent: 'Name' }, { textContent: '100' }] },
-          { cells: [{ textContent: 'Foo' },  { textContent: '200' }] },
+          { cells: [makeCell('Name'), makeCell('100')] },
+          { cells: [makeCell('Foo'),  makeCell('200')] },
         ],
       });
     } catch (e) {
@@ -4143,7 +4143,7 @@ function cnAdapterCellEls(tableEl) {
 // numeric cells would otherwise pass the data test under D6.
 (function hiddenCells_accessibilityArtifactStaysExcluded() {
   function hiddenNumericCell(rawText) {
-    return { tagName: 'TD', innerText: '', textContent: rawText };
+    return withTextPiece({ tagName: 'TD', innerText: '', textContent: rawText });
   }
   const artifactTable = makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
   artifactTable.rows = [

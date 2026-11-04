@@ -2691,11 +2691,12 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 (function doubleInvocation_contextmenuAndMenuClicked_noDuplicateWidget() {
   // A minimal div-based "grid" using the same ARIA-free, querySelectorAll-less
-  // fallback shape GridAdapter already supports (repetitive children): no
-  // real Text nodes, so GridAdapter's applyPatches() finds nothing to patch and
-  // safely no-ops. This fixture only needs to prove marker/widget bookkeeping,
-  // not actual cell rewriting (covered elsewhere).
-  function makeCell(text) { return { nodeType: 1, textContent: text, children: [] }; }
+  // fallback shape GridAdapter already supports (repetitive children). Each
+  // cell holds one text piece, the way a page element holds its text, so the
+  // data test reads it. The values sit on their own step, so a pass writes
+  // nothing. This fixture only needs to prove marker/widget bookkeeping, not
+  // actual cell rewriting (covered elsewhere).
+  function makeCell(text) { return withUnlinkedTextPiece({ nodeType: 1, textContent: text, children: [] }); }
   function makeRow(texts) { return { nodeType: 1, className: 'row', children: texts.map(makeCell) }; }
   const rows = [
     makeRow(['A', '100']), makeRow(['B', '200']), makeRow(['C', '300']),
