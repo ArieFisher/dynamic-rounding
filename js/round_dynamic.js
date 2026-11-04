@@ -154,8 +154,8 @@ function trimNum(n) {
 // The one currency list. Each row gives a currency's written signs and its
 // ISO code, and every currency rule in the extension reads this list: the
 // signs stripped before a text reads as a number, the signs a unit number
-// may carry, the placement step's sign-only piece test, the currency
-// exclusion, and the data test's numeric probe. Nothing restates it.
+// may carry, the placement step's sign-only piece test, and the currency
+// exclusion. Nothing restates it.
 //
 // A sign counts exactly as written, and the longest sign wins, so "EC$"
 // reads as one sign rather than a letter pair beside a dollar sign. A code
@@ -221,8 +221,8 @@ const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 // signs come from CURRENCIES above, so a new row reaches this list too.
 // Every rule that steps past a mark to reach a number reads this one source:
 // the clean-up before a text reads as a number, the test for what stands
-// between a bracket and the number, the pure number span, and the data
-// test's numeric probe (lib/dr-number/parsing.js, lib/dr-table/detect.js).
+// between a bracket and the number, and the pure number span
+// (lib/dr-number/parsing.js).
 // A bracket is not a format mark: it is the number's minus sign, and adding
 // it here would strip it before PARENS_REGEX below could read it.
 const FORMAT_MARK_ALTERNATION = '(?:' + CURRENCY_SIGN_ALTERNATION + '|[\\s%])';
@@ -1864,7 +1864,7 @@ const SHEETS_LADDER_OPTIONS = Object.freeze({
  * [MODE 1] single value: =ROUND_DYNAMIC(value, [offset])
  * [MODE 2] dataset: =ROUND_DYNAMIC(range, [offset_top], [offset_other], [num_top])
  * [INSTRUCTIONS] HTTPS://github.com/ArieFisher/dynamic-rounding
- * [VERSION] 0.3.5
+ * [VERSION] 0.3.6
  *
  * @param {number|Array} values The value or range of values to round.
  * @param {number} offset_top The OoM offset for the single value, or, the numbers in the largest order of magnitude of a dataset (default -0.5).

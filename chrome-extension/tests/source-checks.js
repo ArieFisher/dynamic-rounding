@@ -1679,6 +1679,7 @@
     'getSuperscriptRanges',
     'isCellWholeLink',
     'filterLinkMatches',
+    'classifyTableCell',
     'collectTextPieces',
     'mapRenderedToFlat',
     'applyExtractedPatches',
@@ -2060,8 +2061,8 @@
 
 // ---------------------------------------------------------------------------
 // Static purity scan.
-// The simplification engine (roundTable, the one simplification pass —
-// simplifyTableCells, classifyTableCell, cellPatches — and
+// The simplification engine in content.js (roundTable, the one
+// simplification pass — simplifyTableCells, cellPatches — and
 // reapplyRounding) must never call chrome.* directly — it returns result
 // values instead, and the controller sends the messages. Mirrors the
 // detectionFunctions_sourceScan_noPageWrites pattern above.
@@ -2072,7 +2073,7 @@
     eq('engine purity scan: source file content.js present in manifest', false, true);
     return;
   }
-  const ENGINE_FNS = ['roundTable', 'simplifyTableCells', 'classifyTableCell', 'cellPatches', 'reapplyRounding'];
+  const ENGINE_FNS = ['roundTable', 'simplifyTableCells', 'cellPatches', 'reapplyRounding'];
 
   // Extract a top-level `function name(` body by brace-matching from the
   // opening brace to its balanced close (same approach as the detection

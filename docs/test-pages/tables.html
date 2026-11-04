@@ -1166,7 +1166,7 @@
       covers native tables and ARIA roots only, so this grid stays undiscovered
       until a right-click walks up from the clicked cell: five or more repetitive
       children, consistent cell counts, a grid or flex display, at least one
-      numeric cell, and aligned first-column widths make it a grid. The walk
+      cell the data test counts, and aligned first-column widths make it a grid. The walk
       keeps climbing while the parent also qualifies and returns the outermost
       match, so the pillbox lands on the whole grid, not the clicked row.
     -->
@@ -4057,6 +4057,61 @@ TSLA,75,"248.09","18,606.75"
         </div>
       </div>
     </div>
+  </section>
+
+  <section>
+    <h2>34. Tables whose only digits sit among words</h2>
+    <p>Four tables, each with a Name column and a Note column. The notes hold
+      every digit in each table. In 34a each note holds a number after words.
+      In 34b each note holds a phone number and nothing else. In 34c each note
+      holds a number inside a link, with words around it. In 34d each note
+      holds a number whose digits sit in two text pieces with nothing between
+      them, one of them bold or wrapped in its own element.</p>
+    <p class="expect">Expect: a pillbox at load on 34a. No pillbox on 34b, 34c,
+      or 34d; a failure shows a pillbox at that table's top-right corner.</p>
+
+    <h3>34a. A number after words</h3>
+    <table>
+      <tr><th>Name</th><th>Note</th></tr>
+      <tr><td>Tami</td><td>I am 68.5 years old</td></tr>
+      <tr><td>Oren</td><td>Seen 3:44 PM (37 minutes ago)</td></tr>
+    </table>
+
+    <h3>34b. A phone number alone</h3>
+    <table>
+      <tr><th>Name</th><th>Note</th></tr>
+      <tr><td>Tami</td><td>416-555-1234</td></tr>
+      <tr><td>Oren</td><td>(647) 555-0198</td></tr>
+    </table>
+
+    <h3>34c. A number inside a link inside words</h3>
+    <table>
+      <tr><th>Name</th><th>Note</th></tr>
+      <tr><td>Tami</td><td>See <a href="#">page 42</a> of the report</td></tr>
+      <tr><td>Oren</td><td>Listed on <a href="#">page 7</a></td></tr>
+    </table>
+
+    <h3>34d. A number split across text pieces</h3>
+    <table>
+      <tr><th>Name</th><th>Note</th></tr>
+      <tr><td>Tami</td><td>Paid 1<b>23</b> times</td></tr>
+      <tr><td>Oren</td><td>Rated 4.<span>91</span> stars</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>35. A column of ambiguous dates</h2>
+    <p>A table with a Name column and a Joined column. Every date reads two
+      ways, day first or month first, and no day in the column is above 12.
+      The dates hold every digit in the table.</p>
+    <p class="expect">Expect: no pillbox; a failure shows a pillbox at the
+      table's top-right corner.</p>
+    <table>
+      <tr><th>Name</th><th>Joined</th></tr>
+      <tr><td>Tami</td><td>03/04/2020</td></tr>
+      <tr><td>Oren</td><td>05/06/2021</td></tr>
+      <tr><td>Ruth</td><td>11/12/2019</td></tr>
+    </table>
   </section>
 
 </body>

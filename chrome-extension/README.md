@@ -46,7 +46,7 @@ A unit number is a cell whose whole text is one number with a magnitude suffix a
 
 - The suffixes are k, m, b, t, bn, and tn, in any case, directly after the number or after one space.
 - A currency code counts only in upper case and only as its own word, so "CADENCE" and "usd" do not. A currency sign written in letters takes the same rule on whichever end carries the letter, so the rand's "R" counts in "R45" and not in "Revenue". A sign written as a picture counts wherever it sits.
-- Every currency the extension reads — its signs and its code together — is listed once, in `lib/dr-number/core.js`. Reading a cell as a number, the currency exclusion, the sign-only piece test, the data test's numeric probe, and the number span, which leaves the sign out of what the write-back replaces, all read that one list. The magnitude suffixes are listed once, in `lib/dr-number/parsing.js`.
+- Every currency the extension reads — its signs and its code together — is listed once, in `lib/dr-number/core.js`. Reading a cell as a number, the currency exclusion, the sign-only piece test, and the number span, which leaves the sign out of what the write-back replaces, all read that one list. The magnitude suffixes are listed once, in `lib/dr-number/parsing.js`.
 - With the currency setting off, a cell holding a listed code stays unchanged, the same as a cell holding "$".
 - A unit number counts as its shown digits in the max magnitude: "4.91tn" counts as 4.91.
 - Letters that are neither a suffix nor a listed code make the cell something else: "DT1234" and "cust15" are identifiers and never round as unit numbers.
@@ -135,7 +135,7 @@ Row discovery uses a grid's row groups (`role="rowgroup"`, the ARIA analog of `<
 
 A row outside every row group is an outside row. It rounds like any other row, and its values join the dataset like any other row's. Every row feeds the max magnitude and the lens preview, header, body, and total alike, on a native table and a grid. The shape fingerprint reads the outside-row mark to find a grid's header row.
 
-On virtualized grids, the max magnitude freezes when simplification is first applied (the magnitude freeze); a native table computes it again on every pass. The data test spends one budget of 1000 cell reads, in document order, stopping at the first number; the budget applies on native tables and grids alike.
+On virtualized grids, the max magnitude freezes when simplification is first applied (the magnitude freeze); a native table computes it again on every pass. The data test spends one budget of 1000 cell reads, in document order, stopping at the first cell holding a value the extension can round. Each cell goes through the per-cell read the rounding pass runs — the classification ladder, the placement step, and the link filter — with every switch on and no range expression, and counts when its mode is anything but skip, so a number inside a link or split across text pieces adds nothing. An ambiguous date counts only when the column post-pass settles its column's format hint as month-first or day-first, over the dates within the budget. The budget applies on native tables and grids alike, the geometry probe's numeric step spends the same budget, and the test reads no table settings.
 
 On a native table, the data test and rounding share one cell read: the cell's rendered text, falling back to its raw text when the rendered text is empty. A hidden cell rounds like any other cell, and its raw text counts toward the test; a hidden fragment inside a visible cell — the hidden sort key above — stays out, because that cell's rendered text is not empty and the fallback never runs.
 
@@ -164,7 +164,7 @@ A `display: grid` / `flex` container is not necessarily a *data* grid — it mig
    - ≥ N repetitive children sharing a class or child-shape (rejects ad-hoc layouts);
    - a consistent modal cell count across rows;
    - `display: grid`/`flex` (necessary, never sufficient on its own);
-   - **at least one cell that parses as a finite number** — the decisive filter: nav menus, card grids, and galleries have no numeric cells and are rejected here;
+   - **at least one cell the data test counts** (a value the extension can round) — the decisive filter: nav menus, card grids, and galleries hold no such cell and are rejected here;
    - alignment of the sampled first cells unless short-circuited by an ARIA role or library class. The direction read (`isColumnFirst`) first reads which way the children run, from the boxes of the first two children that draw a box: the same top with a larger left makes a column-first grid, and anything else, including too few boxes, makes a row-first grid. On a row-first grid the first cells of the rows must share a width; on a column-first grid the first cells of the columns must share a height. The grid adapter calls the same read and turns a column-first grid's children into rows, so row r holds the r-th item of every column.
 
 Even past detection, rounding only writes cells the classification ladder admits: cells whose text parses as a number, unit numbers, stacked cells, date cells (on by default, simplified to the year), time cells (opt-in), and — on native tables — mixed-text cells where a number sits inside surrounding words. A non-numeric layout grid contains none of these, so it produces no changes regardless.
