@@ -703,43 +703,12 @@ function resetTable(table) {
   DR_STORE.setTableAppliedFlag(table, unrestorableCount > 0 ? 'simplified' : 'original');
 }
 
-// --- Shared adapters between the classification ladder (lib/dr-simplify)
-// and this file's DOM-touching call sites ---
-
-// classifyCell (lib/dr-simplify) applies every text-only filter to a mixed-
-// text cell's candidate matches (quote spans, superscript spans, era years)
-// but cannot filter out numbers embedded inside an <a> element itself — that
-// needs lib/dr-table's filterLinkMatches, which walks real text nodes. Since
-// every one of these filters is an independent per-match predicate, running
-// this one after the ladder's own filters yields the same final set as
-// running all of them together (see lib/dr-simplify/ladder.js header). If
-// filtering empties the match list, the cell downgrades to skip.
-// staleFilteredIndices: when the caller is classifying a cell's *stored*
-// pre-round text (the registry record's value — see DR_STORE.getTableOriginal)
-// rather than the live cell, the live text no longer contains the original
-// numStr values, so filterLinkMatches' substring search against live text
-// nodes cannot locate them (and its fallback silently keeps everything,
-// dropping the link filter with no signal). The simplification pass already
-// ran filterLinkMatches once, against the live text, at the moment it
-// rounded the cell; the caller passes the surviving match indices from that
-// run here (see the registry record's linkFilteredIdx, stored by the cell
-// object's applyPatches) so the same filter outcome applies instead of being
-// silently skipped.
-function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
-  if (decision.mode !== 'extracted') return decision;
-  const filtered = staleFilteredIndices
-    ? decision.value.matches.filter((m) => staleFilteredIndices.has(m.index))
-    : filterLinkMatches(cell, decision.value.matches);
-  if (filtered.length === 0) return { mode: 'skip', reason: decision.reason };
-  return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
-}
-
 // --- Lens preview sample extraction (read by the sidebar over request:previewSamples) ---
 
 // The lens preview's classified cells: every cell of the table's dataset,
 // classified through the classification step the one simplification pass
-// runs (classifyTableCells below), on the kind the pass picks. The step reads
-// each simplified cell's stored original (see classifyTableCell) and writes
+// runs (classifyTableCells below). The step reads each simplified cell's
+// stored original (see classifyTableCell in lib/dr-table) and writes
 // nothing. Every row counts, header, body, and total alike.
 //
 // options defaults to DR_DEFAULTS when the caller passes none (tests exercise
@@ -754,8 +723,7 @@ function classifyPreviewCells(table, options) {
   // of falling back to "whole table".
   if (rangeParse.error) return [];
   const adapter = registryAdapter(table);
-  return classifyTableCells(table, tableDataCells(adapter.getRows()), opts, rangeParse.ranges,
-    tableKindPass(adapter));
+  return classifyTableCells(tableDataCells(adapter.getRows()), opts, rangeParse.ranges);
 }
 
 // The lens preview's sample pool: each number the table rounds in its
@@ -912,8 +880,9 @@ function buildCaptureStateResponse() {
 //              the original text back into each piece that still shows
 //              written text and drops the record, so the cell holds only the
 //              page's text, and the pass then treats it as fresh.
-// The pass then classifies every cell through the classification ladder
-// (lib/dr-simplify) and the placement step (placeDecision in lib/dr-table).
+// The pass then classifies every cell through classifyTableCell in
+// lib/dr-table: the classification ladder (lib/dr-simplify), the placement
+// step (placeDecision), and the link filter.
 // The table step (tablePatches in lib/dr-simplify/table.js) then resolves
 // ambiguous dates per column, finds the max magnitude over the dataset, and
 // builds each cell's patches. The pass drops a changed date or time that
@@ -1028,65 +997,6 @@ function resolveRoundingSettings(opts) {
   };
 }
 
-// Classify one cell: the ladder, then the placement step. isCellWholeLink
-// and the superscript ranges are DOM-only checks the pure ladder cannot
-// perform itself (see lib/dr-simplify/ladder.js header), so they pass in as
-// plain data. The step reads the page and writes nothing: the pass writes
-// the debug row for a split value (entry.isSplit) after classification.
-//
-// A simplified cell classifies its stored original rather than the rounded
-// text now showing, on either kind: the cell object's getText()
-// and getPieceLayout() answer from its record. The pass and the lens
-// preview read alike. Each read below measured against that text takes the
-// record's copy:
-//   superscriptRanges  the record's supRanges, because rounding shrinks or
-//                      grows the live text around the <sup>. A record with
-//                      none measures the live cell against the stored text.
-//   link filter        the record's linkFilteredIdx, the positions of the
-//                      numbers the link filter kept when the cell rounded,
-//                      because the filter's substring search cannot find
-//                      the original numbers in the rounded live text. A
-//                      record with none runs the live filter.
-// isWholeLink stays a live read: rounding patches text-node values and
-// never adds or removes an <a>, so the anchor text and the cell text move
-// together, and a whole-link cell never rounds in the first place.
-function classifyTableCell(table, cellObj, rowIndex, opts, ranges, kind) {
-  const cell = cellObj.el;
-  const record = DR_STORE.getTableOriginal(table, cell) || null;
-  const text = cellObj.getText();
-  const layout = cellObj.getPieceLayout();
-  const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-  const superscriptRanges = hasSuperscript
-    ? ((record && record.supRanges) || getSuperscriptRanges(cell, { text }))
-    : [];
-  // A stacked cell's pieces each hold a number, and its joined text is not
-  // one spaced identifier (see matchIdentifierShape).
-  const digitsSpanPieces = !!layout && layout.original.filter((piece) => /\d/.test(piece)).length > 1;
-  const classified = classifyCell({
-    text,
-    rowIndex,
-    columnIndex: cellObj.columnIndex,
-    ranges,
-    isWholeLink: isCellWholeLink(cell),
-    hasSuperscript,
-    superscriptRanges,
-    digitsSpanPieces,
-  }, opts);
-  const placed = placeDecision(classified, text, layout, { hasSuperscript });
-  const keptIndices = (record && record.linkFilteredIdx) ? new Set(record.linkFilteredIdx) : null;
-  return {
-    cellObj,
-    text,
-    trimmed: typeof text === 'string' ? text.trim() : '',
-    info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, keptIndices)),
-    isSplit: kind.splitReasons.includes(placed.reason),
-    layout,
-    col: cellObj.columnIndex,
-    hasSuperscript,
-    superscriptRanges,
-  };
-}
-
 // Every cell of every row, in page order, with its row index. A header
 // cell is a cell like any other: the first-row and first-column exclusions
 // govern it by position, whatever tag the page gave it, so a header row of
@@ -1108,11 +1018,12 @@ function tableDataCells(adapterRows) {
   return cells;
 }
 
-// Classify every cell of every row, in page order (see tableDataCells). The
-// lens preview runs this step alone: no sort and no writes.
-function classifyTableCells(table, dataCells, opts, ranges, kind) {
+// Classify every cell of every row, in page order (see tableDataCells),
+// through classifyTableCell (lib/dr-table). The lens preview runs this step
+// alone: no sort and no writes.
+function classifyTableCells(dataCells, opts, ranges) {
   return dataCells.map(({ cellObj, rowIndex }) =>
-    classifyTableCell(table, cellObj, rowIndex, opts, ranges, kind));
+    classifyTableCell(cellObj, rowIndex, opts, ranges));
 }
 
 // The pass's sort (see the section header): release every rewritten cell,
@@ -1125,7 +1036,7 @@ function releaseRewrittenCells(table, dataCells, kind) {
 }
 
 // The kind the one simplification pass runs on a table, from its adapter.
-// roundTable and the lens preview both pick through it.
+// roundTable, the re-apply pass, and the restore all call it.
 function tableKindPass(adapter) {
   return adapter.isVirtualized() ? GRID_TABLE_PASS : NATIVE_TABLE_PASS;
 }
@@ -1175,9 +1086,9 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
     return Object.assign({}, none, { cellCount: dataCells.length, overCap: true });
   }
   if (writes !== 'none') releaseRewrittenCells(table, dataCells, kind);
-  const classified = classifyTableCells(table, dataCells, opts, rangeParse.ranges, kind);
+  const classified = classifyTableCells(dataCells, opts, rangeParse.ranges);
   for (const entry of classified) {
-    if (entry.isSplit) DR_LOG.debug(kind.splitRow);
+    if (kind.splitReasons.includes(entry.placedReason)) DR_LOG.debug(kind.splitRow);
   }
   const settings = Object.assign(resolveRoundingSettings(opts),
     { dateGranularity: opts.dateGranularity, timeGranularity: opts.timeGranularity });
