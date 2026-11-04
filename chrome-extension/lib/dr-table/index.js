@@ -20,6 +20,7 @@ const DR_TABLE = {
   getSuperscriptRanges,
   isCellWholeLink,
   filterLinkMatches,
+  classifyTableCell,
   collectTextPieces,
   mapRenderedToFlat,
   applyExtractedPatches,

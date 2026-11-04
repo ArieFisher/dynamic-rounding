@@ -11,8 +11,9 @@
  * The TableAdapter abstraction (NativeTableAdapter / GridAdapter, chosen by
  * makeAdapter) gives the engine a uniform row/cell interface over native
  * <table> elements and div-based virtual grids. Also holds the grid-shape
- * constants, the placement step (placeDecision), and the
- * structure-preserving cell-write helpers (applyExtractedPatches,
+ * constants, the placement step (placeDecision), the per-cell
+ * classification the pass and the lens preview share (classifyTableCell),
+ * and the structure-preserving cell-write helpers (applyExtractedPatches,
  * restoreTextPieces, getSuperscriptRanges, link filtering). Loaded by
  * manifest content_scripts before content.js.
  *
@@ -348,6 +349,9 @@ function makeCellObj(cellEl, port, reads) {
   return {
     el: cellEl,
     tagName: reads.tagName,
+    // The cell's record through the originals port; null until the cell is
+    // simplified.
+    getRecord: recordOf,
     getText,
     getDisplayedText: reads.displayedText,
     // The cell's pieces as getText() saw them, for the placement step (see
@@ -900,6 +904,93 @@ function filterLinkMatches(cell, matches) {
     const inAnchor = [...anchors].some(a => (a.innerText || a.textContent || '').includes(numStr));
     return !inAnchor;
   });
+}
+
+// classifyCell (lib/dr-simplify) applies every text-only filter to a mixed-
+// text cell's candidate matches (quote spans, superscript spans, era years)
+// but cannot filter out numbers embedded inside an <a> element itself — that
+// needs filterLinkMatches above, which walks real text nodes. Since every
+// one of these filters is an independent per-match predicate, running
+// this one after the ladder's own filters yields the same final set as
+// running all of them together (see lib/dr-simplify/ladder.js header). If
+// filtering empties the match list, the cell downgrades to skip.
+// staleFilteredIndices: when the caller is classifying a cell's *stored*
+// pre-round text (the record's value, read through the cell object's
+// getRecord) rather than the live cell, the live text no longer contains
+// the original numStr values, so filterLinkMatches' substring search
+// against live text nodes cannot locate them (and its fallback silently
+// keeps everything, dropping the link filter with no signal). The
+// simplification pass already ran filterLinkMatches once, against the live
+// text, at the moment it rounded the cell; the caller passes the surviving
+// match indices from that run here (see the registry record's
+// linkFilteredIdx, stored by the cell object's applyPatches) so the same
+// filter outcome applies instead of being silently skipped.
+function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
+  if (decision.mode !== 'extracted') return decision;
+  const filtered = staleFilteredIndices
+    ? decision.value.matches.filter((m) => staleFilteredIndices.has(m.index))
+    : filterLinkMatches(cell, decision.value.matches);
+  if (filtered.length === 0) return { mode: 'skip', reason: decision.reason };
+  return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
+}
+
+// Classify one cell: the ladder, then the placement step. isCellWholeLink
+// and the superscript ranges are DOM-only checks the pure ladder cannot
+// perform itself (see lib/dr-simplify/ladder.js header), so they pass in as
+// plain data. The step reads the page and writes nothing: the pass writes
+// the debug row for a split value (entry.placedReason) after classification.
+//
+// A simplified cell classifies its stored original rather than the rounded
+// text now showing, on either kind: the cell object's getText()
+// and getPieceLayout() answer from its record. The pass and the lens
+// preview read alike. Each read below measured against that text takes the
+// record's copy:
+//   superscriptRanges  the record's supRanges, because rounding shrinks or
+//                      grows the live text around the <sup>. A record with
+//                      none measures the live cell against the stored text.
+//   link filter        the record's linkFilteredIdx, the positions of the
+//                      numbers the link filter kept when the cell rounded,
+//                      because the filter's substring search cannot find
+//                      the original numbers in the rounded live text. A
+//                      record with none runs the live filter.
+// isWholeLink stays a live read: rounding patches text-node values and
+// never adds or removes an <a>, so the anchor text and the cell text move
+// together, and a whole-link cell never rounds in the first place.
+function classifyTableCell(cellObj, rowIndex, opts, ranges) {
+  const cell = cellObj.el;
+  const record = cellObj.getRecord();
+  const text = cellObj.getText();
+  const layout = cellObj.getPieceLayout();
+  const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
+  const superscriptRanges = hasSuperscript
+    ? ((record && record.supRanges) || getSuperscriptRanges(cell, { text }))
+    : [];
+  // A stacked cell's pieces each hold a number, and its joined text is not
+  // one spaced identifier (see matchIdentifierShape).
+  const digitsSpanPieces = !!layout && layout.original.filter((piece) => /\d/.test(piece)).length > 1;
+  const classified = classifyCell({
+    text,
+    rowIndex,
+    columnIndex: cellObj.columnIndex,
+    ranges,
+    isWholeLink: isCellWholeLink(cell),
+    hasSuperscript,
+    superscriptRanges,
+    digitsSpanPieces,
+  }, opts);
+  const placed = placeDecision(classified, text, layout, { hasSuperscript });
+  const keptIndices = (record && record.linkFilteredIdx) ? new Set(record.linkFilteredIdx) : null;
+  return {
+    cellObj,
+    text,
+    trimmed: typeof text === 'string' ? text.trim() : '',
+    info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, keptIndices)),
+    placedReason: placed.reason,
+    layout,
+    col: cellObj.columnIndex,
+    hasSuperscript,
+    superscriptRanges,
+  };
 }
 
 /**
