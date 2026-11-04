@@ -2948,11 +2948,11 @@ const LADDER_OPTS = {
       getExclusionReason('450 ' + code, 1, currencyOff, 1), 'currency');
   }
 
-  // The data test reads a cell through the number reader, so every sign the
-  // reader strips counts toward it.
+  // The data test reads a cell through the number reader, so a table whose
+  // only number carries any sign the reader strips is a data table.
   for (const sign of CURRENCY_SIGNS) {
-    eq('currencies: the data test counts "' + sign + '450" as a value the extension can round',
-      DEFAULT_CELL_PROBE.rounds(sign + '450', { textContent: sign + '450' }), true);
+    eq('currencies: the data test passes a table whose only number is "' + sign + '450"',
+      isDataTable(makeIsDataTable([['Item', 'Price'], ['Box', sign + '450']])), true);
   }
 
   // The sign-only piece test admits every sign, so a cell that draws its sign

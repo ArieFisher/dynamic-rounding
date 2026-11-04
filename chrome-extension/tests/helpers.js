@@ -867,20 +867,6 @@ function makeCountingStyleProbe() {
   return probe;
 }
 
-// A counting stand-in for the data test's cell probe. It answers through the
-// detection layer's default probe and records every read, so a test can
-// state how many cells one resolution read.
-function makeCountingCellProbe() {
-  const probe = {
-    calls: 0,
-    rounds(text, cellEl) {
-      probe.calls++;
-      return DEFAULT_CELL_PROBE.rounds(text, cellEl);
-    },
-  };
-  return probe;
-}
-
 // Helper: build a minimal native-table stub that NativeTableAdapter can wrap.
 // el.rows is an array of row objects with .cells arrays of cell objects.
 // Each cell has .innerText, .textContent, .tagName, .classList, .dataset,

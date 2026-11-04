@@ -1202,41 +1202,36 @@ const supTestOpts = {
 // --- AC4: a registered table resolves at the registry route ---
 //
 // The proof goes through the ports the resolver takes, not through the
-// source text: opts.cellProbe counts the data-test reads the nomination
-// step would spend, so a zero count shows the step spent none, and
-// opts.isSeen records the elements the resolver asked the registry about.
-// The last pair of assertions runs the same click with nothing registered,
-// so the zero count above stands for "the step spent no read" rather than
-// "the probe is inert".
+// source text: opts.isSeen records the elements the resolver asked the
+// registry about, and isNew reports which route resolved the click. The
+// registry route reports isNew false; the nomination step reports isNew
+// true. The last pair of assertions runs the same click with nothing
+// registered, so the isNew false above stands for the registry route rather
+// than for a resolver that never reports a new table.
 
 (function rightClickRegisters_AC4_aRegisteredTableResolvesAtTheRegistryRoute() {
   const grid = makeDatabaseQueryGrid();
   const cell = grid.scrollRowEls[3].children[1];
 
   const asked = [];
-  const registryProbe = makeCountingCellProbe();
   const result = findTargetTable(cell, {
     isSeen: (el) => { asked.push(el); return el === grid.scrollPaneEl; },
-    cellProbe: registryProbe,
   });
 
   eq('findTargetTable AC4: a click inside a registered scrolling pane resolves it',
     result !== null && result.handle === grid.scrollPaneEl, true);
   eq('findTargetTable AC4: the registry route reports isNew false',
     result !== null && result.isNew, false);
-  eq('findTargetTable AC4: the registry route spends no data-test read',
-    registryProbe.calls, 0);
   eq('findTargetTable AC4: the registry walk stops at the scrolling pane',
     asked.length > 0 && asked[asked.length - 1] === grid.scrollPaneEl, true);
   eq('findTargetTable AC4: no step asks the registry about the wrapper',
     asked.includes(grid.wrapperEl), false);
 
-  const freshProbe = makeCountingCellProbe();
-  const freshResult = findTargetTable(cell, { isSeen: () => false, cellProbe: freshProbe });
+  const freshResult = findTargetTable(cell, { isSeen: () => false });
   eq('findTargetTable AC4: the same click with nothing registered reaches the nomination step',
     freshResult !== null && freshResult.handle === grid.scrollPaneEl, true);
-  eq('findTargetTable AC4: and that resolution does spend data-test reads',
-    freshProbe.calls > 0, true);
+  eq('findTargetTable AC4: and that resolution reports isNew true',
+    freshResult !== null && freshResult.isNew, true);
 })();
 
 // --- Edge: a crowded depth falls back outward on a right-click ---
@@ -2510,13 +2505,14 @@ const supTestOpts = {
 })();
 
 // The detection layer and the files it reads, in manifest order:
-// constants.js for DR_DETECTION_SETTINGS, the number library for the cell
-// read, and the classification ladder, which the data test's cell probe
-// runs. Each is framework-free, so the sandboxes below carry no browser
-// dependency.
+// constants.js for DR_DETECTION_SETTINGS and the settings contract, the
+// number library for the cell read, and the classification ladder and the
+// table step, which the data test runs through the rounding pass's per-cell
+// read (classifyTableCell) and the column post-pass. Each is framework-free,
+// so the sandboxes below carry no browser dependency.
 const detectionSandboxCode = [
   constantsCode, coreCode, parsingCode, sourceByName('lib/dr-number/identifiers.js'),
-  detectCode, ladderCode,
+  detectCode, ladderCode, sourceByName('lib/dr-simplify/table.js'),
 ].join('\n');
 
 // jsdom-less criterion: detect.js is evaluated with the files it reads —

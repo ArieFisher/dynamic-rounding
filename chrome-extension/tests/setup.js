@@ -154,7 +154,6 @@ globalThis.CURRENCIES = CURRENCIES;
 globalThis.CURRENCY_SIGNS = CURRENCY_SIGNS;
 globalThis.CURRENCY_CODES = CURRENCY_CODES;
 globalThis.CLEAN_REGEX = CLEAN_REGEX;
-globalThis.DEFAULT_CELL_PROBE = DEFAULT_CELL_PROBE;
 globalThis.eraYearDigitRanges = eraYearDigitRanges;
 globalThis.clockTimeRanges = clockTimeRanges;
 globalThis.formatStep = formatStep;
