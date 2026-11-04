@@ -2256,7 +2256,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // GR6a: the grid read is the cell's flat text: every text piece, joined in
 // page order, however deep the pieces sit.
 (function gr6a_gridRead_isTheFlatText() {
-  const readOf = (cell) => new GridAdapter({})._makeCellObj(cell).getText();
+  const readOf = (cell) => makeGridCellObj(cell, new GridAdapter({}).originalsPort).getText();
   eq('GR6a: a piece inside nested elements is read',
     readOf(makeElementNode('cell', [makeElementNode('inner', [makeTextNode('42')])])), '42');
   eq('GR6a: a cell with no text piece reads as empty',
@@ -2340,13 +2340,13 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const port = makePort();
   const adapter = new GridAdapter({}, { originalsPort: port });
 
-  const withNode = adapter._makeCellObj(makeGridCellWithTextNode('8584629'));
+  const withNode = makeGridCellObj(makeGridCellWithTextNode('8584629'), adapter.originalsPort);
   eq('grid-honesty: applyPatches returns a landed count when the write lands',
     withNode.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }]), 1);
 
   const bareEl = makeElementNode('', []);
   bareEl.textContent = '8584629';
-  const bare = adapter._makeCellObj(bareEl);
+  const bare = makeGridCellObj(bareEl, adapter.originalsPort);
   eq('grid-honesty: applyPatches returns zero when the cell has no text piece',
     bare.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }]), 0);
   eq('grid-honesty: a skipped write adds no marker and no record',
