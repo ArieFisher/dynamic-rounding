@@ -103,13 +103,14 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 - `"2024-01-15"` → `"2024-01-15"` (dates and times stay)
 - `"416-555-1234"` → `"416-555-1234"` (an identifier shape stays)
 - `"Call 416-555-1234 about 1,613,245 units"` → `"Call 416-555-1234 about 1,500,000 units"` (inside text, the identifier shape keeps its digits)
+- `"0012345678"` → `"0012345678"` (a digit run with a leading zero is an identifier shape)
 - `"Doors at 11:45, 1,613,245 seats"` → `"Doors at 11:45, 1,500,000 seats"` (inside text, a clock time keeps its digits)
 - `"13,63"` → `"13,63"` (a comma counts only in the group shape, so a European decimal comma is not read)
 - `"1.234,56"` → `"1.234,56"` (a comma after the decimal dot is not read)
 
 **Currency signs:** Every sign and code in the currency list (`CURRENCIES` in [`lib/dr-number/core.js`](../chrome-extension/lib/dr-number/core.js)), letter signs included. A sign written in letters counts only as its own token, so the rand's "R" counts in "R47" and not in "Revenue". A currency code beside a number makes a unit number, so "CAD45.67" and "1,234 USD" round.
 
-**Identifier shapes:** A phone number, an IP address, a web or email address, an ISBN, a postal code, and digit groups split by spaces outside thousands grouping stay as written.
+**Identifier shapes:** A phone number, an IP address, a web or email address, an ISBN, a postal code, a digit run with a leading zero ("02134"), and digit groups split by spaces outside thousands grouping stay as written.
 
 **Result kind:** A text cell that holds one number returns text: a pure cell such as `"$1,011"` or `"12.5%"`, and a bracketed number such as `"(1,234)"`. The sign the user typed stays, as it does in the Chrome extension. A text result stays text in every cell format: `ISNUMBER` returns FALSE, and `SUM` over a range and charts skip it. The `+` operator and `VALUE` read `"$10,000"` when the sign matches the sheet's locale and return `#VALUE!` when it does not. To get a number back, enter the value as a number. The constant `RESULT_KIND` in the Sheets library holds this choice. Its other value, `'number'`, returns the rounded value (1000, 15, -1000) and drops the sign. A cell with words or a unit number returns text under both values.
 

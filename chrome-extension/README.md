@@ -71,6 +71,7 @@ Some text names a thing instead of counting it. A cell whose whole text matches 
 - A web or email address: "https://example.com/item/123", "www.example.com/p/12", "sales@example.com".
 - An ISBN: "ISBN 978-0-306-40615-7", "978-0-306-40615-7". Without the word "ISBN" the digits must carry a dash or a space, so a bare "1234567890" still rounds.
 - A postal code: Canadian "M5V 2T6", UK "SW1A 1AA", US nine-digit "90210-1234". A bare five-digit "90210" reads as a count; the range expression is the way to leave such a column out.
+- A digit run with a leading zero: "007", "02134", "0012345678". A quantity is not written with a leading zero, and an account number or a code often is. "0", "0.5" and "0.0625" still round, since a decimal mark follows their zero, and so do "0123.45" and "012,345".
 
 Inside a cell with words, a shape keeps its digits and every other number in the cell rounds: "Call 416-555-1234 about 1,613,245 units" becomes "Call 416-555-1234 about 1,500,000 units". Two shapes count only as a whole cell. Digit groups split by spaces alone never match inside text, since "in 2024 12 stores opened" holds two numbers side by side; "Call 416 555 1234" still rounds its three numbers, while "Call 416 555-1234" keeps them. An ISBN inside text needs the word "ISBN" before it.
 
