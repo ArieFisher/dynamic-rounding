@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-11-04
+
 ### Changed
 
 - **A code with a currency sign or brackets around it stays as written**: a phone number, an ISBN, or another identifier shape that fills the cell apart from a currency sign, a percent sign, a sign, or brackets stays, as it already did inside text.
