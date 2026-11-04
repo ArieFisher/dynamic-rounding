@@ -187,7 +187,7 @@ Write them as human-authored. No "Generated with" footer, no `Co-Authored-By` ag
 
 Split the test plan into two named sections. `## Tested` lists what the session ran, with results inline and no checkboxes. `## Manual tests` lists what a human must still do, as unchecked boxes. Never one mixed checklist.
 
-A Product section leads with the root cause: the lost state. Then the implications, including what the user now wrongly believes. Then the new behavior as a rule. Then the recovery path. Product vocabulary only. Analytic register, no dramatization.
+A Product section leads with the underlying issue: the flaw in the code that let the defect exist, such as two rules for one question that drifted apart. Then the root cause: the lost state. Then the implications, including what the user now wrongly believes. Then the new behavior as a rule. Then the recovery path. Product vocabulary only. Analytic register, no dramatization.
 
 ### Issues
 
