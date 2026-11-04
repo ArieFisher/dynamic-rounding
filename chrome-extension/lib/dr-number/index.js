@@ -61,6 +61,5 @@ const DR_NUMBER = {
   // identifiers.js
   matchIdentifierShape,
   getIdentifierMaskedRanges,
-  isGroupedDigitIdentifier,
-  isIsbnShape,
+  findIdentifiers,
 };

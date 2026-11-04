@@ -1563,7 +1563,7 @@
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'formatNumber', 'pureNumberSpan',
     // identifiers.js
-    'matchIdentifierShape', 'getIdentifierMaskedRanges', 'isGroupedDigitIdentifier', 'isIsbnShape',
+    'findIdentifiers', 'matchIdentifierShape', 'getIdentifierMaskedRanges',
   ].sort();
 
   eq('lib/dr-number/index.js: DR_NUMBER exists on the global scope after the main eval',

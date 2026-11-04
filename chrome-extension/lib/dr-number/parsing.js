@@ -764,9 +764,13 @@ function formatNumber(rounded, originalNumStr) {
 // A pure cell's leading run: format marks and sign characters, the ASCII
 // plus and minus, the dash class toNumber reads as a minus sign, and the
 // opening bracket of an accounting minus sign. The trailing run: format
-// marks and the closing bracket. Both read the one format-mark list.
-const PURE_LEAD_RE = new RegExp('^(?:' + FORMAT_MARK_ALTERNATION + '|[+\\-(]|' + DASH_CLASS + ')*');
-const PURE_TRAIL_RE = new RegExp('(?:' + FORMAT_MARK_ALTERNATION + '|\\))*$');
+// marks and the closing bracket. Both read the one format-mark list. The
+// identifier check (identifiers.js) reads the same two runs to test whether
+// a code fills its cell.
+const PURE_LEAD_PATTERN = '(?:' + FORMAT_MARK_ALTERNATION + '|[+\\-(]|' + DASH_CLASS + ')*';
+const PURE_TRAIL_PATTERN = '(?:' + FORMAT_MARK_ALTERNATION + '|\\))*';
+const PURE_LEAD_RE = new RegExp('^' + PURE_LEAD_PATTERN);
+const PURE_TRAIL_RE = new RegExp(PURE_TRAIL_PATTERN + '$');
 
 /**
  * The number span of a pure cell: its text with the leading run of format
