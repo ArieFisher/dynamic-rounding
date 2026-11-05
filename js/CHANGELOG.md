@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-11-05
+
 ### Changed
 
 - **A digit run with a leading zero stays as written**: an account number, a code, or a ZIP code such as "02134" is an identifier shape, as a whole cell and inside text. "0", "0.5", and "0.0625" still round.
