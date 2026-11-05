@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A digit run with a leading zero stays as written**: an account number, a code, or a ZIP code such as "02134" is an identifier shape, as a whole cell and inside text. "0", "0.5", and "0.0625" still round.
+  Before: `ROUND_DYNAMIC("0012345678")` → `"10,000,000"`
+  After: `ROUND_DYNAMIC("0012345678")` → `"0012345678"`
+
 ## [0.3.7] - 2026-11-04
 
 ### Changed

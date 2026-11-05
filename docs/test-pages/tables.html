@@ -2232,8 +2232,8 @@ TSLA,75,"248.09","18,606.75"
     <p>A native table and a grid holding the same rows. Each Text cell holds an
       identifier beside a count.</p>
     <p class="expect">Press each pillbox on. Expect: in each Text cell down to
-      US ZIP+4, the identifier stays as written and the count beside it
-      rounds, on both tables. The last three rows round every number in their
+      "Account number, leading zero", the identifier stays as written and the
+      count beside it rounds, on both tables. The last three rows round every number in their
       Text cell. That result follows a design choice still open: digit groups
       split by spaces count as an identifier only when they fill the whole
       cell, and an ISBN inside words needs the word "ISBN".</p>
@@ -2308,6 +2308,8 @@ TSLA,75,"248.09","18,606.75"
           ['US ZIP+4', '90210-1234', '440,193'],
           ['Digit groups, currency sign', '$ 4165 5512', '1,207,553'],
           ['ISBN, brackets', '(978 0 306 40615 7)', '71,846'],
+          ['Account number, leading zero', '0012345678', '2,318,604'],
+          ['ZIP code, leading zero', '02134', '82,957'],
           ['Phone inside words', 'Call 416-555-1234', '1,611,842'],
           ['Thousands grouping (rounds)', '1 234 567', '281,745'],
           ['Five-digit ZIP (rounds)', '90210', '93,662']
@@ -2326,6 +2328,7 @@ TSLA,75,"248.09","18,606.75"
           ['Canadian postal code', 'Ship to M5V 2T6, 1,506,220 parcels', '1,506,781'],
           ['UK postcode', 'Ship to SW1A 1AA, 1,002,466 parcels', '1,002,093'],
           ['US ZIP+4', 'Ship to 90210-1234, 440,193 parcels', '440,650'],
+          ['Account number, leading zero', 'Account 00012345 holds 1,207,553', '1,207,019'],
           ['Phone, spaced (rounds)', 'Call 416 555 1234 about 281,745 units', '281,302'],
           ['Year and count (rounds)', 'In 2024 12 stores opened', '93,662'],
           ['ISBN without the word (rounds)', '978-0-306-40615-7 sold 90,114 copies', '90,870']

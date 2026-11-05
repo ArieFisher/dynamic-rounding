@@ -2434,10 +2434,11 @@ const LADDER_OPTS = {
     'ISBN' + ' '.repeat(100000) + 'x',
     '1 '.repeat(50000) + 'x',
     '416-555-1234' + ' '.repeat(100000) + 'x',
+    '0'.repeat(100000) + '.1',
   ];
   const started = Date.now();
   for (const text of texts) getIdentifierMaskedRanges(text);
-  eq('identifier shape inside text: ten 100,000-character texts scan in under a second',
+  eq('identifier shape inside text: eleven 100,000-character texts scan in under a second',
     Date.now() - started < 1000, true);
   const wholeCellStarted = Date.now();
   matchIdentifierShape('ISBN' + ' '.repeat(100000) + 'x');

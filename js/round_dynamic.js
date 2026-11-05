@@ -1128,7 +1128,8 @@ function pureNumberSpan(text) {
 /**
  * Identifier shapes: text shapes that read as a code rather than a quantity —
  * a phone number, an IP address, a web or email address, an ISBN, a postal
- * code, or digit groups split by whitespace outside thousands grouping.
+ * code, a digit run with a leading zero, or digit groups split by whitespace
+ * outside thousands grouping.
  *
  * One check finds every code in a cell: findIdentifiers searches the cell's
  * text once for every shape and records, for each code it finds, whether the
@@ -1175,9 +1176,11 @@ function pureNumberSpan(text) {
 // ("call 416-555-1234.") still ends it.
 const SPAN_START = '(?<![\\w.])';
 const SPAN_END = '(?![\\w]|\\.\\w)';
-// A code made of digits, whitespace, and "+" alone is digit groups split by
-// spaces, which count only when they fill the cell.
-const SPACED_DIGITS_ONLY_RE = /^[+\d\s]+$/;
+// A code made of digits, whitespace, and "+" alone, with at least one
+// whitespace, is digit groups split by spaces, which count only when they
+// fill the cell. A digit run with a leading zero holds no whitespace, so it
+// counts inside text.
+const SPACED_DIGITS_ONLY_RE = /^(?=.*\s)[+\d\s]+$/;
 
 // A code found anywhere inside text between the edges above.
 const spanRe = (pattern, flags = '') => new RegExp(`${SPAN_START}(?:${pattern})${SPAN_END}`, `${flags}g`);
@@ -1281,6 +1284,18 @@ const POSTAL_CODE_PATTERN = [
   '\\d{5}-\\d{4}',
 ].join('|');
 
+// --- Leading zero ---
+// A digit run that starts with "0" followed by another digit: "007",
+// "01234", "0012345678". A quantity is not written with a leading zero, and
+// a code, an account number, or a US ZIP code in New England ("02134")
+// often is. "0", "0.5", and "0.0625" are not this shape, since a decimal
+// mark follows their zero. The run carries no group mark and no decimal
+// mark: a run followed by a comma or a dot and a digit ("0123.45",
+// "012,345") is not this shape, and a run that starts right after a comma
+// ("1,034") is one group of a larger number, not a code. A sentence's comma
+// or period after the run ("ID 0000123, late") still ends it.
+const LEADING_ZERO_PATTERN = '(?<!,)0\\d+(?![.,]\\d)';
+
 // The one list of identifier shapes. Each entry holds the shape's name, its
 // pattern for a code anywhere in the text, and, for a shape with a form that
 // counts only when it fills the cell, a test of the whole text for that form.
@@ -1299,6 +1314,7 @@ const IDENTIFIER_SHAPES = [
     fillsOnly: (text) => /[- ]/.test((ISBN_WITHOUT_WORD_RE.exec(text) || [])[1] || ''),
   },
   { name: 'postal-code', span: spanRe(POSTAL_CODE_PATTERN) },
+  { name: 'leading-zero', span: spanRe(LEADING_ZERO_PATTERN) },
 ];
 
 /**
@@ -1538,12 +1554,13 @@ function classifyCell(input, options) {
   }
 
   // An identifier shape (a phone number, an IP address, a web or email
-  // address, an ISBN, a postal code, or a digit run split by whitespace that
-  // is not thousands grouping) reads as a code, not a quantity, so the whole
-  // cell stays as written. Checked after the date and time checks above, so
-  // a date the date parser reads ("21 June 2020") stays a date, and before
-  // the bracketed-number check below, since a phone number's bracketed area
-  // code ("(416) 555-1234") is not that bracket's minus sign.
+  // address, an ISBN, a postal code, a digit run with a leading zero, or a
+  // digit run split by whitespace that is not thousands grouping) reads as a
+  // code, not a quantity, so the whole cell stays as written. Checked after
+  // the date and time checks above, so a date the date parser reads ("21
+  // June 2020") stays a date, and before the bracketed-number check below,
+  // since a phone number's bracketed area code ("(416) 555-1234") is not
+  // that bracket's minus sign.
   // matchIdentifierShape (lib/dr-number/identifiers.js) holds the one list of
   // shapes; this is the one place that reads it. digitsSpanPieces comes from
   // the caller's piece layout, so a stacked cell's join of several numbers
