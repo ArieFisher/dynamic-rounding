@@ -100,8 +100,8 @@ Can you see it now?
 Another pattern: each year Splunk spends \$1.5B to grow revenue by \$0.5B \- \$1B.   
 <p align="center"><img src="docs/media/image09.png" alt="image" width="700"></p>
 
-Aside: Why not just ask Claude for the patterns?  
-You could, but that *replaces* your thinking. Simplifying the data *accelerates* you.  Simplifying the data lets you see the patterns yourself, before you analyze it (with or without AI).
+> Aside: Why not just ask Claude for the patterns?  
+> You could, but that *replaces* your thinking. Simplifying the data *accelerates* you.  Simplifying the data lets you see the patterns yourself, before you analyze it (with or without AI).
 
 #### **Step 3: Assemble the story**
 
@@ -172,7 +172,7 @@ If you don’t like spoilers, take a few more seconds before reading the next li
 
 It is about 85 million.
 
-Not many of us could, just by looking at the original table, have been able to see as much in it.
+Not many of us could have seen so much just by looking at that table. This simple tool helps us unlock insights by working *with* us, amplifying the way we naturally explore and understand data.
 
 ## License
 
