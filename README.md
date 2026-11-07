@@ -67,7 +67,8 @@ You probably can't, at least not easily.  What these designers understand is tha
 <p>Cognitive psychologist George Miller famously found that humans can hold at most 6 or 7 things in our head at once.  
 <p align="center"> <img src="docs/media/image04.png" alt="image" width="500"></p>
 
-<p>If working memory maxes out at about seven items, **what chance do we have** at understanding even this one table that has more than 50 numbers ***each*** bigger than 6 or 7 digits?  
+If working memory maxes out at about seven items, **what chance do we have** at understanding even this one table that has more than 50 numbers _**each**_ bigger than 6 or 7 digits?  
+
 <p align="center"> <img src="docs/media/image06.png" alt="image" width="500"> </p>
 
 *NB: this table is one of 127 pages of text and data ( [source](https://www.sec.gov/Archives/edgar/data/1353283/000135328323000011/splk-20230131.htm) )*
