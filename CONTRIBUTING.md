@@ -48,6 +48,22 @@ The policy block is the whole gate, so a bad edit there makes it pass everything
 
 Keep scratch work outside the repo. `docs/private/` is git-ignored if you want it nearby.
 
+### Vocabulary check
+
+[docs/vocabulary.md](docs/vocabulary.md) holds one term per concept. Its Retired synonyms table lists the words each term replaces, and the Pattern column of each row holds an expression that matches the retired synonym.
+
+`scripts/check-vocab.sh` reads that table and blocks a commit or a pull request when an added line matches a pattern. The `pre-commit` hook runs it on what you stage, and the `Repo hygiene` workflow runs it on every line the pull request adds since its branch left `main`. The script checks:
+
+- only added lines, so an old line that still holds a retired synonym never blocks an unrelated change
+- only markdown files
+- no historical record, and not the vocabulary itself, which has to spell out the retired synonyms. The exempt-path list near the top of the script holds the exact paths.
+
+A blocked commit prints the file, the pattern it matched, and the line. Replace the retired synonym with the term in the table's Say column. Run the check yourself any time with `scripts/check-vocab.sh --staged`, or on a whole branch with `scripts/check-vocab.sh --range origin/main HEAD`. It exits 0 when every added line is clean, 1 when it blocks a line, and 2 when it cannot run the check at all.
+
+To retire a word, add a row to the table with a pattern. The script reads the new row on the next commit. Reviewers catch the retired synonyms whose rows hold no pattern. [Writing a pattern](docs/vocabulary.md#writing-a-pattern) explains how to narrow a pattern so it matches the retired sense and leaves the word's other senses alone.
+
+The table is the whole policy, so a damaged table would let every line through and look the same as clean prose. To stop that, the script tests its pattern list before it reads any change, and exits 2 when it cannot read the table, when the table yields no patterns, when a pattern is not a valid expression, or when no pattern matches a fixed sentence that holds a known retired synonym. `bash scripts/check-vocab-test.sh` plants retired synonyms, clean prose, exempt files, and damaged tables in a scratch repository and requires the right result for each. Run it after any change to the table or the script; `Repo hygiene` runs it too.
+
 ### Code Style
 
 - Keep it simple and readable
