@@ -11,6 +11,11 @@ from dynamic_rounding.pandas import round_dynamic_series
 class TestSingleModeSeries:
     """Tests for single mode with pandas Series."""
 
+    def test_custom_offset(self):
+        s = pd.Series([87654321])
+        result = round_dynamic_series(s, offset=-1)
+        assert result[0] == 88000000
+
     def test_preserves_index(self):
         s = pd.Series([87654321, 4321], index=['a', 'b'])
         result = round_dynamic_series(s)

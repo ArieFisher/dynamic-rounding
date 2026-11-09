@@ -1390,6 +1390,12 @@ const supTestOpts = {
     cells0[0].el, tableEl.rows[0].cells[0]);
 })();
 
+// TA1b: a native cell writes only through applyPatches, which patches each
+// text piece in place and records the original. A writer that assigns a
+// cell's textContent or innerHTML flattens the markup of a mixed cell and
+// skips that record, so the restore and the sidebar preview read the rounded
+// text as the original. A writer added to this class must patch text pieces
+// in place and record the original, as applyPatches does.
 (function nativeTableAdapter_hasNoSetText() {
   // Source scan: nothing in the class may assign textContent/innerHTML on a
   // cell. Catches a setText re-added under a different name.
