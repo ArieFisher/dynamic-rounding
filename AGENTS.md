@@ -1,33 +1,14 @@
 # Repository conventions for agents
 
-These conventions apply to every agent working in this repository, whatever tool or surface runs it.
+These conventions apply to every contributor to this repository, person or agent, whatever tool or surface runs the agent.
 
 **This file is the only copy.** Claude Code reads `CLAUDE.md`, which imports this file. Antigravity reads `.agent/rules/`, which points here. Read it in full before your first tool call, and never restate a rule from here in another file. See [Group like concepts into a single location](#group-like-concepts-into-a-single-location).
 
-Rules group by the surface they govern. The groups follow the order of work on one change: communication, design, repository content, GitHub. A new rule goes in the group whose surface it governs.
+**Repository specifics live beside it.** `CONTRIBUTING.md` holds this repository's setup and commit checks, and `MAINTAINERS.md` holds its release steps and changelog. Read both before your first change. Neither restates a rule from this file. Inside this file, a heading marked "(this repository)" holds material specific to this repository; delete those sections to reuse the file in another project.
 
-## Communication
+Rules group by reader. The contributor guide holds the rules every contributor needs, person or agent: how to branch, which checks run, how to test, and the design and content rules behind them. The maintainer guide holds the rules for whoever merges and releases. The agents section holds the rules only agents follow: communication with me, writing style, review routing, the issue format, and GitHub access. A new rule goes in the section for the reader it governs.
 
-### My role
-
-I am the product manager and do not write the code. Lead with the mechanism in plain words, name the trade-off, and give a recommendation. Keep file names, commands, and symbol names out of chat unless I ask for them. Full deliverables such as pull request bodies still name files and symbols wherever that helps the reader.
-
-### Writing style
-
-These rules govern all prose: **chat**, **documents**, and **GitHub** (pull request titles and bodies, issues, commit messages, logs).
-
-- **Form:** plain declarative sentences in active voice. Not epigrammatic, not aphoristic.
-- **Structure:** no antithesis. Present each point on its own, without a contrasting counterpart.
-- **Imagery:** no personification. Two tests.
-  - *The verb.* A part's verb names an operation the part performs, never a stance it takes. Operations pass: holds, determines, skips, detects, flags, stands for, contains, parses, publishes. Verbs of intent, awareness, or choice fail: own, know, decide, refuse, notice, warn, name, pick — examples, not the whole list; "rides", "waits", and "speaks" fail the same test. Boundary: "the script reads the file" passes because reading is the operation; "the check refuses" fails because refusal is a stance.
-  - *The subject.* An action verb (runs, reads, writes, checks, sends) takes as its subject the part that performs the action. A measure, a score, a result, a document, a label, a term, or an event such as a press performs nothing — examples, not the whole list; the script, the build, the hook, the content script, or the person does. A state verb (holds, contains, stands for) may take any subject. Boundary: "a press reads the setting" fails because a press is an event; "the press handler reads the setting" passes.
-
-  Similes are fine. State the plain meaning in place of a metaphor: write "the press handler reads the table's on/off value and writes the opposite value", never "a press picks its direction".
-- **Diction:** plain English, Saxon words, technical terms preserved. No contractions and no abbreviations, except i.e., e.g., etc., FYI, and TL;DR. Write "application", not "app".
-- **Tone:** laconic. Cut qualifiers, hedging, and introductory fluff.
-- **Voice:** high information density. Facts in active voice, no passive voice, no filler sentences.
-- **Concision:** cut filler, hedging, qualifiers, and repetition. Keep mechanisms, scopes, and reasons: say what a rule does, what it covers, and why it exists, even when a shorter sentence could imply it. The test is one pass — a first-time reader never re-reads a sentence or asks what a term covers. When in doubt, spend the extra sentence.
-- **Conclusions only:** report findings, not the process that produced them. No dead ends, no counts of discarded items, no self-audit narrative.
+## Contributor guide
 
 ### Vocabulary
 
@@ -37,17 +18,6 @@ These rules govern all prose: **chat**, **documents**, and **GitHub** (pull requ
 - **At every commit**, sweep the change's **new** prose and:
   - *retired synonyms*: Replace a retired synonym with its canonical term.
   - *new concepts*: Define new concepts in `docs/vocabulary.md` on the same branch, as its own `docs:` commit.
-- Additionally, both the pre-commit hook and CI run `scripts/check-vocab.sh` which blocks a commit when a line **added** to a markdown file contains a retired synonym (historical records and vocabulary.md are exempt).
-
-### Chat
-
-- **TL;DR first.** Conclusion, then support.
-- **Answer only what was asked.** A narrow question gets the answer and stops. No options, no offers, no extra framing.
-- **Explain ideas, not instructions.** State the problem, the change, and why the change removes the problem. Do not merely strip out the jargon: a de-jargonized instruction is still an instruction.
-- **Surface a consequence only when it would change my decision.** Flag a behavior change beyond the one I named when it does one of these: breaks something that works today, changes what a user sees on a page or a cell type I did not name, or needs a product choice. A consequence that follows directly from the change I asked for is not flagged. Put each flagged change to me before implementing, and never ship one and mention it after.
-- **No unrequested scope.** Build the rule I asked for, not the adjacent one. A related concern becomes a separate issue, never a quiet addition.
-
-## Design
 
 ### Group like concepts into a single location
 
@@ -97,18 +67,20 @@ This gives [Collapse a path before opening a second one](#collapse-a-path-before
 
 Always take the newest release of an action, tool, or runtime. Read its breaking-change notes to confirm the jump, not to justify avoiding it. Report anything left behind, including a runtime whose newest line is ahead of the newest long-term-support line.
 
-## Repository content
-
 ### Adding files
 
 This repository is public. Before staging a new file, answer this: does it serve someone using or building DynamicRounding? A report about a local toolchain, an agent scan, a session journal, or a scratch note is always no. One such file reached `main` once already.
 
 - **Never** `git add .` **or** `git add -A`**.** Stage the paths you meant to change, by name.
-- **Write scratch output to the session scratchpad**, not the repository. `docs/private/` is git-ignored if it has to live here.
-- **Never pass** `-f` **to** `git add` to defeat `.gitignore`, and never `--no-verify` to skip the pre-commit gate. If a rule blocks a file that belongs, change the policy block in `scripts/check-files.sh` in the same change and say why in the pull request.
-- New root-level files need a `.gitignore` negation, added deliberately. The root is an allowlist.
+- **Write scratch output to the session scratchpad**, not the repository.
+- **Never pass** `-f` **to** `git add` to defeat `.gitignore`, and never `--no-verify` to skip a commit check. If a check blocks a file that belongs, change the check's policy in the same change and say why in the pull request.
+- Name standard repository metadata files in capitals (README, LICENSE, CHANGELOG, CONTRIBUTING, MAINTAINERS, AGENTS, CLAUDE) and every other file in lowercase.
 
-Run `scripts/check-files.sh --staged` before committing. It is the same check the hook and CI run.
+### Code style
+
+- Keep code simple and readable.
+- Document every new parameter in the language's doc-comment form, e.g. JSDoc or a Python docstring.
+- Keep existing function signatures backward compatible.
 
 ### Regression fixtures
 
@@ -128,7 +100,6 @@ A capture from the extension holds real page content, and this repository is pub
 Living docs: `README.md`, `CONTRIBUTING.md`, `MAINTAINERS.md`, `chrome-extension/README.md`, `docs/design.md`, `docs/test-pages/tables.html`, `docs/vocabulary.md`, `js/README.md`, `js/tests-googlesheets-tab.md`, `python/README.md`, the `.agent/` instruction files, and this file. Sprint plans and logs, research notes, and released `js/CHANGELOG.md` entries are historical records. Mark them, never rewrite them.
 
 - A pull request that changes behavior updates every living doc its change invalidates, in the same branch. If none apply, write "No doc impact" in the body.
-- Documented input and output examples are under test. `node js/doc-tests.js` runs every pair the docs state against the library, locally and in CI. Keep a new example in a shape the extractors parse, or extend `js/doc-tests.js` in the same pull request.
 
 ### Public repository, security disclosure
 
@@ -144,8 +115,6 @@ Never run a secret-listing or secret-reading command, including its `--help` for
 
 A note for whoever edits a piece of code goes in a comment beside that code, because that is where the editor looks. This covers review findings, warnings about a test, and any constraint on how the code may change. A pull request body, an issue, or a sprint log holds such a note only as a pointer to the comment.
 
-## GitHub
-
 ### Text on GitHub
 
 These rules cover every text that reaches GitHub: commit messages, pull request titles and bodies, issues, comments, and sprint logs.
@@ -155,24 +124,11 @@ These rules cover every text that reaches GitHub: commit messages, pull request 
 
 ### Branching and staging
 
-Never edit `main`. Make every change on a branch and merge it through a pull request.
+Never edit `main`. Make every change on a branch and merge it through a pull request. External contributors fork the repository first.
 
 Branch prefixes, each with a short kebab-case label: `feature/` new behavior, `fix/` bug fixes, `chore/` tooling, configuration, and dependencies, `refactor/` internal restructuring with no behavior change, `plan/` sprint plans from the sprint-plan skill, `docs/` documentation only. Never `claude/` or `session/`. If the harness created one, rename it before the first push.
 
 Stash before switching branches with a dirty tree.
-
-### Review findings
-
-Route every review finding to exactly one place. Never leave an actionable item as a non-blocking note for me to remember and re-instruct.
-
-1. **Trivial and in-scope: fix now.** Apply the fix in the same change, re-run the test command, and mention it in one line. Trivial means all of these: no behavior change; touches only files and lines already in the diff; the existing suite staying green proves it.
-2. **In-scope behavior bug: fix now, with a test.** A defect in what the current diff does never routes to an issue, because deferring it ships it. Add a test that fails without the fix.
-3. **Actionable and out-of-scope: open a GitHub issue.** This covers anything that changes behavior outside the diff, spans untouched files, needs a judgement call, or grows the diff. Title prefix `[follow-up]`. The body links the pull request and quotes the finding. Label `follow-up`, plus `tech-debt` if apt. Search open issues first and comment on an existing one rather than refiling. The pull request body's Reviewer notes section links the issues.
-4. **FYI, no action: one line** in the sprint log or the pull request notes. No issue.
-
-Behavior-changing pull requests get an independent code-reviewer pass before I merge. Re-review through the same reviewer so it keeps its context. When a finding forces a product fork, put the options to me instead of picking one.
-
-For sprint-stack: the reviewer subagent returns APPROVE or BLOCK and edits no files. A bucket-2 finding forces BLOCK; the orchestrator applies the fix and the test, then re-runs review. After APPROVE it applies bucket-1 fixes as a small `chore(...)` or `refactor(...)` commit, opens bucket-3 issues, writes the log, and opens the pull request.
 
 ### Pull requests
 
@@ -188,6 +144,105 @@ Write them as human-authored. No "Generated with" footer, no `Co-Authored-By` ag
 Split the test plan into two named sections. `## Tested` lists what the session ran, with results inline and no checkboxes. `## Manual tests` lists what a human must still do, as unchecked boxes. Never one mixed checklist.
 
 A Product section leads with the underlying issue: the flaw in the code that let the defect exist, such as two rules for one question that drifted apart. Then the root cause: the lost state. Then the implications, including what the user now wrongly believes. Then the new behavior as a rule. Then the recovery path. Product vocabulary only. Analytic register, no dramatization.
+
+### Testing (this repository)
+
+#### JavaScript (Google Sheets)
+
+`js/round_dynamic.js` is generated, so never edit it by hand. Edit its sources, `js/src/` and the shared library files the build script lists, then rebuild it from the repository root and commit the result:
+```bash
+node scripts/build-sheets.js
+```
+CI runs `node scripts/build-sheets.js --check` and fails when the committed file differs from the build. The shared library files are part of the Sheets library, so rebuild after a change to one of them as well.
+
+Run the test suite:
+```bash
+cd js
+node tests.js
+```
+
+Run the doc-example suite — it executes every input/output pair the docs state against the library, locally and in CI:
+```bash
+node js/doc-tests.js
+```
+Keep a new documented example in a shape the suite's extractors parse, or extend `js/doc-tests.js` in the same pull request.
+
+Also verify in the [template spreadsheet](https://docs.google.com/spreadsheets/d/1GdHvYk3dVzJErrGH7yDULW6srM0gaHeYMGMn3k0-GY4) "Tests" tab.
+
+#### Chrome extension
+
+Run the test suite — the repo's largest, and part of CI on every PR:
+```bash
+node chrome-extension/tests.js
+```
+
+The tests live in pieces under `chrome-extension/tests/`, and `tests.js` joins them in its order list and runs them as one script. A new helper function goes in `helpers.js`. Each other piece holds the tests for one area of the extension, named on its first line; add a test to the piece for the area it tests. A new piece goes in the order list.
+
+#### Python
+
+Run the test suite:
+```bash
+cd python
+pip install -e ".[dev]"
+pytest
+```
+
+## Maintainer guide
+
+### Merge train
+
+- CI runs only on pull requests based on `main`. A pull request based on another branch never runs its required checks and stays blocked. Merge `main` into the head branch and push to start them.
+- Never delete a merged branch while an open pull request uses it as base. GitHub closes the dependent outright, and no one can reopen a closed pull request whose base is gone. Retarget dependents first.
+- Raced version-bump pull requests collapse to one per batch, each carrying the identical diff. Merge the oldest and close the duplicates with a comment.
+- Never enable auto-merge. I own every merge decision.
+
+### How versions move (this repository)
+
+The `Bump package versions on merge` workflow (`.github/workflows/bump-version.yml`) runs after every merged PR. `scripts/bump-versions.py` holds the table of packages and their version files. If the PR touched `python/**`, `chrome-extension/**`, or `js/**` — documentation included — it bumps the patch of the matching version file, or the minor version when the merged PR carries the `minor` label (the patch then resets to 0), opens a bump PR titled `chore(version): bump after #NNN`, waits for the required checks, merges it, and deletes the bump branch. For JS it also runs the Sheets build (`node scripts/build-sheets.js`), so the version-bump PR carries a `js/round_dynamic.js` that matches the build, and turns the `## [Unreleased]` heading in `js/CHANGELOG.md` into the new version's heading. Nobody edits those version lines or release headings by hand. To release a minor version, add the `minor` label to the PR before merging it.
+
+## Agents
+
+### My role
+
+I am the product manager and do not write the code. Lead with the mechanism in plain words, name the trade-off, and give a recommendation. Keep file names, commands, and symbol names out of chat unless I ask for them. Full deliverables such as pull request bodies still name files and symbols wherever that helps the reader.
+
+### Writing style
+
+These rules govern all prose: **chat**, **documents**, and **GitHub** (pull request titles and bodies, issues, commit messages, logs).
+
+- **Form:** plain declarative sentences in active voice. Not epigrammatic, not aphoristic.
+- **Structure:** no antithesis. Present each point on its own, without a contrasting counterpart.
+- **Imagery:** no personification. Two tests.
+  - *The verb.* A part's verb names an operation the part performs, never a stance it takes. Operations pass: holds, determines, skips, detects, flags, stands for, contains, parses, publishes. Verbs of intent, awareness, or choice fail: own, know, decide, refuse, notice, warn, name, pick — examples, not the whole list; "rides", "waits", and "speaks" fail the same test. Boundary: "the script reads the file" passes because reading is the operation; "the check refuses" fails because refusal is a stance.
+  - *The subject.* An action verb (runs, reads, writes, checks, sends) takes as its subject the part that performs the action. A measure, a score, a result, a document, a label, a term, or an event such as a press performs nothing — examples, not the whole list; the script, the build, the hook, the content script, or the person does. A state verb (holds, contains, stands for) may take any subject. Boundary: "a press reads the setting" fails because a press is an event; "the press handler reads the setting" passes.
+
+  Similes are fine. State the plain meaning in place of a metaphor: write "the press handler reads the table's on/off value and writes the opposite value", never "a press picks its direction".
+- **Diction:** plain English, Saxon words, technical terms preserved. No contractions and no abbreviations, except i.e., e.g., etc., FYI, and TL;DR. Write "application", not "app".
+- **Tone:** laconic. Cut qualifiers, hedging, and introductory fluff.
+- **Voice:** high information density. Facts in active voice, no passive voice, no filler sentences.
+- **Concision:** cut filler, hedging, qualifiers, and repetition. Keep mechanisms, scopes, and reasons: say what a rule does, what it covers, and why it exists, even when a shorter sentence could imply it. The test is one pass — a first-time reader never re-reads a sentence or asks what a term covers. When in doubt, spend the extra sentence.
+- **Conclusions only:** report findings, not the process that produced them. No dead ends, no counts of discarded items, no self-audit narrative.
+
+### Chat
+
+- **TL;DR first.** Conclusion, then support.
+- **Answer only what was asked.** A narrow question gets the answer and stops. No options, no offers, no extra framing.
+- **Explain ideas, not instructions.** State the problem, the change, and why the change removes the problem. Do not merely strip out the jargon: a de-jargonized instruction is still an instruction.
+- **Surface a consequence only when it would change my decision.** Flag a behavior change beyond the one I named when it does one of these: breaks something that works today, changes what a user sees on a page or a cell type I did not name, or needs a product choice. A consequence that follows directly from the change I asked for is not flagged. Put each flagged change to me before implementing, and never ship one and mention it after.
+- **No unrequested scope.** Build the rule I asked for, not the adjacent one. A related concern becomes a separate issue, never a quiet addition.
+
+### Review findings
+
+Route every review finding to exactly one place. Never leave an actionable item as a non-blocking note for me to remember and re-instruct.
+
+1. **Trivial and in-scope: fix now.** Apply the fix in the same change, re-run the test command, and mention it in one line. Trivial means all of these: no behavior change; touches only files and lines already in the diff; the existing suite staying green proves it.
+2. **In-scope behavior bug: fix now, with a test.** A defect in what the current diff does never routes to an issue, because deferring it ships it. Add a test that fails without the fix.
+3. **Actionable and out-of-scope: open a GitHub issue.** This covers anything that changes behavior outside the diff, spans untouched files, needs a judgement call, or grows the diff. Title prefix `[follow-up]`. The body links the pull request and quotes the finding. Label `follow-up`, plus `tech-debt` if apt. Search open issues first and comment on an existing one rather than refiling. The pull request body's Reviewer notes section links the issues.
+4. **FYI, no action: one line** in the sprint log or the pull request notes. No issue.
+
+Behavior-changing pull requests get an independent code-reviewer pass before I merge. Re-review through the same reviewer so it keeps its context. When a finding forces a product fork, put the options to me instead of picking one.
+
+For sprint-stack: the reviewer subagent returns APPROVE or BLOCK and edits no files. A bucket-2 finding forces BLOCK; the orchestrator applies the fix and the test, then re-runs review. After APPROVE it applies bucket-1 fixes as a small `chore(...)` or `refactor(...)` commit, opens bucket-3 issues, writes the log, and opens the pull request.
 
 ### Issues
 
@@ -213,10 +268,3 @@ In a GitHub issue this section goes on top, with the original engineering findin
 - Diagnose which layer gates a blocked call before re-sending anything.
 
 **Token hygiene.** A personal access token lives in session memory only. Never write it to `.git/config`, `~/.git-credentials`, a commit message, a git URL, or any tracked file. `git push -u <token-URL> <branch>` stores the token as the branch upstream. After any push involving one, check `.git/config` for it and unset the upstream if it landed.
-
-### Merge train
-
-- CI runs only on pull requests based on `main`. A pull request based on another branch never runs its required checks and stays blocked. Merge `main` into the head branch and push to start them.
-- Never delete a merged branch while an open pull request uses it as base. GitHub closes the dependent outright, and no one can reopen a closed pull request whose base is gone. Retarget dependents first.
-- Raced version-bump pull requests collapse to one per batch, each carrying the identical diff. Merge the oldest and close the duplicates with a comment.
-- Never enable auto-merge. I own every merge decision.
