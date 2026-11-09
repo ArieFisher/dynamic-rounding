@@ -2896,6 +2896,97 @@ eq('decimal comma: "1,234.56 EUR" is a unit number, as before',
     ['1,234.56', '0.125'].map((text) => decide(text).mode), ['pure', 'pure']);
 })();
 
+// --- Whitespace as a group mark ---
+// Whitespace between two digits is a group mark, and the number shape test
+// tests it as it tests a comma: only in the group shape. The in-text pattern
+// takes a space-grouped run whole, so a pure cell and a number inside words
+// read alike, and the spaced-digit identifier shape keeps its own test.
+
+(function groupSpace_numberShapeTest() {
+  const marks = numberFormat();
+  const rows = [
+    ['1 234', true], ['1 034 567', true], ['1 234 567 890', true], ['1 234.56', true],
+    ['-1 234', true],
+    ['12 34', false], ['1 2345', false], ['1234 567', false], ['1 234,56', false],
+    ['1,234 567', false], ['1 234.5 6', false],
+  ];
+  for (const [run, expected] of rows) {
+    eq('number shape test: "' + run + '" ' + (expected ? 'passes' : 'fails'),
+      isNumberShape(run, marks), expected);
+  }
+})();
+
+(function groupSpace_numberReader() {
+  const rows = [
+    ['1 034 567', 1034567], ['1 234.56', 1234.56], ['$ 1 234', 1234], ['(1 234)', -1234],
+    ['1 234 %', 1234], ['-1 234', -1234], ['−1 234', -1234],
+    ['1 034 567', 1034567], ['1 234', 1234],
+    ['12 34', null], ['1 2345', null], ['2024 12', null], ['1 234,56', null],
+  ];
+  for (const [text, expected] of rows) {
+    eq('number reader: "' + text + '" reads as ' + (expected === null ? 'no number' : expected),
+      toNumber(text), expected);
+  }
+})();
+
+eq('group space in text: a space-grouped number is one run',
+  extractNumbersInText('Revenue 1 034 567 units'),
+  [{ numStr: '1 034 567', num: 1034567, index: 8 }]);
+
+eq('group space in text: a short pair in the group shape is one run',
+  numStrs('sold 12 345 units'), ['12 345']);
+
+eq('group space in text: a decimal part stays with the run',
+  numStrs('Budget 1 234 567.50 total'), ['1 234 567.50']);
+
+eq('group space in text: a negative keeps its sign',
+  extractNumbersInText('down -1 200 units').map((m) => m.num), [-1200]);
+
+eq('group space in text: narrow no-break spaces group the run',
+  numStrs('Budget 1 034 567 total'), ['1 034 567']);
+
+eq('group space in text: a chain outside the group shape stays several numbers',
+  numStrs('Call 416 555 1234 now'), ['416', '555', '1234']);
+
+eq('group space in text: a year before a count stays two numbers',
+  numStrs('In 2024 12 stores opened'), ['2024', '12']);
+
+eq('group space in text: a last group of four digits breaks the chain',
+  numStrs('1 234 5678'), ['1', '234', '5678']);
+
+eq('group space in text: a first group of four digits breaks the chain',
+  numStrs('In 2024 12 345 stores'), ['2024', '12', '345']);
+
+eq('group space in text: a middle group of two digits breaks the chain',
+  numStrs('12 34 567'), ['12', '34', '567']);
+
+eq('group space in text: a decimal comma after a spaced run holds no number',
+  extractNumbersInText('Total 1 234,56 €'), []);
+
+// A space-grouped price with a decimal comma is one run with a comma outside
+// the group shape, so no group of it rounds on its own (#491).
+eq('group space: "12 345,67 €" holds no number, alone and inside words',
+  [extractNumbersInText('12 345,67 €'), extractNumbersInText('Total: 12 345,67 €'), toNumber('12 345,67 €')],
+  [[], [], null]);
+
+eq('group space: "1 234 USD" is a unit number',
+  matchUnitNumber('1 234 USD'), { numStr: '1 234', num: 1234, index: 0 });
+
+(function groupSpace_cellReadsAlikeAloneAndInsideWords() {
+  const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
+  const decide = (text) => classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
+  eq('group space: a pure cell "1 034 567" reads as one number',
+    decide('1 034 567'), { mode: 'pure', reason: 'simplify', value: { num: 1034567 } });
+  eq('group space: "Revenue 1 034 567 units" rounds the same one number',
+    decide('Revenue 1 034 567 units').value.matches.map((m) => m.num), [1034567]);
+  eq('group space: a three-digit group with a leading zero is a group, not a code',
+    decide('Revenue 1 034 567 units').value.matches.map((m) => m.numStr), ['1 034 567']);
+  eq('group space: a leading-zero run after a lone digit is still a code',
+    decide('Form 1 0345 holds 918,554 units').value.matches.map((m) => m.numStr), ['1', '918,554']);
+  eq('group space: a leading-zero code alone in text still holds',
+    decide('Ship to 02134, 440,193 parcels').value.matches.map((m) => m.numStr), ['440,193']);
+})();
+
 // --- One write-back path ---
 // Every number is patched in place, digits only, grouped with the marks the
 // number format function returns. A pure cell's number span leaves out its

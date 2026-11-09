@@ -133,6 +133,15 @@ function applyTableStepPatches(text, patches) {
     TABLE_STEP_EXPECTED_ROWS.flat());
 })();
 
+(function tableStep_spaceGroupedNumberInsideWordsIsOnePatch() {
+  const loaded = loadTableStepAlone();
+  if (loaded === null) return;
+  const { api } = loaded;
+  eq('table step alone: a space-grouped number inside words takes one patch, written with commas',
+    api.tablePatches(tableStepCells(api, [['Revenue 1 034 567 units']]), TABLE_STEP_SETTINGS).cells[0].patches,
+    [{ index: 8, numStr: '1 034 567', newNum: '1,000,000' }]);
+})();
+
 (function tableStep_dateSpanIsTheTrimmedText() {
   const loaded = loadTableStepAlone();
   if (loaded === null) return;

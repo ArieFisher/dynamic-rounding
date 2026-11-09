@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A space groups thousands as a comma does, inside words too**: a space between digit groups counts only in the group shape, so a space-grouped number inside words rounds as one number, and spaced digit groups outside the shape read as no number.
+  Before: `ROUND_DYNAMIC("Revenue 1 034 567 units")` → `"Revenue 1 034 550 units"`
+  After: `ROUND_DYNAMIC("Revenue 1 034 567 units")` → `"Revenue 1,000,000 units"`
+
 ## [0.3.8] - 2026-11-05
 
 ### Changed

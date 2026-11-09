@@ -24,6 +24,7 @@ const DR_NUMBER = {
   // core.js
   findMaxMagnitude,
   numberFormat,
+  groupShapePattern,
   isNumberShape,
   toNumber,
 
@@ -58,6 +59,7 @@ const DR_NUMBER = {
   pureNumberSpan,
 
   // identifiers.js
+  insideNumberRun,
   matchIdentifierShape,
   getIdentifierMaskedRanges,
   findIdentifiers,
