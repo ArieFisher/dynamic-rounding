@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-11-09
+
 ### Changed
 
 - **A space groups thousands as a comma does, inside words too**: a space between digit groups counts only in the group shape, so a space-grouped number inside words rounds as one number, and spaced digit groups outside the shape read as no number.
