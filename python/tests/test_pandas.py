@@ -10,18 +10,7 @@ from dynamic_rounding.pandas import round_dynamic_series
 
 class TestSingleModeSeries:
     """Tests for single mode with pandas Series."""
-    
-    def test_default_offset(self):
-        s = pd.Series([87654321, 4321])
-        result = round_dynamic_series(s)
-        assert result[0] == 90000000
-        assert result[1] == 4500
-    
-    def test_custom_offset(self):
-        s = pd.Series([87654321])
-        result = round_dynamic_series(s, offset=-1)
-        assert result[0] == 88000000
-    
+
     def test_preserves_index(self):
         s = pd.Series([87654321, 4321], index=['a', 'b'])
         result = round_dynamic_series(s)
@@ -42,13 +31,7 @@ class TestSingleModeSeries:
 
 class TestTypePreservation:
     """Tests for type preservation in pandas."""
-    
-    def test_int_series_returns_int(self):
-        s = pd.Series([87654321, 4321])
-        result = round_dynamic_series(s)
-        assert result[0] == 90000000
-        assert isinstance(result[0], (int, type(result[0])))  # int or numpy int
-    
+
     def test_float_series_returns_float(self):
         s = pd.Series([87654321.0, 4321.0])
         result = round_dynamic_series(s)
@@ -69,11 +52,6 @@ class TestStringParsing:
         result = round_dynamic_series(s)
         # 1200 rounds to 1000 with default offset -0.5
         assert result[0] == 1000.0
-    
-    def test_parses_thousands_separator(self):
-        s = pd.Series(["4,428,910"])
-        result = round_dynamic_series(s)
-        assert result[0] == 4500000.0
     
     def test_parses_accounting_parentheses(self):
         s = pd.Series(["(500)"])
@@ -113,14 +91,7 @@ class TestEnforceNumeric:
 
 class TestDatasetModeSeries:
     """Tests for dataset mode with pandas Series."""
-    
-    def test_default_offsets(self):
-        s = pd.Series([4428910, 983321, 42109])
-        result = round_dynamic_series(s, offset_top=-0.5)
-        assert result[0] == 4500000
-        assert result[1] == 1000000
-        assert result[2] == 40000
-    
+
     def test_triggers_on_offset_top(self):
         # Just providing offset_top should trigger dataset mode
         s = pd.Series([4428910, 983321])

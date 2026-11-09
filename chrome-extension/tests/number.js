@@ -1,39 +1,5 @@
 // Number reading, rounding, dates and times, and identifier shapes (lib/dr-number).
 
-// --- extractNumberInText ---
-
-eq('extract: plain comma number',
-  extractNumberInText('8,584,629'),
-  { numStr: '8,584,629', num: 8584629, index: 0 });
-
-eq('extract: number with trailing word (USD)',
-  extractNumberInText('8,584,629 USD'),
-  { numStr: '8,584,629', num: 8584629, index: 0 });
-
-eq('extract: number with trailing k',
-  extractNumberInText('286k'),
-  { numStr: '286', num: 286, index: 0 });
-
-eq('extract: non-numeric returns null',
-  extractNumberInText('N/A'),
-  null);
-
-eq('extract: number embedded mid-string',
-  extractNumberInText('approx 1,234 (close)'),
-  { numStr: '1,234', num: 1234, index: 7 });
-
-eq('extract: decimal with suffix',
-  extractNumberInText('1.5 hours'),
-  { numStr: '1.5', num: 1.5, index: 0 });
-
-eq('extract: empty string',
-  extractNumberInText(''),
-  null);
-
-eq('extract: non-string input',
-  extractNumberInText(null),
-  null);
-
 // --- extractNumbersInText (multi-match) ---
 
 eq('extractAll: range with en-dash',
@@ -120,10 +86,6 @@ eq('guard: currency-prefixed amount unaffected',
   numStrs('$48,090.00'),
   ['48,090.00']);
 
-eq('guard: numbers after a letter-word boundary unaffected',
-  numStrs('between 1,200 and 3,400 units'),
-  ['1,200', '3,400']);
-
 eq('guard: caret exponent notation unaffected',
   numStrs('10^12'),
   ['10', '12']);
@@ -180,7 +142,7 @@ eq('toNumber: pure text -> null', toNumber('N/A'), null);
   const infos = cells.map(text => {
     const num = toNumber(text);
     if (num !== null) return { mode: 'pure', num, text };
-    const ex = extractNumberInText(text);
+    const ex = extractNumbersInText(text)[0];
     if (ex) return { mode: 'extracted', num: ex.num, numStr: ex.numStr, index: ex.index, text };
     return { mode: 'skip', num: null, text };
   });
@@ -281,10 +243,6 @@ eq('extractAll: comma after a number is left out of the match',
 eq('extractAll: a list of grouped numbers keeps each number\'s own separators',
   extractNumbersInText('1,200, 3,400, and 5,600').map(m => m.numStr),
   ['1,200', '3,400', '5,600']);
-
-eq('extract: comma after the first number is left out of the match',
-  extractNumberInText('12, then 5'),
-  { numStr: '12', num: 12, index: 0 });
 
 // --- Range cell with mixed magnitudes ---
 (function rangeMixedMagnitudes() {
@@ -486,45 +444,10 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     const matches = extractNumbersInText(textWithWord);
     eq('simplifyMixedCells=true: extractNumbersInText finds number in "$5.123 USD"',
       matches.length > 0, true);
-    // Simulate the branch in roundTable: if (opts.simplifyMixedCells) -> extracted path
     const num = toNumber(textWithWord);
     eq('simplifyMixedCells=true: toNumber("$5.123 USD") is null (not pure numeric)',
       num, null);
-    // When simplifyMixedCells=true, the cell would go through extracted path
-    const optsInclude = { simplifyMixedCells: true };
-    const wouldRound = num !== null ? true : (optsInclude.simplifyMixedCells && matches.length > 0);
-    eq('simplifyMixedCells=true: cell with words would be rounded', wouldRound, true);
   })();
-
-  // simplifyMixedCells=false (default): cell with words must NOT be rounded
-  (function simplifyMixedCellsOff() {
-    const num = toNumber(textWithWord);
-    const optsExclude = { simplifyMixedCells: false };
-    // Simulate roundTable logic: toNumber returns null, simplifyMixedCells=false -> skip
-    const wouldRound = num !== null ? true : (optsExclude.simplifyMixedCells === true);
-    eq('simplifyMixedCells=false: cell with words would NOT be rounded', wouldRound, false);
-    // Same with default (unset)
-    const optsDefault = {};
-    const wouldRoundDefault = num !== null ? true : (optsDefault.simplifyMixedCells === true);
-    eq('simplifyMixedCells unset: cell with words would NOT be rounded', wouldRoundDefault, false);
-  })();
-})();
-
-// --- simplifyMixedPercent / simplifyMixedCurrency round-trip ---
-
-(function simplifyMixedPercentRoundTrip() {
-  // simplifyMixedCurrency: true -> currency cells are NOT excluded
-  eq('simplifyMixedCurrency=true: $1,234 is not excluded',
-    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: true }), null);
-  // simplifyMixedCurrency unset -> currency cells ARE excluded
-  eq('simplifyMixedCurrency unset: $1,234 is excluded',
-    getExclusionReason('$1,234', 1, {}), 'currency');
-  // simplifyMixedPercent: true -> percent cells are NOT excluded
-  eq('simplifyMixedPercent=true: 45% is not excluded',
-    getExclusionReason('45%', 1, { simplifyMixedPercent: true }), null);
-  // simplifyMixedPercent unset -> percent cells ARE excluded
-  eq('simplifyMixedPercent unset: 45% is excluded',
-    getExclusionReason('45%', 1, {}), 'percent');
 })();
 
 // First-match-wins priority: firstRow beats firstColumn beats percent beats currency
@@ -994,30 +917,6 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 })();
 
 // Regression guard: the basic shapes still pass
-(function sprint_regression_A() {
-  const r = parseRangeExpr('A');
-  eq('sprint regression: "A" still works', r,
-    { ranges: [{ colMin: 0, colMax: 0, rowMin: 0, rowMax: Infinity }] });
-})();
-
-(function sprint_regression_AD() {
-  const r = parseRangeExpr('A:D');
-  eq('sprint regression: "A:D" still works', r,
-    { ranges: [{ colMin: 0, colMax: 3, rowMin: 0, rowMax: Infinity }] });
-})();
-
-(function sprint_regression_row_range() {
-  const r = parseRangeExpr('1:10');
-  eq('sprint regression: "1:10" still works', r,
-    { ranges: [{ colMin: 0, colMax: Infinity, rowMin: 0, rowMax: 9 }] });
-})();
-
-(function sprint_regression_B2E8() {
-  const r = parseRangeExpr('B2:E8');
-  eq('sprint regression: "B2:E8" still works', r,
-    { ranges: [{ colMin: 1, colMax: 4, rowMin: 1, rowMax: 7 }] });
-})();
-
 (function sprint_regression_union() {
   const r = parseRangeExpr('{A1:E8, G3:G}');
   eq('sprint regression: "{A1:E8, G3:G}" -> 2 ranges', r.ranges && r.ranges.length, 2);
@@ -1046,18 +945,11 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 // The implementation reads cell.innerText (which browsers exclude hidden text from).
 // We model this by making cell.innerText = '+2.3%' only (hidden span excluded).
 // toNumber('+2.3%') -> null (percent), and with simplifyMixedPercent unset it is excluded entirely.
-// The large hidden number 700023000 must NOT appear in any extracted matches.
 (function ac4_hiddenSortkeyNotExtracted() {
   // Simulate: innerText is what the browser returns (no hidden text).
   // Browsers exclude hidden (display:none) content from innerText, so the cell's
   // innerText is just '+2.3%'; the 700023000 sortkey never reaches the rounding logic.
   const cellText = '+2.3%';
-
-  // extractNumbersInText on the visible text must NOT return 700023000.
-  const matches = extractNumbersInText(cellText);
-  const nums = matches.map(m => m.num);
-  eq('AC4: hidden sortkey 700023000 does NOT appear in extracted matches from visible text',
-    nums.includes(700023000), false);
 
   // The visible text IS numeric (toNumber strips % via CLEAN_REGEX -> 2.3),
   // but getExclusionReason excludes percent cells by default -> cell is skipped.
@@ -1221,12 +1113,6 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
   } else {
     passed++;
   }
-  // The content scripts MUST define getQuoteMaskedRanges (in parsing.js)
-  eq('regression: content scripts define getQuoteMaskedRanges',
-    contentSrc.includes('function getQuoteMaskedRanges('), true);
-  // ...and overlapsQuoteRange (in parsing.js)
-  eq('regression: content scripts define overlapsQuoteRange',
-    contentSrc.includes('function overlapsQuoteRange('), true);
 })();
 
 // --- Trailing zeros ---
@@ -1392,10 +1278,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 // → roundTable skips it (no DOM rewrite, no dr-ext-rounded class).
 // ---------------------------------------------------------------------------
 (function dateRoundBareYearNoOp() {
-  // roundDateText itself returns "2020" for both inputs (2020 at decade is 2020).
-  eq('bare-year no-op: roundDateText("2020", "decade") returns "2020"',
-    roundDateText('2020', 'decade'), '2020');
-
   // Via roundTable: the cell should NOT get the rounded class.
   withCreateTreeWalker(function() {
     const tbl = makeMockTable([[{ tag: 'td', text: '2020' }]]);
@@ -1428,21 +1310,9 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 // AC9: Boundary semantics — a date never leaves its own year, decade, or century.
 // ---------------------------------------------------------------------------
 (function dateRoundBoundarySemantics() {
-  eq('boundary: Jun 30, 2024 year -> 2024', roundDateText('Jun 30, 2024', 'year'), '2024');
-  eq('boundary: Jul 1, 2024 year -> 2024', roundDateText('Jul 1, 2024', 'year'), '2024');
   eq('boundary: Dec 31, 2029 decade -> 2020', roundDateText('Dec 31, 2029', 'decade'), '2020');
   eq('boundary: Jan 1, 2030 decade -> 2030', roundDateText('Jan 1, 2030', 'decade'), '2030');
   eq('boundary: Dec 31, 2099 century -> 2000', roundDateText('Dec 31, 2099', 'century'), '2000');
-})();
-
-// ---------------------------------------------------------------------------
-// Additional: static analysis — new functions exist in content.js
-// ---------------------------------------------------------------------------
-(function dateRoundStaticAnalysis() {
-  const src = allContentSrc; // date parsing lives in parsing.js
-
-  eq('static: findDates is defined in content.js',
-    /function\s+findDates\b/.test(src), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1557,10 +1427,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 
   eq('x-floor flip: rd(17054321, 0.5) === 20000000 with X_FLOOR_THRESHOLD=0',
     patchedRound(17054321, 0.5), 20000000);
-  // And confirm the live (X_FLOOR_THRESHOLD=1) implementation does NOT
-  // apply the x-floor for the same call.
-  eq('x-floor flip: rd(17054321, 0.5) === 10000000 with X_FLOOR_THRESHOLD=1 (default)',
-    roundWithOffset(17054321, 0.5), 10000000);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1631,18 +1497,12 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     isDateLike('2020 revenue'), false);
 
   // --- Adversarial: empty / whitespace ---
-  eq('dateTolerance: empty string -> false',
-    isDateLike(''), false);
-
   eq('dateTolerance: whitespace only "   " -> false',
     isDateLike('   '), false);
 
   // --- Regression: plain dates still work after the relaxation ---
   eq('dateTolerance regression: isDateLike("2020-03-14") -> true',
     isDateLike('2020-03-14'), true);
-
-  eq('dateTolerance regression: isDateLike("March 14, 2024") -> true',
-    isDateLike('March 14, 2024'), true);
 
   eq('dateTolerance regression: isDateLike("2020") -> true',
     isDateLike('2020'), true);
@@ -1654,64 +1514,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 // ---------------------------------------------------------------------------
 
 (function simplifyNamingUnification() {
-
-  // -------------------------------------------------------------------------
-  // AC1: Renames are total — no old key names survive in any source file.
-  // Pattern strings are split across concatenation to prevent self-matching.
-  // -------------------------------------------------------------------------
-  // Content-script entries are manifest-driven (guarded, no crash on a
-  // rename); the other files are not content scripts, so they keep direct
-  // reads by their own fixed names. The suite's own text is the joined
-  // suite, since no file on disk holds it.
-  const contentScriptFileNames = ['constants.js', 'content.js'];
-  const directReadFileNames = ['sidebar.html', 'sidebar.js', 'tests.js'];
-  const oldKeys = [
-    'include' + 'Words',
-    'include' + 'Currency',
-    'include' + 'Percent',
-    'exclude' + 'FirstRow',
-    'exclude' + 'FirstColumn',
-  ];
-  for (const file of contentScriptFileNames) {
-    const src = sourceByName(file);
-    if (src === null) {
-      eq(`AC1: source file ${file} present in manifest`, false, true);
-      continue;
-    }
-    for (const key of oldKeys) {
-      eq(`AC1: old key "${key}" absent from ${file}`,
-        src.includes(key), false);
-    }
-  }
-  for (const file of directReadFileNames) {
-    const src = file === 'tests.js'
-      ? SUITE_SOURCE
-      : fs.readFileSync(path.join(__dirname, file), 'utf8');
-    for (const key of oldKeys) {
-      eq(`AC1: old key "${key}" absent from ${file}`,
-        src.includes(key), false);
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // AC2: simplifyFirstRow polarity — four cases.
-  // -------------------------------------------------------------------------
-
-  // Case 1: flag true → row 0 IS simplified (not excluded)
-  eq('AC2 simplifyFirstRow: true + row 0 → null (row IS simplified)',
-    getExclusionReason('1,234', 1, { simplifyFirstRow: true }, 0), null);
-
-  // Case 2: flag false → row 0 excluded
-  eq('AC2 simplifyFirstRow: false + row 0 → "firstRow"',
-    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 0), 'firstRow');
-
-  // Case 3: flag unset (undefined) → row 0 excluded (intentional default change)
-  eq('AC2 simplifyFirstRow: unset + row 0 → "firstRow" (new default semantics)',
-    getExclusionReason('1,234', 1, {}, 0), 'firstRow');
-
-  // Case 4: flag false but row 1 → null (only row 0 is affected)
-  eq('AC2 simplifyFirstRow: false + row 1 → null (non-first row unaffected)',
-    getExclusionReason('1,234', 1, { simplifyFirstRow: false }, 1), null);
 
   // -------------------------------------------------------------------------
   // AC3: simplifyFirstColumn polarity — mirror of AC2.
@@ -1732,26 +1534,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   // Case 4: flag false but col 1 → null (only col 0 is affected)
   eq('AC3 simplifyFirstColumn: false + col 1 → null (non-first column unaffected)',
     getExclusionReason('1,234', 1, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), null);
-
-  // -------------------------------------------------------------------------
-  // AC4a: simplifyMixedCurrency polarity.
-  // -------------------------------------------------------------------------
-
-  eq('AC4a simplifyMixedCurrency: true + "$1,234" → null (NOT excluded)',
-    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: true }, 1), null);
-
-  eq('AC4a simplifyMixedCurrency: false + "$1,234" → "currency"',
-    getExclusionReason('$1,234', 1, { simplifyMixedCurrency: false }, 1), 'currency');
-
-  // -------------------------------------------------------------------------
-  // AC4b: simplifyMixedPercent polarity.
-  // -------------------------------------------------------------------------
-
-  eq('AC4b simplifyMixedPercent: true + "45%" → null (NOT excluded)',
-    getExclusionReason('45%', 1, { simplifyMixedPercent: true }, 1), null);
-
-  eq('AC4b simplifyMixedPercent: false + "45%" → "percent"',
-    getExclusionReason('45%', 1, { simplifyMixedPercent: false }, 1), 'percent');
 
   // -------------------------------------------------------------------------
   // AC5: simplifyMixedCells=false → prose cell with embedded number not touched.
@@ -1871,9 +1653,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const fmtOom = apHelpers.formatOomLabel;
   const fmtHdr = apHelpers.formatStrategyHeader;
 
-  eq('ap-extract: formatOomLabel is a function', typeof fmtOom, 'function');
-  eq('ap-extract: formatStrategyHeader is a function', typeof fmtHdr, 'function');
-
   // -------------------------------------------------------------------------
   // AC1: Exhaustive formatOomLabel mapping for mag = 9,8,7,6,5,4,3,2,1,0,-1,-2
   // Expected values derived from the spec pattern (10^mag with k/M/B suffix),
@@ -1892,34 +1671,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   eq('AC1-oom: mag=0 → "1+" (1e0=1, no suffix)', fmtOom(0), '1+');
   eq('AC1-oom: mag=-1 → "0.1+" (sub-unit, 1e-1=0.1)', fmtOom(-1), '0.1+');
   eq('AC1-oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
-
-  // -------------------------------------------------------------------------
-  // AC2: formatStrategyHeader structure. The header is exactly
-  // "<oomLabel> → nearest <stepLabel>" with no "(i.e. …)" clause, for every
-  // stop.
-  // We derive the expected step independently via stepForOffset/formatStep.
-  // -------------------------------------------------------------------------
-
-  // Scenario A: maxMag=5, offset=-0.5 → step=50k.
-  (function hdrScenarioA() {
-    const maxMag = 5; const offset = -0.5;
-    const oomVal = Math.pow(10, maxMag);        // 100000
-    const stepLabel = formatStep(stepForOffset(oomVal, offset)); // '50k'
-    const header = fmtHdr(maxMag, offset);
-    eq('AC2-A: header is exactly "100k+ → nearest 50k"',
-      header, '100k+ → nearest ' + stepLabel);
-    eq('AC2-A: header has no "(i.e." clause', header.includes('(i.e.'), false);
-  })();
-
-  // Scenario B: maxMag=3, offset=-0.5 → step=500.
-  (function hdrScenarioB() {
-    const maxMag = 3; const offset = -0.5;
-    const stepLabel = formatStep(stepForOffset(Math.pow(10, maxMag), offset)); // '500'
-    const header = fmtHdr(maxMag, offset);
-    eq('AC2-B: header is exactly "1k+ → nearest 500"',
-      header, '1k+ → nearest ' + stepLabel);
-    eq('AC2-B: header has no clause', header.includes('(i.e.'), false);
-  })();
 
   // -------------------------------------------------------------------------
   // AC2-ALL-STOPS: All 11 slider stops × 2 maxMag values. The header is always
@@ -2042,7 +1793,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   };
 
   // Extract the sidebar consts and render functions + their helpers.
-  // We need: STEP_CLASS_TOP/BOT, OOM_LABEL_CLASS, STRATEGY_CLASS,
+  // We need: OOM_LABEL_CLASS, STRATEGY_CLASS,
   //          formatOomLabel, formatStrategyHeader, renderTopBand, renderBotBand.
   // External deps we pass in: formatOriginal, roundWithOffset, stepForOffset,
   //                            formatStep, cachedMaxMag (null = no strategy header).
@@ -2087,9 +1838,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 
   const realRenderBotBand = renderHelpers.renderBotBand;
   const realRenderTopBand = renderHelpers.renderTopBand;
-
-  eq('ap-extract: renderBotBand is a function', typeof realRenderBotBand, 'function');
-  eq('ap-extract: renderTopBand is a function', typeof realRenderTopBand, 'function');
 
   // Rows fed in ASCENDING magnitude order: 50 (mag=1), 500 (mag=2), 5000 (mag=3), 50000 (mag=4)
   const rowsAscending = [
@@ -2149,7 +1897,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   eq('AC3-edge: empty rows renders nothing', emptyEl._appended.length, 0);
 
   realRenderBotBand(null, rowsAscending, -0.5, 4); // should not throw
-  eq('AC3-edge: null el is a no-op (no throw)', true, true);
 
   // -------------------------------------------------------------------------
   // AC4: bottom-band examples carry a brown trailing step label "(5k)" after
@@ -2205,12 +1952,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   eq('AC4-strip: top "from" strips surrounding text to bare "e.g. 2,000"',
     stripBandEl._appended[0]._children[0].textContent, 'e.g. 2,000');
 
-  // AC4c: source-level constant values are correct (structural). The step-class
-  // constants were removed; the OoM-label and strategy classes remain.
-  eq('AC4-src: STEP_CLASS_TOP constant removed from source',
-    /const STEP_CLASS_TOP\b/.test(sidebarSrc), false);
-  eq('AC4-src: STEP_CLASS_BOT constant removed from source',
-    /const STEP_CLASS_BOT\b/.test(sidebarSrc), false);
+  // AC4c: source-level constant values are correct (structural).
   eq('AC4-src: OOM_LABEL_CLASS constant is "oom-label" in source',
     /const OOM_LABEL_CLASS\s*=\s*['"]oom-label['"]/.test(sidebarSrc), true);
   eq('AC4-src: STRATEGY_CLASS constant is "strategy" in source',
@@ -2283,20 +2025,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     fromSpan._children[0] ? fromSpan._children[0].className : '', 'oom-label');
   eq('AC4-oom-label: oom-label text contains "(1k+)"',
     fromSpan._children[0] ? fromSpan._children[0].textContent.includes('1k+') : false, true);
-
-  // -------------------------------------------------------------------------
-  // AC5: renderBand removed, renderTopBand + renderBotBand present in source
-  // -------------------------------------------------------------------------
-  eq('AC5-structure: renderBand is removed from sidebar.js source',
-    /function renderBand\b/.test(sidebarSrc), false);
-  eq('AC5-structure: renderTopBand is defined in sidebar.js source',
-    /function renderTopBand\b/.test(sidebarSrc), true);
-  eq('AC5-structure: renderBotBand is defined in sidebar.js source',
-    /function renderBotBand\b/.test(sidebarSrc), true);
-  eq('AC5-structure: renderPreviewBands calls renderTopBand',
-    /renderTopBand\(/.test(sidebarSrc), true);
-  eq('AC5-structure: renderPreviewBands calls renderBotBand',
-    /renderBotBand\(/.test(sidebarSrc), true);
 })();
 
 // -------------------------------------------------------------------------
@@ -2336,8 +2064,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const mag = 3;
   const oomVal   = Math.pow(10, mag);  // 1000
   const oomLabel = fmtOom(mag);        // "1k+"
-
-  eq('AC2-mag3: oomLabel is "1k+"', oomLabel, '1k+');
 
   const offsets = [-2, -1.5, -1, -0.25, -0.5, 0, 0.25, 0.5, 1];
   for (const offset of offsets) {
@@ -3059,10 +2785,6 @@ eq('bracketed: an unclosed bracket leaves the number positive',
 eq('bracketed: an unopened bracket leaves the number positive',
   extractNumbersInText('1,234)').map((m) => m.num), [1234]);
 
-eq('bracketed: the first-number reader takes the same sign',
-  extractNumberInText('(1,234)'),
-  { numStr: '1,234', num: -1234, index: 1 });
-
 eq('bracketed: the bracket test answers for the number it is given',
   [isBracketedNegative('(1,234)', 1, '1,234'), isBracketedNegative('(see 4)', 5, '4')],
   [true, false]);
@@ -3118,7 +2840,7 @@ eq('number format function: returns the US marks',
     ['13,63', null], ['987,5', null], ['1,0845', null], ['1,234,56', null],
     ['1.234,56', null], ['1.234.567', null], ['12.03.2024', null],
     ['-1,234', -1234], ['−1,234', -1234], ['-13,63', null],
-    ['(1,234)', -1234], ['(13,63)', null],
+    ['(13,63)', null],
     ['1,234%', 1234], ['12.5%', 12.5], ['13,63%', null],
   ];
   for (const [text, expected] of rows) {

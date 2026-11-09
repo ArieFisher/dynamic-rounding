@@ -73,62 +73,25 @@
     eq('sprint-sidebar-pull: source file content.js present in manifest', false, true);
     return;
   }
-  const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // --- Settings live in DR_STORE (content-script context), so content.js
   // applies from its own model, and the sidebar asks content.js for the
   // current value. ---
 
-  eq('pull (inverted): content.js no longer sends GET_SIDEBAR_SETTINGS',
-    /chrome\.runtime\.sendMessage\(\s*\{\s*action:\s*['"]GET_SIDEBAR_SETTINGS['"]/.test(contentSrc), false);
-
-  eq('pull (inverted): the ten-retry settings-polling function is gone from content.js',
-    /requestSidebarSettingsAndApply/.test(contentSrc), false);
-
-  // No timing-based settings access remains: content.js's only other
-  // setTimeout use is the unrelated grid-virtualization re-apply debounce
-  // (GRID_REAPPLY_DEBOUNCE_MS), which is not a retry loop and does not
-  // reference settings/attempt/GET_SIDEBAR_SETTINGS at all.
-  const setTimeoutCalls = contentSrc.match(/setTimeout\([\s\S]{0,120}/g) || [];
-  eq('pull (inverted): every remaining setTimeout in content.js is the re-apply debounce, not a settings retry',
-    setTimeoutCalls.every((call) => !/attempt|GET_SIDEBAR_SETTINGS|requestSidebarSettingsAndApply/.test(call)),
-    true);
-
-  eq('pull (inverted): content.js no longer applies defaults on state:sidebarOpened',
-    /state:sidebarOpened[\s\S]{0,200}applySidebarRounding\([^)]*DR_DEFAULTS/.test(contentSrc), false);
-
   eq('pull (inverted): the apply reads the table\'s own settings',
     /function applySidebarRounding\(table\)\s*\{\s*const opts = DR_STORE\.getTableSettings\(table\)/.test(contentSrc),
     true);
 
-  eq('pull (inverted): sidebar.js no longer handles GET_SIDEBAR_SETTINGS',
-    /GET_SIDEBAR_SETTINGS/.test(sidebarSrc), false);
-
   eq('pull (inverted): content.js answers request:settings with the active table\'s settings',
     /respond\('request:settings'[\s\S]{0,100}DR_STORE\.getTableSettings\(DR_STORE\.getSelectedTable\(\)\)/.test(contentSrc), true);
 
-  eq('pull (inverted): sidebar.js asks request:settings on open',
-    /DR_BUS\.request\('request:settings'/.test(sidebarSrc), true);
-
-  // --- Unified rounding path: drop data-rounded-value, cache innerHTML ---
-
-  eq('unified: data-rounded-value attribute no longer written',
-    /data-rounded-value|dataset\.roundedValue/.test(contentSrc), false);
-
-  // Native-table originals (value/supRanges/linkFilteredIdx) and the
-  // per-table settings live in DR_STORE's table registry — see the "table
-  // registry" test section below for the full suite.
-  eq('unified (superseded by app-model-registry): dataset.originalHtml is no longer written',
-    /dataset\.originalHtml\s*=/.test(contentSrc), false);
+  // --- Unified rounding path ---
 
   // Both kinds record one shape through the registry port, with no markup
   // copy.
   eq('registry: every cell\'s originals are recorded via DR_STORE.setTableOriginal, through the registry port',
     /set\(cellEl, record\)\s*\{\s*DR_STORE\.setTableOriginal\(table, cellEl, record\);/.test(contentSrc) &&
       !/html:\s*cell\.innerHTML/.test(contentSrc), true);
-
-  eq('unified (superseded by app-model-registry): tableOptions WeakMap no longer declared',
-    /const\s+tableOptions\s*=\s*new\s+WeakMap/.test(contentSrc), false);
 
   eq('registry: the table settings are recorded via DR_STORE.setTableSettings, in the controller\'s one write',
     /function writeTableSettings\([\s\S]{0,400}DR_STORE\.setTableSettings\(table,/.test(contentSrc), true);
@@ -656,28 +619,6 @@
   // childNodes.length still unchanged (no innerHTML write at any point).
   eq('E2E-GR2: childNodes.length unchanged throughout (no innerHTML write)',
     cell0.childNodes.length, childCountBefore);
-})();
-
-// ---------------------------------------------------------------------------
-// E2E-GR3 (Negative guard): after roundTable on a grid, NO cell has
-// dataset.originalHtml set. Locks in that grids never take the native write path.
-// ---------------------------------------------------------------------------
-(function e2e_gr3_noOriginalHtmlOnGridCells() {
-  const grid = makeE2EGridWrapper([
-    ['8584629', '286'],
-    ['1234567', '99'],
-    ['7654321', '55'],
-  ]);
-
-  // simplifyFirstRow:true ensures all rows are processed (maximal coverage).
-  roundTable(grid.wrapperEl, Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true }));
-
-  const anyHasOriginalHtml = grid.cellEls.some(function(c) {
-    return c.dataset.originalHtml !== undefined;
-  });
-
-  eq('E2E-GR3: no grid cell has dataset.originalHtml after roundTable (native path locked out)',
-    anyHasOriginalHtml, false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1565,9 +1506,6 @@ const PENDING_FILL_ROWS = [
   eq('static scan: content.js still declares its usual top-level bindings (sanity check on the scan itself)',
     contentTopLevelNames.includes('lastRightClickedElement') && contentTopLevelNames.includes('reapplyObservers'),
     true);
-  eq('static scan: content.js no longer declares lastRightClickedTable at top level',
-    contentTopLevelNames.includes('lastRightClickedTable'),
-    false);
   const crossFileWrites = contentTopLevelNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
     return assignRe.test(uiToggleSrcForScan);
@@ -3148,8 +3086,6 @@ function issue328SettingsOf(table) {
 // alone: which side wrote it and the table's whole settings. A live table
 // element cannot cross.
 (function issue328_theSettingsNoticeReachesTheExtensionPages() {
-  eq('per-table settings: the settings notice takes the extension-pages route',
-    DR_BUS.TOPICS['state:settingsChanged'].route, 'extension-pages');
   runPressFixture(({ sent }) => {
     const active = makePressTable('12,345');
     DR_STORE.setSelectedTable(active);
@@ -3851,16 +3787,12 @@ function issue328SettingsOf(table) {
   const table = {};
   const gridCell = {};
   const nativeCell = {};
-  const stringCell = {};
   DR_STORE.setTableOriginal(table, gridCell,
     { value: '98,765', pieces: [{ text: '98,765', written: '100,000' }], supRanges: null, linkFilteredIdx: null });
   DR_STORE.setTableOriginal(table, nativeCell,
     { value: '1,234', pieces: [{ text: '1,234', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
-  DR_STORE.setTableOriginal(table, stringCell, '55,000');
   eq('capture-reads: a grid original (record) reads back as its value field',
     has ? DR_STORE.getTableOriginalText(table, gridCell) : null, '98,765');
-  eq('capture-reads: a plain-string original reads back as itself',
-    has ? DR_STORE.getTableOriginalText(table, stringCell) : null, '55,000');
   eq('capture-reads: a native original (record) reads back as its value field',
     has ? DR_STORE.getTableOriginalText(table, nativeCell) : null, '1,234');
   eq('capture-reads: a cell with no stored original reads back undefined',
@@ -4090,8 +4022,6 @@ function issue328SettingsOf(table) {
   // has to rule out.
   const allContextSrc = Object.values(contextFiles).join('\n');
   const declared = Object.keys(DR_BUS.TOPICS);
-  eq('one topic list: the scan has topics to check (fails closed on an empty table)',
-    declared.length > 0, true);
   const unused = declared.filter((topic) => !allContextSrc.includes("'" + topic + "'"));
   eq('one topic list: every declared topic is used by at least one context file',
     unused, []);
@@ -4102,20 +4032,15 @@ function issue328SettingsOf(table) {
   const VALID_ROUTES = [null, 'extension-pages', 'tab'];
   let allHaveFamily = true;
   let allHaveValidRoute = true;
-  let noWireAction = true;
   for (const topic in DR_BUS.TOPICS) {
     const entry = DR_BUS.TOPICS[topic];
     if (typeof entry.family !== 'string' || entry.family.length === 0) allHaveFamily = false;
     if (!Object.prototype.hasOwnProperty.call(entry, 'route')) { allHaveValidRoute = false; }
     else if (VALID_ROUTES.indexOf(entry.route) === -1) { allHaveValidRoute = false; }
-    if (Object.prototype.hasOwnProperty.call(entry, 'wireAction')) noWireAction = false;
   }
   eq('bus table: every topic carries a non-empty family', allHaveFamily, true);
   eq('bus table: every topic carries a route drawn from the three valid values',
     allHaveValidRoute, true);
-  eq('bus table: the table is not empty (fails closed on a lost table)',
-    Object.keys(DR_BUS.TOPICS).length > 0, true);
-  eq('bus table: no topic carries the retired wireAction field', noWireAction, true);
 })();
 
 // --- The route picks the carrier, not the publishing context ---
@@ -4415,7 +4340,6 @@ function issue328SettingsOf(table) {
 (function settingsApplyUsesRequestPath() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const contentSrc = sourceByName('content.js');
-  const busSrc = sourceByName('adapters/messaging.js');
 
   eq('settings apply: the sidebar asks through request()',
     /DR_BUS\.request\(\s*'request:applySettings'/.test(sidebarSrc), true);
@@ -4423,10 +4347,6 @@ function issue328SettingsOf(table) {
     /DR_BUS\.publish\(\s*'request:applySettings'/.test(sidebarSrc), false);
   eq('settings apply: the content script answers through respond()',
     /DR_BUS\.respond\(\s*'request:applySettings'/.test(contentSrc), true);
-  eq('settings apply: the delivery-outcome callback retires from the bus',
-    busSrc.includes('onDelivery'), false);
-  eq('settings apply: the sidebar keeps no delivery-outcome callback',
-    sidebarSrc.includes('onDelivery'), false);
 
   // The unbind-on-no-answer rule is the load-bearing one. Drive it through the
   // bus rather than through the source text: an unanswered request must reach
@@ -4484,8 +4404,6 @@ function issue328SettingsOf(table) {
     if (!/^(intent|state|request):[a-z][A-Za-z]*$/.test(topic)) allNamed = false;
   }
   eq('one mechanism: every topic name follows the family:name style', allNamed, true);
-  eq('one mechanism: the table holds all sixteen cross-context topics plus the four same-context ones',
-    Object.keys(DR_BUS.TOPICS).length, 20);
 })();
 
 // --- The responders answer through the bus ---

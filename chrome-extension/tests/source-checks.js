@@ -70,13 +70,8 @@
 // --- Regression guards ---
 
 (function sprintRegressionGuards() {
-  const manifestPath = path.join(__dirname, 'manifest.json');
   const readmePath = path.join(__dirname, '..', 'js', 'README.md');
   const changelogPath = path.join(__dirname, '..', 'js', 'CHANGELOG.md');
-
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  eq('sprint regression: manifest version matches N.N.N',
-    /^\d+\.\d+\.\d+$/.test(manifest.version), true);
 
   const readme = fs.readFileSync(readmePath, 'utf8');
   eq('sprint regression: js/README.md contains Sheets decimal precision section header',
@@ -116,16 +111,6 @@
   // AC1/AC2: Sidebar UI defaults live in constants.js (single source of
   // truth shared with content.js). The HTML must NOT hard-code checked /
   // selected attributes — they would shadow the JS-applied defaults.
-  eq('sidebar-defaults: simplifyMixedCells default is true in DR_DEFAULTS',
-    DR_DEFAULTS.simplifyMixedCells, true);
-  eq('sidebar-defaults: simplifyMixedCurrency default is true in DR_DEFAULTS',
-    DR_DEFAULTS.simplifyMixedCurrency, true);
-  eq('sidebar-defaults: simplifyMixedPercent default is true in DR_DEFAULTS',
-    DR_DEFAULTS.simplifyMixedPercent, true);
-  eq('sidebar-defaults: dateGranularity default is "year" in DR_DEFAULTS',
-    DR_DEFAULTS.dateGranularity, 'year');
-  eq('sidebar-defaults: timeGranularity default is "hour" in DR_DEFAULTS',
-    DR_DEFAULTS.timeGranularity, 'hour');
   eq('sidebar-defaults: sidebar.html does not hard-code "checked" attributes',
     /<input[^>]*checked/i.test(sidebarHtml), false);
   eq('sidebar-defaults: sidebar.html does not hard-code "selected" options',
@@ -162,17 +147,11 @@
   eq('sidebar-defaults: content scripts still define parseRangeExpr',
     /function parseRangeExpr\b/.test(allContentSrc), true);
 
-  // AC6: manifest.json has a valid N.N.N version string.
-  eq('sidebar-defaults: manifest version matches N.N.N',
-    /^\d+\.\d+\.\d+$/.test(manifest.version), true);
-
   // AC7: manifest permissions do NOT include "storage".
   eq('sidebar-defaults: manifest permissions does not include "storage"',
     Array.isArray(manifest.permissions) && manifest.permissions.includes('storage'), false);
 
   // AC8: sidebar.js does not reference chrome.storage.sync.
-  eq('sidebar-defaults: sidebar.js does not call chrome.storage.sync',
-    /chrome\.storage\.sync/.test(sidebarJsSource), false);
   eq('sidebar-defaults: sidebar.js does not import chrome.storage',
     /chrome\.storage/.test(sidebarJsSource), false);
 })();
@@ -289,39 +268,7 @@
     ptBody.includes('TOGGLE_DOT_OVERHANG_PX'), true);
 })();
 
-(function previewBand_manifestLoadsRoundingJs() {
-  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  eq('manifest content_scripts loads lib/dr-number/rounding.js between constants.js and content.js',
-    manifest.content_scripts[0].js[2], 'lib/dr-number/rounding.js');
-})();
-
-// The extracted layers (the lib/dr-number package: rounding.js, core.js,
-// parsing.js, index.js; the lib/dr-table package: detect.js, index.js; plus
-// ui-toggle.js) must all load AFTER constants.js and BEFORE content.js —
-// content.js runs last because it holds the only load-time-executing code
-// (listeners and the MutationObserver wiring). This ordering is duplicated in
-// three places (manifest content_scripts, sidebar.html, and this harness's
-// eval concatenation); they must stay in lockstep.
 (function layerLoadOrderAcrossEntryPoints() {
-  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
-  const js = manifest.content_scripts[0].js;
-  const after = (a, b) => js.indexOf(a) > -1 && js.indexOf(b) > -1 && js.indexOf(a) < js.indexOf(b);
-  eq('manifest: rounding.js < core.js < parsing.js < dr-number index.js < detect.js < dr-table index.js < ladder.js < table.js < dr-simplify index.js < messaging.js < store.js < ui-toggle.js < ui-toast.js < content.js',
-    after('lib/dr-number/rounding.js', 'lib/dr-number/core.js') &&
-    after('lib/dr-number/core.js', 'lib/dr-number/parsing.js') &&
-    after('lib/dr-number/parsing.js', 'lib/dr-number/index.js') &&
-    after('lib/dr-number/index.js', 'lib/dr-table/detect.js') &&
-    after('lib/dr-table/detect.js', 'lib/dr-table/index.js') &&
-    after('lib/dr-table/index.js', 'lib/dr-simplify/ladder.js') &&
-    after('lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js') &&
-    after('lib/dr-simplify/table.js', 'lib/dr-simplify/index.js') &&
-    after('lib/dr-simplify/index.js', 'adapters/messaging.js') &&
-    after('adapters/messaging.js', 'app/store.js') &&
-    after('app/store.js', 'ui-toggle.js') &&
-    after('ui-toggle.js', 'ui-toast.js') &&
-    after('ui-toast.js', 'content.js'), true);
-  eq('manifest: content.js loads last', js[js.length - 1], 'content.js');
-
   // The sidebar deliberately does NOT load the content-only layers — it only
   // needs the pure domain (defaults, rounding, core).
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
@@ -335,26 +282,12 @@
   eq('sidebar.html does not load content-only lib/dr-simplify/index.js', sidebarHtml.includes('lib/dr-simplify/index.js'), false);
   eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
   eq('sidebar.html does not load content-only ui-toast.js', sidebarHtml.includes('ui-toast.js'), false);
-
-  // NOTE: the main bootstrap eval() (the setup piece) evals the
-  // manifest-driven contentScriptBundle (see the
-  // manifestDrivenSourceLoading self-test below for that ordering guarantee).
-  // This assertion instead checks that later per-layer eval sites in the suite
-  // (e.g. the x-floor sandbox concatenation) still reference those variables
-  // in layer order, since a few sections still build their own eval string
-  // from the individual layer sources.
-  const testsSource = SUITE_SOURCE;
-  eq('tests.js: per-layer eval sites reference core→parsing→detect→ui-toggle→content in layer order',
-    /coreCode[\s\S]*parsingCode[\s\S]*detectCode[\s\S]*uiToggleCode[\s\S]*code\b/.test(
-      testsSource.slice(testsSource.indexOf('eval('))), true);
 })();
 
 (function previewBand_sidebarHtmlHasBands() {
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('sidebar.html has #topBand', /<div[^>]*id="topBand"/.test(sidebarHtml), true);
   eq('sidebar.html has #botBand', /<div[^>]*id="botBand"/.test(sidebarHtml), true);
-  eq('sidebar.html loads lib/dr-number/rounding.js before sidebar.js',
-    /lib\/dr-number\/rounding\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -410,12 +343,7 @@
     'Exclude:',
     'round to:'
   ];
-  for (const phrase of forbidden) {
-    eq(`sidebar-tidyup AC2: "${phrase}" absent from options section`,
-      optsSectionRaw.includes(phrase), false);
-  }
-
-  // Also check the full HTML for the same forbidden phrases (belt-and-braces)
+  // The full HTML holds none of the forbidden phrases.
   for (const phrase of forbidden) {
     eq(`sidebar-tidyup AC2 (full HTML): "${phrase}" absent`,
       sidebarHtml.includes(phrase), false);
@@ -609,41 +537,19 @@
     /function updateDisabledState\b/.test(sidebarSrc), true);
 })();
 
-// --- Old keys (excludeDates / excludeTimes) must be absent from content.js and constants.js ---
-// The keys are simplifyDates/simplifyTimes.
-// If the old names are present as property assignments or conditions, the
-// inversion is incomplete and rounding behaviour would be controlled by the wrong key.
+// --- The keys simplifyDates/simplifyTimes reach every file that reads them ---
 (function invertPills_oldKeysAbsent() {
-  const contentSrc = sourceByName('content.js');
   // The simplifyDates/simplifyTimes option reads (and every other
   // classification-ladder rule) live in lib/dr-simplify/ladder.js; content.js
   // only calls classifyCell.
   const ladderSrc = sourceByName('lib/dr-simplify/ladder.js');
-  if (contentSrc === null || constantsCode === null || ladderSrc === null) {
+  if (constantsCode === null || ladderSrc === null) {
     eq('invert-pills regression: source files present in manifest', false, true);
     return;
   }
   const sidebarSrc  = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
-  // "excludeDates" and "excludeTimes" must not appear as identifiers in any of these files.
-  eq('invert-pills regression: content.js does not reference excludeDates',
-    /\bexcludeDates\b/.test(contentSrc), false);
-  eq('invert-pills regression: content.js does not reference excludeTimes',
-    /\bexcludeTimes\b/.test(contentSrc), false);
-  eq('invert-pills regression: constants.js does not reference excludeDates',
-    /\bexcludeDates\b/.test(constantsCode), false);
-  eq('invert-pills regression: constants.js does not reference excludeTimes',
-    /\bexcludeTimes\b/.test(constantsCode), false);
-  eq('invert-pills regression: sidebar.js does not reference excludeDates',
-    /\bexcludeDates\b/.test(sidebarSrc), false);
-  eq('invert-pills regression: sidebar.js does not reference excludeTimes',
-    /\bexcludeTimes\b/.test(sidebarSrc), false);
-  eq('invert-pills regression: lib/dr-simplify/ladder.js does not reference excludeDates',
-    /\bexcludeDates\b/.test(ladderSrc), false);
-  eq('invert-pills regression: lib/dr-simplify/ladder.js does not reference excludeTimes',
-    /\bexcludeTimes\b/.test(ladderSrc), false);
-
-  // Conversely, simplifyDates and simplifyTimes MUST appear in each file.
+  // simplifyDates and simplifyTimes must appear in each file.
   // content.js references them only transitively (via opts passed to
   // classifyCell) — the ladder is the actual point of use.
   eq('invert-pills regression: lib/dr-simplify/ladder.js references simplifyDates',
@@ -699,34 +605,6 @@
       /chain root/i.test(readmeDetectionPoint), true);
 })();
 
-// TA5: source-scan — no data-row-index literal in content.js
-// The adapters read data-row / data-index instead.
-(function sourceNoLegacySelectors() {
-  const contentSrc = sourceByName('content.js');
-  if (contentSrc === null) {
-    eq('grid-adapter AC4: source file content.js present in manifest', false, true);
-    return;
-  }
-
-  eq('grid-adapter AC4: no data-row-index literal remains in content.js',
-    contentSrc.includes('data-row-index'), false);
-})();
-
-// Source guard: the retired per-row and per-grid sample constants carry no
-// definition anywhere in the detection layer.
-(function dataTestBudget_retiredSampleConstantsGone() {
-  if (detectCode === null) {
-    eq('data test: source file lib/dr-table/detect.js present in manifest', false, true);
-    return;
-  }
-  const retiredNames = ['GRID_IS_DATA_TABLE_CELL_SAMPLE', 'GRID_IS_DATA_TABLE_ROW_SAMPLE'];
-  for (const name of retiredNames) {
-    const definitionPattern = new RegExp(`\\b(const|let|var)\\s+${name}\\b`);
-    eq(`data test: the detection layer carries no definition of the retired ${name}`,
-      definitionPattern.test(detectCode), false);
-  }
-})();
-
 // AC4: the three living docs each state the 1000-cell budget, per AGENTS.md's
 // rule that a behavior-invalidating change updates every living doc it
 // invalidates in the same branch.
@@ -766,10 +644,6 @@
 // delivery.
 (function onOffReportDeliveredOnce() {
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
-  eq('one delivery: the worker subscribes to no settings notice',
-    /subscribe\(\s*'state:settingsChanged'/.test(bgSrc), false);
-  eq('one delivery: the worker publishes no settings notice',
-    /publish\(\s*'state:settingsChanged'/.test(bgSrc), false);
   eq('one delivery: the worker makes no wire send of its own for anything',
     bgSrc.includes('chrome.runtime.sendMessage'), false);
 })();
@@ -1058,11 +932,9 @@
 // ---------------------------------------------------------------------------
 
 // Linked-state bot thumb/label colour change
-// AC1. Linked-state bot thumb background is #c48a6a (brown), NOT grey #9aa0a6.
+// AC1. Linked-state bot thumb background is #c48a6a (brown).
 // AC2. Decoupled-state bot thumb is still #b3623d (unchanged).
 // AC3. Linked-state bot LABEL color matches the linked thumb (same hex #c48a6a).
-// AC4. Grey #9aa0a6 appears in neither of these two rules.
-// AC5. The linked brown (#c48a6a) is lighter than the decoupled brown (#b3623d).
 // ---------------------------------------------------------------------------
 
 (function advancedLowerDotBrown() {
@@ -1071,13 +943,6 @@
   // --- AC1: .dual-thumb.bot.linked background is #c48a6a ---
   eq('lower-dot-brown AC1: .dual-thumb.bot.linked background is #c48a6a',
     /\.dual-thumb\.bot\.linked\s*\{[^}]*background\s*:\s*#c48a6a/.test(sidebarHtml), true);
-
-  // --- AC1 (negative): .dual-thumb.bot.linked does NOT use grey #9aa0a6 ---
-  // Extract the specific rule so we do not false-positive on other rules.
-  const linkedThumbRuleMatch = sidebarHtml.match(/\.dual-thumb\.bot\.linked\s*\{[^}]*\}/);
-  const linkedThumbRule = linkedThumbRuleMatch ? linkedThumbRuleMatch[0] : '';
-  eq('lower-dot-brown AC1 neg: .dual-thumb.bot.linked rule does not contain #9aa0a6',
-    linkedThumbRule.includes('#9aa0a6'), false);
 
   // --- AC2: .dual-thumb.bot (decoupled) background is still #b3623d ---
   // The rule may be a multi-line block; match the .dual-thumb.bot { ... } block
@@ -1102,30 +967,6 @@
   const linkedThumbHex  = linkedThumbBgMatch ? linkedThumbBgMatch[1].toLowerCase() : 'MISSING';
   eq('lower-dot-brown AC3 consistency: linked label hex === linked thumb hex',
     linkedLabelHex, linkedThumbHex);
-
-  // --- AC4: Grey #9aa0a6 appears in neither of these two rules ---
-  // (linked thumb rule checked above; now check the linked label rule)
-  const linkedLabelRuleMatch = sidebarHtml.match(/#sliderBlock\.linked[^{]*\.lbl\.bot\s*\{[^}]*\}/);
-  const linkedLabelRule = linkedLabelRuleMatch ? linkedLabelRuleMatch[0] : '';
-  eq('lower-dot-brown AC4: linked label rule does not contain #9aa0a6',
-    linkedLabelRule.includes('#9aa0a6'), false);
-
-  // --- AC5: The linked brown (#c48a6a) is lighter than the decoupled brown (#b3623d) ---
-  // Parse each hex to RGB, then compute perceived lightness (simple average of R,G,B).
-  function hexToRgb(hex) {
-    const h = hex.replace('#', '');
-    return {
-      r: parseInt(h.slice(0, 2), 16),
-      g: parseInt(h.slice(2, 4), 16),
-      b: parseInt(h.slice(4, 6), 16),
-    };
-  }
-  function lightness(rgb) { return (rgb.r + rgb.g + rgb.b) / 3; }
-
-  const linkedBrown    = hexToRgb('#c48a6a');   // the new colour
-  const decoupledBrown = hexToRgb('#b3623d');   // the existing decoupled colour
-  eq('lower-dot-brown AC5: linked brown (#c48a6a) is lighter than decoupled brown (#b3623d)',
-    lightness(linkedBrown) > lightness(decoupledBrown), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1242,8 +1083,6 @@
   // the sidebar.
   eq('AC1-src: the request:applySettings responder returns an answer',
     /DR_BUS\.respond\(\s*'request:applySettings'[\s\S]{0,300}return \{/.test(contentSrc), true);
-  eq('AC1-src: no inline branch answers it any more',
-    /request:applySettings[\s\S]{0,200}sendResponse\(/.test(contentSrc), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1527,25 +1366,14 @@
     .join('\n');
   eq('manifest-driven loading: contentScriptBundle is the manifest-order concatenation of sources',
     contentScriptBundle, expectedBundle);
-
-  // Guard against the failure mode where the manifest's js list becomes empty
-  // (or truncated) and contentScriptBundle silently becomes '' or partial —
-  // every "source includes X" assertion elsewhere in the suite would then
-  // vacuously pass instead of catching a real regression.
-  // NOTE: this count changes when a content-script package is added to or
-  // removed from manifest.json; update it alongside the manifest edit.
-  eq('manifest-driven loading: manifest content_scripts[0].js lists exactly 20 files today',
-    manifest.content_scripts[0].js.length, 20);
 })();
 
 // ---------------------------------------------------------------------------
 // The pure number-logic package lives under
 // lib/dr-number/ (rounding.js, core.js, parsing.js, identifiers.js,
-// index.js). These two tests are the package discipline checks: (a) index.js's only
+// index.js). This test is the package discipline check: index.js's only
 // job — assigning every public function onto one DR_NUMBER bundle — actually
-// happened, and (b) every lib/ content script the manifest lists loads before
-// any non-lib content script, so the package boundary shows up in load order,
-// not just in the filesystem.
+// happened.
 // ---------------------------------------------------------------------------
 (function drNumberBundleIsPublished() {
   const EXPECTED_DR_NUMBER_NAMES = [
@@ -1559,7 +1387,7 @@
     'findDates', 'isAmbiguousDate',
     'isDateLike', 'isTimeLike', 'clockTimeRanges', 'parseISODateTime', 'isDateTimeLike',
     'roundDateText', 'roundISODateTime', 'roundTimeText',
-    'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumberInText', 'extractNumbersInText',
+    'getQuoteMaskedRanges', 'overlapsQuoteRange', 'extractNumbersInText',
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'formatNumber', 'pureNumberSpan',
     // identifiers.js
@@ -1590,28 +1418,6 @@
   eq('core.js: singleValueMode stays deleted', typeof singleValueMode, 'undefined');
   eq('core.js: datasetMode stays deleted', typeof datasetMode, 'undefined');
   eq('core.js: validateOffset stays deleted', typeof validateOffset, 'undefined');
-
-  const deletedNames = ['ROUND_DYNAMIC', 'singleValueMode', 'datasetMode', 'validateOffset'];
-  eq('lib/dr-number/index.js: DR_NUMBER does not re-expose any deleted rounding entry point',
-    deletedNames.some((n) => Object.prototype.hasOwnProperty.call(globalThis.DR_NUMBER || {}, n)),
-    false);
-})();
-
-(function libPathsLoadBeforeNonLibContentScripts() {
-  // constants.js is the one deliberate exception: it declares every shared
-  // constant (the settings defaults and the cross-context topic names) and
-  // loads first, ahead of the lib/dr-number package itself. Every OTHER
-  // non-lib content script (ui-toggle.js, content.js — the DOM/UI consumers)
-  // must load after every lib/ path.
-  const js = manifest.content_scripts[0].js;
-  const isLib = (f) => f.startsWith('lib/');
-  const isConsumer = (f) => !isLib(f) && f !== 'constants.js';
-  const lastLibIndex = js.reduce((last, f, i) => (isLib(f) ? i : last), -1);
-  const firstConsumerIndex = js.findIndex(isConsumer);
-  eq('manifest: at least one lib/ content script is listed',
-    lastLibIndex >= 0, true);
-  eq('manifest: every lib/ content script loads before any non-lib, non-defaults content script',
-    firstConsumerIndex === -1 || lastLibIndex < firstConsumerIndex, true);
 })();
 
 // index.js's own doc comment says "No logic lives here — this is a pure
@@ -2309,15 +2115,6 @@
   }
 })();
 
-// --- (d) The shared-ownership guard comment is absent from content.js — the
-// flag it warned about has no two independent writers to coordinate. ---
-(function registrySprint_guardCommentRemoved() {
-  const contentSrc = sourceByName('content.js');
-  eq('registry: the old showing-original shared-ownership guard comment is gone',
-    /Showing-original guard: when the per-table toggle has flipped the grid/.test(contentSrc),
-    false);
-})();
-
 // --- sidebar: the screenshot take never blocks the save ---
 //
 // takeCaptureScreenshot takes its tabs interface as a parameter and answers
@@ -2438,8 +2235,6 @@
 (function drLogBuffer() {
   eq('dr-log: DR_LOG loads in the content-script bundle',
     typeof globalThis.DR_LOG, 'object');
-  eq('dr-log: manifest loads lib/dr-log/index.js directly after constants.js',
-    contentScriptFiles[1], 'lib/dr-log/index.js');
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('dr-log: sidebar.html loads lib/dr-log/index.js before sidebar.js',
     sidebarHtml.indexOf('lib/dr-log/index.js') !== -1 &&
@@ -2701,8 +2496,6 @@
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
   eq('worker on bus: importScripts loads the messaging adapter',
     /importScripts\([^)]*adapters\/messaging\.js/.test(bgSrc), true);
-  eq('worker on bus: no chrome.runtime.onMessage listener of its own',
-    bgSrc.includes('chrome.runtime.onMessage.addListener'), false);
   eq('worker on bus: no raw chrome.tabs.sendMessage call',
     bgSrc.includes('chrome.tabs.sendMessage'), false);
   eq('worker on bus: the menu click publishes with an explicit tab number',

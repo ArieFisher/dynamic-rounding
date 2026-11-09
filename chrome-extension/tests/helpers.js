@@ -944,17 +944,6 @@ function makeGridCellWithTextNode(text) {
 }
 
 /**
- * Create a div-grid cell that wraps a nested span > text node (deeper nesting).
- * Tests that findCellTextNode descends past intermediate elements.
- */
-function makeGridCellDeepTextNode(text) {
-  const tn = makeTextNode(text);
-  const span = makeElementNode('inner', [tn]);
-  const cell = makeElementNode('', [span]);
-  return cell;
-}
-
-/**
  * Build a complete div-based grid suitable for GridAdapter consumption.
  *
  * Returns { wrapperEl, rowEls, cellEls } so tests can inspect individual rows/cells.
@@ -1413,15 +1402,6 @@ function chainParents(child /*, ...parents */) {
 // An element that qualifies as "positioned" (inline style.position='absolute').
 function makePositionedAncestor(styleOverrides) {
   return makePhantomEl({ style: Object.assign({ position: 'absolute' }, styleOverrides || {}) });
-}
-
-// A minimal 2-column numeric table stub (no aria-hidden, normal left, no svg).
-function makeOnScreenTable() {
-  const table = makePhantomEl({ tagName: 'TABLE' });
-  // parentElement: a plain non-positioned wrapper
-  const wrapper = makePhantomEl({ tagName: 'DIV' });
-  chainParents(table, wrapper);
-  return table;
 }
 
 // =============================================================================

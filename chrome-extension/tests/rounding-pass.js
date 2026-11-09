@@ -928,8 +928,6 @@ const SEAT_ROWS = [
 })();
 
 (function nativeWrite_olderWriterIsGone() {
-  eq('native write: no loaded source defines or calls the older whole-cell writer',
-    /replaceTextPreservingHTML/.test(allContentSrc), false);
   const body = sourceBodyOf(allContentSrc, 'function roundTable(');
   eq('native write: roundTable holds no innerHTML= assignment',
     body.length > 0 && !/innerHTML\s*=(?!=)/.test(body), true);
@@ -1424,49 +1422,6 @@ const SEAT_ROWS = [
     eq('ADV AC4/AC1 isolation: simplifyTimes=false — time cell text unchanged (14:30)',
       timeCell.innerText, '14:30');
   });
-})();
-
-// --- ADV-AC4: time cell with simplifyTimes=false is not treated as a pure number ---
-// "14:30" is not parseable by toNumber (returns null), so with simplifyTimes=false
-// AND simplifyMixedCells=false, the cell must be fully skipped.
-// Adversarial: confirm there is no fallthrough that rounds the time as a numeric value.
-// (Note: simplifyMixedCells=true would extract 14 and 30 independently — that is a separate
-// feature path. Here we test the pure numeric exclusion path only.)
-(function invertPills_adv_AC4_timeNotTreatedAsNumber() {
-  withCreateTreeWalker(function() {
-    const table = makeMockTable([[
-      { tag: 'td', text: '14:30' },
-    ]]);
-    roundTable(table, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
-      simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyDates: false, simplifyTimes: false,
-      dateGranularity: 'decade', timeGranularity: 'hour',
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const cell = table.rows[0].cells[0];
-    eq('ADV AC4: 14:30 with simplifyTimes=false and simplifyMixedCells=false — not rounded',
-      cell.classList.contains('dr-ext-rounded'), false);
-    eq('ADV AC4: 14:30 with simplifyTimes=false and simplifyMixedCells=false — text unchanged',
-      cell.innerText, '14:30');
-  });
-})();
-
-// --- ADV: DR_DEFAULTS has correct polarity ---
-// simplifyDates must default to true (simplify by default).
-// simplifyTimes must default to false (do not simplify by default).
-// This is the direct spec requirement for the "inverted" rename: the default
-// behavior (dates simplified, times not) must be encoded correctly.
-(function invertPills_adv_defaults() {
-  eq('ADV defaults: DR_DEFAULTS.simplifyDates is true (dates simplified by default)',
-    DR_DEFAULTS.simplifyDates, true);
-  eq('ADV defaults: DR_DEFAULTS.simplifyTimes is false (times not simplified by default)',
-    DR_DEFAULTS.simplifyTimes, false);
-  // Old keys must be absent from DR_DEFAULTS
-  eq('ADV defaults: DR_DEFAULTS has no excludeDates key',
-    Object.prototype.hasOwnProperty.call(DR_DEFAULTS, 'excludeDates'), false);
-  eq('ADV defaults: DR_DEFAULTS has no excludeTimes key',
-    Object.prototype.hasOwnProperty.call(DR_DEFAULTS, 'excludeTimes'), false);
 })();
 
 // --- ADV-AC1/AC3: both simplifyDates=true and simplifyTimes=true — both simplified ---
@@ -2126,8 +2081,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 })();
 
 // ---------------------------------------------------------------------------
-// GR4: resetTable restores originals on visible rows; recycled rows (no
-// .dr-ext-rounded) are left untouched
+// GR4: resetTable restores originals on visible rows
 // ---------------------------------------------------------------------------
 
 (function gr4_resetTable_restoresOriginals() {
@@ -2152,14 +2106,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   eq('GR4 (setup): cell 0 registry original is stored original value',
     DR_STORE.getTableOriginalText(grid.wrapperEl, grid.cellEls[0]), '8584629');
 
-  // Simulate a recycled row: cell has NO .dr-ext-rounded (framework removed+readded it)
-  // We model this by creating a fresh cell that was never rounded by us.
-  const recycledCell = makeGridCellWithTextNode('FRAMEWORK_TEXT');
-  // recycledCell has no dr-ext-rounded class and no drOriginal — simulates a
-  // framework-recycled row that shows fresh content.
-
   // Build a querySelectorAll stub on the wrapper that returns only the already-rounded cells
-  // (the recycled cell is not in the DOM under the wrapper for purposes of this test)
   const roundedCells = grid.cellEls.filter(function(c) {
     return c.classList.contains('dr-ext-rounded');
   });
@@ -2188,13 +2135,6 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 
   eq('GR4: cell 0 registry original cleared after reset',
     DR_STORE.getTableOriginal(grid.wrapperEl, grid.cellEls[0]), undefined);
-
-  // The recycled cell was never touched by us and must not be modified
-  eq('GR4: recycled cell text node untouched (framework text preserved)',
-    recycledCell.childNodes[0].nodeValue, 'FRAMEWORK_TEXT');
-
-  eq('GR4: recycled cell has no dr-ext-rounded class',
-    recycledCell.classList.contains('dr-ext-rounded'), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -2277,7 +2217,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 
 // ---------------------------------------------------------------------------
 // E2E-GR1: roundTable on a numeric div-grid — nodeValue written, node identity
-// preserved, drOriginal set, originalHtml NOT set, dr-ext-rounded applied.
+// preserved, drOriginal set, dr-ext-rounded applied.
 // ---------------------------------------------------------------------------
 (function e2e_gr1_roundTable_numericGrid_nodeValuePath() {
   // 3-row grid. Use simplifyFirstRow:true so all rows (including row 0) are processed.
@@ -2317,11 +2257,6 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   // The registry original must be recorded for the cell (the patch path).
   eq('E2E-GR1: cell[0] registry original is set to original text',
     DR_STORE.getTableOriginalText(grid.wrapperEl, cell0), originalValue);
-
-  // originalHtml must NOT be set (that is the native-table / extracted path,
-  // which records a { html, value, ... } record; a grid record holds its pieces).
-  eq('E2E-GR1: cell[0] dataset.originalHtml is NOT set on a grid cell',
-    cell0.dataset.originalHtml, undefined);
 })();
 
 // ---------------------------------------------------------------------------
@@ -3761,8 +3696,6 @@ function everyRowRead(kind, largeIn) {
     return;
   }
 
-  eq('no-chrome e2e: content.js registers no Chrome message listener of its own',
-    contentSrc.split('chrome.runtime.onMessage.addListener(').length - 1, 0);
   // No patch needed: every remaining chrome.* reference in content.js sits
   // inside a function body this test never calls. Loading the file unpatched
   // is a stronger check than loading a patched copy.

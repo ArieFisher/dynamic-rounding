@@ -49,7 +49,6 @@ const DR_NUMBER = {
   roundTimeText,
   getQuoteMaskedRanges,
   overlapsQuoteRange,
-  extractNumberInText,
   extractNumbersInText,
   bracketSignSpan,
   isBracketedNegative,
