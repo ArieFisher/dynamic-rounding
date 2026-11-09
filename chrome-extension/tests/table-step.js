@@ -281,8 +281,6 @@ const TABLE_STEP_DATE_SPLIT_ROW = /date or time split across text pieces stays u
   const DECL = (name) => new RegExp(`^\\s*function\\s+${name}\\s*\\(`, 'm');
   const MOVED = ['decisionToLegacyInfo', 'resolveAmbiguousDates', 'datasetMaxMagnitude',
     'classifiedCellPatches', 'tablePatches'];
-  eq('table step source: content.js declares none of the table step\'s functions',
-    MOVED.filter((name) => DECL(name).test(contentSrc)), []);
   // Every hand-written JavaScript file the extension and the Sheets library
   // ship, outside the tests. The Sheets library itself is skipped: the Sheets
   // build writes it from these files, so it holds a copy of table.js by

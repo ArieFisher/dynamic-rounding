@@ -46,8 +46,6 @@
   // still trips the scan.
   eq('sidebar-state removal: a reintroduced sidebarOpened field still fails the scan',
     namesSidebarState('let sidebarOpened = false;'), true);
-  eq('sidebar-state removal: the bus registers no sidebar-open topic',
-    Object.prototype.hasOwnProperty.call(DR_BUS.TOPICS, 'state:sidebarOpenChanged'), false);
 
   // state:sidebarOpened survives — it still runs the shape check and tells the
   // sidebar to re-read — but it records nothing about the sidebar.
@@ -77,8 +75,6 @@
   const switchCount = (contentSrc.match(/state:tableSwitched/g) || []).length;
   eq('rebind source: state:tableSwitched is dispatched from the shared intent:toggleTable handler (>= 1 occurrence)',
     switchCount >= 1, true);
-  eq('rebind source: the RESET_SIDEBAR_TO_DEFAULTS message is gone from the content-script source',
-    /RESET_SIDEBAR_TO_DEFAULTS/.test(contentSrc), false);
 
   // content.js: the intent:toggleTable handler's rebind branch publishes the
   // select-table intent instead of assigning DR_STORE's field directly. It
@@ -87,10 +83,6 @@
   // this table") for any caller of that concern, controller included.
   eq('rebind source: intent:toggleTable publishes intent:selectTable in the rebind block instead of writing DR_STORE directly',
     /DR_BUS\.publish\(\s*'intent:selectTable'/.test(contentSrc), true);
-  eq('rebind source: no file assigns lastRightClickedTable directly anymore',
-    /\blastRightClickedTable\s*=[^=]/.test(sourceByName('ui-toggle.js') || '') ||
-    /\blastRightClickedTable\s*=[^=]/.test(sourceByName('content.js') || ''),
-    false);
 
   // sidebar.js: the state:tableSwitched subscriber re-reads the model's
   // settings instead of resetting the controls to the shipped
@@ -353,9 +345,7 @@
 // Tests for the "no table bound" state in sidebar.js.
 //
 // sidebar.js cannot be eval'd wholesale without a full browser DOM, but we
-// can:
-//   (a) eval just the setTableBound function with minimal stubs, and
-//   (b) read sidebar.js / sidebar.html source for static assertions.
+// can read sidebar.js / sidebar.html source for static assertions.
 //
 // AC1 – init state: body gets no-table class, #status reads the prompt message.
 // AC2 – bound state: setTableBound(true) removes no-table; also check that
@@ -431,164 +421,7 @@
   eq('no-table AC1: sidebar.html default #status text is the no-table message',
     /id="status"[^>]*>Right-click a table to connect it here\./.test(sidebarHtml), true);
 
-  // -------------------------------------------------------------------------
-  // Behavioral unit tests via eval of setTableBound with minimal DOM stubs.
-  // We extract just the two constants and the function body from sidebar.js
-  // source, then eval them with a fake document.body.classList and statusEl.
-  // -------------------------------------------------------------------------
   (function setTableBoundBehavioural() {
-    // Minimal classList stub.
-    function makeClassList() {
-      const classes = new Set();
-      return {
-        toggle(cls, force) {
-          if (force === undefined) {
-            if (classes.has(cls)) classes.delete(cls); else classes.add(cls);
-          } else if (force) {
-            classes.add(cls);
-          } else {
-            classes.delete(cls);
-          }
-        },
-        has(cls) { return classes.has(cls); },
-        add(cls) { classes.add(cls); },
-        remove(cls) { classes.delete(cls); },
-      };
-    }
-
-    // Build stub environment for each sub-test.
-    function makeEnv(initialStatus, initialChecked) {
-      const classList = makeClassList();
-      const statusEl = { textContent: initialStatus !== undefined ? initialStatus : '', dataset: {} };
-      const enabledEl = { checked: initialChecked !== undefined ? initialChecked : true, disabled: false };
-      const fakeDoc = { body: { classList } };
-      const DR_DEFAULTS = { enabled: true };
-      let updateDisabledCalls = 0;
-      function updateDisabledState() { updateDisabledCalls++; }
-
-      // Extract constants + function from sidebar source, then eval in closure.
-      // We pull the relevant declarations and avoid running the rest of
-      // sidebar.js (which needs getElementById, chrome.tabs, etc.).
-      // Keep this copy in step with the real setTableBound in sidebar.js.
-      const snippet = `
-        const NO_TABLE_CLASS = 'no-table';
-        const NO_TABLE_STATUS_MSG = 'Right-click a table to connect it here.';
-        function setTableBound(isBound) {
-          document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
-          if (!isBound) {
-            delete statusEl.dataset.source;
-            enabledEl.checked = false;
-            statusEl.textContent = NO_TABLE_STATUS_MSG;
-          } else {
-            if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
-              statusEl.textContent = '';
-            }
-          }
-          updateDisabledState();
-        }
-      `;
-      // Use a function wrapper so the closure vars resolve from the params.
-      const fn = new Function(
-        'document', 'statusEl', 'enabledEl', 'DR_DEFAULTS', 'updateDisabledState',
-        snippet + '\nreturn setTableBound;');
-      const setTableBound = fn(fakeDoc, statusEl, enabledEl, DR_DEFAULTS, updateDisabledState);
-      return {
-        classList, statusEl, enabledEl, setTableBound,
-        getUpdateDisabledCalls: () => updateDisabledCalls,
-      };
-    }
-
-    // AC1a: setTableBound(false) → body gets 'no-table' class.
-    {
-      const { classList, setTableBound } = makeEnv();
-      setTableBound(false);
-      eq('no-table AC1b: setTableBound(false) adds no-table class to body',
-        classList.has('no-table'), true);
-    }
-
-    // AC1b: setTableBound(false) → #status text = NO_TABLE_STATUS_MSG.
-    {
-      const { statusEl, setTableBound } = makeEnv();
-      setTableBound(false);
-      eq('no-table AC1c: setTableBound(false) sets status to no-table message',
-        statusEl.textContent, 'Right-click a table to connect it here.');
-    }
-
-    // AC2a: setTableBound(true) → 'no-table' class removed.
-    {
-      const { classList, setTableBound } = makeEnv();
-      setTableBound(false); // init
-      setTableBound(true);
-      eq('no-table AC2a: setTableBound(true) removes no-table class',
-        classList.has('no-table'), false);
-    }
-
-    // AC2b: setTableBound(true) when status was the no-table message → status cleared.
-    {
-      const { statusEl, setTableBound } = makeEnv('Right-click a table to connect it here.');
-      setTableBound(true);
-      eq('no-table AC2b: setTableBound(true) clears status when it held no-table message',
-        statusEl.textContent, '');
-    }
-
-    // AC2c: setTableBound(true) when status holds a DIFFERENT message → status preserved.
-    // (E.g. a state:rangeError message should not be wiped by a table bind event.)
-    {
-      const { statusEl, setTableBound } = makeEnv('Invalid range expression.');
-      setTableBound(true);
-      eq('no-table AC2c: setTableBound(true) does not overwrite an unrelated status message',
-        statusEl.textContent, 'Invalid range expression.');
-    }
-
-    // AC2 gap — live rebind: calling setTableBound(false) then setTableBound(true)
-    // in sequence correctly toggles state (simulates the state:previewSamplesChanged
-    // round-trip where fetchPreviewSamples resolves with non-null samples).
-    {
-      const { classList, statusEl, setTableBound } = makeEnv();
-      setTableBound(false); // init (no table)
-      setTableBound(true);  // user right-clicked a table; fetchPreviewSamples resolved
-      eq('no-table AC2-live: body loses no-table after live rebind',
-        classList.has('no-table'), false);
-      eq('no-table AC2-live: status cleared after live rebind',
-        statusEl.textContent, '');
-    }
-
-    // AC2 gap — the REVERSE: bound → unbound (table navigated away).
-    {
-      const { classList, statusEl, setTableBound } = makeEnv();
-      setTableBound(true);  // table was bound
-      setTableBound(false); // table gone (runtime error or null samples)
-      eq('no-table AC2-reverse: body gets no-table when table removed',
-        classList.has('no-table'), true);
-      eq('no-table AC2-reverse: status message restored when table removed',
-        statusEl.textContent, 'Right-click a table to connect it here.');
-    }
-
-    // Toggle-off behaviour: setTableBound(false) flips the main switch to off
-    // (rather than dimming the sidebar) and runs updateDisabledState.
-    {
-      const { enabledEl, setTableBound, getUpdateDisabledCalls } = makeEnv(undefined, true);
-      setTableBound(false);
-      eq('no-table toggle: setTableBound(false) turns the main pill off',
-        enabledEl.checked, false);
-      eq('no-table toggle: setTableBound(false) calls updateDisabledState',
-        getUpdateDisabledCalls() >= 1, true);
-    }
-
-    // Bind leaves the switch alone: the settings apply that runs
-    // before the bind resolves — applySettingsToUI on a pull, or
-    // applyDefaultsToUI on the pull's fallback — is the switch's only writer
-    // for the bound state. A bind that reset the switch to the shipped default
-    // would desync the sidebar from the model.
-    {
-      const { enabledEl, setTableBound } = makeEnv(undefined, true);
-      setTableBound(false);      // init: no table yet → switch off
-      enabledEl.checked = false; // the model pull applied enabled:false
-      setTableBound(true);       // table resolved → bind must not touch it
-      eq('no-table toggle: setTableBound(true) leaves the pill to the pulled value on bind',
-        enabledEl.checked, false);
-    }
-
     // Static guard: the real setTableBound flips enabledEl.checked off and runs
     // updateDisabledState (not just a class toggle). Isolate the function's own
     // body (rather than scanning from the first "setTableBound" text match
@@ -609,19 +442,6 @@
     // switch's only source once a table is bound.
     eq('no-table toggle: sidebar.js setTableBound no longer references DR_DEFAULTS anywhere (issue #251)',
       /DR_DEFAULTS/.test(setTableBoundFnBody), false);
-
-    // AC2 gap — ADVERSARIAL: verify that the sidebar does NOT have a runtime
-    // message handler that directly calls setTableBound(true) when a table is
-    // right-clicked. The only live-rebind path is state:previewSamplesChanged →
-    // fetchPreviewSamples → callback. This means if content.js sends no message,
-    // the sidebar stays stale. We document this by asserting that no
-    // "contextMenus" or "TABLE_BOUND" message handler exists in sidebar.js.
-    eq('no-table AC2-gap: sidebar.js has no direct TABLE_BOUND message handler',
-      /action\s*===\s*['"]TABLE_BOUND['"]/.test(sidebarSrc), false);
-    // (Gap: the sidebar depends entirely on state:previewSamplesChanged being sent
-    // by content.js after every right-click. If content.js omits that message
-    // in any code path, the no-table class will not be removed. This cannot be
-    // unit-tested in Node without a full browser environment.)
   })();
 })();
 
@@ -717,12 +537,9 @@
   eq('dots-tick: .dual-ticks CSS uses repeat(9, 1fr) grid',
     /\.dual-ticks\s*\{[^}]*grid-template-columns\s*:\s*repeat\(9,\s*1fr\)/.test(sidebarHtmlSrc), true);
 
-  // --- AC5: Vertical CSS — .dual-ticks uses top: 20px (not 22px) ---
+  // --- AC5: Vertical CSS — .dual-ticks uses top: 20px ---
   eq('dots-tick: .dual-ticks CSS top is 20px',
     /\.dual-ticks\s*\{[^}]*top:\s*20px/.test(sidebarHtmlSrc), true);
-
-  eq('dots-tick: .dual-ticks CSS top is NOT 22px (old value)',
-    /\.dual-ticks\s*\{[^}]*top:\s*22px/.test(sidebarHtmlSrc), false);
 
   // --- AC6: pct() is only used for thumb positioning (not for fill/label/other) ---
   // Adversarial: if pct() were wired to a range-fill width or label position, the

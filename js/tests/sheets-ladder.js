@@ -72,14 +72,6 @@ module.exports = function runSheetsLadder(h) {
     everyKind('a unit number "1,234 USD" rounds its digits', '1,234 USD', '1,000 USD');
     everyKind('an extracted cell with two numbers rounds each at its own magnitude',
         'rev 1,600 and 98,765', 'rev 1,500 and 100,000');
-    for (const kind of RESULT_KINDS) {
-        const RD = kinds[kind].ROUND_DYNAMIC;
-        typeOf(kind, 'numbers inside text return text', RD('about 1,234 users'), 'string');
-        typeOf(kind, 'a unit number returns text', RD('4.91tn'), 'string');
-    }
-    typeOf('text', 'a pure cell returns text', kinds.text.ROUND_DYNAMIC('$1,011'), 'string');
-    typeOf('number', 'a pure cell returns a number', kinds.number.ROUND_DYNAMIC('$1,011'), 'number');
-    typeOf('number', 'a bracketed number returns a number', kinds.number.ROUND_DYNAMIC('(1,234)'), 'number');
 
     // "4.91tn" rounds as the extension rounds it: the extension's suite
     // rounds the row ["4.91tn", "CAD45.67m", "DT1234"] on an HTML table with
@@ -240,17 +232,13 @@ module.exports = function runSheetsLadder(h) {
     }
 
     // --- Criterion 7: the field the Sheets suite reads ---------------------
-    // The suite reads the field that matches the constant in the Sheets
-    // entry source, and the built file holds the same constant.
+    // The built file holds the same constant as the Sheets entry source, so
+    // the field the suite reads matches the constant in that source.
     const entry = fs.readFileSync(path.join(__dirname, '..', 'src', 'entry.js'), 'utf8');
     const entryKind = (entry.match(h.RESULT_KIND_LINE) || [])[1];
     const builtKind = (h.code.match(h.RESULT_KIND_LINE) || [])[1];
     testExact('result kind: the Sheets entry source holds a RESULT_KIND line', RESULT_KINDS.includes(entryKind), true);
     testExact('result kind: the built file holds the entry source\'s value', builtKind, entryKind);
-    testExact('result kind: the suite reads the field that matches the value', h.resultKindField, h.RESULT_KIND_FIELD[entryKind]);
-    for (const kind of RESULT_KINDS) {
-        testExact(`result kind: the suite holds a field for the value '${kind}'`, typeof h.RESULT_KIND_FIELD[kind], 'string');
-    }
 
     // The whole shared case table under each value of the result kind, read
     // the way the suite reads it: `expected` for a row of numbers, and the

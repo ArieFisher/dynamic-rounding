@@ -3,7 +3,7 @@
  * Run: node tests.js
  *
  * Stubs out browser globals so we can eval content.js in Node and exercise
- * the pure functions (extractNumberInText, formatNumber, toNumber,
+ * the pure functions (extractNumbersInText, formatNumber, toNumber,
  * roundCellSetAware, findMaxMagnitude, pureNumberSpan).
  */
 
@@ -152,7 +152,6 @@ globalThis.extractPreviewSamples = extractPreviewSamples;
 // canon rather than restating any part of it.
 globalThis.CURRENCIES = CURRENCIES;
 globalThis.CURRENCY_SIGNS = CURRENCY_SIGNS;
-globalThis.CURRENCY_CODES = CURRENCY_CODES;
 globalThis.CLEAN_REGEX = CLEAN_REGEX;
 globalThis.eraYearDigitRanges = eraYearDigitRanges;
 globalThis.clockTimeRanges = clockTimeRanges;
@@ -160,16 +159,12 @@ globalThis.formatStep = formatStep;
 globalThis.stepForOffset = stepForOffset;
 // Expose the pillbox geometry constants (all are const, so direct assignment works)
 globalThis.TOGGLE_DOT_PX = TOGGLE_DOT_PX;
-globalThis.TOGGLE_PILL_WIDTH_PX = TOGGLE_PILL_WIDTH_PX;
 globalThis.TOGGLE_PILL_HEIGHT_PX = TOGGLE_PILL_HEIGHT_PX;
-globalThis.TOGGLE_KNOB_PX = TOGGLE_KNOB_PX;
-globalThis.TOGGLE_KNOB_INSET_PX = TOGGLE_KNOB_INSET_PX;
 globalThis.TOGGLE_KNOB_TRAVEL_PX = TOGGLE_KNOB_TRAVEL_PX;
 globalThis.TOGGLE_HIT_PAD_PX = TOGGLE_HIT_PAD_PX;
 globalThis.TOGGLE_DOT_OVERLAP_PX = TOGGLE_DOT_OVERLAP_PX;
 globalThis.TOGGLE_DOT_OVERHANG_PX = TOGGLE_DOT_OVERHANG_PX;
 globalThis.TOGGLE_COLOR_ON = TOGGLE_COLOR_ON;
-globalThis.TOGGLE_COLOR_OFF = TOGGLE_COLOR_OFF;
 globalThis.PILLBOX_AUTO_COLLAPSE_MS = PILLBOX_AUTO_COLLAPSE_MS;
 globalThis.PILLBOX_CLIP_WALK_CAP = PILLBOX_CLIP_WALK_CAP;
 globalThis.ensureScrollResizeListeners = ensureScrollResizeListeners;
@@ -223,7 +218,6 @@ globalThis.DR_SIMPLIFY = DR_SIMPLIFY;
 globalThis.classifyCell = classifyCell;
 globalThis.pickDateFormatHint = pickDateFormatHint;
 globalThis.resolveAmbiguousDateDecision = resolveAmbiguousDateDecision;
-globalThis.finalizeExtractedDecision = finalizeExtractedDecision;
 globalThis.decisionToLegacyInfo = decisionToLegacyInfo;
 // Expose grid-virtualization internals for the grid-virtualization test suite.
 globalThis.reapplyRounding = reapplyRounding;
@@ -239,13 +233,11 @@ globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.gridRedrawDelayMs;
 globalThis.chainRootOf = chainRootOf;
 globalThis.nominateNest = nominateNest;
 globalThis.nominateNests = nominateNests;
-// Expose the controller's pending-table state and the three functions that
-// hold, re-test, and drop a pending record. The
+// Expose the controller's pending-table state and the two functions that
+// hold and drop a pending record. The
 // content-script bundle evaluates in its own scope, so the pending suite
 // reaches these names only through this list.
-globalThis.consumeNominations = consumeNominations;
 globalThis.holdPendingTable = holdPendingTable;
-globalThis.retestPendingTable = retestPendingTable;
 globalThis.dropPendingTable = dropPendingTable;
 globalThis.pendingRoots = pendingRoots;
 globalThis.pendingObservers = pendingObservers;

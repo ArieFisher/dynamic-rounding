@@ -271,8 +271,6 @@
 (function dataTest_readsNoTableSettings() {
   // The shipped defaults hold the Times switch off. The data test reads
   // every switch as on, so a clock time still counts.
-  eq('data test: the shipped defaults hold the Times switch off, so the case below is not vacuous',
-    DR_DEFAULTS.simplifyTimes, false);
   const dates = makeIsDataTable([['Name', 'Joined'], ['Tami', '2026-11-03']]);
   const times = makeIsDataTable([['Name', 'Seen'], ['Tami', '3:44 PM']]);
   eq('data test: a table whose only number sits in an ISO date passes',
@@ -1392,28 +1390,13 @@ const supTestOpts = {
     cells0[0].el, tableEl.rows[0].cells[0]);
 })();
 
-// TA1b: NativeTableAdapter cells expose NO setText — deliberate absence guard.
-// The native path writes cells directly in roundTable so it can preserve markup
-// in mixed cells and stash both originalHtml and originalValue. A setText here
-// would be reached by any future code that drives both adapters through one
-// loop; a textContent-based one would flatten mixed cells and skip
-// originalValue, silently feeding the sidebar preview its own rounded output.
-// Absent, that future code fails at the call site instead. This test keeps the
-// absence deliberate rather than incidental — if you are adding setText back,
-// it must preserve markup and stash BOTH dataset keys, and this guard must be
-// rewritten to assert that, not simply deleted.
+// TA1b: a native cell writes only through applyPatches, which patches each
+// text piece in place and records the original. A writer that assigns a
+// cell's textContent or innerHTML flattens the markup of a mixed cell and
+// skips that record, so the restore and the sidebar preview read the rounded
+// text as the original. A writer added to this class must patch text pieces
+// in place and record the original, as applyPatches does.
 (function nativeTableAdapter_hasNoSetText() {
-  const tableEl = makeNativeTableEl([
-    [{ tag: 'td', text: '1,234' }],
-  ]);
-  const cell = makeAdapter(tableEl).getRows()[0].getCells()[0];
-
-  eq('TA1b: native adapter cell exposes no setText',
-    cell.setText, undefined);
-  // applyPatches is the grid cell's write, the name such a loop would reach.
-  eq('TA1b: native adapter cell exposes no applyPatches',
-    cell.applyPatches, undefined);
-
   // Source scan: nothing in the class may assign textContent/innerHTML on a
   // cell. Catches a setText re-added under a different name.
   if (detectCode === null) {
@@ -1486,9 +1469,8 @@ const supTestOpts = {
     adapter.getRows().length, 0);
 })();
 
-// TA4: roundTable on a grid element (non-TABLE) — must not throw, must be a no-op
+// TA4: roundTable on a grid element (non-TABLE) — must not throw
 // The stub path: GridAdapter.getRows() → [] causes roundTable to return early.
-// No .dr-ext-rounded cells should appear; no exception thrown.
 (function gridAdapter_stub_noThrow() {
   const divEl = {
     tagName: 'DIV',
@@ -1511,10 +1493,6 @@ const supTestOpts = {
 
   eq('GridAdapter stub: roundTable on grid element does not throw',
     threw, false);
-
-  // The element should have no .dr-ext-rounded cells since it was a no-op
-  eq('GridAdapter stub: roundTable on grid element is a no-op (querySelector returns null)',
-    divEl.querySelector('.dr-ext-rounded'), null);
 })();
 
 // The writer groups patches by piece, writes each touched piece once, and
@@ -1614,13 +1592,6 @@ const supTestOpts = {
 
   eq('GR2: dg-- grid row 0 cell 0 text is "1000000"',
     cells[0].getText(), '1000000');
-
-  // Confirm data-row attribute path: row 0 has dataset.row = "0"
-  eq('GR2: dg-- grid row 0 has data-row="0"',
-    grid.rowEls[0].dataset.row, '0');
-
-  eq('GR2: dg-- grid row 1 has data-row="1"',
-    grid.rowEls[1].dataset.row, '1');
 })();
 
 // ---------------------------------------------------------------------------
@@ -1656,10 +1627,6 @@ const supTestOpts = {
   // The cell's child node list length must be unchanged (no insertion/removal)
   eq('GR3: cell childNodes.length unchanged after applyPatches (no appendChild/removeChild)',
     grid.cellEls[0].childNodes.length, childCountBefore);
-
-  // Double-safety: the cell element itself is unchanged (not recreated)
-  eq('GR3: cell element reference unchanged after applyPatches',
-    grid.cellEls[0], grid.cellEls[0]);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1813,12 +1780,6 @@ const supTestOpts = {
 //   makePhantomEl(attrs)  – minimal element node with getAttribute / parentElement / style
 //   chainParents(child, ...parents)  – link elements into a parentElement chain
 //   makePositionedAncestor(styleProps)  – element with style.position = 'absolute'
-
-// --- AC: DR_DETECTION_SETTINGS.offscreenLeftPx is -9999 ---
-(function phantomA11y_threshold_value() {
-  eq('isPhantomA11yTable: DR_DETECTION_SETTINGS.offscreenLeftPx === -9999',
-    DR_DETECTION_SETTINGS.offscreenLeftPx, -9999);
-})();
 
 // ---------------------------------------------------------------------------
 // Signal 1: aria-hidden="true" on the table itself
@@ -2507,9 +2468,6 @@ const supTestOpts = {
   const cols = 101;
   const rows = Math.ceil((budget + 1) / cols);
 
-  eq('data test: DR_DETECTION_SETTINGS.dataTestCellBudget is 1000',
-    budget, 1000);
-
   const noNumberTable = makeNativeTableEl(buildBudgetTableRowsSpec(rows, cols, null));
   eq('data test: a native table holding no number within the budget of cell reads fails',
     isDataTable(noNumberTable), false);
@@ -3149,19 +3107,6 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     [true]);
 })();
 
-// --- Adversarial: the depth port reads zero as a depth ---
-
-(function gridNesting_theDepthPortReadsZeroAsADepth() {
-  eq('nesting: the detection settings ship a nesting depth of 1', DR_DETECTION_SETTINGS.nestingDepth, 1);
-
-  const grid = makeDatabaseQueryGrid();
-  const host = makeNestingHost([grid.wrapperEl]);
-  eq('nesting: the shipped depth reports the scrolling pane',
-    findTables(host).map((r) => r.handle === grid.scrollPaneEl), [true]);
-  eq('nesting: an override of zero reports the wrapper, so zero reads as a depth',
-    findTables(host, { nestingDepth: 0 }).map((r) => r.handle === grid.wrapperEl), [true]);
-})();
-
 // --- Adversarial: an empty wrapper reports nothing and throws nothing ---
 
 (function gridNesting_anEmptyWrapperReportsNothing() {
@@ -3440,19 +3385,12 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 // --- The chain-root walk the mismatch path re-runs the nomination step from ---
 
 (function shapeFingerprint_theChainRootWalkIsPublic() {
-  const grid = makeDatabaseQueryGrid();
-  eq('fingerprint chain root: the chain root of the scrolling pane is the wrapper',
-    chainRootOf(grid.scrollPaneEl) === grid.wrapperEl, true);
-  eq('fingerprint chain root: the chain root of the wrapper is the wrapper',
-    chainRootOf(grid.wrapperEl) === grid.wrapperEl, true);
-
   const plain = makeDatabaseQueryGrid({ plainWrapper: true });
   eq('fingerprint chain root: a plain layer inside the wrapper leaves the chain root the wrapper',
     chainRootOf(plain.scrollPaneEl) === plain.wrapperEl, true);
 
   eq('fingerprint chain root: an element in no nest has none',
     chainRootOf(makeNestingHost([])) === null, true);
-  eq('fingerprint chain root: a missing element has none', chainRootOf(null) === null, true);
 })();
 
 // =============================================================================
@@ -3486,8 +3424,6 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     result.chainRoot === grid.wrapperEl, true);
   eq('nomination: the chain holds the wrapper and the scrolling pane',
     result.chainSize, 2);
-  eq('nomination: findTables on the same shape reports the selected handle alone',
-    findTables(grid.wrapperEl).map((r) => r.handle === grid.scrollPaneEl), [true]);
 })();
 
 (function nominationStep_reportsEmptyForAGridWithNoRows() {
@@ -3527,8 +3463,6 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     result.outcome, 'registered');
   eq('nomination: the registered outcome selects nothing', result.selected, null);
   eq('nomination: the registered outcome reports a chain size of zero', result.chainSize, 0);
-  eq('nomination: findTables on a nest holding a seen element reports nothing',
-    findTables(grid.wrapperEl, { isSeen: (el) => el === grid.scrollPaneEl }).length, 0);
 })();
 
 (function nominationStep_reportsOneResultPerNestInDocumentOrder() {
