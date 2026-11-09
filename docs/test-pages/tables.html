@@ -819,6 +819,8 @@
 
     <!--
       Revenue grew 12,345 units in Q3      -> 12,345 rounds; Q3 is an identifier
+      Revenue 1 034 567 units              -> a space groups thousands: one number,
+                                              written back as 1,000,000
       Inventory down -1,200 units          -> the negative rounds, sign kept
       Ships in lots of 10-20 units         -> a hyphen after a digit is a
                                               separator, not a minus: 10 and 20
@@ -846,6 +848,10 @@
         <tr>
           <th scope="row">Number in a sentence</th>
           <td>Revenue grew 12,345 units in Q3</td>
+        </tr>
+        <tr>
+          <th scope="row">Spaced thousands in a sentence</th>
+          <td>Revenue 1 034 567 units</td>
         </tr>
         <tr>
           <th scope="row">Negative in a sentence</th>
@@ -2423,7 +2429,9 @@ TSLA,75,"248.09","18,606.75"
       13,63 €      -> unchanged, both tables
       5,16 €       -> unchanged, both tables
       1.234,56 €   -> unchanged, both tables
-      1 234,56 €   -> unchanged, both tables (the found "1" rounds to 1; see #491)
+      1 234,56 €   -> unchanged, both tables (one run, with a comma outside the
+                      group shape)
+      12 345,67 €  -> unchanged, both tables; a failure shows "10 345,67 €"
       0,75         -> unchanged, both tables
       987,5        -> unchanged, both tables
       1,234.56     -> 1,000, both tables
@@ -2456,6 +2464,11 @@ TSLA,75,"248.09","18,606.75"
         <tr>
           <th scope="row">Space between groups</th>
           <td>1 234,56 €</td>
+          <td></td>
+        </tr>
+        <tr>
+          <th scope="row">Space between groups, two-digit first group</th>
+          <td>12 345,67 €</td>
           <td></td>
         </tr>
         <tr>
@@ -2495,6 +2508,11 @@ TSLA,75,"248.09","18,606.75"
         <div class="g-row" role="row">
           <span role="cell">Space between groups</span>
           <span role="cell">1 234,56 €</span>
+          <span role="cell"></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Space between groups, two-digit first group</span>
+          <span role="cell">12 345,67 €</span>
           <span role="cell"></span>
         </div>
         <div class="g-row" role="row">

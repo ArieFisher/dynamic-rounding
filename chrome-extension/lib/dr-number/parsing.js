@@ -49,9 +49,24 @@
 // step searches the live text for the match string, so a trailing mark in it
 // makes the link filter and the patch step miss a number that is right there.
 //
+// Whitespace between digit groups is a group mark only in the group shape
+// (groupShapePattern, core.js, the one copy the number shape test reads
+// too), and only when the whole chain of spaced groups fits it: "1 034 567"
+// is one run, and so is "12 345", while "2024 12", "2024 12 345",
+// "416 555 1234" and "1 234 5678" stay several numbers, since a chain with a
+// group outside the shape is numbers side by side. The lookbehind rejects a
+// run that starts after a digit and whitespace, and the lookahead one that
+// ends before whitespace and a digit, so a spaced run is the whole chain or
+// nothing. A decimal part follows the last group ("1 234 567.50"). The
+// spaced run comes first in the alternation, so the first group of a spaced
+// run never matches as a plain run.
+//
 // DIGIT_RUN_PATTERN is the one copy of a number's digit run: the pattern
-// that finds a number inside text and the unit-number pattern both read it.
-const DIGIT_RUN_PATTERN = '\\d(?:[\\d.,]*\\d)?';
+// that finds a number inside text and the unit-number pattern both read it,
+// and the leading-zero identifier shape (identifiers.js) reads the in-text
+// pattern to tell a group of a spaced number from a code.
+const SPACED_DIGIT_RUN_PATTERN = '(?<!\\d\\s+)' + groupShapePattern(GROUP_SPACE_PATTERN) + '(?!\\s*\\d)(?:[.,]\\d+)?';
+const DIGIT_RUN_PATTERN = '(?:' + SPACED_DIGIT_RUN_PATTERN + '|\\d(?:[\\d.,]*\\d)?)';
 const NUMBER_IN_TEXT_PATTERN = '(?<![\\w.,@])-?' + DIGIT_RUN_PATTERN;
 const NUMBER_IN_TEXT_REGEX = new RegExp(NUMBER_IN_TEXT_PATTERN);
 const NUMBER_IN_TEXT_REGEX_GLOBAL = new RegExp(NUMBER_IN_TEXT_PATTERN, 'g');

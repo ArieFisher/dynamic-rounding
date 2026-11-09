@@ -23,16 +23,21 @@ from . import _round_with_offset, _validate_offset, _preserve_type, DEFAULT_OFFS
 # Regex for parsing formatted strings (JS-compatible). Matches the chrome
 # extension's lib/dr-number/core.js, the source of truth for this behavior.
 # Format marks dropped before a text reads as a number: currency signs,
-# whitespace, and percent signs. A comma stays, so GROUP_SHAPE_REGEX can
-# test where it stands.
-CLEAN_REGEX = re.compile(r'[$€£¥\s%]')
+# percent signs, and whitespace, except whitespace between two digits. That
+# whitespace is a group mark ("1 234 567"), so it stays, as a comma does, for
+# the number shape test to test where it stands. A whitespace run goes when
+# it starts after a non-digit or ends before a non-digit.
+CLEAN_REGEX = re.compile(r'[$€£¥%]|(?<![0-9])\s+|\s+(?![\s0-9])')
 PARENS_REGEX = re.compile(r'^\((.+)\)$')
-# The group shape in US style: a first group of one to three digits, then
-# comma groups of exactly three. A comma counts only in this shape and only
-# before the decimal dot, so "13,63" and "1.234,56" are not numbers. A run
-# with no comma goes to float(). [0-9] rather than \d, because \d
+# The group shape: a first group of one to three digits, then groups of
+# exactly three, each after one group mark, a comma in US style or
+# whitespace. A group mark counts only in this shape and only before the
+# decimal dot, so "13,63", "1.234,56" and "416 555 1234" are not numbers. A
+# run with no group mark goes to float(). [0-9] rather than \d, because \d
 # matches non-ASCII digits in Python.
 GROUP_SHAPE_REGEX = re.compile(r'^[+-]?[0-9]{1,3}(?:,[0-9]{3})+$')
+GROUP_SPACE_SHAPE_REGEX = re.compile(r'^[+-]?[0-9]{1,3}(?:\s+[0-9]{3})+$')
+WHITESPACE_REGEX = re.compile(r'\s+')
 # Unicode dash/minus variants normalized to an ASCII "-" before parsing, so a
 # leading unusual dash (e.g. a pasted en dash or minus sign) reads as a
 # negative sign instead of failing to parse.
@@ -40,15 +45,20 @@ DASH_REGEX = re.compile(r'[‐-―−﹘﹣－]')
 
 
 def _is_number_shape(run: str) -> bool:
-    """The number shape test in US style: True when every comma in the run
-    sits in the group shape before the decimal dot, or the run holds no
-    comma."""
+    """The number shape test: True when every group mark in the run, a comma
+    or whitespace, sits in the group shape before the decimal dot, and the
+    run holds one kind of group mark, or the run holds no group mark."""
     whole, _, fraction = run.partition('.')
-    if ',' in fraction:
+    if ',' in fraction or WHITESPACE_REGEX.search(fraction):
         return False
-    if ',' not in whole:
+    has_comma = ',' in whole
+    has_space = WHITESPACE_REGEX.search(whole) is not None
+    if not has_comma and not has_space:
         return True
-    return GROUP_SHAPE_REGEX.match(whole) is not None
+    if has_comma and has_space:
+        return False
+    shape = GROUP_SHAPE_REGEX if has_comma else GROUP_SPACE_SHAPE_REGEX
+    return shape.match(whole) is not None
 
 
 def _parse_number(value) -> Optional[float]:
@@ -57,8 +67,9 @@ def _parse_number(value) -> Optional[float]:
 
     Handles:
         - Currency symbols: $, €, £, ¥
-        - Thousands separators: spaces, and commas in the group shape
-          ("1,234"); "13,63" and "1.234,56" are not numbers
+        - Thousands separators: commas and spaces, each in the group shape
+          ("1,234", "1 234 567"); "13,63", "1.234,56" and "416 555 1234"
+          are not numbers
         - Percent signs: 50% → 50
         - Unicode dash/minus variants normalized to "-"
         - Accounting negatives: (500) → -500
@@ -78,7 +89,7 @@ def _parse_number(value) -> Optional[float]:
         # Normalize unusual dash/minus characters to ASCII "-" first so they
         # parse as a sign.
         cleaned = DASH_REGEX.sub('-', cleaned)
-        # Remove currency symbols, spaces, and percent signs.
+        # Remove the format marks; whitespace between digits stays.
         cleaned = CLEAN_REGEX.sub('', cleaned)
         # Handle accounting parentheses: (100) → -100
         match = PARENS_REGEX.match(cleaned)
@@ -86,16 +97,17 @@ def _parse_number(value) -> Optional[float]:
             cleaned = '-' + match.group(1)
         if not cleaned:
             return None
+        if not _is_number_shape(cleaned):
+            return None
+        plain = WHITESPACE_REGEX.sub('', cleaned).replace(',', '')
         # float() normalizes non-ASCII digits (e.g. fullwidth "５０") to their
         # numeric value, but JS's Number() does not. Reject non-ASCII strings
         # here so this parser passes them through unchanged, matching the
         # chrome extension (the source of truth) and js/round_dynamic.js.
-        if not cleaned.isascii():
-            return None
-        if not _is_number_shape(cleaned):
+        if not plain.isascii():
             return None
         try:
-            return float(cleaned.replace(',', ''))
+            return float(plain)
         except ValueError:
             return None
 
