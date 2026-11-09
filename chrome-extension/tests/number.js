@@ -3232,6 +3232,12 @@ eq('group space in text: a year before a count stays two numbers',
 eq('group space in text: a last group of four digits breaks the chain',
   numStrs('1 234 5678'), ['1', '234', '5678']);
 
+eq('group space in text: a first group of four digits breaks the chain',
+  numStrs('In 2024 12 345 stores'), ['2024', '12', '345']);
+
+eq('group space in text: a middle group of two digits breaks the chain',
+  numStrs('12 34 567'), ['12', '34', '567']);
+
 eq('group space in text: a decimal comma after a spaced run holds no number',
   extractNumbersInText('Total 1 234,56 €'), []);
 

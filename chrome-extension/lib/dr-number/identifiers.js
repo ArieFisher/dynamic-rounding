@@ -179,9 +179,9 @@ const LEADING_ZERO_PATTERN = '0\\d+(?![.,]\\d)';
 /**
  * True when [start, end) sits inside a longer run the pattern that finds a
  * number inside text (parsing.js) takes as one number, so the characters
- * are one group of that number. That pattern is the one judge of what one
- * number spans, so a group of a space-grouped or comma-grouped number is
- * never read a second way here.
+ * are one group of that number. That pattern is the one place that states
+ * what one number spans, so a group of a space-grouped or comma-grouped
+ * number is never read a second way here.
  * @param {string} text
  * @param {number} start
  * @param {number} end

@@ -127,6 +127,16 @@
     }, LADDER_OPTS),
     { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '20', num: 20, index: 0 }] } });
 
+  // "5 %<sup>1</sup>" flattens to "5 %1", which the number reader reads as
+  // one number, so the cell takes the footnote path; the "5" survives the
+  // mask over the footnote marker.
+  eq('classifyCell: a cell that reads as a number with a <sup> rounds its surviving match on the footnote path',
+    classifyCell({
+      text: '5 %1', rowIndex: 1, columnIndex: 1, ranges: null,
+      hasSuperscript: true, superscriptRanges: [{ start: 3, end: 4 }],
+    }, LADDER_OPTS),
+    { mode: 'extracted', reason: 'footnote', value: { matches: [{ numStr: '5', num: 5, index: 0 }] } });
+
   eq('classifyCell: superscript-flagged cell is skipped when simplifyMixedCells is false',
     classifyCell({
       text: '1012', rowIndex: 1, columnIndex: 1, ranges: null, hasSuperscript: true,

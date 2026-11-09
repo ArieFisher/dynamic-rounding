@@ -402,17 +402,20 @@ function toNumber(value) {
 // Whitespace between digit groups is a group mark only in the group shape
 // (groupShapePattern, core.js, the one copy the number shape test reads
 // too), and only when the whole chain of spaced groups fits it: "1 034 567"
-// is one run, and so is "12 345", while "2024 12", "416 555 1234" and
-// "1 234 5678" stay several numbers, since a chain with a group outside the
-// shape is numbers side by side. A decimal part follows the last group
-// ("1 234 567.50"). The spaced run comes first in the alternation, so the
-// plain run never takes the first group of a spaced one.
+// is one run, and so is "12 345", while "2024 12", "2024 12 345",
+// "416 555 1234" and "1 234 5678" stay several numbers, since a chain with a
+// group outside the shape is numbers side by side. The lookbehind rejects a
+// run that starts after a digit and whitespace, and the lookahead one that
+// ends before whitespace and a digit, so a spaced run is the whole chain or
+// nothing. A decimal part follows the last group ("1 234 567.50"). The
+// spaced run comes first in the alternation, so the first group of a spaced
+// run never matches as a plain run.
 //
 // DIGIT_RUN_PATTERN is the one copy of a number's digit run: the pattern
 // that finds a number inside text and the unit-number pattern both read it,
 // and the leading-zero identifier shape (identifiers.js) reads the in-text
 // pattern to tell a group of a spaced number from a code.
-const SPACED_DIGIT_RUN_PATTERN = groupShapePattern(GROUP_SPACE_PATTERN) + '(?!\\s*\\d)(?:[.,]\\d+)?';
+const SPACED_DIGIT_RUN_PATTERN = '(?<!\\d\\s+)' + groupShapePattern(GROUP_SPACE_PATTERN) + '(?!\\s*\\d)(?:[.,]\\d+)?';
 const DIGIT_RUN_PATTERN = '(?:' + SPACED_DIGIT_RUN_PATTERN + '|\\d(?:[\\d.,]*\\d)?)';
 const NUMBER_IN_TEXT_PATTERN = '(?<![\\w.,@])-?' + DIGIT_RUN_PATTERN;
 const NUMBER_IN_TEXT_REGEX = new RegExp(NUMBER_IN_TEXT_PATTERN);
@@ -1335,9 +1338,9 @@ const LEADING_ZERO_PATTERN = '0\\d+(?![.,]\\d)';
 /**
  * True when [start, end) sits inside a longer run the pattern that finds a
  * number inside text (parsing.js) takes as one number, so the characters
- * are one group of that number. That pattern is the one judge of what one
- * number spans, so a group of a space-grouped or comma-grouped number is
- * never read a second way here.
+ * are one group of that number. That pattern is the one place that states
+ * what one number spans, so a group of a space-grouped or comma-grouped
+ * number is never read a second way here.
  * @param {string} text
  * @param {number} start
  * @param {number} end
