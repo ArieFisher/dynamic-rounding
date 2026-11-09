@@ -94,6 +94,20 @@ class TestStringParsing:
         assert result[0] == "hello"
         assert result[1] == 1000
 
+    def test_parses_space_grouped_thousands(self):
+        s = pd.Series(["1 034 567", "1 034 567", "$ 1 234.56"])
+        result = round_dynamic_series(s)
+        assert result[0] == 1000000.0
+        assert result[1] == 1000000.0
+        assert result[2] == 1000.0
+
+    def test_spaced_digits_outside_the_group_shape_pass_through(self):
+        s = pd.Series(["416 555 1234", "2024 12", "1 234,56"])
+        result = round_dynamic_series(s)
+        assert result[0] == "416 555 1234"
+        assert result[1] == "2024 12"
+        assert result[2] == "1 234,56"
+
 
 class TestEnforceNumeric:
     """Tests for enforce_numeric parameter in pandas."""
