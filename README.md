@@ -53,7 +53,7 @@ Most data I see has one thing in common — it's nearly impossible to understand
 Who knows this the best?  The people who design pricing pages. 
 
 <div align="center" style="line-height: 0;"> <img src="docs/media/image01.png" alt="image" width="800"></div>
-<p align="center" style="margin-top: 4px;"><em> Can you tell at a glance which of these options costs 2x another, and 11x times more than the cheapest?</em> </p>
+<p align="center" style="margin-top: 4px;"><em> Can you tell at a glance which of these options costs 2x another, and 11x more than the cheapest?</em> </p>
 
 You probably can't, at least not easily, even though the data is there.  What these designers understand is that our working memory is limited.
 
@@ -86,9 +86,10 @@ Now that we can see the *numbers*, let’s look for *patterns*.
 The very first two lines are already revealing.  If you like, look at those 2 lines before you continue.
 
 Here's what I see:
-- Splunk has **2 service lines**   
+- Splunk has **2 service lines** \*\*  
 - One grew by **300%**; the other grew less than **50%**   
 - The faster-growing service is still the **smaller** of the two
+
 \*\**excluding maintenance, which is anyways typically part of licenses.*
 
 Can you see that?   
@@ -100,7 +101,7 @@ Can you see that?
 
 ### **Step 3: Assemble the story**
 
-Humans are meaning-seeking machines.  Stories emerge - sometimes unconsciouly - to explain what our brains have noticed.
+Humans are meaning-seeking machines.  Stories emerge - sometimes unconsciously - to explain what our brains have noticed.
 
 So if these are the patterns we read...
 - Revenue transitioning from on-prem to SaaS  
@@ -111,12 +112,12 @@ So if these are the patterns we read...
 - **Changing customer:** who used to reason about *data centers* but are realizing they only need *good networking* to reach cloud services …   
 - **Sales effectiveness**: a scale-up still buying growth as it *struggles to scale* in a contested industry
 
-### Was the the *right* story?
+### Was that the *right* story?
 Here is how Splunk’s story unfolded: These results are from 2023.  In 2024 it was acquired at a stunning premium:
 
 * by a leading **networking** company 
 * who went all-in on the SaaS division (shutting down the licenses division) …   
-* and launched a sales campaign to target its own customers, adding over ***one thousand*** new enterprise customers in the first year to the Splunk division/
+* and launched a sales campaign to target its own customers, adding over ***one thousand*** new enterprise customers in the first year to the Splunk division.
 
 That is the story of Splunk, and that story was available to read from the 2023 financial statements without any external tools.
 
@@ -131,8 +132,8 @@ Think about how many things come at you every day.  The ability to see one level
 ## Try it yourself
 
 
-Lets put it to the test - you do this one. 
-This is Netflix's first week of trading data. Most of us don't handle data this complex, so lets see if the tool can work here for you, and if so it may be meaningful for your more typical tasks.
+Let's put it to the test - you do this one. 
+This is Netflix's first week of trading data. Most of us don't handle data this complex, so let's see if the tool can work here for you, and if so it may be meaningful for your more typical tasks.
 
 ### Task 1: Spot the outliers
 
