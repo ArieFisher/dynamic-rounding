@@ -3235,6 +3235,12 @@ eq('group space in text: a last group of four digits breaks the chain',
 eq('group space in text: a decimal comma after a spaced run holds no number',
   extractNumbersInText('Total 1 234,56 €'), []);
 
+// A space-grouped price with a decimal comma is one run with a comma outside
+// the group shape, so no group of it rounds on its own (#491).
+eq('group space: "12 345,67 €" holds no number, alone and inside words',
+  [extractNumbersInText('12 345,67 €'), extractNumbersInText('Total: 12 345,67 €'), toNumber('12 345,67 €')],
+  [[], [], null]);
+
 eq('group space: "1 234 USD" is a unit number',
   matchUnitNumber('1 234 USD'), { numStr: '1 234', num: 1234, index: 0 });
 

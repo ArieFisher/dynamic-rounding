@@ -2429,7 +2429,9 @@ TSLA,75,"248.09","18,606.75"
       13,63 €      -> unchanged, both tables
       5,16 €       -> unchanged, both tables
       1.234,56 €   -> unchanged, both tables
-      1 234,56 €   -> unchanged, both tables (the found "1" rounds to 1; see #491)
+      1 234,56 €   -> unchanged, both tables (one run, with a comma outside the
+                      group shape)
+      12 345,67 €  -> unchanged, both tables; a failure shows "10 345,67 €"
       0,75         -> unchanged, both tables
       987,5        -> unchanged, both tables
       1,234.56     -> 1,000, both tables
@@ -2462,6 +2464,11 @@ TSLA,75,"248.09","18,606.75"
         <tr>
           <th scope="row">Space between groups</th>
           <td>1 234,56 €</td>
+          <td></td>
+        </tr>
+        <tr>
+          <th scope="row">Space between groups, two-digit first group</th>
+          <td>12 345,67 €</td>
           <td></td>
         </tr>
         <tr>
@@ -2501,6 +2508,11 @@ TSLA,75,"248.09","18,606.75"
         <div class="g-row" role="row">
           <span role="cell">Space between groups</span>
           <span role="cell">1 234,56 €</span>
+          <span role="cell"></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Space between groups, two-digit first group</span>
+          <span role="cell">12 345,67 €</span>
           <span role="cell"></span>
         </div>
         <div class="g-row" role="row">
