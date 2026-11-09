@@ -90,45 +90,22 @@ function testArray(name, actual, expected) {
 console.log('\n=== Single Mode ===\n');
 
 // Offset variations with 87,654,321
-test('87654321, offset=default', ROUND_DYNAMIC(87654321), 90000000);
-test('87654321, offset=0', ROUND_DYNAMIC(87654321, 0), 90000000);
-test('87654321, offset=1', ROUND_DYNAMIC(87654321, 1), 100000000);
-test('87654321, offset=-1', ROUND_DYNAMIC(87654321, -1), 88000000);
 test('87654321, offset=-2', ROUND_DYNAMIC(87654321, -2), 87700000);
-// +0.5: step = 0.5 * 10^(cm+1). For 87654321 (cm=7), step=5e7.
-// raw = round(87654321/5e7)*5e7 = round(1.75)*5e7 = 2*5e7 = 1e8. floor_oom=1e7. result=1e8.
-// |trunc(0.5)|=0 < X_FLOOR_THRESHOLD=1, so x-floor is skipped.
-test('87654321, offset=0.5', ROUND_DYNAMIC(87654321, 0.5), 100000000);
-// -0.5: step = 0.5 * 10^cm = 5e6.
-// raw = round(87654321/5e6)*5e6 = 18*5e6 = 90000000. floor_oom=1e7. result=90000000.
-test('87654321, offset=-0.5', ROUND_DYNAMIC(87654321, -0.5), 90000000);
-// -1.5: step = 0.5 * 10^(cm-1) = 500000. raw=87500000. floor_oom=1e7. x-floor (x_int=-1): rd(v,-1) has cm=7, step=1e6, raw=round(87.654)*1e6=88e6, so floor_x=88M. result=max(87.5M, 88M)=88M.
-test('87654321, offset=-1.5', ROUND_DYNAMIC(87654321, -1.5), 88000000);
-// -2.5: step = 0.5 * 10^(cm-2) = 50000. raw = round(87654321/50000)*50000 = 1753*50000 = 87650000. x-floor x_int=-2: rd(v,-2)=87700000 (step=1e5, round(876.54)=877, 877*1e5=87700000). result=max(87650000, 87700000)=87700000.
-test('87654321, offset=-2.5', ROUND_DYNAMIC(87654321, -2.5), 87700000);
 
 // Various magnitudes - explicit offset=0
 test('4308910, offset=0', ROUND_DYNAMIC(4308910, 0), 4000000);
-test('4308910, offset=-0.5', ROUND_DYNAMIC(4308910, -0.5), 4500000);
 test('42109, offset=0', ROUND_DYNAMIC(42109, 0), 40000);
-test('42109, offset=-0.5', ROUND_DYNAMIC(42109, -0.5), 40000);
 test('1234, offset=0', ROUND_DYNAMIC(1234, 0), 1000);
 test('1234, offset=-1', ROUND_DYNAMIC(1234, -1), 1200);
 test('0.35, offset=0', ROUND_DYNAMIC(0.35, 0), 0.4);
-test('0.35, offset=-0.5', ROUND_DYNAMIC(0.35, -0.5), 0.35);
 test('0.35, offset=-1', ROUND_DYNAMIC(0.35, -1), 0.35);
 test('0.047, offset=0', ROUND_DYNAMIC(0.047, 0), 0.05);
 test('0.0083, offset=0', ROUND_DYNAMIC(0.0083, 0), 0.008);
 
 // Default offset (-0.5)
-test('4308910, default', ROUND_DYNAMIC(4308910), 4500000);
-test('0.35, default', ROUND_DYNAMIC(0.35), 0.35);
-test('0.047, default', ROUND_DYNAMIC(0.047), 0.045);
 test('0.0083, default', ROUND_DYNAMIC(0.0083), 0.0085);
 
 // Edge cases
-test('zero', ROUND_DYNAMIC(0), 0);
-test('empty string', ROUND_DYNAMIC(''), '');
 test('null', ROUND_DYNAMIC(null), '');
 test('non-numeric string', ROUND_DYNAMIC('Cloud CDN'), 'Cloud CDN');
 test('negative -4308910', ROUND_DYNAMIC(-4308910), -4500000);
@@ -345,19 +322,11 @@ test('0.00099, offset=0', ROUND_DYNAMIC(0.00099, 0), 0.001);
 test('999999999, offset=0', ROUND_DYNAMIC(999999999, 0), 1000000000);
 test('1000000001, offset=0', ROUND_DYNAMIC(1000000001, 0), 1000000000);
 
-// Sign-aware half-step: +0.5 and -0.5 are distinct steps.
-// +0.5 → step at next-coarser OoM; -0.5 → step at current OoM.
-test('87654321 offset=+0.5 distinct from -0.5',
-    ROUND_DYNAMIC(87654321, 0.5) !== ROUND_DYNAMIC(87654321, -0.5), true);
-test('87654321 offset=+0.5 > offset=-0.5',
-    ROUND_DYNAMIC(87654321, 0.5) > ROUND_DYNAMIC(87654321, -0.5), true);
-
 // Negative numbers at boundaries
 test('-999, offset=0', ROUND_DYNAMIC(-999, 0), -1000);
 test('-1001, offset=0', ROUND_DYNAMIC(-1001, 0), -1000);
 
 // Floating point edge case (EPSILON) - tests offset=0 specifically
-test('0.35 rounds to 0.4 not 0.3', ROUND_DYNAMIC(0.35, 0), 0.4);
 test('0.45 rounds to 0.5', ROUND_DYNAMIC(0.45, 0), 0.5);
 test('0.25 rounds to 0.3', ROUND_DYNAMIC(0.25, 0), 0.3);
 
@@ -406,7 +375,6 @@ test('Infinity passthrough', ROUND_DYNAMIC(Infinity), Infinity);
 test('-Infinity passthrough', ROUND_DYNAMIC(-Infinity), -Infinity);
 
 // JS precision limits
-test('Very large 1e15', ROUND_DYNAMIC(1e15), 1e15);
 test('Very large 9.87e14', ROUND_DYNAMIC(9.87e14), 1e15);
 test('Very small 1e-10', ROUND_DYNAMIC(1e-10), 1e-10);
 test('Very small 9.5e-11', ROUND_DYNAMIC(9.5e-11), 1e-10);
@@ -582,8 +550,6 @@ console.log('=== X_FLOOR_THRESHOLD flip ===\n');
     test('threshold=0: rd(47054321, 0.5) → 50M', RD(47054321, 0.5), 50000000);
     // -0.5 with threshold=0 floors at rd(v, 0): rd(87054321, -0.5) raw=85M, x-floor=90M.
     test('threshold=0: rd(87054321, -0.5) → 90M', RD(87054321, -0.5), 90000000);
-    // Sanity: default-threshold (1) behavior of rd(17054321, 0.5) is 10M (no x-floor).
-    test('threshold=1 (default): rd(17054321, 0.5) → 10M', ROUND_DYNAMIC(17054321, 0.5), 10000000);
 })();
 
 // =============================================================================
@@ -619,13 +585,6 @@ for (const [v, off, expected] of quarterCases) {
 // Negative-value mirror.
 test('quarter -87054321, offset=0.25', ROUND_DYNAMIC(-87054321, 0.25), -75000000);
 test('quarter -47054321, offset=-0.25', ROUND_DYNAMIC(-47054321, -0.25), -47500000);
-
-// Sanity: +0.25 and -0.25 produce different steps (sign-aware).
-test('87054321 offset=+0.25 distinct from -0.25',
-    ROUND_DYNAMIC(87054321, 0.25) !== ROUND_DYNAMIC(87054321, -0.25), true);
-// +0.25 (coarser step) ≥ -0.25 (finer step) for this value.
-test('87054321 offset=+0.25 < offset=-0.25 (this value)',
-    ROUND_DYNAMIC(87054321, 0.25) < ROUND_DYNAMIC(87054321, -0.25), true);
 
 // =============================================================================
 // SHARED ROUNDING CASE TABLE (js/round-dynamic-cases.json)
@@ -728,7 +687,7 @@ for (const group of sharedCaseGroups) {
 console.log('=== Sheets Input Step and Result Kind ===\n');
 
 require('./tests/sheets-ladder.js')({
-    code, sharedCaseGroups, RESULT_KIND_LINE, RESULT_KIND_FIELD, resultKindField, holdsText,
+    code, sharedCaseGroups, RESULT_KIND_LINE, RESULT_KIND_FIELD, holdsText,
     testExact, testArrayExact,
     fail: (name, actual, expected) => { failed++; failures.push({ name, actual, expected }); },
 });

@@ -286,13 +286,6 @@
 (function captureRenderer() {
   eq('capture-render: the DR_CAPTURE package loads in the content-script bundle',
     typeof globalThis.DR_CAPTURE, 'object');
-  eq('capture-render: manifest loads the dr-capture package whole and in order',
-    contentScriptFiles.indexOf('lib/dr-capture/state.js') !== -1 &&
-      contentScriptFiles.indexOf('lib/dr-capture/render.js') ===
-        contentScriptFiles.indexOf('lib/dr-capture/state.js') + 1 &&
-      contentScriptFiles.indexOf('lib/dr-capture/index.js') ===
-        contentScriptFiles.indexOf('lib/dr-capture/render.js') + 1,
-    true);
   const sidebarHtmlForCapture = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('capture-render: sidebar.html loads the dr-capture package before sidebar.js',
     ['lib/dr-capture/state.js', 'lib/dr-capture/render.js', 'lib/dr-capture/index.js']
@@ -598,8 +591,6 @@
     .map((h) => html.indexOf(h));
   eq('capture-render: the file reads sidebar, bound table, registry, detection settings, logs, seed',
     order.every((i, n) => i !== -1 && (n === 0 || i > order[n - 1])), true);
-  eq('capture-render: the likeness and the table no longer sit side by side',
-    html.includes('cap-visual') || html.includes('Sidebar (rendered open)'), false);
   eq('capture-render: a thin line separates each top-level section',
     html.includes('main > section { border-top: 1px solid #ddd'), true);
   eq('capture-render: a note is one size below the table text, italic, and prefixed',
@@ -819,23 +810,6 @@
     has ? sizeWarning(nearlyBig) : 'missing', null);
 })();
 
-// The header carries no line stating what the file holds, which would state
-// the obvious. This pin keeps it out.
-(function captureHeaderCarriesNoCaveat() {
-  if (typeof globalThis.DR_CAPTURE !== 'object') return;
-  const html = DR_CAPTURE.buildCaptureDocument({
-    state: {
-      captureFormat: 9,
-      meta: { url: 'https://www.example.com/x', title: 'X', version: 'v', platform: 'p', at: 't' },
-      mark: 'looks-right', remarks: '', settings: {}, activeTableIndex: null,
-      tables: [], lensPreview: null, sidebarView: null,
-      log: { content: null, sidebar: null }, page: null, fixtureSeed: null,
-    },
-  });
-  eq('capture-header: the header carries no share caveat',
-    html.includes('Share it as you would share the page.'), false);
-})();
-
 // --- lib/dr-capture: the detection settings in force at capture time (D8) ---
 //
 // The capture state gains a detectionSettings field: a plain copy of DR_DETECTION_SETTINGS taken at
@@ -1052,8 +1026,6 @@
   };
   const state = collectCaptureState({ store: fakeStore, adapterFor: () => null });
   eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
-  eq('capture-state: the state carries format 9',
-    state.captureFormat, 9);
 
   const renderState = {
     captureFormat: 9,

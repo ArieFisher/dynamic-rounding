@@ -68,7 +68,6 @@
 const SPACED_DIGIT_RUN_PATTERN = '(?<!\\d\\s+)' + groupShapePattern(GROUP_SPACE_PATTERN) + '(?!\\s*\\d)(?:[.,]\\d+)?';
 const DIGIT_RUN_PATTERN = '(?:' + SPACED_DIGIT_RUN_PATTERN + '|\\d(?:[\\d.,]*\\d)?)';
 const NUMBER_IN_TEXT_PATTERN = '(?<![\\w.,@])-?' + DIGIT_RUN_PATTERN;
-const NUMBER_IN_TEXT_REGEX = new RegExp(NUMBER_IN_TEXT_PATTERN);
 const NUMBER_IN_TEXT_REGEX_GLOBAL = new RegExp(NUMBER_IN_TEXT_PATTERN, 'g');
 
 function lettersToColIndex(letters) {
@@ -641,17 +640,6 @@ function bracketSignSpan(text, index, numStr) {
  */
 function isBracketedNegative(text, index, numStr) {
   return bracketSignSpan(text, index, numStr) !== null;
-}
-
-function extractNumberInText(text) {
-  if (typeof text !== 'string') return null;
-  const match = text.match(NUMBER_IN_TEXT_REGEX);
-  if (!match) return null;
-  const numStr = match[0];
-  const num = toNumber(numStr);
-  if (num === null || num === 0) return null;
-  const signed = isBracketedNegative(text, match.index, numStr) ? -num : num;
-  return { numStr, num: signed, index: match.index };
 }
 
 function extractNumbersInText(text) {

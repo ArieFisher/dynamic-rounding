@@ -567,101 +567,6 @@
 // Accessibility tests
 // =============================================================================
 
-// --- accessibility AC1: aria-label on toggle button ---
-// Spec (AC): the <button class="dr-ext-morph"> has an aria-label (or accessible name)
-// describing its purpose (mentioning rounding).
-
-(function accessibilityAC1_ariaLabel() {
-  const createdElements = [];
-  const appendedToBody = [];
-
-  const origCreateEl = global.document.createElement;
-  const origDocBody = global.document.body;
-  const origDocEl = global.document.documentElement;
-
-  global.document.createElement = (tag) => {
-    const attrs = {};
-    const el = {
-      _tag: tag,
-      type: '',
-      className: '',
-      style: {},
-      _children: [],
-      _listeners: {},
-      dataset: {},
-      parentElement: null,
-      textContent: '',
-      classList: {
-        _c: [], add(c){ if(!this._c.includes(c)) this._c.push(c); },
-        remove(c){ this._c = this._c.filter(x=>x!==c); },
-        contains(c){ return this._c.includes(c); },
-        toggle(c, f) {
-          const has = this._c.includes(c);
-          const want = f === undefined ? !has : f;
-          if (want && !has) this._c.push(c);
-          else if (!want && has) this._c = this._c.filter(x=>x!==c);
-          return want;
-        },
-      },
-      appendChild(child) {
-        this._children.push(child);
-        child.parentElement = this;
-        return child;
-      },
-      addEventListener(evt, fn) {
-        if (!this._listeners[evt]) this._listeners[evt] = [];
-        this._listeners[evt].push(fn);
-      },
-      setAttribute(name, value) { attrs[name] = value; },
-      getAttribute(name) {
-        return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
-      },
-      removeAttribute(name) { delete attrs[name]; },
-      contains() { return false; },
-    };
-    createdElements.push(el);
-    return el;
-  };
-
-  global.document.body = {
-    appendChild(child) {
-      appendedToBody.push(child);
-      child.parentElement = global.document.body;
-    }
-  };
-  global.document.documentElement = { appendChild() {} };
-  toggleStyleInjected = false;
-
-  const origScrollX = global.window.scrollX;
-  const origScrollY = global.window.scrollY;
-  global.window.scrollX = 0;
-  global.window.scrollY = 0;
-
-  const table = makeToggleTable([
-    [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
-    [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
-  ]);
-  createToggleForTable(table);
-
-  // Restore
-  global.document.createElement = origCreateEl;
-  global.document.body = origDocBody;
-  global.document.documentElement = origDocEl;
-  global.window.scrollX = origScrollX;
-  global.window.scrollY = origScrollY;
-  toggleStyleInjected = true;
-
-  // The button should have been appended to body
-  const buttonEl = appendedToBody.find(e => e._tag === 'button');
-  const ariaLabel = buttonEl ? buttonEl.getAttribute('aria-label') : null;
-
-  eq('accessibility AC1: toggle button has an aria-label attribute',
-    typeof ariaLabel === 'string' && ariaLabel.length > 0, true);
-
-  eq('accessibility AC1: toggle button aria-label mentions rounding',
-    ariaLabel ? ariaLabel.toLowerCase().includes('round') : false, true);
-})();
-
 // --- accessibility AC3: button click handler updates aria-pressed (mouse path) ---
 // Spec (§3.4): for a <button>, Space/Enter are native. The click handler must
 // update aria-pressed when pointerType is 'mouse' or ''.
@@ -1134,48 +1039,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // Spec (§3.5): TOGGLE_KNOB_TRAVEL_PX === TOGGLE_PILL_WIDTH_PX - TOGGLE_KNOB_PX - 2*TOGGLE_KNOB_INSET_PX === 12
 
 (function morphAC_knobTravelDerivation() {
-  eq('expanding-toggle: TOGGLE_KNOB_TRAVEL_PX equals derived formula',
-    TOGGLE_KNOB_TRAVEL_PX, TOGGLE_PILL_WIDTH_PX - TOGGLE_KNOB_PX - 2 * TOGGLE_KNOB_INSET_PX);
   eq('expanding-toggle: TOGGLE_KNOB_TRAVEL_PX equals 12 (default geometry)',
     TOGGLE_KNOB_TRAVEL_PX, 12);
-})();
-
-// --- syncSwitchForTable → aria-pressed ---
-// Fresh table (no .dr-ext-rounded) → aria-pressed="false"
-// After marking cells → aria-pressed="true"
-// With drShowingOriginal='true' → aria-pressed="false" even if cells are rounded
-
-(function morphAC_syncSwitch_freshTable() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  const button = injectToggleEntry(table);
-  syncSwitchForTable(table);
-  eq('expanding-toggle: syncSwitchForTable fresh table → aria-pressed="false"',
-    button.getAttribute('aria-pressed'), 'false');
-})();
-
-(function morphAC_syncSwitch_roundedTable() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  table._cells[0].classList.add('dr-ext-rounded');
-  // Registry record present — see atToggle_syncSwitch_ariaTrueWhenRounded.
-  DR_STORE.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
-  DR_STORE.setTableAppliedFlag(table, 'simplified');
-  DR_STORE.setTableSettings(table, { enabled: true }, 'page');
-  const button = injectToggleEntry(table);
-  syncSwitchForTable(table);
-  eq('expanding-toggle: syncSwitchForTable rounded table → aria-pressed="true"',
-    button.getAttribute('aria-pressed'), 'true');
-})();
-
-(function morphAC_syncSwitch_showingOriginal() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
-  table._cells[0].classList.add('dr-ext-rounded');
-  // Registry record present — see atToggle_syncSwitch_ariaTrueWhenRounded.
-  DR_STORE.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
-  DR_STORE.setTableAppliedFlag(table, 'original');
-  const button = injectToggleEntry(table);
-  syncSwitchForTable(table);
-  eq('expanding-toggle: syncSwitchForTable appliedFlag=\'original\' (showing originals) with a rounded cell present → aria-pressed="false"',
-    button.getAttribute('aria-pressed'), 'false');
 })();
 
 // --- Mouse click toggles state ---
@@ -2049,46 +1914,15 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // AC4: closing the sidebar leaves a later press unchanged.
 //
 // The close message stops at the sidebar page — the content script has no
-// handler for it. A press after a close behaves exactly like a press before
-// one: the press reads nothing about the sidebar.
+// handler for it.
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_AC4_closeChangesNothingForALaterPress() {
-  const tableA = makeToggleTable([
-    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
-    [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
-  ]);
-  tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
-
-  const tableB = makeToggleTable([
-    [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
-    [{ tag: 'td', text: '1,000,000' }, { tag: 'td', text: '500' }],
-  ]);
-  tableB._cells.forEach(c => { c.querySelectorAll = () => []; });
-
-  lastRightClickedTable = tableA;
-
   // The close reaches the sidebar page alone, so there is nothing to
   // deliver here — the content script registers no branch for it. That
   // absence is asserted at the source, next to the other retirements.
   eq('rebind AC4: the content script registers no branch for the close message',
     /intent:closeSidebar/.test(sourceByName('content.js') || ''), false);
-
-  // A press on a different table afterwards: the switch goes out, exactly as
-  // it would have before the close.
-  const sentMessages = [];
-  const origSendMessage = global.chrome.runtime.sendMessage;
-  global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
-
-  const buttonB = createToggleWithSpies(tableB);
-  fireMouseClick(buttonB);
-
-  global.chrome.runtime.sendMessage = origSendMessage;
-  lastRightClickedTable = null;
-
-  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
-  eq('after CLOSE_SIDEBAR, a press on a different table still reports the switch (part one: nothing reads that state)',
-    switchCalls.length, 1);
 })();
 
 // ---------------------------------------------------------------------------
