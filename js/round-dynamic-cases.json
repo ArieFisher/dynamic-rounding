@@ -863,6 +863,13 @@
         "expected": "Q3 2020",
         "expected_text": "Q3 2,000",
         "expected_number": "Q3 2,000"
+      },
+      {
+        "input": "Revenue 1 034 567 units",
+        "params": {},
+        "expected": "Revenue 1 034 567 units",
+        "expected_text": "Revenue 1,000,000 units",
+        "expected_number": "Revenue 1,000,000 units"
       }
     ]
   },
@@ -938,7 +945,7 @@
       {
         "input": "416 555 1234",
         "params": {},
-        "expected": 4000000000,
+        "expected": "416 555 1234",
         "expected_text": "416 555 1234",
         "expected_number": "416 555 1234"
       },

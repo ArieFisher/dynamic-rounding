@@ -91,9 +91,10 @@ const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 // it here would strip it before PARENS_REGEX below could read it.
 const FORMAT_MARK_ALTERNATION = '(?:' + CURRENCY_SIGN_ALTERNATION + '|[\\s%])';
 // Everything dropped from a text before it reads as a number: the format
-// marks alone. A group mark stays, so the number shape test below can test
-// where it stands.
-const CLEAN_REGEX = new RegExp(FORMAT_MARK_ALTERNATION, 'g');
+// marks, except whitespace between two digits. That whitespace is a group
+// mark ("1 234 567"), not a format mark, so it stays, as a comma does, for
+// the number shape test below to test where it stands.
+const CLEAN_REGEX = new RegExp('(?!(?<=\\d\\s*)\\s(?=\\s*\\d))' + FORMAT_MARK_ALTERNATION, 'g');
 const PARENS_REGEX = /^\((.+)\)$/;
 // The characters toNumber reads as a minus sign: every dash and minus
 // variant, each normalized to an ASCII "-" before the conversion. The pure
@@ -135,20 +136,40 @@ function numberFormat() {
   return US_NUMBER_FORMAT;
 }
 
-// The group-shape pattern for each group mark, built once: toNumber runs on
-// every cell of every pass. The number format function returns one set of
-// marks today, so the cache holds one entry; it grows by one entry for each
-// distinct group mark a later format returns, never with page content.
-const GROUP_SHAPE_CACHE = new Map();
+// Whitespace standing as a group mark between two digit groups ("1 234 567").
+// \s covers the narrow no-break space (U+202F) and the no-break space
+// (U+00A0) pages use for that grouping, alongside the plain space.
+const GROUP_SPACE_PATTERN = '\\s+';
 
 /**
- * The number shape test. A group mark may appear only in the group shape (a
- * first group of one to three digits, then groups of exactly three) and only
- * before the decimal mark. A run with no group mark passes, and the
- * conversion judges it as before, so ".300", "5." and "1.2E+05" still read
- * as numbers and a second dot still fails there. `run` is a text with its
- * format marks stripped, its dashes normalized, and its brackets turned into
- * a minus sign.
+ * The group shape for one group mark: a first group of one to three digits,
+ * then groups of exactly three, each after the mark. This is the one copy of
+ * the shape. The number shape test reads it with the number format's group
+ * mark and with whitespace; the pattern that finds a number inside text
+ * (parsing.js) and the spaced-digit identifier shape (identifiers.js) read
+ * it with whitespace.
+ * @param {string} markPattern - the group mark, as a regular expression source
+ * @returns {string}
+ */
+function groupShapePattern(markPattern) {
+  return '\\d{1,3}(?:' + markPattern + '\\d{3})+';
+}
+
+// The group-shape test for each group mark, built once: toNumber runs on
+// every cell of every pass. The cache holds one entry for the number
+// format's mark and one for whitespace; it grows by one entry for each
+// distinct group mark a later format returns, never with page content.
+const GROUP_SHAPE_CACHE = new Map();
+const GROUP_SPACE_RE = /\s/;
+
+/**
+ * The number shape test. A group mark, the number format's mark or
+ * whitespace, may appear only in the group shape and only before the decimal
+ * mark, and a run holds one kind of group mark. A run with no group mark
+ * passes, and the conversion judges it as before, so ".300", "5." and
+ * "1.2E+05" still read as numbers and a second dot still fails there. `run`
+ * is a text with its format marks stripped, its dashes normalized, and its
+ * brackets turned into a minus sign.
  * @param {string} run
  * @param {{group: string, decimal: string}} marks
  * @returns {boolean}
@@ -157,13 +178,16 @@ function isNumberShape(run, marks) {
   const at = run.indexOf(marks.decimal);
   const whole = at === -1 ? run : run.slice(0, at);
   const fraction = at === -1 ? '' : run.slice(at + marks.decimal.length);
-  if (fraction.includes(marks.group)) return false;
-  if (!whole.includes(marks.group)) return true;
-  if (!GROUP_SHAPE_CACHE.has(marks.group)) {
-    const escaped = marks.group.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    GROUP_SHAPE_CACHE.set(marks.group, new RegExp('^[+-]?\\d{1,3}(?:' + escaped + '\\d{3})+$'));
+  if (fraction.includes(marks.group) || GROUP_SPACE_RE.test(fraction)) return false;
+  const hasGroupMark = whole.includes(marks.group);
+  const hasGroupSpace = GROUP_SPACE_RE.test(whole);
+  if (!hasGroupMark && !hasGroupSpace) return true;
+  if (hasGroupMark && hasGroupSpace) return false;
+  const mark = hasGroupMark ? marks.group.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : GROUP_SPACE_PATTERN;
+  if (!GROUP_SHAPE_CACHE.has(mark)) {
+    GROUP_SHAPE_CACHE.set(mark, new RegExp('^[+-]?' + groupShapePattern(mark) + '$'));
   }
-  return GROUP_SHAPE_CACHE.get(marks.group).test(whole);
+  return GROUP_SHAPE_CACHE.get(mark).test(whole);
 }
 
 function toNumber(value) {
@@ -178,7 +202,7 @@ function toNumber(value) {
       .replace(PARENS_REGEX, "-$1");
     if (cleaned === "") return null;
     if (!isNumberShape(cleaned, marks)) return null;
-    const ungrouped = cleaned.split(marks.group).join("");
+    const ungrouped = cleaned.split(marks.group).join("").replace(/\s+/g, "");
     const plain = marks.decimal === "." ? ungrouped : ungrouped.split(marks.decimal).join(".");
     const parsed = Number(plain);
     return isFinite(parsed) ? parsed : null;

@@ -1552,7 +1552,7 @@
     // rounding.js
     'roundWithOffset', 'roundCellSetAware', 'stepForOffset', 'formatStep', 'trimNum',
     // core.js
-    'findMaxMagnitude', 'numberFormat', 'isNumberShape', 'toNumber',
+    'findMaxMagnitude', 'numberFormat', 'groupShapePattern', 'isNumberShape', 'toNumber',
     // parsing.js
     'lettersToColIndex', 'parseRangeEndpoint', 'parseRangeToken', 'parseRangeExpr',
     'isInRanges', 'resolveOffset', 'resolveNumTop', 'matchUnitNumber', 'getExclusionReason',
@@ -1563,7 +1563,7 @@
     'bracketSignSpan', 'isBracketedNegative', 'matchBracketedNumber',
     'eraYearDigitRanges', 'formatNumber', 'pureNumberSpan',
     // identifiers.js
-    'findIdentifiers', 'matchIdentifierShape', 'getIdentifierMaskedRanges',
+    'insideNumberRun', 'findIdentifiers', 'matchIdentifierShape', 'getIdentifierMaskedRanges',
   ].sort();
 
   eq('lib/dr-number/index.js: DR_NUMBER exists on the global scope after the main eval',

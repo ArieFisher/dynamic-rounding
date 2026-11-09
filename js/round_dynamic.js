@@ -227,9 +227,10 @@ const CURRENCY_SIGN_RE = new RegExp(CURRENCY_SIGN_ALTERNATION);
 // it here would strip it before PARENS_REGEX below could read it.
 const FORMAT_MARK_ALTERNATION = '(?:' + CURRENCY_SIGN_ALTERNATION + '|[\\s%])';
 // Everything dropped from a text before it reads as a number: the format
-// marks alone. A group mark stays, so the number shape test below can test
-// where it stands.
-const CLEAN_REGEX = new RegExp(FORMAT_MARK_ALTERNATION, 'g');
+// marks, except whitespace between two digits. That whitespace is a group
+// mark ("1 234 567"), not a format mark, so it stays, as a comma does, for
+// the number shape test below to test where it stands.
+const CLEAN_REGEX = new RegExp('(?!(?<=\\d\\s*)\\s(?=\\s*\\d))' + FORMAT_MARK_ALTERNATION, 'g');
 const PARENS_REGEX = /^\((.+)\)$/;
 // The characters toNumber reads as a minus sign: every dash and minus
 // variant, each normalized to an ASCII "-" before the conversion. The pure
@@ -271,20 +272,40 @@ function numberFormat() {
   return US_NUMBER_FORMAT;
 }
 
-// The group-shape pattern for each group mark, built once: toNumber runs on
-// every cell of every pass. The number format function returns one set of
-// marks today, so the cache holds one entry; it grows by one entry for each
-// distinct group mark a later format returns, never with page content.
-const GROUP_SHAPE_CACHE = new Map();
+// Whitespace standing as a group mark between two digit groups ("1 234 567").
+// \s covers the narrow no-break space (U+202F) and the no-break space
+// (U+00A0) pages use for that grouping, alongside the plain space.
+const GROUP_SPACE_PATTERN = '\\s+';
 
 /**
- * The number shape test. A group mark may appear only in the group shape (a
- * first group of one to three digits, then groups of exactly three) and only
- * before the decimal mark. A run with no group mark passes, and the
- * conversion judges it as before, so ".300", "5." and "1.2E+05" still read
- * as numbers and a second dot still fails there. `run` is a text with its
- * format marks stripped, its dashes normalized, and its brackets turned into
- * a minus sign.
+ * The group shape for one group mark: a first group of one to three digits,
+ * then groups of exactly three, each after the mark. This is the one copy of
+ * the shape. The number shape test reads it with the number format's group
+ * mark and with whitespace; the pattern that finds a number inside text
+ * (parsing.js) and the spaced-digit identifier shape (identifiers.js) read
+ * it with whitespace.
+ * @param {string} markPattern - the group mark, as a regular expression source
+ * @returns {string}
+ */
+function groupShapePattern(markPattern) {
+  return '\\d{1,3}(?:' + markPattern + '\\d{3})+';
+}
+
+// The group-shape test for each group mark, built once: toNumber runs on
+// every cell of every pass. The cache holds one entry for the number
+// format's mark and one for whitespace; it grows by one entry for each
+// distinct group mark a later format returns, never with page content.
+const GROUP_SHAPE_CACHE = new Map();
+const GROUP_SPACE_RE = /\s/;
+
+/**
+ * The number shape test. A group mark, the number format's mark or
+ * whitespace, may appear only in the group shape and only before the decimal
+ * mark, and a run holds one kind of group mark. A run with no group mark
+ * passes, and the conversion judges it as before, so ".300", "5." and
+ * "1.2E+05" still read as numbers and a second dot still fails there. `run`
+ * is a text with its format marks stripped, its dashes normalized, and its
+ * brackets turned into a minus sign.
  * @param {string} run
  * @param {{group: string, decimal: string}} marks
  * @returns {boolean}
@@ -293,13 +314,16 @@ function isNumberShape(run, marks) {
   const at = run.indexOf(marks.decimal);
   const whole = at === -1 ? run : run.slice(0, at);
   const fraction = at === -1 ? '' : run.slice(at + marks.decimal.length);
-  if (fraction.includes(marks.group)) return false;
-  if (!whole.includes(marks.group)) return true;
-  if (!GROUP_SHAPE_CACHE.has(marks.group)) {
-    const escaped = marks.group.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    GROUP_SHAPE_CACHE.set(marks.group, new RegExp('^[+-]?\\d{1,3}(?:' + escaped + '\\d{3})+$'));
+  if (fraction.includes(marks.group) || GROUP_SPACE_RE.test(fraction)) return false;
+  const hasGroupMark = whole.includes(marks.group);
+  const hasGroupSpace = GROUP_SPACE_RE.test(whole);
+  if (!hasGroupMark && !hasGroupSpace) return true;
+  if (hasGroupMark && hasGroupSpace) return false;
+  const mark = hasGroupMark ? marks.group.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : GROUP_SPACE_PATTERN;
+  if (!GROUP_SHAPE_CACHE.has(mark)) {
+    GROUP_SHAPE_CACHE.set(mark, new RegExp('^[+-]?' + groupShapePattern(mark) + '$'));
   }
-  return GROUP_SHAPE_CACHE.get(marks.group).test(whole);
+  return GROUP_SHAPE_CACHE.get(mark).test(whole);
 }
 
 function toNumber(value) {
@@ -314,7 +338,7 @@ function toNumber(value) {
       .replace(PARENS_REGEX, "-$1");
     if (cleaned === "") return null;
     if (!isNumberShape(cleaned, marks)) return null;
-    const ungrouped = cleaned.split(marks.group).join("");
+    const ungrouped = cleaned.split(marks.group).join("").replace(/\s+/g, "");
     const plain = marks.decimal === "." ? ungrouped : ungrouped.split(marks.decimal).join(".");
     const parsed = Number(plain);
     return isFinite(parsed) ? parsed : null;
@@ -375,9 +399,21 @@ function toNumber(value) {
 // step searches the live text for the match string, so a trailing mark in it
 // makes the link filter and the patch step miss a number that is right there.
 //
+// Whitespace between digit groups is a group mark only in the group shape
+// (groupShapePattern, core.js, the one copy the number shape test reads
+// too), and only when the whole chain of spaced groups fits it: "1 034 567"
+// is one run, and so is "12 345", while "2024 12", "416 555 1234" and
+// "1 234 5678" stay several numbers, since a chain with a group outside the
+// shape is numbers side by side. A decimal part follows the last group
+// ("1 234 567.50"). The spaced run comes first in the alternation, so the
+// plain run never takes the first group of a spaced one.
+//
 // DIGIT_RUN_PATTERN is the one copy of a number's digit run: the pattern
-// that finds a number inside text and the unit-number pattern both read it.
-const DIGIT_RUN_PATTERN = '\\d(?:[\\d.,]*\\d)?';
+// that finds a number inside text and the unit-number pattern both read it,
+// and the leading-zero identifier shape (identifiers.js) reads the in-text
+// pattern to tell a group of a spaced number from a code.
+const SPACED_DIGIT_RUN_PATTERN = groupShapePattern(GROUP_SPACE_PATTERN) + '(?!\\s*\\d)(?:[.,]\\d+)?';
+const DIGIT_RUN_PATTERN = '(?:' + SPACED_DIGIT_RUN_PATTERN + '|\\d(?:[\\d.,]*\\d)?)';
 const NUMBER_IN_TEXT_PATTERN = '(?<![\\w.,@])-?' + DIGIT_RUN_PATTERN;
 const NUMBER_IN_TEXT_REGEX = new RegExp(NUMBER_IN_TEXT_PATTERN);
 const NUMBER_IN_TEXT_REGEX_GLOBAL = new RegExp(NUMBER_IN_TEXT_PATTERN, 'g');
@@ -1201,20 +1237,18 @@ const fillingRe = (pattern, flags = '') => new RegExp(`^${PURE_LEAD_PATTERN}(?:$
 const PHONE_NUMBER_PATTERN = '\\+?(?:1[-.\\s]?)?\\d{3}[-.\\s]\\d{3}[-.\\s]\\d{4}|(?:\\+?1[-.\\s]?)?\\(\\d{3}\\)\\s?\\d{3}[-.\\s]\\d{4}';
 
 // --- Grouped digits split by whitespace ---
-// A digit run split by whitespace reads as thousands grouping only in one
-// shape: a first group of 1-3 digits, then one or more groups of exactly 3
-// digits, each preceded by whitespace, with an optional decimal part glued to
-// the last group ("1 234 567", "12 345.67"). \s matches the narrow no-break
-// space (U+202F) and the no-break space (U+00A0) international sites use for
-// that grouping, alongside the plain ASCII space. Anything else with
-// whitespace between two digits — a first group over 3 digits, a later group
-// not exactly 3 — is not that shape, so it reads as an identifier instead of
-// a quantity. It counts only when it fills the cell, and only when the
-// cell's digits sit in one text piece: a grid's stacked cell ("1500" above
-// "1600") joins its pieces with whitespace, and that join is several
-// numbers, not one spaced identifier.
+// A digit run split by whitespace reads as thousands grouping only in the
+// group shape (groupShapePattern, core.js, the one copy the number shape
+// test reads too), with an optional decimal part glued to the last group
+// ("1 234 567", "12 345.67"). Anything else with whitespace between two
+// digits — a first group over 3 digits, a later group not exactly 3 — is not
+// that shape, so it reads as an identifier instead of a quantity. It counts
+// only when it fills the cell, and only when the cell's digits sit in one
+// text piece: a grid's stacked cell ("1500" above "1600") joins its pieces
+// with whitespace, and that join is several numbers, not one spaced
+// identifier.
 const GROUPED_DIGITS_RE = fillingRe('\\d+(?:\\s+\\d+)+(?:\\.\\d+)?');
-const GROUPED_DIGITS_QUANTITY_RE = fillingRe('\\d{1,3}(?:\\s+\\d{3})+(?:\\.\\d+)?');
+const GROUPED_DIGITS_QUANTITY_RE = fillingRe(groupShapePattern(GROUP_SPACE_PATTERN) + '(?:\\.\\d+)?');
 
 // --- IP addresses ---
 // IPv4: four dot-separated groups, each 0-255. "192.5" and "1.5" are two
@@ -1291,18 +1325,42 @@ const POSTAL_CODE_PATTERN = [
 // often is. "0", "0.5", and "0.0625" are not this shape, since a decimal
 // mark follows their zero. The run carries no group mark and no decimal
 // mark: a run followed by a comma or a dot and a digit ("0123.45",
-// "012,345") is not this shape, and a run that starts right after a comma
-// ("1,034") is one group of a larger number, not a code. A sentence's comma
-// or period after the run ("ID 0000123, late") still ends it.
-const LEADING_ZERO_PATTERN = '(?<!,)0\\d+(?![.,]\\d)';
+// "012,345") is not this shape. A sentence's comma or period after the run
+// ("ID 0000123, late") still ends it. A run that is one group of a larger
+// number ("034" in "1,034" or "1 034 567") is not a code either: the shape
+// is groupOfNumber, so findIdentifiers drops a match that sits inside a
+// longer number run.
+const LEADING_ZERO_PATTERN = '0\\d+(?![.,]\\d)';
+
+/**
+ * True when [start, end) sits inside a longer run the pattern that finds a
+ * number inside text (parsing.js) takes as one number, so the characters
+ * are one group of that number. That pattern is the one judge of what one
+ * number spans, so a group of a space-grouped or comma-grouped number is
+ * never read a second way here.
+ * @param {string} text
+ * @param {number} start
+ * @param {number} end
+ * @returns {boolean}
+ */
+function insideNumberRun(text, start, end) {
+  for (const run of text.matchAll(NUMBER_IN_TEXT_REGEX_GLOBAL)) {
+    // The run's digits alone: its minus sign is not a group ("-0123").
+    const runStart = run.index + (run[0].startsWith('-') ? 1 : 0);
+    const runEnd = run.index + run[0].length;
+    if (runStart <= start && end <= runEnd && runEnd - runStart > end - start) return true;
+  }
+  return false;
+}
 
 // The one list of identifier shapes. Each entry holds the shape's name, its
 // pattern for a code anywhere in the text, and, for a shape with a form that
 // counts only when it fills the cell, a test of the whole text for that form.
 // The test takes the text and whether the cell's digits span several text
-// pieces. findIdentifiers reads the list alone, and a new shape is one more
-// entry here. Phone numbers come before grouped digits so "416 555 1234"
-// takes the phone name.
+// pieces. A shape marked groupOfNumber drops a match that is one group of a
+// longer number run. findIdentifiers reads the list alone, and a new shape
+// is one more entry here. Phone numbers come before grouped digits so
+// "416 555 1234" takes the phone name.
 const IDENTIFIER_SHAPES = [
   { name: 'phone-number', span: spanRe(PHONE_NUMBER_PATTERN) },
   { name: 'grouped-digits', fillsOnly: (text, digitsSpanPieces) => !digitsSpanPieces && GROUPED_DIGITS_RE.test(text) },
@@ -1314,7 +1372,7 @@ const IDENTIFIER_SHAPES = [
     fillsOnly: (text) => /[- ]/.test((ISBN_WITHOUT_WORD_RE.exec(text) || [])[1] || ''),
   },
   { name: 'postal-code', span: spanRe(POSTAL_CODE_PATTERN) },
-  { name: 'leading-zero', span: spanRe(LEADING_ZERO_PATTERN) },
+  { name: 'leading-zero', span: spanRe(LEADING_ZERO_PATTERN), groupOfNumber: true },
 ];
 
 /**
@@ -1335,6 +1393,7 @@ function findIdentifiers(text, digitsSpanPieces = false) {
     for (const match of shape.span ? text.matchAll(shape.span) : []) {
       const start = match.index;
       const end = start + match[0].length;
+      if (shape.groupOfNumber && insideNumberRun(text, start, end)) continue;
       const fillsCell = !quantity
         && CELL_LEAD_RE.test(text.slice(0, start)) && CELL_TRAIL_RE.test(text.slice(end));
       codes.push({ name: shape.name, start, end, fillsCell, inText: !SPACED_DIGITS_ONLY_RE.test(match[0]) });

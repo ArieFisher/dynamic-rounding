@@ -117,13 +117,15 @@
     { mode: 'skip', reason: 'footnote' });
 
   // "20 <sup>15</sup>" flattens to "20 1015": the standalone "20" survives
-  // masking even though the sup-adjacent "1015" match does not.
+  // masking even though the sup-adjacent "1015" match does not. "20 1015" is
+  // not one number, since its spaced groups are outside the group shape, so
+  // the cell takes the words path, not the footnote path.
   eq('classifyCell: a superscript-flagged cell keeps non-overlapping matches',
     classifyCell({
       text: '20 1015', rowIndex: 1, columnIndex: 1, ranges: null,
       hasSuperscript: true, superscriptRanges: [{ start: 5, end: 7 }],
     }, LADDER_OPTS),
-    { mode: 'extracted', reason: 'footnote', value: { matches: [{ numStr: '20', num: 20, index: 0 }] } });
+    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '20', num: 20, index: 0 }] } });
 
   eq('classifyCell: superscript-flagged cell is skipped when simplifyMixedCells is false',
     classifyCell({
@@ -324,6 +326,8 @@ const IDENTIFIER_SPAN_NEAR_MISSES = [
   ['Host 192.168.0.1.5 served 12 requests', ['12']],
   ['Sold 1,034,567 units at 0.5 each', ['1,034,567', '0.5']],
   ['Price 0123.45 for 4,567 units', ['0123.45', '4,567']],
+  ['Revenue 1 034 567 units', ['1 034 567']],
+  ['Sold 12 345 units', ['12 345']],
 ];
 
 (function identifierShapes_holdTheirDigitsInsideText() {
