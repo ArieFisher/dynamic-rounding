@@ -854,10 +854,10 @@ function filterLinkMatches(cell, matches) {
 // (lib/dr-simplify) applies every text-only filter to an extracted cell's
 // candidate matches (quote spans, superscript spans, era years) but reads
 // only text, which holds no <a> element, so filterLinkMatches above drops the
-// matches inside links here. Each filter is an independent per-match predicate, so running
-// this one after the ladder's filters gives the same final set as running all
-// of them together (see the lib/dr-simplify/ladder.js header). If filtering
-// empties the match list, the cell becomes a skip.
+// matches inside links here. Each filter is an independent per-match
+// predicate, so running this one after the ladder's filters gives the same
+// final set as running all of them together (see the lib/dr-simplify/ladder.js
+// header). If filtering empties the match list, the cell becomes a skip.
 // staleFilteredIndices: when the caller is classifying a cell's *stored*
 // pre-round text (the record's value, read through the cell object's
 // getRecord) rather than the live cell, the live text no longer contains
