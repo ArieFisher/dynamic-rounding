@@ -1474,7 +1474,7 @@
 //      right criterion here the way it is for the pure lib/dr-number files).
 //   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
 //   3. VendorProfiles: a custom list replaces (not merges with) the default.
-//   4. findTables' isArtifact: default drops a accessibility artifacts; a
+//   4. findTables' isArtifact: the default drops accessibility artifacts; a
 //      pass-through filter keeps it.
 // ---------------------------------------------------------------------------
 (function drTableBundleIsPublished() {

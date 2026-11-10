@@ -82,7 +82,7 @@ function collectCaptureState(deps) {
         if (rightEdge > columnCount) columnCount = rightEdge;
         const originalText = model.getTableOriginalText(table, cellObj.el);
         const original = originalText === undefined ? null : originalText;
-        // SIMPLIFIED_CLASS (lib/dr-table/detect.js) marks every rounded
+        // SIMPLIFIED_CLASS (lib/dr-table/detect.js) marks every simplified
         // cell, native and grid alike.
         const wearsMarker = !!(cellObj.el && cellObj.el.classList &&
           cellObj.el.classList.contains(SIMPLIFIED_CLASS));

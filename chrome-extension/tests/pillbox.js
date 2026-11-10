@@ -1930,7 +1930,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 (function pass2aria_sanity_phantomEmbedded() {
   const phantom = makePhantomEmbeddedTable();
-  eq('pass2-aria sanity: isAccessibilityArtifact(phantom embedded table) === true',
+  eq('pass2-aria sanity: isAccessibilityArtifact(embedded accessibility artifact) === true',
     isAccessibilityArtifact(phantom), true);
 })();
 

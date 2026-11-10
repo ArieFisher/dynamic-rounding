@@ -22,11 +22,11 @@
  * findTargetTable, isAccessibilityArtifact, chainRootOf, nominateNest,
  * nominateNests, findTables, and readTableFingerprint. None writes the
  * dr-ext-grid marker class or builds a table pillbox, and none reads that
- * class as state: "is this element registered" is the injected opts.isRegistered
- * check. The callers (ui-pillbox.js, content.js) check the registry in
- * DR_MODEL and, for a first match, write the marker class (a style hook only)
- * and build the table pillbox. The rest of the file writes to the page: the
- * patch writer (writePatches) and restoreTextPieces write cell text
+ * class as state: "is this element registered" is the injected
+ * opts.isRegistered check. The callers (ui-pillbox.js, content.js) check the
+ * registry in DR_MODEL and, for a first match, write the marker class (a style
+ * hook only) and build the table pillbox. The rest of the file writes to the
+ * page: the patch writer (writePatches) and restoreTextPieces write cell text
  * in place, through nodeValue, and the cell object's applyPatches calls the
  * patch writer, stores the cell's record through the originals port, and adds
  * the dr-ext-rounded marker class.
@@ -1464,7 +1464,8 @@ function looksLikeGrid(el, opts = {}) {
 /**
  * Find the grid or table root for the element `el` was right-clicked inside.
  * The body applies four routes in order: the nearest <table> ancestor; the
- * nearest ancestor (or `el` itself) that opts.isRegistered reports as registered;
+ * nearest ancestor (or `el` itself) that opts.isRegistered reports as
+ * registered;
  * findTables from the chain root of the nest `el` sits in, whose nomination
  * step finds a marked grid the load-time scan missed; and the outermost
  * looksLikeGrid match on a walk up from `el`.
@@ -1475,9 +1476,10 @@ function looksLikeGrid(el, opts = {}) {
  * registered or not: the load-time scan and the added-node pass register
  * native tables and build their table pillboxes, and a native table takes no
  * dr-ext-grid marker class. The second route returns isNew: false because it
- * matched a registered element. The last two return !opts.isRegistered(handle).
- * Without opts.isRegistered the second route does nothing and the last two return
- * isNew: true, since detection keeps no registry.
+ * matched a registered element. The last two return
+ * !opts.isRegistered(handle). Without opts.isRegistered the second route does
+ * nothing and the last two return isNew: true, since detection keeps no
+ * registry.
  *
  * Returns null if nothing matches.
  *
@@ -1498,8 +1500,8 @@ function findTargetTable(el, opts = {}) {
   }
 
   // 2. Nearest registered ancestor (or el itself), per opts.isRegistered — a
-  // walk-up rather than a closest('.dr-ext-grid') query, since isRegistered is an
-  // arbitrary per-element check (typically a WeakMap-backed registry.has),
+  // walk-up rather than a closest('.dr-ext-grid') query, since isRegistered is
+  // an arbitrary per-element check (typically a WeakMap-backed registry.has),
   // not a CSS selector.
   let seenCandidate = el;
   let seenDepth = 0;
@@ -2008,8 +2010,9 @@ function chainRootOf(el, opts = {}) {
  *   - 'crowded'    — a depth holds more than one element and no shallower
  *                    depth holds exactly one, so the nest registers nothing
  *                    (the product decision in issue #373).
- *   - 'registered' — the nest already holds an element opts.isRegistered reports,
- *                    so a second run over a registered nest registers nothing.
+ *   - 'registered' — the nest already holds an element opts.isRegistered
+ *                    reports, so a second run over a registered nest registers
+ *                    nothing.
  *
  * `chainSize` holds the chain's size: the nest elements that passed the data
  * test and filed at a nesting depth. It is 0 for 'empty', and 0 for
@@ -2111,10 +2114,11 @@ function nominateNests(root, opts = {}) {
  * other three outcomes. A caller that acts on those — the controller, which
  * holds a pending table for an empty nest — calls nominateNests directly.
  *
- * Each result is { handle, isNew }; isNew is !opts.isRegistered(handle), where
- * opts.isRegistered is a caller-supplied registered check (e.g. DR_MODEL.hasTable)
- * for native tables and grid roots alike. Without opts.isRegistered every result
- * reports isNew: true, since detection keeps no registry.
+ * Each result is { handle, isNew }; isNew is !opts.isRegistered(handle),
+ * where opts.isRegistered is a caller-supplied registered check (e.g.
+ * DR_MODEL.hasTable) for native tables and grid roots alike. Without
+ * opts.isRegistered every result reports isNew: true, since detection keeps
+ * no registry.
  *
  * @param {Element|Document} root
  * @param {{isArtifact?: (table: Element, opts: object) => boolean,

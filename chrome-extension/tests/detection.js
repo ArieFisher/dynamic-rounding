@@ -1021,7 +1021,7 @@ const supTestOpts = {
 })();
 
 // FT5: findTargetTable — returns already-found ancestor without re-walking
-// If an ancestor is already known per opts.isRegistered (see
+// If an ancestor is already registered per opts.isRegistered (see
 // lib/dr-table/detect.js), it must be returned immediately without calling
 // looksLikeGrid again.
 (function findTargetTable_returnsAlreadyTaggedGrid() {
@@ -2014,7 +2014,7 @@ const supTestOpts = {
   eq('pass1-filter: phantom aria-hidden table satisfies isDataTable (sanity)',
     isDataTable(phantoms[0]), true);
   // Sanity: each artifact is detected as an artifact
-  eq('pass1-filter: phantom aria-hidden table isAccessibilityArtifact is true (sanity)',
+  eq('pass1-filter: aria-hidden accessibility artifact isAccessibilityArtifact is true (sanity)',
     isAccessibilityArtifact(phantoms[0]), true);
 
   runPass1WithTables(phantoms);
@@ -2052,7 +2052,7 @@ const supTestOpts = {
   // Sanity checks
   eq('pass1-filter: off-screen phantom table satisfies isDataTable (sanity)',
     isDataTable(phantoms[0]), true);
-  eq('pass1-filter: off-screen phantom table isAccessibilityArtifact is true (sanity)',
+  eq('pass1-filter: off-screen accessibility artifact isAccessibilityArtifact is true (sanity)',
     isAccessibilityArtifact(phantoms[0]), true);
 
   runPass1WithTables(phantoms);
@@ -2830,9 +2830,9 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 
   eq('findTables: sanity — the fixture is both a valid data table and a phantom a11y table',
     isDataTable(phantomTable) && isAccessibilityArtifact(phantomTable), true);
-  eq('findTables: default isArtifact (isAccessibilityArtifact) drops a phantom a11y table',
+  eq('findTables: default isArtifact (isAccessibilityArtifact) drops an accessibility artifact',
     findTables(root).length, 0);
-  eq('findTables: a pass-through isArtifact keeps the phantom a11y table',
+  eq('findTables: a pass-through isArtifact keeps the accessibility artifact',
     findTables(root, { isArtifact: () => false }).length, 1);
 })();
 
