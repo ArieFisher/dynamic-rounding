@@ -76,7 +76,8 @@ function parentOf(node) {
  * ends before a node `stopAt` reports, after `cap` nodes, and at the tree's
  * top. `found` may keep state.
  * @param {Node|null} start
- * @param {number} cap - most nodes visited (the walk then returns null): gridWalkDepthCap, or Infinity for the tree's top alone
+ * @param {number} cap - most nodes visited (the walk then returns null):
+ *   gridWalkDepthCap, or Infinity for the tree's top alone
  * @param {((node: Node) => boolean)|null} stopAt - null stops nowhere
  * @param {(node: Node) => boolean} found
  * @returns {Node|null}
