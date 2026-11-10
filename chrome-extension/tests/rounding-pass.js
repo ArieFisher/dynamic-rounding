@@ -4380,6 +4380,55 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
+// --- Hover text the page changed: a restore never writes hover text the page
+// no longer shows, the way it never writes a number the page no longer shows.
+// A release puts the stored page hover text back only while the cell still
+// shows the extension's own hover text. ---
+(function hoverText_aPageThatChangesTextAndHoverTextKeepsTheLatest() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([['1,234', '5,678'], ['2,468', '3,579']]);
+    t.cell(0, 0).title = 'Updated 10:00';
+    roundTableUnder(t.table, RW_OPTS);
+    t.write(0, 0, '9,876');
+    t.cell(0, 0).title = 'Updated 10:05';
+    page.settle();
+    eq(`changed hover text (${kind}): the rewritten cell shows its new original`,
+      t.cell(0, 0).title, 'Original: 9,876');
+    resetTable(t.table);
+    eq(`changed hover text (${kind}): a restore leaves the latest hover text of the page`,
+      t.cell(0, 0).title, 'Updated 10:05');
+  });
+})();
+
+(function hoverText_aTitleOnlyChangeSurvivesTheNextWriteAndRestore() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([['1,234', '5,678'], ['2,468', '3,579']]);
+    t.cell(0, 0).title = 'Updated 10:00';
+    roundTableUnder(t.table, RW_OPTS);
+    t.cell(0, 0).title = 'Updated 10:05';
+    // The page redraws the piece to its original: the held cell takes the patch again.
+    t.write(0, 0, '1,234');
+    page.settle();
+    eq(`changed hover text (${kind}): the held cell shows its original again`,
+      t.cell(0, 0).title, 'Original: 1,234');
+    resetTable(t.table);
+    eq(`changed hover text (${kind}): a restore leaves the latest hover text of the page`,
+      t.cell(0, 0).title, 'Updated 10:05');
+  });
+})();
+
+(function hoverText_aRestoreLeavesATitleOnlyChange() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([['1,234', '5,678'], ['2,468', '3,579']]);
+    t.cell(0, 0).title = 'Updated 10:00';
+    roundTableUnder(t.table, RW_OPTS);
+    t.cell(0, 0).title = 'Updated 10:05';
+    resetTable(t.table);
+    eq(`changed hover text (${kind}): a restore with no pass between leaves the latest hover text`,
+      [t.cell(0, 0).title, t.text(0, 0)], ['Updated 10:05', '1,234']);
+  });
+})();
+
 // --- Test 7: the page rewrites one piece of a cell with several pieces. The
 // other pieces show their original text again before the cell simplifies
 // fresh, so the stored originals hold no text the extension wrote. ---

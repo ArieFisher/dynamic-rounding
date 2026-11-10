@@ -304,6 +304,32 @@ function makeDefaultOriginalsPort() {
 const DEFAULT_ORIGINALS_PORT = makeDefaultOriginalsPort();
 
 /**
+ * The hover text the extension gives a simplified cell: "Original: " and the
+ * text the cell classified. A cell whose live hover text differs from it shows
+ * hover text the page wrote.
+ * @param {string} value
+ * @returns {string}
+ */
+function originalHoverText(value) {
+  return `Original: ${value}`;
+}
+
+/**
+ * The page's hover text for a cell about to take a write. A cell with no
+ * record takes it from the cell, on its first write. On a held cell, a live
+ * hover text that is the extension's own leaves the stored text standing, and
+ * any other live hover text is the page's newer text, which replaces it.
+ * @param {Element} cellEl
+ * @param {{value: string, pageTitle?: string}|null} record
+ * @returns {string}
+ */
+function pageHoverText(cellEl, record) {
+  const live = cellEl.title || '';
+  if (!record) return live;
+  return live === originalHoverText(record.value) ? (record.pageTitle || '') : live;
+}
+
+/**
  * The cell object both adapters hand out: one read and one write over the
  * cell's text pieces, answering from the cell's record once the cell is
  * simplified. `reads` holds the differences between the kinds:
@@ -370,7 +396,9 @@ function makeCellObj(cellEl, port, reads) {
     //   pageTitle        the cell's hover text as the page set it, read once
     //                    on the first write and carried through every later
     //                    write, so the extension's own hover text never
-    //                    stands in for it; '' when the page set none
+    //                    stands in for it, except that a held cell whose hover
+    //                    text the page changed takes the new text; '' when
+    //                    the page set none
     // Every landed write replaces the record, so the written text never
     // goes stale. A write that lands nothing writes and stores nothing.
     // The pass passes opts.value because a native cell's getText() reads
@@ -392,7 +420,7 @@ function makeCellObj(cellEl, port, reads) {
         pieces: original.map((text, i) => ({ text, written: written[i] })),
         supRanges: supRanges || null,
         linkFilteredIdx: linkFilteredIdx || null,
-        pageTitle: record ? record.pageTitle : (cellEl.title || ''),
+        pageTitle: pageHoverText(cellEl, record),
       });
       if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
       return landed;

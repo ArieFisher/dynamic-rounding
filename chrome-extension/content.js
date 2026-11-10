@@ -674,9 +674,10 @@ function isUnrestorableCell(table, cell) {
 // Release one simplified cell: put its original text back into every text
 // piece that still shows the extension's written text (restoreTextPieces),
 // then drop its record and its marker class, and put back the hover text the
-// page set (the record's pageTitle). A cell whose page set none ends with no
-// hover text attribute at all: the record holds no difference between an
-// absent attribute and an empty one.
+// page set (the record's pageTitle) while the cell still shows the
+// extension's own hover text. A cell whose page set none ends with no hover
+// text attribute at all: the record holds no difference between an absent
+// attribute and an empty one.
 // The restore runs it on every marked cell; a pass runs it on a rewritten
 // cell before simplifying it fresh, and on a held cell whose target text is
 // its original.
@@ -685,6 +686,9 @@ function releaseCell(table, cell) {
   if (record) restoreTextPieces(cell, record.pieces);
   DR_MODEL.deleteTableOriginal(table, cell);
   cell.classList.remove(GRID_ROUNDED_CLASS);
+  // Like the text pieces, hover text the page changed stays: only the
+  // extension's own hover text gives way to the stored one.
+  if (record && cell.title !== originalHoverText(record.value)) return;
   if (record && record.pageTitle) cell.title = record.pageTitle;
   else cell.removeAttribute('title');
 }
@@ -970,7 +974,7 @@ const GRID_TABLE_PASS = {
 function writeCell(entry, patches, linkFilteredIdx) {
   const supRanges = (entry.info.mode === 'extracted' && entry.hasSuperscript) ? entry.superscriptRanges : null;
   const landed = entry.cellObj.applyPatches(patches, { value: entry.text, linkFilteredIdx, supRanges });
-  if (landed > 0) entry.cellObj.el.title = `Original: ${entry.text}`;
+  if (landed > 0) entry.cellObj.el.title = originalHoverText(entry.text);
   return landed;
 }
 
