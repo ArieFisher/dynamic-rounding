@@ -955,8 +955,9 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
  */
 function collectTextPieces(cell) {
   const pieces = [];
-  if (typeof document !== 'undefined' && typeof document.createTreeWalker === 'function') {
-    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
+  const walker = typeof document !== 'undefined'
+    ? document.createTreeWalker?.(cell, NodeFilter.SHOW_TEXT, null, false) : null;
+  if (walker) {
     let node;
     while ((node = walker.nextNode())) pieces.push(node);
     return pieces;
@@ -1384,18 +1385,15 @@ function placeDecision(decision, text, layout, opts = {}) {
 /**
  * The geometry probe: does `el` look like a grid built from generic elements?
  *
- * The checks run cheapest first, and the first to fail returns false:
- *   1. at least DR_DETECTION_SETTINGS.gridMinChildren children;
- *   2. the most common child count holds for at least
- *      DR_DETECTION_SETTINGS.gridRepetitionShare of the children; the
- *      children that hold it are the candidate rows (see childCountCandidates);
- *   3. a display value in DR_DETECTION_SETTINGS.gridDisplayValues, read
- *      through the style probe;
- *   4. a cell the data test counts among the candidate rows (see
- *      probeRowsHoldNumber);
- *   5. a grid mark (see carriesGridMark), or else first cells that align (see
- *      firstCellsAlign). The alignment check reads boxes and runs last, on a
- *      bounded sample of first cells.
+ * The checks run cheapest first, and the first to fail returns false: at
+ * least DR_DETECTION_SETTINGS.gridMinChildren children; the most common child
+ * count (see childCountCandidates) held by at least
+ * DR_DETECTION_SETTINGS.gridRepetitionShare of them, which makes the children
+ * that hold it the candidate rows; a display value in
+ * DR_DETECTION_SETTINGS.gridDisplayValues; a cell the data test counts among
+ * the candidate rows (probeRowsHoldNumber); and a grid mark (carriesGridMark)
+ * or else first cells that align (firstCellsAlign), the one check that reads
+ * boxes.
  *
  * @param {Element} el
  * @param {{styleProbe?: object, originalsPort?: object, vendorProfiles?: object[]}} [opts]
