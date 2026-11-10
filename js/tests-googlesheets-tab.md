@@ -49,7 +49,7 @@
 |  | **Input** | **OFFSET** | **Formula** | **Result** | **Expected** | **Note:** |  |
 | \=IF(ISERR(E49), "✓", "✗") | 1000 | 21 | `=FORMULATEXT(E49)` | `=ROUND_DYNAMIC(B49, C49)` | \#ERROR\! | Notice the cell's error message. |  |
 | \=IF(ISERR(E50), "✓", "✗") | 1000 | \-21 | `=FORMULATEXT(E50)` | `=ROUND_DYNAMIC(B50, C50)` | \#ERROR\! |  |  |
-| \=IF(E51=F51, "✓", "✗") | 9393 | 20 | `=FORMULATEXT(E51)` | `=ROUND_DYNAMIC(B51, C51)` | 1000 | Note: the value-OoM floor stops the collapse to 0 |  |
+| \=IF(E51=F51, "✓", "✗") | 9393 | 20 | `=FORMULATEXT(E51)` | `=ROUND_DYNAMIC(B51, C51)` | 1000 | Note: the order-of-magnitude floor stops the collapse to 0 |  |
 | \=IF(E52=F52, "✓", "✗") | 9393 | \-20 | `=FORMULATEXT(E52)` | `=ROUND_DYNAMIC(B52, C52)` | 9393 |  |  |
 |  |  |  |  |  |  |  |  |
 | Section 5: Parsing edge cases |  |  |  |  |  |  |  |

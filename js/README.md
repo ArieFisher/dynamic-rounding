@@ -62,16 +62,16 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 
 | Offset | Meaning | 87,054,321 rounds to |
 |--------|---------|----------------------|
-| 1 | one OoM coarser | 100,000,000 |
-| 0.5 | half-step toward the next-larger OoM | 100,000,000 |
-| 0 | current OoM | 90,000,000 |
-| -0.5 | half-step within the current OoM (default) | 85,000,000 |
-| -1 | one OoM finer | 87,000,000 |
-| -1.5 | half-step within one OoM finer | 87,000,000 |
+| 1 | one order of magnitude coarser | 100,000,000 |
+| 0.5 | half-step toward the next-larger order of magnitude | 100,000,000 |
+| 0 | current order of magnitude | 90,000,000 |
+| -0.5 | half-step within the current order of magnitude (default) | 85,000,000 |
+| -1 | one order of magnitude finer | 87,000,000 |
+| -1.5 | half-step within one order of magnitude finer | 87,000,000 |
 
-**Sign convention for fractional offsets:** The sign of the offset chooses the direction of the half-step. `+0.5` rounds to half of the *next-larger* OoM, `-0.5` to half of the *current* OoM. More generally, the step is `|frac(offset)| × 10^(OoM + ceil(offset))`.
+**Sign convention for fractional offsets:** The sign of the offset chooses the direction of the half-step. `+0.5` rounds to half of the *next-larger* order of magnitude, `-0.5` to half of the *current* order of magnitude. More generally, the step is `|frac(offset)| × 10^(floor(log10(|value|)) + ceil(offset))`.
 
-**Floor at the value's OoM:** After rounding, the magnitude of the result is at least `10^floor(log10(|value|))`. A tens-of-millions value can never collapse to `0`, regardless of the requested offset.
+**Floor at the value's order of magnitude:** After rounding, the magnitude of the result is at least `10^floor(log10(|value|))`. A tens-of-millions value can never collapse to `0`, regardless of the requested offset.
 
 **Floor at the integer offset:** A fractional offset whose integer part is 1 or more never rounds finer than the corresponding integer offset. `ROUND_DYNAMIC(87054321, -2.5)` returns 87,100,000 — the `-2` result floors the raw `-2.5` result.
 
@@ -135,7 +135,7 @@ Offset is an order-of-magnitude adjustment. Negative = finer precision, positive
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | value | required | Value to round |
-| offset | -0.5 | OoM offset |
+| offset | -0.5 | Order-of-magnitude offset |
 
 ### Dataset mode
 
