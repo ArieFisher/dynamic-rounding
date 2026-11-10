@@ -4444,6 +4444,132 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
+// --- #399: the link filter and the superscript check find a number's text
+// piece by the number's position, so a number that appears twice in a cell
+// takes the verdict of its own piece, on a native table and on a grid. The
+// cells below use invented values at magnitude 3 under RW_OPTS: 1,234 -> 1,200
+// and 9,850 -> 9,900. ---
+const LF_ROWS = (cell) => [[cell, '2,468'], ['3,579', '4,321']];
+const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
+
+(function linkFilter_aNumberTwiceOnePlainOneLinked() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const plainThenLinked = build(LF_ROWS(['1,234 items, see ', { tag: 'a', text: '1,234' }]));
+    roundTableUnder(plainThenLinked.table, RW_OPTS);
+    eq(`#399 plain then linked (${kind}): the plain 1,234 rounds and the linked 1,234 holds`,
+      lfPieces(plainThenLinked, 0, 0), ['1,200 items, see ', '1,234']);
+    eq(`#399 plain then linked (${kind}): the rest of the table rounds`,
+      [plainThenLinked.text(0, 1), plainThenLinked.text(1, 0)], ['2,500', '3,600']);
+    reapplyRounding(plainThenLinked.table);
+    eq(`#399 plain then linked (${kind}): the same holds after a re-apply`,
+      lfPieces(plainThenLinked, 0, 0), ['1,200 items, see ', '1,234']);
+  });
+})();
+
+(function linkFilter_aNumberTwiceOneLinkedOnePlain() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const linkedThenPlain = build(LF_ROWS([{ tag: 'a', text: '1,234' }, ' items, total 1,234']));
+    roundTableUnder(linkedThenPlain.table, RW_OPTS);
+    eq(`#399 linked then plain (${kind}): the linked 1,234 holds and the plain 1,234 rounds`,
+      lfPieces(linkedThenPlain, 0, 0), ['1,234', ' items, total 1,200']);
+    reapplyRounding(linkedThenPlain.table);
+    eq(`#399 linked then plain (${kind}): the same holds after a re-apply`,
+      lfPieces(linkedThenPlain, 0, 0), ['1,234', ' items, total 1,200']);
+  });
+})();
+
+(function linkFilter_aNumberTwiceBothPlainOrBothLinked() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const bothPlain = build(LF_ROWS(['1,234 and ', { tag: 'b', text: '1,234' }]));
+    roundTableUnder(bothPlain.table, RW_OPTS);
+    eq(`#399 both plain (${kind}): both occurrences round`,
+      lfPieces(bothPlain, 0, 0), ['1,200 and ', '1,200']);
+    const bothLinked = build(LF_ROWS([{ tag: 'a', text: '1,234' }, ' and ', { tag: 'a', text: '1,234' }]));
+    roundTableUnder(bothLinked.table, RW_OPTS);
+    eq(`#399 both linked (${kind}): both occurrences hold`,
+      lfPieces(bothLinked, 0, 0), ['1,234', ' and ', '1,234']);
+  });
+})();
+
+// A number whose digits span two pieces sits in no single piece: it stays
+// unchanged.
+(function linkFilter_aSplitNumberStaysUnchanged() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LF_ROWS(['ref 1,2', { tag: 'b', text: '34' }]));
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`#399 split number (${kind}): the number across two pieces stays unchanged`,
+      lfPieces(t, 0, 0), ['ref 1,2', '34']);
+  });
+})();
+
+// A pretty-printed native cell: whitespace between the pieces makes the
+// rendered text differ from the flat text, so the number positions convert
+// from the rendered text to the pieces.
+(function linkFilter_aPrettyPrintedCellWithADuplicateNumber() {
+  eachRewriteKind(['native'], (kind, page, build) => {
+    const t = build(LF_ROWS(['\n      1,234 items\n      see ', { tag: 'a', text: '1,234' }, '\n    ']));
+    const cell = t.cell(0, 0);
+    Object.defineProperty(cell, 'innerText', {
+      get() { return t.pieces(0, 0).map((p) => p.nodeValue).join('').replace(/\s+/g, ' ').trim(); },
+      configurable: true,
+    });
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`#399 pretty-printed (${kind}): the plain 1,234 rounds and the linked 1,234 holds`,
+      lfPieces(t, 0, 0), ['\n      1,200 items\n      see ', '1,234', '\n    ']);
+    reapplyRounding(t.table);
+    eq(`#399 pretty-printed (${kind}): the same holds after a re-apply`,
+      lfPieces(t, 0, 0), ['\n      1,200 items\n      see ', '1,234', '\n    ']);
+  });
+})();
+
+// The record of a simplified cell holds the original text, the pieces, and
+// the page's hover text, and nothing else.
+(function record_holdsValuePiecesAndPageTitleAlone() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LF_ROWS(['Total 9,850 kg ', { tag: 'sup', text: '7' }, ' ref ', { tag: 'a', text: '12' }]));
+    roundTableUnder(t.table, RW_OPTS);
+    const record = DR_MODEL.getTableOriginal(t.table, t.cell(0, 0));
+    eq(`record (${kind}): the cell with a link and a footnote simplified (precondition)`,
+      lfPieces(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12']);
+    eq(`record (${kind}): the record holds value, pieces, and pageTitle alone`,
+      Object.keys(record).sort(), ['pageTitle', 'pieces', 'value']);
+  });
+})();
+
+// A re-apply, started by the page rewriting a different cell, classifies the
+// simplified cell again from its stored original: the linked number and the
+// footnote digit hold and the plain numbers stay rounded.
+(function reapply_aSimplifiedCellKeepsItsLinkAndFootnote() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LF_ROWS(['Total 9,850 kg ', { tag: 'sup', text: '7' }, ' ref ', { tag: 'a', text: '12' }, ' and 5,678']));
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`#399 re-apply (${kind}, precondition): the plain numbers round, the footnote and the link hold`,
+      lfPieces(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12', ' and 5,700']);
+    t.write(1, 0, '4,321');
+    page.settle();
+    eq(`#399 re-apply (${kind}): the pass ran on the other cell's rewrite`,
+      t.text(1, 0), '4,300');
+    eq(`#399 re-apply (${kind}): the linked number and the footnote digit hold and the plain numbers stay rounded`,
+      lfPieces(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12', ' and 5,700']);
+  });
+})();
+
+// The page rewrites the plain piece of a cell that holds a link: the cell is
+// a rewritten cell, so it simplifies again from the page's new text and the
+// linked number still holds.
+(function reapply_aRewrittenCellKeepsItsLink() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LF_ROWS(['1,234 items, see ', { tag: 'a', text: '1,234' }]));
+    roundTableUnder(t.table, RW_OPTS);
+    t.write(0, 0, '4,321 items, see ', 0);
+    page.settle();
+    eq(`#399 rewritten cell (${kind}): the new plain number rounds and the linked number holds`,
+      lfPieces(t, 0, 0), ['4,300 items, see ', '1,234']);
+    eq(`#399 rewritten cell (${kind}): the stored original is the page's new text`,
+      DR_MODEL.getTableOriginalText(t.table, t.cell(0, 0)), '4,321 items, see 1,234');
+  });
+})();
+
 // --- Test 8: a grid value above the frozen scale. The magnitude freeze
 // stays, and the value takes the largest-value rounding. ---
 (function rewrite08_aGridValueAboveTheFrozenScale() {
