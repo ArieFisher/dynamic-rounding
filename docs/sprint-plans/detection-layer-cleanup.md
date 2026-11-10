@@ -1,6 +1,6 @@
 # Sprint Plan: Detection Layer Cleanup
 
-**Status:** PROPOSED-DRAFT
+**Status:** APPROVED
 **Created:** 2026-11-10
 **Base branch:** main
 **Slug:** detection-layer-cleanup
@@ -723,3 +723,7 @@ the second to merge takes `main` into its branch first.
 - 2026-11-10: Product manager approved §3.1, §3.2, and §3.4, and chose
   "freeze both kinds" for §3.3 in place of the first answer, "keep the freeze
   on every grid".
+- 2026-11-10: Product manager approved the plan. §6 questions 1 and 2 have no
+  answer yet, so sprints 8 and 11 wait; a run that reaches either one with its
+  question unanswered defers that sprint and reports it. Questions 3 and 4
+  stand at their recommendations.

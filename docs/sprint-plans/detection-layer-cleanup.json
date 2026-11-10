@@ -1,0 +1,201 @@
+{
+  "title": "Detection Layer Cleanup",
+  "base_branch": "main",
+  "created": "2026-11-10",
+  "source_markdown": "docs/sprint-plans/detection-layer-cleanup.md",
+  "repo_conventions": {
+    "version_files": [
+      { "path": "chrome-extension/manifest.json", "format": "dotted integers in the `version` key; the merge-time workflow bumps it, a sprint branch never does" }
+    ],
+    "version_bump_policy": "merge-workflow",
+    "test_command": "node chrome-extension/tests.js && node js/tests.js && node js/doc-tests.js",
+    "gate_command": "scripts/check-files.sh --staged && scripts/check-vocab.sh --staged",
+    "branch_naming": "feature/<label>, fix/<label>, refactor/<label>, chore/<label>, docs/<label>; never claude/ or session/",
+    "dependent_policy": "after-merge",
+    "base_branch_writes": "pull-request",
+    "commit_convention": "Conventional Commits; a vocabulary change is its own docs: commit; no attribution trailer and no generated-by line",
+    "pr_template": "AGENTS.md, section Pull requests"
+  },
+  "sprints": [
+    {
+      "label": "detect-comments",
+      "branch": "chore/detect-comments",
+      "goal": "Every comment in detect.js states what the code does today, in canon terms, and no comment restates its code.",
+      "scope": "Comments in chrome-extension/lib/dr-table/detect.js alone. Delete comments that restate the next line. State the reports-only contract once, in the file header. Correct each disagreement the source markdown lists under sprint 1. Replace plan labels (S2/S4, D1 / S6, decision D2, app-model-registry sprint) with the reason they stood for, or delete them. Apply the table in section 3.9 of the source markdown to comment text. Remove personification.",
+      "out_of_scope": "Any code line; any identifier; comments in other files; the step banners in the geometry probe, the artifact filter, and the right-click resolver; the comments on the link filter's stored result.",
+      "acceptance_criteria": [
+        "git diff shows comment lines alone, and the suite count stays at the baseline of 4,061 passing.",
+        "No comment names a function that does not exist in the extension.",
+        "No word in section 3.9's Change column remains in a comment in that sense, and every use in the Leave column stands.",
+        "Comment lines in the file fall by at least 150."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Read section 3.8 and section 3.9 of the source markdown first. Keep the comments that state a reason the code cannot: the layout cost of a rendered-text read, the in-place text write, the held-column rule in the column plan, the memo in _ownDescendants. Replace the site name Kaggle with a description of the markup. Run scripts/check-vocab.sh --range origin/main HEAD before the pull request."
+    },
+    {
+      "label": "detect-identifiers",
+      "branch": "refactor/detect-identifiers",
+      "goal": "Identifiers the file declares match the vocabulary and what the code does.",
+      "scope": "Renames, with every caller, test, lib/dr-table/index.js, and the DR_TABLE name list in tests/source-checks.js: isPhantomA11yTable to isAccessibilityArtifact; opts.tableFilter to opts.isArtifact; opts.isSeen to opts.isRegistered; applyExtractedPatches to writePatches; isVirtualized() to isGrid(); GRID_ROUNDED_CLASS to SIMPLIFIED_CLASS; symbolPiece to signPiece.",
+      "out_of_scope": "decisionToLegacyInfo and every identifier another file declares; the class string dr-ext-rounded; the reason codes; any logic.",
+      "acceptance_criteria": [
+        "The suite count stays at the baseline.",
+        "rg finds none of the old names in chrome-extension/ outside historical records.",
+        "Comments that mention a renamed identifier use the new name."
+      ],
+      "depends_on": ["detect-comments"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Follow the pattern of pull request #605. chrome-extension/README.md and docs/design.md name some of these identifiers; update them on the same branch."
+    },
+    {
+      "label": "detect-unused-logic",
+      "branch": "refactor/detect-unused-logic",
+      "goal": "Remove logic that changes no result.",
+      "scope": "The geometry probe's step 2 and its class-frequency count, with childCountCandidates no longer returning the frequency map. The self-match loop in the grid adapter's scroll-container lookup. The inner condition in the superscript walk that is always true. The trimmed field on a classified entry and the written-piece list the patch writer returns, each only where no caller or test reads it. In the artifact filter and the positioned-ancestor walk, read the style through the style probe alone; tests that relied on inline style pass a probe.",
+      "out_of_scope": "The try blocks around selectors; guards for element stand-ins in tests.",
+      "acceptance_criteria": [
+        "The suite passes with no test deleted, except a test of a removed field.",
+        "A new test for step 2 covers the four class-share and count-share cases and shows that no probe input failed step 2 alone.",
+        "chrome-extension/README.md lists the probe's steps as the code runs them."
+      ],
+      "depends_on": ["detect-identifiers"],
+      "version_bump": "patch",
+      "complexity": "S",
+      "dev_notes": "Step 2 passes when the largest class share or the largest child-count share reaches the floor. Step 3 requires the largest non-zero child-count share to reach the floor, which is never larger than the share step 2 reads. If a test reads trimmed or the written-piece list, leave that item and say so in the pull request."
+    },
+    {
+      "label": "detect-shared-helpers",
+      "branch": "refactor/detect-shared-helpers",
+      "goal": "Each rule the file repeats exists once.",
+      "scope": "One ancestor walk that takes a cap and a stop test, called by the seven walks with their present caps and stops. The superscript walk and the link filter read pieces through collectTextPieces. One function for the piece that holds a flat position, called by pieceHolding, patchPieceTexts, and showsPiecesTogether. One resolver for the option defaults. chainRootOf and _chainRootOf become one walk. The right-click resolver calls nominateNest in place of findTables. One row builder takes each row's cell elements, called by both adapters and the geometry probe; the native adapter reads each row's cells once and columnPlacement's fallback comes out. The step banners in the geometry probe, the artifact filter, and the right-click resolver become named functions. One type definition each for the record and the piece layout.",
+      "out_of_scope": "Any change to a walk's cap or stop; the link filter's search; file moves.",
+      "acceptance_criteria": [
+        "The suite passes unchanged.",
+        "parentElement || parentNode appears once in the file.",
+        "createTreeWalker appears once in the file.",
+        "The file is at least 150 lines shorter than at the sprint's start."
+      ],
+      "depends_on": ["detect-unused-logic"],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "The probe's cells gain a column plan through the shared builder; section 6 question 3 of the source markdown stands at its recommendation, accept. Two walks have no depth cap today, the hidden-mark walk and the positioned-ancestor walk; the page tree's depth bounds them and they keep that bound."
+    },
+    {
+      "label": "link-filter-by-position",
+      "branch": "fix/link-filter-by-position",
+      "goal": "The link filter and the superscript check find a number's text piece by position. Closes #399.",
+      "scope": "filterLinkMatches, getSuperscriptRanges, finalizeExtractedDecision, classifyTableCell, the record's fields in the cell object, tablePatches and its return in lib/dr-simplify/table.js, cellPatches and writeCell in content.js, the record comment in app/model.js, and the tests that build a record by hand.",
+      "out_of_scope": "#271; the whole-link test.",
+      "acceptance_criteria": [
+        "A test that fails on main: a cell holding the same number once in plain text and once inside a link rounds the plain one and keeps the linked one, in either order, on both table kinds.",
+        "The record holds value, pieces, and pageTitle alone.",
+        "linkFilteredIdx, supRanges, and staleFilteredIndices appear nowhere in chrome-extension/ outside historical records.",
+        "The existing footnote and linked-number tests pass on a simplified cell after a re-apply."
+      ],
+      "depends_on": ["detect-shared-helpers"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Read section 3.5 of the source markdown. Reproduce #399 on main with the failing test before changing code. Manual test in sections 7 and 8 of docs/test-pages/tables.html; add the repeated-number row to section 8. Update the record's field list in the design document's One pass entry. A cell whose layout is null is a rewritten cell and never reaches the filter."
+    },
+    {
+      "label": "cell-object-writes",
+      "branch": "refactor/cell-object-writes",
+      "goal": "The cell object holds every cell write.",
+      "scope": "The cell object gains the hover-text write inside its write method and a restore() method. writeCell and the cell-release function in content.js call them and hold no title, class, or text-piece write of their own.",
+      "out_of_scope": "Any change to when a cell restores or which hover text it shows.",
+      "acceptance_criteria": [
+        "The suite passes unchanged, the hover-text tests from pull request #609 included.",
+        "content.js holds no write to a cell's title or class list."
+      ],
+      "depends_on": ["link-filter-by-position"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Read section 3.7 of the source markdown. Manual test in section 36 of the test page."
+    },
+    {
+      "label": "split-table-package",
+      "branch": "refactor/split-table-package",
+      "goal": "The file layout in section 3.6 of the source markdown, with function bodies unchanged.",
+      "scope": "lib/dr-table/cells.js, adapters.js, classify.js, detect.js, and lib/dr-simplify/placement.js; manifest.json's content-script list; lib/dr-table/index.js; lib/dr-simplify/index.js; tests/setup.js; the four checks in tests/source-checks.js named in section 1 of the source markdown; the layer table in docs/design.md; the two file references in chrome-extension/README.md.",
+      "out_of_scope": "Any edit inside a moved function; #387.",
+      "acceptance_criteria": [
+        "The suite passes, and the only test edits are file names and load order.",
+        "No file in lib/dr-table/ exceeds 800 lines.",
+        "Each file's header states one job.",
+        "git diff -M reports the moves as renames or pure moves."
+      ],
+      "depends_on": ["cell-object-writes"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "The manifest order is load-bearing. cells.js loads before adapters.js, which loads before classify.js and detect.js; placement.js loads with the simplification library, after the number library. Only top-level reads fix the order: GRID_VENDOR_PROFILES and DETECTION_OPTIONS read globals at load."
+    },
+    {
+      "label": "grid-shown-text",
+      "branch": "fix/grid-shown-text",
+      "goal": "A grid cell classifies its rendered text, as a native cell does. Closes #525.",
+      "scope": "The cell object's text reads, getPieceLayout, textPosition, the grid cell builder, the comment in content.js that lists the two adapter differences, the hidden-text pair in the design document's table kind pairs list, and the vocabulary rows for rendered text and data test.",
+      "out_of_scope": "The capture's displayed-text read beyond what the shared read changes.",
+      "acceptance_criteria": [
+        "The comparison test for hidden text inside a visible cell reads same.",
+        "rendered as a layout field and reads as a cell-object argument appear nowhere.",
+        "The measured grid pass from section 6 question 1 is recorded in the pull request with its cell count."
+      ],
+      "depends_on": ["split-table-package"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "GATED. Do not start until the Decisions Log of the source markdown records an answer to section 6 question 1 with a measured pass time under 100 milliseconds. Without it, defer this sprint and report. Read section 3.1. Manual test in section 30r; section 23d holds the pass measurement. The suite's grid stand-ins hold no rendered text, so the raw-text fallback serves them."
+    },
+    {
+      "label": "header-and-span-parity",
+      "branch": "fix/header-and-span-parity",
+      "goal": "One header-row test and one span reader serve both table kinds.",
+      "scope": "The cell object (isHeaderCell in, tagName out), the native adapter's rows (isOutside for a head-section row), _hasHeaderRow, the span reader, the outside-mark check in tests/source-checks.js, the vocabulary rows for shape fingerprint, header cell, merged cell, and outside row, and the pairs list.",
+      "out_of_scope": "#418; #448; any use of the outside mark beyond the fingerprint.",
+      "acceptance_criteria": [
+        "instanceof appears nowhere in lib/dr-table/.",
+        "A test that fails on main: a grid with a first row of column-header cells and no row group carries header texts in its fingerprint, and a swap to new header texts with the same column count registers it fresh.",
+        "A test that fails on main: a grid built from bare tr and td elements with a colspan numbers its grid columns as the native table with the same markup does.",
+        "A grid whose first row is a data row keeps a fingerprint of the column count alone."
+      ],
+      "depends_on": ["split-table-package"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "Read section 3.2. Manual test in section 30f for the header row and section 14 for the span; if section 14 holds no merged cell, add one row to it. The dataset still takes every row; the outside mark feeds the fingerprint alone. If grid-shown-text merged first, take main into this branch before the pull request: both change the grid cell object."
+    },
+    {
+      "label": "freeze-both-kinds",
+      "branch": "feature/freeze-both-kinds",
+      "goal": "Both table kinds store and read the magnitude freeze.",
+      "scope": "The two pass objects and the pass in content.js, the registry comment in app/model.js, the tests that pin a native table's fresh max magnitude on re-apply, the vocabulary rows for magnitude freeze, re-apply observer, and registry, and the design document's One pass entry.",
+      "out_of_scope": "#281.",
+      "acceptance_criteria": [
+        "freezesMaxMagnitude appears nowhere.",
+        "A comparison test: after the first simplification, the page writes a value of a larger order of magnitude into each kind; on both, the other cells keep their text and the new value rounds under the top band's offset.",
+        "A toggle off and on computes the max magnitude fresh on both kinds."
+      ],
+      "depends_on": ["split-table-package"],
+      "version_bump": "minor",
+      "complexity": "S",
+      "dev_notes": "Read section 3.3. The dependency is for order alone. Manual test in section 23b; state in the section what a failure looks like: every cell changing when one larger value arrives. The pull request carries the minor label."
+    },
+    {
+      "label": "artifact-filter-both-kinds",
+      "branch": "fix/artifact-filter-both-kinds",
+      "goal": "One accessibility-artifact filter runs once, on both table kinds.",
+      "scope": "The filter, the nomination step's guards, the geometry probe's entry, injectTablePillboxes in ui-pillbox.js, injectPillboxesForAddedNode in content.js, the vocabulary rows for accessibility artifact and qualifying element, and the pairs list.",
+      "out_of_scope": "#600; #389.",
+      "acceptance_criteria": [
+        "The filter is called from the detection file alone.",
+        "A test that fails on main for each sign: a grid marked hidden, a grid drawn off-screen, and a grid beside a labelled chart each get no registry entry.",
+        "The answer to section 6 question 2 holds on both kinds, with a comparison test."
+      ],
+      "depends_on": ["split-table-package"],
+      "version_bump": "patch",
+      "complexity": "M",
+      "dev_notes": "GATED. Do not start until the Decisions Log of the source markdown records the product manager's answer to section 6 question 2. Without it, defer this sprint and report. Read section 3.4. First step: reproduce on main, with a test, that a positioned table holding a labelled svg in a cell counts as an accessibility artifact. Add grid forms to sections 16a, 16b, and 16c of the test page. A pending table whose chain root is an artifact starts no observer."
+    }
+  ]
+}
