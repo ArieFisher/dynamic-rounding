@@ -28,6 +28,14 @@ Base branch: main
   - The first review blocked on comments the removal left false: a docblock that still described an inline-style read, and test comments that named the geometry probe's steps by their old numbers. Test comments now name the steps.
   - FYI: the artifact filter now reads position through the style probe alone. On an attached table this matches the old read; a detached table with inline positioning no longer reads as an accessibility artifact.
 
+- **detect-shared-helpers** — commits on feature/detection-layer-cleanup
+  - Reviewer: APPROVE (after 1 retry)
+  - Tests: pass (extension 4,092; library 827; documented examples 90)
+  - Criterion missed: the detection file is 2,122 lines against a target of 1,958. Its code is 64 lines shorter; the doc comments AGENTS.md requires on the twelve new functions add more than that. The target also counted two items the sprint left out: the options resolver, which would have added lines, and the right-click resolver change below. The product manager decides whether to accept the miss.
+  - Left: the right-click resolver keeps calling `findTables`. `nominateNest` covers the clicked element's own nest alone, so the swap stops a click from reaching a grid nested in another cell of an outer grid whose own nest yields nothing. That is a behavior change; #617 holds the decision.
+  - The first review blocked on a lost bound: the shared row builder made the geometry probe read the spans of every candidate row. The probe now reads no more rows than the data test's cell budget, and a test pins it.
+  - Follow-up: #617.
+
 ### Blocked
 
 None.
