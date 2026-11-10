@@ -598,7 +598,7 @@ function withSupCreateTreeWalker(fn) {
   try { fn(); } finally { delete global.document.createTreeWalker; }
 }
 
-// Helper: build a multi-node cell for applyExtractedPatches tests.
+// Helper: build a multi-node cell for writePatches tests.
 // segments: [{text, inSup?, inAnchor?}]
 // Returns a cell mock whose _textNodes drive withSupCreateTreeWalker.
 function makeExtractedCell(segments) {
@@ -1409,7 +1409,7 @@ function makePositionedAncestor(styleOverrides) {
 // =============================================================================
 //
 // injectTablePillboxes() Pass 1 calls document.querySelectorAll('table') and skips
-// any table for which isPhantomA11yTable(table) is true, then calls
+// any table for which isAccessibilityArtifact(table) is true, then calls
 // createPillboxForTable(table) only for the survivors.
 //
 // A pillbox was created iff tablePillboxes.has(table) becomes true afterwards.
@@ -1424,11 +1424,11 @@ function makePositionedAncestor(styleOverrides) {
 //      we inserted and delete them by re-using the objects).
 //
 // CRITICAL: accessibility artifacts must pass isDataTable() so the only reason they
-// would be skipped is the isPhantomA11yTable guard, not the isDataTable gate.
-// Real on-screen tables must fail isPhantomA11yTable but pass isDataTable.
+// would be skipped is the isAccessibilityArtifact guard, not the isDataTable gate.
+// Real on-screen tables must fail isAccessibilityArtifact but pass isDataTable.
 //
 // Helper: build a 2-column 2-row numeric table stub (satisfies isDataTable).
-// Also provide getAttribute (for isPhantomA11yTable signal 1) and parentElement
+// Also provide getAttribute (for isAccessibilityArtifact signal 1) and parentElement
 // chain + style (for signals 2/3).
 //
 function makePass1DataTable(opts) {
@@ -1623,12 +1623,12 @@ function makeAriaGrid(embeddedTables) {
   };
 }
 
-// Helper: build a minimal embedded accessibility artifact (aria-hidden on self → isPhantomA11yTable true)
+// Helper: build a minimal embedded accessibility artifact (aria-hidden on self → isAccessibilityArtifact true)
 function makePhantomEmbeddedTable() {
   return makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
 }
 
-// Helper: build a minimal real on-screen embedded table (isPhantomA11yTable false)
+// Helper: build a minimal real on-screen embedded table (isAccessibilityArtifact false)
 function makeRealEmbeddedTable() {
   const tbl = makePhantomEl({ tagName: 'TABLE' });
   const wrapper = makePhantomEl({ tagName: 'DIV' });

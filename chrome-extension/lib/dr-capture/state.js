@@ -82,10 +82,10 @@ function collectCaptureState(deps) {
         if (rightEdge > columnCount) columnCount = rightEdge;
         const originalText = model.getTableOriginalText(table, cellObj.el);
         const original = originalText === undefined ? null : originalText;
-        // GRID_ROUNDED_CLASS (lib/dr-table/detect.js) marks every rounded
+        // SIMPLIFIED_CLASS (lib/dr-table/detect.js) marks every rounded
         // cell, native and grid alike.
         const wearsMarker = !!(cellObj.el && cellObj.el.classList &&
-          cellObj.el.classList.contains(GRID_ROUNDED_CLASS));
+          cellObj.el.classList.contains(SIMPLIFIED_CLASS));
         cells.push({
           row: r,
           col: cellObj.columnIndex,
@@ -100,7 +100,7 @@ function collectCaptureState(deps) {
       }
     }
     return {
-      kind: adapter.isVirtualized() ? 'grid' : 'native',
+      kind: adapter.isGrid() ? 'grid' : 'native',
       appliedFlag: model.getTableAppliedFlag(table),
       settings: model.getTableSettings(table),
       maxMagnitude: model.getTableMaxMagnitude(table),

@@ -357,7 +357,7 @@ function createPillboxForTable(table) {
 function injectTablePillboxes() {
   // Pass 1: native <table> elements; accessibility artifacts are skipped.
   document.querySelectorAll('table').forEach(table => {
-    if (isPhantomA11yTable(table)) return;
+    if (isAccessibilityArtifact(table)) return;
     if (!DR_MODEL.hasTable(table)) {
       createPillboxForTable(table);
     }
@@ -365,7 +365,7 @@ function injectTablePillboxes() {
   // Pass 2: the nomination step. createPillboxForTable re-runs the data test
   // the step already ran; this view accepts the second read so the detection
   // layer only nominates and this view alone registers.
-  consumeNominations(nominateNests(document, { isSeen: DR_MODEL.hasTable }));
+  consumeNominations(nominateNests(document, { isRegistered: DR_MODEL.hasTable }));
 }
 
 function repositionAllPillboxes() {

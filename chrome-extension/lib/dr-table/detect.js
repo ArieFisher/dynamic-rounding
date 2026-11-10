@@ -19,14 +19,14 @@
  * reads a native table's first row element, for its head section.
  *
  * Detection reads the page and returns findings: isDataTable, looksLikeGrid,
- * findTargetTable, isPhantomA11yTable, chainRootOf, nominateNest,
+ * findTargetTable, isAccessibilityArtifact, chainRootOf, nominateNest,
  * nominateNests, findTables, and readTableFingerprint. None writes the
  * dr-ext-grid marker class or builds a table pillbox, and none reads that
- * class as state: "is this element registered" is the injected opts.isSeen
+ * class as state: "is this element registered" is the injected opts.isRegistered
  * check. The callers (ui-pillbox.js, content.js) check the registry in
  * DR_MODEL and, for a first match, write the marker class (a style hook only)
  * and build the table pillbox. The rest of the file writes to the page: the
- * patch writer (applyExtractedPatches) and restoreTextPieces write cell text
+ * patch writer (writePatches) and restoreTextPieces write cell text
  * in place, through nodeValue, and the cell object's applyPatches calls the
  * patch writer, stores the cell's record through the originals port, and adds
  * the dr-ext-rounded marker class.
@@ -257,7 +257,7 @@ function columnPlacement(planRow, position) {
 }
 
 /** Marker class on every cell the extension simplified (numbers, dates, and times), on native tables and grids alike. */
-const GRID_ROUNDED_CLASS = 'dr-ext-rounded';
+const SIMPLIFIED_CLASS = 'dr-ext-rounded';
 
 /**
  * The originals port: per-cell storage for a simplified cell's record, read
@@ -347,7 +347,7 @@ function makeCellObj(cellEl, port, reads) {
       const toFlat = mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original);
       return { original, toFlat, rendered: true, runsTogether };
     },
-    // Write the patches and return how many landed (see applyExtractedPatches).
+    // Write the patches and return how many landed (see writePatches).
     // A landed write replaces the cell's record through the originals port, so
     // the written text never goes stale; a write that lands nothing stores
     // nothing. The record holds:
@@ -375,7 +375,7 @@ function makeCellObj(cellEl, port, reads) {
       const original = record
         ? record.pieces.map((piece) => piece.text)
         : collectTextPieces(cellEl).map((piece) => piece.nodeValue);
-      const { landed } = applyExtractedPatches(cellEl, patches, original);
+      const { landed } = writePatches(cellEl, patches, original);
       if (landed === 0) return 0;
       const written = collectTextPieces(cellEl).map((piece) => piece.nodeValue);
       port.set(cellEl, {
@@ -385,7 +385,7 @@ function makeCellObj(cellEl, port, reads) {
         linkFilteredIdx: linkFilteredIdx || null,
         pageTitle: pageHoverText(cellEl, record),
       });
-      if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
+      if (cellEl.classList) cellEl.classList.add(SIMPLIFIED_CLASS);
       return landed;
     },
   };
@@ -397,7 +397,7 @@ class NativeTableAdapter {
     this.originalsPort = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
   }
   getElement() { return this.el; }
-  isVirtualized() { return false; }
+  isGrid() { return false; }
   getRows() {
     const rowEls = Array.from(this.el.rows);
     // One pass over the spans numbers every cell by its grid column, before
@@ -511,7 +511,7 @@ class GridAdapter {
     this.styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   }
   getElement() { return this.el; }
-  isVirtualized() { return true; }
+  isGrid() { return true; }
 
   /**
    * The grid's scroll container: the first descendant of this grid that
@@ -1058,7 +1058,7 @@ function mapValueToPiece(rendered, pieces) {
  * @param {string[]} [original]
  * @returns {{landed: number, pieces: {i: number, before: string, after: string}[]}}
  */
-function applyExtractedPatches(cell, patches, original) {
+function writePatches(cell, patches, original) {
   if (!patches || patches.length === 0) return { landed: 0, pieces: [] };
   const pieces = collectTextPieces(cell);
   const live = pieces.map((piece) => piece.nodeValue);
@@ -1078,7 +1078,7 @@ function applyExtractedPatches(cell, patches, original) {
 /**
  * Each piece's text with its patches applied, and how many patches landed.
  * The patch positions count in the join of the texts; see
- * applyExtractedPatches.
+ * writePatches.
  * @param {string[]} texts
  * @param {{index: number, numStr: string, newNum: string}[]} patches
  * @returns {{texts: string[], landed: number}}
@@ -1168,7 +1168,7 @@ function restoreTextPieces(cell, storedPieces) {
 // Every cell, native or grid, takes three steps: classify, place, patch. The
 // placement step checks a classifyCell decision against the cell's text
 // pieces before any patch is built, and the patch writer
-// (applyExtractedPatches) then writes each patch inside one piece.
+// (writePatches) then writes each patch inside one piece.
 //
 // A layout comes from the cell object's getPieceLayout():
 //   original    each piece's text as the classified text saw it
@@ -1230,7 +1230,7 @@ function layoutPieceHolding(layout, start, length) {
 /**
  * Move patches measured in the classified text into the join of the cell's
  * original pieces, the positions the patch writer counts in (see
- * applyExtractedPatches). Where toFlat converts positions, numStr becomes
+ * writePatches). Where toFlat converts positions, numStr becomes
  * the flat text of the converted range, so a line break the browser
  * collapsed inside a value still matches. A patch whose position no piece
  * holds stays as it is, and does not land.
@@ -1294,7 +1294,7 @@ function showsPiecesTogether(shown, pieces, i) {
 // runTogether(span) holds for the second piece: then the two pieces read as
 // one number split across them ("6,7" plain, then "18,245" in bold).
 function stackedMatches(spans, runTogether) {
-  const symbolPiece = new RegExp('^(?:' + CURRENCY_SIGN_ALTERNATION + '|%)+$');
+  const signPiece = new RegExp('^(?:' + CURRENCY_SIGN_ALTERNATION + '|%)+$');
   const filled = spans.filter((span) => span.text.length > 0);
   for (let k = 1; k < filled.length; k++) {
     const before = filled[k - 1].text;
@@ -1304,7 +1304,7 @@ function stackedMatches(spans, runTogether) {
   const matches = [];
   for (const span of filled) {
     const trimmed = span.text.trim();
-    if (trimmed === '' || symbolPiece.test(trimmed) || CURRENCY_CODES.includes(trimmed)) continue;
+    if (trimmed === '' || signPiece.test(trimmed) || CURRENCY_CODES.includes(trimmed)) continue;
     if (isDateTimeLike(trimmed) || isDateLike(trimmed) || isTimeLike(trimmed)) return null;
     const unit = matchUnitNumber(span.text);
     const found = unit ? [unit] : extractNumbersInText(span.text);
@@ -1464,7 +1464,7 @@ function looksLikeGrid(el, opts = {}) {
 /**
  * Find the grid or table root for the element `el` was right-clicked inside.
  * The body applies four routes in order: the nearest <table> ancestor; the
- * nearest ancestor (or `el` itself) that opts.isSeen reports as registered;
+ * nearest ancestor (or `el` itself) that opts.isRegistered reports as registered;
  * findTables from the chain root of the nest `el` sits in, whose nomination
  * step finds a marked grid the load-time scan missed; and the outermost
  * looksLikeGrid match on a walk up from `el`.
@@ -1475,20 +1475,20 @@ function looksLikeGrid(el, opts = {}) {
  * registered or not: the load-time scan and the added-node pass register
  * native tables and build their table pillboxes, and a native table takes no
  * dr-ext-grid marker class. The second route returns isNew: false because it
- * matched a registered element. The last two return !opts.isSeen(handle).
- * Without opts.isSeen the second route does nothing and the last two return
+ * matched a registered element. The last two return !opts.isRegistered(handle).
+ * Without opts.isRegistered the second route does nothing and the last two return
  * isNew: true, since detection keeps no registry.
  *
  * Returns null if nothing matches.
  *
  * @param {Element} el
- * @param {{styleProbe?: object, vendorProfiles?: object[], doc?: Document, isSeen?: (handle: Element) => boolean}} [opts]
+ * @param {{styleProbe?: object, vendorProfiles?: object[], doc?: Document, isRegistered?: (handle: Element) => boolean}} [opts]
  * @returns {{handle: Element, isNew: boolean}|null}
  */
 function findTargetTable(el, opts = {}) {
   if (!el) return null;
   const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
-  const isSeen = opts.isSeen || (() => false);
+  const isRegistered = opts.isRegistered || (() => false);
   const docBody = doc && doc.body;
 
   // 1. Nearest <table> ancestor.
@@ -1497,14 +1497,14 @@ function findTargetTable(el, opts = {}) {
     if (tableAncestor) return { handle: tableAncestor, isNew: false };
   }
 
-  // 2. Nearest registered ancestor (or el itself), per opts.isSeen — a
-  // walk-up rather than a closest('.dr-ext-grid') query, since isSeen is an
+  // 2. Nearest registered ancestor (or el itself), per opts.isRegistered — a
+  // walk-up rather than a closest('.dr-ext-grid') query, since isRegistered is an
   // arbitrary per-element check (typically a WeakMap-backed registry.has),
   // not a CSS selector.
   let seenCandidate = el;
   let seenDepth = 0;
   while (seenCandidate && seenCandidate !== docBody && seenDepth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (seenCandidate.nodeType === DR_TABLE_ELEMENT_NODE && isSeen(seenCandidate)) {
+    if (seenCandidate.nodeType === DR_TABLE_ELEMENT_NODE && isRegistered(seenCandidate)) {
       return { handle: seenCandidate, isNew: false };
     }
     seenCandidate = seenCandidate.parentElement || seenCandidate.parentNode;
@@ -1526,8 +1526,8 @@ function findTargetTable(el, opts = {}) {
   // registered nest.
   const chainRoot = chainRootOf(el, opts);
   if (chainRoot) {
-    const nominated = findTables(chainRoot, { ...opts, isSeen })[0];
-    if (nominated) return { handle: nominated.handle, isNew: !isSeen(nominated.handle) };
+    const nominated = findTables(chainRoot, { ...opts, isRegistered })[0];
+    if (nominated) return { handle: nominated.handle, isNew: !isRegistered(nominated.handle) };
   }
 
   // 4. Walk up, calling looksLikeGrid; return the outermost consecutive match.
@@ -1551,7 +1551,7 @@ function findTargetTable(el, opts = {}) {
   }
 
   if (outermost !== null) {
-    return { handle: outermost, isNew: !isSeen(outermost) };
+    return { handle: outermost, isNew: !isRegistered(outermost) };
   }
 
   return null;
@@ -1616,7 +1616,7 @@ function _parsePx(value) {
  * @param {{styleProbe?: object}} [opts]
  * @returns {boolean}
  */
-function isPhantomA11yTable(table, opts = {}) {
+function isAccessibilityArtifact(table, opts = {}) {
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   if (!table || typeof table.getAttribute !== 'function') return false;
 
@@ -1840,17 +1840,17 @@ function sameTableFingerprint(a, b) {
 
 /**
  * The two guards of a qualifying element: it is not a native table, and every
- * native table it holds is one tableFilter drops (pass 1 reports the others).
+ * native table it holds is one isArtifact drops (pass 1 reports the others).
  *
  * @param {Element} el
- * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {(table: Element, opts: object) => boolean} isArtifact
  * @param {object} opts
  * @returns {boolean}
  */
-function _passesAriaGuards(el, tableFilter, opts) {
+function _passesAriaGuards(el, isArtifact, opts) {
   if (!el || el.tagName === 'TABLE') return false;
   const nestedTables = typeof el.querySelectorAll === 'function' ? Array.from(el.querySelectorAll('table')) : [];
-  return !nestedTables.some((t) => !tableFilter(t, opts));
+  return !nestedTables.some((t) => !isArtifact(t, opts));
 }
 
 /**
@@ -1860,16 +1860,16 @@ function _passesAriaGuards(el, tableFilter, opts) {
  * element below it a chain root.
  *
  * @param {Element} el
- * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {(table: Element, opts: object) => boolean} isArtifact
  * @param {object} opts
  * @returns {boolean}
  */
-function _isQualifyingAncestor(el, tableFilter, opts) {
+function _isQualifyingAncestor(el, isArtifact, opts) {
   if (!el || typeof el.matches !== 'function') return false;
   let carriesRole = false;
   try { carriesRole = !!el.matches(GRID_ARIA_SELECTOR); } catch (e) { return false; }
   if (!carriesRole) return false;
-  return _passesAriaGuards(el, tableFilter, opts);
+  return _passesAriaGuards(el, isArtifact, opts);
 }
 
 /**
@@ -1881,11 +1881,11 @@ function _isQualifyingAncestor(el, tableFilter, opts) {
  * with no parent, or whose parent is a cell, is a chain root.
  *
  * @param {Element} el
- * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {(table: Element, opts: object) => boolean} isArtifact
  * @param {object} opts
  * @returns {Element}
  */
-function _chainRootOf(el, tableFilter, opts) {
+function _chainRootOf(el, isArtifact, opts) {
   const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
   const docBody = doc && doc.body;
   let chainRoot = el;
@@ -1893,7 +1893,7 @@ function _chainRootOf(el, tableFilter, opts) {
   let depth = 0;
   while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
     if (_isCellAncestor(current)) break;
-    if (_isQualifyingAncestor(current, tableFilter, opts)) chainRoot = current;
+    if (_isQualifyingAncestor(current, isArtifact, opts)) chainRoot = current;
     current = current.parentElement || current.parentNode || null;
     depth++;
   }
@@ -1910,11 +1910,11 @@ function _chainRootOf(el, tableFilter, opts) {
  *
  * @param {Element} el
  * @param {Element} chainRoot
- * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {(table: Element, opts: object) => boolean} isArtifact
  * @param {object} opts
  * @returns {number}
  */
-function _depthInChain(el, chainRoot, tableFilter, opts) {
+function _depthInChain(el, chainRoot, isArtifact, opts) {
   if (el === chainRoot) return 0;
   let count = 0;
   let current = el.parentElement || el.parentNode || null;
@@ -1922,7 +1922,7 @@ function _depthInChain(el, chainRoot, tableFilter, opts) {
   while (current && steps < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
     if (current === chainRoot) return count + 1;
     if (_isCellAncestor(current)) return -1;
-    if (_isQualifyingAncestor(current, tableFilter, opts)) count++;
+    if (_isQualifyingAncestor(current, isArtifact, opts)) count++;
     current = current.parentElement || current.parentNode || null;
     steps++;
   }
@@ -1969,20 +1969,20 @@ function _selectAtNestingDepth(byDepth, configuredDepth) {
  * and stops at the first cell.
  *
  * @param {Element} el
- * @param {{tableFilter?: (table: Element, opts: object) => boolean,
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
  *          doc?: Document, styleProbe?: object}} [opts]
  * @returns {Element|null}
  */
 function chainRootOf(el, opts = {}) {
   if (!el) return null;
-  const tableFilter = opts.tableFilter || isPhantomA11yTable;
+  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
   const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
   const docBody = doc && doc.body;
   let current = el;
   let depth = 0;
   while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (_isQualifyingAncestor(current, tableFilter, opts)) {
-      return _chainRootOf(current, tableFilter, opts);
+    if (_isQualifyingAncestor(current, isArtifact, opts)) {
+      return _chainRootOf(current, isArtifact, opts);
     }
     current = current.parentElement || current.parentNode || null;
     depth++;
@@ -2008,7 +2008,7 @@ function chainRootOf(el, opts = {}) {
  *   - 'crowded'    — a depth holds more than one element and no shallower
  *                    depth holds exactly one, so the nest registers nothing
  *                    (the product decision in issue #373).
- *   - 'registered' — the nest already holds an element opts.isSeen reports,
+ *   - 'registered' — the nest already holds an element opts.isRegistered reports,
  *                    so a second run over a registered nest registers nothing.
  *
  * `chainSize` holds the chain's size: the nest elements that passed the data
@@ -2021,14 +2021,14 @@ function chainRootOf(el, opts = {}) {
  * already run on.
  *
  * @param {Element} chainRoot
- * @param {{tableFilter?: (table: Element, opts: object) => boolean,
- *          isSeen?: (handle: Element) => boolean, nestingDepth?: number,
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
+ *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
  *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
  * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}}
  */
 function nominateNest(chainRoot, opts = {}) {
-  const tableFilter = opts.tableFilter || isPhantomA11yTable;
-  const isSeen = opts.isSeen || (() => false);
+  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
+  const isRegistered = opts.isRegistered || (() => false);
   const configuredDepth = opts.nestingDepth ?? DR_DETECTION_SETTINGS.nestingDepth;
 
   // The nest's members, each with its nesting depth. A qualifying element
@@ -2039,14 +2039,14 @@ function nominateNest(chainRoot, opts = {}) {
   const nested = typeof chainRoot.querySelectorAll === 'function'
     ? Array.from(chainRoot.querySelectorAll(GRID_ARIA_SELECTOR)) : [];
   const nest = [chainRoot].concat(nested)
-    .filter((el) => _passesAriaGuards(el, tableFilter, opts))
-    .map((el) => ({ el, depth: _depthInChain(el, chainRoot, tableFilter, opts) }))
+    .filter((el) => _passesAriaGuards(el, isArtifact, opts))
+    .map((el) => ({ el, depth: _depthInChain(el, chainRoot, isArtifact, opts) }))
     .filter((member) => member.depth >= 0);
 
   // A nest holding a registered element registers nothing: the scan already
   // ran over it, and a second registration would put a second table pillbox
   // on one grid.
-  if (nest.some(({ el }) => isSeen(el))) {
+  if (nest.some(({ el }) => isRegistered(el))) {
     return { chainRoot, selected: null, outcome: 'registered', chainSize: 0 };
   }
 
@@ -2080,23 +2080,23 @@ function nominateNest(chainRoot, opts = {}) {
  * controller turns each outcome into a registration or a pending table.
  *
  * @param {Element|Document} root
- * @param {{tableFilter?: (table: Element, opts: object) => boolean,
- *          isSeen?: (handle: Element) => boolean, nestingDepth?: number,
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
+ *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
  *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
  * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}[]}
  */
 function nominateNests(root, opts = {}) {
   if (!root || typeof root.querySelectorAll !== 'function') return [];
-  const tableFilter = opts.tableFilter || isPhantomA11yTable;
+  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
 
   const rootCarriesRole = root.tagName !== 'TABLE' && typeof root.matches === 'function' && root.matches(GRID_ARIA_SELECTOR);
   const roleBearing = (rootCarriesRole ? [root] : []).concat(Array.from(root.querySelectorAll(GRID_ARIA_SELECTOR)));
-  const qualifying = roleBearing.filter((el) => _passesAriaGuards(el, tableFilter, opts));
+  const qualifying = roleBearing.filter((el) => _passesAriaGuards(el, isArtifact, opts));
 
   // One chain root per nest, each evaluated once. A Set keeps
   // insertion order, so the results stay in document order.
   const chainRoots = new Set();
-  for (const el of qualifying) chainRoots.add(_chainRootOf(el, tableFilter, opts));
+  for (const el of qualifying) chainRoots.add(_chainRootOf(el, isArtifact, opts));
 
   const results = [];
   for (const chainRoot of chainRoots) results.push(nominateNest(chainRoot, opts));
@@ -2111,33 +2111,33 @@ function nominateNests(root, opts = {}) {
  * other three outcomes. A caller that acts on those — the controller, which
  * holds a pending table for an empty nest — calls nominateNests directly.
  *
- * Each result is { handle, isNew }; isNew is !opts.isSeen(handle), where
- * opts.isSeen is a caller-supplied registered check (e.g. DR_MODEL.hasTable)
- * for native tables and grid roots alike. Without opts.isSeen every result
+ * Each result is { handle, isNew }; isNew is !opts.isRegistered(handle), where
+ * opts.isRegistered is a caller-supplied registered check (e.g. DR_MODEL.hasTable)
+ * for native tables and grid roots alike. Without opts.isRegistered every result
  * reports isNew: true, since detection keeps no registry.
  *
  * @param {Element|Document} root
- * @param {{tableFilter?: (table: Element, opts: object) => boolean,
- *          isSeen?: (handle: Element) => boolean, nestingDepth?: number,
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
+ *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
  *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
  * @returns {{handle: Element, isNew: boolean}[]}
  */
 function findTables(root, opts = {}) {
   if (!root || typeof root.querySelectorAll !== 'function') return [];
-  const tableFilter = opts.tableFilter || isPhantomA11yTable;
-  const isSeen = opts.isSeen || (() => false);
+  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
+  const isRegistered = opts.isRegistered || (() => false);
   const results = [];
 
-  // Pass 1: native <table> elements; tableFilter drops accessibility artifacts.
+  // Pass 1: native <table> elements; isArtifact drops accessibility artifacts.
   const nativeTables = root.tagName === 'TABLE' ? [root] : Array.from(root.querySelectorAll('table'));
   for (const table of nativeTables) {
-    if (tableFilter(table, opts)) continue;
-    results.push({ handle: table, isNew: !isSeen(table) });
+    if (isArtifact(table, opts)) continue;
+    results.push({ handle: table, isNew: !isRegistered(table) });
   }
 
   for (const { selected, outcome } of nominateNests(root, opts)) {
     if (outcome !== 'selected') continue;
-    results.push({ handle: selected, isNew: !isSeen(selected) });
+    results.push({ handle: selected, isNew: !isRegistered(selected) });
   }
 
   return results;

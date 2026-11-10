@@ -651,9 +651,9 @@
 // ---------------------------------------------------------------------------
 // Static purity scan.
 // Detection functions (findTargetTable, findTables, looksLikeGrid, isDataTable,
-// isPhantomA11yTable) must never write to the page — no classList.add,
+// isAccessibilityArtifact) must never write to the page — no classList.add,
 // createElement, appendChild, or createPillboxForTable inside their bodies.
-// Write-layer helpers (applyExtractedPatches,
+// Write-layer helpers (writePatches,
 // restoreTextPieces, GridAdapter's applyPatches) legitimately create/mutate nodes and are correctly
 // excluded from this scan — they are reachable only from explicit write calls
 // (roundTable / reapplyRounding), never from detection.
@@ -664,7 +664,7 @@
     return;
   }
   const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createPillboxForTable'];
-  const DETECTION_FNS = ['findTargetTable', 'findTables', 'looksLikeGrid', 'isDataTable', 'isPhantomA11yTable'];
+  const DETECTION_FNS = ['findTargetTable', 'findTables', 'looksLikeGrid', 'isDataTable', 'isAccessibilityArtifact'];
 
   // Extract a top-level `function name(` body by brace-matching from the
   // opening brace to its balanced close. Good enough for this file's flat,
@@ -1474,7 +1474,7 @@
 //      right criterion here the way it is for the pure lib/dr-number files).
 //   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
 //   3. VendorProfiles: a custom list replaces (not merges with) the default.
-//   4. findTables' tableFilter: default drops a accessibility artifacts; a
+//   4. findTables' isArtifact: default drops a accessibility artifacts; a
 //      pass-through filter keeps it.
 // ---------------------------------------------------------------------------
 (function drTableBundleIsPublished() {
@@ -1488,7 +1488,7 @@
     'classifyTableCell',
     'collectTextPieces',
     'mapRenderedToFlat',
-    'applyExtractedPatches',
+    'writePatches',
     'restoreTextPieces',
     'placeDecision',
     'layoutPieceHolding',
@@ -1498,7 +1498,7 @@
     'findTargetTable',
     'findTables',
     'chainRootOf',
-    'isPhantomA11yTable',
+    'isAccessibilityArtifact',
     'isDataTable',
     'readTableFingerprint',
     'sameTableFingerprint',
@@ -1543,7 +1543,7 @@
 //      OR-fallback, no reassignment — and the pillbox view reads none of it.
 //   3. Behavior: a sandbox that evaluates the configuration file and then
 //      the detection layer carries the nine pre-move values unchanged, and
-//      looksLikeGrid, findTargetTable, isPhantomA11yTable, and isDataTable
+//      looksLikeGrid, findTargetTable, isAccessibilityArtifact, and isDataTable
 //      behave exactly as the pre-move source did, on fixtures whose outcome
 //      the pre-move values determine.
 //   4. Behavior: a sandbox that evaluates the detection layer alone, with

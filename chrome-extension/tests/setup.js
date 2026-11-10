@@ -244,7 +244,7 @@ globalThis.pendingObservers = pendingObservers;
 globalThis.pendingRetestTimers = pendingRetestTimers;
 globalThis.pendingRetestCounts = pendingRetestCounts;
 // Expose the accessibility artifact predicate and its threshold constant for tests
-globalThis.isPhantomA11yTable = isPhantomA11yTable;
+globalThis.isAccessibilityArtifact = isAccessibilityArtifact;
 globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_DETECTION_SETTINGS.offscreenLeftPx;
 // Expose content.js's marker call-site wrapper for direct unit testing.
 globalThis.markAndAddPillboxIfNewGrid = markAndAddPillboxIfNewGrid;

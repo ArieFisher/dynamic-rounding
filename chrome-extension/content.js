@@ -164,13 +164,13 @@ function markAndAddPillboxIfNewGrid(found) {
   return found.handle;
 }
 
-// Every findTargetTable() call site passes DR_MODEL.hasTable as isSeen:
+// Every findTargetTable() call site passes DR_MODEL.hasTable as isRegistered:
 // detection stays decoupled from the model (see lib/dr-table/detect.js), and
 // the controller answers "found already" from the registry.
 document.addEventListener('contextmenu', (event) => {
   if (IS_CAPTURE_PAGE) return;
   lastRightClickedElement = event.target;
-  const found = findTargetTable(event.target, { isSeen: DR_MODEL.hasTable });
+  const found = findTargetTable(event.target, { isRegistered: DR_MODEL.hasTable });
   if (found) {
     const table = markAndAddPillboxIfNewGrid(found);
     DR_MODEL.setActiveTable(table);
@@ -198,7 +198,7 @@ function sendRangeStatusMessage(result) {
 // table's on/off value.
 DR_BUS.subscribe('intent:menuClicked', () => {
   if (!lastRightClickedElement) return;
-  const found = findTargetTable(lastRightClickedElement, { isSeen: DR_MODEL.hasTable });
+  const found = findTargetTable(lastRightClickedElement, { isRegistered: DR_MODEL.hasTable });
   if (!found) {
     DR_LOG.debug("Dynamic Rounding: No table found at right-click location.");
     return;
@@ -361,7 +361,7 @@ function holdPendingTable(chainRoot) {
 // through the same function the scanners use, so a re-test that passes
 // registers exactly what the load-time scan would have registered.
 function retestPendingTable(chainRoot) {
-  consumeNomination(nominateNest(chainRoot, { isSeen: DR_MODEL.hasTable }));
+  consumeNomination(nominateNest(chainRoot, { isRegistered: DR_MODEL.hasTable }));
 }
 
 // Drop a pending record whole: the debounce timer, the subtree observer, the
@@ -398,18 +398,18 @@ function dropPendingTable(chainRoot) {
 function injectPillboxesForAddedNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
   // Pass 1: native <table> elements; accessibility artifacts are skipped.
-  if (node.tagName === 'TABLE' && !DR_MODEL.hasTable(node) && !isPhantomA11yTable(node)) {
+  if (node.tagName === 'TABLE' && !DR_MODEL.hasTable(node) && !isAccessibilityArtifact(node)) {
     createPillboxForTable(node);
   }
   if (typeof node.querySelectorAll === 'function') {
     node.querySelectorAll('table').forEach(table => {
-      if (!DR_MODEL.hasTable(table) && !isPhantomA11yTable(table)) {
+      if (!DR_MODEL.hasTable(table) && !isAccessibilityArtifact(table)) {
         createPillboxForTable(table);
       }
     });
   }
   // Pass 2: the nomination step, consumed above.
-  consumeNominations(nominateNests(node, { isSeen: DR_MODEL.hasTable }));
+  consumeNominations(nominateNests(node, { isRegistered: DR_MODEL.hasTable }));
 }
 
 // The shape fingerprint's read options for one table: the registry's stored
@@ -497,7 +497,7 @@ function revalidateTableShape(table, opts = {}) {
   // covers a native table and a grid alike.
   const root = table.tagName === 'TABLE' ? table : (chainRootOf(table) || table);
   let fresh = null;
-  for (const { handle, isNew } of findTables(root, { isSeen: DR_MODEL.hasTable })) {
+  for (const { handle, isNew } of findTables(root, { isRegistered: DR_MODEL.hasTable })) {
     if (!isNew) continue;
     if (handle.tagName !== 'TABLE') handle.classList.add('dr-ext-grid');
     createPillboxForTable(handle);
@@ -685,7 +685,7 @@ function releaseCell(table, cell) {
   const record = DR_MODEL.getTableOriginal(table, cell);
   if (record) restoreTextPieces(cell, record.pieces);
   DR_MODEL.deleteTableOriginal(table, cell);
-  cell.classList.remove(GRID_ROUNDED_CLASS);
+  cell.classList.remove(SIMPLIFIED_CLASS);
   // Like the text pieces, hover text the page changed stays: only the
   // extension's own hover text gives way to the stored one.
   if (record && cell.title !== originalHoverText(record.value)) return;
@@ -1041,7 +1041,7 @@ function releaseRewrittenCells(table, dataCells) {
 // The kind the one simplification pass runs on a table, from its adapter.
 // roundTable and the re-apply pass call it.
 function tableKindPass(adapter) {
-  return adapter.isVirtualized() ? GRID_TABLE_PASS : NATIVE_TABLE_PASS;
+  return adapter.isGrid() ? GRID_TABLE_PASS : NATIVE_TABLE_PASS;
 }
 
 // One cell's patches as the page takes them: the table step's patches

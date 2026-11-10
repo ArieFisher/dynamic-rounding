@@ -95,6 +95,6 @@ const DR_DETECTION_SETTINGS = {
   // A re-test runs only after a subtree change and the redraw delay above, so
   // the count grows under sustained churn alone.
   pendingRetestCap: 100,
-  // --- Accessibility artifact check (lib/dr-table/detect.js: isPhantomA11yTable) ---
+  // --- Accessibility artifact check (lib/dr-table/detect.js: isAccessibilityArtifact) ---
   offscreenLeftPx: -9999,
 };

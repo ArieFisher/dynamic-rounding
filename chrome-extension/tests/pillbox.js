@@ -1926,18 +1926,18 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 })();
 
 // ---------------------------------------------------------------------------
-// Sanity: isPhantomA11yTable round-trip on the embedded-table fixtures
+// Sanity: isAccessibilityArtifact round-trip on the embedded-table fixtures
 // ---------------------------------------------------------------------------
 (function pass2aria_sanity_phantomEmbedded() {
   const phantom = makePhantomEmbeddedTable();
-  eq('pass2-aria sanity: isPhantomA11yTable(phantom embedded table) === true',
-    isPhantomA11yTable(phantom), true);
+  eq('pass2-aria sanity: isAccessibilityArtifact(phantom embedded table) === true',
+    isAccessibilityArtifact(phantom), true);
 })();
 
 (function pass2aria_sanity_realEmbedded() {
   const real = makeRealEmbeddedTable();
-  eq('pass2-aria sanity: isPhantomA11yTable(real embedded table) === false',
-    isPhantomA11yTable(real), false);
+  eq('pass2-aria sanity: isAccessibilityArtifact(real embedded table) === false',
+    isAccessibilityArtifact(real), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -2624,7 +2624,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       buttonCreateCount, 1);
 
     // --- Second right-click on the SAME target: findTargetTable resolves
-    // this grid via case 2 (the opts.isSeen walk-up), since it is already
+    // this grid via case 2 (the opts.isRegistered walk-up), since it is already
     // registered. ---
     clickTarget.closest = function(sel) { return sel === '.dr-ext-grid' ? gridEl : null; };
     contextmenuHandler({ target: clickTarget });

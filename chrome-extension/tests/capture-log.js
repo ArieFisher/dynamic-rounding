@@ -105,7 +105,7 @@
 
   // A fake adapter factory: each table object carries its own row spec.
   const fakeAdapterFor = (table) => ({
-    isVirtualized: () => !!table._virtualized,
+    isGrid: () => !!table._virtualized,
     getRows: () => table._rows.map((row) => ({
       isOutside: !!row.isOutside,
       // columnIndex and columnSpan are part of the adapter's cell contract
@@ -203,7 +203,7 @@
   // A capture is a bug report: one table whose walk throws must not take
   // the whole capture down. It serializes as an error record instead.
   const throwingAdapterFor = () => ({
-    isVirtualized: () => false,
+    isGrid: () => false,
     getRows: () => { throw new Error('hostile walk'); },
   });
   const errState = collectCaptureState({
@@ -249,7 +249,7 @@
     getTableOriginalText: (t, cellEl) => (cellEl === marked ? '98,765' : undefined),
   };
   const adapterFor = () => ({
-    isVirtualized: () => false,
+    isGrid: () => false,
     getRows: () => table._rows.map((row) => ({
       getCells: () => row.cells.map((cell) => ({
         el: cell.el,
@@ -832,7 +832,7 @@
     getTableMaxMagnitude: () => null,
     getTableOriginalText: () => undefined,
   });
-  const fakeAdapterFor = () => ({ isVirtualized: () => false, getRows: () => [] });
+  const fakeAdapterFor = () => ({ isGrid: () => false, getRows: () => [] });
 
   const state = collectCaptureState({ model: makeFakeModel(), adapterFor: fakeAdapterFor });
 

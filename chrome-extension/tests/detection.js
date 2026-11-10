@@ -79,13 +79,13 @@
     };
   };
   try {
-    const { landed } = applyExtractedPatches({}, [
+    const { landed } = writePatches({}, [
       { index: 2, numStr: '100', newNum: '90' },
       { index: 8, numStr: '999', newNum: '1,000' },
     ]);
-    eq('patch-honesty: applyExtractedPatches returns the landed count', landed, 1);
+    eq('patch-honesty: writePatches returns the landed count', landed, 1);
     eq('patch-honesty: an empty patch list lands zero patches',
-      applyExtractedPatches({}, []).landed, 0);
+      writePatches({}, []).landed, 0);
   } finally {
     delete global.document.createTreeWalker;
   }
@@ -517,25 +517,25 @@ const supTestOpts = {
 })();
 
 // =============================================================================
-// applyExtractedPatches — unit tests and integration regression tests
+// writePatches — unit tests and integration regression tests
 // =============================================================================
 
 // ---------------------------------------------------------------------------
-// Unit tests for applyExtractedPatches
+// Unit tests for writePatches
 // ---------------------------------------------------------------------------
 (function applyExtractedPatches_unitTests() {
 
   // AP1: single text node, single patch
   withSupCreateTreeWalker(function() {
     const cell = makeExtractedCell([{ text: 'Revenue 1500 USD' }]);
-    applyExtractedPatches(cell, [{ index: 8, numStr: '1500', newNum: '2k' }]);
+    writePatches(cell, [{ index: 8, numStr: '1500', newNum: '2k' }]);
     eq('AP1: single node patch replaces number', cell._textNodes[0].nodeValue, 'Revenue 2k USD');
   });
 
   // AP2: two patches in the same node, right-to-left order preserved
   withSupCreateTreeWalker(function() {
     const cell = makeExtractedCell([{ text: '1500 and 2500' }]);
-    applyExtractedPatches(cell, [
+    writePatches(cell, [
       { index: 0,  numStr: '1500', newNum: '2k' },
       { index: 9,  numStr: '2500', newNum: '3k' },
     ]);
@@ -552,7 +552,7 @@ const supTestOpts = {
       { text: ' m' },
       { text: '3', inSup: true },
     ]);
-    applyExtractedPatches(cell, [{ index: 0, numStr: '1.5', newNum: '2' }]);
+    writePatches(cell, [{ index: 0, numStr: '1.5', newNum: '2' }]);
     eq('AP3: base node updated', cell._textNodes[0].nodeValue, '2×10');
     eq('AP3: sup "31" node untouched', cell._textNodes[1].nodeValue, '31');
     eq('AP3: " m" node untouched',     cell._textNodes[2].nodeValue, ' m');
@@ -567,7 +567,7 @@ const supTestOpts = {
       { text: 'text, ' },
       { text: '1500' },
     ]);
-    applyExtractedPatches(cell, [{ index: 6, numStr: '1500', newNum: '2k' }]);
+    writePatches(cell, [{ index: 6, numStr: '1500', newNum: '2k' }]);
     eq('AP4: first node untouched', cell._textNodes[0].nodeValue, 'text, ');
     eq('AP4: second node patched',  cell._textNodes[1].nodeValue, '2k');
   });
@@ -575,14 +575,14 @@ const supTestOpts = {
   // AP5: defensive — wrong numStr at index → node unchanged
   withSupCreateTreeWalker(function() {
     const cell = makeExtractedCell([{ text: 'abc 1500 def' }]);
-    applyExtractedPatches(cell, [{ index: 4, numStr: '9999', newNum: '10k' }]);
+    writePatches(cell, [{ index: 4, numStr: '9999', newNum: '10k' }]);
     eq('AP5: wrong numStr → no change', cell._textNodes[0].nodeValue, 'abc 1500 def');
   });
 
   // AP6: empty patches array → no-op
   withSupCreateTreeWalker(function() {
     const cell = makeExtractedCell([{ text: 'abc 1500 def' }]);
-    applyExtractedPatches(cell, []);
+    writePatches(cell, []);
     eq('AP6: empty patches → unchanged', cell._textNodes[0].nodeValue, 'abc 1500 def');
   });
 
@@ -1021,7 +1021,7 @@ const supTestOpts = {
 })();
 
 // FT5: findTargetTable — returns already-found ancestor without re-walking
-// If an ancestor is already known per opts.isSeen (see
+// If an ancestor is already known per opts.isRegistered (see
 // lib/dr-table/detect.js), it must be returned immediately without calling
 // looksLikeGrid again.
 (function findTargetTable_returnsAlreadyTaggedGrid() {
@@ -1037,7 +1037,7 @@ const supTestOpts = {
     };
 
     const seen = new Set([existingGrid]);
-    const result = findTargetTable(clickTarget, { isSeen: (el) => seen.has(el) });
+    const result = findTargetTable(clickTarget, { isRegistered: (el) => seen.has(el) });
 
     eq('findTargetTable: returns already-found ancestor immediately',
       result.handle, existingGrid);
@@ -1113,7 +1113,7 @@ const supTestOpts = {
   const grid = makeDatabaseQueryGrid();
   const styleProbe = makeCountingStyleProbe();
   const result = findTargetTable(grid.scrollRowEls[2].children[1],
-    { isSeen: () => false, styleProbe });
+    { isRegistered: () => false, styleProbe });
 
   eq('findTargetTable AC1: a click in the scrolling pane resolves the scrolling pane',
     result !== null && result.handle === grid.scrollPaneEl, true);
@@ -1140,12 +1140,12 @@ const supTestOpts = {
 
 (function rightClickRegisters_AC1_aClickOnTheNestsOwnLayersResolvesTheScrollingPane() {
   const plain = makeDatabaseQueryGrid({ plainWrapper: true });
-  const paneRowResult = findTargetTable(plain.paneParentEl, { isSeen: () => false });
+  const paneRowResult = findTargetTable(plain.paneParentEl, { isRegistered: () => false });
   eq('findTargetTable AC1: a click on the plain layer between the panes resolves the scrolling pane',
     paneRowResult !== null && paneRowResult.handle === plain.scrollPaneEl, true);
 
   const grid = makeDatabaseQueryGrid();
-  const wrapperResult = findTargetTable(grid.wrapperEl, { isSeen: () => false });
+  const wrapperResult = findTargetTable(grid.wrapperEl, { isRegistered: () => false });
   eq('findTargetTable AC1: a click on the wrapper itself resolves the scrolling pane',
     wrapperResult !== null && wrapperResult.handle === grid.scrollPaneEl, true);
 })();
@@ -1160,7 +1160,7 @@ const supTestOpts = {
     /^\d+$/.test(gutterCell.textContent), true);
 
   const styleProbe = makeCountingStyleProbe();
-  const result = findTargetTable(gutterCell, { isSeen: () => false, styleProbe });
+  const result = findTargetTable(gutterCell, { isRegistered: () => false, styleProbe });
 
   eq('findTargetTable AC2: a click in the row-number gutter resolves the scrolling pane beside it',
     result !== null && result.handle === grid.scrollPaneEl, true);
@@ -1179,7 +1179,7 @@ const supTestOpts = {
   const roleLess = makeDgNode('DIV', 'plain-host', null,
     [0, 1, 2, 3, 4, 5].map((i) => makeDgRow(i, ['north', '4,281,905', '17.40'])));
   findTargetTable(roleLess.children[0].children[0],
-    { isSeen: () => false, styleProbe: roleLessProbe });
+    { isRegistered: () => false, styleProbe: roleLessProbe });
   eq('findTargetTable AC2: a role-less tree does reach the geometry probe and read layout',
     roleLessProbe.calls > 0, true);
 })();
@@ -1203,9 +1203,9 @@ const supTestOpts = {
     chainRootOf(noNumber.children[0].children[0]) === noNumber, true);
 
   eq('findTargetTable AC3: a click inside the one-row-one-cell element resolves nothing',
-    findTargetTable(oneCell.children[0].children[0], { isSeen: () => false }), null);
+    findTargetTable(oneCell.children[0].children[0], { isRegistered: () => false }), null);
   eq('findTargetTable AC3: a click inside the two-rows-no-number element resolves nothing',
-    findTargetTable(noNumber.children[0].children[0], { isSeen: () => false }), null);
+    findTargetTable(noNumber.children[0].children[0], { isRegistered: () => false }), null);
 })();
 
 // --- AC3: an empty nomination falls through to the geometry probe ---
@@ -1230,7 +1230,7 @@ const supTestOpts = {
     chainRootOf(nest.children[0].children[0]) === nest, true);
 
   const result = findTargetTable(nest.children[0].children[0],
-    { isSeen: () => false, styleProbe });
+    { isRegistered: () => false, styleProbe });
 
   eq('findTargetTable AC3: an empty nomination falls through and the probe resolves the nest',
     result !== null && result.handle === nest, true);
@@ -1243,7 +1243,7 @@ const supTestOpts = {
 // --- AC4: a registered table resolves at the registry route ---
 //
 // The proof goes through the ports the resolver takes, not through the
-// source text: opts.isSeen records the elements the resolver asked the
+// source text: opts.isRegistered records the elements the resolver asked the
 // registry about, and isNew reports which route resolved the click. The
 // registry route reports isNew false; the nomination step reports isNew
 // true. The last pair of assertions runs the same click with nothing
@@ -1256,7 +1256,7 @@ const supTestOpts = {
 
   const asked = [];
   const result = findTargetTable(cell, {
-    isSeen: (el) => { asked.push(el); return el === grid.scrollPaneEl; },
+    isRegistered: (el) => { asked.push(el); return el === grid.scrollPaneEl; },
   });
 
   eq('findTargetTable AC4: a click inside a registered scrolling pane resolves it',
@@ -1268,7 +1268,7 @@ const supTestOpts = {
   eq('findTargetTable AC4: no step asks the registry about the wrapper',
     asked.includes(grid.wrapperEl), false);
 
-  const freshResult = findTargetTable(cell, { isSeen: () => false });
+  const freshResult = findTargetTable(cell, { isRegistered: () => false });
   eq('findTargetTable AC4: the same click with nothing registered reaches the nomination step',
     freshResult !== null && freshResult.handle === grid.scrollPaneEl, true);
   eq('findTargetTable AC4: and that resolution reports isNew true',
@@ -1283,7 +1283,7 @@ const supTestOpts = {
   eq('findTargetTable edge: a two-column pinned pane puts two elements at the shipped depth',
     isDataTable(grid.pinnedPaneEl) && isDataTable(grid.scrollPaneEl), true);
 
-  const result = findTargetTable(grid.scrollRowEls[0].children[0], { isSeen: () => false });
+  const result = findTargetTable(grid.scrollRowEls[0].children[0], { isRegistered: () => false });
   eq('findTargetTable edge: the fall-back outward resolves the wrapper on a right-click',
     result !== null && result.handle === grid.wrapperEl, true);
 })();
@@ -1346,7 +1346,7 @@ const supTestOpts = {
 // TA1: NativeTableAdapter round-trip
 // Build a native table element, wrap it with makeAdapter(), walk the adapter
 // API (getRows → getCells → getText) and assert values match what was put in.
-// Also assert isVirtualized() === false and getElement() returns the element.
+// Also assert isGrid() === false and getElement() returns the element.
 (function nativeTableAdapter_roundTrip() {
   const tableEl = makeNativeTableEl([
     [{ tag: 'td', text: '1,234' }, { tag: 'td', text: '5,678' }],
@@ -1361,8 +1361,8 @@ const supTestOpts = {
   eq('NativeTableAdapter: getElement() returns the original element',
     adapter.getElement(), tableEl);
 
-  eq('NativeTableAdapter: isVirtualized() === false',
-    adapter.isVirtualized(), false);
+  eq('NativeTableAdapter: isGrid() === false',
+    adapter.isGrid(), false);
 
   const rows = adapter.getRows();
   eq('NativeTableAdapter: getRows() returns 2 rows',
@@ -1440,7 +1440,7 @@ const supTestOpts = {
 })();
 
 // TA3: GridAdapter stub — makeAdapter on a non-TABLE element returns GridAdapter
-// isVirtualized() === true, getRows() === [], getElement() returns the element.
+// isGrid() === true, getRows() === [], getElement() returns the element.
 (function gridAdapter_stub_properties() {
   const divEl = {
     tagName: 'DIV',
@@ -1462,8 +1462,8 @@ const supTestOpts = {
   eq('GridAdapter: getElement() returns the div element',
     adapter.getElement(), divEl);
 
-  eq('GridAdapter: isVirtualized() === true',
-    adapter.isVirtualized(), true);
+  eq('GridAdapter: isGrid() === true',
+    adapter.isGrid(), true);
 
   eq('GridAdapter: getRows() returns empty array (stub)',
     adapter.getRows().length, 0);
@@ -1503,7 +1503,7 @@ const supTestOpts = {
   // The pieces walk runs with no tree walker in this suite's document.
   let result;
   try {
-    result = applyExtractedPatches(cell, [
+    result = writePatches(cell, [
       { index: 2, numStr: '100', newNum: '90' },
       { index: 8, numStr: '200', newNum: '250' },
       { index: 14, numStr: '300', newNum: '999' },
@@ -1520,7 +1520,7 @@ const supTestOpts = {
   eq('patch writer: the pieces hold the patched text',
     [first.nodeValue, second.nodeValue], ['A 90 B 250', ' C 999']);
   eq('patch writer: an empty patch list lands nothing',
-    applyExtractedPatches(cell, []), { landed: 0, pieces: [] });
+    writePatches(cell, []), { landed: 0, pieces: [] });
 })();
 
 // ---------------------------------------------------------------------------
@@ -1542,8 +1542,8 @@ const supTestOpts = {
   eq('GR1: makeAdapter returns GridAdapter for div wrapper',
     adapter instanceof GridAdapter, true);
 
-  eq('GR1: isVirtualized() === true',
-    adapter.isVirtualized(), true);
+  eq('GR1: isGrid() === true',
+    adapter.isGrid(), true);
 
   const rows = adapter.getRows();
   eq('GR1: getRows() returns 3 rows',
@@ -1640,7 +1640,7 @@ const supTestOpts = {
 
 (function gr3b_noTextContentWriteInGridPath() {
   const src = allContentSrc;
-  const bodies = ['function makeCellObj(', 'function applyExtractedPatches(', 'function restoreTextPieces(']
+  const bodies = ['function makeCellObj(', 'function writePatches(', 'function restoreTextPieces(']
     .map((signature) => sourceBodyOf(src, signature));
 
   eq('GR3b: the grid write path source is found',
@@ -1739,7 +1739,7 @@ const supTestOpts = {
 
 // GR6j: SPEC GAP GUARD — the grid write path is nodeValue-only. The spec (D3)
 // says the write is a nodeValue patch (GridAdapter's applyPatches →
-// applyExtractedPatches → nodeValue =), NOT cell.innerHTML = … which destroys
+// writePatches → nodeValue =), NOT cell.innerHTML = … which destroys
 // React fiber identity.
 //
 // Source-level assertion: the cell object both kinds share, the patch
@@ -1751,7 +1751,7 @@ const supTestOpts = {
 //   "The grid write must be nodeValue-only."
 (function gr6j_gridWrite_sourceGuard_noInnerHTML() {
   const src = allContentSrc;
-  const bodies = ['function makeCellObj(', 'function applyExtractedPatches(', 'function restoreTextPieces(',
+  const bodies = ['function makeCellObj(', 'function writePatches(', 'function restoreTextPieces(',
     'function restoreTable(', 'function releaseCell(']
     .map((signature) => sourceBodyOf(src, signature));
 
@@ -1761,14 +1761,14 @@ const supTestOpts = {
   // The cell object writes through the patch writer, and the patch writer
   // writes through nodeValue (the only permitted write).
   eq('GR6j: applyPatches writes through the patch writer, which assigns nodeValue',
-    /applyExtractedPatches\(/.test(bodies[0]) && /\.nodeValue\s*=(?!=)/.test(bodies[1]), true);
+    /writePatches\(/.test(bodies[0]) && /\.nodeValue\s*=(?!=)/.test(bodies[1]), true);
 })();
 
 // ---------------------------------------------------------------------------
-// Accessibility artifact predicate: isPhantomA11yTable
+// Accessibility artifact predicate: isAccessibilityArtifact
 // ---------------------------------------------------------------------------
 //
-// isPhantomA11yTable(table) returns true when ANY of three signals holds:
+// isAccessibilityArtifact(table) returns true when ANY of three signals holds:
 //   Signal 1 – table or any ancestor has aria-hidden="true"
 //   Signal 2 – nearest positioned ancestor (or the table itself) has inline
 //               left <= OFFSCREEN_LEFT_PX_THRESHOLD (-9999)
@@ -1786,8 +1786,8 @@ const supTestOpts = {
 // ---------------------------------------------------------------------------
 (function phantomA11y_signal1_selfHidden() {
   const table = makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
-  eq('isPhantomA11yTable: aria-hidden="true" on table itself -> true',
-    isPhantomA11yTable(table), true);
+  eq('isAccessibilityArtifact: aria-hidden="true" on table itself -> true',
+    isAccessibilityArtifact(table), true);
 })();
 
 // Signal 1: aria-hidden="true" on immediate parent
@@ -1795,8 +1795,8 @@ const supTestOpts = {
   const table = makePhantomEl({ tagName: 'TABLE' });
   const parent = makePhantomEl({ tagName: 'DIV', attrs: { 'aria-hidden': 'true' } });
   chainParents(table, parent);
-  eq('isPhantomA11yTable: aria-hidden="true" on immediate parent -> true',
-    isPhantomA11yTable(table), true);
+  eq('isAccessibilityArtifact: aria-hidden="true" on immediate parent -> true',
+    isAccessibilityArtifact(table), true);
 })();
 
 // Signal 1: aria-hidden="true" several ancestors up (nested deeply)
@@ -1807,8 +1807,8 @@ const supTestOpts = {
   const middleDiv  = makePhantomEl({ tagName: 'DIV' });
   const outerDiv   = makePhantomEl({ tagName: 'DIV', attrs: { 'aria-hidden': 'true' } });
   chainParents(table, tbody, innerDiv, middleDiv, outerDiv);
-  eq('isPhantomA11yTable: aria-hidden="true" several levels up -> true',
-    isPhantomA11yTable(table), true);
+  eq('isAccessibilityArtifact: aria-hidden="true" several levels up -> true',
+    isAccessibilityArtifact(table), true);
 })();
 
 // Edge: aria-hidden="false" must NOT trigger signal 1
@@ -1816,8 +1816,8 @@ const supTestOpts = {
   const table  = makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'false' } });
   const parent = makePhantomEl({ tagName: 'DIV',   attrs: { 'aria-hidden': 'false' } });
   chainParents(table, parent);
-  eq('isPhantomA11yTable: aria-hidden="false" does NOT trigger -> false',
-    isPhantomA11yTable(table), false);
+  eq('isAccessibilityArtifact: aria-hidden="false" does NOT trigger -> false',
+    isAccessibilityArtifact(table), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1829,8 +1829,8 @@ const supTestOpts = {
   const table  = makePhantomEl({ tagName: 'TABLE' });
   const posAnc = makePositionedAncestor({ left: '-10000px' });
   chainParents(table, posAnc);
-  eq('isPhantomA11yTable: positioned ancestor left=-10000px -> true',
-    isPhantomA11yTable(table), true);
+  eq('isAccessibilityArtifact: positioned ancestor left=-10000px -> true',
+    isAccessibilityArtifact(table), true);
 })();
 
 // Signal 2: positioned ancestor at exactly the threshold value (-9999px)
@@ -1838,15 +1838,15 @@ const supTestOpts = {
   const table  = makePhantomEl({ tagName: 'TABLE' });
   const posAnc = makePositionedAncestor({ left: '-9999px' });
   chainParents(table, posAnc);
-  eq('isPhantomA11yTable: positioned ancestor left=-9999px (at threshold) -> true',
-    isPhantomA11yTable(table), true);
+  eq('isAccessibilityArtifact: positioned ancestor left=-9999px (at threshold) -> true',
+    isAccessibilityArtifact(table), true);
 })();
 
 // Signal 2: table itself is positioned and off-screen (no separate ancestor)
 (function phantomA11y_signal2_tableSelfOffscreen() {
   const table = makePhantomEl({ tagName: 'TABLE', style: { position: 'absolute', left: '-10000px' } });
-  eq('isPhantomA11yTable: table itself is positioned with left=-10000px -> true',
-    isPhantomA11yTable(table), true);
+  eq('isAccessibilityArtifact: table itself is positioned with left=-10000px -> true',
+    isAccessibilityArtifact(table), true);
 })();
 
 // Edge: left value just ABOVE threshold (-9998px) must NOT trigger
@@ -1854,8 +1854,8 @@ const supTestOpts = {
   const table  = makePhantomEl({ tagName: 'TABLE' });
   const posAnc = makePositionedAncestor({ left: '-9998px' });
   chainParents(table, posAnc);
-  eq('isPhantomA11yTable: positioned ancestor left=-9998px (above threshold) -> false',
-    isPhantomA11yTable(table), false);
+  eq('isAccessibilityArtifact: positioned ancestor left=-9998px (above threshold) -> false',
+    isAccessibilityArtifact(table), false);
 })();
 
 // Edge: modest off-screen like -100px must NOT trigger signal 2
@@ -1863,8 +1863,8 @@ const supTestOpts = {
   const table  = makePhantomEl({ tagName: 'TABLE' });
   const posAnc = makePositionedAncestor({ left: '-100px' });
   chainParents(table, posAnc);
-  eq('isPhantomA11yTable: positioned ancestor left=-100px (not extreme) -> false',
-    isPhantomA11yTable(table), false);
+  eq('isAccessibilityArtifact: positioned ancestor left=-100px (not extreme) -> false',
+    isAccessibilityArtifact(table), false);
 })();
 
 // Edge: non-positioned ancestor with extreme left — should NOT count because the
@@ -1876,8 +1876,8 @@ const supTestOpts = {
   const wrapper = makePhantomEl({ tagName: 'DIV', style: { left: '-10000px' } });
   chainParents(table, wrapper);
   // No positioned ancestor found → checkEl = table (which has no extreme left)
-  eq('isPhantomA11yTable: non-positioned ancestor with extreme left -> false',
-    isPhantomA11yTable(table), false);
+  eq('isAccessibilityArtifact: non-positioned ancestor with extreme left -> false',
+    isAccessibilityArtifact(table), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1892,8 +1892,8 @@ const supTestOpts = {
   posAnc.querySelector    = function() { return svg; };
   posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
   chainParents(table, posAnc);
-  eq('isPhantomA11yTable: positioned ancestor has svg[aria-label="..."] -> true',
-    isPhantomA11yTable(table), true);
+  eq('isAccessibilityArtifact: positioned ancestor has svg[aria-label="..."] -> true',
+    isAccessibilityArtifact(table), true);
 })();
 
 // Signal 3: multiple SVGs in ancestor, only one has a label — still triggers
@@ -1905,8 +1905,8 @@ const supTestOpts = {
   posAnc.querySelector    = function() { return svgNoLabel; };
   posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svgNoLabel, svgLabelled] : []; };
   chainParents(table, posAnc);
-  eq('isPhantomA11yTable: one of two svgs has aria-label -> true',
-    isPhantomA11yTable(table), true);
+  eq('isAccessibilityArtifact: one of two svgs has aria-label -> true',
+    isAccessibilityArtifact(table), true);
 })();
 
 // Edge: svg with EMPTY aria-label must NOT trigger signal 3
@@ -1917,8 +1917,8 @@ const supTestOpts = {
   posAnc.querySelector    = function() { return svg; };
   posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
   chainParents(table, posAnc);
-  eq('isPhantomA11yTable: svg with empty aria-label does NOT trigger -> false',
-    isPhantomA11yTable(table), false);
+  eq('isAccessibilityArtifact: svg with empty aria-label does NOT trigger -> false',
+    isAccessibilityArtifact(table), false);
 })();
 
 // Edge: svg with whitespace-only aria-label must NOT trigger signal 3
@@ -1929,8 +1929,8 @@ const supTestOpts = {
   posAnc.querySelector    = function() { return svg; };
   posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
   chainParents(table, posAnc);
-  eq('isPhantomA11yTable: svg with whitespace-only aria-label does NOT trigger -> false',
-    isPhantomA11yTable(table), false);
+  eq('isAccessibilityArtifact: svg with whitespace-only aria-label does NOT trigger -> false',
+    isAccessibilityArtifact(table), false);
 })();
 
 // Edge: svg with NO aria-label attribute at all must NOT trigger signal 3
@@ -1941,16 +1941,16 @@ const supTestOpts = {
   posAnc.querySelector    = function() { return svg; };
   posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
   chainParents(table, posAnc);
-  eq('isPhantomA11yTable: svg with no aria-label does NOT trigger -> false',
-    isPhantomA11yTable(table), false);
+  eq('isAccessibilityArtifact: svg with no aria-label does NOT trigger -> false',
+    isAccessibilityArtifact(table), false);
 })();
 
 // Edge: no positioned ancestor found at all — signal 3 is skipped entirely (no crash)
 (function phantomA11y_signal3_noPosAncestor() {
   const table = makePhantomEl({ tagName: 'TABLE' });
   // No parentElement — predicate must not throw and returns false
-  eq('isPhantomA11yTable: no positioned ancestor, no signals -> false',
-    isPhantomA11yTable(table), false);
+  eq('isAccessibilityArtifact: no positioned ancestor, no signals -> false',
+    isAccessibilityArtifact(table), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1961,8 +1961,8 @@ const supTestOpts = {
   const parent = makePhantomEl({ tagName: 'DIV' });
   chainParents(table, parent);
   // No aria-hidden, no off-screen left, no positioned ancestor → false
-  eq('isPhantomA11yTable: ordinary on-screen numeric table -> false',
-    isPhantomA11yTable(table), false);
+  eq('isAccessibilityArtifact: ordinary on-screen numeric table -> false',
+    isAccessibilityArtifact(table), false);
 })();
 
 // Negative: positioned ancestor but normal on-screen left (-50px), no svg, no aria-hidden
@@ -1971,21 +1971,21 @@ const supTestOpts = {
   const posAnc = makePositionedAncestor({ left: '-50px' });
   posAnc.querySelectorAll = function() { return []; };
   chainParents(table, posAnc);
-  eq('isPhantomA11yTable: positioned ancestor with normal left (-50px), no svg -> false',
-    isPhantomA11yTable(table), false);
+  eq('isAccessibilityArtifact: positioned ancestor with normal left (-50px), no svg -> false',
+    isAccessibilityArtifact(table), false);
 })();
 
 // ---------------------------------------------------------------------------
 // Guard: invalid / null input
 // ---------------------------------------------------------------------------
 (function phantomA11y_nullInput() {
-  eq('isPhantomA11yTable: null -> false',
-    isPhantomA11yTable(null), false);
+  eq('isAccessibilityArtifact: null -> false',
+    isAccessibilityArtifact(null), false);
 })();
 
 (function phantomA11y_noGetAttribute() {
-  eq('isPhantomA11yTable: plain object without getAttribute -> false',
-    isPhantomA11yTable({}), false);
+  eq('isAccessibilityArtifact: plain object without getAttribute -> false',
+    isAccessibilityArtifact({}), false);
 })();
 
 // --- pass1-filter AC1: accessibility artifacts (aria-hidden ancestor) get NO pillbox ---
@@ -2014,8 +2014,8 @@ const supTestOpts = {
   eq('pass1-filter: phantom aria-hidden table satisfies isDataTable (sanity)',
     isDataTable(phantoms[0]), true);
   // Sanity: each artifact is detected as an artifact
-  eq('pass1-filter: phantom aria-hidden table isPhantomA11yTable is true (sanity)',
-    isPhantomA11yTable(phantoms[0]), true);
+  eq('pass1-filter: phantom aria-hidden table isAccessibilityArtifact is true (sanity)',
+    isAccessibilityArtifact(phantoms[0]), true);
 
   runPass1WithTables(phantoms);
 
@@ -2052,8 +2052,8 @@ const supTestOpts = {
   // Sanity checks
   eq('pass1-filter: off-screen phantom table satisfies isDataTable (sanity)',
     isDataTable(phantoms[0]), true);
-  eq('pass1-filter: off-screen phantom table isPhantomA11yTable is true (sanity)',
-    isPhantomA11yTable(phantoms[0]), true);
+  eq('pass1-filter: off-screen phantom table isAccessibilityArtifact is true (sanity)',
+    isAccessibilityArtifact(phantoms[0]), true);
 
   runPass1WithTables(phantoms);
 
@@ -2068,7 +2068,7 @@ const supTestOpts = {
 
 (function pass1Filter_realTable_getsOnePillbox() {
   const realTable = makePass1DataTable();
-  // No aria-hidden, no positioned ancestor, no svg → isPhantomA11yTable returns false
+  // No aria-hidden, no positioned ancestor, no svg → isAccessibilityArtifact returns false
   const wrapper = {
     tagName: 'DIV',
     getAttribute: function() { return null; },
@@ -2082,8 +2082,8 @@ const supTestOpts = {
   // Sanity checks
   eq('pass1-filter: real on-screen table satisfies isDataTable (sanity)',
     isDataTable(realTable), true);
-  eq('pass1-filter: real on-screen table isPhantomA11yTable is false (sanity)',
-    isPhantomA11yTable(realTable), false);
+  eq('pass1-filter: real on-screen table isAccessibilityArtifact is false (sanity)',
+    isAccessibilityArtifact(realTable), false);
 
   runPass1WithTables([realTable]);
 
@@ -2174,7 +2174,7 @@ const supTestOpts = {
 
 // --- pass1-filter: Pass 1 skips artifacts but does NOT skip a non-data real table ---
 // (edge: if a real table fails isDataTable, no toggle either — confirm the skip
-// here is from isDataTable, not from isPhantomA11yTable)
+// here is from isDataTable, not from isAccessibilityArtifact)
 (function pass1Filter_nonDataRealTable_noPillbox() {
   // 1-row table: fails isDataTable (< 2 rows)
   const nonDataTable = {
@@ -2201,9 +2201,9 @@ const supTestOpts = {
     classList: { _c:[], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
   };
 
-  // Confirm isPhantomA11yTable is false (skip is NOT from the artifact guard)
-  eq('pass1-filter: non-data real table isPhantomA11yTable is false (sanity)',
-    isPhantomA11yTable(nonDataTable), false);
+  // Confirm isAccessibilityArtifact is false (skip is NOT from the artifact guard)
+  eq('pass1-filter: non-data real table isAccessibilityArtifact is false (sanity)',
+    isAccessibilityArtifact(nonDataTable), false);
   // Confirm isDataTable is false
   eq('pass1-filter: non-data real table isDataTable is false (sanity)',
     isDataTable(nonDataTable), false);
@@ -2616,7 +2616,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 // jsdom-less criterion, extended: one vm sandbox with no
 // chrome/window/getComputedStyle evaluates the detection layer and the
 // files it reads (detectionSandboxCode above). The test pins DR_DETECTION_SETTINGS's values against PRE_MOVE_DETECTION_SETTINGS above and runs
-// looksLikeGrid, findTargetTable, isPhantomA11yTable, and isDataTable against
+// looksLikeGrid, findTargetTable, isAccessibilityArtifact, and isDataTable against
 // fixtures whose expected outcome holds only when each moved value reads at
 // its pre-move value: a wrong read (a stale copy, a transposed value, a wrong
 // sample size) flips at least one outcome below.
@@ -2714,12 +2714,12 @@ const PRE_MOVE_DETECTION_SETTINGS = {
       const walkResult = findTargetTable({ parentElement: chain[0] }, { styleProbe: gridStyleProbe });
       outcomes.walkDepthCapLabel = walkResult && walkResult.handle.label;
 
-      // --- offscreenLeftPx (isPhantomA11yTable signal 2): at the threshold
+      // --- offscreenLeftPx (isAccessibilityArtifact signal 2): at the threshold
       // and beyond it counts as off-screen; just inside it does not ---
       const offscreenTable = (left) => ({ getAttribute: () => null, style: { position: 'static', left: left + 'px' } });
-      outcomes.offscreenAtThresholdIsPhantom = isPhantomA11yTable(offscreenTable(-9999));
-      outcomes.offscreenBeyondThresholdIsPhantom = isPhantomA11yTable(offscreenTable(-10000));
-      outcomes.offscreenInsideThresholdIsNotPhantom = isPhantomA11yTable(offscreenTable(-9998));
+      outcomes.offscreenAtThresholdIsPhantom = isAccessibilityArtifact(offscreenTable(-9999));
+      outcomes.offscreenBeyondThresholdIsPhantom = isAccessibilityArtifact(offscreenTable(-10000));
+      outcomes.offscreenInsideThresholdIsNotPhantom = isAccessibilityArtifact(offscreenTable(-9998));
 
       // --- isDataTable: no collateral breakage from the load-order change ---
       outcomes.isDataTableStillFindsANumericTable = isDataTable({
@@ -2769,11 +2769,11 @@ const PRE_MOVE_DETECTION_SETTINGS = {
     sandbox.outcomes.noVendorClassFailsWidthCheck, false);
   eq('detection settings: findTargetTable bounds the ancestor walk to gridWalkDepthCap (15)',
     sandbox.outcomes.walkDepthCapLabel, 14);
-  eq('detection settings: isPhantomA11yTable treats offscreenLeftPx itself as off-screen',
+  eq('detection settings: isAccessibilityArtifact treats offscreenLeftPx itself as off-screen',
     sandbox.outcomes.offscreenAtThresholdIsPhantom, true);
-  eq('detection settings: isPhantomA11yTable treats a value beyond offscreenLeftPx as off-screen',
+  eq('detection settings: isAccessibilityArtifact treats a value beyond offscreenLeftPx as off-screen',
     sandbox.outcomes.offscreenBeyondThresholdIsPhantom, true);
-  eq('detection settings: isPhantomA11yTable treats a value inside offscreenLeftPx as on-screen',
+  eq('detection settings: isAccessibilityArtifact treats a value inside offscreenLeftPx as on-screen',
     sandbox.outcomes.offscreenInsideThresholdIsNotPhantom, false);
   eq('detection settings: isDataTable still finds a plain 2x2 numeric table (no collateral breakage)',
     sandbox.outcomes.isDataTableStillFindsANumericTable, true);
@@ -2806,7 +2806,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
     !!(caught && /DR_DETECTION_SETTINGS/.test(caught.message)), true);
 })();
 
-// findTables' tableFilter: default (isPhantomA11yTable) drops an accessibility
+// findTables' isArtifact: default (isAccessibilityArtifact) drops an accessibility
 // artifact; a pass-through filter keeps it. reuses makePass1DataTable / the
 // aria-hidden artifact shape from the pass1-filter suite above.
 (function findTables_tableFilterDefaultVsPassThrough() {
@@ -2829,11 +2829,11 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   };
 
   eq('findTables: sanity — the fixture is both a valid data table and a phantom a11y table',
-    isDataTable(phantomTable) && isPhantomA11yTable(phantomTable), true);
-  eq('findTables: default tableFilter (isPhantomA11yTable) drops a phantom a11y table',
+    isDataTable(phantomTable) && isAccessibilityArtifact(phantomTable), true);
+  eq('findTables: default isArtifact (isAccessibilityArtifact) drops a phantom a11y table',
     findTables(root).length, 0);
-  eq('findTables: a pass-through tableFilter keeps the phantom a11y table',
-    findTables(root, { tableFilter: () => false }).length, 1);
+  eq('findTables: a pass-through isArtifact keeps the phantom a11y table',
+    findTables(root, { isArtifact: () => false }).length, 1);
 })();
 
 // =============================================================================
@@ -3097,13 +3097,13 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 (function gridNesting_rediscoveryIsIdempotent() {
   const grid = makeDatabaseQueryGrid();
   eq('nesting: a nest whose scrolling pane is registered reports nothing',
-    findTables(grid.wrapperEl, { isSeen: (el) => el === grid.scrollPaneEl }).length, 0);
+    findTables(grid.wrapperEl, { isRegistered: (el) => el === grid.scrollPaneEl }).length, 0);
   eq('nesting: a nest whose wrapper is registered reports nothing',
-    findTables(grid.wrapperEl, { isSeen: (el) => el === grid.wrapperEl }).length, 0);
+    findTables(grid.wrapperEl, { isRegistered: (el) => el === grid.wrapperEl }).length, 0);
   eq('nesting: a nest whose pinned pane is registered reports nothing',
-    findTables(grid.wrapperEl, { isSeen: (el) => el === grid.pinnedPaneEl }).length, 0);
+    findTables(grid.wrapperEl, { isRegistered: (el) => el === grid.pinnedPaneEl }).length, 0);
   eq('nesting: a nest holding no registered element still reports the scrolling pane',
-    findTables(grid.wrapperEl, { isSeen: () => false }).map((r) => r.handle === grid.scrollPaneEl),
+    findTables(grid.wrapperEl, { isRegistered: () => false }).map((r) => r.handle === grid.scrollPaneEl),
     [true]);
 })();
 
@@ -3139,7 +3139,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   };
 
   eq('nesting: the plain native table is no accessibility artifact (sanity)',
-    isPhantomA11yTable(nativeTable), false);
+    isAccessibilityArtifact(nativeTable), false);
   const results = findTables(root);
   eq('nesting: a root holding one native table and one nest reports two tables',
     results.length, 2);
@@ -3457,7 +3457,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 
 (function nominationStep_reportsRegisteredWhenTheNestHoldsASeenElement() {
   const grid = makeDatabaseQueryGrid();
-  const result = nominateNest(grid.wrapperEl, { isSeen: (el) => el === grid.scrollPaneEl });
+  const result = nominateNest(grid.wrapperEl, { isRegistered: (el) => el === grid.scrollPaneEl });
 
   eq('nomination: a nest holding a seen element reports the registered outcome',
     result.outcome, 'registered');
@@ -3604,7 +3604,7 @@ function cnAdapterCellEls(tableEl) {
 
 (function cellNest_aRightClickResolvesTheGridItLandsIn() {
   const page = cnGridInCell();
-  const fresh = { isSeen: () => false };
+  const fresh = { isRegistered: () => false };
 
   const inInner = findTargetTable(page.innerCell, fresh);
   eq('cell nest: a right-click inside the inner grid resolves the inner grid',
@@ -3620,7 +3620,7 @@ function cnAdapterCellEls(tableEl) {
     onHoldingCell !== null && onHoldingCell.handle === page.outer, true);
 
   const registered = new Set([page.outer, page.inner]);
-  const both = { isSeen: (el) => registered.has(el) };
+  const both = { isRegistered: (el) => registered.has(el) };
   const inInnerRegistered = findTargetTable(page.innerCell, both);
   eq('cell nest: with both grids registered, a right-click inside the inner grid resolves the inner grid',
     inInnerRegistered !== null && inInnerRegistered.handle === page.inner && !inInnerRegistered.isNew, true);
@@ -3640,15 +3640,15 @@ function cnAdapterCellEls(tableEl) {
 
   const both = new Set([page.outer, page.inner]);
   eq('cell nest: with both grids registered, every nest reports the registered outcome',
-    nominateNests(page.host, { isSeen: (el) => both.has(el) }).map((r) => r.outcome),
+    nominateNests(page.host, { isRegistered: (el) => both.has(el) }).map((r) => r.outcome),
     ['registered', 'registered']);
   eq('cell nest: with both grids registered, a second run reports no table',
-    findTables(page.host, { isSeen: (el) => both.has(el) }).length, 0);
+    findTables(page.host, { isRegistered: (el) => both.has(el) }).length, 0);
 
-  const innerOnly = findTables(page.host, { isSeen: (el) => el === page.inner });
+  const innerOnly = findTables(page.host, { isRegistered: (el) => el === page.inner });
   eq('cell nest: a registered inner grid leaves the outer grid to register',
     innerOnly.map((r) => r.handle === page.outer), [true]);
-  const outerOnly = findTables(page.host, { isSeen: (el) => el === page.outer });
+  const outerOnly = findTables(page.host, { isRegistered: (el) => el === page.outer });
   eq('cell nest: a registered outer grid leaves the inner grid to register',
     outerOnly.map((r) => r.handle === page.inner), [true]);
 })();
@@ -3704,7 +3704,7 @@ function cnAdapterCellEls(tableEl) {
   eq('cell nest: neither the wrapper nor the pinned pane registers',
     handles.includes(grid.wrapperEl) || handles.includes(grid.pinnedPaneEl), false);
   eq('cell nest: a right-click in the scrolling pane resolves the scrolling pane',
-    findTargetTable(grid.scrollRowEls[1].children[1], { isSeen: () => false }).handle === grid.scrollPaneEl,
+    findTargetTable(grid.scrollRowEls[1].children[1], { isRegistered: () => false }).handle === grid.scrollPaneEl,
     true);
 })();
 
@@ -3755,7 +3755,7 @@ function cnAdapterCellEls(tableEl) {
   eq('cell nest: the three tables are the three grids, outermost first',
     handles.length === 3 && handles[0] === outer && handles[1] === middle && handles[2] === innermost, true);
 
-  const fresh = { isSeen: () => false };
+  const fresh = { isRegistered: () => false };
   eq('cell nest: a right-click in the innermost grid resolves the innermost grid',
     findTargetTable(rowsOf(innermost)[0].children[1], fresh).handle === innermost, true);
   eq('cell nest: a right-click in another cell of the middle grid resolves the middle grid',
@@ -3776,7 +3776,7 @@ function cnAdapterCellEls(tableEl) {
 
   const all = new Set([outer, middle, innermost]);
   eq('cell nest: with all three grids registered, a second run reports no table',
-    findTables(host, { isSeen: (el) => all.has(el) }).length, 0);
+    findTables(host, { isRegistered: (el) => all.has(el) }).length, 0);
 })();
 
 // --- A grid inside a cell of a native table ---
@@ -4126,11 +4126,11 @@ function cnAdapterCellEls(tableEl) {
 
   eq('hidden cells: the accessibility artifact\'s hidden numeric cells would otherwise pass the data test',
     isDataTable(artifactTable), true);
-  eq('hidden cells: isPhantomA11yTable flags the artifact',
-    isPhantomA11yTable(artifactTable), true);
+  eq('hidden cells: isAccessibilityArtifact flags the artifact',
+    isAccessibilityArtifact(artifactTable), true);
 
-  // findTables is where detection combines the two: its default tableFilter
-  // is isPhantomA11yTable, applied before any candidate is kept.
+  // findTables is where detection combines the two: its default isArtifact
+  // is isAccessibilityArtifact, applied before any candidate is kept.
   const root = makePhantomEl({ tagName: 'DIV' });
   root.querySelectorAll = (sel) => (sel === 'table' ? [artifactTable] : []);
   eq('hidden cells: detection skips the accessibility artifact despite its hidden numeric cells',
@@ -4259,7 +4259,7 @@ function withElementDisplays(fn) {
   const plan = makeColumnFirstGrid(planGridColumns());
   withFindTargetEnv([], () => {
     plan.gridEl.parentElement = global.document.body;
-    const found = findTargetTable(plan.spanAt(1, 1), { isSeen: () => false });
+    const found = findTargetTable(plan.spanAt(1, 1), { isRegistered: () => false });
     eq('column-first: a right-click walk from a value resolves the whole grid',
       !!found && found.handle === plan.gridEl, true);
     eq('column-first: the walk resolves no single column',
