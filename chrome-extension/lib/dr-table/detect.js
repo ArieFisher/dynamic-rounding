@@ -1095,25 +1095,20 @@ function writePatches(cell, patches, original) {
  * @returns {{texts: string[], landed: number}}
  */
 function patchPieceTexts(texts, patches) {
-  const starts = [];
-  let flatLen = 0;
-  for (const text of texts) {
-    starts.push(flatLen);
-    flatLen += text.length;
-  }
+  const spans = pieceSpans(texts);
   const byPiece = new Map();
   for (const patch of patches) {
-    const i = texts.findIndex((text, k) => starts[k] <= patch.index && patch.index < starts[k] + text.length);
-    if (i < 0) continue;
-    if (!byPiece.has(i)) byPiece.set(i, []);
-    byPiece.get(i).push(patch);
+    const span = pieceAt(spans, patch.index);
+    if (!span) continue;
+    if (!byPiece.has(span.i)) byPiece.set(span.i, []);
+    byPiece.get(span.i).push(patch);
   }
   const out = texts.slice();
   let landed = 0;
   for (const [i, piecePatches] of byPiece) {
     let after = texts[i];
     for (const { index, numStr, newNum } of piecePatches.slice().sort((x, y) => y.index - x.index)) {
-      const at = index - starts[i];
+      const at = index - spans[i].start;
       if (after.substring(at, at + numStr.length) !== numStr) continue;
       after = after.substring(0, at) + newNum + after.substring(at + numStr.length);
       landed++;
@@ -1196,21 +1191,25 @@ function restoreTextPieces(cell, storedPieces) {
 // With no such piece the rendered positions stand, and a patch that misses
 // there does not land.
 
-// The cell's pieces as the classified text saw them, each with its index
-// and its start in the join of original.
-function pieceSpans(layout) {
-  const spans = [];
+// Each piece's text with its index and its start in the join of the texts.
+function pieceSpans(texts) {
   let at = 0;
-  layout.original.forEach((text, i) => {
-    spans.push({ i, start: at, text });
+  return texts.map((text, i) => {
+    const span = { i, start: at, text };
     at += text.length;
+    return span;
   });
-  return spans;
+}
+
+// The piece that holds the character at a position of the join of the spans'
+// texts, or null. The one lookup of a piece by position.
+function pieceAt(spans, at) {
+  return spans.find((span) => span.start <= at && at < span.start + span.text.length) || null;
 }
 
 // The piece that holds every character of [start, start + length), or null.
 function pieceHolding(spans, start, length) {
-  const span = spans.find((s) => s.start <= start && start < s.start + s.text.length);
+  const span = pieceAt(spans, start);
   return span && start + length <= span.start + span.text.length ? span : null;
 }
 
@@ -1235,7 +1234,7 @@ function flatRange(layout, start, length) {
  */
 function layoutPieceHolding(layout, start, length) {
   const range = flatRange(layout, start, length);
-  return pieceHolding(pieceSpans(layout), range.start, range.length);
+  return pieceHolding(pieceSpans(layout.original), range.start, range.length);
 }
 
 /**
@@ -1251,7 +1250,7 @@ function layoutPieceHolding(layout, start, length) {
  */
 function flatPatches(patches, layout) {
   if (patches.length === 0) return patches;
-  const spans = pieceSpans(layout);
+  const spans = pieceSpans(layout.original);
   const flat = layout.original.join('');
   return patches.map((patch) => {
     const range = flatRange(layout, patch.index, patch.numStr.length);
@@ -1285,7 +1284,7 @@ function textPosition(layout, text, flat) {
 function showsPiecesTogether(shown, pieces, i) {
   const toFlat = mapRenderedToFlat(shown, pieces.join(''));
   if (!toFlat) return true;
-  const start = pieces.slice(0, i).reduce((sum, piece) => sum + piece.length, 0);
+  const { start } = pieceSpans(pieces)[i];
   const at = toFlat.findIndex((f, r) => f === start && !/\s/.test(shown[r]));
   return at <= 0 || !/\s/.test(shown[at - 1]);
 }
@@ -1364,7 +1363,7 @@ function placeDecision(decision, text, layout, opts = {}) {
   } else if (!(decision.mode === 'skip' && decision.reason === 'mixed-disabled')) {
     return decision;
   }
-  const matches = stackedMatches(pieceSpans(layout), (span) => layout.runsTogether(span.i));
+  const matches = stackedMatches(pieceSpans(layout.original), (span) => layout.runsTogether(span.i));
   if (matches === 'split') return { mode: 'skip', reason: 'split' };
   if (matches === null) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
   // stackedMatches counts in the join of original and the decision counts in
