@@ -160,7 +160,7 @@ Example: `round(87054321 / 500000 + 1e-9) × 500000 = 174 × 500000 = 87,000,000
 ```
 result = max(raw, 10^current_mag)
 ```
-The order-of-magnitude floor: a result never collapses below the value's own order of magnitude, so a tens-of-millions value can never round to 0.
+The value-OoM floor: a result never collapses below the value's own magnitude, so a tens-of-millions value can never round to 0.
 
 For a fractional offset whose integer part is at least `X_FLOOR_THRESHOLD` (1):
 ```

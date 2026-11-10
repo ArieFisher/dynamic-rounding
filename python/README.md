@@ -65,13 +65,13 @@ round_dynamic_series(s)  # → [1000.0, -500.0, 4500000.0]
 
 **Single mode** (when `data` is a number):
 - `data`: Number to round
-- `offset`: Order-of-magnitude adjustment (default: -0.5)
+- `offset`: OoM adjustment (default: -0.5)
 - `enforce_numeric`: If `True`, raises `ValueError` for non-numeric input
 
 **Dataset mode** (when `data` is a list or tuple):
 - `data`: List of numbers to round
-- `offset_top`: Order-of-magnitude adjustment for the top order(s) of magnitude (default: -0.5)
-- `offset_other`: Order-of-magnitude adjustment for the other orders of magnitude (defaults to matching `offset_top`)
+- `offset_top`: OoM adjustment for top magnitude(s) (default: -0.5)
+- `offset_other`: OoM adjustment for other magnitudes (defaults to matching `offset_top`)
 - `num_top`: How many top orders get `offset_top` (default: 1)
 - `enforce_numeric`: If `True`, raises `ValueError` for non-numeric values in list
 
@@ -86,16 +86,16 @@ Same parameters as `round_dynamic`, but operates on a pandas Series.
 
 | Offset | Meaning | 87,054,321 rounds to |
 |--------|---------|----------------------|
-| 1 | one order of magnitude coarser | 100,000,000 |
-| 0.5 | half-step toward the next-larger order of magnitude | 100,000,000 |
-| 0 | current order of magnitude | 90,000,000 |
-| -0.5 | half-step within the current order of magnitude (default) | 85,000,000 |
-| -1 | one order of magnitude finer | 87,000,000 |
-| -1.5 | half-step within one order of magnitude finer | 87,000,000 |
+| 1 | one OoM coarser | 100,000,000 |
+| 0.5 | half-step toward the next-larger OoM | 100,000,000 |
+| 0 | current OoM | 90,000,000 |
+| -0.5 | half-step within the current OoM (default) | 85,000,000 |
+| -1 | one OoM finer | 87,000,000 |
+| -1.5 | half-step within one OoM finer | 87,000,000 |
 
-**Sign convention for fractional offsets:** The sign of the offset chooses the direction of the half-step. `+0.5` rounds to half of the *next-larger* order of magnitude, `-0.5` to half of the *current* order of magnitude. More generally, the step is `|frac(offset)| * 10 ** (floor(log10(abs(value))) + ceil(offset))`.
+**Sign convention for fractional offsets:** The sign of the offset chooses the direction of the half-step. `+0.5` rounds to half of the *next-larger* OoM, `-0.5` to half of the *current* OoM. More generally, the step is `|frac(offset)| * 10 ** (OoM + ceil(offset))`.
 
-**Floor at the value's order of magnitude:** After rounding, the magnitude of the result is at least `10 ** floor(log10(abs(value)))` — so a tens-of-millions value can never collapse to `0`.
+**Floor at the value's OoM:** After rounding, the magnitude of the result is at least `10 ** floor(log10(abs(value)))` — so a tens-of-millions value can never collapse to `0`.
 
 **Floor at the integer offset:** A fractional offset whose integer part is 1 or more never rounds finer than the corresponding integer offset. `round_dynamic(87054321, offset=-2.5)` returns `87100000` — the `-2` result floors the raw `-2.5` result.
 

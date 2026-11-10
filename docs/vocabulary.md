@@ -6,7 +6,7 @@ One term per concept, across every platform and every document. Use the [Retired
 
 | Term | Meaning |
 | --- | --- |
-| order of magnitude | The power of ten of a value's size: `floor(log10(abs(value)))`.<br><br>e.g. 112 and -969 have an order of magnitude of 2. |
+| order of magnitude | The power of ten of a value's size: `floor(log10(abs(value)))`. Spell it out on first use, and write OoM after that.<br><br>e.g. 112 and -969 have an order of magnitude of 2. |
 | offset | How far from a value's own order of magnitude to round.<br><br>offset=0 is the value's own order of magnitude.<br>Negative means finer (e.g. -1 means the next smaller order of magnitude).<br>Positive means coarser (e.g. 1 means the next larger order of magnitude). |
 | step | The **concrete unit** a value is rounded to.<br><br>e.g. An offset of -0.5 on a value with an order of magnitude of 7 gives a **step = 5,000,000;**<br>the sidebar shows it as "**nearest 5M**". |
 | set-aware | Rounded against the whole dataset.<br><br>Numbers in the **largest** orders of magnitude of a dataset can round differently from the rest. |
@@ -231,8 +231,6 @@ Terms for reviews, plans, and discussion.
 | order list | The runner's one list of test pieces, in run order. The runner stops with an error when a piece in the folder is missing from the list, or a listed piece is missing from the folder. |
 | joined suite | The text of every test piece, in order-list order, run as one script in one shared scope. A function one piece defines is callable from every piece, and the state one piece leaves stays in scope for the pieces after it. The checks that scan the suite's own text read the joined suite. |
 | comparison test | A test that draws the same values once as a native table and once as a grid, runs detection and the simplification on both, and checks that both are found or both are missed, that the same cells change, and that each changed cell reads the same text. Each tested pair has one. |
-| cost | What a change uses up, such as lines, risk, review time, or runtime. |
-| benefit | What the user or the maintainer gains from a change. |
 | help card | The box Google Sheets shows while a user types `=ROUND_DYNAMIC(`. Sheets builds it from the function's JSDoc: the description lines, including the `[VERSION]` line, and one line per parameter. |
 | bump workflow | The automation that runs after every merged pull request, raises the version of each package the pull request touched, and merges the version-bump pull request itself. One table in its script lists the packages, their version files, and the build each version file feeds. |
 | Sheets build | The script that writes the Sheets library, the one file a user pastes into Apps Script, by joining the license header, the shared library files it lists, and the Sheets entry source: the code only Sheets holds, `ROUND_DYNAMIC` and its help card among it. Its list is the one list of shared files the Sheets library holds. The committed Sheets library is its output, and its check fails the tests on any pull request whose committed file differs from the build. |
@@ -259,7 +257,6 @@ and a row with no pattern is left to the human sweep.
 | never used (of code) | dead | No caller reaches the helper, so it is never used. | `\bdead code` |
 | dead handle | orphaned handle | A dead handle stands for a table no longer in the page. | `\borphaned handle` |
 | coupled | fused, tied | The sidebar view is coupled to the active table's table settings. | `\bfused\b\|tightly tied\|tied together\|\btied to the (table\|panel\|pillbox\|toggle\|sidebar\|switch\|state)\b` |
-| benefit | "what it buys" | The gate's benefit is having a single vocabulary across every living document. | `what it buys` |
 | lens preview | preview band | The lens preview shows samples from several orders of magnitude, before and after simplification. | `\bpreview band` |
 | table settings | settings record | The sidebar pillbox writes to the active table's table settings, and the table re-simplifies from them. | `\bsettings record\b\|\bsettings records\b` |
 | unrestorable | stuck | A table whose originals were never captured is unrestorable. | `stuck table` |
@@ -271,7 +268,6 @@ and a row with no pattern is left to the human sweep.
 | publish | report | A view publishes an intent; the application model publishes a state change. | — |
 | remarks | note (the capture's free-text field) | The placeholder text of the remarks follows the mark. | `\bmark and note\b\|\bnote form\b\|\bnote field\b\|the capture.s note` |
 | detection settings | tuning block, detection tuning | The capture holds the detection settings in force at capture time. | `\btuning block\|\bdetection tuning` |
-| order of magnitude | OoM; magnitude (alone; "max magnitude", "magnitude freeze", and "magnitude suffix" stay) | An offset of -1 rounds to the next smaller order of magnitude. | `\bOoMs?\b` |
 | living document | living doc, design doc | Every living document uses the vocabulary. | `\bliving docs?\b\|\bdesign docs?\b` |
 | direction reader | direction read | The direction reader tells a row-first grid from a column-first grid. | `\bdirection read\b` |
 
