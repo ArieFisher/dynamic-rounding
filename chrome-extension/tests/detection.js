@@ -796,7 +796,7 @@ const supTestOpts = {
 // LG1: Pass — unlabelled div-grid, VARIABLE ROW HEIGHTS (AC2, S2 headline)
 // S2 mandates row height is NOT tested. Rows must have differing heights yet
 // the function must still return true. Column-0 offsetWidths are uniform (80px)
-// so step 6 passes.
+// so the alignment step passes.
 (function looksLikeGrid_pass_variableRowHeights() {
   const rows = [
     makeGridRow([{text:'Name',width:80},{text:'1234'}], 'row', 20),
@@ -813,8 +813,8 @@ const supTestOpts = {
 })();
 
 // LG2: Pass — ARIA short-circuit (role="grid") skips geometry probe
-// The geometry probe (step 6) is skipped when role="grid". We prove this by
-// making column-0 offsetWidths NON-uniform (all different) — if step 6 ran,
+// The alignment step is skipped when role="grid". We prove this by
+// making column-0 offsetWidths NON-uniform (all different) — if the alignment step ran,
 // the 80% alignment check would fail and return false. With the ARIA
 // short-circuit the function must still return true.
 (function looksLikeGrid_pass_ariaShortCircuit() {
@@ -825,7 +825,7 @@ const supTestOpts = {
     makeGridRow([{text:'Qux',width:40},{text:'3456'}], 'row', 20),  // width 40
     makeGridRow([{text:'Etc',width:50},{text:'7890'}], 'row', 20),  // width 50
   ];
-  // All column-0 widths differ → step 6 would reject; ARIA role must short-circuit before it.
+  // All column-0 widths differ → the alignment step would reject; ARIA role must short-circuit before it.
   const container = makeGridContainer(rows, 'flex', 'grid', '');
   withGridComputedStyle(container, 'flex', function() {
     eq('looksLikeGrid: pass — ARIA role="grid" short-circuits geometry probe (non-uniform widths still accepted)',
@@ -860,7 +860,7 @@ const supTestOpts = {
 
 // LG4: Reject — CSS layout/card grid with NO numeric content (AC4)
 // Repetitive card-style divs with text-only content must be rejected.
-// This proves step 5 (numeric-content guard) works as the mandatory false-positive guard.
+// This proves the numeric-content step works as the mandatory false-positive guard.
 (function looksLikeGrid_reject_cssCardGrid() {
   const rows = [
     makeGridRow([{text:'Card A',width:100},{text:'Buy now'}], 'card', 20),
@@ -909,7 +909,7 @@ const supTestOpts = {
   });
 })();
 
-// LG7: Reject — display is not grid/flex (step 4)
+// LG7: Reject — display is not grid/flex (layout step)
 (function looksLikeGrid_reject_blockDisplay() {
   const rows = [
     makeGridRow([{text:'Name',width:100},{text:'1234'}], 'row', 20),
@@ -925,7 +925,7 @@ const supTestOpts = {
   });
 })();
 
-// LG8: Reject — non-uniform column-0 widths (step 6) when no short-circuit
+// LG8: Reject — non-uniform column-0 widths (alignment step) when no short-circuit
 // Proves the geometry probe rejects grids where column widths are misaligned.
 // All widths differ so < 80% match → rejected.
 (function looksLikeGrid_reject_nonUniformColumnWidths() {
@@ -936,16 +936,16 @@ const supTestOpts = {
     makeGridRow([{text:'Qux',width:40},{text:'3456'}], 'row', 20),
     makeGridRow([{text:'Etc',width:50},{text:'7890'}], 'row', 20),
   ];
-  // No role, no library class → step 6 runs and must reject.
+  // No role, no library class → the alignment step runs and must reject.
   const container = makeGridContainer(rows, 'flex', null, '');
   withGridComputedStyle(container, 'flex', function() {
-    eq('looksLikeGrid: reject — non-uniform column-0 widths (step 6)',
+    eq('looksLikeGrid: reject — non-uniform column-0 widths (alignment step)',
       looksLikeGrid(container), false);
   });
 })();
 
 // LG9: Pass — column-0 widths are uniform (80% threshold satisfied)
-// Exactly matching widths → step 6 passes.
+// Exactly matching widths → the alignment step passes.
 (function looksLikeGrid_pass_uniformColumnWidths() {
   const rows = [
     makeGridRow([{text:'Name',width:100},{text:'1234'}], 'row', 20),
@@ -1022,7 +1022,7 @@ const supTestOpts = {
       makeGridRow([{text:'E',width:100},{text:'500'}], 'row', 20),
     ];
 
-    // Text-only rows: will fail looksLikeGrid at step 5 (no numeric content)
+    // Text-only rows: will fail looksLikeGrid at the numeric-content step (no numeric content)
     const noNumericRows = [
       makeGridRow([{text:'Alpha',width:100},{text:'Foo'}], 'row', 20),
       makeGridRow([{text:'Beta',width:100},{text:'Bar'}], 'row', 20),
@@ -1090,7 +1090,7 @@ const supTestOpts = {
 // A click target with no grid ancestors and no <table> ancestor.
 (function findTargetTable_returnsNullWhenNothing() {
   withFindTargetEnv([], function() {
-    // Text-only rows fail looksLikeGrid (step 5 — no numeric content)
+    // Text-only rows fail looksLikeGrid (numeric-content step — no numeric content)
     const noNumericRows = [
       makeGridRow([{text:'Alpha',width:100},{text:'Foo'}], 'row', 20),
       makeGridRow([{text:'Beta',width:100},{text:'Bar'}], 'row', 20),
@@ -2748,8 +2748,8 @@ const PRE_MOVE_DETECTION_SETTINGS = {
       outcomes.minChildrenBelowFails = looksLikeGrid(makeEl(fourRows), { styleProbe: gridStyleProbe });
       outcomes.minChildrenAtPasses = looksLikeGrid(makeEl(fiveRows), { styleProbe: gridStyleProbe });
 
-      // --- gridRepetitionShare (steps 2/3): a share below the 0.5 floor
-      // fails (3-of-8 sharing either a class or a child count); a share
+      // --- gridRepetitionShare (the consistent-cell-count step): a share below the 0.5 floor
+      // fails (3-of-8 sharing a child count); a share
       // exactly at the floor passes (5-of-10) ---
       const belowFloorRows = [
         makeRow('x', [makeCell('1', 100)]),
@@ -2767,7 +2767,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
         .concat([0, 1, 2, 3, 4].map(() => makeRow('row-b', [makeCell('1', 50), makeCell('2', 50), makeCell('3', 50)])));
       outcomes.repetitionAtFloorPasses = looksLikeGrid(makeEl(atFloorRows), { styleProbe: gridStyleProbe });
 
-      // --- gridColumnWidthSample + gridColumnWidthAgreement (step 6): the
+      // --- gridColumnWidthSample + gridColumnWidthAgreement (alignment step): the
       // sample is bounded to the first 10 of 12 uniform rows; 8-of-10
       // matching widths (exactly 0.8) passes, 7-of-10 (0.7) fails ---
       const widthRow = (w) => makeRow('row', [makeCell('1', w)]);
@@ -4701,9 +4701,9 @@ function makeSparselyBoxedGrid(boxed) {
 
 // The grid adapter's scroll-container lookup returns the first descendant that
 // matches a vendor profile's scroll-container selectors, then [role="grid"],
-// and otherwise the grid element. An element that matches a selector itself
-// has no effect beyond that: with no matching descendant it resolves to
-// itself, and a matching descendant wins over the element's own match.
+// and otherwise the grid element. A grid element that matches a selector
+// itself resolves to itself when no descendant matches, and a matching
+// descendant resolves ahead of it.
 (function gridAdapter_scrollContainerOfAnElementThatMatchesASelectorItself() {
   const matchesEverySelector = () => true;
   const alone = { matches: matchesEverySelector, querySelectorAll: () => [] };

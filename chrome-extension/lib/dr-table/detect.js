@@ -1537,8 +1537,7 @@ function findTargetTable(el, opts = {}) {
 /**
  * The nearest positioned ancestor of `el`, or `el` itself when it is
  * positioned; null when none is. Positioned means a CSS position of relative,
- * absolute, fixed, or sticky. The check reads inline style first, which works
- * in a Node harness as well as a browser, then computed style.
+ * absolute, fixed, or sticky, read through the style probe.
  *
  * @param {Element} el
  * @param {{styleProbe?: object}} [opts]
