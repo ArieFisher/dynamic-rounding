@@ -343,6 +343,30 @@
     looksLikeGrid(gridWithNumberAt(budget + 1), { styleProbe: gridProbe }), false);
 })();
 
+// The column plan of the numeric step reads spans only within the data test's
+// budget: a candidate row holds at least one cell, so the budget of cell reads
+// ends within that many rows.
+(function geometryProbe_columnPlanReadsSpansWithinTheDataTestBudget() {
+  const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
+  const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
+  let spanReads = 0;
+  const grid = {
+    className: '',
+    getAttribute: (name) => (name === 'role' ? 'grid' : null),
+    children: Array.from({ length: budget + 50 }, () => ({
+      className: 'row',
+      children: [withTextPiece({
+        textContent: 'text',
+        getAttribute: (name) => { if (name === 'aria-colspan') spanReads++; return null; },
+      })],
+    })),
+  };
+  eq('geometry probe: candidate rows holding no number fail the numeric step',
+    looksLikeGrid(grid, { styleProbe: gridProbe }), false);
+  eq('geometry probe: the column plan reads spans within the data test budget',
+    spanReads <= budget, true);
+})();
+
 // The geometry probe once held a repetition step before the consistent-cell-
 // count step. It passed when the largest first-class-token share or the
 // largest child-count share, zero-child entries included, reached the floor.

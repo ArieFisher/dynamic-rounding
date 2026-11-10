@@ -1423,7 +1423,10 @@ function looksLikeGrid(el, opts = {}) {
  */
 function probeRowsHoldNumber(candidateRows, opts) {
   const port = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
-  return holdsRoundableCell(buildRows(candidateRows.map((row) => Array.from(row.children)), gridCellSpans,
+  // A candidate row holds at least one cell, so the data test's budget of
+  // cell reads ends within this many rows; the column plan reads no further.
+  const rows = candidateRows.slice(0, DR_DETECTION_SETTINGS.dataTestCellBudget);
+  return holdsRoundableCell(buildRows(rows.map((row) => Array.from(row.children)), gridCellSpans,
     (cellEl) => makeGridCellObj(cellEl, port)));
 }
 
