@@ -62,8 +62,7 @@ const GRID_CELL_SELECTOR = '[role="cell"], [role="gridcell"], [role="rowheader"]
 const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE) || 1;
 
 /**
- * The node above `node`: its parent element, else its parent node (the
- * document or a fragment), else null. Every parent read in this file calls it.
+ * The node above `node`: its parent element, else its parent node, else null.
  * @param {Node} node
  * @returns {Node|null}
  */
@@ -74,13 +73,10 @@ function parentOf(node) {
 /**
  * The ancestor walk every walk up the tree calls: visits `start`, then each
  * node above it, and returns the first node `found` reports, or null. The walk
- * ends before a node `stopAt` reports, after `cap` nodes, and at the top of
- * the tree. `found` may keep state, for a walk that reads each node.
+ * ends before a node `stopAt` reports, after `cap` nodes, and at the tree's
+ * top. `found` may keep state.
  * @param {Node|null} start
- * @param {number} cap - the most nodes the walk visits: the setting
- *   DR_DETECTION_SETTINGS.gridWalkDepthCap for a walk bounded by page depth
- *   (at the cap the walk ends and returns null), or Infinity for a walk
- *   bounded by the top of the tree alone
+ * @param {number} cap - most nodes visited (the walk then returns null): gridWalkDepthCap, or Infinity for the tree's top alone
  * @param {((node: Node) => boolean)|null} stopAt - null stops nowhere
  * @param {(node: Node) => boolean} found
  * @returns {Node|null}
@@ -1415,8 +1411,8 @@ function looksLikeGrid(el, opts = {}) {
 }
 
 /**
- * Whether the geometry probe's candidate rows hold a cell the data test counts
- * (see holdsRoundableCell). The cells are the rows' children, read as grid cells.
+ * Whether the candidate rows hold a cell the data test counts (see
+ * holdsRoundableCell), reading the rows' children as grid cells.
  * @param {Element[]} candidateRows
  * @param {{originalsPort?: object}} opts
  * @returns {boolean}
@@ -1447,13 +1443,11 @@ function carriesGridMark(el, vendorProfiles) {
 
 /**
  * Whether the first cells of the candidates line up, sampling at most
- * DR_DETECTION_SETTINGS.gridColumnWidthSample candidates. The probe measures
- * along the axis on which cells line up. On a row-first grid the candidates
- * are rows, and the first cells of the rows form column A, so their widths
- * agree. On a column-first grid (see isColumnFirst) the candidates are
- * columns, and the first cells of the columns form the first row, so their
- * heights agree. Fewer than two measurable candidates leave nothing to
- * disagree, so the answer is true.
+ * DR_DETECTION_SETTINGS.gridColumnWidthSample candidates. On a row-first grid
+ * the first cells of the rows form column A, so their widths agree; on a
+ * column-first grid (see isColumnFirst) the first cells of the columns form the
+ * first row, so their heights agree. Fewer than two measurable candidates
+ * leave nothing to disagree, so the answer is true.
  * @param {Element[]} children - the element's children, which fix the direction
  * @param {Element[]} candidateRows
  * @param {object} styleProbe
