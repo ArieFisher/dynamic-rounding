@@ -78,8 +78,11 @@ The cell-level gate keeps the rules that read the whole cell: the range expressi
 
 1. **`stretch-shape`**: the ladder returns stretches; every consumer reads them. No behavior change. Dependencies: none.
 2. **`mixed-cell-stretches`**: the ladder marks every stretch in a mixed cell, and each stretch takes its own rule and switch. Dependencies: `stretch-shape`.
+3. **`last-hour-times`**: a time in the last hour of the clock rounds down to the hour. Dependencies: none.
 
-The edge is real. Sprint 2 changes behavior through the shape sprint 1 introduces, and the repository rule under "Test a plan for simplicity" puts a merge that changes no behavior in its own `refactor/` pull request first, so the existing suite proves it. Splitting sprint 2 by stretch kind (dates first, times later) would build one rule for one kind and leave the other to catch up, which "Collapse a path before opening a second one" forbids.
+`last-hour-times` changes only the hour arithmetic inside the time rule, so it runs in the first wave beside `stretch-shape`. Both touch `roundTimeText`: `stretch-shape` adds bounds to its input and `last-hour-times` changes its hour step. Whichever merges second merges `main` into its branch and keeps both changes.
+
+The edge between sprints 1 and 2 is real. Sprint 2 changes behavior through the shape sprint 1 introduces, and the repository rule under "Test a plan for simplicity" puts a merge that changes no behavior in its own `refactor/` pull request first, so the existing suite proves it. Splitting sprint 2 by stretch kind (dates first, times later) would build one rule for one kind and leave the other to catch up, which "Collapse a path before opening a second one" forbids.
 
 ## 5. Sprint Definitions
 
@@ -114,7 +117,7 @@ The edge is real. Sprint 2 changes behavior through the shape sprint 1 introduce
   - The ladder runs every reader over the cell's text with the overlap order in section 3.2, and stops at the first whole-cell match no longer.
   - A clock time inside text becomes a time stretch when the Times switch is on, with its AM or PM suffix inside the stretch. It stays a protected stretch when the switch is off, as today.
   - A number in a cell that holds a date or time now rounds under the numbers-inside-text switch.
-  - The product answers in section 6 apply.
+  - Decisions 1 to 3 in section 6 apply: the ISO date-time split, the ambiguous date held per stretch, and the currency and percent switches held per number stretch. `getExclusionReason` loses its percent and currency branches, and the number stretch reader holds back a number whose span carries the sign or code.
   - Docs:
     - `docs/design.md` and `chrome-extension/README.md` describe mixed cells.
     - `js/README.md` and `js/tests-googlesheets-tab.md` list the Sheets change: dates and times are off in Sheets, so a date's digits stay protected and a number beside it now rounds.
@@ -127,8 +130,11 @@ The edge is real. Sprint 2 changes behavior through the shape sprint 1 introduce
   - With dates at year and times at hour:
     - "Monday, November 09 2026 at 19:54 UTC" becomes "Monday, 2026 at 20:00 UTC".
     - "Paid $12,345 on November 09 2026" rounds the amount and shows the year.
-    - "2026-11-09T19:54 12,345" keeps 2026, 11, and 09 and rounds 12,345.
-  - A cell that is one date, one clock time, one ISO date-time, one identifier, or one number gives the same result as on `main`. The existing expected values prove it.
+    - "2026-11-09T19:54 12,345" becomes "2026 20:00 12,000"; no digit of the date or time rounds as a number.
+    - "2026-11-09T19:54" becomes "2026 20:00".
+  - With the currency switch off, "Paid $12,345 on November 09 2026" keeps the amount and shows the year.
+  - With an unresolved all-numeric date, "03/04/2026: 12,345" keeps the date and rounds the number.
+  - A cell that is one date, one clock time, one identifier, or one number gives the same result as on `main`. The existing expected values prove it. ISO date-time expected values change under decision 1, and the pull request lists each one.
   - The max magnitude counts a number that shares a cell with a date.
   - The test page's new section lists each mixed shape with its expected result, and `js/round-dynamic-cases.json` gains rows for the same shapes so the Sheets and extension suites run them.
 - **Dependencies:** `stretch-shape`.
@@ -138,6 +144,24 @@ The edge is real. Sprint 2 changes behavior through the shape sprint 1 introduce
   - `findDates` already returns bounds and `clockTimeRanges` already finds times inside text. The new work is the overlap pass and the span time rounder's use.
   - An impossible date must become a protected stretch, so its digits never round as numbers.
   - Each changed stretch needs its own piece check. A date in one piece and a time in another both change; a stretch that crosses pieces stays as written with its debug row, and the other stretches still change.
+
+### Sprint 3: `last-hour-times`
+
+- **Branch:** `fix/last-hour-times`
+- **Goal:** At hour level, a time in the last hour of the clock rounds down to the hour, so no rounded time moves past midnight or past the date beside it.
+- **Scope:**
+  - In `roundTimeText`, an hour of 23, an hour of 11 with PM, or an hour of 11 with no AM or PM rounds down to ":00" whatever its minutes. Every other hour rounds as today.
+  - `roundISODateTime` applies the same rule in place of its clamp to 23:59.
+  - Docs that state hour rounding: `docs/design.md`, `chrome-extension/README.md`, and the sidebar help card if it states it.
+  - The test page's time section gets rows for 23:45, 11:45 PM, and 11:45, each with its expected result.
+- **Out of scope:** times inside text (sprint 2); minute granularity.
+- **Acceptance criteria:**
+  - 23:45 becomes 23:00, 11:45 PM becomes 11:00 PM, 11:45 becomes 11:00, and "2026-11-09 23:45" becomes "2026-11-09 23:00".
+  - 22:45 still becomes 23:00, and 10:45 PM still becomes 11:00 PM.
+  - The answer to open question 1 in section 6 holds for 11:45 AM.
+- **Dependencies:** none.
+- **Complexity:** S.
+- **Dev notes:** Sheets keeps times off, so this sprint changes nothing in Sheets. The rule reads the hour as written, before any 12-hour conversion, so 11 PM and 23 meet one test.
 
 ## Simplicity
 
@@ -163,20 +187,23 @@ The edge is real. Sprint 2 changes behavior through the shape sprint 1 introduce
    - "2026-11-09T19:54 12,345" gives mode extracted, with 2026, 11, 09, and 12,345 as numbers.
    - "Meeting at 19:54" gives skip, reason no-number.
 
-## 6. Open Questions
+## 6. Decisions and Open Questions
 
-1. **ISO date-time.** Today "2026-11-09T19:54" takes the time rule as one value and keeps its date ("2026-11-09 20:00"). Options:
-   - (a) keep it one time stretch, so this shape looks the same as today (recommended);
-   - (b) split it into a date stretch and a time stretch, which matches the written form but writes "2026 20:00" at year.
-2. **An unresolved ambiguous date.** Today a cell whose all-numeric date the column post-pass cannot read stays whole. Options:
-   - (a) hold that cell's date stretches and let its other stretches change (recommended);
-   - (b) hold the whole cell as today.
-3. **The currency and percent switches when off.** Today each one holds back the whole cell when it sees a currency sign or a percent sign anywhere in it. With the currency switch off, "Paid $12,345 on November 09 2026" keeps its full date too. Options:
-   - (a) hold only the number stretch beside the sign (recommended);
-   - (b) keep holding the whole cell.
-4. **Hour rounding beside a date.** A time at 23:45 rounds to the next day's 00:00 at hour level. Options:
-   - (a) follow the whole-cell clock-time rule unchanged;
-   - (b) clamp to 23:59, as the ISO date-time rule does today, so the time never points past the date beside it (recommended).
+### Decided (2026-11-10)
+
+1. **ISO date-time splits into a date stretch and a time stretch.** The date stretch follows the Dates switch and its granularity, and the time stretch follows the Times switch and its granularity. The time stretch covers the separator through the time zone offset and writes a space and "HH:MM", as the ISO rule does today, so "2026-11-09T19:54:00Z" becomes "2026 20:00" at year and hour.
+2. **An unresolved ambiguous date holds back that cell's date stretches alone.** The cell's other stretches still change.
+3. **The currency and percent switches hold back only the number stretch beside the sign.** A number stretch holds back when a currency sign, a currency code, or a percent sign sits inside its number span (the sign or code beside its digits, as the number span reads it). The rest of the cell's stretches change.
+4. **A time in the last hour of the clock rounds down to the hour.** At hour level, 23:xx becomes 23:00, 11:xx PM becomes 11:00 PM, and 11:xx with no AM or PM becomes 11:00. The rule covers every time the time rule rounds: a whole-cell clock time, a time inside text, and the time of an ISO date-time. It replaces the ISO rule's clamp to 23:59 and the whole-cell rule's roll to 00:00 or 12:00, so no time ever moves past the date beside it or past midnight. Sprint `last-hour-times` builds it.
+
+### Open
+
+1. **11:xx AM.** The decided rule names 11:xx PM and 11:xx with no suffix. Options:
+   - (a) 11:xx AM rounds as any other morning time, to 12:00 PM (recommended: the result stays on the same day);
+   - (b) 11:xx AM also rounds down to 11:00 AM, so every 11 o'clock time follows one rule.
+2. **An ISO date-time with dates on and times off.** The date stretch changes and the time stretch stays as written, so "2026-11-09T19:54" becomes "2026T19:54". Options:
+   - (a) the time stretch keeps its separator as written: "2026T19:54";
+   - (b) an ISO date-time whose time stretch stays as written keeps its date as written too, so the value stays whole (recommended: no half-simplified machine value).
 
 ## 7. Out of Scope (Separate Sprint-Stack)
 
@@ -186,3 +213,4 @@ The edge is real. Sprint 2 changes behavior through the shape sprint 1 introduce
 ## Decisions Log
 
 - 2026-11-10: Initial draft generated by the sprint-plan skill.
+- 2026-11-10: The product manager decided the ISO date-time split, the ambiguous date held per stretch, the currency and percent switches held per number stretch, and the last-hour rule. Sprint `last-hour-times` added.
