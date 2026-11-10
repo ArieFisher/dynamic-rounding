@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Blocks a commit that would add a file the repository has no place for, or
-# a retired synonym to a living doc's new prose.
+# a retired synonym to new prose in any file.
 # Enable once per clone:  git config core.hooksPath .githooks
 #
 set -uo pipefail

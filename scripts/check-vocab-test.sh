@@ -143,7 +143,10 @@ expect_block "word-boundary pattern caught"         docs/notes.md    'Click the 
 expect_pass  "canonical prose passes"               docs/design.md   'The pillbox turns rounding on for the dataset.'
 expect_pass  "allowed sense passes"                 docs/design.md   'A blank range expression covers the whole table; offsets outside the range throw.'
 expect_pass  "record path exempt"                   docs/sprint-logs/old-log.md 'The table toggle was renamed later.'
-expect_pass  "non-markdown file exempt"             scripts/notes.txt 'the table toggle lives here'
+expect_block "code comment caught"                  chrome-extension/sidebar.js '// The main switch turns the table off.'
+expect_block "test name caught"                     chrome-extension/tests/pillbox.js "eq('the pill toggles the table', a, b);"
+expect_block "non-markdown text file caught"        scripts/notes.txt 'the table toggle lives here'
+expect_pass  "self-test exempt"                     scripts/check-vocab-test.sh 'expect_block "x" docs/design.md "The table toggle."'
 
 # Collocations. Each of these four words is banned only in the phrases that
 # can carry the retired sense, so every case comes in a pair: the phrase is

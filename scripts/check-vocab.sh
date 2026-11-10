@@ -3,10 +3,11 @@
 # Gate new prose on retired synonyms.
 #
 # docs/vocabulary.md retires one synonym per concept; this check stops a
-# retired synonym from entering a living doc's new prose. It reads only the
-# ADDED lines of markdown files, so historical text is never re-litigated,
-# and it skips the records (sprint plans, sprint logs, research notes, the
-# changelog) plus the vocabulary itself, which must name the retired words.
+# retired synonym from entering new prose: a living document, a code comment,
+# a test name. It reads only the ADDED lines of every file, so historical text
+# is never re-litigated, and it skips the records (sprint plans, sprint logs,
+# research notes, the changelog), the vocabulary itself, which must name the
+# retired words, and this check and its self-test, which spell them out.
 #
 # Modes:
 #   --staged            check lines staged for the next commit (pre-commit hook)
@@ -90,11 +91,13 @@ while IFS= read -r loaded; do
   RETIRED_PATTERNS+=("$loaded")
 done <<< "$patterns_text"
 
-# Paths the sweep never touches: point-in-time records and the canon itself.
+# Paths the sweep never touches: point-in-time records, the canon itself, and
+# this check and its self-test, whose canary and cases spell out retired
+# synonyms on purpose.
 # Note on renames: a file moved OUT of an exempt path re-reads as all-new
 # prose. A historical record is never rewritten to satisfy this gate — extend
 # this list to cover the record's new home instead.
-EXEMPT_PATHS='^docs/sprint-logs/|^docs/sprint-plans/|^docs/research/|^js/CHANGELOG\.md$|^docs/vocabulary\.md$'
+EXEMPT_PATHS='^docs/sprint-logs/|^docs/sprint-plans/|^docs/research/|^js/CHANGELOG\.md$|^docs/vocabulary\.md$|^scripts/check-vocab(-test)?\.sh$'
 
 # --------------------------------------------------------------------------
 # Preflight
@@ -106,7 +109,7 @@ EXEMPT_PATHS='^docs/sprint-logs/|^docs/sprint-plans/|^docs/research/|^js/CHANGEL
 # list comes from markdown tables, so a renamed Block pattern header or a reshaped
 # row lands here too: it reads as an empty list, and the gate fails.
 
-# A sentence the gate must be able to see. It belongs to no living doc, so a
+# A sentence the gate must be able to see. It sits in an exempt file, so a
 # real change never carries it. When the pattern it matches retires, point the
 # canary at another one.
 #
@@ -157,7 +160,6 @@ check_added_lines() {
   local file="$1"
   local diff_cmd=("${@:2}")
 
-  [[ "$file" == *.md ]] || return 0
   if printf '%s' "$file" | grep -qE "$EXEMPT_PATHS"; then return 0; fi
 
   local added
@@ -184,8 +186,9 @@ preflight
 
 # The file list is captured in the main shell so a git failure is observable:
 # a gate that cannot diff must not report success. Renames count (R): a
-# renamed-and-edited living doc is the edit most likely to reintroduce old
+# renamed-and-edited living document is the edit most likely to reintroduce old
 # vocabulary; git prints a rename's destination path, which is the one to scan.
+# A binary file's diff holds no added lines, so every path goes to the sweep.
 mode="${1:-}"
 case "$mode" in
   --staged)

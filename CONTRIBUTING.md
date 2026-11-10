@@ -25,8 +25,8 @@ The policy block is the whole gate, so a bad edit there makes it pass everything
 `scripts/check-vocab.sh` reads the Block pattern column of every table in [docs/vocabulary.md](docs/vocabulary.md), and blocks a commit or a pull request when an added line matches a pattern. On a pull request it reads every line the branch added since it left `main`. The script checks:
 
 - only added lines, so an old line that still holds a retired synonym never blocks an unrelated change
-- only markdown files
-- no historical record, and not the vocabulary itself, which has to spell out the retired synonyms. The exempt-path list near the top of the script holds the exact paths.
+- every file, so a code comment, a test name, and a script message count as new prose alongside a document
+- no historical record, not the vocabulary itself, and not the check or its self-test, which have to spell out the retired synonyms. The exempt-path list near the top of the script holds the exact paths.
 
 A blocked commit prints the file, the pattern it matched, and the line. Replace the retired synonym with the term in the row whose pattern matched. Run the check yourself any time with `scripts/check-vocab.sh --staged`, or on a whole branch with `scripts/check-vocab.sh --range origin/main HEAD`. It exits 0 when every added line is clean, 1 when it blocks a line, and 2 when it cannot run the check at all. The vocabulary states how a new pattern takes effect and how to write one.
 
