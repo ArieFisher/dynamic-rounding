@@ -312,13 +312,34 @@ function buildRows(rowCellEls, readSpans, makeCell, rowProps) {
 const SIMPLIFIED_CLASS = 'dr-ext-rounded';
 
 /**
+ * A simplified cell's record, stored through the originals port. A landed
+ * write replaces it, so the written text never goes stale; a write that lands
+ * nothing stores nothing.
+ *
+ * @typedef {object} CellRecord
+ * @property {string} value - the text the cell classified: opts.value, the
+ *   text the pass read before its first write, else getText()
+ * @property {{text: string, written: string}[]} pieces - one entry per text
+ *   piece, in page order: text, its original; written, its text after this write
+ * @property {{start: number, end: number}[]|null} supRanges - a
+ *   <sup>-bearing cell's exponent ranges, measured in value; null for a cell
+ *   with no <sup>
+ * @property {number[]|null} linkFilteredIdx - the positions of the numbers the
+ *   link filter kept, for a cell rounded number by number; null otherwise
+ * @property {string} pageTitle - the cell's hover text as the page set it,
+ *   read on the first write and carried through every later write (the
+ *   extension's hover text never replaces it), except that a held cell whose
+ *   hover text the page changed takes the new text; '' when the page set none
+ */
+
+/**
  * The originals port: per-cell storage for a simplified cell's record, read
  * and written by the cell objects of both adapters. The default is a private
  * WeakMap<cellEl, record>, which suits a caller with no application model (a
  * test). content.js passes a port backed by the table's registry entry in
  * DR_MODEL (app/model.js), so a cell's originals survive a toggle without a
  * page attribute. makeAdapter takes another port as opts.originalsPort. The
- * record's shape is documented at applyPatches in makeCellObj.
+ * record's shape is CellRecord.
  */
 function makeDefaultOriginalsPort() {
   const store = new WeakMap();
@@ -347,7 +368,7 @@ function originalHoverText(value) {
  * place, and any other live hover text is the page's newer text, which
  * replaces it.
  * @param {Element} cellEl
- * @param {{value: string, pageTitle?: string}|null} record
+ * @param {CellRecord|null} record
  * @returns {string}
  */
 function pageHoverText(cellEl, record) {
@@ -383,7 +404,7 @@ function makeCellObj(cellEl, port, reads) {
     getText,
     getDisplayedText: reads.displayedText,
     // The cell's text pieces as getText() read them, for the placement step and
-    // the patch step (see the layout fields at the placement step). Returns
+    // the patch step (the layout's shape is PieceLayout). Returns
     // null when the cell no longer holds as many pieces as its record; the
     // pass sorts that cell as a rewritten cell before it reads a layout.
     // runsTogether reads the cell's rendered text only when the placement step
@@ -400,22 +421,8 @@ function makeCellObj(cellEl, port, reads) {
       return { original, toFlat, rendered: true, runsTogether };
     },
     // Write the patches and return how many landed (see writePatches).
-    // A landed write replaces the cell's record through the originals port, so
-    // the written text never goes stale; a write that lands nothing stores
-    // nothing. The record holds:
-    //   value            the text the cell classified: opts.value, the text
-    //                    the pass read before its first write, else getText()
-    //   pieces           one entry per text piece, in page order: text, its
-    //                    original; written, its text after this write
-    //   supRanges        a <sup>-bearing cell's exponent ranges, measured in
-    //                    value; null for a cell with no <sup>
-    //   linkFilteredIdx  the positions of the numbers the link filter kept,
-    //                    for a cell rounded number by number; null otherwise
-    //   pageTitle        the cell's hover text as the page set it, read on the
-    //                    first write and carried through every later write (the
-    //                    extension's hover text never replaces it), except that
-    //                    a held cell whose hover text the page changed takes
-    //                    the new text; '' when the page set none
+    // A landed write replaces the cell's record (CellRecord) through the
+    // originals port.
     // The pass passes opts.value because a native cell's getText() reads
     // rendered text, and a rendered-text read after another cell's write lays
     // out the whole table again: once per cell, a 10,000-cell table takes most
@@ -522,9 +529,9 @@ function _ownDescendants(root, selector) {
  * through nodeValue — never textContent/innerHTML/appendChild/removeChild.
  * @param {Element} cellEl
  * @param {{has: Function, get: Function, set: Function}} port
- * @returns {{getText(): string, getPieceLayout(): object|null,
+ * @returns {{getText(): string, getPieceLayout(): PieceLayout|null,
  *            applyPatches(patches: object[], opts?: {value?: string, linkFilteredIdx?: number[]|null, supRanges?: {start:number,end:number}[]|null}): number,
- *            getDisplayedText(): string, getRecord(): object|null, el: Element, tagName: string}}
+ *            getDisplayedText(): string, getRecord(): CellRecord|null, el: Element, tagName: string}}
  */
 function makeGridCellObj(cellEl, port) {
   return makeCellObj(cellEl, port, {
@@ -1122,7 +1129,7 @@ function patchPieceTexts(texts, patches) {
  *   'rewritten'  anything else: a piece holds text that is neither, or the
  *                piece count changed.
  * @param {Element} cell
- * @param {{pieces: {text: string, written: string}[]}|null|undefined} record
+ * @param {CellRecord|null|undefined} record
  * @returns {'fresh'|'held'|'rewritten'}
  */
 function sortCellByRecord(cell, record) {
@@ -1172,20 +1179,27 @@ function restoreTextPieces(cell, storedPieces) {
 // pieces before any patch is built, and the patch writer
 // (writePatches) then writes each patch inside one piece.
 //
-// A layout comes from the cell object's getPieceLayout():
-//   original    each piece's text as the classified text saw it
-//   toFlat      for each position of the classified text, its position in
-//               the join of original; null when the positions count alike,
-//               and no entry for a position with no known counterpart
-//   rendered    whether the classified text is rendered text: true for a
-//               native cell, false for a grid cell
-//   runsTogether(i)  whether the text the browser shows has piece i
-//               straight after piece i - 1 (see showsPiecesTogether)
-// toFlat converts a native cell's rendered positions through
-// mapRenderedToFlat and, for a hidden sort key ahead of the value, maps the
-// trimmed rendered text to the one piece that holds it (mapValueToPiece).
-// With no such piece the rendered positions stand, and a patch that misses
-// there does not land.
+
+/**
+ * The layout of a cell's text pieces, which the cell object's
+ * getPieceLayout() returns and the placement step and the patch step read.
+ *
+ * toFlat converts a native cell's rendered positions through
+ * mapRenderedToFlat and, for a hidden sort key ahead of the value, maps the
+ * trimmed rendered text to the one piece that holds it (mapValueToPiece).
+ * With no such piece the rendered positions stand, and a patch that misses
+ * there does not land.
+ *
+ * @typedef {object} PieceLayout
+ * @property {string[]} original - each piece's text as the classified text saw it
+ * @property {number[]|null} toFlat - for each position of the classified
+ *   text, its position in the join of original; null when the positions count
+ *   alike, and no entry for a position with no known counterpart
+ * @property {boolean} rendered - whether the classified text is rendered
+ *   text: true for a native cell, false for a grid cell
+ * @property {(i: number) => boolean} runsTogether - whether the text the
+ *   browser shows has piece i straight after piece i - 1 (see showsPiecesTogether)
+ */
 
 // Each piece's text with its index and its start in the join of the texts.
 function pieceSpans(texts) {
@@ -1223,7 +1237,7 @@ function flatRange(layout, start, length) {
 /**
  * The piece that holds every character of a range of the classified text,
  * or null when the range crosses a piece boundary.
- * @param {{original: string[], toFlat: number[]|null}} layout
+ * @param {PieceLayout} layout
  * @param {number} start
  * @param {number} length
  * @returns {{i: number, start: number, text: string}|null}
@@ -1241,7 +1255,7 @@ function layoutPieceHolding(layout, start, length) {
  * collapsed inside a value still matches. A patch whose position no piece
  * holds stays as it is, and does not land.
  * @param {{index: number, numStr: string, newNum: string}[]} patches
- * @param {{original: string[], toFlat: number[]|null}} layout
+ * @param {PieceLayout} layout
  * @returns {{index: number, numStr: string, newNum: string}[]}
  */
 function flatPatches(patches, layout) {
@@ -1344,7 +1358,7 @@ function stackedMatches(spans, runTogether) {
  *
  * @param {object} decision - classifyCell's decision
  * @param {string} text - the text the decision was classified on
- * @param {{original: string[], toFlat: number[]|null, rendered?: boolean, runsTogether: (i: number) => boolean}|null} layout
+ * @param {PieceLayout|null} layout
  * @param {{hasSuperscript?: boolean}} [opts]
  * @returns {object} the placed decision
  */
