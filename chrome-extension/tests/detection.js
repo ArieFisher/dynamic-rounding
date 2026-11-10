@@ -1770,7 +1770,7 @@ const supTestOpts = {
 //
 // isAccessibilityArtifact(table) returns true when ANY of three signals holds:
 //   Signal 1 – table or any ancestor has aria-hidden="true"
-//   Signal 2 – nearest positioned ancestor (or the table itself) has inline
+//   Signal 2 – nearest positioned ancestor (or the table itself) has
 //               left <= OFFSCREEN_LEFT_PX_THRESHOLD (-9999)
 //   Signal 3 – nearest positioned ancestor contains an <svg> with a non-empty
 //               aria-label
@@ -1787,7 +1787,7 @@ const supTestOpts = {
 (function phantomA11y_signal1_selfHidden() {
   const table = makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
   eq('isAccessibilityArtifact: aria-hidden="true" on table itself -> true',
-    isAccessibilityArtifact(table), true);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Signal 1: aria-hidden="true" on immediate parent
@@ -1796,7 +1796,7 @@ const supTestOpts = {
   const parent = makePhantomEl({ tagName: 'DIV', attrs: { 'aria-hidden': 'true' } });
   chainParents(table, parent);
   eq('isAccessibilityArtifact: aria-hidden="true" on immediate parent -> true',
-    isAccessibilityArtifact(table), true);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Signal 1: aria-hidden="true" several ancestors up (nested deeply)
@@ -1808,7 +1808,7 @@ const supTestOpts = {
   const outerDiv   = makePhantomEl({ tagName: 'DIV', attrs: { 'aria-hidden': 'true' } });
   chainParents(table, tbody, innerDiv, middleDiv, outerDiv);
   eq('isAccessibilityArtifact: aria-hidden="true" several levels up -> true',
-    isAccessibilityArtifact(table), true);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Edge: aria-hidden="false" must NOT trigger signal 1
@@ -1817,7 +1817,7 @@ const supTestOpts = {
   const parent = makePhantomEl({ tagName: 'DIV',   attrs: { 'aria-hidden': 'false' } });
   chainParents(table, parent);
   eq('isAccessibilityArtifact: aria-hidden="false" does NOT trigger -> false',
-    isAccessibilityArtifact(table), false);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1830,7 +1830,7 @@ const supTestOpts = {
   const posAnc = makePositionedAncestor({ left: '-10000px' });
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: positioned ancestor left=-10000px -> true',
-    isAccessibilityArtifact(table), true);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Signal 2: positioned ancestor at exactly the threshold value (-9999px)
@@ -1839,14 +1839,14 @@ const supTestOpts = {
   const posAnc = makePositionedAncestor({ left: '-9999px' });
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: positioned ancestor left=-9999px (at threshold) -> true',
-    isAccessibilityArtifact(table), true);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Signal 2: table itself is positioned and off-screen (no separate ancestor)
 (function phantomA11y_signal2_tableSelfOffscreen() {
   const table = makePhantomEl({ tagName: 'TABLE', style: { position: 'absolute', left: '-10000px' } });
   eq('isAccessibilityArtifact: table itself is positioned with left=-10000px -> true',
-    isAccessibilityArtifact(table), true);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Edge: left value just ABOVE threshold (-9998px) must NOT trigger
@@ -1855,7 +1855,7 @@ const supTestOpts = {
   const posAnc = makePositionedAncestor({ left: '-9998px' });
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: positioned ancestor left=-9998px (above threshold) -> false',
-    isAccessibilityArtifact(table), false);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
 // Edge: modest off-screen like -100px must NOT trigger signal 2
@@ -1864,7 +1864,7 @@ const supTestOpts = {
   const posAnc = makePositionedAncestor({ left: '-100px' });
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: positioned ancestor left=-100px (not extreme) -> false',
-    isAccessibilityArtifact(table), false);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
 // Edge: non-positioned ancestor with extreme left — should NOT count because the
@@ -1877,7 +1877,7 @@ const supTestOpts = {
   chainParents(table, wrapper);
   // No positioned ancestor found → checkEl = table (which has no extreme left)
   eq('isAccessibilityArtifact: non-positioned ancestor with extreme left -> false',
-    isAccessibilityArtifact(table), false);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1893,7 +1893,7 @@ const supTestOpts = {
   posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: positioned ancestor has svg[aria-label="..."] -> true',
-    isAccessibilityArtifact(table), true);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Signal 3: multiple SVGs in ancestor, only one has a label — still triggers
@@ -1906,7 +1906,7 @@ const supTestOpts = {
   posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svgNoLabel, svgLabelled] : []; };
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: one of two svgs has aria-label -> true',
-    isAccessibilityArtifact(table), true);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Edge: svg with EMPTY aria-label must NOT trigger signal 3
@@ -1918,7 +1918,7 @@ const supTestOpts = {
   posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: svg with empty aria-label does NOT trigger -> false',
-    isAccessibilityArtifact(table), false);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
 // Edge: svg with whitespace-only aria-label must NOT trigger signal 3
@@ -1930,7 +1930,7 @@ const supTestOpts = {
   posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: svg with whitespace-only aria-label does NOT trigger -> false',
-    isAccessibilityArtifact(table), false);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
 // Edge: svg with NO aria-label attribute at all must NOT trigger signal 3
@@ -1942,7 +1942,7 @@ const supTestOpts = {
   posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: svg with no aria-label does NOT trigger -> false',
-    isAccessibilityArtifact(table), false);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
 // Edge: no positioned ancestor found at all — signal 3 is skipped entirely (no crash)
@@ -1950,7 +1950,7 @@ const supTestOpts = {
   const table = makePhantomEl({ tagName: 'TABLE' });
   // No parentElement — predicate must not throw and returns false
   eq('isAccessibilityArtifact: no positioned ancestor, no signals -> false',
-    isAccessibilityArtifact(table), false);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1962,7 +1962,7 @@ const supTestOpts = {
   chainParents(table, parent);
   // No aria-hidden, no off-screen left, no positioned ancestor → false
   eq('isAccessibilityArtifact: ordinary on-screen numeric table -> false',
-    isAccessibilityArtifact(table), false);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
 // Negative: positioned ancestor but normal on-screen left (-50px), no svg, no aria-hidden
@@ -1972,7 +1972,7 @@ const supTestOpts = {
   posAnc.querySelectorAll = function() { return []; };
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: positioned ancestor with normal left (-50px), no svg -> false',
-    isAccessibilityArtifact(table), false);
+    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
 // ---------------------------------------------------------------------------
@@ -2015,7 +2015,7 @@ const supTestOpts = {
     isDataTable(phantoms[0]), true);
   // Sanity: each artifact is detected as an artifact
   eq('pass1-filter: aria-hidden accessibility artifact isAccessibilityArtifact is true (sanity)',
-    isAccessibilityArtifact(phantoms[0]), true);
+    isAccessibilityArtifact(phantoms[0], { styleProbe: inlineStyleProbe }), true);
 
   runPass1WithTables(phantoms);
 
@@ -2053,7 +2053,7 @@ const supTestOpts = {
   eq('pass1-filter: off-screen phantom table satisfies isDataTable (sanity)',
     isDataTable(phantoms[0]), true);
   eq('pass1-filter: off-screen accessibility artifact isAccessibilityArtifact is true (sanity)',
-    isAccessibilityArtifact(phantoms[0]), true);
+    isAccessibilityArtifact(phantoms[0], { styleProbe: inlineStyleProbe }), true);
 
   runPass1WithTables(phantoms);
 
@@ -2083,7 +2083,7 @@ const supTestOpts = {
   eq('pass1-filter: real on-screen table satisfies isDataTable (sanity)',
     isDataTable(realTable), true);
   eq('pass1-filter: real on-screen table isAccessibilityArtifact is false (sanity)',
-    isAccessibilityArtifact(realTable), false);
+    isAccessibilityArtifact(realTable, { styleProbe: inlineStyleProbe }), false);
 
   runPass1WithTables([realTable]);
 
@@ -2716,10 +2716,11 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 
       // --- offscreenLeftPx (isAccessibilityArtifact signal 2): at the threshold
       // and beyond it counts as off-screen; just inside it does not ---
+      const offscreenProbe = { styleProbe: { getComputedStyle: (el) => el.style } };
       const offscreenTable = (left) => ({ getAttribute: () => null, style: { position: 'static', left: left + 'px' } });
-      outcomes.offscreenAtThresholdIsPhantom = isAccessibilityArtifact(offscreenTable(-9999));
-      outcomes.offscreenBeyondThresholdIsPhantom = isAccessibilityArtifact(offscreenTable(-10000));
-      outcomes.offscreenInsideThresholdIsNotPhantom = isAccessibilityArtifact(offscreenTable(-9998));
+      outcomes.offscreenAtThresholdIsPhantom = isAccessibilityArtifact(offscreenTable(-9999), offscreenProbe);
+      outcomes.offscreenBeyondThresholdIsPhantom = isAccessibilityArtifact(offscreenTable(-10000), offscreenProbe);
+      outcomes.offscreenInsideThresholdIsNotPhantom = isAccessibilityArtifact(offscreenTable(-9998), offscreenProbe);
 
       // --- isDataTable: no collateral breakage from the load-order change ---
       outcomes.isDataTableStillFindsANumericTable = isDataTable({

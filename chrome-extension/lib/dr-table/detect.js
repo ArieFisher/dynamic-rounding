@@ -97,7 +97,7 @@ const DEFAULT_STYLE_PROBE = {
  * them as a column-first grid's columns, so the two read the same set.
  *
  * @param {Element[]} children
- * @returns {{childCountFreq: Map<number, number>, modalChildCount: number, modalFreq: number, candidates: Element[]}}
+ * @returns {{modalChildCount: number, modalFreq: number, candidates: Element[]}}
  */
 function childCountCandidates(children) {
   const childCountFreq = new Map();
@@ -113,7 +113,7 @@ function childCountCandidates(children) {
   const candidates = modalFreq > 0
     ? children.filter((c) => c.children && c.children.length === modalChildCount)
     : [];
-  return { childCountFreq, modalChildCount, modalFreq, candidates };
+  return { modalChildCount, modalFreq, candidates };
 }
 
 /**
@@ -530,13 +530,6 @@ class GridAdapter {
       const found = _ownDescendants(el, sel)[0];
       if (found) return found;
     }
-    if (el.matches) {
-      for (const sel of knownSelectors) {
-        try {
-          if (el.matches(sel)) return el;
-        } catch (e) { /* ignore */ }
-      }
-    }
     return el;
   }
 
@@ -772,12 +765,10 @@ function getSuperscriptRanges(cell, opts = {}) {
           isSup = true;
           break;
         }
-        if (!isSup) {
-          const style = styleProbe.getComputedStyle(ancestor);
-          if (style && style.verticalAlign === 'super') {
-            isSup = true;
-            break;
-          }
+        const style = styleProbe.getComputedStyle(ancestor);
+        if (style && style.verticalAlign === 'super') {
+          isSup = true;
+          break;
         }
         ancestor = ancestor.parentNode || ancestor.parentElement;
       }
@@ -1372,11 +1363,11 @@ function placeDecision(decision, text, layout, opts = {}) {
 /**
  * The geometry probe: does `el` look like a grid built from generic elements?
  *
- * The steps run cheapest first. Steps 1 to 5 read the DOM and CSS with no
- * geometry. Step 6 (the direction reader and the alignment step) reads boxes
+ * The steps run cheapest first. Steps 1 to 4 read the DOM and CSS with no
+ * geometry. Step 5 (the direction reader and the alignment step) reads boxes
  * and runs last, on a bounded sample of first cells.
  *
- * An element passes after step 5, with no step 6, when it carries:
+ * An element passes after step 4, with no step 5, when it carries:
  *   - role="grid" or role="table"
  *   - a class matching a classToken in opts.vendorProfiles (default:
  *     GRID_VENDOR_PROFILES, "dg--" or "ag-")
@@ -1394,36 +1385,20 @@ function looksLikeGrid(el, opts = {}) {
   const children = Array.from(el.children);
   if (children.length < DR_DETECTION_SETTINGS.gridMinChildren) return false;
 
-  // --- Step 2: Repetitive structure — children share class or child shape ---
-  // Children share a class when they have the same first className token, and
-  // share a child shape when they have the same number of children. Either
-  // group must reach DR_DETECTION_SETTINGS.gridRepetitionShare of the children.
-  const classFreq = new Map();
-  for (const child of children) {
-    const cls = (child.className && typeof child.className === 'string')
-      ? child.className.trim().split(/\s+/)[0]
-      : '';
-    classFreq.set(cls, (classFreq.get(cls) || 0) + 1);
-  }
-  const { childCountFreq, modalFreq, candidates: candidateRows } = childCountCandidates(children);
-  const maxClassCount = Math.max(...classFreq.values());
-  const maxChildCount = Math.max(...childCountFreq.values());
-  const repetitionFloor = children.length * DR_DETECTION_SETTINGS.gridRepetitionShare;
-  const repetitive = (maxClassCount >= repetitionFloor) || (maxChildCount >= repetitionFloor);
-  if (!repetitive) return false;
-
-  // --- Step 3: Consistent cell count — candidate rows have equal child counts ---
+  // --- Step 2: Consistent cell count — candidate rows have equal child counts ---
   // The modal child count must appear in at least DR_DETECTION_SETTINGS.gridRepetitionShare
   // of the children. Candidate rows: children whose child count equals the
   // modal (candidate columns, on a column-first grid).
+  const { modalFreq, candidates: candidateRows } = childCountCandidates(children);
+  const repetitionFloor = children.length * DR_DETECTION_SETTINGS.gridRepetitionShare;
   if (modalFreq < repetitionFloor) return false;
 
-  // --- Step 4: Layout — display is grid or flex ---
+  // --- Step 3: Layout — display is grid or flex ---
   const computedForDisplay = styleProbe.getComputedStyle(el);
   const display = (computedForDisplay && computedForDisplay.display) || '';
   if (!DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)) return false;
 
-  // --- Step 5: Numeric content — ≥ 1 cell the data test counts (see
+  // --- Step 4: Numeric content — ≥ 1 cell the data test counts (see
   // holdsRoundableCell) (mandatory) ---
   // The cells are the candidate rows' children, each read as a grid cell
   // and placed in the column of its position among its row's children.
@@ -1442,7 +1417,7 @@ function looksLikeGrid(el, opts = {}) {
   const elClass = (el.className && typeof el.className === 'string') ? el.className : '';
   if (vendorProfiles.some(profile => elClass.includes(profile.classToken))) return true;
 
-  // --- Step 6: Alignment — sample the first cell of each candidate ---
+  // --- Step 5: Alignment — sample the first cell of each candidate ---
   // Measures along the axis on which cells line up. On a row-first grid the
   // candidates are rows, and the first cells of the rows form column A, so
   // their widths agree. On a column-first grid (see isColumnFirst) the
@@ -1578,15 +1553,8 @@ function _nearestPositionedAncestor(el, opts = {}) {
       current = current.parentElement || current.parentNode || null;
       continue;
     }
-    let pos = '';
-    if (current.style && typeof current.style.position === 'string') {
-      pos = current.style.position;
-    }
-    if (!pos) {
-      const style = styleProbe.getComputedStyle(current);
-      if (style && style.position) pos = style.position;
-    }
-    if (POSITIONED.has(pos)) return current;
+    const style = styleProbe.getComputedStyle(current);
+    if (style && POSITIONED.has(style.position)) return current;
     current = current.parentElement || current.parentNode || null;
   }
   return null;
@@ -1609,10 +1577,9 @@ function _parsePx(value) {
  * screen readers or as a chart's fallback. True
  * when the table or an ancestor carries aria-hidden="true"; when the nearest
  * positioned ancestor (or the table) has a `left` at or below
- * DR_DETECTION_SETTINGS.offscreenLeftPx, read from inline style first (the
- * Node test harness reports no computed `left`) and then from computed style;
- * or when that ancestor also contains an <svg> with a non-empty aria-label,
- * the chart the table falls back for.
+ * DR_DETECTION_SETTINGS.offscreenLeftPx, read through the style probe; or
+ * when that ancestor also contains an <svg> with a non-empty aria-label, the
+ * chart the table falls back for.
  *
  * @param {Element} table
  * @param {{styleProbe?: object}} [opts]
@@ -1637,14 +1604,8 @@ function isAccessibilityArtifact(table, opts = {}) {
   const posAncestor = _nearestPositionedAncestor(table, opts);
   const checkEl = posAncestor || table;
 
-  let leftVal = NaN;
-  if (checkEl.style && typeof checkEl.style.left === 'string') {
-    leftVal = _parsePx(checkEl.style.left);
-  }
-  if (isNaN(leftVal)) {
-    const computed = styleProbe.getComputedStyle(checkEl);
-    if (computed && computed.left) leftVal = _parsePx(computed.left);
-  }
+  const computed = styleProbe.getComputedStyle(checkEl);
+  const leftVal = computed ? _parsePx(computed.left) : NaN;
   if (!isNaN(leftVal) && leftVal <= DR_DETECTION_SETTINGS.offscreenLeftPx) return true;
 
   // --- Signal 3: nearest positioned ancestor contains a chart-ish <svg> ---

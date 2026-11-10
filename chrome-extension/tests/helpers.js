@@ -1399,7 +1399,18 @@ function chainParents(child /*, ...parents */) {
   return child;
 }
 
-// An element that qualifies as "positioned" (inline style.position='absolute').
+// A style probe whose computed style is the element's own style object, so a
+// fixture states `position` and `left` on the element it builds. The artifact
+// filter reads the style through the probe alone.
+const inlineStyleProbe = {
+  getComputedStyle(el) {
+    return Object.assign({ display: 'block', visibility: 'visible' }, el && el.style);
+  },
+  getOffsetWidth() { return -1; },
+  getBox() { return null; },
+};
+
+// An element that qualifies as "positioned" (style.position='absolute').
 function makePositionedAncestor(styleOverrides) {
   return makePhantomEl({ style: Object.assign({ position: 'absolute' }, styleOverrides || {}) });
 }
@@ -1531,6 +1542,10 @@ function runPass1WithTables(tables) {
   global.document.body = { appendChild() {} };
   global.document.documentElement = { appendChild() {} };
 
+  // The pass reads each table's style through the global getComputedStyle.
+  const origComputedStyle = global.getComputedStyle;
+  global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+
   // Reset pillboxStyleInjected so ensurePillboxStyleInjected does not try document.head
   const origPillboxStyleInjected = pillboxStyleInjected;
   pillboxStyleInjected = true; // skip style injection (would need document.head)
@@ -1543,6 +1558,7 @@ function runPass1WithTables(tables) {
     global.document.body              = origBody;
     global.document.documentElement   = origDocEl;
     pillboxStyleInjected               = origPillboxStyleInjected;
+    global.getComputedStyle            = origComputedStyle;
   }
 
   return { tables };
