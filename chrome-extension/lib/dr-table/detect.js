@@ -63,9 +63,7 @@ const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE)
 
 /**
  * The node above `node`: its parent element, else its parent node (the
- * document or a fragment at the top of a tree), else null. Every read of a
- * node's parent in this file goes through it.
- *
+ * document or a fragment), else null. Every parent read in this file calls it.
  * @param {Node} node
  * @returns {Node|null}
  */
@@ -74,21 +72,17 @@ function parentOf(node) {
 }
 
 /**
- * The ancestor walk: visits `start` and then each node above it, and returns
- * the first node `found` reports, or null when the walk ends without one. The
- * walk ends before it visits a node `stopAt` reports, after `cap` nodes, and
- * at the top of the tree.
- *
- * Every ancestor walk in this file calls it. A walk that has to tell an end
- * from a find reads the nodes it passed through `found`, which can keep state.
- *
- * @param {Node|null} start - the first node visited
- * @param {number} cap - the most nodes the walk visits. A walk bounded by
- *   page depth passes DR_DETECTION_SETTINGS.gridWalkDepthCap; at the cap the
- *   walk ends and returns null. Infinity leaves the tree's top as the walk's
- *   only bound.
- * @param {((node: Node) => boolean)|null} stopAt - true at a node the walk does not enter; null stops nowhere
- * @param {(node: Node) => boolean} found - true at the node the walk returns
+ * The ancestor walk every walk up the tree calls: visits `start`, then each
+ * node above it, and returns the first node `found` reports, or null. The walk
+ * ends before a node `stopAt` reports, after `cap` nodes, and at the top of
+ * the tree. `found` may keep state, for a walk that reads each node.
+ * @param {Node|null} start
+ * @param {number} cap - the most nodes the walk visits: the setting
+ *   DR_DETECTION_SETTINGS.gridWalkDepthCap for a walk bounded by page depth
+ *   (at the cap the walk ends and returns null), or Infinity for a walk
+ *   bounded by the top of the tree alone
+ * @param {((node: Node) => boolean)|null} stopAt - null stops nowhere
+ * @param {(node: Node) => boolean} found
  * @returns {Node|null}
  */
 function walkUp(start, cap, stopAt, found) {
@@ -283,14 +277,12 @@ function assignGridColumns(rowSpans) {
 }
 
 /**
- * The rows of one table, built from each row's cell elements: the native
- * adapter, the grid adapter, and the geometry probe's numeric step all build
- * their rows here. The cell elements of every row are read once, by the
- * caller, so the column plan (assignGridColumns) and the cell objects count the
- * same row shape. Each cell object carries its column plan entry as
- * columnIndex and columnSpan; a table that declares no span plans every cell
- * at its read position.
- *
+ * The rows of one table, built from each row's cell elements: both adapters
+ * and the geometry probe's numeric step build their rows here. The caller
+ * reads each row's cell elements once, so the column plan (assignGridColumns)
+ * and the cell objects count the same row shape. A cell object carries its plan
+ * entry as columnIndex and columnSpan; a table that declares no span plans
+ * every cell at its read position.
  * @param {Element[][]} rowCellEls - each row's cell elements, in column order
  * @param {(cellEl: Element) => {colSpan: number, rowSpan: number}} readSpans
  *   - the span read of the table kind (nativeCellSpans or gridCellSpans)
@@ -1392,14 +1384,18 @@ function placeDecision(decision, text, layout, opts = {}) {
 /**
  * The geometry probe: does `el` look like a grid built from generic elements?
  *
- * The steps run cheapest first. Steps 1 to 4 read the DOM and CSS with no
- * geometry. Step 5 (the direction reader and the alignment step) reads boxes
- * and runs last, on a bounded sample of first cells.
- *
- * An element passes after step 4, with no step 5, when it carries:
- *   - role="grid" or role="table"
- *   - a class matching a classToken in opts.vendorProfiles (default:
- *     GRID_VENDOR_PROFILES, "dg--" or "ag-")
+ * The checks run cheapest first, and the first to fail returns false:
+ *   1. at least DR_DETECTION_SETTINGS.gridMinChildren children;
+ *   2. the most common child count holds for at least
+ *      DR_DETECTION_SETTINGS.gridRepetitionShare of the children; the
+ *      children that hold it are the candidate rows (see childCountCandidates);
+ *   3. a display value in DR_DETECTION_SETTINGS.gridDisplayValues, read
+ *      through the style probe;
+ *   4. a cell the data test counts among the candidate rows (see
+ *      probeRowsHoldNumber);
+ *   5. a grid mark (see carriesGridMark), or else first cells that align (see
+ *      firstCellsAlign). The alignment check reads boxes and runs last, on a
+ *      bounded sample of first cells.
  *
  * @param {Element} el
  * @param {{styleProbe?: object, originalsPort?: object, vendorProfiles?: object[]}} [opts]
@@ -1408,54 +1404,68 @@ function placeDecision(decision, text, layout, opts = {}) {
 function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
-  const vendorProfiles = opts.vendorProfiles || GRID_VENDOR_PROFILES;
-
-  // --- Step 1: Child count ≥ DR_DETECTION_SETTINGS.gridMinChildren ---
   const children = Array.from(el.children);
   if (children.length < DR_DETECTION_SETTINGS.gridMinChildren) return false;
-
-  // --- Step 2: Consistent cell count — candidate rows have equal child counts ---
-  // The modal child count must appear in at least DR_DETECTION_SETTINGS.gridRepetitionShare
-  // of the children. Candidate rows: children whose child count equals the
-  // modal (candidate columns, on a column-first grid).
   const { modalFreq, candidates: candidateRows } = childCountCandidates(children);
-  const repetitionFloor = children.length * DR_DETECTION_SETTINGS.gridRepetitionShare;
-  if (modalFreq < repetitionFloor) return false;
-
-  // --- Step 3: Layout — display is grid or flex ---
+  if (modalFreq < children.length * DR_DETECTION_SETTINGS.gridRepetitionShare) return false;
   const computedForDisplay = styleProbe.getComputedStyle(el);
   const display = (computedForDisplay && computedForDisplay.display) || '';
   if (!DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)) return false;
+  if (!probeRowsHoldNumber(candidateRows, opts)) return false;
+  return carriesGridMark(el, opts.vendorProfiles || GRID_VENDOR_PROFILES)
+    || firstCellsAlign(children, candidateRows, styleProbe);
+}
 
-  // --- Step 4: Numeric content — ≥ 1 cell the data test counts (see
-  // holdsRoundableCell) (mandatory) ---
-  // The cells are the candidate rows' children, each read as a grid cell
-  // and placed in a column by the row builder.
+/**
+ * Whether the geometry probe's candidate rows hold a cell the data test counts
+ * (see holdsRoundableCell). The cells are the rows' children, read as grid cells.
+ * @param {Element[]} candidateRows
+ * @param {{originalsPort?: object}} opts
+ * @returns {boolean}
+ */
+function probeRowsHoldNumber(candidateRows, opts) {
   const port = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
-  const probeRows = buildRows(candidateRows.map((row) => Array.from(row.children)), gridCellSpans,
-    (cellEl) => makeGridCellObj(cellEl, port));
-  if (!holdsRoundableCell(probeRows)) return false;
+  return holdsRoundableCell(buildRows(candidateRows.map((row) => Array.from(row.children)), gridCellSpans,
+    (cellEl) => makeGridCellObj(cellEl, port)));
+}
 
-  // --- Short-circuit ACCEPT before geometry probe ---
+/**
+ * Whether the page marks `el` as a grid: role="grid", role="table", or a class
+ * that contains a vendor profile's classToken. A marked element passes the
+ * geometry probe with no alignment check.
+ * @param {Element} el
+ * @param {{classToken: string}[]} vendorProfiles
+ * @returns {boolean}
+ */
+function carriesGridMark(el, vendorProfiles) {
   const role = el.getAttribute && el.getAttribute('role');
   if (role === 'grid' || role === 'table') return true;
   const elClass = (el.className && typeof el.className === 'string') ? el.className : '';
-  if (vendorProfiles.some(profile => elClass.includes(profile.classToken))) return true;
+  return vendorProfiles.some(profile => elClass.includes(profile.classToken));
+}
 
-  // --- Step 5: Alignment — sample the first cell of each candidate ---
-  // Measures along the axis on which cells line up. On a row-first grid the
-  // candidates are rows, and the first cells of the rows form column A, so
-  // their widths agree. On a column-first grid (see isColumnFirst) the
-  // candidates are columns, and the first cells of the columns form the first
-  // row, so their heights agree. The sample holds at most
-  // DR_DETECTION_SETTINGS.gridColumnWidthSample candidates.
+/**
+ * Whether the first cells of the candidates line up, sampling at most
+ * DR_DETECTION_SETTINGS.gridColumnWidthSample candidates. The probe measures
+ * along the axis on which cells line up. On a row-first grid the candidates
+ * are rows, and the first cells of the rows form column A, so their widths
+ * agree. On a column-first grid (see isColumnFirst) the candidates are
+ * columns, and the first cells of the columns form the first row, so their
+ * heights agree. Fewer than two measurable candidates leave nothing to
+ * disagree, so the answer is true.
+ * @param {Element[]} children - the element's children, which fix the direction
+ * @param {Element[]} candidateRows
+ * @param {object} styleProbe
+ * @returns {boolean}
+ */
+function firstCellsAlign(children, candidateRows, styleProbe) {
   const sample = candidateRows.slice(0, DR_DETECTION_SETTINGS.gridColumnWidthSample);
   const extentOf = isColumnFirst(children, styleProbe)
     ? (cell) => { const box = styleProbe.getBox(cell); return box ? box.height : -1; }
     : (cell) => styleProbe.getOffsetWidth(cell);
   const extents = sample.map(row => row.children[0] ? extentOf(row.children[0]) : -1)
                         .filter(w => w > 0);
-  if (extents.length < 2) return true; // fewer than two measurable candidates: nothing disagrees
+  if (extents.length < 2) return true;
   const firstExtent = extents[0];
   const matchCount = extents.filter(w => w === firstExtent).length;
   return matchCount / extents.length >= DR_DETECTION_SETTINGS.gridColumnWidthAgreement;
@@ -1493,40 +1503,69 @@ function findTargetTable(el, opts = {}) {
   const isRegistered = opts.isRegistered || (() => false);
   const docBody = doc && doc.body;
 
-  // 1. Nearest <table> ancestor.
   if (typeof el.closest === 'function') {
     const tableAncestor = el.closest('table');
     if (tableAncestor) return { handle: tableAncestor, isNew: false };
   }
-
-  // 2. Nearest registered ancestor (or el itself), per opts.isRegistered — a
-  // walk-up rather than a closest('.dr-ext-grid') query, since isRegistered is
-  // an arbitrary per-element check (typically a WeakMap-backed registry.has),
-  // not a CSS selector.
-  const registered = walkUp(el, DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody,
-    (node) => node.nodeType === DR_TABLE_ELEMENT_NODE && isRegistered(node));
+  const registered = registeredAncestor(el, docBody, isRegistered);
   if (registered) return { handle: registered, isNew: false };
+  const nominated = nominatedInNest(el, { ...opts, isRegistered });
+  if (nominated) return { handle: nominated, isNew: !isRegistered(nominated) };
+  const outermost = outermostGridAbove(el, docBody, opts);
+  return outermost && { handle: outermost, isNew: !isRegistered(outermost) };
+}
 
-  // 3. The nomination step, run from the chain root of the nest el sits in.
-  // The step applies the configured nesting depth to the whole nest, so the
-  // element it selects can be a sibling of the clicked element: a click in a
-  // vendor grid's row-number gutter resolves the scrolling pane beside it.
-  // Pass 1 of the step returns nothing here: a qualifying chain root holds no
-  // native table other than accessibility artifacts, so the step's one result
-  // is the nomination.
-  //
-  // The step returns nothing for a nest whose chain is empty, for a depth
-  // holding more than one element, and for a nest already holding a registered
-  // element; each of those falls through to the geometry probe below, which is
-  // the behavior issue #382 records for a click in a sibling pane of a
-  // registered nest.
+/**
+ * The nearest ancestor of `el`, or `el` itself, that isRegistered reports as
+ * registered, within DR_DETECTION_SETTINGS.gridWalkDepthCap levels and short
+ * of the document body. A walk up and not a closest('.dr-ext-grid') query,
+ * because isRegistered is an arbitrary per-element check (typically a
+ * WeakMap-backed registry.has), not a CSS selector.
+ * @param {Element} el
+ * @param {Element|null|undefined} docBody
+ * @param {(handle: Element) => boolean} isRegistered
+ * @returns {Element|null}
+ */
+function registeredAncestor(el, docBody, isRegistered) {
+  return walkUp(el, DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody,
+    (node) => node.nodeType === DR_TABLE_ELEMENT_NODE && isRegistered(node));
+}
+
+/**
+ * The element the nomination step selects (see nominateNests) over the chain
+ * root of the nest `el` sits in, or null. The step applies the configured
+ * nesting depth to the whole nest, so the element it selects can be a sibling
+ * of the clicked element: a click in a vendor grid's row-number gutter
+ * resolves the scrolling pane beside it. Pass 1 of findTables returns nothing
+ * here, because a qualifying chain root holds no native table other than
+ * accessibility artifacts.
+ *
+ * The step selects nothing for a nest whose chain is empty, for a depth
+ * holding more than one element, and for a nest already holding a registered
+ * element; each of those leaves the result to the geometry probe, which is the
+ * behavior issue #382 records for a click in a sibling pane of a registered
+ * nest.
+ * @param {Element} el
+ * @param {object} opts - the options of findTables, with isRegistered set
+ * @returns {Element|null}
+ */
+function nominatedInNest(el, opts) {
   const chainRoot = chainRootOf(el, opts);
-  if (chainRoot) {
-    const nominated = findTables(chainRoot, { ...opts, isRegistered })[0];
-    if (nominated) return { handle: nominated.handle, isNew: !isRegistered(nominated.handle) };
-  }
+  const nominated = chainRoot && findTables(chainRoot, opts)[0];
+  return nominated ? nominated.handle : null;
+}
 
-  // 4. Walk up, calling looksLikeGrid; return the outermost consecutive match.
+/**
+ * The outermost element in an unbroken run of looksLikeGrid matches on a walk
+ * up from `el`, within DR_DETECTION_SETTINGS.gridWalkDepthCap levels and short
+ * of the document body, or null when no ancestor matches. The walk ends at the
+ * first non-match above a match.
+ * @param {Element} el
+ * @param {Element|null|undefined} docBody
+ * @param {object} opts - the options of looksLikeGrid
+ * @returns {Element|null}
+ */
+function outermostGridAbove(el, docBody, opts) {
   let outermost = null;
   walkUp(parentOf(el), DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody, (node) => {
     if (node.nodeType !== DR_TABLE_ELEMENT_NODE) return false;
@@ -1536,7 +1575,7 @@ function findTargetTable(el, opts = {}) {
     }
     return outermost !== null;
   });
-  return outermost === null ? null : { handle: outermost, isNew: !isRegistered(outermost) };
+  return outermost;
 }
 
 /**
@@ -1584,40 +1623,51 @@ function _parsePx(value) {
  * @returns {boolean}
  */
 function isAccessibilityArtifact(table, opts = {}) {
-  const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   if (!table || typeof table.getAttribute !== 'function') return false;
-
-  // --- Signal 1: aria-hidden on self or any ancestor ---
-  // A node with no tagName is the document root: the walk has left the element tree.
-  const hidden = walkUp(table, Infinity, (node) => node !== table && typeof node.tagName === 'undefined',
-    (node) => typeof node.getAttribute === 'function' && node.getAttribute('aria-hidden') === 'true');
-  if (hidden) return true;
-
-  // --- Signal 2: nearest positioned ancestor has left ≤ threshold ---
+  if (carriesHiddenMark(table)) return true;
   const posAncestor = _nearestPositionedAncestor(table, opts);
-  const checkEl = posAncestor || table;
+  return sitsOffscreen(posAncestor || table, opts.styleProbe || DEFAULT_STYLE_PROBE)
+    || (!!posAncestor && holdsLabelledSvg(posAncestor));
+}
 
-  const computed = styleProbe.getComputedStyle(checkEl);
-  const leftVal = computed ? _parsePx(computed.left) : NaN;
-  if (!isNaN(leftVal) && leftVal <= DR_DETECTION_SETTINGS.offscreenLeftPx) return true;
+/**
+ * Whether `table` or an ancestor carries aria-hidden="true". The walk ends at
+ * the document root, a node with no tagName.
+ * @param {Element} table
+ * @returns {boolean}
+ */
+function carriesHiddenMark(table) {
+  return walkUp(table, Infinity, (node) => node !== table && typeof node.tagName === 'undefined',
+    (node) => typeof node.getAttribute === 'function' && node.getAttribute('aria-hidden') === 'true') !== null;
+}
 
-  // --- Signal 3: nearest positioned ancestor contains a chart-ish <svg> ---
-  if (posAncestor) {
-    if (typeof posAncestor.querySelector === 'function') {
-      try {
-        const svgs = posAncestor.querySelectorAll('svg');
-        for (let i = 0; i < svgs.length; i++) {
-          const svg = svgs[i];
-          if (typeof svg.getAttribute === 'function') {
-            const label = svg.getAttribute('aria-label');
-            if (typeof label === 'string' && label.trim() !== '') return true;
-          }
-        }
-      } catch (e) { /* ignore */ }
-    }
-  }
+/**
+ * Whether the element's `left`, read through the style probe, sits at or below
+ * DR_DETECTION_SETTINGS.offscreenLeftPx.
+ * @param {Element} el - the nearest positioned ancestor of the table, or the table
+ * @param {object} styleProbe
+ * @returns {boolean}
+ */
+function sitsOffscreen(el, styleProbe) {
+  const computed = styleProbe.getComputedStyle(el);
+  const left = computed ? _parsePx(computed.left) : NaN;
+  return !isNaN(left) && left <= DR_DETECTION_SETTINGS.offscreenLeftPx;
+}
 
-  return false;
+/**
+ * Whether the element holds an <svg> with a non-empty aria-label: the chart a
+ * table falls back for.
+ * @param {Element} el - the table's nearest positioned ancestor
+ * @returns {boolean}
+ */
+function holdsLabelledSvg(el) {
+  if (typeof el.querySelector !== 'function') return false;
+  try {
+    return Array.from(el.querySelectorAll('svg')).some((svg) => {
+      const label = typeof svg.getAttribute === 'function' ? svg.getAttribute('aria-label') : null;
+      return typeof label === 'string' && label.trim() !== '';
+    });
+  } catch (e) { return false; }
 }
 
 /**
@@ -1829,30 +1879,6 @@ function _isQualifyingAncestor(el, isArtifact, opts) {
 }
 
 /**
- * Walk up from the qualifying element `el` to its chain root: the outermost
- * qualifying ancestor of the nest `el` sits in. The walk is bounded by DR_DETECTION_SETTINGS.gridWalkDepthCap DOM
- * levels and stops at the document body and at the first ancestor carrying a
- * cell role, and it continues past an ancestor that carries no role, because
- * a nest may put a plain wrapper between two qualifying elements. An element
- * with no parent, or whose parent is a cell, is a chain root.
- *
- * @param {Element} el
- * @param {(table: Element, opts: object) => boolean} isArtifact
- * @param {object} opts
- * @returns {Element}
- */
-function outermostQualifying(el, isArtifact, opts) {
-  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
-  const docBody = doc && doc.body;
-  let chainRoot = el;
-  walkUp(parentOf(el), DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody || _isCellAncestor(node), (node) => {
-    if (_isQualifyingAncestor(node, isArtifact, opts)) chainRoot = node;
-    return false;
-  });
-  return chainRoot;
-}
-
-/**
  * The nesting depth of `el` in the containment chain under `chainRoot`: the
  * count of qualifying ancestors from `el` up to and including `chainRoot` (the
  * chain root sits at depth 0). Returns -1 when the walk leaves the nest
@@ -1911,25 +1937,37 @@ function _selectAtNestingDepth(byDepth, configuredDepth) {
  * qualifying element sits within DR_DETECTION_SETTINGS.gridWalkDepthCap
  * levels of `el`.
  *
- * This function first finds the nearest qualifying element at or above an
+ * The function first finds the nearest qualifying element at or above an
  * arbitrary element (a clicked cell, an added node, or a registered table),
  * walking across cells, so a click in a cell reaches the grid holding the
- * cell. From there outermostQualifying walks up to the outermost qualifying
- * element and stops at the first cell.
+ * cell. From there it walks up to the outermost qualifying element, bounded by
+ * the same cap, and stops at the document body and at the first ancestor
+ * carrying a cell role. It continues past an ancestor that carries no role,
+ * because a nest may put a plain wrapper between two qualifying elements.
  *
  * @param {Element} el
  * @param {{isArtifact?: (table: Element, opts: object) => boolean,
  *          doc?: Document, styleProbe?: object}} [opts]
+ * @param {boolean} [isQualifying] - true when `el` is already a qualifying
+ *   element, which skips the walk to the nearest one
  * @returns {Element|null}
  */
-function chainRootOf(el, opts = {}) {
+function chainRootOf(el, opts = {}, isQualifying = false) {
   if (!el) return null;
   const isArtifact = opts.isArtifact || isAccessibilityArtifact;
   const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
   const docBody = doc && doc.body;
-  const nearest = walkUp(el, DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody,
-    (node) => _isQualifyingAncestor(node, isArtifact, opts));
-  return nearest && outermostQualifying(nearest, isArtifact, opts);
+  const cap = DR_DETECTION_SETTINGS.gridWalkDepthCap;
+  const qualifies = (node) => _isQualifyingAncestor(node, isArtifact, opts);
+  const nearest = isQualifying ? el : walkUp(el, cap, (node) => node === docBody, qualifies);
+  let chainRoot = nearest;
+  if (nearest) {
+    walkUp(parentOf(nearest), cap, (node) => node === docBody || _isCellAncestor(node), (node) => {
+      if (qualifies(node)) chainRoot = node;
+      return false;
+    });
+  }
+  return chainRoot;
 }
 
 /**
@@ -2039,7 +2077,7 @@ function nominateNests(root, opts = {}) {
   // One chain root per nest, each evaluated once. A Set keeps
   // insertion order, so the results stay in document order.
   const chainRoots = new Set();
-  for (const el of qualifying) chainRoots.add(outermostQualifying(el, isArtifact, opts));
+  for (const el of qualifying) chainRoots.add(chainRootOf(el, opts, true));
 
   const results = [];
   for (const chainRoot of chainRoots) results.push(nominateNest(chainRoot, opts));
