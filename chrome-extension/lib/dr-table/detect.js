@@ -1541,11 +1541,12 @@ function registeredAncestor(el, docBody, isRegistered) {
  * here, because a qualifying chain root holds no native table other than
  * accessibility artifacts.
  *
- * The step selects nothing for a nest whose chain is empty, for a depth
- * holding more than one element, and for a nest already holding a registered
- * element; each of those leaves the result to the geometry probe, which is the
- * behavior issue #382 records for a click in a sibling pane of a registered
- * nest.
+ * When the step selects nothing in the nest `el` sits in (an empty chain, a
+ * depth holding more than one element, or a nest already holding a
+ * registered element), findTables returns the element it selects in the
+ * first nest inside a cell under the chain root, if one exists. With none,
+ * the result falls to the geometry probe, the behavior issue #382 records
+ * for a click in a sibling pane of a registered nest.
  * @param {Element} el
  * @param {object} opts - the options of findTables, with isRegistered set
  * @returns {Element|null}
