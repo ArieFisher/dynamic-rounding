@@ -21,6 +21,13 @@ Base branch: main
   - The sprint renames identifiers alone, so the test-writer step added no test. After APPROVE, the review's bucket-1 fixes (comment reflow and canon test names) went in as their own `chore(detect)` commit.
   - Follow-up: #616.
 
+- **detect-unused-logic** — commits on feature/detection-layer-cleanup
+  - Reviewer: APPROVE (after 1 retry)
+  - Tests: pass (extension 4,090; library 827; documented examples 90)
+  - The `trimmed` field stays, because the content script reads it. The patch writer's written-piece list stays, because a test reads it; no production code reads it.
+  - The first review blocked on comments the removal left false: a docblock that still described an inline-style read, and test comments that named the geometry probe's steps by their old numbers. Test comments now name the steps.
+  - FYI: the artifact filter now reads position through the style probe alone. On an attached table this matches the old read; a detached table with inline positioning no longer reads as an accessibility artifact.
+
 ### Blocked
 
 None.
