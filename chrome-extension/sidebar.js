@@ -129,14 +129,14 @@ function setTableBound(isBound) {
   document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
   if (!isBound) {
     // No active table: there is nothing for rounding to act on, so flip the
-    // main switch to its off state rather than dimming the whole sidebar.
+    // sidebar pillbox to its off state rather than dimming the whole sidebar.
     // The message written below is unsourced — drop a stale source tag so
     // applyNow's delivery-success clear can still collect it.
     delete statusEl.dataset.source;
     enabledEl.checked = false;
     statusEl.textContent = NO_TABLE_STATUS_MSG;
   } else {
-    // A table is now bound. The main switch is not touched here: the model
+    // A table is now bound. The sidebar pillbox is not touched here: the model
     // is its source — applySettingsToUI on a pull, or
     // applyDefaultsToUI on the pull's fallback, has already set it, and a
     // bind must not reset it to the shipped default.
@@ -322,7 +322,7 @@ function formatStrategyHeader(maxMag, offset) {
 }
 
 /**
- * Render the top preview band on two lines: the strategy header (blue) on the
+ * Render the top of the lens preview on two lines: the strategy header (blue) on the
  * first line and a single worked example ("e.g. <original> → <rounded>", black)
  * on the second. Both lines are laid out as from|arrow|num pairs in the shared
  * 3-column grid so their "→" arrows line up vertically. The example carries no
@@ -383,7 +383,7 @@ function renderTopBand(el, rows, offset) {
 }
 
 /**
- * Render the bottom preview band: rows sorted DESCENDING by magnitude, each
+ * Render the lens preview's sample rows: rows sorted DESCENDING by magnitude, each
  * showing the bare original number with its OoM label (kept per the issue #3
  * decision — strip the largest band, keep the tag for the other numbers). A
  * brown trailing step annotation — "(5k)" — follows the rounded number to show
@@ -453,7 +453,7 @@ function renderPreviewBands() {
 
 // Refreshes the lens preview from the active table; the bound/unbound
 // state is a side effect of the response (samples !== null means bound).
-// The main switch is not written on the bound path: setTableBound(true)
+// The sidebar pillbox is not written on the bound path: setTableBound(true)
 // leaves it to the settings apply that ran before this call,
 // so no pulled value needs threading back in after the bind resolves.
 function fetchPreviewSamples() {
@@ -693,7 +693,7 @@ boundTab.subscribe('state:rangeOk', () => {
 boundTab.subscribe('state:previewSamplesChanged', () => {
   // Stale view: re-read the active table's settings, then the previews (the
   // pull chain ends in fetchPreviewSamples). A bare preview fetch here would
-  // reset the main switch to the shipped default.
+  // reset the sidebar pillbox to the shipped default.
   pullSettingsAndApplyToUI();
 });
 

@@ -2305,7 +2305,7 @@ const PENDING_FILL_ROWS = [
       freshDR_STORE.hasTable(table), false);
     eq('ancestor removal: trackedTables no longer has the table',
       freshTrackedTables.has(table), false);
-    eq('ancestor removal: the table\'s toggle button was removed from its parent',
+    eq('ancestor removal: the table\'s table pillbox was removed from its parent',
       removedButtons.includes(button), true);
 
     // A DIRECT removedNodes entry (the table itself, not an ancestor) must
@@ -2614,7 +2614,7 @@ const PENDING_FILL_ROWS = [
     withCreateTreeWalker(function () {
       DR_BUS.publish('intent:toggleTable', { table }); // pillbox: turn rounding on
     });
-    eq('leak-1: the first pill toggle rounds the connected table',
+    eq('leak-1: the first table pillbox press rounds the connected table',
       showsSimplified(table), true);
     eq('leak-1: the table\'s settings follow the pillbox — enabled true after toggle-on',
       DR_STORE.getTableSettings(table).enabled, true);
@@ -2622,7 +2622,7 @@ const PENDING_FILL_ROWS = [
     withCreateTreeWalker(function () {
       DR_BUS.publish('intent:toggleTable', { table }); // pillbox: turn rounding off
     });
-    eq('leak-1: the second pill toggle restores the table to originals',
+    eq('leak-1: the second table pillbox press restores the table to originals',
       showsSimplified(table), false);
     eq('leak-1: the table\'s settings follow the pillbox — enabled false after toggle-off',
       DR_STORE.getTableSettings(table).enabled, false);
@@ -3809,7 +3809,7 @@ function issue328SettingsOf(table) {
 // note above). A source assertion pins that the responder exists and routes
 // through it.
 
-(function captureWireAction() {
+(function captureStatePull() {
   eq('capture-wire: buildCaptureStateResponse loads in the content-script bundle',
     typeof globalThis.buildCaptureStateResponse, 'function');
   eq('capture-wire: the responder answers request:captureState through buildCaptureStateResponse',
@@ -4454,7 +4454,7 @@ function issue328SettingsOf(table) {
   if (capturedListeners.length === 0) return;
 
   // Nothing has been right-clicked in this isolated model.
-  eq('moved responders: no selected table answers a pair of nulls, not nothing',
+  eq('moved responders: no active table answers a pair of nulls, not nothing',
     fire({ action: 'request:previewSamples' }), { samples: null, maxMag: null });
 
   const captureAnswer = fire({ action: 'request:captureState' });

@@ -6,7 +6,7 @@
  */
 
 /**
- * Per-table toggle widget UI and table/grid detection (presentation layer).
+ * Table pillbox view and table/grid detection (presentation layer).
  *
  * Toggle geometry, style injection, button creation/positioning, the
  * highlight/flash affordances, and the detection predicates (looksLikeGrid,
@@ -63,7 +63,7 @@ const tableToggles = new WeakMap();
 /** Parallel Set of tracked tables so we can iterate for repositioning */
 const trackedTables = new Set();
 
-/** WeakMap from HTMLTableElement → ResizeObserver for the toggle */
+/** WeakMap from HTMLTableElement → ResizeObserver for the table pillbox */
 const tableResizeObservers = new WeakMap();
 
 // The table pillbox shows the table's on/off value, the same value the

@@ -2235,7 +2235,7 @@ const supTestOpts = {
   const afterFirst = tableToggles.has(realTable);
 
   // Second run — table already in tableToggles; Pass 1 should skip it.
-  // We verify the toggle is not re-inserted: since WeakMap.set overwrites,
+  // We verify the table pillbox is not re-inserted: since WeakMap.set overwrites,
   // a re-create would swap the button object, so we check its identity holds.
   const buttonAfterFirst = tableToggles.get(realTable);
   runPass1WithTables([realTable]);
@@ -4474,7 +4474,7 @@ function numericLabelColumns() {
   });
 })();
 
-// --- The direction read skips a child with no box ---
+// --- The direction reader skips a child with no box ---
 
 (function columnFirst_theDirectionReadSkipsAHiddenSecondChild() {
   const plan = makeColumnFirstGrid(planGridColumns(), { hiddenColumns: [1] });
@@ -4514,7 +4514,7 @@ function numericLabelColumns() {
     isDataTable(plan.gridEl, { styleProbe: probe }), true);
 })();
 
-// --- The cap on the direction read ---
+// --- The direction reader's cap ---
 
 // Twelve children of two cells each. Only the children at the positions in
 // `boxed` draw a box, side by side on one top.
@@ -4531,34 +4531,34 @@ function makeSparselyBoxedGrid(boxed) {
   return gridEl;
 }
 
-(function directionRead_inspectsAtMostTheSampleCap() {
+(function directionReader_inspectsAtMostTheSampleCap() {
   const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
   const gridEl = makeSparselyBoxedGrid([cap, cap + 1]);
   const probe = makeCountingBoxProbe();
   const rows = makeAdapter(gridEl, { styleProbe: probe }).getRows();
-  eq('direction read cap: the read inspects at most gridColumnWidthSample children',
+  eq('direction reader cap: the read inspects at most gridColumnWidthSample children',
     probe.boxReads.length <= cap, true);
-  eq('direction read cap: the read inspects no child past the cap',
+  eq('direction reader cap: the read inspects no child past the cap',
     probe.boxReads.some((el) => gridEl.children.indexOf(el) >= cap), false);
-  eq('direction read cap: with no box inside the cap the read answers row-first',
+  eq('direction reader cap: with no box inside the cap the read answers row-first',
     rows.length, 12);
 })();
 
-(function directionRead_oneBoxInsideTheCapReadsRowFirst() {
+(function directionReader_oneBoxInsideTheCapReadsRowFirst() {
   const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
   const gridEl = makeSparselyBoxedGrid([cap - 1, cap]);
-  eq('direction read cap: one box inside the cap answers row-first',
+  eq('direction reader cap: one box inside the cap answers row-first',
     makeAdapter(gridEl, { styleProbe: makeCountingBoxProbe() }).getRows().length, 12);
 })();
 
-(function directionRead_twoBoxesInsideTheCapReadColumnFirst() {
+(function directionReader_twoBoxesInsideTheCapReadColumnFirst() {
   const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
   const gridEl = makeSparselyBoxedGrid([cap - 2, cap - 1]);
   const probe = makeCountingBoxProbe();
   const rows = makeAdapter(gridEl, { styleProbe: probe }).getRows();
-  eq('direction read cap: two side-by-side boxes as the last two children inside the cap read column-first',
+  eq('direction reader cap: two side-by-side boxes as the last two children inside the cap read column-first',
     rows.map((row) => row.getCells().length), [12, 12]);
-  eq('direction read cap: the read stops at the second box',
+  eq('direction reader cap: the read stops at the second box',
     probe.boxReads.length, cap);
 })();
 

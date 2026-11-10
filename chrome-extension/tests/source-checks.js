@@ -1,4 +1,4 @@
-// Checks that read source files, the manifest, bundles, or the living docs as text.
+// Checks that read source files, the manifest, bundles, or the living documents as text.
 
 // --- Manifest + background invariants ---
 // NOTE: These are static-analysis proxies only. Whether the toolbar icon
@@ -195,8 +195,8 @@
     /function\s+createToggleForTable\b/.test(src), true);
   eq('auto-table-toggle: defines injectTableToggles',
     /function\s+injectTableToggles\b/.test(src), true);
-  // The toggle button must use the new dr-ext-morph CSS class
-  eq('auto-table-toggle: toggle uses dr-ext-morph CSS class',
+  // The table pillbox must use the new dr-ext-morph CSS class
+  eq('auto-table-toggle: the table pillbox uses dr-ext-morph CSS class',
     src.includes('dr-ext-morph'), true);
 })();
 
@@ -284,7 +284,7 @@
   eq('sidebar.html does not load content-only ui-toast.js', sidebarHtml.includes('ui-toast.js'), false);
 })();
 
-(function previewBand_sidebarHtmlHasBands() {
+(function lensPreview_sidebarHtmlHasTopAndBottom() {
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
   eq('sidebar.html has #topBand', /<div[^>]*id="topBand"/.test(sidebarHtml), true);
   eq('sidebar.html has #botBand', /<div[^>]*id="botBand"/.test(sidebarHtml), true);
@@ -423,7 +423,7 @@
 //   AC3. sidebar.html does NOT contain "row-reverse" anywhere.
 //   AC4. The .toggle-row CSS block does NOT contain "justify-content: space-between".
 
-(function sidebarPillLeft() {
+(function sidebarSwitchLeft() {
   const sidebarPath = path.join(__dirname, 'sidebar.html');
   const sidebarHtml = fs.readFileSync(sidebarPath, 'utf8');
 
@@ -456,12 +456,12 @@
   const simpleRows = ['simplifyMixedCells', 'simplifyFirstColumn'];
   for (const id of simpleRows) {
     const row = getRowSubstring(id);
-    eq(`sidebar-pill-left AC1: row "${id}" exists in sidebar.html`,
+    eq(`sidebar switch-left AC1: row "${id}" exists in sidebar.html`,
       row !== null, true);
     if (row !== null) {
       const inputIdx = row.search(new RegExp('id=["\']' + id + '["\']'));
       const labelIdx = row.indexOf('<span class="toggle-label">');
-      eq(`sidebar-pill-left AC1: switch input comes before .toggle-label in row "${id}"`,
+      eq(`sidebar switch-left AC1: switch input comes before .toggle-label in row "${id}"`,
         inputIdx < labelIdx, true);
     }
   }
@@ -470,12 +470,12 @@
   const complexRows = ['simplifyDates', 'simplifyTimes'];
   for (const id of complexRows) {
     const row = getRowSubstring(id);
-    eq(`sidebar-pill-left AC1: row "${id}" exists in sidebar.html`,
+    eq(`sidebar switch-left AC1: row "${id}" exists in sidebar.html`,
       row !== null, true);
     if (row !== null) {
       const inputIdx = row.search(new RegExp('id=["\']' + id + '["\']'));
       const labelIdx = row.indexOf('<span class="toggle-label">');
-      eq(`sidebar-pill-left AC1: switch input comes before .toggle-label in row "${id}"`,
+      eq(`sidebar switch-left AC1: switch input comes before .toggle-label in row "${id}"`,
         inputIdx < labelIdx, true);
     }
   }
@@ -490,25 +490,25 @@
     if (row !== null) {
       const labelIdx  = row.indexOf('<span class="toggle-label">');
       const selectIdx = row.search(new RegExp('<select[^>]*id=["\']' + selectId + '["\']'));
-      eq(`sidebar-pill-left AC2: <select id="${selectId}"> appears after .toggle-label in row`,
+      eq(`sidebar switch-left AC2: <select id="${selectId}"> appears after .toggle-label in row`,
         selectIdx > labelIdx, true);
     }
   }
 
   // --- AC3: sidebar.html does not use row-reverse ---
-  eq('sidebar-pill-left AC3: sidebar.html does not contain "row-reverse"',
+  eq('sidebar switch-left AC3: sidebar.html does not contain "row-reverse"',
     sidebarHtml.includes('row-reverse'), false);
 
   // --- AC4: .toggle-row CSS block does not use justify-content: space-between ---
   // Find the .toggle-row block by locating ".toggle-row {" and scanning to the closing "}".
   const toggleRowBlockStart = sidebarHtml.indexOf('.toggle-row {');
-  eq('sidebar-pill-left AC4: .toggle-row CSS block is present in sidebar.html',
+  eq('sidebar switch-left AC4: .toggle-row CSS block is present in sidebar.html',
     toggleRowBlockStart !== -1, true);
   if (toggleRowBlockStart !== -1) {
     const fromBlock = sidebarHtml.slice(toggleRowBlockStart);
     const blockClose = fromBlock.indexOf('}');
     const toggleRowBlock = blockClose !== -1 ? fromBlock.slice(0, blockClose + 1) : fromBlock.slice(0, 200);
-    eq('sidebar-pill-left AC4: .toggle-row CSS block does not contain "justify-content: space-between"',
+    eq('sidebar switch-left AC4: .toggle-row CSS block does not contain "justify-content: space-between"',
       toggleRowBlock.includes('justify-content: space-between'), false);
   }
 })();
@@ -566,9 +566,9 @@
     /\bsimplifyTimes\b/.test(sidebarSrc), true);
 })();
 
-// --- AC6: the living docs state the route ---
+// --- AC6: the living documents state the route ---
 
-(function rightClickRegisters_AC6_theLivingDocsStateTheRoute() {
+(function rightClickRegisters_AC6_theLivingDocumentsStateTheRoute() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
@@ -605,10 +605,10 @@
       /chain root/i.test(readmeDetectionPoint), true);
 })();
 
-// AC4: the three living docs each state the 1000-cell budget, per AGENTS.md's
-// rule that a behavior-invalidating change updates every living doc it
+// AC4: the three living documents each state the 1000-cell budget, per AGENTS.md's
+// rule that a behavior-invalidating change updates every living document it
 // invalidates in the same branch.
-(function dataTestBudget_livingDocsStateTheBudget() {
+(function dataTestBudget_livingDocumentsStateTheBudget() {
   const readmeMd = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
@@ -617,11 +617,11 @@
   // "data test" or "cell read(s)".
   const statesBudget = (text) =>
     /1000[\s\S]{0,80}(data test|cell reads?)|(data test|cell reads?)[\s\S]{0,80}1000/i.test(text);
-  eq('living docs: chrome-extension/README.md states the 1000-cell budget',
+  eq('living documents: chrome-extension/README.md states the 1000-cell budget',
     statesBudget(readmeMd), true);
-  eq('living docs: docs/design.md states the 1000-cell budget',
+  eq('living documents: docs/design.md states the 1000-cell budget',
     statesBudget(designMd), true);
-  eq('living docs: docs/vocabulary.md states the 1000-cell budget',
+  eq('living documents: docs/vocabulary.md states the 1000-cell budget',
     statesBudget(vocabularyMd), true);
 })();
 
@@ -1626,15 +1626,15 @@
     Object.prototype.hasOwnProperty.call(DR_DETECTION_SETTINGS, 'pillboxAutoCollapseMs'), false);
 })();
 
-// Living docs: docs/design.md's package table and docs/vocabulary.md both
+// Living documents: docs/design.md's package table and docs/vocabulary.md both
 // carry the detection settings, per AGENTS.md's rule that a behavior-invalidating
-// change updates every living doc it invalidates in the same branch.
-(function detectionSettings_livingDocsCarryTheTerm() {
+// change updates every living document it invalidates in the same branch.
+(function detectionSettings_livingDocumentsCarryTheTerm() {
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
-  eq('living docs: docs/design.md carries the detection settings',
+  eq('living documents: docs/design.md carries the detection settings',
     designMd.includes('detection settings'), true);
-  eq('living docs: docs/vocabulary.md defines the detection settings',
+  eq('living documents: docs/vocabulary.md defines the detection settings',
     vocabularyMd.includes('detection settings'), true);
 })();
 
@@ -1695,9 +1695,9 @@
     addedNodePassSrc !== null && /nominateNests\s*\(/.test(addedNodePassSrc), true);
 })();
 
-// --- AC7: the living docs and the test page state the rule ---
+// --- AC7: the living documents and the test page state the rule ---
 
-(function gridNesting_AC7_livingDocsAndTheTestPageStateTheRule() {
+(function gridNesting_AC7_livingDocumentsAndTheTestPageStateTheRule() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
@@ -1735,14 +1735,14 @@
     /second pillbox/i.test(section), false);
 })();
 
-// --- The living docs state the field ---
+// --- The living documents state the field ---
 //
 // Two doc-pin blocks already stand in this suite (the nesting rule's and the
 // data-test budget's); this one follows them. The vocabulary defines the term
-// and the registry row lists it; the design doc's state-ownership paragraph
+// and the registry row lists it; the design document's state-ownership paragraph
 // lists it among the per-table registry fields.
 
-(function shapeFingerprint_theLivingDocsStateTheField() {
+(function shapeFingerprint_theLivingDocumentsStateTheField() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
 
@@ -1776,9 +1776,9 @@
     /header row/i.test(stateOwnership), true);
 })();
 
-// --- Criterion 5: the living docs state the pending table rule ---
+// --- Criterion 5: the living documents state the pending table rule ---
 
-(function pendingRetest_AC5_livingDocsStateTheRule() {
+(function pendingRetest_AC5_livingDocumentsStateTheRule() {
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const extensionReadme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
@@ -2178,26 +2178,26 @@
     empty.length === 1 && empty[0].dataUrl === null && empty[0].record.taken === false, true);
 })();
 
-// Criterion 4: the living docs name the detection settings in the capture
+// Criterion 4: the living documents name the detection settings in the capture
 // paragraph or row a reader would consult — the README's capture section,
-// the design doc's Capture paragraph, and the vocabulary's capture state
+// the design document's Capture paragraph, and the vocabulary's capture state
 // row — loose enough to survive rewording, tight enough to fail if the
 // mention is dropped.
-(function captureDetectionSettingsLivingDocsNameTheTerm() {
+(function captureDetectionSettingsLivingDocumentsNameTheTerm() {
   const readmeMd = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
   const designMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design.md'), 'utf8');
   const vocabularyMd = fs.readFileSync(path.join(__dirname, '..', 'docs', 'vocabulary.md'), 'utf8');
 
   const readmeCaptureSection = (readmeMd.split('\n## Capture\n')[1] || '').split('\n## ')[0];
-  eq('living docs: chrome-extension/README.md\'s capture paragraph names the detection settings',
+  eq('living documents: chrome-extension/README.md\'s capture paragraph names the detection settings',
     readmeCaptureSection.includes('detection settings'), true);
 
   const designCaptureParagraph = designMd.split('\n').find((line) => line.startsWith('**Capture.**')) || '';
-  eq('living docs: docs/design.md\'s Capture paragraph names the detection settings',
+  eq('living documents: docs/design.md\'s Capture paragraph names the detection settings',
     designCaptureParagraph.includes('detection settings'), true);
 
   const vocabularyCaptureStateRow = vocabularyMd.split('\n').find((line) => line.startsWith('| capture state |')) || '';
-  eq('living docs: docs/vocabulary.md\'s capture state row names the detection settings',
+  eq('living documents: docs/vocabulary.md\'s capture state row names the detection settings',
     vocabularyCaptureStateRow.includes('detection settings'), true);
 })();
 

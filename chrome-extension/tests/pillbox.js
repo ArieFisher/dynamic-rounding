@@ -729,7 +729,7 @@
 // Visibility gate in positionToggle
 // ---------------------------------------------------------------------------
 //
-// positionToggle hides the toggle label (labelEl.style.display = 'none')
+// positionToggle hides the table pillbox label (labelEl.style.display = 'none')
 // when the table is offscreen or invisible, and shows it (labelEl.style.display = '')
 // when the table is normally visible.
 //
@@ -1670,7 +1670,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // CreateToggleForTable click rebind logic
 // =============================================================================
 //
-// Helper: create a real toggle button via createToggleForTable with DOM stubs,
+// Helper: create a real table pillbox via createToggleForTable with DOM stubs,
 // then return { buttonEl, sentMessages } so callers can dispatch events and
 // inspect chrome.runtime.sendMessage calls.
 //
@@ -2521,7 +2521,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // isNew). This test proves the guard end-to-end: firing the actual
 // captured 'contextmenu' listener twice on the same never-before-seen grid,
 // and then firing the actual captured 'intent:menuClicked' onMessage listener
-// against that same target, builds exactly one toggle widget.
+// against that same target, builds exactly one table pillbox.
 // ---------------------------------------------------------------------------
 (function doubleInvocation_contextmenuAndMenuClicked_noDuplicateWidget() {
   // A minimal div-based "grid" using the same ARIA-free, querySelectorAll-less
@@ -2620,7 +2620,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
     eq('double-invocation: first contextmenu marks the grid with dr-ext-grid',
       gridEl.classList.contains('dr-ext-grid'), true);
-    eq('double-invocation: first contextmenu builds exactly one toggle widget',
+    eq('double-invocation: first contextmenu builds exactly one table pillbox',
       buttonCreateCount, 1);
 
     // --- Second right-click on the SAME target: findTargetTable resolves

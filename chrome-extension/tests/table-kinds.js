@@ -3,7 +3,7 @@
 // =============================================================================
 // #524: A native table and a grid are one product, so each table feature a
 // page can use must give the same result in its native form and in its grid
-// form. The design doc's "Table kind pairs" table is the one list of pairs:
+// form. The design document's "Table kind pairs" table is the one list of pairs:
 // each row names a feature, its two forms, and its state. Each pair the list
 // marks tested has a comparison test here, which draws the same values once
 // as a native table and once as a grid, runs detection and the
@@ -150,7 +150,7 @@ const TK_SETTINGS = [
 
 (function tablekinds_thePairListParses() {
   const list = tkReadPairList();
-  eq('#524 the design doc holds the table kind pairs list', list !== null, true);
+  eq('#524 the design document holds the table kind pairs list', list !== null, true);
   if (!list) return;
   eq('#524 every pair in the list carries a known state',
     list.filter((row) => !TK_STATES.includes(row.state)).map((row) => row.key), []);
@@ -168,11 +168,11 @@ const TK_SETTINGS = [
 
 // Every row joins the dataset on both kinds, so a header row outside every
 // row group and a total row in a row group of its own give the native
-// result. The design doc lists both pairs as same, and the test below then
+// result. The design document lists both pairs as same, and the test below then
 // finds no difference under either settings object.
 (function tablekinds_theEveryRowPairsAreSame() {
   const list = tkReadPairList() || [];
-  eq('every row: the design doc lists the column-header and footer-group pairs as same',
+  eq('every row: the design document lists the column-header and footer-group pairs as same',
     ['column-header', 'footer-group'].map((key) => (list.find((row) => row.key === key) || {}).state),
     ['same', 'same']);
 })();
@@ -204,7 +204,7 @@ const TK_SETTINGS = [
 // so this case pins the number: the outer table and the inner table.
 (function tablekinds_aTableInsideACellIsTwoTablesOnBothKinds() {
   const row = (tkReadPairList() || []).find((entry) => entry.key === 'nested-table');
-  eq('#527 the design doc lists the nested-table pair as same', row && row.state, 'same');
+  eq('#527 the design document lists the nested-table pair as same', row && row.state, 'same');
   for (const settings of TK_SETTINGS) {
     const pair = TK_PAIRS['nested-table'];
     eq(`#527 under ${settings.name}: the native page holds two data tables`,

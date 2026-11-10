@@ -2,7 +2,7 @@
  * Doc-example tests.
  *
  * Extracts every documented ROUND_DYNAMIC input/output pair from the repo's
- * living docs and runs it against the library, so a doc that drifts from the
+ * living documents and runs it against the library, so a doc that drifts from the
  * shipped behavior fails CI instead of waiting for a reader to notice.
  * Run: node js/doc-tests.js
  *
