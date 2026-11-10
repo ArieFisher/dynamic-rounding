@@ -62,6 +62,45 @@ const GRID_CELL_SELECTOR = '[role="cell"], [role="gridcell"], [role="rowheader"]
 const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE) || 1;
 
 /**
+ * The node above `node`: its parent element, else its parent node (the
+ * document or a fragment at the top of a tree), else null. Every read of a
+ * node's parent in this file goes through it.
+ *
+ * @param {Node} node
+ * @returns {Node|null}
+ */
+function parentOf(node) {
+  return node.parentElement || node.parentNode || null;
+}
+
+/**
+ * The ancestor walk: visits `start` and then each node above it, and returns
+ * the first node `found` reports, or null when the walk ends without one. The
+ * walk ends before it visits a node `stopAt` reports, after `cap` nodes, and
+ * at the top of the tree.
+ *
+ * Every ancestor walk in this file calls it. A walk that has to tell an end
+ * from a find reads the nodes it passed through `found`, which can keep state.
+ *
+ * @param {Node|null} start - the first node visited
+ * @param {number} cap - the most nodes the walk visits. A walk bounded by
+ *   page depth passes DR_DETECTION_SETTINGS.gridWalkDepthCap; at the cap the
+ *   walk ends and returns null. Infinity leaves the tree's top as the walk's
+ *   only bound.
+ * @param {((node: Node) => boolean)|null} stopAt - true at a node the walk does not enter; null stops nowhere
+ * @param {(node: Node) => boolean} found - true at the node the walk returns
+ * @returns {Node|null}
+ */
+function walkUp(start, cap, stopAt, found) {
+  let node = start;
+  for (let depth = 0; node && depth < cap && !(stopAt && stopAt(node)); depth++) {
+    if (found(node)) return node;
+    node = parentOf(node);
+  }
+  return null;
+}
+
+/**
  * The style probe: the one source for every guarded getComputedStyle,
  * offsetWidth, and box read in this file. With no real getComputedStyle it
  * reports a normal, visible, statically-positioned block element, which keeps
@@ -463,13 +502,13 @@ function _ownDescendants(root, selector) {
       if (insideCell.has(at)) { answer = insideCell.get(at); break; }
       passed.push(at);
       if (_isCellAncestor(at)) { answer = true; break; }
-      at = at.parentElement || at.parentNode;
+      at = parentOf(at);
     }
     for (const el of passed) insideCell.set(el, answer);
     return answer;
   };
   return Array.from(root.querySelectorAll(selector))
-    .filter((match) => !isInsideCell(match.parentElement || match.parentNode));
+    .filter((match) => !isInsideCell(parentOf(match)));
 }
 
 /**
@@ -732,46 +771,33 @@ function makeAdapter(el, opts = {}) {
 /**
  * The {start, end} half-open ranges of a cell's text that sit inside a <sup>
  * element or an element whose computed vertical-align is 'super'. The ranges
- * count in the cell's flat text. The vertical-align check reads opts.styleProbe, so the function runs
- * when getComputedStyle is absent; without doc.createTreeWalker it returns [].
+ * count in the cell's flat text. The function reads the cell's text pieces
+ * through collectTextPieces. The vertical-align check reads opts.styleProbe, so
+ * the function runs when getComputedStyle is absent.
  *
  * opts.text, when given, is the rendered text the caller classifies, and each
  * range converts into its positions through mapRenderedToFlat. A range with no
  * rendered character drops out. When the two texts differ in anything but
  * whitespace, the ranges stay in flat-text positions.
  * @param {Element} cell
- * @param {{doc?: Document, styleProbe?: object, text?: string}} [opts]
+ * @param {{styleProbe?: object, text?: string}} [opts]
  * @returns {{start: number, end: number}[]}
  */
 function getSuperscriptRanges(cell, opts = {}) {
-  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
-  if (!cell || !doc || typeof doc.createTreeWalker !== 'function') {
-    return [];
-  }
+  if (!cell) return [];
   const ranges = [];
-  const treeWalker = doc.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
   let cursor = 0;
   let flat = '';
-  let node;
-  while ((node = treeWalker.nextNode())) {
+  for (const node of collectTextPieces(cell)) {
     const len = node.nodeValue ? node.nodeValue.length : 0;
     if (len > 0) {
       flat += node.nodeValue;
-      let isSup = false;
-      let ancestor = node.parentNode || node.parentElement;
-      while (ancestor && ancestor !== cell) {
-        if (ancestor.tagName === SUPERSCRIPT_TAG) {
-          isSup = true;
-          break;
-        }
+      const isSup = walkUp(parentOf(node), Infinity, (ancestor) => ancestor === cell, (ancestor) => {
+        if (ancestor.tagName === SUPERSCRIPT_TAG) return true;
         const style = styleProbe.getComputedStyle(ancestor);
-        if (style && style.verticalAlign === 'super') {
-          isSup = true;
-          break;
-        }
-        ancestor = ancestor.parentNode || ancestor.parentElement;
-      }
+        return !!(style && style.verticalAlign === 'super');
+      }) !== null;
       if (isSup) {
         ranges.push({ start: cursor, end: cursor + len });
       }
@@ -816,13 +842,7 @@ function filterLinkMatches(cell, matches) {
   const anchors = cell.querySelectorAll('a');
   if (!anchors || anchors.length === 0) return matches;
 
-  const treeWalker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
-  const textNodes = [];
-  let currentNode;
-  while ((currentNode = treeWalker.nextNode())) {
-    textNodes.push(currentNode);
-  }
-  const nonEmptyNodes = textNodes.filter(n => n.nodeValue.trim() !== '');
+  const nonEmptyNodes = collectTextPieces(cell).filter(n => n.nodeValue.trim() !== '');
 
   return matches.filter(match => {
     const numStr = match.numStr;
@@ -1478,15 +1498,9 @@ function findTargetTable(el, opts = {}) {
   // walk-up rather than a closest('.dr-ext-grid') query, since isRegistered is
   // an arbitrary per-element check (typically a WeakMap-backed registry.has),
   // not a CSS selector.
-  let seenCandidate = el;
-  let seenDepth = 0;
-  while (seenCandidate && seenCandidate !== docBody && seenDepth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (seenCandidate.nodeType === DR_TABLE_ELEMENT_NODE && isRegistered(seenCandidate)) {
-      return { handle: seenCandidate, isNew: false };
-    }
-    seenCandidate = seenCandidate.parentElement || seenCandidate.parentNode;
-    seenDepth++;
-  }
+  const registered = walkUp(el, DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody,
+    (node) => node.nodeType === DR_TABLE_ELEMENT_NODE && isRegistered(node));
+  if (registered) return { handle: registered, isNew: false };
 
   // 3. The nomination step, run from the chain root of the nest el sits in.
   // The step applies the configured nesting depth to the whole nest, so the
@@ -1508,30 +1522,16 @@ function findTargetTable(el, opts = {}) {
   }
 
   // 4. Walk up, calling looksLikeGrid; return the outermost consecutive match.
-  let current = el.parentElement || el.parentNode;
-  let depth = 0;
   let outermost = null;
-
-  while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (current.nodeType !== DR_TABLE_ELEMENT_NODE) {
-      current = current.parentElement || current.parentNode;
-      depth++;
-      continue;
+  walkUp(parentOf(el), DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody, (node) => {
+    if (node.nodeType !== DR_TABLE_ELEMENT_NODE) return false;
+    if (looksLikeGrid(node, opts)) {
+      outermost = node;
+      return false;
     }
-    if (looksLikeGrid(current, opts)) {
-      outermost = current;
-    } else if (outermost !== null) {
-      break;
-    }
-    current = current.parentElement || current.parentNode;
-    depth++;
-  }
-
-  if (outermost !== null) {
-    return { handle: outermost, isNew: !isRegistered(outermost) };
-  }
-
-  return null;
+    return outermost !== null;
+  });
+  return outermost === null ? null : { handle: outermost, isNew: !isRegistered(outermost) };
 }
 
 /**
@@ -1546,17 +1546,11 @@ function findTargetTable(el, opts = {}) {
 function _nearestPositionedAncestor(el, opts = {}) {
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   const POSITIONED = new Set(['relative', 'absolute', 'fixed', 'sticky']);
-  let current = el;
-  while (current) {
-    if (typeof current.getAttribute !== 'function') {
-      current = current.parentElement || current.parentNode || null;
-      continue;
-    }
-    const style = styleProbe.getComputedStyle(current);
-    if (style && POSITIONED.has(style.position)) return current;
-    current = current.parentElement || current.parentNode || null;
-  }
-  return null;
+  return walkUp(el, Infinity, null, (node) => {
+    if (typeof node.getAttribute !== 'function') return false;
+    const style = styleProbe.getComputedStyle(node);
+    return !!(style && POSITIONED.has(style.position));
+  });
 }
 
 /**
@@ -1589,15 +1583,10 @@ function isAccessibilityArtifact(table, opts = {}) {
   if (!table || typeof table.getAttribute !== 'function') return false;
 
   // --- Signal 1: aria-hidden on self or any ancestor ---
-  let node = table;
-  while (node) {
-    if (typeof node.getAttribute === 'function') {
-      if (node.getAttribute('aria-hidden') === 'true') return true;
-    }
-    node = node.parentElement || node.parentNode || null;
-    // Stop at document root (no parentElement means the walk has left the element tree)
-    if (node && typeof node.tagName === 'undefined') break;
-  }
+  // A node with no tagName is the document root: the walk has left the element tree.
+  const hidden = walkUp(table, Infinity, (node) => node !== table && typeof node.tagName === 'undefined',
+    (node) => typeof node.getAttribute === 'function' && node.getAttribute('aria-hidden') === 'true');
+  if (hidden) return true;
 
   // --- Signal 2: nearest positioned ancestor has left ≤ threshold ---
   const posAncestor = _nearestPositionedAncestor(table, opts);
@@ -1750,7 +1739,7 @@ function readTableFingerprint(el, opts = {}) {
 function _hasHeaderRow(el, adapter, firstRow) {
   if (!(adapter instanceof NativeTableAdapter)) return firstRow.isOutside === true;
   const rowEl = el.rows && el.rows[0];
-  const parent = rowEl && (rowEl.parentElement || rowEl.parentNode);
+  const parent = rowEl && parentOf(rowEl);
   if (parent && parent.tagName === 'THEAD') return true;
   const cells = firstRow.getCells();
   return cells.length > 0 && cells.every((cellObj) => cellObj.tagName === 'TH');
@@ -1835,8 +1824,8 @@ function _isQualifyingAncestor(el, isArtifact, opts) {
 }
 
 /**
- * Walk up from `el` to its chain root: the outermost qualifying ancestor of
- * the nest `el` sits in. The walk is bounded by DR_DETECTION_SETTINGS.gridWalkDepthCap DOM
+ * Walk up from the qualifying element `el` to its chain root: the outermost
+ * qualifying ancestor of the nest `el` sits in. The walk is bounded by DR_DETECTION_SETTINGS.gridWalkDepthCap DOM
  * levels and stops at the document body and at the first ancestor carrying a
  * cell role, and it continues past an ancestor that carries no role, because
  * a nest may put a plain wrapper between two qualifying elements. An element
@@ -1847,18 +1836,14 @@ function _isQualifyingAncestor(el, isArtifact, opts) {
  * @param {object} opts
  * @returns {Element}
  */
-function _chainRootOf(el, isArtifact, opts) {
+function outermostQualifying(el, isArtifact, opts) {
   const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
   const docBody = doc && doc.body;
   let chainRoot = el;
-  let current = el.parentElement || el.parentNode || null;
-  let depth = 0;
-  while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (_isCellAncestor(current)) break;
-    if (_isQualifyingAncestor(current, isArtifact, opts)) chainRoot = current;
-    current = current.parentElement || current.parentNode || null;
-    depth++;
-  }
+  walkUp(parentOf(el), DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody || _isCellAncestor(node), (node) => {
+    if (_isQualifyingAncestor(node, isArtifact, opts)) chainRoot = node;
+    return false;
+  });
   return chainRoot;
 }
 
@@ -1879,16 +1864,13 @@ function _chainRootOf(el, isArtifact, opts) {
 function _depthInChain(el, chainRoot, isArtifact, opts) {
   if (el === chainRoot) return 0;
   let count = 0;
-  let current = el.parentElement || el.parentNode || null;
-  let steps = 0;
-  while (current && steps < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (current === chainRoot) return count + 1;
-    if (_isCellAncestor(current)) return -1;
-    if (_isQualifyingAncestor(current, isArtifact, opts)) count++;
-    current = current.parentElement || current.parentNode || null;
-    steps++;
-  }
-  return -1;
+  const reached = walkUp(parentOf(el), DR_DETECTION_SETTINGS.gridWalkDepthCap,
+    (node) => node !== chainRoot && _isCellAncestor(node), (node) => {
+      if (node === chainRoot) return true;
+      if (_isQualifyingAncestor(node, isArtifact, opts)) count++;
+      return false;
+    });
+  return reached ? count + 1 : -1;
 }
 
 /**
@@ -1927,8 +1909,8 @@ function _selectAtNestingDepth(byDepth, configuredDepth) {
  * This function first finds the nearest qualifying element at or above an
  * arbitrary element (a clicked cell, an added node, or a registered table),
  * walking across cells, so a click in a cell reaches the grid holding the
- * cell. From there _chainRootOf walks up to the outermost qualifying element
- * and stops at the first cell.
+ * cell. From there outermostQualifying walks up to the outermost qualifying
+ * element and stops at the first cell.
  *
  * @param {Element} el
  * @param {{isArtifact?: (table: Element, opts: object) => boolean,
@@ -1940,16 +1922,9 @@ function chainRootOf(el, opts = {}) {
   const isArtifact = opts.isArtifact || isAccessibilityArtifact;
   const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
   const docBody = doc && doc.body;
-  let current = el;
-  let depth = 0;
-  while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (_isQualifyingAncestor(current, isArtifact, opts)) {
-      return _chainRootOf(current, isArtifact, opts);
-    }
-    current = current.parentElement || current.parentNode || null;
-    depth++;
-  }
-  return null;
+  const nearest = walkUp(el, DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody,
+    (node) => _isQualifyingAncestor(node, isArtifact, opts));
+  return nearest && outermostQualifying(nearest, isArtifact, opts);
 }
 
 /**
@@ -2059,7 +2034,7 @@ function nominateNests(root, opts = {}) {
   // One chain root per nest, each evaluated once. A Set keeps
   // insertion order, so the results stay in document order.
   const chainRoots = new Set();
-  for (const el of qualifying) chainRoots.add(_chainRootOf(el, isArtifact, opts));
+  for (const el of qualifying) chainRoots.add(outermostQualifying(el, isArtifact, opts));
 
   const results = [];
   for (const chainRoot of chainRoots) results.push(nominateNest(chainRoot, opts));
