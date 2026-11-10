@@ -310,11 +310,6 @@ const SIMPLIFIED_CLASS = 'dr-ext-rounded';
  *   text the pass read before its first write, else getText()
  * @property {{text: string, written: string}[]} pieces - one entry per text
  *   piece, in page order: text, its original; written, its text after this write
- * @property {{start: number, end: number}[]|null} supRanges - a
- *   <sup>-bearing cell's exponent ranges, measured in value; null for a cell
- *   with no <sup>
- * @property {number[]|null} linkFilteredIdx - the positions of the numbers the
- *   link filter kept, for a cell rounded number by number; null otherwise
  * @property {string} pageTitle - the cell's hover text as the page set it,
  *   read on the first write and carried through every later write (the
  *   extension's hover text never replaces it), except that a held cell whose
@@ -417,7 +412,6 @@ function makeCellObj(cellEl, port, reads) {
     // out the whole table again: once per cell, a 10,000-cell table takes most
     // of a minute.
     applyPatches(patches, opts = {}) {
-      const { linkFilteredIdx, supRanges } = opts;
       const record = recordOf();
       const value = opts.value !== undefined ? opts.value : getText();
       const original = record
@@ -429,8 +423,6 @@ function makeCellObj(cellEl, port, reads) {
       port.set(cellEl, {
         value,
         pieces: original.map((text, i) => ({ text, written: written[i] })),
-        supRanges: supRanges || null,
-        linkFilteredIdx: linkFilteredIdx || null,
         pageTitle: pageHoverText(cellEl, record),
       });
       if (cellEl.classList) cellEl.classList.add(SIMPLIFIED_CLASS);
@@ -519,7 +511,7 @@ function _ownDescendants(root, selector) {
  * @param {Element} cellEl
  * @param {{has: Function, get: Function, set: Function}} port
  * @returns {{getText(): string, getPieceLayout(): PieceLayout|null,
- *            applyPatches(patches: object[], opts?: {value?: string, linkFilteredIdx?: number[]|null, supRanges?: {start:number,end:number}[]|null}): number,
+ *            applyPatches(patches: object[], opts?: {value?: string}): number,
  *            getDisplayedText(): string, getRecord(): CellRecord|null, el: Element, tagName: string}}
  */
 function makeGridCellObj(cellEl, port) {
@@ -761,50 +753,47 @@ function makeAdapter(el, opts = {}) {
 }
 
 /**
- * The {start, end} half-open ranges of a cell's text that sit inside a <sup>
- * element or an element whose computed vertical-align is 'super'. The ranges
- * count in the cell's flat text. The function reads the cell's text pieces
- * through collectTextPieces. The vertical-align check reads opts.styleProbe, so
- * the function runs when getComputedStyle is absent.
+ * The {start, end} half-open ranges of the classified text that sit inside a
+ * <sup> element or an element whose computed vertical-align is 'super'. The
+ * function lists the text pieces inside one, finds each piece's span in the
+ * join of the layout's original piece texts, and converts the span through
+ * layout.toFlat into positions of the classified text, so the ranges hold on
+ * a simplified cell, whose live pieces hold the written text. A range with no
+ * classified character drops out. The vertical-align check reads
+ * opts.styleProbe, so the function runs when getComputedStyle is absent.
  *
- * opts.text, when given, is the rendered text the caller classifies, and each
- * range converts into its positions through mapRenderedToFlat. A range with no
- * rendered character drops out. When the two texts differ in anything but
- * whitespace, the ranges stay in flat-text positions.
+ * With no layout, the cell's live pieces stand for the original and the
+ * ranges count in the live flat text.
  * @param {Element} cell
- * @param {{styleProbe?: object, text?: string}} [opts]
+ * @param {{styleProbe?: object, layout?: PieceLayout}} [opts] - layout: the
+ *   cell's piece layout (see PieceLayout); its pieces match the live pieces
+ *   one for one
  * @returns {{start: number, end: number}[]}
  */
 function getSuperscriptRanges(cell, opts = {}) {
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   if (!cell) return [];
+  const live = collectTextPieces(cell);
+  const spans = pieceSpans(opts.layout ? opts.layout.original : live.map((node) => node.nodeValue || ''));
   const ranges = [];
-  let cursor = 0;
-  let flat = '';
-  for (const node of collectTextPieces(cell)) {
-    const len = node.nodeValue ? node.nodeValue.length : 0;
-    if (len > 0) {
-      flat += node.nodeValue;
-      const isSup = walkUp(parentOf(node), Infinity, (ancestor) => ancestor === cell, (ancestor) => {
-        if (ancestor.tagName === SUPERSCRIPT_TAG) return true;
-        const style = styleProbe.getComputedStyle(ancestor);
-        return !!(style && style.verticalAlign === 'super');
-      }) !== null;
-      if (isSup) {
-        ranges.push({ start: cursor, end: cursor + len });
-      }
-    }
-    cursor += len;
+  for (const span of spans) {
+    if (span.text.length === 0) continue;
+    const isSup = walkUp(parentOf(live[span.i]), Infinity, (ancestor) => ancestor === cell, (ancestor) => {
+      if (ancestor.tagName === SUPERSCRIPT_TAG) return true;
+      const style = styleProbe.getComputedStyle(ancestor);
+      return !!(style && style.verticalAlign === 'super');
+    }) !== null;
+    if (isSup) ranges.push({ start: span.start, end: span.start + span.text.length });
   }
-  const toFlat = typeof opts.text === 'string' ? mapRenderedToFlat(opts.text, flat) : null;
+  const toFlat = opts.layout ? opts.layout.toFlat : null;
   if (!toFlat) return ranges;
-  const rendered = [];
+  const classified = [];
   for (const { start, end } of ranges) {
     const inside = [];
     toFlat.forEach((at, i) => { if (at >= start && at < end) inside.push(i); });
-    if (inside.length > 0) rendered.push({ start: inside[0], end: inside[inside.length - 1] + 1 });
+    if (inside.length > 0) classified.push({ start: inside[0], end: inside[inside.length - 1] + 1 });
   }
-  return rendered;
+  return classified;
 }
 
 /**
@@ -822,34 +811,31 @@ function isCellWholeLink(cell) {
 }
 
 /**
- * Drops the matches from extractNumbersInText that fall inside an <a>
- * descendant of the cell. A match belongs to the first text piece that
- * contains its numStr, and drops when that piece has an <a> ancestor inside the
- * cell. When no single piece contains numStr, the match drops when any <a>
- * descendant's text contains it.
+ * Drops the matches from extractNumbersInText that sit inside an <a>
+ * descendant of the cell. A match's position in the classified text identifies
+ * its text piece through the layout (layoutPieceHolding), and the match drops
+ * when that piece has an <a> ancestor inside the cell. A piece keeps its
+ * identity through every write, so the test holds on a simplified cell. A
+ * match that no single piece holds stays; the patch step skips it too.
+ * @param {Element} cell
+ * @param {{index: number, numStr: string}[]} matches - positions in the classified text
+ * @param {PieceLayout} [layout] - the cell's piece layout; with none, the
+ *   cell's live pieces stand for the original and positions count in the live
+ *   flat text
  */
-function filterLinkMatches(cell, matches) {
+function filterLinkMatches(cell, matches, layout) {
   if (!matches || matches.length === 0) return matches;
   if (typeof cell.querySelectorAll !== 'function') return matches;
   const anchors = cell.querySelectorAll('a');
   if (!anchors || anchors.length === 0) return matches;
 
-  const nonEmptyNodes = collectTextPieces(cell).filter(n => n.nodeValue.trim() !== '');
-
-  return matches.filter(match => {
-    const numStr = match.numStr;
-    const containingNode = nonEmptyNodes.find(n => n.nodeValue.includes(numStr));
-    if (containingNode) {
-      const anchor = containingNode.parentElement && containingNode.parentElement.closest('a');
-      if (anchor && cell.contains(anchor)) {
-        return false;
-      }
-      return true;
-    }
-    // numStr sits in no single piece (a rare cross-piece match): drop it when any
-    // <a> descendant's text contains it.
-    const inAnchor = [...anchors].some(a => (a.innerText || a.textContent || '').includes(numStr));
-    return !inAnchor;
+  const pieces = collectTextPieces(cell);
+  const placement = layout || { original: pieces.map((piece) => piece.nodeValue), toFlat: null };
+  return matches.filter((match) => {
+    const held = layoutPieceHolding(placement, match.index, match.numStr.length);
+    const piece = held && pieces[held.i];
+    const anchor = piece && piece.parentElement && piece.parentElement.closest('a');
+    return !(anchor && cell.contains(anchor));
   });
 }
 
@@ -861,22 +847,12 @@ function filterLinkMatches(cell, matches) {
 // predicate, so running this one after the ladder's filters gives the same
 // final set as running all of them together (see the lib/dr-simplify/ladder.js
 // header). If filtering empties the match list, the cell becomes a skip.
-// staleFilteredIndices: when the caller is classifying a cell's *stored*
-// pre-round text (the record's value, read through the cell object's
-// getRecord) rather than the live cell, the live text no longer contains
-// the original numStr values, so filterLinkMatches' substring search
-// against live text nodes cannot locate them (and its fallback silently
-// keeps everything, dropping the link filter with no signal). The
-// simplification pass already ran filterLinkMatches once, against the live
-// text, at the moment it rounded the cell; the caller passes the surviving
-// match indices from that run here (see the registry record's
-// linkFilteredIdx, stored by the cell object's applyPatches) so the same
-// filter outcome applies instead of being silently skipped.
-function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
+// The layout is the cell's own (cellObj.getPieceLayout()). placeDecision
+// returns a skip for a cell with no layout, so an extracted decision always
+// arrives here with one.
+function finalizeExtractedDecision(decision, cell, layout) {
   if (decision.mode !== 'extracted') return decision;
-  const filtered = staleFilteredIndices
-    ? decision.value.matches.filter((m) => staleFilteredIndices.has(m.index))
-    : filterLinkMatches(cell, decision.value.matches);
+  const filtered = filterLinkMatches(cell, decision.value.matches, layout);
   if (filtered.length === 0) return { mode: 'skip', reason: decision.reason };
   return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
 }
@@ -890,28 +866,20 @@ function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
 // A simplified cell classifies its stored original rather than the rounded
 // text now showing, on either kind: the cell object's getText()
 // and getPieceLayout() answer from its record. The pass and the lens
-// preview read alike. Each read below measured against that text takes the
-// record's copy:
-//   superscriptRanges  the record's supRanges, because rounding shrinks or
-//                      grows the live text around the <sup>. A record with
-//                      none measures the live cell against the stored text.
-//   link filter        the record's linkFilteredIdx, the positions of the
-//                      numbers the link filter kept when the cell rounded,
-//                      because the filter's substring search cannot find
-//                      the original numbers in the rounded live text. A
-//                      record with none runs the live filter.
+// preview read alike. The superscript ranges and the link filter locate each
+// number's text piece by the number's position in that text, through the
+// layout, so both read the live cell's pieces on a simplified cell too.
 // isWholeLink stays a live read: rounding patches the values of text pieces and
 // never adds or removes an <a>, so the anchor text and the cell text move
 // together, and a whole-link cell never rounds in the first place.
+// A cell with no layout is a rewritten cell. placeDecision returns a skip for
+// it, so its superscript ranges and its link filter never matter.
 function classifyTableCell(cellObj, rowIndex, opts, ranges) {
   const cell = cellObj.el;
-  const record = cellObj.getRecord();
   const text = cellObj.getText();
   const layout = cellObj.getPieceLayout();
   const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-  const superscriptRanges = hasSuperscript
-    ? ((record && record.supRanges) || getSuperscriptRanges(cell, { text }))
-    : [];
+  const superscriptRanges = hasSuperscript && layout ? getSuperscriptRanges(cell, { layout }) : [];
   // A stacked cell's pieces each hold a number, and its joined text is not
   // one spaced identifier (see matchIdentifierShape).
   const digitsSpanPieces = !!layout && layout.original.filter((piece) => /\d/.test(piece)).length > 1;
@@ -926,17 +894,14 @@ function classifyTableCell(cellObj, rowIndex, opts, ranges) {
     digitsSpanPieces,
   }, opts);
   const placed = placeDecision(classified, text, layout, { hasSuperscript });
-  const keptIndices = (record && record.linkFilteredIdx) ? new Set(record.linkFilteredIdx) : null;
   return {
     cellObj,
     text,
     trimmed: typeof text === 'string' ? text.trim() : '',
-    info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, keptIndices)),
+    info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, layout)),
     placedReason: placed.reason,
     layout,
     col: cellObj.columnIndex,
-    hasSuperscript,
-    superscriptRanges,
   };
 }
 

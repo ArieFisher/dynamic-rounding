@@ -94,8 +94,7 @@ function datasetMaxMagnitude(entries) {
 // compares the written digits to the span, which catches a number that is
 // unchanged but whose display simplifies (e.g. "35.0" to "35"). An extracted
 // cell — a unit number, a stacked cell, or numbers inside words, links, or a
-// <sup> — takes one patch per changed number, and linkFilteredIdx holds the
-// positions of the numbers the link filter kept.
+// <sup> — takes one patch per changed number.
 function classifiedCellPatches(entry, maxMag, settings) {
   const { text, info } = entry;
   const { offsetTop, offsetOther, numTop } = settings;
@@ -105,15 +104,15 @@ function classifiedCellPatches(entry, maxMag, settings) {
     const rounded = info.mode === 'date'
       ? roundDateText(trimmed, settings.dateGranularity, info.dates)
       : roundTimeText(trimmed, settings.timeGranularity);
-    if (rounded === null || rounded === trimmed) return { patches: [], linkFilteredIdx: null };
-    return { patches: [{ index: lead, numStr: trimmed, newNum: rounded }], linkFilteredIdx: null };
+    if (rounded === null || rounded === trimmed) return { patches: [] };
+    return { patches: [{ index: lead, numStr: trimmed, newNum: rounded }] };
   }
   if (info.mode === 'pure') {
     const roundedValue = roundCellSetAware(info.num, info.num, maxMag, offsetTop, offsetOther, numTop);
     const span = pureNumberSpan(text);
     const newNum = formatNumber(roundedValue, span.numStr);
     const patches = newNum === span.numStr ? [] : [{ index: span.index, numStr: span.numStr, newNum }];
-    return { patches, linkFilteredIdx: null };
+    return { patches };
   }
   if (info.mode === 'extracted') {
     const patches = [];
@@ -122,9 +121,9 @@ function classifiedCellPatches(entry, maxMag, settings) {
       const newNum = formatNumber(rounded, m.numStr);
       if (newNum !== m.numStr) patches.push({ index: m.index, numStr: m.numStr, newNum });
     }
-    return { patches, linkFilteredIdx: info.matches.map((m) => m.index) };
+    return { patches };
   }
-  return { patches: [], linkFilteredIdx: null };
+  return { patches: [] };
 }
 
 /**
@@ -138,7 +137,7 @@ function classifiedCellPatches(entry, maxMag, settings) {
  * @param {number|null} [frozenMaxMag] - A frozen max magnitude. When given,
  *   the step rounds against it and computes none of its own.
  * @returns {{maxMag: number|null,
- *            cells: Array<{entry: object, patches: object[], linkFilteredIdx: number[]|null}>}}
+ *            cells: Array<{entry: object, patches: object[]}>}}
  *   cells holds every cell in input order: the entry after the column
  *   post-pass, and its patches in the text it classified.
  */

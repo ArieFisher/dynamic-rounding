@@ -966,14 +966,11 @@ const GRID_TABLE_PASS = {
 
 // Write one cell's patches through the cell object's applyPatches, which
 // stores the record and adds the marker class on a landed write (see
-// makeCellObj in lib/dr-table), and return how many landed. The record's
-// supRanges are the ranges the cell classified with, for an extracted cell
-// with a <sup>, counted in the record's value. Record only a confirmed
-// change: with every patch skipped the screen keeps its text, and storing
-// the hover text would record a simplification that never happened.
-function writeCell(entry, patches, linkFilteredIdx) {
-  const supRanges = (entry.info.mode === 'extracted' && entry.hasSuperscript) ? entry.superscriptRanges : null;
-  const landed = entry.cellObj.applyPatches(patches, { value: entry.text, linkFilteredIdx, supRanges });
+// makeCellObj in lib/dr-table), and return how many landed. Record only a
+// confirmed change: with every patch skipped the screen keeps its text, and
+// storing the hover text would record a simplification that never happened.
+function writeCell(entry, patches) {
+  const landed = entry.cellObj.applyPatches(patches, { value: entry.text });
   if (landed > 0) entry.cellObj.el.title = originalHoverText(entry.text);
   return landed;
 }
@@ -1055,9 +1052,9 @@ function cellPatches(stepCell, kind) {
   if (isDateOrTime && patches.length > 0 &&
       !layoutPieceHolding(entry.layout, patches[0].index, patches[0].numStr.length)) {
     DR_LOG.debug(kind.dateSplitRow);
-    return { patches: [], linkFilteredIdx: null };
+    return [];
   }
-  return { patches, linkFilteredIdx: stepCell.linkFilteredIdx };
+  return patches;
 }
 
 /**
@@ -1068,7 +1065,7 @@ function cellPatches(stepCell, kind) {
  * @param {object} opts - Fully-resolved rounding options.
  * @param {{kind: object, frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none',
  *          cellCap?: number}} pass
- * @returns {{cells: Array<{entry: object, patches: object[], linkFilteredIdx: number[]|null}>,
+ * @returns {{cells: Array<{entry: object, patches: object[]}>,
  *            maxMag: number|null, landedCells: number, missedCells: number,
  *            cellCount: number, overCap: boolean}}
  *   cells holds every cell in page order with its patches (empty means the
@@ -1117,12 +1114,11 @@ function writeTableCells(table, stepCells, { kind, writes }) {
   let missedCells = 0;
   for (const stepCell of stepCells) {
     const { entry } = stepCell;
-    const { patches, linkFilteredIdx } = cellPatches(stepCell, kind);
-    const flat = flatPatches(patches, entry.layout);
-    cells.push({ entry, patches: flat, linkFilteredIdx });
+    const flat = flatPatches(cellPatches(stepCell, kind), entry.layout);
+    cells.push({ entry, patches: flat });
     if (writes === 'none') continue;
     const held = DR_MODEL.hasTableOriginal(table, entry.cellObj.el);
-    const landed = flat.length > 0 ? writeCell(entry, flat, linkFilteredIdx) : 0;
+    const landed = flat.length > 0 ? writeCell(entry, flat) : 0;
     if (flat.length > 0 && landed > 0) landedCells++;
     else if (flat.length > 0) missedCells++;
     if (landed === 0 && held) releaseCell(table, entry.cellObj.el);

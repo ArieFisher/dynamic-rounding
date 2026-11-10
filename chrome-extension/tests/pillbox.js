@@ -144,7 +144,7 @@
   // original record, and the registry's appliedFlag is 'simplified'.
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
-  DR_MODEL.setTableOriginal(table, cell, { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
+  DR_MODEL.setTableOriginal(table, cell, { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }] });
   DR_MODEL.setTableAppliedFlag(table, 'simplified');
   cell.innerHTML = '1,000';
   // Also need to stub the innerHTML setter so the restore can write it
@@ -192,7 +192,7 @@
   // record is the unrestorable re-injection state, tested in the
   // re-injection suite.
   table._cells[0].classList.add('dr-ext-rounded');
-  DR_MODEL.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
+  DR_MODEL.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }] });
   DR_MODEL.setTableAppliedFlag(table, 'simplified');
   DR_MODEL.setTableSettings(table, { enabled: true }, 'page');
 
@@ -206,7 +206,7 @@
   const button = injectPillboxEntry(table);
   table._cells[0].classList.add('dr-ext-rounded');
   // Registry record present — see atToggle_syncPillbox_ariaTrueWhenRounded.
-  DR_MODEL.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
+  DR_MODEL.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }] });
   DR_MODEL.setTableAppliedFlag(table, 'original');
   button.setAttribute('aria-pressed', 'true');
 
@@ -483,7 +483,7 @@
   const table = makeToggleTable([{ tag: 'td', text: '8,500,000' }]);
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
-  DR_MODEL.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
+  DR_MODEL.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }] });
   DR_MODEL.setTableAppliedFlag(table, 'simplified');
 
   // The cell's innerHTML property needs to be writable
@@ -648,7 +648,7 @@
   // dr-ext-rounded class with no registry entry is the unrestorable case
   // (see the content-script re-injection tests), which is a different
   // scenario than the one this test means to exercise.
-  DR_MODEL.setTableOriginal(table, cell, { value: '50000', pieces: [{ text: '50000', written: '50000' }], supRanges: null, linkFilteredIdx: null });
+  DR_MODEL.setTableOriginal(table, cell, { value: '50000', pieces: [{ text: '50000', written: '50000' }] });
   DR_MODEL.setTableAppliedFlag(table, 'simplified');
   DR_MODEL.setTableSettings(table, { enabled: true }, 'page');
 

@@ -51,13 +51,14 @@
 // filterLinkMatches must drop 5 and keep the other number.
 (function ac3_inlineLinkPreservesLinkedNumber() {
   withLinkCreateTreeWalker(function() {
-    // Cell: "Revenue 3000" + <a>5</a>   -> innerText = "Revenue 3000 5"
-    const cell = makeLinkCell(['5'], 'Revenue 3000');
+    // Cell: "Revenue 3000 " + <a>5</a>; the matches count in the pieces' flat
+    // text, "Revenue 3000 5", which is what filterLinkMatches reads without a layout.
+    const cell = makeLinkCell(['5'], 'Revenue 3000 ');
 
     eq('AC3: isCellWholeLink is false for mixed cell',
       isCellWholeLink(cell), false);
 
-    const matches = extractNumbersInText(cell.innerText);
+    const matches = extractNumbersInText(cell._textNodes.map((node) => node.nodeValue).join(''));
     const filtered = filterLinkMatches(cell, matches);
     const nums = filtered.map(m => m.num);
     eq('AC3: linked number 5 is absent from filtered matches', nums.includes(5), false);

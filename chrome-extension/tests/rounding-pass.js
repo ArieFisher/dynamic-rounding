@@ -1724,7 +1724,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('grid stacked: the record holds the flat original and each piece\'s original and written text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, stacked),
       { value: ' 125  126', pieces: [{ text: ' 125 ', written: ' 150 ' }, { text: ' 126', written: ' 150' }],
-        supRanges: null, linkFilteredIdx: [1, 6], pageTitle: '' });
+        pageTitle: '' });
     eq('grid stacked: an untouched "$" piece holds the same original and written text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, dollar).pieces,
       [{ text: '$', written: '$' }, { text: '337.91', written: '350' }]);
@@ -1880,11 +1880,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const pool = () => collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((sample) => sample.num);
   try {
     eq('grid stacked link (setup): the preview leaves out the linked number', pool(), [125]);
-    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid stacked link: the number inside the link stays', pieceTextsOf(cell), ['150', '126']);
-    eq('grid stacked link: the record keeps the position of the number the filter kept',
-      DR_MODEL.getTableOriginal(grid.wrapperEl, cell).linkFilteredIdx, [0]);
-    eq('grid stacked link: the preview after the round reads the kept positions', pool(), [125]);
+    reapplyRounding(grid.wrapperEl);
+    eq('grid stacked link: the number inside the link stays after a re-apply', pieceTextsOf(cell), ['150', '126']);
+    eq('grid stacked link: the preview after the round leaves out the linked number', pool(), [125]);
   } finally {
     if (saved === undefined) delete global.document.createTreeWalker;
     else global.document.createTreeWalker = saved;
@@ -1929,12 +1929,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 
 // A grid cell whose <sup> is a real footnote, separated from its base
 // number by whitespace rather than glued to it: the base rounds, the
-// footnote digit stays, and the mask's ranges land in the record's
-// supRanges — the same field a native table's footnote cell stores (see
-// prettyPrintedFootnoteStaysMasked) — so a later re-apply and the lens
-// preview both read the cell's kept footnote position instead of
-// re-measuring the (now rounded, therefore shifted) live text.
-(function gridFootnote_supRangesSurviveRecordReapplyAndPreview() {
+// footnote digit stays. A later re-apply and the lens preview locate the
+// footnote's piece through the piece layout, so the rounded, therefore
+// shifted, live text does not move the mask.
+(function gridFootnote_maskSurvivesReapplyAndPreview() {
   const grid = makeE2EGridWrapper([['Revenue 837 units 7']]);
   const [cell] = grid.cellEls;
   const sup = makeElementNode('sup', [makeTextNode('7')]);
@@ -1953,11 +1951,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid footnote: the base rounds and the footnote digit stays',
       pieceTextsOf(cell), ['Revenue 850 units ', '7']);
-    eq('grid footnote: the record stores the mask\'s superscript range',
-      DR_MODEL.getTableOriginal(grid.wrapperEl, cell).supRanges, [{ start: 18, end: 19 }]);
     reapplyRounding(grid.wrapperEl);
-    eq('grid footnote: the record\'s supRanges survive a re-apply',
-      DR_MODEL.getTableOriginal(grid.wrapperEl, cell).supRanges, [{ start: 18, end: 19 }]);
+    eq('grid footnote: the footnote digit stays after a re-apply',
+      pieceTextsOf(cell), ['Revenue 850 units ', '7']);
     eq('grid footnote: the preview after the round reads the base number, not the footnote digit', pool(), [837]);
   } finally {
     if (saved === undefined) delete global.document.createTreeWalker;
@@ -1969,11 +1965,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // A rounded grid footnote cell whose base piece shrinks: the live piece the
 // footnote sits beside is now shorter than it was when the cell first
 // classified, so a re-apply that re-measured the superscript mask against
-// the LIVE pieces (instead of the record's kept supRanges, the same reuse
-// collectNumericCells already applies to its own live re-measure) would
-// mask the wrong position in the frozen pre-round text and let the
-// footnote round as an ordinary number.
-(function gridFootnote_supRangesSurviveAReapplyAfterTheBaseShrinks() {
+// the LIVE pieces' text would mask the wrong position in the frozen
+// pre-round text and let the footnote round as an ordinary number.
+(function gridFootnote_maskSurvivesAReapplyAfterTheBaseShrinks() {
   const grid = makeE2EGridWrapper([['Revenue 4.91tn units 137']]);
   const [cell] = grid.cellEls;
   const sup = makeElementNode('sup', [makeTextNode('137')]);
@@ -3230,7 +3224,7 @@ function everyRowRead(kind, largeIn) {
     ],
   };
   DR_MODEL.setTableOriginal(mockTable, roundedCell, {
-    value: '2,794,356', pieces: [{ text: '2,794,356', written: '3,000,000' }], supRanges: null, linkFilteredIdx: null,
+    value: '2,794,356', pieces: [{ text: '2,794,356', written: '3,000,000' }],
   });
   const cells = collectNumericCells(mockTable);
   eq('orig-value: reads original text, not rounded',
@@ -3253,7 +3247,6 @@ function everyRowRead(kind, largeIn) {
     DR_MODEL.setTableOriginal(table, roundedCell, {
       value: '6,718,245 kg',
       pieces: [{ text: '6,718,245', written: '6,700,000' }, { text: ' kg', written: ' kg' }],
-      supRanges: null, linkFilteredIdx: null,
     });
     const liveCell = makeReactiveCell([{ text: '6,7', inSup: false }, { text: '18,245', inSup: false }]);
     const liveTable = { rows: [{ cells: [liveCell] }], dataset: {} };

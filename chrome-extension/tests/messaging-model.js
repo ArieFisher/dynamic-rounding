@@ -172,19 +172,21 @@
     const warnRowsBefore = DR_LOG.snapshot().entries
       .filter((row) => /cells were left unrounded/.test(row.text)).length;
     try {
-      roundTable(table, opts);
+      roundTableUnder(table, opts);
       eq('table 8 linked reference: the linked 12 holds',
         segments[1].text, 'ref 12');
       eq('table 8 linked reference: the plain 9,850 rounds',
         segments[2].text, ', total 10,000');
       eq('table 8 linked reference: the cell records as simplified',
         cell.classList.contains('dr-ext-rounded'), true);
-      // The registry record holds the flat-text index of every match that
-      // survived the link filter. A scan that kept the linked "12," would
-      // read [8, 18]; the log-row count below can miss that
-      // when the 50-row buffer drops an older patch row on the same push.
-      eq('table 8 linked reference: only the plain number survives the link filter',
-        DR_MODEL.getTableOriginal(table, cell).linkFilteredIdx, [18]);
+      // A re-apply classifies the stored original again; the linked 12 must
+      // hold on the simplified cell, where its original characters are gone
+      // from the live text only if the filter searched by characters.
+      reapplyRounding(table);
+      eq('table 8 linked reference: the linked 12 holds after a re-apply',
+        segments[1].text, 'ref 12');
+      eq('table 8 linked reference: the plain number stays rounded after a re-apply',
+        segments[2].text, ', total 10,000');
       const warnRowsAfter = DR_LOG.snapshot().entries
         .filter((row) => /cells were left unrounded/.test(row.text)).length;
       eq('table 8 linked reference: no patch is left unlanded',
@@ -245,13 +247,14 @@
     const cell = makePrettyPrintedCell(segments);
     const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
     try {
-      roundTable(table, opts);
+      roundTableUnder(table, opts);
       eq('pretty-printed footnote: the quantity rounds',
         segments[0].text, '\n      Total\n      10,000 kg\n      ');
       eq('pretty-printed footnote: the footnote digit holds',
         segments[1].text, '7');
-      eq('pretty-printed footnote: the stored superscript range counts in the rendered text',
-        (DR_MODEL.getTableOriginal(table, cell) || {}).supRanges, [{ start: 15, end: 16 }]);
+      reapplyRounding(table);
+      eq('pretty-printed footnote: the footnote digit holds after a re-apply',
+        [segments[0].text, segments[1].text], ['\n      Total\n      10,000 kg\n      ', '7']);
     } finally {
       DR_MODEL.unregisterTable(table);
     }
@@ -434,10 +437,10 @@
       DR_MODEL.getTableOriginal(grid.wrapperEl, a),
       { value: ' 8,584,629 ',
         pieces: [{ text: ' ', written: ' ' }, { text: '8,584,629', written: '8,500,000' }, { text: ' ', written: ' ' }],
-        supRanges: null, linkFilteredIdx: null, pageTitle: '' });
+        pageTitle: '' });
     eq('grid patch: a piece\'s whitespace is part of its stored text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, b),
-      { value: ' 7,318,204 ', pieces: [{ text: ' 7,318,204 ', written: ' 7,500,000 ' }], supRanges: null, linkFilteredIdx: null, pageTitle: '' });
+      { value: ' 7,318,204 ', pieces: [{ text: ' 7,318,204 ', written: ' 7,500,000 ' }], pageTitle: '' });
     eq('grid patch: the plain-text read of a record is its value',
       DR_MODEL.getTableOriginalText(grid.wrapperEl, a), ' 8,584,629 ');
   } finally {
@@ -2122,7 +2125,7 @@ const PENDING_FILL_ROWS = [
   const cell = { tagName: 'TD' };
 
   DR_MODEL.registerTable(table);
-  DR_MODEL.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
+  DR_MODEL.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }] });
   DR_MODEL.setTableAppliedFlag(table, 'simplified');
   DR_MODEL.setTableSettings(table, { offsetTop: -1 }, 'page');
   DR_MODEL.setTableMaxMagnitude(table, 7);
@@ -3512,7 +3515,7 @@ function issue328SettingsOf(table) {
     ]);
     const cell = table.rows[1].cells[1];
     DR_MODEL.setTableOriginal(table, cell,
-      { value: '1,482,391', pieces: [{ text: '1,482,391', written: '1,482,391' }], supRanges: null, linkFilteredIdx: null });
+      { value: '1,482,391', pieces: [{ text: '1,482,391', written: '1,482,391' }] });
     eq('fingerprint unrecorded: the entry carries no fingerprint (precondition)',
       DR_MODEL.getTableFingerprint(table), null);
 
@@ -3788,9 +3791,9 @@ function issue328SettingsOf(table) {
   const gridCell = {};
   const nativeCell = {};
   DR_MODEL.setTableOriginal(table, gridCell,
-    { value: '98,765', pieces: [{ text: '98,765', written: '100,000' }], supRanges: null, linkFilteredIdx: null });
+    { value: '98,765', pieces: [{ text: '98,765', written: '100,000' }] });
   DR_MODEL.setTableOriginal(table, nativeCell,
-    { value: '1,234', pieces: [{ text: '1,234', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
+    { value: '1,234', pieces: [{ text: '1,234', written: '1,000' }] });
   eq('capture-reads: a grid original (record) reads back as its value field',
     has ? DR_MODEL.getTableOriginalText(table, gridCell) : null, '98,765');
   eq('capture-reads: a native original (record) reads back as its value field',

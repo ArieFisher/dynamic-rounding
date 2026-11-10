@@ -54,7 +54,7 @@
     el.childNodes[0].nodeValue, 'A 90 B 200');
   eq('grid patch write: the first landed write stores the record',
     port.get(el),
-    { value: 'A 100 B 200', pieces: [{ text: 'A 100 B 200', written: 'A 90 B 200' }], supRanges: null, linkFilteredIdx: null, pageTitle: '' });
+    { value: 'A 100 B 200', pieces: [{ text: 'A 100 B 200', written: 'A 90 B 200' }], pageTitle: '' });
 
   // A later write counts its patches in the join of the stored originals,
   // keeps each piece's original, and records each piece's new written text.
