@@ -4145,8 +4145,27 @@ TSLA,75,"248.09","18,606.75"
       total, all channels" again, and every other cell has none. A failure
       shows no hover text on a grid cell while simplified, or "Original:
       1,482,391" after the restore.</p>
+    <p class="expect">The Write new hover text button writes "Q1 total,
+      revised" as the hover text of the North Q1 cell in both tables. Expect:
+      with the pillbox on, press the button: the cell shows "Q1 total,
+      revised". Press the pillbox off: the cell still shows "Q1 total,
+      revised" and its number shows 1,482,391. A failure shows "Q1 total, all
+      channels" after the restore.</p>
+    <div class="rw-buttons">
+      <button type="button" id="hover-write">Write new hover text</button>
+    </div>
+    <script>
+      (function () {
+        document.getElementById('hover-write').addEventListener('click', function () {
+          var native = document.querySelector('#hover-native tbody tr:first-child td:first-of-type');
+          var grid = document.querySelector('#hover-grid [role="rowgroup"] [role="row"]:first-child [role="cell"]:nth-child(2)');
+          native.title = 'Q1 total, revised';
+          grid.title = 'Q1 total, revised';
+        });
+      })();
+    </script>
 
-    <table>
+    <table id="hover-native">
       <thead>
         <tr>
           <th scope="col">Region</th>
@@ -4172,7 +4191,7 @@ TSLA,75,"248.09","18,606.75"
         </tr>
       </tbody>
     </table>
-    <div class="aria-grid" role="grid" aria-label="Sessions by region, with hover text">
+    <div id="hover-grid" class="aria-grid" role="grid" aria-label="Sessions by region, with hover text">
       <div class="g-row" role="row">
         <span role="columnheader">Region</span>
         <span role="columnheader">Q1</span>
