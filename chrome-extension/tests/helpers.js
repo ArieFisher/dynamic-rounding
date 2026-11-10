@@ -754,7 +754,7 @@ function makeWalkEl(opts) {
     parentElement: null,
     parentNode: null,
     // getBoundingClientRect — needed by positionToggle when createToggleForTable
-    // fires its deferred setTimeout; return a zero-area rect so the toggle hides.
+    // fires its deferred setTimeout; return a zero-area rect so the table pillbox hides.
     getBoundingClientRect: function() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
     // closest() stub: only handles 'table' and '.dr-ext-grid'
     closest: function(sel) {
@@ -3012,7 +3012,7 @@ function eachRewriteKind(kinds, run) {
   }
 }
 
-// Read the list of table kind pairs from the design doc: each row's key,
+// Read the list of table kind pairs from the design document: each row's key,
 // state, and note. Every failure to find the list returns null, so a renamed
 // heading or a reshaped row fails the run rather than leaving nothing to
 // compare.

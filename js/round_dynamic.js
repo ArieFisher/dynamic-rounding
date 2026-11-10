@@ -85,7 +85,7 @@ function roundCellSetAware(value, num, max_mag, offset_top, offset_other, num_to
 
 /**
  * Compute the step that roundWithOffset would use for the given num + offset.
- * Used by the sidebar preview band to render "(5k)" / "(0.25)" alongside the
+ * Used by the lens preview to render "(5k)" / "(0.25)" alongside the
  * rounded value, without duplicating the rounding formula.
  */
 function stepForOffset(num, offset) {
@@ -99,7 +99,7 @@ function stepForOffset(num, offset) {
 }
 
 /**
- * Human-readable step label for the preview band.
+ * Human-readable step label for the lens preview.
  *   5000     -> "5k"
  *   500      -> "500"
  *   2500000  -> "2.5M"

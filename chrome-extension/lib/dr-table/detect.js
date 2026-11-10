@@ -20,7 +20,7 @@
  *
  * This file is the lib/dr-table package's detection layer. Detection
  * (isDataTable, looksLikeGrid, findTargetTable, isPhantomA11yTable) reports
- * findings only — it never writes a marker class or builds a toggle widget,
+ * findings only — it never writes a marker class or builds a table pillbox,
  * and (app-model-registry sprint) it never reads the dr-ext-grid class as
  * state either: "have I already found this element" is an injected opts.isSeen
  * check (see findTargetTable, findTables). Callers (ui-toggle.js, content.js)
@@ -75,8 +75,8 @@ const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE)
  *
  * getBox returns an element's box ({top, left, width, height}) or null when
  * the element draws no box: a hidden element, or a `display: contents` row.
- * The direction read (isColumnFirst) and the column-first alignment step read
- * it. A probe without getBox reads every grid as row-first.
+ * The direction reader (isColumnFirst) and the column-first alignment step
+ * read it. A probe without getBox reads every grid as row-first.
  */
 const DEFAULT_STYLE_PROBE = {
   getComputedStyle(el) {
@@ -125,7 +125,7 @@ function childCountCandidates(children) {
 }
 
 /**
- * The direction read: whether an element's children run side by side as
+ * The direction reader: whether an element's children run side by side as
  * columns (a column-first grid) instead of stacking as rows (a row-first
  * grid). It reads the boxes of the first two children that draw a box,
  * skipping a hidden child or a `display: contents` row, among at most
@@ -1424,7 +1424,7 @@ function placeDecision(decision, text, layout, opts = {}) {
  * Heuristic test: does `el` look like a data grid built from non-table elements?
  *
  * Applies a cheap-first ladder (S2/S4). Steps 1–5 are pure DOM/CSS reads with no
- * geometry; step 6 (the direction read and the alignment step) is guarded by
+ * geometry; step 6 (the direction reader and the alignment step) is guarded by
  * all prior steps and runs only on a bounded sample of first cells.
  *
  * Short-circuit ACCEPT (skip step 6) when el carries:
@@ -1530,7 +1530,7 @@ function looksLikeGrid(el, opts = {}) {
  *      the parent fails, is <body>, or depth exceeds DR_DETECTION_SETTINGS.gridWalkDepthCap.
  *
  * REPORTS only — this function never writes the dr-ext-grid marker class and
- * never builds a toggle widget, and it never reads that class either: "has
+ * never builds a table pillbox, and it never reads that class either: "has
  * this element already been found" is opts.isSeen, a caller-supplied check
  * (e.g. the app model's table registry), following the same contract
  * findTables (below) already uses. Without opts.isSeen, step 2 is a no-op
@@ -2118,7 +2118,7 @@ function chainRootOf(el, opts = {}) {
  * check is a nullish check.
  *
  * REPORTS only — like findTargetTable, this never writes the dr-ext-grid
- * marker class and never builds a toggle widget, and it holds no record of a
+ * marker class and never builds a table pillbox, and it holds no record of a
  * nest it has already run on.
  *
  * @param {Element} chainRoot
@@ -2226,7 +2226,7 @@ function nominateNests(root, opts = {}) {
  * directly.
  *
  * REPORTS only — like findTargetTable, this never writes the dr-ext-grid
- * marker class and never builds a toggle widget. Each result is
+ * marker class and never builds a table pillbox. Each result is
  * { handle, isNew }; isNew is computed from opts.isSeen (a caller-supplied
  * "have I already handled this element" check — e.g. DR_STORE.hasTable,
  * for both native tables and grid roots alike). Without opts.isSeen every

@@ -245,7 +245,7 @@ assert_blocked '--range rejects a committed credential' "$repo" 'docs/setup.md' 
 repo=$(scratch_repo)
 base=$(git -C "$repo" rev-parse HEAD)
 git -C "$repo" mv docs/design.md docs/design-report.md
-git -C "$repo" commit -qm 'rename design doc'
+git -C "$repo" commit -qm 'rename design document'
 head=$(git -C "$repo" rev-parse HEAD)
 assert_blocked '--range rejects a rename into a denied name' "$repo" 'docs/design-report.md' --range "$base" "$head"
 
@@ -253,7 +253,7 @@ assert_blocked '--range rejects a rename into a denied name' "$repo" 'docs/desig
 repo=$(scratch_repo)
 base=$(git -C "$repo" rev-parse HEAD)
 printf '# design, revised\n' > "$repo/docs/design.md"
-git -C "$repo" commit -qam 'edit design doc'
+git -C "$repo" commit -qam 'edit design document'
 head=$(git -C "$repo" rev-parse HEAD)
 assert_passes '--range passes when the range adds nothing' "$repo" --range "$base" "$head"
 

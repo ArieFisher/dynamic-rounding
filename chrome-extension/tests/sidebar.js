@@ -405,7 +405,7 @@
   // full browser environment; flagged here for reviewer awareness.
 
   // AC4 (static): the no-table state must NOT dim/disable the sidebar sections.
-  // Instead of greying the whole sidebar, the main switch is flipped off
+  // Instead of greying the whole sidebar, the sidebar pillbox is flipped off
   // (covered by the behavioural tests below). Guard against dimming rules
   // being reintroduced.
   eq('no-table AC4: sidebar.html does NOT dim #optionsSection under body.no-table',
@@ -414,7 +414,7 @@
   eq('no-table AC4: sidebar.html does NOT dim #advancedSection under body.no-table',
     /body\.no-table\s+#advancedSection/.test(sidebarHtml), false);
 
-  eq('no-table AC4: sidebar.html does NOT disable the title-row pill under body.no-table',
+  eq('no-table AC4: sidebar.html does NOT disable the sidebar pillbox under body.no-table',
     /body\.no-table\s+\.title-row\s+\.switch/.test(sidebarHtml), false);
 
   // AC1 (static): sidebar.html default #status text is the no-table message.
@@ -431,16 +431,16 @@
     // for the wrong reason.
     const setTableBoundFnMatch = sidebarSrc.match(/function setTableBound\([\s\S]*?\n}/);
     const setTableBoundFnBody = setTableBoundFnMatch ? setTableBoundFnMatch[0] : '';
-    eq('no-table toggle: sidebar.js setTableBound function body was isolated (sanity check on the scan itself)',
+    eq('no-table sidebar pillbox: sidebar.js setTableBound function body was isolated (sanity check on the scan itself)',
       setTableBoundFnBody.length > 0, true);
-    eq('no-table toggle: sidebar.js setTableBound sets enabledEl.checked = false when unbound',
+    eq('no-table sidebar pillbox: sidebar.js setTableBound sets enabledEl.checked = false when unbound',
       /enabledEl\.checked\s*=\s*false/.test(setTableBoundFnBody), true);
-    eq('no-table toggle: sidebar.js setTableBound calls updateDisabledState',
+    eq('no-table sidebar pillbox: sidebar.js setTableBound calls updateDisabledState',
       /updateDisabledState\(\)/.test(setTableBoundFnBody), true);
     // The bound branch must not reset the switch to the shipped
     // default — the model (or the pull's explicit defaults fallback) is the
     // switch's only source once a table is bound.
-    eq('no-table toggle: sidebar.js setTableBound no longer references DR_DEFAULTS anywhere (issue #251)',
+    eq('no-table sidebar pillbox: sidebar.js setTableBound no longer references DR_DEFAULTS anywhere (issue #251)',
       /DR_DEFAULTS/.test(setTableBoundFnBody), false);
   })();
 })();
@@ -1121,7 +1121,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     true);
   eq('section order: the Advanced section starts closed',
     /<details[^>]*id="advancedSection"[^>]*>/.exec(body)[0].includes(' open'), false);
-  eq('section order: the switches still dim when the main switch is off',
+  eq('section order: the switches still dim when the sidebar pillbox is off',
     /#optionsSection\.disabled\s*\{[^}]*opacity/.test(html), true);
   eq('section order: the capture section carries no section title',
     /id="captureSection"[^>]*>\s*<div class="capture-marks"/.test(body), true);

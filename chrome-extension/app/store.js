@@ -185,7 +185,7 @@ const DR_STORE = (function () {
   // registry is per-table storage consulted synchronously by the controller,
   // not application-level state a view redraws itself from.
 
-  // registerTable: the "found" moment as far as the toggle UI is concerned —
+  // registerTable: the "found" moment as far as the table pillbox view is concerned —
   // called once, from ui-toggle.js's createToggleForTable, idempotent so a
   // rediscovery (e.g. injectTogglesForAddedNode revisiting a node) is a
   // no-op. It is NOT the only path to a table having a registry entry:

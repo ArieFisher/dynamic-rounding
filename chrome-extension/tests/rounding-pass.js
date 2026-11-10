@@ -495,7 +495,7 @@ const SEAT_ROWS = [
 // FormatStep, collectNumericCells, extractPreviewSamples
 // =============================================================================
 
-(function previewBand_formatStep() {
+(function lensPreview_formatStep() {
   eq('formatStep: 5000 -> "5k"', formatStep(5000), '5k');
   eq('formatStep: 500 -> "500"', formatStep(500), '500');
   eq('formatStep: 2_500_000 -> "2.5M"', formatStep(2500000), '2.5M');
@@ -506,7 +506,7 @@ const SEAT_ROWS = [
   eq('formatStep: 0 -> "0"', formatStep(0), '0');
 })();
 
-(function previewBand_stepForOffset() {
+(function lensPreview_stepForOffset() {
   // offset = 0 on a 5-digit number -> step = 10^4 = 10000
   eq('stepForOffset(27136, 0) = 10000', stepForOffset(27136, 0), 10000);
   // offset = -0.5 on a 5-digit number -> f=0.5, target_mag=4, step = 0.5*1e4
@@ -517,7 +517,7 @@ const SEAT_ROWS = [
   eq('stepForOffset(0, -0.5) = 0', stepForOffset(0, -0.5), 0);
 })();
 
-(function previewBand_collectNumericCells() {
+(function lensPreview_collectNumericCells() {
   // Build a small stub table; only the pure-number cells should appear.
   function tdCell(text) {
     return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
@@ -541,7 +541,7 @@ const SEAT_ROWS = [
   eq('collectNumericCells: second cell num', cells[1].num, 4080);
 })();
 
-(function previewBand_extractPreviewSamples_buckets() {
+(function lensPreview_extractPreviewSamples_buckets() {
   // 5 cells across 5 distinct magnitudes: 1e7, 1e6, 1e4, 1e2, 1e1.
   // num_top = 1 (DR_DEFAULTS) -> top band picks the highest magnitude only
   // (others differ from max_mag by >= 1). To exercise the 2-row top band,
@@ -577,7 +577,7 @@ const SEAT_ROWS = [
   eq('extractPreviewSamples: bottom[2] is 56', result.samples.bottom[2].num, 56);
 })();
 
-(function previewBand_extractPreviewSamples_onePerOrderOfMagnitude() {
+(function lensPreview_extractPreviewSamples_onePerOrderOfMagnitude() {
   // The bottom band shows one example per distinct lower order of magnitude,
   // with no cap. Negatives bucket by absolute value. For 1234 / 123 / -12 the
   // preview is three lines: top-band 1k+ (1234) plus bottom-band 100+ (123)
@@ -620,7 +620,7 @@ const SEAT_ROWS = [
     deepResult.samples.bottom.map(r => r.num), [500000, 40000, 3000, 200, 10]);
 })();
 
-(function previewBand_extractPreviewSamples_prefersDemonstrative() {
+(function lensPreview_extractPreviewSamples_prefersDemonstrative() {
   // Within a magnitude bucket, an already-round value (250,000,000) would make
   // a useless "X -> X" preview row. extractPreviewSamples should surface a cell
   // that visibly changes under the default offset instead, even when the
@@ -647,7 +647,7 @@ const SEAT_ROWS = [
     result.samples.bottom[0].num, 235132);
 })();
 
-(function previewBand_extractPreviewSamples_allRoundFallback() {
+(function lensPreview_extractPreviewSamples_allRoundFallback() {
   // If every cell in a bucket is already round, fall back to document order
   // rather than dropping the row.
   function tdCell(text) {
@@ -667,7 +667,7 @@ const SEAT_ROWS = [
     result.samples.top[0].num, 250000000);
 })();
 
-(function previewBand_extractPreviewSamples_largeMagOnly() {
+(function lensPreview_extractPreviewSamples_largeMagOnly() {
   // All cells in the top magnitude bucket -> bottom band ends up empty.
   function tdCell(text) {
     return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
@@ -686,7 +686,7 @@ const SEAT_ROWS = [
   eq('extractPreviewSamples (all-top): bottom is empty', result.samples.bottom.length, 0);
 })();
 
-(function previewBand_extractPreviewSamples_emptyTable() {
+(function lensPreview_extractPreviewSamples_emptyTable() {
   function tdCell(text) {
     return withTextPiece({ tagName: 'TD', innerText: text, textContent: text });
   }
@@ -699,7 +699,7 @@ const SEAT_ROWS = [
   eq('extractPreviewSamples (empty): bottom length 0', result.samples.bottom.length, 0);
 })();
 
-(function previewBand_extractPreviewSamples_tableStepMaxMagnitude() {
+(function lensPreview_extractPreviewSamples_tableStepMaxMagnitude() {
   // The lens preview splits its samples under the max magnitude the table
   // step's datasetMaxMagnitude returns for the classified cells, the one the
   // simplification pass rounds against. A stub returning 3 for a dataset
@@ -744,7 +744,7 @@ const SEAT_ROWS = [
 // Reviewer repro: reviewer-sup-stale.js.
 // ---------------------------------------------------------------------------
 
-(function previewBand_supStaleRegression() {
+(function lensPreview_supStaleRegression() {
   withReactiveCreateTreeWalker(function () {
     const opts = {
       simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedCells: true,
@@ -777,7 +777,7 @@ const SEAT_ROWS = [
   });
 })();
 
-(function previewBand_linkedNumberPostRoundRegression() {
+(function lensPreview_linkedNumberPostRoundRegression() {
   withReactiveCreateTreeWalker(function () {
     const opts = {
       simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedCells: true,
@@ -1497,7 +1497,7 @@ const SEAT_ROWS = [
       handleReturned, table);
     eq('markAndToggleIfNewGrid: adds dr-ext-grid to a newly discovered grid',
       table.classList.contains('dr-ext-grid'), true);
-    eq('markAndToggleIfNewGrid: builds the toggle widget for a newly discovered grid',
+    eq('markAndToggleIfNewGrid: builds the table pillbox for a newly discovered grid',
       tableToggles.has(table), true);
 
     cleanupPass1Tables([table]);
@@ -4045,13 +4045,13 @@ function everyRowRead(kind, largeIn) {
     const stub6 = makeMockButton();
     global.__ri2_tableToggles.set(table6, stub6);
     global.__ri2_syncSwitchForTable(table6);
-    eq('re-injection pill: an unrounded table renders unselected',
+    eq('re-injection table pillbox: an unrounded table renders off',
       stub6.getAttribute('aria-pressed'), 'false');
 
     global.__ri2_DR_STORE.setTableSettings(table6, { enabled: true }, 'page');
     global.__ri2_roundTable(table6, DR_DEFAULTS);
     global.__ri2_syncSwitchForTable(table6);
-    eq('re-injection pill: a table THIS instance rounded renders selected',
+    eq('re-injection table pillbox: a table THIS instance rounded renders on',
       stub6.getAttribute('aria-pressed'), 'true');
     } finally {
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;

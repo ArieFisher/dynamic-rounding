@@ -2284,7 +2284,7 @@ const LADDER_OPTS = {
   const expectedTop = roundWithOffset(1000000, customSettings.offsetTop);
   const expectedBottom = roundWithOffset(50, customSettings.offsetOther);
 
-  // What the sidebar's preview band would render for these two cells,
+  // What the lens preview would render for these two cells,
   // built from the same sample the model supplied.
   eq('preview/table agreement: preview top sample rounds via the live offsetTop',
     roundWithOffset(preview.samples.top[0].num, customSettings.offsetTop), expectedTop);
@@ -2361,7 +2361,7 @@ const LADDER_OPTS = {
 // The pin: pullSettingsAndApplyToUI applies the pulled settings, then calls
 // fetchPreviewSamples(), whose response callback calls setTableBound(true)
 // once request:previewSamples resolves with a bound table. setTableBound's
-// bound branch must not write the main switch, so the pulled false survives
+// bound branch must not write the sidebar pillbox, so the pulled false survives
 // the reopen.
 // ---------------------------------------------------------------------------
 (function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
