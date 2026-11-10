@@ -367,6 +367,10 @@ function makeCellObj(cellEl, port, reads) {
     //                    value; null for a cell with no <sup>
     //   linkFilteredIdx  the positions of the numbers the link filter kept,
     //                    for a cell rounded number by number; null otherwise
+    //   pageTitle        the cell's hover text as the page set it, read once
+    //                    on the first write and carried through every later
+    //                    write, so the extension's own hover text never
+    //                    stands in for it; '' when the page set none
     // Every landed write replaces the record, so the written text never
     // goes stale. A write that lands nothing writes and stores nothing.
     // The pass passes opts.value because a native cell's getText() reads
@@ -388,6 +392,7 @@ function makeCellObj(cellEl, port, reads) {
         pieces: original.map((text, i) => ({ text, written: written[i] })),
         supRanges: supRanges || null,
         linkFilteredIdx: linkFilteredIdx || null,
+        pageTitle: record ? record.pageTitle : (cellEl.title || ''),
       });
       if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
       return landed;

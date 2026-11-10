@@ -1724,7 +1724,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('grid stacked: the record holds the flat original and each piece\'s original and written text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, stacked),
       { value: ' 125  126', pieces: [{ text: ' 125 ', written: ' 150 ' }, { text: ' 126', written: ' 150' }],
-        supRanges: null, linkFilteredIdx: [1, 6] });
+        supRanges: null, linkFilteredIdx: [1, 6], pageTitle: '' });
     eq('grid stacked: an untouched "$" piece holds the same original and written text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, dollar).pieces,
       [{ text: '$', written: '$' }, { text: '337.91', written: '350' }]);
@@ -4317,6 +4317,66 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
       { text: 'pending', marked: false, stored: false, title: '' });
     resetTable(t.table);
     eq(`#421 word (${kind}): a restore leaves the page's text`, t.text(0, 0), 'pending');
+  });
+})();
+
+// --- Hover text: a simplified cell carries its original as hover text, and a
+// restore removes it, on both table kinds. A cell the pass leaves as written
+// carries none. ---
+(function hoverText_bothKindsShowTheOriginal() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([['1,234', '5,678'], ['2,468', 'n/a']]);
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`hover text (${kind}): a simplified cell shows its original`,
+      t.cell(0, 0).title, 'Original: 1,234');
+    eq(`hover text (${kind}): a cell left as written shows none`,
+      t.cell(1, 1).title, '');
+    resetTable(t.table);
+    eq(`hover text (${kind}): a restore removes it`,
+      [t.cell(0, 0).title, t.cell(0, 1).title], ['', '']);
+  });
+})();
+
+// --- Hover text the page set: a cell that carries the page's own hover text
+// shows its original as hover text while simplified, and a restore puts the
+// page's hover text back exactly. A cell with none ends with none. A write to
+// a cell that is already simplified never takes the extension's own hover
+// text for the page's. ---
+(function hoverText_theRestorePutsTheHoverTextOfThePageBack() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([['1,234', '5,678'], ['2,468', '3,579']]);
+    t.cell(0, 0).title = 'Q1 revenue, in thousands';
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`page hover text (${kind}): a simplified cell shows its original`,
+      t.cell(0, 0).title, 'Original: 1,234');
+    resetTable(t.table);
+    eq(`page hover text (${kind}): a restore puts the page's hover text back`,
+      t.cell(0, 0).title, 'Q1 revenue, in thousands');
+    eq(`page hover text (${kind}): a cell with none has none after the restore`,
+      t.cell(0, 1).title, '');
+    eq(`page hover text (${kind}): the restore leaves the page's text`,
+      t.text(0, 0), '1,234');
+  });
+})();
+
+(function hoverText_aWriteToASimplifiedCellKeepsTheHoverTextOfThePage() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([['1,234', '5,678'], ['2,468', '3,579']]);
+    t.cell(0, 0).title = 'Q1 revenue, in thousands';
+    roundTableUnder(t.table, RW_OPTS);
+    // The page redraws the piece to its original: the held cell takes the patch again.
+    t.write(0, 0, '1,234');
+    page.settle();
+    eq(`page hover text (${kind}): a held cell written again shows its original`,
+      t.cell(0, 0).title, 'Original: 1,234');
+    // The page writes a new value: the cell is released, then simplified fresh.
+    t.write(0, 0, '9,876');
+    page.settle();
+    eq(`page hover text (${kind}): a rewritten cell shows its new original`,
+      t.cell(0, 0).title, 'Original: 9,876');
+    resetTable(t.table);
+    eq(`page hover text (${kind}): a restore after both writes puts the page's hover text back`,
+      t.cell(0, 0).title, 'Q1 revenue, in thousands');
   });
 })();
 

@@ -1700,8 +1700,9 @@ TSLA,75,"248.09","18,606.75"
     </ol>
     <ul class="expect">
       <li><b>Write a new number</b> writes 953,877 into South, Q2. Expect: the
-        cell shows 953,877 simplified, and the native cell's hover text shows
-        953,877. Restore shows 953,877.</li>
+        cell shows 953,877 simplified on both tables, and each cell's hover
+        text shows 953,877. Restore shows 953,877 and removes the hover
+        text.</li>
       <li><b>Write a round number</b> writes 400,000 into East, Q1. Expect: the
         cell shows 400,000 and is no longer simplified: no hover text, and
         restore leaves 400,000.</li>
@@ -4130,6 +4131,71 @@ TSLA,75,"248.09","18,606.75"
       <tr><td>Oren</td><td>05/06/2021</td></tr>
       <tr><td>Ruth</td><td>11/12/2019</td></tr>
     </table>
+  </section>
+
+  <section>
+    <h2>36. Cells with their own hover text</h2>
+    <p>A native table and a grid holding the same rows. In each table the
+      Q1 cell of the North row carries hover text of its own, "Q1 total,
+      all channels". No other cell carries any.</p>
+    <p class="expect">Expect: a pillbox at load on both tables. Press each
+      pillbox on: every number rounds, and each simplified cell's hover text
+      shows its original, "Original: 1,482,391" for the North Q1 cell on both
+      tables. Press the pillbox off: the North Q1 cell's hover text shows "Q1
+      total, all channels" again, and every other cell has none. A failure
+      shows no hover text on a grid cell while simplified, or "Original:
+      1,482,391" after the restore.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Region</th>
+          <th scope="col">Q1</th>
+          <th scope="col">Q2</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">North</th>
+          <td title="Q1 total, all channels">1,482,391</td>
+          <td>1,506,220</td>
+        </tr>
+        <tr>
+          <th scope="row">South</th>
+          <td>918,554</td>
+          <td>947,310</td>
+        </tr>
+        <tr>
+          <th scope="row">East</th>
+          <td>427,808</td>
+          <td>431,552</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="aria-grid" role="grid" aria-label="Sessions by region, with hover text">
+      <div class="g-row" role="row">
+        <span role="columnheader">Region</span>
+        <span role="columnheader">Q1</span>
+        <span role="columnheader">Q2</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">North</span>
+          <span role="cell" title="Q1 total, all channels">1,482,391</span>
+          <span role="cell">1,506,220</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">South</span>
+          <span role="cell">918,554</span>
+          <span role="cell">947,310</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">East</span>
+          <span role="cell">427,808</span>
+          <span role="cell">431,552</span>
+        </div>
+      </div>
+    </div>
   </section>
 
 </body>
