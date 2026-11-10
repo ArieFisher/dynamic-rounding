@@ -117,7 +117,7 @@ The edge between sprints 1 and 2 is real. Sprint 2 changes behavior through the 
   - The ladder runs every reader over the cell's text with the overlap order in section 3.2, and stops at the first whole-cell match no longer.
   - A clock time inside text becomes a time stretch when the Times switch is on, with its AM or PM suffix inside the stretch. It stays a protected stretch when the switch is off, as today.
   - A number in a cell that holds a date or time now rounds under the numbers-inside-text switch.
-  - Decisions 1 to 3 in section 6 apply: the ISO date-time split, the ambiguous date held per stretch, and the currency and percent switches held per number stretch. `getExclusionReason` loses its percent and currency branches, and the number stretch reader holds back a number whose span carries the sign or code.
+  - Decisions 1, 2, 3, and 6 in section 6 apply: the ISO date-time split, the ambiguous date held per stretch, the currency and percent switches held per number stretch, and each ISO stretch following its own switch. The results table under decision 6 becomes test rows. `getExclusionReason` loses its percent and currency branches, and the number stretch reader holds back a number whose span carries the sign or code.
   - Docs:
     - `docs/design.md` and `chrome-extension/README.md` describe mixed cells.
     - `js/README.md` and `js/tests-googlesheets-tab.md` list the Sheets change: dates and times are off in Sheets, so a date's digits stay protected and a number beside it now rounds.
@@ -143,6 +143,7 @@ The edge between sprints 1 and 2 is real. Sprint 2 changes behavior through the 
 - **Dev notes:**
   - `findDates` already returns bounds and `clockTimeRanges` already finds times inside text. The new work is the overlap pass and the span time rounder's use.
   - An impossible date must become a protected stretch, so its digits never round as numbers.
+  - `findDates` finds no date in "2026-11-09T19:54" today, because its date end test rejects the letter T after the day. The ISO date-time reader marks both stretches itself, from `parseISODateTime`'s groups widened to a search inside text, and the date stretch rounds through `roundDateText`.
   - Each changed stretch needs its own piece check. A date in one piece and a time in another both change; a stretch that crosses pieces stays as written with its debug row, and the other stretches still change.
 
 ### Sprint 3: `last-hour-times`
@@ -158,7 +159,7 @@ The edge between sprints 1 and 2 is real. Sprint 2 changes behavior through the 
 - **Acceptance criteria:**
   - 23:45 becomes 23:00, 11:45 PM becomes 11:00 PM, 11:45 becomes 11:00, and "2026-11-09 23:45" becomes "2026-11-09 23:00".
   - 22:45 still becomes 23:00, and 10:45 PM still becomes 11:00 PM.
-  - The answer to open question 1 in section 6 holds for 11:45 AM.
+  - 11:45 AM becomes 12:00 PM (decision 5 in section 6).
 - **Dependencies:** none.
 - **Complexity:** S.
 - **Dev notes:** Sheets keeps times off, so this sprint changes nothing in Sheets. The rule reads the hour as written, before any 12-hour conversion, so 11 PM and 23 meet one test.
@@ -196,14 +197,23 @@ The edge between sprints 1 and 2 is real. Sprint 2 changes behavior through the 
 3. **The currency and percent switches hold back only the number stretch beside the sign.** A number stretch holds back when a currency sign, a currency code, or a percent sign sits inside its number span (the sign or code beside its digits, as the number span reads it). The rest of the cell's stretches change.
 4. **A time in the last hour of the clock rounds down to the hour.** At hour level, 23:xx becomes 23:00, 11:xx PM becomes 11:00 PM, and 11:xx with no AM or PM becomes 11:00. The rule covers every time the time rule rounds: a whole-cell clock time, a time inside text, and the time of an ISO date-time. It replaces the ISO rule's clamp to 23:59 and the whole-cell rule's roll to 00:00 or 12:00, so no time ever moves past the date beside it or past midnight. Sprint `last-hour-times` builds it.
 
-### Open
+5. **11:xx AM rounds as any other morning time.** At hour level, 11:45 AM becomes 12:00 PM.
+6. **An ISO date-time's two stretches follow their own switches, also when one of them stays as written.** A time stretch that stays as written keeps its separator, seconds, and offset as written. With the shipped defaults (dates at year, times off), "2026-11-09T19:54:00Z" becomes "2026T19:54:00Z".
 
-1. **11:xx AM.** The decided rule names 11:xx PM and 11:xx with no suffix. Options:
-   - (a) 11:xx AM rounds as any other morning time, to 12:00 PM (recommended: the result stays on the same day);
-   - (b) 11:xx AM also rounds down to 11:00 AM, so every 11 o'clock time follows one rule.
-2. **An ISO date-time with dates on and times off.** The date stretch changes and the time stretch stays as written, so "2026-11-09T19:54" becomes "2026T19:54". Options:
-   - (a) the time stretch keeps its separator as written: "2026T19:54";
-   - (b) an ISO date-time whose time stretch stays as written keeps its date as written too, so the value stays whole (recommended: no half-simplified machine value).
+ISO date-time results, "2026-11-09T19:54:00Z" unless the row names another value:
+
+| Dates | Times | Result |
+| --- | --- | --- |
+| year | hour | 2026 20:00 |
+| year | off | 2026T19:54:00Z |
+| off | hour | 2026-11-09 20:00 |
+| off | off | 2026-11-09T19:54:00Z |
+| month | hour | 2026-11 20:00 |
+| quarter | minute | 2026 Q4 19:54 |
+| decade | hour | 2020 20:00 |
+| year | hour, value 2026-11-09T23:45 | 2026 23:00 |
+| year | off, value 2026-11-09 19:54 | 2026 19:54 |
+| year | hour, value "Deployed 2026-11-09T19:54:00Z, 12,345 users" | Deployed 2026 20:00, then 12,345 rounded as a number, then " users" |
 
 ## 7. Out of Scope (Separate Sprint-Stack)
 
@@ -214,3 +224,4 @@ The edge between sprints 1 and 2 is real. Sprint 2 changes behavior through the 
 
 - 2026-11-10: Initial draft generated by the sprint-plan skill.
 - 2026-11-10: The product manager decided the ISO date-time split, the ambiguous date held per stretch, the currency and percent switches held per number stretch, and the last-hour rule. Sprint `last-hour-times` added.
+- 2026-11-10: The product manager decided that 11:xx AM rounds as any other morning time, and that an ISO date-time's two stretches follow their own switches when one stays as written.
