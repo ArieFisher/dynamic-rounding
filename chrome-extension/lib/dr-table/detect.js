@@ -283,16 +283,29 @@ function assignGridColumns(rowSpans) {
 }
 
 /**
- * A fresh placement for one cell: the column plan's entry for it, or the read
- * position when the plan holds no entry (the table's rows changed between the
- * plan and the read). Fresh because the caller builds the cell object on top of it, and a
- * shared entry would give every cell at that position one object.
+ * The rows of one table, built from each row's cell elements: the native
+ * adapter, the grid adapter, and the geometry probe's numeric step all build
+ * their rows here. The cell elements of every row are read once, by the
+ * caller, so the column plan (assignGridColumns) and the cell objects count the
+ * same row shape. Each cell object carries its column plan entry as
+ * columnIndex and columnSpan; a table that declares no span plans every cell
+ * at its read position.
+ *
+ * @param {Element[][]} rowCellEls - each row's cell elements, in column order
+ * @param {(cellEl: Element) => {colSpan: number, rowSpan: number}} readSpans
+ *   - the span read of the table kind (nativeCellSpans or gridCellSpans)
+ * @param {(cellEl: Element) => object} makeCell - the cell object of the
+ *   table kind (see makeCellObj)
+ * @param {object[]} [rowProps] - fields to add to each row, by row position
+ * @returns {{getCells(): object[]}[]}
  */
-function columnPlacement(planRow, position) {
-  const entry = planRow && planRow[position];
-  return entry
-    ? { columnIndex: entry.columnIndex, columnSpan: entry.columnSpan }
-    : { columnIndex: position, columnSpan: 1 };
+function buildRows(rowCellEls, readSpans, makeCell, rowProps) {
+  const plan = assignGridColumns(rowCellEls.map((cellEls) => cellEls.map(readSpans)));
+  return rowCellEls.map((cellEls, r) => Object.assign({}, rowProps && rowProps[r], {
+    getCells() {
+      return cellEls.map((cellEl, c) => Object.assign({}, plan[r][c], makeCell(cellEl)));
+    },
+  }));
 }
 
 /** Marker class on every cell the extension simplified (numbers, dates, and times), on native tables and grids alike. */
@@ -438,23 +451,14 @@ class NativeTableAdapter {
   getElement() { return this.el; }
   isGrid() { return false; }
   getRows() {
-    const rowEls = Array.from(this.el.rows);
-    // One pass over the spans numbers every cell by its grid column, before
-    // any text is read; a cell then carries the number its consumers gate on.
-    const plan = assignGridColumns(
-      rowEls.map((row) => Array.from(row.cells).map(nativeCellSpans)));
     const port = this.originalsPort;
-    return rowEls.map((row, r) => ({
-      getCells() {
-        return Array.from(row.cells).map((cell, c) => {
-          // A native cell classifies its rendered text, which is also what the screen shows.
-          const rendered = () => cell.innerText || cell.textContent || '';
-          return Object.assign(columnPlacement(plan[r], c), makeCellObj(cell, port, {
-            tagName: cell.tagName, liveText: rendered, displayedText: rendered, rendered: true,
-          }));
-        });
-      },
-    }));
+    return buildRows(Array.from(this.el.rows, (row) => Array.from(row.cells)), nativeCellSpans, (cell) => {
+      // A native cell classifies its rendered text, which is also what the screen shows.
+      const rendered = () => cell.innerText || cell.textContent || '';
+      return makeCellObj(cell, port, {
+        tagName: cell.tagName, liveText: rendered, displayedText: rendered, rendered: true,
+      });
+    });
   }
 }
 
@@ -742,16 +746,8 @@ class GridAdapter {
       const pinned = pinnedRowEl ? adapter._getCellEls(pinnedRowEl) : [];
       return pinned.concat(adapter._getCellEls(rowEl));
     });
-    const plan = assignGridColumns(
-      rowCellEls.map((cellEls) => cellEls.map(gridCellSpans)));
-
-    return scrollEntries.map(({ isOutside }, idx) => ({
-      isOutside,
-      getCells() {
-        return rowCellEls[idx].map((cellEl, c) => Object.assign(
-          columnPlacement(plan[idx], c), makeGridCellObj(cellEl, adapter.originalsPort)));
-      },
-    }));
+    return buildRows(rowCellEls, gridCellSpans, (cellEl) => makeGridCellObj(cellEl, adapter.originalsPort),
+      scrollEntries.map(({ isOutside }) => ({ isOutside })));
   }
 }
 
@@ -1420,14 +1416,10 @@ function looksLikeGrid(el, opts = {}) {
   // --- Step 4: Numeric content — ≥ 1 cell the data test counts (see
   // holdsRoundableCell) (mandatory) ---
   // The cells are the candidate rows' children, each read as a grid cell
-  // and placed in the column of its position among its row's children.
+  // and placed in a column by the row builder.
   const port = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
-  const probeRows = candidateRows.map((row) => ({
-    getCells() {
-      return Array.from(row.children).map((cellEl, c) =>
-        Object.assign({ columnIndex: c }, makeGridCellObj(cellEl, port)));
-    },
-  }));
+  const probeRows = buildRows(candidateRows.map((row) => Array.from(row.children)), gridCellSpans,
+    (cellEl) => makeGridCellObj(cellEl, port));
   if (!holdsRoundableCell(probeRows)) return false;
 
   // --- Short-circuit ACCEPT before geometry probe ---
