@@ -343,6 +343,104 @@
     looksLikeGrid(gridWithNumberAt(budget + 1), { styleProbe: gridProbe }), false);
 })();
 
+// The geometry probe once held a repetition step before the consistent-cell-
+// count step. It passed when the largest first-class-token share or the
+// largest child-count share, zero-child entries included, reached the floor.
+// The consistent-cell-count step reads the largest non-zero child-count share
+// against the same floor, and that share never exceeds the one the repetition
+// step read, so the repetition step rejected nothing. These tests restate the
+// removed step as a pure function and show that the consistent-cell-count step
+// passing implies it passing.
+const oldRepetitionStepPasses = (children) => {
+  const classFreq = new Map();
+  for (const child of children) {
+    const cls = (child.className && typeof child.className === 'string')
+      ? child.className.trim().split(/\s+/)[0]
+      : '';
+    classFreq.set(cls, (classFreq.get(cls) || 0) + 1);
+  }
+  const childCountFreq = new Map();
+  for (const child of children) {
+    const cc = child.children ? child.children.length : 0;
+    childCountFreq.set(cc, (childCountFreq.get(cc) || 0) + 1);
+  }
+  const floor = children.length * DR_DETECTION_SETTINGS.gridRepetitionShare;
+  return Math.max(...classFreq.values()) >= floor || Math.max(...childCountFreq.values()) >= floor;
+};
+const consistentCellCountStepPasses = (children) =>
+  childCountCandidates(children).modalFreq >= children.length * DR_DETECTION_SETTINGS.gridRepetitionShare;
+
+// Ten children make a floor of five. Each case names whether the largest class
+// share reaches the floor and whether the largest non-zero child-count share
+// does. The last case holds a zero-child share alone: only the removed step
+// counted zero-child entries, and the consistent-cell-count step rejects it.
+(function geometryProbe_theRemovedRepetitionStepRejectedNothing() {
+  const sameClass = Array(10).fill('row');
+  const ownClass = Array.from({ length: 10 }, (_, i) => 'row' + i);
+  const repeatedCount = [2, 2, 2, 2, 2, 2, 1, 3, 4, 5];
+  const spreadCount = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5];
+  const cases = [
+    { name: 'class share and child-count share reach the floor', classes: sameClass, counts: repeatedCount, laterStep: true, removedStep: true, probe: true },
+    { name: 'class share reaches the floor, child-count share does not', classes: sameClass, counts: spreadCount, laterStep: false, removedStep: true, probe: false },
+    { name: 'child-count share reaches the floor, class share does not', classes: ownClass, counts: repeatedCount, laterStep: true, removedStep: true, probe: true },
+    { name: 'neither share reaches the floor', classes: ownClass, counts: spreadCount, laterStep: false, removedStep: false, probe: false },
+    { name: 'only the zero-child share reaches the floor', classes: ownClass, counts: [0, 0, 0, 0, 0, 1, 2, 3, 4, 5], laterStep: false, removedStep: true, probe: false },
+  ];
+  let laterPassedWhereRemovedFailed = 0;
+  for (const c of cases) {
+    const rows = c.counts.map((count, i) => makeGridRow(Array(count).fill({ text: '5' }), c.classes[i]));
+    const container = makeGridContainer(rows, 'flex', 'grid', '');
+    const children = Array.from(container.children);
+    eq('geometry probe: the consistent-cell-count step reads ' + c.name,
+      consistentCellCountStepPasses(children), c.laterStep);
+    eq('geometry probe: the removed repetition step read ' + c.name,
+      oldRepetitionStepPasses(children), c.removedStep);
+    if (consistentCellCountStepPasses(children) && !oldRepetitionStepPasses(children)) laterPassedWhereRemovedFailed++;
+    withGridComputedStyle(container, 'flex', function() {
+      eq('geometry probe: a grid with the grid role where ' + c.name + ' gives the result the probe gave with the removed step',
+        looksLikeGrid(container), c.probe);
+    });
+  }
+  eq('geometry probe: no case passes the consistent-cell-count step and fails the removed repetition step',
+    laterPassedWhereRemovedFailed, 0);
+})();
+
+// Every child-count vector of length 5 and 6 over the counts {0, 1, 2, 3},
+// crossed with every assignment of the first class tokens "a" and "b" to the
+// children (one token or two): 1024 x 32 + 4096 x 64 = 294,912 inputs. The cap
+// keeps the loop under a second. A child's class string holds a second token,
+// so only the first token groups children.
+(function geometryProbe_everyBoundedInputPassingTheLaterStepPassesTheRemovedStep() {
+  const countValues = [0, 1, 2, 3];
+  let checked = 0;
+  let laterPasses = 0;
+  let removedOnly = 0;
+  const violations = [];
+  for (const length of [5, 6]) {
+    for (let countCode = 0; countCode < Math.pow(countValues.length, length); countCode++) {
+      for (let classCode = 0; classCode < Math.pow(2, length); classCode++) {
+        const children = Array.from({ length }, (_, i) => ({
+          className: (((classCode >> i) & 1) ? 'b' : 'a') + ' s' + i,
+          children: { length: countValues[Math.floor(countCode / Math.pow(countValues.length, i)) % countValues.length] },
+        }));
+        const later = consistentCellCountStepPasses(children);
+        const removed = oldRepetitionStepPasses(children);
+        checked++;
+        if (later) laterPasses++;
+        if (removed && !later) removedOnly++;
+        if (later && !removed && violations.length < 3) violations.push(children.map((c) => c.className + ':' + c.children.length));
+      }
+    }
+  }
+  eq('geometry probe: the bounded loop checks 294,912 inputs', checked, 294912);
+  eq('geometry probe: no bounded input passes the consistent-cell-count step and fails the removed repetition step',
+    violations, []);
+  eq('geometry probe: the bounded loop holds inputs that pass the consistent-cell-count step (the check is not empty)',
+    laterPasses > 0, true);
+  eq('geometry probe: the bounded loop holds inputs that pass only the removed repetition step (the check can fail)',
+    removedOnly > 0, true);
+})();
+
 (function mapRenderedToFlat_positions() {
   eq('mapRenderedToFlat: equal texts map each position to itself',
     mapRenderedToFlat('a 1', 'a 1'), [0, 1, 2]);
@@ -4599,4 +4697,84 @@ function makeSparselyBoxedGrid(boxed) {
   eq('cards: five equal-width cards read as columns, two rows of five cells',
     adapterRowTexts(makeAdapter(grid.gridEl)),
     [['Basic', 'Plus', 'Team', 'Office', 'Enterprise'], ['9', '19', '49', '99', '249']]);
+})();
+
+// The grid adapter's scroll-container lookup returns the first descendant that
+// matches a vendor profile's scroll-container selectors, then [role="grid"],
+// and otherwise the grid element. An element that matches a selector itself
+// has no effect beyond that: with no matching descendant it resolves to
+// itself, and a matching descendant wins over the element's own match.
+(function gridAdapter_scrollContainerOfAnElementThatMatchesASelectorItself() {
+  const matchesEverySelector = () => true;
+  const alone = { matches: matchesEverySelector, querySelectorAll: () => [] };
+  eq('grid adapter: a grid element that matches a scroll-container selector itself resolves to itself',
+    new GridAdapter(alone)._getScrollContainer() === alone, true);
+
+  const inner = { parentElement: null, parentNode: null };
+  const outer = {
+    matches: matchesEverySelector,
+    querySelectorAll: (sel) => (sel === '[role="grid"]' ? [inner] : []),
+  };
+  inner.parentElement = outer;
+  eq('grid adapter: a matching descendant resolves ahead of a grid element that matches a selector itself',
+    new GridAdapter(outer)._getScrollContainer() === inner, true);
+})();
+
+// The superscript walk tests every ancestor between the text and the cell for
+// a computed superscript, and stops at the first one it finds.
+(function superscriptWalk_aComputedSuperscriptOnAnAncestorCounts() {
+  const probeOf = (superEl) => ({
+    getComputedStyle: (el) => ({ verticalAlign: el === superEl ? 'super' : 'baseline' }),
+  });
+  const build = () => {
+    const cell = { tagName: 'TD' };
+    const outerSpan = { tagName: 'SPAN', parentNode: cell, parentElement: cell };
+    const innerSpan = { tagName: 'SPAN', parentNode: outerSpan, parentElement: outerSpan };
+    cell._textNodes = [
+      { nodeValue: '10', parentNode: cell, parentElement: cell },
+      { nodeValue: '12', parentNode: innerSpan, parentElement: innerSpan },
+    ];
+    return { cell, outerSpan, innerSpan };
+  };
+  withSupCreateTreeWalker(function() {
+    const own = build();
+    eq('superscript walk: a computed superscript on the text\'s own parent gives one range',
+      getSuperscriptRanges(own.cell, { styleProbe: probeOf(own.innerSpan) }), [{ start: 2, end: 4 }]);
+    const far = build();
+    eq('superscript walk: a computed superscript two ancestors above the text gives one range',
+      getSuperscriptRanges(far.cell, { styleProbe: probeOf(far.outerSpan) }), [{ start: 2, end: 4 }]);
+    const none = build();
+    eq('superscript walk: no computed superscript on any ancestor gives no range',
+      getSuperscriptRanges(none.cell, { styleProbe: probeOf(null) }), []);
+  });
+})();
+
+// The artifact filter and the positioned-ancestor walk read position and left
+// through the style probe alone, so an inline style the probe does not report
+// has no effect.
+(function accessibilityArtifact_readsPositionAndLeftThroughTheStyleProbe() {
+  const probeOf = (styles) => ({
+    getComputedStyle: (el) => Object.assign({ position: 'static', left: '0px' }, styles.get(el)),
+  });
+  const offscreen = { position: 'absolute', left: '-10000px' };
+
+  const inlineOnly = makePhantomEl({ tagName: 'TABLE', style: offscreen });
+  eq('artifact filter: an inline off-screen style the style probe does not report gives false',
+    isAccessibilityArtifact(inlineOnly, { styleProbe: probeOf(new Map()) }), false);
+
+  const probedOnly = makePhantomEl({ tagName: 'TABLE', style: { position: 'static', left: '0px' } });
+  eq('artifact filter: an off-screen style only the style probe reports gives true',
+    isAccessibilityArtifact(probedOnly, { styleProbe: probeOf(new Map([[probedOnly, offscreen]])) }), true);
+
+  const table = makePhantomEl({ tagName: 'TABLE' });
+  const inlineAncestor = makePhantomEl({ style: offscreen });
+  chainParents(table, inlineAncestor);
+  eq('artifact filter: an ancestor with an inline positioned off-screen style the style probe does not report gives false',
+    isAccessibilityArtifact(table, { styleProbe: probeOf(new Map()) }), false);
+
+  const probedTable = makePhantomEl({ tagName: 'TABLE' });
+  const probedAncestor = makePhantomEl({ style: { position: 'static', left: '0px' } });
+  chainParents(probedTable, probedAncestor);
+  eq('artifact filter: an ancestor the style probe reports as positioned and off-screen gives true',
+    isAccessibilityArtifact(probedTable, { styleProbe: probeOf(new Map([[probedAncestor, offscreen]])) }), true);
 })();
