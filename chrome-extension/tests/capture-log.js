@@ -5,8 +5,8 @@
   const [a] = grid.cellEls;
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    const state = collectCaptureState({ store: DR_STORE, adapterFor: (t) => makeAdapter(t) });
-    const tableRec = state.tables[DR_STORE.getRegisteredTables().indexOf(grid.wrapperEl)];
+    const state = collectCaptureState({ model: DR_MODEL, adapterFor: (t) => makeAdapter(t) });
+    const tableRec = state.tables[DR_MODEL.getRegisteredTables().indexOf(grid.wrapperEl)];
     const cellRec = tableRec.cells.find((cell) => cell.row === 0 && cell.col === 0);
     eq('grid patch capture: a patched grid cell carries its original text',
       cellRec.original, ' 8,584,629 ');
@@ -25,7 +25,7 @@
     eq('grid patch capture: the originals rendering shows the cell\'s original',
       /<td[^>]*>\s*8,584,629\s*<\/td>/.test(originalsTable), true);
   } finally {
-    DR_STORE.unregisterTable(grid.wrapperEl);
+    DR_MODEL.unregisterTable(grid.wrapperEl);
   }
 })();
 
@@ -74,7 +74,7 @@
 // collectCaptureState() turns the registry into the plain-value capture
 // state: every registered table in full detail, plus the bound table's raw
 // markup as the fixture seed. Dependencies arrive as parameters with working
-// defaults (deps.store, deps.adapterFor), so these tests drive the function
+// defaults (deps.model, deps.adapterFor), so these tests drive the function
 // with stand-ins and no DOM. Absence honesty is pinned here: a cell wearing
 // the rounded marker with no stored original serializes as original: null,
 // never a reconstructed value.
@@ -87,10 +87,10 @@
   const markerClassList = (marked) => ({ contains: (c) => marked && c === 'dr-ext-rounded' });
   const makeCellEl = (marked) => ({ classList: markerClassList(marked) });
 
-  // A fake store: tables and per-cell originals handed in as Maps.
-  const makeFakeStore = (tables, opts) => ({
+  // A fake model: tables and per-cell originals handed in as Maps.
+  const makeFakeModel = (tables, opts) => ({
     getRegisteredTables: () => tables,
-    getSelectedTable: () => (opts && opts.selected) || null,
+    getActiveTable: () => (opts && opts.selected) || null,
     getErrorState: () => (opts && opts.errorState) || { hasError: false, count: 0, rows: [] },
     getTableAppliedFlag: (t) => (opts && opts.flags && opts.flags.get(t)) || 'original',
     getTableSettings: (t) => (opts && opts.tableSettings && opts.tableSettings.get(t)) ||
@@ -144,10 +144,10 @@
   const flags = new Map([[tableA, 'simplified']]);
   const tableSettings = new Map([[tableA, { offsetTop: -1, enabled: true }]]);
   const maxMags = new Map([[tableB, 4]]);
-  const store = makeFakeStore([tableA, tableB],
+  const model = makeFakeModel([tableA, tableB],
     { selected: tableA, originals, flags, tableSettings, maxMags });
 
-  const state = collectCaptureState({ store, adapterFor: fakeAdapterFor });
+  const state = collectCaptureState({ model, adapterFor: fakeAdapterFor });
 
   eq('capture-state: the state carries its format version', state.captureFormat, 9);
   eq('capture-state: the state holds no page-wide settings; each table carries its own',
@@ -193,7 +193,7 @@
 
   // Empty registry: an honest nothing.
   const emptyState = collectCaptureState({
-    store: makeFakeStore([], {}),
+    model: makeFakeModel([], {}),
     adapterFor: fakeAdapterFor,
   });
   eq('capture-state: an empty registry serializes as no tables, no focus, no seed',
@@ -207,7 +207,7 @@
     getRows: () => { throw new Error('hostile walk'); },
   });
   const errState = collectCaptureState({
-    store: makeFakeStore([{}, tableB], {}),
+    model: makeFakeModel([{}, tableB], {}),
     adapterFor: (t) => (t === tableB ? fakeAdapterFor(t) : throwingAdapterFor()),
   });
   eq('capture-state: a table whose walk throws serializes as an error record',
@@ -239,9 +239,9 @@
     { el: unmarked, text: 'Amount' },
     { el: lost, text: '99,000' },
   ] }] };
-  const store = {
+  const model = {
     getRegisteredTables: () => [table],
-    getSelectedTable: () => null,
+    getActiveTable: () => null,
     getErrorState: () => ({ hasError: false, count: 0, rows: [] }),
     getTableAppliedFlag: () => 'simplified',
     getTableSettings: () => null,
@@ -259,7 +259,7 @@
     })),
   });
 
-  const cells = collectCaptureState({ store, adapterFor }).tables[0].cells;
+  const cells = collectCaptureState({ model, adapterFor }).tables[0].cells;
   eq('capture-state: a marked cell record carries wearsMarker true beside its original',
     { wearsMarker: cells[0].wearsMarker, original: cells[0].original },
     { wearsMarker: true, original: '98,765' });
@@ -823,9 +823,9 @@
     typeof globalThis.collectCaptureState, 'function');
   if (typeof globalThis.collectCaptureState !== 'function') return;
 
-  const makeFakeStore = () => ({
+  const makeFakeModel = () => ({
     getRegisteredTables: () => [],
-    getSelectedTable: () => null,
+    getActiveTable: () => null,
     getErrorState: () => ({ hasError: false, count: 0, rows: [] }),
     getTableAppliedFlag: () => 'original',
     getTableSettings: () => null,
@@ -834,7 +834,7 @@
   });
   const fakeAdapterFor = () => ({ isVirtualized: () => false, getRows: () => [] });
 
-  const state = collectCaptureState({ store: makeFakeStore(), adapterFor: fakeAdapterFor });
+  const state = collectCaptureState({ model: makeFakeModel(), adapterFor: fakeAdapterFor });
 
   eq('capture-settings: the capture state carries every key of the detection settings, with the values in force',
     state.detectionSettings, DR_DETECTION_SETTINGS);
@@ -1019,12 +1019,12 @@
     hasError: true, count: 1,
     rows: [{ at: '2026-09-17T16:00:00.000Z', level: 'warn', text: 'probe', stack: '    at roundTable' }],
   };
-  const fakeStore = {
+  const fakeModel = {
     getRegisteredTables: () => [],
-    getSelectedTable: () => null,
+    getActiveTable: () => null,
     getErrorState: () => errorState,
   };
-  const state = collectCaptureState({ store: fakeStore, adapterFor: () => null });
+  const state = collectCaptureState({ model: fakeModel, adapterFor: () => null });
   eq('capture-state: the state carries the model\'s error state', state.errorState, errorState);
 
   const renderState = {

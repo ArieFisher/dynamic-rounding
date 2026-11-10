@@ -11,7 +11,7 @@
  * Draws the newest error row on the page: one fixed element at the bottom
  * right holding the row's text, removed by a click or after the hide delay.
  * It subscribes to the model's error state change (state:errorRecorded,
- * published by app/store.js after every row the controller records) and
+ * published by app/model.js after every row the controller records) and
  * holds no application state of its own. The element and its timer are
  * drawing state, like the pillbox view's own map of buttons.
  *
@@ -21,7 +21,7 @@
  * The view never logs. A row it recorded would land in the error state and
  * publish back to this view, one level deeper on every turn.
  *
- * Loaded after ui-toggle.js and before content.js, so the subscription
+ * Loaded after ui-pillbox.js and before content.js, so the subscription
  * exists before the controller registers the row listener that feeds it.
  */
 

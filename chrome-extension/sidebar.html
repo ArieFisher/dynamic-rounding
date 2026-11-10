@@ -80,18 +80,18 @@
       color: #5f6368;
       margin-bottom: 8px;
     }
-    .toggle-row {
+    .switch-row {
       display: flex;
       align-items: center;
       gap: 8px;
       padding: 5px 0;
     }
-    .toggle-row .toggle-label {
+    .switch-row .switch-label {
       flex-grow: 1;
       font-size: 13px;
       color: #202124;
     }
-    .toggle-row select {
+    .switch-row select {
       font-size: 12px;
       padding: 2px 4px;
       border: 1px solid #dadce0;
@@ -100,7 +100,7 @@
       color: #5f6368;
       flex-shrink: 0;
     }
-    .toggle-row select:disabled {
+    .switch-row select:disabled {
       opacity: 0.4;
     }
     details.advanced {
@@ -367,34 +367,34 @@
   <details class="advanced section" id="advancedSection">
     <summary>Advanced</summary>
     <div id="optionsSection">
-      <div class="toggle-row">
+      <div class="switch-row">
         <label class="switch">
           <input type="checkbox" id="simplifyMixedCells">
           <span class="slider"></span>
         </label>
-        <span class="toggle-label">words</span>
+        <span class="switch-label">words</span>
       </div>
       <hr class="divider">
-      <div class="toggle-row">
+      <div class="switch-row">
         <label class="switch">
           <input type="checkbox" id="simplifyMixedCurrency">
           <span class="slider"></span>
         </label>
-        <span class="toggle-label">currencies</span>
+        <span class="switch-label">currencies</span>
       </div>
-      <div class="toggle-row">
+      <div class="switch-row">
         <label class="switch">
           <input type="checkbox" id="simplifyMixedPercent">
           <span class="slider"></span>
         </label>
-        <span class="toggle-label">percentages</span>
+        <span class="switch-label">percentages</span>
       </div>
-      <div class="toggle-row">
+      <div class="switch-row">
         <label class="switch">
           <input type="checkbox" id="simplifyDates">
           <span class="slider"></span>
         </label>
-        <span class="toggle-label">dates</span>
+        <span class="switch-label">dates</span>
         <select id="dateGranularity" disabled>
           <option value="month">month</option>
           <option value="quarter">quarter</option>
@@ -403,31 +403,31 @@
           <option value="century">century</option>
         </select>
       </div>
-      <div class="toggle-row">
+      <div class="switch-row">
         <label class="switch">
           <input type="checkbox" id="simplifyTimes">
           <span class="slider"></span>
         </label>
-        <span class="toggle-label">times</span>
+        <span class="switch-label">times</span>
         <select id="timeGranularity" disabled>
           <option value="hour">hour</option>
           <option value="minute">minute</option>
         </select>
       </div>
       <hr class="divider">
-      <div class="toggle-row">
+      <div class="switch-row">
         <label class="switch">
           <input type="checkbox" id="simplifyFirstRow">
           <span class="slider"></span>
         </label>
-        <span class="toggle-label">first row</span>
+        <span class="switch-label">first row</span>
       </div>
-      <div class="toggle-row">
+      <div class="switch-row">
         <label class="switch">
           <input type="checkbox" id="simplifyFirstColumn">
           <span class="slider"></span>
         </label>
-        <span class="toggle-label">first column</span>
+        <span class="switch-label">first column</span>
       </div>
     </div>
   </details>

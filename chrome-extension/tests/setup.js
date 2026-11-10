@@ -31,7 +31,7 @@ function askContentScript(message) {
 }
 global.document = {
   addEventListener: () => {},
-  querySelectorAll: () => [],   // injectTableToggles calls this; return empty list
+  querySelectorAll: () => [],   // injectTablePillboxes calls this; return empty list
   readyState: 'complete',       // prevents DOMContentLoaded deferral
   body: { appendChild: () => {}, observe: () => {} },
 };
@@ -98,8 +98,8 @@ const constantsCode = sourceByName('constants.js');
 // own. Stub the loader so those sites load.
 global.importScripts = () => {};
 const messagingCode = sourceByName('adapters/messaging.js');
-const storeCode = sourceByName('app/store.js');
-const uiToggleCode = sourceByName('ui-toggle.js');
+const modelCode = sourceByName('app/model.js');
+const uiPillboxCode = sourceByName('ui-pillbox.js');
 // Combined source for "source-includes" assertions that do not care which
 // content-script file holds a symbol.
 const allContentSrc = contentScriptBundle;
@@ -122,12 +122,12 @@ globalThis.DR_CAPTURE = DR_CAPTURE;
 // the sidebar's buttons.
 globalThis.CAPTURE_MARK_GLYPHS = CAPTURE_MARK_GLYPHS;
 // Expose pillbox infrastructure for tests
-globalThis.tableToggles = tableToggles;
+globalThis.tablePillboxes = tablePillboxes;
 globalThis.trackedTables = trackedTables;
-// toggleStyleInjected is a let; expose a getter/setter so tests can reset it.
-Object.defineProperty(globalThis, 'toggleStyleInjected', {
-  get() { return toggleStyleInjected; },
-  set(v) { toggleStyleInjected = v; },
+// pillboxStyleInjected is a let; expose a getter/setter so tests can reset it.
+Object.defineProperty(globalThis, 'pillboxStyleInjected', {
+  get() { return pillboxStyleInjected; },
+  set(v) { pillboxStyleInjected = v; },
   configurable: true,
 });
 // highlightStyleInjected is a let as well: the range-pulse CSS test resets it
@@ -138,11 +138,11 @@ Object.defineProperty(globalThis, 'highlightStyleInjected', {
   configurable: true,
 });
 globalThis.isTableOn = isTableOn;
-globalThis.syncSwitchForTable = syncSwitchForTable;
-globalThis.positionToggle = positionToggle;
-globalThis.createToggleForTable = createToggleForTable;
-globalThis.injectTableToggles = injectTableToggles;
-globalThis.injectTogglesForAddedNode = injectTogglesForAddedNode;
+globalThis.syncPillboxForTable = syncPillboxForTable;
+globalThis.positionPillbox = positionPillbox;
+globalThis.createPillboxForTable = createPillboxForTable;
+globalThis.injectTablePillboxes = injectTablePillboxes;
+globalThis.injectPillboxesForAddedNode = injectPillboxesForAddedNode;
 globalThis.isDataTable = isDataTable;
 // The lens preview's sample pool for one table, built from the two steps
 // extractPreviewSamples runs, so a test reads the pool without the bucketing.
@@ -180,17 +180,17 @@ Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   set(v) { _globalTapCollapseAdded = v; },
   configurable: true,
 });
-// lastRightClickedTable proxies the active table onto DR_STORE's
-// getter/setter pair, exactly like the toggleStyleInjected/
+// lastRightClickedTable proxies the active table onto DR_MODEL's
+// getter/setter pair, exactly like the pillboxStyleInjected/
 // _globalTapCollapseAdded shims above proxy onto their own file-level lets.
 Object.defineProperty(globalThis, 'lastRightClickedTable', {
-  get() { return DR_STORE.getSelectedTable(); },
-  set(v) { DR_STORE.setSelectedTable(v); },
+  get() { return DR_MODEL.getActiveTable(); },
+  set(v) { DR_MODEL.setActiveTable(v); },
   configurable: true,
 });
 // Expose the application model and event bus directly for the
 // app-model-selection test suite.
-globalThis.DR_STORE = DR_STORE;
+globalThis.DR_MODEL = DR_MODEL;
 globalThis.DR_BUS = DR_BUS;
 // Expose the toast view for the toast test section.
 globalThis.DR_TOAST = DR_TOAST;
@@ -247,12 +247,12 @@ globalThis.pendingRetestCounts = pendingRetestCounts;
 globalThis.isPhantomA11yTable = isPhantomA11yTable;
 globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_DETECTION_SETTINGS.offscreenLeftPx;
 // Expose content.js's marker call-site wrapper for direct unit testing.
-globalThis.markAndToggleIfNewGrid = markAndToggleIfNewGrid;
-// Expose the DR_STORE-backed originals port so grid-adapter tests can build
+globalThis.markAndAddPillboxIfNewGrid = markAndAddPillboxIfNewGrid;
+// Expose the DR_MODEL-backed originals port so grid-adapter tests can build
 // an adapter the same way roundTable and collectNumericCells do in
 // production (registryAdapter) — a plain
 // makeAdapter(el) with no opts uses lib/dr-table's private default port
-// instead, which is invisible to DR_STORE and would make a test's setup
+// instead, which is invisible to DR_MODEL and would make a test's setup
 // silently diverge from what the real call sites do.
 globalThis.registryOriginalsPort = registryOriginalsPort;
 globalThis.restoreTable = restoreTable;
@@ -284,7 +284,7 @@ const SIDEBAR_HARNESS_TAB = 42;
 const FROM_SIDEBAR_TAB = { tab: { id: SIDEBAR_HARNESS_TAB } };
 
 // The same observer stubs as above, installed again after the eval. Every
-// test that calls createToggleForTable, which constructs a ResizeObserver,
+// test that calls createPillboxForTable, which constructs a ResizeObserver,
 // reads these.
 global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
 global.MutationObserver = class { observe() {} disconnect() {} };

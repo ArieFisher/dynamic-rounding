@@ -119,7 +119,7 @@
     /constants\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
   eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
     /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
-  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, store, ui-toggle, content',
+  eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, application model, table pillbox view, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'constants.js',
       'lib/dr-log/index.js',
@@ -130,8 +130,8 @@
       'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
       'lib/dr-capture/index.js',
-      'adapters/messaging.js', 'app/store.js',
-      'ui-toggle.js', 'ui-toast.js', 'content.js',
+      'adapters/messaging.js', 'app/model.js',
+      'ui-pillbox.js', 'ui-toast.js', 'content.js',
     ]), true);
 
   // AC4a: rangeSection div has "hidden" attribute.
@@ -161,16 +161,16 @@
 (function atToggle_staticAnalysis() {
   eq('auto-table-toggle: isTableOn is defined',
     typeof isTableOn, 'function');
-  eq('auto-table-toggle: syncSwitchForTable is defined',
-    typeof syncSwitchForTable, 'function');
-  eq('auto-table-toggle: positionToggle is defined',
-    typeof positionToggle, 'function');
-  eq('auto-table-toggle: createToggleForTable is defined',
-    typeof createToggleForTable, 'function');
+  eq('auto-table-toggle: syncPillboxForTable is defined',
+    typeof syncPillboxForTable, 'function');
+  eq('auto-table-toggle: positionPillbox is defined',
+    typeof positionPillbox, 'function');
+  eq('auto-table-toggle: createPillboxForTable is defined',
+    typeof createPillboxForTable, 'function');
   eq('auto-table-toggle: resetTable is defined',
     typeof resetTable, 'function');
-  eq('auto-table-toggle: tableToggles WeakMap is defined',
-    tableToggles instanceof WeakMap, true);
+  eq('auto-table-toggle: tablePillboxes WeakMap is defined',
+    tablePillboxes instanceof WeakMap, true);
   eq('auto-table-toggle: trackedTables Set is defined',
     trackedTables instanceof Set, true);
 })();
@@ -178,34 +178,34 @@
 // --- Regression guard: content.js declares the new infrastructure ---
 
 (function atToggle_contentJsDeclarations() {
-  // Pillbox infrastructure lives in ui-toggle.js;
+  // Pillbox infrastructure lives in ui-pillbox.js;
   // scan the combined content-script source so the contract is location-agnostic.
   const src = allContentSrc;
-  eq('auto-table-toggle: declares tableToggles WeakMap',
-    /const\s+tableToggles\s*=\s*new\s+WeakMap/.test(src), true);
+  eq('auto-table-toggle: declares tablePillboxes WeakMap',
+    /const\s+tablePillboxes\s*=\s*new\s+WeakMap/.test(src), true);
   eq('auto-table-toggle: declares trackedTables Set',
     /const\s+trackedTables\s*=\s*new\s+Set/.test(src), true);
   eq('auto-table-toggle: defines isTableOn',
     /function\s+isTableOn\b/.test(src), true);
-  eq('auto-table-toggle: defines syncSwitchForTable',
-    /function\s+syncSwitchForTable\b/.test(src), true);
-  eq('auto-table-toggle: defines positionToggle',
-    /function\s+positionToggle\b/.test(src), true);
-  eq('auto-table-toggle: defines createToggleForTable',
-    /function\s+createToggleForTable\b/.test(src), true);
-  eq('auto-table-toggle: defines injectTableToggles',
-    /function\s+injectTableToggles\b/.test(src), true);
+  eq('auto-table-toggle: defines syncPillboxForTable',
+    /function\s+syncPillboxForTable\b/.test(src), true);
+  eq('auto-table-toggle: defines positionPillbox',
+    /function\s+positionPillbox\b/.test(src), true);
+  eq('auto-table-toggle: defines createPillboxForTable',
+    /function\s+createPillboxForTable\b/.test(src), true);
+  eq('auto-table-toggle: defines injectTablePillboxes',
+    /function\s+injectTablePillboxes\b/.test(src), true);
   // The table pillbox must use the new dr-ext-morph CSS class
   eq('auto-table-toggle: the table pillbox uses dr-ext-morph CSS class',
     src.includes('dr-ext-morph'), true);
 })();
 
 // --- accessibility AC2: CSS contains :focus-visible with outline and !important ---
-// Spec: the CSS string injected by ensureToggleStyleInjected contains a
+// Spec: the CSS string injected by ensurePillboxStyleInjected contains a
 //       :focus-visible rule with `outline` and `!important`.
 
 (function accessibilityAC2_focusVisibleCSS() {
-  const src = allContentSrc; // pillbox CSS lives in ui-toggle.js
+  const src = allContentSrc; // pillbox CSS lives in ui-pillbox.js
 
   eq('accessibility AC2: content.js CSS contains :focus-visible selector',
     src.includes(':focus-visible'), true);
@@ -232,39 +232,39 @@
 // Soft check: the constant names TOGGLE_DOT_PX etc. appear in the CSS template block.
 
 (function morphAC_constantsUsedInCSS() {
-  const src = allContentSrc; // pillbox geometry lives in ui-toggle.js
+  const src = allContentSrc; // pillbox geometry lives in ui-pillbox.js
 
   // The CSS function body should contain interpolations of the constants, not bare literals.
-  // We extract the ensureToggleStyleInjected function body as a rough string.
-  const fnStart = src.indexOf('function ensureToggleStyleInjected');
+  // We extract the ensurePillboxStyleInjected function body as a rough string.
+  const fnStart = src.indexOf('function ensurePillboxStyleInjected');
   const fnEnd = src.indexOf('\nfunction ', fnStart + 1);
   const fnBody = fnStart !== -1 ? src.slice(fnStart, fnEnd !== -1 ? fnEnd : fnStart + 3000) : '';
 
-  eq('expanding-toggle: TOGGLE_HIT_PAD_PX referenced in ensureToggleStyleInjected',
+  eq('expanding-toggle: TOGGLE_HIT_PAD_PX referenced in ensurePillboxStyleInjected',
     fnBody.includes('TOGGLE_HIT_PAD_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_PX referenced in ensureToggleStyleInjected',
+  eq('expanding-toggle: TOGGLE_DOT_PX referenced in ensurePillboxStyleInjected',
     fnBody.includes('TOGGLE_DOT_PX'), true);
-  eq('expanding-toggle: TOGGLE_PILL_WIDTH_PX referenced in ensureToggleStyleInjected',
+  eq('expanding-toggle: TOGGLE_PILL_WIDTH_PX referenced in ensurePillboxStyleInjected',
     fnBody.includes('TOGGLE_PILL_WIDTH_PX'), true);
-  eq('expanding-toggle: TOGGLE_PILL_HEIGHT_PX referenced in ensureToggleStyleInjected',
+  eq('expanding-toggle: TOGGLE_PILL_HEIGHT_PX referenced in ensurePillboxStyleInjected',
     fnBody.includes('TOGGLE_PILL_HEIGHT_PX'), true);
-  eq('expanding-toggle: TOGGLE_KNOB_PX referenced in ensureToggleStyleInjected',
+  eq('expanding-toggle: TOGGLE_KNOB_PX referenced in ensurePillboxStyleInjected',
     fnBody.includes('TOGGLE_KNOB_PX'), true);
-  eq('expanding-toggle: TOGGLE_COLOR_ON referenced in ensureToggleStyleInjected',
+  eq('expanding-toggle: TOGGLE_COLOR_ON referenced in ensurePillboxStyleInjected',
     fnBody.includes('TOGGLE_COLOR_ON'), true);
 
-  // positionToggle body should reference the geometry constants
-  const ptStart = src.indexOf('function positionToggle');
+  // positionPillbox body should reference the geometry constants
+  const ptStart = src.indexOf('function positionPillbox');
   const ptEnd = src.indexOf('\nfunction ', ptStart + 1);
   const ptBody = ptStart !== -1 ? src.slice(ptStart, ptEnd !== -1 ? ptEnd : ptStart + 1000) : '';
 
-  eq('expanding-toggle: TOGGLE_HIT_PAD_PX referenced in positionToggle',
+  eq('expanding-toggle: TOGGLE_HIT_PAD_PX referenced in positionPillbox',
     ptBody.includes('TOGGLE_HIT_PAD_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_PX referenced in positionToggle',
+  eq('expanding-toggle: TOGGLE_DOT_PX referenced in positionPillbox',
     ptBody.includes('TOGGLE_DOT_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_OVERLAP_PX referenced in positionToggle',
+  eq('expanding-toggle: TOGGLE_DOT_OVERLAP_PX referenced in positionPillbox',
     ptBody.includes('TOGGLE_DOT_OVERLAP_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_OVERHANG_PX referenced in positionToggle',
+  eq('expanding-toggle: TOGGLE_DOT_OVERHANG_PX referenced in positionPillbox',
     ptBody.includes('TOGGLE_DOT_OVERHANG_PX'), true);
 })();
 
@@ -280,7 +280,7 @@
   eq('sidebar.html does not load content-only lib/dr-table/index.js', sidebarHtml.includes('lib/dr-table/index.js'), false);
   eq('sidebar.html does not load content-only lib/dr-simplify/ladder.js', sidebarHtml.includes('lib/dr-simplify/ladder.js'), false);
   eq('sidebar.html does not load content-only lib/dr-simplify/index.js', sidebarHtml.includes('lib/dr-simplify/index.js'), false);
-  eq('sidebar.html does not load content-only ui-toggle.js', sidebarHtml.includes('ui-toggle.js'), false);
+  eq('sidebar.html does not load content-only ui-pillbox.js', sidebarHtml.includes('ui-pillbox.js'), false);
   eq('sidebar.html does not load content-only ui-toast.js', sidebarHtml.includes('ui-toast.js'), false);
 })();
 
@@ -298,9 +298,9 @@
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
 
   // ── AC1: options section has exactly seven toggle rows in the canonical order ──
-  // Parse all toggle-label texts inside #optionsSection.
+  // Parse all switch-label texts inside #optionsSection.
   // Strategy: extract the optionsSection fragment, then collect every
-  // class="toggle-label" span's text content via a simple regex.
+  // class="switch-label" span's text content via a simple regex.
   const optionsSectionMatch = sidebarHtml.match(/<div[^>]*id="optionsSection"[^>]*>([\s\S]*?)<\/div>\s*\n\s*<div/);
   // Fallback: grab everything between id="optionsSection"> and the next sibling div
   const optsSectionRaw = (() => {
@@ -321,7 +321,7 @@
   })();
 
   // Collect label texts in document order
-  const labelRe = /class="toggle-label"[^>]*>([\s\S]*?)<\/span>/g;
+  const labelRe = /class="switch-label"[^>]*>([\s\S]*?)<\/span>/g;
   const labelTexts = [];
   let lm;
   while ((lm = labelRe.exec(optsSectionRaw)) !== null) {
@@ -415,20 +415,20 @@
 //
 // Acceptance criteria:
 //   AC1. In every option row the switch (<label class="switch">) comes before
-//        the .toggle-label text node — verified by comparing indexOf positions
-//        of the checkbox <input> vs <span class="toggle-label"> within each row.
+//        the .switch-label text node — verified by comparing indexOf positions
+//        of the checkbox <input> vs <span class="switch-label"> within each row.
 //   AC2. On the dates/times rows the <select id="dateGranularity"> /
 //        <select id="timeGranularity"> is the last element — its index appears
-//        AFTER the .toggle-label in the row substring.
+//        AFTER the .switch-label in the row substring.
 //   AC3. sidebar.html does NOT contain "row-reverse" anywhere.
-//   AC4. The .toggle-row CSS block does NOT contain "justify-content: space-between".
+//   AC4. The .switch-row CSS block does NOT contain "justify-content: space-between".
 
 (function sidebarSwitchLeft() {
   const sidebarPath = path.join(__dirname, 'sidebar.html');
   const sidebarHtml = fs.readFileSync(sidebarPath, 'utf8');
 
-  // Helper: extract the substring of sidebarHtml that covers the .toggle-row
-  // whose checkbox has the given id. We find the opening <div class="toggle-row">
+  // Helper: extract the substring of sidebarHtml that covers the .switch-row
+  // whose checkbox has the given id. We find the opening <div class="switch-row">
   // that contains id="<rowId>" and slice up to the matching </div>.
   function getRowSubstring(rowId) {
     // Find the checkbox input for this id within the full source.
@@ -436,13 +436,13 @@
     const inputIdx = sidebarHtml.search(inputPattern);
     if (inputIdx === -1) return null;
 
-    // Walk backwards to the nearest <div class="toggle-row"> opening tag.
+    // Walk backwards to the nearest <div class="switch-row"> opening tag.
     const beforeInput = sidebarHtml.slice(0, inputIdx);
-    const divStart = beforeInput.lastIndexOf('<div class="toggle-row">');
+    const divStart = beforeInput.lastIndexOf('<div class="switch-row">');
     if (divStart === -1) return null;
 
     // Walk forwards to find the matching closing </div>.
-    // We look for the first </div> that closes the outermost .toggle-row div.
+    // We look for the first </div> that closes the outermost .switch-row div.
     const fromDiv = sidebarHtml.slice(divStart);
     // Scan for the first </div> after the opening tag (these rows have no nested divs).
     const closeIdx = fromDiv.indexOf('</div>');
@@ -451,7 +451,7 @@
     return fromDiv.slice(0, closeIdx + '</div>'.length);
   }
 
-  // --- AC1: switch appears before .toggle-label in each option row ---
+  // --- AC1: switch appears before .switch-label in each option row ---
   // Rows to check: simplifyMixedCells, simplifyFirstColumn (simple), simplifyDates, simplifyTimes.
   const simpleRows = ['simplifyMixedCells', 'simplifyFirstColumn'];
   for (const id of simpleRows) {
@@ -460,8 +460,8 @@
       row !== null, true);
     if (row !== null) {
       const inputIdx = row.search(new RegExp('id=["\']' + id + '["\']'));
-      const labelIdx = row.indexOf('<span class="toggle-label">');
-      eq(`sidebar switch-left AC1: switch input comes before .toggle-label in row "${id}"`,
+      const labelIdx = row.indexOf('<span class="switch-label">');
+      eq(`sidebar switch-left AC1: switch input comes before .switch-label in row "${id}"`,
         inputIdx < labelIdx, true);
     }
   }
@@ -474,13 +474,13 @@
       row !== null, true);
     if (row !== null) {
       const inputIdx = row.search(new RegExp('id=["\']' + id + '["\']'));
-      const labelIdx = row.indexOf('<span class="toggle-label">');
-      eq(`sidebar switch-left AC1: switch input comes before .toggle-label in row "${id}"`,
+      const labelIdx = row.indexOf('<span class="switch-label">');
+      eq(`sidebar switch-left AC1: switch input comes before .switch-label in row "${id}"`,
         inputIdx < labelIdx, true);
     }
   }
 
-  // --- AC2: <select> is the last element (after .toggle-label) in dates/times rows ---
+  // --- AC2: <select> is the last element (after .switch-label) in dates/times rows ---
   const selectPairs = [
     { rowId: 'simplifyDates',  selectId: 'dateGranularity' },
     { rowId: 'simplifyTimes',  selectId: 'timeGranularity' },
@@ -488,9 +488,9 @@
   for (const { rowId, selectId } of selectPairs) {
     const row = getRowSubstring(rowId);
     if (row !== null) {
-      const labelIdx  = row.indexOf('<span class="toggle-label">');
+      const labelIdx  = row.indexOf('<span class="switch-label">');
       const selectIdx = row.search(new RegExp('<select[^>]*id=["\']' + selectId + '["\']'));
-      eq(`sidebar switch-left AC2: <select id="${selectId}"> appears after .toggle-label in row`,
+      eq(`sidebar switch-left AC2: <select id="${selectId}"> appears after .switch-label in row`,
         selectIdx > labelIdx, true);
     }
   }
@@ -499,16 +499,16 @@
   eq('sidebar switch-left AC3: sidebar.html does not contain "row-reverse"',
     sidebarHtml.includes('row-reverse'), false);
 
-  // --- AC4: .toggle-row CSS block does not use justify-content: space-between ---
-  // Find the .toggle-row block by locating ".toggle-row {" and scanning to the closing "}".
-  const toggleRowBlockStart = sidebarHtml.indexOf('.toggle-row {');
-  eq('sidebar switch-left AC4: .toggle-row CSS block is present in sidebar.html',
+  // --- AC4: .switch-row CSS block does not use justify-content: space-between ---
+  // Find the .switch-row block by locating ".switch-row {" and scanning to the closing "}".
+  const toggleRowBlockStart = sidebarHtml.indexOf('.switch-row {');
+  eq('sidebar switch-left AC4: .switch-row CSS block is present in sidebar.html',
     toggleRowBlockStart !== -1, true);
   if (toggleRowBlockStart !== -1) {
     const fromBlock = sidebarHtml.slice(toggleRowBlockStart);
     const blockClose = fromBlock.indexOf('}');
     const toggleRowBlock = blockClose !== -1 ? fromBlock.slice(0, blockClose + 1) : fromBlock.slice(0, 200);
-    eq('sidebar switch-left AC4: .toggle-row CSS block does not contain "justify-content: space-between"',
+    eq('sidebar switch-left AC4: .switch-row CSS block does not contain "justify-content: space-between"',
       toggleRowBlock.includes('justify-content: space-between'), false);
   }
 })();
@@ -652,7 +652,7 @@
 // Static purity scan.
 // Detection functions (findTargetTable, findTables, looksLikeGrid, isDataTable,
 // isPhantomA11yTable) must never write to the page — no classList.add,
-// createElement, appendChild, or createToggleForTable inside their bodies.
+// createElement, appendChild, or createPillboxForTable inside their bodies.
 // Write-layer helpers (applyExtractedPatches,
 // restoreTextPieces, GridAdapter's applyPatches) legitimately create/mutate nodes and are correctly
 // excluded from this scan — they are reachable only from explicit write calls
@@ -663,7 +663,7 @@
     eq('purity scan: source file lib/dr-table/detect.js present in manifest', false, true);
     return;
   }
-  const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createToggleForTable'];
+  const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createPillboxForTable'];
   const DETECTION_FNS = ['findTargetTable', 'findTables', 'looksLikeGrid', 'isDataTable', 'isPhantomA11yTable'];
 
   // Extract a top-level `function name(` body by brace-matching from the
@@ -1292,8 +1292,8 @@
     'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
     'lib/dr-table/detect.js', 'lib/dr-table/index.js',
     'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
-    'adapters/messaging.js', 'app/store.js',
-    'ui-toggle.js', 'ui-toast.js', 'content.js',
+    'adapters/messaging.js', 'app/model.js',
+    'ui-pillbox.js', 'ui-toast.js', 'content.js',
   ];
 
   // AC1: no content-script filename literal reaches readFileSync/path.join
@@ -1531,7 +1531,7 @@
 // lists have one home, the detection settings (DR_DETECTION_SETTINGS, in
 // the configuration file constants.js). The
 // pillbox auto-collapse delay lives in the pillbox view
-// (ui-toggle.js) as its own constant: the view alone reads it. Four groups
+// (ui-pillbox.js) as its own constant: the view alone reads it. Four groups
 // of tests:
 //   1. Source scan: none of the eight retired names carries a second
 //      const/let/var definition anywhere the manifest loads, and the two
@@ -1615,10 +1615,10 @@
 // delay is its own constant, so the view reads the detection settings
 // nowhere and the settings carry no delay the view alone reads.
 (function detectionSettings_pillboxViewHoldsItsOwnDelay() {
-  const src = uiToggleCode || '';
-  eq('detection settings: ui-toggle.js defines PILLBOX_AUTO_COLLAPSE_MS as its own constant',
+  const src = uiPillboxCode || '';
+  eq('detection settings: ui-pillbox.js defines PILLBOX_AUTO_COLLAPSE_MS as its own constant',
     /^const PILLBOX_AUTO_COLLAPSE_MS = 3000;/m.test(src), true);
-  eq('detection settings: ui-toggle.js reads DR_DETECTION_SETTINGS nowhere',
+  eq('detection settings: ui-pillbox.js reads DR_DETECTION_SETTINGS nowhere',
     /DR_DETECTION_SETTINGS/.test(src), false);
   eq('detection settings: the auto-collapse timer takes the view\'s own constant',
     /},\s*PILLBOX_AUTO_COLLAPSE_MS\);/.test(src), true);
@@ -1673,7 +1673,7 @@
 // --- AC6: both live scanners run the step and hold no ARIA pass of their own ---
 
 (function gridNesting_AC6_neitherLiveScannerHoldsAnAriaPass() {
-  const loadTimeScanSrc = sourceByName('ui-toggle.js');
+  const loadTimeScanSrc = sourceByName('ui-pillbox.js');
   const addedNodePassSrc = sourceByName('content.js');
 
   eq('nesting AC6: the pillbox view is listed in the manifest', loadTimeScanSrc !== null, true);
@@ -1980,7 +1980,7 @@
       .map((file) => (file === 'content.js' ? contentSrc : contentScriptSources.get(file)))
       .join('\n');
     vm.runInContext(
-      bundle + '\nthis.__applySidebarRounding = applySidebarRounding; this.__DR_DEFAULTS = DR_DEFAULTS; this.__DR_STORE = DR_STORE;',
+      bundle + '\nthis.__applySidebarRounding = applySidebarRounding; this.__DR_DEFAULTS = DR_DEFAULTS; this.__DR_MODEL = DR_MODEL;',
       ctx
     );
 
@@ -2015,7 +2015,7 @@
     }
     let threw = null;
     try {
-      sandbox.__DR_STORE.setTableSettings(table,
+      sandbox.__DR_MODEL.setTableSettings(table,
         Object.assign({}, sandbox.__DR_DEFAULTS, { enabled: true }), 'page');
       // The settings notice above belongs to the write, not the apply.
       sentMessages.length = 0;
@@ -2063,9 +2063,9 @@
 // past the intent and around the one press path.
 // ---------------------------------------------------------------------------
 (function toggleSplit_viewCallsNoControllerFunctionDirectly() {
-  const uiToggleSrc = sourceByName('ui-toggle.js');
-  if (uiToggleSrc === null) {
-    eq('toggle-split: ui-toggle.js is present in the manifest', false, true);
+  const uiPillboxSrc = sourceByName('ui-pillbox.js');
+  if (uiPillboxSrc === null) {
+    eq('toggle-split: ui-pillbox.js is present in the manifest', false, true);
     return;
   }
   const FORBIDDEN_CONTROLLER_CALLS = ['applySidebarRounding', 'resetTable', 'roundTable'];
@@ -2078,14 +2078,14 @@
 
   const foundCalls = FORBIDDEN_CONTROLLER_CALLS.filter((name) => {
     const callRe = new RegExp('\\b' + name + '\\s*\\(');
-    return callRe.test(uiToggleSrc);
+    return callRe.test(uiPillboxSrc);
   });
-  eq('toggle-split: ui-toggle.js calls no controller function directly',
+  eq('toggle-split: ui-pillbox.js calls no controller function directly',
     foundCalls, []);
 
   // The click handler publishes the press as an intent instead.
-  eq('toggle-split: ui-toggle.js publishes intent:toggleTable from the click handler',
-    /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiToggleSrc), true);
+  eq('toggle-split: ui-pillbox.js publishes intent:toggleTable from the click handler',
+    /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiPillboxSrc), true);
 })();
 
 // --- (c) Static lock: no production read of the dr-ext-grid marker class as
@@ -2093,7 +2093,7 @@
 // write (classList.add) or inside a comment discussing the history; a real
 // read call is what this locks out. ---
 (function registrySprint_noMarkerClassReadLock() {
-  const filesToScan = ['content.js', 'ui-toggle.js', 'lib/dr-table/detect.js'];
+  const filesToScan = ['content.js', 'ui-pillbox.js', 'lib/dr-table/detect.js'];
   const readPatterns = [
     /classList\.contains\(\s*['"]dr-ext-grid['"]\s*\)/g,
     /\.closest\(\s*['"]\.dr-ext-grid['"]\s*\)/g,
@@ -2434,13 +2434,13 @@
     clearTimeout: () => { cleared++; },
   };
   const ctx = vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + storeCode + '\n' + uiToastCode +
-    '\nthis.__store = DR_STORE; this.__toast = DR_TOAST;', ctx);
-  const store = sandbox.__store;
+  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + modelCode + '\n' + uiToastCode +
+    '\nthis.__model = DR_MODEL; this.__toast = DR_TOAST;', ctx);
+  const model = sandbox.__model;
   const view = sandbox.__toast;
   const isToast = (el) => el.className === view.TOAST_CLASS;
 
-  store.recordError({ at: 'x', level: 'warn', text: 'Dynamic Rounding: toast probe one', stack: null });
+  model.recordError({ at: 'x', level: 'warn', text: 'Dynamic Rounding: toast probe one', stack: null });
   const toast = appended.find(isToast);
   eq('toast: an error row appends one toast to the page', !!toast, true);
   eq('toast: the toast shows the row\'s text',
@@ -2452,7 +2452,7 @@
   eq('toast: the toast hides itself after the hide delay',
     timers.length === 1 && timers[0].ms === view.TOAST_HIDE_MS, true);
 
-  store.recordError({ at: 'x', level: 'warn', text: 'toast probe two', stack: null });
+  model.recordError({ at: 'x', level: 'warn', text: 'toast probe two', stack: null });
   eq('toast: a second row replaces the text of the one toast',
     { count: appended.filter(isToast).length, text: toast ? toast.textContent : null },
     { count: 1, text: 'toast probe two' });
@@ -2462,7 +2462,7 @@
   if (timers[1]) timers[1].fn();
   eq('toast: the hide delay removes the toast', appended.some(isToast), false);
 
-  store.recordError({ at: 'x', level: 'error', text: 'toast probe three', stack: null });
+  model.recordError({ at: 'x', level: 'error', text: 'toast probe three', stack: null });
   const second = appended.find(isToast);
   eq('toast: a row after the hide draws a fresh toast',
     !!second && second !== toast && second.textContent === 'toast probe three', true);
@@ -2487,8 +2487,8 @@
     /console\.debug\(/.test(sourceByName('content.js') || ''), false);
   eq('dr-log: detect.js keeps no direct console.debug call',
     /console\.debug\(/.test(detectCode || ''), false);
-  eq('dr-log: registration logs a row (ui-toggle.js)',
-    /DR_LOG\.debug\([^)]*egistered/.test(uiToggleCode || ''), true);
+  eq('dr-log: registration logs a row (ui-pillbox.js)',
+    /DR_LOG\.debug\([^)]*egistered/.test(uiPillboxCode || ''), true);
 })();
 
 // --- The service worker runs on the bus ---
@@ -2522,11 +2522,11 @@
     /DR_BUS\.subscribe\(\s*'intent:menuClicked'/.test(contentSrc), true);
   eq('content on bus: the sidebar-opened report arrives as a subscription',
     /DR_BUS\.subscribe\(\s*'state:sidebarOpened'/.test(contentSrc), true);
-  // The store publishes the settings notice from its one setter; the
+  // The application model publishes the settings notice from its one setter; the
   // controller publishes none of its own.
-  const storeSrc = sourceByName('app/store.js');
-  eq('content on bus: the one delivery of the settings notice is the store publish',
-    storeSrc.split("publish('state:settingsChanged'").length - 1, 1);
+  const modelSrc = sourceByName('app/model.js');
+  eq('content on bus: the one delivery of the settings notice is the application model publish',
+    modelSrc.split("publish('state:settingsChanged'").length - 1, 1);
   eq('content on bus: the controller publishes no settings notice of its own',
     contentSrc.includes("publish('state:settingsChanged'"), false);
 })();

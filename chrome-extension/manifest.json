@@ -34,8 +34,8 @@
         "lib/dr-capture/render.js",
         "lib/dr-capture/index.js",
         "adapters/messaging.js",
-        "app/store.js",
-        "ui-toggle.js",
+        "app/model.js",
+        "ui-pillbox.js",
         "ui-toast.js",
         "content.js"
       ]
