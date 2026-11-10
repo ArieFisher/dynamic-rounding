@@ -2,7 +2,7 @@
 #
 # Self-test for scripts/check-vocab.sh.
 #
-# The vocabulary gate's whole policy is the Retired synonyms table in
+# The vocabulary gate's whole policy is the Block pattern column of the tables in
 # docs/vocabulary.md. These cases plant a retired synonym and require the gate
 # to catch it, plant clean and exempt content and require the gate to pass it,
 # and damage that table and require the gate to fail. The gate's preflight is
@@ -78,7 +78,7 @@ expect_block() {
 }
 
 # expect_refusal <case name> <replacement table rows> <message>
-# Replaces the vocabulary with a Retired synonyms table built from the given
+# Replaces the vocabulary with one term table built from the given
 # rows, stages clean prose, and requires the gate to fail with exit 2. A
 # damaged policy that exits 0 is the failure these cases exist to catch: the
 # gate would approve every commit while seeing nothing.
@@ -92,9 +92,9 @@ expect_block() {
 # written with \b through anything that expands escapes would arrive as a
 # backspace and quietly stop matching.
 expect_refusal() {
-  local name="$1" rows="$2" message="$3" heading="${4:-## Retired synonyms}" dir status output
+  local name="$1" rows="$2" message="$3" header="${4:-| Term | Meaning | Not | Example | Block pattern |}" dir status output
   dir=$(scratch_repo)
-  write_vocab "$dir" "$rows" "$heading"
+  write_vocab "$dir" "$rows" "$header"
   printf 'Clean prose about the pillbox.\n' > "$dir/docs/design.md"
   git -C "$dir" add docs/design.md
   output=$( (cd "$dir" && bash scripts/check-vocab.sh --staged 2>&1 >/dev/null) )
@@ -108,16 +108,15 @@ expect_refusal() {
   fi
 }
 
-# write_vocab <scratch dir> <table rows> [heading]
-# A minimal vocabulary holding one Retired synonyms table. The heading text and
-# the four-column shape are the contract between the table and the gate, so a
-# case can break either one.
+# write_vocab <scratch dir> <table rows> [header row]
+# A minimal vocabulary holding one term table. The Block pattern header cell is the
+# contract between the table and the gate, so a case can break it.
 write_vocab() {
-  local dir="$1" rows="$2" heading="${3:-## Retired synonyms}"
+  local dir="$1" rows="$2" header="${3:-| Term | Meaning | Not | Example | Block pattern |}"
   {
-    printf '# Vocabulary\n\n%s\n\n' "$heading"
-    printf '| Say | Not | Example | Pattern |\n'
-    printf '| --- | --- | --- | --- |\n'
+    printf '# Vocabulary\n\n## Terms\n\n'
+    printf '%s\n' "$header"
+    printf '| --- | --- | --- | --- | --- |\n'
     printf '%s\n' "$rows"
   } > "$dir/docs/vocabulary.md"
 }
@@ -162,7 +161,7 @@ expect_pass  "linked in its own sense passes"       docs/design.md   'The handle
 expect_block "collocation: tied as coupled"         docs/design.md   'The switch is tied together with the pillbox.'
 expect_pass  "tied in its own sense passes"         docs/design.md   'The release cadence is tied to the academic calendar.'
 
-# Preflight. The Retired synonyms table is the one input nothing else checks,
+# Preflight. The Block pattern column is the one input nothing else checks,
 # so each way of breaking it must produce a failure, not a clean bill.
 #
 # The malformed fixture keeps a valid pattern that matches the canary. Without
@@ -170,21 +169,21 @@ expect_pass  "tied in its own sense passes"         docs/design.md   'The releas
 # the canary check fires, and the gate fails whether or not it can tell a
 # broken expression from an absent one. The valid pattern satisfies the canary
 # so only the malformed check is left to produce the failure.
-canary_row='| pillbox | table toggle | Only data tables get a pillbox. | `\btable toggle` |'
+canary_row='| table pillbox | The on/off control. | table toggle | Only data tables get a table pillbox. | `\btable toggle` |'
 
 expect_refusal "table with no pattern cell refuses" \
-               '| settings record | record | The switch writes to the settings record. | — |' \
+               '| table settings | The settings of one table. | settings record | The switch writes to the table settings. | — |' \
                'the retired-synonym list is empty'
 expect_refusal "malformed pattern refuses" \
-               "$canary_row"$'\n''| lens preview | preview band | The lens preview shows samples. | `toggle(` |' \
+               "$canary_row"$'\n''| lens preview | Sample values. | preview band | The lens preview shows samples. | `toggle(` |' \
                'is not a valid expression'
 expect_refusal "list that misses the canary refuses" \
-               '| dead handle | orphaned handle | A dead handle stands for a table no longer in the page. | `a-phrase-no-doc-contains` |' \
+               '| dead handle | A handle with no table. | orphaned handle | A dead handle stands for a table no longer in the page. | `a-phrase-no-doc-contains` |' \
                'no pattern matches the canary'
-expect_refusal "renamed heading refuses" \
+expect_refusal "renamed Block pattern header refuses" \
                "$canary_row" \
                'the retired-synonym list is empty' \
-               '## Words we no longer use'
+               '| Term | Meaning | Not | Example | Regex |'
 
 # A missing vocabulary is the loudest way to lose the policy, and the gate must
 # not read it as nothing to enforce.
