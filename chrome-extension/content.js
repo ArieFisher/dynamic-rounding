@@ -654,14 +654,13 @@ function registryOriginalsPort(table) {
 function restoreTable(table) {
   const roundedCells = table.querySelectorAll('.dr-ext-rounded');
   if (roundedCells.length === 0) return 0;
-  const kind = tableKindPass(makeAdapter(table));
   let unrestorableCount = 0;
   for (const cell of roundedCells) {
     if (isUnrestorableCell(table, cell)) {
       unrestorableCount++;
       continue;
     }
-    releaseCell(table, cell, kind);
+    releaseCell(table, cell);
   }
   return unrestorableCount;
 }
@@ -674,16 +673,24 @@ function isUnrestorableCell(table, cell) {
 
 // Release one simplified cell: put its original text back into every text
 // piece that still shows the extension's written text (restoreTextPieces),
-// then drop its record, its marker class, and a native cell's hover text.
+// then drop its record and its marker class, and put back the hover text the
+// page set (the record's pageTitle) while the cell still shows the
+// extension's own hover text. A cell whose page set none ends with no hover
+// text attribute at all: the record holds no difference between an absent
+// attribute and an empty one.
 // The restore runs it on every marked cell; a pass runs it on a rewritten
 // cell before simplifying it fresh, and on a held cell whose target text is
 // its original.
-function releaseCell(table, cell, kind) {
+function releaseCell(table, cell) {
   const record = DR_MODEL.getTableOriginal(table, cell);
   if (record) restoreTextPieces(cell, record.pieces);
   DR_MODEL.deleteTableOriginal(table, cell);
   cell.classList.remove(GRID_ROUNDED_CLASS);
-  if (kind.hoverText) cell.removeAttribute('title');
+  // Like the text pieces, hover text the page changed stays: only the
+  // extension's own hover text gives way to the stored one.
+  if (record && cell.title !== originalHoverText(record.value)) return;
+  if (record && record.pageTitle) cell.title = record.pageTitle;
+  else cell.removeAttribute('title');
 }
 
 // When restoreTable leaves a cell unrestored (see its doc), the screen still
@@ -912,8 +919,6 @@ function buildCaptureStateResponse() {
 //                        none.
 //   dateSplitRow         the debug row for a changed date or time whose text
 //                        crosses a piece boundary.
-//   hoverText            whether a written cell carries hover text showing
-//                        its original. Native tables only.
 //   freezesMaxMagnitude  whether the first simplification stores the max
 //                        magnitude as the table's magnitude freeze. Grids
 //                        only: a grid holds only its visible rows, so a
@@ -947,7 +952,6 @@ const NATIVE_TABLE_PASS = {
   splitReasons: ['pieces', 'split'],
   splitRow: 'Dynamic Rounding: a native cell value split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.',
-  hoverText: true,
   freezesMaxMagnitude: false,
   watchedElement(adapter) { return adapter.getElement(); },
 };
@@ -956,7 +960,6 @@ const GRID_TABLE_PASS = {
   splitReasons: ['split'],
   splitRow: 'Dynamic Rounding: a grid cell number split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.',
-  hoverText: false,
   freezesMaxMagnitude: true,
   watchedElement(adapter) { return adapter._getScrollContainer(); },
 };
@@ -968,10 +971,10 @@ const GRID_TABLE_PASS = {
 // with a <sup>, counted in the record's value. Record only a confirmed
 // change: with every patch skipped the screen keeps its text, and storing
 // the hover text would record a simplification that never happened.
-function writeCell(entry, patches, linkFilteredIdx, kind) {
+function writeCell(entry, patches, linkFilteredIdx) {
   const supRanges = (entry.info.mode === 'extracted' && entry.hasSuperscript) ? entry.superscriptRanges : null;
   const landed = entry.cellObj.applyPatches(patches, { value: entry.text, linkFilteredIdx, supRanges });
-  if (landed > 0 && kind.hoverText) entry.cellObj.el.title = `Original: ${entry.text}`;
+  if (landed > 0) entry.cellObj.el.title = originalHoverText(entry.text);
   return landed;
 }
 
@@ -1028,15 +1031,15 @@ function classifyTableCells(dataCells, opts, ranges) {
 
 // The pass's sort (see the section header): release every rewritten cell,
 // so it holds only the page's text and classifies fresh.
-function releaseRewrittenCells(table, dataCells, kind) {
+function releaseRewrittenCells(table, dataCells) {
   for (const { cellObj } of dataCells) {
     const record = DR_MODEL.getTableOriginal(table, cellObj.el);
-    if (sortCellByRecord(cellObj.el, record) === 'rewritten') releaseCell(table, cellObj.el, kind);
+    if (sortCellByRecord(cellObj.el, record) === 'rewritten') releaseCell(table, cellObj.el);
   }
 }
 
 // The kind the one simplification pass runs on a table, from its adapter.
-// roundTable, the re-apply pass, and the restore all call it.
+// roundTable and the re-apply pass call it.
 function tableKindPass(adapter) {
   return adapter.isVirtualized() ? GRID_TABLE_PASS : NATIVE_TABLE_PASS;
 }
@@ -1085,7 +1088,7 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   if (pass.cellCap !== undefined && dataCells.length > pass.cellCap) {
     return Object.assign({}, none, { cellCount: dataCells.length, overCap: true });
   }
-  if (writes !== 'none') releaseRewrittenCells(table, dataCells, kind);
+  if (writes !== 'none') releaseRewrittenCells(table, dataCells);
   const classified = classifyTableCells(dataCells, opts, rangeParse.ranges);
   for (const entry of classified) {
     if (kind.splitReasons.includes(entry.placedReason)) DR_LOG.debug(kind.splitRow);
@@ -1119,10 +1122,10 @@ function writeTableCells(table, stepCells, { kind, writes }) {
     cells.push({ entry, patches: flat, linkFilteredIdx });
     if (writes === 'none') continue;
     const held = DR_MODEL.hasTableOriginal(table, entry.cellObj.el);
-    const landed = flat.length > 0 ? writeCell(entry, flat, linkFilteredIdx, kind) : 0;
+    const landed = flat.length > 0 ? writeCell(entry, flat, linkFilteredIdx) : 0;
     if (flat.length > 0 && landed > 0) landedCells++;
     else if (flat.length > 0) missedCells++;
-    if (landed === 0 && held) releaseCell(table, entry.cellObj.el, kind);
+    if (landed === 0 && held) releaseCell(table, entry.cellObj.el);
   }
   return { cells, landedCells, missedCells };
 }

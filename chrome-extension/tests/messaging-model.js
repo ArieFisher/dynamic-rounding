@@ -434,10 +434,10 @@
       DR_MODEL.getTableOriginal(grid.wrapperEl, a),
       { value: ' 8,584,629 ',
         pieces: [{ text: ' ', written: ' ' }, { text: '8,584,629', written: '8,500,000' }, { text: ' ', written: ' ' }],
-        supRanges: null, linkFilteredIdx: null });
+        supRanges: null, linkFilteredIdx: null, pageTitle: '' });
     eq('grid patch: a piece\'s whitespace is part of its stored text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, b),
-      { value: ' 7,318,204 ', pieces: [{ text: ' 7,318,204 ', written: ' 7,500,000 ' }], supRanges: null, linkFilteredIdx: null });
+      { value: ' 7,318,204 ', pieces: [{ text: ' 7,318,204 ', written: ' 7,500,000 ' }], supRanges: null, linkFilteredIdx: null, pageTitle: '' });
     eq('grid patch: the plain-text read of a record is its value',
       DR_MODEL.getTableOriginalText(grid.wrapperEl, a), ' 8,584,629 ');
   } finally {
