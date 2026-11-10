@@ -22,7 +22,7 @@ function withTextPiece(cell) {
 // table is not showing originals. The table pillbox shows the on/off value
 // instead (isTableOn), so a test of what a pass did to the screen reads this.
 function showsSimplified(table) {
-  return DR_STORE.getTableAppliedFlag(table) === 'simplified';
+  return DR_MODEL.getTableAppliedFlag(table) === 'simplified';
 }
 
 function makeMockCell(tag, text) {
@@ -59,8 +59,8 @@ function makeMockTable(rowsSpec, querySelectorResult) {
 // settings land on the table first, so the re-apply pass reads them back.
 // roundTable alone writes no settings.
 function roundTableUnder(table, opts) {
-  DR_STORE.setTableSettings(table, opts, 'page');
-  return roundTable(table, DR_STORE.getTableSettings(table));
+  DR_MODEL.setTableSettings(table, opts, 'page');
+  return roundTable(table, DR_MODEL.getTableSettings(table));
 }
 
 function withCreateTreeWalker(fn) {
@@ -275,8 +275,8 @@ function makeToggleTable(rowsOrCells, extra) {
 }
 
 /**
- * Inject a fake entry into the module-level tableToggles WeakMap so that
- * syncSwitchForTable can find the button for this table.
+ * Inject a fake entry into the module-level tablePillboxes WeakMap so that
+ * syncPillboxForTable can find the button for this table.
  *
  * Returns a minimal button stub that supports setAttribute/getAttribute/classList
  * and addEventListener, matching the new dr-ext-morph button shape.
@@ -284,15 +284,15 @@ function makeToggleTable(rowsOrCells, extra) {
  * @param {object} table — the table stub
  * @returns {object} the mock button element
  */
-function injectToggleEntry(table) {
+function injectPillboxEntry(table) {
   const button = makeMockButton();
-  tableToggles.set(table, button);
+  tablePillboxes.set(table, button);
   return button;
 }
 
 /**
  * Build a minimal button stub that supports the interface used by
- * syncSwitchForTable, createToggleForTable, and test event dispatch.
+ * syncPillboxForTable, createPillboxForTable, and test event dispatch.
  */
 function makeMockButton() {
   const attrs = {};
@@ -458,7 +458,7 @@ function makeSortKeyCell(segments, rendered) {
   return cell;
 }
 
-function createToggleWithSpies(table) {
+function createPillboxWithSpies(table) {
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
@@ -493,21 +493,21 @@ function createToggleWithSpies(table) {
     appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
   };
   global.document.documentElement = { appendChild() {} };
-  toggleStyleInjected = false;
+  pillboxStyleInjected = false;
 
   const origScrollX = global.window.scrollX;
   const origScrollY = global.window.scrollY;
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  createToggleForTable(table);
+  createPillboxForTable(table);
 
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
   global.document.documentElement = origDocEl;
   global.window.scrollX = origScrollX;
   global.window.scrollY = origScrollY;
-  toggleStyleInjected = true;
+  pillboxStyleInjected = true;
 
   const buttonEl = appendedToBody.find(e => e._tag === 'button');
   return buttonEl;
@@ -753,7 +753,7 @@ function makeWalkEl(opts) {
     nodeType: 1,
     parentElement: null,
     parentNode: null,
-    // getBoundingClientRect — needed by positionToggle when createToggleForTable
+    // getBoundingClientRect — needed by positionPillbox when createPillboxForTable
     // fires its deferred setTimeout; return a zero-area rect so the table pillbox hides.
     getBoundingClientRect: function() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
     // closest() stub: only handles 'table' and '.dr-ext-grid'
@@ -778,7 +778,7 @@ function makeWalkEl(opts) {
 /**
  * Run findTargetTable with a controlled getComputedStyle that returns the
  * stored _display for each element in the `elements` array, and a patched
- * document.createElement / document.body so createToggleForTable doesn't throw.
+ * document.createElement / document.body so createPillboxForTable doesn't throw.
  */
 function withFindTargetEnv(elements, fn) {
   const origGetCS = global.window.getComputedStyle;
@@ -787,14 +787,14 @@ function withFindTargetEnv(elements, fn) {
 
   // Patch the bare getComputedStyle global (used by looksLikeGrid) to use each
   // element's _display property. Also patch window.getComputedStyle (used by
-  // positionToggle) as a courtesy, though it is not exercised in walk-up tests.
+  // positionPillbox) as a courtesy, though it is not exercised in walk-up tests.
   global.getComputedStyle = function(el) {
     if (el && el._display !== undefined) return { display: el._display };
     return { display: 'block', visibility: 'visible' };
   };
   global.window.getComputedStyle = global.getComputedStyle;
 
-  // Patch document to support createElement (needed by createToggleForTable)
+  // Patch document to support createElement (needed by createPillboxForTable)
   const mockButtonEl = {
     type: '',
     className: '',
@@ -1276,7 +1276,7 @@ function makeE2EGridWrapper(rowData) {
     return [];
   };
 
-  // Override wrapper querySelector so showsSimplified / syncSwitchForTable do not throw.
+  // Override wrapper querySelector so showsSimplified / syncPillboxForTable do not throw.
   grid.wrapperEl.querySelector = function(sel) {
     if (sel === '.dr-ext-rounded') {
       return allCells.find(function(c) { return c.classList.contains('dr-ext-rounded'); }) || null;
@@ -1408,18 +1408,18 @@ function makePositionedAncestor(styleOverrides) {
 // Pass 1 guard skips accessibility artifacts
 // =============================================================================
 //
-// injectTableToggles() Pass 1 calls document.querySelectorAll('table') and skips
+// injectTablePillboxes() Pass 1 calls document.querySelectorAll('table') and skips
 // any table for which isPhantomA11yTable(table) is true, then calls
-// createToggleForTable(table) only for the survivors.
+// createPillboxForTable(table) only for the survivors.
 //
-// A pillbox was created iff tableToggles.has(table) becomes true afterwards.
+// A pillbox was created iff tablePillboxes.has(table) becomes true afterwards.
 //
 // For each test we:
 //   1. Temporarily replace global.document.querySelectorAll so Pass 1 sees our
 //      fixture tables and Pass 2 (GRID_ARIA_SELECTOR) sees an empty list.
 //   2. Temporarily stub document.createElement + document.body.appendChild so
-//      createToggleForTable can run without errors.
-//   3. Reset tableToggles / trackedTables for each run by deleting entries we
+//      createPillboxForTable can run without errors.
+//   3. Reset tablePillboxes / trackedTables for each run by deleting entries we
 //      added (WeakMap does not expose a clear(), so we track which table objects
 //      we inserted and delete them by re-using the objects).
 //
@@ -1476,9 +1476,9 @@ function makePass1DataTable(opts) {
   return table;
 }
 
-// Run injectTableToggles() with a controlled list of tables returned by
+// Run injectTablePillboxes() with a controlled list of tables returned by
 // document.querySelectorAll('table'). Stubs away document.createElement and
-// document.body.appendChild so createToggleForTable does not throw in Node.
+// document.body.appendChild so createPillboxForTable does not throw in Node.
 // Restores all globals afterwards. Returns { tables } (same array for inspection).
 function runPass1WithTables(tables) {
   const origQSA      = global.document.querySelectorAll;
@@ -1492,7 +1492,7 @@ function runPass1WithTables(tables) {
     return [];
   };
 
-  // Stub createElement so createToggleForTable can build its button tree
+  // Stub createElement so createPillboxForTable can build its button tree
   global.document.createElement = function(tag) {
     const attrs = {};
     const listeners = {};
@@ -1531,36 +1531,36 @@ function runPass1WithTables(tables) {
   global.document.body = { appendChild() {} };
   global.document.documentElement = { appendChild() {} };
 
-  // Reset toggleStyleInjected so ensureToggleStyleInjected does not try document.head
-  const origToggleStyleInjected = toggleStyleInjected;
-  toggleStyleInjected = true; // skip style injection (would need document.head)
+  // Reset pillboxStyleInjected so ensurePillboxStyleInjected does not try document.head
+  const origPillboxStyleInjected = pillboxStyleInjected;
+  pillboxStyleInjected = true; // skip style injection (would need document.head)
 
   try {
-    injectTableToggles();
+    injectTablePillboxes();
   } finally {
     global.document.querySelectorAll  = origQSA;
     global.document.createElement     = origCreateEl;
     global.document.body              = origBody;
     global.document.documentElement   = origDocEl;
-    toggleStyleInjected               = origToggleStyleInjected;
+    pillboxStyleInjected               = origPillboxStyleInjected;
   }
 
   return { tables };
 }
 
-// Helper: clean up tableToggles / trackedTables for a list of table objects so
+// Helper: clean up tablePillboxes / trackedTables for a list of table objects so
 // they do not pollute subsequent tests.
 function cleanupPass1Tables(tables) {
   for (const t of tables) {
-    if (tableToggles.has(t)) {
-      tableToggles.delete(t);
+    if (tablePillboxes.has(t)) {
+      tablePillboxes.delete(t);
       trackedTables.delete(t);
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Pass 2 accessibility artifact guard in injectTableToggles
+// Pass 2 accessibility artifact guard in injectTablePillboxes
 // ---------------------------------------------------------------------------
 //
 // Pass 2 (the nomination step) skips an ARIA grid ONLY when it contains at
@@ -1572,7 +1572,7 @@ function cleanupPass1Tables(tables) {
 // with a proper classList and the querySelectorAll('table') that returns a given
 // list of embedded table stubs.  Also provides a real row/cell structure so that
 // isDataTable() → GridAdapter.getRows() returns numeric data rows, making
-// createToggleForTable() proceed past the isDataTable guard.
+// createPillboxForTable() proceed past the isDataTable guard.
 //
 function makeAriaGrid(embeddedTables) {
   const classes = new Set();
@@ -1637,8 +1637,8 @@ function makeRealEmbeddedTable() {
 }
 
 // Shared mock factory for the document.createElement / document.body rig
-// that createToggleForTable requires.  Returns { restore } to undo.
-function withToggleDocumentMock(fn) {
+// that createPillboxForTable requires.  Returns { restore } to undo.
+function withPillboxDocumentMock(fn) {
   const origCreateEl = global.document.createElement;
   const origBody     = global.document.body;
   const origDocEl    = global.document.documentElement;
@@ -1713,7 +1713,7 @@ function withToggleDocumentMock(fn) {
     global.document.querySelectorAll = origQSA;
     global.window.scrollX            = origScrollX;
     global.window.scrollY            = origScrollY;
-    toggleStyleInjected = true; // prevent style re-injection leaking across tests
+    pillboxStyleInjected = true; // prevent style re-injection leaking across tests
   }
 }
 
@@ -1915,11 +1915,11 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
 }
 
 // ---------------------------------------------------------------------------
-// Shared helper: create a real button via createToggleForTable with full DOM
+// Shared helper: create a real button via createPillboxForTable with full DOM
 // stubs so its click-handler closure captures the real module-level variables.
 // Returns { table, buttonEl }.
 // ---------------------------------------------------------------------------
-function makeRealToggleButton(tableSpec, docMock) {
+function makeRealPillbox(tableSpec, docMock) {
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
@@ -1970,14 +1970,14 @@ function makeRealToggleButton(tableSpec, docMock) {
     appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
   };
   global.document.documentElement = { appendChild() {} };
-  toggleStyleInjected = false;
+  pillboxStyleInjected = false;
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
   const table = makeToggleTable(tableSpec);
   table._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  createToggleForTable(table);
+  createPillboxForTable(table);
 
   // Restore globals
   global.document.createElement   = origCreateEl;
@@ -1985,7 +1985,7 @@ function makeRealToggleButton(tableSpec, docMock) {
   global.document.documentElement  = origDocEl;
   global.window.scrollX            = origScrollX;
   global.window.scrollY            = origScrollY;
-  toggleStyleInjected = true;
+  pillboxStyleInjected = true;
 
   const buttonEl = appendedToBody.find(e => e._tag === 'button');
   return { table, buttonEl };
@@ -2069,16 +2069,16 @@ function withRightClickSandbox(run) {
   global.setTimeout = function (fn, ms) { pendingTimers.push({ fn, ms }); return pendingTimers.length - 1; };
 
   try {
-    // The evaluation's own DR_STORE and tableToggles bindings, exposed the way
+    // The evaluation's own DR_MODEL and tablePillboxes bindings, exposed the way
     // the registry and parent-equivalence harnesses above expose theirs.
     eval(contentScriptBundle + `
-      globalThis.__rcr_DR_STORE = DR_STORE;
-      globalThis.__rcr_tableToggles = tableToggles;
+      globalThis.__rcr_DR_MODEL = DR_MODEL;
+      globalThis.__rcr_tablePillboxes = tablePillboxes;
     `);
     run({
       get contextmenuHandler() { return contextmenuHandler; },
-      store: global.__rcr_DR_STORE,
-      tableToggles: global.__rcr_tableToggles,
+      model: global.__rcr_DR_MODEL,
+      tablePillboxes: global.__rcr_tablePillboxes,
       observeCalls, constructedObservers, sentMessages, pendingTimers,
     });
   } finally {
@@ -2086,8 +2086,8 @@ function withRightClickSandbox(run) {
     global.MutationObserver = saved.MutationObserver; global.ResizeObserver = saved.ResizeObserver;
     global.Node = saved.Node; global.NodeFilter = saved.NodeFilter;
     global.getComputedStyle = saved.getComputedStyle; global.setTimeout = saved.setTimeout;
-    delete global.__rcr_DR_STORE;
-    delete global.__rcr_tableToggles;
+    delete global.__rcr_DR_MODEL;
+    delete global.__rcr_tablePillboxes;
   }
 }
 
@@ -2115,8 +2115,8 @@ function dgColumnTexts(rowEls, columnIndex) {
 // Drop a registration and the pillbox bookkeeping that goes with it, so a
 // later case counts its own registrations alone.
 function forgetRegisteredTable(table) {
-  DR_STORE.unregisterTable(table);
-  tableToggles.delete(table);
+  DR_MODEL.unregisterTable(table);
+  tablePillboxes.delete(table);
   trackedTables.delete(table);
 }
 
@@ -2383,13 +2383,13 @@ function makeIssue251SidebarHarness() {
 // later teardown records its pillbox removal in. The document mock's body stub
 // carries no removeChild, so the pillbox gets a parent stub of its own.
 function registerFingerprintedTable(table) {
-  withToggleDocumentMock(function () { createToggleForTable(table); });
+  withPillboxDocumentMock(function () { createPillboxForTable(table); });
   return trackPillboxDetach(table);
 }
 
 function trackPillboxDetach(table) {
   const removedPillboxes = [];
-  const button = tableToggles.get(table);
+  const button = tablePillboxes.get(table);
   if (button) {
     button.parentElement = {
       removeChild(child) { removedPillboxes.push(child); child.parentElement = null; },
@@ -2416,7 +2416,7 @@ function recentLogRows() {
 // active table and the messages a press sends. Each case's tables are its
 // own, so their settings need no reset.
 function runPressFixture(setup) {
-  const savedSelected = DR_STORE.getSelectedTable();
+  const savedActive = DR_MODEL.getActiveTable();
   const sent = [];
   const origSend = global.chrome.runtime.sendMessage;
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
@@ -2437,7 +2437,7 @@ function runPressFixture(setup) {
   const origHead = global.document.head;
   if (origHead === undefined) global.document.head = { appendChild() {} };
   try {
-    DR_STORE.setSelectedTable(null);
+    DR_MODEL.setActiveTable(null);
     return setup({ sent, writes: () => settingsWrites, resetWrites: () => { settingsWrites = 0; } });
   } finally {
     unsub();
@@ -2445,7 +2445,7 @@ function runPressFixture(setup) {
     if (origCreateElement === undefined) delete global.document.createElement;
     else global.document.createElement = origCreateElement;
     global.chrome.runtime.sendMessage = origSend;
-    DR_STORE.setSelectedTable(savedSelected);
+    DR_MODEL.setActiveTable(savedActive);
   }
 }
 
@@ -2460,7 +2460,7 @@ function makePressTable(text) {
     // measures each cell in the range; the toggle-table mock has no layout.
     c.getBoundingClientRect = () => ({ top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 });
   });
-  injectToggleEntry(table);
+  injectPillboxEntry(table);
   return table;
 }
 
@@ -2477,9 +2477,9 @@ function makeIsolatedModel() {
   const vm = require('vm');
   const sandbox = { chrome: global.chrome, console };
   const ctx = vm.createContext(sandbox);
-  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + storeCode +
-    '\nthis.__store = DR_STORE; this.__bus = DR_BUS;', ctx);
-  return { store: sandbox.__store, bus: sandbox.__bus };
+  vm.runInContext(constantsCode + '\n' + messagingCode + '\n' + modelCode +
+    '\nthis.__model = DR_MODEL; this.__bus = DR_BUS;', ctx);
+  return { model: sandbox.__model, bus: sandbox.__bus };
 }
 
 // ---------------------------------------------------------------------------

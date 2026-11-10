@@ -1391,7 +1391,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const contentSrc = sourceByName('content.js');
   if (roundingSrc === null || contentSrc === null || coreCode === null ||
       parsingCode === null || detectCode === null || messagingCode === null ||
-      storeCode === null || uiToggleCode === null) {
+      modelCode === null || uiPillboxCode === null) {
     eq('x-floor flip: source files present in manifest', false, true);
     return;
   }
@@ -1415,13 +1415,13 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const vm = require('vm');
   const ctx = vm.createContext(sandbox);
   // content.js runs its observer/listener wiring at load and depends on the
-  // extracted layers (core/parsing/detect/ui-toggle), so eval them in the
+  // extracted layers (core/parsing/detect/ui-pillbox), so eval them in the
   // same order the manifest loads them before content.js.
   vm.runInContext(
     constantsCode + '\n' + (sourceByName('lib/dr-log/index.js') || '') + '\n' +
     patchedRounding + '\n' + coreCode + '\n' + parsingCode + '\n' +
-    detectCode + '\n' + messagingCode + '\n' + storeCode + '\n' +
-    uiToggleCode + '\n' + contentSrc +
+    detectCode + '\n' + messagingCode + '\n' + modelCode + '\n' +
+    uiPillboxCode + '\n' + contentSrc +
     '\nthis.__roundWithOffset = roundWithOffset;', ctx);
   const patchedRound = sandbox.__roundWithOffset;
 
@@ -2213,40 +2213,40 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// Settings live in DR_STORE, one set per table: a table with none
+// Settings live in DR_MODEL, one set per table: a table with none
 // reads as the shipped defaults, setTableSettings stores the whole settings
 // with the defaults filled in and publishes the whole new value, and
 // getTableSettings reads back a copy.
 // ---------------------------------------------------------------------------
 (function appModelSettings_storeTableSettings() {
   const table = { tagName: 'TABLE' };
-  eq('DR_STORE.getTableSettings: a table with no settings reads as the shipped defaults',
-    DR_STORE.getTableSettings(table), Object.assign({}, DR_DEFAULTS));
+  eq('DR_MODEL.getTableSettings: a table with no settings reads as the shipped defaults',
+    DR_MODEL.getTableSettings(table), Object.assign({}, DR_DEFAULTS));
 
   let stateChangePayload = 'NOT_CALLED';
   const unsubscribe = DR_BUS.subscribe('state:settingsChanged', (payload) => {
     stateChangePayload = payload;
   });
   try {
-    DR_STORE.setTableSettings(table, { offsetTop: 0.25, rangeExpr: 'A1:C9' }, 'page');
+    DR_MODEL.setTableSettings(table, { offsetTop: 0.25, rangeExpr: 'A1:C9' }, 'page');
   } finally {
     unsubscribe();
   }
-  eq('DR_STORE.setTableSettings: getTableSettings reflects the new value',
-    DR_STORE.getTableSettings(table).offsetTop, 0.25);
-  eq('DR_STORE.setTableSettings: the stored settings carry the shipped defaults for every key not written',
-    DR_STORE.getTableSettings(table).simplifyDates, DR_DEFAULTS.simplifyDates);
-  eq('DR_STORE.setTableSettings: the resulting state-change carries the whole new value, not a delta',
+  eq('DR_MODEL.setTableSettings: getTableSettings reflects the new value',
+    DR_MODEL.getTableSettings(table).offsetTop, 0.25);
+  eq('DR_MODEL.setTableSettings: the stored settings carry the shipped defaults for every key not written',
+    DR_MODEL.getTableSettings(table).simplifyDates, DR_DEFAULTS.simplifyDates);
+  eq('DR_MODEL.setTableSettings: the resulting state-change carries the whole new value, not a delta',
     stateChangePayload && stateChangePayload.settings,
     Object.assign({}, DR_DEFAULTS, { offsetTop: 0.25, rangeExpr: 'A1:C9' }));
 
   // getTableSettings returns a copy — mutating what a caller read must not
-  // corrupt the store's own value (immutability convention).
-  const read = DR_STORE.getTableSettings(table);
+  // corrupt the application model's own value (immutability convention).
+  const read = DR_MODEL.getTableSettings(table);
   read.offsetTop = 999;
-  eq('DR_STORE.getTableSettings: returns a copy, not a live reference — mutating it does not affect the store',
-    DR_STORE.getTableSettings(table).offsetTop, 0.25);
-  DR_STORE.unregisterTable(table);
+  eq('DR_MODEL.getTableSettings: returns a copy, not a live reference — mutating it does not affect the application model',
+    DR_MODEL.getTableSettings(table).offsetTop, 0.25);
+  DR_MODEL.unregisterTable(table);
 })();
 
 // ---------------------------------------------------------------------------
@@ -2274,7 +2274,7 @@ const LADDER_OPTS = {
     { tag: 'td', text: '1,000,000' },
     { tag: 'td', text: '50' },
   ]]);
-  DR_STORE.setTableSettings(previewTable, customSettings, 'page');
+  DR_MODEL.setTableSettings(previewTable, customSettings, 'page');
   const preview = extractPreviewSamples(previewTable);
   eq('preview/table agreement: top band has the large cell',
     preview.samples.top.length, 1);
@@ -2297,9 +2297,9 @@ const LADDER_OPTS = {
     { tag: 'td', text: '1,000,000' },
     { tag: 'td', text: '50' },
   ]]);
-  DR_STORE.setTableSettings(liveTable, customSettings, 'page');
+  DR_MODEL.setTableSettings(liveTable, customSettings, 'page');
   withCreateTreeWalker(() => {
-    roundTable(liveTable, DR_STORE.getTableSettings(liveTable));
+    roundTable(liveTable, DR_MODEL.getTableSettings(liveTable));
   });
   const renderedTop = toNumber(liveTable.rows[0].cells[0].innerText);
   const renderedBottom = toNumber(liveTable.rows[0].cells[1].innerText);
@@ -2308,8 +2308,8 @@ const LADDER_OPTS = {
     renderedTop, expectedTop);
   eq('preview/table agreement: the table cell value matches the preview-predicted bottom value',
     renderedBottom, expectedBottom);
-  DR_STORE.unregisterTable(previewTable);
-  DR_STORE.unregisterTable(liveTable);
+  DR_MODEL.unregisterTable(previewTable);
+  DR_MODEL.unregisterTable(liveTable);
 })();
 
 // ---------------------------------------------------------------------------
@@ -2321,7 +2321,7 @@ const LADDER_OPTS = {
 (function appModelSettings_settingsSurviveSidebarReconnect() {
   runPressFixture(() => {
     const table = makePressTable('12,345');
-    DR_STORE.setSelectedTable(table);
+    DR_MODEL.setActiveTable(table);
 
     // The sidebar sets a custom value (an "open" session), then — simulated by
     // nothing happening in between — closes and reopens, pulling the model.
@@ -2490,9 +2490,9 @@ const LADDER_OPTS = {
 })();
 
 // ---------------------------------------------------------------------------
-// Adversarial: the full wire path, not the store
+// Adversarial: the full wire path, not the application model
 // directly. appModelSettings_previewAndTableAgreeOnLiveSettings (above) calls
-// DR_STORE.setTableSettings() straight from the test — it never exercises
+// DR_MODEL.setTableSettings() straight from the test — it never exercises
 // content.js's own onMessage listener or the settings apply's responder,
 // which is the actual code path a real request:applySettings message
 // drives. This test dispatches that message through the captured listener
@@ -2536,7 +2536,7 @@ const LADDER_OPTS = {
     }
     return keepOpen;
   }
-  let wiredDR_STORE = null;
+  let wiredDR_MODEL = null;
   let wiredExtractPreviewSamples = null;
   let boundTable = null;
   let ackResponse = null;
@@ -2574,7 +2574,7 @@ const LADDER_OPTS = {
     withCreateTreeWalker(() => {
       try {
         eval(contentScriptBundle + `
-          wiredDR_STORE = DR_STORE;
+          wiredDR_MODEL = DR_MODEL;
           wiredExtractPreviewSamples = extractPreviewSamples;
         `);
       } catch (e) {
@@ -2583,13 +2583,13 @@ const LADDER_OPTS = {
         // dynamic/async code (see the AC1 test).
       }
 
-      if (capturedListeners.length === 0 || !wiredDR_STORE) return;
+      if (capturedListeners.length === 0 || !wiredDR_MODEL) return;
 
       // Bind a table as "selected" — mirrors what the contextmenu handler
       // does for real, so the settings apply has an active table to write
       // the incoming message to.
       boundTable = makeWiredMockTable(rowsSpec);
-      wiredDR_STORE.setSelectedTable(boundTable);
+      wiredDR_MODEL.setActiveTable(boundTable);
 
       const customSettings = Object.assign({}, DR_DEFAULTS, {
         simplifyFirstRow: true, simplifyFirstColumn: true,
@@ -2598,7 +2598,7 @@ const LADDER_OPTS = {
       });
 
       // The real wire message, dispatched through the real onMessage
-      // listener — not DR_STORE.setTableSettings() called directly from the
+      // listener — not DR_MODEL.setTableSettings() called directly from the
       // test.
       capturedListener(
         { action: 'request:applySettings', settings: customSettings },

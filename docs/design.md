@@ -212,8 +212,8 @@ The extension is the largest consumer of the algorithm and carries its own compo
 | `lib/dr-simplify/` | The classification ladder: the per-cell verdict (`skip`, `pure`, `date`, `time`, `extracted`); and the table step: the column post-pass, the max magnitude, and each cell's patches |
 | `lib/dr-capture/` | The capture: the state serializer and the capture file renderer |
 | `adapters/messaging.js` | The event bus (`DR_BUS`) |
-| `app/store.js` | The application model (`DR_STORE`) |
-| `ui-toggle.js` | The table pillbox view |
+| `app/model.js` | The application model (`DR_MODEL`) |
+| `ui-pillbox.js` | The table pillbox view |
 | `ui-toast.js` | The toast view |
 | `content.js` | The controller |
 

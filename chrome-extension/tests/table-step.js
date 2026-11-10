@@ -55,7 +55,7 @@ function loadTableStepAlone(extraSource) {
   tablePatches, classifyCell, decisionToLegacyInfo,
   globals: {
     document: typeof document, window: typeof window, chrome: typeof chrome,
-    DR_STORE: typeof DR_STORE, DR_LOG: typeof DR_LOG,
+    DR_MODEL: typeof DR_MODEL, DR_LOG: typeof DR_LOG,
   },
 });`;
   return { files, api: vm.runInContext(source, context) };
@@ -89,7 +89,7 @@ function applyTableStepPatches(text, patches) {
     loaded.files.every((file) => /^lib\/dr-(number|simplify)\//.test(file)), true);
   eq('table step alone: the context holds no page, browser, registry, or log buffer',
     loaded.api.globals,
-    { document: 'undefined', window: 'undefined', chrome: 'undefined', DR_STORE: 'undefined', DR_LOG: 'undefined' });
+    { document: 'undefined', window: 'undefined', chrome: 'undefined', DR_MODEL: 'undefined', DR_LOG: 'undefined' });
 })();
 
 (function tableStep_patchesForEachMode() {
@@ -271,7 +271,7 @@ const TABLE_STEP_DATE_SPLIT_ROW = /date or time split across text pieces stays u
   eq('table step source: lib/dr-simplify/table.js is present', src !== null, true);
   if (src === null) return;
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-  const PAGE_NAMES = /\b(document|window|chrome|globalThis|DR_STORE|DR_LOG|DR_BUS|Node|NodeFilter|MutationObserver|querySelector\w*|createTreeWalker|getComputedStyle|innerText|textContent|nodeValue|childNodes|parentNode|parentElement|layout|layoutPieceHolding|cellObj|el)\b/g;
+  const PAGE_NAMES = /\b(document|window|chrome|globalThis|DR_MODEL|DR_LOG|DR_BUS|Node|NodeFilter|MutationObserver|querySelector\w*|createTreeWalker|getComputedStyle|innerText|textContent|nodeValue|childNodes|parentNode|parentElement|layout|layoutPieceHolding|cellObj|el)\b/g;
   eq('table step source: the code names no page, browser, registry, or log buffer, and no text piece',
     [...new Set(code.match(PAGE_NAMES) || [])], []);
 })();

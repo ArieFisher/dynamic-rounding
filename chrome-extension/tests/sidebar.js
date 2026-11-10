@@ -8,13 +8,13 @@
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_sourceLevel() {
-  // Click-handler rebind logic spans content.js + ui-toggle.js; scan the
+  // Click-handler rebind logic spans content.js + ui-pillbox.js; scan the
   // combined content-script source. The active-table reference lives in
-  // DR_STORE (app/store.js): ui-toggle.js publishes an intent, and content.js's
-  // own writes go through DR_STORE's setters.
+  // DR_MODEL (app/model.js): ui-pillbox.js publishes an intent, and content.js's
+  // own writes go through DR_MODEL's setters.
   const contentSrc = allContentSrc;
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
-  const storeSrc = sourceByName('app/store.js') || '';
+  const modelSrc = sourceByName('app/model.js') || '';
 
   // Whether the sidebar is open: no context holds this value. These four
   // scans pin the absence of the field, the two handler calls that would
@@ -34,8 +34,8 @@
   // sidebarOpened field included — still fails here.
   const SIDEBAR_OPENED_TOPIC = /state:sidebarOpened/g;
   const namesSidebarState = (src) => SIDEBAR_STATE_NAMES.test(src.replace(SIDEBAR_OPENED_TOPIC, ''));
-  eq('sidebar-state removal: app/store.js declares no sidebar-open field',
-    namesSidebarState(storeSrc), false);
+  eq('sidebar-state removal: app/model.js declares no sidebar-open field',
+    namesSidebarState(modelSrc), false);
   eq('sidebar-state removal: the content-script stack names no sidebar-open value',
     namesSidebarState(contentSrc), false);
   eq('sidebar-state removal: sidebar.js names no sidebar-open value',
@@ -77,12 +77,12 @@
     switchCount >= 1, true);
 
   // content.js: the intent:toggleTable handler's rebind branch publishes the
-  // select-table intent instead of assigning DR_STORE's field directly. It
+  // select-table intent instead of assigning DR_MODEL's field directly. It
   // stays a published intent rather than a
-  // direct DR_STORE.setSelectedTable() call, keeping one place ("select
+  // direct DR_MODEL.setActiveTable() call, keeping one place ("select
   // this table") for any caller of that concern, controller included.
-  eq('rebind source: intent:toggleTable publishes intent:selectTable in the rebind block instead of writing DR_STORE directly',
-    /DR_BUS\.publish\(\s*'intent:selectTable'/.test(contentSrc), true);
+  eq('rebind source: intent:toggleTable publishes intent:activateTable in the rebind block instead of writing DR_MODEL directly',
+    /DR_BUS\.publish\(\s*'intent:activateTable'/.test(contentSrc), true);
 
   // sidebar.js: the state:tableSwitched subscriber re-reads the model's
   // settings instead of resetting the controls to the shipped
@@ -566,10 +566,10 @@
 // bus's own guard this would recurse until the real call stack overflows.
 // ---------------------------------------------------------------------------
 (function appModelSettings_busReentrancy_unguardedCycleTerminatesSafely() {
-  const TOPIC_A = 'state:selectedTableChanged';
+  const TOPIC_A = 'state:activeTableChanged';
   const TOPIC_B = 'state:settingsChanged';
-  const savedSelected = DR_STORE.getSelectedTable();
-  DR_STORE.setSelectedTable(null); // see the note on the guarded cycle above
+  const savedActive = DR_MODEL.getActiveTable();
+  DR_MODEL.setActiveTable(null); // see the note on the guarded cycle above
 
   const unsubA = DR_BUS.subscribe(TOPIC_A, () => { DR_BUS.publish(TOPIC_B, { source: 'page', settings: Object.assign({}, DR_DEFAULTS) }); });
   const unsubB = DR_BUS.subscribe(TOPIC_B, () => { DR_BUS.publish(TOPIC_A, { table: null }); });
@@ -582,7 +582,7 @@
   } finally {
     unsubA();
     unsubB();
-    DR_STORE.setSelectedTable(savedSelected);
+    DR_MODEL.setActiveTable(savedActive);
   }
 
   eq('DR_BUS reentrancy (unguarded cycle): publish() throws a catchable error instead of crashing with a real stack overflow',
@@ -886,7 +886,7 @@
 // ---------------------------------------------------------------------------
 // The context-menu toggle must go through the same controller branch a
 // pillbox press uses. The right-click that opens the menu already activates
-// the table (the contextmenu handler calls setSelectedTable), so with the
+// the table (the contextmenu handler calls setActiveTable), so with the
 // sidebar open, "Toggle table" on that table must write the table's settings
 // and send them (the settings notice). A menu path that simplified the table
 // directly would leave the settings and the sidebar stale, and the next
@@ -962,9 +962,9 @@
 
   try {
     eval(contentScriptBundle + `
-      globalThis.__i275_DR_STORE = DR_STORE;
+      globalThis.__i275_DR_MODEL = DR_MODEL;
     `);
-    const store = global.__i275_DR_STORE;
+    const model = global.__i275_DR_MODEL;
 
     eq('menu-toggle record: contextmenu handler was captured', typeof contextmenuHandler, 'function');
     eq('menu-toggle record: the bus registered its message listener', messageListeners.length, 1);
@@ -974,24 +974,24 @@
     // the grid — exactly what a real menu use does before intent:menuClicked.
     contextmenuHandler({ target: clickTarget });
     eq('menu-toggle record: the right-click connected the grid',
-      store.getSelectedTable(), gridEl);
+      model.getActiveTable(), gridEl);
 
     // The table's settings start at on, the table showing simplified values.
-    store.setTableSettings(gridEl, { enabled: true }, 'page');
-    store.setTableAppliedFlag(gridEl, 'simplified');
+    model.setTableSettings(gridEl, { enabled: true }, 'page');
+    model.setTableAppliedFlag(gridEl, 'simplified');
     eq('menu-toggle record: precondition — the table\'s settings start enabled',
-      store.getTableSettings(gridEl).enabled, true);
+      model.getTableSettings(gridEl).enabled, true);
 
     sentMessages.length = 0;
     fireMessage({ action: 'intent:menuClicked' });
 
     eq('menu-toggle record: the menu toggle on the connected table writes the table\'s off',
-      store.getTableSettings(gridEl).enabled, false);
+      model.getTableSettings(gridEl).enabled, false);
     const notices = sentMessages.filter((m) => m.action === 'state:settingsChanged');
     eq('menu-toggle record: the menu toggle sends the table\'s settings to the sidebar — off, from a page-side writer',
       notices.map((m) => [m.settings.enabled, m.source]), [[false, 'page']]);
   } finally {
-    delete global.__i275_DR_STORE;
+    delete global.__i275_DR_MODEL;
     global.document = savedDoc;
     global.chrome = savedChrome;
     global.getComputedStyle = savedGCS;

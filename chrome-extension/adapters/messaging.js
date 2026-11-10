@@ -14,10 +14,10 @@
  *
  *   - 'intent'       A gesture: someone did a thing, and a controller
  *                     determines what changes. Published by a view, such as
- *                     the pillbox in ui-toggle.js, and never carrying
+ *                     the pillbox in ui-pillbox.js, and never carrying
  *                     authority of its own.
  *   - 'state-change' A fact: a field of the application model changed.
- *                     Published by app/store.js after the write. A subscriber
+ *                     Published by app/model.js after the write. A subscriber
  *                     redraws on it, or reads the model's getters directly
  *                     when it only needs the current value.
  *   - 'request'      A question: the topic's one responder returns an answer
@@ -52,12 +52,12 @@
  *     A subscriber that attaches after a publish never sees that publish.
  *     A view that opens or reconnects (the sidebar re-opening, most
  *     notably) must pull the current value from the model instead (see
- *     app/store.js) rather than rely on a message it may have missed while
+ *     app/model.js) rather than rely on a message it may have missed while
  *     it was gone.
  *   - Same-context delivery is synchronous: publish() calls every matching
  *     handler directly, in subscription order, before returning. A
  *     controller that calls a store setter in response to a subscribed
- *     intent sees the store already updated by the time publish() returns.
+ *     intent sees the application model already updated by the time publish() returns.
  *     Because delivery is synchronous, a handler that itself publishes
  *     (directly, or by way of a store setter) can re-enter publish() before
  *     the original call returns; see the depth guard below.
@@ -102,7 +102,7 @@
  * context registers a second one of its own.
  *
  * All three contexts load it. In the content script it comes after the lib/
- * packages and before app/store.js — the store publishes through this bus, so
+ * packages and before app/model.js — the application model publishes through this bus, so
  * the bus must exist first. The service worker imports it at the top of
  * background.js, and the sidebar page loads it before sidebar.js.
  */
@@ -124,9 +124,9 @@ const DR_BUS = (function () {
 
   // The one place every topic name is enumerated.
   const TOPICS = {
-    'intent:selectTable': { family: INTENT, route: null },
+    'intent:activateTable': { family: INTENT, route: null },
     'intent:toggleTable': { family: INTENT, route: null },
-    'state:selectedTableChanged': { family: STATE_CHANGE, route: null },
+    'state:activeTableChanged': { family: STATE_CHANGE, route: null },
     // Published by the model after every error row it records. The toast view
     // (ui-toast.js) subscribes to draw the row on the page. Same context
     // only: the sidebar reads the error state through the capture state pull.
@@ -159,7 +159,7 @@ const DR_BUS = (function () {
     // broadcast carrier: the content script holds no tabs interface, and the
     // sidebar is an extension page.
     //
-    // The settings notice: the model (app/store.js) publishes it after every
+    // The settings notice: the model (app/model.js) publishes it after every
     // write of a table's settings, whatever the writer. Every write targets
     // the active table. It states which side wrote it and carries the table's
     // whole settings; the sidebar redraws from it, and the table pillbox view in
@@ -223,7 +223,7 @@ const DR_BUS = (function () {
   // this one's still-live stack frame. A cycle with no caller-side guard
   // would recurse until the real call stack overflows. This
   // cap allows any legitimate shallow chain (the deepest in production, the
-  // intent:selectTable -> state:selectedTableChanged hop, reaches 2; a
+  // intent:activateTable -> state:activeTableChanged hop, reaches 2; a
   // guarded two-topic bounce-back reaches 4, but only in the reentrancy
   // test) while turning an unguarded cycle into a clear, catchable error
   // instead of a crash.

@@ -16,7 +16,7 @@
  * capture carries.
  *
  * Dependencies arrive as parameters with working defaults, the same pattern
- * as GridAdapter's originals port: deps.store is the application model,
+ * as GridAdapter's originals port: deps.model is the application model,
  * deps.adapterFor builds the row/cell adapter for one table. Tests hand in
  * stand-ins; the production call site (content.js) passes nothing. Cell
  * reads go only through the adapter's displayed-text read and the model's
@@ -59,11 +59,11 @@
 const CAPTURE_FORMAT = 9;
 
 function collectCaptureState(deps) {
-  const store = (deps && deps.store) || DR_STORE;
+  const model = (deps && deps.model) || DR_MODEL;
   const adapterFor = (deps && deps.adapterFor) || function (table) { return makeAdapter(table); };
 
-  const registered = store.getRegisteredTables();
-  const selected = store.getSelectedTable();
+  const registered = model.getRegisteredTables();
+  const active = model.getActiveTable();
   let activeTableIndex = null;
 
   function serializeTable(table) {
@@ -80,7 +80,7 @@ function collectCaptureState(deps) {
         // fewer cells than the table has columns.
         const rightEdge = cellObj.columnIndex + cellObj.columnSpan;
         if (rightEdge > columnCount) columnCount = rightEdge;
-        const originalText = store.getTableOriginalText(table, cellObj.el);
+        const originalText = model.getTableOriginalText(table, cellObj.el);
         const original = originalText === undefined ? null : originalText;
         // GRID_ROUNDED_CLASS (lib/dr-table/detect.js) marks every rounded
         // cell, native and grid alike.
@@ -101,9 +101,9 @@ function collectCaptureState(deps) {
     }
     return {
       kind: adapter.isVirtualized() ? 'grid' : 'native',
-      appliedFlag: store.getTableAppliedFlag(table),
-      settings: store.getTableSettings(table),
-      maxMagnitude: store.getTableMaxMagnitude(table),
+      appliedFlag: model.getTableAppliedFlag(table),
+      settings: model.getTableSettings(table),
+      maxMagnitude: model.getTableMaxMagnitude(table),
       rowCount: rows.length,
       columnCount,
       cells,
@@ -111,7 +111,7 @@ function collectCaptureState(deps) {
   }
 
   const tables = registered.map(function (table, index) {
-    if (selected !== null && table === selected) activeTableIndex = index;
+    if (active !== null && table === active) activeTableIndex = index;
     try {
       return serializeTable(table);
     } catch (e) {
@@ -140,7 +140,7 @@ function collectCaptureState(deps) {
     detectionSettings: JSON.parse(JSON.stringify(DR_DETECTION_SETTINGS)),
     activeTableIndex,
     tables,
-    fixtureSeed: selected && typeof selected.outerHTML === 'string' ? selected.outerHTML : null,
-    errorState: store.getErrorState(),
+    fixtureSeed: active && typeof active.outerHTML === 'string' ? active.outerHTML : null,
+    errorState: model.getErrorState(),
   };
 }

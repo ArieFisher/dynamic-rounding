@@ -1048,7 +1048,7 @@ const supTestOpts = {
 })();
 
 // FT6: findTargetTable — returns a new grid via { handle, isNew: true } and
-// does not mark it itself; the caller — content.js's markAndToggleIfNewGrid —
+// does not mark it itself; the caller — content.js's markAndAddPillboxIfNewGrid —
 // writes dr-ext-grid and builds the pillbox. findTargetTable must resolve the
 // new grid AND must leave it unmarked.
 (function findTargetTable_reportsNewGridWithoutMarking() {
@@ -1126,7 +1126,7 @@ const supTestOpts = {
       .map((el) => el.classList.contains('dr-ext-grid')), [false, false, false]);
   eq('findTargetTable AC1: the resolution adds no registry entry',
     [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl]
-      .map((el) => DR_STORE.hasTable(el)), [false, false, false]);
+      .map((el) => DR_MODEL.hasTable(el)), [false, false, false]);
 })();
 
 // --- AC1: a click on the nest's own layers resolves the scrolling pane ---
@@ -1990,9 +1990,9 @@ const supTestOpts = {
 
 // --- pass1-filter AC1: accessibility artifacts (aria-hidden ancestor) get NO pillbox ---
 // Build N=3 accessibility artifacts (aria-hidden parent), all valid data tables.
-// After Pass 1 none of them should be in tableToggles.
+// After Pass 1 none of them should be in tablePillboxes.
 
-(function pass1Filter_ariaHiddenPhantoms_zeroToggles() {
+(function pass1Filter_ariaHiddenPhantoms_zeroPillboxes() {
   function makeAriaHiddenPhantom() {
     const t = makePass1DataTable();
     // aria-hidden="true" on the immediate parent (Signal 1)
@@ -2019,7 +2019,7 @@ const supTestOpts = {
 
   runPass1WithTables(phantoms);
 
-  const togglesCreated = phantoms.filter(t => tableToggles.has(t)).length;
+  const togglesCreated = phantoms.filter(t => tablePillboxes.has(t)).length;
   eq('pass1-filter: 3 aria-hidden phantom tables → ZERO toggles created',
     togglesCreated, 0);
 
@@ -2029,7 +2029,7 @@ const supTestOpts = {
 // --- pass1-filter AC1: accessibility artifacts (off-screen left) get NO pillbox ---
 // Build N=2 accessibility artifacts with positioned ancestor left=-10000px.
 
-(function pass1Filter_offscreenLeftPhantoms_zeroToggles() {
+(function pass1Filter_offscreenLeftPhantoms_zeroPillboxes() {
   function makeOffscreenPhantom() {
     const t = makePass1DataTable();
     // Positioned ancestor with extreme left (Signal 2)
@@ -2057,7 +2057,7 @@ const supTestOpts = {
 
   runPass1WithTables(phantoms);
 
-  const togglesCreated = phantoms.filter(t => tableToggles.has(t)).length;
+  const togglesCreated = phantoms.filter(t => tablePillboxes.has(t)).length;
   eq('pass1-filter: 2 off-screen phantom tables → ZERO toggles created',
     togglesCreated, 0);
 
@@ -2066,7 +2066,7 @@ const supTestOpts = {
 
 // --- pass1-filter AC2: a normal on-screen table still gets exactly ONE toggle ---
 
-(function pass1Filter_realTable_getsOneToggle() {
+(function pass1Filter_realTable_getsOnePillbox() {
   const realTable = makePass1DataTable();
   // No aria-hidden, no positioned ancestor, no svg → isPhantomA11yTable returns false
   const wrapper = {
@@ -2088,7 +2088,7 @@ const supTestOpts = {
   runPass1WithTables([realTable]);
 
   eq('pass1-filter: normal on-screen table → exactly ONE toggle created',
-    tableToggles.has(realTable), true);
+    tablePillboxes.has(realTable), true);
 
   cleanupPass1Tables([realTable]);
 })();
@@ -2096,7 +2096,7 @@ const supTestOpts = {
 // --- pass1-filter adversarial: mix of artifacts + real tables in one Pass 1 run ---
 // Only the real tables should get toggles; count equals exactly the number of real tables.
 
-(function pass1Filter_mixedFixture_onlyRealTablesGetToggles() {
+(function pass1Filter_mixedFixture_onlyRealTablesGetPillboxes() {
   // Two accessibility artifacts (aria-hidden ancestor)
   function makeAriaHiddenPhantom() {
     const t = makePass1DataTable();
@@ -2158,16 +2158,16 @@ const supTestOpts = {
   const phantoms = [phantom1, phantom2, phantom3];
   const reals    = [real1, real2];
 
-  const phantomToggles = phantoms.filter(t => tableToggles.has(t)).length;
-  const realToggles    = reals.filter(t => tableToggles.has(t)).length;
+  const phantomPillboxes = phantoms.filter(t => tablePillboxes.has(t)).length;
+  const realPillboxes    = reals.filter(t => tablePillboxes.has(t)).length;
 
   eq('pass1-filter (mix): phantom tables get ZERO toggles',
-    phantomToggles, 0);
+    phantomPillboxes, 0);
   eq('pass1-filter (mix): real tables each get a toggle — count equals 2',
-    realToggles, 2);
+    realPillboxes, 2);
   eq('pass1-filter (mix): total toggles created equals number of real tables',
-    tableToggles.has(real1) && tableToggles.has(real2) && !tableToggles.has(phantom1) &&
-    !tableToggles.has(phantom2) && !tableToggles.has(phantom3), true);
+    tablePillboxes.has(real1) && tablePillboxes.has(real2) && !tablePillboxes.has(phantom1) &&
+    !tablePillboxes.has(phantom2) && !tablePillboxes.has(phantom3), true);
 
   cleanupPass1Tables(allTables);
 })();
@@ -2175,7 +2175,7 @@ const supTestOpts = {
 // --- pass1-filter: Pass 1 skips artifacts but does NOT skip a non-data real table ---
 // (edge: if a real table fails isDataTable, no toggle either — confirm the skip
 // here is from isDataTable, not from isPhantomA11yTable)
-(function pass1Filter_nonDataRealTable_noToggle() {
+(function pass1Filter_nonDataRealTable_noPillbox() {
   // 1-row table: fails isDataTable (< 2 rows)
   const nonDataTable = {
     tagName: 'TABLE',
@@ -2211,14 +2211,14 @@ const supTestOpts = {
   runPass1WithTables([nonDataTable]);
 
   eq('pass1-filter: non-data real table gets no toggle (isDataTable gate)',
-    tableToggles.has(nonDataTable), false);
+    tablePillboxes.has(nonDataTable), false);
 
   cleanupPass1Tables([nonDataTable]);
 })();
 
 // --- pass1-filter: duplicate Pass 1 call does NOT create a second toggle for a real table ---
-// (regression guard: tableToggles.has check prevents double-insertion)
-(function pass1Filter_duplicateRun_noDoubleToggle() {
+// (regression guard: tablePillboxes.has check prevents double-insertion)
+(function pass1Filter_duplicateRun_noDoublePillbox() {
   const realTable = makePass1DataTable();
   const wrapper = {
     tagName: 'DIV',
@@ -2232,14 +2232,14 @@ const supTestOpts = {
 
   // First run
   runPass1WithTables([realTable]);
-  const afterFirst = tableToggles.has(realTable);
+  const afterFirst = tablePillboxes.has(realTable);
 
-  // Second run — table already in tableToggles; Pass 1 should skip it.
+  // Second run — table already in tablePillboxes; Pass 1 should skip it.
   // We verify the table pillbox is not re-inserted: since WeakMap.set overwrites,
   // a re-create would swap the button object, so we check its identity holds.
-  const buttonAfterFirst = tableToggles.get(realTable);
+  const buttonAfterFirst = tablePillboxes.get(realTable);
   runPass1WithTables([realTable]);
-  const buttonAfterSecond = tableToggles.get(realTable);
+  const buttonAfterSecond = tablePillboxes.get(realTable);
 
   eq('pass1-filter: first Pass 1 run creates toggle for real table',
     afterFirst, true);
@@ -3034,9 +3034,9 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 
 (function gridNesting_AC6_loadTimeScanBuildsOnePillbox() {
   const grid = makeDatabaseQueryGrid();
-  const before = DR_STORE.getRegisteredTables().length;
+  const before = DR_MODEL.getRegisteredTables().length;
 
-  withToggleDocumentMock(function () {
+  withPillboxDocumentMock(function () {
     // What a page holding the fixture hands the two passes: no native table,
     // and the three role-bearing elements in document order.
     global.document.querySelectorAll = function (sel) {
@@ -3046,48 +3046,48 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
       }
       return [];
     };
-    injectTableToggles();
+    injectTablePillboxes();
   });
 
-  const added = DR_STORE.getRegisteredTables().slice(before);
+  const added = DR_MODEL.getRegisteredTables().slice(before);
   eq('nesting AC6: the load-time scan on the fixture adds one registry entry', added.length, 1);
   eq('nesting AC6: the registered element is the scrolling pane',
     added.length === 1 && added[0] === grid.scrollPaneEl, true);
   eq('nesting AC6: the scrolling pane carries one pillbox',
-    tableToggles.has(grid.scrollPaneEl), true);
-  eq('nesting AC6: the wrapper carries no pillbox', tableToggles.has(grid.wrapperEl), false);
-  eq('nesting AC6: the pinned pane carries no pillbox', tableToggles.has(grid.pinnedPaneEl), false);
+    tablePillboxes.has(grid.scrollPaneEl), true);
+  eq('nesting AC6: the wrapper carries no pillbox', tablePillboxes.has(grid.wrapperEl), false);
+  eq('nesting AC6: the pinned pane carries no pillbox', tablePillboxes.has(grid.pinnedPaneEl), false);
 
   forgetRegisteredTable(grid.scrollPaneEl);
 })();
 
 (function gridNesting_AC6_addedNodePassBuildsOnePillbox() {
   const grid = makeDatabaseQueryGrid();
-  const before = DR_STORE.getRegisteredTables().length;
+  const before = DR_MODEL.getRegisteredTables().length;
 
-  withToggleDocumentMock(function () {
-    injectTogglesForAddedNode(grid.wrapperEl);
+  withPillboxDocumentMock(function () {
+    injectPillboxesForAddedNode(grid.wrapperEl);
   });
 
-  const added = DR_STORE.getRegisteredTables().slice(before);
+  const added = DR_MODEL.getRegisteredTables().slice(before);
   eq('nesting AC6: the added-node pass on the fixture adds one registry entry', added.length, 1);
   eq('nesting AC6: the added-node pass registers the scrolling pane',
     added.length === 1 && added[0] === grid.scrollPaneEl, true);
   eq('nesting AC6: the added-node pass puts one pillbox on the scrolling pane',
-    tableToggles.has(grid.scrollPaneEl), true);
+    tablePillboxes.has(grid.scrollPaneEl), true);
   eq('nesting AC6: the added-node pass puts no pillbox on the wrapper',
-    tableToggles.has(grid.wrapperEl), false);
+    tablePillboxes.has(grid.wrapperEl), false);
   eq('nesting AC6: the added-node pass puts no pillbox on the pinned pane',
-    tableToggles.has(grid.pinnedPaneEl), false);
+    tablePillboxes.has(grid.pinnedPaneEl), false);
 
   // A node added inside a nest that already holds a registered element adds
   // no second registration.
-  const beforeRediscovery = DR_STORE.getRegisteredTables().length;
-  withToggleDocumentMock(function () {
-    injectTogglesForAddedNode(grid.scrollPaneEl);
+  const beforeRediscovery = DR_MODEL.getRegisteredTables().length;
+  withPillboxDocumentMock(function () {
+    injectPillboxesForAddedNode(grid.scrollPaneEl);
   });
   eq('nesting AC6: a node added inside a registered nest adds no registry entry',
-    DR_STORE.getRegisteredTables().length, beforeRediscovery);
+    DR_MODEL.getRegisteredTables().length, beforeRediscovery);
 
   forgetRegisteredTable(grid.scrollPaneEl);
 })();
@@ -3154,14 +3154,14 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 (function gridNesting_theStepReportsAndRegistersNothing() {
   const grid = makeDatabaseQueryGrid();
   const nestElements = [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl];
-  const before = DR_STORE.getRegisteredTables().length;
+  const before = DR_MODEL.getRegisteredTables().length;
 
   findTables(makeNestingHost([grid.wrapperEl]));
 
   eq('nesting: the nomination step adds no registry entry',
-    DR_STORE.getRegisteredTables().length, before);
+    DR_MODEL.getRegisteredTables().length, before);
   eq('nesting: the nomination step registers no element of the nest',
-    nestElements.map((el) => DR_STORE.hasTable(el)), [false, false, false]);
+    nestElements.map((el) => DR_MODEL.hasTable(el)), [false, false, false]);
   eq('nesting: the nomination step writes no grid marker class',
     nestElements.map((el) => el.classList.contains('dr-ext-grid')), [false, false, false]);
 })();
@@ -3655,28 +3655,28 @@ function cnAdapterCellEls(tableEl) {
 
 (function cellNest_theLoadTimeScanRegistersBothGridsOnce() {
   const page = cnGridInCell();
-  const before = DR_STORE.getRegisteredTables().length;
-  const runScan = () => withToggleDocumentMock(function () {
+  const before = DR_MODEL.getRegisteredTables().length;
+  const runScan = () => withPillboxDocumentMock(function () {
     global.document.querySelectorAll = function (sel) {
       if (sel === GRID_ARIA_SELECTOR_TEXT) return page.host.querySelectorAll(sel);
       return [];
     };
-    injectTableToggles();
+    injectTablePillboxes();
   });
 
   try {
     runScan();
-    const added = DR_STORE.getRegisteredTables().slice(before);
+    const added = DR_MODEL.getRegisteredTables().slice(before);
     eq('cell nest: the load-time scan adds two registry entries', added.length, 2);
     eq('cell nest: the load-time scan registers the outer grid and the inner grid',
       [added.includes(page.outer), added.includes(page.inner)], [true, true]);
     eq('cell nest: each grid carries a pillbox',
-      [tableToggles.has(page.outer), tableToggles.has(page.inner)], [true, true]);
+      [tablePillboxes.has(page.outer), tablePillboxes.has(page.inner)], [true, true]);
 
-    const afterFirst = DR_STORE.getRegisteredTables().length;
+    const afterFirst = DR_MODEL.getRegisteredTables().length;
     runScan();
     eq('cell nest: a second load-time scan adds no registry entry',
-      DR_STORE.getRegisteredTables().length, afterFirst);
+      DR_MODEL.getRegisteredTables().length, afterFirst);
   } finally {
     forgetRegisteredTable(page.outer);
     forgetRegisteredTable(page.inner);
@@ -3902,7 +3902,7 @@ function cnAdapterCellEls(tableEl) {
 
 // ---------------------------------------------------------------------------
 // Contextmenu activation pin. The contextmenu handler in content.js calls
-// DR_STORE.setSelectedTable(table). The expected message sequence below is a
+// DR_MODEL.setActiveTable(table). The expected message sequence below is a
 // literal, so the pin holds on main and in shallow CI checkouts.
 // ---------------------------------------------------------------------------
 (function appModelSelection_parentEquivalence_contextmenuSelectionFlow() {
@@ -3928,7 +3928,7 @@ function cnAdapterCellEls(tableEl) {
 
   // Evaluates `bundle`, then `postEvalLine` (same eval call, so postEvalLine
   // can still reference the bundle's top-level let/const bindings — e.g.
-  // DR_STORE — even though those bindings are not reachable from outside
+  // DR_MODEL — even though those bindings are not reachable from outside
   // this function once eval() returns), captures the 'contextmenu' listener
   // the bundle registers, fires it once against a fresh fixture target, and
   // returns the resulting sendMessage sequence.
@@ -4278,15 +4278,15 @@ function withElementDisplays(fn) {
     ctx.contextmenuHandler({ target: plan.spanAt(5, 1) });
 
     eq('column-first right-click: the grid enters the registry',
-      ctx.store.hasTable(plan.gridEl), true);
+      ctx.model.hasTable(plan.gridEl), true);
     eq('column-first right-click: the grid becomes the active table',
-      ctx.store.getSelectedTable() === plan.gridEl, true);
+      ctx.model.getActiveTable() === plan.gridEl, true);
     eq('column-first right-click: the registry holds the grid alone',
-      ctx.store.getRegisteredTables().map((el) => el === plan.gridEl), [true]);
+      ctx.model.getRegisteredTables().map((el) => el === plan.gridEl), [true]);
     eq('column-first right-click: the grid carries a pillbox',
-      ctx.tableToggles.has(plan.gridEl), true);
+      ctx.tablePillboxes.has(plan.gridEl), true);
     eq('column-first right-click: no column carries a pillbox',
-      plan.columnEls.some((column) => ctx.tableToggles.has(column)), false);
+      plan.columnEls.some((column) => ctx.tablePillboxes.has(column)), false);
   });
 })();
 
@@ -4330,7 +4330,7 @@ function withElementDisplays(fn) {
     eq('column-first range: B2:B5 leaves the Free plan\'s name as written',
       plan.textAt(1, 0), 'Free');
   } finally {
-    DR_STORE.unregisterTable(plan.gridEl);
+    DR_MODEL.unregisterTable(plan.gridEl);
   }
 })();
 
@@ -4346,7 +4346,7 @@ function withElementDisplays(fn) {
     eq('column-first defaults: the plan names stay as written',
       before.map((_, c) => plan.textAt(c, 0)), before.map((column) => column[0]));
   } finally {
-    DR_STORE.unregisterTable(plan.gridEl);
+    DR_MODEL.unregisterTable(plan.gridEl);
   }
 })();
 
@@ -4371,7 +4371,7 @@ function numericLabelColumns() {
     eq('column-first first column off: every data column\'s values change',
       [1, 2, 3, 4].every((c) => [1, 2, 3, 4].every((r) => held.textAt(c, r) !== columns[c][r])), true);
   } finally {
-    DR_STORE.unregisterTable(held.gridEl);
+    DR_MODEL.unregisterTable(held.gridEl);
   }
   const released = makeColumnFirstGrid(numericLabelColumns());
   try {
@@ -4381,7 +4381,7 @@ function numericLabelColumns() {
     eq('column-first first column on: 4,812,377 in the label column shows 5,000,000',
       released.textAt(0, 1), '5,000,000');
   } finally {
-    DR_STORE.unregisterTable(released.gridEl);
+    DR_MODEL.unregisterTable(released.gridEl);
   }
 })();
 
@@ -4404,8 +4404,8 @@ function numericLabelColumns() {
   const plan = makeColumnFirstGrid(planGridColumns());
   try {
     roundTableUnder(plan.gridEl, Object.assign({}, DR_DEFAULTS, { rangeExpr: 'B2:B5' }));
-    const state = collectCaptureState({ store: DR_STORE });
-    const tableRec = state.tables[DR_STORE.getRegisteredTables().indexOf(plan.gridEl)];
+    const state = collectCaptureState({ model: DR_MODEL });
+    const tableRec = state.tables[DR_MODEL.getRegisteredTables().indexOf(plan.gridEl)];
     eq('column-first capture: the grid records five rows', tableRec && tableRec.rowCount, 5);
     eq('column-first capture: the grid records seven columns', tableRec && tableRec.columnCount, 7);
     const at = (r, c) => tableRec.cells.find((cell) => cell.row === r && cell.col === c);
@@ -4418,7 +4418,7 @@ function numericLabelColumns() {
     eq('column-first capture: row 1 column 2 records no original',
       at(1, 2) && at(1, 2).original, null);
   } finally {
-    DR_STORE.unregisterTable(plan.gridEl);
+    DR_MODEL.unregisterTable(plan.gridEl);
   }
 })();
 
@@ -4447,7 +4447,7 @@ function numericLabelColumns() {
     }
     ctx.contextmenuHandler({ target: grid.cellAt(2, 1) });
     eq('row-first right-click: section 12\'s grid enters the registry as the active table',
-      ctx.store.hasTable(grid.gridEl) && ctx.store.getSelectedTable() === grid.gridEl, true);
+      ctx.model.hasTable(grid.gridEl) && ctx.model.getActiveTable() === grid.gridEl, true);
   });
 })();
 

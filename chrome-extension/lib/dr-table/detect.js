@@ -23,8 +23,8 @@
  * findings only — it never writes a marker class or builds a table pillbox,
  * and (app-model-registry sprint) it never reads the dr-ext-grid class as
  * state either: "have I already found this element" is an injected opts.isSeen
- * check (see findTargetTable, findTables). Callers (ui-toggle.js, content.js)
- * own both sides: they check DR_STORE's table registry and, for a first-time
+ * check (see findTargetTable, findTables). Callers (ui-pillbox.js, content.js)
+ * own both sides: they check DR_MODEL's table registry and, for a first-time
  * match, write the dr-ext-grid marker (a style hook only, from here on) and
  * construct the widget.
  *
@@ -287,8 +287,8 @@ const GRID_ROUNDED_CLASS = 'dr-ext-rounded';
  * port-with-a-working-default pattern as StyleProbe above. The
  * default is a private WeakMap<cellEl, record> — correct for a standalone or
  * test caller with no application model to hand in. content.js's real call
- * sites inject a port backed by DR_STORE's per-table registry entry (see
- * app/store.js, loaded after this file) instead, which is what makes a
+ * sites inject a port backed by DR_MODEL's per-table registry entry (see
+ * app/model.js, loaded after this file) instead, which is what makes a
  * cell's originals survive a rounding toggle without a page attribute.
  * A custom port is passed via opts.originalsPort on makeAdapter.
  * The record's shape is documented at applyPatches in makeCellObj.
@@ -1418,7 +1418,7 @@ function placeDecision(decision, text, layout, opts = {}) {
 // --- Table/grid detection predicates ---
 // Decide whether an element is a roundable table/grid. Grouped with the adapters
 // because they read DOM shape and lean on the GRID_* constants and makeAdapter
-// defined above. Consumed by the pillbox view (ui-toggle.js) and the engine.
+// defined above. Consumed by the pillbox view (ui-pillbox.js) and the engine.
 
 /**
  * Heuristic test: does `el` look like a data grid built from non-table elements?
@@ -2181,7 +2181,7 @@ function nominateNest(chainRoot, opts = {}) {
  * `root` — an added node inside a wrapper already in the page — which is what
  * makes a rediscovery re-evaluate the whole nest.
  *
- * REPORTS only, per nominateNest. Both live scanners (ui-toggle.js's
+ * REPORTS only, per nominateNest. Both live scanners (ui-pillbox.js's
  * load-time scan and content.js's added-node pass) reach the grids on a page
  * through this function, and the controller turns each outcome into a
  * registration or a pending table.
@@ -2228,7 +2228,7 @@ function nominateNests(root, opts = {}) {
  * REPORTS only — like findTargetTable, this never writes the dr-ext-grid
  * marker class and never builds a table pillbox. Each result is
  * { handle, isNew }; isNew is computed from opts.isSeen (a caller-supplied
- * "have I already handled this element" check — e.g. DR_STORE.hasTable,
+ * "have I already handled this element" check — e.g. DR_MODEL.hasTable,
  * for both native tables and grid roots alike). Without opts.isSeen every
  * result reports isNew: true, since detection keeps no registry of its own.
  *

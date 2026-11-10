@@ -9,17 +9,17 @@
  * The application model.
  *
  * Owns the fields that used to live as file-level `let` bindings in
- * content.js (written into directly from ui-toggle.js) or, for settings,
+ * content.js (written into directly from ui-pillbox.js) or, for settings,
  * nowhere at all — content.js used to pull them from the sidebar's live DOM
  * on every sidebar open, via a ten-retry polling loop (see the app-model-
  * settings sprint that replaced it):
  *
- *   - selectedTable   The table the user last targeted — by right-click, or
- *                      by clicking a different table's toggle while the
- *                      sidebar is open. content.js called this
+ *   - activeTable     The table the user last targeted — by right-click, or
+ *                      by pressing a different table's table pillbox while
+ *                      the sidebar is open. content.js called this
  *                      lastRightClickedTable; sidebar.js's "bound" language
  *                      (setTableBound) names the same idea from the
- *                      sidebar's side. One field, one name: selectedTable.
+ *                      sidebar's side. One field, one name: activeTable.
  *
  *   - errorState      The tab's error state: whether an extension error has
  *                      been recorded on this page, how many, and the last
@@ -42,7 +42,7 @@
  * back to a table could not bring back its settings. Each table's settings,
  * in its registry entry below, are now the only settings the model holds.
  *
- * Reads go through the getters below. The only way to change selectedTable
+ * Reads go through the getters below. The only way to change activeTable
  * is its setter, which does exactly two things: update the field, then
  * DR_BUS.publish() the field's whole new value as a state-change. No caller
  * can assign these fields directly — there is nothing to assign; the fields
@@ -52,15 +52,15 @@
  * different shape and a different update contract — see the section below.
  * Its one publishing setter is setTableSettings.
  *
- * The store holds no DOM logic and calls no chrome API itself; the one side
+ * The application model holds no DOM logic and calls no chrome API itself; the one side
  * effect a publishing setter has, beyond updating its own field, is a
  * publish through DR_BUS.
  *
- * Loaded after adapters/messaging.js (DR_BUS) and before ui-toggle.js.
+ * Loaded after adapters/messaging.js (DR_BUS) and before ui-pillbox.js.
  */
 
-const DR_STORE = (function () {
-  let selectedTable = null;
+const DR_MODEL = (function () {
+  let activeTable = null;
 
   // --- Table registry ---
   //
@@ -71,7 +71,7 @@ const DR_STORE = (function () {
   // removed subtree for registered tables, so a plain Set holds the same
   // tables. registerTable and unregisterTable write both, at the call sites
   // that tear down the table's other per-table resources (the re-apply
-  // observer and its timer, tableResizeObservers). ui-toggle.js's scroll and
+  // observer and its timer, tableResizeObservers). ui-pillbox.js's scroll and
   // resize repositioning iterates its own trackedTables Set, not this one.
   const tableRegistry = new WeakMap();
   const registeredTables = new Set();
@@ -96,7 +96,7 @@ const DR_STORE = (function () {
         // The table's form: 'original' | 'simplified'. 'original' covers both
         // "never rounded" and "rounded, currently showing originals". It
         // records what the screen shows; the table pillbox shows the on/off
-        // value instead (isTableOn in ui-toggle.js).
+        // value instead (isTableOn in ui-pillbox.js).
         appliedFlag: 'original',
         // The table's settings: its on/off value and every simplification
         // option, with the shipped defaults filled in. null until the first
@@ -111,7 +111,7 @@ const DR_STORE = (function () {
         maxMagnitude: null,
         // The shape fingerprint: { columnCount, headerTexts } as read by
         // lib/dr-table's readTableFingerprint at registration.
-        // createToggleForTable (ui-toggle.js) is the one writer. The
+        // createPillboxForTable (ui-pillbox.js) is the one writer. The
         // controller compares the table's current shape against it before
         // every action, and discards the whole entry on a mismatch — the
         // page replaced the table's content, so the originals and the form
@@ -127,8 +127,8 @@ const DR_STORE = (function () {
     return entry;
   }
 
-  function getSelectedTable() {
-    return selectedTable;
+  function getActiveTable() {
+    return activeTable;
   }
 
   // A view that opens or reconnects (the sidebar re-opening, most notably)
@@ -136,12 +136,12 @@ const DR_STORE = (function () {
   // missed while it was gone — the bus keeps no history, so a missed
   // publish is gone for good from the bus's point of view.
   function getSnapshot() {
-    return { selectedTable, errorState: getErrorState() };
+    return { activeTable, errorState: getErrorState() };
   }
 
-  function setSelectedTable(table) {
-    selectedTable = table;
-    DR_BUS.publish('state:selectedTableChanged', { table: selectedTable });
+  function setActiveTable(table) {
+    activeTable = table;
+    DR_BUS.publish('state:activeTableChanged', { table: activeTable });
   }
 
   // --- Error state ---
@@ -186,8 +186,8 @@ const DR_STORE = (function () {
   // not application-level state a view redraws itself from.
 
   // registerTable: the "found" moment as far as the table pillbox view is concerned —
-  // called once, from ui-toggle.js's createToggleForTable, idempotent so a
-  // rediscovery (e.g. injectTogglesForAddedNode revisiting a node) is a
+  // called once, from ui-pillbox.js's createPillboxForTable, idempotent so a
+  // rediscovery (e.g. injectPillboxesForAddedNode revisiting a node) is a
   // no-op. It is NOT the only path to a table having a registry entry:
   // setTableOriginal, setTableAppliedFlag, setTableSettings, and
   // setTableMaxMagnitude below all call the same _ensureEntry and will
@@ -210,7 +210,7 @@ const DR_STORE = (function () {
 
   // getRegisteredTables: the enumerable companion's one reader —
   // content.js's removed-subtree cleanup, which needs to iterate every
-  // found table. (ui-toggle.js's scroll/resize repositioning iterates its
+  // found table. (ui-pillbox.js's scroll/resize repositioning iterates its
   // own trackedTables Set instead; it does not read this.)
   function getRegisteredTables() {
     return Array.from(registeredTables);
@@ -304,9 +304,9 @@ const DR_STORE = (function () {
   }
 
   return {
-    getSelectedTable,
+    getActiveTable,
     getSnapshot,
-    setSelectedTable,
+    setActiveTable,
     getErrorState,
     recordError,
     registerTable,

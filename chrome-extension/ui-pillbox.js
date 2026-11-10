@@ -12,15 +12,15 @@
  * highlight/flash affordances, and the detection predicates (looksLikeGrid,
  * findTargetTable, isDataTable) that decide what counts as a roundable table.
  * Module-level state here is view-transient only — DOM/timer bookkeeping
- * (tableToggles: table → its button element; trackedTables: the
+ * (tablePillboxes: table → its button element; trackedTables: the
  * reposition-on-scroll list; the resize-observer map; the style-injected
  * flags; the per-button auto-collapse timer) — never selection, sidebar, or
- * "have I found this table" state, which live in DR_STORE (app/store.js).
- * Before the app-model-registry sprint, tableToggles/trackedTables and the
+ * "have I found this table" state, which live in DR_MODEL (app/model.js).
+ * Before the app-model-registry sprint, tablePillboxes/trackedTables and the
  * dr-ext-grid marker class doubled as three separate "tables found" stores;
- * createToggleForTable now also registers the table with DR_STORE, and
- * every "have I already handled this element" check reads DR_STORE.hasTable
- * instead. tableToggles/trackedTables keep their narrower remaining job: a
+ * createPillboxForTable now also registers the table with DR_MODEL, and
+ * every "have I already handled this element" check reads DR_MODEL.hasTable
+ * instead. tablePillboxes/trackedTables keep their narrower remaining job: a
  * DOM reference to each table's button, for aria-pressed updates and
  * scroll/resize repositioning. A user action (click/tap) reports an intent
  * on DR_BUS instead of calling a content.js function directly; content.js
@@ -58,7 +58,7 @@ const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 // --- Per-table pillbox infrastructure ---
 
 /** WeakMap from HTMLTableElement → HTMLButtonElement (the morph button) */
-const tableToggles = new WeakMap();
+const tablePillboxes = new WeakMap();
 
 /** Parallel Set of tracked tables so we can iterate for repositioning */
 const trackedTables = new Set();
@@ -71,11 +71,11 @@ const tableResizeObservers = new WeakMap();
 // content.js reads this value and writes its opposite. A table that is on
 // with no cell to simplify still shows on.
 function isTableOn(table) {
-  return DR_STORE.getTableSettings(table).enabled === true;
+  return DR_MODEL.getTableSettings(table).enabled === true;
 }
 
-function syncSwitchForTable(table) {
-  const button = tableToggles.get(table);
+function syncPillboxForTable(table) {
+  const button = tablePillboxes.get(table);
   if (!button) return;
   button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
 }
@@ -86,13 +86,13 @@ function syncSwitchForTable(table) {
 // table's pillbox. The bus delivers the notice to this subscriber in the same
 // context, before the controller applies the written settings.
 DR_BUS.subscribe('state:settingsChanged', () => {
-  const active = DR_STORE.getSelectedTable();
-  if (active) syncSwitchForTable(active);
+  const active = DR_MODEL.getActiveTable();
+  if (active) syncPillboxForTable(active);
 });
 
-let toggleStyleInjected = false;
-function ensureToggleStyleInjected() {
-  if (toggleStyleInjected) return;
+let pillboxStyleInjected = false;
+function ensurePillboxStyleInjected() {
+  if (pillboxStyleInjected) return;
   const style = document.createElement('style');
   style.textContent = `
     .dr-ext-morph {
@@ -163,7 +163,7 @@ function ensureToggleStyleInjected() {
     .dr-ext-morph:focus-visible { outline: 2px solid ${TOGGLE_COLOR_ON}!important; outline-offset: 2px; }
   `;
   (document.head || document.documentElement).appendChild(style);
-  toggleStyleInjected = true;
+  pillboxStyleInjected = true;
 }
 
 // The pillbox sits in the page body, outside every page area, so the
@@ -188,7 +188,7 @@ function isPillboxSpotClipped(table, x, y) {
   return false;
 }
 
-function positionToggle(table, buttonEl) {
+function positionPillbox(table, buttonEl) {
   const rect = table.getBoundingClientRect();
   const computedStyle = window.getComputedStyle(table);
   // The centre of the dot, which sits over the table's top-right corner.
@@ -222,11 +222,11 @@ function positionToggle(table, buttonEl) {
 /** Guard so the global tap-outside collapse listener is added only once */
 let _globalTapCollapseAdded = false;
 
-function createToggleForTable(table) {
+function createPillboxForTable(table) {
   // isDataTable() reads native tables through NativeTableAdapter and grids
   // through GridAdapter.
   if (!isDataTable(table)) return;
-  ensureToggleStyleInjected();
+  ensurePillboxStyleInjected();
 
   const button = document.createElement('button');
   button.type = 'button';
@@ -246,7 +246,7 @@ function createToggleForTable(table) {
   (document.body || document.documentElement).appendChild(button);
 
   setTimeout(() => {
-    positionToggle(table, button);
+    positionPillbox(table, button);
   }, 150);
 
   // Capture pointer type at pointerdown for use in click handler
@@ -301,10 +301,10 @@ function createToggleForTable(table) {
   button.addEventListener('mousedown', (e) => e.stopPropagation());
 
   // View-only bookkeeping: the button element, and the reposition-on-scroll
-  // list. DR_STORE's table registry holds the "found" registration.
-  tableToggles.set(table, button);
+  // list. DR_MODEL's table registry holds the "found" registration.
+  tablePillboxes.set(table, button);
   trackedTables.add(table);
-  DR_STORE.registerTable(table);
+  DR_MODEL.registerTable(table);
   // The shape fingerprint, recorded once per registration. Every later
   // action on this table compares the table's shape against this reading
   // first, and a mismatch discards the entry and registers the table fresh
@@ -313,15 +313,15 @@ function createToggleForTable(table) {
   // takes the cells as they stand, and the two comparison sites pass the
   // same port so a simplified header cell still compares against this
   // reading.
-  DR_STORE.setTableFingerprint(table, readTableFingerprint(table, {
-    originalText: (cellEl) => DR_STORE.getTableOriginalText(table, cellEl),
+  DR_MODEL.setTableFingerprint(table, readTableFingerprint(table, {
+    originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl),
   }));
   DR_LOG.debug("Dynamic Rounding: registered " +
     (table.tagName === 'TABLE' ? 'native table' : 'grid') + ".");
 
   // Set up ResizeObserver for repositioning
   const ro = new ResizeObserver(() => {
-    positionToggle(table, button);
+    positionPillbox(table, button);
   });
   ro.observe(table);
   tableResizeObservers.set(table, ro);
@@ -354,25 +354,25 @@ function createToggleForTable(table) {
 // through the controller keeps both scanners on one copy of that rule. The
 // two files share one scope, and this call runs at DOMContentLoaded, after
 // every content script has loaded.
-function injectTableToggles() {
+function injectTablePillboxes() {
   // Pass 1: native <table> elements; accessibility artifacts are skipped.
   document.querySelectorAll('table').forEach(table => {
     if (isPhantomA11yTable(table)) return;
-    if (!DR_STORE.hasTable(table)) {
-      createToggleForTable(table);
+    if (!DR_MODEL.hasTable(table)) {
+      createPillboxForTable(table);
     }
   });
-  // Pass 2: the nomination step. createToggleForTable re-runs the data test
+  // Pass 2: the nomination step. createPillboxForTable re-runs the data test
   // the step already ran; this view accepts the second read so the detection
   // layer only nominates and this view alone registers.
-  consumeNominations(nominateNests(document, { isSeen: DR_STORE.hasTable }));
+  consumeNominations(nominateNests(document, { isSeen: DR_MODEL.hasTable }));
 }
 
-function repositionAllToggles() {
+function repositionAllPillboxes() {
   for (const table of trackedTables) {
-    const button = tableToggles.get(table);
+    const button = tablePillboxes.get(table);
     if (button) {
-      positionToggle(table, button);
+      positionPillbox(table, button);
     }
   }
 }
@@ -385,8 +385,8 @@ let _scrollResizeListenersAdded = false;
 function ensureScrollResizeListeners() {
   if (_scrollResizeListenersAdded) return;
   _scrollResizeListenersAdded = true;
-  window.addEventListener('scroll', repositionAllToggles, { capture: true, passive: true });
-  window.addEventListener('resize', repositionAllToggles, { passive: true });
+  window.addEventListener('scroll', repositionAllPillboxes, { capture: true, passive: true });
+  window.addEventListener('resize', repositionAllPillboxes, { passive: true });
 }
 
 let highlightStyleInjected = false;
