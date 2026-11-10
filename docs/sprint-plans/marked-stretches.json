@@ -1,0 +1,86 @@
+{
+  "title": "Marked stretches",
+  "base_branch": "main",
+  "created": "2026-11-10",
+  "source_markdown": "docs/sprint-plans/marked-stretches.md",
+  "repo_conventions": {
+    "version_files": [
+      {
+        "path": "chrome-extension/manifest.json",
+        "format": "dotted integers in `version` key; bumped by the merge-time workflow — sprint branches must not touch it"
+      },
+      {
+        "path": "js/src/entry.js",
+        "format": "the ` * [VERSION] x.y.z` line, carried into js/round_dynamic.js by the Sheets build; bumped by the merge-time workflow — sprint branches must not change the version number"
+      },
+      {
+        "path": "python/pyproject.toml",
+        "format": "semver in `version` key; bumped by the merge-time workflow — sprint branches must not touch it; no sprint here changes python/"
+      }
+    ],
+    "version_bump_policy": "merge-workflow",
+    "test_command": "node chrome-extension/tests.js && node js/tests.js && node js/doc-tests.js && node scripts/build-sheets.js --check",
+    "gate_command": "scripts/check-files.sh --staged && scripts/check-vocab.sh --staged",
+    "build_command": "node scripts/build-sheets.js",
+    "branch_naming": "refactor/<label>, feature/<label>, fix/<label> by change type, as each sprint's branch field states; never claude/ or session/",
+    "dependent_policy": "after-merge",
+    "base_branch_writes": "pull-request",
+    "commit_convention": "Conventional Commits (refactor:, feat:, fix:, docs:, test:); a vocabulary definition lands as its own docs: commit on the sprint branch; no attribution trailer and no generated-by line",
+    "pr_template": "AGENTS.md, section Pull requests",
+    "vocabulary": "docs/vocabulary.md is the canon; read it in full before the first tool call, sweep new prose at every commit, and define a new concept on the branch that makes it real",
+    "docs_rule": "A behavior change updates every living doc it invalidates on the same branch; each sprint's scope names its docs. The ladder and table step are in the Sheets build, so a change to either rebuilds js/round_dynamic.js and commits it."
+  },
+  "sprints": [
+    {
+      "label": "stretch-shape",
+      "branch": "refactor/stretch-shape",
+      "goal": "Replace the classification ladder's one mode per cell with a cell-level gate and a list of stretches, with every result unchanged.",
+      "scope": "classifyCell (chrome-extension/lib/dr-simplify/ladder.js) returns { gate, stretches }. A stretch holds its kind (number, date, time, or a protected kind: identifier, quoted span, superscript span, era-marked year, impossible date, or a date or time whose switch is off), its bounds in the cell's trimmed text, its reader's payload, and, for a stretch that stays as written, its reason. The gate keeps the range expression, first row, first column, and whole-link rules. Today's modes map one to one: a pure cell, unit number, or bracketed number gives one number stretch; an extracted cell gives its number stretches; a date cell gives its date stretches; a time cell gives one time stretch; the masked ranges extractSimplifyMatches reads become protected stretches. roundTimeText (lib/dr-number/parsing.js) takes a stretch's bounds and rounds the clock time inside them; the ladder still emits only whole-cell time stretches in this sprint. Move every consumer onto the stretch list: the placement step (placeDecision, lib/dr-table/detect.js) checks every changed stretch for one text piece, and the content script's separate date-and-time piece check (cellPatches) goes; the data test (holdsRoundableCell) counts a cell holding any stretch that changes; the table step (lib/dr-simplify/table.js) reads number stretches for the max magnitude and builds one patch per changed stretch; the lens preview sample pool (numericPreviewCells) reads number stretches; the Sheets entry source (js/src/entry.js) splices the patches. Remove decisionToLegacyInfo. Rebuild js/round_dynamic.js. Add 'stretch' to docs/vocabulary.md in its own docs: commit, mark 'mode' retired in its favor, and redefine 'pure cell' and 'extracted cell' as stretch lists. Update docs/design.md's description of the ladder.",
+      "out_of_scope": "Any change to what a cell becomes. Marking a second stretch kind inside a cell that has one today. The last-hour time rule (sprint last-hour-times).",
+      "acceptance_criteria": [
+        "All four suites pass with no change to any expected value; test edits only rename fields or read the new shape.",
+        "No reader of `mode` or `decisionToLegacyInfo` remains in chrome-extension/ or js/src/.",
+        "The date-and-time piece check runs in the placement step, and its debug row text is unchanged.",
+        "js/round_dynamic.js matches the build (`node scripts/build-sheets.js --check`)."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "L",
+      "dev_notes": "The data test calls the same classification as the rounding pass (classifyTableCell). A date or time that crosses two text pieces still counts in the data test today, so the piece check moved into placement drops the patch and still counts the stretch. Keep the ambiguous-date pending flag on the date stretch, so the column post-pass reads it as before. Every skip reason in the ladder's doc comment becomes a stretch reason or a gate reason; keep every reason string a debug row prints. last-hour-times also edits roundTimeText in the same wave; whichever merges second merges main into its branch and keeps both changes."
+    },
+    {
+      "label": "last-hour-times",
+      "branch": "fix/last-hour-times",
+      "goal": "At hour level, a time in the last hour of the clock rounds down to the hour, so no rounded time moves past midnight or past the date beside it.",
+      "scope": "In roundTimeText (chrome-extension/lib/dr-number/parsing.js), an hour of 23, an hour of 11 with PM, or an hour of 11 with no AM or PM rounds down to ':00' whatever its minutes; every other hour rounds as today, 11 AM included (11:45 AM becomes 12:00 PM). roundISODateTime applies the same rule in place of its clamp to 23:59. Rebuild js/round_dynamic.js. Update every living doc that states hour rounding: docs/design.md, chrome-extension/README.md, and the sidebar help card if it states it. Add rows for 23:45, 11:45 PM, 11:45, and 11:45 AM to the time section of docs/test-pages/tables.html, each with its expected result.",
+      "out_of_scope": "Times inside text (sprint mixed-cell-stretches). Minute granularity.",
+      "acceptance_criteria": [
+        "At hour level: 23:45 becomes 23:00, 11:45 PM becomes 11:00 PM, 11:45 becomes 11:00, and '2026-11-09 23:45' becomes '2026-11-09 23:00'.",
+        "22:45 still becomes 23:00, 10:45 PM still becomes 11:00 PM, and 11:45 AM becomes 12:00 PM.",
+        "All four suites pass; the expected values that change are the last-hour cases alone, and the pull request lists each."
+      ],
+      "depends_on": [],
+      "version_bump": "patch",
+      "complexity": "S",
+      "dev_notes": "The rule reads the hour as written, before the 12-hour conversion, so 11 PM and 23 meet one test. Google Sheets keeps times off, so this changes nothing in Sheets. stretch-shape edits roundTimeText in the same wave (it adds stretch bounds); whichever merges second merges main into its branch and keeps both changes."
+    },
+    {
+      "label": "mixed-cell-stretches",
+      "branch": "feature/mixed-cell-stretches",
+      "goal": "Mark every date, time, number, and protected stretch in a cell, so each stretch takes its own rule and switch.",
+      "scope": "The ladder runs every reader over the cell's trimmed text and settles overlaps in this order, the earlier keeping the characters: quoted span, superscript span, identifier, ISO date-time, date, clock time, era-marked year, number. It no longer stops at the first whole-cell match. A clock time inside text becomes a time stretch when the Times switch is on, with its AM or PM suffix inside the stretch, and stays a protected stretch when it is off. A number stretch that is the cell's only stretch, with only format marks or a unit around it, rounds whatever the numbers-inside-text switch holds; a number stretch that shares its cell with words or another stretch follows that switch; a date or time stretch follows its own switch alone. Product decisions (plan section 6): (1) an ISO date-time splits into a date stretch (Dates switch and granularity) and a time stretch (Times switch and granularity); a changed time stretch writes ' HH:MM' as the ISO rule does today; a time stretch that stays as written keeps its seconds and offset; the separator becomes a space whenever either stretch changes and stays as written only while both stay as written. (2) An all-numeric date the column post-pass cannot read holds back that cell's date stretches alone; its other stretches change. (3) The currency and percent switches, when off, hold back only the number stretch whose number span carries the currency sign, currency code, or percent sign; getExclusionReason loses its percent and currency branches. Docs: docs/design.md and chrome-extension/README.md describe mixed cells; js/README.md and js/tests-googlesheets-tab.md state the Sheets change (dates and times stay off in Sheets, so a date's digits stay protected and a number beside it now rounds). Add a new section to docs/test-pages/tables.html holding one table of mixed cells: a written date with a clock time, a date with a currency amount, a date with a plain number, a clock time with a number, and an ISO date-time with a number, each row with its expected result. Add rows for the same shapes to js/round-dynamic-cases.json so the Sheets and extension suites run them. Rebuild js/round_dynamic.js.",
+      "out_of_scope": "The Outlook table swap that loses a table's originals ('Monday, 2026' rounding to '2,000'); a separate fix carries the record to the replacing element. Python, which reads no dates or times. Issue #221 (the data test's number reading versus the rounding pass's).",
+      "acceptance_criteria": [
+        "With dates at year and times at hour: 'Monday, November 09 2026 at 19:54 UTC' becomes 'Monday, 2026 at 20:00 UTC'; 'Paid $12,345 on November 09 2026' rounds the amount and shows the year; '2026-11-09T19:54 12,345' becomes '2026 20:00' followed by the rounded number, with no digit of the date or time rounded as a number; '2026-11-09T19:54' becomes '2026 20:00'.",
+        "Every row of the ISO date-time results table in plan section 6 holds, including dates at year with times off: '2026-11-09T19:54:00Z' becomes '2026 19:54:00Z'.",
+        "With the currency switch off, 'Paid $12,345 on November 09 2026' keeps the amount and shows the year; with an unresolved all-numeric date, '03/04/2026: 12,345' keeps the date and rounds the number.",
+        "A cell that is one date, one clock time, one identifier, or one number gives the same result as on main, proven by the existing expected values; ISO date-time expected values change under decision 1, and the pull request lists each.",
+        "The max magnitude counts a number that shares a cell with a date, and the new test-page section and case-table rows cover every mixed shape listed in scope."
+      ],
+      "depends_on": ["stretch-shape"],
+      "version_bump": "minor",
+      "complexity": "L",
+      "dev_notes": "findDates already returns bounds and clockTimeRanges already finds times inside text; the new work is the overlap pass and using the span time rounder. findDates finds no date in '2026-11-09T19:54' today, because its date end test rejects the letter T after the day; the ISO date-time reader marks both stretches itself, from parseISODateTime's groups widened to a search inside text, and the date stretch rounds through roundDateText. An impossible date becomes a protected stretch, so its digits never round as numbers. Each changed stretch takes its own piece check: a stretch that crosses pieces stays as written with its debug row, and the cell's other stretches still change. isTimeLike and isDateTimeLike lose their ladder callers; remove each one with no other reader in the same change. The pull request takes the minor label (a visible change on pages and in Sheets)."
+    }
+  ]
+}

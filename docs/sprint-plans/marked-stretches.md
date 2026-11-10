@@ -1,6 +1,6 @@
 # Sprint Plan: Marked stretches
 
-**Status:** PROPOSED-DRAFT
+**Status:** APPROVED
 **Created:** 2026-11-10
 **Base branch:** main
 **Slug:** marked-stretches
@@ -24,7 +24,7 @@ Two captures of an Outlook security-alert email (2026-11-09) showed that a cell 
 
 ## 2. Repo Conventions
 
-- **Version files.** `chrome-extension/manifest.json`, `js/package.json` and `js/src/header.js` (via the Sheets build), `python/pyproject.toml`. `scripts/bump-versions.py` holds the table.
+- **Version files.** `chrome-extension/manifest.json`, `js/src/entry.js` (its `[VERSION]` line, carried into `js/round_dynamic.js` by the Sheets build), `python/pyproject.toml`. `scripts/bump-versions.py` holds the table.
 - **Version bump policy.** `merge-workflow`: the `Bump package versions on merge` workflow bumps after each merge. Sprint branches never touch version files.
 - **Test command.** `node chrome-extension/tests.js && node js/tests.js && node js/doc-tests.js && node scripts/build-sheets.js --check`.
 - **Gate command.** `scripts/check-files.sh --staged && scripts/check-vocab.sh --staged` (the `pre-commit` hook runs both).
@@ -227,3 +227,4 @@ ISO date-time results, "2026-11-09T19:54:00Z" unless the row names another value
 - 2026-11-10: The product manager decided the ISO date-time split, the ambiguous date held per stretch, the currency and percent switches held per number stretch, and the last-hour rule. Sprint `last-hour-times` added.
 - 2026-11-10: The product manager decided that 11:xx AM rounds as any other morning time, and that an ISO date-time's two stretches follow their own switches when one stays as written.
 - 2026-11-10: The product manager decided that an ISO date-time's separator becomes a space whenever either stretch changes.
+- 2026-11-10: The product manager approved the plan.
