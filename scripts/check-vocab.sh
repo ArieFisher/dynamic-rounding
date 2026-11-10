@@ -18,10 +18,10 @@ set -uo pipefail
 # Policy
 # --------------------------------------------------------------------------
 
-# The policy is the Pattern column of docs/vocabulary.md: every table whose
-# header row holds a cell named Pattern contributes that column. The column is
+# The policy is the Block pattern column of docs/vocabulary.md: every table
+# whose header row holds a cell named Block pattern contributes that column. The column is
 # the repository's only list of retired synonyms, and this script keeps no
-# second copy. A row whose Pattern cell is not a backtick-wrapped expression
+# second copy. A row whose Block pattern cell is not a backtick-wrapped expression
 # carries no pattern, and that row is left to the human sweep.
 #
 # How to write a pattern — word boundaries per edge, the collocation rule, and
@@ -40,7 +40,7 @@ VOCAB_DOC="$repo_root/docs/vocabulary.md"
 # after it. A '\b' passes through untouched.
 #
 # The first row of a table is its header. The column whose header cell reads
-# Pattern is the one this loader reads, in that table only; a table with no
+# Block pattern is the one this loader reads, in that table only; a table with no
 # such header contributes nothing.
 load_patterns() {
   awk '
@@ -58,7 +58,7 @@ load_patterns() {
           name = cell[i]
           sub(/^[ \t]+/, "", name)
           sub(/[ \t]+$/, "", name)
-          if (name == "Pattern") column = i
+          if (name == "Block pattern") column = i
         }
         next
       }
@@ -80,7 +80,7 @@ if [[ ! -r "$VOCAB_DOC" ]]; then
 fi
 
 patterns_text=$(load_patterns "$VOCAB_DOC") || {
-  echo "check-vocab: cannot read the Pattern column — refusing to pass without inspecting" >&2
+  echo "check-vocab: cannot read the Block pattern column — refusing to pass without inspecting" >&2
   exit 2
 }
 
@@ -103,7 +103,7 @@ EXEMPT_PATHS='^docs/sprint-logs/|^docs/sprint-plans/|^docs/research/|^js/CHANGEL
 # The pattern list is the whole policy, and an empty or broken list reports the
 # same silence as clean prose. These checks turn that silence into a failure,
 # on every run of the gate rather than only when the self-test runs in CI. The
-# list comes from markdown tables, so a renamed Pattern header or a reshaped
+# list comes from markdown tables, so a renamed Block pattern header or a reshaped
 # row lands here too: it reads as an empty list, and the gate fails.
 
 # A sentence the gate must be able to see. It belongs to no living doc, so a
@@ -218,7 +218,7 @@ while IFS= read -r file; do
 done <<< "$changed"
 
 if (( failures > 0 )); then
-  echo "check-vocab: $failures finding(s) blocked. Replace the retired synonym with the term in the row whose Pattern matched (docs/vocabulary.md)." >&2
+  echo "check-vocab: $failures finding(s) blocked. Replace the retired synonym with the term in the row whose Block pattern matched (docs/vocabulary.md)." >&2
   exit 1
 fi
 exit 0

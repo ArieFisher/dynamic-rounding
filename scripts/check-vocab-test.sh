@@ -2,7 +2,7 @@
 #
 # Self-test for scripts/check-vocab.sh.
 #
-# The vocabulary gate's whole policy is the Pattern column of the tables in
+# The vocabulary gate's whole policy is the Block pattern column of the tables in
 # docs/vocabulary.md. These cases plant a retired synonym and require the gate
 # to catch it, plant clean and exempt content and require the gate to pass it,
 # and damage that table and require the gate to fail. The gate's preflight is
@@ -92,7 +92,7 @@ expect_block() {
 # written with \b through anything that expands escapes would arrive as a
 # backspace and quietly stop matching.
 expect_refusal() {
-  local name="$1" rows="$2" message="$3" header="${4:-| Term | Meaning | Not | Example | Pattern |}" dir status output
+  local name="$1" rows="$2" message="$3" header="${4:-| Term | Meaning | Not | Example | Block pattern |}" dir status output
   dir=$(scratch_repo)
   write_vocab "$dir" "$rows" "$header"
   printf 'Clean prose about the pillbox.\n' > "$dir/docs/design.md"
@@ -109,10 +109,10 @@ expect_refusal() {
 }
 
 # write_vocab <scratch dir> <table rows> [header row]
-# A minimal vocabulary holding one term table. The Pattern header cell is the
+# A minimal vocabulary holding one term table. The Block pattern header cell is the
 # contract between the table and the gate, so a case can break it.
 write_vocab() {
-  local dir="$1" rows="$2" header="${3:-| Term | Meaning | Not | Example | Pattern |}"
+  local dir="$1" rows="$2" header="${3:-| Term | Meaning | Not | Example | Block pattern |}"
   {
     printf '# Vocabulary\n\n## Terms\n\n'
     printf '%s\n' "$header"
@@ -161,7 +161,7 @@ expect_pass  "linked in its own sense passes"       docs/design.md   'The handle
 expect_block "collocation: tied as coupled"         docs/design.md   'The switch is tied together with the pillbox.'
 expect_pass  "tied in its own sense passes"         docs/design.md   'The release cadence is tied to the academic calendar.'
 
-# Preflight. The Pattern column is the one input nothing else checks,
+# Preflight. The Block pattern column is the one input nothing else checks,
 # so each way of breaking it must produce a failure, not a clean bill.
 #
 # The malformed fixture keeps a valid pattern that matches the canary. Without
@@ -180,7 +180,7 @@ expect_refusal "malformed pattern refuses" \
 expect_refusal "list that misses the canary refuses" \
                '| dead handle | A handle with no table. | orphaned handle | A dead handle stands for a table no longer in the page. | `a-phrase-no-doc-contains` |' \
                'no pattern matches the canary'
-expect_refusal "renamed Pattern header refuses" \
+expect_refusal "renamed Block pattern header refuses" \
                "$canary_row" \
                'the retired-synonym list is empty' \
                '| Term | Meaning | Not | Example | Regex |'
