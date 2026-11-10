@@ -22,15 +22,15 @@ The policy block is the whole gate, so a bad edit there makes it pass everything
 
 ### Vocabulary check
 
-`scripts/check-vocab.sh` reads the Pattern column of the Retired synonyms table in [docs/vocabulary.md](docs/vocabulary.md), and blocks a commit or a pull request when an added line matches a pattern. On a pull request it reads every line the branch added since it left `main`. The script checks:
+`scripts/check-vocab.sh` reads the Pattern column of every table in [docs/vocabulary.md](docs/vocabulary.md), and blocks a commit or a pull request when an added line matches a pattern. On a pull request it reads every line the branch added since it left `main`. The script checks:
 
 - only added lines, so an old line that still holds a retired synonym never blocks an unrelated change
 - only markdown files
 - no historical record, and not the vocabulary itself, which has to spell out the retired synonyms. The exempt-path list near the top of the script holds the exact paths.
 
-A blocked commit prints the file, the pattern it matched, and the line. Replace the retired synonym with the term in the table's Say column. Run the check yourself any time with `scripts/check-vocab.sh --staged`, or on a whole branch with `scripts/check-vocab.sh --range origin/main HEAD`. It exits 0 when every added line is clean, 1 when it blocks a line, and 2 when it cannot run the check at all. The vocabulary states how a new table row takes effect and how to write its pattern.
+A blocked commit prints the file, the pattern it matched, and the line. Replace the retired synonym with the term in the row whose pattern matched. Run the check yourself any time with `scripts/check-vocab.sh --staged`, or on a whole branch with `scripts/check-vocab.sh --range origin/main HEAD`. It exits 0 when every added line is clean, 1 when it blocks a line, and 2 when it cannot run the check at all. The vocabulary states how a new pattern takes effect and how to write one.
 
-The table is the whole policy, so a damaged table would let every line through and look the same as clean prose. To stop that, the script tests its pattern list before it reads any change, and exits 2 when it cannot read the table, when the table yields no patterns, when a pattern is not a valid expression, or when no pattern matches a fixed sentence that holds a known retired synonym. `bash scripts/check-vocab-test.sh` plants retired synonyms, clean prose, exempt files, and damaged tables in a scratch repository and requires the right result for each. Run it after any change to the table or the script; `Repo hygiene` runs it too.
+The Pattern column is the whole policy, so a damaged column would let every line through and look the same as clean prose. To stop that, the script tests its pattern list before it reads any change, and exits 2 when it cannot read the vocabulary, when the tables yield no patterns, when a pattern is not a valid expression, or when no pattern matches a fixed sentence that holds a known retired synonym. `bash scripts/check-vocab-test.sh` plants retired synonyms, clean prose, exempt files, and damaged tables in a scratch repository and requires the right result for each. Run it after any change to a pattern or the script; `Repo hygiene` runs it too.
 
 ## Questions
 
