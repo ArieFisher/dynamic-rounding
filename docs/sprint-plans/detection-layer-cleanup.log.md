@@ -50,6 +50,14 @@ Base branch: main
   - Tests: pass (extension 4,123; library 827; documented examples 90)
   - The sprint changes no behavior and the suite passes unchanged, so the test-writer step added no test. The review confirmed that the restore method's four outcomes are the old cell-release branches, which the existing restore and hover-text tests reach.
 
+- **split-table-package** — commits on feature/detection-layer-cleanup
+  - Reviewer: APPROVE (after 0 retries)
+  - Tests: pass (extension 4,123; library 827; documented examples 90)
+  - Git cannot pair the moves as renames, because the detection file keeps its name. A scratch script compared every top-level declaration, doc comment included, before and after: 77 each, none lost, duplicated, or changed.
+  - The placement step's three exported names moved from `DR_TABLE` to `DR_SIMPLIFY`, because the placement file loads with the simplification library, after `DR_TABLE` is built. No code outside the tests read them through either object.
+  - After APPROVE, comments in other files that named the old file for a moved symbol were pointed at the new files, as their own `chore(table)` commit.
+  - The detection file holds 798 lines after the split.
+
 ### Blocked
 
 None.
