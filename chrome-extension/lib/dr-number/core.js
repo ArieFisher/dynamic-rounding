@@ -141,7 +141,8 @@ function numberFormat() {
 // (U+00A0) pages use for that grouping, alongside the plain space. A line
 // break is no group mark: the browser shows the digits on two lines, which
 // read as two numbers ("125" above "126").
-const GROUP_SPACE_PATTERN = '[^\\S\\r\\n]+';
+const GROUP_SPACE_CLASS = '[^\\S\\r\\n]';
+const GROUP_SPACE_PATTERN = GROUP_SPACE_CLASS + '+';
 
 /**
  * The group shape for one group mark: a first group of one to three digits,

@@ -277,7 +277,8 @@ function numberFormat() {
 // (U+00A0) pages use for that grouping, alongside the plain space. A line
 // break is no group mark: the browser shows the digits on two lines, which
 // read as two numbers ("125" above "126").
-const GROUP_SPACE_PATTERN = '[^\\S\\r\\n]+';
+const GROUP_SPACE_CLASS = '[^\\S\\r\\n]';
+const GROUP_SPACE_PATTERN = GROUP_SPACE_CLASS + '+';
 
 /**
  * The group shape for one group mark: a first group of one to three digits,
@@ -417,7 +418,8 @@ function toNumber(value) {
 // that finds a number inside text and the unit-number pattern both read it,
 // and the leading-zero identifier shape (identifiers.js) reads the in-text
 // pattern to tell a group of a spaced number from a code.
-const SPACED_DIGIT_RUN_PATTERN = '(?<!\\d\\s+)' + groupShapePattern(GROUP_SPACE_PATTERN) + '(?!\\s*\\d)(?:[.,]\\d+)?';
+const SPACED_DIGIT_RUN_PATTERN = '(?<!\\d' + GROUP_SPACE_PATTERN + ')' + groupShapePattern(GROUP_SPACE_PATTERN) +
+  '(?!' + GROUP_SPACE_CLASS + '*\\d)(?:[.,]\\d+)?';
 const DIGIT_RUN_PATTERN = '(?:' + SPACED_DIGIT_RUN_PATTERN + '|\\d(?:[\\d.,]*\\d)?)';
 const NUMBER_IN_TEXT_PATTERN = '(?<![\\w.,@])-?' + DIGIT_RUN_PATTERN;
 const NUMBER_IN_TEXT_REGEX_GLOBAL = new RegExp(NUMBER_IN_TEXT_PATTERN, 'g');
