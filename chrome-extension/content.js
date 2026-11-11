@@ -385,8 +385,7 @@ function dropPendingTable(chainRoot) {
 // Detect and attach pillboxes for tables and grids inside (or equal to) a node
 // added to the page. Pass 1 covers native <table> elements, skipping
 // accessibility artifacts, so a dynamically rendered
-// single-page-application grid is found and an off-screen chart fallback is
-// not. Pass 2 hands the grids to the nomination step in the detection layer
+// single-page-application grid is found and an off-screen table is not. Pass 2 hands the grids to the nomination step in the detection layer
 // (nominateNests), which lists the added node itself when it carries a grid or
 // table role, walks out to the node's chain root, and returns one outcome per
 // nest — the same step the load-time scan runs. The walk out matters here: a

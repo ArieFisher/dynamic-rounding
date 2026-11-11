@@ -35,13 +35,15 @@ const DETECTION_OPTIONS = Object.freeze(Object.fromEntries(
 /**
  * The geometry probe: does `el` look like a grid built from generic elements?
  * The checks run cheapest first; firstCellsAlign is the one that reads boxes.
+ * An accessibility artifact never looks like a grid.
  *
  * @param {Element} el
- * @param {{styleProbe?: object, originalsPort?: object, vendorProfiles?: object[]}} [opts]
+ * @param {{isArtifact?: (el: Element, opts: object) => boolean, styleProbe?: object, originalsPort?: object, vendorProfiles?: object[]}} [opts]
  * @returns {boolean}
  */
 function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
+  if ((opts.isArtifact || isAccessibilityArtifact)(el, opts)) return false;
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   const children = Array.from(el.children);
   if (children.length < DR_DETECTION_SETTINGS.gridMinChildren) return false;
@@ -229,35 +231,33 @@ function _parsePx(value) {
 }
 
 /**
- * Whether a <table> is an accessibility artifact: a table that exists for
- * screen readers or as a chart's fallback. True when the table or an ancestor
- * carries aria-hidden="true", when the nearest positioned ancestor (or the
- * table) sits offscreen, or when that ancestor also contains a labelled <svg>.
+ * Whether an element, a native table or a grid, is an accessibility artifact:
+ * an element that exists for screen readers. True when the element or an
+ * ancestor carries aria-hidden="true", or when the element, or its nearest
+ * positioned ancestor, sits offscreen.
  *
- * @param {Element} table
+ * @param {Element} el
  * @param {{styleProbe?: object}} [opts]
  * @returns {boolean}
  */
-function isAccessibilityArtifact(table, opts = {}) {
-  if (!table || typeof table.getAttribute !== 'function') return false;
-  if (carriesHiddenMark(table)) return true;
-  const posAncestor = _nearestPositionedAncestor(table, opts);
-  return sitsOffscreen(posAncestor || table, opts.styleProbe || DEFAULT_STYLE_PROBE)
-    || (!!posAncestor && holdsLabelledSvg(posAncestor));
+function isAccessibilityArtifact(el, opts = {}) {
+  if (!el || typeof el.getAttribute !== 'function') return false;
+  if (carriesHiddenMark(el)) return true;
+  return sitsOffscreen(_nearestPositionedAncestor(el, opts) || el, opts.styleProbe || DEFAULT_STYLE_PROBE);
 }
 
 /**
- * Whether `table` or an ancestor carries aria-hidden="true".
- * @param {Element} table
+ * Whether `el` or an ancestor carries aria-hidden="true".
+ * @param {Element} el
  * @returns {boolean}
  */
-function carriesHiddenMark(table) {
-  return walkUp(table, Infinity, (node) => node !== table && typeof node.tagName === 'undefined',
+function carriesHiddenMark(el) {
+  return walkUp(el, Infinity, (node) => node !== el && typeof node.tagName === 'undefined',
     (node) => typeof node.getAttribute === 'function' && node.getAttribute('aria-hidden') === 'true') !== null;
 }
 
 /**
- * @param {Element} el - the nearest positioned ancestor of the table, or the table
+ * @param {Element} el - the nearest positioned ancestor of the element, or the element
  * @param {object} styleProbe
  * @returns {boolean}
  */
@@ -265,21 +265,6 @@ function sitsOffscreen(el, styleProbe) {
   const computed = styleProbe.getComputedStyle(el);
   const left = computed ? _parsePx(computed.left) : NaN;
   return !isNaN(left) && left <= DR_DETECTION_SETTINGS.offscreenLeftPx;
-}
-
-/**
- * Whether the element holds an <svg> with a non-empty aria-label.
- * @param {Element} el - the table's nearest positioned ancestor
- * @returns {boolean}
- */
-function holdsLabelledSvg(el) {
-  if (typeof el.querySelector !== 'function') return false;
-  try {
-    return Array.from(el.querySelectorAll('svg')).some((svg) => {
-      const label = typeof svg.getAttribute === 'function' ? svg.getAttribute('aria-label') : null;
-      return typeof label === 'string' && label.trim() !== '';
-    });
-  } catch (e) { return false; }
 }
 
 /**
@@ -442,8 +427,9 @@ function sameTableFingerprint(a, b) {
 }
 
 /**
- * The two guards of a qualifying element: it is not a native table, and every
- * native table it holds is one isArtifact drops (pass 1 reports the others).
+ * The three guards of a qualifying element: it is not a native table, it is
+ * not an accessibility artifact, and every native table it holds is one
+ * isArtifact drops (pass 1 reports the others).
  *
  * @param {Element} el
  * @param {(table: Element, opts: object) => boolean} isArtifact
@@ -451,7 +437,7 @@ function sameTableFingerprint(a, b) {
  * @returns {boolean}
  */
 function _passesAriaGuards(el, isArtifact, opts) {
-  if (!el || el.tagName === 'TABLE') return false;
+  if (!el || el.tagName === 'TABLE' || isArtifact(el, opts)) return false;
   const nestedTables = typeof el.querySelectorAll === 'function' ? Array.from(el.querySelectorAll('table')) : [];
   return !nestedTables.some((t) => !isArtifact(t, opts));
 }
@@ -581,6 +567,8 @@ function chainRootOf(el, opts = {}, isQualifying = false) {
  *   - 'crowded'    — a depth holds more than one element and no shallower
  *                    depth holds exactly one, so the nest registers nothing
  *                    (the product decision in issue #373).
+ *   - 'artifact'   — the chain root is an accessibility artifact, so the nest
+ *                    registers nothing and a pending table for it stops.
  *   - 'registered' — the nest already holds an element opts.isRegistered
  *                    reports, so a second run over a registered nest registers
  *                    nothing.
@@ -604,6 +592,10 @@ function nominateNest(chainRoot, opts = {}) {
   const isArtifact = opts.isArtifact || isAccessibilityArtifact;
   const isRegistered = opts.isRegistered || (() => false);
   const configuredDepth = opts.nestingDepth ?? DR_DETECTION_SETTINGS.nestingDepth;
+
+  if (isArtifact(chainRoot, opts)) {
+    return { chainRoot, selected: null, outcome: 'artifact', chainSize: 0 };
+  }
 
   // An element nested in a cell is out of this nest (_depthInChain returns
   // -1), so a registered grid inside a cell never makes the grid around it
@@ -692,7 +684,7 @@ function registrableTables(tables, opts = {}) {
  * step over the elements carrying a grid or table role (pass 2).
  *
  * Pass 2 keeps the nests nominateNests reports as 'selected' and drops the
- * other three outcomes. A caller that acts on those — the controller, which
+ * other outcomes. A caller that acts on those — the controller, which
  * holds a pending table for an empty nest — calls nominateNests directly.
  *
  * Each result is { handle, isNew }; isNew is !opts.isRegistered(handle),

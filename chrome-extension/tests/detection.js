@@ -1235,7 +1235,7 @@ const supTestOpts = {
   eq('findTargetTable AC1: the scrolling pane resolution reports isNew',
     result !== null && result.isNew, true);
   eq('findTargetTable AC1: the resolution reads no layout, so the geometry probe did not produce it',
-    styleProbe.calls, 0);
+    styleProbe.layoutReads, 0);
   eq('findTargetTable AC1: the resolution writes no grid marker class',
     [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl]
       .map((el) => el.classList.contains('dr-ext-grid')), [false, false, false]);
@@ -1285,7 +1285,7 @@ const supTestOpts = {
     result !== null &&
       (result.handle === grid.pinnedPaneEl || result.handle === grid.wrapperEl), false);
   eq('findTargetTable AC2: the gutter resolution reads no layout, so the geometry probe did not produce it',
-    styleProbe.calls, 0);
+    styleProbe.layoutReads, 0);
 
   // The layout counter is a live probe: the geometry probe does read layout
   // when a case reaches it, so the zero above stands for a route that stopped
@@ -1296,7 +1296,7 @@ const supTestOpts = {
   findTargetTable(roleLess.children[0].children[0],
     { isRegistered: () => false, styleProbe: roleLessProbe });
   eq('findTargetTable AC2: a role-less tree does reach the geometry probe and read layout',
-    roleLessProbe.calls > 0, true);
+    roleLessProbe.layoutReads > 0, true);
 })();
 
 // --- AC3: a role-bearing element that fails the data test resolves nothing ---
@@ -1352,7 +1352,7 @@ const supTestOpts = {
   eq('findTargetTable AC3: the fall-through resolution reports isNew',
     result !== null && result.isNew, true);
   eq('findTargetTable AC3: the fall-through resolution reads layout, so the geometry probe produced it',
-    styleProbe.calls > 0, true);
+    styleProbe.layoutReads > 0, true);
 })();
 
 // --- AC4: a registered table resolves at the registry route ---
@@ -1883,12 +1883,10 @@ const supTestOpts = {
 // Accessibility artifact predicate: isAccessibilityArtifact
 // ---------------------------------------------------------------------------
 //
-// isAccessibilityArtifact(table) returns true when ANY of three signals holds:
+// isAccessibilityArtifact(table) returns true when EITHER signal holds:
 //   Signal 1 – table or any ancestor has aria-hidden="true"
 //   Signal 2 – nearest positioned ancestor (or the table itself) has
 //               left <= OFFSCREEN_LEFT_PX_THRESHOLD (-9999)
-//   Signal 3 – nearest positioned ancestor contains an <svg> with a non-empty
-//               aria-label
 // Returns false for an ordinary on-screen 2-column numeric table.
 //
 // Mock-building helpers:
@@ -1995,73 +1993,8 @@ const supTestOpts = {
     isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
-// ---------------------------------------------------------------------------
-// Signal 3: nearest positioned ancestor contains <svg> with non-empty aria-label
-// ---------------------------------------------------------------------------
-
-// Signal 3: positioned ancestor has querySelectorAll('svg') returning labelled svg
-(function phantomA11y_signal3_svgWithAriaLabel() {
-  const svg = makePhantomEl({ tagName: 'SVG', attrs: { 'aria-label': 'Monthly Revenue Chart' } });
-  const table  = makePhantomEl({ tagName: 'TABLE' });
-  const posAnc = makePositionedAncestor();
-  posAnc.querySelector    = function() { return svg; };
-  posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
-  chainParents(table, posAnc);
-  eq('isAccessibilityArtifact: positioned ancestor has svg[aria-label="..."] -> true',
-    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
-})();
-
-// Signal 3: multiple SVGs in ancestor, only one has a label — still triggers
-(function phantomA11y_signal3_multipleSvgsOneLabelledOne() {
-  const svgNoLabel  = makePhantomEl({ tagName: 'SVG' }); // no aria-label
-  const svgLabelled = makePhantomEl({ tagName: 'SVG', attrs: { 'aria-label': 'Pie Chart' } });
-  const table  = makePhantomEl({ tagName: 'TABLE' });
-  const posAnc = makePositionedAncestor();
-  posAnc.querySelector    = function() { return svgNoLabel; };
-  posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svgNoLabel, svgLabelled] : []; };
-  chainParents(table, posAnc);
-  eq('isAccessibilityArtifact: one of two svgs has aria-label -> true',
-    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
-})();
-
-// Edge: svg with EMPTY aria-label must NOT trigger signal 3
-(function phantomA11y_signal3_svgEmptyAriaLabel() {
-  const svg    = makePhantomEl({ tagName: 'SVG', attrs: { 'aria-label': '' } });
-  const table  = makePhantomEl({ tagName: 'TABLE' });
-  const posAnc = makePositionedAncestor();
-  posAnc.querySelector    = function() { return svg; };
-  posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
-  chainParents(table, posAnc);
-  eq('isAccessibilityArtifact: svg with empty aria-label does NOT trigger -> false',
-    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
-})();
-
-// Edge: svg with whitespace-only aria-label must NOT trigger signal 3
-(function phantomA11y_signal3_svgWhitespaceAriaLabel() {
-  const svg    = makePhantomEl({ tagName: 'SVG', attrs: { 'aria-label': '   ' } });
-  const table  = makePhantomEl({ tagName: 'TABLE' });
-  const posAnc = makePositionedAncestor();
-  posAnc.querySelector    = function() { return svg; };
-  posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
-  chainParents(table, posAnc);
-  eq('isAccessibilityArtifact: svg with whitespace-only aria-label does NOT trigger -> false',
-    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
-})();
-
-// Edge: svg with NO aria-label attribute at all must NOT trigger signal 3
-(function phantomA11y_signal3_svgNoAriaLabel() {
-  const svg    = makePhantomEl({ tagName: 'SVG' }); // getAttribute returns null
-  const table  = makePhantomEl({ tagName: 'TABLE' });
-  const posAnc = makePositionedAncestor();
-  posAnc.querySelector    = function() { return svg; };
-  posAnc.querySelectorAll = function(sel) { return sel === 'svg' ? [svg] : []; };
-  chainParents(table, posAnc);
-  eq('isAccessibilityArtifact: svg with no aria-label does NOT trigger -> false',
-    isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
-})();
-
-// Edge: no positioned ancestor found at all — signal 3 is skipped entirely (no crash)
-(function phantomA11y_signal3_noPosAncestor() {
+// Edge: no positioned ancestor found at all — no crash
+(function phantomA11y_noPosAncestor() {
   const table = makePhantomEl({ tagName: 'TABLE' });
   // No parentElement — predicate must not throw and returns false
   eq('isAccessibilityArtifact: no positioned ancestor, no signals -> false',
@@ -2080,13 +2013,13 @@ const supTestOpts = {
     isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
-// Negative: positioned ancestor but normal on-screen left (-50px), no svg, no aria-hidden
+// Negative: positioned ancestor but normal on-screen left (-50px), no aria-hidden
 (function phantomA11y_negative_onscreenPositionedAncestor() {
   const table  = makePhantomEl({ tagName: 'TABLE' });
   const posAnc = makePositionedAncestor({ left: '-50px' });
   posAnc.querySelectorAll = function() { return []; };
   chainParents(table, posAnc);
-  eq('isAccessibilityArtifact: positioned ancestor with normal left (-50px), no svg -> false',
+  eq('isAccessibilityArtifact: positioned ancestor with normal left (-50px) -> false',
     isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
 })();
 
@@ -2183,7 +2116,7 @@ const supTestOpts = {
 
 (function pass1Filter_realTable_getsOnePillbox() {
   const realTable = makePass1DataTable();
-  // No aria-hidden, no positioned ancestor, no svg → isAccessibilityArtifact returns false
+  // No aria-hidden, no positioned ancestor → isAccessibilityArtifact returns false
   const wrapper = {
     tagName: 'DIV',
     getAttribute: function() { return null; },

@@ -845,12 +845,19 @@ function makeRoleBearingNest(rows) {
 function makeCountingStyleProbe() {
   const probe = {
     calls: 0,
+    // Reads only the geometry probe makes: the display value and widths. The
+    // artifact filter reads position and left through the same port.
+    layoutReads: 0,
     getComputedStyle(el) {
       probe.calls++;
-      return { display: 'flex', visibility: 'visible', position: 'static', left: '', verticalAlign: '' };
+      return {
+        get display() { probe.layoutReads++; return 'flex'; },
+        visibility: 'visible', position: 'static', left: '', verticalAlign: '',
+      };
     },
     getOffsetWidth(el) {
       probe.calls++;
+      probe.layoutReads++;
       return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1;
     },
   };
@@ -1436,8 +1443,8 @@ function makePositionedAncestor(styleOverrides) {
 // Real on-screen tables must fail isAccessibilityArtifact but pass isDataTable.
 //
 // Helper: build a 2-column 2-row numeric table stub (satisfies isDataTable).
-// Also provide getAttribute (for isAccessibilityArtifact signal 1) and parentElement
-// chain + style (for signals 2/3).
+// Also provide getAttribute (for the aria-hidden signal) and parentElement
+// chain + style (for the off-screen signal).
 //
 function makePass1DataTable(opts) {
   opts = opts || {};
