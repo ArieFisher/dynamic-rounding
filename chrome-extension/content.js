@@ -299,6 +299,8 @@ function consumeNominations(results) {
 //                registers nothing for such a nest, so no watch holds it.
 //   'registered' the nest already holds a registered element, so a second
 //                registration would put a second pillbox on one grid.
+//   'artifact'   the chain root is an accessibility artifact; the nest
+//                registers nothing and no watch holds it.
 // A registration through another path (a right-click) leaves the pending
 // record standing until the next re-test returns
 // 'registered', which drops it here.
@@ -385,8 +387,9 @@ function dropPendingTable(chainRoot) {
 // Detect and attach pillboxes for tables and grids inside (or equal to) a node
 // added to the page. Pass 1 covers native <table> elements, skipping
 // accessibility artifacts, so a dynamically rendered
-// single-page-application grid is found and an off-screen table is not. Pass 2 hands the grids to the nomination step in the detection layer
-// (nominateNests), which lists the added node itself when it carries a grid or
+// single-page-application grid is found and an off-screen table is
+// not. Pass 2 hands the grids to the nomination step in the detection
+// layer (nominateNests), which lists the added node itself when it carries a grid or
 // table role, walks out to the node's chain root, and returns one outcome per
 // nest — the same step the load-time scan runs. The walk out matters here: a
 // node added inside a wrapper already in the page re-evaluates the whole nest

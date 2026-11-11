@@ -35,7 +35,6 @@ const DETECTION_OPTIONS = Object.freeze(Object.fromEntries(
 /**
  * The geometry probe: does `el` look like a grid built from generic elements?
  * The checks run cheapest first; firstCellsAlign is the one that reads boxes.
- * An accessibility artifact never looks like a grid.
  *
  * @param {Element} el
  * @param {{isArtifact?: (el: Element, opts: object) => boolean, styleProbe?: object, originalsPort?: object, vendorProfiles?: object[]}} [opts]
@@ -43,12 +42,12 @@ const DETECTION_OPTIONS = Object.freeze(Object.fromEntries(
  */
 function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
-  if ((opts.isArtifact || isAccessibilityArtifact)(el, opts)) return false;
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   const children = Array.from(el.children);
   if (children.length < DR_DETECTION_SETTINGS.gridMinChildren) return false;
   const { modalFreq, candidates: candidateRows } = childCountCandidates(children);
   if (modalFreq < children.length * DR_DETECTION_SETTINGS.gridRepetitionShare) return false;
+  if ((opts.isArtifact || isAccessibilityArtifact)(el, opts)) return false;
   const computedForDisplay = styleProbe.getComputedStyle(el);
   const display = (computedForDisplay && computedForDisplay.display) || '';
   if (!DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)) return false;
