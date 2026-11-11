@@ -36,7 +36,7 @@ PARENS_REGEX = re.compile(r'^\((.+)\)$')
 # run with no group mark goes to float(). [0-9] rather than \d, because \d
 # matches non-ASCII digits in Python.
 GROUP_SHAPE_REGEX = re.compile(r'^[+-]?[0-9]{1,3}(?:,[0-9]{3})+$')
-GROUP_SPACE_SHAPE_REGEX = re.compile(r'^[+-]?[0-9]{1,3}(?:\s+[0-9]{3})+$')
+GROUP_SPACE_SHAPE_REGEX = re.compile(r'^[+-]?[0-9]{1,3}(?:[^\S\r\n]+[0-9]{3})+$')
 WHITESPACE_REGEX = re.compile(r'\s+')
 # Unicode dash/minus variants normalized to an ASCII "-" before parsing, so a
 # leading unusual dash (e.g. a pasted en dash or minus sign) reads as a

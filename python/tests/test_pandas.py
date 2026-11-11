@@ -84,6 +84,12 @@ class TestStringParsing:
         assert result[1] == 1000000.0
         assert result[2] == 1000.0
 
+    def test_a_line_break_never_groups_digits(self):
+        s = pd.Series(["1 234\n567", "1 234 567"])
+        result = round_dynamic_series(s)
+        assert result[0] == "1 234\n567"
+        assert result[1] == 1000000.0
+
     def test_spaced_digits_outside_the_group_shape_pass_through(self):
         s = pd.Series(["416 555 1234", "2024 12", "1 234,56"])
         result = round_dynamic_series(s)
