@@ -329,10 +329,10 @@
     labelTexts.push(lm[1].trim());
   }
 
-  const expectedOrder = ['words', 'currencies', 'percentages', 'dates', 'times', 'first row', 'first column'];
+  const expectedOrder = ['currencies', 'percentages', 'dates', 'times', 'first row', 'first column'];
 
-  eq('sidebar-tidyup AC1: options section has exactly 7 toggle rows',
-    labelTexts.length, 7);
+  eq('sidebar-tidyup AC1: options section has exactly 6 toggle rows',
+    labelTexts.length, 6);
 
   eq('sidebar-tidyup AC1: toggle rows are in canonical order',
     labelTexts, expectedOrder);
@@ -352,8 +352,6 @@
 
   // ── AC3: DR_DEFAULTS has the seven expected values ──
 
-  eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyMixedCells is true',
-    DR_DEFAULTS.simplifyMixedCells, true);
   eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyMixedCurrency is true',
     DR_DEFAULTS.simplifyMixedCurrency, true);
   eq('sidebar-tidyup AC3: DR_DEFAULTS.simplifyMixedPercent is true',
@@ -375,7 +373,7 @@
   // For each of the seven option inputs by id, verify there is a parent
   // element with class "switch" enclosing the input.
   const optionInputIds = [
-    'simplifyMixedCells', 'simplifyMixedCurrency', 'simplifyMixedPercent',
+    'simplifyMixedCurrency', 'simplifyMixedPercent',
     'simplifyDates', 'simplifyTimes', 'simplifyFirstRow', 'simplifyFirstColumn'
   ];
   for (const id of optionInputIds) {
@@ -453,8 +451,8 @@
   }
 
   // --- AC1: switch appears before .switch-label in each option row ---
-  // Rows to check: simplifyMixedCells, simplifyFirstColumn (simple), simplifyDates, simplifyTimes.
-  const simpleRows = ['simplifyMixedCells', 'simplifyFirstColumn'];
+  // Rows to check: simplifyFirstColumn (simple), simplifyDates, simplifyTimes.
+  const simpleRows = ['simplifyFirstColumn'];
   for (const id of simpleRows) {
     const row = getRowSubstring(id);
     eq(`sidebar switch-left AC1: row "${id}" exists in sidebar.html`,

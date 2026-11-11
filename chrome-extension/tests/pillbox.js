@@ -1192,6 +1192,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   // Replace setTimeout to prevent actual timer from running
   const origSetTimeout = global.setTimeout;
   global.setTimeout = (fn, ms) => 99; // no-op, return fake id
+  const origClearTimeout = global.clearTimeout;
   global.clearTimeout = () => {};
 
   // Simulate pointerdown(touch) + click
@@ -1200,7 +1201,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
 
   global.setTimeout = origSetTimeout;
-  global.clearTimeout = clearTimeout;
+  global.clearTimeout = origClearTimeout;
 
   // After first tap: expanded class added, aria-pressed unchanged
   eq('expanding-toggle: touch first tap adds .expanded class',
@@ -1272,6 +1273,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   // Suppress timers
   const origSetTimeout = global.setTimeout;
   global.setTimeout = () => 99;
+  const origClearTimeout = global.clearTimeout;
   global.clearTimeout = () => {};
 
   // First tap: expand
@@ -1289,7 +1291,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   });
 
   global.setTimeout = origSetTimeout;
-  global.clearTimeout = clearTimeout;
+  global.clearTimeout = origClearTimeout;
 
   const hasRounded = t._cells.some(c => c.classList.contains('dr-ext-rounded'));
   eq('expanding-toggle: touch second tap rounds table cells',
@@ -1359,6 +1361,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   const origSetTimeout = global.setTimeout;
   global.setTimeout = () => 99;
+  const origClearTimeout = global.clearTimeout;
   global.clearTimeout = () => {};
 
   // First tap with pen → should expand
@@ -1367,7 +1370,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
 
   global.setTimeout = origSetTimeout;
-  global.clearTimeout = clearTimeout;
+  global.clearTimeout = origClearTimeout;
 
   eq('expanding-toggle: pen first tap adds .expanded class',
     buttonEl.classList.contains('expanded'), true);
@@ -1556,6 +1559,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   // Suppress setTimeout
   const origSetTimeout = global.setTimeout;
   global.setTimeout = () => 99;
+  const origClearTimeout = global.clearTimeout;
   global.clearTimeout = () => {};
 
   // Fire a pointerdown on an outside target (contains() returns false → should collapse)
@@ -1565,7 +1569,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   global.document.querySelectorAll = origQSA;
   global.setTimeout = origSetTimeout;
-  global.clearTimeout = clearTimeout;
+  global.clearTimeout = origClearTimeout;
   _globalTapCollapseAdded = origTapCollapseAdded;
 
   eq('expanding-toggle: tap-outside collapses .expanded button',
@@ -1651,6 +1655,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   const origSetTimeout = global.setTimeout;
   global.setTimeout = () => 99;
+  const origClearTimeout = global.clearTimeout;
   global.clearTimeout = () => {};
 
   // Fire a pointerdown with target = the button itself (contains returns true)
@@ -1659,7 +1664,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   global.document.querySelectorAll = origQSA;
   global.setTimeout = origSetTimeout;
-  global.clearTimeout = clearTimeout;
+  global.clearTimeout = origClearTimeout;
   _globalTapCollapseAdded = origTapCollapseAdded2;
 
   eq('expanding-toggle: tap-inside preserves .expanded on button',

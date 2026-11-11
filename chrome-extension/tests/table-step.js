@@ -16,7 +16,7 @@ const TABLE_STEP_SETTINGS = {
 
 const TABLE_STEP_LADDER_OPTS = Object.assign({}, DR_DEFAULTS, {
   simplifyFirstRow: true, simplifyFirstColumn: true,
-  simplifyMixedCells: true, simplifyDates: true, simplifyTimes: true,
+  simplifyDates: true, simplifyTimes: true,
 });
 
 // One table, by row and grid column, with invented values. The dataset is
@@ -226,7 +226,7 @@ function applyTableStepPatches(text, patches) {
 //
 // The table step returns a date or time cell's patch over its trimmed text;
 // the pass drops the patch when no single text piece holds that span, and
-// writes the kind's debug row. A date that sits in one piece beside a
+// writes the debug row. A date that sits in one piece beside a
 // whitespace piece rounds.
 
 const TABLE_STEP_DATE_SPLIT_ROW = /date or time split across text pieces stays unchanged/;
@@ -245,9 +245,6 @@ const TABLE_STEP_DATE_SPLIT_ROW = /date or time split across text pieces stays u
       t.pieces(0, 0).map((p) => p.nodeValue), ['2024-', '03-15']);
     eq(`table step, date across two pieces (${kind}): one debug row records the date left unchanged`,
       rwRows('debug', TABLE_STEP_DATE_SPLIT_ROW) - rowsBefore, 1);
-    eq(`table step, date across two pieces (${kind}): the debug row names the table kind`,
-      rwLogged.filter((row) => row.level === 'debug' && TABLE_STEP_DATE_SPLIT_ROW.test(row.text))
-        .slice(-1).map((row) => row.text.includes(`a ${kind} cell date`)), [true]);
     eq(`table step, date across two pieces (${kind}): a date in one piece rounds`,
       t.text(1, 0), '2024-04');
     eq(`table step, date across two pieces (${kind}): a date in one piece beside a whitespace piece rounds`,

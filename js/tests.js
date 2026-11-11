@@ -693,6 +693,29 @@ require('./tests/sheets-ladder.js')({
 });
 
 // =============================================================================
+// A LINE BREAK IS NO GROUP MARK
+// =============================================================================
+
+console.log('=== Line break between digit groups ===\n');
+
+const numberStringsIn = (text) => extractNumbersInText(text).map((found) => found.numStr);
+
+testArrayExact('line break: "Revenue 1 234\\n567 units" reads as two numbers',
+    numberStringsIn('Revenue 1 234\n567 units'), ['1 234', '567']);
+testArrayExact('line break: "Revenue 1,234\\n567 units" reads as two numbers',
+    numberStringsIn('Revenue 1,234\n567 units'), ['1,234', '567']);
+testArrayExact('line break: "125" above "126" reads as two numbers',
+    numberStringsIn('125\n126'), ['125', '126']);
+testArrayExact('line break: "1500" above "1600" reads as two numbers',
+    numberStringsIn('1500\n1600'), ['1500', '1600']);
+testArrayExact('line break: "1 234 567" on one line reads as one number',
+    numberStringsIn('1 234 567'), ['1 234 567']);
+testArrayExact('line break: "Revenue 1 234 567 units" on one line reads as one number',
+    numberStringsIn('Revenue 1 234 567 units'), ['1 234 567']);
+testExact('line break: "125\\n126" rounds as two numbers, not as one number 125126',
+    ROUND_DYNAMIC('125\n126', -1).includes('\n'), true);
+
+// =============================================================================
 // RESULTS
 // =============================================================================
 

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A line break never groups digits**: digits on two lines read as two numbers, so a line break between digit groups no longer joins them into one spaced number. A space still groups.
+  Before: `ROUND_DYNAMIC("Revenue 1 234\n567 units")` → `"Revenue 1,000,000 units"`
+  After: `ROUND_DYNAMIC("Revenue 1 234\n567 units")` → `"Revenue 1 250\n550 units"`
+
 ## [0.4.0] - 2026-11-11
 
 ## [0.3.10] - 2026-11-10

@@ -40,7 +40,6 @@
 // matches } shape the table step reads in its column post-pass, its max
 // magnitude, and its patches.
 function decisionToLegacyInfo(decision) {
-  if (decision.mode === 'pure') return { mode: 'pure', num: decision.value.num };
   if (decision.mode === 'extracted') return { mode: 'extracted', matches: decision.value.matches };
   if (decision.mode === 'date') {
     return { mode: 'date', dates: decision.value.dates, ambiguous: decision.pending === 'ambiguous-date' };
@@ -72,13 +71,12 @@ function resolveAmbiguousDates(entries) {
   });
 }
 
-// The max magnitude over the dataset: every pure cell's number and each
-// number of an extracted cell, from every row of the table.
+// The max magnitude over the dataset: each number of an extracted cell, from
+// every row of the table.
 function datasetMaxMagnitude(entries) {
   const allNums = [];
   for (const { info } of entries) {
-    if (info.mode === 'pure') allNums.push(info.num);
-    else if (info.mode === 'extracted') {
+    if (info.mode === 'extracted') {
       for (const m of info.matches) allNums.push(m.num);
     }
   }
@@ -88,13 +86,12 @@ function datasetMaxMagnitude(entries) {
 // One cell's patches, positioned in the text the cell classified: empty for a
 // skip cell or an unchanged value. A date or time cell takes one patch: its
 // trimmed text, replaced whole, so the text keeps its own whitespace. Every
-// number takes the one write-back, formatNumber, patched in place. A pure
-// cell takes one patch over its number span (pureNumberSpan), so its sign,
-// currency sign, and percent sign stay where the page put them; the patch
-// compares the written digits to the span, which catches a number that is
-// unchanged but whose display simplifies (e.g. "35.0" to "35"). An extracted
-// cell — a unit number, a stacked cell, or numbers inside words, links, or a
-// <sup> — takes one patch per changed number.
+// number takes the one write-back, formatNumber, patched in place. An extracted
+// cell takes one patch per changed number; the patch compares the written
+// digits to the match, which catches a number that is unchanged but whose
+// display simplifies (e.g. "35.0" to "35"). The text around each match, a
+// sign, a currency sign, and a percent sign included, stays where the page
+// put it.
 function classifiedCellPatches(entry, maxMag, settings) {
   const { text, info } = entry;
   const { offsetTop, offsetOther, numTop } = settings;
@@ -106,13 +103,6 @@ function classifiedCellPatches(entry, maxMag, settings) {
       : roundTimeText(trimmed, settings.timeGranularity);
     if (rounded === null || rounded === trimmed) return { patches: [] };
     return { patches: [{ index: lead, numStr: trimmed, newNum: rounded }] };
-  }
-  if (info.mode === 'pure') {
-    const roundedValue = roundCellSetAware(info.num, info.num, maxMag, offsetTop, offsetOther, numTop);
-    const span = pureNumberSpan(text);
-    const newNum = formatNumber(roundedValue, span.numStr);
-    const patches = newNum === span.numStr ? [] : [{ index: span.index, numStr: span.numStr, newNum }];
-    return { patches };
   }
   if (info.mode === 'extracted') {
     const patches = [];

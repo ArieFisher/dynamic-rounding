@@ -35,7 +35,7 @@
       dataset: {},
     };
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      enabled: true, simplifyDates: false, simplifyTimes: false,
       simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: '',
@@ -471,38 +471,21 @@ const consistentCellCountStepPasses = (children) =>
     mapRenderedToFlat('5', '5 kg'), null);
 })();
 
-(function placeDecision_stackedTestReadsTheGapBetweenPieces() {
-  const decision = { mode: 'pure', value: { num: 123 } };
-  const layout = (runsTogether) => ({ original: ['1', '23'], liveStarts: [0, 1], toFlat: [0, 1, 2], runsTogether });
-  eq('placeDecision: pieces on separate lines round as two numbers',
-    placeDecision(decision, '123', layout(() => false)).value.matches.map((m) => m.numStr), ['1', '23']);
-  eq('placeDecision: pieces the shown text runs together skip with reason split',
-    placeDecision(decision, '123', layout(() => true)), { mode: 'skip', reason: 'split' });
-  eq('placeDecision: runsTogether is asked about the second piece',
-    (() => { const asked = []; placeDecision(decision, '123', layout((i) => { asked.push(i); return false; })); return asked; })(),
-    [1]);
-  eq('placeDecision: a stacked native cell counts its numbers in its rendered text',
-    placeDecision(decision, '1\n23', Object.assign(layout(() => false), { toFlat: [0, 1, 1, 2] }))
-      .value.matches.map((m) => m.index), [0, 2]);
-  eq('placeDecision: a stacked native cell with no known positions skips with reason pieces',
-    placeDecision(decision, '123', Object.assign(layout(() => false), { toFlat: null })), { mode: 'skip', reason: 'pieces' });
-  eq('showsPiecesTogether: a line break between pieces answers false',
-    showsPiecesTogether('125\n126', ['125', '126'], 1), false);
-  eq('showsPiecesTogether: a space between pieces answers false',
-    showsPiecesTogether('125 126', ['125', '126'], 1), false);
-  eq('showsPiecesTogether: pieces with nothing between answer true',
-    showsPiecesTogether('6,718,245', ['6,7', '18,245'], 1), true);
-  eq('showsPiecesTogether: shown text that differs from the pieces in more than whitespace answers true',
-    showsPiecesTogether('$7,002,300', ['7002300', '$', '7,002,300'], 2), true);
-  eq('showsPiecesTogether: empty shown text answers true',
-    showsPiecesTogether('', ['125', '126'], 1), true);
-  eq('placeDecision: a value across pieces that is not stacked skips with reason pieces',
-    placeDecision(decision, '12 kg', { original: ['12 k', 'g'], liveStarts: [0, 4], toFlat: null }),
-    { mode: 'skip', reason: 'pieces' });
-  eq('placeDecision: a value in one piece stands',
-    placeDecision(decision, '123', { original: ['123'], liveStarts: [0], toFlat: null }), decision);
+(function placeDecision_keepsTheNumbersThatSitInOnePiece() {
+  const match = (numStr, index) => ({ numStr, num: Number(numStr), index });
+  const extracted = (...matches) => ({ mode: 'extracted', reason: 'simplify', value: { matches } });
+  const layout = (original, toFlat) => ({ original, toFlat });
+  eq('placeDecision: pieces on separate lines keep both numbers',
+    placeDecision(extracted(match('1', 0), match('23', 2)), layout(['1', '23'], [0, 1, 1, 2])), extracted(match('1', 0), match('23', 2)));
+  eq('placeDecision: a number across two pieces skips with reason split',
+    placeDecision(extracted(match('123', 0)), layout(['1', '23'], [0, 1, 2])), { mode: 'skip', reason: 'split', split: true });
+  eq('placeDecision: a split number leaves the cell\'s other numbers',
+    placeDecision(extracted(match('123', 0), match('45', 4)), layout(['1', '23 ', '45'], [0, 1, 2, 3, 4, 5])),
+    Object.assign(extracted(match('45', 4)), { split: true }));
+  eq('placeDecision: a number in one piece stands',
+    placeDecision(extracted(match('123', 0)), layout(['123'], null)), extracted(match('123', 0)));
   eq('placeDecision: a rendered position converts through toFlat before the piece check',
-    placeDecision(decision, '123', { original: ['\n  ', '123', '\n'], liveStarts: [0, 3, 6], toFlat: [3, 4, 5] }), decision);
+    placeDecision(extracted(match('123', 0)), layout(['\n  ', '123', '\n'], [3, 4, 5])), extracted(match('123', 0)));
 })();
 
 // ---------------------------------------------------------------------------
@@ -528,11 +511,9 @@ const consistentCellCountStepPasses = (children) =>
 //     keeps all matches)
 // ---------------------------------------------------------------------------
 
-// Standard opts for the exponent tests.  simplifyMixedCells: true is required to
-// engage the <sup> extraction path (the guard at line ~773 of content.js).
+// Standard opts for the exponent tests.
 const supTestOpts = {
   enabled: true,
-  simplifyMixedCells: true,
   simplifyMixedCurrency: true,
   simplifyMixedPercent: true,
   simplifyFirstRow: true,
@@ -4328,7 +4309,7 @@ function cnAdapterCellEls(tableEl) {
   const layout = { original: pieces, liveStarts, toFlat: null };
   const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts);
   eq('bracketed: a bracket in its own text piece still places',
-    placeDecision(decision, text, layout).mode, 'extracted');
+    placeDecision(decision, layout).mode, 'extracted');
 })();
 
 // ---------------------------------------------------------------------------

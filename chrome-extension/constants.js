@@ -19,7 +19,6 @@ const DR_DEFAULTS = {
   // A toggle (the pillbox, either menu item) or the sidebar's switch turns a
   // table on.
   enabled: false,
-  simplifyMixedCells: true,
   simplifyMixedCurrency: true,
   simplifyMixedPercent: true,
   simplifyFirstRow: false,

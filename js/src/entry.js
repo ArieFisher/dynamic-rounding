@@ -16,14 +16,13 @@ const DEFAULT_NUM_TOP = 1; // in dataset-aware modes, by default, round numbers 
 const RESULT_KIND = 'text';
 
 // The classification ladder's options, fixed: the Sheets function takes no
-// switches. Numbers inside text, mixed currency, and mixed percent round, as
-// the extension's defaults do. Dates and times stay as written, so the table
+// switches. Mixed currency and mixed percent round, as the extension's
+// defaults do. Dates and times stay as written, so the table
 // step never receives a date or a time cell. The first row and the first
 // column round, so the whole dataset rounds.
 const SHEETS_LADDER_OPTIONS = Object.freeze({
   simplifyFirstRow: true,
   simplifyFirstColumn: true,
-  simplifyMixedCells: true,
   simplifyMixedCurrency: true,
   simplifyMixedPercent: true,
   simplifyDates: false,
@@ -103,7 +102,7 @@ function roundValues(range, settings) {
   const textEntries = [];
   range.forEach((row, r) => row.forEach((value, c) => {
     if (typeof value === "number" && isFinite(value)) {
-      numberEntries.push({ r, c, info: { mode: "pure", num: value } });
+      numberEntries.push({ r, c, num: value, info: { mode: "extracted", matches: [{ num: value }] } });
     } else if (typeof value === "string" && value !== "") {
       const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
@@ -115,8 +114,8 @@ function roundValues(range, settings) {
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
   const results = new Map();
-  for (const { r, c, info } of numberEntries) {
-    results.set(r + "," + c, roundNumber(info.num));
+  for (const { r, c, num } of numberEntries) {
+    results.set(r + "," + c, roundNumber(num));
   }
   for (const { entry, patches } of tablePatches(textEntries, settings, maxMag).cells) {
     results.set(entry.r + "," + entry.c, textResult(entry, patches, roundNumber));
@@ -134,10 +133,10 @@ function roundValues(range, settings) {
  * returns its text with the patches applied.
  */
 function textResult(entry, patches, roundNumber) {
-  if (RESULT_KIND === "number") {
-    if (entry.info.mode === "pure") return roundNumber(entry.info.num);
-    const bracketed = entry.info.mode === "extracted" ? matchBracketedNumber(entry.text) : null;
-    if (bracketed) return roundNumber(bracketed.num);
+  if (RESULT_KIND === "number" && entry.info.mode === "extracted") {
+    const bracketed = matchBracketedNumber(entry.text);
+    const num = bracketed ? bracketed.num : toNumber(entry.text);
+    if (num !== null) return roundNumber(num);
   }
   return applyPatches(entry.text, patches);
 }

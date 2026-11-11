@@ -317,7 +317,7 @@
     lensPreview: { samples: { top: [{ original: '98,765', num: 98765 }], bottom: [] }, maxMag: 4 },
     sidebarView: {
       enabled: true,
-      switches: { simplifyMixedCells: true, simplifyDates: false },
+      switches: { simplifyDates: false },
       dateGranularity: 'year', timeGranularity: 'hour', rangeExpr: '',
       stops: [-2, -1.5, -1, -0.5, -0.25, 0, 0.25, 0.5, 1],
       topVal: -0.5, botVal: -0.5, coupled: true,

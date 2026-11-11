@@ -240,7 +240,7 @@ const TK_SETTINGS = [
 // so a table passes only when a cell in it rounds. A number inside a link
 // inside words, a number split across text pieces, and a column of
 // ambiguous dates with no day above 12 each round nowhere, so each table
-// fails. A stacked cell, a linked number beside a plain number, and an
+// fails. A cell with a number in each piece, a linked number beside a plain number, and an
 // ambiguous date whose column holds a day above 12 each round, so each table
 // passes. Each case runs on both kinds.
 (function tablekinds_theDataTestCountsOnlyACellThatRounds() {
@@ -249,7 +249,7 @@ const TK_SETTINGS = [
     { name: 'a number split as "1" and a bold "23"', rows: [['Tami', ['1', { tag: 'b', text: '23' }]]], found: false },
     { name: 'a number split as "4." and "91"', rows: [['Tami', ['4.', { tag: 'span', text: '91' }]]], found: false },
     { name: 'a column holding only "03/04/2020"', rows: [['Tami', '03/04/2020']], found: false },
-    { name: 'a stacked cell', rows: [['Tami', ['125', ' ', '126']]], found: true },
+    { name: 'a cell with a number in each piece', rows: [['Tami', ['1250', ' ', '1260']]], found: true },
     { name: 'a linked number beside a plain number', rows: [['Tami', [{ tag: 'a', text: 'Order 12' }, ' holds 340 units']]], found: true },
     { name: '"03/04/2020" above "15/03/2024"', rows: [['Tami', '03/04/2020'], ['Oren', '15/03/2024']], found: true },
   ];
