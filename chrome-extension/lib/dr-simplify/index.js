@@ -16,9 +16,6 @@ const DR_SIMPLIFY = {
   flatRange,
   layoutPieceHolding,
   flatPatches,
-  textPosition,
-  showsPiecesTogether,
-  stackedMatches,
   placeDecision,
   // ladder.js
   isWholeCellQuoted,

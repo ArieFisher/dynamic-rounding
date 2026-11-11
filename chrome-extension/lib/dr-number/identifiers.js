@@ -88,8 +88,8 @@ const PHONE_NUMBER_PATTERN = '\\+?(?:1[-.\\s]?)?\\d{3}[-.\\s]\\d{3}[-.\\s]\\d{4}
 // digits — a first group over 3 digits, a later group not exactly 3 — is not
 // that shape, so it reads as an identifier instead of a quantity. It counts
 // only when it fills the cell, and only when the cell's digits sit in one
-// text piece: a grid's stacked cell ("1500" above "1600") joins its pieces
-// with whitespace, and that join is several numbers, not one spaced
+// text piece: a cell with "1500" above "1600" in separate pieces joins its
+// pieces with whitespace, and that join is several numbers, not one spaced
 // identifier.
 const GROUPED_DIGITS_RE = fillingRe('\\d+(?:\\s+\\d+)+(?:\\.\\d+)?');
 const GROUPED_DIGITS_QUANTITY_RE = fillingRe(groupShapePattern(GROUP_SPACE_PATTERN) + '(?:\\.\\d+)?');

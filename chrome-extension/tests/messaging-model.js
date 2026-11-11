@@ -298,7 +298,7 @@
         DR_MODEL.getTableOriginal(table, cell), undefined);
       eq('native pure cell across pieces: a debug row records the skip',
         DR_LOG.snapshot().entries.some((row) => row.level === 'debug' &&
-          /native cell value split across text pieces/.test(row.text)), true);
+          /number split across text pieces/.test(row.text)), true);
     } finally {
       DR_MODEL.unregisterTable(table);
     }

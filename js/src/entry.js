@@ -102,7 +102,7 @@ function roundValues(range, settings) {
   const textEntries = [];
   range.forEach((row, r) => row.forEach((value, c) => {
     if (typeof value === "number" && isFinite(value)) {
-      numberEntries.push({ r, c, info: { mode: "pure", num: value } });
+      numberEntries.push({ r, c, num: value, info: { mode: "extracted", matches: [{ num: value }] } });
     } else if (typeof value === "string" && value !== "") {
       const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
@@ -114,8 +114,8 @@ function roundValues(range, settings) {
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
   const results = new Map();
-  for (const { r, c, info } of numberEntries) {
-    results.set(r + "," + c, roundNumber(info.num));
+  for (const { r, c, num } of numberEntries) {
+    results.set(r + "," + c, roundNumber(num));
   }
   for (const { entry, patches } of tablePatches(textEntries, settings, maxMag).cells) {
     results.set(entry.r + "," + entry.c, textResult(entry, patches, roundNumber));
@@ -133,10 +133,10 @@ function roundValues(range, settings) {
  * returns its text with the patches applied.
  */
 function textResult(entry, patches, roundNumber) {
-  if (RESULT_KIND === "number") {
-    if (entry.info.mode === "pure") return roundNumber(entry.info.num);
-    const bracketed = entry.info.mode === "extracted" ? matchBracketedNumber(entry.text) : null;
-    if (bracketed) return roundNumber(bracketed.num);
+  if (RESULT_KIND === "number" && entry.info.mode === "extracted") {
+    const bracketed = matchBracketedNumber(entry.text);
+    const num = bracketed ? bracketed.num : toNumber(entry.text);
+    if (num !== null) return roundNumber(num);
   }
   return applyPatches(entry.text, patches);
 }

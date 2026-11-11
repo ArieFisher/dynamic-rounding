@@ -91,17 +91,14 @@ function makeCellObj(cellEl, port) {
     getDisplayedText: shownText,
     // Null when the cell no longer holds as many pieces as its record; the
     // pass sorts that cell as rewritten before it reads a layout.
-    // runsTogether reads rendered text only when called, because that read
-    // lays out the page.
     getPieceLayout() {
       const live = collectTextPieces(cellEl).map((piece) => piece.nodeValue);
       const record = recordOf();
       if (record && record.pieces.length !== live.length) return null;
       const original = record ? record.pieces.map((piece) => piece.text) : live;
-      const runsTogether = (i) => showsPiecesTogether(shownText(), live, i);
       const text = getText();
       const toFlat = mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original);
-      return { original, toFlat, runsTogether };
+      return { original, toFlat };
     },
     // A write that lands nothing changes nothing: with every patch skipped the
     // screen keeps its text, and storing the hover text would record a
@@ -353,8 +350,6 @@ function restoreTextPieces(cell, storedPieces) {
  *   text, its position in the join of original; null when the classified text
  *   differs from the pieces in more than whitespace and holds no single-piece
  *   value, and no entry for a position with no known counterpart
- * @property {(i: number) => boolean} runsTogether - whether the text the
- *   browser shows has piece i straight after piece i - 1 (see showsPiecesTogether)
  */
 
 function pieceSpans(texts) {

@@ -14,7 +14,7 @@
   eq('classifyCell: first-row cell simplifies when simplifyFirstRow is true',
     classifyCell({ text: '100', rowIndex: 0, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyFirstRow: true })),
-    { mode: 'pure', reason: 'simplify', value: { num: 100 } });
+    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '100', num: 100, index: 0 }] } });
 })();
 
 (function classifyCell_firstColumn() {
@@ -24,13 +24,13 @@
   eq('classifyCell: first-column cell simplifies when simplifyFirstColumn is true',
     classifyCell({ text: '100', rowIndex: 1, columnIndex: 0, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyFirstColumn: true })),
-    { mode: 'pure', reason: 'simplify', value: { num: 100 } });
+    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '100', num: 100, index: 0 }] } });
 })();
 
 (function classifyCell_percent() {
   eq('classifyCell: percent cell simplifies when simplifyMixedPercent is true',
     classifyCell({ text: '50%', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'pure', reason: 'simplify', value: { num: 50 } });
+    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '50', num: 50, index: 0 }] } });
   eq('classifyCell: percent cell is skipped when simplifyMixedPercent is false',
     classifyCell({ text: '50%', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyMixedPercent: false })),
@@ -40,7 +40,7 @@
 (function classifyCell_currency() {
   eq('classifyCell: currency cell simplifies when simplifyMixedCurrency is true',
     classifyCell({ text: '$100', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS),
-    { mode: 'pure', reason: 'simplify', value: { num: 100 } });
+    { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '100', num: 100, index: 1 }] } });
   eq('classifyCell: currency cell is skipped when simplifyMixedCurrency is false',
     classifyCell({ text: '$100', rowIndex: 1, columnIndex: 1, ranges: null },
       Object.assign({}, LADDER_OPTS, { simplifyMixedCurrency: false })),
@@ -172,8 +172,8 @@
     classifyCell(at('7.5m', { isWholeLink: true }), LADDER_OPTS), { mode: 'skip', reason: 'link' });
   eq('classifyCell: an identifier is not a unit number',
     classifyCell(at('DT1234'), LADDER_OPTS), { mode: 'skip', reason: 'no-number' });
-  eq('classifyCell: a plain currency number stays pure',
-    classifyCell(at('$45.67'), LADDER_OPTS), { mode: 'pure', reason: 'simplify', value: { num: 45.67 } });
+  eq('classifyCell: a plain currency number holds its digits as one match',
+    classifyCell(at('$45.67'), LADDER_OPTS), { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '45.67', num: 45.67, index: 1 }] } });
   // "4.91<sup>1</sup>tn" flattens to "4.911tn": the footnote digit must not
   // join the unit number.
   eq('classifyCell: a cell with a <sup> is not a unit number',
@@ -431,10 +431,10 @@ const bracketOpts = Object.assign({}, DR_DEFAULTS, {
     { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '1,234', num: -1234, index: 1 }] } });
 })();
 
-(function plainNumberStaysPure() {
-  eq('bracketed: a plain number still classifies as pure',
-    classifyCell({ text: '1,234', rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts).mode,
-    'pure');
+(function plainNumberKeepsItsSign() {
+  eq('bracketed: a plain number classifies as a positive match',
+    classifyCell({ text: '1,234', rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts).value.matches,
+    [{ numStr: '1,234', num: 1234, index: 0 }]);
 })();
 
 (function bracketedWholeLinkStaysUnchanged() {

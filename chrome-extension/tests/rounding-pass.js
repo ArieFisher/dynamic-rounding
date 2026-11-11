@@ -713,7 +713,7 @@ const SEAT_ROWS = [
   }
   eq('extractPreviewSamples (table step max magnitude): one call', passed.length, 1);
   eq('extractPreviewSamples (table step max magnitude): the call reads the classified cells',
-    (passed[0] || []).filter((entry) => entry.info.mode === 'pure').map((entry) => entry.info.num),
+    (passed[0] || []).filter((entry) => entry.info.mode === 'extracted').flatMap((entry) => entry.info.matches.map((m) => m.num)),
     [27000000, 4080, 312]);
   eq('extractPreviewSamples (table step max magnitude): maxMag is the table step\'s', result.maxMag, 3);
   eq('extractPreviewSamples (table step max magnitude): top band', result.samples.top.map((row) => row.num),
@@ -841,18 +841,18 @@ const SEAT_ROWS = [
   });
 })();
 
-// A native table runs the stacked-cell test, as a grid
-// does. A native cell classifies its rendered text, which shows whether two
-// pieces sit on separate lines or run together, so a digit beside a digit
-// across two pieces reads as two numbers only when the rendered text shows
-// a space or a line break between them. Dataset 337.91, 125, 126, so the
+// A native table places each number in its piece, as a grid does. A native
+// cell classifies its rendered text, which shows whether two pieces sit on
+// separate lines or run together, so a digit beside a digit across two pieces
+// reads as two numbers only when the rendered text shows a line break between
+// them. Dataset 337.91, 125, 126, so the
 // max magnitude is 2.
 //   a: a currency sign in its own piece, then the number
 //   b: one number per line
 //   c: one number that inline styling splits into two pieces ("6,7" plain,
 //      "18,245" bold): the rendered text runs them together, so it stays
 //   d: a number split after its grouping comma: stays
-(function nativeStacked_roundsEachNumberInItsPiece() {
+(function nativeSeparatePieces_roundsEachNumberInItsPiece() {
   withReactiveCreateTreeWalker(function () {
     const onRows = (segs) => () => segs.map((seg) => seg.text).join('\n');
     const joined = (segs) => () => segs.map((seg) => seg.text).join('');
@@ -869,19 +869,19 @@ const SEAT_ROWS = [
     const offRow = DR_LOG.onRow((row) => rows.push(row));
     const opts = nativeOnePieceOpts();
     try {
-      eq('native stacked: the lens preview pool holds the numbers the pass rounds',
+      eq('native separate pieces: the lens preview pool holds the numbers the pass rounds',
         collectNumericCells(table, opts).map((cell) => cell.num), [337.91, 125, 126]);
       roundTable(table, opts);
-      eq('native stacked: a currency sign in its own piece stays and the number rounds',
+      eq('native separate pieces: a currency sign in its own piece stays and the number rounds',
         a.map((seg) => seg.text), ['$', '350']);
-      eq('native stacked: one number per line rounds number by number',
+      eq('native separate pieces: one number per line rounds number by number',
         b.map((seg) => seg.text), ['150', '150']);
-      eq('native stacked: a number that inline styling splits into two pieces stays unchanged',
+      eq('native separate pieces: a number that inline styling splits into two pieces stays unchanged',
         c.map((seg) => seg.text), ['6,7', '18,245']);
-      eq('native stacked: a number split after its grouping comma stays unchanged',
+      eq('native separate pieces: a number split after its grouping comma stays unchanged',
         d.map((seg) => seg.text), ['3,406,', '918']);
-      eq('native stacked: each split number leaves a debug row',
-        rows.filter((row) => row.level === 'debug' && /native cell value split across text pieces/.test(row.text)).length,
+      eq('native separate pieces: each split number leaves a debug row',
+        rows.filter((row) => row.level === 'debug' && /number split across text pieces/.test(row.text)).length,
         2);
     } finally {
       offRow();
@@ -892,19 +892,19 @@ const SEAT_ROWS = [
 
 // A hidden sort key beside a currency sign in its own tag: the rendered text
 // ("$7,002,300") differs from the flat text in more than whitespace, and no
-// one piece holds it, so no rendered position maps to a piece. A stacked
-// number could sit in the hidden text, so the cell stays unchanged and its
+// one piece holds it, so no rendered position maps to a piece. A number
+// could sit in the hidden text, so the cell stays unchanged and its
 // numbers stay out of the lens preview pool.
-(function nativeStacked_hiddenSortKeyStaysUnchanged() {
+(function nativeSeparatePieces_hiddenSortKeyStaysUnchanged() {
   withReactiveCreateTreeWalker(function () {
     const segs = [{ text: '7002300', inSup: false }, { text: '$', inSup: false }, { text: '7,002,300', inSup: false }];
     const cell = makeSortKeyCell(segs, () => '$7,002,300');
     const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
     try {
-      eq('native stacked: a hidden sort key beside a stacked cell keeps its numbers out of the pool',
+      eq('native separate pieces: a hidden sort key beside numbers in separate pieces keeps its numbers out of the pool',
         collectNumericCells(table, nativeOnePieceOpts()), []);
       roundTable(table, nativeOnePieceOpts());
-      eq('native stacked: a hidden sort key beside a stacked cell leaves every piece unchanged',
+      eq('native separate pieces: a hidden sort key beside numbers in separate pieces leaves every piece unchanged',
         segs.map((seg) => seg.text), ['7002300', '$', '7,002,300']);
     } finally {
       DR_MODEL.unregisterTable(table);
@@ -1644,9 +1644,9 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
   });
 })();
 
-// Stacked cells and unit numbers on grids. A grid cell's text is its
-// flat text. A stacked cell holds whole numbers in separate text pieces, and
-// each rounds in its own piece. A unit number's digits change and its suffix
+// Numbers in separate text pieces and unit numbers on grids. A grid cell's
+// text is its flat text. A cell that holds whole numbers in separate text
+// pieces rounds each in its own piece. A unit number's digits change and its suffix
 // or currency code stays. Extracted cells stay unchanged on grids.
 //
 // A synthetic key-statistics grid with invented values. The dataset is
@@ -1655,8 +1655,8 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
 //   magnitude 1, other band, step 5:   41.31 → 40
 //   magnitude 0, other band, step 0.5: 4.91 → 5
 // The split number (4.91 across two pieces), the link, and the extracted
-// cell stay out of the dataset. Counted as one number, the stacked
-// cell's 125126 would raise the max magnitude to 5.
+// cell stay out of the dataset. Counted as one number, the cell with 125
+// above 126 would raise the max magnitude to 5.
 // ---------------------------------------------------------------------------
 
 const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
@@ -1666,12 +1666,12 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 // magnitude rounds to, so it formats back to itself, and "DT1234"'s digits
 // sit glued to a letter with no separator, so the number extractor never
 // finds them at all — on a grid or a native table alike.
-(function gridStacked_roundWritesEachNumberInItsPiece() {
+(function gridSeparatePieces_roundWritesEachNumberInItsPiece() {
   const grid = makeKeyStatsGrid();
   const piecesBefore = grid.cellEls.map(gridCellTextPieces);
   try {
     roundTable(grid.wrapperEl, KEY_STATS_OPTS);
-    eq('grid stacked: each cell\'s pieces after the round',
+    eq('grid separate pieces: each cell\'s pieces after the round',
       grid.cellEls.map(pieceTextsOf), [
         ['$350'], ['5tn'],
         [' 150 ', ' 150'], ['$', '350'],
@@ -1679,19 +1679,19 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
         ['Revenue 500 units'], ['DT1234'],
         ['7.5m'], ['2024-', '03-15'],
       ]);
-    eq('grid stacked: every text piece is the same node object after the round',
+    eq('grid separate pieces: every text piece is the same node object after the round',
       grid.cellEls.every((cell, k) => {
         const after = gridCellTextPieces(cell);
         return after.length === piecesBefore[k].length &&
           after.every((node, n) => node === piecesBefore[k][n]);
       }), true);
-    eq('grid stacked: the max magnitude counts the stacked numbers one by one',
+    eq('grid separate pieces: the max magnitude counts the numbers in separate pieces one by one',
       DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), 2);
-    eq('grid stacked: a number split across pieces leaves a debug row',
+    eq('grid separate pieces: a number split across pieces leaves a debug row',
       DR_LOG.snapshot().entries.some(
         (row) => row.level === 'debug' && /split across text pieces/.test(row.text) && /number/.test(row.text)),
       true);
-    eq('grid stacked: a date split across pieces leaves a debug row',
+    eq('grid separate pieces: a date split across pieces leaves a debug row',
       DR_LOG.snapshot().entries.some(
         (row) => row.level === 'debug' && /split across text pieces/.test(row.text) && /date or time/.test(row.text)),
       true);
@@ -1700,32 +1700,32 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   }
 })();
 
-(function gridStacked_recordAndReset() {
+(function gridSeparatePieces_recordAndReset() {
   const grid = makeKeyStatsGrid();
-  const [, , stacked, dollar] = grid.cellEls;
+  const [, , pair, dollar] = grid.cellEls;
   const originalPieces = grid.cellEls.map(pieceTextsOf);
   try {
     roundTable(grid.wrapperEl, KEY_STATS_OPTS);
-    eq('grid stacked: the record holds the flat original and each piece\'s original and written text',
-      DR_MODEL.getTableOriginal(grid.wrapperEl, stacked),
+    eq('grid separate pieces: the record holds the flat original and each piece\'s original and written text',
+      DR_MODEL.getTableOriginal(grid.wrapperEl, pair),
       { value: ' 125 \n 126', pieces: [{ text: ' 125 ', written: ' 150 ' }, { text: ' 126', written: ' 150' }],
         pageTitle: '' });
-    eq('grid stacked: an untouched "$" piece holds the same original and written text',
+    eq('grid separate pieces: an untouched "$" piece holds the same original and written text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, dollar).pieces,
       [{ text: '$', written: '$' }, { text: '337.91', written: '350' }]);
     resetTable(grid.wrapperEl);
-    eq('grid stacked: reset restores every cell', DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'original');
-    eq('grid stacked: reset puts every piece back', grid.cellEls.map(pieceTextsOf), originalPieces);
-    eq('grid stacked: reset clears every record',
+    eq('grid separate pieces: reset restores every cell', DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'original');
+    eq('grid separate pieces: reset puts every piece back', grid.cellEls.map(pieceTextsOf), originalPieces);
+    eq('grid separate pieces: reset clears every record',
       grid.cellEls.some((cell) => DR_MODEL.hasTableOriginal(grid.wrapperEl, cell)), false);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
 })();
 
-// A stacked cell whose first piece gets shorter: a later piece's position
+// A cell with numbers in separate pieces whose first piece gets shorter: a later piece's position
 // moves, so the re-apply measures each patch against the live pieces.
-(function gridStacked_reapplyAfterAPieceShortened() {
+(function gridSeparatePieces_reapplyAfterAPieceShortened() {
   const grid = makeE2EGridWrapper([['337.91 126']]);
   const [cell] = grid.cellEls;
   const first = makeCountingTextNode('337.91');
@@ -1733,30 +1733,30 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   setGridCellPieces(cell, [makeElementNode('a1', [first]), makeElementNode('a2', [second])], { lines: true });
   try {
     roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid stacked re-apply (setup): both pieces round', pieceTextsOf(cell), ['350', '150']);
+    eq('grid separate pieces re-apply (setup): both pieces round', pieceTextsOf(cell), ['350', '150']);
     reapplyRounding(grid.wrapperEl);
-    eq('grid stacked re-apply: pieces already patched are not written again',
+    eq('grid separate pieces re-apply: pieces already patched are not written again',
       [first.writes, second.writes], [1, 1]);
     second.nodeValue = '126';
     reapplyRounding(grid.wrapperEl);
-    eq('grid stacked re-apply: a later piece redrawn to its original is patched again',
+    eq('grid separate pieces re-apply: a later piece redrawn to its original is patched again',
       pieceTextsOf(cell), ['350', '150']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
 })();
 
-// Stacked-cell edges. Dataset 125, 126, 4.91, so the max magnitude is 2:
+// Numbers in separate pieces, edge cases. Dataset 125, 126, 4.91, so the max magnitude is 2:
 // 125 → 150, 126 → 150, 4.91 → 5.
 //   a: one number per block element with no whitespace between in the
 //      markup: the rendered text puts each on its own line, so the digits
 //      beside digits across pieces read as two numbers
 //   b: a suffix in its own piece
-//   c: two numbers in one piece beside a third piece: not stacked
+//   c: digits that join across a piece boundary: unchanged
 //   d: two unit numbers, one per block element: the rendered text puts each
 //      on its own line, so both round
 //   e: a number split before its decimal point: unchanged
-(function gridStacked_edges() {
+(function gridSeparatePieces_edges() {
   const grid = makeE2EGridWrapper([['125126', '4.91tn', '416 5551234', '4.91tn41.31m', '4.91']]);
   const [a, b, c, d, e] = grid.cellEls;
   setGridCellPieces(e, [makeTextNode('4'), makeElementNode('dec', [makeTextNode('.91')])]);
@@ -1766,28 +1766,28 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   setGridCellPieces(d, [makeElementNode('l1', [makeTextNode('4.91tn')]), makeElementNode('l2', [makeTextNode('41.31m')])], { lines: true });
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid stacked: one number per element with no whitespace between rounds number by number',
+    eq('grid separate pieces: one number per element with no whitespace between rounds number by number',
       pieceTextsOf(a), ['150', '150']);
-    eq('grid stacked: a suffix in its own piece stays and the digits round', pieceTextsOf(b), ['5', 'tn']);
-    eq('grid stacked: two numbers in one piece make the cell not stacked',
+    eq('grid separate pieces: a suffix in its own piece stays and the digits round', pieceTextsOf(b), ['5', 'tn']);
+    eq('grid separate pieces: digits that join across a piece boundary leave the cell unchanged',
       pieceTextsOf(c), ['416 555', '1234']);
-    eq('grid stacked: two unit numbers on separate lines both round',
+    eq('grid separate pieces: two unit numbers on separate lines both round',
       pieceTextsOf(d), ['5tn', '40m']);
-    eq('grid stacked: a number split before its decimal point stays unchanged',
+    eq('grid separate pieces: a number split before its decimal point stays unchanged',
       pieceTextsOf(e), ['4', '.91']);
-    eq('grid stacked: the max magnitude leaves out the cell that is not stacked',
+    eq('grid separate pieces: the max magnitude leaves out the cell whose digits join across a piece boundary',
       DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), 2);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
 })();
 
-// The cells of the native stacked test above, on a grid, with mixed-cell
-// simplification off (test page section 25). A grid reads the gap between
+// The cells of the native separate pieces test above, on a grid (test page
+// section 25). A grid reads the gap between
 // two pieces from the cell's rendered text, as a native table does, so one
 // number that inline styling splits ("6,7" plain, "18,245" in bold) stays
 // unchanged. Before, the grid rounded it to "65" and "20,000".
-(function gridStacked_sameCellsAsTheNativeTable() {
+(function gridSeparatePieces_sameCellsAsTheNativeTable() {
   const grid = makeE2EGridWrapper([['$337.91', '125126', '6,718,245']]);
   const [a, b, c] = grid.cellEls;
   setGridCellPieces(a, [makeElementNode('s', [makeTextNode('$')]), makeElementNode('n', [makeTextNode('337.91')])]);
@@ -1797,26 +1797,26 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const offRow = DR_LOG.onRow((row) => rows.push(row));
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid stacked: a currency sign in its own piece stays and the number rounds, as on a native table',
+    eq('grid separate pieces: a currency sign in its own piece stays and the number rounds, as on a native table',
       pieceTextsOf(a), ['$', '350']);
-    eq('grid stacked: one number per line rounds, as on a native table',
+    eq('grid separate pieces: one number per line rounds, as on a native table',
       pieceTextsOf(b), ['150', '150']);
-    eq('grid stacked: one number that inline styling splits stays unchanged, as on a native table',
+    eq('grid separate pieces: one number that inline styling splits stays unchanged, as on a native table',
       pieceTextsOf(c), ['6,7', '18,245']);
-    eq('grid stacked: the styled number leaves a debug row',
-      rows.some((row) => row.level === 'debug' && /grid cell number split across text pieces/.test(row.text)), true);
+    eq('grid separate pieces: the styled number leaves a debug row',
+      rows.some((row) => row.level === 'debug' && /number split across text pieces/.test(row.text)), true);
   } finally {
     offRow();
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
 })();
 
-// A stacked cell's joined text ("1500 1600") looks like digit groups split by
+// The joined text of numbers in separate pieces ("1500 1600") looks like digit groups split by
 // whitespace, but its digits sit in several text pieces, so the spaced-digit
 // identifier shape does not apply and each number rounds. A one-piece cell
 // with the same kind of text stays as written. Dataset 1500, 1600, 45, 46,
 // so the max magnitude is 3: 1500 → 1,500, 1600 → 1,500, 45 → 45, 46 → 45.
-(function gridStacked_digitsInSeveralPiecesAreNotOneIdentifier() {
+(function gridSeparatePieces_digitsInSeveralPiecesAreNotOneIdentifier() {
   const grid = makeE2EGridWrapper([['1500 1600', '45 46', '4165 5512']]);
   const [a, b, c] = grid.cellEls;
   setGridCellPieces(a, [makeTextNode(' 1500 '), makeElementNode('br', []), makeTextNode(' 1600')]);
@@ -1824,20 +1824,20 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     makeElementNode('l2', [makeTextNode('46')])]);
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid stacked: numbers in several pieces round though their join looks like spaced digit groups',
+    eq('grid separate pieces: numbers in several pieces round though their join looks like spaced digit groups',
       pieceTextsOf(a), [' 1,500 ', ' 1,500']);
-    eq('grid stacked: two-digit numbers in several pieces round number by number',
+    eq('grid separate pieces: two-digit numbers in several pieces round number by number',
       pieceTextsOf(b), ['45', ' ', '45']);
-    eq('grid stacked: spaced digit groups in one piece stay as written',
+    eq('grid separate pieces: spaced digit groups in one piece stay as written',
       pieceTextsOf(c), ['4165 5512']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
 })();
 
-// The link filter holds on a stacked cell: a number inside a link stays, and
+// The link filter holds on a cell with numbers in separate pieces: a number inside a link stays, and
 // once the cell is rounded the record's kept positions drive the preview.
-(function gridStacked_linkFilter() {
+(function gridSeparatePieces_linkFilter() {
   const grid = makeE2EGridWrapper([['125126']]);
   const [cell] = grid.cellEls;
   const plain = makeElementNode('p', [makeTextNode('125')]);
@@ -1858,12 +1858,12 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   };
   const pool = () => collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((sample) => sample.num);
   try {
-    eq('grid stacked link (setup): the preview leaves out the linked number', pool(), [125]);
+    eq('grid separate pieces link (setup): the preview leaves out the linked number', pool(), [125]);
     roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid stacked link: the number inside the link stays', pieceTextsOf(cell), ['150', '126']);
+    eq('grid separate pieces link: the number inside the link stays', pieceTextsOf(cell), ['150', '126']);
     reapplyRounding(grid.wrapperEl);
-    eq('grid stacked link: the number inside the link stays after a re-apply', pieceTextsOf(cell), ['150', '126']);
-    eq('grid stacked link: the preview after the round leaves out the linked number', pool(), [125]);
+    eq('grid separate pieces link: the number inside the link stays after a re-apply', pieceTextsOf(cell), ['150', '126']);
+    eq('grid separate pieces link: the preview after the round leaves out the linked number', pool(), [125]);
   } finally {
     if (saved === undefined) delete global.document.createTreeWalker;
     else global.document.createTreeWalker = saved;
@@ -1871,17 +1871,17 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   }
 })();
 
-// Cells the stacked check leaves unchanged, and the ones it admits. Dataset
+// Cells with numbers in separate pieces that stay unchanged, and the ones that round. Dataset
 // 4.91, 125, and 126, so the max magnitude is 2.
 //   a: a number beside a <sup> footnote, glued together with no separator:
 //      the base number rounds and the footnote digits stay, exactly as a
 //      native table already rounds this shape — the digit run
 //      right after the <sup> is never even a candidate match, since the
 //      number extractor never starts a match right after a letter
-//   b: a stacked year above a year: each piece reads as a date
+//   b: a year above a year: each piece holds a number
 //   c: "1," then "234": a number split after its grouping comma
 //   d: a listed currency code in its own piece above two numbers
-(function gridStacked_cellsTheStackedCheckLeaves() {
+(function gridSeparatePieces_cellsThatStayAndCellsThatRound() {
   const grid = makeE2EGridWrapper([['4.91T12', '20242025', '1,234', 'CAD125126']]);
   const [a, b, c, d] = grid.cellEls;
   const sup = makeElementNode('sup', [makeTextNode('12')]);
@@ -1893,13 +1893,13 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   const opts = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
   try {
-    eq('grid stacked: the lens preview pool keeps the footnote\'s base number and the stacked years, and leaves out the split number',
+    eq('grid separate pieces: the lens preview pool keeps the footnote\'s base number and the years, and leaves out the split number',
       collectNumericCells(grid.wrapperEl, opts).map((sample) => sample.num).sort((x, y) => x - y), [4.91, 125, 126, 2024, 2025]);
     roundTable(grid.wrapperEl, opts);
-    eq('grid stacked: a cell with a <sup> rounds its base and keeps the exponent', pieceTextsOf(a), ['5T', '12']);
-    eq('grid stacked: stacked years on separate lines round, as on a native table', pieceTextsOf(b), ['2,000', '2,000']);
-    eq('grid stacked: a number split after its grouping comma stays unchanged', pieceTextsOf(c), ['1,', '234']);
-    eq('grid stacked: a currency code in its own piece stays and the numbers round',
+    eq('grid separate pieces: a cell with a <sup> rounds its base and keeps the exponent', pieceTextsOf(a), ['5T', '12']);
+    eq('grid separate pieces: years on separate lines round, as on a native table', pieceTextsOf(b), ['2,000', '2,000']);
+    eq('grid separate pieces: a number split after its grouping comma stays unchanged', pieceTextsOf(c), ['1,', '234']);
+    eq('grid separate pieces: a currency code in its own piece stays and the numbers round',
       pieceTextsOf(d), ['CAD', '150', '150']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
@@ -1975,32 +1975,32 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   }
 })();
 
-// A rounded stacked cell that the page redraws with fewer pieces is a
-// rewritten cell. Its one remaining piece shows the extension's
+// A rounded cell with numbers in separate pieces that the page redraws with
+// fewer pieces is a rewritten cell. Its one remaining piece shows the extension's
 // written text for the first stored piece, so it matches that piece by text
 // and takes its original back before the record drops: the re-apply then
 // simplifies the cell from 125, the lens preview reads 125, and reset puts
 // 125 back and leaves nothing unrestorable.
-(function gridStacked_aRoundedCellThatLostAPiece() {
+(function gridSeparatePieces_aRoundedCellThatLostAPiece() {
   const grid = makeE2EGridWrapper([['125126']]);
   const [cell] = grid.cellEls;
   setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   try {
     roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid stacked (setup): the first simplification writes 150 into the first piece',
+    eq('grid separate pieces (setup): the first simplification writes 150 into the first piece',
       pieceTextsOf(cell)[0], '150');
     setGridCellPieces(cell, [makeElementNode('l1', [makeTextNode('150')])]);
     let threw = null;
     try { reapplyRounding(grid.wrapperEl); } catch (e) { threw = String(e); }
-    eq('grid stacked: the re-apply simplifies a cell that lost a piece from the original its written text matches',
+    eq('grid separate pieces: the re-apply simplifies a cell that lost a piece from the original its written text matches',
       { threw, pieces: pieceTextsOf(cell), original: DR_MODEL.getTableOriginalText(grid.wrapperEl, cell) },
       { threw: null, pieces: ['150'], original: '125' });
-    eq('grid stacked: the lens preview reads the matched original in a cell that lost a piece',
+    eq('grid separate pieces: the lens preview reads the matched original in a cell that lost a piece',
       collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((c) => c.num), [125]);
     resetTable(grid.wrapperEl);
-    eq('grid stacked: reset leaves nothing unrestorable after a cell lost a piece',
+    eq('grid separate pieces: reset leaves nothing unrestorable after a cell lost a piece',
       DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'original');
-    eq('grid stacked: reset puts the matched original back', pieceTextsOf(cell), ['125']);
+    eq('grid separate pieces: reset puts the matched original back', pieceTextsOf(cell), ['125']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -2008,46 +2008,46 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 // A unit number that is the largest number on the grid sets the frozen max
 // magnitude: 5,432.1 has magnitude 3.
-(function gridStacked_aUnitNumberJoinsTheDataset() {
+(function gridSeparatePieces_aUnitNumberJoinsTheDataset() {
   const grid = makeE2EGridWrapper([['4.91', '5,432.1m']]);
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('grid stacked: a unit number joins the dataset', DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), 3);
-    eq('grid stacked: the unit number keeps its suffix', pieceTextsOf(grid.cellEls[1]), ['5,500m']);
+    eq('grid separate pieces: a unit number joins the dataset', DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), 3);
+    eq('grid separate pieces: the unit number keeps its suffix', pieceTextsOf(grid.cellEls[1]), ['5,500m']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
 })();
 
-(function gridStacked_currencyOffExcludesASymbolInItsOwnPiece() {
+(function gridSeparatePieces_currencyOffExcludesASymbolInItsOwnPiece() {
   const grid = makeKeyStatsGrid();
   const [, unit, , dollar] = grid.cellEls;
   try {
     roundTable(grid.wrapperEl, Object.assign({}, KEY_STATS_OPTS, { simplifyMixedCurrency: false }));
-    eq('grid stacked: with the currency setting off, a "$" in its own piece excludes the cell',
+    eq('grid separate pieces: with the currency setting off, a "$" in its own piece excludes the cell',
       pieceTextsOf(dollar), ['$', '337.91']);
-    eq('grid stacked: with the currency setting off, a suffixed number still rounds',
+    eq('grid separate pieces: with the currency setting off, a suffixed number still rounds',
       pieceTextsOf(unit), ['5tn']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
 })();
 
-// The lens preview lists exactly the numbers the grid rounds: the stacked
-// numbers one by one, the unit numbers, the number inside "Revenue 500
+// The lens preview lists exactly the numbers the grid rounds: the numbers in
+// separate pieces one by one, the unit numbers, the number inside "Revenue 500
 // units", and nothing from "DT1234" (its digits sit glued to a letter, so
 // the extractor never finds them, on a grid or a native table alike) or the
 // split number or the link. It lists the same numbers once the grid is
 // rounded, read from the records.
-(function gridStacked_lensPreviewMatchesThePage() {
+(function gridSeparatePieces_lensPreviewMatchesThePage() {
   const grid = makeKeyStatsGrid();
   const nums = () => collectNumericCells(grid.wrapperEl, KEY_STATS_OPTS)
     .map((sample) => sample.num).sort((x, y) => x - y);
   const expected = [4.91, 41.31, 125, 126, 337.91, 338.49, 500];
   try {
-    eq('grid stacked: the lens preview pool before the round', nums(), expected);
+    eq('grid separate pieces: the lens preview pool before the round', nums(), expected);
     roundTable(grid.wrapperEl, KEY_STATS_OPTS);
-    eq('grid stacked: the lens preview pool after the round', nums(), expected);
+    eq('grid separate pieces: the lens preview pool after the round', nums(), expected);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -3256,7 +3256,7 @@ function everyRowRead(kind, largeIn) {
       eq('preview log rows: the preview writes no row', rows.length, 0);
       roundTable(table, opts);
       eq('preview log rows (control): the simplification pass writes the split row',
-        rows.some((row) => row.level === 'debug' && /native cell value split across text pieces/.test(row.text)), true);
+        rows.some((row) => row.level === 'debug' && /number split across text pieces/.test(row.text)), true);
     } finally {
       offRow();
       DR_MODEL.unregisterTable(table);
@@ -4076,14 +4076,14 @@ function everyRowRead(kind, largeIn) {
   }
 })();
 
-(function bracketedStackedGridCellRounds() {
+(function bracketedSeparatePiecesGridCellRounds() {
   const grid = makeE2EGridWrapper([['4.91', '(125)(126)']]);
-  const stacked = grid.cellEls[1];
-  setGridCellPieces(stacked, [makeTextNode('(125)'), makeTextNode('(126)')]);
+  const pair = grid.cellEls[1];
+  setGridCellPieces(pair, [makeTextNode('(125)'), makeTextNode('(126)')]);
   try {
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
-    eq('bracketed: a stacked grid cell of bracketed numbers rounds',
-      gridCellTextPieces(stacked).map((node) => node.nodeValue), ['(150)', '(150)']);
+    eq('bracketed: a grid cell with bracketed numbers in separate pieces rounds',
+      gridCellTextPieces(pair).map((node) => node.nodeValue), ['(150)', '(150)']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }

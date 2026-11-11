@@ -440,7 +440,7 @@ function makePrettyPrintedCell(segments) {
 // three steps as every other cell — classify, place, patch. A value whose
 // characters sit in one text piece rounds through the patch writer, with its
 // rendered position converted to the flat text. A value that crosses a piece
-// boundary and fails the stacked-cell test stays unchanged with a debug row:
+// boundary stays unchanged with a debug row:
 // no writer spreads characters across pieces.
 function nativeOnePieceOpts() {
   return Object.assign({}, DR_DEFAULTS, {
@@ -1226,8 +1226,8 @@ function makeKeyStatsGrid() {
     ['Revenue 500 units', 'DT1234'],
     ['7.5m', '2024-03-15'],
   ]);
-  const [, , stacked, dollar, , split, , , link, date] = grid.cellEls;
-  setGridCellPieces(stacked, [makeElementNode('s', [
+  const [, , pair, dollar, , split, , , link, date] = grid.cellEls;
+  setGridCellPieces(pair, [makeElementNode('s', [
     makeTextNode(' 125 '), makeElementNode('br', []), makeTextNode(' 126'),
   ])]);
   setGridCellPieces(dollar, [makeElementNode('sym', [makeTextNode('$')]), makeElementNode('num', [makeTextNode('337.91')])]);

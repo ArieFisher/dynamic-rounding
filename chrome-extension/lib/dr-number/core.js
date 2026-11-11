@@ -137,9 +137,11 @@ function numberFormat() {
 }
 
 // Whitespace standing as a group mark between two digit groups ("1 234 567").
-// \s covers the narrow no-break space (U+202F) and the no-break space
-// (U+00A0) pages use for that grouping, alongside the plain space.
-const GROUP_SPACE_PATTERN = '\\s+';
+// The class covers the narrow no-break space (U+202F) and the no-break space
+// (U+00A0) pages use for that grouping, alongside the plain space. A line
+// break is no group mark: the browser shows the digits on two lines, which
+// read as two numbers ("125" above "126").
+const GROUP_SPACE_PATTERN = '[^\\S\\r\\n]+';
 
 /**
  * The group shape for one group mark: a first group of one to three digits,

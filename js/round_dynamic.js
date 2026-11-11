@@ -273,9 +273,11 @@ function numberFormat() {
 }
 
 // Whitespace standing as a group mark between two digit groups ("1 234 567").
-// \s covers the narrow no-break space (U+202F) and the no-break space
-// (U+00A0) pages use for that grouping, alongside the plain space.
-const GROUP_SPACE_PATTERN = '\\s+';
+// The class covers the narrow no-break space (U+202F) and the no-break space
+// (U+00A0) pages use for that grouping, alongside the plain space. A line
+// break is no group mark: the browser shows the digits on two lines, which
+// read as two numbers ("125" above "126").
+const GROUP_SPACE_PATTERN = '[^\\S\\r\\n]+';
 
 /**
  * The group shape for one group mark: a first group of one to three digits,
@@ -1235,8 +1237,8 @@ const PHONE_NUMBER_PATTERN = '\\+?(?:1[-.\\s]?)?\\d{3}[-.\\s]\\d{3}[-.\\s]\\d{4}
 // digits — a first group over 3 digits, a later group not exactly 3 — is not
 // that shape, so it reads as an identifier instead of a quantity. It counts
 // only when it fills the cell, and only when the cell's digits sit in one
-// text piece: a grid's stacked cell ("1500" above "1600") joins its pieces
-// with whitespace, and that join is several numbers, not one spaced
+// text piece: a cell with "1500" above "1600" in separate pieces joins its
+// pieces with whitespace, and that join is several numbers, not one spaced
 // identifier.
 const GROUPED_DIGITS_RE = fillingRe('\\d+(?:\\s+\\d+)+(?:\\.\\d+)?');
 const GROUPED_DIGITS_QUANTITY_RE = fillingRe(groupShapePattern(GROUP_SPACE_PATTERN) + '(?:\\.\\d+)?');
@@ -1515,7 +1517,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
  * Classify a single cell and return a decision: { mode, reason, value?,
  * pending? }.
  *
- *   mode: 'skip' | 'pure' | 'date' | 'time' | 'extracted'
+ *   mode: 'skip' | 'date' | 'time' | 'extracted'
  *   reason: one of the ladder's rule names — 'out-of-range', 'first-row',
  *     'first-column', 'percent', 'currency', 'quoted', 'identifier', 'link',
  *     'footnote', 'dates-disabled', 'times-disabled',
@@ -1524,14 +1526,13 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *     'unit' for a unit number (see matchUnitNumber in lib/dr-number), which
  *     rounds.
  *   value: mode-specific payload —
- *     'pure' → { num }
  *     'date' (resolved) → { dates }, each date with a known reading — see
  *       findDates in lib/dr-number
  *     'date' (needs the column post-pass) → { dates }, at least one of them
  *       all-numeric (isAmbiguousDate), plus pending: 'ambiguous-date'
  *     'extracted' → { matches } — matches still need a caller-side
- *       filterLinkMatches pass; see file header. A unit number holds one
- *       match.
+ *       filterLinkMatches pass; see file header. A cell that is one number
+ *       (plain, bracketed, or a unit number) holds one match.
  *
  * @param {object} input
  * @param {string} input.text - raw cell text (as returned by the adapter)
@@ -1560,6 +1561,12 @@ function classifyCell(input, options) {
     digitsSpanPieces = false,
   } = input;
   const trimmed = typeof text === 'string' ? text.trim() : '';
+  // A cell that is one number changes its digits alone, which is the extracted
+  // write, so a sign, a bracket, a currency sign, a percent sign, a suffix, or
+  // a currency code stays where the page put it.
+  const oneNumber = (match, reason) => (isWholeLink
+    ? { mode: 'skip', reason: 'link' }
+    : { mode: 'extracted', reason, value: { matches: [match] } });
 
   if (!isInRanges(rowIndex, columnIndex, ranges)) {
     return { mode: 'skip', reason: 'out-of-range' };
@@ -1613,8 +1620,8 @@ function classifyCell(input, options) {
   // that bracket's minus sign.
   // matchIdentifierShape (lib/dr-number/identifiers.js) holds the one list of
   // shapes; this is the one place that reads it. digitsSpanPieces comes from
-  // the caller's piece layout, so a stacked cell's join of several numbers
-  // never reads as one spaced identifier. A cell with a <sup> takes the
+  // the caller's piece layout, so the join of numbers that sit in separate
+  // pieces never reads as one spaced identifier. A cell with a <sup> takes the
   // footnote path below instead: its flattened text joins base and exponent
   // digits ("20 10<sup>15</sup>" reads "20 1015"), which is not the text the
   // reader sees, so no shape is tested against it.
@@ -1623,23 +1630,16 @@ function classifyCell(input, options) {
   }
 
   // A bracketed number ("(1,234)", "$(1,234)") is one number whose minus sign
-  // is written as the brackets around it. Its digits alone change, which is
-  // the extracted write, so the brackets stay where the page put them — and a
-  // page that gives a bracket its own text piece does not hold the cell
-  // back, because the placement step then measures the digits alone. A cell
-  // with a <sup> takes the footnote path below instead, so its exponent stays
-  // masked; extractSimplifyMatches reads the same bracket sign there.
+  // is written as the brackets around it. A cell with a <sup> takes the
+  // footnote path below instead, so its exponent stays masked;
+  // extractSimplifyMatches reads the same bracket sign there.
   const bracketed = hasSuperscript ? null : matchBracketedNumber(text);
-  if (bracketed) {
-    if (isWholeLink) return { mode: 'skip', reason: 'link' };
-    return { mode: 'extracted', reason: 'simplify', value: { matches: [bracketed] } };
-  }
+  if (bracketed) return oneNumber(bracketed, 'simplify');
 
   const num = toNumber(text);
   if (num !== null) {
-    if (isWholeLink) return { mode: 'skip', reason: 'link' };
-
     if (hasSuperscript) {
+      if (isWholeLink) return { mode: 'skip', reason: 'link' };
       // The cell contains a <sup> element: the flattened text mixes base and
       // exponent digits (e.g. "10<sup>12</sup>" -> "1012"). Route through
       // extraction so superscript masking can protect the exponent, instead
@@ -1649,18 +1649,15 @@ function classifyCell(input, options) {
       return { mode: 'extracted', reason: 'footnote', value: { matches } };
     }
 
-    return { mode: 'pure', reason: 'simplify', value: { num } };
+    const span = pureNumberSpan(text);
+    return oneNumber({ numStr: span.numStr, num, index: span.index }, 'simplify');
   }
 
   // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
-  // currency code. Its digits alone change, which is the extracted write, so
-  // it takes mode:'extracted' with its one match. A cell with a <sup> takes
-  // the footnote path above instead, so its exponent stays masked.
+  // currency code. A cell with a <sup> takes the footnote path above instead,
+  // so its exponent stays masked.
   const unit = hasSuperscript ? null : matchUnitNumber(text);
-  if (unit) {
-    if (isWholeLink) return { mode: 'skip', reason: 'link' };
-    return { mode: 'extracted', reason: 'unit', value: { matches: [unit] } };
-  }
+  if (unit) return oneNumber(unit, 'unit');
 
   const matches = extractSimplifyMatches(text, superscriptRanges);
   if (matches.length === 0) return { mode: 'skip', reason: 'no-number' };
@@ -1755,7 +1752,6 @@ function resolveAmbiguousDateDecision(decision, hint) {
 // matches } shape the table step reads in its column post-pass, its max
 // magnitude, and its patches.
 function decisionToLegacyInfo(decision) {
-  if (decision.mode === 'pure') return { mode: 'pure', num: decision.value.num };
   if (decision.mode === 'extracted') return { mode: 'extracted', matches: decision.value.matches };
   if (decision.mode === 'date') {
     return { mode: 'date', dates: decision.value.dates, ambiguous: decision.pending === 'ambiguous-date' };
@@ -1787,13 +1783,12 @@ function resolveAmbiguousDates(entries) {
   });
 }
 
-// The max magnitude over the dataset: every pure cell's number and each
-// number of an extracted cell, from every row of the table.
+// The max magnitude over the dataset: each number of an extracted cell, from
+// every row of the table.
 function datasetMaxMagnitude(entries) {
   const allNums = [];
   for (const { info } of entries) {
-    if (info.mode === 'pure') allNums.push(info.num);
-    else if (info.mode === 'extracted') {
+    if (info.mode === 'extracted') {
       for (const m of info.matches) allNums.push(m.num);
     }
   }
@@ -1803,13 +1798,12 @@ function datasetMaxMagnitude(entries) {
 // One cell's patches, positioned in the text the cell classified: empty for a
 // skip cell or an unchanged value. A date or time cell takes one patch: its
 // trimmed text, replaced whole, so the text keeps its own whitespace. Every
-// number takes the one write-back, formatNumber, patched in place. A pure
-// cell takes one patch over its number span (pureNumberSpan), so its sign,
-// currency sign, and percent sign stay where the page put them; the patch
-// compares the written digits to the span, which catches a number that is
-// unchanged but whose display simplifies (e.g. "35.0" to "35"). An extracted
-// cell — a unit number, a stacked cell, or numbers inside words, links, or a
-// <sup> — takes one patch per changed number.
+// number takes the one write-back, formatNumber, patched in place. An extracted
+// cell takes one patch per changed number; the patch compares the written
+// digits to the match, which catches a number that is unchanged but whose
+// display simplifies (e.g. "35.0" to "35"). The text around each match, a
+// sign, a currency sign, and a percent sign included, stays where the page
+// put it.
 function classifiedCellPatches(entry, maxMag, settings) {
   const { text, info } = entry;
   const { offsetTop, offsetOther, numTop } = settings;
@@ -1821,13 +1815,6 @@ function classifiedCellPatches(entry, maxMag, settings) {
       : roundTimeText(trimmed, settings.timeGranularity);
     if (rounded === null || rounded === trimmed) return { patches: [] };
     return { patches: [{ index: lead, numStr: trimmed, newNum: rounded }] };
-  }
-  if (info.mode === 'pure') {
-    const roundedValue = roundCellSetAware(info.num, info.num, maxMag, offsetTop, offsetOther, numTop);
-    const span = pureNumberSpan(text);
-    const newNum = formatNumber(roundedValue, span.numStr);
-    const patches = newNum === span.numStr ? [] : [{ index: span.index, numStr: span.numStr, newNum }];
-    return { patches };
   }
   if (info.mode === 'extracted') {
     const patches = [];
@@ -1972,7 +1959,7 @@ function roundValues(range, settings) {
   const textEntries = [];
   range.forEach((row, r) => row.forEach((value, c) => {
     if (typeof value === "number" && isFinite(value)) {
-      numberEntries.push({ r, c, info: { mode: "pure", num: value } });
+      numberEntries.push({ r, c, num: value, info: { mode: "extracted", matches: [{ num: value }] } });
     } else if (typeof value === "string" && value !== "") {
       const decision = classifyCell({ text: value, rowIndex: r, columnIndex: c, ranges: null },
         SHEETS_LADDER_OPTIONS);
@@ -1984,8 +1971,8 @@ function roundValues(range, settings) {
     settings.offsetTop, settings.offsetOther, settings.numTop);
 
   const results = new Map();
-  for (const { r, c, info } of numberEntries) {
-    results.set(r + "," + c, roundNumber(info.num));
+  for (const { r, c, num } of numberEntries) {
+    results.set(r + "," + c, roundNumber(num));
   }
   for (const { entry, patches } of tablePatches(textEntries, settings, maxMag).cells) {
     results.set(entry.r + "," + entry.c, textResult(entry, patches, roundNumber));
@@ -2003,10 +1990,10 @@ function roundValues(range, settings) {
  * returns its text with the patches applied.
  */
 function textResult(entry, patches, roundNumber) {
-  if (RESULT_KIND === "number") {
-    if (entry.info.mode === "pure") return roundNumber(entry.info.num);
-    const bracketed = entry.info.mode === "extracted" ? matchBracketedNumber(entry.text) : null;
-    if (bracketed) return roundNumber(bracketed.num);
+  if (RESULT_KIND === "number" && entry.info.mode === "extracted") {
+    const bracketed = matchBracketedNumber(entry.text);
+    const num = bracketed ? bracketed.num : toNumber(entry.text);
+    if (num !== null) return roundNumber(num);
   }
   return applyPatches(entry.text, patches);
 }

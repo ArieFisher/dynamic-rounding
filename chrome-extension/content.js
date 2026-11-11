@@ -704,17 +704,17 @@ function classifyPreviewCells(table, options) {
 
 // The lens preview's sample pool: each number the table rounds in its
 // dataset, with its cell's trimmed text, so a cell appears here only if the
-// table rounds it. Empty cells stay out. Pure and extracted results alone
-// count: the lens preview is about numeric magnitude and offset, so dates and
+// table rounds it. Empty cells stay out. A zero never counts, because it has
+// no magnitude. Extracted results alone count: the lens preview is about numeric magnitude and offset, so dates and
 // times stay out even though the ladder classifies them.
 function numericPreviewCells(entries) {
   const out = [];
   for (const { trimmed, info } of entries) {
     if (!trimmed) continue;
-    if (info.mode === 'pure') {
-      if (info.num !== 0 && isFinite(info.num)) out.push({ text: trimmed, num: info.num });
-    } else if (info.mode === 'extracted') {
-      for (const { num } of info.matches) out.push({ text: trimmed, num });
+    if (info.mode === 'extracted') {
+      for (const { num } of info.matches) {
+        if (num !== 0 && isFinite(num)) out.push({ text: trimmed, num });
+      }
     }
   }
   return out;
@@ -873,19 +873,15 @@ function buildCaptureStateResponse() {
 // The adapters (lib/dr-table/adapters.js, cells.js) build one cell object for
 // both kinds, so the pass sees no difference between them before it starts.
 //
-// Every difference is a field of the kind object the caller passes,
+// The one difference is a field of the kind object the caller passes,
 // NATIVE_TABLE_PASS or GRID_TABLE_PASS:
-//   splitReasons, splitRow  the placement results that write a debug row,
-//                        and that row's text: a native value that crosses a
-//                        piece boundary ('pieces' or 'split'), a grid number
-//                        split across two pieces ('split'). The pass writes the
-//                        row after classification, so the lens preview,
-//                        which runs the classification step alone, writes
-//                        none.
-//   dateSplitRow         the debug row for a changed date or time whose text
-//                        crosses a piece boundary.
 //   watchedElement(adapter)  the element the re-apply observer watches: a
 //                        native table itself, a grid's scroll container.
+//
+// The pass writes a debug row for a split number (entry.split) after
+// classification, so the lens preview, which runs the classification step
+// alone, writes none. It writes a second row for a changed date or time whose
+// text crosses a piece boundary.
 //
 // The pass settings beside the kind:
 //   frozenMaxMag  the max magnitude to use instead of computing it from the
@@ -909,17 +905,14 @@ function buildCaptureStateResponse() {
 // what classification captured, never the page, so a write to one cell
 // leaves the patches of the cells after it unchanged.
 
+const SPLIT_NUMBER_ROW = 'Dynamic Rounding: a number split across text pieces stays unchanged.';
+const SPLIT_DATE_ROW = 'Dynamic Rounding: a date or time split across text pieces stays unchanged.';
+
 const NATIVE_TABLE_PASS = {
-  splitReasons: ['pieces', 'split'],
-  splitRow: 'Dynamic Rounding: a native cell value split across text pieces stays unchanged.',
-  dateSplitRow: 'Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.',
   watchedElement(adapter) { return adapter.getElement(); },
 };
 
 const GRID_TABLE_PASS = {
-  splitReasons: ['split'],
-  splitRow: 'Dynamic Rounding: a grid cell number split across text pieces stays unchanged.',
-  dateSplitRow: 'Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.',
   watchedElement(adapter) { return adapter._getScrollContainer(); },
 };
 
@@ -998,13 +991,13 @@ function tableKindPass(adapter) {
 // (tablePatches, lib/dr-simplify/table.js), less a changed date or time that
 // does not sit in one text piece. A date or time cell's one patch covers its
 // trimmed text; when no single text piece holds that span, the cell stays as
-// written and the pass writes the kind's debug row.
-function cellPatches(stepCell, kind) {
+// written and the pass writes the debug row.
+function cellPatches(stepCell) {
   const { entry, patches } = stepCell;
   const isDateOrTime = entry.info.mode === 'date' || entry.info.mode === 'time';
   if (isDateOrTime && patches.length > 0 &&
       !layoutPieceHolding(entry.layout, patches[0].index, patches[0].numStr.length)) {
-    DR_LOG.debug(kind.dateSplitRow);
+    DR_LOG.debug(SPLIT_DATE_ROW);
     return [];
   }
   return patches;
@@ -1041,7 +1034,7 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   if (writes !== 'none') releaseRewrittenCells(table, dataCells);
   const classified = classifyTableCells(dataCells, opts, rangeParse.ranges);
   for (const entry of classified) {
-    if (kind.splitReasons.includes(entry.placedReason)) DR_LOG.debug(kind.splitRow);
+    if (entry.split) DR_LOG.debug(SPLIT_NUMBER_ROW);
   }
   const settings = Object.assign(resolveRoundingSettings(opts),
     { dateGranularity: opts.dateGranularity, timeGranularity: opts.timeGranularity });
@@ -1067,7 +1060,7 @@ function writeTableCells(table, stepCells, { kind, writes }) {
   let missedCells = 0;
   for (const stepCell of stepCells) {
     const { entry } = stepCell;
-    const flat = flatPatches(cellPatches(stepCell, kind), entry.layout);
+    const flat = flatPatches(cellPatches(stepCell), entry.layout);
     cells.push({ entry, patches: flat });
     if (writes === 'none') continue;
     const held = DR_MODEL.hasTableOriginal(table, entry.cellObj.el);

@@ -2634,12 +2634,13 @@ const LADDER_OPTS = {
       isDataTable(makeIsDataTable([['Item', 'Price'], ['Box', sign + '450']])), true);
   }
 
-  // The sign-only piece test admits every sign, so a cell that draws its sign
-  // in one piece and its digits in another still simplifies.
+  // The number span steps past every sign, so a cell that draws its sign in
+  // one piece and its digits in another still simplifies.
   for (const sign of CURRENCY_SIGNS) {
-    const spans = [{ i: 0, start: 0, text: sign }, { i: 1, start: sign.length, text: '450' }];
-    eq('currencies: a cell drawn as "' + sign + '" beside "450" is a stacked cell',
-      stackedMatches(spans, () => false), [{ numStr: '450', num: 450, index: sign.length }]);
+    const decision = classifyCell({ text: sign + '450', rowIndex: 1, columnIndex: 1, ranges: null }, LADDER_OPTS);
+    eq('currencies: a cell drawn as "' + sign + '" beside "450" keeps its number',
+      placeDecision(decision, { original: [sign, '450'], toFlat: null }).value.matches,
+      [{ numStr: '450', num: 450, index: sign.length }]);
   }
 })();
 
@@ -2843,7 +2844,7 @@ eq('decimal comma: "1,234.56 EUR" is a unit number, as before',
       '14,37€ (includes 2,49€ VAT)'].map((text) => decide(text).mode),
     ['skip', 'skip', 'skip', 'skip', 'skip', 'skip']);
   eq('decimal comma: the ladder still rounds a US-style cell',
-    ['1,234.56', '0.125'].map((text) => decide(text).mode), ['pure', 'pure']);
+    ['1,234.56', '0.125'].map((text) => decide(text).mode), ['extracted', 'extracted']);
 })();
 
 // --- Whitespace as a group mark ---
@@ -2926,7 +2927,7 @@ eq('group space: "1 234 USD" is a unit number',
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
   const decide = (text) => classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, opts);
   eq('group space: a pure cell "1 034 567" reads as one number',
-    decide('1 034 567'), { mode: 'pure', reason: 'simplify', value: { num: 1034567 } });
+    decide('1 034 567'), { mode: 'extracted', reason: 'simplify', value: { matches: [{ numStr: '1 034 567', num: 1034567, index: 0 }] } });
   eq('group space: "Revenue 1 034 567 units" rounds the same one number',
     decide('Revenue 1 034 567 units').value.matches.map((m) => m.num), [1034567]);
   eq('group space: a three-digit group with a leading zero is a group, not a code',
