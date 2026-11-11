@@ -5087,3 +5087,14 @@ function makeSparselyBoxedGrid(boxed) {
     }
   }
 })();
+
+(function artifactFilter_anArtifactInsideAVisibleTableCellResolvesTheOuterTable() {
+  for (const kind of ['native', 'grid']) {
+    const inner = afMark(afTable(kind), { 'aria-hidden': 'true' });
+    const outer = rwEl('table', {}, [rwEl('tbody', {}, [rwEl('tr', {}, [rwEl('td', {}, [inner])])])]);
+    const page = afPage([outer]);
+    const resolved = afRightClick(page, inner);
+    eq(`artifact filter, right-click, ${kind} artifact in a native table cell: resolves the outer table`,
+      resolved !== null && resolved.handle === outer, true);
+  }
+})();

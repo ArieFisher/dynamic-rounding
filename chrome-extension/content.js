@@ -389,12 +389,12 @@ function dropPendingTable(chainRoot) {
 // accessibility artifacts, so a dynamically rendered
 // single-page-application grid is found and an off-screen table is
 // not. Pass 2 hands the grids to the nomination step in the detection
-// layer (nominateNests), which lists the added node itself when it carries a grid or
-// table role, walks out to the node's chain root, and returns one outcome per
-// nest — the same step the load-time scan runs. The walk out matters here: a
-// node added inside a wrapper already in the page re-evaluates the whole nest
-// rather than registering itself, and it is the route by which a pending
-// table registers once its rows arrive.
+// layer (nominateNests), which lists the added node itself when it carries a
+// grid or table role, walks out to the node's chain root, and returns one
+// outcome per nest — the same step the load-time scan runs. The walk out
+// matters here: a node added inside a wrapper already in the page
+// re-evaluates the whole nest rather than registering itself, and it is the
+// route by which a pending table registers once its rows arrive.
 // Extracted as a named function so the detection is unit-testable
 // independently of the live MutationObserver wiring below.
 function injectPillboxesForAddedNode(node) {
