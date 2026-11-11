@@ -90,7 +90,14 @@ const contentScriptBundle = contentScriptFiles
   .join('\n');
 const coreCode = sourceByName('lib/dr-number/core.js');
 const parsingCode = sourceByName('lib/dr-number/parsing.js');
-const detectCode = sourceByName('lib/dr-table/detect.js');
+// The detection layer's source: the four lib/dr-table files and the placement
+// step, in manifest order; null when the manifest lacks one of them.
+const detectionFiles = [
+  'lib/dr-table/cells.js', 'lib/dr-table/adapters.js', 'lib/dr-table/classify.js',
+  'lib/dr-table/detect.js', 'lib/dr-simplify/placement.js',
+];
+const detectCode = detectionFiles.some((file) => sourceByName(file) === null)
+  ? null : detectionFiles.map(sourceByName).join('\n');
 const ladderCode = sourceByName('lib/dr-simplify/ladder.js');
 const constantsCode = sourceByName('constants.js');
 // background.js pulls its files in with importScripts, which Node has no

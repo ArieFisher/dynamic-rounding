@@ -1,10 +1,10 @@
 /**
  * DynamicRounding lib/dr-simplify package bundle.
  *
- * Loaded LAST within lib/dr-simplify, after ladder.js and table.js. Both
- * declare their functions as bare top-level names on the shared global
- * scope, and content.js calls those bare names. This file adds one more
- * thing: a single DR_SIMPLIFY object that groups every public function the
+ * Loaded LAST within lib/dr-simplify, after placement.js, ladder.js, and
+ * table.js. All three declare their functions as bare top-level names on the
+ * shared global scope, and content.js calls those bare names. This file adds
+ * one more thing: a single DR_SIMPLIFY object that groups every public function the
  * package exposes, so a consumer can depend on DR_SIMPLIFY.x instead of the
  * bare name.
  *
@@ -12,6 +12,15 @@
  */
 
 const DR_SIMPLIFY = {
+  // placement.js
+  pieceHolding,
+  flatRange,
+  layoutPieceHolding,
+  flatPatches,
+  textPosition,
+  showsPiecesTogether,
+  stackedMatches,
+  placeDecision,
   // ladder.js
   isWholeCellQuoted,
   filterMaskedMatches,

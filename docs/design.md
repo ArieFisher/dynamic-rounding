@@ -208,8 +208,8 @@ The extension is the largest consumer of the algorithm and carries its own compo
 | `constants.js` | The settings contract and the detection settings, loaded by the content script and the sidebar: each option's name and its default, and every detection setting with its two lookup lists |
 | `lib/dr-log/` | The log buffer: the last 50 log rows per context, each warn or error row with its stack trace, snapshot into every capture; a row listener receives each row as it lands |
 | `lib/dr-number/` | Rounding, parsing, and formatting — the algorithm itself, plus dates and times |
-| `lib/dr-table/` | Detection and the table adapters (`NativeTableAdapter`, `GridAdapter`) |
-| `lib/dr-simplify/` | The classification ladder: the per-cell verdict (`skip`, `pure`, `date`, `time`, `extracted`); and the table step: the column post-pass, the max magnitude, and each cell's patches |
+| `lib/dr-table/` | The cell object and its reads and writes (`cells.js`), the table adapters (`adapters.js`: `NativeTableAdapter`, `GridAdapter`), the cell classification with the link filter (`classify.js`), and detection (`detect.js`) |
+| `lib/dr-simplify/` | The placement step, which checks a cell's classified result against its text pieces; the classification ladder: the per-cell verdict (`skip`, `pure`, `date`, `time`, `extracted`); and the table step: the column post-pass, the max magnitude, and each cell's patches |
 | `lib/dr-capture/` | The capture: the state serializer and the capture file renderer |
 | `adapters/messaging.js` | The event bus (`DR_BUS`) |
 | `app/model.js` | The application model (`DR_MODEL`) |

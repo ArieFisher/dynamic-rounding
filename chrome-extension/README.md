@@ -124,7 +124,7 @@ Not every "table" on the modern web is an HTML `<table>`. Many data-heavy apps r
 - **AWS Console** — the **Cloudscape** design system (`awsui` / `.awsui-table-wrapper`).
 - **Azure Data Studio / VS Code** — SlickGrid / Monaco grid (`monaco-workbench`).
 
-The extension abstracts both shapes behind a `TableAdapter` interface (`lib/dr-table/detect.js`), chosen by `makeAdapter(el)`:
+The extension abstracts both shapes behind a `TableAdapter` interface (`lib/dr-table/adapters.js`), chosen by `makeAdapter(el)`:
 
 - **`NativeTableAdapter`** (`<table>` elements) — reads `.rows`/`.cells` and classifies each cell on its rendered text. Writes go through the patch writer, as on a grid, and restore puts back each patched piece's saved text.
 - **`GridAdapter`** (`<div>`-based grids, `isGrid() === true`) — stitches each row from the pinned pane and the scrollable pane and exposes the same row/cell API.

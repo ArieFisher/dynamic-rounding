@@ -126,8 +126,9 @@
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
       'lib/dr-number/parsing.js', 'lib/dr-number/identifiers.js',
       'lib/dr-number/index.js',
-      'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-      'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
+      'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
+      'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
+      'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
       'lib/dr-capture/index.js',
       'adapters/messaging.js', 'app/model.js',
@@ -659,7 +660,8 @@
 // (roundTable / reapplyRounding), never from detection.
 // ---------------------------------------------------------------------------
 (function detectionFunctions_sourceScan_noPageWrites() {
-  if (detectCode === null) {
+  const detectSource = sourceByName('lib/dr-table/detect.js');
+  if (detectSource === null) {
     eq('purity scan: source file lib/dr-table/detect.js present in manifest', false, true);
     return;
   }
@@ -687,7 +689,7 @@
   }
 
   for (const fnName of DETECTION_FNS) {
-    const body = extractFunctionBody(detectCode, fnName);
+    const body = extractFunctionBody(detectSource, fnName);
     eq(`purity scan: ${fnName} body located in lib/dr-table/detect.js`, body !== null, true);
     if (body === null) continue;
     for (const token of FORBIDDEN) {
@@ -1290,8 +1292,9 @@
     'constants.js',
     'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
     'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
-    'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-    'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
+    'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
+    'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
+    'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
     'adapters/messaging.js', 'app/model.js',
     'ui-pillbox.js', 'ui-toast.js', 'content.js',
   ];
@@ -1465,11 +1468,11 @@
 
 // ---------------------------------------------------------------------------
 // Table detection lives under lib/dr-table/
-// (detect.js, index.js), mirroring the lib/dr-number package structure and
-// discipline checks above. Four groups of tests:
+// (cells.js, adapters.js, classify.js, detect.js, index.js), mirroring the
+// lib/dr-number package structure and discipline checks above. Four groups of tests:
 //   1. DR_TABLE bundle discipline (mirrors drNumberBundleIsPublished /
 //      indexJsDeclaresExactlyOneGlobal, but against an explicit hand-written
-//      list, not a source-derived one — detect.js also carries write-engine
+//      list, not a source-derived one — the package also carries write-engine
 //      helpers alongside detection, so "every top-level function" is not the
 //      right criterion here the way it is for the pure lib/dr-number files).
 //   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
@@ -1490,9 +1493,6 @@
     'mapRenderedToFlat',
     'writePatches',
     'restoreTextPieces',
-    'placeDecision',
-    'layoutPieceHolding',
-    'flatPatches',
     'sortCellByRecord',
     'looksLikeGrid',
     'findTargetTable',
@@ -1590,7 +1590,7 @@
 
 (function detectionSettings_noFallbackCopy() {
   const filesToScan = {
-    'lib/dr-table/detect.js': detectCode,
+    'lib/dr-table (detection layer)': detectCode,
     'content.js': sourceByName('content.js'),
   };
   for (const [file, src] of Object.entries(filesToScan)) {
@@ -1837,7 +1837,8 @@
 (function drSimplifyBundleMatchesSourceDeclarations() {
   const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
   const tableStepCode = sourceByName('lib/dr-simplify/table.js');
-  const declaredNames = [ladderCode, tableStepCode]
+  const placementCode = sourceByName('lib/dr-simplify/placement.js');
+  const declaredNames = [placementCode, ladderCode, tableStepCode]
     .flatMap((code) => (code === null ? [] : [...code.matchAll(FUNCTION_DECL_RE)].map((m) => m[1])))
     .sort();
   eq('lib/dr-simplify/ladder.js: source present in manifest', ladderCode !== null, true);
@@ -1846,7 +1847,7 @@
     declaredNames.length > 0, true);
   eq('lib/dr-simplify/index.js: DR_SIMPLIFY exists on the global scope after the main eval',
     typeof globalThis.DR_SIMPLIFY, 'object');
-  eq('lib/dr-simplify bundle: DR_SIMPLIFY keys are exactly the top-level functions declared in ladder.js and table.js',
+  eq('lib/dr-simplify bundle: DR_SIMPLIFY keys are exactly the top-level functions declared in placement.js, ladder.js, and table.js',
     Object.keys(globalThis.DR_SIMPLIFY || {}).sort(), declaredNames);
   eq('lib/dr-simplify bundle: every DR_SIMPLIFY entry is itself a function',
     declaredNames.every((n) => typeof (globalThis.DR_SIMPLIFY || {})[n] === 'function'), true);
@@ -2745,8 +2746,8 @@
       for (const match of line.match(/[\w$.]*\.isOutside\b/g) || []) reads.push(`${file}: ${match}`);
     }
   }
-  eq('every row: the grid adapter\'s file is the one content script whose code holds the outside-row mark',
-    filesWithTheMark, ['lib/dr-table/detect.js']);
+  eq('every row: the grid adapter\'s file and the shape fingerprint\'s file are the only content scripts whose code holds the outside-row mark',
+    filesWithTheMark, ['lib/dr-table/adapters.js', 'lib/dr-table/detect.js']);
   eq('every row: the shape fingerprint\'s header-row read is the one reader of the outside-row mark',
     reads, ['lib/dr-table/detect.js: firstRow.isOutside']);
 })();
