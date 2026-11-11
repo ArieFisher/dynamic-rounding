@@ -87,7 +87,7 @@ function collectCaptureState(deps) {
         cells.push({
           row: r,
           col: cellObj.columnIndex,
-          role: cellObj.tagName === 'TH' ? 'th' : 'td',
+          role: cellObj.isHeaderCell ? 'th' : 'td',
           text: cellObj.getDisplayedText(),
           original,
           // Per cell, so the renderer can tell a lost original (marker,

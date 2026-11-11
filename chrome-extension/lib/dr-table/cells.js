@@ -54,9 +54,20 @@ function pageHoverText(cellEl, record) {
 }
 
 /**
+ * Whether the page marks the cell as a header cell: a TH, or the row-header or
+ * column-header role.
+ * @param {Element} cellEl
+ * @returns {boolean}
+ */
+function isHeaderCellEl(cellEl) {
+  if (cellEl.tagName === 'TH') return true;
+  const role = typeof cellEl.getAttribute === 'function' ? cellEl.getAttribute('role') : null;
+  return role === 'rowheader' || role === 'columnheader';
+}
+
+/**
  * The cell object both adapters hand out. `reads` holds the differences
  * between the kinds:
- *   tagName          the cell's tag; a grid cell reads as a data cell
  *   liveText()       the text the cell classifies when it has no record: a
  *                    native cell's rendered text, a grid cell's flat text
  *   displayedText()  the text the screen shows now, for the capture
@@ -64,7 +75,7 @@ function pageHoverText(cellEl, record) {
  *                    converts its positions to flat-text positions
  * @param {Element} cellEl
  * @param {{has: Function, get: Function, set: Function}} port
- * @param {{tagName: string, liveText: () => string, displayedText: () => string, rendered: boolean}} reads
+ * @param {{liveText: () => string, displayedText: () => string, rendered: boolean}} reads
  */
 function makeCellObj(cellEl, port, reads) {
   const recordOf = () => (port.has(cellEl) ? port.get(cellEl) : null);
@@ -74,7 +85,7 @@ function makeCellObj(cellEl, port, reads) {
   };
   return {
     el: cellEl,
-    tagName: reads.tagName,
+    isHeaderCell: isHeaderCellEl(cellEl),
     getRecord: recordOf,
     getText,
     getDisplayedText: reads.displayedText,
@@ -146,13 +157,10 @@ function makeCellObj(cellEl, port, reads) {
  * @returns {{getText(): string, getPieceLayout(): PieceLayout|null,
  *            applyPatches(patches: object[], opts?: {value?: string}): number,
  *            restore(): void,
- *            getDisplayedText(): string, getRecord(): CellRecord|null, el: Element, tagName: string}}
+ *            getDisplayedText(): string, getRecord(): CellRecord|null, el: Element, isHeaderCell: boolean}}
  */
 function makeGridCellObj(cellEl, port) {
   return makeCellObj(cellEl, port, {
-    // The page marks a grid's header cell by role and puts its header row
-    // outside every row group (_hasHeaderRow), so tagName is never 'TH'.
-    tagName: 'TD',
     // The flat text: the coordinate space every patch position counts in.
     liveText() {
       const pieces = collectTextPieces(cellEl);

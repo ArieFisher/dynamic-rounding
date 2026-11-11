@@ -67,7 +67,7 @@ function probeRowsHoldNumber(candidateRows, opts) {
   // Each candidate row holds at least one cell, so the cell budget ends
   // within this many rows.
   const rows = candidateRows.slice(0, DR_DETECTION_SETTINGS.dataTestCellBudget);
-  return holdsRoundableCell(buildRows(rows.map((row) => Array.from(row.children)), gridCellSpans,
+  return holdsRoundableCell(buildRows(rows.map((row) => Array.from(row.children)),
     (cellEl) => makeGridCellObj(cellEl, port)));
 }
 
@@ -370,7 +370,7 @@ function isDataTable(table, opts = {}) {
 function readTableFingerprint(el, opts = {}) {
   const adapter = makeAdapter(el, opts);
   const rows = adapter.getRows();
-  const readsHeader = rows.length > 0 && _hasHeaderRow(el, adapter, rows[0]);
+  const readsHeader = rows.length > 0 && _hasHeaderRow(rows[0]);
   let columnCount = 0;
   let headerTexts = null;
   for (let i = 0; i < rows.length; i++) {
@@ -387,29 +387,19 @@ function readTableFingerprint(el, opts = {}) {
  * Whether the first row the adapter returns is a header row, which determines
  * whether the fingerprint carries header texts at all.
  *
- * On a grid the answer is the adapter's outside-row mark: a grid that groups
- * its data rows puts its header row outside every group. A grid that groups
- * nothing (a database query grid) has a data row first, and a scroll redraws
- * it, so its text describes the rows on the screen rather than the table.
+ * Both table kinds read it the same way: the first row is an outside row, or
+ * it holds header cells alone. A grid that groups nothing (a database query
+ * grid) has a data row first, and a scroll redraws it, so its text describes
+ * the rows on the screen rather than the table. The pass reads a header row
+ * like any other; the first-row exclusion leaves it as written, by position.
  *
- * A native table's adapter carries no outside-row mark, so the row itself is
- * read: it sits in a THEAD, or it holds header cells and no data cell, which
- * covers a leading row of <th> with no explicit head section. The pass reads
- * such a row like any other; the first-row exclusion leaves it as written, by
- * position.
- *
- * @param {Element} el
- * @param {NativeTableAdapter|GridAdapter} adapter
  * @param {{isOutside?: boolean, getCells(): object[]}} firstRow
  * @returns {boolean}
  */
-function _hasHeaderRow(el, adapter, firstRow) {
-  if (!(adapter instanceof NativeTableAdapter)) return firstRow.isOutside === true;
-  const rowEl = el.rows && el.rows[0];
-  const parent = rowEl && parentOf(rowEl);
-  if (parent && parent.tagName === 'THEAD') return true;
+function _hasHeaderRow(firstRow) {
+  if (firstRow.isOutside === true) return true;
   const cells = firstRow.getCells();
-  return cells.length > 0 && cells.every((cellObj) => cellObj.tagName === 'TH');
+  return cells.length > 0 && cells.every((cellObj) => cellObj.isHeaderCell);
 }
 
 /**

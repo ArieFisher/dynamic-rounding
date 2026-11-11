@@ -1311,7 +1311,10 @@
     <h2>14. ARIA grid with bare table rows</h2>
     <p>Table rows with no table element around them.</p>
     <p class="expect">Expect: pillbox at load. Every number outside the first
-      row and the first column rounds.</p>
+      row and the first column rounds. In the last row the first cell spans
+      two columns, so its number sits in the third column: a range expression
+      naming column C reaches it, and one naming column B does not. A failure
+      shows the last number rounding under column B.</p>
 
     <!--
       Kaggle-shaped DOM: a role="grid" element whose rows are orphan tr
@@ -1328,13 +1331,15 @@
           ['Quiet Harbor', '2021', '164,220,987'],
           ['Last Transit', '2018', '96,733,401'],
           ['Paper Planets', '2022', '41,006,218'],
-          ['The Long Thaw', '2020', '8,914,552']
+          ['The Long Thaw', '2020', '8,914,552'],
+          ['Both sequels', '1,073,216,904']
         ];
         for (var i = 0; i < rows.length; i++) {
           var tr = document.createElement('tr');
           for (var j = 0; j < rows[i].length; j++) {
             var td = document.createElement('td');
             td.textContent = rows[i][j];
+            if (rows[i].length === 2 && j === 0) td.setAttribute('colspan', '2');
             tr.appendChild(td);
           }
           grid.appendChild(tr);

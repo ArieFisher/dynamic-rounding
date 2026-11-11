@@ -113,7 +113,7 @@
       // sits at its read position and covers one column.
       getCells: () => row.cells.map((cell, c) => ({
         el: cell.el,
-        tagName: cell.tagName || 'TD',
+        isHeaderCell: cell.isHeaderCell === true,
         columnIndex: c,
         columnSpan: 1,
         getDisplayedText: () => cell.text,
@@ -126,7 +126,7 @@
   const tableA = {
     outerHTML: '<table><tr><td>99,000</td></tr></table>',
     _rows: [
-      { cells: [{ el: makeCellEl(false), tagName: 'TH', text: 'Amount' }] },
+      { cells: [{ el: makeCellEl(false), isHeaderCell: true, text: 'Amount' }] },
       { cells: [
         { el: a1, text: '99,000' },
         { el: makeCellEl(false), text: 'n/a' },
@@ -253,7 +253,7 @@
     getRows: () => table._rows.map((row) => ({
       getCells: () => row.cells.map((cell) => ({
         el: cell.el,
-        tagName: 'TD',
+        isHeaderCell: false,
         getDisplayedText: () => cell.text,
       })),
     })),

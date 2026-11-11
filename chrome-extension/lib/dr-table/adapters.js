@@ -147,21 +147,17 @@ function normalizeSpan(raw, whenZero) {
   return Math.min(value, 1000);
 }
 
-function nativeCellSpans(cell) {
-  return {
-    colSpan: normalizeSpan(cell.colSpan, 1),
-    rowSpan: normalizeSpan(cell.rowSpan, Infinity),
+// The element's span property, then the accessibility attribute: a native
+// cell holds the first, a grid cell of generic elements the second, and a bare
+// td in a grid the first.
+function cellSpans(cellEl) {
+  const read = (property, attribute) => {
+    if (cellEl && cellEl[property] !== undefined && cellEl[property] !== null) return cellEl[property];
+    return (cellEl && typeof cellEl.getAttribute === 'function') ? cellEl.getAttribute(attribute) : null;
   };
-}
-
-// A grid that declares no span gets one column and one row per cell.
-function gridCellSpans(cellEl) {
-  const read = (cellEl && typeof cellEl.getAttribute === 'function')
-    ? (name) => cellEl.getAttribute(name)
-    : () => null;
   return {
-    colSpan: normalizeSpan(read('aria-colspan'), 1),
-    rowSpan: normalizeSpan(read('aria-rowspan'), Infinity),
+    colSpan: normalizeSpan(read('colSpan', 'aria-colspan'), 1),
+    rowSpan: normalizeSpan(read('rowSpan', 'aria-rowspan'), Infinity),
   };
 }
 
@@ -202,15 +198,13 @@ function assignGridColumns(rowSpans) {
  * reads each row's cell elements once, so the column plan and the cell
  * objects count the same row shape.
  * @param {Element[][]} rowCellEls - each row's cell elements, in column order
- * @param {(cellEl: Element) => {colSpan: number, rowSpan: number}} readSpans
- *   - the span read of the table kind (nativeCellSpans or gridCellSpans)
  * @param {(cellEl: Element) => object} makeCell - the cell object of the
  *   table kind (see makeCellObj)
  * @param {object[]} [rowProps] - fields to add to each row, by row position
  * @returns {{getCells(): object[]}[]}
  */
-function buildRows(rowCellEls, readSpans, makeCell, rowProps) {
-  const plan = assignGridColumns(rowCellEls.map((cellEls) => cellEls.map(readSpans)));
+function buildRows(rowCellEls, makeCell, rowProps) {
+  const plan = assignGridColumns(rowCellEls.map((cellEls) => cellEls.map(cellSpans)));
   return rowCellEls.map((cellEls, r) => Object.assign({}, rowProps && rowProps[r], {
     getCells() {
       return cellEls.map((cellEl, c) => Object.assign({}, plan[r][c], makeCell(cellEl)));
@@ -227,12 +221,16 @@ class NativeTableAdapter {
   isGrid() { return false; }
   getRows() {
     const port = this.originalsPort;
-    return buildRows(Array.from(this.el.rows, (row) => Array.from(row.cells)), nativeCellSpans, (cell) => {
+    const rows = Array.from(this.el.rows);
+    return buildRows(rows.map((row) => Array.from(row.cells)), (cell) => {
       const rendered = () => cell.innerText || cell.textContent || '';
       return makeCellObj(cell, port, {
-        tagName: cell.tagName, liveText: rendered, displayedText: rendered, rendered: true,
+        liveText: rendered, displayedText: rendered, rendered: true,
       });
-    });
+    }, rows.map((row) => {
+      const parent = parentOf(row);
+      return { isOutside: !!parent && parent.tagName === 'THEAD' };
+    }));
   }
 }
 
@@ -327,7 +325,8 @@ class GridAdapter {
    * cannot change the choice. The result is the container-wide match list in
    * document order, so a row's position is its literal row number.
    *
-   * isOutside marks a row in no row group. Only the shape fingerprint reads it
+   * isOutside marks a row in no row group (on a native table, a row in the
+   * head section). Only the shape fingerprint reads it
    * (_hasHeaderRow).
    *
    * A row from the children fallback on a column-first grid has no row
@@ -445,7 +444,7 @@ class GridAdapter {
       const pinned = pinnedRowEl ? adapter._getCellEls(pinnedRowEl) : [];
       return pinned.concat(adapter._getCellEls(rowEl));
     });
-    return buildRows(rowCellEls, gridCellSpans, (cellEl) => makeGridCellObj(cellEl, adapter.originalsPort),
+    return buildRows(rowCellEls, (cellEl) => makeGridCellObj(cellEl, adapter.originalsPort),
       scrollEntries.map(({ isOutside }) => ({ isOutside })));
   }
 }
