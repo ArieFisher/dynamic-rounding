@@ -679,6 +679,8 @@ function isUnrestorableCell(table, cell) {
 // cell before simplifying it fresh, and on a held cell whose target text is
 // its original.
 function releaseCell(table, cell) {
+  // restore() reads the cell's record alone, never a kind's text reads, so
+  // the grid cell object serves a native cell as well.
   makeGridCellObj(cell, registryOriginalsPort(table)).restore();
   DR_MODEL.deleteTableOriginal(table, cell);
 }
