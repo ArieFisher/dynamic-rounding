@@ -3394,35 +3394,39 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 })();
 
 // The header-row test is one rule on both kinds: the first row sits in the head
-// section or outside every row group, or it holds header cells alone. A grid
-// with no row group at all and a first row of header cells alone therefore
-// carries the header texts, and a swap to new texts at the same column count
-// reads as a different shape.
-(function shapeFingerprint_aFirstRowOfHeaderCellsAloneCarriesHeaderTextsOnBothKinds() {
+// section or outside every row group, or it holds header cells alone and the
+// table groups its rows. A native table always groups its rows. A grid with no
+// row group keeps the column count alone, because a virtualized grid can
+// scroll its first row away.
+(function shapeFingerprint_aFirstRowOfHeaderCellsAloneCarriesHeaderTextsOnATableThatGroupsItsRows() {
   const headerRow = (header, texts) => texts.map((pieces) => ({ pieces, header }));
-  const draw = (kind, firstRow) => rwDrawTable(kind, [
-    { part: 'bare', rows: [firstRow, ['North', '1,482,391'], ['South', '918,554']] },
+  const draw = (kind, grouped, firstRow) => rwDrawTable(kind, [
+    { part: grouped ? 'body' : 'bare', grouped, rows: [firstRow, ['North', '1,482,391'], ['South', '918,554']] },
   ]).table;
   for (const kind of ['native', 'grid']) {
-    for (const header of ['col', 'row']) {
-      eq(`header row (${kind}, ${header} header cells): a first row of header cells alone carries the header texts`,
-        readTableFingerprint(draw(kind, headerRow(header, ['Region', 'Q1']))),
-        { columnCount: 2, headerTexts: ['Region', 'Q1'] });
-      eq(`header row (${kind}, ${header} header cells): new header texts at the same column count compare different`,
+    for (const grouped of [false, true]) {
+      const groups = kind === 'native' || grouped;
+      const label = `${kind}, ${grouped ? 'with' : 'no'} row group`;
+      for (const header of ['col', 'row']) {
+        eq(`header row (${label}, ${header} header cells): a first row of header cells alone ${groups ? 'carries the header texts' : 'carries the column count alone'}`,
+          readTableFingerprint(draw(kind, grouped, headerRow(header, ['Region', 'Q1']))),
+          { columnCount: 2, headerTexts: groups ? ['Region', 'Q1'] : null });
+        eq(`header row (${label}, ${header} header cells): new header texts at the same column count compare ${groups ? 'different' : 'the same'}`,
+          sameTableFingerprint(
+            readTableFingerprint(draw(kind, grouped, headerRow(header, ['Region', 'Q1']))),
+            readTableFingerprint(draw(kind, grouped, headerRow(header, ['Region', 'Q2'])))), !groups);
+      }
+      eq(`header row (${label}): a first row holding a data cell beside a header cell carries the column count alone`,
+        readTableFingerprint(draw(kind, grouped, [{ pieces: 'Region', header: 'col' }, 'Q1'])),
+        { columnCount: 2, headerTexts: null });
+      eq(`header row (${label}): a first row of data cells carries the column count alone`,
+        readTableFingerprint(draw(kind, grouped, ['Region', 'Q1'])),
+        { columnCount: 2, headerTexts: null });
+      eq(`header row (${label}): new data texts in the first row at the same column count compare the same`,
         sameTableFingerprint(
-          readTableFingerprint(draw(kind, headerRow(header, ['Region', 'Q1']))),
-          readTableFingerprint(draw(kind, headerRow(header, ['Region', 'Q2'])))), false);
+          readTableFingerprint(draw(kind, grouped, ['Region', 'Q1'])),
+          readTableFingerprint(draw(kind, grouped, ['Area', 'Q2']))), true);
     }
-    eq(`header row (${kind}): a first row holding a data cell beside a header cell carries the column count alone`,
-      readTableFingerprint(draw(kind, [{ pieces: 'Region', header: 'col' }, 'Q1'])),
-      { columnCount: 2, headerTexts: null });
-    eq(`header row (${kind}): a first row of data cells carries the column count alone`,
-      readTableFingerprint(draw(kind, ['Region', 'Q1'])),
-      { columnCount: 2, headerTexts: null });
-    eq(`header row (${kind}): new data texts in the first row at the same column count compare the same`,
-      sameTableFingerprint(
-        readTableFingerprint(draw(kind, ['Region', 'Q1'])),
-        readTableFingerprint(draw(kind, ['Area', 'Q2']))), true);
   }
 })();
 

@@ -385,11 +385,14 @@ function readTableFingerprint(el, opts = {}) {
 
 /**
  * Whether the first row the adapter returns is a header row.
- * @param {{isOutside?: boolean, getCells(): object[]}} firstRow
+ * @param {{isOutside?: boolean, isGrouped?: boolean, getCells(): object[]}} firstRow
  * @returns {boolean}
  */
 function _hasHeaderRow(firstRow) {
   if (firstRow.isOutside === true) return true;
+  // A virtualized grid that groups nothing can scroll its first row away, so
+  // the texts of a row of header cells there could differ on a later read.
+  if (firstRow.isGrouped !== true) return false;
   const cells = firstRow.getCells();
   return cells.length > 0 && cells.every((cellObj) => cellObj.isHeaderCell);
 }

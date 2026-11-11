@@ -3233,30 +3233,36 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// The same check on a table whose first row holds header cells alone with no
-// row group, on both kinds: a swap to new header texts at the same column count
-// registers the table fresh.
-(function shapeFingerprint_aHeaderCellsAloneFirstRowTripsTheCheckOnBothKinds() {
-  for (const kind of ['native', 'grid']) {
+// The same check on a table whose first row holds header cells alone: a native
+// table and a grid with a row group register fresh when the header texts
+// change at the same column count. A grid with no row group keeps its entry,
+// because a virtualized grid can scroll its first row away.
+(function shapeFingerprint_aHeaderCellsAloneFirstRowTripsTheCheckOnATableThatGroupsItsRows() {
+  for (const [kind, grouped] of [['native', false], ['native', true], ['grid', false], ['grid', true]]) {
+    const groups = kind === 'native' || grouped;
+    const label = `${kind}, ${grouped ? 'with' : 'no'} row group`;
     runPressFixture(() => {
-      const draw = (texts) => rwDrawTable(kind, [{ part: 'bare', rows: [
+      const draw = (texts) => rwDrawTable(kind, [{ part: grouped ? 'body' : 'bare', grouped, rows: [
         texts.map((pieces) => ({ pieces, header: 'col' })),
         ['North', '1,482,391'], ['South', '918,554'],
       ] }]).table;
       const table = draw(['Region', 'Q1']);
       const removedPillboxes = registerFingerprintedTable(table);
       DR_MODEL.setActiveTable(table);
-      eq(`fingerprint header cells (${kind}): registration records the header texts (precondition)`,
-        DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q1'] });
+      eq(`fingerprint header cells (${label}): registration records ${groups ? 'the header texts' : 'the column count alone'} (precondition)`,
+        DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: groups ? ['Region', 'Q1'] : null });
 
-      rwTextNodesOf(table.children[0].children[1])[0].nodeValue = 'Q2';
+      const headerCell = grouped ? table.children[0].children[0].children[1] : table.children[0].children[1];
+      rwTextNodesOf(headerCell)[0].nodeValue = 'Q2';
       let outcome = null;
       withPillboxDocumentMock(function () { outcome = revalidateTableShape(table); });
-      eq(`fingerprint header cells (${kind}): a header text change reports a switch`, outcome.switched, true);
-      eq(`fingerprint header cells (${kind}): the discard takes the old pillbox off the page`,
-        removedPillboxes.length, 1);
-      eq(`fingerprint header cells (${kind}): the fresh fingerprint carries the new header text`,
-        DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q2'] });
+      eq(`fingerprint header cells (${label}): a header text change ${groups ? 'reports a switch' : 'keeps the entry'}`, outcome.switched, groups);
+      eq(`fingerprint header cells (${label}): ${groups ? 'the discard takes the old pillbox off the page' : 'no pillbox leaves the page'}`,
+        removedPillboxes.length, groups ? 1 : 0);
+      if (groups) {
+        eq(`fingerprint header cells (${label}): the fresh fingerprint carries the new header text`,
+          DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q2'] });
+      }
 
       forgetRegisteredTable(table);
     });

@@ -230,7 +230,7 @@ class NativeTableAdapter {
       });
     }, rows.map((row) => {
       const parent = parentOf(row);
-      return { isOutside: !!parent && parent.tagName === 'THEAD' };
+      return { isOutside: !!parent && parent.tagName === 'THEAD', isGrouped: true };
     }));
   }
 }
@@ -333,7 +333,7 @@ class GridAdapter {
    * element: its entry holds el: null and cellEls.
    *
    * @param {Element} container
-   * @returns {{el: Element|null, isOutside: boolean, cellEls?: Element[]}[]}
+   * @returns {{el: Element|null, isOutside: boolean, isGrouped: boolean, cellEls?: Element[]}[]}
    */
   _getRowEntries(container) {
     if (!container) return [];
@@ -350,10 +350,10 @@ class GridAdapter {
         rows = rows.concat(_ownDescendants(scope, sel));
       }
       if (rows.length === 0) continue;
-      if (!isGrouped) return rows.map((el) => ({ el, isOutside: false }));
+      if (!isGrouped) return rows.map((el) => ({ el, isOutside: false, isGrouped }));
       const inGroup = new Set(rows);
       return _ownDescendants(container, sel)
-        .map((el) => ({ el, isOutside: !inGroup.has(el) }));
+        .map((el) => ({ el, isOutside: !inGroup.has(el), isGrouped }));
     }
     // Row groups that hold no rows are non-conforming markup, so only the
     // first group's children count.
@@ -366,18 +366,18 @@ class GridAdapter {
    * the most common item count count, so every row holds one cell per column.
    *
    * @param {Element} parent
-   * @returns {{el: Element|null, isOutside: boolean, cellEls?: Element[]}[]}
+   * @returns {{el: Element|null, isOutside: boolean, isGrouped: boolean, cellEls?: Element[]}[]}
    */
   _childRowEntries(parent) {
     if (!parent || !parent.children) return [];
     const children = Array.from(parent.children);
     if (!isColumnFirst(children, this.styleProbe)) {
-      return children.map((el) => ({ el, isOutside: false }));
+      return children.map((el) => ({ el, isOutside: false, isGrouped: false }));
     }
     const { modalChildCount, candidates: columns } = childCountCandidates(children);
     const rows = [];
     for (let r = 0; r < modalChildCount; r++) {
-      rows.push({ el: null, isOutside: false, cellEls: columns.map((column) => column.children[r]) });
+      rows.push({ el: null, isOutside: false, isGrouped: false, cellEls: columns.map((column) => column.children[r]) });
     }
     return rows;
   }
@@ -445,7 +445,7 @@ class GridAdapter {
       return pinned.concat(adapter._getCellEls(rowEl));
     });
     return buildRows(rowCellEls, (cellEl) => makeGridCellObj(cellEl, adapter.originalsPort),
-      scrollEntries.map(({ isOutside }) => ({ isOutside })));
+      scrollEntries.map(({ isOutside, isGrouped }) => ({ isOutside, isGrouped })));
   }
 }
 
