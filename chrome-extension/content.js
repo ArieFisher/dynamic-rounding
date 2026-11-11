@@ -746,8 +746,8 @@ function numericPreviewCells(entries) {
 // Pick up to 2 top-band samples and one sample per other-band magnitude for
 // the lens preview. Bucketed by magnitude (floor(log10|num|)) so the lens
 // preview shows the offset_top and offset_other split that roundCellSetAware
-// applies to the table. The max magnitude comes from the table step's
-// datasetMaxMagnitude, the one the simplification pass rounds against.
+// applies to the table. The max magnitude is the table's magnitude freeze
+// when it holds one, so the samples match the cells.
 function extractPreviewSamples(table) {
   // The table's own settings, not shipped defaults — otherwise the lens
   // preview and the table disagree the moment the sidebar's slider or
@@ -758,7 +758,8 @@ function extractPreviewSamples(table) {
   if (cells.length === 0) {
     return { samples: { top: [], bottom: [] }, maxMag: null };
   }
-  const maxMag = datasetMaxMagnitude(entries);
+  const frozenMaxMag = DR_MODEL.getTableMaxMagnitude(table);
+  const maxMag = frozenMaxMag != null ? frozenMaxMag : datasetMaxMagnitude(entries);
   const numTop = liveSettings.numTop || 1;
   const topOffset = typeof liveSettings.offsetTop === 'number' ? liveSettings.offsetTop : -0.5;
   const otherOffset = typeof liveSettings.offsetOther === 'number' ? liveSettings.offsetOther : -0.5;

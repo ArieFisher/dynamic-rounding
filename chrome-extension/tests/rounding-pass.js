@@ -4315,6 +4315,22 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
+// --- The lens preview rounds against the table's magnitude freeze, so its
+// samples match the cells after the page writes a value of a larger order of
+// magnitude. ---
+(function freeze04_theLensPreviewReadsTheMagnitudeFreeze() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTableUnder(t.table, RW_OPTS);
+    t.write(0, 0, '98,765');
+    page.settle();
+    const preview = extractPreviewSamples(t.table);
+    eq(`lens preview (${kind}): the preview max magnitude is the frozen one`, preview.maxMag, 3);
+    eq(`lens preview (${kind}): the top band holds the larger value and a magnitude-3 value`,
+      preview.samples.top.map((s) => s.num), [98765, 5678]);
+  });
+})();
+
 // --- #281: a first simplification that finds no number stores no max
 // magnitude, so the next pass computes it from the numbers that arrive. ---
 (function freeze03_aFirstSimplificationWithNoNumberFreezesNothing() {
