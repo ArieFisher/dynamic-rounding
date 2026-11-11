@@ -741,8 +741,8 @@ function scanTables(root, opts = {}) {
 function findTables(root, opts = {}) {
   const isRegistered = opts.isRegistered || (() => false);
   const { tables, nominations } = scanTables(root, opts);
-  // A table root scans itself alone: its descendant tables belong to the
-  // caller's own pass.
+  // A table root yields itself alone, so a shape-change re-registration covers
+  // that one table.
   const native = root && root.tagName === 'TABLE' ? tables.filter((table) => table === root) : tables;
   const handles = native.concat(nominations.filter(({ outcome }) => outcome === 'selected').map(({ selected }) => selected));
   return handles.map((handle) => ({ handle, isNew: !isRegistered(handle) }));

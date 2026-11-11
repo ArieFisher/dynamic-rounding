@@ -384,16 +384,9 @@ function dropPendingTable(chainRoot) {
   pendingRoots.delete(chainRoot);
 }
 
-// Detect and attach pillboxes for tables and grids inside (or equal to) a node
-// added to the page, or the document. The scan (scanTables in the detection
-// layer) lists the native tables, skipping accessibility artifacts, so a
-// dynamically rendered single-page-application grid is found and an off-screen
-// table is not. It also returns one nomination outcome per nest, which
-// consumeNominations acts on. The nomination step lists the added node itself
-// when it carries a grid or table role and walks out to the node's chain root:
-// a node added inside a wrapper already in the page re-evaluates the whole
-// nest rather than registering itself, and that is the route by which a
-// pending table registers once its rows arrive.
+// A node added inside a wrapper already in the page re-evaluates the whole
+// nest through its chain root, so a pending table registers once its rows
+// arrive.
 // Extracted as a named function so the detection is unit-testable
 // independently of the live MutationObserver wiring below.
 function injectPillboxesForAddedNode(node) {
