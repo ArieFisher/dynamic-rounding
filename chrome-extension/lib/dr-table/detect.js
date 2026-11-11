@@ -673,6 +673,21 @@ function nominateNests(root, opts = {}) {
 }
 
 /**
+ * The native tables in `tables` that are not accessibility artifacts, in
+ * their order. Every scan of native tables filters through this function, so
+ * the artifact filter runs in this file alone.
+ *
+ * @param {Element[]} tables
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
+ *          styleProbe?: object}} [opts]
+ * @returns {Element[]}
+ */
+function registrableTables(tables, opts = {}) {
+  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
+  return tables.filter((table) => !isArtifact(table, opts));
+}
+
+/**
  * Scan `root` for native <table> elements (pass 1), then run the nomination
  * step over the elements carrying a grid or table role (pass 2).
  *
@@ -698,10 +713,9 @@ function findTables(root, opts = {}) {
   const isRegistered = opts.isRegistered || (() => false);
   const results = [];
 
-  // Pass 1: native <table> elements; isArtifact drops accessibility artifacts.
+  // Pass 1: native <table> elements.
   const nativeTables = root.tagName === 'TABLE' ? [root] : Array.from(root.querySelectorAll('table'));
-  for (const table of nativeTables) {
-    if (isArtifact(table, opts)) continue;
+  for (const table of registrableTables(nativeTables, opts)) {
     results.push({ handle: table, isNew: !isRegistered(table) });
   }
 

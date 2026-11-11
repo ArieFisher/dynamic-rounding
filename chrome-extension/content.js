@@ -398,12 +398,12 @@ function dropPendingTable(chainRoot) {
 function injectPillboxesForAddedNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
   // Pass 1: native <table> elements; accessibility artifacts are skipped.
-  if (node.tagName === 'TABLE' && !DR_MODEL.hasTable(node) && !isAccessibilityArtifact(node)) {
+  if (node.tagName === 'TABLE' && !DR_MODEL.hasTable(node) && registrableTables([node]).length) {
     createPillboxForTable(node);
   }
   if (typeof node.querySelectorAll === 'function') {
-    node.querySelectorAll('table').forEach(table => {
-      if (!DR_MODEL.hasTable(table) && !isAccessibilityArtifact(table)) {
+    registrableTables(Array.from(node.querySelectorAll('table'))).forEach(table => {
+      if (!DR_MODEL.hasTable(table)) {
         createPillboxForTable(table);
       }
     });

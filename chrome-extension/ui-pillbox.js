@@ -356,8 +356,7 @@ function createPillboxForTable(table) {
 // every content script has loaded.
 function injectTablePillboxes() {
   // Pass 1: native <table> elements; accessibility artifacts are skipped.
-  document.querySelectorAll('table').forEach(table => {
-    if (isAccessibilityArtifact(table)) return;
+  registrableTables(Array.from(document.querySelectorAll('table'))).forEach(table => {
     if (!DR_MODEL.hasTable(table)) {
       createPillboxForTable(table);
     }

@@ -1497,6 +1497,7 @@
     'looksLikeGrid',
     'findTargetTable',
     'findTables',
+    'registrableTables',
     'chainRootOf',
     'isAccessibilityArtifact',
     'isDataTable',
