@@ -95,8 +95,8 @@ function showsPiecesTogether(shown, pieces, i) {
 // A stacked cell: each text piece holds one whole number or unit number, or
 // only whitespace, currency signs, a percent sign, or a currency code. Two
 // numbers in one piece ("416 555 1234") or a piece that reads as a date or
-// time make the cell not stacked. Returns matches measured in the join of original, null when not
-// stacked, or 'split' when a number sits across two pieces ("4." then "91"; a
+// time make the cell not stacked.
+// Returns matches measured in the join of original, null when not stacked, or 'split' when a number sits across two pieces ("4." then "91"; a
 // piece starting with "." or "," never reads as a number). A digit beside a
 // digit across two pieces reads as two numbers unless runTogether(span) holds
 // for the second piece ("6,7" plain, then "18,245" in bold).

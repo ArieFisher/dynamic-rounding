@@ -77,7 +77,7 @@ function isHeaderCellEl(cellEl) {
  *            getDisplayedText(): string, getRecord(): CellRecord|null, el: Element, isHeaderCell: boolean}}
  */
 function makeCellObj(cellEl, port) {
-  const shownText = () => cellEl.innerText || cellEl.textContent;
+  const shownText = () => cellEl.innerText || cellEl.textContent || '';
   const recordOf = () => (port.has(cellEl) ? port.get(cellEl) : null);
   const getText = () => {
     const record = recordOf();
