@@ -385,33 +385,24 @@ function dropPendingTable(chainRoot) {
 }
 
 // Detect and attach pillboxes for tables and grids inside (or equal to) a node
-// added to the page. Pass 1 covers native <table> elements, skipping
-// accessibility artifacts, so a dynamically rendered
-// single-page-application grid is found and an off-screen table is
-// not. Pass 2 hands the grids to the nomination step in the detection
-// layer (nominateNests), which lists the added node itself when it carries a
-// grid or table role, walks out to the node's chain root, and returns one
-// outcome per nest — the same step the load-time scan runs. The walk out
-// matters here: a node added inside a wrapper already in the page
-// re-evaluates the whole nest rather than registering itself, and it is the
-// route by which a pending table registers once its rows arrive.
+// added to the page, or the document. The scan (scanTables in the detection
+// layer) lists the native tables, skipping accessibility artifacts, so a
+// dynamically rendered single-page-application grid is found and an off-screen
+// table is not. It also returns one nomination outcome per nest, which
+// consumeNominations acts on. The nomination step lists the added node itself
+// when it carries a grid or table role and walks out to the node's chain root:
+// a node added inside a wrapper already in the page re-evaluates the whole
+// nest rather than registering itself, and that is the route by which a
+// pending table registers once its rows arrive.
 // Extracted as a named function so the detection is unit-testable
 // independently of the live MutationObserver wiring below.
 function injectPillboxesForAddedNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
-  // Pass 1: native <table> elements; accessibility artifacts are skipped.
-  if (node.tagName === 'TABLE' && !DR_MODEL.hasTable(node) && registrableTables([node]).length) {
-    createPillboxForTable(node);
-  }
-  if (typeof node.querySelectorAll === 'function') {
-    registrableTables(Array.from(node.querySelectorAll('table'))).forEach(table => {
-      if (!DR_MODEL.hasTable(table)) {
-        createPillboxForTable(table);
-      }
-    });
-  }
-  // Pass 2: the nomination step, consumed above.
-  consumeNominations(nominateNests(node, { isRegistered: DR_MODEL.hasTable }));
+  const { tables, nominations } = scanTables(node, { isRegistered: DR_MODEL.hasTable });
+  tables.forEach(table => {
+    if (!DR_MODEL.hasTable(table)) createPillboxForTable(table);
+  });
+  consumeNominations(nominations);
 }
 
 // The shape fingerprint's read options for one table: the registry's stored
@@ -495,7 +486,7 @@ function revalidateTableShape(table, opts = {}) {
   resetTable(table);
   teardownTableEntry(table, 'replaced');
 
-  // findTables on a <table> root returns that table in pass 1, so one call
+  // findTables on a <table> root returns that table alone, so one call
   // covers a native table and a grid alike.
   const root = table.tagName === 'TABLE' ? table : (chainRootOf(table) || table);
   let fresh = null;

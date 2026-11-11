@@ -1497,6 +1497,7 @@
     'looksLikeGrid',
     'findTargetTable',
     'findTables',
+    'scanTables',
     'registrableTables',
     'chainRootOf',
     'isAccessibilityArtifact',
@@ -1687,13 +1688,12 @@
     addedNodePassSrc !== null &&
       (addedNodePassSrc.includes('GRID_ARIA_SELECTOR') || addedNodePassSrc.includes('role="grid"')),
     false);
-  // The step's page-wide entry point is nominateNests; findTables composes it
-  // and keeps the 'selected' outcomes. Both scanners act on the other outcomes
-  // too, so both call nominateNests directly.
-  eq('nesting AC6: the load-time scan calls the nomination step',
-    loadTimeScanSrc !== null && /nominateNests\s*\(/.test(loadTimeScanSrc), true);
-  eq('nesting AC6: the added-node pass calls the nomination step',
-    addedNodePassSrc !== null && /nominateNests\s*\(/.test(addedNodePassSrc), true);
+  // The step's page-wide entry point is nominateNests, which scanTables
+  // composes. Both scanners act on every outcome, so both call scanTables.
+  eq('nesting AC6: the load-time scan calls the table scan',
+    loadTimeScanSrc !== null && /scanTables\s*\(/.test(loadTimeScanSrc), true);
+  eq('nesting AC6: the added-node pass calls the table scan',
+    addedNodePassSrc !== null && /scanTables\s*\(/.test(addedNodePassSrc), true);
 })();
 
 // --- AC7: the living documents and the test page state the rule ---

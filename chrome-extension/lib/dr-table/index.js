@@ -29,6 +29,7 @@ const DR_TABLE = {
   looksLikeGrid,
   findTargetTable,
   findTables,
+  scanTables,
   registrableTables,
   chainRootOf,
   isAccessibilityArtifact,

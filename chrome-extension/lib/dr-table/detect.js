@@ -442,8 +442,7 @@ function sameTableFingerprint(a, b) {
  */
 function _passesAriaGuards(el, isArtifact, opts) {
   if (!el || el.tagName === 'TABLE' || isArtifact(el, opts)) return false;
-  const nestedTables = typeof el.querySelectorAll === 'function' ? Array.from(el.querySelectorAll('table')) : [];
-  return !nestedTables.some((t) => !isArtifact(t, opts));
+  return !_nativeTablesIn(el).some((t) => !isArtifact(t, opts));
 }
 
 /**
@@ -684,12 +683,48 @@ function registrableTables(tables, opts = {}) {
 }
 
 /**
- * Scan `root` for native <table> elements (pass 1), then run the nomination
- * step over the elements carrying a grid or table role (pass 2).
+ * The native tables in `root`: `root` itself when it is a table, then every
+ * descendant table, in document order. The one native-table query in the
+ * extension.
  *
- * Pass 2 keeps the nests nominateNests reports as 'selected' and drops the
- * other outcomes. A caller that acts on those — the controller, which
- * holds a pending table for an empty nest — calls nominateNests directly.
+ * @param {Element|Document} root
+ * @returns {Element[]}
+ */
+function _nativeTablesIn(root) {
+  const own = root.tagName === 'TABLE' ? [root] : [];
+  return typeof root.querySelectorAll === 'function' ? own.concat(Array.from(root.querySelectorAll('table'))) : own;
+}
+
+/**
+ * The one table scan. Both live scanners (the load-time scan and the
+ * added-node pass) and findTables read it.
+ *
+ * `tables` holds the native tables that are not accessibility artifacts:
+ * `root` when it is a table, then its descendant tables. `nominations` holds
+ * one nominateNests result per nest under `root`, with every outcome, so a
+ * caller can act on 'empty' (pending table) as well as 'selected'. Neither list
+ * checks the registry; the caller does.
+ *
+ * @param {Element|Document} root
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
+ *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
+ *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
+ * @returns {{tables: Element[], nominations: {chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}[]}}
+ */
+function scanTables(root, opts = {}) {
+  if (!root || typeof root.querySelectorAll !== 'function') return { tables: [], nominations: [] };
+  return {
+    tables: registrableTables(_nativeTablesIn(root), opts),
+    nominations: nominateNests(root, opts),
+  };
+}
+
+/**
+ * The handles scanTables finds under `root`, native tables first, then the
+ * nests the nomination step reports as 'selected'. A table root yields itself
+ * alone among the native tables. A caller that acts on the other outcomes — the
+ * controller, which holds a pending table for an empty nest — reads
+ * scanTables.
  *
  * Each result is { handle, isNew }; isNew is !opts.isRegistered(handle),
  * where opts.isRegistered is a caller-supplied registered check (e.g.
@@ -704,21 +739,11 @@ function registrableTables(tables, opts = {}) {
  * @returns {{handle: Element, isNew: boolean}[]}
  */
 function findTables(root, opts = {}) {
-  if (!root || typeof root.querySelectorAll !== 'function') return [];
-  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
   const isRegistered = opts.isRegistered || (() => false);
-  const results = [];
-
-  // Pass 1: native <table> elements.
-  const nativeTables = root.tagName === 'TABLE' ? [root] : Array.from(root.querySelectorAll('table'));
-  for (const table of registrableTables(nativeTables, opts)) {
-    results.push({ handle: table, isNew: !isRegistered(table) });
-  }
-
-  for (const { selected, outcome } of nominateNests(root, opts)) {
-    if (outcome !== 'selected') continue;
-    results.push({ handle: selected, isNew: !isRegistered(selected) });
-  }
-
-  return results;
+  const { tables, nominations } = scanTables(root, opts);
+  // A table root scans itself alone: its descendant tables belong to the
+  // caller's own pass.
+  const native = root && root.tagName === 'TABLE' ? tables.filter((table) => table === root) : tables;
+  const handles = native.concat(nominations.filter(({ outcome }) => outcome === 'selected').map(({ selected }) => selected));
+  return handles.map((handle) => ({ handle, isNew: !isRegistered(handle) }));
 }
