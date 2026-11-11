@@ -27,9 +27,11 @@
  * registry in DR_MODEL and, for a first match, write the marker class (a style
  * hook only) and build the table pillbox. The rest of the file writes to the
  * page: the patch writer (writePatches) and restoreTextPieces write cell text
- * in place, through nodeValue, and the cell object's applyPatches calls the
- * patch writer, stores the cell's record through the originals port, and adds
- * the dr-ext-rounded marker class.
+ * in place, through nodeValue. The cell object holds every cell write: its
+ * applyPatches calls the patch writer, stores the cell's record through the
+ * originals port, adds the dr-ext-rounded marker class, and sets the hover
+ * text, and its restore() calls restoreTextPieces, removes the marker class,
+ * and puts back the page's hover text.
  *
  * Ports: DEFAULT_STYLE_PROBE (computed style, offset width, box) and the
  * originals port (a simplified cell's record) are the file's ports. Each has
@@ -406,11 +408,20 @@ function makeCellObj(cellEl, port, reads) {
     },
     // Write the patches and return how many landed (see writePatches).
     // A landed write replaces the cell's record (CellRecord) through the
-    // originals port.
+    // originals port, adds the marker class, and sets the cell's hover text
+    // to originalHoverText(value). A write that lands nothing changes nothing:
+    // with every patch skipped the screen keeps its text, and storing the
+    // hover text would record a simplification that never happened.
     // The pass passes opts.value because a native cell's getText() reads
     // rendered text, and a rendered-text read after another cell's write lays
     // out the whole table again: once per cell, a 10,000-cell table takes most
     // of a minute.
+    /**
+     * @param {object[]} patches - the cell's patches, in flat-text positions
+     * @param {{value?: string}} [opts] - value: the text the pass classified;
+     *   defaults to getText()
+     * @returns {number} how many patches landed
+     */
     applyPatches(patches, opts = {}) {
       const record = recordOf();
       const value = opts.value !== undefined ? opts.value : getText();
@@ -426,7 +437,24 @@ function makeCellObj(cellEl, port, reads) {
         pageTitle: pageHoverText(cellEl, record),
       });
       if (cellEl.classList) cellEl.classList.add(SIMPLIFIED_CLASS);
+      cellEl.title = originalHoverText(value);
       return landed;
+    },
+    // Undo the write on the page: put the originals back into every text piece
+    // that still shows its written text (restoreTextPieces), remove the marker
+    // class, and put back the hover text the page set (the record's pageTitle)
+    // while the cell still shows the extension's own hover text. Hover text
+    // the page changed stays. A cell whose page set none ends with no title
+    // attribute, because the record holds no difference between an absent
+    // attribute and an empty one. The record stays in the originals port;
+    // the caller drops it.
+    restore() {
+      const record = recordOf();
+      if (record) restoreTextPieces(cellEl, record.pieces);
+      if (cellEl.classList) cellEl.classList.remove(SIMPLIFIED_CLASS);
+      if (record && cellEl.title !== originalHoverText(record.value)) return;
+      if (record && record.pageTitle) cellEl.title = record.pageTitle;
+      else cellEl.removeAttribute('title');
     },
   };
 }
@@ -512,6 +540,7 @@ function _ownDescendants(root, selector) {
  * @param {{has: Function, get: Function, set: Function}} port
  * @returns {{getText(): string, getPieceLayout(): PieceLayout|null,
  *            applyPatches(patches: object[], opts?: {value?: string}): number,
+ *            restore(): void,
  *            getDisplayedText(): string, getRecord(): CellRecord|null, el: Element, tagName: string}}
  */
 function makeGridCellObj(cellEl, port) {

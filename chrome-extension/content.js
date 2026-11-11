@@ -671,26 +671,16 @@ function isUnrestorableCell(table, cell) {
   return !DR_MODEL.hasTableOriginal(table, cell);
 }
 
-// Release one simplified cell: put its original text back into every text
-// piece that still shows the extension's written text (restoreTextPieces),
-// then drop its record and its marker class, and put back the hover text the
-// page set (the record's pageTitle) while the cell still shows the
-// extension's own hover text. A cell whose page set none ends with no hover
-// text attribute at all: the record holds no difference between an absent
-// attribute and an empty one.
+// Release one simplified cell: the cell object's restore() puts its original
+// text back into every text piece that still shows the extension's written
+// text, removes the marker class, and puts back the hover text the page set
+// (see makeCellObj in lib/dr-table); then this drops the cell's record.
 // The restore runs it on every marked cell; a pass runs it on a rewritten
 // cell before simplifying it fresh, and on a held cell whose target text is
 // its original.
 function releaseCell(table, cell) {
-  const record = DR_MODEL.getTableOriginal(table, cell);
-  if (record) restoreTextPieces(cell, record.pieces);
+  makeGridCellObj(cell, registryOriginalsPort(table)).restore();
   DR_MODEL.deleteTableOriginal(table, cell);
-  cell.classList.remove(SIMPLIFIED_CLASS);
-  // Like the text pieces, hover text the page changed stays: only the
-  // extension's own hover text gives way to the stored one.
-  if (record && cell.title !== originalHoverText(record.value)) return;
-  if (record && record.pageTitle) cell.title = record.pageTitle;
-  else cell.removeAttribute('title');
 }
 
 // When restoreTable leaves a cell unrestored (see its doc), the screen still
@@ -965,14 +955,10 @@ const GRID_TABLE_PASS = {
 };
 
 // Write one cell's patches through the cell object's applyPatches, which
-// stores the record and adds the marker class on a landed write (see
-// makeCellObj in lib/dr-table), and return how many landed. Record only a
-// confirmed change: with every patch skipped the screen keeps its text, and
-// storing the hover text would record a simplification that never happened.
+// stores the record, adds the marker class, and sets the hover text on a
+// landed write (see makeCellObj in lib/dr-table), and return how many landed.
 function writeCell(entry, patches) {
-  const landed = entry.cellObj.applyPatches(patches, { value: entry.text });
-  if (landed > 0) entry.cellObj.el.title = originalHoverText(entry.text);
-  return landed;
+  return entry.cellObj.applyPatches(patches, { value: entry.text });
 }
 
 // The debug row the first simplification writes when a cell with a change
