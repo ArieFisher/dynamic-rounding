@@ -42,7 +42,7 @@ Every rounded number is written back one way: its digits alone change, in place,
 
 ## Unit numbers
 
-A unit number is a cell whose whole text is one number with a magnitude suffix after it, a listed currency code before or after it, or both: "4.91tn", "41.31m", "5.2 Bn", "CAD45.67", "CAD$45.67", "$CAD45.67", "45.67 CAD", "CAD45.67m". Only the digits round, so "CAD45.67m" becomes "CAD45m" and "4.91tn" becomes "5tn". A unit number rounds on HTML tables and grids alike, whatever the sidebar's "words" setting holds.
+A unit number is a cell whose whole text is one number with a magnitude suffix after it, a listed currency code before or after it, or both: "4.91tn", "41.31m", "5.2 Bn", "CAD45.67", "CAD$45.67", "$CAD45.67", "45.67 CAD", "CAD45.67m". Only the digits round, so "CAD45.67m" becomes "CAD45m" and "4.91tn" becomes "5tn". A unit number rounds on HTML tables and grids alike.
 
 - The suffixes are k, m, b, t, bn, and tn, in any case, directly after the number or after one space.
 - A currency code counts only in upper case and only as its own word, so "CADENCE" and "usd" do not. A currency sign written in letters takes the same rule on whichever end carries the letter, so the rand's "R" counts in "R45" and not in "Revenue". A sign written as a picture counts wherever it sits.
@@ -53,7 +53,7 @@ A unit number is a cell whose whole text is one number with a magnitude suffix a
 
 ## Bracketed numbers
 
-A financial statement writes a negative as a bracket pair: "(1,234)" is −1,234. The extension reads that pair as the number's minus sign, so the cell rounds by the value it states and joins the table's max magnitude with the right sign. Only the digits change and the brackets stay where the page put them, so "(1,234)" becomes "(1,000)" and "$(1,234)" becomes "$(1,000)". This holds on HTML tables and grids alike, whatever the sidebar's "words" setting holds.
+A financial statement writes a negative as a bracket pair: "(1,234)" is −1,234. The extension reads that pair as the number's minus sign, so the cell rounds by the value it states and joins the table's max magnitude with the right sign. Only the digits change and the brackets stay where the page put them, so "(1,234)" becomes "(1,000)" and "$(1,234)" becomes "$(1,000)". This holds on HTML tables and grids alike.
 
 - The brackets may hold nothing but the number and its own format marks — a currency sign, a percent sign, whitespace — so "($1,234)", "$(1,234)" and "(12.3%)" are bracketed numbers and "(see note 4)" is not.
 - A bracket may sit in its own piece of the page's markup, apart from the digits. Because only the digits are replaced, such a cell rounds like any other.
@@ -63,10 +63,10 @@ A financial statement writes a negative as a bracket pair: "(1,234)" is −1,234
 
 ## Identifier shapes
 
-Some text names a thing instead of counting it. A cell whose whole text matches one of these shapes stays as written, on HTML tables and grids alike, whatever the sidebar's "words" setting holds. A currency sign, a percent sign, a sign, or brackets around the shape count as part of the cell, so "$ 4165 5512" and "(416-555-1234)" stay as written too:
+Some text names a thing instead of counting it. A cell whose whole text matches one of these shapes stays as written, on HTML tables and grids alike. A currency sign, a percent sign, a sign, or brackets around the shape count as part of the cell, so "$ 4165 5512" and "(416-555-1234)" stay as written too:
 
 - A phone number with dashes, dots, spaces, or a bracketed area code: "416-555-1234", "416.555.1234", "416 555 1234", "+1 416 555 1234", "(416) 555-1234", "(416)555-1234", "1-800-555-0199".
-- Digit groups split by spaces outside thousands grouping: "4165 5512", "44 20 7946 0958". Thousands grouping (a first group of one to three digits, then groups of exactly three) reads as one number for every shape, so "1 234 567" and "1 234 567 890" round. A comma groups thousands in the same shape, and only before the decimal dot; see [Commas and decimal marks](#commas-and-decimal-marks). A stacked cell whose numbers sit in separate pieces of the markup ("1500" above "1600") rounds number by number, since its joined text is several numbers.
+- Digit groups split by spaces outside thousands grouping: "4165 5512", "44 20 7946 0958". Thousands grouping (a first group of one to three digits, then groups of exactly three) reads as one number for every shape, so "1 234 567" and "1 234 567 890" round. A comma groups thousands in the same shape, and only before the decimal dot; see [Commas and decimal marks](#commas-and-decimal-marks). A cell whose numbers sit in separate pieces of the markup ("1500" above "1600") rounds number by number, since its joined text is several numbers.
 - An IP address: "192.168.0.1", "2001:db8::1".
 - A web or email address: "https://example.com/item/123", "www.example.com/p/12", "sales@example.com".
 - An ISBN: "ISBN 978-0-306-40615-7", "978-0-306-40615-7". Without the word "ISBN" the digits must carry a dash or a space, so a bare "1234567890" still rounds.
@@ -113,7 +113,7 @@ The extension never rewrites a cell's markup. Every cell, on a native table or a
 2. **Place.** The placement step checks each change against the cell's text pieces. A change whose characters sit in one text piece stands.
 3. **Patch.** The patch writer replaces those characters inside that one text piece, through `nodeValue`. No element is added, removed, or replaced.
 
-A value whose characters cross a piece boundary first takes the stacked cell test (see below), on both table kinds. A value that fails the test, such as the decimal-alignment example above, stays unchanged. On a native table the skip leaves a debug log row.
+A number whose characters cross a piece boundary, such as the decimal-alignment example above, stays unchanged, and the cell's other numbers round. The skip leaves a debug log row, on both table kinds.
 
 ### Data Grids vs. HTML Tables
 
@@ -147,11 +147,11 @@ A framework-managed grid cell **cannot** be rewritten: React (and similar) hold 
 
 A cell's flat text is every text piece, joined in page order. Each change is a patch to the one text piece that holds the changed characters, and the cell's originals hold each patched piece's text, so restore puts every piece back. Three rules follow from the piece layout:
 
-- A **stacked cell** rounds number by number, on both table kinds: "125" above "126" becomes "150" above "150", and a "$" in its own piece beside "337.91" stays while the number becomes "350". A stacked cell rounds with the sidebar's "words" setting off too. Two numbers in one piece, even with a space between them, make the cell not stacked, so it stays unchanged. So does a piece that reads as a date or a time, but a cell whose rendered text puts each year on its own line reads as numbers inside text, so "2024" above "2025" rounds on both table kinds.
-- A **split number** stays unchanged, with a debug log row: "4." in one piece and "91" in the next. A date or time split across pieces stays unchanged the same way.
+- Each number rounds in the piece that holds its digits, on both table kinds: "125" above "126" becomes "150" above "150", and a "$" in its own piece beside "337.91" stays while the number becomes "350". A year above a year ("2024" above "2025") rounds as two numbers on both table kinds; a rule for years is open as issue #620.
+- A **split number** stays unchanged, with a debug log row: "4." in one piece and "91" in the next. The cell's other numbers round. A date or time split across pieces stays unchanged the same way.
 - **Extracted cells** round on a grid exactly as they already round on a native table: a number inside surrounding words rounds in place, and a grid cell with a `<sup>` rounds its base number while the mask keeps the exponent unchanged. The lens preview lists these numbers on both table kinds. A unit number is always an extracted cell for this rule too: "4.91tn" becomes "5tn" on a grid.
 
-A digit beside a digit across two pieces holds either two numbers on separate lines or one number that inline styling splits ("6,7" plain, "18,245" in bold). The cell's rendered text sorts the two shapes: it holds a line break or a space between pieces on separate lines, and nothing between pieces that inline styling splits. Both table kinds read it for this check, so both round the two numbers on separate lines and leave the styled number unchanged as a split number. A cell whose rendered text differs from its pieces in more than whitespace, such as a cell with a hidden sort key, takes no stacked cell test.
+A digit beside a digit across two pieces holds either two numbers on separate lines or one number that inline styling splits ("6,7" plain, "18,245" in bold). The cell's rendered text sorts the two shapes: it holds a line break between pieces on separate lines, and nothing between pieces that inline styling splits. A line break never groups digits, so the number reader reads the two numbers on separate lines as two numbers and the styled number as one number that crosses a piece boundary, a split number. Both table kinds classify the rendered text, so both give the same result. A space between two pieces groups digits as it does inside one piece: "125" and "126" with only a space between them read as the one number 125,126 across two pieces, a split number.
 
 Because virtualized grids recycle rows on scroll and rewrite cells in place on sort, and live pages rewrite values and add rows, a debounced `MutationObserver` (watching both `childList` and `characterData`) watches every simplified table, native or grid, and re-applies rounding after each page change. A cell the page rewrote simplifies from its new text, and a cell the page left alone takes no write. A burst of changes runs one pass, a table that never stops changing gets one pass a second, and a table above 10,000 cells stops following page changes and records one debug row, with no toast.
 
@@ -167,6 +167,6 @@ A `display: grid` / `flex` container is not necessarily a *data* grid — it mig
    - **at least one cell the data test counts** (a value the extension can round) — the decisive filter: nav menus, card grids, and galleries hold no such cell and are rejected here;
    - alignment of the sampled first cells unless short-circuited by an ARIA role or library class. The direction reader (`isColumnFirst`) first reads which way the children run, from the boxes of the first two children that draw a box: the same top with a larger left makes a column-first grid, and anything else, including too few boxes, makes a row-first grid. On a row-first grid the first cells of the rows must share a width; on a column-first grid the first cells of the columns must share a height. The grid adapter calls the same read and turns a column-first grid's children into rows, so row r holds the r-th item of every column.
 
-Even past detection, rounding only writes cells the classification ladder admits: cells whose text parses as a number, unit numbers, stacked cells, date cells (on by default, simplified to the year), time cells (opt-in), and — on native tables — mixed-text cells where a number sits inside surrounding words. A non-numeric layout grid contains none of these, so it produces no changes regardless.
+Even past detection, rounding only writes cells the classification ladder admits: cells whose text parses as a number, unit numbers, date cells (on by default, simplified to the year), time cells (opt-in), and cells where a number sits inside surrounding words, on native tables and grids alike. A non-numeric layout grid contains none of these, so it produces no changes regardless.
 
 **Caveat (by design):** a CSS layout grid that genuinely contains aligned numeric columns *will* qualify — at that point it is functionally a data grid, which is exactly the content a user would want rounded.

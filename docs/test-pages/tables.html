@@ -2277,12 +2277,12 @@ TSLA,75,"248.09","18,606.75"
     </table>
     <div id="id-grid" class="aria-grid" role="grid" aria-label="Identifier shapes"></div>
 
-    <h3>24b. A grid of stacked cells</h3>
+    <h3>24b. A grid of cells with two numbers, one above the other</h3>
     <p>Each cell holds two numbers, one above the other, in separate text
       pieces. Their joined text ("1500 1600") looks like digit groups split by
       a space.</p>
     <p class="expect">Expect: every number rounds.</p>
-    <div class="aria-grid" role="grid" aria-label="Stacked cells beside identifiers">
+    <div class="aria-grid" role="grid" aria-label="Numbers one above the other beside identifiers">
       <div class="g-row" role="row">
         <span role="columnheader">Metric</span>
         <span role="columnheader">Low</span>
@@ -2414,25 +2414,27 @@ TSLA,75,"248.09","18,606.75"
   </section>
 
   <section>
-    <h2>25. Stacked cells</h2>
+    <h2>25. Numbers in separate text pieces</h2>
     <p>A native table and a grid holding the same rows. One row puts the "$"
-      in its own tag beside its number. One row holds one number per line. The
-      last row holds a split number: one number whose digits sit in two tags,
-      the second in bold.</p>
+      in its own tag beside its number. One row holds one number per line. One
+      row holds a split number: one number whose digits sit in two tags, the
+      second in bold. The last row holds a split number beside a whole
+      number.</p>
     <p class="expect">Expect: a pillbox at load on both tables.</p>
     <ol class="expect">
       <li><b>Press each pillbox on.</b> Expect: on both tables, the "$" stays
         and the number beside it rounds, each number in the one-number-per-line
-        cell rounds on its own, and the split number stays as written.</li>
-      <li><b>Switch the "words" setting off in the sidebar and press each
-        pillbox again.</b> Expect: the same cells round.</li>
+        cell rounds on its own, the split number stays as written, and in the
+        last row the whole number rounds while the split number stays as
+        written.</li>
     </ol>
 
     <!--
       $ 337.91 (sign in its own tag)  -> $ stays, 337.91 rounds, both tables
-      125 above 126                    -> each rounds, both tables, "words"
-                                          setting on or off
+      125 above 126                    -> each rounds, both tables
       6,7 + <b>18,245</b>              -> unchanged, both tables
+      6,7 + <b>18,245</b> beside 4,523 -> 4,523 rounds, the split number
+                                          stays, both tables
     -->
     <table>
       <thead>
@@ -2458,9 +2460,13 @@ TSLA,75,"248.09","18,606.75"
           <th scope="row">One number, digits in two tags</th>
           <td>6,7<b>18,245</b></td>
         </tr>
+        <tr>
+          <th scope="row">Split number beside a whole number</th>
+          <td>6,7<b>18,245</b> beside 4,523</td>
+        </tr>
       </tbody>
     </table>
-    <div class="aria-grid" role="grid" aria-label="Stacked cells">
+    <div class="aria-grid" role="grid" aria-label="Numbers in separate text pieces">
       <div class="g-row" role="row">
         <span role="columnheader">Case</span>
         <span role="columnheader">Value</span>
@@ -2481,6 +2487,10 @@ TSLA,75,"248.09","18,606.75"
         <div class="g-row" role="row">
           <span role="cell">One number, digits in two tags</span>
           <span role="cell">6,7<b>18,245</b></span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Split number beside a whole number</span>
+          <span role="cell">6,7<b>18,245</b> beside 4,523</span>
         </div>
       </div>
     </div>
