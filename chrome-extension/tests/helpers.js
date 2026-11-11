@@ -923,6 +923,10 @@ function makeElementNode(className, childNodes) {
     childNodes: kids,
     children: kids.filter(n => n.nodeType === 1),
     dataset: {},
+    get textContent() {
+      const join = (node) => (node.nodeType === 3 ? node.nodeValue : (node.childNodes || []).map(join).join(''));
+      return join(this);
+    },
     // Real DOM elements expose removeAttribute; restoreTable calls it on
     // every restored cell (to drop the rounding tooltip). No-op in the stub.
     removeAttribute() {},
