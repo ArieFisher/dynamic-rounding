@@ -1249,12 +1249,12 @@ function roundTable(table, options) {
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
   const kind = tableKindPass(adapter);
 
-  // The one simplification pass, on either table kind. A grid's first
-  // simplification computes the max magnitude from what is visible right
-  // now and stores it as the magnitude freeze, so every later pass of the
-  // re-apply observer (scroll, sort, page edit) reuses it instead of
-  // recomputing — otherwise a scroll that changes which rows are visible
-  // could shift the rounding basis mid-session. resetTable clears the freeze
+  // The one simplification pass, on either table kind. The first
+  // simplification computes the max magnitude from the values on the page
+  // right now and stores it as the magnitude freeze, so every later pass of
+  // the re-apply observer (scroll, sort, page edit) reuses it instead of
+  // recomputing — otherwise a scroll that changes which rows are visible,
+  // or a value the page writes, could shift the rounding basis mid-session. resetTable clears the freeze
   // back to null, so a fresh roundTable() call (e.g. re-rounding after
   // settings change) freezes again from its own first sight rather than
   // reusing a stale value. A cell whose patches all skipped never counts
