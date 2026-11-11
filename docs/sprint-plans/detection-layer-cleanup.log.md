@@ -45,6 +45,11 @@ Base branch: main
   - The Sheets build changed comments and the table step's internal return shape alone; a Sheets user sees no difference.
   - Follow-up: #618.
 
+- **cell-object-writes** — commits on feature/detection-layer-cleanup
+  - Reviewer: APPROVE (after 0 retries)
+  - Tests: pass (extension 4,123; library 827; documented examples 90)
+  - The sprint changes no behavior and the suite passes unchanged, so the test-writer step added no test. The review confirmed that the restore method's four outcomes are the old cell-release branches, which the existing restore and hover-text tests reach.
+
 ### Blocked
 
 None.
