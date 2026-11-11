@@ -65,11 +65,11 @@ function flatPatches(patches, layout) {
   });
 }
 
-// -1 when the classified text does not hold the character. A rendered text
-// with no toFlat holds no known position (a hidden sort key could hold a
-// stacked number).
+// -1 when the classified text does not hold the character. A layout with no
+// toFlat holds no known position (a hidden sort key could hold a stacked
+// number).
 function textPosition(layout, text, flat) {
-  if (!layout.toFlat) return layout.rendered ? -1 : flat;
+  if (!layout.toFlat) return -1;
   return layout.toFlat.findIndex((f, r) => f === flat && !/\s/.test(text[r]));
 }
 

@@ -1088,10 +1088,10 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 
 (function quoteRegressionGuards() {
   // 5a. cell.innerText || cell.textContent is the read source (static analysis).
-  // Lives in the NativeTableAdapter (lib/dr-table/detect.js).
+  // Lives in the cell object (lib/dr-table/cells.js).
   const contentSrc = allContentSrc;
   eq('regression: read source is cell.innerText || cell.textContent',
-    contentSrc.includes('cell.innerText || cell.textContent'), true);
+    contentSrc.includes('cellEl.innerText || cellEl.textContent'), true);
 
   // 5b. Manifest has a valid semver version string.
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));

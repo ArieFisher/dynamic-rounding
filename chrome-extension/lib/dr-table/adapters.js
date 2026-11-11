@@ -223,15 +223,11 @@ class NativeTableAdapter {
   getRows() {
     const port = this.originalsPort;
     const rows = Array.from(this.el.rows);
-    return buildRows(rows.map((row) => Array.from(row.cells)), (cell) => {
-      const rendered = () => cell.innerText || cell.textContent || '';
-      return makeCellObj(cell, port, {
-        liveText: rendered, displayedText: rendered, rendered: true,
-      });
-    }, rows.map((row) => {
-      const parent = parentOf(row);
-      return { isOutside: !!parent && parent.tagName === 'THEAD', isGrouped: true };
-    }));
+    return buildRows(rows.map((row) => Array.from(row.cells)), (cell) => makeCellObj(cell, port),
+      rows.map((row) => {
+        const parent = parentOf(row);
+        return { isOutside: !!parent && parent.tagName === 'THEAD', isGrouped: true };
+      }));
   }
 }
 
@@ -444,7 +440,7 @@ class GridAdapter {
       const pinned = pinnedRowEl ? adapter._getCellEls(pinnedRowEl) : [];
       return pinned.concat(adapter._getCellEls(rowEl));
     });
-    return buildRows(rowCellEls, (cellEl) => makeGridCellObj(cellEl, adapter.originalsPort),
+    return buildRows(rowCellEls, (cellEl) => makeCellObj(cellEl, adapter.originalsPort),
       scrollEntries.map(({ isOutside, isGrouped }) => ({ isOutside, isGrouped })));
   }
 }

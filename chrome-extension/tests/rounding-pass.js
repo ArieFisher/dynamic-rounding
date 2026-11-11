@@ -1723,7 +1723,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     roundTable(grid.wrapperEl, KEY_STATS_OPTS);
     eq('grid stacked: the record holds the flat original and each piece\'s original and written text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, stacked),
-      { value: ' 125  126', pieces: [{ text: ' 125 ', written: ' 150 ' }, { text: ' 126', written: ' 150' }],
+      { value: ' 125 \n 126', pieces: [{ text: ' 125 ', written: ' 150 ' }, { text: ' 126', written: ' 150' }],
         pageTitle: '' });
     eq('grid stacked: an untouched "$" piece holds the same original and written text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, dollar).pieces,
@@ -1768,14 +1768,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 //      beside digits across pieces read as two numbers
 //   b: a suffix in its own piece
 //   c: two numbers in one piece beside a third piece: not stacked
-//   d: two unit numbers glued together with no separator, one per piece:
-//      only 4.91 rounds. The cell's flat text is one joined string with no
-//      piece boundary marker, and the number extractor never starts a match
-//      right after a letter, so "41.31" (glued right after "tn") is never
-//      found at all; the decision that does survive already fits in one
-//      piece, so the piece-aware stacked-cell fallback that would have
-//      caught both numbers never runs. A native table hits this identical
-//      gap for the same glued shape, for the same reason.
+//   d: two unit numbers, one per block element: the rendered text puts each
+//      on its own line, so both round
 //   e: a number split before its decimal point: unchanged
 (function gridStacked_edges() {
   const grid = makeE2EGridWrapper([['125126', '4.91tn', '416 5551234', '4.91tn41.31m', '4.91']]);
@@ -1792,8 +1786,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('grid stacked: a suffix in its own piece stays and the digits round', pieceTextsOf(b), ['5', 'tn']);
     eq('grid stacked: two numbers in one piece make the cell not stacked',
       pieceTextsOf(c), ['416 555', '1234']);
-    eq('grid stacked: two unit numbers glued with no separator round only the first',
-      pieceTextsOf(d), ['5tn', '41.31m']);
+    eq('grid stacked: two unit numbers on separate lines both round',
+      pieceTextsOf(d), ['5tn', '40m']);
     eq('grid stacked: a number split before its decimal point stays unchanged',
       pieceTextsOf(e), ['4', '.91']);
     eq('grid stacked: the max magnitude leaves out the cell that is not stacked',
@@ -1914,11 +1908,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   const opts = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
   try {
-    eq('grid stacked: the lens preview pool keeps the footnote\'s base number, leaves out the years and the split number',
-      collectNumericCells(grid.wrapperEl, opts).map((sample) => sample.num).sort((x, y) => x - y), [4.91, 125, 126]);
+    eq('grid stacked: the lens preview pool keeps the footnote\'s base number and the stacked years, and leaves out the split number',
+      collectNumericCells(grid.wrapperEl, opts).map((sample) => sample.num).sort((x, y) => x - y), [4.91, 125, 126, 2024, 2025]);
     roundTable(grid.wrapperEl, opts);
     eq('grid stacked: a cell with a <sup> rounds its base and keeps the exponent', pieceTextsOf(a), ['5T', '12']);
-    eq('grid stacked: stacked years stay unchanged', pieceTextsOf(b), ['2024', '2025']);
+    eq('grid stacked: stacked years on separate lines round, as on a native table', pieceTextsOf(b), ['2,000', '2,000']);
     eq('grid stacked: a number split after its grouping comma stays unchanged', pieceTextsOf(c), ['1,', '234']);
     eq('grid stacked: a currency code in its own piece stays and the numbers round',
       pieceTextsOf(d), ['CAD', '150', '150']);
@@ -2190,7 +2184,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // GR6a: the grid read is the cell's flat text: every text piece, joined in
 // page order, however deep the pieces sit.
 (function gr6a_gridRead_isTheFlatText() {
-  const readOf = (cell) => makeGridCellObj(cell, new GridAdapter({}).originalsPort).getText();
+  const readOf = (cell) => makeCellObj(cell, new GridAdapter({}).originalsPort).getText();
   eq('GR6a: a piece inside nested elements is read',
     readOf(makeElementNode('cell', [makeElementNode('inner', [makeTextNode('42')])])), '42');
   eq('GR6a: a cell with no text piece reads as empty',
@@ -2269,13 +2263,13 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const port = makePort();
   const adapter = new GridAdapter({}, { originalsPort: port });
 
-  const withNode = makeGridCellObj(makeGridCellWithTextNode('8584629'), adapter.originalsPort);
+  const withNode = makeCellObj(makeGridCellWithTextNode('8584629'), adapter.originalsPort);
   eq('grid-honesty: applyPatches returns a landed count when the write lands',
     withNode.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }]), 1);
 
   const bareEl = makeElementNode('', []);
   bareEl.textContent = '8584629';
-  const bare = makeGridCellObj(bareEl, adapter.originalsPort);
+  const bare = makeCellObj(bareEl, adapter.originalsPort);
   eq('grid-honesty: applyPatches returns zero when the cell has no text piece',
     bare.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }]), 0);
   eq('grid-honesty: a skipped write adds no marker and no record',

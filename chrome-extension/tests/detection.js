@@ -473,7 +473,7 @@ const consistentCellCountStepPasses = (children) =>
 
 (function placeDecision_stackedTestReadsTheGapBetweenPieces() {
   const decision = { mode: 'pure', value: { num: 123 } };
-  const layout = (runsTogether) => ({ original: ['1', '23'], liveStarts: [0, 1], toFlat: null, rendered: false, runsTogether });
+  const layout = (runsTogether) => ({ original: ['1', '23'], liveStarts: [0, 1], toFlat: [0, 1, 2], runsTogether });
   eq('placeDecision: pieces on separate lines round as two numbers',
     placeDecision(decision, '123', layout(() => false)).value.matches.map((m) => m.numStr), ['1', '23']);
   eq('placeDecision: pieces the shown text runs together skip with reason split',
@@ -482,10 +482,10 @@ const consistentCellCountStepPasses = (children) =>
     (() => { const asked = []; placeDecision(decision, '123', layout((i) => { asked.push(i); return false; })); return asked; })(),
     [1]);
   eq('placeDecision: a stacked native cell counts its numbers in its rendered text',
-    placeDecision(decision, '1\n23', Object.assign(layout(() => false), { rendered: true, toFlat: [0, 1, 1, 2] }))
+    placeDecision(decision, '1\n23', Object.assign(layout(() => false), { toFlat: [0, 1, 1, 2] }))
       .value.matches.map((m) => m.index), [0, 2]);
   eq('placeDecision: a stacked native cell with no known positions skips with reason pieces',
-    placeDecision(decision, '123', Object.assign(layout(() => false), { rendered: true })), { mode: 'skip', reason: 'pieces' });
+    placeDecision(decision, '123', Object.assign(layout(() => false), { toFlat: null })), { mode: 'skip', reason: 'pieces' });
   eq('showsPiecesTogether: a line break between pieces answers false',
     showsPiecesTogether('125\n126', ['125', '126'], 1), false);
   eq('showsPiecesTogether: a space between pieces answers false',
@@ -497,7 +497,7 @@ const consistentCellCountStepPasses = (children) =>
   eq('showsPiecesTogether: empty shown text answers true',
     showsPiecesTogether('', ['125', '126'], 1), true);
   eq('placeDecision: a value across pieces that is not stacked skips with reason pieces',
-    placeDecision(decision, '12 kg', { original: ['12 k', 'g'], liveStarts: [0, 4], toFlat: null, rendered: false }),
+    placeDecision(decision, '12 kg', { original: ['12 k', 'g'], liveStarts: [0, 4], toFlat: null }),
     { mode: 'skip', reason: 'pieces' });
   eq('placeDecision: a value in one piece stands',
     placeDecision(decision, '123', { original: ['123'], liveStarts: [0], toFlat: null }), decision);
@@ -1788,8 +1788,8 @@ const supTestOpts = {
     })()
   );
 
-  // Directly call makeGridCellObj to get a cell object for our empty cell
-  const cellObj = makeGridCellObj(emptyCell, adapter.originalsPort);
+  // Directly call makeCellObj to get a cell object for our empty cell
+  const cellObj = makeCellObj(emptyCell, adapter.originalsPort);
 
   let threw = false;
   try {
@@ -4327,10 +4327,8 @@ function cnAdapterCellEls(tableEl) {
   for (const piece of pieces) { liveStarts.push(at); at += piece.length; }
   const layout = { original: pieces, liveStarts, toFlat: null };
   const decision = classifyCell({ text, rowIndex: 1, columnIndex: 1, ranges: null }, bracketOpts);
-  eq('bracketed: a bracket in its own text piece still places on a native table',
-    placeDecision(decision, text, Object.assign({}, layout, { rendered: true })).mode, 'extracted');
-  eq('bracketed: a bracket in its own text piece still places on a grid',
-    placeDecision(decision, text, Object.assign({}, layout, { rendered: false })).mode, 'extracted');
+  eq('bracketed: a bracket in its own text piece still places',
+    placeDecision(decision, text, layout).mode, 'extracted');
 })();
 
 // ---------------------------------------------------------------------------

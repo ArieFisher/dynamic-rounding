@@ -674,9 +674,7 @@ function isUnrestorableCell(table, cell) {
 // cell before simplifying it fresh, and on a held cell whose target text is
 // its original.
 function releaseCell(table, cell) {
-  // restore() reads the cell's record alone, never a kind's text reads, so
-  // the grid cell object serves a native cell as well.
-  makeGridCellObj(cell, registryOriginalsPort(table)).restore();
+  makeCellObj(cell, registryOriginalsPort(table)).restore();
   DR_MODEL.deleteTableOriginal(table, cell);
 }
 
@@ -888,13 +886,10 @@ function buildCaptureStateResponse() {
 // rounding. A held cell whose target is its original is released. A rule
 // added to the pass reaches both table kinds at once.
 //
-// The adapters (lib/dr-table/adapters.js, cells.js) hold two differences
-// between the kinds before the pass starts: getText() reads a native cell's
-// rendered text and a grid cell's flat text, and getPieceLayout()'s toFlat
-// converts a native cell's rendered positions to flat positions (null for a
-// grid cell).
+// The adapters (lib/dr-table/adapters.js, cells.js) build one cell object for
+// both kinds, so the pass sees no difference between them before it starts.
 //
-// Every other difference is a field of the kind object the caller passes,
+// Every difference is a field of the kind object the caller passes,
 // NATIVE_TABLE_PASS or GRID_TABLE_PASS:
 //   splitReasons, splitRow  the placement results that write a debug row,
 //                        and that row's text: a native value that crosses a

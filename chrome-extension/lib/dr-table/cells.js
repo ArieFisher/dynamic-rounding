@@ -66,29 +66,29 @@ function isHeaderCellEl(cellEl) {
 }
 
 /**
- * The cell object both adapters hand out. `reads` holds the differences
- * between the kinds:
- *   liveText()       the text the cell classifies when it has no record: a
- *                    native cell's rendered text, a grid cell's flat text
- *   displayedText()  the text the screen shows now, for the capture
- *   rendered         whether liveText() is rendered text, so the piece layout
- *                    converts its positions to flat-text positions
+ * The cell object both table kinds hand out. Every read of the cell's text is
+ * the rendered text, falling back to the raw text where the rendered text is
+ * empty or the context lays out nothing.
  * @param {Element} cellEl
  * @param {{has: Function, get: Function, set: Function}} port
- * @param {{liveText: () => string, displayedText: () => string, rendered: boolean}} reads
+ * @returns {{getText(): string, getPieceLayout(): PieceLayout|null,
+ *            applyPatches(patches: object[], opts?: {value?: string}): number,
+ *            restore(): void,
+ *            getDisplayedText(): string, getRecord(): CellRecord|null, el: Element, isHeaderCell: boolean}}
  */
-function makeCellObj(cellEl, port, reads) {
+function makeCellObj(cellEl, port) {
+  const shownText = () => cellEl.innerText || cellEl.textContent || collectTextPieces(cellEl).map((piece) => piece.nodeValue).join('');
   const recordOf = () => (port.has(cellEl) ? port.get(cellEl) : null);
   const getText = () => {
     const record = recordOf();
-    return record ? record.value : reads.liveText();
+    return record ? record.value : shownText();
   };
   return {
     el: cellEl,
     isHeaderCell: isHeaderCellEl(cellEl),
     getRecord: recordOf,
     getText,
-    getDisplayedText: reads.displayedText,
+    getDisplayedText: shownText,
     // Null when the cell no longer holds as many pieces as its record; the
     // pass sorts that cell as rewritten before it reads a layout.
     // runsTogether reads rendered text only when called, because that read
@@ -98,11 +98,10 @@ function makeCellObj(cellEl, port, reads) {
       const record = recordOf();
       if (record && record.pieces.length !== live.length) return null;
       const original = record ? record.pieces.map((piece) => piece.text) : live;
-      const runsTogether = (i) => showsPiecesTogether(cellEl.innerText || cellEl.textContent || '', live, i);
-      if (!reads.rendered) return { original, toFlat: null, rendered: false, runsTogether };
+      const runsTogether = (i) => showsPiecesTogether(shownText(), live, i);
       const text = getText();
       const toFlat = mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original);
-      return { original, toFlat, rendered: true, runsTogether };
+      return { original, toFlat, runsTogether };
     },
     // A write that lands nothing changes nothing: with every patch skipped the
     // screen keeps its text, and storing the hover text would record a
@@ -146,30 +145,6 @@ function makeCellObj(cellEl, port, reads) {
       else cellEl.removeAttribute('title');
     },
   };
-}
-
-/**
- * Build one grid cell's cell object (see makeCellObj). The grid adapter and
- * the geometry probe's numeric step both use it, so the two read a cell's text
- * the same way.
- * @param {Element} cellEl
- * @param {{has: Function, get: Function, set: Function}} port
- * @returns {{getText(): string, getPieceLayout(): PieceLayout|null,
- *            applyPatches(patches: object[], opts?: {value?: string}): number,
- *            restore(): void,
- *            getDisplayedText(): string, getRecord(): CellRecord|null, el: Element, isHeaderCell: boolean}}
- */
-function makeGridCellObj(cellEl, port) {
-  return makeCellObj(cellEl, port, {
-    // The flat text: the coordinate space every patch position counts in.
-    liveText() {
-      const pieces = collectTextPieces(cellEl);
-      if (pieces.length === 0) return cellEl.textContent || '';
-      return pieces.map((piece) => piece.nodeValue).join('');
-    },
-    displayedText() { return cellEl.textContent || ''; },
-    rendered: false,
-  });
 }
 
 /**
@@ -375,10 +350,9 @@ function restoreTextPieces(cell, storedPieces) {
  * @typedef {object} PieceLayout
  * @property {string[]} original - each piece's text as the classified text saw it
  * @property {number[]|null} toFlat - for each position of the classified
- *   text, its position in the join of original; null when the positions count
- *   alike, and no entry for a position with no known counterpart
- * @property {boolean} rendered - whether the classified text is rendered
- *   text: true for a native cell, false for a grid cell
+ *   text, its position in the join of original; null when the classified text
+ *   differs from the pieces in more than whitespace and holds no single-piece
+ *   value, and no entry for a position with no known counterpart
  * @property {(i: number) => boolean} runsTogether - whether the text the
  *   browser shows has piece i straight after piece i - 1 (see showsPiecesTogether)
  */
