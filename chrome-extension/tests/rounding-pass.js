@@ -4242,10 +4242,11 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
-// --- Test 3: a native table gains a row with a larger value. The cells the
-// extension holds take the new rounding, and their stored originals stay the
-// true originals. ---
-(function rewrite03_aNativeTableThatGainsALargerValueRoundsAgain() {
+// --- Test 3: a native table gains a row with a larger value. The table keeps
+// the max magnitude it took at its first simplification: the cells the
+// extension holds keep their text, the new row rounds under that magnitude,
+// and the stored originals stay the true originals. ---
+(function rewrite03_aNativeTableThatGainsALargerValueKeepsItsFrozenMaxMagnitude() {
   eachRewriteKind(['native'], (kind, page, build) => {
     const t = build(RW_ROWS);
     roundTableUnder(t.table, RW_OPTS);
@@ -4253,8 +4254,8 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
       t.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600']]);
     t.addRow(['98,765', '1,111']);
     page.settle();
-    eq('#421 larger value (native): every cell takes the rounding of the new max magnitude',
-      t.rowTexts(), [['1,000', '6,000'], ['2,000', '4,000'], ['99,000', '1,000']]);
+    eq('#421 larger value (native): the held cells keep their text and the new row rounds under the frozen max magnitude',
+      t.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600'], ['99,000', '1,100']]);
     eq('#421 larger value (native): the stored originals stay the true originals',
       [t.cell(0, 0), t.cell(0, 1), t.cell(1, 0), t.cell(1, 1)]
         .map((cell) => DR_MODEL.getTableOriginalText(t.table, cell)),

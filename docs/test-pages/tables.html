@@ -1728,14 +1728,11 @@ TSLA,75,"248.09","18,606.75"
         back into North, Q1, as a page redraw does. Expect: the cell shows
         simplified again within a moment.</li>
       <li><b>Add a row with a larger value</b> adds a Global row of values
-        above 12,000,000. Expect: the new row shows simplified on both
-        tables, 12,000,000 and 13,000,000. The native table simplifies every
-        cell again against the new largest value, so the North row, the
-        largest values until now, drops to the coarser rounding (1,500,000
-        becomes 1,000,000), and its hover text still shows its own
-        originals. The grid keeps the max magnitude it took at its first
-        simplification: its other cells stay as they were, and the Global
-        values take the rounding of the largest values.</li>
+        above 12,000,000. Expect: on both tables the other cells keep
+        their text, including the North row (1,500,000), and the Global
+        values take the rounding of the largest values, 12,000,000 and
+        13,000,000. A failure shows every cell changing when the one larger
+        value arrives.</li>
       <li><b>Swap the column set</b> replaces the headers and the first five rows,
         as a page that loads a different query result into the same table.
         Expect: the extension detects a new table. It shows the new values
@@ -1909,9 +1906,12 @@ TSLA,75,"248.09","18,606.75"
     <p>Each update writes a random whole number from 1,000 to 1,000,000 into
       every cell.</p>
     <p class="expect">Press its pillbox on. Expect: after each update every cell
-      shows simplified against the new largest value, and each hover text
-      shows the new value. A restore at any moment shows the values the page
-      last wrote.</p>
+      shows simplified under the max magnitude the table took when the
+      pillbox turned on, and each hover text shows the new value. Press the
+      pillbox off and on to take the max magnitude from the values then on
+      the page. A restore at any moment shows the values the page last
+      wrote. A failure shows the cells rounding to a coarser or finer step
+      with each update.</p>
     <p class="expect" id="rw-live-status">Next update in 30 seconds.</p>
 
     <!--

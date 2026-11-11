@@ -105,9 +105,10 @@ const DR_MODEL = (function () {
         // apply, the re-apply pass, and the capture read it; a reset of the
         // cells leaves it in place.
         settings: null,
-        // Virtualized-grid magnitude basis, frozen on first round so a
-        // scroll-triggered re-apply cannot shift it. null until roundTable
-        // freezes it; resetTable clears it back to null.
+        // The table's magnitude freeze, on both table kinds: the max
+        // magnitude stored at the first simplification, so a re-apply pass
+        // (a grid's scroll, a value the page writes) cannot shift it. null
+        // until roundTable stores it; resetTable clears it back to null.
         maxMagnitude: null,
         // The shape fingerprint: { columnCount, headerTexts } as read by
         // lib/dr-table's readTableFingerprint at registration.

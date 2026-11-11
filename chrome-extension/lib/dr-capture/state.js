@@ -26,7 +26,7 @@
  * The state records absence honestly: a cell wearing the rounded marker with
  * no stored original serializes as original: null, and the serializer
  * never reconstructs a value. A virtualized grid contributes only the rows
- * present in the DOM at capture time; the state carries its frozen
+ * present in the DOM at capture time; the state carries each table's frozen
  * magnitude as part of the evidence.
  *
  * The state also carries detectionSettings, a plain copy of

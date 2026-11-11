@@ -912,20 +912,16 @@ function buildCaptureStateResponse() {
 //                        none.
 //   dateSplitRow         the debug row for a changed date or time whose text
 //                        crosses a piece boundary.
-//   freezesMaxMagnitude  whether the first simplification stores the max
-//                        magnitude as the table's magnitude freeze. Grids
-//                        only: a grid holds only its visible rows, so a
-//                        changed value and a row scrolled into view read
-//                        the same.
 //   watchedElement(adapter)  the element the re-apply observer watches: a
 //                        native table itself, a grid's scroll container.
 //
 // The pass settings beside the kind:
 //   frozenMaxMag  the max magnitude to use instead of computing it from the
-//                 cells; null or undefined computes it. A grid's re-apply
-//                 passes the table's magnitude freeze.
-//   writes        'first' writes every changed cell, stores a grid's max
-//                 magnitude as its magnitude freeze, and writes the debug
+//                 cells; null or undefined computes it. A re-apply pass,
+//                 on either table kind, passes the table's magnitude
+//                 freeze.
+//   writes        'first' writes every changed cell, stores the max
+//                 magnitude as the table's magnitude freeze, and writes the debug
 //                 row for the cells left unrounded (unroundedCellsRow). 'reapply' writes every changed cell and
 //                 nothing else. 'none' sorts no cell, writes nothing, and
 //                 returns each cell's patches; only the test suite passes
@@ -945,7 +941,6 @@ const NATIVE_TABLE_PASS = {
   splitReasons: ['pieces', 'split'],
   splitRow: 'Dynamic Rounding: a native cell value split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.',
-  freezesMaxMagnitude: false,
   watchedElement(adapter) { return adapter.getElement(); },
 };
 
@@ -953,7 +948,6 @@ const GRID_TABLE_PASS = {
   splitReasons: ['split'],
   splitRow: 'Dynamic Rounding: a grid cell number split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.',
-  freezesMaxMagnitude: true,
   watchedElement(adapter) { return adapter._getScrollContainer(); },
 };
 
@@ -1082,7 +1076,7 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   const settings = Object.assign(resolveRoundingSettings(opts),
     { dateGranularity: opts.dateGranularity, timeGranularity: opts.timeGranularity });
   const { maxMag, cells: stepCells } = tablePatches(classified, settings, pass.frozenMaxMag);
-  if (writes === 'first' && kind.freezesMaxMagnitude) DR_MODEL.setTableMaxMagnitude(table, maxMag);
+  if (writes === 'first') DR_MODEL.setTableMaxMagnitude(table, maxMag);
 
   const written = writeTableCells(table, stepCells, { kind, writes });
   if (writes === 'first' && written.missedCells > 0) {
@@ -1221,8 +1215,8 @@ function reapplyRounding(table) {
 // with a different shape re-detects as a new table, raw and under the
 // shipped defaults, and the pass stops there. Otherwise the pass runs the
 // one simplification pass under the table's own settings and its magnitude
-// freeze, if it holds one, so a grid's scroll never shifts its rounding
-// basis, and a native table's max magnitude follows the page's values. A
+// freeze, if it holds one, so neither a grid's scroll nor a value the page
+// writes shifts the table's rounding basis. A
 // pass that simplifies a cell records the table as simplified.
 function runReapplyPass(table) {
   const wasActive = DR_MODEL.getActiveTable() === table;
