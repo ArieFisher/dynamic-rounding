@@ -126,8 +126,9 @@
       'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
       'lib/dr-number/parsing.js', 'lib/dr-number/identifiers.js',
       'lib/dr-number/index.js',
-      'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-      'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
+      'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
+      'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
+      'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
       'lib/dr-capture/state.js', 'lib/dr-capture/render.js',
       'lib/dr-capture/index.js',
       'adapters/messaging.js', 'app/model.js',
@@ -651,20 +652,21 @@
 // ---------------------------------------------------------------------------
 // Static purity scan.
 // Detection functions (findTargetTable, findTables, looksLikeGrid, isDataTable,
-// isPhantomA11yTable) must never write to the page — no classList.add,
+// isAccessibilityArtifact) must never write to the page — no classList.add,
 // createElement, appendChild, or createPillboxForTable inside their bodies.
-// Write-layer helpers (applyExtractedPatches,
+// Write-layer helpers (writePatches,
 // restoreTextPieces, GridAdapter's applyPatches) legitimately create/mutate nodes and are correctly
 // excluded from this scan — they are reachable only from explicit write calls
 // (roundTable / reapplyRounding), never from detection.
 // ---------------------------------------------------------------------------
 (function detectionFunctions_sourceScan_noPageWrites() {
-  if (detectCode === null) {
+  const detectSource = sourceByName('lib/dr-table/detect.js');
+  if (detectSource === null) {
     eq('purity scan: source file lib/dr-table/detect.js present in manifest', false, true);
     return;
   }
   const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createPillboxForTable'];
-  const DETECTION_FNS = ['findTargetTable', 'findTables', 'looksLikeGrid', 'isDataTable', 'isPhantomA11yTable'];
+  const DETECTION_FNS = ['findTargetTable', 'findTables', 'looksLikeGrid', 'isDataTable', 'isAccessibilityArtifact'];
 
   // Extract a top-level `function name(` body by brace-matching from the
   // opening brace to its balanced close. Good enough for this file's flat,
@@ -687,7 +689,7 @@
   }
 
   for (const fnName of DETECTION_FNS) {
-    const body = extractFunctionBody(detectCode, fnName);
+    const body = extractFunctionBody(detectSource, fnName);
     eq(`purity scan: ${fnName} body located in lib/dr-table/detect.js`, body !== null, true);
     if (body === null) continue;
     for (const token of FORBIDDEN) {
@@ -1290,8 +1292,9 @@
     'constants.js',
     'lib/dr-number/rounding.js', 'lib/dr-number/core.js',
     'lib/dr-number/parsing.js', 'lib/dr-number/index.js',
-    'lib/dr-table/detect.js', 'lib/dr-table/index.js',
-    'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
+    'lib/dr-table/cells.js', 'lib/dr-table/adapters.js',
+    'lib/dr-table/classify.js', 'lib/dr-table/detect.js', 'lib/dr-table/index.js',
+    'lib/dr-simplify/placement.js', 'lib/dr-simplify/ladder.js', 'lib/dr-simplify/table.js', 'lib/dr-simplify/index.js',
     'adapters/messaging.js', 'app/model.js',
     'ui-pillbox.js', 'ui-toast.js', 'content.js',
   ];
@@ -1465,16 +1468,16 @@
 
 // ---------------------------------------------------------------------------
 // Table detection lives under lib/dr-table/
-// (detect.js, index.js), mirroring the lib/dr-number package structure and
-// discipline checks above. Four groups of tests:
+// (cells.js, adapters.js, classify.js, detect.js, index.js), mirroring the
+// lib/dr-number package structure and discipline checks above. Four groups of tests:
 //   1. DR_TABLE bundle discipline (mirrors drNumberBundleIsPublished /
 //      indexJsDeclaresExactlyOneGlobal, but against an explicit hand-written
-//      list, not a source-derived one — detect.js also carries write-engine
+//      list, not a source-derived one — the package also carries write-engine
 //      helpers alongside detection, so "every top-level function" is not the
 //      right criterion here the way it is for the pure lib/dr-number files).
 //   2. The jsdom-less criterion: detection runs with no Chrome globals at all.
 //   3. VendorProfiles: a custom list replaces (not merges with) the default.
-//   4. findTables' tableFilter: default drops a accessibility artifacts; a
+//   4. findTables' isArtifact: the default drops accessibility artifacts; a
 //      pass-through filter keeps it.
 // ---------------------------------------------------------------------------
 (function drTableBundleIsPublished() {
@@ -1488,17 +1491,16 @@
     'classifyTableCell',
     'collectTextPieces',
     'mapRenderedToFlat',
-    'applyExtractedPatches',
+    'writePatches',
     'restoreTextPieces',
-    'placeDecision',
-    'layoutPieceHolding',
-    'flatPatches',
     'sortCellByRecord',
     'looksLikeGrid',
     'findTargetTable',
     'findTables',
+    'scanTables',
+    'registrableTables',
     'chainRootOf',
-    'isPhantomA11yTable',
+    'isAccessibilityArtifact',
     'isDataTable',
     'readTableFingerprint',
     'sameTableFingerprint',
@@ -1543,7 +1545,7 @@
 //      OR-fallback, no reassignment — and the pillbox view reads none of it.
 //   3. Behavior: a sandbox that evaluates the configuration file and then
 //      the detection layer carries the nine pre-move values unchanged, and
-//      looksLikeGrid, findTargetTable, isPhantomA11yTable, and isDataTable
+//      looksLikeGrid, findTargetTable, isAccessibilityArtifact, and isDataTable
 //      behave exactly as the pre-move source did, on fixtures whose outcome
 //      the pre-move values determine.
 //   4. Behavior: a sandbox that evaluates the detection layer alone, with
@@ -1590,7 +1592,7 @@
 
 (function detectionSettings_noFallbackCopy() {
   const filesToScan = {
-    'lib/dr-table/detect.js': detectCode,
+    'lib/dr-table (detection layer)': detectCode,
     'content.js': sourceByName('content.js'),
   };
   for (const [file, src] of Object.entries(filesToScan)) {
@@ -1686,13 +1688,12 @@
     addedNodePassSrc !== null &&
       (addedNodePassSrc.includes('GRID_ARIA_SELECTOR') || addedNodePassSrc.includes('role="grid"')),
     false);
-  // The step's page-wide entry point is nominateNests; findTables composes it
-  // and keeps the 'selected' outcomes. Both scanners act on the other outcomes
-  // too, so both call nominateNests directly.
-  eq('nesting AC6: the load-time scan calls the nomination step',
-    loadTimeScanSrc !== null && /nominateNests\s*\(/.test(loadTimeScanSrc), true);
-  eq('nesting AC6: the added-node pass calls the nomination step',
-    addedNodePassSrc !== null && /nominateNests\s*\(/.test(addedNodePassSrc), true);
+  // The step's page-wide entry point is nominateNests, which scanTables
+  // composes. Both scanners act on every outcome, so both call scanTables.
+  eq('nesting AC6: the load-time scan calls the table scan',
+    loadTimeScanSrc !== null && /scanTables\s*\(/.test(loadTimeScanSrc), true);
+  eq('nesting AC6: the added-node pass calls the table scan',
+    addedNodePassSrc !== null && /scanTables\s*\(/.test(addedNodePassSrc), true);
 })();
 
 // --- AC7: the living documents and the test page state the rule ---
@@ -1837,7 +1838,8 @@
 (function drSimplifyBundleMatchesSourceDeclarations() {
   const FUNCTION_DECL_RE = /^function\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm;
   const tableStepCode = sourceByName('lib/dr-simplify/table.js');
-  const declaredNames = [ladderCode, tableStepCode]
+  const placementCode = sourceByName('lib/dr-simplify/placement.js');
+  const declaredNames = [placementCode, ladderCode, tableStepCode]
     .flatMap((code) => (code === null ? [] : [...code.matchAll(FUNCTION_DECL_RE)].map((m) => m[1])))
     .sort();
   eq('lib/dr-simplify/ladder.js: source present in manifest', ladderCode !== null, true);
@@ -1846,7 +1848,7 @@
     declaredNames.length > 0, true);
   eq('lib/dr-simplify/index.js: DR_SIMPLIFY exists on the global scope after the main eval',
     typeof globalThis.DR_SIMPLIFY, 'object');
-  eq('lib/dr-simplify bundle: DR_SIMPLIFY keys are exactly the top-level functions declared in ladder.js and table.js',
+  eq('lib/dr-simplify bundle: DR_SIMPLIFY keys are exactly the top-level functions declared in placement.js, ladder.js, and table.js',
     Object.keys(globalThis.DR_SIMPLIFY || {}).sort(), declaredNames);
   eq('lib/dr-simplify bundle: every DR_SIMPLIFY entry is itself a function',
     declaredNames.every((n) => typeof (globalThis.DR_SIMPLIFY || {})[n] === 'function'), true);
@@ -2731,9 +2733,9 @@
 (function everyRow_theOutsideRowMarkFeedsNoDatasetRead() {
   // Every row joins the dataset and the lens preview pool, so no content
   // script reads the outside-row mark to choose which values join them. The
-  // mark's one reader is the shape fingerprint's header-row read on a grid
-  // (firstRow.isOutside); the grid adapter sets the mark, and its pinned-pane
-  // stitching copies it onto each stitched row. Comment lines are skipped, so
+  // mark's one reader is the shape fingerprint's header-row read
+  // (firstRow.isOutside); the adapters set the mark, and the grid adapter's
+  // pinned-pane stitching copies it onto each stitched row. Comment lines are skipped, so
   // a prose mention of the mark is no reader.
   const codeLines = (src) => src.split('\n').filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line));
   const filesWithTheMark = [];
@@ -2745,8 +2747,8 @@
       for (const match of line.match(/[\w$.]*\.isOutside\b/g) || []) reads.push(`${file}: ${match}`);
     }
   }
-  eq('every row: the grid adapter\'s file is the one content script whose code holds the outside-row mark',
-    filesWithTheMark, ['lib/dr-table/detect.js']);
+  eq('every row: the adapters\' file and the shape fingerprint\'s file are the only content scripts whose code holds the outside-row mark',
+    filesWithTheMark, ['lib/dr-table/adapters.js', 'lib/dr-table/detect.js']);
   eq('every row: the shape fingerprint\'s header-row read is the one reader of the outside-row mark',
     reads, ['lib/dr-table/detect.js: firstRow.isOutside']);
 })();

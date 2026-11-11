@@ -341,31 +341,29 @@ function createPillboxForTable(table) {
   return button;
 }
 
-// The load-time scan. Pass 1 covers native <table> elements. Pass 2 hands the
-// grids to the nomination step in the detection layer (nominateNests), which
-// returns one outcome per nest — the same step the added-node pass in
-// content.js runs, so one page and one added subtree register the same
-// element. This view holds no scan of its own.
+// The load-time scan: the table scan (scanTables in the detection layer) over
+// the document, the same scan the added-node pass in content.js runs, so one
+// page and one added subtree register the same element. This view holds no
+// scan of its own.
 //
-// Pass 2's outcomes go to the controller (consumeNominations in content.js),
-// which registers what the step selected and holds a chain root whose chain is
-// empty as a pending table. A pending record is page-held state with a live
-// observer in it, and this view holds no such state; routing the outcomes
-// through the controller keeps both scanners on one copy of that rule. The
-// two files share one scope, and this call runs at DOMContentLoaded, after
-// every content script has loaded.
+// The nomination outcomes go to the controller (consumeNominations in
+// content.js), which registers what the step selected and holds a chain root
+// whose chain is empty as a pending table. A pending record is page-held state
+// with a live observer in it, and this view holds no such state; routing the
+// outcomes through the controller keeps both scanners on one copy of that
+// rule. The two files share one scope, and this call runs at DOMContentLoaded,
+// after every content script has loaded.
 function injectTablePillboxes() {
-  // Pass 1: native <table> elements; accessibility artifacts are skipped.
-  document.querySelectorAll('table').forEach(table => {
-    if (isPhantomA11yTable(table)) return;
+  const { tables, nominations } = scanTables(document, { isRegistered: DR_MODEL.hasTable });
+  tables.forEach(table => {
     if (!DR_MODEL.hasTable(table)) {
       createPillboxForTable(table);
     }
   });
-  // Pass 2: the nomination step. createPillboxForTable re-runs the data test
-  // the step already ran; this view accepts the second read so the detection
-  // layer only nominates and this view alone registers.
-  consumeNominations(nominateNests(document, { isSeen: DR_MODEL.hasTable }));
+  // createPillboxForTable re-runs the data test the step already ran; this view
+  // accepts the second read so the detection layer only nominates and this view
+  // alone registers.
+  consumeNominations(nominations);
 }
 
 function repositionAllPillboxes() {

@@ -6,1456 +6,103 @@
  */
 
 /**
- * The detection layer of the lib/dr-table package, with the DOM adapters and
- * the cell read and write it shares with the simplification pass. Loaded by
- * the manifest's content_scripts before content.js.
+ * The detection layer of the lib/dr-table package. Detection reads the page
+ * and returns findings. It writes no marker class, builds no table pillbox,
+ * and keeps no registry: "is this element registered" is the injected
+ * opts.isRegistered check. The callers (ui-pillbox.js, content.js) check the
+ * registry in DR_MODEL and, for a first match, write the marker class and
+ * build the table pillbox.
  *
- * Adapters: NativeTableAdapter and GridAdapter (chosen by makeAdapter)
- * present a table's rows and cells through one interface, over a native
- * <table> and over a grid built from generic elements. isDataTable and
- * readTableFingerprint here, the passes in content.js, the range pulse in
- * ui-pillbox.js (flashRangePulse), and the capture state collector
- * (collectCaptureState) read rows and cells through it. _hasHeaderRow also
- * reads a native table's first row element, for its head section.
+ * The style probe is the port for every computed style and box read, so
+ * detection runs in a plain Node context with no Chrome globals. `document`
+ * comes in as opts.doc.
  *
- * Detection reads the page and returns findings: isDataTable, looksLikeGrid,
- * findTargetTable, isPhantomA11yTable, chainRootOf, nominateNest,
- * nominateNests, findTables, and readTableFingerprint. None writes the
- * dr-ext-grid marker class or builds a table pillbox, and none reads that
- * class as state: "is this element registered" is the injected opts.isSeen
- * check. The callers (ui-pillbox.js, content.js) check the registry in
- * DR_MODEL and, for a first match, write the marker class (a style hook only)
- * and build the table pillbox. The rest of the file writes to the page: the
- * patch writer (applyExtractedPatches) and restoreTextPieces write cell text
- * in place, through nodeValue, and the cell object's applyPatches calls the
- * patch writer, stores the cell's record through the originals port, and adds
- * the dr-ext-rounded marker class.
- *
- * Ports: DEFAULT_STYLE_PROBE (computed style, offset width, box) and the
- * originals port (a simplified cell's record) are the file's ports. Each has
- * a working default, so detection runs in a plain Node context with no Chrome
- * globals and no `window`. The vendor grid selectors come in as
- * opts.vendorProfiles, and `document` as opts.doc in the functions that take
- * it. Every other page read goes to the page directly, with no port: the
- * element and attribute reads of rows and cells, the text-piece walk
- * (collectTextPieces), the link filter (filterLinkMatches), the whole-link
- * test (isCellWholeLink), the rendered-text reads (the native adapter's
- * liveText and the cell object's runsTogether), and the hover-text read
- * (pageHoverText).
- *
- * Every detection setting this file reads lives in DR_DETECTION_SETTINGS
- * (constants.js), which the content script loads before this file. The file
- * reads it as a bare global with no local fallback copy, and
- * GRID_VENDOR_PROFILES reads it at the top level, so a missing object fails at
- * load, before any function here runs.
+ * DETECTION_OPTIONS reads DR_DEFAULTS at the top level, so a missing object
+ * fails at load, before any function here runs.
  */
 
-/** CSS selector for the cheap load-time ARIA pass. */
 const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
-/**
- * CSS selector for a grid row's cells: the cell, grid-cell, row-header, and
- * column-header roles. All four count as cells, in document order, so a
- * labelled row's label is column A the way a native table's row header is.
- */
-const GRID_CELL_SELECTOR = '[role="cell"], [role="gridcell"], [role="rowheader"], [role="columnheader"]';
-/** Node.ELEMENT_NODE, or 1 (its fixed DOM value) in a context with no `Node` global. */
+
+// Node.ELEMENT_NODE, or its fixed DOM value where no `Node` global exists.
 const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE) || 1;
 
-/**
- * The style probe: the one source for every guarded getComputedStyle,
- * offsetWidth, and box read in this file. With no real getComputedStyle it
- * reports a normal, visible, statically-positioned block element, which keeps
- * detection running in a context with no styles.
- *
- * getBox returns an element's box ({top, left, width, height}), or null when
- * the element draws no box: a hidden element or a `display: contents` row. A
- * probe without getBox reads every grid as row-first (see isColumnFirst).
- */
-const DEFAULT_STYLE_PROBE = {
-  getComputedStyle(el) {
-    if (typeof getComputedStyle === 'function') {
-      try { return getComputedStyle(el) || null; } catch (e) { return null; }
-    }
-    return { display: 'block', visibility: 'visible', position: 'static', left: '', verticalAlign: '' };
-  },
-  getOffsetWidth(el) {
-    return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1;
-  },
-  getBox(el) {
-    if (!el || typeof el.getBoundingClientRect !== 'function') return null;
-    let rect = null;
-    try { rect = el.getBoundingClientRect(); } catch (e) { return null; }
-    if (!rect || !(rect.width > 0 || rect.height > 0)) return null;
-    return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
-  },
-};
-
-/**
- * The children that hold the most common non-zero child count, with that
- * count and how many children hold it. The geometry probe takes them as
- * candidate rows (columns, on a column-first grid) and the grid adapter takes
- * them as a column-first grid's columns, so the two read the same set.
- *
- * @param {Element[]} children
- * @returns {{childCountFreq: Map<number, number>, modalChildCount: number, modalFreq: number, candidates: Element[]}}
- */
-function childCountCandidates(children) {
-  const childCountFreq = new Map();
-  for (const child of children) {
-    const cc = child.children ? child.children.length : 0;
-    childCountFreq.set(cc, (childCountFreq.get(cc) || 0) + 1);
-  }
-  let modalChildCount = 0;
-  let modalFreq = 0;
-  for (const [cc, freq] of childCountFreq) {
-    if (freq > modalFreq && cc > 0) { modalFreq = freq; modalChildCount = cc; }
-  }
-  const candidates = modalFreq > 0
-    ? children.filter((c) => c.children && c.children.length === modalChildCount)
-    : [];
-  return { childCountFreq, modalChildCount, modalFreq, candidates };
-}
-
-/**
- * The direction reader: whether an element's children run side by side as
- * columns (a column-first grid) instead of stacking as rows (a row-first
- * grid). It compares the boxes of the first two children that draw a box,
- * among at most DR_DETECTION_SETTINGS.gridColumnWidthSample children: the same
- * top with a larger left is column-first. Every other case is row-first,
- * including a probe without getBox. The geometry probe and the grid adapter
- * both call it, so the two read one direction for one grid.
- *
- * @param {Element[]} children
- * @param {object} styleProbe
- * @returns {boolean}
- */
-function isColumnFirst(children, styleProbe) {
-  if (!styleProbe || typeof styleProbe.getBox !== 'function') return false;
-  const sample = children.slice(0, DR_DETECTION_SETTINGS.gridColumnWidthSample);
-  const boxes = [];
-  for (const child of sample) {
-    const box = styleProbe.getBox(child);
-    if (box) boxes.push(box);
-    if (boxes.length === 2) break;
-  }
-  if (boxes.length < 2) return false;
-  return boxes[1].top === boxes[0].top && boxes[1].left > boxes[0].left;
-}
-
-// Known third-party grid libraries. `classToken` ends looksLikeGrid before its
-// alignment step; `scrollContainerSelectors` and `pinnedPaneSelectors` locate
-// GridAdapter's scroll container and pinned pane. A caller may pass another
-// list as opts.vendorProfiles.
-const GRID_VENDOR_PROFILES = DR_DETECTION_SETTINGS.vendorProfiles;
-
-// The settings the data test classifies a cell under: every option in the
-// settings contract (DR_DEFAULTS) whose name starts with "simplify", each on.
-// The test reads no table's settings, so a table passes or fails the same way
-// whatever its switches hold, and a switch added to the contract reaches the
-// test with no edit here.
+// Every "simplify" switch in the settings contract, on, so a table passes the
+// data test whatever its own switches hold, and a new switch reaches the test
+// with no edit here.
 const DETECTION_OPTIONS = Object.freeze(Object.fromEntries(
   Object.keys(DR_DEFAULTS).filter((key) => key.startsWith('simplify')).map((key) => [key, true])));
 
 /**
- * Read one span value, normalized the way a table cell holds it.
- *
- * A missing, blank, or unreadable value is one column or one row. An explicit
- * zero is the "to the end" form, which HTML and ARIA both define for rowspan
- * and neither honours for colspan, so the caller passes what zero means.
- * Column spans are capped at the 1000 a table cell allows, so a malformed
- * value cannot stretch the column cursor.
- *
- * @param {string|number|null|undefined} raw
- * @param {number} whenZero
- * @returns {number}
- */
-function normalizeSpan(raw, whenZero) {
-  if (raw === null || raw === undefined || raw === '') return 1;
-  const value = Math.trunc(Number(raw));
-  if (!Number.isFinite(value) || value < 0) return 1;
-  if (value === 0) return whenZero;
-  return Math.min(value, 1000);
-}
-
-/** Spans of a native table cell, read from its colSpan and rowSpan properties. */
-function nativeCellSpans(cell) {
-  return {
-    colSpan: normalizeSpan(cell.colSpan, 1),
-    rowSpan: normalizeSpan(cell.rowSpan, Infinity),
-  };
-}
-
-/**
- * Spans of a grid cell, read from its aria-colspan and aria-rowspan
- * attributes. For a grid that declares none, the function returns one column
- * and one row for every cell, which numbers cells the way the read position does.
- */
-function gridCellSpans(cellEl) {
-  const read = (cellEl && typeof cellEl.getAttribute === 'function')
-    ? (name) => cellEl.getAttribute(name)
-    : () => null;
-  return {
-    colSpan: normalizeSpan(read('aria-colspan'), 1),
-    rowSpan: normalizeSpan(read('aria-rowspan'), Infinity),
-  };
-}
-
-/**
- * Number every cell by the column the browser lays it out in (issue #330).
- *
- * Rows are walked in order, each with a cursor that starts at the leftmost
- * column. A cell merged down holds its columns on the rows below it, and the
- * cursor skips a held column; a cell merged across advances the cursor by its
- * whole width. Both table kinds call this with the span read of their kind, so
- * one rule numbers the columns and the two kinds agree cell for cell.
- *
- * Without this, a merge inside the data area shifts every cell after it: the
- * first-column exclusion and the range expression fall on the wrong cells,
- * the dataset behind the max magnitude gains or loses values, and the whole
- * table rounds at the wrong step.
- *
- * @param {{colSpan: number, rowSpan: number}[][]} rowSpans
- * @returns {{columnIndex: number, columnSpan: number}[][]}
- */
-function assignGridColumns(rowSpans) {
-  // Per column, how many further rows a merge above holds it for.
-  const held = [];
-  return rowSpans.map((cells) => {
-    let cursor = 0;
-    const placed = cells.map(({ colSpan, rowSpan }) => {
-      while (held[cursor] > 0) cursor += 1;
-      const columnIndex = cursor;
-      // Each covered column takes the longer of its hold and this cell's
-      // rowSpan. On well-formed markup no covered column carries a hold here,
-      // so this is a plain write; it matters where a cell merged across reaches
-      // a column a merge above still holds, which the table model keeps on the
-      // shared slot.
-      for (let col = cursor; col < cursor + colSpan; col++) {
-        held[col] = Math.max(held[col] || 0, rowSpan);
-      }
-      cursor += colSpan;
-      return { columnIndex, columnSpan: colSpan };
-    });
-    for (let col = 0; col < held.length; col++) {
-      if (held[col] > 0) held[col] -= 1;
-    }
-    return placed;
-  });
-}
-
-/**
- * A fresh placement for one cell: the column plan's entry for it, or the read
- * position when the plan holds no entry (the table's rows changed between the
- * plan and the read). Fresh because the caller builds the cell object on top of it, and a
- * shared entry would give every cell at that position one object.
- */
-function columnPlacement(planRow, position) {
-  const entry = planRow && planRow[position];
-  return entry
-    ? { columnIndex: entry.columnIndex, columnSpan: entry.columnSpan }
-    : { columnIndex: position, columnSpan: 1 };
-}
-
-/** Marker class on every cell the extension simplified (numbers, dates, and times), on native tables and grids alike. */
-const GRID_ROUNDED_CLASS = 'dr-ext-rounded';
-
-/**
- * The originals port: per-cell storage for a simplified cell's record, read
- * and written by the cell objects of both adapters. The default is a private
- * WeakMap<cellEl, record>, which suits a caller with no application model (a
- * test). content.js passes a port backed by the table's registry entry in
- * DR_MODEL (app/model.js), so a cell's originals survive a toggle without a
- * page attribute. makeAdapter takes another port as opts.originalsPort. The
- * record's shape is documented at applyPatches in makeCellObj.
- */
-function makeDefaultOriginalsPort() {
-  const store = new WeakMap();
-  return {
-    has(cellEl) { return store.has(cellEl); },
-    get(cellEl) { return store.get(cellEl); },
-    set(cellEl, record) { store.set(cellEl, record); },
-  };
-}
-const DEFAULT_ORIGINALS_PORT = makeDefaultOriginalsPort();
-
-/**
- * The hover text the extension gives a simplified cell: "Original: " and the
- * text the cell classified. A different live hover text is the page's.
- * @param {string} value
- * @returns {string}
- */
-function originalHoverText(value) {
-  return `Original: ${value}`;
-}
-
-/**
- * The page's hover text for a cell about to take a write. A cell with no
- * record has it read from the cell, on its first write. On a held cell, a live
- * hover text equal to the extension's hover text leaves the stored text in
- * place, and any other live hover text is the page's newer text, which
- * replaces it.
- * @param {Element} cellEl
- * @param {{value: string, pageTitle?: string}|null} record
- * @returns {string}
- */
-function pageHoverText(cellEl, record) {
-  const live = cellEl.title || '';
-  if (!record) return live;
-  return live === originalHoverText(record.value) ? (record.pageTitle || '') : live;
-}
-
-/**
- * The cell object both adapters hand out: one read and one write over the
- * cell's text pieces, reading from the cell's record once the cell is
- * simplified. `reads` holds the differences between the kinds:
- *   tagName          the cell's tag; a grid cell reads as a data cell
- *   liveText()       the text the cell classifies when it has no record: a
- *                    native cell's rendered text, a grid cell's flat text
- *   displayedText()  the text the screen shows now, for the capture
- *   rendered         whether liveText() is rendered text, so the piece layout
- *                    converts its positions to flat-text positions
- * @param {Element} cellEl
- * @param {{has: Function, get: Function, set: Function}} port
- * @param {{tagName: string, liveText: () => string, displayedText: () => string, rendered: boolean}} reads
- */
-function makeCellObj(cellEl, port, reads) {
-  const recordOf = () => (port.has(cellEl) ? port.get(cellEl) : null);
-  const getText = () => {
-    const record = recordOf();
-    return record ? record.value : reads.liveText();
-  };
-  return {
-    el: cellEl,
-    tagName: reads.tagName,
-    getRecord: recordOf,
-    getText,
-    getDisplayedText: reads.displayedText,
-    // The cell's text pieces as getText() read them, for the placement step and
-    // the patch step (see the layout fields at the placement step). Returns
-    // null when the cell no longer holds as many pieces as its record; the
-    // pass sorts that cell as a rewritten cell before it reads a layout.
-    // runsTogether reads the cell's rendered text only when the placement step
-    // calls it, because a rendered-text read lays out the page.
-    getPieceLayout() {
-      const live = collectTextPieces(cellEl).map((piece) => piece.nodeValue);
-      const record = recordOf();
-      if (record && record.pieces.length !== live.length) return null;
-      const original = record ? record.pieces.map((piece) => piece.text) : live;
-      const runsTogether = (i) => showsPiecesTogether(cellEl.innerText || cellEl.textContent || '', live, i);
-      if (!reads.rendered) return { original, toFlat: null, rendered: false, runsTogether };
-      const text = getText();
-      const toFlat = mapRenderedToFlat(text, original.join('')) || mapValueToPiece(text, original);
-      return { original, toFlat, rendered: true, runsTogether };
-    },
-    // Write the patches and return how many landed (see applyExtractedPatches).
-    // A landed write replaces the cell's record through the originals port, so
-    // the written text never goes stale; a write that lands nothing stores
-    // nothing. The record holds:
-    //   value            the text the cell classified: opts.value, the text
-    //                    the pass read before its first write, else getText()
-    //   pieces           one entry per text piece, in page order: text, its
-    //                    original; written, its text after this write
-    //   supRanges        a <sup>-bearing cell's exponent ranges, measured in
-    //                    value; null for a cell with no <sup>
-    //   linkFilteredIdx  the positions of the numbers the link filter kept,
-    //                    for a cell rounded number by number; null otherwise
-    //   pageTitle        the cell's hover text as the page set it, read on the
-    //                    first write and carried through every later write (the
-    //                    extension's hover text never replaces it), except that
-    //                    a held cell whose hover text the page changed takes
-    //                    the new text; '' when the page set none
-    // The pass passes opts.value because a native cell's getText() reads
-    // rendered text, and a rendered-text read after another cell's write lays
-    // out the whole table again: once per cell, a 10,000-cell table takes most
-    // of a minute.
-    applyPatches(patches, opts = {}) {
-      const { linkFilteredIdx, supRanges } = opts;
-      const record = recordOf();
-      const value = opts.value !== undefined ? opts.value : getText();
-      const original = record
-        ? record.pieces.map((piece) => piece.text)
-        : collectTextPieces(cellEl).map((piece) => piece.nodeValue);
-      const { landed } = applyExtractedPatches(cellEl, patches, original);
-      if (landed === 0) return 0;
-      const written = collectTextPieces(cellEl).map((piece) => piece.nodeValue);
-      port.set(cellEl, {
-        value,
-        pieces: original.map((text, i) => ({ text, written: written[i] })),
-        supRanges: supRanges || null,
-        linkFilteredIdx: linkFilteredIdx || null,
-        pageTitle: pageHoverText(cellEl, record),
-      });
-      if (cellEl.classList) cellEl.classList.add(GRID_ROUNDED_CLASS);
-      return landed;
-    },
-  };
-}
-
-class NativeTableAdapter {
-  constructor(el, opts = {}) {
-    this.el = el;
-    this.originalsPort = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
-  }
-  getElement() { return this.el; }
-  isVirtualized() { return false; }
-  getRows() {
-    const rowEls = Array.from(this.el.rows);
-    // One pass over the spans numbers every cell by its grid column, before
-    // any text is read; a cell then carries the number its consumers gate on.
-    const plan = assignGridColumns(
-      rowEls.map((row) => Array.from(row.cells).map(nativeCellSpans)));
-    const port = this.originalsPort;
-    return rowEls.map((row, r) => ({
-      getCells() {
-        return Array.from(row.cells).map((cell, c) => {
-          // A native cell classifies its rendered text, which is also what the screen shows.
-          const rendered = () => cell.innerText || cell.textContent || '';
-          return Object.assign(columnPlacement(plan[r], c), makeCellObj(cell, port, {
-            tagName: cell.tagName, liveText: rendered, displayedText: rendered, rendered: true,
-          }));
-        });
-      },
-    }));
-  }
-}
-
-/**
- * Whether an element carries a cell role, per GRID_CELL_SELECTOR. A cell
- * bounds a table: a grid inside a cell of another grid is a separate table,
- * the way a native table inside a cell is. Every walk that sorts elements
- * between two nested grids reads this one predicate: the walks that find a
- * chain root and count nesting depth, and the grid adapter's reads of the
- * grid's rows and cells. An element stub with no `matches` counts as no cell.
- *
- * @param {Element} el
- * @returns {boolean}
- */
-function _isCellAncestor(el) {
-  if (!el || typeof el.matches !== 'function') return false;
-  try { return !!el.matches(GRID_CELL_SELECTOR); } catch (e) { return false; }
-}
-
-/**
- * The descendants of `root` matching `selector` that belong to `root`: those
- * with no ancestor carrying a cell role between them and `root`. A match inside
- * a cell of `root` belongs to a table nested in that cell, so a grid reads
- * only the rows and cells that belong to it, as a native table's rows leave
- * out a table nested in one of its cells.
- *
- * One call resolves each ancestor once: the walk records the answer for every
- * element it passes, and a later walk that reaches a recorded element takes
- * its answer and stops. The work grows with the size of the tree under
- * `root`, not with the matches times their depth.
- *
- * @param {Element} root
- * @param {string} selector
- * @returns {Element[]}
- */
-function _ownDescendants(root, selector) {
-  if (!root || typeof root.querySelectorAll !== 'function') return [];
-  // Element → whether a cell sits between it (itself included) and `root`.
-  const insideCell = new Map();
-  const isInsideCell = (start) => {
-    const passed = [];
-    let at = start;
-    let answer = false;
-    while (at && at !== root) {
-      if (insideCell.has(at)) { answer = insideCell.get(at); break; }
-      passed.push(at);
-      if (_isCellAncestor(at)) { answer = true; break; }
-      at = at.parentElement || at.parentNode;
-    }
-    for (const el of passed) insideCell.set(el, answer);
-    return answer;
-  };
-  return Array.from(root.querySelectorAll(selector))
-    .filter((match) => !isInsideCell(match.parentElement || match.parentNode));
-}
-
-/**
- * Build one grid cell's cell object (see makeCellObj). The grid adapter and
- * the geometry probe's numeric step both build grid cells through it, so the
- * two read a cell's text the same way. Every write patches text pieces
- * through nodeValue — never textContent/innerHTML/appendChild/removeChild.
- * @param {Element} cellEl
- * @param {{has: Function, get: Function, set: Function}} port
- * @returns {{getText(): string, getPieceLayout(): object|null,
- *            applyPatches(patches: object[], opts?: {value?: string, linkFilteredIdx?: number[]|null, supRanges?: {start:number,end:number}[]|null}): number,
- *            getDisplayedText(): string, getRecord(): object|null, el: Element, tagName: string}}
- */
-function makeGridCellObj(cellEl, port) {
-  return makeCellObj(cellEl, port, {
-    // A grid cell reads as a data cell. The page marks a grid's header cell by
-    // role (GRID_CELL_SELECTOR) and puts its header row outside every row group
-    // (_hasHeaderRow), so tagName is never 'TH'.
-    tagName: 'TD',
-    // The cell's flat text: the join of its text pieces in page order, the
-    // coordinate space every patch position counts in. A cell with no text
-    // piece reads its textContent.
-    liveText() {
-      const pieces = collectTextPieces(cellEl);
-      if (pieces.length === 0) return cellEl.textContent || '';
-      return pieces.map((piece) => piece.nodeValue).join('');
-    },
-    // The cell's live textContent, for the capture; it never reads the record.
-    displayedText() { return cellEl.textContent || ''; },
-    rendered: false,
-  });
-}
-
-class GridAdapter {
-  constructor(el, opts = {}) {
-    this.el = el;
-    this.vendorProfiles = opts.vendorProfiles || GRID_VENDOR_PROFILES;
-    this.originalsPort = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
-    this.styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
-  }
-  getElement() { return this.el; }
-  isVirtualized() { return true; }
-
-  /**
-   * The grid's scroll container: the first descendant of this grid that
-   * matches a vendor profile's scrollContainerSelectors, in profile order,
-   * then [role="grid"]; else the grid element.
-   */
-  _getScrollContainer() {
-    const el = this.el;
-    // The vendor profiles' selectors (database query grids, AG Grid, etc.),
-    // then the generic ARIA grid role for a grid no profile covers.
-    const knownSelectors = [
-      ...this.vendorProfiles.flatMap((p) => p.scrollContainerSelectors || []),
-      '[role="grid"]',
-    ];
-    for (const sel of knownSelectors) {
-      const found = _ownDescendants(el, sel)[0];
-      if (found) return found;
-    }
-    if (el.matches) {
-      for (const sel of knownSelectors) {
-        try {
-          if (el.matches(sel)) return el;
-        } catch (e) { /* ignore */ }
-      }
-    }
-    return el;
-  }
-
-  /**
-   * The pinned pane inside this grid element, or null. A single-pane grid (a
-   * database query grid) has none.
-   */
-  _getPinnedPane(scrollContainer) {
-    const pinnedSelectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
-    const el = this.el;
-    for (const sel of pinnedSelectors) {
-      const found = _ownDescendants(el, sel)[0];
-      if (found && found !== scrollContainer) return found;
-    }
-    return null;
-  }
-
-  /**
-   * The container's rows, each as { el, isOutside }, from the first selector
-   * that matches rows: [role="row"], .dg--virtual-row, <tr>, then the
-   * container's children. The <tr> source covers a grid (role="grid" or
-   * "table") whose rows are bare <tr> elements with no row role, directly
-   * inside the grid as orphan rows.
-   *
-   * When the container holds row groups ([role="rowgroup"], the ARIA analog of
-   * <tbody>), the first selector that matches rows inside a group applies, so
-   * a stray block carrying role="row" outside every group, such as a
-   * description panel, has no effect on which selector applies. The
-   * list is the container-wide match list for that selector, in document
-   * order. Header and summary rows outside the group count as rows like any
-   * other, and only the first-row and first-column exclusions skip them, as
-   * with a native table's <thead> and total rows. A row's position in the list
-   * is its literal row number.
-   *
-   * isOutside marks a row that sits in no row group. An outside row rounds like
-   * any other row, and its values join the dataset like any other row's. Only
-   * the shape fingerprint reads the mark (_hasHeaderRow).
-   *
-   * A row from the children fallback on a column-first grid has no row
-   * element: its entry holds el: null and cellEls, the row's cells in column
-   * order (see _childRowEntries).
-   *
-   * @param {Element} container
-   * @returns {{el: Element|null, isOutside: boolean, cellEls?: Element[]}[]}
-   */
-  _getRowEntries(container) {
-    if (!container) return [];
-    if (!container.querySelectorAll) {
-      return this._childRowEntries(container);
-    }
-    // Each query skips elements inside a cell of the grid: those belong to a
-    // table nested in that cell.
-    const rowgroups = _ownDescendants(container, '[role="rowgroup"]');
-    const isGrouped = rowgroups.length > 0;
-    const scopes = isGrouped ? rowgroups : [container];
-
-    for (const sel of ['[role="row"]', '.dg--virtual-row', 'tr']) {
-      let rows = [];
-      for (const scope of scopes) {
-        rows = rows.concat(_ownDescendants(scope, sel));
-      }
-      if (rows.length === 0) continue;
-      if (!isGrouped) return rows.map((el) => ({ el, isOutside: false }));
-      // The chosen selector's matches across the whole container; a match
-      // inside no row group is an outside row.
-      const inGroup = new Set(rows);
-      return _ownDescendants(container, sel)
-        .map((el) => ({ el, isOutside: !inGroup.has(el) }));
-    }
-    // Fallback: the first scope's children. Row groups that hold no rows are
-    // non-conforming markup, so only the first group's children count; the
-    // container-wide list above applies to rows a selector matches.
-    return this._childRowEntries(scopes[0]);
-  }
-
-  /**
-   * Rows from an element's children, the fallback when no row selector
-   * matches. On a row-first grid each child is a row. On a column-first grid
-   * (see isColumnFirst) each child is a column, and row r holds the r-th item
-   * of every column, in column order. The columns are the children holding the
-   * most common item count (see childCountCandidates), so a column with a
-   * different count stays out and every row holds one cell per column.
-   *
-   * @param {Element} parent
-   * @returns {{el: Element|null, isOutside: boolean, cellEls?: Element[]}[]}
-   */
-  _childRowEntries(parent) {
-    if (!parent || !parent.children) return [];
-    const children = Array.from(parent.children);
-    if (!isColumnFirst(children, this.styleProbe)) {
-      return children.map((el) => ({ el, isOutside: false }));
-    }
-    const { modalChildCount, candidates: columns } = childCountCandidates(children);
-    const rows = [];
-    for (let r = 0; r < modalChildCount; r++) {
-      rows.push({ el: null, isOutside: false, cellEls: columns.map((column) => column.children[r]) });
-    }
-    return rows;
-  }
-
-  /**
-   * The rows' elements: _getRowEntries without the outside-row mark, for
-   * callers that stitch by list position (pinned panes).
-   * @param {Element} container
-   * @returns {Element[]}
-   */
-  _getRowEls(container) {
-    return this._getRowEntries(container).map((entry) => entry.el);
-  }
-
-  /**
-   * A row element's cell elements: GRID_CELL_SELECTOR matches, else .dg--cell
-   * matches, else the direct children.
-   * @param {Element} rowEl
-   * @returns {Element[]}
-   */
-  _getCellEls(rowEl) {
-    if (!rowEl) return [];
-    let cells = _ownDescendants(rowEl, GRID_CELL_SELECTOR);
-    if (cells.length > 0) return cells;
-    cells = _ownDescendants(rowEl, '.dg--cell');
-    if (cells.length > 0) return cells;
-    if (rowEl.children) return Array.from(rowEl.children);
-    return [];
-  }
-
-  /**
-   * A row's key for pinned-pane stitching: its data-row value, else its
-   * data-index value, else its DOM index.
-   * @param {Element} rowEl
-   * @param {number} domIndex
-   * @returns {string}
-   */
-  _getRowKey(rowEl, domIndex) {
-    if (rowEl && rowEl.dataset) {
-      if (rowEl.dataset.row !== undefined) return rowEl.dataset.row;
-      if (rowEl.dataset.index !== undefined) return rowEl.dataset.index;
-    }
-    return String(domIndex);
-  }
-
-  /** Stitched rows: each row's pinned cells first, then its scroll cells. */
-  getRows() {
-    const scrollContainer = this._getScrollContainer();
-    const pinnedPane = this._getPinnedPane(scrollContainer);
-
-    const scrollEntries = this._getRowEntries(scrollContainer);
-    if (scrollEntries.length === 0) return [];
-
-    let pinnedRows = [];
-    const pinnedByKey = new Map();
-    if (pinnedPane) {
-      pinnedRows = this._getRowEls(pinnedPane);
-      pinnedRows.forEach((pr, idx) => {
-        const key = this._getRowKey(pr, idx);
-        pinnedByKey.set(key, pr);
-      });
-    }
-
-    const adapter = this;
-    // Each row's cell elements in the order getCells() returns them: the
-    // pinned pane's cells, then the scroll container's. Read once, so the
-    // column plan and the cell objects count the same row shape and each row
-    // is queried for its cells once. A row read from a column-first grid
-    // carries its cells and no row element, so it takes no pinned cells.
-    const rowCellEls = scrollEntries.map(({ el: rowEl, cellEls }, idx) => {
-      if (cellEls) return cellEls;
-      const scrollKey = adapter._getRowKey(rowEl, idx);
-      // The pinned row with the same row key, else the one at the same position.
-      const pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
-      const pinned = pinnedRowEl ? adapter._getCellEls(pinnedRowEl) : [];
-      return pinned.concat(adapter._getCellEls(rowEl));
-    });
-    const plan = assignGridColumns(
-      rowCellEls.map((cellEls) => cellEls.map(gridCellSpans)));
-
-    return scrollEntries.map(({ isOutside }, idx) => ({
-      isOutside,
-      getCells() {
-        return rowCellEls[idx].map((cellEl, c) => Object.assign(
-          columnPlacement(plan[idx], c), makeGridCellObj(cellEl, adapter.originalsPort)));
-      },
-    }));
-  }
-}
-
-/**
- * Factory: a NativeTableAdapter for a <table> element, a GridAdapter
- * otherwise. Plain objects with a `rows` property (e.g. test stubs) count as
- * native tables. Adapters are never cached, because a grid's row count changes
- * on scroll.
- */
-function makeAdapter(el, opts = {}) {
-  if (el.tagName === 'TABLE' || (el.tagName === undefined && el.rows)) {
-    return new NativeTableAdapter(el, opts);
-  }
-  return new GridAdapter(el, opts);
-}
-
-/**
- * The {start, end} half-open ranges of a cell's text that sit inside a <sup>
- * element or an element whose computed vertical-align is 'super'. The ranges
- * count in the cell's flat text. The vertical-align check reads opts.styleProbe, so the function runs
- * when getComputedStyle is absent; without doc.createTreeWalker it returns [].
- *
- * opts.text, when given, is the rendered text the caller classifies, and each
- * range converts into its positions through mapRenderedToFlat. A range with no
- * rendered character drops out. When the two texts differ in anything but
- * whitespace, the ranges stay in flat-text positions.
- * @param {Element} cell
- * @param {{doc?: Document, styleProbe?: object, text?: string}} [opts]
- * @returns {{start: number, end: number}[]}
- */
-function getSuperscriptRanges(cell, opts = {}) {
-  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
-  const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
-  if (!cell || !doc || typeof doc.createTreeWalker !== 'function') {
-    return [];
-  }
-  const ranges = [];
-  const treeWalker = doc.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
-  let cursor = 0;
-  let flat = '';
-  let node;
-  while ((node = treeWalker.nextNode())) {
-    const len = node.nodeValue ? node.nodeValue.length : 0;
-    if (len > 0) {
-      flat += node.nodeValue;
-      let isSup = false;
-      let ancestor = node.parentNode || node.parentElement;
-      while (ancestor && ancestor !== cell) {
-        if (ancestor.tagName === SUPERSCRIPT_TAG) {
-          isSup = true;
-          break;
-        }
-        if (!isSup) {
-          const style = styleProbe.getComputedStyle(ancestor);
-          if (style && style.verticalAlign === 'super') {
-            isSup = true;
-            break;
-          }
-        }
-        ancestor = ancestor.parentNode || ancestor.parentElement;
-      }
-      if (isSup) {
-        ranges.push({ start: cursor, end: cursor + len });
-      }
-    }
-    cursor += len;
-  }
-  const toFlat = typeof opts.text === 'string' ? mapRenderedToFlat(opts.text, flat) : null;
-  if (!toFlat) return ranges;
-  const rendered = [];
-  for (const { start, end } of ranges) {
-    const inside = [];
-    toFlat.forEach((at, i) => { if (at >= start && at < end) inside.push(i); });
-    if (inside.length > 0) rendered.push({ start: inside[0], end: inside[inside.length - 1] + 1 });
-  }
-  return rendered;
-}
-
-/**
- * Whether the cell's visible text lies entirely inside <a> elements (e.g. a
- * linked page number). Reads innerText directly, with no port.
- */
-function isCellWholeLink(cell) {
-  if (typeof cell.querySelectorAll !== 'function') return false;
-  const anchors = cell.querySelectorAll('a');
-  if (!anchors || anchors.length === 0) return false;
-  const cellText = (cell.innerText || '').trim();
-  if (!cellText) return false;
-  const anchorText = [...anchors].map(a => (a.innerText || '').trim()).join('').trim();
-  return anchorText === cellText;
-}
-
-/**
- * Drops the matches from extractNumbersInText that fall inside an <a>
- * descendant of the cell. A match belongs to the first text piece that
- * contains its numStr, and drops when that piece has an <a> ancestor inside the
- * cell. When no single piece contains numStr, the match drops when any <a>
- * descendant's text contains it.
- */
-function filterLinkMatches(cell, matches) {
-  if (!matches || matches.length === 0) return matches;
-  if (typeof cell.querySelectorAll !== 'function') return matches;
-  const anchors = cell.querySelectorAll('a');
-  if (!anchors || anchors.length === 0) return matches;
-
-  const treeWalker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
-  const textNodes = [];
-  let currentNode;
-  while ((currentNode = treeWalker.nextNode())) {
-    textNodes.push(currentNode);
-  }
-  const nonEmptyNodes = textNodes.filter(n => n.nodeValue.trim() !== '');
-
-  return matches.filter(match => {
-    const numStr = match.numStr;
-    const containingNode = nonEmptyNodes.find(n => n.nodeValue.includes(numStr));
-    if (containingNode) {
-      const anchor = containingNode.parentElement && containingNode.parentElement.closest('a');
-      if (anchor && cell.contains(anchor)) {
-        return false;
-      }
-      return true;
-    }
-    // numStr sits in no single piece (a rare cross-piece match): drop it when any
-    // <a> descendant's text contains it.
-    const inAnchor = [...anchors].some(a => (a.innerText || a.textContent || '').includes(numStr));
-    return !inAnchor;
-  });
-}
-
-// The link filter's step of an extracted decision. classifyCell
-// (lib/dr-simplify) applies every text-only filter to an extracted cell's
-// candidate matches (quote spans, superscript spans, era years) but reads
-// only text, which holds no <a> element, so filterLinkMatches above drops the
-// matches inside links here. Each filter is an independent per-match
-// predicate, so running this one after the ladder's filters gives the same
-// final set as running all of them together (see the lib/dr-simplify/ladder.js
-// header). If filtering empties the match list, the cell becomes a skip.
-// staleFilteredIndices: when the caller is classifying a cell's *stored*
-// pre-round text (the record's value, read through the cell object's
-// getRecord) rather than the live cell, the live text no longer contains
-// the original numStr values, so filterLinkMatches' substring search
-// against live text nodes cannot locate them (and its fallback silently
-// keeps everything, dropping the link filter with no signal). The
-// simplification pass already ran filterLinkMatches once, against the live
-// text, at the moment it rounded the cell; the caller passes the surviving
-// match indices from that run here (see the registry record's
-// linkFilteredIdx, stored by the cell object's applyPatches) so the same
-// filter outcome applies instead of being silently skipped.
-function finalizeExtractedDecision(decision, cell, staleFilteredIndices) {
-  if (decision.mode !== 'extracted') return decision;
-  const filtered = staleFilteredIndices
-    ? decision.value.matches.filter((m) => staleFilteredIndices.has(m.index))
-    : filterLinkMatches(cell, decision.value.matches);
-  if (filtered.length === 0) return { mode: 'skip', reason: decision.reason };
-  return { mode: 'extracted', reason: decision.reason, value: { matches: filtered } };
-}
-
-// Classify one cell: the ladder, then the placement step. isCellWholeLink and
-// the superscript ranges are page reads the pure ladder cannot make, so they
-// pass in as plain data (see the lib/dr-simplify/ladder.js header). The step
-// reads the page and writes nothing: the pass writes the debug row for a split
-// value (entry.placedReason) after classification.
-//
-// A simplified cell classifies its stored original rather than the rounded
-// text now showing, on either kind: the cell object's getText()
-// and getPieceLayout() answer from its record. The pass and the lens
-// preview read alike. Each read below measured against that text takes the
-// record's copy:
-//   superscriptRanges  the record's supRanges, because rounding shrinks or
-//                      grows the live text around the <sup>. A record with
-//                      none measures the live cell against the stored text.
-//   link filter        the record's linkFilteredIdx, the positions of the
-//                      numbers the link filter kept when the cell rounded,
-//                      because the filter's substring search cannot find
-//                      the original numbers in the rounded live text. A
-//                      record with none runs the live filter.
-// isWholeLink stays a live read: rounding patches the values of text pieces and
-// never adds or removes an <a>, so the anchor text and the cell text move
-// together, and a whole-link cell never rounds in the first place.
-function classifyTableCell(cellObj, rowIndex, opts, ranges) {
-  const cell = cellObj.el;
-  const record = cellObj.getRecord();
-  const text = cellObj.getText();
-  const layout = cellObj.getPieceLayout();
-  const hasSuperscript = !!(cell.querySelector && cell.querySelector('sup'));
-  const superscriptRanges = hasSuperscript
-    ? ((record && record.supRanges) || getSuperscriptRanges(cell, { text }))
-    : [];
-  // A stacked cell's pieces each hold a number, and its joined text is not
-  // one spaced identifier (see matchIdentifierShape).
-  const digitsSpanPieces = !!layout && layout.original.filter((piece) => /\d/.test(piece)).length > 1;
-  const classified = classifyCell({
-    text,
-    rowIndex,
-    columnIndex: cellObj.columnIndex,
-    ranges,
-    isWholeLink: isCellWholeLink(cell),
-    hasSuperscript,
-    superscriptRanges,
-    digitsSpanPieces,
-  }, opts);
-  const placed = placeDecision(classified, text, layout, { hasSuperscript });
-  const keptIndices = (record && record.linkFilteredIdx) ? new Set(record.linkFilteredIdx) : null;
-  return {
-    cellObj,
-    text,
-    trimmed: typeof text === 'string' ? text.trim() : '',
-    info: decisionToLegacyInfo(finalizeExtractedDecision(placed, cell, keptIndices)),
-    placedReason: placed.reason,
-    layout,
-    col: cellObj.columnIndex,
-    hasSuperscript,
-    superscriptRanges,
-  };
-}
-
-/**
- * The cell's text pieces in page order: every Text node under the cell,
- * whitespace-only and empty ones included. A patch position counts over the
- * join of these pieces (the cell's flat text), and the cell's record holds one
- * entry per piece, in this order. The function walks with the page's tree
- * walker when one exists, else walks child nodes depth-first, which visits the
- * same nodes in the same order.
- * @param {Element} cell
- * @returns {Text[]}
- */
-function collectTextPieces(cell) {
-  const pieces = [];
-  if (typeof document !== 'undefined' && typeof document.createTreeWalker === 'function') {
-    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false);
-    let node;
-    while ((node = walker.nextNode())) pieces.push(node);
-    return pieces;
-  }
-  (function visit(node) {
-    const kids = node.childNodes || [];
-    for (let k = 0; k < kids.length; k++) {
-      if (kids[k].nodeType === 3) pieces.push(kids[k]);
-      else visit(kids[k]);
-    }
-  })(cell);
-  return pieces;
-}
-
-/**
- * Where each character of a cell's rendered text sits in its flat text. The
- * browser collapses runs of spaces and line breaks in the markup to one space,
- * trims the ends, and adds a line break at a <br> or a block boundary, so a
- * pretty-printed cell's rendered text is shorter than its flat text before a
- * number. Returns an array holding, for each rendered position, its flat
- * position, or null when the two texts differ in anything but whitespace
- * (hidden text inside the cell, a CSS text transform), so the caller keeps
- * rendered positions as they are.
- * @param {string} rendered
- * @param {string} flat
- * @returns {number[]|null}
- */
-function mapRenderedToFlat(rendered, flat) {
-  const isSpace = (ch) => /\s/.test(ch);
-  const toFlat = [];
-  let j = 0;
-  for (let i = 0; i < rendered.length;) {
-    if (j < flat.length && rendered[i] === flat[j]) {
-      toFlat.push(j++);
-      i++;
-    } else if (isSpace(rendered[i])) {
-      toFlat.push(j < flat.length && isSpace(flat[j]) ? j++ : j);
-      i++;
-    } else if (j < flat.length && isSpace(flat[j])) {
-      j++;
-    } else {
-      return null;
-    }
-  }
-  return flat.substring(j).trim() === '' ? toFlat : null;
-}
-
-/**
- * Where a cell's trimmed rendered text sits in its flat text, for a cell
- * whose two texts differ in more than whitespace: a hidden sort key ahead of
- * the value ("000000007002300" hidden, then "7,002,300"). The value sits in
- * the one piece whose trimmed text equals it, or else in the one piece that
- * holds it exactly once. Returns an array holding, for each rendered
- * position of the value, its flat position, with no entry for any other
- * rendered position, or null when no single piece qualifies.
- * @param {string} rendered
- * @param {string[]} pieces
- * @returns {number[]|null}
- */
-function mapValueToPiece(rendered, pieces) {
-  const value = rendered.trim();
-  if (value === '') return null;
-  let candidates = pieces.map((text, i) => i).filter((i) => pieces[i].trim() === value);
-  if (candidates.length !== 1) {
-    candidates = pieces.map((text, i) => i).filter((i) => {
-      const at = pieces[i].indexOf(value);
-      return at >= 0 && pieces[i].indexOf(value, at + 1) < 0;
-    });
-  }
-  if (candidates.length !== 1) return null;
-  const i = candidates[0];
-  let flatStart = pieces[i].indexOf(value);
-  for (let k = 0; k < i; k++) flatStart += pieces[k].length;
-  const lead = rendered.length - rendered.trimStart().length;
-  const toFlat = [];
-  for (let k = 0; k < value.length; k++) toFlat[lead + k] = flatStart + k;
-  return toFlat;
-}
-
-/**
- * The patch writer: applies patches {index, numStr, newNum} to the text pieces
- * of a cell. Each index is a position in the cell's flat text (flatPatches moves a
- * classified position there).
- *
- * `original`, when given, lists each piece's original text in page order, and
- * the patch positions count in the join of those texts; without it the live
- * pieces serve as the originals. Each piece's target text is its original with
- * its patches applied right to left, so an earlier position is unaffected by a
- * change at a later one. A patch is skipped when no piece holds its position
- * or numStr is not at that position.
- *
- * Every piece whose live text differs from its target takes the target,
- * written once through nodeValue; no node is added, removed, or replaced, so
- * <sup>, <a>, and every other node keep their identity. With no patch landed,
- * or with a cell that no longer holds one piece per original, nothing is
- * written.
- *
- * Returns the count of patches that landed, and each written piece's text
- * before and after the write. The caller records the cell as simplified only
- * on a landed count above zero, because a skipped patch leaves the screen
- * unchanged.
- *
- * @param {Element} cell
- * @param {{index: number, numStr: string, newNum: string}[]} patches
- * @param {string[]} [original]
- * @returns {{landed: number, pieces: {i: number, before: string, after: string}[]}}
- */
-function applyExtractedPatches(cell, patches, original) {
-  if (!patches || patches.length === 0) return { landed: 0, pieces: [] };
-  const pieces = collectTextPieces(cell);
-  const live = pieces.map((piece) => piece.nodeValue);
-  const from = original || live;
-  if (from.length !== live.length) return { landed: 0, pieces: [] };
-  const { texts, landed } = patchPieceTexts(from, patches);
-  if (landed === 0) return { landed: 0, pieces: [] };
-  const touched = [];
-  texts.forEach((after, i) => {
-    if (live[i] === after) return;
-    pieces[i].nodeValue = after;
-    touched.push({ i, before: live[i], after });
-  });
-  return { landed, pieces: touched };
-}
-
-/**
- * Each piece's text with its patches applied, and how many patches landed.
- * The patch positions count in the join of the texts; see
- * applyExtractedPatches.
- * @param {string[]} texts
- * @param {{index: number, numStr: string, newNum: string}[]} patches
- * @returns {{texts: string[], landed: number}}
- */
-function patchPieceTexts(texts, patches) {
-  const starts = [];
-  let flatLen = 0;
-  for (const text of texts) {
-    starts.push(flatLen);
-    flatLen += text.length;
-  }
-  const byPiece = new Map();
-  for (const patch of patches) {
-    const i = texts.findIndex((text, k) => starts[k] <= patch.index && patch.index < starts[k] + text.length);
-    if (i < 0) continue;
-    if (!byPiece.has(i)) byPiece.set(i, []);
-    byPiece.get(i).push(patch);
-  }
-  const out = texts.slice();
-  let landed = 0;
-  for (const [i, piecePatches] of byPiece) {
-    let after = texts[i];
-    for (const { index, numStr, newNum } of piecePatches.slice().sort((x, y) => y.index - x.index)) {
-      const at = index - starts[i];
-      if (after.substring(at, at + numStr.length) !== numStr) continue;
-      after = after.substring(0, at) + newNum + after.substring(at + numStr.length);
-      landed++;
-    }
-    out[i] = after;
-  }
-  return { texts: out, landed };
-}
-
-/**
- * Sort a cell by its record, the first step of every pass and every restore:
- *   'fresh'      the cell holds no record.
- *   'held'       the cell holds as many text pieces as its record, and each
- *                piece shows its original or its written text.
- *   'rewritten'  anything else: a piece holds text that is neither, or the
- *                piece count changed.
- * @param {Element} cell
- * @param {{pieces: {text: string, written: string}[]}|null|undefined} record
- * @returns {'fresh'|'held'|'rewritten'}
- */
-function sortCellByRecord(cell, record) {
-  if (!record) return 'fresh';
-  const live = collectTextPieces(cell).map((piece) => piece.nodeValue);
-  if (live.length !== record.pieces.length) return 'rewritten';
-  return record.pieces.every((piece, i) => live[i] === piece.text || live[i] === piece.written)
-    ? 'held'
-    : 'rewritten';
-}
-
-/**
- * Put a cell's original text back into every text piece that still shows
- * the extension's written text, through nodeValue like the patch writer. A
- * piece the page rewrote keeps the page's text, so this never writes a
- * number the page no longer shows.
- *
- * With the piece count unchanged, each piece pairs with the stored piece at
- * its position. With the count changed, each live piece pairs with a stored
- * piece by text, in page order and at most once per stored piece: a live piece
- * whose text equals a stored piece's written text takes that piece's original,
- * and any other live piece keeps its text.
- * @param {Element} cell
- * @param {{text: string, written: string}[]} storedPieces
- */
-function restoreTextPieces(cell, storedPieces) {
-  const pieces = collectTextPieces(cell);
-  if (pieces.length === storedPieces.length) {
-    storedPieces.forEach((piece, i) => {
-      if (piece.text !== piece.written && pieces[i].nodeValue === piece.written) pieces[i].nodeValue = piece.text;
-    });
-    return;
-  }
-  const written = storedPieces.filter((piece) => piece.text !== piece.written);
-  let next = 0;
-  for (const live of pieces) {
-    const at = written.findIndex((piece, k) => k >= next && piece.written === live.nodeValue);
-    if (at < 0) continue;
-    live.nodeValue = written[at].text;
-    next = at + 1;
-  }
-}
-
-// --- Placement step ---
-// Every cell, native or grid, takes three steps: classify, place, patch. The
-// placement step checks a classifyCell decision against the cell's text
-// pieces before any patch is built, and the patch writer
-// (applyExtractedPatches) then writes each patch inside one piece.
-//
-// A layout comes from the cell object's getPieceLayout():
-//   original    each piece's text as the classified text saw it
-//   toFlat      for each position of the classified text, its position in
-//               the join of original; null when the positions count alike,
-//               and no entry for a position with no known counterpart
-//   rendered    whether the classified text is rendered text: true for a
-//               native cell, false for a grid cell
-//   runsTogether(i)  whether the text the browser shows has piece i
-//               straight after piece i - 1 (see showsPiecesTogether)
-// toFlat converts a native cell's rendered positions through
-// mapRenderedToFlat and, for a hidden sort key ahead of the value, maps the
-// trimmed rendered text to the one piece that holds it (mapValueToPiece).
-// With no such piece the rendered positions stand, and a patch that misses
-// there does not land.
-
-// The cell's pieces as the classified text saw them, each with its index
-// and its start in the join of original.
-function pieceSpans(layout) {
-  const spans = [];
-  let at = 0;
-  layout.original.forEach((text, i) => {
-    spans.push({ i, start: at, text });
-    at += text.length;
-  });
-  return spans;
-}
-
-// The piece that holds every character of [start, start + length), or null.
-function pieceHolding(spans, start, length) {
-  const span = spans.find((s) => s.start <= start && start < s.start + s.text.length);
-  return span && start + length <= span.start + span.text.length ? span : null;
-}
-
-// A range of the classified text, as a range of the join of original.
-// converted is false when toFlat holds no entry for the range, which then
-// keeps its classified positions.
-function flatRange(layout, start, length) {
-  if (!layout.toFlat || length === 0) return { start, length, converted: false };
-  const first = layout.toFlat[start];
-  const last = layout.toFlat[start + length - 1];
-  if (first === undefined || last === undefined) return { start, length, converted: false };
-  return { start: first, length: last + 1 - first, converted: true };
-}
-
-/**
- * The piece that holds every character of a range of the classified text,
- * or null when the range crosses a piece boundary.
- * @param {{original: string[], toFlat: number[]|null}} layout
- * @param {number} start
- * @param {number} length
- * @returns {{i: number, start: number, text: string}|null}
- */
-function layoutPieceHolding(layout, start, length) {
-  const range = flatRange(layout, start, length);
-  return pieceHolding(pieceSpans(layout), range.start, range.length);
-}
-
-/**
- * Move patches measured in the classified text into the join of the cell's
- * original pieces, the positions the patch writer counts in (see
- * applyExtractedPatches). Where toFlat converts positions, numStr becomes
- * the flat text of the converted range, so a line break the browser
- * collapsed inside a value still matches. A patch whose position no piece
- * holds stays as it is, and does not land.
- * @param {{index: number, numStr: string, newNum: string}[]} patches
- * @param {{original: string[], toFlat: number[]|null}} layout
- * @returns {{index: number, numStr: string, newNum: string}[]}
- */
-function flatPatches(patches, layout) {
-  if (patches.length === 0) return patches;
-  const spans = pieceSpans(layout);
-  const flat = layout.original.join('');
-  return patches.map((patch) => {
-    const range = flatRange(layout, patch.index, patch.numStr.length);
-    if (!pieceHolding(spans, range.start, 1)) return patch;
-    const numStr = range.converted ? flat.substring(range.start, range.start + range.length) : patch.numStr;
-    return Object.assign({}, patch, { index: range.start, numStr });
-  });
-}
-
-// The position in the classified text of the character at a position of the
-// join of original, or -1 when the classified text does not hold it. With no
-// toFlat a flat text counts alike; a rendered text holds no known position (a
-// hidden sort key could hold a stacked number), so it returns -1.
-function textPosition(layout, text, flat) {
-  if (!layout.toFlat) return layout.rendered ? -1 : flat;
-  return layout.toFlat.findIndex((f, r) => f === flat && !/\s/.test(text[r]));
-}
-
-/**
- * Whether the text the browser shows has piece i straight after the
- * character before it, with no space or line break between. Pieces on
- * separate lines (a <br> or a block boundary) return false; pieces that inline
- * styling splits ("6,7" plain, "18,245" in bold) return true. Text that
- * differs from the pieces in more than whitespace, or lacks the piece's first
- * character, returns true, so the pieces stay unchanged.
- * @param {string} shown - the cell's rendered text
- * @param {string[]} pieces - the cell's live text pieces, in page order
- * @param {number} i
- * @returns {boolean}
- */
-function showsPiecesTogether(shown, pieces, i) {
-  const toFlat = mapRenderedToFlat(shown, pieces.join(''));
-  if (!toFlat) return true;
-  const start = pieces.slice(0, i).reduce((sum, piece) => sum + piece.length, 0);
-  const at = toFlat.findIndex((f, r) => f === start && !/\s/.test(shown[r]));
-  return at <= 0 || !/\s/.test(shown[at - 1]);
-}
-
-// The numbers of a stacked cell: a cell whose text pieces each hold one
-// whole number or unit number, or nothing but whitespace, currency signs (the
-// currency list), a percent sign, or a listed currency code.
-// Two numbers in one piece, even with a space between them ("416 555 1234"),
-// make the cell not stacked, and so does a piece that reads as a date or a
-// time ("2024" above "2025"), because a lone year stays a year. Returns the
-// numbers as matches measured in the join of original, null when the cell
-// is not stacked, or 'split' when a number sits across two pieces: a piece
-// that ends in "." or "," before one that starts with a digit ("4." then
-// "91"). A piece that starts with "." or "," never reads as a number, so "4"
-// then ".91" is not stacked either. A digit next to a digit across two
-// pieces reads as two numbers, the shape of one number per line, unless
-// runTogether(span) holds for the second piece: then the two pieces read as
-// one number split across them ("6,7" plain, then "18,245" in bold).
-function stackedMatches(spans, runTogether) {
-  const symbolPiece = new RegExp('^(?:' + CURRENCY_SIGN_ALTERNATION + '|%)+$');
-  const filled = spans.filter((span) => span.text.length > 0);
-  for (let k = 1; k < filled.length; k++) {
-    const before = filled[k - 1].text;
-    if (!/^\d/.test(filled[k].text)) continue;
-    if (/[.,]$/.test(before) || (/\d$/.test(before) && runTogether(filled[k]))) return 'split';
-  }
-  const matches = [];
-  for (const span of filled) {
-    const trimmed = span.text.trim();
-    if (trimmed === '' || symbolPiece.test(trimmed) || CURRENCY_CODES.includes(trimmed)) continue;
-    if (isDateTimeLike(trimmed) || isDateLike(trimmed) || isTimeLike(trimmed)) return null;
-    const unit = matchUnitNumber(span.text);
-    const found = unit ? [unit] : extractNumbersInText(span.text);
-    if (found.length !== 1 || (!unit && toNumber(span.text) === null)) return null;
-    matches.push({ numStr: found[0].numStr, num: found[0].num, index: span.start + found[0].index });
-  }
-  return matches.length > 0 ? matches : null;
-}
-
-/**
- * The placement step: place a classifyCell decision in the cell's text
- * pieces. A patch edits one piece, so a decision stands only when the
- * characters it changes sit in one piece: a pure cell's trimmed text, each
- * number of an extracted cell. A date or time passes through; its piece check
- * runs when its patch is built, because only a changed value needs one.
- *
- * A decision whose characters cross a piece boundary takes the stacked-cell
- * test (see stackedMatches), and so does a cell the ladder left unsimplified
- * because the "words" switch is off (reason 'mixed-disabled'). A stacked cell
- * rounds number by number as an extracted decision; a number split across
- * pieces skips with reason 'split'; any other cell skips with reason
- * 'pieces'. The test reads a digit beside a digit across two pieces as two
- * numbers unless the layout's runsTogether(i) holds for the second piece: the
- * shown text runs the pieces together, as inline styling does to one number
- * ("1" plain, "23" in bold), and the number skips with reason 'split'.
- * runsTogether reads the shown text on both table kinds.
- *
- * A cell with no layout (its pieces no longer reach its record) skips with
- * reason 'pieces-changed'. A cell with a <sup> keeps a skip decision, so a
- * footnote marker never rounds as a stacked number.
- *
- * @param {object} decision - classifyCell's decision
- * @param {string} text - the text the decision was classified on
- * @param {{original: string[], toFlat: number[]|null, rendered?: boolean, runsTogether: (i: number) => boolean}|null} layout
- * @param {{hasSuperscript?: boolean}} [opts]
- * @returns {object} the placed decision
- */
-function placeDecision(decision, text, layout, opts = {}) {
-  if (!layout) return { mode: 'skip', reason: 'pieces-changed' };
-  if (opts.hasSuperscript && decision.mode === 'skip') return decision;
-  if (decision.mode === 'pure') {
-    const lead = text.length - text.trimStart().length;
-    if (layoutPieceHolding(layout, lead, text.trim().length)) return decision;
-  } else if (decision.mode === 'extracted') {
-    if (decision.value.matches.every((m) => layoutPieceHolding(layout, m.index, m.numStr.length))) return decision;
-  } else if (!(decision.mode === 'skip' && decision.reason === 'mixed-disabled')) {
-    return decision;
-  }
-  const matches = stackedMatches(pieceSpans(layout), (span) => layout.runsTogether(span.i));
-  if (matches === 'split') return { mode: 'skip', reason: 'split' };
-  if (matches === null) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
-  // stackedMatches counts in the join of original and the decision counts in
-  // the classified text, so each match moves through textPosition here and the
-  // patch step moves it back (see flatPatches).
-  const placed = matches.map((m) => Object.assign({}, m, { index: textPosition(layout, text, m.index) }));
-  if (placed.some((m) => m.index < 0)) return decision.mode === 'skip' ? decision : { mode: 'skip', reason: 'pieces' };
-  return { mode: 'extracted', reason: 'stacked', value: { matches: placed } };
-}
-
-// --- Detection predicates ---
-// The functions below find the tables and grids on a page and read their
-// shape, from the DOM, with the GRID_* constants and makeAdapter above.
-// ui-pillbox.js and content.js call them.
-
-/**
  * The geometry probe: does `el` look like a grid built from generic elements?
- *
- * The steps run cheapest first. Steps 1 to 5 read the DOM and CSS with no
- * geometry. Step 6 (the direction reader and the alignment step) reads boxes
- * and runs last, on a bounded sample of first cells.
- *
- * An element passes after step 5, with no step 6, when it carries:
- *   - role="grid" or role="table"
- *   - a class matching a classToken in opts.vendorProfiles (default:
- *     GRID_VENDOR_PROFILES, "dg--" or "ag-")
+ * The checks run cheapest first; firstCellsAlign is the one that reads boxes.
  *
  * @param {Element} el
- * @param {{styleProbe?: object, originalsPort?: object, vendorProfiles?: object[]}} [opts]
+ * @param {{isArtifact?: (el: Element, opts: object) => boolean, styleProbe?: object, originalsPort?: object, vendorProfiles?: object[]}} [opts]
  * @returns {boolean}
  */
 function looksLikeGrid(el, opts = {}) {
   if (!el || typeof el.children === 'undefined') return false;
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
-  const vendorProfiles = opts.vendorProfiles || GRID_VENDOR_PROFILES;
-
-  // --- Step 1: Child count ≥ DR_DETECTION_SETTINGS.gridMinChildren ---
   const children = Array.from(el.children);
   if (children.length < DR_DETECTION_SETTINGS.gridMinChildren) return false;
-
-  // --- Step 2: Repetitive structure — children share class or child shape ---
-  // Children share a class when they have the same first className token, and
-  // share a child shape when they have the same number of children. Either
-  // group must reach DR_DETECTION_SETTINGS.gridRepetitionShare of the children.
-  const classFreq = new Map();
-  for (const child of children) {
-    const cls = (child.className && typeof child.className === 'string')
-      ? child.className.trim().split(/\s+/)[0]
-      : '';
-    classFreq.set(cls, (classFreq.get(cls) || 0) + 1);
-  }
-  const { childCountFreq, modalFreq, candidates: candidateRows } = childCountCandidates(children);
-  const maxClassCount = Math.max(...classFreq.values());
-  const maxChildCount = Math.max(...childCountFreq.values());
-  const repetitionFloor = children.length * DR_DETECTION_SETTINGS.gridRepetitionShare;
-  const repetitive = (maxClassCount >= repetitionFloor) || (maxChildCount >= repetitionFloor);
-  if (!repetitive) return false;
-
-  // --- Step 3: Consistent cell count — candidate rows have equal child counts ---
-  // The modal child count must appear in at least DR_DETECTION_SETTINGS.gridRepetitionShare
-  // of the children. Candidate rows: children whose child count equals the
-  // modal (candidate columns, on a column-first grid).
-  if (modalFreq < repetitionFloor) return false;
-
-  // --- Step 4: Layout — display is grid or flex ---
+  const { modalFreq, candidates: candidateRows } = childCountCandidates(children);
+  if (modalFreq < children.length * DR_DETECTION_SETTINGS.gridRepetitionShare) return false;
+  if ((opts.isArtifact || isAccessibilityArtifact)(el, opts)) return false;
   const computedForDisplay = styleProbe.getComputedStyle(el);
   const display = (computedForDisplay && computedForDisplay.display) || '';
   if (!DR_DETECTION_SETTINGS.gridDisplayValues.includes(display)) return false;
+  if (!probeRowsHoldNumber(candidateRows, opts)) return false;
+  return carriesGridMark(el, opts.vendorProfiles || GRID_VENDOR_PROFILES)
+    || firstCellsAlign(children, candidateRows, styleProbe);
+}
 
-  // --- Step 5: Numeric content — ≥ 1 cell the data test counts (see
-  // holdsRoundableCell) (mandatory) ---
-  // The cells are the candidate rows' children, each read as a grid cell
-  // and placed in the column of its position among its row's children.
+/**
+ * Whether the candidate rows hold a cell the data test counts, reading the
+ * rows' children as grid cells.
+ * @param {Element[]} candidateRows
+ * @param {{originalsPort?: object}} opts
+ * @returns {boolean}
+ */
+function probeRowsHoldNumber(candidateRows, opts) {
   const port = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
-  const probeRows = candidateRows.map((row) => ({
-    getCells() {
-      return Array.from(row.children).map((cellEl, c) =>
-        Object.assign({ columnIndex: c }, makeGridCellObj(cellEl, port)));
-    },
-  }));
-  if (!holdsRoundableCell(probeRows)) return false;
+  // Each candidate row holds at least one cell, so the cell budget ends
+  // within this many rows.
+  const rows = candidateRows.slice(0, DR_DETECTION_SETTINGS.dataTestCellBudget);
+  return holdsRoundableCell(buildRows(rows.map((row) => Array.from(row.children)),
+    (cellEl) => makeCellObj(cellEl, port)));
+}
 
-  // --- Short-circuit ACCEPT before geometry probe ---
+/**
+ * Whether the page marks `el` as a grid: role="grid", role="table", or a
+ * vendor classToken. A marked element skips the alignment check.
+ * @param {Element} el
+ * @param {{classToken: string}[]} vendorProfiles
+ * @returns {boolean}
+ */
+function carriesGridMark(el, vendorProfiles) {
   const role = el.getAttribute && el.getAttribute('role');
   if (role === 'grid' || role === 'table') return true;
   const elClass = (el.className && typeof el.className === 'string') ? el.className : '';
-  if (vendorProfiles.some(profile => elClass.includes(profile.classToken))) return true;
+  return vendorProfiles.some(profile => elClass.includes(profile.classToken));
+}
 
-  // --- Step 6: Alignment — sample the first cell of each candidate ---
-  // Measures along the axis on which cells line up. On a row-first grid the
-  // candidates are rows, and the first cells of the rows form column A, so
-  // their widths agree. On a column-first grid (see isColumnFirst) the
-  // candidates are columns, and the first cells of the columns form the first
-  // row, so their heights agree. The sample holds at most
-  // DR_DETECTION_SETTINGS.gridColumnWidthSample candidates.
+/**
+ * Whether the first cells of the candidates line up: widths on a row-first
+ * grid (column A), heights on a column-first grid (the first row). Fewer than
+ * two measurable candidates leave nothing to disagree, so the answer is true.
+ * @param {Element[]} children - the element's children, which fix the direction
+ * @param {Element[]} candidateRows
+ * @param {object} styleProbe
+ * @returns {boolean}
+ */
+function firstCellsAlign(children, candidateRows, styleProbe) {
   const sample = candidateRows.slice(0, DR_DETECTION_SETTINGS.gridColumnWidthSample);
   const extentOf = isColumnFirst(children, styleProbe)
     ? (cell) => { const box = styleProbe.getBox(cell); return box ? box.height : -1; }
     : (cell) => styleProbe.getOffsetWidth(cell);
   const extents = sample.map(row => row.children[0] ? extentOf(row.children[0]) : -1)
                         .filter(w => w > 0);
-  if (extents.length < 2) return true; // fewer than two measurable candidates: nothing disagrees
+  if (extents.length < 2) return true;
   const firstExtent = extents[0];
   const matchCount = extents.filter(w => w === firstExtent).length;
   return matchCount / extents.length >= DR_DETECTION_SETTINGS.gridColumnWidthAgreement;
@@ -1463,105 +110,103 @@ function looksLikeGrid(el, opts = {}) {
 
 /**
  * Find the grid or table root for the element `el` was right-clicked inside.
- * The body applies four routes in order: the nearest <table> ancestor; the
- * nearest ancestor (or `el` itself) that opts.isSeen reports as registered;
- * findTables from the chain root of the nest `el` sits in, whose nomination
- * step finds a marked grid the load-time scan missed; and the outermost
- * looksLikeGrid match on a walk up from `el`.
+ * Four routes apply in order: the nearest <table> ancestor that is not an
+ * accessibility artifact (an artifact is passed over for the table around
+ * it); the nearest registered ancestor; the nomination step over the nest `el`
+ * sits in, which finds a marked grid the load-time scan missed; and the
+ * outermost looksLikeGrid match above `el`.
  *
- * It returns { handle, isNew }. `handle` is the resolved element. `isNew` is
- * true when the caller still has to mark the element and build its table
- * pillbox. The first route returns isNew: false for every native table,
- * registered or not: the load-time scan and the added-node pass register
- * native tables and build their table pillboxes, and a native table takes no
- * dr-ext-grid marker class. The second route returns isNew: false because it
- * matched a registered element. The last two return !opts.isSeen(handle).
- * Without opts.isSeen the second route does nothing and the last two return
- * isNew: true, since detection keeps no registry.
- *
- * Returns null if nothing matches.
+ * `isNew` is true when the caller still has to mark the element and build its
+ * table pillbox. The first route returns isNew: false for every native table,
+ * registered or not, because the load-time scan and the added-node pass
+ * register native tables. Without opts.isRegistered the last two routes
+ * return isNew: true. Returns null if nothing matches.
  *
  * @param {Element} el
- * @param {{styleProbe?: object, vendorProfiles?: object[], doc?: Document, isSeen?: (handle: Element) => boolean}} [opts]
+ * @param {{styleProbe?: object, vendorProfiles?: object[], doc?: Document, isRegistered?: (handle: Element) => boolean}} [opts]
  * @returns {{handle: Element, isNew: boolean}|null}
  */
 function findTargetTable(el, opts = {}) {
   if (!el) return null;
   const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
-  const isSeen = opts.isSeen || (() => false);
+  const isRegistered = opts.isRegistered || (() => false);
   const docBody = doc && doc.body;
 
-  // 1. Nearest <table> ancestor.
   if (typeof el.closest === 'function') {
-    const tableAncestor = el.closest('table');
+    let tableAncestor = el.closest('table');
+    while (tableAncestor && !registrableTables([tableAncestor], opts).length) {
+      const above = parentOf(tableAncestor);
+      tableAncestor = above && typeof above.closest === 'function' ? above.closest('table') : null;
+    }
     if (tableAncestor) return { handle: tableAncestor, isNew: false };
   }
+  const registered = registeredAncestor(el, docBody, isRegistered);
+  if (registered) return { handle: registered, isNew: false };
+  const nominated = nominatedInNest(el, { ...opts, isRegistered });
+  if (nominated) return { handle: nominated, isNew: !isRegistered(nominated) };
+  const outermost = outermostGridAbove(el, docBody, opts);
+  return outermost && { handle: outermost, isNew: !isRegistered(outermost) };
+}
 
-  // 2. Nearest registered ancestor (or el itself), per opts.isSeen — a
-  // walk-up rather than a closest('.dr-ext-grid') query, since isSeen is an
-  // arbitrary per-element check (typically a WeakMap-backed registry.has),
-  // not a CSS selector.
-  let seenCandidate = el;
-  let seenDepth = 0;
-  while (seenCandidate && seenCandidate !== docBody && seenDepth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (seenCandidate.nodeType === DR_TABLE_ELEMENT_NODE && isSeen(seenCandidate)) {
-      return { handle: seenCandidate, isNew: false };
-    }
-    seenCandidate = seenCandidate.parentElement || seenCandidate.parentNode;
-    seenDepth++;
-  }
+/**
+ * The nearest ancestor of `el`, or `el` itself, that isRegistered reports as
+ * registered. A walk up, not a closest() query, because isRegistered is an
+ * arbitrary per-element check (typically a WeakMap-backed registry.has).
+ * @param {Element} el
+ * @param {Element|null|undefined} docBody
+ * @param {(handle: Element) => boolean} isRegistered
+ * @returns {Element|null}
+ */
+function registeredAncestor(el, docBody, isRegistered) {
+  return walkUp(el, DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody,
+    (node) => node.nodeType === DR_TABLE_ELEMENT_NODE && isRegistered(node));
+}
 
-  // 3. The nomination step, run from the chain root of the nest el sits in.
-  // The step applies the configured nesting depth to the whole nest, so the
-  // element it selects can be a sibling of the clicked element: a click in a
-  // vendor grid's row-number gutter resolves the scrolling pane beside it.
-  // Pass 1 of the step returns nothing here: a qualifying chain root holds no
-  // native table other than accessibility artifacts, so the step's one result
-  // is the nomination.
-  //
-  // The step returns nothing for a nest whose chain is empty, for a depth
-  // holding more than one element, and for a nest already holding a registered
-  // element; each of those falls through to the geometry probe below, which is
-  // the behavior issue #382 records for a click in a sibling pane of a
-  // registered nest.
+/**
+ * The element the nomination step selects over the chain root of the nest `el`
+ * sits in, or null. The step applies the configured nesting depth to the whole
+ * nest, so the element can be a sibling of the clicked one: a click in a
+ * vendor grid's row-number gutter resolves the scrolling pane beside it.
+ *
+ * When the step selects nothing in `el`'s nest, findTables returns the element
+ * selected in the first nest inside a cell under the chain root, if any; with
+ * none, the result falls to the geometry probe (issue #382 records this for a
+ * click in a sibling pane of a registered nest).
+ * @param {Element} el
+ * @param {object} opts - the options of findTables, with isRegistered set
+ * @returns {Element|null}
+ */
+function nominatedInNest(el, opts) {
   const chainRoot = chainRootOf(el, opts);
-  if (chainRoot) {
-    const nominated = findTables(chainRoot, { ...opts, isSeen })[0];
-    if (nominated) return { handle: nominated.handle, isNew: !isSeen(nominated.handle) };
-  }
+  const nominated = chainRoot && findTables(chainRoot, opts)[0];
+  return nominated ? nominated.handle : null;
+}
 
-  // 4. Walk up, calling looksLikeGrid; return the outermost consecutive match.
-  let current = el.parentElement || el.parentNode;
-  let depth = 0;
+/**
+ * The outermost element in an unbroken run of looksLikeGrid matches above
+ * `el`, or null. The walk ends at the first non-match above a match.
+ * @param {Element} el
+ * @param {Element|null|undefined} docBody
+ * @param {object} opts - the options of looksLikeGrid
+ * @returns {Element|null}
+ */
+function outermostGridAbove(el, docBody, opts) {
   let outermost = null;
-
-  while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (current.nodeType !== DR_TABLE_ELEMENT_NODE) {
-      current = current.parentElement || current.parentNode;
-      depth++;
-      continue;
+  walkUp(parentOf(el), DR_DETECTION_SETTINGS.gridWalkDepthCap, (node) => node === docBody, (node) => {
+    if (node.nodeType !== DR_TABLE_ELEMENT_NODE) return false;
+    if (looksLikeGrid(node, opts)) {
+      outermost = node;
+      return false;
     }
-    if (looksLikeGrid(current, opts)) {
-      outermost = current;
-    } else if (outermost !== null) {
-      break;
-    }
-    current = current.parentElement || current.parentNode;
-    depth++;
-  }
-
-  if (outermost !== null) {
-    return { handle: outermost, isNew: !isSeen(outermost) };
-  }
-
-  return null;
+    return outermost !== null;
+  });
+  return outermost;
 }
 
 /**
  * The nearest positioned ancestor of `el`, or `el` itself when it is
  * positioned; null when none is. Positioned means a CSS position of relative,
- * absolute, fixed, or sticky. The check reads inline style first, which works
- * in a Node harness as well as a browser, then computed style.
+ * absolute, fixed, or sticky, read through the style probe.
  *
  * @param {Element} el
  * @param {{styleProbe?: object}} [opts]
@@ -1570,24 +215,11 @@ function findTargetTable(el, opts = {}) {
 function _nearestPositionedAncestor(el, opts = {}) {
   const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
   const POSITIONED = new Set(['relative', 'absolute', 'fixed', 'sticky']);
-  let current = el;
-  while (current) {
-    if (typeof current.getAttribute !== 'function') {
-      current = current.parentElement || current.parentNode || null;
-      continue;
-    }
-    let pos = '';
-    if (current.style && typeof current.style.position === 'string') {
-      pos = current.style.position;
-    }
-    if (!pos) {
-      const style = styleProbe.getComputedStyle(current);
-      if (style && style.position) pos = style.position;
-    }
-    if (POSITIONED.has(pos)) return current;
-    current = current.parentElement || current.parentNode || null;
-  }
-  return null;
+  return walkUp(el, Infinity, null, (node) => {
+    if (typeof node.getAttribute !== 'function') return false;
+    const style = styleProbe.getComputedStyle(node);
+    return !!(style && POSITIONED.has(style.position));
+  });
 }
 
 /**
@@ -1603,65 +235,40 @@ function _parsePx(value) {
 }
 
 /**
- * Whether a <table> is an accessibility artifact: a table that exists for
- * screen readers or as a chart's fallback. True
- * when the table or an ancestor carries aria-hidden="true"; when the nearest
- * positioned ancestor (or the table) has a `left` at or below
- * DR_DETECTION_SETTINGS.offscreenLeftPx, read from inline style first (the
- * Node test harness reports no computed `left`) and then from computed style;
- * or when that ancestor also contains an <svg> with a non-empty aria-label,
- * the chart the table falls back for.
+ * Whether an element, a native table or a grid, is an accessibility artifact:
+ * an element that exists for screen readers. True when the element or an
+ * ancestor carries aria-hidden="true", or when the element, or its nearest
+ * positioned ancestor, sits offscreen.
  *
- * @param {Element} table
+ * @param {Element} el
  * @param {{styleProbe?: object}} [opts]
  * @returns {boolean}
  */
-function isPhantomA11yTable(table, opts = {}) {
-  const styleProbe = opts.styleProbe || DEFAULT_STYLE_PROBE;
-  if (!table || typeof table.getAttribute !== 'function') return false;
+function isAccessibilityArtifact(el, opts = {}) {
+  if (!el || typeof el.getAttribute !== 'function') return false;
+  if (carriesHiddenMark(el)) return true;
+  return sitsOffscreen(_nearestPositionedAncestor(el, opts) || el, opts.styleProbe || DEFAULT_STYLE_PROBE);
+}
 
-  // --- Signal 1: aria-hidden on self or any ancestor ---
-  let node = table;
-  while (node) {
-    if (typeof node.getAttribute === 'function') {
-      if (node.getAttribute('aria-hidden') === 'true') return true;
-    }
-    node = node.parentElement || node.parentNode || null;
-    // Stop at document root (no parentElement means the walk has left the element tree)
-    if (node && typeof node.tagName === 'undefined') break;
-  }
+/**
+ * Whether `el` or an ancestor carries aria-hidden="true".
+ * @param {Element} el
+ * @returns {boolean}
+ */
+function carriesHiddenMark(el) {
+  return walkUp(el, Infinity, (node) => node !== el && typeof node.tagName === 'undefined',
+    (node) => typeof node.getAttribute === 'function' && node.getAttribute('aria-hidden') === 'true') !== null;
+}
 
-  // --- Signal 2: nearest positioned ancestor has left ≤ threshold ---
-  const posAncestor = _nearestPositionedAncestor(table, opts);
-  const checkEl = posAncestor || table;
-
-  let leftVal = NaN;
-  if (checkEl.style && typeof checkEl.style.left === 'string') {
-    leftVal = _parsePx(checkEl.style.left);
-  }
-  if (isNaN(leftVal)) {
-    const computed = styleProbe.getComputedStyle(checkEl);
-    if (computed && computed.left) leftVal = _parsePx(computed.left);
-  }
-  if (!isNaN(leftVal) && leftVal <= DR_DETECTION_SETTINGS.offscreenLeftPx) return true;
-
-  // --- Signal 3: nearest positioned ancestor contains a chart-ish <svg> ---
-  if (posAncestor) {
-    if (typeof posAncestor.querySelector === 'function') {
-      try {
-        const svgs = posAncestor.querySelectorAll('svg');
-        for (let i = 0; i < svgs.length; i++) {
-          const svg = svgs[i];
-          if (typeof svg.getAttribute === 'function') {
-            const label = svg.getAttribute('aria-label');
-            if (typeof label === 'string' && label.trim() !== '') return true;
-          }
-        }
-      } catch (e) { /* ignore */ }
-    }
-  }
-
-  return false;
+/**
+ * @param {Element} el - the nearest positioned ancestor of the element, or the element
+ * @param {object} styleProbe
+ * @returns {boolean}
+ */
+function sitsOffscreen(el, styleProbe) {
+  const computed = styleProbe.getComputedStyle(el);
+  const left = computed ? _parsePx(computed.left) : NaN;
+  return !isNaN(left) && left <= DR_DETECTION_SETTINGS.offscreenLeftPx;
 }
 
 /**
@@ -1752,7 +359,7 @@ function isDataTable(table, opts = {}) {
 function readTableFingerprint(el, opts = {}) {
   const adapter = makeAdapter(el, opts);
   const rows = adapter.getRows();
-  const readsHeader = rows.length > 0 && _hasHeaderRow(el, adapter, rows[0]);
+  const readsHeader = rows.length > 0 && _hasHeaderRow(rows[0]);
   let columnCount = 0;
   let headerTexts = null;
   for (let i = 0; i < rows.length; i++) {
@@ -1766,32 +373,17 @@ function readTableFingerprint(el, opts = {}) {
 }
 
 /**
- * Whether the first row the adapter returns is a header row, which determines
- * whether the fingerprint carries header texts at all.
- *
- * On a grid the answer is the adapter's outside-row mark: a grid that groups
- * its data rows puts its header row outside every group. A grid that groups
- * nothing (a database query grid) has a data row first, and a scroll redraws
- * it, so its text describes the rows on the screen rather than the table.
- *
- * A native table's adapter carries no outside-row mark, so the row itself is
- * read: it sits in a THEAD, or it holds header cells and no data cell, which
- * covers a leading row of <th> with no explicit head section. The pass reads
- * such a row like any other; the first-row exclusion leaves it as written, by
- * position.
- *
- * @param {Element} el
- * @param {NativeTableAdapter|GridAdapter} adapter
- * @param {{isOutside?: boolean, getCells(): object[]}} firstRow
+ * Whether the first row the adapter returns is a header row.
+ * @param {{isOutside?: boolean, isGrouped?: boolean, getCells(): object[]}} firstRow
  * @returns {boolean}
  */
-function _hasHeaderRow(el, adapter, firstRow) {
-  if (!(adapter instanceof NativeTableAdapter)) return firstRow.isOutside === true;
-  const rowEl = el.rows && el.rows[0];
-  const parent = rowEl && (rowEl.parentElement || rowEl.parentNode);
-  if (parent && parent.tagName === 'THEAD') return true;
+function _hasHeaderRow(firstRow) {
+  if (firstRow.isOutside === true) return true;
+  // A virtualized grid that groups nothing can scroll its first row away, so
+  // the texts of a row of header cells there could differ on a later read.
+  if (firstRow.isGrouped !== true) return false;
   const cells = firstRow.getCells();
-  return cells.length > 0 && cells.every((cellObj) => cellObj.tagName === 'TH');
+  return cells.length > 0 && cells.every((cellObj) => cellObj.isHeaderCell);
 }
 
 /**
@@ -1839,18 +431,18 @@ function sameTableFingerprint(a, b) {
 }
 
 /**
- * The two guards of a qualifying element: it is not a native table, and every
- * native table it holds is one tableFilter drops (pass 1 reports the others).
+ * The three guards of a qualifying element: it is not a native table, it is
+ * not an accessibility artifact, and every native table it holds is one
+ * isArtifact drops (pass 1 reports the others).
  *
  * @param {Element} el
- * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {(table: Element, opts: object) => boolean} isArtifact
  * @param {object} opts
  * @returns {boolean}
  */
-function _passesAriaGuards(el, tableFilter, opts) {
-  if (!el || el.tagName === 'TABLE') return false;
-  const nestedTables = typeof el.querySelectorAll === 'function' ? Array.from(el.querySelectorAll('table')) : [];
-  return !nestedTables.some((t) => !tableFilter(t, opts));
+function _passesAriaGuards(el, isArtifact, opts) {
+  if (!el || el.tagName === 'TABLE' || isArtifact(el, opts)) return false;
+  return !_nativeTablesIn(el).some((t) => !isArtifact(t, opts));
 }
 
 /**
@@ -1860,73 +452,41 @@ function _passesAriaGuards(el, tableFilter, opts) {
  * element below it a chain root.
  *
  * @param {Element} el
- * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {(table: Element, opts: object) => boolean} isArtifact
  * @param {object} opts
  * @returns {boolean}
  */
-function _isQualifyingAncestor(el, tableFilter, opts) {
+function _isQualifyingAncestor(el, isArtifact, opts) {
   if (!el || typeof el.matches !== 'function') return false;
   let carriesRole = false;
   try { carriesRole = !!el.matches(GRID_ARIA_SELECTOR); } catch (e) { return false; }
   if (!carriesRole) return false;
-  return _passesAriaGuards(el, tableFilter, opts);
+  return _passesAriaGuards(el, isArtifact, opts);
 }
 
 /**
- * Walk up from `el` to its chain root: the outermost qualifying ancestor of
- * the nest `el` sits in. The walk is bounded by DR_DETECTION_SETTINGS.gridWalkDepthCap DOM
- * levels and stops at the document body and at the first ancestor carrying a
- * cell role, and it continues past an ancestor that carries no role, because
- * a nest may put a plain wrapper between two qualifying elements. An element
- * with no parent, or whose parent is a cell, is a chain root.
- *
- * @param {Element} el
- * @param {(table: Element, opts: object) => boolean} tableFilter
- * @param {object} opts
- * @returns {Element}
- */
-function _chainRootOf(el, tableFilter, opts) {
-  const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
-  const docBody = doc && doc.body;
-  let chainRoot = el;
-  let current = el.parentElement || el.parentNode || null;
-  let depth = 0;
-  while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (_isCellAncestor(current)) break;
-    if (_isQualifyingAncestor(current, tableFilter, opts)) chainRoot = current;
-    current = current.parentElement || current.parentNode || null;
-    depth++;
-  }
-  return chainRoot;
-}
-
-/**
- * The nesting depth of `el` in the containment chain under `chainRoot`: the
- * count of qualifying ancestors from `el` up to and including `chainRoot` (the
- * chain root sits at depth 0). Returns -1 when the walk leaves the nest
- * without reaching the chain root, or first crosses an ancestor carrying a
- * cell role (then `el` belongs to a nest of its own), so the caller drops
- * the element rather than filing it at a wrong depth.
+ * The count of qualifying ancestors from `el` up to and including `chainRoot`
+ * (the chain root sits at depth 0). Returns -1 when the walk leaves the nest
+ * or first crosses a cell-role ancestor (`el` then belongs to a nest of its
+ * own), so the caller drops the element rather than filing it at a wrong
+ * depth.
  *
  * @param {Element} el
  * @param {Element} chainRoot
- * @param {(table: Element, opts: object) => boolean} tableFilter
+ * @param {(table: Element, opts: object) => boolean} isArtifact
  * @param {object} opts
  * @returns {number}
  */
-function _depthInChain(el, chainRoot, tableFilter, opts) {
+function _depthInChain(el, chainRoot, isArtifact, opts) {
   if (el === chainRoot) return 0;
   let count = 0;
-  let current = el.parentElement || el.parentNode || null;
-  let steps = 0;
-  while (current && steps < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (current === chainRoot) return count + 1;
-    if (_isCellAncestor(current)) return -1;
-    if (_isQualifyingAncestor(current, tableFilter, opts)) count++;
-    current = current.parentElement || current.parentNode || null;
-    steps++;
-  }
-  return -1;
+  const reached = walkUp(parentOf(el), DR_DETECTION_SETTINGS.gridWalkDepthCap,
+    (node) => node !== chainRoot && _isCellAncestor(node), (node) => {
+      if (node === chainRoot) return true;
+      if (_isQualifyingAncestor(node, isArtifact, opts)) count++;
+      return false;
+    });
+  return reached ? count + 1 : -1;
 }
 
 /**
@@ -1962,32 +522,34 @@ function _selectAtNestingDepth(byDepth, configuredDepth) {
  * qualifying element sits within DR_DETECTION_SETTINGS.gridWalkDepthCap
  * levels of `el`.
  *
- * This function first finds the nearest qualifying element at or above an
- * arbitrary element (a clicked cell, an added node, or a registered table),
- * walking across cells, so a click in a cell reaches the grid holding the
- * cell. From there _chainRootOf walks up to the outermost qualifying element
- * and stops at the first cell.
+ * The nearest qualifying element is found walking across cells, so a click in
+ * a cell reaches the grid holding it. The walk up to the outermost one stops
+ * at the first cell-role ancestor and continues past a plain wrapper, because
+ * a nest may put one between two qualifying elements.
  *
  * @param {Element} el
- * @param {{tableFilter?: (table: Element, opts: object) => boolean,
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
  *          doc?: Document, styleProbe?: object}} [opts]
+ * @param {boolean} [isQualifying] - true when `el` is already a qualifying
+ *   element, which skips the walk to the nearest one
  * @returns {Element|null}
  */
-function chainRootOf(el, opts = {}) {
+function chainRootOf(el, opts = {}, isQualifying = false) {
   if (!el) return null;
-  const tableFilter = opts.tableFilter || isPhantomA11yTable;
+  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
   const doc = opts.doc || (typeof document !== 'undefined' ? document : null);
   const docBody = doc && doc.body;
-  let current = el;
-  let depth = 0;
-  while (current && current !== docBody && depth < DR_DETECTION_SETTINGS.gridWalkDepthCap) {
-    if (_isQualifyingAncestor(current, tableFilter, opts)) {
-      return _chainRootOf(current, tableFilter, opts);
-    }
-    current = current.parentElement || current.parentNode || null;
-    depth++;
+  const cap = DR_DETECTION_SETTINGS.gridWalkDepthCap;
+  const qualifies = (node) => _isQualifyingAncestor(node, isArtifact, opts);
+  const nearest = isQualifying ? el : walkUp(el, cap, (node) => node === docBody, qualifies);
+  let chainRoot = nearest;
+  if (nearest) {
+    walkUp(parentOf(nearest), cap, (node) => node === docBody || _isCellAncestor(node), (node) => {
+      if (qualifies(node)) chainRoot = node;
+      return false;
+    });
   }
-  return null;
+  return chainRoot;
 }
 
 /**
@@ -2008,8 +570,11 @@ function chainRootOf(el, opts = {}) {
  *   - 'crowded'    — a depth holds more than one element and no shallower
  *                    depth holds exactly one, so the nest registers nothing
  *                    (the product decision in issue #373).
- *   - 'registered' — the nest already holds an element opts.isSeen reports,
- *                    so a second run over a registered nest registers nothing.
+ *   - 'artifact'   — the chain root is an accessibility artifact, so the nest
+ *                    registers nothing and a pending table for it stops.
+ *   - 'registered' — the nest already holds an element opts.isRegistered
+ *                    reports, so a second run over a registered nest registers
+ *                    nothing.
  *
  * `chainSize` holds the chain's size: the nest elements that passed the data
  * test and filed at a nesting depth. It is 0 for 'empty', and 0 for
@@ -2021,32 +586,32 @@ function chainRootOf(el, opts = {}) {
  * already run on.
  *
  * @param {Element} chainRoot
- * @param {{tableFilter?: (table: Element, opts: object) => boolean,
- *          isSeen?: (handle: Element) => boolean, nestingDepth?: number,
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
+ *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
  *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
  * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}}
  */
 function nominateNest(chainRoot, opts = {}) {
-  const tableFilter = opts.tableFilter || isPhantomA11yTable;
-  const isSeen = opts.isSeen || (() => false);
+  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
+  const isRegistered = opts.isRegistered || (() => false);
   const configuredDepth = opts.nestingDepth ?? DR_DETECTION_SETTINGS.nestingDepth;
 
-  // The nest's members, each with its nesting depth. A qualifying element
-  // whose walk up crosses a cell before it reaches the chain root belongs to
-  // a nest of its own (_depthInChain returns -1), so it stays out of this
-  // nest: a registered grid inside a cell never makes the grid around it read
-  // as registered.
+  if (isArtifact(chainRoot, opts)) {
+    return { chainRoot, selected: null, outcome: 'artifact', chainSize: 0 };
+  }
+
+  // An element nested in a cell is out of this nest (_depthInChain returns
+  // -1), so a registered grid inside a cell never makes the grid around it
+  // read as registered.
   const nested = typeof chainRoot.querySelectorAll === 'function'
     ? Array.from(chainRoot.querySelectorAll(GRID_ARIA_SELECTOR)) : [];
   const nest = [chainRoot].concat(nested)
-    .filter((el) => _passesAriaGuards(el, tableFilter, opts))
-    .map((el) => ({ el, depth: _depthInChain(el, chainRoot, tableFilter, opts) }))
+    .filter((el) => _passesAriaGuards(el, isArtifact, opts))
+    .map((el) => ({ el, depth: _depthInChain(el, chainRoot, isArtifact, opts) }))
     .filter((member) => member.depth >= 0);
 
-  // A nest holding a registered element registers nothing: the scan already
-  // ran over it, and a second registration would put a second table pillbox
-  // on one grid.
-  if (nest.some(({ el }) => isSeen(el))) {
+  // A second registration would put a second table pillbox on one grid.
+  if (nest.some(({ el }) => isRegistered(el))) {
     return { chainRoot, selected: null, outcome: 'registered', chainSize: 0 };
   }
 
@@ -2080,23 +645,22 @@ function nominateNest(chainRoot, opts = {}) {
  * controller turns each outcome into a registration or a pending table.
  *
  * @param {Element|Document} root
- * @param {{tableFilter?: (table: Element, opts: object) => boolean,
- *          isSeen?: (handle: Element) => boolean, nestingDepth?: number,
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
+ *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
  *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
  * @returns {{chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}[]}
  */
 function nominateNests(root, opts = {}) {
   if (!root || typeof root.querySelectorAll !== 'function') return [];
-  const tableFilter = opts.tableFilter || isPhantomA11yTable;
+  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
 
   const rootCarriesRole = root.tagName !== 'TABLE' && typeof root.matches === 'function' && root.matches(GRID_ARIA_SELECTOR);
   const roleBearing = (rootCarriesRole ? [root] : []).concat(Array.from(root.querySelectorAll(GRID_ARIA_SELECTOR)));
-  const qualifying = roleBearing.filter((el) => _passesAriaGuards(el, tableFilter, opts));
+  const qualifying = roleBearing.filter((el) => _passesAriaGuards(el, isArtifact, opts));
 
-  // One chain root per nest, each evaluated once. A Set keeps
-  // insertion order, so the results stay in document order.
+  // A Set keeps insertion order, so the results stay in document order.
   const chainRoots = new Set();
-  for (const el of qualifying) chainRoots.add(_chainRootOf(el, tableFilter, opts));
+  for (const el of qualifying) chainRoots.add(chainRootOf(el, opts, true));
 
   const results = [];
   for (const chainRoot of chainRoots) results.push(nominateNest(chainRoot, opts));
@@ -2104,41 +668,82 @@ function nominateNests(root, opts = {}) {
 }
 
 /**
- * Scan `root` for native <table> elements (pass 1), then run the nomination
- * step over the elements carrying a grid or table role (pass 2).
+ * The native tables in `tables` that are not accessibility artifacts, in
+ * their order. Every scan of native tables filters through this function, so
+ * the artifact filter runs in this file alone.
  *
- * Pass 2 keeps the nests nominateNests reports as 'selected' and drops the
- * other three outcomes. A caller that acts on those — the controller, which
- * holds a pending table for an empty nest — calls nominateNests directly.
- *
- * Each result is { handle, isNew }; isNew is !opts.isSeen(handle), where
- * opts.isSeen is a caller-supplied registered check (e.g. DR_MODEL.hasTable)
- * for native tables and grid roots alike. Without opts.isSeen every result
- * reports isNew: true, since detection keeps no registry.
+ * @param {Element[]} tables
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
+ *          styleProbe?: object}} [opts]
+ * @returns {Element[]}
+ */
+function registrableTables(tables, opts = {}) {
+  const isArtifact = opts.isArtifact || isAccessibilityArtifact;
+  return tables.filter((table) => !isArtifact(table, opts));
+}
+
+/**
+ * The native tables in `root`: `root` itself when it is a table, then every
+ * descendant table, in document order. The one native-table query in the
+ * extension.
  *
  * @param {Element|Document} root
- * @param {{tableFilter?: (table: Element, opts: object) => boolean,
- *          isSeen?: (handle: Element) => boolean, nestingDepth?: number,
+ * @returns {Element[]}
+ */
+function _nativeTablesIn(root) {
+  const own = root.tagName === 'TABLE' ? [root] : [];
+  return typeof root.querySelectorAll === 'function' ? own.concat(Array.from(root.querySelectorAll('table'))) : own;
+}
+
+/**
+ * The one table scan. Both live scanners (the load-time scan and the
+ * added-node pass) and findTables read it.
+ *
+ * `tables` holds the native tables that are not accessibility artifacts:
+ * `root` when it is a table, then its descendant tables. `nominations` holds
+ * one nominateNests result per nest under `root`, with every outcome, so a
+ * caller can act on 'empty' (pending table) as well as 'selected'. Neither list
+ * checks the registry; the caller does.
+ *
+ * @param {Element|Document} root
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
+ *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
+ *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
+ * @returns {{tables: Element[], nominations: {chainRoot: Element, selected: Element|null, outcome: string, chainSize: number}[]}}
+ */
+function scanTables(root, opts = {}) {
+  if (!root || typeof root.querySelectorAll !== 'function') return { tables: [], nominations: [] };
+  return {
+    tables: registrableTables(_nativeTablesIn(root), opts),
+    nominations: nominateNests(root, opts),
+  };
+}
+
+/**
+ * The handles scanTables finds under `root`, native tables first, then the
+ * nests the nomination step reports as 'selected'. A table root yields itself
+ * alone among the native tables. A caller that acts on the other outcomes — the
+ * controller, which holds a pending table for an empty nest — reads
+ * scanTables.
+ *
+ * Each result is { handle, isNew }; isNew is !opts.isRegistered(handle),
+ * where opts.isRegistered is a caller-supplied registered check (e.g.
+ * DR_MODEL.hasTable) for native tables and grid roots alike. Without
+ * opts.isRegistered every result reports isNew: true, since detection keeps
+ * no registry.
+ *
+ * @param {Element|Document} root
+ * @param {{isArtifact?: (table: Element, opts: object) => boolean,
+ *          isRegistered?: (handle: Element) => boolean, nestingDepth?: number,
  *          doc?: Document, styleProbe?: object, vendorProfiles?: object[]}} [opts]
  * @returns {{handle: Element, isNew: boolean}[]}
  */
 function findTables(root, opts = {}) {
-  if (!root || typeof root.querySelectorAll !== 'function') return [];
-  const tableFilter = opts.tableFilter || isPhantomA11yTable;
-  const isSeen = opts.isSeen || (() => false);
-  const results = [];
-
-  // Pass 1: native <table> elements; tableFilter drops accessibility artifacts.
-  const nativeTables = root.tagName === 'TABLE' ? [root] : Array.from(root.querySelectorAll('table'));
-  for (const table of nativeTables) {
-    if (tableFilter(table, opts)) continue;
-    results.push({ handle: table, isNew: !isSeen(table) });
-  }
-
-  for (const { selected, outcome } of nominateNests(root, opts)) {
-    if (outcome !== 'selected') continue;
-    results.push({ handle: selected, isNew: !isSeen(selected) });
-  }
-
-  return results;
+  const isRegistered = opts.isRegistered || (() => false);
+  const { tables, nominations } = scanTables(root, opts);
+  // A table root yields itself alone, so a shape-change re-registration covers
+  // that one table.
+  const native = root && root.tagName === 'TABLE' ? tables.filter((table) => table === root) : tables;
+  const handles = native.concat(nominations.filter(({ outcome }) => outcome === 'selected').map(({ selected }) => selected));
+  return handles.map((handle) => ({ handle, isNew: !isRegistered(handle) }));
 }

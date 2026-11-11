@@ -1,39 +1,38 @@
 /**
  * DynamicRounding lib/dr-table package bundle.
  *
- * Loaded LAST within lib/dr-table, after detect.js. detect.js still declares
- * its functions and classes as bare top-level names on the shared global
- * scope (ui-pillbox.js and content.js keep consuming those bare names
- * unchanged — this sprint does not migrate any consumer). This file adds one
- * more thing: a single DR_TABLE object that groups every public function and
- * class the package exposes, so future consumers can start depending on
- * DR_TABLE.x instead of the bare name without another move.
+ * Loaded LAST within lib/dr-table. The other files declare their functions as
+ * bare top-level names, which ui-pillbox.js and content.js read. This file
+ * adds a single DR_TABLE object that groups every public function and class,
+ * so a consumer can depend on DR_TABLE.x instead. No file reads DR_TABLE.x yet.
  *
  * No logic lives here — this is a pure re-export list. Do not add behavior.
  */
 
 const DR_TABLE = {
-  // detect.js
+  // cells.js
+  collectTextPieces,
+  mapRenderedToFlat,
+  writePatches,
+  restoreTextPieces,
+  sortCellByRecord,
+  // adapters.js
   NativeTableAdapter,
   GridAdapter,
   makeAdapter,
+  // classify.js
   getSuperscriptRanges,
   isCellWholeLink,
   filterLinkMatches,
   classifyTableCell,
-  collectTextPieces,
-  mapRenderedToFlat,
-  applyExtractedPatches,
-  restoreTextPieces,
-  placeDecision,
-  layoutPieceHolding,
-  flatPatches,
-  sortCellByRecord,
+  // detect.js
   looksLikeGrid,
   findTargetTable,
   findTables,
+  scanTables,
+  registrableTables,
   chainRootOf,
-  isPhantomA11yTable,
+  isAccessibilityArtifact,
   isDataTable,
   readTableFingerprint,
   sameTableFingerprint,

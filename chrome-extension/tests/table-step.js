@@ -103,18 +103,11 @@ function applyTableStepPatches(text, patches) {
   eq('table step alone: one result per cell, in input order',
     result.cells.map((cell) => cell.entry.text), TABLE_STEP_ROWS.flat());
   eq('table step alone: a pure cell takes one patch over its number span, after its leading whitespace',
-    { patches: at(0, 0).patches, linkFilteredIdx: at(0, 0).linkFilteredIdx },
-    { patches: [{ index: 1, numStr: '8,584,629', newNum: '8,500,000' }], linkFilteredIdx: null });
+    at(0, 0).patches,
+    [{ index: 1, numStr: '8,584,629', newNum: '8,500,000' }]);
   eq('table step alone: an extracted cell with two numbers takes one patch per number, each in the other band',
-    { patches: at(0, 1).patches, linkFilteredIdx: at(0, 1).linkFilteredIdx },
-    { patches: [{ index: 8, numStr: '1,234', newNum: '1,200' }, { index: 18, numStr: '5,678', newNum: '5,700' }],
-      linkFilteredIdx: [8, 18] });
-  eq('table step alone: an extracted cell lists every number position for the link filter, a number with no change included',
-    api.tablePatches([{ text: 'from 41 to 1,234', col: 0,
-      info: api.decisionToLegacyInfo(api.classifyCell(
-        { text: 'from 41 to 1,234', rowIndex: 1, columnIndex: 1, ranges: null }, TABLE_STEP_LADDER_OPTS)) }],
-    TABLE_STEP_SETTINGS).cells[0].linkFilteredIdx,
-    [5, 11]);
+    at(0, 1).patches,
+    [{ index: 8, numStr: '1,234', newNum: '1,200' }, { index: 18, numStr: '5,678', newNum: '5,700' }]);
   eq('table step alone: the column post-pass reads an ambiguous date day-first in a day-first column',
     [at(0, 2).patches, at(2, 2).patches],
     [[{ index: 0, numStr: '3/4/2024', newNum: '4/2024' }], [{ index: 0, numStr: '3/4/2024', newNum: '4/2024' }]]);
@@ -124,8 +117,8 @@ function applyTableStepPatches(text, patches) {
   eq('table step alone: the column post-pass settles the ambiguous dates in the cell entry',
     [at(0, 2).entry.info.ambiguous, at(0, 3).entry.info.ambiguous], [false, false]);
   eq('table step alone: a skip cell takes no patch',
-    { mode: at(1, 0).entry.info.mode, patches: at(1, 0).patches, linkFilteredIdx: at(1, 0).linkFilteredIdx },
-    { mode: 'skip', patches: [], linkFilteredIdx: null });
+    { mode: at(1, 0).entry.info.mode, patches: at(1, 0).patches },
+    { mode: 'skip', patches: [] });
   eq('table step alone: a time cell takes one patch over its trimmed text',
     at(2, 0).patches, [{ index: 0, numStr: '10:47', newNum: '11:00' }]);
   eq('table step alone: each cell\'s text with its patches applied',

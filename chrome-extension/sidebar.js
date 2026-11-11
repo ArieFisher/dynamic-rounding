@@ -662,12 +662,10 @@ boundTab.subscribe('state:tableActivated', () => {
   pullSettingsAndApplyToUI();
 });
 
-// The settings notice, after every write of the active table's settings. It
-// redraws the controls and the lens preview from the settings it carries.
-// The sidebar's own writes are skipped: an echo arriving after a newer
-// keystroke or slider step would overwrite that step.
+// An echo of the sidebar's own write would overwrite a newer keystroke or
+// slider step.
 boundTab.subscribe('state:settingsChanged', ({ source, settings }) => {
-  if (source === 'sidebar') return;
+  if (source === 'sidebar') { fetchPreviewSamples(); return; }
   applySettingsToUI(settings);
   fetchPreviewSamples();
 });

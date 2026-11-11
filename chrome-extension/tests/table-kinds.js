@@ -132,6 +132,9 @@ const TK_PAIRS = {
       ], grouped: true },
     ],
   },
+  'accessibility-artifact': {
+    sections: [{ part: 'body', rows: TK_BODY, grouped: true }],
+  },
   'hidden-fragment': {
     sections: [
       { part: 'head', rows: [TK_HEADER] },
@@ -256,5 +259,29 @@ const TK_SETTINGS = [
       tkRead('native', pair, DR_DEFAULTS).found, found);
     eq(`data test, ${name}: the grid ${found ? 'passes' : 'fails'}`,
       tkRead('grid', pair, DR_DEFAULTS).found, found);
+  }
+})();
+
+// A table hidden from screen readers or drawn off-screen registers on neither
+// kind. The pair above draws the table on the page, so its comparison is not
+// vacuous; this case draws each artifact form, and each form that stays on
+// the page, once as a native table and once as a grid.
+(function tablekinds_anAccessibilityArtifactIsSkippedOnBothKinds() {
+  const row = (tkReadPairList() || []).find((entry) => entry.key === 'accessibility-artifact');
+  eq('the design document lists the accessibility-artifact pair as same', row && row.state, 'same');
+  const base = TK_PAIRS['accessibility-artifact'];
+  for (const form of AF_ARTIFACT_FORMS) {
+    const pair = Object.assign({}, base, { place: form.place });
+    eq(`accessibility artifact, ${form.name}: the native table registers nothing`,
+      tkRead('native', pair, DR_DEFAULTS).found, false);
+    eq(`accessibility artifact, ${form.name}: the grid registers nothing`,
+      tkRead('grid', pair, DR_DEFAULTS).found, false);
+  }
+  for (const form of AF_VISIBLE_FORMS) {
+    const pair = Object.assign({}, base, { place: form.place });
+    const native = tkRead('native', pair, DR_DEFAULTS);
+    eq(`accessibility artifact, ${form.name}: the native table registers`, native.found, true);
+    eq(`accessibility artifact, ${form.name}: the grid gives the native result`,
+      tkCompare(native, tkRead('grid', pair, DR_DEFAULTS)), []);
   }
 })();

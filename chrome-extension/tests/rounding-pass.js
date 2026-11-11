@@ -1723,8 +1723,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     roundTable(grid.wrapperEl, KEY_STATS_OPTS);
     eq('grid stacked: the record holds the flat original and each piece\'s original and written text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, stacked),
-      { value: ' 125  126', pieces: [{ text: ' 125 ', written: ' 150 ' }, { text: ' 126', written: ' 150' }],
-        supRanges: null, linkFilteredIdx: [1, 6], pageTitle: '' });
+      { value: ' 125 \n 126', pieces: [{ text: ' 125 ', written: ' 150 ' }, { text: ' 126', written: ' 150' }],
+        pageTitle: '' });
     eq('grid stacked: an untouched "$" piece holds the same original and written text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, dollar).pieces,
       [{ text: '$', written: '$' }, { text: '337.91', written: '350' }]);
@@ -1768,14 +1768,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 //      beside digits across pieces read as two numbers
 //   b: a suffix in its own piece
 //   c: two numbers in one piece beside a third piece: not stacked
-//   d: two unit numbers glued together with no separator, one per piece:
-//      only 4.91 rounds. The cell's flat text is one joined string with no
-//      piece boundary marker, and the number extractor never starts a match
-//      right after a letter, so "41.31" (glued right after "tn") is never
-//      found at all; the decision that does survive already fits in one
-//      piece, so the piece-aware stacked-cell fallback that would have
-//      caught both numbers never runs. A native table hits this identical
-//      gap for the same glued shape, for the same reason.
+//   d: two unit numbers, one per block element: the rendered text puts each
+//      on its own line, so both round
 //   e: a number split before its decimal point: unchanged
 (function gridStacked_edges() {
   const grid = makeE2EGridWrapper([['125126', '4.91tn', '416 5551234', '4.91tn41.31m', '4.91']]);
@@ -1792,8 +1786,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     eq('grid stacked: a suffix in its own piece stays and the digits round', pieceTextsOf(b), ['5', 'tn']);
     eq('grid stacked: two numbers in one piece make the cell not stacked',
       pieceTextsOf(c), ['416 555', '1234']);
-    eq('grid stacked: two unit numbers glued with no separator round only the first',
-      pieceTextsOf(d), ['5tn', '41.31m']);
+    eq('grid stacked: two unit numbers on separate lines both round',
+      pieceTextsOf(d), ['5tn', '40m']);
     eq('grid stacked: a number split before its decimal point stays unchanged',
       pieceTextsOf(e), ['4', '.91']);
     eq('grid stacked: the max magnitude leaves out the cell that is not stacked',
@@ -1880,11 +1874,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const pool = () => collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((sample) => sample.num);
   try {
     eq('grid stacked link (setup): the preview leaves out the linked number', pool(), [125]);
-    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid stacked link: the number inside the link stays', pieceTextsOf(cell), ['150', '126']);
-    eq('grid stacked link: the record keeps the position of the number the filter kept',
-      DR_MODEL.getTableOriginal(grid.wrapperEl, cell).linkFilteredIdx, [0]);
-    eq('grid stacked link: the preview after the round reads the kept positions', pool(), [125]);
+    reapplyRounding(grid.wrapperEl);
+    eq('grid stacked link: the number inside the link stays after a re-apply', pieceTextsOf(cell), ['150', '126']);
+    eq('grid stacked link: the preview after the round leaves out the linked number', pool(), [125]);
   } finally {
     if (saved === undefined) delete global.document.createTreeWalker;
     else global.document.createTreeWalker = saved;
@@ -1914,11 +1908,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   const opts = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
   try {
-    eq('grid stacked: the lens preview pool keeps the footnote\'s base number, leaves out the years and the split number',
-      collectNumericCells(grid.wrapperEl, opts).map((sample) => sample.num).sort((x, y) => x - y), [4.91, 125, 126]);
+    eq('grid stacked: the lens preview pool keeps the footnote\'s base number and the stacked years, and leaves out the split number',
+      collectNumericCells(grid.wrapperEl, opts).map((sample) => sample.num).sort((x, y) => x - y), [4.91, 125, 126, 2024, 2025]);
     roundTable(grid.wrapperEl, opts);
     eq('grid stacked: a cell with a <sup> rounds its base and keeps the exponent', pieceTextsOf(a), ['5T', '12']);
-    eq('grid stacked: stacked years stay unchanged', pieceTextsOf(b), ['2024', '2025']);
+    eq('grid stacked: stacked years on separate lines round, as on a native table', pieceTextsOf(b), ['2,000', '2,000']);
     eq('grid stacked: a number split after its grouping comma stays unchanged', pieceTextsOf(c), ['1,', '234']);
     eq('grid stacked: a currency code in its own piece stays and the numbers round',
       pieceTextsOf(d), ['CAD', '150', '150']);
@@ -1929,12 +1923,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 
 // A grid cell whose <sup> is a real footnote, separated from its base
 // number by whitespace rather than glued to it: the base rounds, the
-// footnote digit stays, and the mask's ranges land in the record's
-// supRanges — the same field a native table's footnote cell stores (see
-// prettyPrintedFootnoteStaysMasked) — so a later re-apply and the lens
-// preview both read the cell's kept footnote position instead of
-// re-measuring the (now rounded, therefore shifted) live text.
-(function gridFootnote_supRangesSurviveRecordReapplyAndPreview() {
+// footnote digit stays. A later re-apply and the lens preview locate the
+// footnote's piece through the piece layout, so the rounded, therefore
+// shifted, live text does not move the mask.
+(function gridFootnote_maskSurvivesReapplyAndPreview() {
   const grid = makeE2EGridWrapper([['Revenue 837 units 7']]);
   const [cell] = grid.cellEls;
   const sup = makeElementNode('sup', [makeTextNode('7')]);
@@ -1953,11 +1945,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     roundTableUnder(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid footnote: the base rounds and the footnote digit stays',
       pieceTextsOf(cell), ['Revenue 850 units ', '7']);
-    eq('grid footnote: the record stores the mask\'s superscript range',
-      DR_MODEL.getTableOriginal(grid.wrapperEl, cell).supRanges, [{ start: 18, end: 19 }]);
     reapplyRounding(grid.wrapperEl);
-    eq('grid footnote: the record\'s supRanges survive a re-apply',
-      DR_MODEL.getTableOriginal(grid.wrapperEl, cell).supRanges, [{ start: 18, end: 19 }]);
+    eq('grid footnote: the footnote digit stays after a re-apply',
+      pieceTextsOf(cell), ['Revenue 850 units ', '7']);
     eq('grid footnote: the preview after the round reads the base number, not the footnote digit', pool(), [837]);
   } finally {
     if (saved === undefined) delete global.document.createTreeWalker;
@@ -1969,11 +1959,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // A rounded grid footnote cell whose base piece shrinks: the live piece the
 // footnote sits beside is now shorter than it was when the cell first
 // classified, so a re-apply that re-measured the superscript mask against
-// the LIVE pieces (instead of the record's kept supRanges, the same reuse
-// collectNumericCells already applies to its own live re-measure) would
-// mask the wrong position in the frozen pre-round text and let the
-// footnote round as an ordinary number.
-(function gridFootnote_supRangesSurviveAReapplyAfterTheBaseShrinks() {
+// the LIVE pieces' text would mask the wrong position in the frozen
+// pre-round text and let the footnote round as an ordinary number.
+(function gridFootnote_maskSurvivesAReapplyAfterTheBaseShrinks() {
   const grid = makeE2EGridWrapper([['Revenue 4.91tn units 137']]);
   const [cell] = grid.cellEls;
   const sup = makeElementNode('sup', [makeTextNode('137')]);
@@ -2196,7 +2184,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
 // GR6a: the grid read is the cell's flat text: every text piece, joined in
 // page order, however deep the pieces sit.
 (function gr6a_gridRead_isTheFlatText() {
-  const readOf = (cell) => makeGridCellObj(cell, new GridAdapter({}).originalsPort).getText();
+  const readOf = (cell) => makeCellObj(cell, new GridAdapter({}).originalsPort).getText();
   eq('GR6a: a piece inside nested elements is read',
     readOf(makeElementNode('cell', [makeElementNode('inner', [makeTextNode('42')])])), '42');
   eq('GR6a: a cell with no text piece reads as empty',
@@ -2275,13 +2263,13 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const port = makePort();
   const adapter = new GridAdapter({}, { originalsPort: port });
 
-  const withNode = makeGridCellObj(makeGridCellWithTextNode('8584629'), adapter.originalsPort);
+  const withNode = makeCellObj(makeGridCellWithTextNode('8584629'), adapter.originalsPort);
   eq('grid-honesty: applyPatches returns a landed count when the write lands',
     withNode.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }]), 1);
 
   const bareEl = makeElementNode('', []);
   bareEl.textContent = '8584629';
-  const bare = makeGridCellObj(bareEl, adapter.originalsPort);
+  const bare = makeCellObj(bareEl, adapter.originalsPort);
   eq('grid-honesty: applyPatches returns zero when the cell has no text piece',
     bare.applyPatches([{ index: 0, numStr: '8584629', newNum: '8,500,000' }]), 0);
   eq('grid-honesty: a skipped write adds no marker and no record',
@@ -3230,7 +3218,7 @@ function everyRowRead(kind, largeIn) {
     ],
   };
   DR_MODEL.setTableOriginal(mockTable, roundedCell, {
-    value: '2,794,356', pieces: [{ text: '2,794,356', written: '3,000,000' }], supRanges: null, linkFilteredIdx: null,
+    value: '2,794,356', pieces: [{ text: '2,794,356', written: '3,000,000' }],
   });
   const cells = collectNumericCells(mockTable);
   eq('orig-value: reads original text, not rounded',
@@ -3253,7 +3241,6 @@ function everyRowRead(kind, largeIn) {
     DR_MODEL.setTableOriginal(table, roundedCell, {
       value: '6,718,245 kg',
       pieces: [{ text: '6,718,245', written: '6,700,000' }, { text: ' kg', written: ' kg' }],
-      supRanges: null, linkFilteredIdx: null,
     });
     const liveCell = makeReactiveCell([{ text: '6,7', inSup: false }, { text: '18,245', inSup: false }]);
     const liveTable = { rows: [{ cells: [liveCell] }], dataset: {} };
@@ -4249,10 +4236,11 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
-// --- Test 3: a native table gains a row with a larger value. The cells the
-// extension holds take the new rounding, and their stored originals stay the
-// true originals. ---
-(function rewrite03_aNativeTableThatGainsALargerValueRoundsAgain() {
+// --- Test 3: a native table gains a row with a larger value. The table keeps
+// the max magnitude it took at its first simplification: the cells the
+// extension holds keep their text, the new row rounds under that magnitude,
+// and the stored originals stay the true originals. ---
+(function rewrite03_aNativeTableThatGainsALargerValueKeepsItsFrozenMaxMagnitude() {
   eachRewriteKind(['native'], (kind, page, build) => {
     const t = build(RW_ROWS);
     roundTableUnder(t.table, RW_OPTS);
@@ -4260,12 +4248,102 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
       t.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600']]);
     t.addRow(['98,765', '1,111']);
     page.settle();
-    eq('#421 larger value (native): every cell takes the rounding of the new max magnitude',
-      t.rowTexts(), [['1,000', '6,000'], ['2,000', '4,000'], ['99,000', '1,000']]);
+    eq('#421 larger value (native): the held cells keep their text and the new row rounds under the frozen max magnitude',
+      t.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600'], ['99,000', '1,100']]);
     eq('#421 larger value (native): the stored originals stay the true originals',
       [t.cell(0, 0), t.cell(0, 1), t.cell(1, 0), t.cell(1, 1)]
         .map((cell) => DR_MODEL.getTableOriginalText(t.table, cell)),
       ['1,234', '5,678', '2,468', '3,579']);
+  });
+})();
+
+// --- The magnitude freeze on both table kinds. Expected texts come from
+// RW_OPTS (top band offset -1, other band offset 0) and the frozen max
+// magnitude 3. A max magnitude computed again would be 4 and would turn the
+// held cells into 1,000 / 6,000 / 2,000 / 4,000. ---
+(function freeze01_aLargerValueTheTableGainsRoundsUnderTheFrozenMaxMagnitude() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const cellCase = build(RW_ROWS);
+    roundTableUnder(cellCase.table, RW_OPTS);
+    cellCase.write(0, 0, '98,765');
+    page.settle();
+    eq(`magnitude freeze (${kind}): a larger value in a cell rounds under the top band's offset and the other cells keep their text`,
+      cellCase.rowTexts(), [['99,000', '5,700'], ['2,500', '3,600']]);
+
+    const rowCase = build(RW_ROWS);
+    roundTableUnder(rowCase.table, RW_OPTS);
+    rowCase.addRow(['98,765', '1,111']);
+    page.settle();
+    eq(`magnitude freeze (${kind}): a larger value in an added row rounds under the top band's offset and the other cells keep their text`,
+      rowCase.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600'], ['99,000', '1,100']]);
+  });
+})();
+
+// --- A toggle off and on computes the max magnitude again: the larger value
+// sets magnitude 4, so the magnitude-3 values round to the nearest 1,000. ---
+(function freeze02_aToggleOffAndOnComputesTheMaxMagnitudeAgain() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const cellCase = build(RW_ROWS);
+    roundTableUnder(cellCase.table, RW_OPTS);
+    cellCase.write(0, 0, '98,765');
+    page.settle();
+    resetTable(cellCase.table);
+    roundTableUnder(cellCase.table, RW_OPTS);
+    eq(`magnitude freeze (${kind}): after a toggle off and on the max magnitude reflects the larger value in a cell`,
+      cellCase.rowTexts(), [['99,000', '6,000'], ['2,000', '4,000']]);
+
+    const rowCase = build(RW_ROWS);
+    roundTableUnder(rowCase.table, RW_OPTS);
+    rowCase.addRow(['98,765', '1,111']);
+    page.settle();
+    resetTable(rowCase.table);
+    roundTableUnder(rowCase.table, RW_OPTS);
+    eq(`magnitude freeze (${kind}): after a toggle off and on the max magnitude reflects the larger value in an added row`,
+      rowCase.rowTexts(), [['1,000', '6,000'], ['2,000', '4,000'], ['99,000', '1,000']]);
+  });
+})();
+
+(function freeze04_theLensPreviewReadsTheMagnitudeFreeze() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTableUnder(t.table, RW_OPTS);
+    t.write(0, 0, '98,765');
+    page.settle();
+    const preview = extractPreviewSamples(t.table);
+    eq(`lens preview (${kind}): the preview max magnitude is the frozen one`, preview.maxMag, 3);
+    eq(`lens preview (${kind}): the top band holds the larger value and a magnitude-3 value`,
+      preview.samples.top.map((s) => s.num), [98765, 5678]);
+  });
+})();
+
+(function freeze05_thePreviewFollowsTheFreezeAfterASettingsWrite() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTableUnder(t.table, RW_OPTS);
+    t.write(0, 0, '98,765');
+    page.settle();
+    resetTable(t.table);
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`lens preview (${kind}): after a settings write the preview max magnitude is the table's current freeze`,
+      extractPreviewSamples(t.table).maxMag, DR_MODEL.getTableMaxMagnitude(t.table));
+    eq(`lens preview (${kind}): the current freeze is the larger value's magnitude`,
+      DR_MODEL.getTableMaxMagnitude(t.table), 4);
+  });
+})();
+
+// --- #281: a first simplification that finds no number stores no max
+// magnitude, so the next pass computes it from the numbers that arrive. ---
+(function freeze03_aFirstSimplificationWithNoNumberFreezesNothing() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([['pending', 'n/a'], ['tbd', 'none']]);
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`#281 (${kind}): a table with no number holds no max magnitude`,
+      DR_MODEL.getTableMaxMagnitude(t.table) == null, true);
+    t.write(0, 0, '1,234');
+    t.write(0, 1, '5,678');
+    page.settle();
+    eq(`#281 (${kind}): the next pass computes the max magnitude from the numbers that arrive`,
+      t.rowTexts(), [['1,200', '5,700'], ['tbd', 'none']]);
   });
 })();
 
@@ -4448,6 +4526,128 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
     eq(`#421 one piece (${kind}): the stored originals hold no extension-written text`,
       ((DR_MODEL.getTableOriginal(t.table, t.cell(0, 0)) || {}).pieces || []).map((p) => p.text),
       ['2,222', ' to ', '5,678']);
+  });
+})();
+
+// --- #399: a number that appears twice in a cell takes the verdict of its own
+// piece. Invented values at magnitude 3 under RW_OPTS: 1,234 -> 1,200 and
+// 9,850 -> 9,900. ---
+const LF_ROWS = (cell) => [[cell, '2,468'], ['3,579', '4,321']];
+const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
+
+(function linkFilter_aNumberTwiceOnePlainOneLinked() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const plainThenLinked = build(LF_ROWS(['1,234 items, see ', { tag: 'a', text: '1,234' }]));
+    roundTableUnder(plainThenLinked.table, RW_OPTS);
+    eq(`#399 plain then linked (${kind}): the plain 1,234 rounds and the linked 1,234 holds`,
+      lfPieces(plainThenLinked, 0, 0), ['1,200 items, see ', '1,234']);
+    eq(`#399 plain then linked (${kind}): the rest of the table rounds`,
+      [plainThenLinked.text(0, 1), plainThenLinked.text(1, 0)], ['2,500', '3,600']);
+    reapplyRounding(plainThenLinked.table);
+    eq(`#399 plain then linked (${kind}): the same holds after a re-apply`,
+      lfPieces(plainThenLinked, 0, 0), ['1,200 items, see ', '1,234']);
+  });
+})();
+
+(function linkFilter_aNumberTwiceOneLinkedOnePlain() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const linkedThenPlain = build(LF_ROWS([{ tag: 'a', text: '1,234' }, ' items, total 1,234']));
+    roundTableUnder(linkedThenPlain.table, RW_OPTS);
+    eq(`#399 linked then plain (${kind}): the linked 1,234 holds and the plain 1,234 rounds`,
+      lfPieces(linkedThenPlain, 0, 0), ['1,234', ' items, total 1,200']);
+    reapplyRounding(linkedThenPlain.table);
+    eq(`#399 linked then plain (${kind}): the same holds after a re-apply`,
+      lfPieces(linkedThenPlain, 0, 0), ['1,234', ' items, total 1,200']);
+  });
+})();
+
+(function linkFilter_aNumberTwiceBothPlainOrBothLinked() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const bothPlain = build(LF_ROWS(['1,234 and ', { tag: 'b', text: '1,234' }]));
+    roundTableUnder(bothPlain.table, RW_OPTS);
+    eq(`#399 both plain (${kind}): both occurrences round`,
+      lfPieces(bothPlain, 0, 0), ['1,200 and ', '1,200']);
+    const bothLinked = build(LF_ROWS([{ tag: 'a', text: '1,234' }, ' and ', { tag: 'a', text: '1,234' }]));
+    roundTableUnder(bothLinked.table, RW_OPTS);
+    eq(`#399 both linked (${kind}): both occurrences hold`,
+      lfPieces(bothLinked, 0, 0), ['1,234', ' and ', '1,234']);
+  });
+})();
+
+// A number whose digits span two pieces sits in no single piece: it stays
+// unchanged.
+(function linkFilter_aSplitNumberStaysUnchanged() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LF_ROWS(['ref 1,2', { tag: 'b', text: '34' }]));
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`#399 split number (${kind}): the number across two pieces stays unchanged`,
+      lfPieces(t, 0, 0), ['ref 1,2', '34']);
+  });
+})();
+
+// A pretty-printed native cell: whitespace between the pieces makes the
+// rendered text differ from the flat text, so the number positions convert
+// from the rendered text to the pieces.
+(function linkFilter_aPrettyPrintedCellWithADuplicateNumber() {
+  eachRewriteKind(['native'], (kind, page, build) => {
+    const t = build(LF_ROWS(['\n      1,234 items\n      see ', { tag: 'a', text: '1,234' }, '\n    ']));
+    const cell = t.cell(0, 0);
+    Object.defineProperty(cell, 'innerText', {
+      get() { return t.pieces(0, 0).map((p) => p.nodeValue).join('').replace(/\s+/g, ' ').trim(); },
+      configurable: true,
+    });
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`#399 pretty-printed (${kind}): the plain 1,234 rounds and the linked 1,234 holds`,
+      lfPieces(t, 0, 0), ['\n      1,200 items\n      see ', '1,234', '\n    ']);
+    reapplyRounding(t.table);
+    eq(`#399 pretty-printed (${kind}): the same holds after a re-apply`,
+      lfPieces(t, 0, 0), ['\n      1,200 items\n      see ', '1,234', '\n    ']);
+  });
+})();
+
+(function record_holdsValuePiecesAndPageTitleAlone() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LF_ROWS(['Total 9,850 kg ', { tag: 'sup', text: '7' }, ' ref ', { tag: 'a', text: '12' }]));
+    roundTableUnder(t.table, RW_OPTS);
+    const record = DR_MODEL.getTableOriginal(t.table, t.cell(0, 0));
+    eq(`record (${kind}): the cell with a link and a footnote simplified (precondition)`,
+      lfPieces(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12']);
+    eq(`record (${kind}): the record holds value, pieces, and pageTitle alone`,
+      Object.keys(record).sort(), ['pageTitle', 'pieces', 'value']);
+  });
+})();
+
+// A re-apply, started by the page rewriting a different cell, classifies the
+// simplified cell again from its stored original: the linked number and the
+// footnote digit hold and the plain numbers stay rounded.
+(function reapply_aSimplifiedCellKeepsItsLinkAndFootnote() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LF_ROWS(['Total 9,850 kg ', { tag: 'sup', text: '7' }, ' ref ', { tag: 'a', text: '12' }, ' and 5,678']));
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`#399 re-apply (${kind}, precondition): the plain numbers round, the footnote and the link hold`,
+      lfPieces(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12', ' and 5,700']);
+    t.write(1, 0, '4,321');
+    page.settle();
+    eq(`#399 re-apply (${kind}): the pass ran on the other cell's rewrite`,
+      t.text(1, 0), '4,300');
+    eq(`#399 re-apply (${kind}): the linked number and the footnote digit hold and the plain numbers stay rounded`,
+      lfPieces(t, 0, 0), ['Total 9,900 kg ', '7', ' ref ', '12', ' and 5,700']);
+  });
+})();
+
+// The page rewrites the plain piece of a cell that holds a link: the cell is
+// a rewritten cell, so it simplifies again from the page's new text and the
+// linked number still holds.
+(function reapply_aRewrittenCellKeepsItsLink() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(LF_ROWS(['1,234 items, see ', { tag: 'a', text: '1,234' }]));
+    roundTableUnder(t.table, RW_OPTS);
+    t.write(0, 0, '4,321 items, see ', 0);
+    page.settle();
+    eq(`#399 rewritten cell (${kind}): the new plain number rounds and the linked number holds`,
+      lfPieces(t, 0, 0), ['4,300 items, see ', '1,234']);
+    eq(`#399 rewritten cell (${kind}): the stored original is the page's new text`,
+      DR_MODEL.getTableOriginalText(t.table, t.cell(0, 0)), '4,321 items, see 1,234');
   });
 })();
 

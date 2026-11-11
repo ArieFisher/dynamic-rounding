@@ -26,7 +26,7 @@
  * The state records absence honestly: a cell wearing the rounded marker with
  * no stored original serializes as original: null, and the serializer
  * never reconstructs a value. A virtualized grid contributes only the rows
- * present in the DOM at capture time; the state carries its frozen
+ * present in the DOM at capture time; the state carries each table's frozen
  * magnitude as part of the evidence.
  *
  * The state also carries detectionSettings, a plain copy of
@@ -82,14 +82,12 @@ function collectCaptureState(deps) {
         if (rightEdge > columnCount) columnCount = rightEdge;
         const originalText = model.getTableOriginalText(table, cellObj.el);
         const original = originalText === undefined ? null : originalText;
-        // GRID_ROUNDED_CLASS (lib/dr-table/detect.js) marks every rounded
-        // cell, native and grid alike.
         const wearsMarker = !!(cellObj.el && cellObj.el.classList &&
-          cellObj.el.classList.contains(GRID_ROUNDED_CLASS));
+          cellObj.el.classList.contains(SIMPLIFIED_CLASS));
         cells.push({
           row: r,
           col: cellObj.columnIndex,
-          role: cellObj.tagName === 'TH' ? 'th' : 'td',
+          role: cellObj.isHeaderCell ? 'th' : 'td',
           text: cellObj.getDisplayedText(),
           original,
           // Per cell, so the renderer can tell a lost original (marker,
@@ -100,7 +98,7 @@ function collectCaptureState(deps) {
       }
     }
     return {
-      kind: adapter.isVirtualized() ? 'grid' : 'native',
+      kind: adapter.isGrid() ? 'grid' : 'native',
       appliedFlag: model.getTableAppliedFlag(table),
       settings: model.getTableSettings(table),
       maxMagnitude: model.getTableMaxMagnitude(table),

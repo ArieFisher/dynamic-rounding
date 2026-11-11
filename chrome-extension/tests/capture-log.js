@@ -38,13 +38,13 @@
   };
   const port = makePort();
   const adapter = new GridAdapter({}, { originalsPort: port });
-  if (typeof makeGridCellObj(makeElementNode('', []), adapter.originalsPort).applyPatches !== 'function') {
+  if (typeof makeCellObj(makeElementNode('', []), adapter.originalsPort).applyPatches !== 'function') {
     eq('grid patch write: the grid cell object exposes applyPatches', false, true);
     return;
   }
 
   const el = makeGridCellWithTextNode('A 100 B 200');
-  const cellObj = makeGridCellObj(el, adapter.originalsPort);
+  const cellObj = makeCellObj(el, adapter.originalsPort);
   eq('grid patch write: the write returns its landed count',
     cellObj.applyPatches([
       { index: 2, numStr: '100', newNum: '90' },
@@ -54,13 +54,13 @@
     el.childNodes[0].nodeValue, 'A 90 B 200');
   eq('grid patch write: the first landed write stores the record',
     port.get(el),
-    { value: 'A 100 B 200', pieces: [{ text: 'A 100 B 200', written: 'A 90 B 200' }], supRanges: null, linkFilteredIdx: null, pageTitle: '' });
+    { value: 'A 100 B 200', pieces: [{ text: 'A 100 B 200', written: 'A 90 B 200' }], pageTitle: '' });
 
   // A later write counts its patches in the join of the stored originals,
   // keeps each piece's original, and records each piece's new written text.
   // A piece the later write leaves at its original goes back to it.
   const twoEl = makeElementNode('', [makeTextNode('100'), makeTextNode(' 200')]);
-  const two = makeGridCellObj(twoEl, adapter.originalsPort);
+  const two = makeCellObj(twoEl, adapter.originalsPort);
   two.applyPatches([{ index: 0, numStr: '100', newNum: '90' }]);
   two.applyPatches([{ index: 4, numStr: '200', newNum: '250' }]);
   eq('grid patch write: a later write records each piece\'s original and its new written text',
@@ -105,7 +105,7 @@
 
   // A fake adapter factory: each table object carries its own row spec.
   const fakeAdapterFor = (table) => ({
-    isVirtualized: () => !!table._virtualized,
+    isGrid: () => !!table._virtualized,
     getRows: () => table._rows.map((row) => ({
       isOutside: !!row.isOutside,
       // columnIndex and columnSpan are part of the adapter's cell contract
@@ -113,7 +113,7 @@
       // sits at its read position and covers one column.
       getCells: () => row.cells.map((cell, c) => ({
         el: cell.el,
-        tagName: cell.tagName || 'TD',
+        isHeaderCell: cell.isHeaderCell === true,
         columnIndex: c,
         columnSpan: 1,
         getDisplayedText: () => cell.text,
@@ -126,7 +126,7 @@
   const tableA = {
     outerHTML: '<table><tr><td>99,000</td></tr></table>',
     _rows: [
-      { cells: [{ el: makeCellEl(false), tagName: 'TH', text: 'Amount' }] },
+      { cells: [{ el: makeCellEl(false), isHeaderCell: true, text: 'Amount' }] },
       { cells: [
         { el: a1, text: '99,000' },
         { el: makeCellEl(false), text: 'n/a' },
@@ -203,7 +203,7 @@
   // A capture is a bug report: one table whose walk throws must not take
   // the whole capture down. It serializes as an error record instead.
   const throwingAdapterFor = () => ({
-    isVirtualized: () => false,
+    isGrid: () => false,
     getRows: () => { throw new Error('hostile walk'); },
   });
   const errState = collectCaptureState({
@@ -249,11 +249,11 @@
     getTableOriginalText: (t, cellEl) => (cellEl === marked ? '98,765' : undefined),
   };
   const adapterFor = () => ({
-    isVirtualized: () => false,
+    isGrid: () => false,
     getRows: () => table._rows.map((row) => ({
       getCells: () => row.cells.map((cell) => ({
         el: cell.el,
-        tagName: 'TD',
+        isHeaderCell: false,
         getDisplayedText: () => cell.text,
       })),
     })),
@@ -832,7 +832,7 @@
     getTableMaxMagnitude: () => null,
     getTableOriginalText: () => undefined,
   });
-  const fakeAdapterFor = () => ({ isVirtualized: () => false, getRows: () => [] });
+  const fakeAdapterFor = () => ({ isGrid: () => false, getRows: () => [] });
 
   const state = collectCaptureState({ model: makeFakeModel(), adapterFor: fakeAdapterFor });
 

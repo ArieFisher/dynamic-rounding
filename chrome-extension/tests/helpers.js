@@ -598,7 +598,6 @@ function withSupCreateTreeWalker(fn) {
   try { fn(); } finally { delete global.document.createTreeWalker; }
 }
 
-// Helper: build a multi-node cell for applyExtractedPatches tests.
 // segments: [{text, inSup?, inAnchor?}]
 // Returns a cell mock whose _textNodes drive withSupCreateTreeWalker.
 function makeExtractedCell(segments) {
@@ -846,12 +845,19 @@ function makeRoleBearingNest(rows) {
 function makeCountingStyleProbe() {
   const probe = {
     calls: 0,
+    // Reads only the geometry probe makes: the display value and widths. The
+    // artifact filter reads position and left through the same port.
+    layoutReads: 0,
     getComputedStyle(el) {
       probe.calls++;
-      return { display: 'flex', visibility: 'visible', position: 'static', left: '', verticalAlign: '' };
+      return {
+        get display() { probe.layoutReads++; return 'flex'; },
+        visibility: 'visible', position: 'static', left: '', verticalAlign: '',
+      };
     },
     getOffsetWidth(el) {
       probe.calls++;
+      probe.layoutReads++;
       return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1;
     },
   };
@@ -917,6 +923,10 @@ function makeElementNode(className, childNodes) {
     childNodes: kids,
     children: kids.filter(n => n.nodeType === 1),
     dataset: {},
+    get textContent() {
+      const join = (node) => (node.nodeType === 3 ? node.nodeValue : (node.childNodes || []).map(join).join(''));
+      return join(this);
+    },
     // Real DOM elements expose removeAttribute; restoreTable calls it on
     // every restored cell (to drop the rounding tooltip). No-op in the stub.
     removeAttribute() {},
@@ -1399,7 +1409,16 @@ function chainParents(child /*, ...parents */) {
   return child;
 }
 
-// An element that qualifies as "positioned" (inline style.position='absolute').
+// The artifact filter reads style through the probe alone, so a fixture states
+// `position` and `left` on the element it builds.
+const inlineStyleProbe = {
+  getComputedStyle(el) {
+    return Object.assign({ display: 'block', visibility: 'visible' }, el && el.style);
+  },
+  getOffsetWidth() { return -1; },
+  getBox() { return null; },
+};
+
 function makePositionedAncestor(styleOverrides) {
   return makePhantomEl({ style: Object.assign({ position: 'absolute' }, styleOverrides || {}) });
 }
@@ -1409,7 +1428,7 @@ function makePositionedAncestor(styleOverrides) {
 // =============================================================================
 //
 // injectTablePillboxes() Pass 1 calls document.querySelectorAll('table') and skips
-// any table for which isPhantomA11yTable(table) is true, then calls
+// any table for which isAccessibilityArtifact(table) is true, then calls
 // createPillboxForTable(table) only for the survivors.
 //
 // A pillbox was created iff tablePillboxes.has(table) becomes true afterwards.
@@ -1424,12 +1443,12 @@ function makePositionedAncestor(styleOverrides) {
 //      we inserted and delete them by re-using the objects).
 //
 // CRITICAL: accessibility artifacts must pass isDataTable() so the only reason they
-// would be skipped is the isPhantomA11yTable guard, not the isDataTable gate.
-// Real on-screen tables must fail isPhantomA11yTable but pass isDataTable.
+// would be skipped is the isAccessibilityArtifact guard, not the isDataTable gate.
+// Real on-screen tables must fail isAccessibilityArtifact but pass isDataTable.
 //
 // Helper: build a 2-column 2-row numeric table stub (satisfies isDataTable).
-// Also provide getAttribute (for isPhantomA11yTable signal 1) and parentElement
-// chain + style (for signals 2/3).
+// Also provide getAttribute (for the aria-hidden signal) and parentElement
+// chain + style (for the off-screen signal).
 //
 function makePass1DataTable(opts) {
   opts = opts || {};
@@ -1531,6 +1550,10 @@ function runPass1WithTables(tables) {
   global.document.body = { appendChild() {} };
   global.document.documentElement = { appendChild() {} };
 
+  // The pass reads each table's style through the global getComputedStyle.
+  const origComputedStyle = global.getComputedStyle;
+  global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+
   // Reset pillboxStyleInjected so ensurePillboxStyleInjected does not try document.head
   const origPillboxStyleInjected = pillboxStyleInjected;
   pillboxStyleInjected = true; // skip style injection (would need document.head)
@@ -1543,6 +1566,7 @@ function runPass1WithTables(tables) {
     global.document.body              = origBody;
     global.document.documentElement   = origDocEl;
     pillboxStyleInjected               = origPillboxStyleInjected;
+    global.getComputedStyle            = origComputedStyle;
   }
 
   return { tables };
@@ -1623,12 +1647,12 @@ function makeAriaGrid(embeddedTables) {
   };
 }
 
-// Helper: build a minimal embedded accessibility artifact (aria-hidden on self → isPhantomA11yTable true)
+// Helper: build a minimal embedded accessibility artifact (aria-hidden on self → isAccessibilityArtifact true)
 function makePhantomEmbeddedTable() {
   return makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
 }
 
-// Helper: build a minimal real on-screen embedded table (isPhantomA11yTable false)
+// Helper: build a minimal real on-screen embedded table (isAccessibilityArtifact false)
 function makeRealEmbeddedTable() {
   const tbl = makePhantomEl({ tagName: 'TABLE' });
   const wrapper = makePhantomEl({ tagName: 'DIV' });
@@ -3048,13 +3072,15 @@ function tkCellTexts(table) {
 
 // One kind's reading of one pair under one settings object: each data table
 // detection finds, in the order it finds them, with each cell's text before
-// and after that table alone is simplified. Each table is simplified on a
+// and after that table alone is simplified. A pair's `place` function puts the
+// drawn table in its page (inside a hidden or off-screen box, for example). Each table is simplified on a
 // fresh drawing, so a table nested in another reads the same whichever one
 // the user turns on. A grid carries the table role unless the pair names
 // another, since the cell role belongs inside it.
 function tkRead(kind, pair, settings) {
   const drawOpts = Object.assign({ gridRole: 'table' }, pair.opts);
-  const foundIn = (table) => findTables(rwEl('div', {}, [table]))
+  const place = pair.place || ((table) => table);
+  const foundIn = (table) => findTables(rwEl('div', {}, [place(table)]), { styleProbe: inlineStyleProbe })
     .map((found) => found.handle).filter((el) => isDataTable(el));
   // The count runs on the rewrite page too: the data test reads each cell
   // through the per-cell read the pass runs, and its link filter walks the
@@ -3270,4 +3296,165 @@ function makeCountingBoxProbe() {
     return { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
   };
   return probe;
+}
+
+/**
+ * Draw one table of bare <tr> and <td>/<th> elements: a <table> for the native
+ * kind, a role="grid" container with no table element for the grid kind. The
+ * markup is the same on both. A cell answers its span properties the way the
+ * browser reflects the attributes.
+ *
+ * @param {'native'|'grid'} kind
+ * @param {Array<Array<{text: string, tag?: string, colSpan?: number, rowSpan?: number}>>} rows
+ * @returns {object} the container element
+ */
+function drawBareMarkupTable(kind, rows) {
+  const rowEls = rows.map((cells) => rwEl('tr', {}, cells.map((spec) => {
+    const attrs = {};
+    if (spec.colSpan) attrs.colspan = String(spec.colSpan);
+    if (spec.rowSpan) attrs.rowspan = String(spec.rowSpan);
+    const el = rwEl(spec.tag || 'td', attrs, [rwText(spec.text)]);
+    el.colSpan = spec.colSpan || 1;
+    el.rowSpan = spec.rowSpan || 1;
+    return el;
+  })));
+  return kind === 'native' ? rwEl('table', {}, rowEls) : rwEl('div', { role: 'grid' }, rowEls);
+}
+
+/**
+ * Each cell's grid column and column span, by row, as the table's adapter
+ * reads them.
+ *
+ * @param {object} table
+ * @returns {Array<Array<[number, number]>>}
+ */
+function readColumnPlacement(table) {
+  return makeAdapter(table).getRows()
+    .map((row) => row.getCells().map((cell) => [cell.columnIndex, cell.columnSpan]));
+}
+
+// =============================================================================
+// Accessibility artifact fixtures: one data table of either kind, placed in a
+// page the way a hidden or off-screen copy sits in a real page. The model
+// elements carry their position and left offset in `style`, which
+// inlineStyleProbe reads.
+// =============================================================================
+
+const AF_ROWS = [['North', '4,821', '9,187'], ['South', '2,734', '6,051']];
+const AF_OFFSCREEN_LEFT = '-10000px';
+
+// The probe the artifact filter and the geometry probe read through: layout
+// counts every read of the display value and of a width, and the style comes
+// from the element's `style`.
+function makeArtifactStyleProbe() {
+  const probe = {
+    layoutReads: 0,
+    getComputedStyle(el) {
+      const computed = Object.assign({ visibility: 'visible', position: 'static', left: '' }, el && el.style);
+      Object.defineProperty(computed, 'display', {
+        get() { probe.layoutReads++; return 'flex'; },
+      });
+      return computed;
+    },
+    getOffsetWidth(el) { probe.layoutReads++; return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1; },
+    getBox() { return null; },
+  };
+  return probe;
+}
+
+// One data table: a native table, or a grid carrying `role` (grid or table).
+function afTable(kind, role) {
+  return rwDrawTable(kind, [{ part: 'body', rows: AF_ROWS, grouped: true }], { gridRole: role || 'grid' }).table;
+}
+
+// Set attributes and style on an element and return it.
+function afMark(el, attrs, style) {
+  Object.keys(attrs || {}).forEach((name) => el.setAttribute(name, attrs[name]));
+  el.style = Object.assign({}, el.style, style || {});
+  return el;
+}
+
+function afBox(children, attrs, style) {
+  return afMark(rwEl('div', {}, children), attrs, style);
+}
+
+function afPage(children) {
+  return rwEl('body', {}, children);
+}
+
+// Every element of the page that could register: native tables and elements
+// carrying a grid or table role.
+function afCandidates(page) {
+  return page.querySelectorAll('table').concat(page.querySelectorAll('[role="grid"], [role="table"]'));
+}
+
+// The candidates that hold a registry entry or a table pillbox.
+function afRegistered(page) {
+  return afCandidates(page).filter((el) => DR_MODEL.hasTable(el) || tablePillboxes.has(el));
+}
+
+function afForget(page) {
+  afCandidates(page).forEach(forgetRegisteredTable);
+}
+
+// The load-time scan over the page.
+function afScan(page) {
+  withPillboxDocumentMock(function () {
+    const saved = global.getComputedStyle;
+    global.document.querySelectorAll = (selector) => page.querySelectorAll(selector);
+    global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+    try { injectTablePillboxes(); } finally { global.getComputedStyle = saved; }
+  });
+}
+
+// The added-node pass over one node.
+function afAddNode(node) {
+  withPillboxDocumentMock(function () {
+    const saved = global.getComputedStyle;
+    global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+    try { injectPillboxesForAddedNode(node); } finally { global.getComputedStyle = saved; }
+  });
+}
+
+// The right-click on the first cell of `table` inside `page`.
+function afRightClick(page, table) {
+  const cell = table.querySelectorAll('[role="cell"]')[0] || table.querySelectorAll('td')[0];
+  return findTargetTable(cell, {
+    doc: { body: page }, isRegistered: DR_MODEL.hasTable, styleProbe: inlineStyleProbe,
+  });
+}
+
+// Each placement draws the table hidden from screen readers or off-screen.
+// `place` takes the table and returns the element to put in the page.
+const AF_ARTIFACT_FORMS = [
+  { name: 'aria-hidden on the table', place: (table) => afMark(table, { 'aria-hidden': 'true' }) },
+  { name: 'aria-hidden on the parent', place: (table) => afBox([table], { 'aria-hidden': 'true' }) },
+  { name: 'aria-hidden on a distant ancestor',
+    place: (table) => afBox([afBox([afBox([table])])], { 'aria-hidden': 'true' }) },
+  { name: 'a positioned ancestor drawn off-screen',
+    place: (table) => afBox([table], {}, { position: 'absolute', left: AF_OFFSCREEN_LEFT }) },
+  { name: 'the positioned table itself drawn off-screen',
+    place: (table) => afMark(table, {}, { position: 'absolute', left: AF_OFFSCREEN_LEFT }) },
+  { name: 'a positioned ancestor at the off-screen threshold',
+    place: (table) => afBox([table], {}, { position: 'relative', left: `${DR_DETECTION_SETTINGS.offscreenLeftPx}px` }) },
+];
+
+// Each placement draws a table that stays on the page: the artifact filter
+// must pass it.
+const AF_VISIBLE_FORMS = [
+  { name: 'no marks', place: (table) => table },
+  { name: 'aria-hidden="false" on the parent', place: (table) => afBox([table], { 'aria-hidden': 'false' }) },
+  { name: 'an off-screen left offset on an ancestor that is not positioned',
+    place: (table) => afBox([table], {}, { left: AF_OFFSCREEN_LEFT }) },
+  { name: 'a positioned ancestor one pixel inside the off-screen threshold',
+    place: (table) => afBox([table], {}, { position: 'relative', left: `${DR_DETECTION_SETTINGS.offscreenLeftPx + 1}px` }) },
+  { name: 'an on-screen positioned parent inside an off-screen positioned box',
+    place: (table) => afBox([afBox([table], {}, { position: 'relative', left: '0px' })], {},
+      { position: 'absolute', left: AF_OFFSCREEN_LEFT }) },
+];
+
+// Whether two lists hold the same elements in the same order. eq compares
+// through JSON, which cannot serialize a model element.
+function afSame(actual, expected) {
+  return actual.length === expected.length && actual.every((el, i) => el === expected[i]);
 }

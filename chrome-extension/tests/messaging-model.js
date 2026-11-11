@@ -172,19 +172,21 @@
     const warnRowsBefore = DR_LOG.snapshot().entries
       .filter((row) => /cells were left unrounded/.test(row.text)).length;
     try {
-      roundTable(table, opts);
+      roundTableUnder(table, opts);
       eq('table 8 linked reference: the linked 12 holds',
         segments[1].text, 'ref 12');
       eq('table 8 linked reference: the plain 9,850 rounds',
         segments[2].text, ', total 10,000');
       eq('table 8 linked reference: the cell records as simplified',
         cell.classList.contains('dr-ext-rounded'), true);
-      // The registry record holds the flat-text index of every match that
-      // survived the link filter. A scan that kept the linked "12," would
-      // read [8, 18]; the log-row count below can miss that
-      // when the 50-row buffer drops an older patch row on the same push.
-      eq('table 8 linked reference: only the plain number survives the link filter',
-        DR_MODEL.getTableOriginal(table, cell).linkFilteredIdx, [18]);
+      // A re-apply classifies the stored original again; the linked 12 must
+      // hold on the simplified cell, where its original characters are gone
+      // from the live text only if the filter searched by characters.
+      reapplyRounding(table);
+      eq('table 8 linked reference: the linked 12 holds after a re-apply',
+        segments[1].text, 'ref 12');
+      eq('table 8 linked reference: the plain number stays rounded after a re-apply',
+        segments[2].text, ', total 10,000');
       const warnRowsAfter = DR_LOG.snapshot().entries
         .filter((row) => /cells were left unrounded/.test(row.text)).length;
       eq('table 8 linked reference: no patch is left unlanded',
@@ -245,13 +247,14 @@
     const cell = makePrettyPrintedCell(segments);
     const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
     try {
-      roundTable(table, opts);
+      roundTableUnder(table, opts);
       eq('pretty-printed footnote: the quantity rounds',
         segments[0].text, '\n      Total\n      10,000 kg\n      ');
       eq('pretty-printed footnote: the footnote digit holds',
         segments[1].text, '7');
-      eq('pretty-printed footnote: the stored superscript range counts in the rendered text',
-        (DR_MODEL.getTableOriginal(table, cell) || {}).supRanges, [{ start: 15, end: 16 }]);
+      reapplyRounding(table);
+      eq('pretty-printed footnote: the footnote digit holds after a re-apply',
+        [segments[0].text, segments[1].text], ['\n      Total\n      10,000 kg\n      ', '7']);
     } finally {
       DR_MODEL.unregisterTable(table);
     }
@@ -434,10 +437,10 @@
       DR_MODEL.getTableOriginal(grid.wrapperEl, a),
       { value: ' 8,584,629 ',
         pieces: [{ text: ' ', written: ' ' }, { text: '8,584,629', written: '8,500,000' }, { text: ' ', written: ' ' }],
-        supRanges: null, linkFilteredIdx: null, pageTitle: '' });
+        pageTitle: '' });
     eq('grid patch: a piece\'s whitespace is part of its stored text',
       DR_MODEL.getTableOriginal(grid.wrapperEl, b),
-      { value: ' 7,318,204 ', pieces: [{ text: ' 7,318,204 ', written: ' 7,500,000 ' }], supRanges: null, linkFilteredIdx: null, pageTitle: '' });
+      { value: ' 7,318,204 ', pieces: [{ text: ' 7,318,204 ', written: ' 7,500,000 ' }], pageTitle: '' });
     eq('grid patch: the plain-text read of a record is its value',
       DR_MODEL.getTableOriginalText(grid.wrapperEl, a), ' 8,584,629 ');
   } finally {
@@ -2122,7 +2125,7 @@ const PENDING_FILL_ROWS = [
   const cell = { tagName: 'TD' };
 
   DR_MODEL.registerTable(table);
-  DR_MODEL.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }], supRanges: null, linkFilteredIdx: null });
+  DR_MODEL.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }] });
   DR_MODEL.setTableAppliedFlag(table, 'simplified');
   DR_MODEL.setTableSettings(table, { offsetTop: -1 }, 'page');
   DR_MODEL.setTableMaxMagnitude(table, 7);
@@ -3230,6 +3233,42 @@ function issue328SettingsOf(table) {
   });
 })();
 
+// The same check on a table whose first row holds header cells alone: a native
+// table and a grid with a row group register fresh when the header texts
+// change at the same column count. A grid with no row group keeps its entry,
+// because a virtualized grid can scroll its first row away.
+(function shapeFingerprint_aHeaderCellsAloneFirstRowTripsTheCheckOnATableThatGroupsItsRows() {
+  for (const [kind, grouped] of [['native', false], ['native', true], ['grid', false], ['grid', true]]) {
+    const groups = kind === 'native' || grouped;
+    const label = `${kind}, ${grouped ? 'with' : 'no'} row group`;
+    runPressFixture(() => {
+      const draw = (texts) => rwDrawTable(kind, [{ part: grouped ? 'body' : 'bare', grouped, rows: [
+        texts.map((pieces) => ({ pieces, header: 'col' })),
+        ['North', '1,482,391'], ['South', '918,554'],
+      ] }]).table;
+      const table = draw(['Region', 'Q1']);
+      const removedPillboxes = registerFingerprintedTable(table);
+      DR_MODEL.setActiveTable(table);
+      eq(`fingerprint header cells (${label}): registration records ${groups ? 'the header texts' : 'the column count alone'} (precondition)`,
+        DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: groups ? ['Region', 'Q1'] : null });
+
+      const headerCell = grouped ? table.children[0].children[0].children[1] : table.children[0].children[1];
+      rwTextNodesOf(headerCell)[0].nodeValue = 'Q2';
+      let outcome = null;
+      withPillboxDocumentMock(function () { outcome = revalidateTableShape(table); });
+      eq(`fingerprint header cells (${label}): a header text change ${groups ? 'reports a switch' : 'keeps the entry'}`, outcome.switched, groups);
+      eq(`fingerprint header cells (${label}): ${groups ? 'the discard takes the old pillbox off the page' : 'no pillbox leaves the page'}`,
+        removedPillboxes.length, groups ? 1 : 0);
+      if (groups) {
+        eq(`fingerprint header cells (${label}): the fresh fingerprint carries the new header text`,
+          DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q2'] });
+      }
+
+      forgetRegisteredTable(table);
+    });
+  }
+})();
+
 (function shapeFingerprint_aGrouplessGridsFirstRowTextDoesNotTripTheCheck() {
   runPressFixture(() => {
     const grid = makeDatabaseQueryGrid();
@@ -3512,7 +3551,7 @@ function issue328SettingsOf(table) {
     ]);
     const cell = table.rows[1].cells[1];
     DR_MODEL.setTableOriginal(table, cell,
-      { value: '1,482,391', pieces: [{ text: '1,482,391', written: '1,482,391' }], supRanges: null, linkFilteredIdx: null });
+      { value: '1,482,391', pieces: [{ text: '1,482,391', written: '1,482,391' }] });
     eq('fingerprint unrecorded: the entry carries no fingerprint (precondition)',
       DR_MODEL.getTableFingerprint(table), null);
 
@@ -3701,7 +3740,7 @@ function issue328SettingsOf(table) {
 // Two reads serve it. (1) Adapter cells gain getDisplayedText(): the live
 // rendered text, never the originals port — on a rounded grid getText()
 // answers with the ORIGINAL (the engine's contract; see the port-preferring
-// read in makeGridCellObj), so a capture reading getText() would
+// read in makeCellObj), so a capture reading getText() would
 // lie about the screen. (2) The registry stores a cell's original in two
 // shapes (grid: { value, pieces, ... }; native: { html, value, ... });
 // DR_MODEL.getTableOriginalText() resolves the difference in one place and
@@ -3735,7 +3774,7 @@ function issue328SettingsOf(table) {
   const adapter = new GridAdapter({}, { originalsPort: makePort() });
 
   // Grid cell, unrounded: displayed text equals the engine's read.
-  const fresh = makeGridCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
+  const fresh = makeCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
   eq('capture-reads: an unrounded grid cell\'s displayed text equals its engine text',
     typeof fresh.getDisplayedText === 'function'
       ? { displayed: fresh.getDisplayedText(), engine: fresh.getText() } : null,
@@ -3743,7 +3782,7 @@ function issue328SettingsOf(table) {
 
   // Grid cell, rounded: the engine's read answers with the original through
   // the port; the displayed read answers with what the screen shows now.
-  const rounded = makeGridCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
+  const rounded = makeCellObj(makeGridCellEl('98,765'), adapter.originalsPort);
   rounded.applyPatches([{ index: 0, numStr: '98,765', newNum: '99,000' }]);
   eq('capture-reads: a rounded grid cell keeps engine text = original, displayed text = live',
     typeof rounded.getDisplayedText === 'function'
@@ -3771,12 +3810,12 @@ function issue328SettingsOf(table) {
     textContent: wholeText,
   });
 
-  const numberThenUnit = makeGridCellObj(
+  const numberThenUnit = makeCellObj(
     makePiecedCellEl([textNode('1,234'), span('%')], '1,234%'), adapter.originalsPort);
   eq('capture-reads: a grid cell of number-then-unit pieces displays the whole text',
     numberThenUnit.getDisplayedText(), '1,234%');
 
-  const unitThenNumber = makeGridCellObj(
+  const unitThenNumber = makeCellObj(
     makePiecedCellEl([span('$'), textNode('1,234')], '$1,234'), adapter.originalsPort);
   eq('capture-reads: a grid cell of unit-then-number pieces displays the whole text',
     unitThenNumber.getDisplayedText(), '$1,234');
@@ -3788,9 +3827,9 @@ function issue328SettingsOf(table) {
   const gridCell = {};
   const nativeCell = {};
   DR_MODEL.setTableOriginal(table, gridCell,
-    { value: '98,765', pieces: [{ text: '98,765', written: '100,000' }], supRanges: null, linkFilteredIdx: null });
+    { value: '98,765', pieces: [{ text: '98,765', written: '100,000' }] });
   DR_MODEL.setTableOriginal(table, nativeCell,
-    { value: '1,234', pieces: [{ text: '1,234', written: '1,000' }], supRanges: null, linkFilteredIdx: null });
+    { value: '1,234', pieces: [{ text: '1,234', written: '1,000' }] });
   eq('capture-reads: a grid original (record) reads back as its value field',
     has ? DR_MODEL.getTableOriginalText(table, gridCell) : null, '98,765');
   eq('capture-reads: a native original (record) reads back as its value field',
@@ -4618,4 +4657,115 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
         simplified: t.text(0, 0) },
       { rows: 1, warns: 0, simplified: '4,300' });
   });
+})();
+
+// --- A pending table and the accessibility artifact filter ---
+//
+// A chain root that is an artifact starts no observer, and a pending table
+// whose chain root turns into an artifact drops its observer on the next
+// re-test. The fixture grid reads its attributes and style from a table the
+// case edits, the way a page edits them.
+
+function makeHideableGrid(role, childNodes) {
+  const attrs = { role };
+  const node = makeDgNode('DIV', 'pending-artifact', role, childNodes || []);
+  node.getAttribute = (name) => (Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null);
+  node.setAttribute = (name, value) => { attrs[name] = value; };
+  return node;
+}
+
+function makePlainBox(child) {
+  const box = makeDgNode('DIV', 'plain-box', null, [child]);
+  const attrs = {};
+  box.getAttribute = (name) => (Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null);
+  box.setAttribute = (name, value) => { attrs[name] = value; };
+  return box;
+}
+
+(function pendingArtifact_anArtifactChainRootStartsNoObserver() {
+  const forms = [
+    { name: 'aria-hidden on the grid', build: () => { const g = makeHideableGrid('grid'); g.setAttribute('aria-hidden', 'true'); return [g, g]; } },
+    { name: 'aria-hidden on the parent', build: () => {
+      const g = makeHideableGrid('grid'); const box = makePlainBox(g); box.setAttribute('aria-hidden', 'true'); return [g, box]; } },
+    { name: 'the positioned grid drawn off-screen', build: () => {
+      const g = makeHideableGrid('grid'); g.style = { position: 'absolute', left: AF_OFFSCREEN_LEFT }; return [g, g]; } },
+  ];
+  for (const form of forms) {
+    const [grid, added] = form.build();
+    const outcome = nominateNest(grid, { isRegistered: DR_MODEL.hasTable, styleProbe: inlineStyleProbe });
+    eq(`pending artifact, ${form.name}: the nomination outcome is artifact`,
+      [outcome.outcome, outcome.selected === null, outcome.chainSize], ['artifact', true, 0]);
+
+    withPendingHarness(function ({ observers, timers }) {
+      consumeNomination(outcome);
+      eq(`pending artifact, ${form.name}: consuming the outcome holds no pending table`, pendingRoots.has(grid), false);
+      eq(`pending artifact, ${form.name}: consuming the outcome starts no observer`, observers.length, 0);
+
+      const savedStyle = global.getComputedStyle;
+      global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+      try {
+        withPillboxDocumentMock(function () { injectPillboxesForAddedNode(added); });
+        eq(`pending artifact, ${form.name}: the added-node pass holds no pending table`, pendingRoots.has(grid), false);
+        eq(`pending artifact, ${form.name}: the added-node pass starts no observer`, observers.length, 0);
+
+        const page = makePlainBox(added);
+        const savedQsa = global.document.querySelectorAll;
+        withPillboxDocumentMock(function () {
+          global.document.querySelectorAll = (selector) => page.querySelectorAll(selector);
+          injectTablePillboxes();
+        });
+        global.document.querySelectorAll = savedQsa;
+        eq(`pending artifact, ${form.name}: the load-time scan holds no pending table`, pendingRoots.has(grid), false);
+        eq(`pending artifact, ${form.name}: the load-time scan starts no observer`, observers.length, 0);
+      } finally {
+        global.getComputedStyle = savedStyle;
+      }
+      eq(`pending artifact, ${form.name}: no timer is scheduled`, timers.length, 0);
+    });
+    eq(`pending artifact, ${form.name}: the grid stays unregistered`, DR_MODEL.hasTable(grid), false);
+  }
+})();
+
+(function pendingArtifact_aChainRootThatBecomesAnArtifactDropsItsObserver() {
+  const turns = [
+    { name: 'aria-hidden set on the grid', turn: (grid) => grid.setAttribute('aria-hidden', 'true') },
+    { name: 'aria-hidden set on the parent', turn: (grid, box) => box.setAttribute('aria-hidden', 'true') },
+    { name: 'the grid moved off-screen', turn: (grid) => { grid.style = { position: 'absolute', left: AF_OFFSCREEN_LEFT }; } },
+    { name: 'the parent moved off-screen', turn: (grid, box) => { box.style = { position: 'fixed', left: AF_OFFSCREEN_LEFT }; } },
+  ];
+  for (const filled of [false, true]) {
+    for (const { name, turn } of turns) {
+      const label = `${name}, ${filled ? 'rows arrived' : 'still empty'}`;
+      const grid = makeHideableGrid('grid');
+      const box = makePlainBox(grid);
+      const before = DR_MODEL.getRegisteredTables().length;
+
+      withPendingHarness(function ({ observers, timers }) {
+        withPillboxDocumentMock(function () { injectPillboxesForAddedNode(grid); });
+        eq(`pending artifact turn, ${label}: the empty grid is held as a pending table`, pendingRoots.has(grid), true);
+        eq(`pending artifact turn, ${label}: one observer watches it`, observers.length, 1);
+
+        if (filled) PENDING_FILL_ROWS.forEach((cellTexts, i) => appendDgChild(grid, makeDgRow(i, cellTexts)));
+        turn(grid, box);
+
+        const savedStyle = global.getComputedStyle;
+        global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+        try {
+          withPillboxDocumentMock(function () {
+            observers[0].trigger();
+            eq(`pending artifact turn, ${label}: one mutation schedules one re-test`, runPendingRetestTimers(timers), 1);
+          });
+        } finally {
+          global.getComputedStyle = savedStyle;
+        }
+
+        eq(`pending artifact turn, ${label}: the re-test drops the pending table`, pendingRoots.has(grid), false);
+        eq(`pending artifact turn, ${label}: the re-test disconnects the observer`, observers[0].disconnectCount, 1);
+        eq(`pending artifact turn, ${label}: the maps hold nothing for the grid`,
+          [pendingObservers.has(grid), pendingRetestCounts.has(grid), pendingRetestTimers.has(grid)], [false, false, false]);
+        eq(`pending artifact turn, ${label}: the grid registers nothing and gains no pillbox`,
+          [DR_MODEL.hasTable(grid), tablePillboxes.has(grid), DR_MODEL.getRegisteredTables().length - before], [false, false, 0]);
+      });
+    }
+  }
 })();

@@ -41,11 +41,8 @@ const DR_DEFAULTS = {
  * DR_DETECTION_SETTINGS holds the detection settings: every value that
  * shapes whether an element counts as a table or a grid, plus the two lookup
  * lists detection reads (the display values that mark a grid/flex layout,
- * and the known vendor grid profiles). The detection layer
- * (lib/dr-table/detect.js) and the controller (content.js) read it as a bare
- * global, with no fallback copy of any value in either. The pillbox
- * auto-collapse delay lives in the pillbox view, not here: the view alone
- * reads it, and it shapes nothing detection finds.
+ * and the known vendor grid profiles). The table package and the controller
+ * (content.js) read it as a bare global, with no fallback copy.
  */
 const DR_DETECTION_SETTINGS = {
   // --- Nomination step (lib/dr-table/detect.js: findTables) ---
@@ -59,7 +56,7 @@ const DR_DETECTION_SETTINGS = {
   gridDisplayValues: ['grid', 'flex', 'inline-grid', 'inline-flex'],
   // --- Data test (lib/dr-table/detect.js: isDataTable) ---
   dataTestCellBudget: 1000,
-  // --- Vendor grids (lib/dr-table/detect.js: GridAdapter) ---
+  // --- Vendor grids (lib/dr-table/adapters.js: GridAdapter) ---
   vendorProfiles: [
     {
       name: 'databricks',
@@ -84,7 +81,7 @@ const DR_DETECTION_SETTINGS = {
   reapplyMaxWaitMs: 1000,
   // The most cells a pass reads: a native table's cells, a grid's visible
   // cells. Ten times the data test's cell budget, e.g. 1,000 rows of 10
-  // columns. The value holds a pass under 100 ms: in Chrome on the test page
+  // columns. The value holds a pass under 200 ms: in Chrome on the test page
   // a pass over 10,000 cells took 44 to 57 ms. Above it the pass writes
   // nothing, the table's re-apply observer stops, and one debug row records
   // the stop; a table above it at its first simplification never attaches
@@ -95,6 +92,6 @@ const DR_DETECTION_SETTINGS = {
   // A re-test runs only after a subtree change and the redraw delay above, so
   // the count grows under sustained churn alone.
   pendingRetestCap: 100,
-  // --- Accessibility artifact check (lib/dr-table/detect.js: isPhantomA11yTable) ---
+  // --- Accessibility artifact check (lib/dr-table/detect.js: isAccessibilityArtifact) ---
   offscreenLeftPx: -9999,
 };

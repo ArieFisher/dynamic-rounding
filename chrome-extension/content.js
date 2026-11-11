@@ -164,13 +164,13 @@ function markAndAddPillboxIfNewGrid(found) {
   return found.handle;
 }
 
-// Every findTargetTable() call site passes DR_MODEL.hasTable as isSeen:
+// Every findTargetTable() call site passes DR_MODEL.hasTable as isRegistered:
 // detection stays decoupled from the model (see lib/dr-table/detect.js), and
 // the controller answers "found already" from the registry.
 document.addEventListener('contextmenu', (event) => {
   if (IS_CAPTURE_PAGE) return;
   lastRightClickedElement = event.target;
-  const found = findTargetTable(event.target, { isSeen: DR_MODEL.hasTable });
+  const found = findTargetTable(event.target, { isRegistered: DR_MODEL.hasTable });
   if (found) {
     const table = markAndAddPillboxIfNewGrid(found);
     DR_MODEL.setActiveTable(table);
@@ -198,7 +198,7 @@ function sendRangeStatusMessage(result) {
 // table's on/off value.
 DR_BUS.subscribe('intent:menuClicked', () => {
   if (!lastRightClickedElement) return;
-  const found = findTargetTable(lastRightClickedElement, { isSeen: DR_MODEL.hasTable });
+  const found = findTargetTable(lastRightClickedElement, { isRegistered: DR_MODEL.hasTable });
   if (!found) {
     DR_LOG.debug("Dynamic Rounding: No table found at right-click location.");
     return;
@@ -299,6 +299,8 @@ function consumeNominations(results) {
 //                registers nothing for such a nest, so no watch holds it.
 //   'registered' the nest already holds a registered element, so a second
 //                registration would put a second pillbox on one grid.
+//   'artifact'   the chain root is an accessibility artifact; the nest
+//                registers nothing and no watch holds it.
 // A registration through another path (a right-click) leaves the pending
 // record standing until the next re-test returns
 // 'registered', which drops it here.
@@ -361,7 +363,7 @@ function holdPendingTable(chainRoot) {
 // through the same function the scanners use, so a re-test that passes
 // registers exactly what the load-time scan would have registered.
 function retestPendingTable(chainRoot) {
-  consumeNomination(nominateNest(chainRoot, { isSeen: DR_MODEL.hasTable }));
+  consumeNomination(nominateNest(chainRoot, { isRegistered: DR_MODEL.hasTable }));
 }
 
 // Drop a pending record whole: the debounce timer, the subtree observer, the
@@ -382,34 +384,18 @@ function dropPendingTable(chainRoot) {
   pendingRoots.delete(chainRoot);
 }
 
-// Detect and attach pillboxes for tables and grids inside (or equal to) a node
-// added to the page. Pass 1 covers native <table> elements, skipping
-// accessibility artifacts, so a dynamically rendered
-// single-page-application grid is found and an off-screen chart fallback is
-// not. Pass 2 hands the grids to the nomination step in the detection layer
-// (nominateNests), which lists the added node itself when it carries a grid or
-// table role, walks out to the node's chain root, and returns one outcome per
-// nest — the same step the load-time scan runs. The walk out matters here: a
-// node added inside a wrapper already in the page re-evaluates the whole nest
-// rather than registering itself, and it is the route by which a pending
-// table registers once its rows arrive.
+// A node added inside a wrapper already in the page re-evaluates the whole
+// nest through its chain root, so a pending table registers once its rows
+// arrive.
 // Extracted as a named function so the detection is unit-testable
 // independently of the live MutationObserver wiring below.
 function injectPillboxesForAddedNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
-  // Pass 1: native <table> elements; accessibility artifacts are skipped.
-  if (node.tagName === 'TABLE' && !DR_MODEL.hasTable(node) && !isPhantomA11yTable(node)) {
-    createPillboxForTable(node);
-  }
-  if (typeof node.querySelectorAll === 'function') {
-    node.querySelectorAll('table').forEach(table => {
-      if (!DR_MODEL.hasTable(table) && !isPhantomA11yTable(table)) {
-        createPillboxForTable(table);
-      }
-    });
-  }
-  // Pass 2: the nomination step, consumed above.
-  consumeNominations(nominateNests(node, { isSeen: DR_MODEL.hasTable }));
+  const { tables, nominations } = scanTables(node, { isRegistered: DR_MODEL.hasTable });
+  tables.forEach(table => {
+    if (!DR_MODEL.hasTable(table)) createPillboxForTable(table);
+  });
+  consumeNominations(nominations);
 }
 
 // The shape fingerprint's read options for one table: the registry's stored
@@ -493,11 +479,11 @@ function revalidateTableShape(table, opts = {}) {
   resetTable(table);
   teardownTableEntry(table, 'replaced');
 
-  // findTables on a <table> root returns that table in pass 1, so one call
+  // findTables on a <table> root returns that table alone, so one call
   // covers a native table and a grid alike.
   const root = table.tagName === 'TABLE' ? table : (chainRootOf(table) || table);
   let fresh = null;
-  for (const { handle, isNew } of findTables(root, { isSeen: DR_MODEL.hasTable })) {
+  for (const { handle, isNew } of findTables(root, { isRegistered: DR_MODEL.hasTable })) {
     if (!isNew) continue;
     if (handle.tagName !== 'TABLE') handle.classList.add('dr-ext-grid');
     createPillboxForTable(handle);
@@ -607,12 +593,9 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
 
 // --- End per-table pillbox infrastructure ---
 
-// registryOriginalsPort adapts DR_MODEL's per-table registry entry to the
-// OriginalsPort interface both adapters expect (see lib/dr-table/detect.js)
-// — the one place a cell's record leaves the page and enters the application
-// model. Every makeAdapter() call below that reads or writes a simplified
-// cell passes this, so every read and every write goes through the registry.
-// It carries the cell's whole record (see applyPatches in detect.js).
+// The OriginalsPort both adapters expect (see lib/dr-table/adapters.js): the
+// one place a cell's record enters the application model. Every makeAdapter()
+// call that reads or writes a simplified cell passes it.
 function registryOriginalsPort(table) {
   return {
     has(cellEl) { return DR_MODEL.hasTableOriginal(table, cellEl); },
@@ -671,26 +654,12 @@ function isUnrestorableCell(table, cell) {
   return !DR_MODEL.hasTableOriginal(table, cell);
 }
 
-// Release one simplified cell: put its original text back into every text
-// piece that still shows the extension's written text (restoreTextPieces),
-// then drop its record and its marker class, and put back the hover text the
-// page set (the record's pageTitle) while the cell still shows the
-// extension's own hover text. A cell whose page set none ends with no hover
-// text attribute at all: the record holds no difference between an absent
-// attribute and an empty one.
 // The restore runs it on every marked cell; a pass runs it on a rewritten
 // cell before simplifying it fresh, and on a held cell whose target text is
 // its original.
 function releaseCell(table, cell) {
-  const record = DR_MODEL.getTableOriginal(table, cell);
-  if (record) restoreTextPieces(cell, record.pieces);
+  makeCellObj(cell, registryOriginalsPort(table)).restore();
   DR_MODEL.deleteTableOriginal(table, cell);
-  cell.classList.remove(GRID_ROUNDED_CLASS);
-  // Like the text pieces, hover text the page changed stays: only the
-  // extension's own hover text gives way to the stored one.
-  if (record && cell.title !== originalHoverText(record.value)) return;
-  if (record && record.pageTitle) cell.title = record.pageTitle;
-  else cell.removeAttribute('title');
 }
 
 // When restoreTable leaves a cell unrestored (see its doc), the screen still
@@ -754,8 +723,7 @@ function numericPreviewCells(entries) {
 // Pick up to 2 top-band samples and one sample per other-band magnitude for
 // the lens preview. Bucketed by magnitude (floor(log10|num|)) so the lens
 // preview shows the offset_top and offset_other split that roundCellSetAware
-// applies to the table. The max magnitude comes from the table step's
-// datasetMaxMagnitude, the one the simplification pass rounds against.
+// applies to the table.
 function extractPreviewSamples(table) {
   // The table's own settings, not shipped defaults — otherwise the lens
   // preview and the table disagree the moment the sidebar's slider or
@@ -766,7 +734,8 @@ function extractPreviewSamples(table) {
   if (cells.length === 0) {
     return { samples: { top: [], bottom: [] }, maxMag: null };
   }
-  const maxMag = datasetMaxMagnitude(entries);
+  const frozenMaxMag = DR_MODEL.getTableMaxMagnitude(table);
+  const maxMag = frozenMaxMag != null ? frozenMaxMag : datasetMaxMagnitude(entries);
   const numTop = liveSettings.numTop || 1;
   const topOffset = typeof liveSettings.offsetTop === 'number' ? liveSettings.offsetTop : -0.5;
   const otherOffset = typeof liveSettings.offsetOther === 'number' ? liveSettings.offsetOther : -0.5;
@@ -901,14 +870,10 @@ function buildCaptureStateResponse() {
 // rounding. A held cell whose target is its original is released. A rule
 // added to the pass reaches both table kinds at once.
 //
-// The adapters (lib/dr-table/detect.js) hold two differences between the
-// kinds before the pass starts. getText() returns a native cell's rendered
-// text, and a grid cell's flat text; both answer with the record's stored
-// value once the cell is simplified. getPieceLayout()'s toFlat converts a
-// native cell's rendered positions to flat positions, which flatPatches
-// reads; a grid cell's positions need no conversion, so its toFlat is null.
+// The adapters (lib/dr-table/adapters.js, cells.js) build one cell object for
+// both kinds, so the pass sees no difference between them before it starts.
 //
-// Every other difference is a field of the kind object the caller passes,
+// Every difference is a field of the kind object the caller passes,
 // NATIVE_TABLE_PASS or GRID_TABLE_PASS:
 //   splitReasons, splitRow  the placement results that write a debug row,
 //                        and that row's text: a native value that crosses a
@@ -919,20 +884,16 @@ function buildCaptureStateResponse() {
 //                        none.
 //   dateSplitRow         the debug row for a changed date or time whose text
 //                        crosses a piece boundary.
-//   freezesMaxMagnitude  whether the first simplification stores the max
-//                        magnitude as the table's magnitude freeze. Grids
-//                        only: a grid holds only its visible rows, so a
-//                        changed value and a row scrolled into view read
-//                        the same.
 //   watchedElement(adapter)  the element the re-apply observer watches: a
 //                        native table itself, a grid's scroll container.
 //
 // The pass settings beside the kind:
 //   frozenMaxMag  the max magnitude to use instead of computing it from the
-//                 cells; null or undefined computes it. A grid's re-apply
-//                 passes the table's magnitude freeze.
-//   writes        'first' writes every changed cell, stores a grid's max
-//                 magnitude as its magnitude freeze, and writes the debug
+//                 cells; null or undefined computes it. A re-apply pass,
+//                 on either table kind, passes the table's magnitude
+//                 freeze.
+//   writes        'first' writes every changed cell, stores the max
+//                 magnitude as the table's magnitude freeze, and writes the debug
 //                 row for the cells left unrounded (unroundedCellsRow). 'reapply' writes every changed cell and
 //                 nothing else. 'none' sorts no cell, writes nothing, and
 //                 returns each cell's patches; only the test suite passes
@@ -952,7 +913,6 @@ const NATIVE_TABLE_PASS = {
   splitReasons: ['pieces', 'split'],
   splitRow: 'Dynamic Rounding: a native cell value split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a native cell date or time split across text pieces stays unchanged.',
-  freezesMaxMagnitude: false,
   watchedElement(adapter) { return adapter.getElement(); },
 };
 
@@ -960,22 +920,12 @@ const GRID_TABLE_PASS = {
   splitReasons: ['split'],
   splitRow: 'Dynamic Rounding: a grid cell number split across text pieces stays unchanged.',
   dateSplitRow: 'Dynamic Rounding: a grid cell date or time split across text pieces stays unchanged.',
-  freezesMaxMagnitude: true,
   watchedElement(adapter) { return adapter._getScrollContainer(); },
 };
 
-// Write one cell's patches through the cell object's applyPatches, which
-// stores the record and adds the marker class on a landed write (see
-// makeCellObj in lib/dr-table), and return how many landed. The record's
-// supRanges are the ranges the cell classified with, for an extracted cell
-// with a <sup>, counted in the record's value. Record only a confirmed
-// change: with every patch skipped the screen keeps its text, and storing
-// the hover text would record a simplification that never happened.
-function writeCell(entry, patches, linkFilteredIdx) {
-  const supRanges = (entry.info.mode === 'extracted' && entry.hasSuperscript) ? entry.superscriptRanges : null;
-  const landed = entry.cellObj.applyPatches(patches, { value: entry.text, linkFilteredIdx, supRanges });
-  if (landed > 0) entry.cellObj.el.title = originalHoverText(entry.text);
-  return landed;
+// Returns how many patches landed (see makeCellObj in lib/dr-table).
+function writeCell(entry, patches) {
+  return entry.cellObj.applyPatches(patches, { value: entry.text });
 }
 
 // The debug row the first simplification writes when a cell with a change
@@ -1041,7 +991,7 @@ function releaseRewrittenCells(table, dataCells) {
 // The kind the one simplification pass runs on a table, from its adapter.
 // roundTable and the re-apply pass call it.
 function tableKindPass(adapter) {
-  return adapter.isVirtualized() ? GRID_TABLE_PASS : NATIVE_TABLE_PASS;
+  return adapter.isGrid() ? GRID_TABLE_PASS : NATIVE_TABLE_PASS;
 }
 
 // One cell's patches as the page takes them: the table step's patches
@@ -1055,9 +1005,9 @@ function cellPatches(stepCell, kind) {
   if (isDateOrTime && patches.length > 0 &&
       !layoutPieceHolding(entry.layout, patches[0].index, patches[0].numStr.length)) {
     DR_LOG.debug(kind.dateSplitRow);
-    return { patches: [], linkFilteredIdx: null };
+    return [];
   }
-  return { patches, linkFilteredIdx: stepCell.linkFilteredIdx };
+  return patches;
 }
 
 /**
@@ -1068,7 +1018,7 @@ function cellPatches(stepCell, kind) {
  * @param {object} opts - Fully-resolved rounding options.
  * @param {{kind: object, frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none',
  *          cellCap?: number}} pass
- * @returns {{cells: Array<{entry: object, patches: object[], linkFilteredIdx: number[]|null}>,
+ * @returns {{cells: Array<{entry: object, patches: object[]}>,
  *            maxMag: number|null, landedCells: number, missedCells: number,
  *            cellCount: number, overCap: boolean}}
  *   cells holds every cell in page order with its patches (empty means the
@@ -1096,7 +1046,7 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   const settings = Object.assign(resolveRoundingSettings(opts),
     { dateGranularity: opts.dateGranularity, timeGranularity: opts.timeGranularity });
   const { maxMag, cells: stepCells } = tablePatches(classified, settings, pass.frozenMaxMag);
-  if (writes === 'first' && kind.freezesMaxMagnitude) DR_MODEL.setTableMaxMagnitude(table, maxMag);
+  if (writes === 'first') DR_MODEL.setTableMaxMagnitude(table, maxMag);
 
   const written = writeTableCells(table, stepCells, { kind, writes });
   if (writes === 'first' && written.missedCells > 0) {
@@ -1117,12 +1067,11 @@ function writeTableCells(table, stepCells, { kind, writes }) {
   let missedCells = 0;
   for (const stepCell of stepCells) {
     const { entry } = stepCell;
-    const { patches, linkFilteredIdx } = cellPatches(stepCell, kind);
-    const flat = flatPatches(patches, entry.layout);
-    cells.push({ entry, patches: flat, linkFilteredIdx });
+    const flat = flatPatches(cellPatches(stepCell, kind), entry.layout);
+    cells.push({ entry, patches: flat });
     if (writes === 'none') continue;
     const held = DR_MODEL.hasTableOriginal(table, entry.cellObj.el);
-    const landed = flat.length > 0 ? writeCell(entry, flat, linkFilteredIdx) : 0;
+    const landed = flat.length > 0 ? writeCell(entry, flat) : 0;
     if (flat.length > 0 && landed > 0) landedCells++;
     else if (flat.length > 0) missedCells++;
     if (landed === 0 && held) releaseCell(table, entry.cellObj.el);
@@ -1236,8 +1185,8 @@ function reapplyRounding(table) {
 // with a different shape re-detects as a new table, raw and under the
 // shipped defaults, and the pass stops there. Otherwise the pass runs the
 // one simplification pass under the table's own settings and its magnitude
-// freeze, if it holds one, so a grid's scroll never shifts its rounding
-// basis, and a native table's max magnitude follows the page's values. A
+// freeze, if it holds one, so neither a grid's scroll nor a value the page
+// writes shifts the table's rounding basis. A
 // pass that simplifies a cell records the table as simplified.
 function runReapplyPass(table) {
   const wasActive = DR_MODEL.getActiveTable() === table;
@@ -1270,16 +1219,7 @@ function roundTable(table, options) {
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
   const kind = tableKindPass(adapter);
 
-  // The one simplification pass, on either table kind. A grid's first
-  // simplification computes the max magnitude from what is visible right
-  // now and stores it as the magnitude freeze, so every later pass of the
-  // re-apply observer (scroll, sort, page edit) reuses it instead of
-  // recomputing — otherwise a scroll that changes which rows are visible
-  // could shift the rounding basis mid-session. resetTable clears the freeze
-  // back to null, so a fresh roundTable() call (e.g. re-rounding after
-  // settings change) freezes again from its own first sight rather than
-  // reusing a stale value. A cell whose patches all skipped never counts
-  // toward the form.
+  // A re-apply reuses the freeze, so a scroll or page write keeps the basis.
   const { landedCells, cellCount } = simplifyTableCells(table, adapterRows, opts, {
     kind,
     frozenMaxMag: null,

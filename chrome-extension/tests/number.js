@@ -927,10 +927,11 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 (function ac2_filterLinkMatches_mixedCell() {
   withLinkCreateTreeWalker(function() {
     // Cell: "1234 and " + <a>5</a>  — innerText = "1234 and 5"
-    // We model: outsideText = "1234 and", anchor = "5"
-    const cell = makeLinkCell(['5'], '1234 and');
+    // We model: outsideText = "1234 and ", anchor = "5"; the matches count in
+    // the pieces' flat text, which filterLinkMatches reads without a layout.
+    const cell = makeLinkCell(['5'], '1234 and ');
 
-    const matches = extractNumbersInText(cell.innerText); // finds 1234 and 5
+    const matches = extractNumbersInText(cell._textNodes.map((node) => node.nodeValue).join('')); // finds 1234 and 5
     const filtered = filterLinkMatches(cell, matches);
 
     // '5' inside anchor must be dropped; '1234' outside must be kept.
@@ -1087,10 +1088,10 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
 
 (function quoteRegressionGuards() {
   // 5a. cell.innerText || cell.textContent is the read source (static analysis).
-  // Lives in the NativeTableAdapter (lib/dr-table/detect.js).
+  // Lives in the cell object (lib/dr-table/cells.js).
   const contentSrc = allContentSrc;
   eq('regression: read source is cell.innerText || cell.textContent',
-    contentSrc.includes('cell.innerText || cell.textContent'), true);
+    contentSrc.includes('cellEl.innerText || cellEl.textContent'), true);
 
   // 5b. Manifest has a valid semver version string.
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
