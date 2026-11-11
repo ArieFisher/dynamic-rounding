@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Before: `ROUND_DYNAMIC("Revenue 1 234\n567 units")` → `"Revenue 1,000,000 units"`
   After: `ROUND_DYNAMIC("Revenue 1 234\n567 units")` → `"Revenue 1 250\n550 units"`
 
+## [0.4.0] - 2026-11-11
+
 ## [0.3.10] - 2026-11-10
 
 ## [0.3.9] - 2026-11-09
