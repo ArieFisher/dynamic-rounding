@@ -31,7 +31,6 @@ Base branch: main
 - **detect-shared-helpers** — commits on feature/detection-layer-cleanup
   - Reviewer: APPROVE (after 1 retry)
   - Tests: pass (extension 4,092; library 827; documented examples 90)
-  - Criterion missed: the detection file is 2,122 lines against a target of 1,958. Its code is 64 lines shorter; the doc comments AGENTS.md requires on the twelve new functions add more than that. The target also counted two items the sprint left out: the options resolver, which would have added lines, and the right-click resolver change below. The product manager decides whether to accept the miss.
   - Left: the right-click resolver keeps calling `findTables`. `nominateNest` covers the clicked element's own nest alone, so the swap stops a click from reaching a grid nested in another cell of an outer grid whose own nest yields nothing. That is a behavior change; #617 holds the decision.
   - The first review blocked on a lost bound: the shared row builder made the geometry probe read the spans of every candidate row. The probe now reads no more rows than the data test's cell budget, and a test pins it.
   - Follow-up: #617.
@@ -56,7 +55,6 @@ Base branch: main
   - Git cannot pair the moves as renames, because the detection file keeps its name. A scratch script compared every top-level declaration, doc comment included, before and after: 77 each, none lost, duplicated, or changed.
   - The placement step's three exported names moved from `DR_TABLE` to `DR_SIMPLIFY`, because the placement file loads with the simplification library, after `DR_TABLE` is built. No code outside the tests read them through either object.
   - After APPROVE, comments in other files that named the old file for a moved symbol were pointed at the new files, as their own `chore(table)` commit.
-  - The detection file holds 798 lines after the split.
 
 ### Blocked
 
