@@ -79,7 +79,8 @@ This repository is public. Before staging a new file, answer this: does it serve
 ### Code style
 
 - Keep code simple and readable.
-- Document every new parameter in the language's doc-comment form, e.g. JSDoc or a Python docstring.
+- Document every new parameter in the language's doc-comment form, e.g. JSDoc or a Python docstring: one line per parameter, stating its type and meaning.
+- A comment beside code states a reason the code cannot show, in one line. No comment describes what the code does: the code states that, and a description drifts from the code it describes.
 - Keep existing function signatures backward compatible.
 
 ### Regression fixtures
