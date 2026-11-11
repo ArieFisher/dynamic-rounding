@@ -4840,3 +4840,228 @@ function makeSparselyBoxedGrid(boxed) {
   eq('artifact filter: an ancestor the style probe reports as positioned and off-screen gives true',
     isAccessibilityArtifact(probedTable, { styleProbe: probeOf(new Map([[probedAncestor, offscreen]])) }), true);
 })();
+
+// ---------------------------------------------------------------------------
+// One accessibility-artifact filter on both table kinds
+// ---------------------------------------------------------------------------
+//
+// Fixtures: AF_ARTIFACT_FORMS and AF_VISIBLE_FORMS in helpers.js. Each case
+// asserts the registry and the table pillbox together (afRegistered), through
+// the load-time scan and through the right-click.
+
+// A grid in any artifact form gets no registry entry, no table pillbox, and
+// no right-click resolution. The visible forms are the control: the same
+// grid registers.
+(function artifactFilter_aGridInAnArtifactFormIsSkippedOnBothPaths() {
+  for (const role of ['grid', 'table']) {
+    for (const form of AF_ARTIFACT_FORMS) {
+      const grid = afTable('grid', role);
+      const page = afPage([form.place(grid)]);
+      const probe = makeArtifactStyleProbe();
+      afScan(page);
+      eq(`artifact filter, ${role} role, ${form.name}: the load-time scan registers nothing and draws no pillbox`,
+        afRegistered(page).length, 0);
+      afForget(page);
+      eq(`artifact filter, ${role} role, ${form.name}: findTables lists nothing`,
+        findTables(page, { styleProbe: probe }).length, 0);
+      eq(`artifact filter, ${role} role, ${form.name}: the right-click resolves nothing`,
+        afRightClick(page, grid) === null, true);
+      eq(`artifact filter, ${role} role, ${form.name}: the right-click path registers nothing`,
+        afRegistered(page).length, 0);
+    }
+    for (const form of AF_VISIBLE_FORMS) {
+      const grid = afTable('grid', role);
+      const page = afPage([form.place(grid)]);
+      afScan(page);
+      eq(`artifact filter, ${role} role, ${form.name}: the load-time scan registers the grid`,
+        afSame(afRegistered(page), [grid]), true);
+      afForget(page);
+      const resolved = afRightClick(page, grid);
+      eq(`artifact filter, ${role} role, ${form.name}: the right-click resolves the grid as new`,
+        resolved && [resolved.handle === grid, resolved.isNew], [true, true]);
+      afForget(page);
+    }
+  }
+})();
+
+// The native table gets the same verdict from the same forms.
+(function artifactFilter_aNativeTableInAnArtifactFormIsSkipped() {
+  for (const form of AF_ARTIFACT_FORMS) {
+    const table = afTable('native');
+    const page = afPage([form.place(table)]);
+    afScan(page);
+    eq(`artifact filter, native, ${form.name}: the load-time scan registers nothing`,
+      afRegistered(page).length, 0);
+    eq(`artifact filter, native, ${form.name}: findTables lists nothing`,
+      findTables(page, { styleProbe: inlineStyleProbe }).length, 0);
+    afForget(page);
+  }
+  for (const form of AF_VISIBLE_FORMS) {
+    const table = afTable('native');
+    const page = afPage([form.place(table)]);
+    afScan(page);
+    eq(`artifact filter, native, ${form.name}: the load-time scan registers the table`,
+      afSame(afRegistered(page), [table]), true);
+    afForget(page);
+  }
+})();
+
+// An added node goes through the same filter on both kinds.
+(function artifactFilter_anAddedNodeInAnArtifactFormIsSkipped() {
+  for (const kind of ['native', 'grid']) {
+    for (const form of AF_ARTIFACT_FORMS) {
+      const table = afTable(kind);
+      const page = afPage([form.place(table)]);
+      afAddNode(page);
+      eq(`artifact filter, added node, ${kind}, ${form.name}: nothing registers`,
+        afRegistered(page).length, 0);
+      afForget(page);
+    }
+    const table = afTable(kind);
+    const page = afPage([table]);
+    afAddNode(page);
+    eq(`artifact filter, added node, ${kind}, no marks: the table registers`, afSame(afRegistered(page), [table]), true);
+    afForget(page);
+  }
+})();
+
+// The geometry probe rejects an unmarked grid at its entry: it reads no
+// layout, and the role short-circuit does not rescue a marked grid.
+(function artifactFilter_theGeometryProbeRejectsAnArtifactAtItsEntry() {
+  const unmarkedGrid = (role) => makeGridContainer([
+    makeGridRow([{ text: 'Name', width: 80 }, { text: '1234' }], 'row', 20),
+    makeGridRow([{ text: 'Foo', width: 80 }, { text: '5678' }], 'row', 20),
+    makeGridRow([{ text: 'Bar', width: 80 }, { text: '9012' }], 'row', 20),
+    makeGridRow([{ text: 'Qux', width: 80 }, { text: '3456' }], 'row', 20),
+    makeGridRow([{ text: 'Etc', width: 80 }, { text: '7890' }], 'row', 20),
+  ], 'flex', role, '');
+  const withMarks = (el, attrs, style) => {
+    const role = el.getAttribute('role');
+    el.getAttribute = (name) => (name === 'role' ? role : (Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null));
+    el.style = style || {};
+    return el;
+  };
+  for (const role of [null, 'grid']) {
+    const label = role ? 'a role-bearing grid' : 'an unmarked grid';
+    const control = makeArtifactStyleProbe();
+    eq(`geometry probe, ${label}: a grid with no marks passes (the cases below reject it for the marks alone)`,
+      looksLikeGrid(unmarkedGrid(role), { styleProbe: control }), true);
+    eq(`geometry probe, ${label}: the pass reads layout, so the zero reads below stand for an entry rejection`,
+      control.layoutReads > 0, true);
+
+    const hiddenSelf = withMarks(unmarkedGrid(role), { 'aria-hidden': 'true' });
+    const probeSelf = makeArtifactStyleProbe();
+    eq(`geometry probe, ${label}: aria-hidden on the grid is rejected`,
+      looksLikeGrid(hiddenSelf, { styleProbe: probeSelf }), false);
+    eq(`geometry probe, ${label}: aria-hidden on the grid reads no layout`, probeSelf.layoutReads, 0);
+
+    const hiddenAncestor = withMarks(unmarkedGrid(role), {});
+    const outer = makePhantomEl({ attrs: { 'aria-hidden': 'true' } });
+    chainParents(hiddenAncestor, makePhantomEl(), outer);
+    const probeAncestor = makeArtifactStyleProbe();
+    eq(`geometry probe, ${label}: aria-hidden on an ancestor is rejected`,
+      looksLikeGrid(hiddenAncestor, { styleProbe: probeAncestor }), false);
+    eq(`geometry probe, ${label}: aria-hidden on an ancestor reads no layout`, probeAncestor.layoutReads, 0);
+
+    const offscreenSelf = withMarks(unmarkedGrid(role), {}, { position: 'absolute', left: AF_OFFSCREEN_LEFT });
+    const probeOffscreen = makeArtifactStyleProbe();
+    eq(`geometry probe, ${label}: a positioned grid drawn off-screen is rejected`,
+      looksLikeGrid(offscreenSelf, { styleProbe: probeOffscreen }), false);
+    eq(`geometry probe, ${label}: the off-screen grid reads no layout`, probeOffscreen.layoutReads, 0);
+
+    const offscreenAncestor = withMarks(unmarkedGrid(role), {});
+    chainParents(offscreenAncestor, makePositionedAncestor({ left: AF_OFFSCREEN_LEFT }));
+    const probeBox = makeArtifactStyleProbe();
+    eq(`geometry probe, ${label}: a grid inside an off-screen positioned box is rejected`,
+      looksLikeGrid(offscreenAncestor, { styleProbe: probeBox }), false);
+    eq(`geometry probe, ${label}: the grid inside the off-screen box reads no layout`, probeBox.layoutReads, 0);
+  }
+})();
+
+// The right-click reaches the geometry probe for a grid with no role; the
+// probe's entry rejection holds on that route too.
+(function artifactFilter_aRoleLessHiddenGridResolvesNothingOnARightClick() {
+  const rows = ['a', 'b', 'c', 'd', 'e'].map((label) => makeGridRow([{ text: label, width: 80 }, { text: '1234' }], 'row', 20));
+  const container = makeGridContainer(rows, 'flex', null, '');
+  rows.forEach((row) => { row.parentElement = container; row.parentNode = container; });
+  rows[0].children[1].parentElement = rows[0];
+  const hidden = { 'aria-hidden': 'true' };
+  container.getAttribute = (name) => (hidden[name] === undefined ? null : hidden[name]);
+  const body = { nodeType: 1, tagName: 'BODY', parentElement: null, parentNode: null, getAttribute: () => null };
+  container.parentElement = body;
+  container.parentNode = body;
+  const click = rows[0].children[1];
+  eq('artifact filter: a click inside a hidden role-less grid resolves nothing',
+    findTargetTable(click, { doc: { body }, isRegistered: () => false, styleProbe: makeArtifactStyleProbe() }) === null, true);
+  hidden['aria-hidden'] = 'false';
+  const resolved = findTargetTable(click, { doc: { body }, isRegistered: () => false, styleProbe: makeArtifactStyleProbe() });
+  eq('artifact filter: the same click resolves the grid once it is not hidden (control)',
+    resolved && resolved.handle === container, true);
+})();
+
+// The chart check is gone: a labelled svg beside or inside a positioned table
+// changes nothing, on both kinds.
+(function artifactFilter_aLabelledSvgNoLongerMakesATableAnArtifact() {
+  const labelled = () => rwEl('svg', { 'aria-label': 'Sorted ascending' }, []);
+  const holdsSvgInACell = (table) => {
+    const cell = table.querySelectorAll('td')[0] || table.querySelectorAll('[role="cell"]')[0];
+    rwSetChildren(cell, cell.childNodes.concat([labelled()]));
+    return table;
+  };
+  const cases = [
+    { name: 'a positioned table holding a labelled svg in a cell',
+      build: (kind) => { const t = holdsSvgInACell(afTable(kind)); afMark(t, {}, { position: 'relative' }); return [t, [t]]; } },
+    { name: 'a table beside a labelled svg in a positioned box',
+      build: (kind) => { const t = afTable(kind); return [t, [afBox([t, labelled()], {}, { position: 'relative' })]]; } },
+    { name: 'a table in a positioned box that holds a labelled svg further down',
+      build: (kind) => { const t = afTable(kind); return [t, [afBox([afBox([t]), afBox([labelled()])], {}, { position: 'absolute', left: '0px' })]]; } },
+  ];
+  for (const kind of ['native', 'grid']) {
+    for (const { name, build } of cases) {
+      const [table, children] = build(kind);
+      const page = afPage(children);
+      eq(`artifact filter, ${kind}: ${name} is not an accessibility artifact`,
+        isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
+      afScan(page);
+      eq(`artifact filter, ${kind}: ${name} registers on the load-time scan`, afSame(afRegistered(page), [table]), true);
+      afForget(page);
+      eq(`artifact filter, ${kind}: ${name} is listed by findTables`,
+        afSame(findTables(page, { styleProbe: inlineStyleProbe }).map((found) => found.handle), [table]), true);
+    }
+  }
+})();
+
+// Native behavior stays as it was: an added table holding a data table
+// registers both, and the load-time scan registers the data tables in
+// document order, leaving the artifacts out.
+(function artifactFilter_nativeBehaviorIsUnchanged() {
+  const outer = rwDrawTable('native', [
+    { part: 'head', rows: [[{ pieces: 'Region', header: 'col' }, { pieces: '2023', header: 'col' }, { pieces: 'By quarter', header: 'col' }]] },
+    { part: 'body', rows: [['North', '4,821', { pieces: [], nested: {
+      sections: [{ part: 'body', rows: [['Q1', '1,234'], ['Q2', '3,587']], grouped: true }],
+    } }], ['South', '2,734', '']], grouped: true },
+  ]).table;
+  const inner = outer.querySelectorAll('table')[0];
+  const addedPage = afPage([outer]);
+  afAddNode(outer);
+  eq('native added node: a table holding a nested data table registers both, outer first',
+    afSame(afCandidates(addedPage).filter((el) => DR_MODEL.hasTable(el)), [outer, inner]), true);
+  eq('native added node: both gain a pillbox', [outer, inner].map((el) => tablePillboxes.has(el)), [true, true]);
+  afForget(addedPage);
+
+  const first = afTable('native');
+  const hiddenOne = afMark(afTable('native'), { 'aria-hidden': 'true' });
+  const second = afTable('native');
+  const offscreenOne = afBox([afTable('native')], {}, { position: 'absolute', left: AF_OFFSCREEN_LEFT });
+  const third = afBox([afTable('native')], { 'aria-hidden': 'false' });
+  const page = afPage([first, hiddenOne, second, offscreenOne, third]);
+  const order = [];
+  const savedCreate = createPillboxForTable;
+  createPillboxForTable = function (table) { order.push(table); return savedCreate.apply(this, arguments); };
+  try { afScan(page); } finally { createPillboxForTable = savedCreate; }
+  eq('native load-time scan: the data tables register in document order and the artifacts stay out',
+    afSame(order, [first, second, third.querySelectorAll('table')[0]]), true);
+  eq('native load-time scan: findTables lists the same tables in the same order',
+    afSame(findTables(page, { styleProbe: inlineStyleProbe }).map((found) => found.handle), order), true);
+  afForget(page);
+})();

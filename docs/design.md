@@ -321,7 +321,7 @@ A capture that shows a table feature this list lacks adds a row.
 | `hidden-row` | Hidden row | `<tr hidden>` | `row` with `hidden` | same | |
 | `hidden-cell` | Hidden cell | `<td hidden>` | `cell` with `hidden` | same | |
 | `hidden-fragment` | Hidden text inside a visible cell, such as a sort key | a hidden `<span>` in a `<td>` | a hidden `<span>` in a `cell` | different | #525 |
-| `accessibility-artifact` | Table hidden from screen readers or drawn off-screen | `aria-hidden="true"` on the `<table>` or an ancestor, or an off-screen left offset | the same marks on the grid or an ancestor | not yet tested | The test draws each form hidden and again drawn off-screen, and expects neither to register. |
+| `accessibility-artifact` | Table hidden from screen readers or drawn off-screen | `aria-hidden="true"` on the `<table>` or an ancestor, or an off-screen left offset | the same marks on the grid or an ancestor | same | |
 | `column-group` | Column group | `<colgroup>` and `<col>` | none | no pair | The accessibility roles define no column element. |
 | `header-reference` | Cell that names its header cells | `headers` on a `<td>` | none | no pair | The accessibility roles define no cell-to-header reference. |
 | `column-index` | Column position on a grid that draws some of its columns | none | `aria-colindex` | no pair | A native table draws every column. |

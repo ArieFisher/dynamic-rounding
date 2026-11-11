@@ -4658,3 +4658,114 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
       { rows: 1, warns: 0, simplified: '4,300' });
   });
 })();
+
+// --- A pending table and the accessibility artifact filter ---
+//
+// A chain root that is an artifact starts no observer, and a pending table
+// whose chain root turns into an artifact drops its observer on the next
+// re-test. The fixture grid reads its attributes and style from a table the
+// case edits, the way a page edits them.
+
+function makeHideableGrid(role, childNodes) {
+  const attrs = { role };
+  const node = makeDgNode('DIV', 'pending-artifact', role, childNodes || []);
+  node.getAttribute = (name) => (Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null);
+  node.setAttribute = (name, value) => { attrs[name] = value; };
+  return node;
+}
+
+function makePlainBox(child) {
+  const box = makeDgNode('DIV', 'plain-box', null, [child]);
+  const attrs = {};
+  box.getAttribute = (name) => (Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null);
+  box.setAttribute = (name, value) => { attrs[name] = value; };
+  return box;
+}
+
+(function pendingArtifact_anArtifactChainRootStartsNoObserver() {
+  const forms = [
+    { name: 'aria-hidden on the grid', build: () => { const g = makeHideableGrid('grid'); g.setAttribute('aria-hidden', 'true'); return [g, g]; } },
+    { name: 'aria-hidden on the parent', build: () => {
+      const g = makeHideableGrid('grid'); const box = makePlainBox(g); box.setAttribute('aria-hidden', 'true'); return [g, box]; } },
+    { name: 'the positioned grid drawn off-screen', build: () => {
+      const g = makeHideableGrid('grid'); g.style = { position: 'absolute', left: AF_OFFSCREEN_LEFT }; return [g, g]; } },
+  ];
+  for (const form of forms) {
+    const [grid, added] = form.build();
+    const outcome = nominateNest(grid, { isRegistered: DR_MODEL.hasTable, styleProbe: inlineStyleProbe });
+    eq(`pending artifact, ${form.name}: the nomination outcome is artifact`,
+      [outcome.outcome, outcome.selected === null, outcome.chainSize], ['artifact', true, 0]);
+
+    withPendingHarness(function ({ observers, timers }) {
+      consumeNomination(outcome);
+      eq(`pending artifact, ${form.name}: consuming the outcome holds no pending table`, pendingRoots.has(grid), false);
+      eq(`pending artifact, ${form.name}: consuming the outcome starts no observer`, observers.length, 0);
+
+      const savedStyle = global.getComputedStyle;
+      global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+      try {
+        withPillboxDocumentMock(function () { injectPillboxesForAddedNode(added); });
+        eq(`pending artifact, ${form.name}: the added-node pass holds no pending table`, pendingRoots.has(grid), false);
+        eq(`pending artifact, ${form.name}: the added-node pass starts no observer`, observers.length, 0);
+
+        const page = makePlainBox(added);
+        const savedQsa = global.document.querySelectorAll;
+        withPillboxDocumentMock(function () {
+          global.document.querySelectorAll = (selector) => page.querySelectorAll(selector);
+          injectTablePillboxes();
+        });
+        global.document.querySelectorAll = savedQsa;
+        eq(`pending artifact, ${form.name}: the load-time scan holds no pending table`, pendingRoots.has(grid), false);
+        eq(`pending artifact, ${form.name}: the load-time scan starts no observer`, observers.length, 0);
+      } finally {
+        global.getComputedStyle = savedStyle;
+      }
+      eq(`pending artifact, ${form.name}: no timer is scheduled`, timers.length, 0);
+    });
+    eq(`pending artifact, ${form.name}: the grid stays unregistered`, DR_MODEL.hasTable(grid), false);
+  }
+})();
+
+(function pendingArtifact_aChainRootThatBecomesAnArtifactDropsItsObserver() {
+  const turns = [
+    { name: 'aria-hidden set on the grid', turn: (grid) => grid.setAttribute('aria-hidden', 'true') },
+    { name: 'aria-hidden set on the parent', turn: (grid, box) => box.setAttribute('aria-hidden', 'true') },
+    { name: 'the grid moved off-screen', turn: (grid) => { grid.style = { position: 'absolute', left: AF_OFFSCREEN_LEFT }; } },
+    { name: 'the parent moved off-screen', turn: (grid, box) => { box.style = { position: 'fixed', left: AF_OFFSCREEN_LEFT }; } },
+  ];
+  for (const filled of [false, true]) {
+    for (const { name, turn } of turns) {
+      const label = `${name}, ${filled ? 'rows arrived' : 'still empty'}`;
+      const grid = makeHideableGrid('grid');
+      const box = makePlainBox(grid);
+      const before = DR_MODEL.getRegisteredTables().length;
+
+      withPendingHarness(function ({ observers, timers }) {
+        withPillboxDocumentMock(function () { injectPillboxesForAddedNode(grid); });
+        eq(`pending artifact turn, ${label}: the empty grid is held as a pending table`, pendingRoots.has(grid), true);
+        eq(`pending artifact turn, ${label}: one observer watches it`, observers.length, 1);
+
+        if (filled) PENDING_FILL_ROWS.forEach((cellTexts, i) => appendDgChild(grid, makeDgRow(i, cellTexts)));
+        turn(grid, box);
+
+        const savedStyle = global.getComputedStyle;
+        global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+        try {
+          withPillboxDocumentMock(function () {
+            observers[0].trigger();
+            eq(`pending artifact turn, ${label}: one mutation schedules one re-test`, runPendingRetestTimers(timers), 1);
+          });
+        } finally {
+          global.getComputedStyle = savedStyle;
+        }
+
+        eq(`pending artifact turn, ${label}: the re-test drops the pending table`, pendingRoots.has(grid), false);
+        eq(`pending artifact turn, ${label}: the re-test disconnects the observer`, observers[0].disconnectCount, 1);
+        eq(`pending artifact turn, ${label}: the maps hold nothing for the grid`,
+          [pendingObservers.has(grid), pendingRetestCounts.has(grid), pendingRetestTimers.has(grid)], [false, false, false]);
+        eq(`pending artifact turn, ${label}: the grid registers nothing and gains no pillbox`,
+          [DR_MODEL.hasTable(grid), tablePillboxes.has(grid), DR_MODEL.getRegisteredTables().length - before], [false, false, 0]);
+      });
+    }
+  }
+})();

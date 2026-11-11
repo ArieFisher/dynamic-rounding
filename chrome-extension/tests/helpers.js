@@ -3068,13 +3068,15 @@ function tkCellTexts(table) {
 
 // One kind's reading of one pair under one settings object: each data table
 // detection finds, in the order it finds them, with each cell's text before
-// and after that table alone is simplified. Each table is simplified on a
+// and after that table alone is simplified. A pair's `place` function puts the
+// drawn table in its page (inside a hidden or off-screen box, for example). Each table is simplified on a
 // fresh drawing, so a table nested in another reads the same whichever one
 // the user turns on. A grid carries the table role unless the pair names
 // another, since the cell role belongs inside it.
 function tkRead(kind, pair, settings) {
   const drawOpts = Object.assign({ gridRole: 'table' }, pair.opts);
-  const foundIn = (table) => findTables(rwEl('div', {}, [table]))
+  const place = pair.place || ((table) => table);
+  const foundIn = (table) => findTables(rwEl('div', {}, [place(table)]), { styleProbe: inlineStyleProbe })
     .map((found) => found.handle).filter((el) => isDataTable(el));
   // The count runs on the rewrite page too: the data test reads each cell
   // through the per-cell read the pass runs, and its link filter walks the
@@ -3325,4 +3327,130 @@ function drawBareMarkupTable(kind, rows) {
 function readColumnPlacement(table) {
   return makeAdapter(table).getRows()
     .map((row) => row.getCells().map((cell) => [cell.columnIndex, cell.columnSpan]));
+}
+
+// =============================================================================
+// Accessibility artifact fixtures: one data table of either kind, placed in a
+// page the way a hidden or off-screen copy sits in a real page. The model
+// elements carry their position and left offset in `style`, which
+// inlineStyleProbe reads.
+// =============================================================================
+
+const AF_ROWS = [['North', '4,821', '9,187'], ['South', '2,734', '6,051']];
+const AF_OFFSCREEN_LEFT = '-10000px';
+
+// The probe the artifact filter and the geometry probe read through: layout
+// counts every read of the display value and of a width, and the style comes
+// from the element's `style`.
+function makeArtifactStyleProbe() {
+  const probe = {
+    layoutReads: 0,
+    getComputedStyle(el) {
+      const computed = Object.assign({ visibility: 'visible', position: 'static', left: '' }, el && el.style);
+      Object.defineProperty(computed, 'display', {
+        get() { probe.layoutReads++; return 'flex'; },
+      });
+      return computed;
+    },
+    getOffsetWidth(el) { probe.layoutReads++; return (el && typeof el.offsetWidth === 'number') ? el.offsetWidth : -1; },
+    getBox() { return null; },
+  };
+  return probe;
+}
+
+// One data table: a native table, or a grid carrying `role` (grid or table).
+function afTable(kind, role) {
+  return rwDrawTable(kind, [{ part: 'body', rows: AF_ROWS, grouped: true }], { gridRole: role || 'grid' }).table;
+}
+
+// Set attributes and style on an element and return it.
+function afMark(el, attrs, style) {
+  Object.keys(attrs || {}).forEach((name) => el.setAttribute(name, attrs[name]));
+  el.style = Object.assign({}, el.style, style || {});
+  return el;
+}
+
+function afBox(children, attrs, style) {
+  return afMark(rwEl('div', {}, children), attrs, style);
+}
+
+function afPage(children) {
+  return rwEl('body', {}, children);
+}
+
+// Every element of the page that could register: native tables and elements
+// carrying a grid or table role.
+function afCandidates(page) {
+  return page.querySelectorAll('table').concat(page.querySelectorAll('[role="grid"], [role="table"]'));
+}
+
+// The candidates that hold a registry entry or a table pillbox.
+function afRegistered(page) {
+  return afCandidates(page).filter((el) => DR_MODEL.hasTable(el) || tablePillboxes.has(el));
+}
+
+function afForget(page) {
+  afCandidates(page).forEach(forgetRegisteredTable);
+}
+
+// The load-time scan over the page.
+function afScan(page) {
+  withPillboxDocumentMock(function () {
+    const saved = global.getComputedStyle;
+    global.document.querySelectorAll = (selector) => page.querySelectorAll(selector);
+    global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+    try { injectTablePillboxes(); } finally { global.getComputedStyle = saved; }
+  });
+}
+
+// The added-node pass over one node.
+function afAddNode(node) {
+  withPillboxDocumentMock(function () {
+    const saved = global.getComputedStyle;
+    global.getComputedStyle = inlineStyleProbe.getComputedStyle;
+    try { injectPillboxesForAddedNode(node); } finally { global.getComputedStyle = saved; }
+  });
+}
+
+// The right-click on the first cell of `table` inside `page`.
+function afRightClick(page, table) {
+  const cell = table.querySelectorAll('[role="cell"]')[0] || table.querySelectorAll('td')[0];
+  return findTargetTable(cell, {
+    doc: { body: page }, isRegistered: DR_MODEL.hasTable, styleProbe: inlineStyleProbe,
+  });
+}
+
+// Each placement draws the table hidden from screen readers or off-screen.
+// `place` takes the table and returns the element to put in the page.
+const AF_ARTIFACT_FORMS = [
+  { name: 'aria-hidden on the table', place: (table) => afMark(table, { 'aria-hidden': 'true' }) },
+  { name: 'aria-hidden on the parent', place: (table) => afBox([table], { 'aria-hidden': 'true' }) },
+  { name: 'aria-hidden on a distant ancestor',
+    place: (table) => afBox([afBox([afBox([table])])], { 'aria-hidden': 'true' }) },
+  { name: 'a positioned ancestor drawn off-screen',
+    place: (table) => afBox([table], {}, { position: 'absolute', left: AF_OFFSCREEN_LEFT }) },
+  { name: 'the positioned table itself drawn off-screen',
+    place: (table) => afMark(table, {}, { position: 'absolute', left: AF_OFFSCREEN_LEFT }) },
+  { name: 'a positioned ancestor at the off-screen threshold',
+    place: (table) => afBox([table], {}, { position: 'relative', left: `${DR_DETECTION_SETTINGS.offscreenLeftPx}px` }) },
+];
+
+// Each placement draws a table that stays on the page: the artifact filter
+// must pass it.
+const AF_VISIBLE_FORMS = [
+  { name: 'no marks', place: (table) => table },
+  { name: 'aria-hidden="false" on the parent', place: (table) => afBox([table], { 'aria-hidden': 'false' }) },
+  { name: 'an off-screen left offset on an ancestor that is not positioned',
+    place: (table) => afBox([table], {}, { left: AF_OFFSCREEN_LEFT }) },
+  { name: 'a positioned ancestor one pixel inside the off-screen threshold',
+    place: (table) => afBox([table], {}, { position: 'relative', left: `${DR_DETECTION_SETTINGS.offscreenLeftPx + 1}px` }) },
+  { name: 'an on-screen positioned parent inside an off-screen positioned box',
+    place: (table) => afBox([afBox([table], {}, { position: 'relative', left: '0px' })], {},
+      { position: 'absolute', left: AF_OFFSCREEN_LEFT }) },
+];
+
+// Whether two lists hold the same elements in the same order. eq compares
+// through JSON, which cannot serialize a model element.
+function afSame(actual, expected) {
+  return actual.length === expected.length && actual.every((el, i) => el === expected[i]);
 }
