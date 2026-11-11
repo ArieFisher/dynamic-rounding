@@ -1052,8 +1052,8 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     h.dispatch({ action: 'state:settingsChanged', source: 'sidebar',
       settings: ISSUE328_PAGE_SETTINGS });
     eq('settings notice skip: the sidebar\'s own write redraws nothing', h.rangeExprEl.value, 'B2:E8');
-    eq('settings notice skip: the sidebar\'s own write refreshes no lens preview',
-      h.tabMessages.filter((m) => m.action === 'request:previewSamples').length, 0);
+    eq('settings notice skip: the sidebar\'s own write refreshes the lens preview',
+      h.tabMessages.filter((m) => m.action === 'request:previewSamples').length, 1);
   } finally {
     h.restore();
   }

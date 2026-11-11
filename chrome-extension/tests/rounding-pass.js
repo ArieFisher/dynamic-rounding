@@ -4315,9 +4315,6 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
-// --- The lens preview rounds against the table's magnitude freeze, so its
-// samples match the cells after the page writes a value of a larger order of
-// magnitude. ---
 (function freeze04_theLensPreviewReadsTheMagnitudeFreeze() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
@@ -4328,6 +4325,21 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
     eq(`lens preview (${kind}): the preview max magnitude is the frozen one`, preview.maxMag, 3);
     eq(`lens preview (${kind}): the top band holds the larger value and a magnitude-3 value`,
       preview.samples.top.map((s) => s.num), [98765, 5678]);
+  });
+})();
+
+(function freeze05_thePreviewFollowsTheFreezeAfterASettingsWrite() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build(RW_ROWS);
+    roundTableUnder(t.table, RW_OPTS);
+    t.write(0, 0, '98,765');
+    page.settle();
+    resetTable(t.table);
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`lens preview (${kind}): after a settings write the preview max magnitude is the table's current freeze`,
+      extractPreviewSamples(t.table).maxMag, DR_MODEL.getTableMaxMagnitude(t.table));
+    eq(`lens preview (${kind}): the current freeze is the larger value's magnitude`,
+      DR_MODEL.getTableMaxMagnitude(t.table), 4);
   });
 })();
 

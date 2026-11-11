@@ -746,8 +746,7 @@ function numericPreviewCells(entries) {
 // Pick up to 2 top-band samples and one sample per other-band magnitude for
 // the lens preview. Bucketed by magnitude (floor(log10|num|)) so the lens
 // preview shows the offset_top and offset_other split that roundCellSetAware
-// applies to the table. The max magnitude is the table's magnitude freeze
-// when it holds one, so the samples match the cells.
+// applies to the table.
 function extractPreviewSamples(table) {
   // The table's own settings, not shipped defaults — otherwise the lens
   // preview and the table disagree the moment the sidebar's slider or
@@ -1250,16 +1249,7 @@ function roundTable(table, options) {
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
   const kind = tableKindPass(adapter);
 
-  // The one simplification pass, on either table kind. The first
-  // simplification computes the max magnitude from the values on the page
-  // right now and stores it as the magnitude freeze, so every later pass of
-  // the re-apply observer (scroll, sort, page edit) reuses it instead of
-  // recomputing — otherwise a scroll that changes which rows are visible,
-  // or a value the page writes, could shift the rounding basis mid-session. resetTable clears the freeze
-  // back to null, so a fresh roundTable() call (e.g. re-rounding after
-  // settings change) freezes again from its own first sight rather than
-  // reusing a stale value. A cell whose patches all skipped never counts
-  // toward the form.
+  // A re-apply reuses the freeze, so a scroll or a page write never shifts the basis.
   const { landedCells, cellCount } = simplifyTableCells(table, adapterRows, opts, {
     kind,
     frozenMaxMag: null,
