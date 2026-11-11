@@ -62,6 +62,12 @@ Base branch: main
   - The new comparison test fails on the pre-sprint code for native tables and passes on both kinds now.
   - The product manager added two changes the review surfaced: the lens preview reads the table's magnitude freeze, and the sidebar refreshes the lens preview after its own settings write, so the preview matches the cells after a settings change computes the max magnitude fresh.
 
+- **header-and-span-parity** — commits on feature/detection-layer-cleanup
+  - Reviewer: APPROVE (after 1 retry)
+  - Tests: pass (extension 4,203; library 827; documented examples 90)
+  - The first review blocked on the span reader: a `td` reports a span of 1 with no `colspan` attribute, so reading the property first dropped a grid cell's `aria-colspan`. The reader now takes the HTML attribute when the element carries one, else the accessibility attribute.
+  - Product manager's choice: a first row of header cells alone counts as a header row only on a table that groups its rows. A grid that groups nothing keeps the column count alone, because a virtualized grid can scroll its first row away and the table would then register fresh.
+
 ### Blocked
 
 None.
