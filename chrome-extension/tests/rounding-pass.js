@@ -4924,3 +4924,125 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       { form: 'original', text: '8,765', marked: false });
   });
 })();
+
+// =============================================================================
+// Placement by digits, without the words switch. A cell that rounds in place
+// holds one match per number, measured over its digits. The placement step
+// keeps each match whose digits sit in one text piece and leaves the others as
+// written; a cell with no match left stays as written. Every case runs on a
+// native table and on a grid. Invented values under RW_OPTS: the table's other
+// cells hold 2,468, 3,579 and 4,321, so the max magnitude is 3 and
+// 5,678 -> 5,700, 1,234 -> 1,200.
+// =============================================================================
+
+// The pieces of the cell at (0, 0) after the pass.
+const placeCellAfter = (build, rows, opts) => {
+  const t = build(rows);
+  roundTableUnder(t.table, opts || RW_OPTS);
+  return lfPieces(t, 0, 0);
+};
+
+// A split number and a whole number in one cell: the whole number rounds and
+// the split number stays as written.
+(function placement_aWholeNumberRoundsBesideASplitNumber() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    eq(`placement split and whole (${kind}): the whole number rounds and the split number stays`,
+      placeCellAfter(build, LF_ROWS(['1,2', { tag: 'b', text: '34' }, ' to 5,678'])),
+      ['1,2', '34', ' to 5,700']);
+    eq(`placement whole and split (${kind}): the order of the two numbers does not matter`,
+      placeCellAfter(build, LF_ROWS(['5,678 to 1,2', { tag: 'b', text: '34' }])),
+      ['5,700 to 1,2', '34']);
+    eq(`placement split only (${kind}): a cell with no whole number stays as written`,
+      placeCellAfter(build, LF_ROWS(['ref 1,2', { tag: 'b', text: '34' }])),
+      ['ref 1,2', '34']);
+    const t = build(LF_ROWS(['1,2', { tag: 'b', text: '34' }, ' to 5,678']));
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`placement split and whole (${kind}): the cell counts as simplified`,
+      t.cell(0, 0).classList.contains('dr-ext-rounded'), true);
+  });
+})();
+
+// A currency sign in its own piece beside the number rounds the digits and
+// leaves the sign where it sits.
+(function placement_aSignInItsOwnPieceStaysWhereItSits() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    eq(`placement sign piece (${kind}): the digits round and the dollar sign stays in its piece`,
+      placeCellAfter(build, LF_ROWS(['$', '1,234'])), ['$', '1,200']);
+    eq(`placement sign piece (${kind}): a sign inside a styled piece stays too`,
+      placeCellAfter(build, LF_ROWS([{ tag: 'b', text: '$' }, { tag: 'i', text: '1,234' }])), ['$', '1,200']);
+    eq(`placement sign piece (${kind}): a decimal number after the sign rounds`,
+      placeCellAfter(build, LF_ROWS(['$', '337.91'])), ['$', '300']);
+  });
+})();
+
+// Numbers on separate lines in separate pieces round one by one.
+(function placement_numbersOnSeparateLinesRoundOneByOne() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    eq(`placement lines (${kind}): 1,234 above 5,678 in two pieces rounds both`,
+      placeCellAfter(build, LF_ROWS(['1,234', '\n', '5,678'])), ['1,200', '\n', '5,700']);
+    eq(`placement lines (${kind}): 1500 above 1600 in two pieces rounds both`,
+      placeCellAfter(build, LF_ROWS(['1500\n', '1600'])), ['1,500\n', '1,600']);
+    eq(`placement lines (${kind}): 125 above 126 in two pieces rounds both`,
+      placeCellAfter(build, LF_ROWS(['125\n', '126'])), ['100\n', '100']);
+  });
+})();
+
+// Words around numbers: the numbers round under the defaults and under every
+// combination of the percentages and currencies switches. A percent cell
+// stays as written with the percentages switch off, a currency cell with the
+// currencies switch off.
+(function placement_numbersInsideWordsRoundUnderEverySwitchCombination() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    for (const currency of [true, false]) {
+      for (const percent of [true, false]) {
+        const opts = Object.assign({}, RW_OPTS, { simplifyMixedCurrency: currency, simplifyMixedPercent: percent });
+        const label = `placement words (${kind}, currencies ${currency ? 'on' : 'off'}, percentages ${percent ? 'on' : 'off'})`;
+        eq(`${label}: a cell of words and plain numbers rounds`,
+          placeCellAfter(build, LF_ROWS('Revenue 1,234 units, up 5,678 units'), opts),
+          ['Revenue 1,200 units, up 5,700 units']);
+        eq(`${label}: a percent cell ${percent ? 'rounds' : 'stays as written'}`,
+          placeCellAfter(build, LF_ROWS('Up 1,234% on the year'), opts),
+          [percent ? 'Up 1,200% on the year' : 'Up 1,234% on the year']);
+        eq(`${label}: a currency cell ${currency ? 'rounds' : 'stays as written'}`,
+          placeCellAfter(build, LF_ROWS('Revenue $1,234 total'), opts),
+          [currency ? 'Revenue $1,200 total' : 'Revenue $1,234 total']);
+      }
+    }
+    eq(`placement words (${kind}, shipped defaults): words around a number round`,
+      placeCellAfter(build, LF_ROWS('Revenue 1,234 units'), Object.assign({}, DR_DEFAULTS, RW_OPTS)),
+      ['Revenue 1,200 units']);
+  });
+})();
+
+// A number inside a link beside a currency sign outside the link stays.
+(function placement_aLinkedNumberBesideASignOutsideTheLinkStays() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    eq(`placement link (${kind}): the sign outside the link and the linked number stay`,
+      placeCellAfter(build, LF_ROWS(['$', { tag: 'a', text: '1,234' }])), ['$', '1,234']);
+    eq(`placement link (${kind}): a plain number beside the linked number rounds`,
+      placeCellAfter(build, LF_ROWS(['5,678 and ', { tag: 'a', text: '1,234' }])), ['5,700 and ', '1,234']);
+  });
+})();
+
+// The debug row for a split number reads the same on both kinds.
+(function placement_aSplitNumberWritesTheSameDebugRowOnBothKinds() {
+  const rowsByKind = {};
+  for (const [name, spec] of [['split only', ['ref 1,2', { tag: 'b', text: '34' }]],
+    ['split and whole', ['1,2', { tag: 'b', text: '34' }, ' to 5,678']]]) {
+    for (const kind of RW_KINDS) {
+      eachRewriteKind([kind], (k, page, build) => {
+        const before = rwLogged.length;
+        const t = build(LF_ROWS(spec));
+        roundTableUnder(t.table, RW_OPTS);
+        const rows = rwLogged.slice(before)
+          .filter((row) => row.level === 'debug' && /split across text pieces/.test(row.text))
+          .map((row) => row.text);
+        rowsByKind[`${name}/${kind}`] = rows;
+        eq(`placement debug row (${kind}, ${name}): the cell writes one split-number row`, rows.length, 1);
+        eq(`placement debug row (${kind}, ${name}): the row reports a number`, /number/.test(rows[0] || ''), true);
+      });
+    }
+    eq(`placement debug row (${name}): both kinds write the same row text`,
+      rowsByKind[`${name}/native`], rowsByKind[`${name}/grid`]);
+  }
+})();

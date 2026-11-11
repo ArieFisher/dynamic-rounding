@@ -2938,6 +2938,16 @@ eq('group space: "1 234 USD" is a unit number',
     decide('Ship to 02134, 440,193 parcels').value.matches.map((m) => m.numStr), ['440,193']);
 })();
 
+// A line break is no group mark: the digits sit on two lines, which read as
+// two numbers. The same reader serves the Sheets library.
+(function groupSpace_aLineBreakSeparatesTwoNumbers() {
+  const matchesOf = (text) => extractNumbersInText(text).map((m) => m.numStr);
+  eq('line break: "Revenue 1 234\\n567 units" holds two numbers', matchesOf('Revenue 1 234\n567 units'), ['1 234', '567']);
+  eq('line break: "125\\n126" holds two numbers', matchesOf('125\n126'), ['125', '126']);
+  eq('line break: "1500\\n1600" holds two numbers', matchesOf('1500\n1600'), ['1500', '1600']);
+  eq('line break: "1 234 567" on one line holds one number', matchesOf('1 234 567'), ['1 234 567']);
+})();
+
 // --- One write-back path ---
 // Every number is patched in place, digits only, grouped with the marks the
 // number format function returns. A pure cell's number span leaves out its
