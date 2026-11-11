@@ -873,17 +873,12 @@ function buildCaptureStateResponse() {
 // The adapters (lib/dr-table/adapters.js, cells.js) build one cell object for
 // both kinds, so the pass sees no difference between them before it starts.
 //
-// The one difference is a field of the kind object the caller passes,
-// NATIVE_TABLE_PASS or GRID_TABLE_PASS:
-//   watchedElement(adapter)  the element the re-apply observer watches: a
-//                        native table itself, a grid's scroll container.
-//
 // The pass writes a debug row for a split number (entry.split) after
 // classification, so the lens preview, which runs the classification step
 // alone, writes none. It writes a second row for a changed date or time whose
 // text crosses a piece boundary.
 //
-// The pass settings beside the kind:
+// The pass settings:
 //   frozenMaxMag  the max magnitude to use instead of computing it from the
 //                 cells; null or undefined computes it. A re-apply pass,
 //                 on either table kind, passes the table's magnitude
@@ -907,14 +902,6 @@ function buildCaptureStateResponse() {
 
 const SPLIT_NUMBER_ROW = 'Dynamic Rounding: a number split across text pieces stays unchanged.';
 const SPLIT_DATE_ROW = 'Dynamic Rounding: a date or time split across text pieces stays unchanged.';
-
-const NATIVE_TABLE_PASS = {
-  watchedElement(adapter) { return adapter.getElement(); },
-};
-
-const GRID_TABLE_PASS = {
-  watchedElement(adapter) { return adapter._getScrollContainer(); },
-};
 
 // Returns how many patches landed (see makeCellObj in lib/dr-table).
 function writeCell(entry, patches) {
@@ -981,10 +968,10 @@ function releaseRewrittenCells(table, dataCells) {
   }
 }
 
-// The kind the one simplification pass runs on a table, from its adapter.
-// roundTable and the re-apply pass call it.
-function tableKindPass(adapter) {
-  return adapter.isGrid() ? GRID_TABLE_PASS : NATIVE_TABLE_PASS;
+// The element the re-apply observer watches: a native table itself, a grid's
+// scroll container.
+function watchedElement(adapter) {
+  return adapter.isGrid() ? adapter._getScrollContainer() : adapter.getElement();
 }
 
 // One cell's patches as the page takes them: the table step's patches
@@ -1009,7 +996,7 @@ function cellPatches(stepCell) {
  * @param {Element} table - The table or grid wrapper (key into DR_MODEL's registry).
  * @param {object[]} adapterRows - The adapter's rows, as getRows() read them.
  * @param {object} opts - Fully-resolved rounding options.
- * @param {{kind: object, frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none',
+ * @param {{frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none',
  *          cellCap?: number}} pass
  * @returns {{cells: Array<{entry: object, patches: object[]}>,
  *            maxMag: number|null, landedCells: number, missedCells: number,
@@ -1023,7 +1010,7 @@ function cellPatches(stepCell) {
  */
 function simplifyTableCells(table, adapterRows, opts, pass) {
   const startedAt = Date.now();
-  const { kind, writes } = pass;
+  const { writes } = pass;
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   const none = { cells: [], maxMag: null, landedCells: 0, missedCells: 0, cellCount: 0, overCap: false };
   if (rangeParse.error || adapterRows.length === 0) return none;
@@ -1041,7 +1028,7 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   const { maxMag, cells: stepCells } = tablePatches(classified, settings, pass.frozenMaxMag);
   if (writes === 'first') DR_MODEL.setTableMaxMagnitude(table, maxMag);
 
-  const written = writeTableCells(table, stepCells, { kind, writes });
+  const written = writeTableCells(table, stepCells, writes);
   if (writes === 'first' && written.missedCells > 0) {
     DR_LOG.debug(unroundedCellsRow(written.missedCells, written.landedCells + written.missedCells));
   }
@@ -1054,7 +1041,7 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
 // order. A held cell with no patch, or with no landed patch, shows its
 // original as its target, so it is released: its record, marker class, and
 // hover text go.
-function writeTableCells(table, stepCells, { kind, writes }) {
+function writeTableCells(table, stepCells, writes) {
   const cells = [];
   let landedCells = 0;
   let missedCells = 0;
@@ -1099,7 +1086,7 @@ const OBSERVED_CHANGES = { childList: true, characterData: true, subtree: true }
 
 // Start watching a table after its first simplification. The first
 // simplification's own writes are done by then, so they run no pass.
-function watchTable(table, adapter, kind, cellCount) {
+function watchTable(table, adapter, cellCount) {
   unwatchTable(table);
   if (typeof MutationObserver === 'undefined') return;
   if (cellCount > DR_DETECTION_SETTINGS.reapplyCellCap) {
@@ -1107,7 +1094,7 @@ function watchTable(table, adapter, kind, cellCount) {
     return;
   }
   const observer = new MutationObserver(() => scheduleReapply(table));
-  reapplyObservers.set(table, { observer, target: kind.watchedElement(adapter) });
+  reapplyObservers.set(table, { observer, target: watchedElement(adapter) });
   observeTable(table);
 }
 
@@ -1188,7 +1175,6 @@ function runReapplyPass(table) {
   const opts = DR_MODEL.getTableSettings(table);
   const adapter = registryAdapter(table);
   const result = simplifyTableCells(table, adapter.getRows(), opts, {
-    kind: tableKindPass(adapter),
     frozenMaxMag: DR_MODEL.getTableMaxMagnitude(table),
     writes: 'reapply',
     cellCap: DR_DETECTION_SETTINGS.reapplyCellCap,
@@ -1210,11 +1196,8 @@ function roundTable(table, options) {
   const adapterRows = adapter.getRows();
   // A table with no rows returns early without throwing.
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
-  const kind = tableKindPass(adapter);
-
   // A re-apply reuses the freeze, so a scroll or page write keeps the basis.
   const { landedCells, cellCount } = simplifyTableCells(table, adapterRows, opts, {
-    kind,
     frozenMaxMag: null,
     writes: 'first',
   });
@@ -1222,7 +1205,7 @@ function roundTable(table, options) {
 
   // The re-apply observer attaches AFTER the first simplification, so the
   // writes above run no pass.
-  watchTable(table, adapter, kind, cellCount);
+  watchTable(table, adapter, cellCount);
   return { applied: true, rangeStatus: 'ok' };
 }
 

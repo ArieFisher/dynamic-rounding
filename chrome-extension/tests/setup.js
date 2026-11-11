@@ -230,7 +230,6 @@ globalThis.decisionToLegacyInfo = decisionToLegacyInfo;
 globalThis.reapplyRounding = reapplyRounding;
 globalThis.simplifyTableCells = simplifyTableCells;
 globalThis.registryAdapter = registryAdapter;
-globalThis.GRID_TABLE_PASS = GRID_TABLE_PASS;
 globalThis.reapplyObservers = reapplyObservers;
 globalThis.reapplyTimers = reapplyTimers;
 globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.gridRedrawDelayMs;

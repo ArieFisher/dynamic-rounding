@@ -2769,7 +2769,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     [['North', '1482391'], ['South', '918554']],
     ['Total', '2400945']
   );
-  const { cells: results } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+  const { cells: results } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { frozenMaxMag: null, writes: 'none' });
   // results are row-major over all rows: [header c0, header c1, r1c0, r1c1, r2c0, r2c1, total c0, total c1]
   eq('row-universe: every cell of every row is classified',
     results.length, 8);
@@ -2791,7 +2791,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     [['1111111', '1482391'], ['2222222', '918554']],
     ['Total', '2400945']
   );
-  const { cells: results } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+  const { cells: results } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { frozenMaxMag: null, writes: 'none' });
   eq('row-universe: rowgroup-first grid holds its first data row',
     results[1] && results[1].patches.length, 0);
   eq('row-universe: rowgroup-first grid rounds its second data row',
@@ -2810,7 +2810,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     [['North', '1,482,391'], ['South', '918,554']],
     ['Total', '24,009,450']
   );
-  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), Object.assign({}, DR_DEFAULTS), { frozenMaxMag: null, writes: 'none' });
   eq('outside-row: the outside summary row sets the max magnitude',
     maxMag, 7);
   eq('outside-row: the outside row still rounds',
@@ -2824,7 +2824,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 (function gridHeaderRoles_amountsRoundUnderDefaults() {
   const g = rwBuildLabelledGrid();
   const { cells: results, maxMag } = simplifyTableCells(g.table, registryAdapter(g.table).getRows(),
-    Object.assign({}, DR_DEFAULTS), { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+    Object.assign({}, DR_DEFAULTS), { frozenMaxMag: null, writes: 'none' });
   eq('#513 defaults: six rows of two cells are classified', results.length, 12);
   eq('#513 defaults: the max magnitude comes from the amounts', maxMag, 1);
   eq('#513 defaults: the header row holds',
@@ -2842,7 +2842,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const g = rwBuildLabelledGrid();
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstColumn: true });
   const { cells: results } = simplifyTableCells(g.table, registryAdapter(g.table).getRows(), opts,
-    { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+    { frozenMaxMag: null, writes: 'none' });
   eq('#513 first column on: the subtotal label is the first cell of the first body row',
     !!results[2] && results[2].entry.cellObj.getText().trim().startsWith('Subtotal'), true);
   eq('#513 first column on: the labels take no change',
@@ -2902,7 +2902,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     ['Total', '24,009,450']
   );
   const opts = Object.assign({}, DR_DEFAULTS, { offsetTop: -0.5, offsetOther: -1 });
-  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), opts, { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+  const { cells: results, maxMag } = simplifyTableCells(g.wrapperEl, registryAdapter(g.wrapperEl).getRows(), opts, { frozenMaxMag: null, writes: 'none' });
   eq('outside-row: an outside row alone sets the max magnitude',
     maxMag, 7);
   eq('outside-row: an outside row alone takes the top-band offset',
@@ -2970,7 +2970,7 @@ function everyRowRead(kind, largeIn) {
     const table = everyRowDraw(kind, largeIn);
     try {
       const { maxMag } = simplifyTableCells(table, registryAdapter(table).getRows(), EVERY_ROW_OPTS,
-        { kind: GRID_TABLE_PASS, frozenMaxMag: null, writes: 'none' });
+        { frozenMaxMag: null, writes: 'none' });
       roundTableUnder(table, EVERY_ROW_OPTS);
       const bodyValue = tkCellTexts(table).find((cell) => cell.at === '1:1');
       reading = { maxMag, bodyValue: bodyValue ? bodyValue.text : null };

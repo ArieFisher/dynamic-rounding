@@ -1452,7 +1452,7 @@ function getIdentifierMaskedRanges(text) {
  * nodes, so callers compute isWholeLink/hasSuperscript/superscriptRanges once
  * per cell and pass them in as plain data. filterLinkMatches (also
  * lib/dr-table) has the same requirement for the individual numbers inside a
- * mixed-text cell; since filters are independent per-match predicates, their
+ * cell with words; since filters are independent per-match predicates, their
  * order never changes the result, so a caller that produces 'extracted'
  * matches is expected to run filterLinkMatches over decision.value.matches
  * afterward and, if that empties the list, downgrade the decision to
