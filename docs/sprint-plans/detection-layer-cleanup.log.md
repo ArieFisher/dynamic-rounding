@@ -76,13 +76,19 @@ Base branch: main
   - Follow-up: #619.
 - **Added: one-table-scan (sprint 12)** — the load-time scan, the added-node pass, and `findTables` each keep their own table search; the product manager asked for one scan function they all call, as its own sprint.
 
+- **grid-shown-text** — commits on feature/detection-layer-cleanup; closes #525
+  - Reviewer: APPROVE (after 1 retry)
+  - Tests: pass (extension 4,473; library 827; documented examples 90)
+  - Measured re-apply pass on a 10,000-cell grid, headless Chromium in a container: median about 172 ms with the rendered-text read, about 175 ms with the flat-text read, about 173 ms on a native table of the same size. The product manager set the pass budget to 200 ms.
+  - Both kinds now share one cell object and one text read. Stacked years on separate lines round on both kinds, as native tables already did; #620 holds the fix.
+  - Follow-up: #620.
+
 ### Blocked
 
 None.
 
 ### Deferred
 
-- **grid-shown-text** — answered: a 10,000-cell grid pass measured about 172 ms with the rendered-text read and about 175 ms with the flat-text read, in headless Chromium; the product manager set the budget to 200 ms.
 
 ### Change to the dependent policy
 
