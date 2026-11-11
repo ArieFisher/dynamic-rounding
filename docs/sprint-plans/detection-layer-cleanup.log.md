@@ -36,6 +36,15 @@ Base branch: main
   - The first review blocked on a lost bound: the shared row builder made the geometry probe read the spans of every candidate row. The probe now reads no more rows than the data test's cell budget, and a test pins it.
   - Follow-up: #617.
 
+- **link-filter-by-position** — commits on feature/detection-layer-cleanup; closes #399
+  - Reviewer: APPROVE (after 0 retries)
+  - Tests: pass (extension 4,123; library 827; documented examples 90)
+  - The new tests for a repeated number, plain and linked in either order on both table kinds, fail on the pre-sprint code and pass now.
+  - One test came out: it asserted only the removed stored link result.
+  - A match that no single text piece holds stays in the list, where #399 asked for it to drop. The placement step sends no such match to the filter, and the patch writer skips one, so no result changes.
+  - The Sheets build changed comments and the table step's internal return shape alone; a Sheets user sees no difference.
+  - Follow-up: #618.
+
 ### Blocked
 
 None.
