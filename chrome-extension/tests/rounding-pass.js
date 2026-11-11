@@ -4926,7 +4926,7 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
 })();
 
 // =============================================================================
-// Placement by digits, without the words switch. A cell that rounds in place
+// Placement by digits. A cell that rounds in place
 // holds one match per number, measured over its digits. The placement step
 // keeps each match whose digits sit in one text piece and leaves the others as
 // written; a cell with no match left stays as written. Every case runs on a
