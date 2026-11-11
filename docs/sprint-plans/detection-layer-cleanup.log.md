@@ -88,6 +88,12 @@ Base branch: main
   - Tests: pass (extension 4,473; library 827; documented examples 90)
   - The load-time scan, the added-node pass, and `findTables` call one scan function, which holds the one native-table query and the one call to the nomination step.
 
+- **remove-words-switch** (sprint 13) — feature/remove-words-switch, after #621 merged
+  - Reviewer: APPROVE (after 1 retry)
+  - Tests: pass (extension 4,512; library 834; documented examples 90; Python 227)
+  - Product manager's choices: the words switch and the stacked-cell test are removed; a number is placed by its digits; a number that crosses two text pieces stays as written by itself; a line break never groups digits, on every platform. The percentages and currencies switches stay.
+  - The first review blocked on the Python package, which still grouped digits across a line break.
+
 ### Blocked
 
 None.
