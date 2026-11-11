@@ -3284,3 +3284,38 @@ function makeCountingBoxProbe() {
   };
   return probe;
 }
+
+/**
+ * Draw one table of bare <tr> and <td>/<th> elements: a <table> for the native
+ * kind, a role="grid" container with no table element for the grid kind. The
+ * markup is the same on both. A cell answers its span properties the way the
+ * browser reflects the attributes.
+ *
+ * @param {'native'|'grid'} kind
+ * @param {Array<Array<{text: string, tag?: string, colSpan?: number, rowSpan?: number}>>} rows
+ * @returns {object} the container element
+ */
+function drawBareMarkupTable(kind, rows) {
+  const rowEls = rows.map((cells) => rwEl('tr', {}, cells.map((spec) => {
+    const attrs = {};
+    if (spec.colSpan) attrs.colspan = String(spec.colSpan);
+    if (spec.rowSpan) attrs.rowspan = String(spec.rowSpan);
+    const el = rwEl(spec.tag || 'td', attrs, [rwText(spec.text)]);
+    el.colSpan = spec.colSpan || 1;
+    el.rowSpan = spec.rowSpan || 1;
+    return el;
+  })));
+  return kind === 'native' ? rwEl('table', {}, rowEls) : rwEl('div', { role: 'grid' }, rowEls);
+}
+
+/**
+ * Each cell's grid column and column span, by row, as the table's adapter
+ * reads them.
+ *
+ * @param {object} table
+ * @returns {Array<Array<[number, number]>>}
+ */
+function readColumnPlacement(table) {
+  return makeAdapter(table).getRows()
+    .map((row) => row.getCells().map((cell) => [cell.columnIndex, cell.columnSpan]));
+}

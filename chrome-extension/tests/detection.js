@@ -3393,6 +3393,117 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     readTableFingerprint(mixedFirstRow).headerTexts, null);
 })();
 
+// The header-row test is one rule on both kinds: the first row sits in the head
+// section or outside every row group, or it holds header cells alone. A grid
+// with no row group at all and a first row of header cells alone therefore
+// carries the header texts, and a swap to new texts at the same column count
+// reads as a different shape.
+(function shapeFingerprint_aFirstRowOfHeaderCellsAloneCarriesHeaderTextsOnBothKinds() {
+  const headerRow = (header, texts) => texts.map((pieces) => ({ pieces, header }));
+  const draw = (kind, firstRow) => rwDrawTable(kind, [
+    { part: 'bare', rows: [firstRow, ['North', '1,482,391'], ['South', '918,554']] },
+  ]).table;
+  for (const kind of ['native', 'grid']) {
+    for (const header of ['col', 'row']) {
+      eq(`header row (${kind}, ${header} header cells): a first row of header cells alone carries the header texts`,
+        readTableFingerprint(draw(kind, headerRow(header, ['Region', 'Q1']))),
+        { columnCount: 2, headerTexts: ['Region', 'Q1'] });
+      eq(`header row (${kind}, ${header} header cells): new header texts at the same column count compare different`,
+        sameTableFingerprint(
+          readTableFingerprint(draw(kind, headerRow(header, ['Region', 'Q1']))),
+          readTableFingerprint(draw(kind, headerRow(header, ['Region', 'Q2'])))), false);
+    }
+    eq(`header row (${kind}): a first row holding a data cell beside a header cell carries the column count alone`,
+      readTableFingerprint(draw(kind, [{ pieces: 'Region', header: 'col' }, 'Q1'])),
+      { columnCount: 2, headerTexts: null });
+    eq(`header row (${kind}): a first row of data cells carries the column count alone`,
+      readTableFingerprint(draw(kind, ['Region', 'Q1'])),
+      { columnCount: 2, headerTexts: null });
+    eq(`header row (${kind}): new data texts in the first row at the same column count compare the same`,
+      sameTableFingerprint(
+        readTableFingerprint(draw(kind, ['Region', 'Q1'])),
+        readTableFingerprint(draw(kind, ['Area', 'Q2']))), true);
+  }
+})();
+
+// A native table whose header cells sit in a head section or in the body reads
+// header texts; one data cell in the first row reads the column count alone.
+(function shapeFingerprint_aNativeTablesThreeHeaderRowFormsReadThroughOneTest() {
+  const cols = (texts) => texts.map((pieces) => ({ pieces, header: 'col' }));
+  const body = { part: 'body', rows: [['North', '1,482,391']], grouped: true };
+  eq('header row native: a first row in a head section carries the header texts',
+    readTableFingerprint(rwDrawTable('native', [{ part: 'head', rows: [cols(['Region', 'Q1'])] }, body]).table),
+    { columnCount: 2, headerTexts: ['Region', 'Q1'] });
+  eq('header row native: a first row of header cells alone in a body section carries the header texts',
+    readTableFingerprint(rwDrawTable('native', [{ part: 'body', rows: [cols(['Region', 'Q1']), ['North', '1,482,391']] }]).table),
+    { columnCount: 2, headerTexts: ['Region', 'Q1'] });
+  eq('header row native: a first row in a body section holding a data cell carries the column count alone',
+    readTableFingerprint(rwDrawTable('native', [{ part: 'body', rows: [[{ pieces: 'Region', header: 'col' }, 'Q1'], ['North', '1,482,391']] }]).table),
+    { columnCount: 2, headerTexts: null });
+})();
+
+// A cell with a colspan numbers the columns after it the same way on a native
+// table and on a grid of bare <tr> and <td> elements with no table element.
+(function columnPlacement_aGridOfBareRowsAndCellsNumbersItsColumnsLikeTheNativeTable() {
+  const shapes = [
+    { name: 'a colspan across two columns', rows: [
+      [{ text: 'Both', colSpan: 2 }, { text: 'C' }],
+      [{ text: 'A' }, { text: 'B' }, { text: 'C' }],
+    ], expected: [[[0, 2], [2, 1]], [[0, 1], [1, 1], [2, 1]]] },
+    { name: 'a rowspan down two rows', rows: [
+      [{ text: 'A', rowSpan: 2 }, { text: 'B' }],
+      [{ text: 'C' }],
+    ], expected: [[[0, 1], [1, 1]], [[1, 1]]] },
+    { name: 'a colspan of three beside a data cell', rows: [
+      [{ text: 'Wide', tag: 'th', colSpan: 3 }, { text: '1,482,391' }],
+      [{ text: 'A' }, { text: 'B' }, { text: 'C' }, { text: 'D' }],
+    ], expected: [[[0, 3], [3, 1]], [[0, 1], [1, 1], [2, 1], [3, 1]]] },
+  ];
+  for (const { name, rows, expected } of shapes) {
+    const native = readColumnPlacement(drawBareMarkupTable('native', rows));
+    const grid = readColumnPlacement(drawBareMarkupTable('grid', rows));
+    eq(`column placement, ${name}: the native table numbers the columns by the span`, native, expected);
+    eq(`column placement, ${name}: the grid of bare rows and cells numbers the columns as the native table does`,
+      grid, native);
+  }
+})();
+
+// One span reader: the element's span property first, then the accessibility
+// attribute. A grid cell of generic elements holds no property.
+(function columnPlacement_aCellsSpanReadsThePropertyFirstThenTheAttribute() {
+  const cellOf = (props, attrs) => {
+    const el = rwEl('div', attrs, [rwText('x')]);
+    Object.assign(el, props);
+    return el;
+  };
+  const rowOf = (cellEls) => rwEl('div', { role: 'row' }, cellEls);
+  const placementOf = (rowEls) => readColumnPlacement(rwEl('div', { role: 'grid' }, rowEls));
+
+  eq('span reader: a cell holding the colSpan property and aria-colspan reads the property',
+    placementOf([rowOf([cellOf({ colSpan: 3 }, { 'aria-colspan': '2' }), cellOf({}, {})])])[0],
+    [[0, 3], [3, 1]]);
+  eq('span reader: a cell holding the aria-colspan attribute alone reads the attribute',
+    placementOf([rowOf([cellOf({}, { 'aria-colspan': '2' }), cellOf({}, {})])])[0],
+    [[0, 2], [2, 1]]);
+  eq('span reader: a cell holding neither spans one column',
+    placementOf([rowOf([cellOf({}, {}), cellOf({}, {})])])[0],
+    [[0, 1], [1, 1]]);
+
+  // A rowSpan reaches the next row as a held column.
+  const downFrom = (props, attrs) => placementOf([
+    rowOf([cellOf(props, attrs), cellOf({}, {})]),
+    rowOf([cellOf({}, {})]),
+  ])[1];
+  eq('span reader: a cell holding the rowSpan property and aria-rowspan reads the property',
+    downFrom({ rowSpan: 2 }, { 'aria-rowspan': '1' }), [[1, 1]]);
+  eq('span reader: a cell holding the property 1 and aria-rowspan 2 reads the property',
+    downFrom({ rowSpan: 1 }, { 'aria-rowspan': '2' }), [[0, 1]]);
+  eq('span reader: a cell holding the aria-rowspan attribute alone reads the attribute',
+    downFrom({}, { 'aria-rowspan': '2' }), [[1, 1]]);
+  eq('span reader: a cell holding neither leaves the next row at the first column',
+    downFrom({}, {}), [[0, 1]]);
+})();
+
 // Every row joins the dataset, and the shape fingerprint still reads a
 // grid's header row from the outside-row mark. One drawing per kind: a header
 // row in a head section (a grid draws it outside every row group), body rows

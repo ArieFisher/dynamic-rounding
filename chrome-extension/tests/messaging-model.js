@@ -3233,6 +3233,36 @@ function issue328SettingsOf(table) {
   });
 })();
 
+// The same check on a table whose first row holds header cells alone with no
+// row group, on both kinds: a swap to new header texts at the same column count
+// registers the table fresh.
+(function shapeFingerprint_aHeaderCellsAloneFirstRowTripsTheCheckOnBothKinds() {
+  for (const kind of ['native', 'grid']) {
+    runPressFixture(() => {
+      const draw = (texts) => rwDrawTable(kind, [{ part: 'bare', rows: [
+        texts.map((pieces) => ({ pieces, header: 'col' })),
+        ['North', '1,482,391'], ['South', '918,554'],
+      ] }]).table;
+      const table = draw(['Region', 'Q1']);
+      const removedPillboxes = registerFingerprintedTable(table);
+      DR_MODEL.setActiveTable(table);
+      eq(`fingerprint header cells (${kind}): registration records the header texts (precondition)`,
+        DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q1'] });
+
+      rwTextNodesOf(table.children[0].children[1])[0].nodeValue = 'Q2';
+      let outcome = null;
+      withPillboxDocumentMock(function () { outcome = revalidateTableShape(table); });
+      eq(`fingerprint header cells (${kind}): a header text change reports a switch`, outcome.switched, true);
+      eq(`fingerprint header cells (${kind}): the discard takes the old pillbox off the page`,
+        removedPillboxes.length, 1);
+      eq(`fingerprint header cells (${kind}): the fresh fingerprint carries the new header text`,
+        DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q2'] });
+
+      forgetRegisteredTable(table);
+    });
+  }
+})();
+
 (function shapeFingerprint_aGrouplessGridsFirstRowTextDoesNotTripTheCheck() {
   runPressFixture(() => {
     const grid = makeDatabaseQueryGrid();
