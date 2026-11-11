@@ -112,7 +112,7 @@
       { tag: 'td', text: '35.0' },
     ]]);
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -134,7 +134,7 @@
       { tag: 'td', text: '35' },
     ]]);
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -158,7 +158,7 @@
   withReactiveCreateTreeWalker(function () {
     const opts = {
       enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyMixedCells: true, simplifyMixedCurrency: true, simplifyMixedPercent: true,
+      simplifyMixedCurrency: true, simplifyMixedPercent: true,
       simplifyDates: false, simplifyTimes: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
     };
@@ -201,7 +201,7 @@
   withReactiveCreateTreeWalker(function () {
     const opts = {
       enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyMixedCells: true, simplifyMixedCurrency: true, simplifyMixedPercent: true,
+      simplifyMixedCurrency: true, simplifyMixedPercent: true,
       simplifyDates: false, simplifyTimes: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
     };
@@ -235,7 +235,7 @@
   withReactiveCreateTreeWalker(function () {
     const opts = {
       enabled: true, simplifyFirstRow: true, simplifyFirstColumn: true,
-      simplifyMixedCells: true, simplifyMixedCurrency: true, simplifyMixedPercent: true,
+      simplifyMixedCurrency: true, simplifyMixedPercent: true,
       simplifyDates: false, simplifyTimes: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
     };
@@ -646,9 +646,8 @@
   const mixedTextBefore   = mixedCell.childNodes[0].nodeValue;
   const numericTextBefore = numericCell.childNodes[0].nodeValue;
 
-  // Use opts with simplifyMixedCells:true so mixed cells are classified as extracted,
-  // and simplifyFirstRow:false (default) so row 0 is excluded (standard behaviour).
-  const opts = Object.assign({}, DR_DEFAULTS, { simplifyMixedCells: true });
+  // simplifyFirstRow:false (default) so row 0 is excluded (standard behaviour).
+  const opts = Object.assign({}, DR_DEFAULTS);
   roundTable(grid.wrapperEl, opts);
 
   // Mixed cell must be UNROUNDED (extracted path skipped on virtualized grid).

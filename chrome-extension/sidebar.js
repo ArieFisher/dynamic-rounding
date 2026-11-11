@@ -148,7 +148,6 @@ function setTableBound(isBound) {
 }
 
 const CHECKBOX_TO_SETTING = {
-  simplifyMixedCells: 'simplifyMixedCells',
   simplifyMixedCurrency: 'simplifyMixedCurrency',
   simplifyMixedPercent: 'simplifyMixedPercent',
   simplifyFirstRow: 'simplifyFirstRow',

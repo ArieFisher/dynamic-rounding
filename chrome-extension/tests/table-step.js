@@ -16,7 +16,7 @@ const TABLE_STEP_SETTINGS = {
 
 const TABLE_STEP_LADDER_OPTS = Object.assign({}, DR_DEFAULTS, {
   simplifyFirstRow: true, simplifyFirstColumn: true,
-  simplifyMixedCells: true, simplifyDates: true, simplifyTimes: true,
+  simplifyDates: true, simplifyTimes: true,
 });
 
 // One table, by row and grid column, with invented values. The dataset is

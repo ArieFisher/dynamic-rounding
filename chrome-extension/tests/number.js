@@ -430,26 +430,6 @@ eq('isTimeLike: 12345 -> false', isTimeLike('12345'), false);
     getExclusionReason('anything', 0, { simplifyFirstRow: false, simplifyFirstColumn: false }, 0), 'firstRow');
 })();
 
-// --- simplifyMixedCells semantics ---
-
-(function simplifyMixedCellsTests() {
-  // With simplifyMixedCells=true, a cell with a number AND a word should be rounded
-  // (mode='extracted' in roundTable). We test the path via the roundTable flow
-  // by checking that the cell text '8,584,629 USD' gets an 'extracted' mode.
-  const textWithWord = '$5.123 USD';
-  const textPure = '5.123';
-
-  // simplifyMixedCells=true: extractNumbersInText finds a match and cell would be rounded
-  (function simplifyMixedCellsOn() {
-    const matches = extractNumbersInText(textWithWord);
-    eq('simplifyMixedCells=true: extractNumbersInText finds number in "$5.123 USD"',
-      matches.length > 0, true);
-    const num = toNumber(textWithWord);
-    eq('simplifyMixedCells=true: toNumber("$5.123 USD") is null (not pure numeric)',
-      num, null);
-  })();
-})();
-
 // First-match-wins priority: firstRow beats firstColumn beats percent beats currency
 // (dates and times are not exclusion reasons)
 (function exclusionPriority() {
@@ -971,7 +951,7 @@ eq('parseRangeExpr: "A5:A2" auto-swaps to A2:A5',
       dataset: {},
     };
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      enabled: true, simplifyDates: false, simplifyTimes: false,
       simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: '',
@@ -1245,7 +1225,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
       roundTable(tbl, {
         enabled: true, simplifyDates: true, simplifyTimes: false,
         simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-        simplifyMixedCells: false, simplifyFirstRow: true,
+        simplifyFirstRow: true,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
         rangeExpr: '',
         dateGranularity: gran,
@@ -1286,7 +1266,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     roundTable(tbl, {
       enabled: true, simplifyDates: true, simplifyTimes: false,
       simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-      simplifyMixedCells: false, simplifyFirstRow: true,
+      simplifyFirstRow: true,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: '',
       dateGranularity: 'decade',
@@ -1537,38 +1517,8 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     getExclusionReason('1,234', 1, { simplifyFirstRow: true, simplifyFirstColumn: false }, 1), null);
 
   // -------------------------------------------------------------------------
-  // AC5: simplifyMixedCells=false → prose cell with embedded number not touched.
-  // Use roundTable with a real mock table.
+  // AC6: DR_DEFAULTS snapshot — all six keys with exact default values.
   // -------------------------------------------------------------------------
-  withCreateTreeWalker(function() {
-    // Two cells: a large anchor so max_mag is set, and a prose cell.
-    const table = makeMockTable([[
-      { tag: 'td', text: '8,000,000' },
-      { tag: 'td', text: 'about 1,234 widgets' },
-    ]]);
-    roundTable(table, {
-      enabled: true,
-      simplifyMixedCells: false,
-      simplifyMixedCurrency: false,
-      simplifyMixedPercent: false,
-      simplifyFirstRow: true,
-      simplifyFirstColumn: true,
-      simplifyDates: false,
-      simplifyTimes: false,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: ''
-    });
-    const proseCell = table.rows[0].cells[1];
-    eq('AC5 simplifyMixedCells=false: prose cell NOT marked as rounded',
-      proseCell.classList.contains('dr-ext-rounded'), false);
-    eq('AC5 simplifyMixedCells=false: prose cell text unchanged',
-      proseCell.innerText, 'about 1,234 widgets');
-  });
-
-  // -------------------------------------------------------------------------
-  // AC6: DR_DEFAULTS snapshot — all seven new keys with exact default values.
-  // -------------------------------------------------------------------------
-  eq('AC6 DR_DEFAULTS: simplifyMixedCells = true',
-    DR_DEFAULTS.simplifyMixedCells, true);
   eq('AC6 DR_DEFAULTS: simplifyMixedCurrency = true',
     DR_DEFAULTS.simplifyMixedCurrency, true);
   eq('AC6 DR_DEFAULTS: simplifyMixedPercent = true',
@@ -1583,15 +1533,15 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     DR_DEFAULTS.simplifyFirstColumn, false);
 
   // -------------------------------------------------------------------------
-  // AC7: sidebar.html id ↔ setting key parity — each of the seven keys must
+  // AC7: sidebar.html id ↔ setting key parity — each of the six keys must
   // appear as id="<key>" on a checkbox <input>.
   // -------------------------------------------------------------------------
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  const sevenKeys = [
-    'simplifyMixedCells', 'simplifyMixedCurrency', 'simplifyMixedPercent',
+  const optionKeys = [
+    'simplifyMixedCurrency', 'simplifyMixedPercent',
     'simplifyDates', 'simplifyTimes', 'simplifyFirstRow', 'simplifyFirstColumn'
   ];
-  for (const key of sevenKeys) {
+  for (const key of optionKeys) {
     // Match <input ... type="checkbox" ... id="<key>"> (or id before type)
     eq(`AC7 sidebar.html: checkbox with id="${key}" present`,
       new RegExp(`<input[^>]*type="checkbox"[^>]*id="${key}"|<input[^>]*id="${key}"[^>]*type="checkbox"`).test(sidebarHtml),
@@ -2099,7 +2049,6 @@ const LADDER_OPTS = {
   simplifyMixedCurrency: true,
   simplifyDates: true,
   simplifyTimes: false,
-  simplifyMixedCells: true,
 };
 
 // A unit number: one number with a magnitude suffix after it, a listed
@@ -2327,7 +2276,7 @@ const LADDER_OPTS = {
     // The sidebar sets a custom value (an "open" session), then — simulated by
     // nothing happening in between — closes and reopens, pulling the model.
     const customSettings = {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: true,
+      enabled: true, simplifyMixedCurrency: false,
       simplifyMixedPercent: true, simplifyFirstRow: false, simplifyFirstColumn: false,
       simplifyDates: true, simplifyTimes: false, dateGranularity: 'year', timeGranularity: 'hour',
       offsetTop: 0.25, offsetOther: -1.5, numTop: 1, rangeExpr: 'B2:E8',
@@ -2348,7 +2297,7 @@ const LADDER_OPTS = {
     eq('reconnect: offsetTop survives the close/reopen', pulled.offsetTop, 0.25);
     eq('reconnect: offsetOther survives the close/reopen', pulled.offsetOther, -1.5);
     eq('reconnect: rangeExpr survives the close/reopen', pulled.rangeExpr, 'B2:E8');
-    eq('reconnect: a changed boolean flag survives the close/reopen', pulled.simplifyMixedCells, false);
+    eq('reconnect: a changed boolean flag survives the close/reopen', pulled.simplifyMixedCurrency, false);
   });
 })();
 

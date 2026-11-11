@@ -35,7 +35,7 @@
       dataset: {},
     };
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      enabled: true, simplifyDates: false, simplifyTimes: false,
       simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: '',
@@ -528,11 +528,9 @@ const consistentCellCountStepPasses = (children) =>
 //     keeps all matches)
 // ---------------------------------------------------------------------------
 
-// Standard opts for the exponent tests.  simplifyMixedCells: true is required to
-// engage the <sup> extraction path (the guard at line ~773 of content.js).
+// Standard opts for the exponent tests.
 const supTestOpts = {
   enabled: true,
-  simplifyMixedCells: true,
   simplifyMixedCurrency: true,
   simplifyMixedPercent: true,
   simplifyFirstRow: true,

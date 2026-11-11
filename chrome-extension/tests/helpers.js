@@ -95,7 +95,7 @@ function runRowHeaderTable(optsOverrides) {
       [{ tag: 'th', text: 'Goldfinger' }, { tag: 'td', text: '124.9' }, { tag: 'td', text: '5678' }],
     ]);
     roundTable(table, Object.assign({
-      enabled: true, simplifyMixedCells: false, simplifyDates: true, simplifyTimes: true,
+      enabled: true, simplifyDates: true, simplifyTimes: true,
       simplifyFirstRow: true, simplifyFirstColumn: false,
       simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,

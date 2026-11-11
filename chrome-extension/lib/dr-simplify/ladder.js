@@ -94,7 +94,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *   mode: 'skip' | 'pure' | 'date' | 'time' | 'extracted'
  *   reason: one of the ladder's rule names — 'out-of-range', 'first-row',
  *     'first-column', 'percent', 'currency', 'quoted', 'identifier', 'link',
- *     'footnote', 'dates-disabled', 'times-disabled', 'mixed-disabled',
+ *     'footnote', 'dates-disabled', 'times-disabled',
  *     'no-number', 'ambiguous-date', 'impossible-date', 'simplify' for a
  *     cell that rounds, or
  *     'unit' for a unit number (see matchUnitNumber in lib/dr-number), which
@@ -121,7 +121,7 @@ function extractSimplifyMatches(text, superscriptRanges) {
  *   in more than one text piece (see matchIdentifierShape)
  * @param {object} options - resolved rounding options (simplifyFirstRow,
  *   simplifyFirstColumn, simplifyMixedPercent, simplifyMixedCurrency,
- *   simplifyDates, simplifyTimes, simplifyMixedCells)
+ *   simplifyDates, simplifyTimes)
  * @returns {{mode: string, reason: string, value?: object, pending?: string}}
  */
 function classifyCell(input, options) {
@@ -202,9 +202,8 @@ function classifyCell(input, options) {
   // is written as the brackets around it. Its digits alone change, which is
   // the extracted write, so the brackets stay where the page put them — and a
   // page that gives a bracket its own text piece does not hold the cell
-  // back, because the placement step then measures the digits alone. It
-  // rounds whatever the words setting holds, as a pure cell does. A cell with
-  // a <sup> takes the footnote path below instead, so its exponent stays
+  // back, because the placement step then measures the digits alone. A cell
+  // with a <sup> takes the footnote path below instead, so its exponent stays
   // masked; extractSimplifyMatches reads the same bracket sign there.
   const bracketed = hasSuperscript ? null : matchBracketedNumber(text);
   if (bracketed) {
@@ -221,9 +220,6 @@ function classifyCell(input, options) {
       // exponent digits (e.g. "10<sup>12</sup>" -> "1012"). Route through
       // extraction so superscript masking can protect the exponent, instead
       // of rounding the flattened (wrong) number.
-      if (!options.simplifyMixedCells) {
-        return { mode: 'skip', reason: 'footnote' };
-      }
       const matches = extractSimplifyMatches(text, superscriptRanges);
       if (matches.length === 0) return { mode: 'skip', reason: 'footnote' };
       return { mode: 'extracted', reason: 'footnote', value: { matches } };
@@ -233,19 +229,15 @@ function classifyCell(input, options) {
   }
 
   // A unit number ("4.91tn", "CAD45.67") is one number with a suffix or a
-  // currency code, so it rounds like a pure cell whatever the words setting
-  // holds. Its digits alone change, which is the extracted write, so it
-  // takes mode:'extracted' with its one match. A cell with a <sup> takes the
-  // footnote path above instead, so its exponent stays masked.
+  // currency code. Its digits alone change, which is the extracted write, so
+  // it takes mode:'extracted' with its one match. A cell with a <sup> takes
+  // the footnote path above instead, so its exponent stays masked.
   const unit = hasSuperscript ? null : matchUnitNumber(text);
   if (unit) {
     if (isWholeLink) return { mode: 'skip', reason: 'link' };
     return { mode: 'extracted', reason: 'unit', value: { matches: [unit] } };
   }
 
-  if (!options.simplifyMixedCells) {
-    return { mode: 'skip', reason: 'mixed-disabled' };
-  }
   const matches = extractSimplifyMatches(text, superscriptRanges);
   if (matches.length === 0) return { mode: 'skip', reason: 'no-number' };
   return { mode: 'extracted', reason: 'simplify', value: { matches } };

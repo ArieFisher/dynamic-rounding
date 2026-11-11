@@ -32,7 +32,7 @@
       { tag: 'td', text: '200'  },
     ]]);
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      enabled: true, simplifyDates: false, simplifyTimes: false,
       simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: 'A'
@@ -63,7 +63,7 @@
       { tag: 'td', text: '200'   },
     ]]);
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      enabled: true, simplifyDates: false, simplifyTimes: false,
       simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: 'A'
@@ -118,7 +118,7 @@
 // ---------------------------------------------------------------------------
 
 const HEADER_CELL_OPTS = {
-  enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+  enabled: true, simplifyDates: false, simplifyTimes: false,
   simplifyFirstRow: false, simplifyFirstColumn: false,
   simplifyMixedPercent: false, simplifyMixedCurrency: true,
   offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -228,7 +228,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '42' },  // this one should round (control)
     ]]);
     const opts = {
-      enabled: true, simplifyMixedCells: true, simplifyDates: false, simplifyTimes: false,
+      enabled: true, simplifyDates: false, simplifyTimes: false,
       simplifyFirstColumn: true, simplifyMixedPercent: true, simplifyMixedCurrency: true,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
@@ -254,7 +254,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '1,050,000,000' },
     ]]);
     const opts = {
-      enabled: true, simplifyMixedCells: true, simplifyDates: false, simplifyTimes: false,
+      enabled: true, simplifyDates: false, simplifyTimes: false,
       simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedPercent: true, simplifyMixedCurrency: true,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
       rangeExpr: ''
@@ -281,7 +281,7 @@ const SEAT_ROWS = [
 
 (function extractedPatchOptsFor() {
   globalThis.EXTRACTED_PATCH_OPTS = {
-    enabled: true, simplifyMixedCells: true, simplifyDates: false, simplifyTimes: false,
+    enabled: true, simplifyDates: false, simplifyTimes: false,
     simplifyFirstRow: true, simplifyFirstColumn: true,
     simplifyMixedPercent: true, simplifyMixedCurrency: true,
     offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
@@ -329,7 +329,7 @@ const SEAT_ROWS = [
       roundTable(tbl, {
         enabled: true, simplifyDates: true, simplifyTimes: false,
         simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-        simplifyMixedCells: false, simplifyFirstRow: true,
+        simplifyFirstRow: true,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
         rangeExpr: '',
         dateGranularity: gran,
@@ -369,7 +369,7 @@ const SEAT_ROWS = [
       roundTable(tbl, {
         enabled: true, simplifyDates: true, simplifyTimes: false,
         simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-        simplifyMixedCells: false, simplifyFirstRow: true,
+        simplifyFirstRow: true,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
         rangeExpr: '',
         dateGranularity: gran,
@@ -464,7 +464,7 @@ const SEAT_ROWS = [
       roundTable(tbl, {
         enabled: true, simplifyDates: true, simplifyTimes: false,
         simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-        simplifyMixedCells: false, simplifyFirstRow: true,
+        simplifyFirstRow: true,
         offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
         rangeExpr: '',
         dateGranularity: 'decade',
@@ -473,21 +473,6 @@ const SEAT_ROWS = [
     }
 
     eq('non-date passthrough: "hello" stays unchanged', runSingleCell('hello'), 'hello');
-    // "14 March" has no year → isDateLike returns false → treated as a word-embedded number
-    // simplifyMixedCells=false in our setup, so it skips non-numeric text.
-    // Let us just verify it does not get the rounded class.
-    const tbl = makeMockTable([[{ tag: 'td', text: '14 March' }]]);
-    tbl.rows[0].cells[0].querySelectorAll = () => [];
-    roundTable(tbl, {
-      enabled: true, simplifyDates: true, simplifyTimes: false,
-      simplifyFirstColumn: true, simplifyMixedPercent: false, simplifyMixedCurrency: false,
-      simplifyMixedCells: false, simplifyFirstRow: true,
-      offsetTop: -0.5, offsetOther: -0.5, numTop: 1,
-      rangeExpr: '',
-      dateGranularity: 'decade',
-    });
-    eq('non-date passthrough: "14 March" cell not rounded (no year)',
-      tbl.rows[0].cells[0].classList.contains('dr-ext-rounded'), false);
   });
 })();
 
@@ -747,7 +732,7 @@ const SEAT_ROWS = [
 (function lensPreview_supStaleRegression() {
   withReactiveCreateTreeWalker(function () {
     const opts = {
-      simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedCells: true,
+      simplifyFirstRow: true, simplifyFirstColumn: true, 
       simplifyMixedCurrency: true, simplifyMixedPercent: true,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
     };
@@ -780,7 +765,7 @@ const SEAT_ROWS = [
 (function lensPreview_linkedNumberPostRoundRegression() {
   withReactiveCreateTreeWalker(function () {
     const opts = {
-      simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedCells: true,
+      simplifyFirstRow: true, simplifyFirstColumn: true, 
       simplifyMixedCurrency: true, simplifyMixedPercent: true,
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
     };
@@ -863,7 +848,7 @@ const SEAT_ROWS = [
 // a space or a line break between them. Dataset 337.91, 125, 126, so the
 // max magnitude is 2.
 //   a: a currency sign in its own piece, then the number
-//   b: one number per line, with the words setting off
+//   b: one number per line
 //   c: one number that inline styling splits into two pieces ("6,7" plain,
 //      "18,245" bold): the rendered text runs them together, so it stays
 //   d: a number split after its grouping comma: stays
@@ -882,14 +867,14 @@ const SEAT_ROWS = [
     const table = { rows: cells.map((cell) => ({ cells: [cell] })), querySelector: () => null, dataset: {} };
     const rows = [];
     const offRow = DR_LOG.onRow((row) => rows.push(row));
-    const opts = Object.assign(nativeOnePieceOpts(), { simplifyMixedCells: false });
+    const opts = nativeOnePieceOpts();
     try {
       eq('native stacked: the lens preview pool holds the numbers the pass rounds',
         collectNumericCells(table, opts).map((cell) => cell.num), [337.91, 125, 126]);
       roundTable(table, opts);
       eq('native stacked: a currency sign in its own piece stays and the number rounds',
         a.map((seg) => seg.text), ['$', '350']);
-      eq('native stacked: one number per line rounds number by number with the words setting off',
+      eq('native stacked: one number per line rounds number by number',
         b.map((seg) => seg.text), ['150', '150']);
       eq('native stacked: a number that inline styling splits into two pieces stays unchanged',
         c.map((seg) => seg.text), ['6,7', '18,245']);
@@ -1123,7 +1108,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '2018' },
     ]]);
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: true, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1148,7 +1133,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '2018' },
     ]]);
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1170,7 +1155,7 @@ const SEAT_ROWS = [
     // simplifyDates=true branch
     const tableOn = makeMockTable([[{ tag: 'td', text: '2024-03-14' }]]);
     roundTable(tableOn, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: true, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1185,7 +1170,7 @@ const SEAT_ROWS = [
     // simplifyDates=false branch — same input
     const tableOff = makeMockTable([[{ tag: 'td', text: '2024-03-14' }]]);
     roundTable(tableOff, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1207,7 +1192,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '14:30' },
     ]]);
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: true,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1231,7 +1216,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '14:30' },
     ]]);
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1253,7 +1238,7 @@ const SEAT_ROWS = [
     // simplifyTimes=true
     const tableOn = makeMockTable([[{ tag: 'td', text: '3:45 PM' }]]);
     roundTable(tableOn, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: true,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1270,7 +1255,7 @@ const SEAT_ROWS = [
     // simplifyTimes=false — same input must be untouched
     const tableOff = makeMockTable([[{ tag: 'td', text: '3:45 PM' }]]);
     roundTable(tableOff, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1302,7 +1287,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '2018' },
     ]]);
     roundTable(table, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: true, simplifyTimes: false,
       dateGranularity: 'century', timeGranularity: 'hour',
@@ -1324,7 +1309,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '2018' },
     ]]);
     roundTable(table, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'century', timeGranularity: 'hour',
@@ -1349,7 +1334,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '8,584,629' },
     ]]);
     roundTable(table, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1377,7 +1362,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '2018' },
     ]]);
     roundTable(table, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: true,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1405,7 +1390,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '14:30' },
     ]]);
     roundTable(table, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: true, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1433,7 +1418,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '14:30' },
     ]]);
     roundTable(table, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: true, simplifyTimes: true,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1461,7 +1446,7 @@ const SEAT_ROWS = [
       { tag: 'td', text: '14:30' },
     ]]);
     roundTable(table, {
-      enabled: true, simplifyMixedCells: false, simplifyMixedCurrency: false, simplifyMixedPercent: false,
+      enabled: true, simplifyMixedCurrency: false, simplifyMixedPercent: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyDates: false, simplifyTimes: false,
       dateGranularity: 'decade', timeGranularity: 'hour',
@@ -1674,7 +1659,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
 // cell's 125126 would raise the max magnitude to 5.
 // ---------------------------------------------------------------------------
 
-const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: true, simplifyDates: true });
+const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true });
 
 // "Revenue 500 units" and "DT1234" round like any extracted cell, but both
 // show unchanged pieces here: 500 already sits on the step this dataset's
@@ -1811,10 +1796,10 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
   const rows = [];
   const offRow = DR_LOG.onRow((row) => rows.push(row));
   try {
-    roundTable(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: false }));
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid stacked: a currency sign in its own piece stays and the number rounds, as on a native table',
       pieceTextsOf(a), ['$', '350']);
-    eq('grid stacked: one number per line rounds with the words setting off, as on a native table',
+    eq('grid stacked: one number per line rounds, as on a native table',
       pieceTextsOf(b), ['150', '150']);
     eq('grid stacked: one number that inline styling splits stays unchanged, as on a native table',
       pieceTextsOf(c), ['6,7', '18,245']);
@@ -2894,7 +2879,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     ]);
     table.rows[0].parentElement = { tagName: 'THEAD' };
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      enabled: true, simplifyDates: false, simplifyTimes: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -1, numTop: 1,
@@ -2938,7 +2923,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: 
     ]);
     table.rows[1].parentElement = { tagName: 'TFOOT' };
     const opts = {
-      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      enabled: true, simplifyDates: false, simplifyTimes: false,
       simplifyFirstRow: true, simplifyFirstColumn: true,
       simplifyMixedPercent: false, simplifyMixedCurrency: false,
       offsetTop: -0.5, offsetOther: -1, numTop: 1,
@@ -3279,7 +3264,7 @@ function everyRowRead(kind, largeIn) {
   });
 })();
 
-// On an HTML table a unit number rounds with the words setting off; only its
+// On an HTML table a unit number rounds; only its
 // digits change. Dataset: 4.91 (magnitude 0) and 45.67 (magnitude 1), so
 // 45.67 takes the top band (step 5) and 4.91 the other band (step 0.5).
 (function nativeTable_unitNumbersRoundWithWordsOff() {
@@ -3288,9 +3273,9 @@ function everyRowRead(kind, largeIn) {
       { tag: 'td', text: '4.91tn' }, { tag: 'td', text: 'CAD45.67m' }, { tag: 'td', text: 'DT1234' },
     ]]);
     roundTable(table, Object.assign({}, DR_DEFAULTS, {
-      simplifyFirstRow: true, simplifyFirstColumn: true, simplifyMixedCells: false,
+      simplifyFirstRow: true, simplifyFirstColumn: true, 
     }));
-    eq('HTML table: unit numbers round with the words setting off and an identifier stays',
+    eq('HTML table: unit numbers round and an identifier stays',
       table.rows[0].cells.map((cell) => cell.innerText), ['5tn', 'CAD45m', 'DT1234']);
   });
 })();
@@ -3471,11 +3456,7 @@ function everyRowRead(kind, largeIn) {
   });
 })();
 
-(function mergeLadderDivergence_mixedCellsOption() {
-  // OLD preview copy's mixed-text fallback ran unconditionally — it never
-  // checked opts.simplifyMixedCells, so turning that sidebar toggle off had
-  // no effect on the preview even though the engine would leave every mixed
-  // cell untouched.
+(function mergeLadderDivergence_embeddedNumber() {
   function tdCell(text) { return withTextPiece({ tagName: 'TD', innerText: text, textContent: text }); }
   function thCell(text) { return withTextPiece({ tagName: 'TH', innerText: text, textContent: text }); }
   const table = {
@@ -3484,10 +3465,8 @@ function everyRowRead(kind, largeIn) {
       { cells: [thCell('Row'), tdCell('Revenue: 5,000 units')] },
     ],
   };
-  eq('merge-ladder divergence (mixed cells on): embedded number is sampled',
-    collectNumericCells(table, { simplifyMixedCells: true }).map((c) => c.num), [5000]);
-  eq('merge-ladder divergence (mixed cells off): embedded number is excluded from samples',
-    collectNumericCells(table, { simplifyMixedCells: false }).length, 0);
+  eq('merge-ladder divergence (embedded number): the number in a cell with words is sampled',
+    collectNumericCells(table).map((c) => c.num), [5000]);
 })();
 
 (function mergeLadderParity_datesAndTimesStillExcludedFromPreview() {
@@ -3547,7 +3526,7 @@ function everyRowRead(kind, largeIn) {
     const opts = {
       enabled: true, simplifyFirstRow: false, simplifyFirstColumn: false,
       simplifyMixedPercent: true, simplifyMixedCurrency: true,
-      simplifyDates: true, simplifyTimes: true, simplifyMixedCells: true,
+      simplifyDates: true, simplifyTimes: true, 
       offsetTop: -0.5, offsetOther: -0.5, numTop: 1, rangeExpr: '',
       dateGranularity: 'month', timeGranularity: 'hour',
     };
@@ -3741,7 +3720,7 @@ function everyRowRead(kind, largeIn) {
   let result;
   try {
     result = sandbox.__roundTable(table, {
-      enabled: true, simplifyMixedCells: false, simplifyDates: false, simplifyTimes: false,
+      enabled: true, simplifyDates: false, simplifyTimes: false,
       // The fixture's only row is row 0 — simplifyFirstRow/Column must be true
       // or getExclusionReason would exclude the only cell under test.
       simplifyFirstRow: true, simplifyFirstColumn: true,
@@ -4097,13 +4076,13 @@ function everyRowRead(kind, largeIn) {
   }
 })();
 
-(function bracketedStackedGridCellRoundsWithWordsOff() {
+(function bracketedStackedGridCellRounds() {
   const grid = makeE2EGridWrapper([['4.91', '(125)(126)']]);
   const stacked = grid.cellEls[1];
   setGridCellPieces(stacked, [makeTextNode('(125)'), makeTextNode('(126)')]);
   try {
-    roundTable(grid.wrapperEl, Object.assign({}, PATCH_GRID_OPTS, { simplifyMixedCells: false }));
-    eq('bracketed: a stacked grid cell of bracketed numbers rounds with the words setting off',
+    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    eq('bracketed: a stacked grid cell of bracketed numbers rounds',
       gridCellTextPieces(stacked).map((node) => node.nodeValue), ['(150)', '(150)']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
