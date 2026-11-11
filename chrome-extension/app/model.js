@@ -81,7 +81,8 @@ const DR_MODEL = (function () {
     if (!entry) {
       entry = {
         // Per-cell pre-round original, keyed by cell element. Both kinds
-        // hold one record shape, { value, pieces, pageTitle }: value is the pre-round text the cell
+        // hold one record shape, { value, pieces, pageTitle } (CellRecord in
+        // lib/dr-table/detect.js): value is the pre-round text the cell
         // classified, and pieces holds one entry per text piece with its
         // original text and its written text, the text right after the
         // extension's last write (see applyPatches in

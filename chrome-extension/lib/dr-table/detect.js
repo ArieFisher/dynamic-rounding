@@ -816,7 +816,8 @@ function isCellWholeLink(cell) {
  * its text piece through the layout (layoutPieceHolding), and the match drops
  * when that piece has an <a> ancestor inside the cell. A piece keeps its
  * identity through every write, so the test holds on a simplified cell. A
- * match that no single piece holds stays; the patch step skips it too.
+ * match that no single piece holds stays: the placement step sends no such
+ * match here, and the patch writer skips one.
  * @param {Element} cell
  * @param {{index: number, numStr: string}[]} matches - positions in the classified text
  * @param {PieceLayout} [layout] - the cell's piece layout; with none, the
@@ -850,6 +851,7 @@ function filterLinkMatches(cell, matches, layout) {
 // The layout is the cell's own (cellObj.getPieceLayout()). placeDecision
 // returns a skip for a cell with no layout, so an extracted decision always
 // arrives here with one.
+/** @param {PieceLayout} layout - the cell's piece layout (cellObj.getPieceLayout()) */
 function finalizeExtractedDecision(decision, cell, layout) {
   if (decision.mode !== 'extracted') return decision;
   const filtered = filterLinkMatches(cell, decision.value.matches, layout);
