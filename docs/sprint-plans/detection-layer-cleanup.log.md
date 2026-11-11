@@ -83,12 +83,18 @@ Base branch: main
   - Both kinds now share one cell object and one text read. Stacked years on separate lines round on both kinds, as native tables already did; #620 holds the fix.
   - Follow-up: #620.
 
+- **one-table-scan** (sprint 12) — commits on feature/detection-layer-cleanup
+  - Reviewer: APPROVE (after 0 retries)
+  - Tests: pass (extension 4,473; library 827; documented examples 90)
+  - The load-time scan, the added-node pass, and `findTables` call one scan function, which holds the one native-table query and the one call to the nomination step.
+
 ### Blocked
 
 None.
 
 ### Deferred
 
+None.
 
 ### Change to the dependent policy
 
