@@ -4263,6 +4263,74 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
+// --- The magnitude freeze on both table kinds. After the first simplification
+// the page writes a value of a larger order of magnitude, into a cell and as
+// an added row. Expected texts come from RW_OPTS (top band offset -1, other
+// band offset 0) and the frozen max magnitude 3: the held cells keep their
+// text, and the new value rounds as the top band of magnitude 3 rounds it
+// (the nearest 1,000 for 98,765 at offset -1 from the value's own magnitude
+// 4 -> 99,000; 1,111 at magnitude 3 with offset -1 -> 1,100). A max
+// magnitude computed again would be 4 and would turn the held cells into
+// 1,000 / 6,000 / 2,000 / 4,000. ---
+(function freeze01_aLargerValueTheTableGainsRoundsUnderTheFrozenMaxMagnitude() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const cellCase = build(RW_ROWS);
+    roundTableUnder(cellCase.table, RW_OPTS);
+    cellCase.write(0, 0, '98,765');
+    page.settle();
+    eq(`magnitude freeze (${kind}): a larger value in a cell rounds under the top band's offset and the other cells keep their text`,
+      cellCase.rowTexts(), [['99,000', '5,700'], ['2,500', '3,600']]);
+
+    const rowCase = build(RW_ROWS);
+    roundTableUnder(rowCase.table, RW_OPTS);
+    rowCase.addRow(['98,765', '1,111']);
+    page.settle();
+    eq(`magnitude freeze (${kind}): a larger value in an added row rounds under the top band's offset and the other cells keep their text`,
+      rowCase.rowTexts(), [['1,200', '5,700'], ['2,500', '3,600'], ['99,000', '1,100']]);
+  });
+})();
+
+// --- A toggle off and on computes the max magnitude again on both kinds:
+// the larger value now sets magnitude 4, so the magnitude-3 values round to
+// the nearest 1,000 (see the invented values above). ---
+(function freeze02_aToggleOffAndOnComputesTheMaxMagnitudeAgain() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const cellCase = build(RW_ROWS);
+    roundTableUnder(cellCase.table, RW_OPTS);
+    cellCase.write(0, 0, '98,765');
+    page.settle();
+    resetTable(cellCase.table);
+    roundTableUnder(cellCase.table, RW_OPTS);
+    eq(`magnitude freeze (${kind}): after a toggle off and on the max magnitude reflects the larger value in a cell`,
+      cellCase.rowTexts(), [['99,000', '6,000'], ['2,000', '4,000']]);
+
+    const rowCase = build(RW_ROWS);
+    roundTableUnder(rowCase.table, RW_OPTS);
+    rowCase.addRow(['98,765', '1,111']);
+    page.settle();
+    resetTable(rowCase.table);
+    roundTableUnder(rowCase.table, RW_OPTS);
+    eq(`magnitude freeze (${kind}): after a toggle off and on the max magnitude reflects the larger value in an added row`,
+      rowCase.rowTexts(), [['1,000', '6,000'], ['2,000', '4,000'], ['99,000', '1,000']]);
+  });
+})();
+
+// --- #281: a first simplification that finds no number stores no max
+// magnitude, so the next pass computes it from the numbers that arrive. ---
+(function freeze03_aFirstSimplificationWithNoNumberFreezesNothing() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const t = build([['pending', 'n/a'], ['tbd', 'none']]);
+    roundTableUnder(t.table, RW_OPTS);
+    eq(`#281 (${kind}): a table with no number holds no max magnitude`,
+      DR_MODEL.getTableMaxMagnitude(t.table) == null, true);
+    t.write(0, 0, '1,234');
+    t.write(0, 1, '5,678');
+    page.settle();
+    eq(`#281 (${kind}): the next pass computes the max magnitude from the numbers that arrive`,
+      t.rowTexts(), [['1,200', '5,700'], ['tbd', 'none']]);
+  });
+})();
+
 // --- Test 4: the page writes a new number. The cell simplifies it, and a
 // restore puts back the new number. ---
 (function rewrite04_aNewNumberSimplifiesAndRestoresToItself() {
