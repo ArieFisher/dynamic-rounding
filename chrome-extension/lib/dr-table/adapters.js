@@ -326,8 +326,7 @@ class GridAdapter {
    * cannot change the choice. The result is the container-wide match list in
    * document order, so a row's position is its literal row number.
    *
-   * isOutside marks a row in no row group (on a native table, a row in the
-   * head section). Only the shape fingerprint reads it
+   * isOutside marks a row in no row group. Only the shape fingerprint reads it
    * (_hasHeaderRow).
    *
    * A row from the children fallback on a column-first grid has no row

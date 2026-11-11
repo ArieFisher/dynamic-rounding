@@ -384,15 +384,7 @@ function readTableFingerprint(el, opts = {}) {
 }
 
 /**
- * Whether the first row the adapter returns is a header row, which determines
- * whether the fingerprint carries header texts at all.
- *
- * Both table kinds read it the same way: the first row is an outside row, or
- * it holds header cells alone. A grid that groups nothing (a database query
- * grid) has a data row first, and a scroll redraws it, so its text describes
- * the rows on the screen rather than the table. The pass reads a header row
- * like any other; the first-row exclusion leaves it as written, by position.
- *
+ * Whether the first row the adapter returns is a header row.
  * @param {{isOutside?: boolean, getCells(): object[]}} firstRow
  * @returns {boolean}
  */
