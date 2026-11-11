@@ -56,6 +56,12 @@ Base branch: main
   - The placement step's three exported names moved from `DR_TABLE` to `DR_SIMPLIFY`, because the placement file loads with the simplification library, after `DR_TABLE` is built. No code outside the tests read them through either object.
   - After APPROVE, comments in other files that named the old file for a moved symbol were pointed at the new files, as their own `chore(table)` commit.
 
+- **freeze-both-kinds** — commits on feature/detection-layer-cleanup; the final pull request carries the `minor` label
+  - Reviewer: APPROVE (after 2 retries)
+  - Tests: pass (extension 4,143; library 827; documented examples 90)
+  - The new comparison test fails on the pre-sprint code for native tables and passes on both kinds now.
+  - The product manager added two changes the review surfaced: the lens preview reads the table's magnitude freeze, and the sidebar refreshes the lens preview after its own settings write, so the preview matches the cells after a settings change computes the max magnitude fresh.
+
 ### Blocked
 
 None.
