@@ -344,9 +344,6 @@
     looksLikeGrid(gridWithNumberAt(budget + 1), { styleProbe: gridProbe }), false);
 })();
 
-// The column plan of the numeric step reads spans only within the data test's
-// budget: a candidate row holds at least one cell, so the budget of cell reads
-// ends within that many rows.
 (function geometryProbe_columnPlanReadsSpansWithinTheDataTestBudget() {
   const budget = DR_DETECTION_SETTINGS.dataTestCellBudget;
   const gridProbe = { getComputedStyle: () => ({ display: 'grid' }), getOffsetWidth: () => 100 };
@@ -368,14 +365,12 @@
     spanReads <= budget, true);
 })();
 
-// The geometry probe once held a repetition step before the consistent-cell-
-// count step. It passed when the largest first-class-token share or the
-// largest child-count share, zero-child entries included, reached the floor.
-// The consistent-cell-count step reads the largest non-zero child-count share
-// against the same floor, and that share never exceeds the one the repetition
-// step read, so the repetition step rejected nothing. These tests restate the
-// removed step as a pure function and show that the consistent-cell-count step
-// passing implies it passing.
+// The removed repetition step passed when the largest first-class-token share
+// or the largest child-count share (zero-child entries included) reached the
+// floor. The consistent-cell-count step reads the largest non-zero child-count
+// share against the same floor, which never exceeds the removed step's share,
+// so the removed step rejected nothing. These tests restate it as a pure
+// function and show the later step passing implies it passing.
 const oldRepetitionStepPasses = (children) => {
   const classFreq = new Map();
   for (const child of children) {
@@ -395,10 +390,8 @@ const oldRepetitionStepPasses = (children) => {
 const consistentCellCountStepPasses = (children) =>
   childCountCandidates(children).modalFreq >= children.length * DR_DETECTION_SETTINGS.gridRepetitionShare;
 
-// Ten children make a floor of five. Each case names whether the largest class
-// share reaches the floor and whether the largest non-zero child-count share
-// does. The last case holds a zero-child share alone: only the removed step
-// counted zero-child entries, and the consistent-cell-count step rejects it.
+// Ten children make a floor of five. The last case holds a zero-child share
+// alone: only the removed step counted zero-child entries.
 (function geometryProbe_theRemovedRepetitionStepRejectedNothing() {
   const sameClass = Array(10).fill('row');
   const ownClass = Array.from({ length: 10 }, (_, i) => 'row' + i);
@@ -430,11 +423,10 @@ const consistentCellCountStepPasses = (children) =>
     laterPassedWhereRemovedFailed, 0);
 })();
 
-// Every child-count vector of length 5 and 6 over the counts {0, 1, 2, 3},
-// crossed with every assignment of the first class tokens "a" and "b" to the
-// children (one token or two): 1024 x 32 + 4096 x 64 = 294,912 inputs. The cap
-// keeps the loop under a second. A child's class string holds a second token,
-// so only the first token groups children.
+// 1024 x 32 + 4096 x 64 = 294,912 inputs (child-count vectors of length 5 and
+// 6 over {0, 1, 2, 3}, crossed with first class tokens "a" and "b"). The cap
+// keeps the loop under a second. A second token in each class string checks
+// that only the first token groups children.
 (function geometryProbe_everyBoundedInputPassingTheLaterStepPassesTheRemovedStep() {
   const countValues = [0, 1, 2, 3];
   let checked = 0;
@@ -4724,11 +4716,8 @@ function makeSparselyBoxedGrid(boxed) {
     [['Basic', 'Plus', 'Team', 'Office', 'Enterprise'], ['9', '19', '49', '99', '249']]);
 })();
 
-// The grid adapter's scroll-container lookup returns the first descendant that
-// matches a vendor profile's scroll-container selectors, then [role="grid"],
-// and otherwise the grid element. A grid element that matches a selector
-// itself resolves to itself when no descendant matches, and a matching
-// descendant resolves ahead of it.
+// A grid element that matches a selector itself resolves to itself when no
+// descendant matches; a matching descendant resolves ahead of it.
 (function gridAdapter_scrollContainerOfAnElementThatMatchesASelectorItself() {
   const matchesEverySelector = () => true;
   const alone = { matches: matchesEverySelector, querySelectorAll: () => [] };
@@ -4745,8 +4734,6 @@ function makeSparselyBoxedGrid(boxed) {
     new GridAdapter(outer)._getScrollContainer() === inner, true);
 })();
 
-// The superscript walk tests every ancestor between the text and the cell for
-// a computed superscript, and stops at the first one it finds.
 (function superscriptWalk_aComputedSuperscriptOnAnAncestorCounts() {
   const probeOf = (superEl) => ({
     getComputedStyle: (el) => ({ verticalAlign: el === superEl ? 'super' : 'baseline' }),
@@ -4774,9 +4761,7 @@ function makeSparselyBoxedGrid(boxed) {
   });
 })();
 
-// The artifact filter and the positioned-ancestor walk read position and left
-// through the style probe alone, so an inline style the probe does not report
-// has no effect.
+// An inline style the probe does not report has no effect.
 (function accessibilityArtifact_readsPositionAndLeftThroughTheStyleProbe() {
   const probeOf = (styles) => ({
     getComputedStyle: (el) => Object.assign({ position: 'static', left: '0px' }, styles.get(el)),

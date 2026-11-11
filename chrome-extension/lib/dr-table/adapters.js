@@ -8,33 +8,18 @@
 /**
  * The adapter layer of the lib/dr-table package: NativeTableAdapter and
  * GridAdapter (chosen by makeAdapter) present a table's rows and cells through
- * one interface, over a native <table> and over a grid built from generic
- * elements. isDataTable and readTableFingerprint (detect.js), the passes in
- * content.js, the range pulse in ui-pillbox.js (flashRangePulse), and the
- * capture state collector (collectCaptureState) read rows and cells through
- * it. Loaded by the manifest's content_scripts after cells.js and before
- * classify.js and detect.js.
+ * one interface. Loaded after cells.js and before classify.js and detect.js.
  *
- * Ports: DEFAULT_STYLE_PROBE (computed style, offset width, box) and the
- * originals port (a simplified cell's record) are this file's ports. Each has
- * a working default, so the adapters run in a plain Node context with no
- * Chrome globals and no `window`. The vendor grid selectors come in as
- * opts.vendorProfiles. Every other page read goes to the page directly, with
- * no port: the element and attribute reads of rows and cells, and the native
- * adapter's liveText.
+ * Ports (DEFAULT_STYLE_PROBE and the originals port) have working defaults, so
+ * the adapters run in a plain Node context with no Chrome globals. Every other
+ * page read goes to the page directly.
  *
- * Every detection setting this file reads lives in DR_DETECTION_SETTINGS
- * (constants.js), which the content script loads before this file. The file
- * reads it as a bare global with no local fallback copy, and
- * GRID_VENDOR_PROFILES reads it at the top level, so a missing object fails at
- * load, before any function here runs.
+ * GRID_VENDOR_PROFILES reads DR_DETECTION_SETTINGS at the top level, so a
+ * missing object fails at load, before any function here runs.
  */
 
-/**
- * CSS selector for a grid row's cells: the cell, grid-cell, row-header, and
- * column-header roles. All four count as cells, in document order, so a
- * labelled row's label is column A the way a native table's row header is.
- */
+// All four roles count as cells, so a labelled row's label is column A the
+// way a native table's row header is.
 const GRID_CELL_SELECTOR = '[role="cell"], [role="gridcell"], [role="rowheader"], [role="columnheader"]';
 
 /**
@@ -47,14 +32,12 @@ function parentOf(node) {
 }
 
 /**
- * The style probe: the one source for every guarded getComputedStyle,
- * offsetWidth, and box read in this file. With no real getComputedStyle it
- * reports a normal, visible, statically-positioned block element, which keeps
- * detection running in a context with no styles.
- *
- * getBox returns an element's box ({top, left, width, height}), or null when
- * the element draws no box: a hidden element or a `display: contents` row. A
- * probe without getBox reads every grid as row-first (see isColumnFirst).
+ * The style probe: every guarded style, offsetWidth, and box read goes here.
+ * With no real getComputedStyle it reports a visible, statically-positioned
+ * block element, so detection runs in a context with no styles.
+ * getBox returns null when the element draws no box (hidden, or a
+ * `display: contents` row). A probe without getBox reads every grid as
+ * row-first.
  */
 const DEFAULT_STYLE_PROBE = {
   getComputedStyle(el) {
@@ -76,13 +59,10 @@ const DEFAULT_STYLE_PROBE = {
 };
 
 /**
- * The originals port: per-cell storage for a simplified cell's record, read
- * and written by the cell objects of both adapters. The default is a private
- * WeakMap<cellEl, record>, which suits a caller with no application model (a
- * test). content.js passes a port backed by the table's registry entry in
- * DR_MODEL (app/model.js), so a cell's originals survive a toggle without a
- * page attribute. makeAdapter takes another port as opts.originalsPort. The
- * record's shape is CellRecord.
+ * The originals port: per-cell storage for a simplified cell's record
+ * (CellRecord). The default WeakMap suits a caller with no application model;
+ * content.js passes a port backed by DR_MODEL's registry entry, so originals
+ * survive a toggle without a page attribute.
  */
 function makeDefaultOriginalsPort() {
   const store = new WeakMap();
@@ -96,9 +76,8 @@ const DEFAULT_ORIGINALS_PORT = makeDefaultOriginalsPort();
 
 /**
  * The children that hold the most common non-zero child count, with that
- * count and how many children hold it. The geometry probe takes them as
- * candidate rows (columns, on a column-first grid) and the grid adapter takes
- * them as a column-first grid's columns, so the two read the same set.
+ * count and how many children hold it. The geometry probe and the grid
+ * adapter both call it, so the two read the same set.
  *
  * @param {Element[]} children
  * @returns {{modalChildCount: number, modalFreq: number, candidates: Element[]}}
@@ -121,13 +100,10 @@ function childCountCandidates(children) {
 }
 
 /**
- * The direction reader: whether an element's children run side by side as
- * columns (a column-first grid) instead of stacking as rows (a row-first
- * grid). It compares the boxes of the first two children that draw a box,
- * among at most DR_DETECTION_SETTINGS.gridColumnWidthSample children: the same
- * top with a larger left is column-first. Every other case is row-first,
- * including a probe without getBox. The geometry probe and the grid adapter
- * both call it, so the two read one direction for one grid.
+ * Whether an element's children run side by side as columns (column-first)
+ * instead of stacking as rows: the first two children that draw a box share a
+ * top, with a larger left on the second. The geometry probe and the grid
+ * adapter both call it, so the two read one direction for one grid.
  *
  * @param {Element[]} children
  * @param {object} styleProbe
@@ -153,13 +129,11 @@ function isColumnFirst(children, styleProbe) {
 const GRID_VENDOR_PROFILES = DR_DETECTION_SETTINGS.vendorProfiles;
 
 /**
- * Read one span value, normalized the way a table cell holds it.
- *
- * A missing, blank, or unreadable value is one column or one row. An explicit
- * zero is the "to the end" form, which HTML and ARIA both define for rowspan
- * and neither honours for colspan, so the caller passes what zero means.
- * Column spans are capped at the 1000 a table cell allows, so a malformed
- * value cannot stretch the column cursor.
+ * Read one span value. A missing or unreadable value is 1. An explicit zero
+ * is the "to the end" form, which HTML and ARIA define for rowspan and
+ * neither honours for colspan, so the caller passes what zero means. The cap
+ * of 1000 is the most a table cell allows, so a malformed value cannot
+ * stretch the column cursor.
  *
  * @param {string|number|null|undefined} raw
  * @param {number} whenZero
@@ -173,7 +147,6 @@ function normalizeSpan(raw, whenZero) {
   return Math.min(value, 1000);
 }
 
-/** Spans of a native table cell, read from its colSpan and rowSpan properties. */
 function nativeCellSpans(cell) {
   return {
     colSpan: normalizeSpan(cell.colSpan, 1),
@@ -181,11 +154,7 @@ function nativeCellSpans(cell) {
   };
 }
 
-/**
- * Spans of a grid cell, read from its aria-colspan and aria-rowspan
- * attributes. For a grid that declares none, the function returns one column
- * and one row for every cell, which numbers cells the way the read position does.
- */
+// A grid that declares no span gets one column and one row per cell.
 function gridCellSpans(cellEl) {
   const read = (cellEl && typeof cellEl.getAttribute === 'function')
     ? (name) => cellEl.getAttribute(name)
@@ -198,17 +167,9 @@ function gridCellSpans(cellEl) {
 
 /**
  * Number every cell by the column the browser lays it out in (issue #330).
- *
- * Rows are walked in order, each with a cursor that starts at the leftmost
- * column. A cell merged down holds its columns on the rows below it, and the
- * cursor skips a held column; a cell merged across advances the cursor by its
- * whole width. Both table kinds call this with the span read of their kind, so
- * one rule numbers the columns and the two kinds agree cell for cell.
- *
- * Without this, a merge inside the data area shifts every cell after it: the
- * first-column exclusion and the range expression fall on the wrong cells,
- * the dataset behind the max magnitude gains or loses values, and the whole
- * table rounds at the wrong step.
+ * Both table kinds call this with their own span read, so one rule numbers
+ * the columns. Without it, a merge in the data area shifts every later cell
+ * off its column, and the table rounds at the wrong step.
  *
  * @param {{colSpan: number, rowSpan: number}[][]} rowSpans
  * @returns {{columnIndex: number, columnSpan: number}[][]}
@@ -221,11 +182,8 @@ function assignGridColumns(rowSpans) {
     const placed = cells.map(({ colSpan, rowSpan }) => {
       while (held[cursor] > 0) cursor += 1;
       const columnIndex = cursor;
-      // Each covered column takes the longer of its hold and this cell's
-      // rowSpan. On well-formed markup no covered column carries a hold here,
-      // so this is a plain write; it matters where a cell merged across reaches
-      // a column a merge above still holds, which the table model keeps on the
-      // shared slot.
+      // Matters where a cell merged across reaches a column a merge above
+      // still holds: the table model keeps the longer hold on the shared slot.
       for (let col = cursor; col < cursor + colSpan; col++) {
         held[col] = Math.max(held[col] || 0, rowSpan);
       }
@@ -240,12 +198,9 @@ function assignGridColumns(rowSpans) {
 }
 
 /**
- * The rows of one table, built from each row's cell elements: both adapters
- * and the geometry probe's numeric step build their rows here. The caller
- * reads each row's cell elements once, so the column plan (assignGridColumns)
- * and the cell objects count the same row shape. A cell object carries its plan
- * entry as columnIndex and columnSpan; a table that declares no span plans
- * every cell at its read position.
+ * The rows of one table, built from each row's cell elements. The caller
+ * reads each row's cell elements once, so the column plan and the cell
+ * objects count the same row shape.
  * @param {Element[][]} rowCellEls - each row's cell elements, in column order
  * @param {(cellEl: Element) => {colSpan: number, rowSpan: number}} readSpans
  *   - the span read of the table kind (nativeCellSpans or gridCellSpans)
@@ -273,7 +228,6 @@ class NativeTableAdapter {
   getRows() {
     const port = this.originalsPort;
     return buildRows(Array.from(this.el.rows, (row) => Array.from(row.cells)), nativeCellSpans, (cell) => {
-      // A native cell classifies its rendered text, which is also what the screen shows.
       const rendered = () => cell.innerText || cell.textContent || '';
       return makeCellObj(cell, port, {
         tagName: cell.tagName, liveText: rendered, displayedText: rendered, rendered: true,
@@ -283,12 +237,9 @@ class NativeTableAdapter {
 }
 
 /**
- * Whether an element carries a cell role, per GRID_CELL_SELECTOR. A cell
- * bounds a table: a grid inside a cell of another grid is a separate table,
- * the way a native table inside a cell is. Every walk that sorts elements
- * between two nested grids reads this one predicate: the walks that find a
- * chain root and count nesting depth, and the grid adapter's reads of the
- * grid's rows and cells. An element stub with no `matches` counts as no cell.
+ * Whether an element carries a cell role. A cell bounds a table: a grid inside
+ * a cell of another grid is a separate table, as with a native table. Every
+ * walk that sorts elements between nested grids reads this one predicate.
  *
  * @param {Element} el
  * @returns {boolean}
@@ -299,16 +250,10 @@ function _isCellAncestor(el) {
 }
 
 /**
- * The descendants of `root` matching `selector` that belong to `root`: those
- * with no ancestor carrying a cell role between them and `root`. A match inside
- * a cell of `root` belongs to a table nested in that cell, so a grid reads
- * only the rows and cells that belong to it, as a native table's rows leave
- * out a table nested in one of its cells.
- *
- * One call resolves each ancestor once: the walk records the answer for every
- * element it passes, and a later walk that reaches a recorded element takes
- * its answer and stops. The work grows with the size of the tree under
- * `root`, not with the matches times their depth.
+ * The descendants of `root` matching `selector` with no cell-role ancestor
+ * between them and `root`: a match inside a cell belongs to a table nested
+ * in that cell. Each ancestor is resolved once, so the work grows with the
+ * tree under `root`, not with matches times depth.
  *
  * @param {Element} root
  * @param {string} selector
@@ -345,15 +290,10 @@ class GridAdapter {
   getElement() { return this.el; }
   isGrid() { return true; }
 
-  /**
-   * The grid's scroll container: the first descendant of this grid that
-   * matches a vendor profile's scrollContainerSelectors, in profile order,
-   * then [role="grid"]; else the grid element.
-   */
+  // The first descendant matching a vendor scrollContainerSelectors entry,
+  // then [role="grid"]; else the grid element.
   _getScrollContainer() {
     const el = this.el;
-    // The vendor profiles' selectors (database query grids, AG Grid, etc.),
-    // then the generic ARIA grid role for a grid no profile covers.
     const knownSelectors = [
       ...this.vendorProfiles.flatMap((p) => p.scrollContainerSelectors || []),
       '[role="grid"]',
@@ -365,10 +305,7 @@ class GridAdapter {
     return el;
   }
 
-  /**
-   * The pinned pane inside this grid element, or null. A single-pane grid (a
-   * database query grid) has none.
-   */
+  // The pinned pane inside this grid, or null; a single-pane grid has none.
   _getPinnedPane(scrollContainer) {
     const pinnedSelectors = this.vendorProfiles.flatMap((p) => p.pinnedPaneSelectors || []);
     const el = this.el;
@@ -380,29 +317,21 @@ class GridAdapter {
   }
 
   /**
-   * The container's rows, each as { el, isOutside }, from the first selector
-   * that matches rows: [role="row"], .dg--virtual-row, <tr>, then the
-   * container's children. The <tr> source covers a grid (role="grid" or
-   * "table") whose rows are bare <tr> elements with no row role, directly
-   * inside the grid as orphan rows.
+   * The container's rows from the first selector that matches rows:
+   * [role="row"], .dg--virtual-row, <tr>, then the container's children. The
+   * <tr> source covers a grid whose rows are bare <tr> elements with no row
+   * role.
    *
-   * When the container holds row groups ([role="rowgroup"], the ARIA analog of
-   * <tbody>), the first selector that matches rows inside a group applies, so
-   * a stray block carrying role="row" outside every group, such as a
-   * description panel, has no effect on which selector applies. The
-   * list is the container-wide match list for that selector, in document
-   * order. Header and summary rows outside the group count as rows like any
-   * other, and only the first-row and first-column exclusions skip them, as
-   * with a native table's <thead> and total rows. A row's position in the list
-   * is its literal row number.
+   * With row groups present, the selector is chosen from rows inside a group,
+   * so a stray role="row" block outside every group (a description panel)
+   * cannot change the choice. The result is the container-wide match list in
+   * document order, so a row's position is its literal row number.
    *
-   * isOutside marks a row that sits in no row group. An outside row rounds like
-   * any other row, and its values join the dataset like any other row's. Only
-   * the shape fingerprint reads the mark (_hasHeaderRow).
+   * isOutside marks a row in no row group. Only the shape fingerprint reads it
+   * (_hasHeaderRow).
    *
    * A row from the children fallback on a column-first grid has no row
-   * element: its entry holds el: null and cellEls, the row's cells in column
-   * order (see _childRowEntries).
+   * element: its entry holds el: null and cellEls.
    *
    * @param {Element} container
    * @returns {{el: Element|null, isOutside: boolean, cellEls?: Element[]}[]}
@@ -412,8 +341,6 @@ class GridAdapter {
     if (!container.querySelectorAll) {
       return this._childRowEntries(container);
     }
-    // Each query skips elements inside a cell of the grid: those belong to a
-    // table nested in that cell.
     const rowgroups = _ownDescendants(container, '[role="rowgroup"]');
     const isGrouped = rowgroups.length > 0;
     const scopes = isGrouped ? rowgroups : [container];
@@ -425,25 +352,19 @@ class GridAdapter {
       }
       if (rows.length === 0) continue;
       if (!isGrouped) return rows.map((el) => ({ el, isOutside: false }));
-      // The chosen selector's matches across the whole container; a match
-      // inside no row group is an outside row.
       const inGroup = new Set(rows);
       return _ownDescendants(container, sel)
         .map((el) => ({ el, isOutside: !inGroup.has(el) }));
     }
-    // Fallback: the first scope's children. Row groups that hold no rows are
-    // non-conforming markup, so only the first group's children count; the
-    // container-wide list above applies to rows a selector matches.
+    // Row groups that hold no rows are non-conforming markup, so only the
+    // first group's children count.
     return this._childRowEntries(scopes[0]);
   }
 
   /**
    * Rows from an element's children, the fallback when no row selector
-   * matches. On a row-first grid each child is a row. On a column-first grid
-   * (see isColumnFirst) each child is a column, and row r holds the r-th item
-   * of every column, in column order. The columns are the children holding the
-   * most common item count (see childCountCandidates), so a column with a
-   * different count stays out and every row holds one cell per column.
+   * matches. On a column-first grid each child is a column; only columns with
+   * the most common item count count, so every row holds one cell per column.
    *
    * @param {Element} parent
    * @returns {{el: Element|null, isOutside: boolean, cellEls?: Element[]}[]}
@@ -463,8 +384,6 @@ class GridAdapter {
   }
 
   /**
-   * The rows' elements: _getRowEntries without the outside-row mark, for
-   * callers that stitch by list position (pinned panes).
    * @param {Element} container
    * @returns {Element[]}
    */
@@ -473,8 +392,6 @@ class GridAdapter {
   }
 
   /**
-   * A row element's cell elements: GRID_CELL_SELECTOR matches, else .dg--cell
-   * matches, else the direct children.
    * @param {Element} rowEl
    * @returns {Element[]}
    */
@@ -489,8 +406,6 @@ class GridAdapter {
   }
 
   /**
-   * A row's key for pinned-pane stitching: its data-row value, else its
-   * data-index value, else its DOM index.
    * @param {Element} rowEl
    * @param {number} domIndex
    * @returns {string}
@@ -503,7 +418,6 @@ class GridAdapter {
     return String(domIndex);
   }
 
-  /** Stitched rows: each row's pinned cells first, then its scroll cells. */
   getRows() {
     const scrollContainer = this._getScrollContainer();
     const pinnedPane = this._getPinnedPane(scrollContainer);
@@ -522,15 +436,11 @@ class GridAdapter {
     }
 
     const adapter = this;
-    // Each row's cell elements in the order getCells() returns them: the
-    // pinned pane's cells, then the scroll container's. Read once, so the
-    // column plan and the cell objects count the same row shape and each row
-    // is queried for its cells once. A row read from a column-first grid
-    // carries its cells and no row element, so it takes no pinned cells.
+    // A row read from a column-first grid has no row element, so it takes no
+    // pinned cells.
     const rowCellEls = scrollEntries.map(({ el: rowEl, cellEls }, idx) => {
       if (cellEls) return cellEls;
       const scrollKey = adapter._getRowKey(rowEl, idx);
-      // The pinned row with the same row key, else the one at the same position.
       const pinnedRowEl = pinnedByKey.get(scrollKey) || (pinnedRows[idx] || null);
       const pinned = pinnedRowEl ? adapter._getCellEls(pinnedRowEl) : [];
       return pinned.concat(adapter._getCellEls(rowEl));
@@ -541,10 +451,9 @@ class GridAdapter {
 }
 
 /**
- * Factory: a NativeTableAdapter for a <table> element, a GridAdapter
- * otherwise. Plain objects with a `rows` property (e.g. test stubs) count as
- * native tables. Adapters are never cached, because a grid's row count changes
- * on scroll.
+ * A NativeTableAdapter for a <table> element, a GridAdapter otherwise. Plain
+ * objects with a `rows` property (test stubs) count as native tables. Adapters
+ * are never cached, because a grid's row count changes on scroll.
  */
 function makeAdapter(el, opts = {}) {
   if (el.tagName === 'TABLE' || (el.tagName === undefined && el.rows)) {

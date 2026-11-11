@@ -607,12 +607,9 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
 
 // --- End per-table pillbox infrastructure ---
 
-// registryOriginalsPort adapts DR_MODEL's per-table registry entry to the
-// OriginalsPort interface both adapters expect (see lib/dr-table/adapters.js)
-// — the one place a cell's record leaves the page and enters the application
-// model. Every makeAdapter() call below that reads or writes a simplified
-// cell passes this, so every read and every write goes through the registry.
-// It carries the cell's whole record (see CellRecord in lib/dr-table/cells.js).
+// The OriginalsPort both adapters expect (see lib/dr-table/adapters.js): the
+// one place a cell's record enters the application model. Every makeAdapter()
+// call that reads or writes a simplified cell passes it.
 function registryOriginalsPort(table) {
   return {
     has(cellEl) { return DR_MODEL.hasTableOriginal(table, cellEl); },
@@ -671,10 +668,6 @@ function isUnrestorableCell(table, cell) {
   return !DR_MODEL.hasTableOriginal(table, cell);
 }
 
-// Release one simplified cell: the cell object's restore() puts its original
-// text back into every text piece that still shows the extension's written
-// text, removes the marker class, and puts back the hover text the page set
-// (see makeCellObj in lib/dr-table); then this drops the cell's record.
 // The restore runs it on every marked cell; a pass runs it on a rewritten
 // cell before simplifying it fresh, and on a held cell whose target text is
 // its original.
@@ -893,13 +886,11 @@ function buildCaptureStateResponse() {
 // rounding. A held cell whose target is its original is released. A rule
 // added to the pass reaches both table kinds at once.
 //
-// The adapters (lib/dr-table/adapters.js, with the cell object in
-// cells.js) hold two differences between the kinds before the pass starts.
-// getText() returns a native cell's rendered text, and a grid cell's flat
-// text; both answer with the record's stored value once the cell is
-// simplified. getPieceLayout()'s toFlat converts a native cell's rendered
-// positions to flat positions, which flatPatches reads; a grid cell's
-// positions need no conversion, so its toFlat is null.
+// The adapters (lib/dr-table/adapters.js, cells.js) hold two differences
+// between the kinds before the pass starts: getText() reads a native cell's
+// rendered text and a grid cell's flat text, and getPieceLayout()'s toFlat
+// converts a native cell's rendered positions to flat positions (null for a
+// grid cell).
 //
 // Every other difference is a field of the kind object the caller passes,
 // NATIVE_TABLE_PASS or GRID_TABLE_PASS:
@@ -951,9 +942,7 @@ const GRID_TABLE_PASS = {
   watchedElement(adapter) { return adapter._getScrollContainer(); },
 };
 
-// Write one cell's patches through the cell object's applyPatches, which
-// stores the record, adds the marker class, and sets the hover text on a
-// landed write (see makeCellObj in lib/dr-table), and return how many landed.
+// Returns how many patches landed (see makeCellObj in lib/dr-table).
 function writeCell(entry, patches) {
   return entry.cellObj.applyPatches(patches, { value: entry.text });
 }

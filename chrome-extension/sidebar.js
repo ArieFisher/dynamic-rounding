@@ -662,7 +662,8 @@ boundTab.subscribe('state:tableActivated', () => {
   pullSettingsAndApplyToUI();
 });
 
-// An echo of the sidebar's own write would overwrite a newer keystroke or slider step.
+// An echo of the sidebar's own write would overwrite a newer keystroke or
+// slider step.
 boundTab.subscribe('state:settingsChanged', ({ source, settings }) => {
   if (source === 'sidebar') { fetchPreviewSamples(); return; }
   applySettingsToUI(settings);

@@ -4263,15 +4263,10 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
-// --- The magnitude freeze on both table kinds. After the first simplification
-// the page writes a value of a larger order of magnitude, into a cell and as
-// an added row. Expected texts come from RW_OPTS (top band offset -1, other
-// band offset 0) and the frozen max magnitude 3: the held cells keep their
-// text, and the new value rounds as the top band of magnitude 3 rounds it
-// (the nearest 1,000 for 98,765 at offset -1 from the value's own magnitude
-// 4 -> 99,000; 1,111 at magnitude 3 with offset -1 -> 1,100). A max
-// magnitude computed again would be 4 and would turn the held cells into
-// 1,000 / 6,000 / 2,000 / 4,000. ---
+// --- The magnitude freeze on both table kinds. Expected texts come from
+// RW_OPTS (top band offset -1, other band offset 0) and the frozen max
+// magnitude 3. A max magnitude computed again would be 4 and would turn the
+// held cells into 1,000 / 6,000 / 2,000 / 4,000. ---
 (function freeze01_aLargerValueTheTableGainsRoundsUnderTheFrozenMaxMagnitude() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const cellCase = build(RW_ROWS);
@@ -4290,9 +4285,8 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
-// --- A toggle off and on computes the max magnitude again on both kinds:
-// the larger value now sets magnitude 4, so the magnitude-3 values round to
-// the nearest 1,000 (see the invented values above). ---
+// --- A toggle off and on computes the max magnitude again: the larger value
+// sets magnitude 4, so the magnitude-3 values round to the nearest 1,000. ---
 (function freeze02_aToggleOffAndOnComputesTheMaxMagnitudeAgain() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const cellCase = build(RW_ROWS);
@@ -4541,11 +4535,9 @@ const RW_CAP_ROW = /more than the .* the extension follows/;
   });
 })();
 
-// --- #399: the link filter and the superscript check find a number's text
-// piece by the number's position, so a number that appears twice in a cell
-// takes the verdict of its own piece, on a native table and on a grid. The
-// cells below use invented values at magnitude 3 under RW_OPTS: 1,234 -> 1,200
-// and 9,850 -> 9,900. ---
+// --- #399: a number that appears twice in a cell takes the verdict of its own
+// piece. Invented values at magnitude 3 under RW_OPTS: 1,234 -> 1,200 and
+// 9,850 -> 9,900. ---
 const LF_ROWS = (cell) => [[cell, '2,468'], ['3,579', '4,321']];
 const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
 
@@ -4619,8 +4611,6 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
   });
 })();
 
-// The record of a simplified cell holds the original text, the pieces, and
-// the page's hover text, and nothing else.
 (function record_holdsValuePiecesAndPageTitleAlone() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(LF_ROWS(['Total 9,850 kg ', { tag: 'sup', text: '7' }, ' ref ', { tag: 'a', text: '12' }]));

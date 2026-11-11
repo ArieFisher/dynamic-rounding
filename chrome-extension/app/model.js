@@ -80,15 +80,8 @@ const DR_MODEL = (function () {
     let entry = tableRegistry.get(table);
     if (!entry) {
       entry = {
-        // Per-cell pre-round original, keyed by cell element. Both kinds
-        // hold one record shape, { value, pieces, pageTitle } (CellRecord in
-        // lib/dr-table/cells.js): value is the pre-round text the cell
-        // classified, and pieces holds one entry per text piece with its
-        // original text and its written text, the text right after the
-        // extension's last write (see applyPatches in
-        // lib/dr-table/cells.js). The cell objects' reads, the pass's cell
-        // sort, and the one piece restore (releaseCell in content.js) are
-        // the readers. A WeakMap with no companion Set: nothing enumerates a
+        // Per-cell pre-round original, keyed by cell element, one record
+        // shape for both kinds (CellRecord in lib/dr-table/cells.js). A WeakMap with no companion Set: nothing enumerates a
         // table's originals, and a cell the host recycles out of the page
         // (grid virtualization, a framework re-render) lets its entry go
         // instead of accumulating for the life of the table's registration.
@@ -105,10 +98,9 @@ const DR_MODEL = (function () {
         // apply, the re-apply pass, and the capture read it; a reset of the
         // cells leaves it in place.
         settings: null,
-        // The table's magnitude freeze, on both table kinds: the max
-        // magnitude stored at the first simplification, so a re-apply pass
-        // (a grid's scroll, a value the page writes) cannot shift it. null
-        // until roundTable stores it; resetTable clears it back to null.
+        // The max magnitude stored at the first simplification, so a re-apply
+        // pass (a grid's scroll, a value the page writes) cannot shift it.
+        // resetTable clears it back to null.
         maxMagnitude: null,
         // The shape fingerprint: { columnCount, headerTexts } as read by
         // lib/dr-table's readTableFingerprint at registration.

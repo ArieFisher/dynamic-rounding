@@ -6,66 +6,35 @@
  */
 
 /**
- * The detection layer of the lib/dr-table package: the geometry probe
- * (looksLikeGrid), the right-click resolver (findTargetTable), the
- * accessibility artifact filter (isAccessibilityArtifact), the data test
- * (isDataTable), the shape fingerprint (readTableFingerprint,
- * sameTableFingerprint), and the nomination step (chainRootOf, nominateNest,
- * nominateNests, findTables). Loaded by the manifest's content_scripts after
- * cells.js, adapters.js, and classify.js, before content.js.
- *
- * Detection reads the page and returns findings: isDataTable, looksLikeGrid,
- * findTargetTable, isAccessibilityArtifact, chainRootOf, nominateNest,
- * nominateNests, findTables, and readTableFingerprint. None writes the
- * dr-ext-grid marker class or builds a table pillbox, and none reads that
- * class as state: "is this element registered" is the injected
+ * The detection layer of the lib/dr-table package. Detection reads the page
+ * and returns findings. It writes no marker class, builds no table pillbox,
+ * and keeps no registry: "is this element registered" is the injected
  * opts.isRegistered check. The callers (ui-pillbox.js, content.js) check the
- * registry in DR_MODEL and, for a first match, write the marker class (a style
- * hook only) and build the table pillbox.
+ * registry in DR_MODEL and, for a first match, write the marker class and
+ * build the table pillbox.
  *
- * Detection reads rows and cells through the adapters (adapters.js), and the
- * style probe (DEFAULT_STYLE_PROBE) is the port for every computed style and
- * box read. With the defaults, detection runs in a plain Node context with no
- * Chrome globals and no `window`. `document` comes in as opts.doc in the
- * functions that take it. Every other page read goes to the page directly,
- * with no port: the element and attribute reads of the ancestor walks, the
- * aria-hidden read (carriesHiddenMark), the label read (holdsLabelledSvg), and
- * the selector queries of the nomination step. _hasHeaderRow also reads a
- * native table's first row element, for its head section.
+ * The style probe is the port for every computed style and box read, so
+ * detection runs in a plain Node context with no Chrome globals. `document`
+ * comes in as opts.doc.
  *
- * Every detection setting this file reads lives in DR_DETECTION_SETTINGS
- * (constants.js), and DETECTION_OPTIONS reads the settings contract
- * (DR_DEFAULTS). The content script loads constants.js before this file, and
  * DETECTION_OPTIONS reads DR_DEFAULTS at the top level, so a missing object
  * fails at load, before any function here runs.
  */
 
-/** CSS selector for the cheap load-time ARIA pass. */
 const GRID_ARIA_SELECTOR = '[role="grid"], [role="table"]';
 
-/** Node.ELEMENT_NODE, or 1 (its fixed DOM value) in a context with no `Node` global. */
+// Node.ELEMENT_NODE, or its fixed DOM value where no `Node` global exists.
 const DR_TABLE_ELEMENT_NODE = (typeof Node !== 'undefined' && Node.ELEMENT_NODE) || 1;
 
-// The settings the data test classifies a cell under: every option in the
-// settings contract (DR_DEFAULTS) whose name starts with "simplify", each on.
-// The test reads no table's settings, so a table passes or fails the same way
-// whatever its switches hold, and a switch added to the contract reaches the
-// test with no edit here.
+// Every "simplify" switch in the settings contract, on, so a table passes the
+// data test whatever its own switches hold, and a new switch reaches the test
+// with no edit here.
 const DETECTION_OPTIONS = Object.freeze(Object.fromEntries(
   Object.keys(DR_DEFAULTS).filter((key) => key.startsWith('simplify')).map((key) => [key, true])));
 
 /**
  * The geometry probe: does `el` look like a grid built from generic elements?
- *
- * The checks run cheapest first, and the first to fail returns false: at
- * least DR_DETECTION_SETTINGS.gridMinChildren children; the most common child
- * count (see childCountCandidates) held by at least
- * DR_DETECTION_SETTINGS.gridRepetitionShare of them, which makes the children
- * that hold it the candidate rows; a display value in
- * DR_DETECTION_SETTINGS.gridDisplayValues; a cell the data test counts among
- * the candidate rows (probeRowsHoldNumber); and a grid mark (carriesGridMark)
- * or else first cells that align (firstCellsAlign), the one check that reads
- * boxes.
+ * The checks run cheapest first; firstCellsAlign is the one that reads boxes.
  *
  * @param {Element} el
  * @param {{styleProbe?: object, originalsPort?: object, vendorProfiles?: object[]}} [opts]
@@ -87,25 +56,24 @@ function looksLikeGrid(el, opts = {}) {
 }
 
 /**
- * Whether the candidate rows hold a cell the data test counts (see
- * holdsRoundableCell), reading the rows' children as grid cells.
+ * Whether the candidate rows hold a cell the data test counts, reading the
+ * rows' children as grid cells.
  * @param {Element[]} candidateRows
  * @param {{originalsPort?: object}} opts
  * @returns {boolean}
  */
 function probeRowsHoldNumber(candidateRows, opts) {
   const port = opts.originalsPort || DEFAULT_ORIGINALS_PORT;
-  // A candidate row holds at least one cell, so the data test's budget of
-  // cell reads ends within this many rows; the column plan reads no further.
+  // Each candidate row holds at least one cell, so the cell budget ends
+  // within this many rows.
   const rows = candidateRows.slice(0, DR_DETECTION_SETTINGS.dataTestCellBudget);
   return holdsRoundableCell(buildRows(rows.map((row) => Array.from(row.children)), gridCellSpans,
     (cellEl) => makeGridCellObj(cellEl, port)));
 }
 
 /**
- * Whether the page marks `el` as a grid: role="grid", role="table", or a class
- * that contains a vendor profile's classToken. A marked element passes the
- * geometry probe with no alignment check.
+ * Whether the page marks `el` as a grid: role="grid", role="table", or a
+ * vendor classToken. A marked element skips the alignment check.
  * @param {Element} el
  * @param {{classToken: string}[]} vendorProfiles
  * @returns {boolean}
@@ -118,12 +86,9 @@ function carriesGridMark(el, vendorProfiles) {
 }
 
 /**
- * Whether the first cells of the candidates line up, sampling at most
- * DR_DETECTION_SETTINGS.gridColumnWidthSample candidates. On a row-first grid
- * the first cells of the rows form column A, so their widths agree; on a
- * column-first grid (see isColumnFirst) the first cells of the columns form the
- * first row, so their heights agree. Fewer than two measurable candidates
- * leave nothing to disagree, so the answer is true.
+ * Whether the first cells of the candidates line up: widths on a row-first
+ * grid (column A), heights on a column-first grid (the first row). Fewer than
+ * two measurable candidates leave nothing to disagree, so the answer is true.
  * @param {Element[]} children - the element's children, which fix the direction
  * @param {Element[]} candidateRows
  * @param {object} styleProbe
@@ -144,25 +109,16 @@ function firstCellsAlign(children, candidateRows, styleProbe) {
 
 /**
  * Find the grid or table root for the element `el` was right-clicked inside.
- * The body applies four routes in order: the nearest <table> ancestor; the
- * nearest ancestor (or `el` itself) that opts.isRegistered reports as
- * registered;
- * findTables from the chain root of the nest `el` sits in, whose nomination
- * step finds a marked grid the load-time scan missed; and the outermost
- * looksLikeGrid match on a walk up from `el`.
+ * Four routes apply in order: the nearest <table> ancestor; the nearest
+ * registered ancestor; the nomination step over the nest `el` sits in, which
+ * finds a marked grid the load-time scan missed; and the outermost
+ * looksLikeGrid match above `el`.
  *
- * It returns { handle, isNew }. `handle` is the resolved element. `isNew` is
- * true when the caller still has to mark the element and build its table
- * pillbox. The first route returns isNew: false for every native table,
- * registered or not: the load-time scan and the added-node pass register
- * native tables and build their table pillboxes, and a native table takes no
- * dr-ext-grid marker class. The second route returns isNew: false because it
- * matched a registered element. The last two return
- * !opts.isRegistered(handle). Without opts.isRegistered the second route does
- * nothing and the last two return isNew: true, since detection keeps no
- * registry.
- *
- * Returns null if nothing matches.
+ * `isNew` is true when the caller still has to mark the element and build its
+ * table pillbox. The first route returns isNew: false for every native table,
+ * registered or not, because the load-time scan and the added-node pass
+ * register native tables. Without opts.isRegistered the last two routes
+ * return isNew: true. Returns null if nothing matches.
  *
  * @param {Element} el
  * @param {{styleProbe?: object, vendorProfiles?: object[], doc?: Document, isRegistered?: (handle: Element) => boolean}} [opts]
@@ -188,10 +144,8 @@ function findTargetTable(el, opts = {}) {
 
 /**
  * The nearest ancestor of `el`, or `el` itself, that isRegistered reports as
- * registered, within DR_DETECTION_SETTINGS.gridWalkDepthCap levels and short
- * of the document body. A walk up and not a closest('.dr-ext-grid') query,
- * because isRegistered is an arbitrary per-element check (typically a
- * WeakMap-backed registry.has), not a CSS selector.
+ * registered. A walk up, not a closest() query, because isRegistered is an
+ * arbitrary per-element check (typically a WeakMap-backed registry.has).
  * @param {Element} el
  * @param {Element|null|undefined} docBody
  * @param {(handle: Element) => boolean} isRegistered
@@ -203,20 +157,15 @@ function registeredAncestor(el, docBody, isRegistered) {
 }
 
 /**
- * The element the nomination step selects (see nominateNests) over the chain
- * root of the nest `el` sits in, or null. The step applies the configured
- * nesting depth to the whole nest, so the element it selects can be a sibling
- * of the clicked element: a click in a vendor grid's row-number gutter
- * resolves the scrolling pane beside it. Pass 1 of findTables returns nothing
- * here, because a qualifying chain root holds no native table other than
- * accessibility artifacts.
+ * The element the nomination step selects over the chain root of the nest `el`
+ * sits in, or null. The step applies the configured nesting depth to the whole
+ * nest, so the element can be a sibling of the clicked one: a click in a
+ * vendor grid's row-number gutter resolves the scrolling pane beside it.
  *
- * When the step selects nothing in the nest `el` sits in (an empty chain, a
- * depth holding more than one element, or a nest already holding a
- * registered element), findTables returns the element it selects in the
- * first nest inside a cell under the chain root, if one exists. With none,
- * the result falls to the geometry probe, the behavior issue #382 records
- * for a click in a sibling pane of a registered nest.
+ * When the step selects nothing in `el`'s nest, findTables returns the element
+ * selected in the first nest inside a cell under the chain root, if any; with
+ * none, the result falls to the geometry probe (issue #382 records this for a
+ * click in a sibling pane of a registered nest).
  * @param {Element} el
  * @param {object} opts - the options of findTables, with isRegistered set
  * @returns {Element|null}
@@ -228,10 +177,8 @@ function nominatedInNest(el, opts) {
 }
 
 /**
- * The outermost element in an unbroken run of looksLikeGrid matches on a walk
- * up from `el`, within DR_DETECTION_SETTINGS.gridWalkDepthCap levels and short
- * of the document body, or null when no ancestor matches. The walk ends at the
- * first non-match above a match.
+ * The outermost element in an unbroken run of looksLikeGrid matches above
+ * `el`, or null. The walk ends at the first non-match above a match.
  * @param {Element} el
  * @param {Element|null|undefined} docBody
  * @param {object} opts - the options of looksLikeGrid
@@ -283,12 +230,9 @@ function _parsePx(value) {
 
 /**
  * Whether a <table> is an accessibility artifact: a table that exists for
- * screen readers or as a chart's fallback. True
- * when the table or an ancestor carries aria-hidden="true"; when the nearest
- * positioned ancestor (or the table) has a `left` at or below
- * DR_DETECTION_SETTINGS.offscreenLeftPx, read through the style probe; or
- * when that ancestor also contains an <svg> with a non-empty aria-label, the
- * chart the table falls back for.
+ * screen readers or as a chart's fallback. True when the table or an ancestor
+ * carries aria-hidden="true", when the nearest positioned ancestor (or the
+ * table) sits offscreen, or when that ancestor also contains a labelled <svg>.
  *
  * @param {Element} table
  * @param {{styleProbe?: object}} [opts]
@@ -303,8 +247,7 @@ function isAccessibilityArtifact(table, opts = {}) {
 }
 
 /**
- * Whether `table` or an ancestor carries aria-hidden="true". The walk ends at
- * the document root, a node with no tagName.
+ * Whether `table` or an ancestor carries aria-hidden="true".
  * @param {Element} table
  * @returns {boolean}
  */
@@ -314,8 +257,6 @@ function carriesHiddenMark(table) {
 }
 
 /**
- * Whether the element's `left`, read through the style probe, sits at or below
- * DR_DETECTION_SETTINGS.offscreenLeftPx.
  * @param {Element} el - the nearest positioned ancestor of the table, or the table
  * @param {object} styleProbe
  * @returns {boolean}
@@ -327,8 +268,7 @@ function sitsOffscreen(el, styleProbe) {
 }
 
 /**
- * Whether the element holds an <svg> with a non-empty aria-label: the chart a
- * table falls back for.
+ * Whether the element holds an <svg> with a non-empty aria-label.
  * @param {Element} el - the table's nearest positioned ancestor
  * @returns {boolean}
  */
@@ -551,12 +491,11 @@ function _isQualifyingAncestor(el, isArtifact, opts) {
 }
 
 /**
- * The nesting depth of `el` in the containment chain under `chainRoot`: the
- * count of qualifying ancestors from `el` up to and including `chainRoot` (the
- * chain root sits at depth 0). Returns -1 when the walk leaves the nest
- * without reaching the chain root, or first crosses an ancestor carrying a
- * cell role (then `el` belongs to a nest of its own), so the caller drops
- * the element rather than filing it at a wrong depth.
+ * The count of qualifying ancestors from `el` up to and including `chainRoot`
+ * (the chain root sits at depth 0). Returns -1 when the walk leaves the nest
+ * or first crosses a cell-role ancestor (`el` then belongs to a nest of its
+ * own), so the caller drops the element rather than filing it at a wrong
+ * depth.
  *
  * @param {Element} el
  * @param {Element} chainRoot
@@ -609,13 +548,10 @@ function _selectAtNestingDepth(byDepth, configuredDepth) {
  * qualifying element sits within DR_DETECTION_SETTINGS.gridWalkDepthCap
  * levels of `el`.
  *
- * The function first finds the nearest qualifying element at or above an
- * arbitrary element (a clicked cell, an added node, or a registered table),
- * walking across cells, so a click in a cell reaches the grid holding the
- * cell. From there it walks up to the outermost qualifying element, bounded by
- * the same cap, and stops at the document body and at the first ancestor
- * carrying a cell role. It continues past an ancestor that carries no role,
- * because a nest may put a plain wrapper between two qualifying elements.
+ * The nearest qualifying element is found walking across cells, so a click in
+ * a cell reaches the grid holding it. The walk up to the outermost one stops
+ * at the first cell-role ancestor and continues past a plain wrapper, because
+ * a nest may put one between two qualifying elements.
  *
  * @param {Element} el
  * @param {{isArtifact?: (table: Element, opts: object) => boolean,
@@ -684,11 +620,9 @@ function nominateNest(chainRoot, opts = {}) {
   const isRegistered = opts.isRegistered || (() => false);
   const configuredDepth = opts.nestingDepth ?? DR_DETECTION_SETTINGS.nestingDepth;
 
-  // The nest's members, each with its nesting depth. A qualifying element
-  // whose walk up crosses a cell before it reaches the chain root belongs to
-  // a nest of its own (_depthInChain returns -1), so it stays out of this
-  // nest: a registered grid inside a cell never makes the grid around it read
-  // as registered.
+  // An element nested in a cell is out of this nest (_depthInChain returns
+  // -1), so a registered grid inside a cell never makes the grid around it
+  // read as registered.
   const nested = typeof chainRoot.querySelectorAll === 'function'
     ? Array.from(chainRoot.querySelectorAll(GRID_ARIA_SELECTOR)) : [];
   const nest = [chainRoot].concat(nested)
@@ -696,9 +630,7 @@ function nominateNest(chainRoot, opts = {}) {
     .map((el) => ({ el, depth: _depthInChain(el, chainRoot, isArtifact, opts) }))
     .filter((member) => member.depth >= 0);
 
-  // A nest holding a registered element registers nothing: the scan already
-  // ran over it, and a second registration would put a second table pillbox
-  // on one grid.
+  // A second registration would put a second table pillbox on one grid.
   if (nest.some(({ el }) => isRegistered(el))) {
     return { chainRoot, selected: null, outcome: 'registered', chainSize: 0 };
   }
@@ -746,8 +678,7 @@ function nominateNests(root, opts = {}) {
   const roleBearing = (rootCarriesRole ? [root] : []).concat(Array.from(root.querySelectorAll(GRID_ARIA_SELECTOR)));
   const qualifying = roleBearing.filter((el) => _passesAriaGuards(el, isArtifact, opts));
 
-  // One chain root per nest, each evaluated once. A Set keeps
-  // insertion order, so the results stay in document order.
+  // A Set keeps insertion order, so the results stay in document order.
   const chainRoots = new Set();
   for (const el of qualifying) chainRoots.add(chainRootOf(el, opts, true));
 

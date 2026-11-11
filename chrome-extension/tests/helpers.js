@@ -598,7 +598,6 @@ function withSupCreateTreeWalker(fn) {
   try { fn(); } finally { delete global.document.createTreeWalker; }
 }
 
-// Helper: build a multi-node cell for writePatches tests.
 // segments: [{text, inSup?, inAnchor?}]
 // Returns a cell mock whose _textNodes drive withSupCreateTreeWalker.
 function makeExtractedCell(segments) {
@@ -1399,9 +1398,8 @@ function chainParents(child /*, ...parents */) {
   return child;
 }
 
-// A style probe whose computed style is the element's own style object, so a
-// fixture states `position` and `left` on the element it builds. The artifact
-// filter reads the style through the probe alone.
+// The artifact filter reads style through the probe alone, so a fixture states
+// `position` and `left` on the element it builds.
 const inlineStyleProbe = {
   getComputedStyle(el) {
     return Object.assign({ display: 'block', visibility: 'visible' }, el && el.style);
@@ -1410,7 +1408,6 @@ const inlineStyleProbe = {
   getBox() { return null; },
 };
 
-// An element that qualifies as "positioned" (style.position='absolute').
 function makePositionedAncestor(styleOverrides) {
   return makePhantomEl({ style: Object.assign({ position: 'absolute' }, styleOverrides || {}) });
 }

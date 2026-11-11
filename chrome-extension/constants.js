@@ -41,11 +41,8 @@ const DR_DEFAULTS = {
  * DR_DETECTION_SETTINGS holds the detection settings: every value that
  * shapes whether an element counts as a table or a grid, plus the two lookup
  * lists detection reads (the display values that mark a grid/flex layout,
- * and the known vendor grid profiles). The table package
- * (lib/dr-table/adapters.js and detect.js) and the controller (content.js)
- * read it as a bare global, with no fallback copy of any value in either.
- * The pillbox auto-collapse delay lives in the pillbox view, not here: the
- * view alone reads it, and it shapes nothing detection finds.
+ * and the known vendor grid profiles). The table package and the controller
+ * (content.js) read it as a bare global, with no fallback copy.
  */
 const DR_DETECTION_SETTINGS = {
   // --- Nomination step (lib/dr-table/detect.js: findTables) ---
