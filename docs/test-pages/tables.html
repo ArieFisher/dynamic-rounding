@@ -1392,13 +1392,15 @@
 
   <section>
     <h2>16. Accessibility artifacts, never toggled</h2>
-    <p>Three table elements a page keeps for assistive technology or as a
-      chart's data.</p>
-    <p class="expect">Expect: no pillbox on any of the three.</p>
+    <p>Tables and grids a page keeps for assistive technology: marked hidden,
+      or drawn far off-screen.</p>
+    <p class="expect">Expect: no pillbox on any table or grid in 16a and 16b.
+      A pillbox on one of them is a failure.</p>
 
     <h3>16a. Marked hidden for assistive technology</h3>
-    <p class="expect">The table is left visible here on purpose.</p>
-    <!-- aria-hidden on the table itself, or any ancestor, marks an accessibility artifact. -->
+    <p class="expect">The table and the grid are left visible here on
+      purpose.</p>
+    <!-- aria-hidden on the element itself, or any ancestor, marks an accessibility artifact. -->
     <table aria-hidden="true">
       <tr>
         <th>Series</th>
@@ -1414,12 +1416,29 @@
       </tr>
     </table>
 
+    <div class="aria-grid" role="grid" aria-hidden="true" aria-label="Hidden series values">
+      <div class="g-row" role="row">
+        <span role="columnheader">Series</span>
+        <span role="columnheader">Value</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">A</span>
+          <span role="cell">1,204,551</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">B</span>
+          <span role="cell">88,340</span>
+        </div>
+      </div>
+    </div>
+
     <h3>16b. Positioned far off-screen</h3>
     <p class="expect">Expect: nothing renders below this heading, and no pillbox
       appears near the page corner.</p>
     <!--
-      A positioned ancestor with a large negative left offset marks the table
-      as an off-screen accessibility artifact.
+      An element, or its nearest positioned ancestor, with a large negative
+      left offset is an off-screen accessibility artifact.
     -->
     <div style="position: relative;">
       <div style="position: absolute; left: -10000px; top: 0;">
@@ -1438,14 +1457,32 @@
           </tr>
         </table>
       </div>
+      <div style="position: absolute; left: -10000px; top: 0;">
+    <div class="aria-grid" role="grid" aria-label="Off-screen series values">
+      <div class="g-row" role="row">
+        <span role="columnheader">Series</span>
+        <span role="columnheader">Value</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">A</span>
+          <span role="cell">2,391,004</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">B</span>
+          <span role="cell">47,110</span>
+        </div>
+      </div>
+    </div>
+      </div>
     </div>
 
-    <h3>16c. Data fallback for a chart</h3>
-    <p class="expect">The table sits beside the labeled chart it stands in
-      for.</p>
+    <h3>16c. Beside a labeled chart</h3>
+    <p class="expect">Expect: a pillbox on the table and a pillbox on the grid,
+      the same as on any other table. A missing pillbox is a failure.</p>
     <!--
-      A table sharing a positioned ancestor with a labeled SVG is read as the
-      chart's accessibility fallback and skipped.
+      A labeled chart image shares the positioned box with both. The chart does
+      not make either one an accessibility artifact.
     -->
     <div style="position: relative; border: 1px dashed #cccccc; padding: 12px;">
       <svg aria-label="Quarterly revenue chart" width="220" height="80" role="img">
@@ -1468,6 +1505,22 @@
           <td>4,558,210</td>
         </tr>
       </table>
+    <div class="aria-grid" role="grid" aria-label="Quarterly revenue values">
+      <div class="g-row" role="row">
+        <span role="columnheader">Series</span>
+        <span role="columnheader">Value</span>
+      </div>
+      <div role="rowgroup">
+        <div class="g-row" role="row">
+          <span role="cell">Q1</span>
+          <span role="cell">4,120,900</span>
+        </div>
+        <div class="g-row" role="row">
+          <span role="cell">Q2</span>
+          <span role="cell">4,558,210</span>
+        </div>
+      </div>
+    </div>
     </div>
   </section>
 
