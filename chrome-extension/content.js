@@ -1249,7 +1249,7 @@ function roundTable(table, options) {
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
   const kind = tableKindPass(adapter);
 
-  // A re-apply reuses the freeze, so a scroll or a page write never shifts the basis.
+  // A re-apply reuses the freeze, so a scroll or page write keeps the basis.
   const { landedCells, cellCount } = simplifyTableCells(table, adapterRows, opts, {
     kind,
     frozenMaxMag: null,
