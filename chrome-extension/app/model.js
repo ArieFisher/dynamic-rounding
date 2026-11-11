@@ -82,11 +82,11 @@ const DR_MODEL = (function () {
       entry = {
         // Per-cell pre-round original, keyed by cell element. Both kinds
         // hold one record shape, { value, pieces, pageTitle } (CellRecord in
-        // lib/dr-table/detect.js): value is the pre-round text the cell
+        // lib/dr-table/cells.js): value is the pre-round text the cell
         // classified, and pieces holds one entry per text piece with its
         // original text and its written text, the text right after the
         // extension's last write (see applyPatches in
-        // lib/dr-table/detect.js). The cell objects' reads, the pass's cell
+        // lib/dr-table/cells.js). The cell objects' reads, the pass's cell
         // sort, and the one piece restore (releaseCell in content.js) are
         // the readers. A WeakMap with no companion Set: nothing enumerates a
         // table's originals, and a cell the host recycles out of the page
