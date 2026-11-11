@@ -68,14 +68,21 @@ Base branch: main
   - The first review blocked on the span reader: a `td` reports a span of 1 with no `colspan` attribute, so reading the property first dropped a grid cell's `aria-colspan`. The reader now takes the HTML attribute when the element carries one, else the accessibility attribute.
   - Product manager's choice: a first row of header cells alone counts as a header row only on a table that groups its rows. A grid that groups nothing keeps the column count alone, because a virtualized grid can scroll its first row away and the table would then register fresh.
 
+- **artifact-filter-both-kinds** — commits on feature/detection-layer-cleanup
+  - Reviewer: APPROVE (after 1 retry)
+  - Tests: pass (extension 4,474; library 827; documented examples 90)
+  - Product manager's choices: the chart check is removed; the hidden and off-screen checks run on both kinds through one filter in the detection file.
+  - The right-click resolver keeps its native-table route, because unscanned native tables, a table in a grid cell, and #600 depend on it; the route now passes through the same filter, and skips an artifact for the table around it.
+  - Follow-up: #619.
+- **Added: one-table-scan (sprint 12)** — the load-time scan, the added-node pass, and `findTables` each keep their own table search; the product manager asked for one scan function they all call, as its own sprint.
+
 ### Blocked
 
 None.
 
 ### Deferred
 
-- **grid-shown-text** — waits on an answer to the plan's §6 question 1.
-- **artifact-filter-both-kinds** — waits on an answer to the plan's §6 question 2.
+- **grid-shown-text** — answered: a 10,000-cell grid pass measured about 172 ms with the rendered-text read and about 175 ms with the flat-text read, in headless Chromium; the product manager set the budget to 200 ms.
 
 ### Change to the dependent policy
 
