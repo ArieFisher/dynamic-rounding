@@ -110,10 +110,10 @@ function firstCellsAlign(children, candidateRows, styleProbe) {
 
 /**
  * Find the grid or table root for the element `el` was right-clicked inside.
- * Four routes apply in order: the nearest <table> ancestor; the nearest
- * registered ancestor; the nomination step over the nest `el` sits in, which
- * finds a marked grid the load-time scan missed; and the outermost
- * looksLikeGrid match above `el`.
+ * Four routes apply in order: the nearest <table> ancestor that is not an
+ * accessibility artifact; the nearest registered ancestor; the nomination
+ * step over the nest `el` sits in, which finds a marked grid the load-time
+ * scan missed; and the outermost looksLikeGrid match above `el`.
  *
  * `isNew` is true when the caller still has to mark the element and build its
  * table pillbox. The first route returns isNew: false for every native table,
@@ -133,7 +133,9 @@ function findTargetTable(el, opts = {}) {
 
   if (typeof el.closest === 'function') {
     const tableAncestor = el.closest('table');
-    if (tableAncestor) return { handle: tableAncestor, isNew: false };
+    if (tableAncestor && registrableTables([tableAncestor], opts).length) {
+      return { handle: tableAncestor, isNew: false };
+    }
   }
   const registered = registeredAncestor(el, docBody, isRegistered);
   if (registered) return { handle: registered, isNew: false };

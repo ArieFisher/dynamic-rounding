@@ -5065,3 +5065,25 @@ function makeSparselyBoxedGrid(boxed) {
     afSame(findTables(page, { styleProbe: inlineStyleProbe }).map((found) => found.handle), order), true);
   afForget(page);
 })();
+
+// A right-click inside a table resolves by one rule on both kinds: a table in
+// an artifact form resolves nothing, and a table that stays on the page
+// resolves.
+(function artifactFilter_aRightClickResolvesByOneRuleOnBothKinds() {
+  for (const kind of ['native', 'grid']) {
+    for (const form of AF_ARTIFACT_FORMS) {
+      const table = afTable(kind);
+      const page = afPage([form.place(table)]);
+      eq(`artifact filter, right-click, ${kind}, ${form.name}: resolves nothing`,
+        afRightClick(page, table) === null, true);
+    }
+    for (const form of AF_VISIBLE_FORMS) {
+      const table = afTable(kind);
+      const page = afPage([form.place(table)]);
+      const resolved = afRightClick(page, table);
+      eq(`artifact filter, right-click, ${kind}, ${form.name}: resolves the table`,
+        resolved !== null && resolved.handle === table, true);
+      afForget(page);
+    }
+  }
+})();
