@@ -3470,18 +3470,22 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
 
 // One span reader: the element's span property first, then the accessibility
 // attribute. A grid cell of generic elements holds no property.
-(function columnPlacement_aCellsSpanReadsThePropertyFirstThenTheAttribute() {
+(function columnPlacement_aCellsSpanReadsTheHtmlAttributeThenTheAccessibilityAttribute() {
   const cellOf = (props, attrs) => {
     const el = rwEl('div', attrs, [rwText('x')]);
     Object.assign(el, props);
+    el.hasAttribute = (name) => el.getAttribute(name) !== null;
     return el;
   };
   const rowOf = (cellEls) => rwEl('div', { role: 'row' }, cellEls);
   const placementOf = (rowEls) => readColumnPlacement(rwEl('div', { role: 'grid' }, rowEls));
 
   eq('span reader: a cell holding the colSpan property and aria-colspan reads the property',
-    placementOf([rowOf([cellOf({ colSpan: 3 }, { 'aria-colspan': '2' }), cellOf({}, {})])])[0],
+    placementOf([rowOf([cellOf({ colSpan: 3 }, { colspan: '3', 'aria-colspan': '2' }), cellOf({}, {})])])[0],
     [[0, 3], [3, 1]]);
+  eq('span reader: a td whose colSpan property is 1 with no colspan attribute reads aria-colspan',
+    placementOf([rowOf([cellOf({ colSpan: 1 }, { 'aria-colspan': '2' }), cellOf({}, {})])])[0],
+    [[0, 2], [2, 1]]);
   eq('span reader: a cell holding the aria-colspan attribute alone reads the attribute',
     placementOf([rowOf([cellOf({}, { 'aria-colspan': '2' }), cellOf({}, {})])])[0],
     [[0, 2], [2, 1]]);
@@ -3495,9 +3499,9 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     rowOf([cellOf({}, {})]),
   ])[1];
   eq('span reader: a cell holding the rowSpan property and aria-rowspan reads the property',
-    downFrom({ rowSpan: 2 }, { 'aria-rowspan': '1' }), [[1, 1]]);
-  eq('span reader: a cell holding the property 1 and aria-rowspan 2 reads the property',
-    downFrom({ rowSpan: 1 }, { 'aria-rowspan': '2' }), [[0, 1]]);
+    downFrom({ rowSpan: 2 }, { rowspan: '2', 'aria-rowspan': '1' }), [[1, 1]]);
+  eq('span reader: a td whose rowSpan property is 1 with no rowspan attribute reads aria-rowspan',
+    downFrom({ rowSpan: 1 }, { 'aria-rowspan': '2' }), [[1, 1]]);
   eq('span reader: a cell holding the aria-rowspan attribute alone reads the attribute',
     downFrom({}, { 'aria-rowspan': '2' }), [[1, 1]]);
   eq('span reader: a cell holding neither leaves the next row at the first column',

@@ -147,17 +147,18 @@ function normalizeSpan(raw, whenZero) {
   return Math.min(value, 1000);
 }
 
-// The element's span property, then the accessibility attribute: a native
-// cell holds the first, a grid cell of generic elements the second, and a bare
-// td in a grid the first.
+// A td's span property reads 1 with no colspan attribute, so the attribute decides.
 function cellSpans(cellEl) {
-  const read = (property, attribute) => {
-    if (cellEl && cellEl[property] !== undefined && cellEl[property] !== null) return cellEl[property];
-    return (cellEl && typeof cellEl.getAttribute === 'function') ? cellEl.getAttribute(attribute) : null;
+  const read = (property, htmlAttribute, ariaAttribute) => {
+    if (!cellEl) return null;
+    const declares = typeof cellEl.hasAttribute === 'function'
+      ? cellEl.hasAttribute(htmlAttribute) : cellEl[property] != null;
+    if (declares && cellEl[property] != null) return cellEl[property];
+    return typeof cellEl.getAttribute === 'function' ? cellEl.getAttribute(ariaAttribute) : null;
   };
   return {
-    colSpan: normalizeSpan(read('colSpan', 'aria-colspan'), 1),
-    rowSpan: normalizeSpan(read('rowSpan', 'aria-rowspan'), Infinity),
+    colSpan: normalizeSpan(read('colSpan', 'colspan', 'aria-colspan'), 1),
+    rowSpan: normalizeSpan(read('rowSpan', 'rowspan', 'aria-rowspan'), Infinity),
   };
 }
 
