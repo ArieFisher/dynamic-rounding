@@ -98,8 +98,8 @@
 
   // sidebar.js: state:tableSwitched handler does NOT reset the controls to the
   // shipped defaults — that reset is what desynced the sidebar from the model.
-  eq('rebind source: sidebar.js state:tableSwitched handler does NOT call applyDefaultsToUI()',
-    /applyDefaultsToUI\s*\(\)/.test(switchHandlerBlock), false);
+  eq('rebind source: sidebar.js state:tableSwitched handler does NOT write the controls or read DR_DEFAULTS',
+    /applySettingsToUI\s*\(|DR_DEFAULTS/.test(switchHandlerBlock), false);
 
   // sidebar.js: state:tableSwitched handler does NOT auto-apply settings
   // (must NOT call applyNow() inside the handler)
@@ -108,36 +108,28 @@
 })();
 
 // ---------------------------------------------------------------------------
-// --- sidebar.js: truncateDecimals / formatOriginal ---
+// --- sidebar.js: formatOriginal ---
 //
-// Strategy: extract the real implementations from sidebar.js source via regex
-// and eval them in this scope (where toNumber and formatNumberWithCommas are
-// already available from the evaled core.js / content.js block above).
+// Strategy: extract the real implementation from sidebar.js source via regex
+// and eval it in this scope (where toNumber is already available from the
+// evaled core.js / content.js block above).
 // This exercises the REAL implementation, not a reimplementation.
 // ---------------------------------------------------------------------------
 (function sidebarHelperTests() {
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
-  // Extract the two constants and three functions we need from sidebar.js.
-  // We pull them as a verbatim block so they reference each other correctly.
-  // toNumber and formatNumberWithCommas are already on globalThis from the
-  // content-script eval above.
+  // Extract the two constants and the function we need from sidebar.js.
+  // toNumber is already on globalThis from the content-script eval above.
   const constBlock = sidebarSrc.match(
     /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
-  );
-  const fmtCommasFn = sidebarSrc.match(
-    /function formatNumberWithCommas\([\s\S]*?\n\}/
-  );
-  const truncateFn = sidebarSrc.match(
-    /function truncateDecimals\([\s\S]*?\n\}/
   );
   const formatOriginalFn = sidebarSrc.match(
     /function formatOriginal\([\s\S]*?\n\}/
   );
 
-  if (!constBlock || !fmtCommasFn || !truncateFn || !formatOriginalFn) {
+  if (!constBlock || !formatOriginalFn) {
     // Signal extraction failure clearly — treat as a failed test so CI notices.
-    eq('sidebar-extract: able to extract truncateDecimals + formatOriginal from sidebar.js',
+    eq('sidebar-extract: able to extract formatOriginal from sidebar.js',
        false, true);
     return;
   }
@@ -149,22 +141,17 @@
   // back-tick/interpolation issues with the extracted source text.
   const helperSrc = '(function() {\n' +
     constBlock[0] + '\n' +
-    fmtCommasFn[0] + '\n' +
-    truncateFn[0] + '\n' +
     formatOriginalFn[0] + '\n' +
-    'return { formatNumberWithCommas: formatNumberWithCommas, truncateDecimals: truncateDecimals, formatOriginal: formatOriginal };\n' +
+    'return { formatOriginal: formatOriginal };\n' +
     '})()';
   const helpers = (new Function(
     'toNumber',
     'return ' + helperSrc + ';'
   ))(toNumber);
 
-  const trunc = helpers.truncateDecimals;
   const fmtOrig = helpers.formatOriginal;
 
-  // Verify we got real functions, not undefined.
-  eq('sidebar-extract: truncateDecimals is a function',
-     typeof trunc, 'function');
+  // Verify we got a real function, not undefined.
   eq('sidebar-extract: formatOriginal is a function',
      typeof fmtOrig, 'function');
 
@@ -183,16 +170,7 @@
 
   // -----------------------------------------------------------------
   // Acceptance criterion 2: rounded numbers magnitude >= 100 → NO decimals.
-  // truncateDecimals should strip all decimals for |n| >= 100.
   // -----------------------------------------------------------------
-  eq('AC2: truncateDecimals(1234.56) -> 1234 (magnitude >= 100, no decimals)',
-     trunc(1234.56), 1234);
-  eq('AC2: truncateDecimals(100.9999) -> 100 (exactly at threshold, no decimals)',
-     trunc(100.9999), 100);
-  eq('AC2: truncateDecimals(-1234.56) -> -1234 (negative, magnitude >= 100)',
-     trunc(-1234.56), -1234);
-  eq('AC2: truncateDecimals(-100.9) -> -100 (negative at threshold)',
-     trunc(-100.9), -100);
   eq('AC2: formatOriginal("1234.56") -> "1,234" (magnitude >= 100, commas, no decimals)',
      fmtOrig('1234.56'), '1,234');
   eq('AC2: formatOriginal(100) -> "100" (exactly at boundary, no decimals)',
@@ -203,51 +181,21 @@
   // This is the adversarial core: must be truncation, NOT rounding.
   // -----------------------------------------------------------------
 
-  // Key adversarial case: 1.99999 must NOT round up to 2.
-  eq('AC3-adversarial: truncateDecimals(1.99999) -> 1.9999 (truncated, not rounded to 2)',
-     trunc(1.99999), 1.9999);
-  eq('AC3-adversarial: truncateDecimals(1.7999999999) -> 1.7999 (truncated at 4 decimals)',
-     trunc(1.7999999999), 1.7999);
-  eq('AC3-adversarial: truncateDecimals(1.00005) -> 1 (truncates, not rounds to 1.0001)',
-     trunc(1.00005), 1);
-
   // Boundary: 99.99999 must NOT round to 100, and must stay < threshold, giving 4 dec.
-  eq('AC3-boundary-99.99999: truncateDecimals(99.99999) -> 99.9999 (below threshold, truncated)',
-     trunc(99.99999), 99.9999);
   eq('AC3-boundary-99.99999: formatOriginal("99.99999") -> "99.9999" (not rounded to 100)',
      fmtOrig('99.99999'), '99.9999');
 
-  // Boundary: exactly 100 — at threshold, no decimals.
-  eq('AC3-boundary-100: truncateDecimals(100) -> 100 (integer, no change)',
-     trunc(100), 100);
-  eq('AC3-boundary-100: truncateDecimals(100.0001) -> 100 (at/above threshold, trunc)',
-     trunc(100.0001), 100);
-
   // Negatives below threshold: trunc toward zero (not floor).
-  eq('AC3-negative: truncateDecimals(-1.7999) -> -1.7999 (toward zero, not -1.8)',
-     trunc(-1.7999), -1.7999);
-  eq('AC3-negative: truncateDecimals(-1.99999) -> -1.9999 (truncated, not -2)',
-     trunc(-1.99999), -1.9999);
-  eq('AC3-negative: truncateDecimals(-99.99999) -> -99.9999 (negative, below threshold)',
-     trunc(-99.99999), -99.9999);
   eq('AC3-negative: formatOriginal("-99.99999") -> "-99.9999" (negative, truncated, not -100)',
      fmtOrig('-99.99999'), '-99.9999');
   eq('AC3-negative: formatOriginal("-1.7999") -> "-1.7999" (toward zero)',
      fmtOrig('-1.7999'), '-1.7999');
 
   // Negative boundary: -100 at threshold → no decimals.
-  eq('AC3-negative-100: truncateDecimals(-100) -> -100',
-     trunc(-100), -100);
   eq('AC3-negative-100: formatOriginal("-100") -> "-100"',
      fmtOrig('-100'), '-100');
-  eq('AC3-negative-100: truncateDecimals(-100.5) -> -100 (magnitude >= 100, no decimals)',
-     trunc(-100.5), -100);
 
   // Numbers with fewer than 4 decimals are preserved as-is (no padding).
-  eq('AC3-fewer-decimals: truncateDecimals(1.5) -> 1.5',
-     trunc(1.5), 1.5);
-  eq('AC3-fewer-decimals: truncateDecimals(0.1234) -> 0.1234',
-     trunc(0.1234), 0.1234);
   eq('AC3-fewer-decimals: formatOriginal("1.5") -> "1.5"',
      fmtOrig('1.5'), '1.5');
 
@@ -276,8 +224,6 @@
   // -----------------------------------------------------------------
   // Edge cases: zero, very small numbers, integers.
   // -----------------------------------------------------------------
-  eq('edge: truncateDecimals(0) -> 0',
-     trunc(0), 0);
   eq('edge: formatOriginal("0") -> "0"',
      fmtOrig('0'), '0');
   eq('edge: formatOriginal(0.00001) -> "0" (truncated to 4 places, last digit gone)',
@@ -380,9 +326,9 @@
   eq('no-table AC1: setTableBound(false) called at module level (init)',
     /setTableBound\(false\)/.test(sidebarSrc), true);
 
-  // AC2 (static): setTableBound(true) path exists (answer.samples !== null branch).
-  eq('no-table AC2: setTableBound called with answer.samples !== null',
-    /setTableBound\(answer\.samples\s*!==\s*null\)/.test(sidebarSrc), true);
+  // AC2 (static): setTableBound(true) path exists (an answer holding samples).
+  eq('no-table AC2: setTableBound called with whether the answer holds samples',
+    /setTableBound\(cachedSamples\s*!==\s*null\)/.test(sidebarSrc), true);
 
   // AC2 gap check: the sidebar handles state:previewSamplesChanged by calling
   // pullSettingsAndApplyToUI() (every refresh re-reads the
@@ -446,44 +392,44 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Pct() mapping and CSS vertical alignment
+// stopPosition() mapping and CSS vertical alignment
 // ---------------------------------------------------------------------------
 
 (function sprintDotsTickAlignment() {
   const sidebarJsSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
 
-  // --- Extract pct() from sidebar.js and instantiate it for runtime testing ---
+  // --- Extract stopPosition() from sidebar.js and instantiate it for runtime testing ---
   // We locate the function body with a regex (same pattern used elsewhere for
   // source-level extraction) and wrap it in a new Function so we can call it.
-  const pctMatch = sidebarJsSrc.match(/function pct\(v\)\s*\{([\s\S]*?)\n\}/);
+  const pctMatch = sidebarJsSrc.match(/function stopPosition\(v\)\s*\{([\s\S]*?)\n\}/);
   if (!pctMatch) {
     failed++;
-    failures.push({ name: 'dots-tick: pct() function found in sidebar.js', actual: false, expected: true });
+    failures.push({ name: 'dots-tick: stopPosition() function found in sidebar.js', actual: false, expected: true });
   } else {
     passed++;
     // The 9 stops in strategy-monotonic order (k=0..8), mirroring STOPS:
     const stops = [-2, -1.5, -1, -0.25, -0.5, 0, 0.25, 0.5, 1];
     const N = stops.length;
-    // pct() closes over STOPS and snap(); supply both so the extracted body
+    // stopPosition() closes over STOPS and snap(); supply both so the extracted body
     // runs standalone. snap() is the nearest-stop fallback for non-stop inputs.
     const snap = (v) => stops.reduce((b, s) => Math.abs(s - v) < Math.abs(b - v) ? s : b, stops[0]);
     const pctRaw = new Function('STOPS', 'snap', 'v', pctMatch[1]);
-    const pct = (v) => pctRaw(stops, snap, v);
+    const stopPosition = (v) => pctRaw(stops, snap, v);
     const TOL = 1e-6;
 
     // AC1a: Each stop maps to the centre of its grid cell in an N-equal-column grid.
     // Cell k centre = (k + 0.5) / N * 100.
     stops.forEach((v, k) => {
       const expected = (k + 0.5) / N * 100;
-      const actual = pct(v);
+      const actual = stopPosition(v);
       const ok = Math.abs(actual - expected) < TOL;
       if (ok) {
         passed++;
       } else {
         failed++;
         failures.push({
-          name: `dots-tick: pct(${v}) === cell-${k}-centre (${expected.toFixed(6)}%)`,
+          name: `dots-tick: stopPosition(${v}) === cell-${k}-centre (${expected.toFixed(6)}%)`,
           actual: actual,
           expected: expected,
         });
@@ -491,47 +437,47 @@
     });
 
     // AC1b: Key exact values — extremes and the zero stop (index 5 of 9).
-    const pctNeg2 = pct(-2);
-    const pctZero = pct(0);
-    const pctPos1 = pct(1);
+    const pctNeg2 = stopPosition(-2);
+    const pctZero = stopPosition(0);
+    const pctPos1 = stopPosition(1);
 
-    eq('dots-tick: pct(-2) ≈ 5.5556% (1st cell centre)',
+    eq('dots-tick: stopPosition(-2) ≈ 5.5556% (1st cell centre)',
       Math.abs(pctNeg2 - 0.5 / N * 100) < TOL, true);
-    eq('dots-tick: pct(0) ≈ 61.1111% (6th cell centre, asymmetric range)',
+    eq('dots-tick: stopPosition(0) ≈ 61.1111% (6th cell centre, asymmetric range)',
       Math.abs(pctZero - 5.5 / N * 100) < TOL, true);
-    eq('dots-tick: pct(1) ≈ 94.4444% (9th cell centre)',
+    eq('dots-tick: stopPosition(1) ≈ 94.4444% (9th cell centre)',
       Math.abs(pctPos1 - 8.5 / N * 100) < TOL, true);
 
     // AC1c: the extremes are inset by half a cell, never flush at 0/100.
     // A value-proportional formula would push an end stop to 0 or 100; the
     // index-based formula keeps both ends a half-cell in.
-    eq('dots-tick: pct(-2) is NOT 0 (end stop is inset by half a cell)',
-      pct(-2) !== 0, true);
-    eq('dots-tick: pct(1) is NOT 100 (end stop is inset by half a cell)',
-      pct(1) !== 100, true);
+    eq('dots-tick: stopPosition(-2) is NOT 0 (end stop is inset by half a cell)',
+      stopPosition(-2) !== 0, true);
+    eq('dots-tick: stopPosition(1) is NOT 100 (end stop is inset by half a cell)',
+      stopPosition(1) !== 100, true);
 
-    // AC2: Monotonic — pct is strictly increasing across all 9 stops.
+    // AC2: Monotonic — stopPosition is strictly increasing across all 9 stops.
     let monotonic = true;
     for (let i = 1; i < stops.length; i++) {
-      if (pct(stops[i]) <= pct(stops[i - 1])) { monotonic = false; break; }
+      if (stopPosition(stops[i]) <= stopPosition(stops[i - 1])) { monotonic = false; break; }
     }
-    eq('dots-tick: pct() is strictly increasing across all 9 stops', monotonic, true);
+    eq('dots-tick: stopPosition() is strictly increasing across all 9 stops', monotonic, true);
 
     // AC3: Equal columns — adjacent stops are exactly one cell (100/N %) apart,
     // regardless of the uneven numeric spacing of the stop values.
     let equalCols = true;
     const cell = 100 / N;
     for (let i = 1; i < stops.length; i++) {
-      if (Math.abs((pct(stops[i]) - pct(stops[i - 1])) - cell) > TOL) { equalCols = false; break; }
+      if (Math.abs((stopPosition(stops[i]) - stopPosition(stops[i - 1])) - cell) > TOL) { equalCols = false; break; }
     }
     eq('dots-tick: adjacent stops are one equal column (100/N %) apart', equalCols, true);
   }
 
   // --- AC4: 9-column grid assumption — verify tick markup matches formula ---
-  // The pct formula assumes N equal columns. Adversarial check: count the actual
+  // The stopPosition formula assumes N equal columns. Adversarial check: count the actual
   // tick spans and verify the CSS declares exactly repeat(9, 1fr).
   const tickSpans = (sidebarHtmlSrc.match(/class="t"/g) || []).length;
-  eq('dots-tick: .dual-ticks contains exactly 9 tick spans (matches pct() formula)',
+  eq('dots-tick: .dual-ticks contains exactly 9 tick spans (matches stopPosition() formula)',
     tickSpans, 9);
 
   eq('dots-tick: .dual-ticks CSS uses repeat(9, 1fr) grid',
@@ -541,21 +487,21 @@
   eq('dots-tick: .dual-ticks CSS top is 20px',
     /\.dual-ticks\s*\{[^}]*top:\s*20px/.test(sidebarHtmlSrc), true);
 
-  // --- AC6: pct() is only used for thumb positioning (not for fill/label/other) ---
-  // Adversarial: if pct() were wired to a range-fill width or label position, the
+  // --- AC6: stopPosition() is only used for thumb positioning (not for fill/label/other) ---
+  // Adversarial: if stopPosition() were wired to a range-fill width or label position, the
   // non-0/100 extremes would produce a visually broken fill. Verify here that all
-  // pct() call sites in sidebar.js are limited to style.left on thumbs.
+  // stopPosition() call sites in sidebar.js are limited to style.left on thumbs.
   // Use a negative lookbehind to exclude the function definition itself.
-  const pctCallSites = sidebarJsSrc.match(/(?<!function )pct\([^)]+\)/g) || [];
+  const pctCallSites = sidebarJsSrc.match(/(?<!function )stopPosition\([^)]+\)/g) || [];
   // Every call site should appear only inside thumb left-position assignments.
   // We check there are exactly 2 call sites (topThumb and botThumb style.left).
-  eq('dots-tick: pct() is called exactly twice in sidebar.js (both thumb style.left)',
+  eq('dots-tick: stopPosition() is called exactly twice in sidebar.js (both thumb style.left)',
     pctCallSites.length, 2);
 
   // Both call sites must be inside a style.left assignment.
-  const thumbLeftPattern = /\.style\.left\s*=\s*pct\(/g;
+  const thumbLeftPattern = /\.style\.left\s*=\s*stopPosition\(/g;
   const thumbLeftMatches = (sidebarJsSrc.match(thumbLeftPattern) || []).length;
-  eq('dots-tick: both pct() calls are style.left assignments (not fill/label)',
+  eq('dots-tick: both stopPosition() calls are style.left assignments (not fill/label)',
     thumbLeftMatches, 2);
 })();
 
