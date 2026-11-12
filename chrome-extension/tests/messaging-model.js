@@ -82,8 +82,8 @@
     /function applySidebarRounding\(table\)\s*\{\s*const opts = DR_MODEL\.getTableSettings\(table\)/.test(contentSrc),
     true);
 
-  eq('pull (inverted): content.js answers request:settings with the active table\'s settings',
-    /respond\('request:settings'[\s\S]{0,100}DR_MODEL\.getTableSettings\(DR_MODEL\.getActiveTable\(\)\)/.test(contentSrc), true);
+  eq('pull (inverted): content.js answers request:activeTable with the active table\'s settings',
+    /respond\('request:activeTable'[\s\S]{0,100}const active = DR_MODEL\.getActiveTable\(\);\s*const settings = DR_MODEL\.getTableSettings\(active\)/.test(contentSrc), true);
 
   // --- Unified rounding path ---
 
@@ -1375,9 +1375,8 @@ const PENDING_FILL_ROWS = [
     ['intent:activateTable', 'intent:toggleTable', 'state:activeTableChanged',
      // The model's error state, published to the toast view in the same context.
      'state:errorRecorded',
-     // The sidebar's four requests, each answered by the tab's content script.
-     'request:applySettings', 'request:settings', 'request:previewSamples',
-     'request:captureState',
+     // The sidebar's three requests, each answered by the tab's content script.
+     'request:applySettings', 'request:activeTable', 'request:captureState',
      // The service worker's four, plus the two it receives.
      'intent:menuClicked', 'state:sidebarOpened', 'intent:closeSidebar',
      'state:sidebarClosed', 'state:pageUnloaded', 'intent:updateMenuLabel',
@@ -2867,7 +2866,7 @@ const PENDING_FILL_ROWS = [
 // Each table's own settings are the only settings.
 //
 // The rule: every
-// sidebar change writes the active table's settings, the settings read answers
+// sidebar change writes the active table's settings, the redraw read answers
 // with them, and a table with none starts from the shipped defaults.
 // ---------------------------------------------------------------------------
 
@@ -2899,8 +2898,8 @@ function issue328SettingsOf(table) {
       DR_BUS.publish('intent:activateTable', { table: tableA });
     });
 
-    const answer = askContentScript({ action: 'request:settings' });
-    eq('per-table settings: the settings read on A answers A\'s heavy rounding',
+    const answer = askContentScript({ action: 'request:activeTable' });
+    eq('per-table settings: the redraw read on A answers A\'s heavy rounding',
       answer && answer.settings && [answer.settings.offsetTop, answer.settings.offsetOther], [1, 1]);
     eq('per-table settings: A still shows its heavy rounding after B changed',
       tableA._cells[3].innerText, '10,000,000');
@@ -2921,20 +2920,20 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// The settings read answers the active table's settings, and the shipped
+// The redraw read answers the active table's settings, and the shipped
 // defaults with no table active. The settings apply with no table active
 // answers, so the sidebar stays bound, and writes nothing.
 (function issue328_theSettingsRequestsReachTheActiveTable() {
   runPressFixture(() => {
-    const noneActive = askContentScript({ action: 'request:settings' });
-    eq('per-table settings: with no table active the settings read answers the shipped defaults',
+    const noneActive = askContentScript({ action: 'request:activeTable' });
+    eq('per-table settings: with no table active the redraw read answers the shipped defaults',
       noneActive && noneActive.settings, Object.assign({}, DR_DEFAULTS));
 
     const table = makePressTable('12,345');
     DR_MODEL.setTableSettings(table, { rangeExpr: 'B2' }, 'page');
     DR_MODEL.setActiveTable(table);
-    const active = askContentScript({ action: 'request:settings' });
-    eq('per-table settings: the settings read answers the active table\'s range expression',
+    const active = askContentScript({ action: 'request:activeTable' });
+    eq('per-table settings: the redraw read answers the active table\'s range expression',
       active && active.settings && active.settings.rangeExpr, 'B2');
 
     DR_MODEL.setActiveTable(null);
@@ -4429,7 +4428,7 @@ function issue328SettingsOf(table) {
   eq('one mechanism: the worker holds no Chrome message listener',
     bgSrc.includes('chrome.runtime.onMessage.addListener'), false);
 
-  for (const topic of ['request:settings', 'request:previewSamples', 'request:captureState']) {
+  for (const topic of ['request:activeTable', 'request:captureState']) {
     eq('one mechanism: the content script answers ' + topic,
       contentSrc.includes("respond('" + topic + "'"), true);
     eq('one mechanism: the sidebar asks ' + topic,
@@ -4446,10 +4445,10 @@ function issue328SettingsOf(table) {
 
 // --- The responders answer through the bus ---
 //
-// The preview-samples branch carries a rule the source assertions above
-// cannot see: with no table active it answers a pair of nulls rather than
-// nothing, because the sidebar reads a null samples field as the unbound
-// state. This drives the content script's own bus listener the way Chrome
+// The redraw read carries a rule the source assertions above cannot see:
+// with no table active it answers the shipped defaults beside a pair of nulls
+// rather than nothing, because the sidebar reads a null samples field as the
+// unbound state. This drives the content script's own bus listener the way Chrome
 // does, in an isolated eval so the shared-scope model stays untouched.
 (function movedRespondersAnswerThroughTheBus() {
   const capturedListeners = [];
@@ -4492,16 +4491,40 @@ function issue328SettingsOf(table) {
   if (capturedListeners.length === 0) return;
 
   // Nothing has been right-clicked in this isolated model.
-  eq('moved responders: no active table answers a pair of nulls, not nothing',
-    fire({ action: 'request:previewSamples' }), { samples: null, maxMag: null });
+  eq('moved responders: no active table answers the shipped defaults and a pair of nulls, not nothing',
+    fire({ action: 'request:activeTable' }),
+    { settings: Object.assign({}, DR_DEFAULTS), samples: null, maxMag: null });
 
   const captureAnswer = fire({ action: 'request:captureState' });
   eq('moved responders: the capture state answers an object',
     captureAnswer !== null && typeof captureAnswer === 'object', true);
+})();
 
-  const settingsAnswer = fire({ action: 'request:settings' });
-  eq('moved responders: the settings answer carries the model\'s record',
-    !!(settingsAnswer && settingsAnswer.settings), true);
+// The redraw read takes the settings and the lens preview from one active
+// table, and holds no bound field: the sidebar reads bound from the samples.
+(function redrawReadAnswersFromTheActiveTable() {
+  runPressFixture(() => {
+    DR_MODEL.setActiveTable(null);
+    eq('redraw read: with no table active the answer holds the shipped defaults and null samples',
+      askContentScript({ action: 'request:activeTable' }),
+      { settings: Object.assign({}, DR_DEFAULTS), samples: null, maxMag: null });
+
+    const table = makePressTable('4,236,000');
+    DR_MODEL.setTableSettings(table, { offsetTop: -1, simplifyFirstColumn: true }, 'page');
+    DR_MODEL.setActiveTable(table);
+    let answer;
+    withCreateTreeWalker(() => { answer = askContentScript({ action: 'request:activeTable' }); });
+    eq('redraw read: the answer holds exactly the settings, the samples, and the max magnitude',
+      answer && Object.keys(answer).sort(), ['maxMag', 'samples', 'settings']);
+    eq('redraw read: the settings are the active table\'s',
+      answer && answer.settings, DR_MODEL.getTableSettings(table));
+    let expected;
+    withCreateTreeWalker(() => { expected = extractPreviewSamples(table); });
+    eq('redraw read: the samples and max magnitude are the active table\'s lens preview',
+      answer && [answer.samples, answer.maxMag], [expected.samples, expected.maxMag]);
+    eq('redraw read: an active table that holds a number answers samples, so the sidebar binds',
+      answer && answer.samples !== null && answer.samples.top.length > 0, true);
+  });
 })();
 
 // --- A cross-context topic is deliverable inside the context that publishes it ---

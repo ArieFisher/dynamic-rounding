@@ -93,8 +93,8 @@
   const switchHandlerBlock = switchHandlerMatch ? switchHandlerMatch[1] : '';
   eq('rebind source: sidebar.js state:tableSwitched handler block was isolated (sanity check on the scan itself)',
     switchHandlerBlock.length > 0, true);
-  eq('rebind source: sidebar.js state:tableSwitched handler calls pullSettingsAndApplyToUI()',
-    /pullSettingsAndApplyToUI\(\)/.test(switchHandlerBlock), true);
+  eq('rebind source: sidebar.js state:tableSwitched handler calls redrawFromActiveTable() and writes the controls',
+    /redrawFromActiveTable\(\)/.test(switchHandlerBlock), true);
 
   // sidebar.js: state:tableSwitched handler does NOT reset the controls to the
   // shipped defaults — that reset is what desynced the sidebar from the model.
@@ -295,8 +295,8 @@
 //
 // AC1 – init state: body gets the unbound class, #status reads the prompt message.
 // AC2 – bound state: setTableBound(true) removes the unbound class; also check that
-//        state:previewSamplesChanged triggers the settings pull whose chain ends
-//        in fetchPreviewSamples (the only live-rebind path) — note this means
+//        state:previewSamplesChanged triggers the redraw read, whose callback
+//        sets the bound state (the only live-rebind path) — note this means
 //        the sidebar does NOT listen for a separate SET_TABLE_BOUND message;
 //        see gap note below.
 // AC3 – old error string is gone from sidebar.js.
@@ -331,22 +331,22 @@
     /setTableBound\(cachedSamples\s*!==\s*null\)/.test(sidebarSrc), true);
 
   // AC2 gap check: the sidebar handles state:previewSamplesChanged by calling
-  // pullSettingsAndApplyToUI() (every refresh re-reads the
-  // model's settings first; its chain ends in fetchPreviewSamples, which
-  // calls setTableBound inside its callback). There is NO direct
+  // redrawFromActiveTable() (every refresh re-reads the model's settings
+  // beside the samples, and calls setTableBound inside its callback). There
+  // is NO direct
   // setTableBound call in the state:previewSamplesChanged handler, and no
   // separate runtime message that calls setTableBound(true) synchronously.
   // The sidebar has no push-style binding message. We assert the handler
-  // exists and starts the pull chain, then flag the architectural gap as a
+  // exists and starts the redraw read, then flag the architectural gap as a
   // note.
-  eq('unbound AC2: state:previewSamplesChanged handler calls pullSettingsAndApplyToUI',
-    /state:previewSamplesChanged[\s\S]{0,300}pullSettingsAndApplyToUI\(\)/.test(sidebarSrc), true);
+  eq('unbound AC2: state:previewSamplesChanged handler calls redrawFromActiveTable',
+    /state:previewSamplesChanged[\s\S]{0,300}redrawFromActiveTable\(\)/.test(sidebarSrc), true);
 
   // GAP NOTE: The sidebar does not handle a dedicated "TABLE_BOUND" push message.
   // If content.js ever fails to send state:previewSamplesChanged after a new right-click
   // (e.g. in error paths), the sidebar state will not update. There is no direct
   // setTableBound(true) call reachable from state:previewSamplesChanged — the binding
-  // happens inside the fetchPreviewSamples callback only when the tab responds.
+  // happens inside the redrawFromActiveTable callback only when the tab responds.
   // This gap is architectural and cannot be covered by a unit test without a
   // full browser environment; flagged here for reviewer awareness.
 
@@ -945,13 +945,13 @@
 })();
 
 // ---------------------------------------------------------------------------
-// The settings notice reaches the sidebar, and the sidebar redraws from it.
+// The settings notice reaches the sidebar, and the sidebar redraws on it.
 // The model publishes it after every write, so no writer can leave the
-// sidebar showing stale values. A notice carries whether its table is the active one and which side
-// wrote it. The sidebar redraws from a notice for the active table that
-// something other than the sidebar wrote. It skips its own writes, because an
-// echo arriving after a newer keystroke or slider step would overwrite that
-// step.
+// sidebar showing stale values. A notice carries which side wrote it. On a
+// notice that something other than the sidebar wrote, the sidebar redraws its
+// controls from the redraw read. On its own notice it leaves the controls as
+// they stand, because an echo arriving after a newer keystroke or lens
+// control step would overwrite that step.
 // ---------------------------------------------------------------------------
 const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
   { enabled: true, rangeExpr: 'C3', offsetTop: 1, offsetOther: 1 });
@@ -966,13 +966,16 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     eq('settings notice: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
 
+    // The model publishes the notice after its write, so it holds the
+    // notice's settings by the time the sidebar reads.
+    Object.assign(h.modelSettings, ISSUE328_PAGE_SETTINGS);
     h.tabMessages.length = 0;
     h.dispatch({ action: 'state:settingsChanged', source: 'page',
       settings: ISSUE328_PAGE_SETTINGS });
-    eq('settings notice: the range expression redraws from the notice', h.rangeExprEl.value, 'C3');
-    eq('settings notice: the switch redraws from the notice', h.enabledEl.checked, true);
-    eq('settings notice: the lens preview refreshes',
-      h.tabMessages.filter((m) => m.action === 'request:previewSamples').length, 1);
+    eq('settings notice: the range expression redraws from the model', h.rangeExprEl.value, 'C3');
+    eq('settings notice: the switch redraws from the model', h.enabledEl.checked, true);
+    eq('settings notice: the lens preview refreshes from the same read',
+      h.tabMessages.map((m) => m.action), ['request:activeTable']);
 
     h.tabMessages.length = 0;
     h.el('dateGranularity').fire('change');
@@ -994,19 +997,20 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     eq('settings notice skip: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
 
+    Object.assign(h.modelSettings, ISSUE328_PAGE_SETTINGS);
     h.tabMessages.length = 0;
     h.dispatch({ action: 'state:settingsChanged', source: 'sidebar',
       settings: ISSUE328_PAGE_SETTINGS });
-    eq('settings notice skip: the sidebar\'s own write redraws nothing', h.rangeExprEl.value, 'B2:E8');
+    eq('settings notice skip: the sidebar\'s own write redraws no control', h.rangeExprEl.value, 'B2:E8');
     eq('settings notice skip: the sidebar\'s own write refreshes the lens preview',
-      h.tabMessages.filter((m) => m.action === 'request:previewSamples').length, 1);
+      h.tabMessages.map((m) => m.action), ['request:activeTable']);
   } finally {
     h.restore();
   }
 })();
 
 // A right-click makes another table active, so the controls must describe
-// that table: the sidebar pulls its settings and lens preview.
+// that table: the sidebar reads its settings and lens preview.
 (function issue328_rightClickActivationPullsTheSettings() {
   const h = makeIssue251SidebarHarness();
   if (!h) {
@@ -1021,12 +1025,92 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     h.enabledEl.checked = true;
     h.tabMessages.length = 0;
     h.dispatch({ action: 'state:tableActivated' });
-    eq('activation pull: a right-click activation reads the active table\'s settings',
-      h.tabMessages.filter((m) => m.action === 'request:settings').length, 1);
+    eq('activation pull: a right-click activation sends one read of the active table',
+      h.tabMessages.map((m) => m.action), ['request:activeTable']);
     eq('activation pull: the controls describe the newly active table',
       [h.rangeExprEl.value, h.enabledEl.checked], ['B2:E8', false]);
-    eq('activation pull: the lens preview refreshes after the read',
-      h.tabMessages.filter((m) => m.action === 'request:previewSamples').length, 1);
+  } finally {
+    h.restore();
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// One redraw read: the controls, the bound state, and the lens preview all
+// come from one answer to one request.
+// ---------------------------------------------------------------------------
+const SINGLE_READ_SAMPLES = {
+  top: [{ original: '4,236,000', num: 4236000 }],
+  bottom: [{ original: '8,120', num: 8120 }],
+};
+
+(function singleRead_aRedrawSendsOneRequestAndDrawsFromItsAnswer() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('single read: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('single read: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    answerActiveTableRead(h, {
+      settings: Object.assign({}, DR_DEFAULTS, { enabled: true, rangeExpr: 'C3' }),
+      samples: SINGLE_READ_SAMPLES,
+      maxMag: 6,
+    });
+    const otherRows = recordAppendedChildren(h.el('otherPreview'));
+    h.tabMessages.length = 0;
+    h.dispatch({ action: 'state:tableSwitched' });
+    eq('single read: a redraw sends exactly one request, the read of the active table',
+      h.tabMessages.map((m) => m.action), ['request:activeTable']);
+    eq('single read: the controls come from the answer\'s settings',
+      [h.rangeExprEl.value, h.enabledEl.checked], ['C3', true]);
+    eq('single read: the bound state comes from the answer\'s samples',
+      h.bodyClasses.has('unbound'), false);
+    eq('single read: the lens preview draws the answer\'s samples',
+      otherRows.length, SINGLE_READ_SAMPLES.bottom.length);
+
+    answerActiveTableRead(h, { settings: DR_DEFAULTS, samples: null, maxMag: null });
+    h.tabMessages.length = 0;
+    h.dispatch({ action: 'state:tableSwitched' });
+    eq('single read: an answer with null samples redraws the sidebar unbound',
+      [h.bodyClasses.has('unbound'), h.enabledEl.checked], [true, false]);
+  } finally {
+    h.restore();
+  }
+})();
+
+(function singleRead_anEchoKeepsANewerControlAndRefreshesTheLensPreview() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('echo keeps control: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('echo keeps control: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    // The user types a range expression, which sends a write, then types
+    // more before the write's notice arrives. The model still holds the
+    // first value when the sidebar reads.
+    h.rangeExprEl.value = 'C3';
+    h.rangeExprEl.fire('input');
+    answerActiveTableRead(h, {
+      settings: Object.assign({}, DR_DEFAULTS, { rangeExpr: 'C3' }),
+      samples: SINGLE_READ_SAMPLES,
+      maxMag: 6,
+    });
+    h.rangeExprEl.value = 'C3:D9';
+    const otherRows = recordAppendedChildren(h.el('otherPreview'));
+    h.tabMessages.length = 0;
+    h.dispatch({ action: 'state:settingsChanged', source: 'sidebar',
+      settings: Object.assign({}, DR_DEFAULTS, { rangeExpr: 'C3' }) });
+    eq('echo keeps control: the sidebar\'s own notice leaves the newer range expression',
+      h.rangeExprEl.value, 'C3:D9');
+    eq('echo keeps control: the sidebar\'s own notice still reads the active table',
+      h.tabMessages.map((m) => m.action), ['request:activeTable']);
+    eq('echo keeps control: the lens preview redraws from the read',
+      otherRows.length, SINGLE_READ_SAMPLES.bottom.length);
   } finally {
     h.restore();
   }

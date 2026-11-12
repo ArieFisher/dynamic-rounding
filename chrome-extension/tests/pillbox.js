@@ -2168,12 +2168,12 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
 (function pillbox_AC1_partB_sidebarHandlerStaticAnalysis() {
   // Verify sidebar.js source subscribes to the settings notice and redraws
-  // its controls from the notice's settings.
+  // its controls on a notice another writer sent.
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   eq("AC1 part-B: sidebar.js subscribes to 'state:settingsChanged'",
     /boundTab\.subscribe\(\s*'state:settingsChanged'/.test(sidebarSrc), true);
-  eq('AC1 part-B: sidebar.js redraws its controls from the notice\'s settings',
-    /'state:settingsChanged'[\s\S]{0,300}applySettingsToUI\(settings\)/.test(sidebarSrc), true);
+  eq('AC1 part-B: sidebar.js redraws its controls on a notice another writer sent',
+    /'state:settingsChanged'[\s\S]{0,300}redrawFromActiveTable\(source === 'sidebar'\)/.test(sidebarSrc), true);
 })();
 
 // ---------------------------------------------------------------------------

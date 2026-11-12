@@ -2170,7 +2170,7 @@ const LADDER_OPTS = {
 
 // ---------------------------------------------------------------------------
 // AC5: settings survive a sidebar close and
-// reopen — pulled from the model (request:settings), not reset to DR_DEFAULTS.
+// reopen — pulled from the model (request:activeTable), not reset to DR_DEFAULTS.
 // The settings live on the active table, so the reopen's read
 // answers that table's settings.
 // ---------------------------------------------------------------------------
@@ -2194,11 +2194,11 @@ const LADDER_OPTS = {
     eq('reconnect: request:applySettings was acknowledged before the (simulated) close',
       applyResponse && applyResponse.ok, true);
 
-    // Reopen: exactly what pullSettingsAndApplyToUI's request:settings does.
-    const getResponse = askContentScript({ action: 'request:settings' });
+    // Reopen: exactly what redrawFromActiveTable's request:activeTable does.
+    const getResponse = askContentScript({ action: 'request:activeTable' });
     const pulled = (getResponse && getResponse.settings) || {};
 
-    eq('reconnect: request:settings returns a settings object',
+    eq('reconnect: request:activeTable returns a settings object',
       !!(getResponse && getResponse.settings), true);
     eq('reconnect: offsetTop survives the close/reopen', pulled.offsetTop, 0.25);
     eq('reconnect: offsetOther survives the close/reopen', pulled.offsetOther, -1.5);
@@ -2210,15 +2210,14 @@ const LADDER_OPTS = {
 // ---------------------------------------------------------------------------
 // A pulled enabled:false must survive
 // sidebar reopen when the reopen lands on a TABLE THAT IS BOUND. This drives
-// sidebar.js's real pullSettingsAndApplyToUI() -> applySettingsToUI() ->
-// fetchPreviewSamples() chain end to end (same eval harness shape as
+// sidebar.js's real redrawFromActiveTable() -> applySettingsToUI() ->
+// setTableBound() path end to end (same eval harness shape as
 // appModelSettings_settingsPublish_deliveryFeedback_behavioral above).
 //
-// The pin: pullSettingsAndApplyToUI applies the pulled settings, then calls
-// fetchPreviewSamples(), whose response callback calls setTableBound(true)
-// once request:previewSamples resolves with a bound table. setTableBound's
-// bound branch must not write the sidebar pillbox, so the pulled false survives
-// the reopen.
+// The pin: redrawFromActiveTable applies the answer's settings, then calls
+// setTableBound(true) because the same answer holds a bound table's samples.
+// setTableBound's bound branch must not write the sidebar pillbox, so the
+// pulled false survives the reopen.
 // ---------------------------------------------------------------------------
 (function appModelSettings_pulledEnabledSurvivesReopenOnBoundTable() {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
@@ -2275,13 +2274,12 @@ const LADDER_OPTS = {
     createElement() { return makeEl(); },
   };
 
-  // The model holds enabled:false. request:settings returns that pulled settings
-  // object; request:previewSamples returns a non-null samples object, i.e. the
-  // reopen landed on a table that is bound (the reviewer's reachable end
-  // state). Both resolve synchronously so the whole
-  // pullSettingsAndApplyToUI() -> fetchPreviewSamples() chain — including
-  // sidebar.js's own module-level call to pullSettingsAndApplyToUI() on
-  // load — settles deterministically within the single eval() call below.
+  // The model holds enabled:false. request:activeTable answers that pulled
+  // settings object beside a non-null samples object, i.e. the reopen landed
+  // on a table that is bound (the reviewer's reachable end state). It
+  // resolves synchronously so the whole redrawFromActiveTable() path —
+  // including sidebar.js's own module-level opening read on load — settles
+  // deterministically within the single eval() call below.
   const pulledSettings = Object.assign({}, DR_DEFAULTS, { enabled: false });
   const captureChrome = {
     runtime: {
@@ -2292,10 +2290,8 @@ const LADDER_OPTS = {
     tabs: {
       query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
       sendMessage(tabId, msg, cb) {
-        if (msg.action === 'request:settings') {
-          cb({ settings: pulledSettings });
-        } else if (msg.action === 'request:previewSamples') {
-          cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
+        if (msg.action === 'request:activeTable') {
+          cb({ settings: pulledSettings, samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
           // The settings apply. Chrome hands back the responder's value on
           // success and nothing when nobody answered, which is the fact the
@@ -2325,7 +2321,7 @@ const LADDER_OPTS = {
       );
     } catch (e) {
       // The stubs above are built to let the whole module-level
-      // pullSettingsAndApplyToUI() -> fetchPreviewSamples() chain resolve
+      // redrawFromActiveTable() path resolve
       // synchronously and without throwing, unlike the sibling harness (which
       // only needs the 'change' listener captured before its own pull runs).
       // Record any throw instead of silently swallowing it — an unstubbed
@@ -2336,7 +2332,7 @@ const LADDER_OPTS = {
 
     eq('reopen-bound: sidebar.js\'s module-level pull ran to completion with no stub gaps',
       evalError, null);
-    eq('reopen-bound: the pulled enabled:false survives the reopen once the preview response resolves (samples !== null)',
+    eq('reopen-bound: the pulled enabled:false survives the reopen when the same answer holds samples (samples !== null)',
       enabledEl.checked, false);
   } finally {
     global.document = savedDoc;

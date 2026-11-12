@@ -2626,9 +2626,9 @@
         cb([{ id: BOUND_TAB, windowId: BOUND_WINDOW }]);
       },
       sendMessage(tabId, msg, cb) {
-        if (msg.action === 'request:settings') {
+        if (msg.action === 'request:activeTable') {
           settingsReads.push(tabId);
-          cb({ settings: Object.assign({}, DR_DEFAULTS) });
+          cb({ settings: Object.assign({}, DR_DEFAULTS), samples: null, maxMag: null });
           return;
         }
         cb(undefined);
