@@ -1380,7 +1380,7 @@ function flushTimers(pendingTimers) {
   }
 }
 
-function makePhantomEl(opts) {
+function makeStubEl(opts) {
   opts = opts || {};
   const attrs = opts.attrs || {};
   const style  = opts.style  || {};
@@ -1420,7 +1420,7 @@ const inlineStyleProbe = {
 };
 
 function makePositionedAncestor(styleOverrides) {
-  return makePhantomEl({ style: Object.assign({ position: 'absolute' }, styleOverrides || {}) });
+  return makeStubEl({ style: Object.assign({ position: 'absolute' }, styleOverrides || {}) });
 }
 
 // =============================================================================
@@ -1648,14 +1648,14 @@ function makeAriaGrid(embeddedTables) {
 }
 
 // Helper: build a minimal embedded accessibility artifact (aria-hidden on self → isAccessibilityArtifact true)
-function makePhantomEmbeddedTable() {
-  return makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
+function makeArtifactEmbeddedTable() {
+  return makeStubEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
 }
 
 // Helper: build a minimal real on-screen embedded table (isAccessibilityArtifact false)
 function makeRealEmbeddedTable() {
-  const tbl = makePhantomEl({ tagName: 'TABLE' });
-  const wrapper = makePhantomEl({ tagName: 'DIV' });
+  const tbl = makeStubEl({ tagName: 'TABLE' });
+  const wrapper = makeStubEl({ tagName: 'DIV' });
   chainParents(tbl, wrapper);
   return tbl;
 }

@@ -1933,10 +1933,10 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 // Sanity: isAccessibilityArtifact round-trip on the embedded-table fixtures
 // ---------------------------------------------------------------------------
-(function pass2aria_sanity_phantomEmbedded() {
-  const phantom = makePhantomEmbeddedTable();
+(function pass2aria_sanity_artifactEmbedded() {
+  const artifact = makeArtifactEmbeddedTable();
   eq('pass2-aria sanity: isAccessibilityArtifact(embedded accessibility artifact) === true',
-    isAccessibilityArtifact(phantom), true);
+    isAccessibilityArtifact(artifact), true);
 })();
 
 (function pass2aria_sanity_realEmbedded() {
@@ -1948,10 +1948,10 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 // AC1: ARIA grid with ONLY accessibility artifacts → Pass 2 adds dr-ext-grid + pillbox
 // ---------------------------------------------------------------------------
-(function pass2aria_AC1_onlyPhantomTables_getsPillbox() {
-  const phantom1 = makePhantomEmbeddedTable();
-  const phantom2 = makePhantomEmbeddedTable();
-  const grid = makeAriaGrid([phantom1, phantom2]);
+(function pass2aria_AC1_onlyArtifactTables_getsPillbox() {
+  const artifact1 = makeArtifactEmbeddedTable();
+  const artifact2 = makeArtifactEmbeddedTable();
+  const grid = makeAriaGrid([artifact1, artifact2]);
 
   withPillboxDocumentMock(function() {
     // Pass 1 sees no tables; Pass 2 sees our grid.
@@ -1964,9 +1964,9 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: grid with only phantom tables gets dr-ext-grid class',
+  eq('pass2-aria: grid with only accessibility artifacts gets dr-ext-grid class',
     grid.classList.contains('dr-ext-grid'), true);
-  eq('pass2-aria: grid with only phantom tables gets a toggle registered',
+  eq('pass2-aria: grid with only accessibility artifacts gets a toggle registered',
     tablePillboxes.has(grid), true);
 })();
 
@@ -1996,10 +1996,10 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 // Adversarial AC2-mix: grid with an artifact + one real table → still skipped
 // ---------------------------------------------------------------------------
-(function pass2aria_adversarial_mixedPhantomAndReal_bowsOut() {
-  const phantom = makePhantomEmbeddedTable();
+(function pass2aria_adversarial_mixedArtifactAndReal_bowsOut() {
+  const artifact = makeArtifactEmbeddedTable();
   const real    = makeRealEmbeddedTable();
-  const grid    = makeAriaGrid([phantom, real]);
+  const grid    = makeAriaGrid([artifact, real]);
 
   withPillboxDocumentMock(function() {
     global.document.querySelectorAll = function(sel) {
@@ -2011,9 +2011,9 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     injectTablePillboxes();
   });
 
-  eq('pass2-aria: grid with phantom+real table does NOT get dr-ext-grid',
+  eq('pass2-aria: grid with accessibility artifact and real table does NOT get dr-ext-grid',
     grid.classList.contains('dr-ext-grid'), false);
-  eq('pass2-aria: grid with phantom+real table does NOT get a toggle',
+  eq('pass2-aria: grid with accessibility artifact and real table does NOT get a toggle',
     tablePillboxes.has(grid), false);
 })();
 
@@ -2070,7 +2070,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // (the preserved `if (el.tagName === 'TABLE') return;` fires before the new line)
 // ---------------------------------------------------------------------------
 (function pass2aria_adversarial_tableTagName_skipped() {
-  const phantom = makePhantomEmbeddedTable();
+  const artifact = makeArtifactEmbeddedTable();
   // Make an ARIA-grid-matching element that is itself a <TABLE>
   const classes = new Set();
   const gridTable = {
@@ -2081,7 +2081,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       remove(c)   { classes.delete(c); },
     },
     querySelectorAll(sel) {
-      return sel === 'table' ? [phantom] : [];
+      return sel === 'table' ? [artifact] : [];
     },
     getBoundingClientRect() { return { top: 0, right: 0, bottom: 0, left: 0 }; },
   };

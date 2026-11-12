@@ -1116,7 +1116,7 @@ const supTestOpts = {
   });
 })();
 
-// FT5: findTargetTable — returns already-found ancestor without re-walking
+// FT5: findTargetTable — returns registered ancestor without re-walking
 // If an ancestor is already registered per opts.isRegistered (see
 // lib/dr-table/detect.js), it must be returned immediately without calling
 // looksLikeGrid again.
@@ -1135,10 +1135,10 @@ const supTestOpts = {
     const seen = new Set([existingGrid]);
     const result = findTargetTable(clickTarget, { isRegistered: (el) => seen.has(el) });
 
-    eq('findTargetTable: returns already-found ancestor immediately',
+    eq('findTargetTable: returns registered ancestor immediately',
       result.handle, existingGrid);
     // Already found — the caller has already handled this one; isNew is false.
-    eq('findTargetTable: already-found ancestor reports isNew: false',
+    eq('findTargetTable: registered ancestor reports isNew: false',
       result.isNew, false);
   });
 })();
@@ -1871,44 +1871,44 @@ const supTestOpts = {
 // Returns false for an ordinary on-screen 2-column numeric table.
 //
 // Mock-building helpers:
-//   makePhantomEl(attrs)  – minimal element node with getAttribute / parentElement / style
+//   makeStubEl(attrs)  – minimal element node with getAttribute / parentElement / style
 //   chainParents(child, ...parents)  – link elements into a parentElement chain
 //   makePositionedAncestor(styleProps)  – element with style.position = 'absolute'
 
 // ---------------------------------------------------------------------------
 // Signal 1: aria-hidden="true" on the table itself
 // ---------------------------------------------------------------------------
-(function phantomA11y_signal1_selfHidden() {
-  const table = makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
+(function accessibilityArtifact_signal1_selfHidden() {
+  const table = makeStubEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
   eq('isAccessibilityArtifact: aria-hidden="true" on table itself -> true',
     isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Signal 1: aria-hidden="true" on immediate parent
-(function phantomA11y_signal1_parentHidden() {
-  const table = makePhantomEl({ tagName: 'TABLE' });
-  const parent = makePhantomEl({ tagName: 'DIV', attrs: { 'aria-hidden': 'true' } });
+(function accessibilityArtifact_signal1_parentHidden() {
+  const table = makeStubEl({ tagName: 'TABLE' });
+  const parent = makeStubEl({ tagName: 'DIV', attrs: { 'aria-hidden': 'true' } });
   chainParents(table, parent);
   eq('isAccessibilityArtifact: aria-hidden="true" on immediate parent -> true',
     isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Signal 1: aria-hidden="true" several ancestors up (nested deeply)
-(function phantomA11y_signal1_deepAncestorHidden() {
-  const table      = makePhantomEl({ tagName: 'TABLE' });
-  const tbody      = makePhantomEl({ tagName: 'TBODY' });
-  const innerDiv   = makePhantomEl({ tagName: 'DIV' });
-  const middleDiv  = makePhantomEl({ tagName: 'DIV' });
-  const outerDiv   = makePhantomEl({ tagName: 'DIV', attrs: { 'aria-hidden': 'true' } });
+(function accessibilityArtifact_signal1_deepAncestorHidden() {
+  const table      = makeStubEl({ tagName: 'TABLE' });
+  const tbody      = makeStubEl({ tagName: 'TBODY' });
+  const innerDiv   = makeStubEl({ tagName: 'DIV' });
+  const middleDiv  = makeStubEl({ tagName: 'DIV' });
+  const outerDiv   = makeStubEl({ tagName: 'DIV', attrs: { 'aria-hidden': 'true' } });
   chainParents(table, tbody, innerDiv, middleDiv, outerDiv);
   eq('isAccessibilityArtifact: aria-hidden="true" several levels up -> true',
     isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Edge: aria-hidden="false" must NOT trigger signal 1
-(function phantomA11y_signal1_ariaHiddenFalse() {
-  const table  = makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'false' } });
-  const parent = makePhantomEl({ tagName: 'DIV',   attrs: { 'aria-hidden': 'false' } });
+(function accessibilityArtifact_signal1_ariaHiddenFalse() {
+  const table  = makeStubEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'false' } });
+  const parent = makeStubEl({ tagName: 'DIV',   attrs: { 'aria-hidden': 'false' } });
   chainParents(table, parent);
   eq('isAccessibilityArtifact: aria-hidden="false" does NOT trigger -> false',
     isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
@@ -1919,8 +1919,8 @@ const supTestOpts = {
 // ---------------------------------------------------------------------------
 
 // Signal 2: positioned ancestor with left: -10000px (Kaggle evidence)
-(function phantomA11y_signal2_offscreenLeft_minus10000() {
-  const table  = makePhantomEl({ tagName: 'TABLE' });
+(function accessibilityArtifact_signal2_offscreenLeft_minus10000() {
+  const table  = makeStubEl({ tagName: 'TABLE' });
   const posAnc = makePositionedAncestor({ left: '-10000px' });
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: positioned ancestor left=-10000px -> true',
@@ -1928,8 +1928,8 @@ const supTestOpts = {
 })();
 
 // Signal 2: positioned ancestor at exactly the threshold value (-9999px)
-(function phantomA11y_signal2_offscreenLeft_exactThreshold() {
-  const table  = makePhantomEl({ tagName: 'TABLE' });
+(function accessibilityArtifact_signal2_offscreenLeft_exactThreshold() {
+  const table  = makeStubEl({ tagName: 'TABLE' });
   const posAnc = makePositionedAncestor({ left: '-9999px' });
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: positioned ancestor left=-9999px (at threshold) -> true',
@@ -1937,15 +1937,15 @@ const supTestOpts = {
 })();
 
 // Signal 2: table itself is positioned and off-screen (no separate ancestor)
-(function phantomA11y_signal2_tableSelfOffscreen() {
-  const table = makePhantomEl({ tagName: 'TABLE', style: { position: 'absolute', left: '-10000px' } });
+(function accessibilityArtifact_signal2_tableSelfOffscreen() {
+  const table = makeStubEl({ tagName: 'TABLE', style: { position: 'absolute', left: '-10000px' } });
   eq('isAccessibilityArtifact: table itself is positioned with left=-10000px -> true',
     isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), true);
 })();
 
 // Edge: left value just ABOVE threshold (-9998px) must NOT trigger
-(function phantomA11y_signal2_leftJustAboveThreshold() {
-  const table  = makePhantomEl({ tagName: 'TABLE' });
+(function accessibilityArtifact_signal2_leftJustAboveThreshold() {
+  const table  = makeStubEl({ tagName: 'TABLE' });
   const posAnc = makePositionedAncestor({ left: '-9998px' });
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: positioned ancestor left=-9998px (above threshold) -> false',
@@ -1953,8 +1953,8 @@ const supTestOpts = {
 })();
 
 // Edge: modest off-screen like -100px must NOT trigger signal 2
-(function phantomA11y_signal2_modestNegativeLeft() {
-  const table  = makePhantomEl({ tagName: 'TABLE' });
+(function accessibilityArtifact_signal2_modestNegativeLeft() {
+  const table  = makeStubEl({ tagName: 'TABLE' });
   const posAnc = makePositionedAncestor({ left: '-100px' });
   chainParents(table, posAnc);
   eq('isAccessibilityArtifact: positioned ancestor left=-100px (not extreme) -> false',
@@ -1964,10 +1964,10 @@ const supTestOpts = {
 // Edge: non-positioned ancestor with extreme left — should NOT count because the
 // ancestor is not positioned; no positioned ancestor found so checkEl = table,
 // and table has no extreme left.
-(function phantomA11y_signal2_nonPositionedAncestorIgnored() {
-  const table   = makePhantomEl({ tagName: 'TABLE' });
+(function accessibilityArtifact_signal2_nonPositionedAncestorIgnored() {
+  const table   = makeStubEl({ tagName: 'TABLE' });
   // wrapper has no inline style.position and getComputedStyle returns '' for position
-  const wrapper = makePhantomEl({ tagName: 'DIV', style: { left: '-10000px' } });
+  const wrapper = makeStubEl({ tagName: 'DIV', style: { left: '-10000px' } });
   chainParents(table, wrapper);
   // No positioned ancestor found → checkEl = table (which has no extreme left)
   eq('isAccessibilityArtifact: non-positioned ancestor with extreme left -> false',
@@ -1975,8 +1975,8 @@ const supTestOpts = {
 })();
 
 // Edge: no positioned ancestor found at all — no crash
-(function phantomA11y_noPosAncestor() {
-  const table = makePhantomEl({ tagName: 'TABLE' });
+(function accessibilityArtifact_noPosAncestor() {
+  const table = makeStubEl({ tagName: 'TABLE' });
   // No parentElement — predicate must not throw and returns false
   eq('isAccessibilityArtifact: no positioned ancestor, no signals -> false',
     isAccessibilityArtifact(table, { styleProbe: inlineStyleProbe }), false);
@@ -1985,9 +1985,9 @@ const supTestOpts = {
 // ---------------------------------------------------------------------------
 // Negative case: ordinary on-screen 2-column numeric table
 // ---------------------------------------------------------------------------
-(function phantomA11y_negative_ordinaryTable() {
-  const table  = makePhantomEl({ tagName: 'TABLE' });
-  const parent = makePhantomEl({ tagName: 'DIV' });
+(function accessibilityArtifact_negative_ordinaryTable() {
+  const table  = makeStubEl({ tagName: 'TABLE' });
+  const parent = makeStubEl({ tagName: 'DIV' });
   chainParents(table, parent);
   // No aria-hidden, no off-screen left, no positioned ancestor → false
   eq('isAccessibilityArtifact: ordinary on-screen numeric table -> false',
@@ -1995,8 +1995,8 @@ const supTestOpts = {
 })();
 
 // Negative: positioned ancestor but normal on-screen left (-50px), no aria-hidden
-(function phantomA11y_negative_onscreenPositionedAncestor() {
-  const table  = makePhantomEl({ tagName: 'TABLE' });
+(function accessibilityArtifact_negative_onscreenPositionedAncestor() {
+  const table  = makeStubEl({ tagName: 'TABLE' });
   const posAnc = makePositionedAncestor({ left: '-50px' });
   posAnc.querySelectorAll = function() { return []; };
   chainParents(table, posAnc);
@@ -2007,12 +2007,12 @@ const supTestOpts = {
 // ---------------------------------------------------------------------------
 // Guard: invalid / null input
 // ---------------------------------------------------------------------------
-(function phantomA11y_nullInput() {
+(function accessibilityArtifact_nullInput() {
   eq('isAccessibilityArtifact: null -> false',
     isAccessibilityArtifact(null), false);
 })();
 
-(function phantomA11y_noGetAttribute() {
+(function accessibilityArtifact_noGetAttribute() {
   eq('isAccessibilityArtifact: plain object without getAttribute -> false',
     isAccessibilityArtifact({}), false);
 })();
@@ -2021,8 +2021,8 @@ const supTestOpts = {
 // Build N=3 accessibility artifacts (aria-hidden parent), all valid data tables.
 // After Pass 1 none of them should be in tablePillboxes.
 
-(function pass1Filter_ariaHiddenPhantoms_zeroPillboxes() {
-  function makeAriaHiddenPhantom() {
+(function pass1Filter_ariaHiddenArtifacts_zeroPillboxes() {
+  function makeAriaHiddenArtifact() {
     const t = makePass1DataTable();
     // aria-hidden="true" on the immediate parent (Signal 1)
     const hiddenParent = {
@@ -2037,29 +2037,29 @@ const supTestOpts = {
     return t;
   }
 
-  const phantoms = [makeAriaHiddenPhantom(), makeAriaHiddenPhantom(), makeAriaHiddenPhantom()];
+  const artifacts = [makeAriaHiddenArtifact(), makeAriaHiddenArtifact(), makeAriaHiddenArtifact()];
 
   // Sanity: each artifact is a valid data table (isDataTable guard is NOT the cause of skip)
-  eq('pass1-filter: phantom aria-hidden table satisfies isDataTable (sanity)',
-    isDataTable(phantoms[0]), true);
+  eq('pass1-filter: aria-hidden accessibility artifact satisfies isDataTable (sanity)',
+    isDataTable(artifacts[0]), true);
   // Sanity: each artifact is detected as an artifact
   eq('pass1-filter: aria-hidden accessibility artifact isAccessibilityArtifact is true (sanity)',
-    isAccessibilityArtifact(phantoms[0], { styleProbe: inlineStyleProbe }), true);
+    isAccessibilityArtifact(artifacts[0], { styleProbe: inlineStyleProbe }), true);
 
-  runPass1WithTables(phantoms);
+  runPass1WithTables(artifacts);
 
-  const togglesCreated = phantoms.filter(t => tablePillboxes.has(t)).length;
-  eq('pass1-filter: 3 aria-hidden phantom tables → ZERO toggles created',
+  const togglesCreated = artifacts.filter(t => tablePillboxes.has(t)).length;
+  eq('pass1-filter: 3 aria-hidden accessibility artifacts → ZERO toggles created',
     togglesCreated, 0);
 
-  cleanupPass1Tables(phantoms);
+  cleanupPass1Tables(artifacts);
 })();
 
 // --- pass1-filter AC1: accessibility artifacts (off-screen left) get NO pillbox ---
 // Build N=2 accessibility artifacts with positioned ancestor left=-10000px.
 
-(function pass1Filter_offscreenLeftPhantoms_zeroPillboxes() {
-  function makeOffscreenPhantom() {
+(function pass1Filter_offscreenLeftArtifacts_zeroPillboxes() {
+  function makeOffscreenArtifact() {
     const t = makePass1DataTable();
     // Positioned ancestor with extreme left (Signal 2)
     const posAnc = {
@@ -2076,21 +2076,21 @@ const supTestOpts = {
     return t;
   }
 
-  const phantoms = [makeOffscreenPhantom(), makeOffscreenPhantom()];
+  const artifacts = [makeOffscreenArtifact(), makeOffscreenArtifact()];
 
   // Sanity checks
-  eq('pass1-filter: off-screen phantom table satisfies isDataTable (sanity)',
-    isDataTable(phantoms[0]), true);
+  eq('pass1-filter: off-screen accessibility artifact satisfies isDataTable (sanity)',
+    isDataTable(artifacts[0]), true);
   eq('pass1-filter: off-screen accessibility artifact isAccessibilityArtifact is true (sanity)',
-    isAccessibilityArtifact(phantoms[0], { styleProbe: inlineStyleProbe }), true);
+    isAccessibilityArtifact(artifacts[0], { styleProbe: inlineStyleProbe }), true);
 
-  runPass1WithTables(phantoms);
+  runPass1WithTables(artifacts);
 
-  const togglesCreated = phantoms.filter(t => tablePillboxes.has(t)).length;
-  eq('pass1-filter: 2 off-screen phantom tables → ZERO toggles created',
+  const togglesCreated = artifacts.filter(t => tablePillboxes.has(t)).length;
+  eq('pass1-filter: 2 off-screen accessibility artifacts → ZERO toggles created',
     togglesCreated, 0);
 
-  cleanupPass1Tables(phantoms);
+  cleanupPass1Tables(artifacts);
 })();
 
 // --- pass1-filter AC2: a normal on-screen table still gets exactly ONE toggle ---
@@ -2127,7 +2127,7 @@ const supTestOpts = {
 
 (function pass1Filter_mixedFixture_onlyRealTablesGetPillboxes() {
   // Two accessibility artifacts (aria-hidden ancestor)
-  function makeAriaHiddenPhantom() {
+  function makeAriaHiddenArtifact() {
     const t = makePass1DataTable();
     const hiddenParent = {
       tagName: 'DIV',
@@ -2142,7 +2142,7 @@ const supTestOpts = {
   }
 
   // One artifact with off-screen left
-  function makeOffscreenPhantom() {
+  function makeOffscreenArtifact() {
     const t = makePass1DataTable();
     const posAnc = {
       tagName: 'DIV',
@@ -2173,30 +2173,30 @@ const supTestOpts = {
     return t;
   }
 
-  const phantom1 = makeAriaHiddenPhantom();
-  const phantom2 = makeAriaHiddenPhantom();
-  const phantom3 = makeOffscreenPhantom();
+  const artifact1 = makeAriaHiddenArtifact();
+  const artifact2 = makeAriaHiddenArtifact();
+  const artifact3 = makeOffscreenArtifact();
   const real1    = makeRealTable();
   const real2    = makeRealTable();
 
   // Interleave so Pass 1 processes them in mixed order
-  const allTables = [phantom1, real1, phantom2, real2, phantom3];
+  const allTables = [artifact1, real1, artifact2, real2, artifact3];
 
   runPass1WithTables(allTables);
 
-  const phantoms = [phantom1, phantom2, phantom3];
+  const artifacts = [artifact1, artifact2, artifact3];
   const reals    = [real1, real2];
 
-  const phantomPillboxes = phantoms.filter(t => tablePillboxes.has(t)).length;
+  const artifactPillboxes = artifacts.filter(t => tablePillboxes.has(t)).length;
   const realPillboxes    = reals.filter(t => tablePillboxes.has(t)).length;
 
-  eq('pass1-filter (mix): phantom tables get ZERO toggles',
-    phantomPillboxes, 0);
+  eq('pass1-filter (mix): accessibility artifacts get ZERO toggles',
+    artifactPillboxes, 0);
   eq('pass1-filter (mix): real tables each get a toggle — count equals 2',
     realPillboxes, 2);
   eq('pass1-filter (mix): total toggles created equals number of real tables',
-    tablePillboxes.has(real1) && tablePillboxes.has(real2) && !tablePillboxes.has(phantom1) &&
-    !tablePillboxes.has(phantom2) && !tablePillboxes.has(phantom3), true);
+    tablePillboxes.has(real1) && tablePillboxes.has(real2) && !tablePillboxes.has(artifact1) &&
+    !tablePillboxes.has(artifact2) && !tablePillboxes.has(artifact3), true);
 
   cleanupPass1Tables(allTables);
 })();
@@ -2747,9 +2747,9 @@ const PRE_MOVE_DETECTION_SETTINGS = {
       // and beyond it counts as off-screen; just inside it does not ---
       const offscreenProbe = { styleProbe: { getComputedStyle: (el) => el.style } };
       const offscreenTable = (left) => ({ getAttribute: () => null, style: { position: 'static', left: left + 'px' } });
-      outcomes.offscreenAtThresholdIsPhantom = isAccessibilityArtifact(offscreenTable(-9999), offscreenProbe);
-      outcomes.offscreenBeyondThresholdIsPhantom = isAccessibilityArtifact(offscreenTable(-10000), offscreenProbe);
-      outcomes.offscreenInsideThresholdIsNotPhantom = isAccessibilityArtifact(offscreenTable(-9998), offscreenProbe);
+      outcomes.offscreenAtThresholdIsArtifact = isAccessibilityArtifact(offscreenTable(-9999), offscreenProbe);
+      outcomes.offscreenBeyondThresholdIsArtifact = isAccessibilityArtifact(offscreenTable(-10000), offscreenProbe);
+      outcomes.offscreenInsideThresholdIsNotArtifact = isAccessibilityArtifact(offscreenTable(-9998), offscreenProbe);
 
       // --- isDataTable: no collateral breakage from the load-order change ---
       outcomes.isDataTableStillFindsANumericTable = isDataTable({
@@ -2800,11 +2800,11 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   eq('detection settings: findTargetTable bounds the ancestor walk to gridWalkDepthCap (15)',
     sandbox.outcomes.walkDepthCapLabel, 14);
   eq('detection settings: isAccessibilityArtifact treats offscreenLeftPx itself as off-screen',
-    sandbox.outcomes.offscreenAtThresholdIsPhantom, true);
+    sandbox.outcomes.offscreenAtThresholdIsArtifact, true);
   eq('detection settings: isAccessibilityArtifact treats a value beyond offscreenLeftPx as off-screen',
-    sandbox.outcomes.offscreenBeyondThresholdIsPhantom, true);
+    sandbox.outcomes.offscreenBeyondThresholdIsArtifact, true);
   eq('detection settings: isAccessibilityArtifact treats a value inside offscreenLeftPx as on-screen',
-    sandbox.outcomes.offscreenInsideThresholdIsNotPhantom, false);
+    sandbox.outcomes.offscreenInsideThresholdIsNotArtifact, false);
   eq('detection settings: isDataTable still finds a plain 2x2 numeric table (no collateral breakage)',
     sandbox.outcomes.isDataTableStillFindsANumericTable, true);
 })();
@@ -2840,7 +2840,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
 // artifact; a pass-through filter keeps it. reuses makePass1DataTable / the
 // aria-hidden artifact shape from the pass1-filter suite above.
 (function findTables_tableFilterDefaultVsPassThrough() {
-  const phantomTable = makePass1DataTable();
+  const artifactTable = makePass1DataTable();
   const hiddenParent = {
     tagName: 'DIV',
     getAttribute: (name) => (name === 'aria-hidden' ? 'true' : null),
@@ -2848,18 +2848,18 @@ const PRE_MOVE_DETECTION_SETTINGS = {
     parentElement: null,
     parentNode: null,
   };
-  phantomTable.parentElement = hiddenParent;
-  phantomTable.parentNode = null;
+  artifactTable.parentElement = hiddenParent;
+  artifactTable.parentNode = null;
 
   const root = {
     tagName: 'BODY',
     querySelectorAll(sel) {
-      return sel === 'table' ? [phantomTable] : [];
+      return sel === 'table' ? [artifactTable] : [];
     },
   };
 
-  eq('findTables: sanity — the fixture is both a valid data table and a phantom a11y table',
-    isDataTable(phantomTable) && isAccessibilityArtifact(phantomTable), true);
+  eq('findTables: sanity — the fixture is both a valid data table and an accessibility artifact',
+    isDataTable(artifactTable) && isAccessibilityArtifact(artifactTable), true);
   eq('findTables: default isArtifact (isAccessibilityArtifact) drops an accessibility artifact',
     findTables(root).length, 0);
   eq('findTables: a pass-through isArtifact keeps the accessibility artifact',
@@ -4267,7 +4267,7 @@ function cnAdapterCellEls(tableEl) {
   function hiddenNumericCell(rawText) {
     return withTextPiece({ tagName: 'TD', innerText: '', textContent: rawText });
   }
-  const artifactTable = makePhantomEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
+  const artifactTable = makeStubEl({ tagName: 'TABLE', attrs: { 'aria-hidden': 'true' } });
   artifactTable.rows = [
     { cells: [hiddenNumericCell('1'), hiddenNumericCell('2')] },
     { cells: [hiddenNumericCell('3'), hiddenNumericCell('45230')] },
@@ -4280,7 +4280,7 @@ function cnAdapterCellEls(tableEl) {
 
   // findTables is where detection combines the two: its default isArtifact
   // is isAccessibilityArtifact, applied before any candidate is kept.
-  const root = makePhantomEl({ tagName: 'DIV' });
+  const root = makeStubEl({ tagName: 'DIV' });
   root.querySelectorAll = (sel) => (sel === 'table' ? [artifactTable] : []);
   eq('hidden cells: detection skips the accessibility artifact despite its hidden numeric cells',
     findTables(root).length, 0);
@@ -4288,11 +4288,11 @@ function cnAdapterCellEls(tableEl) {
   // Control: the identical row shape, minus the accessibility signal, is a
   // real candidate — isolating the guard as the reason for the exclusion
   // above, not some unrelated property of the mock.
-  const onScreenTable = makePhantomEl({ tagName: 'TABLE' });
+  const onScreenTable = makeStubEl({ tagName: 'TABLE' });
   onScreenTable.rows = artifactTable.rows;
-  const wrapper = makePhantomEl({ tagName: 'DIV' });
+  const wrapper = makeStubEl({ tagName: 'DIV' });
   chainParents(onScreenTable, wrapper);
-  const root2 = makePhantomEl({ tagName: 'DIV' });
+  const root2 = makeStubEl({ tagName: 'DIV' });
   root2.querySelectorAll = (sel) => (sel === 'table' ? [onScreenTable] : []);
   eq('hidden cells: detection keeps the same row shape without the accessibility signal',
     findTables(root2).length, 1);
@@ -4799,22 +4799,22 @@ function makeSparselyBoxedGrid(boxed) {
   });
   const offscreen = { position: 'absolute', left: '-10000px' };
 
-  const inlineOnly = makePhantomEl({ tagName: 'TABLE', style: offscreen });
+  const inlineOnly = makeStubEl({ tagName: 'TABLE', style: offscreen });
   eq('artifact filter: an inline off-screen style the style probe does not report gives false',
     isAccessibilityArtifact(inlineOnly, { styleProbe: probeOf(new Map()) }), false);
 
-  const probedOnly = makePhantomEl({ tagName: 'TABLE', style: { position: 'static', left: '0px' } });
+  const probedOnly = makeStubEl({ tagName: 'TABLE', style: { position: 'static', left: '0px' } });
   eq('artifact filter: an off-screen style only the style probe reports gives true',
     isAccessibilityArtifact(probedOnly, { styleProbe: probeOf(new Map([[probedOnly, offscreen]])) }), true);
 
-  const table = makePhantomEl({ tagName: 'TABLE' });
-  const inlineAncestor = makePhantomEl({ style: offscreen });
+  const table = makeStubEl({ tagName: 'TABLE' });
+  const inlineAncestor = makeStubEl({ style: offscreen });
   chainParents(table, inlineAncestor);
   eq('artifact filter: an ancestor with an inline positioned off-screen style the style probe does not report gives false',
     isAccessibilityArtifact(table, { styleProbe: probeOf(new Map()) }), false);
 
-  const probedTable = makePhantomEl({ tagName: 'TABLE' });
-  const probedAncestor = makePhantomEl({ style: { position: 'static', left: '0px' } });
+  const probedTable = makeStubEl({ tagName: 'TABLE' });
+  const probedAncestor = makeStubEl({ style: { position: 'static', left: '0px' } });
   chainParents(probedTable, probedAncestor);
   eq('artifact filter: an ancestor the style probe reports as positioned and off-screen gives true',
     isAccessibilityArtifact(probedTable, { styleProbe: probeOf(new Map([[probedAncestor, offscreen]])) }), true);
@@ -4935,8 +4935,8 @@ function makeSparselyBoxedGrid(boxed) {
     eq(`geometry probe, ${label}: aria-hidden on the grid reads no layout`, probeSelf.layoutReads, 0);
 
     const hiddenAncestor = withMarks(unmarkedGrid(role), {});
-    const outer = makePhantomEl({ attrs: { 'aria-hidden': 'true' } });
-    chainParents(hiddenAncestor, makePhantomEl(), outer);
+    const outer = makeStubEl({ attrs: { 'aria-hidden': 'true' } });
+    chainParents(hiddenAncestor, makeStubEl(), outer);
     const probeAncestor = makeArtifactStyleProbe();
     eq(`geometry probe, ${label}: aria-hidden on an ancestor is rejected`,
       looksLikeGrid(hiddenAncestor, { styleProbe: probeAncestor }), false);
