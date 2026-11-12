@@ -86,9 +86,9 @@ const DR_DETECTION_SETTINGS = {
   // simplification never attaches the observer.
   reapplyCellCap: 10000,
   // The longest a re-apply pass runs before it writes a debug row with its
-  // duration. A pass this long stalls the page enough for a person to see,
-  // and it is more than three times the slowest pass measured at the cell
-  // cap, so a row marks a slow page rather than a large table.
+  // duration. The cell cap's value was chosen to hold a pass under 200 ms,
+  // and the slowest pass measured at the cap took 57 ms, so a row marks a
+  // pass more than three times slower than any measured.
   passTargetMs: 200,
   // --- Pending tables (content.js) ---
   // Failed re-tests a pending table takes before its subtree observer drops.
