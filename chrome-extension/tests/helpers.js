@@ -2263,6 +2263,42 @@ function makeCrowdedNest() {
   return { rootEl, paneAEl, paneBEl };
 }
 
+/**
+ * Answer the sidebar harness's redraw read with a fixed answer from now on.
+ * Every other message keeps the harness's own answer.
+ * @param {object} h - A harness from makeIssue251SidebarHarness.
+ * @param {object} answer - The answer to request:activeTable: settings, samples, and maxMag.
+ */
+function answerActiveTableRead(h, answer) {
+  const tabs = h.chromeMock.tabs;
+  const harnessAnswer = tabs.harnessSendMessage || tabs.sendMessage;
+  tabs.harnessSendMessage = harnessAnswer;
+  tabs.sendMessage = (tabId, msg, cb) => {
+    if (msg.action !== 'request:activeTable') return harnessAnswer(tabId, msg, cb);
+    h.tabMessages.push(msg);
+    cb(answer);
+  };
+}
+
+/**
+ * Record the children a sidebar harness element receives. The harness's
+ * elements drop an appended child, so a test that counts lens preview rows
+ * reads this list instead.
+ * @param {object} el - A harness element.
+ * @returns {object[]} The children appended since the element's last innerHTML reset.
+ */
+function recordAppendedChildren(el) {
+  const children = [];
+  let html = '';
+  el.appendChild = (child) => { children.push(child); };
+  Object.defineProperty(el, 'innerHTML', {
+    configurable: true,
+    get() { return html; },
+    set(value) { html = value; if (value === '') children.length = 0; },
+  });
+  return children;
+}
+
 // ---------------------------------------------------------------------------
 // The sidebar mirrors the model's settings on any table switch.
 // A shared harness (same eval shape as the reopen-bound test above, plus an
@@ -2363,10 +2399,8 @@ function makeIssue251SidebarHarness(opts) {
       query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
       sendMessage(tabId, msg, cb) {
         tabMessages.push(msg);
-        if (msg.action === 'request:settings') {
-          cb({ settings: modelSettings });
-        } else if (msg.action === 'request:previewSamples') {
-          cb({ samples: { top: [], bottom: [] }, maxMag: 0 });
+        if (msg.action === 'request:activeTable') {
+          cb({ settings: modelSettings, samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
           // The settings apply. Chrome hands back the responder's value on
           // success and nothing when nobody answered, which is the fact the
@@ -2399,7 +2433,7 @@ function makeIssue251SidebarHarness(opts) {
 
   return {
     statusEl, enabledEl, rangeExprEl, bodyClasses, evalError, tabMessages, captureMarkEls,
-    // The object the settings read answers with; a test that changes a field
+    // The settings the redraw read answers with; a test that changes a field
     // changes the next answer.
     modelSettings,
     chromeMock: captureChrome,

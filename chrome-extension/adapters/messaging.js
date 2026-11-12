@@ -131,18 +131,17 @@ const DR_BUS = (function () {
     // (ui-toast.js) subscribes to draw the row on the page. Same context
     // only: the sidebar reads the error state through the capture state pull.
     'state:errorRecorded': { family: STATE_CHANGE, route: null },
-    // The sidebar's four requests. Each addresses the tab's content script,
+    // The sidebar's three requests. Each addresses the tab's content script,
     // which holds the model.
     //
     // The settings apply is a request rather than a one-way publish: the
     // content script writes the active table's settings and answers, and the
     // sidebar reads whether anyone answered at all to determine bound versus
-    // unbound. The answer's value is never read. The other three read the
-    // model: the active table's settings, its preview samples, and the
+    // unbound. The answer's value is never read. The other two read the
+    // model: the active table's settings with its preview samples, and the
     // capture state.
     'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
-    'request:settings': { family: REQUEST, route: ROUTE_TAB },
-    'request:previewSamples': { family: REQUEST, route: ROUTE_TAB },
+    'request:activeTable': { family: REQUEST, route: ROUTE_TAB },
     'request:captureState': { family: REQUEST, route: ROUTE_TAB },
     // The service worker's four topics. The two it publishes to a tab carry
     // an explicit tab number: neither the menu-click tab nor the sidebar's tab

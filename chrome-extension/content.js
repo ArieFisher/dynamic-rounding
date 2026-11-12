@@ -217,26 +217,25 @@ DR_BUS.subscribe('state:sidebarOpened', () => {
     return;
   }
   revalidateTableShape(active);
-  // Tell the sidebar its view is stale; it re-reads the active table's
-  // settings and re-asks for preview samples against it.
+  // Tell the sidebar its view is stale; it reads the active table's settings
+  // and lens preview again, in one read.
   DR_BUS.publish('state:previewSamplesChanged', {});
 });
 
-// The sidebar's three reads of the model. Each answers from the tab's own
-// copy — the sidebar holds none of its own, so a close and reopen loses
-// nothing. The settings read answers the active table's settings; with no
-// table active, the model answers the shipped defaults.
-DR_BUS.respond('request:settings', () => {
-  return { settings: DR_MODEL.getTableSettings(DR_MODEL.getActiveTable()) };
-});
-
-// No active table answers nulls rather than nothing: the sidebar reads a
-// null samples field as the unbound state, and an unanswered request reaches
-// it as that same unbound state by a different path.
-DR_BUS.respond('request:previewSamples', () => {
+// The sidebar's two reads of the model: the redraw read here and the capture
+// state pull below. Each answers from the tab's own copy — the sidebar holds
+// none of its own, so a close and reopen loses nothing.
+//
+// The redraw read takes the settings and the lens preview from one active
+// table in one call. With no table active, the model answers the shipped
+// defaults, and the samples are nulls rather than nothing: the sidebar reads
+// a null samples field as the unbound state, and an unanswered request
+// reaches it as that same unbound state by a different path.
+DR_BUS.respond('request:activeTable', () => {
   const active = DR_MODEL.getActiveTable();
-  if (!active) return { samples: null, maxMag: null };
-  return extractPreviewSamples(active);
+  const settings = DR_MODEL.getTableSettings(active);
+  if (!active) return { settings, samples: null, maxMag: null };
+  return Object.assign({ settings }, extractPreviewSamples(active));
 });
 
 DR_BUS.respond('request:captureState', () => buildCaptureStateResponse());
@@ -679,7 +678,7 @@ function resetTable(table) {
   DR_MODEL.setTableAppliedFlag(table, unrestorableCount > 0 ? 'simplified' : 'original');
 }
 
-// --- Lens preview sample extraction (read by the sidebar over request:previewSamples) ---
+// --- Lens preview sample extraction (read by the sidebar over request:activeTable) ---
 
 // The lens preview's classified cells: every cell of the table's dataset,
 // classified through the classification step the one simplification pass

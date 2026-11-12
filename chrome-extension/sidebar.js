@@ -158,8 +158,8 @@ function setTableBound(isBound) {
     writeStatus(UNBOUND_STATUS_MSG);
   } else {
     // A table is now bound. The sidebar pillbox is not touched here: the
-    // settings pull has already set it from the model or the shipped
-    // defaults, and a bind must not reset it.
+    // redraw read has already set it from the answer's settings, and a bind
+    // must not reset it.
     if (statusEl.textContent === UNBOUND_STATUS_MSG) {
       statusEl.textContent = '';
     }
@@ -402,13 +402,17 @@ function renderLensPreview() {
   renderOtherPreview(otherPreviewEl, cachedSamples.bottom, otherVal);
 }
 
-// Refreshes the lens preview from the active table; the bound/unbound
-// state is a side effect of the response (samples !== null means bound).
-// The sidebar pillbox is not written on the bound path: setTableBound(true)
-// leaves it to the settings apply that ran before this call,
-// so no pulled value needs threading back in after the bind resolves.
-function fetchPreviewSamples() {
-  DR_BUS.request('request:previewSamples', {}, (answer) => {
+/**
+ * Redraw the sidebar from one read of the active table. With no answer, which
+ * means no content script on the tab, the sidebar shows the shipped defaults,
+ * unbound. The bound state follows the samples alone, and it is set after the
+ * controls, because an unbound sidebar shows its pillbox off whatever the
+ * settings hold.
+ * @param {boolean} [keepControls] - true to leave the controls as they stand, for an echo of the sidebar's own write, whose settings are older than a keystroke or lens control step made after that write.
+ */
+function redrawFromActiveTable(keepControls) {
+  DR_BUS.request('request:activeTable', {}, (answer) => {
+    if (!keepControls) applySettingsToUI(answer ? answer.settings : null);
     cachedSamples = answer ? answer.samples : null;
     cachedMaxMag = answer ? answer.maxMag : null;
     setTableBound(cachedSamples !== null);
@@ -590,18 +594,13 @@ function flashSidebarContainer() {
   }, { once: true });
 }
 
-// A right-click made a table active, so the controls must describe that
-// table: read its settings, then its lens preview.
 boundTab.subscribe('state:tableActivated', () => {
   flashSidebarContainer();
-  pullSettingsAndApplyToUI();
+  redrawFromActiveTable();
 });
 
-// An echo of the sidebar's own write would overwrite a newer keystroke or
-// lens control step.
-boundTab.subscribe('state:settingsChanged', ({ source, settings }) => {
-  if (source !== 'sidebar') applySettingsToUI(settings);
-  fetchPreviewSamples();
+boundTab.subscribe('state:settingsChanged', ({ source }) => {
+  redrawFromActiveTable(source === 'sidebar');
 });
 
 DR_BUS.subscribe('intent:closeSidebar', () => {
@@ -619,31 +618,21 @@ boundTab.subscribe('state:rangeOk', () => {
 });
 
 boundTab.subscribe('state:previewSamplesChanged', () => {
-  // Stale view: re-read the active table's settings, then the previews (the
-  // pull chain ends in fetchPreviewSamples). A bare preview fetch here would
-  // reset the sidebar pillbox to the shipped default.
-  pullSettingsAndApplyToUI();
+  redrawFromActiveTable();
 });
 
 boundTab.subscribe('state:tableSwitched', () => {
   DR_LOG.debug('Dynamic Rounding: table switch received.');
-  // A table switch: the sidebar mirrors the new active table's settings; it
-  // does not reset to the shipped defaults.
-  try {
-    pullSettingsAndApplyToUI();
-  } catch (e) {
-    // sidebar may be in teardown; harmless
-  }
+  redrawFromActiveTable();
 });
 
 window.addEventListener('unload', () => {
   DR_BUS.publish('state:sidebarClosed', {});
 });
 
-// Populate every control from a settings object. DR_DEFAULTS, a pulled copy
-// of the active table's settings, and a settings notice share this one path
-// so the sidebar and content.js can never drift apart no matter which one
-// supplied the values.
+// Populate every control from a settings object. The redraw read's settings
+// and DR_DEFAULTS share this one path, so the sidebar and content.js can
+// never drift apart, whichever one supplied the values.
 function applySettingsToUI(settings) {
   const s = Object.assign({}, DR_DEFAULTS, settings || {});
   enabledEl.checked = s.enabled !== false;
@@ -655,24 +644,6 @@ function applySettingsToUI(settings) {
   coupled = (topVal === otherVal);
   renderLensControl();
   rangeExprEl.value = typeof s.rangeExpr === 'string' ? s.rangeExpr : '';
-}
-
-// Pull the active table's settings from content.js (the one holder of
-// settings) rather than resetting to shipped defaults: neither a
-// close/reopen nor a switch may lose what the user configured.
-// No active tab, no content script yet, or no response at all falls back to
-// defaults.
-//
-// fetchPreviewSamples runs only after the pull settles (success or fallback),
-// never in parallel with it: fetchPreviewSamples's own setTableBound call is
-// what forces enabledEl back off when no table is bound, and that must stay
-// the last word — racing it against this pull could let a pulled "enabled:
-// true" win the UI over an actual unbound state.
-function pullSettingsAndApplyToUI() {
-  DR_BUS.request('request:settings', {}, (answer) => {
-    applySettingsToUI(answer ? answer.settings : null);
-    fetchPreviewSamples();
-  });
 }
 
 // ----- Capture (the bug-report file) -----
@@ -931,15 +902,14 @@ renderCaptureMarks();
 setTableBound(false);
 
 // Defensively clear rangeExpr so browser autofill can never leak a stale
-// value into a hidden field before the settings pull below (which sets it
+// value into a hidden field before the redraw read below (which sets it
 // from the model) resolves.
 rangeExprEl.value = '';
 
-// The opening read pulls live settings, then the preview samples for the
-// active table. With no active table, content.js returns nulls and the
-// sidebar shows the unbound prompt.
+// With no active table, content.js answers the shipped defaults and null
+// samples, and the sidebar shows the unbound prompt.
 boundTab.resolve(() => {
-  pullSettingsAndApplyToUI();
+  redrawFromActiveTable();
   // Registered after the tab lookup, for the reason resolve() states. The
   // service worker closes the sidebar on most tab switches; this covers the
   // switches it misses, so every switch ends the same way.
