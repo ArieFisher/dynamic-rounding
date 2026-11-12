@@ -622,7 +622,7 @@ boundTab.subscribe('state:previewSamplesChanged', () => {
 });
 
 boundTab.subscribe('state:tableSwitched', () => {
-  DR_LOG.debug('Dynamic Rounding: table switch received.');
+  DR_LOG.debug(DR_LOG.formatRow('table switch'));
   redrawFromActiveTable();
 });
 
@@ -710,10 +710,7 @@ for (const el of captureMarkEls) {
   el.addEventListener('click', () => {
     // Re-pressing the lit mark folds the form (same-mark toggle).
     captureMark = el.dataset.mark === captureMark ? null : el.dataset.mark;
-    if (captureMark !== null) {
-      DR_LOG.debug('Dynamic Rounding: capture form opened (' + captureMark + ').');
-      refreshCaptureSizeNote();
-    }
+    if (captureMark !== null) refreshCaptureSizeNote();
     renderCaptureMarks();
   });
 }
@@ -773,7 +770,7 @@ const CAPTURE_SCREENSHOT_QUALITY = 85;
 function takeCaptureScreenshot(tabsApi, windowId, done) {
   const fail = (reason) => {
     const text = reason && reason.message ? reason.message : String(reason);
-    DR_LOG.warn('Dynamic Rounding: screenshot failed (' + text + ').');
+    DR_LOG.warn(DR_LOG.formatRow('error', { step: 'screenshot', error: DR_LOG.errorType(reason) }));
     done({ dataUrl: null, record: { taken: false, reason: text } });
   };
   if (!tabsApi || typeof tabsApi.captureVisibleTab !== 'function') {
@@ -854,12 +851,10 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
       html: html,
     });
   } catch (e) {
-    DR_LOG.warn('Dynamic Rounding: capture save failed (' +
-      (e && e.message ? e.message : e) + ').');
+    DR_LOG.warn(DR_LOG.formatRow('error', { step: 'capture save', error: DR_LOG.errorType(e) }));
     writeStatus('Capture failed; nothing was saved.');
     return;
   }
-  DR_LOG.debug('Dynamic Rounding: capture saved.');
   foldCaptureForm();
   captureRemarksEl.value = '';
   if (writeStatus(CAPTURE_SAVED_STATUS_MSG)) {
@@ -877,7 +872,6 @@ function saveCapture() {
   if (captureMark === null) return;
   const mark = captureMark;
   const remarks = captureRemarksEl.value;
-  DR_LOG.debug('Dynamic Rounding: finish pressed; asking for capture state.');
   let pageAnswer = null;
   let shot = null;
   let pending = 2;
@@ -886,7 +880,7 @@ function saveCapture() {
     if (pending === 0) assembleAndSaveCapture(mark, remarks, pageAnswer, shot);
   };
   DR_BUS.request('request:captureState', {}, (answer) => {
-    if (!answer) DR_LOG.warn('Dynamic Rounding: capture state request went unanswered.');
+    if (!answer) DR_LOG.warn(DR_LOG.formatRow('error', { step: 'state pull' }));
     pageAnswer = answer || null;
     settle();
   });
