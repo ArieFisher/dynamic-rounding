@@ -122,21 +122,44 @@ function createBoundTab(tabsApi, bus) {
 
 const boundTab = createBoundTab(chrome.tabs, DR_BUS);
 
+/**
+ * Write the status line. A message with a source holds the line against
+ * every write without one until clearStatus() runs for that source, because
+ * Chrome does not order the content script's range message against the
+ * answer to a settings apply.
+ * @param {string} text - The message, or '' to clear the line.
+ * @param {string} [source] - The source of the message, 'range' for a range error; omitted for a message with no source.
+ * @returns {boolean} Whether the line now holds the text.
+ */
+function writeStatus(text, source) {
+  if (source === undefined && statusEl.dataset.source) return false;
+  statusEl.textContent = text;
+  if (source !== undefined) statusEl.dataset.source = source;
+  return true;
+}
+
+/**
+ * Clear the status line when a message from the source holds it.
+ * @param {string} [source] - The source of the message to clear; omitted to clear any message.
+ */
+function clearStatus(source) {
+  if (source !== undefined && statusEl.dataset.source !== source) return;
+  statusEl.textContent = '';
+  delete statusEl.dataset.source;
+}
+
 function setTableBound(isBound) {
   document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
   if (!isBound) {
     // No active table: there is nothing for rounding to act on, so flip the
     // sidebar pillbox to its off state rather than dimming the whole sidebar.
-    // The message written below is unsourced — drop a stale source tag so
-    // applyNow's delivery-success clear can still collect it.
-    delete statusEl.dataset.source;
+    clearStatus();
     enabledEl.checked = false;
-    statusEl.textContent = NO_TABLE_STATUS_MSG;
+    writeStatus(NO_TABLE_STATUS_MSG);
   } else {
-    // A table is now bound. The sidebar pillbox is not touched here: the model
-    // is its source — applySettingsToUI on a pull, or
-    // applyDefaultsToUI on the pull's fallback, has already set it, and a
-    // bind must not reset it to the shipped default.
+    // A table is now bound. The sidebar pillbox is not touched here: the
+    // settings pull has already set it from the model or the shipped
+    // defaults, and a bind must not reset it.
     if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
       statusEl.textContent = '';
     }
@@ -144,14 +167,24 @@ function setTableBound(isBound) {
   updateDisabledState();
 }
 
-const CHECKBOX_TO_SETTING = {
-  simplifyMixedCurrency: 'simplifyMixedCurrency',
-  simplifyMixedPercent: 'simplifyMixedPercent',
-  simplifyFirstRow: 'simplifyFirstRow',
-  simplifyFirstColumn: 'simplifyFirstColumn',
-  simplifyDates: 'simplifyDates',
-  simplifyTimes: 'simplifyTimes'
-};
+// Each switch's element id is its setting's name. The order is the order of
+// the switch keys in the settings payload.
+const SWITCH_NAMES = [
+  'simplifyMixedCurrency',
+  'simplifyMixedPercent',
+  'simplifyFirstRow',
+  'simplifyFirstColumn',
+  'simplifyDates',
+  'simplifyTimes',
+];
+
+/**
+ * Run a function on each switch.
+ * @param {function(string, HTMLInputElement): void} fn - Called with the switch's setting name and its checkbox.
+ */
+function forEachSwitch(fn) {
+  for (const name of SWITCH_NAMES) fn(name, document.getElementById(name));
+}
 
 const dateGranularityEl = document.getElementById('dateGranularity');
 const timeGranularityEl = document.getElementById('timeGranularity');
@@ -168,10 +201,9 @@ const rangeExprEl = document.getElementById('rangeExpr');
 const STOPS = [-2, -1.5, -1, -0.25, -0.5, 0, 0.25, 0.5, 1];
 
 const sliderBlockEl = document.getElementById('sliderBlock');
-const dualWrap = document.getElementById('dualWrap');
 const topThumb = document.getElementById('topThumb');
 const botThumb = document.getElementById('botThumb');
-const trackEl = dualWrap ? dualWrap.querySelector('.dual-track') : null;
+const trackEl = document.getElementById('dualWrap').querySelector('.dual-track');
 
 let topVal = DR_DEFAULTS.offsetTop;
 let botVal = DR_DEFAULTS.offsetTop;
@@ -186,22 +218,33 @@ function snap(v) {
   }
   return best;
 }
-function pct(v) {
-  // Map each stop to the centre of its grid cell so thumb centres sit exactly
-  // over the tick marks. The stops are unevenly spaced, so we position by the
-  // stop's index in STOPS (equal columns) rather than by its numeric value:
-  // cell k centre = (k + 0.5) / N of the track width. With N = STOPS.length
-  // this places the first stop and last stop at half-cell insets from each end.
+/**
+ * The track position of a stop: the centre of its column, as a percentage of
+ * the track width. Every stop has a column of equal width, one per tick,
+ * because the stop values are unevenly spaced.
+ * @param {number} v - An offset; a value off the stops counts as its nearest stop.
+ * @returns {number} The position, from 0 to 100.
+ */
+function stopPosition(v) {
   let k = STOPS.indexOf(v);
   if (k === -1) k = STOPS.indexOf(snap(v));
   return (k + 0.5) / STOPS.length * 100;
 }
+
+/**
+ * The stop whose column holds a point on the track.
+ * @param {number} ratio - The point's distance from the track's left end, as a share of the track width, from 0 to 1.
+ * @returns {number} The stop.
+ */
+function stopAtRatio(ratio) {
+  return STOPS[Math.max(0, Math.min(STOPS.length - 1, Math.floor(ratio * STOPS.length)))];
+}
+
 function renderSliders() {
-  if (!topThumb || !botThumb) return;
-  topThumb.style.left = pct(topVal) + '%';
-  botThumb.style.left = pct(botVal) + '%';
+  topThumb.style.left = stopPosition(topVal) + '%';
+  botThumb.style.left = stopPosition(botVal) + '%';
   botThumb.classList.toggle('linked', linked);
-  if (sliderBlockEl) sliderBlockEl.classList.toggle('linked', linked);
+  sliderBlockEl.classList.toggle('linked', linked);
   topThumb.setAttribute('aria-valuenow', String(topVal));
   botThumb.setAttribute('aria-valuenow', String(botVal));
   renderPreviewBands();
@@ -216,61 +259,24 @@ let cachedMaxMag = null;
 const PREVIEW_DECIMAL_THRESHOLD = 100;
 const PREVIEW_MAX_DECIMALS = 4;
 
-function formatNumberWithCommas(n) {
-  if (typeof n !== 'number' || !isFinite(n)) return String(n);
-  const sign = n < 0 ? '-' : '';
-  const abs = Math.abs(n);
-  const intPart = Math.floor(abs);
-  const frac = abs - intPart;
-  const intStr = String(intPart).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  if (frac === 0) return sign + intStr;
-  const fracStr = String(frac).slice(1).replace(/0+$/, '');
-  return sign + intStr + (fracStr === '.' ? '' : fracStr);
-}
-
-function truncateDecimals(n) {
-  if (Math.abs(n) >= PREVIEW_DECIMAL_THRESHOLD) {
-    return Math.trunc(n);
-  }
-  return Math.trunc(n * Math.pow(10, PREVIEW_MAX_DECIMALS)) / Math.pow(10, PREVIEW_MAX_DECIMALS);
-}
-
+// A value at or above PREVIEW_DECIMAL_THRESHOLD shows no decimals; a smaller
+// one shows at most PREVIEW_MAX_DECIMALS. Both cut digits off, never round.
 function formatOriginal(numOrStr) {
   const parsed = toNumber(numOrStr);
   if (parsed === null || !isFinite(parsed)) return String(numOrStr);
-  const sign = parsed < 0 ? '-' : '';
   const abs = Math.abs(parsed);
-  if (abs >= PREVIEW_DECIMAL_THRESHOLD) {
-    return formatNumberWithCommas(Math.trunc(parsed));
-  }
-  // For |n| < 100: use abs.toString() which gives the shortest faithful
-  // round-trip decimal representation without rounding. Then truncate (not
-  // round) the decimal string to PREVIEW_MAX_DECIMALS digits via string slice.
-  const s = abs.toString();
-  // If the string is in scientific notation (e.g. 1e-7), the value has no
-  // significant digits within 4 decimal places; treat fractional part as empty.
-  let intPart, fracStr;
-  if (s.indexOf('e') !== -1 || s.indexOf('E') !== -1) {
-    intPart = String(Math.trunc(abs));
-    fracStr = '';
-  } else {
-    const dotIdx = s.indexOf('.');
-    if (dotIdx === -1) {
-      intPart = s;
-      fracStr = '';
-    } else {
-      intPart = s.slice(0, dotIdx);
-      fracStr = s.slice(dotIdx + 1, dotIdx + 1 + PREVIEW_MAX_DECIMALS);
-    }
-  }
-  fracStr = fracStr.replace(/0+$/, '');
-  const intStr = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  if (fracStr === '') {
-    // Guard against "-0": sign is only emitted when there is a non-zero result.
-    const result = sign + intStr;
-    return result === '-0' ? '0' : result;
-  }
-  return sign + intStr + '.' + fracStr;
+  const intStr = String(Math.trunc(abs)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  // toString() gives the shortest decimal that reads back as the same value,
+  // so cutting its text truncates without rounding. A value it writes in
+  // exponent form, such as 1e-7, holds no digit within the decimals shown.
+  const text = abs.toString();
+  const dot = text.indexOf('.');
+  const fracStr = abs < PREVIEW_DECIMAL_THRESHOLD && dot !== -1 && !/e/i.test(text)
+    ? text.slice(dot + 1, dot + 1 + PREVIEW_MAX_DECIMALS).replace(/0+$/, '')
+    : '';
+  // A negative value that truncates to 0 shows "0", never "-0".
+  const sign = parsed < 0 && (intStr !== '0' || fracStr !== '') ? '-' : '';
+  return sign + intStr + (fracStr === '' ? '' : '.' + fracStr);
 }
 
 const OOM_LABEL_CLASS = 'oom-label';
@@ -298,12 +304,36 @@ function formatOomLabel(mag) {
 }
 
 /**
- * Build the strategy header string for the top band, e.g.
- * "1M+ → nearest 500k".
+ * @param {number} n - A sample value.
+ * @returns {number} The value's order of magnitude, or -Infinity for 0.
  */
-function formatStrategyHeader(maxMag, offset) {
-  const step = stepForOffset(Math.pow(10, maxMag), offset);
-  return formatOomLabel(maxMag) + ' → nearest ' + formatStep(step);
+function magnitudeOf(n) {
+  return n !== 0 ? Math.floor(Math.log10(Math.abs(n))) : -Infinity;
+}
+
+/**
+ * Append one row to a lens preview element: a from cell, an arrow cell, and a
+ * num cell, which the element's three-column grid lines up with every other
+ * row.
+ * @param {Element} el - The lens preview element that receives the row.
+ * @param {string} className - The row's class attribute.
+ * @param {string} fromText - The from cell's text.
+ * @param {string} numText - The num cell's text.
+ * @returns {{from: Element, num: Element}} The from and num cells, for a label to go inside.
+ */
+function appendSampleRow(el, className, fromText, numText) {
+  const pair = document.createElement('div');
+  pair.className = className;
+  const cells = {};
+  for (const [cellClass, text] of [['from', fromText], ['arrow', '→'], ['num', numText]]) {
+    const cell = document.createElement('span');
+    cell.className = cellClass;
+    cell.textContent = text;
+    pair.appendChild(cell);
+    cells[cellClass] = cell;
+  }
+  el.appendChild(pair);
+  return cells;
 }
 
 /**
@@ -320,47 +350,12 @@ function renderTopBand(el, rows, offset) {
 
   if (cachedMaxMag !== null && cachedMaxMag !== undefined) {
     const step = stepForOffset(Math.pow(10, cachedMaxMag), offset);
-    const strat = document.createElement('div');
-    strat.className = 'pair ' + STRATEGY_CLASS;
-
-    const stratFrom = document.createElement('span');
-    stratFrom.className = 'from';
-    stratFrom.textContent = formatOomLabel(cachedMaxMag);
-    strat.appendChild(stratFrom);
-
-    const stratArrow = document.createElement('span');
-    stratArrow.className = 'arrow';
-    stratArrow.textContent = '→';
-    strat.appendChild(stratArrow);
-
-    const stratNum = document.createElement('span');
-    stratNum.className = 'num';
-    stratNum.textContent = 'nearest ' + formatStep(step);
-    strat.appendChild(stratNum);
-
-    el.appendChild(strat);
+    appendSampleRow(el, 'pair ' + STRATEGY_CLASS,
+      formatOomLabel(cachedMaxMag), 'nearest ' + formatStep(step));
   }
-
-  const row = rows[0];
-  const example = document.createElement('div');
-  example.className = 'pair example';
-
-  const from = document.createElement('span');
-  from.className = 'from';
-  from.textContent = 'e.g. ' + formatOriginal(row.num);
-  example.appendChild(from);
-
-  const arrow = document.createElement('span');
-  arrow.className = 'arrow';
-  arrow.textContent = '→';
-  example.appendChild(arrow);
-
-  const numEl = document.createElement('span');
-  numEl.className = 'num';
-  numEl.textContent = formatOriginal(roundWithOffset(row.num, offset));
-  example.appendChild(numEl);
-
-  el.appendChild(example);
+  const num = rows[0].num;
+  appendSampleRow(el, 'pair example',
+    'e.g. ' + formatOriginal(num), formatOriginal(roundWithOffset(num, offset)));
 }
 
 /**
@@ -374,52 +369,30 @@ function renderBotBand(el, rows, offset) {
   el.innerHTML = '';
   if (!rows || rows.length === 0) return;
 
-  const sorted = rows.slice().sort((a, b) => {
-    const magA = a.num !== 0 ? Math.floor(Math.log10(Math.abs(a.num))) : -Infinity;
-    const magB = b.num !== 0 ? Math.floor(Math.log10(Math.abs(b.num))) : -Infinity;
-    return magB - magA;
-  });
-
-  for (const row of sorted) {
-    const pair = document.createElement('div');
-    pair.className = 'pair';
-
-    // "from" cell: "266,453 (100k+)" where the OoM label is brown. The bare
-    // original number is shown, without its surrounding text.
-    const from = document.createElement('span');
-    from.className = 'from';
-    from.textContent = formatOriginal(row.num);
-    if (row.num !== 0) {
-      const mag = Math.floor(Math.log10(Math.abs(row.num)));
-      const oomSpan = document.createElement('span');
-      oomSpan.className = OOM_LABEL_CLASS;
-      oomSpan.textContent = ' (' + formatOomLabel(mag) + ')';
-      from.appendChild(oomSpan);
-    }
-    pair.appendChild(from);
-
-    const arrow = document.createElement('span');
-    arrow.className = 'arrow';
-    arrow.textContent = '→';
-    pair.appendChild(arrow);
-
-    const numEl = document.createElement('span');
-    numEl.className = 'num';
-    numEl.textContent = formatOriginal(roundWithOffset(row.num, offset));
-    if (row.num !== 0) {
-      const stepEl = document.createElement('span');
-      stepEl.className = STEP_LABEL_CLASS;
-      stepEl.textContent = ' (' + formatStep(stepForOffset(row.num, offset)) + ')';
-      numEl.appendChild(stepEl);
-    }
-    pair.appendChild(numEl);
-
-    el.appendChild(pair);
+  const sorted = rows.slice().sort((a, b) => magnitudeOf(b.num) - magnitudeOf(a.num));
+  for (const { num } of sorted) {
+    const cells = appendSampleRow(el, 'pair',
+      formatOriginal(num), formatOriginal(roundWithOffset(num, offset)));
+    if (num === 0) continue;
+    appendLabel(cells.from, OOM_LABEL_CLASS, formatOomLabel(magnitudeOf(num)));
+    appendLabel(cells.num, STEP_LABEL_CLASS, formatStep(stepForOffset(num, offset)));
   }
 }
 
+/**
+ * Append a bracketed label, such as " (100k+)", to a lens preview cell.
+ * @param {Element} cell - The cell that receives the label.
+ * @param {string} className - The label's class attribute.
+ * @param {string} text - The label's text, without the brackets.
+ */
+function appendLabel(cell, className, text) {
+  const label = document.createElement('span');
+  label.className = className;
+  label.textContent = ' (' + text + ')';
+  cell.appendChild(label);
+}
+
 function renderPreviewBands() {
-  if (!topBandEl || !botBandEl) return;
   if (!cachedSamples) {
     topBandEl.innerHTML = '';
     botBandEl.innerHTML = '';
@@ -436,15 +409,9 @@ function renderPreviewBands() {
 // so no pulled value needs threading back in after the bind resolves.
 function fetchPreviewSamples() {
   DR_BUS.request('request:previewSamples', {}, (answer) => {
-    if (!answer) {
-      cachedSamples = null;
-      cachedMaxMag = null;
-      setTableBound(false);
-    } else {
-      cachedSamples = answer.samples;
-      cachedMaxMag = answer.maxMag;
-      setTableBound(answer.samples !== null);
-    }
+    cachedSamples = answer ? answer.samples : null;
+    cachedMaxMag = answer ? answer.maxMag : null;
+    setTableBound(cachedSamples !== null);
     renderPreviewBands();
   });
 }
@@ -463,35 +430,41 @@ function relinkIfMatched() {
   }
 }
 
+/**
+ * Move one thumb to a stop, then redraw and apply. While the lens control is
+ * coupled, a move of the top thumb moves the bot thumb with it.
+ * @param {string} which - 'top' or 'bot': the thumb to move.
+ * @param {number} stop - The stop to move it to.
+ * @returns {boolean} Whether a value changed.
+ */
+function setThumbValue(which, stop) {
+  if (which === 'top') {
+    if (topVal === stop && (!linked || botVal === stop)) return false;
+    topVal = stop;
+    if (linked) botVal = stop;
+  } else {
+    if (botVal === stop) return false;
+    botVal = stop;
+  }
+  renderSliders();
+  applyNow();
+  return true;
+}
+
 function startDrag(which) {
   return function (e) {
-    if (!trackEl) return;
     if (e.cancelable) e.preventDefault();
     if (which === 'bot' && linked) decouple();
     const rect = trackEl.getBoundingClientRect();
     const target = which === 'top' ? topThumb : botThumb;
-    if (target && target.setPointerCapture && e.pointerId !== undefined) {
+    if (target.setPointerCapture && e.pointerId !== undefined) {
       try { target.setPointerCapture(e.pointerId); } catch (_) {}
     }
     function move(ev) {
       const clientX = ev.clientX !== undefined
         ? ev.clientX
         : (ev.touches && ev.touches[0] ? ev.touches[0].clientX : 0);
-      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      // Equal columns: the track is divided into STOPS.length cells; the cell
-      // the pointer is over selects its stop. Mirrors pct()'s index geometry.
-      const idx = Math.max(0, Math.min(STOPS.length - 1, Math.floor(ratio * STOPS.length)));
-      const snapped = STOPS[idx];
-      if (which === 'top') {
-        if (topVal === snapped && (!linked || botVal === snapped)) return;
-        topVal = snapped;
-        if (linked) botVal = snapped;
-      } else {
-        if (botVal === snapped) return;
-        botVal = snapped;
-      }
-      renderSliders();
-      applyNow();
+      setThumbValue(which, stopAtRatio(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))));
     }
     function up() {
       document.removeEventListener('pointermove', move);
@@ -507,67 +480,67 @@ function startDrag(which) {
 }
 
 function keyboardStep(which, delta) {
-  const arr = STOPS;
   const cur = which === 'top' ? topVal : botVal;
-  const idx = Math.max(0, Math.min(arr.length - 1, arr.indexOf(cur) + delta));
-  const next = arr[idx];
-  if (which === 'top') {
-    if (topVal === next && (!linked || botVal === next)) return;
-    topVal = next;
-    if (linked) botVal = next;
-  } else {
-    if (linked) decouple();
-    if (botVal === next) return;
-    botVal = next;
-  }
-  renderSliders();
-  applyNow();
-  relinkIfMatched();
+  const next = STOPS[Math.max(0, Math.min(STOPS.length - 1, STOPS.indexOf(cur) + delta))];
+  if (which === 'bot' && linked) decouple();
+  if (setThumbValue(which, next)) relinkIfMatched();
 }
 
-if (topThumb) {
-  topThumb.addEventListener('pointerdown', startDrag('top'));
-  topThumb.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); keyboardStep('top', 1); }
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); keyboardStep('top', -1); }
-  });
+/**
+ * @param {string} which - 'top' or 'bot': the thumb that receives the key presses.
+ * @returns {function(KeyboardEvent): void} The thumb's keydown handler.
+ */
+function thumbKeyHandler(which) {
+  return (e) => {
+    let delta = 0;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') delta = 1;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') delta = -1;
+    if (delta === 0) return;
+    e.preventDefault();
+    keyboardStep(which, delta);
+  };
 }
-if (botThumb) {
-  botThumb.addEventListener('pointerdown', startDrag('bot'));
-  botThumb.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); keyboardStep('bot', 1); }
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); keyboardStep('bot', -1); }
-  });
+
+for (const [which, thumb] of [['top', topThumb], ['bot', botThumb]]) {
+  thumb.addEventListener('pointerdown', startDrag(which));
+  thumb.addEventListener('keydown', thumbKeyHandler(which));
+}
+
+// The values the controls hold. The settings payload and the capture's
+// sidebar view both read them here.
+function readControls() {
+  const switches = {};
+  forEachSwitch((name, el) => { switches[name] = el.checked; });
+  return {
+    enabled: enabledEl.checked,
+    switches: switches,
+    dateGranularity: dateGranularityEl.value,
+    timeGranularity: timeGranularityEl.value,
+    rangeExpr: rangeExprEl.value,
+  };
 }
 
 function currentSettings() {
-  const settings = { enabled: enabledEl.checked };
-  for (const id in CHECKBOX_TO_SETTING) {
-    const el = document.getElementById(id);
-    if (el) settings[CHECKBOX_TO_SETTING[id]] = el.checked;
-  }
-  if (dateGranularityEl) settings.dateGranularity = dateGranularityEl.value;
-  if (timeGranularityEl) settings.timeGranularity = timeGranularityEl.value;
+  const controls = readControls();
   // Always emit concrete numbers — never null/blank — so content.js never falls
   // back to the "offset_other inherits from offset_top" branch. numTop has no
   // sidebar control; pin it to 1.
-  settings.offsetTop = topVal;
-  settings.offsetOther = botVal;
-  settings.numTop = 1;
-  settings.rangeExpr = rangeExprEl ? rangeExprEl.value : '';
-  return settings;
+  return Object.assign({ enabled: controls.enabled }, controls.switches, {
+    dateGranularity: controls.dateGranularity,
+    timeGranularity: controls.timeGranularity,
+    offsetTop: topVal,
+    offsetOther: botVal,
+    numTop: 1,
+    rangeExpr: controls.rangeExpr,
+  });
 }
 
 function updateDisabledState() {
   optionsSection.classList.toggle('disabled', !enabledEl.checked);
   // Granularity dropdown only matters when the row's switch is on
   // (i.e. that type's cells are bucketed by the chosen granularity).
-  if (dateGranularityEl) {
-    dateGranularityEl.disabled = !document.getElementById('simplifyDates').checked;
-  }
-  if (timeGranularityEl) {
-    timeGranularityEl.disabled = !document.getElementById('simplifyTimes').checked;
-  }
+  dateGranularityEl.disabled = !document.getElementById('simplifyDates').checked;
+  timeGranularityEl.disabled = !document.getElementById('simplifyTimes').checked;
 }
 
 // Cross-context: this page and content.js are separate extension contexts, so
@@ -578,17 +551,12 @@ function updateDisabledState() {
 // The answer's value is never read — only whether one arrived. Nothing
 // answering means no content script on the tab, which is exactly the unbound
 // state.
-//
-// On an answer, clear only an unsourced stale message (the no-table reminder).
-// A sourced message — a range error — is cleared by
-// its own topic and must survive this callback: Chrome does not guarantee
-// whether this answer or the content script's status message arrives first.
 function applyNow() {
   DR_BUS.request('request:applySettings', { settings: currentSettings() }, (answer) => {
     if (!answer) {
       setTableBound(false);
-    } else if (!statusEl.dataset.source) {
-      statusEl.textContent = '';
+    } else {
+      writeStatus('');
     }
   });
 }
@@ -598,18 +566,17 @@ enabledEl.addEventListener('change', () => {
   applyNow();
 });
 
-for (const id in CHECKBOX_TO_SETTING) {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('change', () => {
+forEachSwitch((name, el) => {
+  el.addEventListener('change', () => {
     updateDisabledState();
     applyNow();
   });
-}
+});
 
-if (dateGranularityEl) dateGranularityEl.addEventListener('change', applyNow);
-if (timeGranularityEl) timeGranularityEl.addEventListener('change', applyNow);
+dateGranularityEl.addEventListener('change', applyNow);
+timeGranularityEl.addEventListener('change', applyNow);
 
-if (rangeExprEl) rangeExprEl.addEventListener('input', applyNow);
+rangeExprEl.addEventListener('input', applyNow);
 
 document.body.addEventListener('click', (e) => {
   if (e.target.matches('input, select, option, summary')) return;
@@ -651,17 +618,13 @@ DR_BUS.subscribe('intent:closeSidebar', () => {
 });
 
 boundTab.subscribe('state:rangeError', ({ error }) => {
-  statusEl.textContent = error || 'Invalid range expression.';
-  statusEl.dataset.source = 'range';
-  if (rangeExprEl) rangeExprEl.classList.add('invalid');
+  writeStatus(error || 'Invalid range expression.', 'range');
+  rangeExprEl.classList.add('invalid');
 });
 
 boundTab.subscribe('state:rangeOk', () => {
-  if (rangeExprEl) rangeExprEl.classList.remove('invalid');
-  if (statusEl.dataset.source === 'range') {
-    statusEl.textContent = '';
-    delete statusEl.dataset.source;
-  }
+  rangeExprEl.classList.remove('invalid');
+  clearStatus('range');
 });
 
 boundTab.subscribe('state:previewSamplesChanged', () => {
@@ -693,28 +656,14 @@ window.addEventListener('unload', () => {
 function applySettingsToUI(settings) {
   const s = Object.assign({}, DR_DEFAULTS, settings || {});
   enabledEl.checked = s.enabled !== false;
-  for (const id in CHECKBOX_TO_SETTING) {
-    const el = document.getElementById(id);
-    if (el) el.checked = !!s[CHECKBOX_TO_SETTING[id]];
-  }
-  if (dateGranularityEl && s.dateGranularity) {
-    dateGranularityEl.value = s.dateGranularity;
-  }
-  if (timeGranularityEl && s.timeGranularity) {
-    timeGranularityEl.value = s.timeGranularity;
-  }
+  forEachSwitch((name, el) => { el.checked = !!s[name]; });
+  if (s.dateGranularity) dateGranularityEl.value = s.dateGranularity;
+  if (s.timeGranularity) timeGranularityEl.value = s.timeGranularity;
   topVal = snap(typeof s.offsetTop === 'number' ? s.offsetTop : DR_DEFAULTS.offsetTop);
   botVal = snap(typeof s.offsetOther === 'number' ? s.offsetOther : topVal);
   linked = (topVal === botVal);
   renderSliders();
-  if (rangeExprEl) rangeExprEl.value = typeof s.rangeExpr === 'string' ? s.rangeExpr : '';
-}
-
-// Seed the UI from the shared defaults so the sidebar and content.js never
-// drift apart even before a table has ever been activated (this file's own
-// fallback when the live pull below fails).
-function applyDefaultsToUI() {
-  applySettingsToUI(DR_DEFAULTS);
+  rangeExprEl.value = typeof s.rangeExpr === 'string' ? s.rangeExpr : '';
 }
 
 // Pull the active table's settings from content.js (the one holder of
@@ -730,11 +679,7 @@ function applyDefaultsToUI() {
 // true" win the UI over an actual no-table state.
 function pullSettingsAndApplyToUI() {
   DR_BUS.request('request:settings', {}, (answer) => {
-    if (!answer || !answer.settings) {
-      applyDefaultsToUI();
-    } else {
-      applySettingsToUI(answer.settings);
-    }
+    applySettingsToUI(answer ? answer.settings : null);
     fetchPreviewSamples();
   });
 }
@@ -768,8 +713,8 @@ function renderCaptureMarks() {
   for (const el of captureMarkEls) {
     el.setAttribute('aria-pressed', el.dataset.mark === captureMark ? 'true' : 'false');
   }
-  if (captureFormEl) captureFormEl.hidden = captureMark === null;
-  if (captureRemarksEl && captureMark !== null) {
+  captureFormEl.hidden = captureMark === null;
+  if (captureMark !== null) {
     captureRemarksEl.placeholder = CAPTURE_REMARKS_HINTS[captureMark] || '';
   }
 }
@@ -787,7 +732,6 @@ function foldCaptureForm() {
 // finish press pulls fresh; this response is never reused. A failed pull
 // here shows no note — finish logs its own pull failure.
 function refreshCaptureSizeNote() {
-  if (!captureSizeNoteEl) return;
   captureSizeNoteEl.hidden = true;
   DR_BUS.request('request:captureState', {}, (answer) => {
     if (!answer) return;
@@ -812,7 +756,7 @@ for (const el of captureMarkEls) {
   });
 }
 
-if (captureCancelEl) captureCancelEl.addEventListener('click', foldCaptureForm);
+captureCancelEl.addEventListener('click', foldCaptureForm);
 
 // An anchor, not chrome.downloads: that permission gates the API, and the
 // download attribute is honored for a blob made on an extension page — the
@@ -835,17 +779,7 @@ function saveCaptureFile(opts) {
 // no model by existing design, so this is evidence-taking, not a second
 // store of record.
 function collectSidebarView() {
-  const switches = {};
-  for (const id in CHECKBOX_TO_SETTING) {
-    const el = document.getElementById(id);
-    if (el) switches[CHECKBOX_TO_SETTING[id]] = el.checked;
-  }
-  return {
-    enabled: enabledEl.checked,
-    switches: switches,
-    dateGranularity: dateGranularityEl ? dateGranularityEl.value : null,
-    timeGranularity: timeGranularityEl ? timeGranularityEl.value : null,
-    rangeExpr: rangeExprEl ? rangeExprEl.value : '',
+  return Object.assign(readControls(), {
     stops: STOPS.slice(),
     topVal: topVal,
     botVal: botVal,
@@ -853,10 +787,10 @@ function collectSidebarView() {
     status: statusEl.textContent,
     noTable: document.body.classList.contains(NO_TABLE_CLASS),
     lensPreview: {
-      top: topBandEl ? Array.from(topBandEl.children).map((n) => n.textContent) : [],
-      bottom: botBandEl ? Array.from(botBandEl.children).map((n) => n.textContent) : [],
+      top: Array.from(topBandEl.children).map((n) => n.textContent),
+      bottom: Array.from(botBandEl.children).map((n) => n.textContent),
     },
-  };
+  });
 }
 
 // JPEG at this quality keeps table text legible and holds a laptop viewport
@@ -912,6 +846,8 @@ function takeCaptureScreenshot(tabsApi, windowId, done) {
 // page too, so the fallback carries the same version the serializer stamps.
 // The image passes to the renderer beside the state, never inside it: the
 // state holds the take's record alone, so the JSON island stays small.
+const CAPTURE_SAVED_STATUS_MSG = 'Capture saved.';
+
 function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   const at = new Date();
   const state = Object.assign({
@@ -958,23 +894,15 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
   } catch (e) {
     DR_LOG.warn('Dynamic Rounding: capture save failed (' +
       (e && e.message ? e.message : e) + ').');
-    if (!statusEl.dataset.source) {
-      statusEl.textContent = 'Capture failed; nothing was saved.';
-    }
+    writeStatus('Capture failed; nothing was saved.');
     return;
   }
   DR_LOG.debug('Dynamic Rounding: capture saved.');
   foldCaptureForm();
-  if (captureRemarksEl) captureRemarksEl.value = '';
-  // The saved flash uses the unsourced-status convention applyNow's delivery
-  // callback established: sourced messages (a range error)
-  // always win the line.
-  if (!statusEl.dataset.source) {
-    statusEl.textContent = 'Capture saved.';
+  captureRemarksEl.value = '';
+  if (writeStatus(CAPTURE_SAVED_STATUS_MSG)) {
     setTimeout(() => {
-      if (!statusEl.dataset.source && statusEl.textContent === 'Capture saved.') {
-        statusEl.textContent = '';
-      }
+      if (statusEl.textContent === CAPTURE_SAVED_STATUS_MSG) writeStatus('');
     }, 2500);
   }
 }
@@ -986,7 +914,7 @@ function assembleAndSaveCapture(mark, remarks, pageState, shot) {
 function saveCapture() {
   if (captureMark === null) return;
   const mark = captureMark;
-  const remarks = captureRemarksEl ? captureRemarksEl.value : '';
+  const remarks = captureRemarksEl.value;
   DR_LOG.debug('Dynamic Rounding: finish pressed; asking for capture state.');
   let pageAnswer = null;
   let shot = null;
@@ -1006,7 +934,7 @@ function saveCapture() {
   });
 }
 
-if (captureSaveEl) captureSaveEl.addEventListener('click', saveCapture);
+captureSaveEl.addEventListener('click', saveCapture);
 renderCaptureMarks();
 
 setTableBound(false);
@@ -1014,7 +942,7 @@ setTableBound(false);
 // Defensively clear rangeExpr so browser autofill can never leak a stale
 // value into a hidden field before the settings pull below (which sets it
 // from the model) resolves.
-if (rangeExprEl) rangeExprEl.value = '';
+rangeExprEl.value = '';
 
 // The opening read pulls live settings, then the preview samples for the
 // active table. With no active table, content.js returns nulls and the

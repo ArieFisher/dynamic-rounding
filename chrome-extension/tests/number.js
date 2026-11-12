@@ -1553,7 +1553,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 // ---------------------------------------------------------------------------
 // Lens preview layout
 // AC1: formatOomLabel exhaustive suffix-boundary check
-// AC2: formatStrategyHeader structure + "(i.e. …)" clause correctness
 // AC3: renderBotBand DESCENDING sort (real DOM-stub eval)
 // AC4: step-label CSS classes (step top / step bot)
 // Adversarial: sort-mutation side-effect check
@@ -1562,9 +1561,8 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
   // -------------------------------------------------------------------------
-  // Extract formatOomLabel and formatStrategyHeader from sidebar.js source.
-  // They depend on trimNum (from rounding.js), stepForOffset and formatStep
-  // (also rounding.js).  We pass them as parameters to new Function.
+  // Extract formatOomLabel from sidebar.js source. It depends on trimNum
+  // (from rounding.js), which we pass as a parameter to new Function.
   // -------------------------------------------------------------------------
   const constBlock = sidebarSrc.match(
     /const OOM_LABEL_CLASS\s*=[\s\S]*?const STRATEGY_CLASS\s*=.*?;/
@@ -1572,12 +1570,9 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const formatOomLabelFn = sidebarSrc.match(
     /function formatOomLabel\([\s\S]*?\n\}/
   );
-  const formatStrategyHeaderFn = sidebarSrc.match(
-    /function formatStrategyHeader\([\s\S]*?\n\}/
-  );
 
-  if (!constBlock || !formatOomLabelFn || !formatStrategyHeaderFn) {
-    eq('sidebar-ap-extract: able to extract formatOomLabel + formatStrategyHeader', false, true);
+  if (!constBlock || !formatOomLabelFn) {
+    eq('sidebar-ap-extract: able to extract formatOomLabel', false, true);
     return;
   }
 
@@ -1587,8 +1582,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const apHelperSrc = '(function(trimNum, stepForOffset, formatStep) {\n' +
     constBlock[0] + '\n' +
     formatOomLabelFn[0] + '\n' +
-    formatStrategyHeaderFn[0] + '\n' +
-    'return { formatOomLabel: formatOomLabel, formatStrategyHeader: formatStrategyHeader };\n' +
+    'return { formatOomLabel: formatOomLabel };\n' +
     '})(trimNum, stepForOffset, formatStep)';
 
   let apHelpers;
@@ -1602,7 +1596,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   }
 
   const fmtOom = apHelpers.formatOomLabel;
-  const fmtHdr = apHelpers.formatStrategyHeader;
 
   // -------------------------------------------------------------------------
   // AC1: Exhaustive formatOomLabel mapping for mag = 9,8,7,6,5,4,3,2,1,0,-1,-2
@@ -1622,31 +1615,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   eq('AC1-oom: mag=0 → "1+" (1e0=1, no suffix)', fmtOom(0), '1+');
   eq('AC1-oom: mag=-1 → "0.1+" (sub-unit, 1e-1=0.1)', fmtOom(-1), '0.1+');
   eq('AC1-oom: mag=-2 → "0.01+" (sub-unit, 1e-2=0.01)', fmtOom(-2), '0.01+');
-
-  // -------------------------------------------------------------------------
-  // AC2-ALL-STOPS: All 11 slider stops × 2 maxMag values. The header is always
-  // exactly "<oomLabel> → nearest <stepLabel>" with the step derived from the
-  // real stepForOffset/formatStep, and never contains a "(i.e." clause or a
-  // "×" multiplier.
-  // -------------------------------------------------------------------------
-  (function hdrAllStops() {
-    const stops = [-2, -1.5, -1, -0.25, -0.5, 0, 0.25, 0.5, 1];
-    const testMags = [6, 5]; // 1M and 100k
-
-    for (const mag of testMags) {
-      const oomVal = Math.pow(10, mag);
-      const oomLabel = fmtOom(mag);
-      for (const offset of stops) {
-        const tag = 'AC2-ALL mag=' + mag + ' offset=' + offset;
-        const stepLabel = formatStep(stepForOffset(oomVal, offset));
-        const header = fmtHdr(mag, offset);
-        eq(tag + ': header is exactly "' + oomLabel + ' → nearest ' + stepLabel + '"',
-          header, oomLabel + ' → nearest ' + stepLabel);
-        eq(tag + ': no "(i.e." clause', header.includes('(i.e.'), false);
-        eq(tag + ': no "×" multiplier', header.includes('×'), false);
-      }
-    }
-  })();
 
   // -------------------------------------------------------------------------
   // AC2-STRATEGY-MONOTONIC: the slider stops must be ordered so the resulting
@@ -1704,9 +1672,11 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const renderTopBandFn = sidebarSrc.match(
     /function renderTopBand\([\s\S]*?\n\}/
   );
+  const renderHelperFns = ['magnitudeOf', 'appendSampleRow', 'appendLabel'].map((name) =>
+    sidebarSrc.match(new RegExp('function ' + name + '\\([\\s\\S]*?\\n\\}')));
 
-  if (!renderBotBandFn || !renderTopBandFn) {
-    eq('sidebar-ap-extract: able to extract renderBotBand + renderTopBand', false, true);
+  if (!renderBotBandFn || !renderTopBandFn || renderHelperFns.some((m) => !m)) {
+    eq('sidebar-ap-extract: able to extract renderBotBand + renderTopBand and their helpers', false, true);
     return;
   }
 
@@ -1744,14 +1714,14 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   };
 
   // Extract the sidebar consts and render functions + their helpers.
-  // We need: OOM_LABEL_CLASS, STRATEGY_CLASS,
-  //          formatOomLabel, formatStrategyHeader, renderTopBand, renderBotBand.
+  // We need: OOM_LABEL_CLASS, STRATEGY_CLASS, formatOomLabel, magnitudeOf,
+  //          appendSampleRow, appendLabel, renderTopBand, renderBotBand.
   // External deps we pass in: formatOriginal, roundWithOffset, stepForOffset,
   //                            formatStep, cachedMaxMag (null = no strategy header).
   const renderSrc = '(function(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag) {\n' +
     constBlock[0] + '\n' +
     formatOomLabelFn[0] + '\n' +
-    formatStrategyHeaderFn[0] + '\n' +
+    renderHelperFns.map((m) => m[0]).join('\n') + '\n' +
     renderTopBandFn[0] + '\n' +
     renderBotBandFn[0] + '\n' +
     'return { renderBotBand: renderBotBand, renderTopBand: renderTopBand };\n' +
@@ -1766,12 +1736,10 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     const sidebarConstBlock2 = sidebarSrc.match(
       /const PREVIEW_DECIMAL_THRESHOLD\s*=.*?;\s*const PREVIEW_MAX_DECIMALS\s*=.*?;/
     );
-    const fmtCommasFn2 = sidebarSrc.match(/function formatNumberWithCommas\([\s\S]*?\n\}/);
     const formatOriginalFn2 = sidebarSrc.match(/function formatOriginal\([\s\S]*?\n\}/);
 
     const fmtOrigSrc = '(function(toNumber) {\n' +
       sidebarConstBlock2[0] + '\n' +
-      fmtCommasFn2[0] + '\n' +
       formatOriginalFn2[0] + '\n' +
       'return formatOriginal;\n' +
       '})(toNumber)';
@@ -1976,68 +1944,6 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     fromSpan._children[0] ? fromSpan._children[0].className : '', 'oom-label');
   eq('AC4-oom-label: oom-label text contains "(1k+)"',
     fromSpan._children[0] ? fromSpan._children[0].textContent.includes('1k+') : false, true);
-})();
-
-// -------------------------------------------------------------------------
-// AC2: formatStrategyHeader — exhaustive mag=3 (1k+) table. The
-// header is exactly "<oomLabel> → nearest <stepLabel>" for every offset stop,
-// with no "(i.e. …)" clause and no "×" multiplier.
-// -------------------------------------------------------------------------
-(function ac2_mag3_exhaustiveTable() {
-  const sidebarSrc  = fs.readFileSync(path.join(__dirname, 'sidebar.js'),  'utf8');
-  const constBlock  = sidebarSrc.match(/const OOM_LABEL_CLASS\s*=[\s\S]*?const STRATEGY_CLASS\s*=.*?;/);
-  const fmtOomFn    = sidebarSrc.match(/function formatOomLabel\([\s\S]*?\n\}/);
-  const fmtHdrFn    = sidebarSrc.match(/function formatStrategyHeader\([\s\S]*?\n\}/);
-
-  if (!constBlock || !fmtOomFn || !fmtHdrFn) {
-    eq('AC2-mag3-extract: able to extract formatOomLabel + formatStrategyHeader', false, true);
-    return;
-  }
-
-  const helperSrc = '(function(trimNum, stepForOffset, formatStep) {\n' +
-    constBlock[0] + '\n' + fmtOomFn[0] + '\n' + fmtHdrFn[0] + '\n' +
-    'return { formatOomLabel: formatOomLabel, formatStrategyHeader: formatStrategyHeader };\n' +
-    '})(trimNum, stepForOffset, formatStep)';
-
-  let helpers;
-  try {
-    helpers = (new Function('trimNum', 'stepForOffset', 'formatStep',
-      'return ' + helperSrc + ';'
-    ))(trimNum, stepForOffset, formatStep);
-  } catch (e) {
-    eq('AC2-mag3-eval: new Function eval succeeded', String(e), '');
-    return;
-  }
-
-  const fmtOom = helpers.formatOomLabel;
-  const fmtHdr = helpers.formatStrategyHeader;
-
-  const mag = 3;
-  const oomVal   = Math.pow(10, mag);  // 1000
-  const oomLabel = fmtOom(mag);        // "1k+"
-
-  const offsets = [-2, -1.5, -1, -0.25, -0.5, 0, 0.25, 0.5, 1];
-  for (const offset of offsets) {
-    const tag     = 'AC2-mag3 offset=' + offset;
-    const stepLbl = formatStep(stepForOffset(oomVal, offset));
-    const header  = fmtHdr(mag, offset);
-
-    eq(tag + ': header is exactly "' + oomLabel + ' → nearest ' + stepLbl + '"',
-      header, oomLabel + ' → nearest ' + stepLbl);
-    eq(tag + ': no "(i.e." clause', header.includes('(i.e.'), false);
-    eq(tag + ': no "×" multiplier', header.includes('×'), false);
-  }
-
-  // Spot-check the exact step labels for two representative stops (regression guard).
-  eq('AC2-mag3 offset=0.5: header is exactly "1k+ → nearest 5k"',
-    fmtHdr(mag, 0.5), '1k+ → nearest 5k');
-  eq('AC2-mag3 offset=-1: header is exactly "1k+ → nearest 100"',
-    fmtHdr(mag, -1), '1k+ → nearest 100');
-  // New extended stops: -1.5 → 0.5·10^(mag-1)=50, -2 → 10^(mag-2)=10.
-  eq('AC2-mag3 offset=-1.5: header is exactly "1k+ → nearest 50"',
-    fmtHdr(mag, -1.5), '1k+ → nearest 50');
-  eq('AC2-mag3 offset=-2: header is exactly "1k+ → nearest 10"',
-    fmtHdr(mag, -2), '1k+ → nearest 10');
 })();
 
 // --- 2. classifyCell unit tests (pure, no DOM) ---

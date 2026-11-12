@@ -117,8 +117,8 @@
     /<option[^>]*selected/i.test(sidebarHtml), false);
   eq('sidebar-defaults: sidebar.html loads constants.js before sidebar.js',
     /constants\.js[\s\S]*sidebar\.js/.test(sidebarHtml), true);
-  eq('sidebar-defaults: sidebar.js applies DR_DEFAULTS to the UI on load',
-    /applyDefaultsToUI[\s\S]*DR_DEFAULTS/.test(sidebarJsSource), true);
+  eq('sidebar-defaults: sidebar.js fills every control unset by the settings from DR_DEFAULTS',
+    /function applySettingsToUI\(settings\)\s*\{\s*const s = Object\.assign\(\{\}, DR_DEFAULTS, settings \|\| \{\}\)/.test(sidebarJsSource), true);
   eq('sidebar-defaults: manifest content_scripts load order is defaults, log buffer, dr-number package, dr-table package, dr-simplify package, messaging bus, application model, table pillbox view, content',
     JSON.stringify(manifest.content_scripts[0].js) === JSON.stringify([
       'constants.js',
@@ -972,7 +972,6 @@
 // ---------------------------------------------------------------------------
 // Sidebar lens preview and controls
 // AC1: request:applySettings sends a synchronous response
-// AC2: formatStrategyHeader re-basing — mag=3 exhaustive table
 // AC3: embedded-in-text numbers feed maxMag
 // ---------------------------------------------------------------------------
 
