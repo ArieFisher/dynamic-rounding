@@ -1473,24 +1473,24 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 // view, read by the capture renderer. Each expected list is derived from its
 // reader, so a renamed key fails here and a new key needs no edit here.
 // ---------------------------------------------------------------------------
-(function sidebarOutboundKeysMatchTheirReaders() {
+(function sidebarKeysMatchTheirReaders() {
   const h = makeIssue251SidebarHarness({ captureMarks: ['looks-wrong'] });
   const renderSrc = sourceByName('lib/dr-capture/render.js');
   if (!h || typeof renderSrc !== 'string') {
-    eq('outbound keys: the sidebar harness and the capture renderer source are available', false, true);
+    eq('sidebar view keys: the sidebar harness and the capture renderer source are available', false, true);
     return;
   }
   const savedBuild = DR_CAPTURE.buildCaptureDocument;
   const savedWarn = DR_LOG.warn;
   try {
-    eq('outbound keys: sidebar.js loaded with no stub gaps', h.evalError, null);
+    eq('sidebar view keys: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
 
     h.enabledEl.fire('change');
     const applies = h.tabMessages.filter((msg) => msg.action === 'request:applySettings');
-    eq('outbound keys: a sidebar pillbox change sends one settings request', applies.length, 1);
+    eq('settings keys: a sidebar pillbox change sends one settings request', applies.length, 1);
     if (applies.length !== 1) return;
-    eq('outbound keys: the sent settings hold exactly the settings contract\'s keys',
+    eq('settings keys: the sent settings hold exactly the settings contract\'s keys',
       Object.keys(applies[0].settings).sort(), Object.keys(DR_DEFAULTS).sort());
 
     let sidebarView = null;
@@ -1504,7 +1504,7 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     DR_LOG.warn = () => {};
     h.captureMarkEls[0].fire('click');
     h.el('captureSave').fire('click');
-    eq('outbound keys: the finish press hands the renderer a sidebar view',
+    eq('sidebar view keys: the finish press hands the renderer a sidebar view',
       sidebarView !== null && typeof sidebarView === 'object', true);
     if (!sidebarView) return;
 
@@ -1512,11 +1512,11 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
       Array.from(renderSrc.matchAll(pattern), (match) => match[1]))).sort();
     const viewKeysRead = readKeys(/\bview\.(\w+)/g);
     const lensKeysRead = readKeys(/\blens\.(\w+)/g);
-    eq('outbound keys: the scan found keys the renderer reads (fails closed on an empty list)',
+    eq('sidebar view keys: the scan found keys the renderer reads (fails closed on an empty list)',
       viewKeysRead.length > 0 && lensKeysRead.length > 0, true);
-    eq('outbound keys: the sidebar view holds every key the renderer reads',
+    eq('sidebar view keys: the sidebar view holds every key the renderer reads',
       viewKeysRead.filter((key) => !(key in sidebarView)), []);
-    eq('outbound keys: the sidebar view\'s lens preview holds every key the renderer reads',
+    eq('sidebar view keys: the sidebar view\'s lens preview holds every key the renderer reads',
       lensKeysRead.filter((key) => !(key in (sidebarView.lensPreview || {}))), []);
   } finally {
     DR_CAPTURE.buildCaptureDocument = savedBuild;
