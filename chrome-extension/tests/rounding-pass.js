@@ -2686,18 +2686,18 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 // AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
 // <table>s are chart accessibility artifacts → gets dr-ext-grid + a pillbox.
-(function observer_AC1_addedGridOnlyPhantomTables_getsPillbox() {
-  const phantom1 = makePhantomEmbeddedTable();
-  const phantom2 = makePhantomEmbeddedTable();
-  const grid = asAddedGridNode(makeAriaGrid([phantom1, phantom2]));
+(function observer_AC1_addedGridOnlyArtifactTables_getsPillbox() {
+  const artifact1 = makeArtifactEmbeddedTable();
+  const artifact2 = makeArtifactEmbeddedTable();
+  const grid = asAddedGridNode(makeAriaGrid([artifact1, artifact2]));
 
   withPillboxDocumentMock(function() {
     injectPillboxesForAddedNode(grid);
   });
 
-  eq('observer: added grid with only phantom tables gets dr-ext-grid class',
+  eq('observer: added grid with only accessibility artifacts gets dr-ext-grid class',
     grid.classList.contains('dr-ext-grid'), true);
-  eq('observer: added grid with only phantom tables gets a toggle',
+  eq('observer: added grid with only accessibility artifacts gets a toggle',
     tablePillboxes.has(grid), true);
 })();
 
@@ -2721,22 +2721,22 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 // AC3: an accessibility artifact <table> reached via querySelectorAll on the
 // added node gets NO pillbox (Pass 1 artifact skip in the observer path).
-(function observer_AC3_addedSubtreePhantomTable_noPillbox() {
-  const phantom = makePhantomEmbeddedTable();
+(function observer_AC3_addedSubtreeArtifactTable_noPillbox() {
+  const artifact = makeArtifactEmbeddedTable();
   const container = {
     nodeType: global.Node.ELEMENT_NODE,
     tagName: 'DIV',
     classList: { _c: [], add(c){this._c.push(c);}, remove(c){this._c=this._c.filter(x=>x!==c);}, contains(c){return this._c.includes(c);} },
     matches() { return false; },
-    querySelectorAll(sel) { return sel === 'table' ? [phantom] : []; },
+    querySelectorAll(sel) { return sel === 'table' ? [artifact] : []; },
   };
 
   withPillboxDocumentMock(function() {
     injectPillboxesForAddedNode(container);
   });
 
-  eq('observer: phantom <table> in added subtree gets NO toggle',
-    tablePillboxes.has(phantom), false);
+  eq('observer: accessibility artifact <table> in added subtree gets NO toggle',
+    tablePillboxes.has(artifact), false);
 })();
 
 // AC4: a real native <table> reached via querySelectorAll on the added node

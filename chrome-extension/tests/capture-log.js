@@ -105,7 +105,7 @@
 
   // A fake adapter factory: each table object carries its own row spec.
   const fakeAdapterFor = (table) => ({
-    isGrid: () => !!table._virtualized,
+    isGrid: () => !!table._isGrid,
     getRows: () => table._rows.map((row) => ({
       isOutside: !!row.isOutside,
       // columnIndex and columnSpan are part of the adapter's cell contract
@@ -136,7 +136,7 @@
   };
   // Table B: virtualized grid, untouched.
   const tableB = {
-    _virtualized: true,
+    _isGrid: true,
     _rows: [{ cells: [{ el: makeCellEl(false), text: '42' }] }],
   };
 
