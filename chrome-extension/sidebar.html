@@ -117,8 +117,8 @@
       padding: 6px 0;
       user-select: none;
     }
-    /* ----- Linked dual sliders ----- */
-    .slider-block {
+    /* ----- Coupled lens control ----- */
+    .lens-control {
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -134,8 +134,8 @@
     }
     .label-row .lbl { color: #5f6368; }
     .label-row .lbl.top { color: #1a73e8; }
-    .label-row .lbl.bot { color: #b3623d; }
-    #sliderBlock.linked .label-row .lbl.bot { color: #c48a6a; }
+    .label-row .lbl.other { color: #b3623d; }
+    #lensControl.coupled .label-row .lbl.other { color: #c48a6a; }
     .dual-wrap {
       position: relative;
       height: 56px;
@@ -170,18 +170,18 @@
       touch-action: none;
     }
     .dual-thumb.top { background: #1a73e8; z-index: 2; }
-    .dual-thumb.bot {
+    .dual-thumb.other {
       background: #b3623d; z-index: 1;
       border-radius: 0 0 12px 12px;
       width: 18px; height: 14px;
       top: 42px;
     }
-    .dual-thumb.bot.linked { background: #c48a6a; }
+    .dual-thumb.other.coupled { background: #c48a6a; }
     .dual-thumb:focus-visible { outline: 2px solid #1a73e8; outline-offset: 2px; }
     /* Lens preview: grid + display:contents pairs so the "→" column aligns
-       vertically and the whole band is centered horizontally under the
-       slider. */
-    .results-band {
+       vertically and the whole lens preview is centered horizontally under
+       the lens control. */
+    .lens-preview {
       display: grid;
       grid-template-columns: auto auto auto;
       justify-content: center;
@@ -193,25 +193,25 @@
       font-variant-numeric: tabular-nums;
       padding: 2px 0;
     }
-    .results-band .pair { display: contents; }
-    .results-band .from {
+    .lens-preview .pair { display: contents; }
+    .lens-preview .from {
       color: #5f6368;
       text-align: right;
       white-space: normal;
     }
-    .results-band .arrow { color: #5f6368; text-align: center; }
-    .results-band .num { color: #202124; text-align: right; }
-    .results-band .oom-label { color: #b3623d; }
-    .results-band .step-label { color: #b3623d; }
-    /* Top band: strategy header on the first line, worked example on the
+    .lens-preview .arrow { color: #5f6368; text-align: center; }
+    .lens-preview .num { color: #202124; text-align: right; }
+    .lens-preview .oom-label { color: #b3623d; }
+    .lens-preview .step-label { color: #b3623d; }
+    /* Top preview: step header on the first line, worked example on the
        second. Both render as from|arrow|num pairs in the shared 3-column grid,
        so the two "→" arrows line up vertically between the lines. */
-    #topBand .strategy { font-style: italic; }
-    #topBand .strategy .from,
-    #topBand .strategy .arrow,
-    #topBand .strategy .num { color: #1a73e8; }
-    #topBand .from,
-    #topBand .num { white-space: nowrap; }
+    #topPreview .step-header { font-style: italic; }
+    #topPreview .step-header .from,
+    #topPreview .step-header .arrow,
+    #topPreview .step-header .num { color: #1a73e8; }
+    #topPreview .from,
+    #topPreview .num { white-space: nowrap; }
     #rangeExpr {
       width: 100%;
       box-sizing: border-box;
@@ -242,7 +242,7 @@
       margin-top: 12px;
       min-height: 1em;
     }
-    body.no-table #status {
+    body.unbound #status {
       font-size: 13px;
       font-weight: 500;
       color: #5f6368;
@@ -340,11 +340,11 @@
   </div>
 
   <div class="section" id="lensSection">
-    <div class="slider-block" id="sliderBlock">
+    <div class="lens-control" id="lensControl">
       <div class="label-row">
         <span class="lbl top" id="topLabel">largest numbers</span>
       </div>
-      <div class="results-band" id="topBand"></div>
+      <div class="lens-preview" id="topPreview"></div>
       <div class="dual-wrap" id="dualWrap">
         <div class="dual-track"></div>
         <div class="dual-ticks" aria-hidden="true">
@@ -352,15 +352,15 @@
           <span class="t"></span><span class="t"></span><span class="t"></span>
           <span class="t"></span><span class="t"></span><span class="t"></span>
         </div>
-        <div class="dual-thumb bot linked" id="botThumb" tabindex="0" role="slider"
+        <div class="dual-thumb other coupled" id="otherThumb" tabindex="0" role="slider"
              aria-label="all other numbers offset" aria-valuemin="-2" aria-valuemax="1" aria-valuenow="-0.5"></div>
         <div class="dual-thumb top" id="topThumb" tabindex="0" role="slider"
              aria-label="largest numbers offset" aria-valuemin="-2" aria-valuemax="1" aria-valuenow="-0.5"></div>
       </div>
       <div class="label-row">
-        <span class="lbl bot" id="botLabel">all other numbers</span>
+        <span class="lbl other" id="otherLabel">all other numbers</span>
       </div>
-      <div class="results-band" id="botBand"></div>
+      <div class="lens-preview" id="otherPreview"></div>
     </div>
   </div>
 

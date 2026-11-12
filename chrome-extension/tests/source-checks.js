@@ -287,8 +287,8 @@
 
 (function lensPreview_sidebarHtmlHasTopAndBottom() {
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  eq('sidebar.html has #topBand', /<div[^>]*id="topBand"/.test(sidebarHtml), true);
-  eq('sidebar.html has #botBand', /<div[^>]*id="botBand"/.test(sidebarHtml), true);
+  eq('sidebar.html has #topPreview', /<div[^>]*id="topPreview"/.test(sidebarHtml), true);
+  eq('sidebar.html has #otherPreview', /<div[^>]*id="otherPreview"/.test(sidebarHtml), true);
 })();
 
 // ---------------------------------------------------------------------------
@@ -931,42 +931,42 @@
 // END right-click activation tests
 // ---------------------------------------------------------------------------
 
-// Linked-state bot thumb/label colour change
-// AC1. Linked-state bot thumb background is #c48a6a (brown).
-// AC2. Decoupled-state bot thumb is still #b3623d (unchanged).
-// AC3. Linked-state bot LABEL color matches the linked thumb (same hex #c48a6a).
+// Coupled-state other thumb/label colour change
+// AC1. Coupled-state other thumb background is #c48a6a (brown).
+// AC2. Decoupled-state other thumb is still #b3623d (unchanged).
+// AC3. Coupled-state other LABEL color matches the coupled thumb (same hex #c48a6a).
 // ---------------------------------------------------------------------------
 
 (function advancedLowerDotBrown() {
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
 
-  // --- AC1: .dual-thumb.bot.linked background is #c48a6a ---
-  eq('lower-dot-brown AC1: .dual-thumb.bot.linked background is #c48a6a',
-    /\.dual-thumb\.bot\.linked\s*\{[^}]*background\s*:\s*#c48a6a/.test(sidebarHtml), true);
+  // --- AC1: .dual-thumb.other.coupled background is #c48a6a ---
+  eq('lower-dot-brown AC1: .dual-thumb.other.coupled background is #c48a6a',
+    /\.dual-thumb\.other\.coupled\s*\{[^}]*background\s*:\s*#c48a6a/.test(sidebarHtml), true);
 
-  // --- AC2: .dual-thumb.bot (decoupled) background is still #b3623d ---
-  // The rule may be a multi-line block; match the .dual-thumb.bot { ... } block
-  // that is NOT the .linked variant, and confirm it contains #b3623d.
-  // Strategy: find the line/block for the rule selector without .linked.
-  const decoupledRuleMatch = sidebarHtml.match(/\.dual-thumb\.bot\s*\{[^}]*\}/);
+  // --- AC2: .dual-thumb.other (decoupled) background is still #b3623d ---
+  // The rule may be a multi-line block; match the .dual-thumb.other { ... } block
+  // that is NOT the .coupled variant, and confirm it contains #b3623d.
+  // Strategy: find the line/block for the rule selector without .coupled.
+  const decoupledRuleMatch = sidebarHtml.match(/\.dual-thumb\.other\s*\{[^}]*\}/);
   const decoupledRule = decoupledRuleMatch ? decoupledRuleMatch[0] : '';
-  eq('lower-dot-brown AC2: .dual-thumb.bot (decoupled) block is present in sidebar.html',
+  eq('lower-dot-brown AC2: .dual-thumb.other (decoupled) block is present in sidebar.html',
     decoupledRule.length > 0, true);
-  eq('lower-dot-brown AC2: .dual-thumb.bot (decoupled) contains background #b3623d',
+  eq('lower-dot-brown AC2: .dual-thumb.other (decoupled) contains background #b3623d',
     decoupledRule.includes('#b3623d'), true);
 
-  // --- AC3: Linked-state bot LABEL color is #c48a6a (matches the thumb) ---
-  // Rule: #sliderBlock.linked .label-row .lbl.bot { color: #c48a6a; }
-  eq('lower-dot-brown AC3: #sliderBlock.linked .lbl.bot color is #c48a6a',
-    /#sliderBlock\.linked[^{]*\.lbl\.bot\s*\{[^}]*color\s*:\s*#c48a6a/.test(sidebarHtml), true);
+  // --- AC3: Coupled-state other LABEL color is #c48a6a (matches the thumb) ---
+  // Rule: #lensControl.coupled .label-row .lbl.other { color: #c48a6a; }
+  eq('lower-dot-brown AC3: #lensControl.coupled .lbl.other color is #c48a6a',
+    /#lensControl\.coupled[^{]*\.lbl\.other\s*\{[^}]*color\s*:\s*#c48a6a/.test(sidebarHtml), true);
 
   // Verify thumb and label use the EXACT same hex (AC3 consistency check).
-  const linkedLabelMatch = sidebarHtml.match(/#sliderBlock\.linked[^{]*\.lbl\.bot\s*\{[^}]*color\s*:\s*(#[0-9a-fA-F]{6})/);
-  const linkedThumbBgMatch = sidebarHtml.match(/\.dual-thumb\.bot\.linked\s*\{[^}]*background\s*:\s*(#[0-9a-fA-F]{6})/);
-  const linkedLabelHex  = linkedLabelMatch  ? linkedLabelMatch[1].toLowerCase()  : 'MISSING';
-  const linkedThumbHex  = linkedThumbBgMatch ? linkedThumbBgMatch[1].toLowerCase() : 'MISSING';
-  eq('lower-dot-brown AC3 consistency: linked label hex === linked thumb hex',
-    linkedLabelHex, linkedThumbHex);
+  const coupledLabelMatch = sidebarHtml.match(/#lensControl\.coupled[^{]*\.lbl\.other\s*\{[^}]*color\s*:\s*(#[0-9a-fA-F]{6})/);
+  const coupledThumbBgMatch = sidebarHtml.match(/\.dual-thumb\.other\.coupled\s*\{[^}]*background\s*:\s*(#[0-9a-fA-F]{6})/);
+  const coupledLabelHex  = coupledLabelMatch  ? coupledLabelMatch[1].toLowerCase()  : 'MISSING';
+  const coupledThumbHex  = coupledThumbBgMatch ? coupledThumbBgMatch[1].toLowerCase() : 'MISSING';
+  eq('lower-dot-brown AC3 consistency: coupled label hex === coupled thumb hex',
+    coupledLabelHex, coupledThumbHex);
 })();
 
 // ---------------------------------------------------------------------------

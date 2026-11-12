@@ -1553,7 +1553,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 // ---------------------------------------------------------------------------
 // Lens preview layout
 // AC1: formatOomLabel exhaustive suffix-boundary check
-// AC3: renderBotBand DESCENDING sort (real DOM-stub eval)
+// AC3: renderOtherPreview DESCENDING sort (real DOM-stub eval)
 // AC4: step-label CSS classes (step top / step bot)
 // Adversarial: sort-mutation side-effect check
 // ---------------------------------------------------------------------------
@@ -1565,7 +1565,7 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   // (from rounding.js), which we pass as a parameter to new Function.
   // -------------------------------------------------------------------------
   const constBlock = sidebarSrc.match(
-    /const OOM_LABEL_CLASS\s*=[\s\S]*?const STRATEGY_CLASS\s*=.*?;/
+    /const OOM_LABEL_CLASS\s*=[\s\S]*?const STEP_HEADER_CLASS\s*=.*?;/
   );
   const formatOomLabelFn = sidebarSrc.match(
     /function formatOomLabel\([\s\S]*?\n\}/
@@ -1661,26 +1661,26 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   })();
 
   // -------------------------------------------------------------------------
-  // AC3: renderBotBand DESCENDING sort by magnitude.
-  // Extract renderBotBand from sidebar.js, provide DOM stubs, call with rows
+  // AC3: renderOtherPreview DESCENDING sort by magnitude.
+  // Extract renderOtherPreview from sidebar.js, provide DOM stubs, call with rows
   // in ASCENDING order, assert rendered order is DESCENDING.
   // Also check for sort-mutation side-effect on the caller's array.
   // -------------------------------------------------------------------------
-  const renderBotBandFn = sidebarSrc.match(
-    /function renderBotBand\([\s\S]*?\n\}/
+  const renderOtherPreviewFn = sidebarSrc.match(
+    /function renderOtherPreview\([\s\S]*?\n\}/
   );
-  const renderTopBandFn = sidebarSrc.match(
-    /function renderTopBand\([\s\S]*?\n\}/
+  const renderTopPreviewFn = sidebarSrc.match(
+    /function renderTopPreview\([\s\S]*?\n\}/
   );
   const renderHelperFns = ['magnitudeOf', 'appendSampleRow', 'appendLabel'].map((name) =>
     sidebarSrc.match(new RegExp('function ' + name + '\\([\\s\\S]*?\\n\\}')));
 
-  if (!renderBotBandFn || !renderTopBandFn || renderHelperFns.some((m) => !m)) {
-    eq('sidebar-ap-extract: able to extract renderBotBand + renderTopBand and their helpers', false, true);
+  if (!renderOtherPreviewFn || !renderTopPreviewFn || renderHelperFns.some((m) => !m)) {
+    eq('sidebar-ap-extract: able to extract renderOtherPreview + renderTopPreview and their helpers', false, true);
     return;
   }
 
-  // Build a minimal DOM stub sufficient for renderBotBand.
+  // Build a minimal DOM stub sufficient for renderOtherPreview.
   // We collect appended children in order so we can inspect the render sequence.
   function makeEl(tag) {
     const children = [];
@@ -1714,17 +1714,17 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   };
 
   // Extract the sidebar consts and render functions + their helpers.
-  // We need: OOM_LABEL_CLASS, STRATEGY_CLASS, formatOomLabel, magnitudeOf,
-  //          appendSampleRow, appendLabel, renderTopBand, renderBotBand.
+  // We need: OOM_LABEL_CLASS, STEP_HEADER_CLASS, formatOomLabel, magnitudeOf,
+  //          appendSampleRow, appendLabel, renderTopPreview, renderOtherPreview.
   // External deps we pass in: formatOriginal, roundWithOffset, stepForOffset,
-  //                            formatStep, cachedMaxMag (null = no strategy header).
+  //                            formatStep, cachedMaxMag (null = no step header).
   const renderSrc = '(function(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag) {\n' +
     constBlock[0] + '\n' +
     formatOomLabelFn[0] + '\n' +
     renderHelperFns.map((m) => m[0]).join('\n') + '\n' +
-    renderTopBandFn[0] + '\n' +
-    renderBotBandFn[0] + '\n' +
-    'return { renderBotBand: renderBotBand, renderTopBand: renderTopBand };\n' +
+    renderTopPreviewFn[0] + '\n' +
+    renderOtherPreviewFn[0] + '\n' +
+    'return { renderOtherPreview: renderOtherPreview, renderTopPreview: renderTopPreview };\n' +
     '})';
 
   let renderHelpers;
@@ -1751,12 +1751,12 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
       'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
     ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, null);
   } catch (e) {
-    eq('sidebar-ap-extract: renderBotBand eval succeeded', String(e), '');
+    eq('sidebar-ap-extract: renderOtherPreview eval succeeded', String(e), '');
     return;
   }
 
-  const realRenderBotBand = renderHelpers.renderBotBand;
-  const realRenderTopBand = renderHelpers.renderTopBand;
+  const realRenderOtherPreview = renderHelpers.renderOtherPreview;
+  const realRenderTopPreview = renderHelpers.renderTopPreview;
 
   // Rows fed in ASCENDING magnitude order: 50 (mag=1), 500 (mag=2), 5000 (mag=3), 50000 (mag=4)
   const rowsAscending = [
@@ -1769,10 +1769,10 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
   const originalArray = rowsAscending.slice();
 
   const bandEl = makeBandEl();
-  realRenderBotBand(bandEl, rowsAscending, -0.5, 4);
+  realRenderOtherPreview(bandEl, rowsAscending, -0.5, 4);
 
   // The band container should have 4 "pair" div children.
-  eq('AC3-sort: renderBotBand appended 4 pair elements', bandEl._appended.length, 4);
+  eq('AC3-sort: renderOtherPreview appended 4 pair elements', bandEl._appended.length, 4);
 
   // Each pair div contains children: from-span, arrow-span, num-span, step-span.
   // The from-span's textContent reflects the original number.
@@ -1795,43 +1795,43 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 
   // -------------------------------------------------------------------------
   // Adversarial: sort-mutation check.
-  // renderBotBand uses rows.slice().sort(...) which must NOT mutate the caller's
+  // renderOtherPreview uses rows.slice().sort(...) which must NOT mutate the caller's
   // array. If it sorts in place, cachedSamples would be corrupted across renders.
   // -------------------------------------------------------------------------
-  eq('AC3-mutation: renderBotBand does NOT mutate caller rows[0] (still 50 after render)',
+  eq('AC3-mutation: renderOtherPreview does NOT mutate caller rows[0] (still 50 after render)',
     rowsAscending[0].num, 50);
-  eq('AC3-mutation: renderBotBand does NOT mutate caller rows[3] (still 50000 after render)',
+  eq('AC3-mutation: renderOtherPreview does NOT mutate caller rows[3] (still 50000 after render)',
     rowsAscending[3].num, 50000);
   // Belt-and-suspenders: the entire original order is preserved.
   const originalNums = originalArray.map(r => r.num);
   const afterNums = rowsAscending.map(r => r.num);
-  eq('AC3-mutation: full array order unchanged after renderBotBand',
+  eq('AC3-mutation: full array order unchanged after renderOtherPreview',
     afterNums, originalNums);
 
   // -------------------------------------------------------------------------
   // AC3-edge: zero rows and null el guard
   // -------------------------------------------------------------------------
   const emptyEl = makeBandEl();
-  realRenderBotBand(emptyEl, [], -0.5, 0);
+  realRenderOtherPreview(emptyEl, [], -0.5, 0);
   eq('AC3-edge: empty rows renders nothing', emptyEl._appended.length, 0);
 
-  realRenderBotBand(null, rowsAscending, -0.5, 4); // should not throw
+  realRenderOtherPreview(null, rowsAscending, -0.5, 4); // should not throw
 
   // -------------------------------------------------------------------------
-  // AC4: bottom-band examples carry a brown trailing step label "(5k)" after
+  // AC4: other preview examples carry a brown trailing step label "(5k)" after
   // the rounded number, showing what the example rounds to the nearest of. The
   // pair still has three cells (from, arrow, num); the step span lives INSIDE
   // the num span (a 4th grid child would wrap to the next row). The top example
   // keeps its three cells and is prefixed "e.g.".
   // -------------------------------------------------------------------------
 
-  // AC4a: bottom band pair has 3 cells (from/arrow/num); the brown step label
+  // AC4a: other preview pair has 3 cells (from/arrow/num); the brown step label
   // is nested in the num span, not a 4th grid child.
-  const botBandEl2 = makeBandEl();
-  realRenderBotBand(botBandEl2, [{ num: 1000, original: '1,000' }], -0.5, 3);
+  const otherPreviewEl2 = makeBandEl();
+  realRenderOtherPreview(otherPreviewEl2, [{ num: 1000, original: '1,000' }], -0.5, 3);
   eq('AC4-bot: bottom example pair has exactly 3 cells (from/arrow/num)',
-    botBandEl2._appended[0]._children.length, 3);
-  const botNumSpan = botBandEl2._appended[0]._children[2];
+    otherPreviewEl2._appended[0]._children.length, 3);
+  const botNumSpan = otherPreviewEl2._appended[0]._children[2];
   eq('AC4-bot: num span has a nested step-label child',
     botNumSpan._children.length, 1);
   eq('AC4-bot: step-label child has class "step-label"',
@@ -1842,19 +1842,19 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
 
   // AC4a-zero: a zero row gets no step label (avoids "(0)").
   const botZeroEl = makeBandEl();
-  realRenderBotBand(botZeroEl, [{ num: 0, original: '0' }], -0.5, 3);
+  realRenderOtherPreview(botZeroEl, [{ num: 0, original: '0' }], -0.5, 3);
   const zeroNumSpan = botZeroEl._appended[0]._children[2];
   eq('AC4-bot-zero: zero row num span has no step-label child',
     zeroNumSpan._children.length, 0);
 
-  // AC4b: top band example pair is prefixed "e.g." and has no step label.
-  // renderTopBand with cachedMaxMag=null skips the strategy header, so the only
+  // AC4b: top preview example pair is prefixed "e.g." and has no step label.
+  // renderTopPreview with cachedMaxMag=null skips the step header, so the only
   // appended element is the example.
-  const topBandEl2 = makeBandEl();
-  realRenderTopBand(topBandEl2, [{ num: 100000, original: '100,000' }], -0.5);
-  eq('AC4-top: top band appended exactly one element (no header)',
-    topBandEl2._appended.length, 1);
-  const topExamplePair = topBandEl2._appended[0];
+  const topPreviewEl2 = makeBandEl();
+  realRenderTopPreview(topPreviewEl2, [{ num: 100000, original: '100,000' }], -0.5);
+  eq('AC4-top: top preview appended exactly one element (no header)',
+    topPreviewEl2._appended.length, 1);
+  const topExamplePair = topPreviewEl2._appended[0];
   eq('AC4-top: top example has exactly 3 cells (from/arrow/num, no step)',
     topExamplePair._children.length, 3);
   eq('AC4-top: top example "from" is prefixed "e.g."',
@@ -1864,24 +1864,24 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
     topExamplePair._children[2]._children.length, 0);
 
   // AC4-strip: the "from" shows the bare number, not the original
-  // surrounding text. renderTopBand keys off row.num, so a row whose original
+  // surrounding text. renderTopPreview keys off row.num, so a row whose original
   // was "₹2,000 crore" still renders just "e.g. 2,000".
   const stripBandEl = makeBandEl();
-  realRenderTopBand(stripBandEl, [{ num: 2000, original: '₹2,000 crore' }], -0.5);
+  realRenderTopPreview(stripBandEl, [{ num: 2000, original: '₹2,000 crore' }], -0.5);
   eq('AC4-strip: top "from" strips surrounding text to bare "e.g. 2,000"',
     stripBandEl._appended[0]._children[0].textContent, 'e.g. 2,000');
 
   // AC4c: source-level constant values are correct (structural).
   eq('AC4-src: OOM_LABEL_CLASS constant is "oom-label" in source',
     /const OOM_LABEL_CLASS\s*=\s*['"]oom-label['"]/.test(sidebarSrc), true);
-  eq('AC4-src: STRATEGY_CLASS constant is "strategy" in source',
-    /const STRATEGY_CLASS\s*=\s*['"]strategy['"]/.test(sidebarSrc), true);
+  eq('AC4-src: STEP_HEADER_CLASS constant is "step-header" in source',
+    /const STEP_HEADER_CLASS\s*=\s*['"]step-header['"]/.test(sidebarSrc), true);
   eq('AC4-src: STEP_LABEL_CLASS constant is "step-label" in source',
     /const STEP_LABEL_CLASS\s*=\s*['"]step-label['"]/.test(sidebarSrc), true);
 
-  // AC4e: when cachedMaxMag is set, the top band renders the strategy line AND
+  // AC4e: when cachedMaxMag is set, the top preview renders the step header AND
   // the example as two from|arrow|num pairs in the same band container (the
-  // #topBand grid lays them on two lines with their "→" arrows aligned in the
+  // #topPreview grid lays them on two lines with their "→" arrows aligned in the
   // middle column). Rebuild the render helpers with a non-null cachedMaxMag to
   // exercise the header path.
   let renderHelpersWithMag;
@@ -1892,51 +1892,51 @@ eq('formatNumber: whole number 1 from "1.04" -> "1"',
       'return ' + renderSrc + '(document, formatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, cachedMaxMag);'
     ))(stubDocument, realFormatOriginal, roundWithOffset, stepForOffset, formatStep, trimNum, 6);
   } catch (e) {
-    eq('AC4e: renderTopBand (cachedMaxMag=6) eval succeeded', String(e), '');
+    eq('AC4e: renderTopPreview (cachedMaxMag=6) eval succeeded', String(e), '');
   }
   if (renderHelpersWithMag) {
     const topWithHdr = makeBandEl();
-    renderHelpersWithMag.renderTopBand(topWithHdr, [{ num: 8584629, original: '8,584,629' }], -0.5);
-    eq('AC4e: top band appends 2 elements (strategy line + example)',
+    renderHelpersWithMag.renderTopPreview(topWithHdr, [{ num: 8584629, original: '8,584,629' }], -0.5);
+    eq('AC4e: top preview appends 2 elements (step header + example)',
       topWithHdr._appended.length, 2);
     const stratPair = topWithHdr._appended[0];
     const examplePair = topWithHdr._appended[1];
-    eq('AC4e: first appended element is the strategy pair (class "pair strategy")',
-      stratPair.className, 'pair strategy');
-    eq('AC4e: strategy pair has 3 cells (from/arrow/num)',
+    eq('AC4e: first appended element is the step header pair (class "pair step-header")',
+      stratPair.className, 'pair step-header');
+    eq('AC4e: step header pair has 3 cells (from/arrow/num)',
       stratPair._children.length, 3);
-    eq('AC4e: strategy "from" is the OoM label "1M+" (maxMag=6)',
+    eq('AC4e: step header "from" is the OoM label "1M+" (maxMag=6)',
       stratPair._children[0].textContent, '1M+');
-    eq('AC4e: strategy "num" starts "nearest "',
+    eq('AC4e: step header "num" starts "nearest "',
       stratPair._children[2].textContent.indexOf('nearest ') === 0, true);
     eq('AC4e: second appended element is the example pair (class "pair example")',
       examplePair.className, 'pair example');
     eq('AC4e: example pair has 3 cells (from/arrow/num)',
       examplePair._children.length, 3);
     // The two "→" arrows sit in the same (middle) grid column so they align.
-    eq('AC4e: strategy arrow is in the middle cell ("→")',
+    eq('AC4e: step header arrow is in the middle cell ("→")',
       stratPair._children[1].textContent, '→');
     eq('AC4e: example arrow is in the middle cell ("→")',
       examplePair._children[1].textContent, '→');
   }
 
-  // AC4f: sidebar.html lays the top band out on the shared results-band grid
-  // (no flex override), so the strategy line and the example line stack and
-  // their "→" arrows align in the middle column. The strategy cells are blue.
+  // AC4f: sidebar.html lays the top preview out on the shared lens-preview grid
+  // (no flex override), so the step header and the example line stack and
+  // their "→" arrows align in the middle column. The step header cells are blue.
   const sidebarHtmlSrc = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
-  eq('AC4f: #topBand element carries the results-band grid class',
-    /<div[^>]*id="topBand"[^>]*class="results-band"|<div[^>]*class="results-band"[^>]*id="topBand"/.test(sidebarHtmlSrc), true);
-  eq('AC4f: #topBand is NOT overridden to display:flex',
-    /#topBand\s*\{[^}]*display:\s*flex/.test(sidebarHtmlSrc), false);
-  eq('AC4f: #topBand strategy cells are blue (#1a73e8)',
-    /#topBand \.strategy \.num\s*\{\s*color:\s*#1a73e8/.test(sidebarHtmlSrc), true);
+  eq('AC4f: #topPreview element carries the lens-preview grid class',
+    /<div[^>]*id="topPreview"[^>]*class="lens-preview"|<div[^>]*class="lens-preview"[^>]*id="topPreview"/.test(sidebarHtmlSrc), true);
+  eq('AC4f: #topPreview is NOT overridden to display:flex',
+    /#topPreview\s*\{[^}]*display:\s*flex/.test(sidebarHtmlSrc), false);
+  eq('AC4f: #topPreview step header cells are blue (#1a73e8)',
+    /#topPreview \.step-header \.num\s*\{\s*color:\s*#1a73e8/.test(sidebarHtmlSrc), true);
   eq('AC4f: .step-label colour rule present in sidebar.html',
     /\.step-label\s*\{\s*color:\s*#b3623d/.test(sidebarHtmlSrc), true);
 
   // AC4d: oom-label span is still appended inside the from-span for non-zero
-  // rows of the bottom band.
+  // rows of the other preview.
   const oomLabelBandEl = makeBandEl();
-  realRenderBotBand(oomLabelBandEl, [{ num: 5000, original: '5,000' }], -0.5, 3);
+  realRenderOtherPreview(oomLabelBandEl, [{ num: 5000, original: '5,000' }], -0.5, 3);
   const fromSpan = oomLabelBandEl._appended[0]._children[0];
   eq('AC4-oom-label: from-span has oom-label child appended',
     fromSpan._children.length >= 1, true);
