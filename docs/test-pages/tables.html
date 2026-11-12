@@ -2123,7 +2123,7 @@ TSLA,75,"248.09","18,606.75"
       })();
     </script>
 
-    <h3>23d. The pass measurement and the cell cap</h3>
+    <h3>23d. The pass target and the cell cap</h3>
     <p>The extension reads at most 10,000 cells in one pass. The first table
       holds 1,000 rows of ten value cells, the cap itself; the second holds one
       row more.</p>
@@ -2131,13 +2131,13 @@ TSLA,75,"248.09","18,606.75"
       <li><b>Build the tables, press the 1,000-row table's pillbox on, and
         start its updates.</b> They write a value into a random cell every 50
         milliseconds. Expect: each updated value outside the first column
-        shows simplified, one pass a second at most, and each pass writes a
-        debug row in the extension's log with its duration and cell count,
-        under 200 ms.</li>
+        shows simplified, one pass a second at most, and the updates write no
+        row in the extension's log while each pass stays under 200 ms. A
+        failure shows a <code>re-apply pass</code> row with the pass's
+        duration.</li>
       <li><b>Press the 1,001-row table's pillbox on.</b> Expect: it simplifies
-        with no toast, and a debug row in the log reads that the table holds
-        10,010 cells, more than the 10,000 the extension follows, so it no
-        longer rounds the page's updates.</li>
+        with no toast, and the log holds one row,
+        <code>above cell cap · cells: 10,010</code>.</li>
       <li><b>Press Rewrite a cell.</b> Expect: the cell shows 777,777 raw.</li>
       <li><b>Press the pillbox off.</b> Expect: the cell keeps 777,777, and
         every other cell shows its original.</li>

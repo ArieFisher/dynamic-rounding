@@ -5,8 +5,10 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
-// The bus alone: no constant in constants.js reaches this context.
-importScripts('adapters/messaging.js');
+// The bus and the log module, for its row format: no constant in
+// constants.js reaches this context. The worker's one row goes to the
+// console, so its log buffer stays empty.
+importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
 
 let sidebarTabId = null;
 
@@ -37,7 +39,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         await chrome.sidePanel.open({ tabId: tab.id });
       }
     } catch (e) {
-      console.warn("Dynamic Rounding: failed to open side panel", e);
+      console.warn(DR_LOG.formatRow('error', { step: 'open sidebar', error: DR_LOG.errorType(e) }));
     }
     sidebarTabId = tab.id;
     // The item does both things its title states: the same toggle "Toggle

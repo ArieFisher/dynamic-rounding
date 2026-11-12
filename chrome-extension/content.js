@@ -174,7 +174,7 @@ document.addEventListener('contextmenu', (event) => {
   if (found) {
     const table = markAndAddPillboxIfNewGrid(found);
     DR_MODEL.setActiveTable(table);
-    DR_LOG.debug("Dynamic Rounding: table activated by right-click.");
+    DR_LOG.debug(DR_LOG.formatRow('activate'));
     flashTargetedTable(table);
     DR_BUS.publish('state:tableActivated', {});
   }
@@ -200,7 +200,7 @@ DR_BUS.subscribe('intent:menuClicked', () => {
   if (!lastRightClickedElement) return;
   const found = findTargetTable(lastRightClickedElement, { isRegistered: DR_MODEL.hasTable });
   if (!found) {
-    DR_LOG.debug("Dynamic Rounding: No table found at right-click location.");
+    DR_LOG.debug(DR_LOG.formatRow('no table found'));
     return;
   }
   DR_BUS.publish('intent:toggleTable', { table: markAndAddPillboxIfNewGrid(found) });
@@ -213,7 +213,7 @@ DR_BUS.subscribe('intent:menuClicked', () => {
 DR_BUS.subscribe('state:sidebarOpened', () => {
   const active = DR_MODEL.getActiveTable();
   if (!active) {
-    DR_LOG.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
+    DR_LOG.debug(DR_LOG.formatRow('no active table'));
     return;
   }
   revalidateTableShape(active);
@@ -262,16 +262,32 @@ function applySidebarRounding(table) {
   if (opts.enabled !== false) {
     const result = roundTable(table, opts);
     sendRangeStatusMessage(result);
-    DR_LOG.debug("Dynamic Rounding: apply ran (applied=" + result.applied + ", rangeStatus=" + result.rangeStatus + ").");
+    DR_LOG.debug(DR_LOG.formatRow('settings change',
+      { 'on/off': 'on', 'left as written': leftAsWrittenValue(result.leftAsWritten) }));
     if (table.querySelector('.dr-ext-rounded')) {
       DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle table' });
     }
   } else {
-    DR_LOG.debug("Dynamic Rounding: apply ran with rounding off; table reset.");
+    DR_LOG.debug(DR_LOG.formatRow('settings change', { 'on/off': 'off' }));
     DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle table' });
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   flashRangePulse(table, rangeParse.error ? null : rangeParse.ranges);
+}
+
+/**
+ * The settings change row's "left as written" value: each reason with a
+ * non-zero count, e.g. "split number 2, text mismatch 1".
+ * @param {{splitNumber: number, splitDateOrTime: number, textMismatch: number}} [counts]
+ *   The pass's counts; absent when the pass did not run.
+ * @returns {string} The value, empty when nothing was left as written.
+ */
+function leftAsWrittenValue(counts = {}) {
+  return [['split number', counts.splitNumber], ['split date or time', counts.splitDateOrTime],
+    ['text mismatch', counts.textMismatch]]
+    .filter(([, count]) => count > 0)
+    .map(([reason, count]) => reason + ' ' + count.toLocaleString('en-US'))
+    .join(', ');
 }
 
 // The one consumer of the nomination step's per-nest outcomes. Both live
@@ -334,7 +350,7 @@ function holdPendingTable(chainRoot) {
     pendingRetestCounts.set(chainRoot, count);
     if (count >= DR_DETECTION_SETTINGS.pendingRetestCap) {
       dropPendingTable(chainRoot);
-      DR_LOG.debug("Dynamic Rounding: pending table dropped after " + count + " failed re-tests.");
+      DR_LOG.debug(DR_LOG.formatRow('pending table drop', { reason: 're-test cap' }));
     }
     return;
   }
@@ -458,8 +474,6 @@ function revalidateTableShape(table, opts = {}) {
     return { table, switched: false };
   }
 
-  DR_LOG.debug("Dynamic Rounding: table shape changed; re-running detection.");
-
   // The order is restore, tear down, re-nominate, register, activate,
   // publish.
   //
@@ -476,7 +490,7 @@ function revalidateTableShape(table, opts = {}) {
   // restore. The originals go back into the cells and nowhere else, so none
   // of them reaches the fresh entry.
   resetTable(table);
-  teardownTableEntry(table, 'replaced');
+  teardownTableEntry(table);
 
   // findTables on a <table> root returns that table alone, so one call
   // covers a native table and a grid alike.
@@ -491,10 +505,8 @@ function revalidateTableShape(table, opts = {}) {
     if (!fresh && DR_MODEL.hasTable(handle)) fresh = handle;
   }
 
-  if (!fresh) {
-    DR_LOG.debug("Dynamic Rounding: no table registered after the shape change.");
-    return { table: null, switched: false };
-  }
+  DR_LOG.debug(DR_LOG.formatRow('shape change', { result: fresh ? 'registered' : 'none registered' }));
+  if (!fresh) return { table: null, switched: false };
 
   if (opts.activates !== false) {
     DR_BUS.publish('intent:activateTable', { table: fresh });
@@ -510,7 +522,7 @@ function revalidateTableShape(table, opts = {}) {
 // originals and the form inside it. Two callers reach this: the removal
 // observer, for a table the page took out; and the shape-fingerprint
 // mismatch path, for a table whose shape no longer matches the one the
-// registry recorded. `reason` names which, and reaches the debug row.
+// registry recorded. Each caller writes its own row.
 //
 // The re-apply observer and its timer tear down here so a table removed
 // from the page cannot re-apply rounding after it leaves.
@@ -520,7 +532,7 @@ function revalidateTableShape(table, opts = {}) {
 // otherwise describe an entry that is gone. A shape change that
 // registers a fresh table makes that table active right after, and the
 // sidebar's read, which lands after this handler finishes, reads it.
-function teardownTableEntry(table, reason) {
+function teardownTableEntry(table) {
   const button = tablePillboxes.get(table);
   if (button && button.parentElement) {
     button.parentElement.removeChild(button);
@@ -532,7 +544,6 @@ function teardownTableEntry(table, reason) {
   unwatchTable(table);
   trackedTables.delete(table);
   DR_MODEL.unregisterTable(table);
-  DR_LOG.debug("Dynamic Rounding: " + reason + " table unregistered.");
   if (DR_MODEL.getActiveTable() === table) {
     DR_BUS.publish('intent:activateTable', { table: null });
     DR_BUS.publish('state:previewSamplesChanged', {});
@@ -542,8 +553,13 @@ function teardownTableEntry(table, reason) {
 if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
   ensureScrollResizeListeners();
 
-  // MutationObserver to watch for dynamically added/removed tables and grids
+  // MutationObserver to watch for dynamically added/removed tables and grids.
+  // A removal counts its unregistered tables and dropped pending tables
+  // across one callback and writes one row for each count, so a page that
+  // swaps its view spends at most two rows of the log buffer.
   const _tableObserver = new MutationObserver((mutations) => {
+    let unregistered = 0;
+    let pendingDropped = 0;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
@@ -558,7 +574,8 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
           const contained = table === node ||
             (typeof node.contains === 'function' && node.contains(table));
           if (!contained) continue;
-          teardownTableEntry(table, 'removed');
+          teardownTableEntry(table);
+          unregistered++;
         }
         // The same sweep over the pending roots. A pending table holds no
         // registry entry, so the loop above passes over it; without this one
@@ -568,9 +585,15 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
             (typeof node.contains === 'function' && node.contains(chainRoot));
           if (!contained) continue;
           dropPendingTable(chainRoot);
-          DR_LOG.debug("Dynamic Rounding: removed pending table dropped.");
+          pendingDropped++;
         }
       }
+    }
+    if (unregistered > 0) {
+      DR_LOG.debug(DR_LOG.formatRow('unregister', { tables: unregistered }));
+    }
+    if (pendingDropped > 0) {
+      DR_LOG.debug(DR_LOG.formatRow('pending table drop', { reason: 'removed', tables: pendingDropped }));
     }
   });
 
@@ -804,15 +827,9 @@ function extractPreviewSamples(table) {
 // and this context's log rows. Composed in a named function so the suite
 // drives it directly (the bus's own message listener is a no-op stub there);
 // the responder above only returns it.
-//
-// The cell-count row is recorded BEFORE the log snapshot is taken, so an
-// oversized capture carries its own size evidence inside itself.
 function buildCaptureStateResponse() {
   const state = collectCaptureState();
   const selected = DR_MODEL.getActiveTable();
-  const cellCounts = state.tables.map(function (t) { return t.cells.length; });
-  DR_LOG.debug('Dynamic Rounding: capture state collected (' + state.tables.length +
-    ' table(s), cells per table: [' + cellCounts.join(', ') + ']).');
   // The serializer guards per table; this walk of the bound table is the one
   // step after it that can throw, and an unguarded throw here would discard
   // the whole page-side half — the serialized registry, the fixture seed,
@@ -823,8 +840,7 @@ function buildCaptureStateResponse() {
     try {
       lensPreview = extractPreviewSamples(selected);
     } catch (e) {
-      DR_LOG.warn('Dynamic Rounding: lens preview extraction failed during capture (' +
-        String(e && e.message ? e.message : e) + ').');
+      DR_LOG.warn(DR_LOG.formatRow('error', { step: 'lens preview', error: DR_LOG.errorType(e) }));
     }
   }
   return Object.assign({
@@ -872,50 +888,36 @@ function buildCaptureStateResponse() {
 // The adapters (lib/dr-table/adapters.js, cells.js) build one cell object for
 // both kinds, so the pass sees no difference between them before it starts.
 //
-// The pass writes a debug row for a split number (entry.split) after
-// classification, so the lens preview, which runs the classification step
-// alone, writes none. It writes a second row for a changed date or time whose
-// text crosses a piece boundary.
+// The pass writes no log row. It counts, by reason, the cells it left as
+// written: a split number (entry.split, after classification), a changed
+// date or time whose text crosses a piece boundary, and a cell whose patch
+// landed nothing because the text it shows differs from the text its pieces
+// hold. It returns the counts and its duration; the apply writes the counts
+// in its one settings change row, and the re-apply observer writes the
+// duration when a pass runs over the pass target.
 //
 // The pass settings:
 //   frozenMaxMag  the max magnitude to use instead of computing it from the
 //                 cells; null or undefined computes it. A re-apply pass,
 //                 on either table kind, passes the table's magnitude
 //                 freeze.
-//   writes        'first' writes every changed cell, stores the max
-//                 magnitude as the table's magnitude freeze, and writes the debug
-//                 row for the cells left unrounded (unroundedCellsRow). 'reapply' writes every changed cell and
-//                 nothing else. 'none' sorts no cell, writes nothing, and
-//                 returns each cell's patches; only the test suite passes
-//                 it, to read a table's planned patches with the page left
-//                 unchanged.
+//   writes        'first' writes every changed cell and stores the max
+//                 magnitude as the table's magnitude freeze. 'reapply'
+//                 writes every changed cell and nothing else. 'none' sorts
+//                 no cell, writes nothing, and returns each cell's patches;
+//                 only the test suite passes it, to read a table's planned
+//                 patches with the page left unchanged.
 //   cellCap       the most cells the pass reads; above it the pass writes
 //                 nothing and returns overCap. The re-apply observer passes
 //                 the detection settings' reapplyCellCap; the first
 //                 simplification passes none.
 //
-// A cell's piece-boundary check and its writes run in the same loop, so a
-// native table's debug rows keep their page order. The table step reads only
-// what classification captured, never the page, so a write to one cell
-// leaves the patches of the cells after it unchanged.
-
-const SPLIT_NUMBER_ROW = 'Dynamic Rounding: a number split across text pieces stays unchanged.';
-const SPLIT_DATE_ROW = 'Dynamic Rounding: a date or time split across text pieces stays unchanged.';
+// The table step reads only what classification captured, never the page,
+// so a write to one cell leaves the patches of the cells after it unchanged.
 
 // Returns how many patches landed (see makeCellObj in lib/dr-table).
 function writeCell(entry, patches) {
   return entry.cellObj.applyPatches(patches, { value: entry.text });
-}
-
-// The debug row the first simplification writes when a cell with a change
-// to make took none of it: the text the cell shows differs from the text
-// its pieces hold, so no number sat where the pass expected it. One wording
-// for both table kinds, and a debug row, so it raises no toast. The first
-// simplification alone writes it, so a table the page keeps changing writes
-// no row on every pass.
-function unroundedCellsRow(missed, total) {
-  return 'Dynamic Rounding: ' + missed + ' of ' + total + ' cells were left unrounded because ' +
-    'the text they show did not match the text they hold.';
 }
 
 // The offsets and the top-band count, resolved once for the whole table.
@@ -977,16 +979,16 @@ function watchedElement(adapter) {
 // (tablePatches, lib/dr-simplify/table.js), less a changed date or time that
 // does not sit in one text piece. A date or time cell's one patch covers its
 // trimmed text; when no single text piece holds that span, the cell stays as
-// written and the pass writes the debug row.
+// written.
 function cellPatches(stepCell) {
-  const { entry, patches } = stepCell;
+  return isSplitDateOrTime(stepCell) ? [] : stepCell.patches;
+}
+
+// A changed date or time whose one patch no single text piece holds.
+function isSplitDateOrTime({ entry, patches }) {
   const isDateOrTime = entry.info.mode === 'date' || entry.info.mode === 'time';
-  if (isDateOrTime && patches.length > 0 &&
-      !layoutPieceHolding(entry.layout, patches[0].index, patches[0].numStr.length)) {
-    DR_LOG.debug(SPLIT_DATE_ROW);
-    return [];
-  }
-  return patches;
+  return isDateOrTime && patches.length > 0 &&
+    !layoutPieceHolding(entry.layout, patches[0].index, patches[0].numStr.length);
 }
 
 /**
@@ -999,12 +1001,15 @@ function cellPatches(stepCell) {
  *          cellCap?: number}} pass
  * @returns {{cells: Array<{entry: object, patches: object[]}>,
  *            maxMag: number|null, landedCells: number, missedCells: number,
- *            cellCount: number, overCap: boolean}}
+ *            cellCount: number, overCap: boolean, ms?: number,
+ *            leftAsWritten?: {splitNumber: number, splitDateOrTime: number, textMismatch: number}}}
  *   cells holds every cell in page order with its patches (empty means the
  *   cell's target text is its original). landedCells counts the written
  *   cells with a landed patch, missedCells the written cells with none.
- *   cellCount counts the cells the pass read. An invalid range
- *   expression or a table with no rows returns no cells and writes nothing;
+ *   cellCount counts the cells the pass read. leftAsWritten counts, by
+ *   reason, the cells the pass left as written; its textMismatch is
+ *   missedCells. ms holds the pass's duration. An invalid range expression
+ *   or a table with no rows returns no cells, no counts, and writes nothing;
  *   so does a table above pass.cellCap, with overCap true.
  */
 function simplifyTableCells(table, adapterRows, opts, pass) {
@@ -1019,21 +1024,21 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   }
   if (writes !== 'none') releaseRewrittenCells(table, dataCells);
   const classified = classifyTableCells(dataCells, opts, rangeParse.ranges);
-  for (const entry of classified) {
-    if (entry.split) DR_LOG.debug(SPLIT_NUMBER_ROW);
-  }
   const settings = Object.assign(resolveRoundingSettings(opts),
     { dateGranularity: opts.dateGranularity, timeGranularity: opts.timeGranularity });
   const { maxMag, cells: stepCells } = tablePatches(classified, settings, pass.frozenMaxMag);
   if (writes === 'first') DR_MODEL.setTableMaxMagnitude(table, maxMag);
 
-  const written = writeTableCells(table, stepCells, writes);
-  if (writes === 'first' && written.missedCells > 0) {
-    DR_LOG.debug(unroundedCellsRow(written.missedCells, written.landedCells + written.missedCells));
-  }
-  DR_LOG.debug('Dynamic Rounding: a pass read ' + dataCells.length + ' cells in ' +
-    (Date.now() - startedAt) + ' ms.');
-  return Object.assign(written, { maxMag, cellCount: dataCells.length, overCap: false });
+  const { cells, landedCells, missedCells, splitDateOrTime } = writeTableCells(table, stepCells, writes);
+  return {
+    cells, landedCells, missedCells, maxMag, cellCount: dataCells.length, overCap: false,
+    leftAsWritten: {
+      splitNumber: classified.filter((entry) => entry.split).length,
+      splitDateOrTime,
+      textMismatch: missedCells,
+    },
+    ms: Date.now() - startedAt,
+  };
 }
 
 // The pass's write loop over the table step's cells, cell by cell in page
@@ -1044,8 +1049,10 @@ function writeTableCells(table, stepCells, writes) {
   const cells = [];
   let landedCells = 0;
   let missedCells = 0;
+  let splitDateOrTime = 0;
   for (const stepCell of stepCells) {
     const { entry } = stepCell;
+    if (isSplitDateOrTime(stepCell)) splitDateOrTime++;
     const flat = flatPatches(cellPatches(stepCell), entry.layout);
     cells.push({ entry, patches: flat });
     if (writes === 'none') continue;
@@ -1055,7 +1062,7 @@ function writeTableCells(table, stepCells, writes) {
     else if (flat.length > 0) missedCells++;
     if (landed === 0 && held) releaseCell(table, entry.cellObj.el);
   }
-  return { cells, landedCells, missedCells };
+  return { cells, landedCells, missedCells, splitDateOrTime };
 }
 
 // A table's adapter, reading and writing each cell's record through the
@@ -1132,9 +1139,7 @@ function scheduleReapply(table) {
 
 // The debug row for a table above the cell cap. A debug row raises no toast.
 function logAboveCellCap(cellCount) {
-  DR_LOG.debug('Dynamic Rounding: this table holds ' + cellCount.toLocaleString('en-US') +
-    ' cells, more than the ' + DR_DETECTION_SETTINGS.reapplyCellCap.toLocaleString('en-US') +
-    ' the extension follows, so it no longer rounds the page\'s updates.');
+  DR_LOG.debug(DR_LOG.formatRow('above cell cap', { cells: cellCount }));
 }
 
 /**
@@ -1182,6 +1187,8 @@ function runReapplyPass(table) {
   if (result.overCap) {
     unwatchTable(table);
     logAboveCellCap(result.cellCount);
+  } else if (result.ms > DR_DETECTION_SETTINGS.passTargetMs) {
+    DR_LOG.debug(DR_LOG.formatRow('re-apply pass', { ms: result.ms }));
   }
 }
 
@@ -1196,7 +1203,7 @@ function roundTable(table, options) {
   // A table with no rows returns early without throwing.
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
   // A re-apply reuses the freeze, so a scroll or page write keeps the basis.
-  const { landedCells, cellCount } = simplifyTableCells(table, adapterRows, opts, {
+  const { landedCells, cellCount, leftAsWritten } = simplifyTableCells(table, adapterRows, opts, {
     frozenMaxMag: null,
     writes: 'first',
   });
@@ -1205,7 +1212,7 @@ function roundTable(table, options) {
   // The re-apply observer attaches AFTER the first simplification, so the
   // writes above run no pass.
   watchTable(table, adapter, cellCount);
-  return { applied: true, rangeStatus: 'ok' };
+  return { applied: true, rangeStatus: 'ok', leftAsWritten };
 }
 
 // findMaxMagnitude lives in core.js, loaded by manifest content_scripts ahead
