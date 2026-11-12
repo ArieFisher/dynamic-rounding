@@ -2502,12 +2502,6 @@ function trackPillboxDetach(table) {
   return removedPillboxes;
 }
 
-// The last ten debug rows, for an assertion that one row landed. The buffer
-// caps at 50 rows and drops from the front, so a fixed index into it drifts.
-function recentLogRows() {
-  return DR_LOG.snapshot().entries.slice(-10).map((row) => row.text);
-}
-
 /**
  * The text of every row a function writes to a log buffer while it runs.
  * @param {Function} fn The function to run.

@@ -4156,7 +4156,7 @@ const RW_ROWS = [['1,234', '5,678'], ['2,468', '3,579']];
 const RW_KINDS = ['native', 'grid'];
 
 // Every log row from here on, kept whole: the log's own buffer drops old
-// rows, and a pass writes a debug row of its own.
+// rows.
 const rwLogged = [];
 
 DR_LOG.onRow((row) => rwLogged.push(row));

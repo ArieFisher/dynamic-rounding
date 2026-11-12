@@ -11,8 +11,9 @@
  * DR_LOG holds the last 50 rows the extension records in this context. Each
  * context evaluates this file separately — the content script loads it from
  * the manifest (directly after constants.js, so every later file can log),
- * the sidebar loads it from a script tag — so each holds its own buffer, and
- * a capture carries each buffer's snapshot labeled by its context.
+ * the sidebar loads it from a script tag, the service worker imports it
+ * — so each holds its own buffer, and a capture carries the content script's
+ * and the sidebar's snapshots, each labeled by its context.
  *
  * Every row also forwards to the real console, so devtools output is
  * unchanged. The buffer exists because a capture cannot read the console:
