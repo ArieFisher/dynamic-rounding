@@ -2272,7 +2272,10 @@ function makeCrowdedNest() {
 // then delivers the message under test and asserts the sidebar snapped back
 // to the model.
 // ---------------------------------------------------------------------------
-function makeIssue251SidebarHarness() {
+/**
+ * @param {{captureMarks?: string[]}} [opts] captureMarks: the mark word of each capture mark element the page holds.
+ */
+function makeIssue251SidebarHarness(opts) {
   const roundingSrc = sourceByName('lib/dr-number/rounding.js');
   const coreSrc = sourceByName('lib/dr-number/core.js');
   if (constantsCode === null || roundingSrc === null || coreSrc === null || messagingCode === null) {
@@ -2292,7 +2295,7 @@ function makeIssue251SidebarHarness() {
       removeEventListener() {},
       classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
       style: {}, value: '', checked: false, disabled: false, textContent: '', innerHTML: '',
-      appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
+      children: [], appendChild() {}, querySelector() { return makeEl(); }, querySelectorAll() { return []; },
       getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 }; },
       matches() { return false; }, closest() { return null; }, dataset: {},
       setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
@@ -2323,9 +2326,14 @@ function makeIssue251SidebarHarness() {
   // listeners to it; a test must be able to reach that SAME element (via
   // el(id) on the returned harness) to fire those listeners.
   const elsById = { status: statusEl, enabled: enabledEl, rangeExpr: rangeExprEl };
+  const captureMarkEls = ((opts && opts.captureMarks) || []).map((mark) => {
+    const markEl = makeEl();
+    markEl.dataset.mark = mark;
+    return markEl;
+  });
   const captureDoc = {
     addEventListener() {},
-    querySelectorAll: () => [],
+    querySelectorAll: (selector) => (selector === '.capture-mark' ? captureMarkEls : []),
     readyState: 'complete',
     body: captureBody,
     getElementById(id) {
@@ -2386,7 +2394,7 @@ function makeIssue251SidebarHarness() {
   }
 
   return {
-    statusEl, enabledEl, rangeExprEl, bodyClasses, evalError, tabMessages,
+    statusEl, enabledEl, rangeExprEl, bodyClasses, evalError, tabMessages, captureMarkEls,
     // The object the settings read answers with; a test that changes a field
     // changes the next answer.
     modelSettings,
