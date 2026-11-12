@@ -2634,7 +2634,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     // document.body) runs teardownTableEntry when it detects a tracked table was
     // removed from the DOM. In the test harness the _tableObserver is a no-op
     // stub, so the teardown runs directly.
-    teardownTableEntry(grid.wrapperEl, 'removed');
+    teardownTableEntry(grid.wrapperEl);
 
     // Assert cleanup.
     eq('GV7: observer disconnected after removed-node teardown',

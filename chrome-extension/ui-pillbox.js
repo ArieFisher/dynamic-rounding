@@ -316,8 +316,6 @@ function createPillboxForTable(table) {
   DR_MODEL.setTableFingerprint(table, readTableFingerprint(table, {
     originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl),
   }));
-  DR_LOG.debug("Dynamic Rounding: registered " +
-    (table.tagName === 'TABLE' ? 'native table' : 'grid') + ".");
 
   // Set up ResizeObserver for repositioning
   const ro = new ResizeObserver(() => {

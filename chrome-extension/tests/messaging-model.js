@@ -1156,8 +1156,9 @@ const PENDING_FILL_ROWS = [
     const entries = DR_LOG.snapshot().entries;
     const newRows = entries.slice(Math.max(0, entries.length - added));
     eq('pending AC3: the cap cycle records at least one log row', added >= 1, true);
-    eq('pending AC3: reaching the cap records a debug log row naming the pending table',
-      newRows.some((row) => row.level === 'debug' && /pending table/i.test(row.text)), true);
+    eq('pending AC3: reaching the cap records one debug row for the drop',
+      newRows.filter((row) => row.level === 'debug' && /pending table/.test(row.text)).map((row) => row.text),
+      ['Dynamic Rounding: pending table drop · reason: re-test cap']);
 
     // A later mutation on the dropped container costs nothing: no observer
     // remains to run, and the record is gone.
@@ -2384,8 +2385,8 @@ const PENDING_FILL_ROWS = [
 // mismatch path run. One function discards a table's registration and every
 // per-table resource the extension holds beside it: the pillbox, the resize
 // observer, a virtualized grid's re-apply observer and its pending timer, the
-// view's tracked-table list, and the registry entry. `reason` reaches the
-// debug row. Spec: the shape-fingerprint block in
+// view's tracked-table list, and the registry entry. The teardown writes no
+// row: each caller writes its own. Spec: the shape-fingerprint block in
 // docs/sprint-plans/grid-detection-recovery-v2.md §5. ---
 
 (function shapeFingerprint_theTeardownDiscardsTheEntryAndEveryResourceBesideIt() {
@@ -2412,8 +2413,9 @@ const PENDING_FILL_ROWS = [
     eq('fingerprint teardown: the grid registers and tracks before the teardown (precondition)',
       DR_MODEL.hasTable(grid.scrollPaneEl) && trackedTables.has(grid.scrollPaneEl), true);
 
-    teardownTableEntry(grid.scrollPaneEl, 'replaced');
+    const rows = logRowsDuring(() => teardownTableEntry(grid.scrollPaneEl));
 
+    eq('fingerprint teardown: the teardown writes no row', rows, []);
     eq('fingerprint teardown: the pillbox comes off the page', removedPillboxes.length, 1);
     eq('fingerprint teardown: the resize observer disconnects',
       resizeObservers.length === 1 && resizeObservers[0].disconnected, true);
@@ -2430,13 +2432,45 @@ const PENDING_FILL_ROWS = [
       DR_MODEL.hasTable(grid.scrollPaneEl), false);
     eq('fingerprint teardown: the fingerprint goes with the entry',
       DR_MODEL.getTableFingerprint(grid.scrollPaneEl), null);
-    eq('fingerprint teardown: the teardown records a row naming its reason',
-      recentLogRows().some((text) => /replaced table unregistered/.test(text)), true);
   } finally {
     global.ResizeObserver = savedResizeObserver;
     global.clearTimeout = savedClearTimeout;
     forgetRegisteredTable(grid.scrollPaneEl);
   }
+})();
+
+// --- Page rows for activation, registration, and removal. A fresh evaluation
+// of the content scripts runs the production right-click handler and table
+// observer, and the rows land in that evaluation's own log buffer. ---
+(function pageRows_activationRegistrationAndRemoval() {
+  withRightClickSandbox(function (ctx) {
+    const rows = (fn) => logRowsDuring(fn, ctx.log);
+    const tableObserver = ctx.constructedObservers[0];
+    const grid = makeDatabaseQueryGrid();
+    eq('page rows: a right-click on a table writes one activate row, and its registration writes none',
+      rows(() => ctx.contextmenuHandler({ target: grid.scrollRowEls[2].children[1] })),
+      ['Dynamic Rounding: activate']);
+
+    ctx.contextmenuHandler({ target: { parentElement: null } });
+    // The menu topic also relays to the tab, which this evaluation lacks.
+    global.chrome.tabs = { sendMessage() {}, query() {} };
+    eq('page rows: a menu click with no table at the right-click writes one no table found row',
+      rows(() => ctx.bus.publish('intent:menuClicked', {})), ['Dynamic Rounding: no table found']);
+
+    ctx.model.setActiveTable(null);
+    eq('page rows: opening the sidebar with no active table writes one no active table row',
+      rows(() => ctx.bus.publish('state:sidebarOpened', {})), ['Dynamic Rounding: no active table']);
+
+    const tables = [{ tagName: 'DIV' }, { tagName: 'DIV' }];
+    tables.forEach((table) => ctx.model.registerTable(table));
+    const pendingRoots = [{ nodeType: 1, tagName: 'DIV' }, { nodeType: 1, tagName: 'DIV' }];
+    pendingRoots.forEach((root) => ctx.holdPendingTable(root));
+    const removed = { nodeType: 1, contains: (el) => tables.includes(el) || pendingRoots.includes(el) };
+    eq('page rows: a removal writes one row per kind of record, with its count',
+      rows(() => tableObserver._cb([{ addedNodes: [], removedNodes: [removed] }])),
+      ['Dynamic Rounding: unregister · tables: 2',
+        'Dynamic Rounding: pending table drop · reason: removed · tables: 2']);
+  });
 })();
 
 // --- Criterion 4: a pending container removed from the
@@ -3563,10 +3597,12 @@ function issue328SettingsOf(table) {
 
     resetWrites();
     sent.length = 0;
-    withPillboxDocumentMock(function () {
+    const rows = logRowsDuring(() => withPillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
-    });
+    }));
 
+    eq('fingerprint recovery: the shape change writes one row',
+      rows, ['Dynamic Rounding: shape change · result: none registered']);
     eq('fingerprint recovery: no element of the nest holds a registry entry',
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, false]);
@@ -3575,9 +3611,6 @@ function issue328SettingsOf(table) {
     eq('fingerprint recovery: the sidebar is told to re-read, so it shows the no-table state (#506)',
       sent.filter((m) => m.action === 'state:previewSamplesChanged').length, 1);
     eq('fingerprint recovery: the press stops, so it makes no settings write', writes(), 0);
-    eq('fingerprint recovery: the empty recovery records a debug row',
-      recentLogRows().some((text) => /no table registered after the shape change/.test(text)),
-      true);
   });
 })();
 
@@ -3652,11 +3685,14 @@ function issue328SettingsOf(table) {
     grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 101)));
 
     sent.length = 0;
-    withPillboxDocumentMock(function () {
+    const rows = logRowsDuring(() => withPillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
-    });
+    }));
     const fresh = DR_MODEL.getActiveTable();
 
+    eq('fingerprint move: beside the press\'s settings change row, the shape change writes one row and no unregister row',
+      rows.filter((text) => !/settings change/.test(text)),
+      ['Dynamic Rounding: shape change · result: registered']);
     eq('fingerprint move: the fresh table holds the shipped defaults with the press\'s on',
       fresh && DR_MODEL.getTableSettings(fresh), Object.assign({}, DR_DEFAULTS, { enabled: true }));
     eq('fingerprint move: a shape change still runs exactly one apply',
@@ -3850,7 +3886,8 @@ function issue328SettingsOf(table) {
   // With no table bound: no lens preview, no seed, no focus — and the page
   // field and log snapshot still present.
   DR_MODEL.setActiveTable(null);
-  const unboundResponse = buildCaptureStateResponse();
+  let unboundResponse = null;
+  const collectRows = logRowsDuring(() => { unboundResponse = buildCaptureStateResponse(); });
   eq('capture-wire: no table bound still answers with an honest unbound state',
     {
       captureFormat: unboundResponse.captureFormat,
@@ -3862,8 +3899,7 @@ function issue328SettingsOf(table) {
     { captureFormat: 9, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
-  eq('capture-wire: collecting logs its own row, and that row lands in the capture',
-    /capture state collected/.test(unboundResponse.log.entries.slice(-1)[0].text), true);
+  eq('capture-wire: collecting the capture state writes no row', collectRows, []);
   eq('capture-wire: the page field exists even where location does not',
     'url' in unboundResponse.page && 'title' in unboundResponse.page, true);
 
@@ -3904,14 +3940,15 @@ function issue328SettingsOf(table) {
   if (typeof globalThis.buildCaptureStateResponse !== 'function') return;
   const prevActive = DR_MODEL.getActiveTable();
   const throwing = {
-    get rows() { throw new Error('hostile preview walk'); },
+    get rows() { throw new TypeError('hostile preview walk'); },
   };
   DR_MODEL.registerTable(throwing);
   DR_MODEL.setActiveTable(throwing);
   let response = null;
   let threw = false;
+  let rows = [];
   try {
-    response = buildCaptureStateResponse();
+    rows = logRowsDuring(() => { response = buildCaptureStateResponse(); });
   } catch (e) {
     threw = true;
   } finally {
@@ -3926,10 +3963,12 @@ function issue328SettingsOf(table) {
       hasLog: !!(response && response.log),
     },
     { threw: false, tablesIsArray: true, lensPreview: null, hasLog: true });
-  eq('capture-wire: the discarded lens preview leaves a warn row',
-    DR_LOG.snapshot().entries.some(
-      (row) => row.level === 'warn' && /lens preview/.test(row.text)),
-    true);
+  const lensRow = 'Dynamic Rounding: error · step: lens preview · error: TypeError';
+  eq('capture-wire: the discarded lens preview writes one row naming the step and the error type',
+    rows, [lensRow]);
+  eq('capture-wire: the lens preview row is a warn row, the error state\'s newest, which the toast shows',
+    [DR_LOG.snapshot().entries.slice(-1)[0].level, DR_MODEL.getErrorState().rows.slice(-1)[0].text],
+    ['warn', lensRow]);
 })();
 
 // --- app model: the error state ---

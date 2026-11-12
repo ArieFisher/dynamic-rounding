@@ -2486,8 +2486,6 @@
     /console\.debug\(/.test(sourceByName('content.js') || ''), false);
   eq('dr-log: detect.js keeps no direct console.debug call',
     /console\.debug\(/.test(detectCode || ''), false);
-  eq('dr-log: registration logs a row (ui-pillbox.js)',
-    /DR_LOG\.debug\([^)]*egistered/.test(uiPillboxCode || ''), true);
 })();
 
 // --- The service worker runs on the bus ---

@@ -174,7 +174,7 @@ document.addEventListener('contextmenu', (event) => {
   if (found) {
     const table = markAndAddPillboxIfNewGrid(found);
     DR_MODEL.setActiveTable(table);
-    DR_LOG.debug("Dynamic Rounding: table activated by right-click.");
+    DR_LOG.debug(DR_LOG.formatRow('activate'));
     flashTargetedTable(table);
     DR_BUS.publish('state:tableActivated', {});
   }
@@ -200,7 +200,7 @@ DR_BUS.subscribe('intent:menuClicked', () => {
   if (!lastRightClickedElement) return;
   const found = findTargetTable(lastRightClickedElement, { isRegistered: DR_MODEL.hasTable });
   if (!found) {
-    DR_LOG.debug("Dynamic Rounding: No table found at right-click location.");
+    DR_LOG.debug(DR_LOG.formatRow('no table found'));
     return;
   }
   DR_BUS.publish('intent:toggleTable', { table: markAndAddPillboxIfNewGrid(found) });
@@ -213,7 +213,7 @@ DR_BUS.subscribe('intent:menuClicked', () => {
 DR_BUS.subscribe('state:sidebarOpened', () => {
   const active = DR_MODEL.getActiveTable();
   if (!active) {
-    DR_LOG.debug("Dynamic Rounding: No table targeted. Right-click a table cell first.");
+    DR_LOG.debug(DR_LOG.formatRow('no active table'));
     return;
   }
   revalidateTableShape(active);
@@ -350,7 +350,7 @@ function holdPendingTable(chainRoot) {
     pendingRetestCounts.set(chainRoot, count);
     if (count >= DR_DETECTION_SETTINGS.pendingRetestCap) {
       dropPendingTable(chainRoot);
-      DR_LOG.debug("Dynamic Rounding: pending table dropped after " + count + " failed re-tests.");
+      DR_LOG.debug(DR_LOG.formatRow('pending table drop', { reason: 're-test cap' }));
     }
     return;
   }
@@ -474,8 +474,6 @@ function revalidateTableShape(table, opts = {}) {
     return { table, switched: false };
   }
 
-  DR_LOG.debug("Dynamic Rounding: table shape changed; re-running detection.");
-
   // The order is restore, tear down, re-nominate, register, activate,
   // publish.
   //
@@ -492,7 +490,7 @@ function revalidateTableShape(table, opts = {}) {
   // restore. The originals go back into the cells and nowhere else, so none
   // of them reaches the fresh entry.
   resetTable(table);
-  teardownTableEntry(table, 'replaced');
+  teardownTableEntry(table);
 
   // findTables on a <table> root returns that table alone, so one call
   // covers a native table and a grid alike.
@@ -507,10 +505,8 @@ function revalidateTableShape(table, opts = {}) {
     if (!fresh && DR_MODEL.hasTable(handle)) fresh = handle;
   }
 
-  if (!fresh) {
-    DR_LOG.debug("Dynamic Rounding: no table registered after the shape change.");
-    return { table: null, switched: false };
-  }
+  DR_LOG.debug(DR_LOG.formatRow('shape change', { result: fresh ? 'registered' : 'none registered' }));
+  if (!fresh) return { table: null, switched: false };
 
   if (opts.activates !== false) {
     DR_BUS.publish('intent:activateTable', { table: fresh });
@@ -526,7 +522,7 @@ function revalidateTableShape(table, opts = {}) {
 // originals and the form inside it. Two callers reach this: the removal
 // observer, for a table the page took out; and the shape-fingerprint
 // mismatch path, for a table whose shape no longer matches the one the
-// registry recorded. `reason` names which, and reaches the debug row.
+// registry recorded. Each caller writes its own row.
 //
 // The re-apply observer and its timer tear down here so a table removed
 // from the page cannot re-apply rounding after it leaves.
@@ -536,7 +532,7 @@ function revalidateTableShape(table, opts = {}) {
 // otherwise describe an entry that is gone. A shape change that
 // registers a fresh table makes that table active right after, and the
 // sidebar's read, which lands after this handler finishes, reads it.
-function teardownTableEntry(table, reason) {
+function teardownTableEntry(table) {
   const button = tablePillboxes.get(table);
   if (button && button.parentElement) {
     button.parentElement.removeChild(button);
@@ -548,7 +544,6 @@ function teardownTableEntry(table, reason) {
   unwatchTable(table);
   trackedTables.delete(table);
   DR_MODEL.unregisterTable(table);
-  DR_LOG.debug("Dynamic Rounding: " + reason + " table unregistered.");
   if (DR_MODEL.getActiveTable() === table) {
     DR_BUS.publish('intent:activateTable', { table: null });
     DR_BUS.publish('state:previewSamplesChanged', {});
@@ -558,8 +553,13 @@ function teardownTableEntry(table, reason) {
 if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
   ensureScrollResizeListeners();
 
-  // MutationObserver to watch for dynamically added/removed tables and grids
+  // MutationObserver to watch for dynamically added/removed tables and grids.
+  // A removal counts its unregistered tables and dropped pending tables
+  // across one callback and writes one row for each count, so a page that
+  // swaps its view spends at most two rows of the log buffer.
   const _tableObserver = new MutationObserver((mutations) => {
+    let unregistered = 0;
+    let pendingDropped = 0;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
@@ -574,7 +574,8 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
           const contained = table === node ||
             (typeof node.contains === 'function' && node.contains(table));
           if (!contained) continue;
-          teardownTableEntry(table, 'removed');
+          teardownTableEntry(table);
+          unregistered++;
         }
         // The same sweep over the pending roots. A pending table holds no
         // registry entry, so the loop above passes over it; without this one
@@ -584,9 +585,15 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
             (typeof node.contains === 'function' && node.contains(chainRoot));
           if (!contained) continue;
           dropPendingTable(chainRoot);
-          DR_LOG.debug("Dynamic Rounding: removed pending table dropped.");
+          pendingDropped++;
         }
       }
+    }
+    if (unregistered > 0) {
+      DR_LOG.debug(DR_LOG.formatRow('unregister', { tables: unregistered }));
+    }
+    if (pendingDropped > 0) {
+      DR_LOG.debug(DR_LOG.formatRow('pending table drop', { reason: 'removed', tables: pendingDropped }));
     }
   });
 
@@ -820,15 +827,9 @@ function extractPreviewSamples(table) {
 // and this context's log rows. Composed in a named function so the suite
 // drives it directly (the bus's own message listener is a no-op stub there);
 // the responder above only returns it.
-//
-// The cell-count row is recorded BEFORE the log snapshot is taken, so an
-// oversized capture carries its own size evidence inside itself.
 function buildCaptureStateResponse() {
   const state = collectCaptureState();
   const selected = DR_MODEL.getActiveTable();
-  const cellCounts = state.tables.map(function (t) { return t.cells.length; });
-  DR_LOG.debug('Dynamic Rounding: capture state collected (' + state.tables.length +
-    ' table(s), cells per table: [' + cellCounts.join(', ') + ']).');
   // The serializer guards per table; this walk of the bound table is the one
   // step after it that can throw, and an unguarded throw here would discard
   // the whole page-side half — the serialized registry, the fixture seed,
@@ -839,8 +840,7 @@ function buildCaptureStateResponse() {
     try {
       lensPreview = extractPreviewSamples(selected);
     } catch (e) {
-      DR_LOG.warn('Dynamic Rounding: lens preview extraction failed during capture (' +
-        String(e && e.message ? e.message : e) + ').');
+      DR_LOG.warn(DR_LOG.formatRow('error', { step: 'lens preview', error: DR_LOG.errorType(e) }));
     }
   }
   return Object.assign({
