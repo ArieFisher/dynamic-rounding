@@ -71,7 +71,7 @@ function flatPatches(patches, layout) {
  * in one piece. A number whose characters cross a piece boundary (a split
  * number) leaves the decision and stays as written; the cell's other numbers
  * round. A decision left with no number skips with 'split'. Both outcomes
- * carry split: true, which the pass reads to write the debug row. A date or
+ * carry split: true, which the pass reads to count the split number. A date or
  * time passes through; its piece check runs when its patch is built, because
  * only a changed value needs one. A cell with no layout skips with
  * 'pieces-changed'.

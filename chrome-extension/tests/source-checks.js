@@ -2128,7 +2128,8 @@
   eq('capture-shot: takeCaptureScreenshot extracted from sidebar.js', !!source, true);
   if (!source) return;
   const warned = [];
-  const logStub = { warn: (text) => { warned.push(text); }, debug: () => {} };
+  const logStub = { warn: (text) => { warned.push(text); }, debug: () => {},
+    formatRow: DR_LOG.formatRow, errorType: DR_LOG.errorType };
   // The quality constant sits beside the take in the source; the take reads
   // it as a bare name, so the extracted function receives it the same way.
   const quality = sidebarSrc.match(/const CAPTURE_SCREENSHOT_QUALITY = (\d+);/);
@@ -2160,14 +2161,17 @@
   const failed = drive({ captureVisibleTab: () => rejected(new Error('activeTab missing')) }, 7);
   eq('capture-shot: a rejected take yields a not-taken record with the reason and no data URL',
     failed, [{ dataUrl: null, record: { taken: false, reason: 'activeTab missing' } }]);
-  eq('capture-shot: a rejected take logs a warn row',
-    warned.length === 1 && /screenshot failed \(activeTab missing\)/.test(warned[0]), true);
+  eq('capture-shot: a rejected take writes one warn row naming the step and the error type',
+    warned, ['Dynamic Rounding: error · step: screenshot · error: Error']);
 
   const threw = drive({ captureVisibleTab: () => { throw new Error('no permission'); } }, 7);
   eq('capture-shot: a take that throws before returning yields a not-taken record',
     threw, [{ dataUrl: null, record: { taken: false, reason: 'no permission' } }]);
 
+  warned.length = 0;
   const missing = drive({}, 7);
+  eq('capture-shot: a failure with a text reason writes one warn row naming the step alone',
+    warned, ['Dynamic Rounding: error · step: screenshot']);
   eq('capture-shot: a missing capture function yields a not-taken record',
     missing.length === 1 && missing[0].dataUrl === null && missing[0].record.taken === false &&
       typeof missing[0].record.reason === 'string' && missing[0].record.reason.length > 0, true);
@@ -2486,8 +2490,6 @@
     /console\.debug\(/.test(sourceByName('content.js') || ''), false);
   eq('dr-log: detect.js keeps no direct console.debug call',
     /console\.debug\(/.test(detectCode || ''), false);
-  eq('dr-log: registration logs a row (ui-pillbox.js)',
-    /DR_LOG\.debug\([^)]*egistered/.test(uiPillboxCode || ''), true);
 })();
 
 // --- The service worker runs on the bus ---
@@ -2495,6 +2497,11 @@
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
   eq('worker on bus: importScripts loads the messaging adapter',
     /importScripts\([^)]*adapters\/messaging\.js/.test(bgSrc), true);
+  eq('worker log row: importScripts loads the log module',
+    /importScripts\([^)]*lib\/dr-log\/index\.js/.test(bgSrc), true);
+  eq('worker log row: the open-sidebar failure writes the one row format to the console',
+    /console\.warn\(DR_LOG\.formatRow\('error', \{ step: 'open sidebar', error: DR_LOG\.errorType\(e\) \}\)\)/
+      .test(bgSrc), true);
   eq('worker on bus: no raw chrome.tabs.sendMessage call',
     bgSrc.includes('chrome.tabs.sendMessage'), false);
   eq('worker on bus: the menu click publishes with an explicit tab number',

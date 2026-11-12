@@ -1125,9 +1125,61 @@ const SINGLE_READ_SAMPLES = {
   eq('capture-size: opening the form measures the pulled state through the package helper',
     sidebarJsSrc.includes('DR_CAPTURE.sizeWarning(') &&
       sidebarJsSrc.includes('captureSizeNote'), true);
-  eq('capture-size: a failed save reports on the status line and is logged',
-    sidebarJsSrc.includes('Capture failed') &&
-      /DR_LOG\.warn\([^)]*save failed/.test(sidebarJsSrc), true);
+  eq('capture-size: a failed save reports on the status line',
+    sidebarJsSrc.includes('Capture failed'), true);
+})();
+
+// --- sidebar: the capture's log rows ---
+//
+// Opening the form, pressing finish, and a save that completes write no row:
+// the capture they produce holds its mark, its state, and itself. A failed
+// step writes one warn row naming the step and, for a thrown Error, its type.
+// Every step here settles at once, so each press runs to its end in the call.
+(function captureLogRows() {
+  const h = makeIssue251SidebarHarness({ captureMarks: ['looks-wrong'] });
+  if (!h) {
+    eq('capture rows: source files present in manifest', false, true);
+    return;
+  }
+  const lastLevel = () => DR_LOG.snapshot().entries.slice(-1)[0].level;
+  try {
+    eq('capture rows: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+    eq('capture rows: a table switch writes one row',
+      logRowsDuring(() => h.dispatch({ action: 'state:tableSwitched' })),
+      ['Dynamic Rounding: table switch']);
+    eq('capture rows: opening the form writes no row',
+      logRowsDuring(() => h.captureMarkEls[0].fire('click')), []);
+
+    // The page answers the state pull, the tab takes the screenshot, and the
+    // page body takes the download link. The suite's log buffer also feeds
+    // the toast view, which draws a warn row's toast on this document.
+    h.chromeMock.runtime.getManifest = () => ({ version: '0.0.0' });
+    global.document.head = { appendChild() {} };
+    h.chromeMock.tabs.captureVisibleTab = () => ({ then(ok) { ok('data:image/jpeg;base64,AAAA'); } });
+    global.document.body.appendChild = () => {};
+    global.document.createElement = () => ({ click() {}, remove() {}, setAttribute() {}, addEventListener() {} });
+    eq('capture rows: pressing finish and a completed save write no row',
+      logRowsDuring(() => h.el('captureSave').fire('click')), []);
+
+    h.captureMarkEls[0].fire('click');
+    const answerTab = h.chromeMock.tabs.sendMessage;
+    h.chromeMock.tabs.sendMessage = (tabId, msg, cb) =>
+      (msg.action === 'request:captureState' ? cb(undefined) : answerTab(tabId, msg, cb));
+    eq('capture rows: an unanswered state pull writes one warn row naming the step',
+      [logRowsDuring(() => h.el('captureSave').fire('click')), lastLevel()],
+      [['Dynamic Rounding: error · step: state pull'], 'warn']);
+    h.chromeMock.tabs.sendMessage = answerTab;
+
+    // A page body with no append makes the save throw a TypeError.
+    h.captureMarkEls[0].fire('click');
+    delete global.document.body.appendChild;
+    eq('capture rows: a save that throws writes one warn row naming the step and the error type',
+      [logRowsDuring(() => h.el('captureSave').fire('click')), lastLevel()],
+      [['Dynamic Rounding: error · step: capture save · error: TypeError'], 'warn']);
+  } finally {
+    h.restore();
+  }
 })();
 
 // --- sidebar: section order ---
@@ -1195,8 +1247,6 @@ const SINGLE_READ_SAMPLES = {
     /DR_CAPTURE\.filenameFor\(\{[^}]*mark: mark/.test(sidebarJsSrc), true);
   eq('capture-ui: the sidebar\'s own log snapshot travels beside the content script\'s',
     /sidebar: DR_LOG\.snapshot\(\)/.test(sidebarJsSrc), true);
-  eq('capture-ui: an unanswered state request still saves and records the failure',
-    /DR_LOG\.warn\([^)]*went unanswered/.test(sidebarJsSrc), true);
   const saveBody = (sidebarJsSrc.match(/function saveCapture\(\)[\s\S]*?\n\}/) || [''])[0];
   eq('capture-ui: finish takes the screenshot beside the state pull and the save waits for both',
     saveBody.includes("DR_BUS.request('request:captureState'") &&

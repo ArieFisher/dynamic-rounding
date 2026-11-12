@@ -289,28 +289,23 @@ const SEAT_ROWS = [
   };
 })();
 
-// Two numbers in one text piece are two patches that land in one write. The
-// failure row holds a count of patches, never of touched pieces, so two
-// landed patches in one piece log no row.
-(function twoPatchesInOnePieceLogNoFailure() {
+// Two numbers in one text piece are two patches that land in one write, so
+// the pass counts no text mismatch.
+(function twoPatchesInOnePieceCountNoMismatch() {
   const table = makeMockTable([[
     { tag: 'td', text: 'Cost: 123,456 to 654,321 per month' },
   ]]);
-  const failureRows = [];
-  const offRow = DR_LOG.onRow((row) => {
-    if (/cells were left unrounded/.test(row.text)) failureRows.push(row.text);
-  });
   try {
+    let result = null;
     withCreateTreeWalker(function () {
-      roundTable(table, EXTRACTED_PATCH_OPTS);
+      result = roundTable(table, EXTRACTED_PATCH_OPTS);
     });
     const cell = table.rows[0].cells[0];
     eq('patch-honesty: both numbers in one piece change',
       /123,456|654,321/.test(cell.innerText), false);
-    eq('patch-honesty: two landed patches in one piece log no failure row',
-      failureRows, []);
+    eq('patch-honesty: two landed patches in one piece count no text mismatch',
+      result.leftAsWritten.textMismatch, 0);
   } finally {
-    offRow();
     DR_MODEL.unregisterTable(table);
   }
 })();
@@ -871,7 +866,7 @@ const SEAT_ROWS = [
     try {
       eq('native separate pieces: the lens preview pool holds the numbers the pass rounds',
         collectNumericCells(table, opts).map((cell) => cell.num), [337.91, 125, 126]);
-      roundTable(table, opts);
+      const result = roundTable(table, opts);
       eq('native separate pieces: a currency sign in its own piece stays and the number rounds',
         a.map((seg) => seg.text), ['$', '350']);
       eq('native separate pieces: one number per line rounds number by number',
@@ -880,9 +875,8 @@ const SEAT_ROWS = [
         c.map((seg) => seg.text), ['6,7', '18,245']);
       eq('native separate pieces: a number split after its grouping comma stays unchanged',
         d.map((seg) => seg.text), ['3,406,', '918']);
-      eq('native separate pieces: each split number leaves a debug row',
-        rows.filter((row) => row.level === 'debug' && /number split across text pieces/.test(row.text)).length,
-        2);
+      eq('native separate pieces: the pass writes no row and counts each split number',
+        { rows: rows.length, splitNumber: result.leftAsWritten.splitNumber }, { rows: 0, splitNumber: 2 });
     } finally {
       offRow();
       DR_MODEL.unregisterTable(table);
@@ -1670,7 +1664,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const grid = makeKeyStatsGrid();
   const piecesBefore = grid.cellEls.map(gridCellTextPieces);
   try {
-    roundTable(grid.wrapperEl, KEY_STATS_OPTS);
+    const result = roundTable(grid.wrapperEl, KEY_STATS_OPTS);
     eq('grid separate pieces: each cell\'s pieces after the round',
       grid.cellEls.map(pieceTextsOf), [
         ['$350'], ['5tn'],
@@ -1687,14 +1681,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
       }), true);
     eq('grid separate pieces: the max magnitude counts the numbers in separate pieces one by one',
       DR_MODEL.getTableMaxMagnitude(grid.wrapperEl), 2);
-    eq('grid separate pieces: a number split across pieces leaves a debug row',
-      DR_LOG.snapshot().entries.some(
-        (row) => row.level === 'debug' && /split across text pieces/.test(row.text) && /number/.test(row.text)),
-      true);
-    eq('grid separate pieces: a date split across pieces leaves a debug row',
-      DR_LOG.snapshot().entries.some(
-        (row) => row.level === 'debug' && /split across text pieces/.test(row.text) && /date or time/.test(row.text)),
-      true);
+    eq('grid separate pieces: the pass counts the split number and the split date',
+      result.leftAsWritten, { splitNumber: 1, splitDateOrTime: 1, textMismatch: 0 });
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -1793,20 +1781,17 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   setGridCellPieces(a, [makeElementNode('s', [makeTextNode('$')]), makeElementNode('n', [makeTextNode('337.91')])]);
   setGridCellPieces(b, [makeElementNode('l1', [makeTextNode('125')]), makeElementNode('l2', [makeTextNode('126')])], { lines: true });
   setGridCellPieces(c, [makeTextNode('6,7'), makeElementNode('b', [makeTextNode('18,245')])]);
-  const rows = [];
-  const offRow = DR_LOG.onRow((row) => rows.push(row));
   try {
-    roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
+    const result = roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('grid separate pieces: a currency sign in its own piece stays and the number rounds, as on a native table',
       pieceTextsOf(a), ['$', '350']);
     eq('grid separate pieces: one number per line rounds, as on a native table',
       pieceTextsOf(b), ['150', '150']);
     eq('grid separate pieces: one number that inline styling splits stays unchanged, as on a native table',
       pieceTextsOf(c), ['6,7', '18,245']);
-    eq('grid separate pieces: the styled number leaves a debug row',
-      rows.some((row) => row.level === 'debug' && /number split across text pieces/.test(row.text)), true);
+    eq('grid separate pieces: the pass counts the styled number as a split number',
+      result.leftAsWritten.splitNumber, 1);
   } finally {
-    offRow();
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
 })();
@@ -2649,7 +2634,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     // document.body) runs teardownTableEntry when it detects a tracked table was
     // removed from the DOM. In the test harness the _tableObserver is a no-op
     // stub, so the teardown runs directly.
-    teardownTableEntry(grid.wrapperEl, 'removed');
+    teardownTableEntry(grid.wrapperEl);
 
     // Assert cleanup.
     eq('GV7: observer disconnected after removed-node teardown',
@@ -3241,8 +3226,8 @@ function everyRowRead(kind, largeIn) {
 })();
 
 // The lens preview writes no log rows: a native value split across text
-// pieces, which the simplification pass records with a debug row, leaves
-// the log unchanged when the preview classifies it.
+// pieces, which the simplification pass counts, leaves the log unchanged
+// when the preview classifies it.
 (function previewWritesNoLogRows() {
   withReactiveCreateTreeWalker(function () {
     const opts = { simplifyFirstRow: true, simplifyFirstColumn: true, rangeExpr: '' };
@@ -3254,9 +3239,8 @@ function everyRowRead(kind, largeIn) {
       eq('preview log rows: the split value stays out of the pool',
         collectNumericCells(table, opts), []);
       eq('preview log rows: the preview writes no row', rows.length, 0);
-      roundTable(table, opts);
-      eq('preview log rows (control): the simplification pass writes the split row',
-        rows.some((row) => row.level === 'debug' && /number split across text pieces/.test(row.text)), true);
+      eq('preview log rows (control): the simplification pass counts the split number',
+        roundTable(table, opts).leftAsWritten.splitNumber, 1);
     } finally {
       offRow();
       DR_MODEL.unregisterTable(table);
@@ -3582,7 +3566,7 @@ function everyRowRead(kind, largeIn) {
 
 // A cart totals table in European style, minimized and synthetic. "7,42€"
 // must not read as 742 and round to "700€". Every cell stays as written on
-// both table kinds, and the pass writes its usual debug row.
+// both table kinds, and the pass writes no row.
 (function decimalComma_cartTableStaysAsWritten() {
   const rows = [
     ['Item', 'Price'],
@@ -3592,9 +3576,7 @@ function everyRowRead(kind, largeIn) {
   ];
   const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
   const passRows = [];
-  const offRow = DR_LOG.onRow((row) => {
-    if (row.level === 'debug' && /a pass read \d+ cells/.test(row.text)) passRows.push(row);
-  });
+  const offRow = DR_LOG.onRow((row) => passRows.push(row));
   try {
     withCreateTreeWalker(function() {
       const table = makeMockTable(rows.map((row) => row.map((text) => ({ tag: 'td', text }))));
@@ -3602,7 +3584,6 @@ function everyRowRead(kind, largeIn) {
       eq('decimal comma (native table): every cell of the cart table stays as written',
         table.rows.map((row) => row.cells.map((c) => c.textContent)), rows);
     });
-    eq('decimal comma (native table): the pass writes its usual debug row', passRows.length, 1);
 
     const grid = makeE2EGridWrapper(rows);
     try {
@@ -3612,7 +3593,7 @@ function everyRowRead(kind, largeIn) {
     } finally {
       DR_MODEL.unregisterTable(grid.wrapperEl);
     }
-    eq('decimal comma (grid): the pass writes its usual debug row', passRows.length, 2);
+    eq('decimal comma (both table kinds): the pass writes no row', passRows.length, 0);
   } finally {
     offRow();
   }
@@ -4175,7 +4156,7 @@ const RW_ROWS = [['1,234', '5,678'], ['2,468', '3,579']];
 const RW_KINDS = ['native', 'grid'];
 
 // Every log row from here on, kept whole: the log's own buffer drops old
-// rows, and a pass writes a debug row of its own.
+// rows.
 const rwLogged = [];
 
 DR_LOG.onRow((row) => rwLogged.push(row));
@@ -4183,7 +4164,7 @@ DR_LOG.onRow((row) => rwLogged.push(row));
 const rwRows = (level, pattern) => rwLogged
   .filter((row) => row.level === level && pattern.test(row.text)).length;
 
-const RW_CAP_ROW = /more than the .* the extension follows/;
+const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
 
 // --- Test 1: a cell the extension holds, unchanged: the pass writes nothing. ---
 (function rewrite01_aHeldCellTakesNoWrite() {
@@ -4727,10 +4708,13 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
 // --- Test 14: the cell cap. A table one cell over the cap writes nothing,
 // its watcher stops, and one warning row records it. A table at the cap runs
 // its pass. A table over the cap at its first simplification never attaches
-// a watcher. ---
+// a watcher. The pass target is below every duration, so a re-apply pass
+// row beside the stop's row would show. ---
 (function rewrite14_theCellCap() {
   const savedCap = DR_DETECTION_SETTINGS.reapplyCellCap;
+  const savedTarget = DR_DETECTION_SETTINGS.passTargetMs;
   DR_DETECTION_SETTINGS.reapplyCellCap = 4;
+  DR_DETECTION_SETTINGS.passTargetMs = -1;
   try {
     eachRewriteKind(RW_KINDS, (kind, page, build) => {
       const t = build(RW_ROWS);
@@ -4739,13 +4723,14 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       page.settle();
       eq(`#421 cell cap (${kind}): a table at the cap runs its pass`, t.text(0, 0), '4,300');
 
-      const rowsBefore = rwRows('debug', RW_CAP_ROW);
+      const rowsBefore = rwLogged.length;
       t.addRow(['8,765']);
       t.write(0, 1, '6,543');
       page.settle();
       eq(`#421 cell cap (${kind}): a pass over the cap writes nothing`,
         [t.text(0, 1), t.rowTexts()[2][0]], ['6,543', '8,765']);
-      eq(`#421 cell cap (${kind}): one debug row records the stop`, rwRows('debug', RW_CAP_ROW) - rowsBefore, 1);
+      eq(`#421 cell cap (${kind}): the stop writes one row and no re-apply pass row`,
+        rwLogged.slice(rowsBefore).map((row) => row.text), ['Dynamic Rounding: above cell cap · cells: 5']);
       t.write(1, 0, '7,654');
       page.settle();
       eq(`#421 cell cap (${kind}): the stopped watcher runs no later pass`, t.text(1, 0), '7,654');
@@ -4766,6 +4751,35 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
     });
   } finally {
     DR_DETECTION_SETTINGS.reapplyCellCap = savedCap;
+    DR_DETECTION_SETTINGS.passTargetMs = savedTarget;
+  }
+})();
+
+// --- The pass target. A re-apply pass writes a row only when it runs longer
+// than the pass target; one that leaves a split number as written still
+// writes none. ---
+(function rewrite_aReapplyPassWritesARowOnlyOverThePassTarget() {
+  const savedTarget = DR_DETECTION_SETTINGS.passTargetMs;
+  try {
+    eachRewriteKind(RW_KINDS, (kind, page, build) => {
+      DR_DETECTION_SETTINGS.passTargetMs = savedTarget;
+      const t = build([[['6,7', { tag: 'b', text: '18,245' }], '1,234'], ['2,468', '3,579']]);
+      roundTableUnder(t.table, RW_OPTS);
+      let before = rwLogged.length;
+      t.write(1, 0, '4,321');
+      page.settle();
+      eq(`pass target (${kind}): a re-apply pass under the target writes no row`,
+        rwLogged.slice(before).map((row) => row.text), []);
+      DR_DETECTION_SETTINGS.passTargetMs = -1;
+      before = rwLogged.length;
+      t.write(1, 0, '4,322');
+      page.settle();
+      const rows = rwLogged.slice(before).map((row) => row.text);
+      eq(`pass target (${kind}): a re-apply pass over the target writes one row with its duration`,
+        rows.length === 1 && /^Dynamic Rounding: re-apply pass · ms: [\d,]+$/.test(rows[0]), true);
+    });
+  } finally {
+    DR_DETECTION_SETTINGS.passTargetMs = savedTarget;
   }
 })();
 
@@ -5024,25 +5038,14 @@ const placeCellAfter = (build, rows, opts) => {
   });
 })();
 
-// The debug row for a split number reads the same on both kinds.
-(function placement_aSplitNumberWritesTheSameDebugRowOnBothKinds() {
-  const rowsByKind = {};
+// Both kinds count a split number the same.
+(function placement_aSplitNumberCountsTheSameOnBothKinds() {
   for (const [name, spec] of [['split only', ['ref 1,2', { tag: 'b', text: '34' }]],
     ['split and whole', ['1,2', { tag: 'b', text: '34' }, ' to 5,678']]]) {
-    for (const kind of RW_KINDS) {
-      eachRewriteKind([kind], (k, page, build) => {
-        const before = rwLogged.length;
-        const t = build(LF_ROWS(spec));
-        roundTableUnder(t.table, RW_OPTS);
-        const rows = rwLogged.slice(before)
-          .filter((row) => row.level === 'debug' && /split across text pieces/.test(row.text))
-          .map((row) => row.text);
-        rowsByKind[`${name}/${kind}`] = rows;
-        eq(`placement debug row (${kind}, ${name}): the cell writes one split-number row`, rows.length, 1);
-        eq(`placement debug row (${kind}, ${name}): the row reports a number`, /number/.test(rows[0] || ''), true);
-      });
-    }
-    eq(`placement debug row (${name}): both kinds write the same row text`,
-      rowsByKind[`${name}/native`], rowsByKind[`${name}/grid`]);
+    eachRewriteKind(RW_KINDS, (kind, page, build) => {
+      const t = build(LF_ROWS(spec));
+      eq(`placement split number (${kind}, ${name}): the pass counts one split number`,
+        roundTableUnder(t.table, RW_OPTS).leftAsWritten.splitNumber, 1);
+    });
   }
 })();

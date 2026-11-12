@@ -122,8 +122,8 @@ function finalizeExtractedDecision(decision, cell, layout) {
 }
 
 // The page reads the pure ladder cannot make pass in as plain data (see the
-// lib/dr-simplify/ladder.js header). This writes nothing: the pass writes the
-// debug row for a split number (entry.split) afterward.
+// lib/dr-simplify/ladder.js header). This writes nothing: the pass counts a
+// split number (entry.split) afterward.
 //
 // A simplified cell classifies its stored original rather than the rounded
 // text now showing; the superscript ranges and the link filter locate each

@@ -2098,11 +2098,17 @@ function withRightClickSandbox(run) {
     eval(contentScriptBundle + `
       globalThis.__rcr_DR_MODEL = DR_MODEL;
       globalThis.__rcr_tablePillboxes = tablePillboxes;
+      globalThis.__rcr_DR_LOG = DR_LOG;
+      globalThis.__rcr_DR_BUS = DR_BUS;
+      globalThis.__rcr_holdPendingTable = holdPendingTable;
     `);
     run({
       get contextmenuHandler() { return contextmenuHandler; },
       model: global.__rcr_DR_MODEL,
       tablePillboxes: global.__rcr_tablePillboxes,
+      log: global.__rcr_DR_LOG,
+      bus: global.__rcr_DR_BUS,
+      holdPendingTable: global.__rcr_holdPendingTable,
       observeCalls, constructedObservers, sentMessages, pendingTimers,
     });
   } finally {
@@ -2112,6 +2118,9 @@ function withRightClickSandbox(run) {
     global.getComputedStyle = saved.getComputedStyle; global.setTimeout = saved.setTimeout;
     delete global.__rcr_DR_MODEL;
     delete global.__rcr_tablePillboxes;
+    delete global.__rcr_DR_LOG;
+    delete global.__rcr_DR_BUS;
+    delete global.__rcr_holdPendingTable;
   }
 }
 
@@ -2493,10 +2502,21 @@ function trackPillboxDetach(table) {
   return removedPillboxes;
 }
 
-// The last ten debug rows, for an assertion that one row landed. The buffer
-// caps at 50 rows and drops from the front, so a fixed index into it drifts.
-function recentLogRows() {
-  return DR_LOG.snapshot().entries.slice(-10).map((row) => row.text);
+/**
+ * The text of every row a function writes to a log buffer while it runs.
+ * @param {Function} fn The function to run.
+ * @param {object} [log] The log buffer to read; DR_LOG when absent.
+ * @returns {string[]} Each row's text, in the order written.
+ */
+function logRowsDuring(fn, log = DR_LOG) {
+  const rows = [];
+  const offRow = log.onRow((row) => rows.push(row.text));
+  try {
+    fn();
+  } finally {
+    offRow();
+  }
+  return rows;
 }
 
 // ===========================================================================

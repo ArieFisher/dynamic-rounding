@@ -11,8 +11,9 @@
  * DR_LOG holds the last 50 rows the extension records in this context. Each
  * context evaluates this file separately — the content script loads it from
  * the manifest (directly after constants.js, so every later file can log),
- * the sidebar loads it from a script tag — so each holds its own buffer, and
- * a capture carries each buffer's snapshot labeled by its context.
+ * the sidebar loads it from a script tag, the service worker imports it
+ * — so each holds its own buffer, and a capture carries the content script's
+ * and the sidebar's snapshots, each labeled by its context.
  *
  * Every row also forwards to the real console, so devtools output is
  * unchanged. The buffer exists because a capture cannot read the console:
@@ -117,5 +118,37 @@ const DR_LOG = (function () {
   function warn(text) { record('warn', text, warn); }
   function error(text) { record('error', text, error); }
 
-  return { debug, info, warn, error, snapshot, onRow, ERROR_LEVELS: ERROR_LEVELS.slice() };
+  /**
+   * Joins an event and its labeled values into one row's text:
+   * "Dynamic Rounding: <event> · <label>: <value> · …".
+   * @param {string} event The event name, lower case, in the vocabulary's terms.
+   * @param {Object<string, (string|number|null|undefined)>} [fields] Each label
+   *   mapped to its value, in the order the row shows them. A number renders
+   *   with thousands separators; a null, undefined, or empty value leaves its
+   *   label out.
+   * @returns {string} The row text.
+   */
+  function formatRow(event, fields) {
+    const parts = ['Dynamic Rounding: ' + event];
+    for (const [label, value] of Object.entries(fields || {})) {
+      if (value === null || value === undefined || value === '') continue;
+      parts.push(label + ': ' + (typeof value === 'number' ? value.toLocaleString('en-US') : value));
+    }
+    return parts.join(' · ');
+  }
+
+  /**
+   * The type name of a thrown value, for a row's error label. A row never
+   * holds the browser's message, which can carry page text.
+   * @param {*} thrown The value a catch block received.
+   * @returns {(string|null)} The type name when the value is an Error, otherwise null.
+   */
+  function errorType(thrown) {
+    return thrown instanceof Error ? thrown.name : null;
+  }
+
+  return {
+    debug, info, warn, error, snapshot, onRow, formatRow, errorType,
+    ERROR_LEVELS: ERROR_LEVELS.slice(),
+  };
 })();
