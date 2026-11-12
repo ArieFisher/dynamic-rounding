@@ -9,8 +9,8 @@ const enabledEl = document.getElementById('enabled');
 const optionsSection = document.getElementById('optionsSection');
 const statusEl = document.getElementById('status');
 
-const NO_TABLE_CLASS = 'no-table';
-const NO_TABLE_STATUS_MSG = 'Right-click a table to connect it here.';
+const UNBOUND_CLASS = 'unbound';
+const UNBOUND_STATUS_MSG = 'Right-click a table to connect it here.';
 
 
 // ---- The sidebar serves one tab ----
@@ -35,7 +35,7 @@ function createBoundTab(tabsApi, bus) {
   // message carrying no tab came from an extension page rather than a content
   // script, and belongs to no tab at all. A message arriving before resolve()
   // records the tab is dropped.
-  function ownsReport(meta) {
+  function isBoundTabMessage(meta) {
     return boundTabId !== null && !!meta && meta.tabId === boundTabId;
   }
 
@@ -79,7 +79,7 @@ function createBoundTab(tabsApi, bus) {
     // at each subscription.
     subscribe(topic, handler) {
       return bus.subscribe(topic, (payload, meta) => {
-        if (!ownsReport(meta)) return;
+        if (!isBoundTabMessage(meta)) return;
         handler(payload, meta);
       });
     },
@@ -149,18 +149,18 @@ function clearStatus(source) {
 }
 
 function setTableBound(isBound) {
-  document.body.classList.toggle(NO_TABLE_CLASS, !isBound);
+  document.body.classList.toggle(UNBOUND_CLASS, !isBound);
   if (!isBound) {
     // No active table: there is nothing for rounding to act on, so flip the
     // sidebar pillbox to its off state rather than dimming the whole sidebar.
     clearStatus();
     enabledEl.checked = false;
-    writeStatus(NO_TABLE_STATUS_MSG);
+    writeStatus(UNBOUND_STATUS_MSG);
   } else {
     // A table is now bound. The sidebar pillbox is not touched here: the
     // settings pull has already set it from the model or the shipped
     // defaults, and a bind must not reset it.
-    if (statusEl.textContent === NO_TABLE_STATUS_MSG) {
+    if (statusEl.textContent === UNBOUND_STATUS_MSG) {
       statusEl.textContent = '';
     }
   }
@@ -190,8 +190,8 @@ const dateGranularityEl = document.getElementById('dateGranularity');
 const timeGranularityEl = document.getElementById('timeGranularity');
 const rangeExprEl = document.getElementById('rangeExpr');
 
-// ----- Linked dual-thumb sliders -----
-// Stops are ordered so the *rounding strategy* changes monotonically across the
+// ----- Coupled lens control -----
+// Stops are ordered so the *step* changes monotonically across the
 // track (finest step on the left, coarsest on the right), NOT by offset value.
 // stepForOffset is non-monotonic in the offset because half-step offsets
 // interleave with the integer ones: e.g. at mag 6 the steps run
@@ -200,14 +200,14 @@ const rangeExprEl = document.getElementById('rangeExpr');
 // Hence -0.25 precedes -0.5, and -1 sits right after -1.5.
 const STOPS = [-2, -1.5, -1, -0.25, -0.5, 0, 0.25, 0.5, 1];
 
-const sliderBlockEl = document.getElementById('sliderBlock');
+const lensControlEl = document.getElementById('lensControl');
 const topThumb = document.getElementById('topThumb');
-const botThumb = document.getElementById('botThumb');
+const otherThumb = document.getElementById('otherThumb');
 const trackEl = document.getElementById('dualWrap').querySelector('.dual-track');
 
 let topVal = DR_DEFAULTS.offsetTop;
-let botVal = DR_DEFAULTS.offsetTop;
-let linked = true;
+let otherVal = DR_DEFAULTS.offsetTop;
+let coupled = true;
 
 function snap(v) {
   let best = STOPS[0];
@@ -240,19 +240,19 @@ function stopAtRatio(ratio) {
   return STOPS[Math.max(0, Math.min(STOPS.length - 1, Math.floor(ratio * STOPS.length)))];
 }
 
-function renderSliders() {
+function renderLensControl() {
   topThumb.style.left = stopPosition(topVal) + '%';
-  botThumb.style.left = stopPosition(botVal) + '%';
-  botThumb.classList.toggle('linked', linked);
-  sliderBlockEl.classList.toggle('linked', linked);
+  otherThumb.style.left = stopPosition(otherVal) + '%';
+  otherThumb.classList.toggle('coupled', coupled);
+  lensControlEl.classList.toggle('coupled', coupled);
   topThumb.setAttribute('aria-valuenow', String(topVal));
-  botThumb.setAttribute('aria-valuenow', String(botVal));
-  renderPreviewBands();
+  otherThumb.setAttribute('aria-valuenow', String(otherVal));
+  renderLensPreview();
 }
 
 // ----- Lens preview -----
-const topBandEl = document.getElementById('topBand');
-const botBandEl = document.getElementById('botBand');
+const topPreviewEl = document.getElementById('topPreview');
+const otherPreviewEl = document.getElementById('otherPreview');
 let cachedSamples = null;
 let cachedMaxMag = null;
 
@@ -281,7 +281,7 @@ function formatOriginal(numOrStr) {
 
 const OOM_LABEL_CLASS = 'oom-label';
 const STEP_LABEL_CLASS = 'step-label';
-const STRATEGY_CLASS = 'strategy';
+const STEP_HEADER_CLASS = 'step-header';
 
 /**
  * Return a human-readable OoM label for a given magnitude (floor(log10(|n|))).
@@ -337,20 +337,20 @@ function appendSampleRow(el, className, fromText, numText) {
 }
 
 /**
- * Render the top of the lens preview on two lines: the strategy header (blue) on the
+ * Render the top of the lens preview on two lines: the step header (blue) on the
  * first line and a single worked example ("e.g. <original> → <rounded>", black)
  * on the second. Both lines are laid out as from|arrow|num pairs in the shared
  * 3-column grid so their "→" arrows line up vertically. The example carries no
  * step annotation and shows the bare original number.
  */
-function renderTopBand(el, rows, offset) {
+function renderTopPreview(el, rows, offset) {
   if (!el) return;
   el.innerHTML = '';
   if (!rows || rows.length === 0) return;
 
   if (cachedMaxMag !== null && cachedMaxMag !== undefined) {
     const step = stepForOffset(Math.pow(10, cachedMaxMag), offset);
-    appendSampleRow(el, 'pair ' + STRATEGY_CLASS,
+    appendSampleRow(el, 'pair ' + STEP_HEADER_CLASS,
       formatOomLabel(cachedMaxMag), 'nearest ' + formatStep(step));
   }
   const num = rows[0].num;
@@ -364,7 +364,7 @@ function renderTopBand(el, rows, offset) {
  * annotation — "(5k)" — follows the rounded number to show what each example
  * rounds to the nearest of.
  */
-function renderBotBand(el, rows, offset) {
+function renderOtherPreview(el, rows, offset) {
   if (!el) return;
   el.innerHTML = '';
   if (!rows || rows.length === 0) return;
@@ -392,14 +392,14 @@ function appendLabel(cell, className, text) {
   cell.appendChild(label);
 }
 
-function renderPreviewBands() {
+function renderLensPreview() {
   if (!cachedSamples) {
-    topBandEl.innerHTML = '';
-    botBandEl.innerHTML = '';
+    topPreviewEl.innerHTML = '';
+    otherPreviewEl.innerHTML = '';
     return;
   }
-  renderTopBand(topBandEl, cachedSamples.top, topVal);
-  renderBotBand(botBandEl, cachedSamples.bottom, botVal);
+  renderTopPreview(topPreviewEl, cachedSamples.top, topVal);
+  renderOtherPreview(otherPreviewEl, cachedSamples.bottom, otherVal);
 }
 
 // Refreshes the lens preview from the active table; the bound/unbound
@@ -412,41 +412,41 @@ function fetchPreviewSamples() {
     cachedSamples = answer ? answer.samples : null;
     cachedMaxMag = answer ? answer.maxMag : null;
     setTableBound(cachedSamples !== null);
-    renderPreviewBands();
+    renderLensPreview();
   });
 }
 
 function decouple() {
-  if (linked) {
-    linked = false;
-    renderSliders();
+  if (coupled) {
+    coupled = false;
+    renderLensControl();
   }
 }
-function relinkIfMatched() {
-  if (!linked && botVal === topVal) {
-    linked = true;
-    renderSliders();
+function recoupleIfMatched() {
+  if (!coupled && otherVal === topVal) {
+    coupled = true;
+    renderLensControl();
     applyNow();
   }
 }
 
 /**
  * Move one thumb to a stop, then redraw and apply. While the lens control is
- * coupled, a move of the top thumb moves the bot thumb with it.
- * @param {string} which - 'top' or 'bot': the thumb to move.
+ * coupled, a move of the top thumb moves the other thumb with it.
+ * @param {string} which - 'top' or 'other': the thumb to move.
  * @param {number} stop - The stop to move it to.
  * @returns {boolean} Whether a value changed.
  */
 function setThumbValue(which, stop) {
   if (which === 'top') {
-    if (topVal === stop && (!linked || botVal === stop)) return false;
+    if (topVal === stop && (!coupled || otherVal === stop)) return false;
     topVal = stop;
-    if (linked) botVal = stop;
+    if (coupled) otherVal = stop;
   } else {
-    if (botVal === stop) return false;
-    botVal = stop;
+    if (otherVal === stop) return false;
+    otherVal = stop;
   }
-  renderSliders();
+  renderLensControl();
   applyNow();
   return true;
 }
@@ -454,9 +454,9 @@ function setThumbValue(which, stop) {
 function startDrag(which) {
   return function (e) {
     if (e.cancelable) e.preventDefault();
-    if (which === 'bot' && linked) decouple();
+    if (which === 'other' && coupled) decouple();
     const rect = trackEl.getBoundingClientRect();
-    const target = which === 'top' ? topThumb : botThumb;
+    const target = which === 'top' ? topThumb : otherThumb;
     if (target.setPointerCapture && e.pointerId !== undefined) {
       try { target.setPointerCapture(e.pointerId); } catch (_) {}
     }
@@ -470,7 +470,7 @@ function startDrag(which) {
       document.removeEventListener('pointermove', move);
       document.removeEventListener('pointerup', up);
       document.removeEventListener('pointercancel', up);
-      relinkIfMatched();
+      recoupleIfMatched();
     }
     document.addEventListener('pointermove', move);
     document.addEventListener('pointerup', up);
@@ -480,14 +480,14 @@ function startDrag(which) {
 }
 
 function keyboardStep(which, delta) {
-  const cur = which === 'top' ? topVal : botVal;
+  const cur = which === 'top' ? topVal : otherVal;
   const next = STOPS[Math.max(0, Math.min(STOPS.length - 1, STOPS.indexOf(cur) + delta))];
-  if (which === 'bot' && linked) decouple();
-  if (setThumbValue(which, next)) relinkIfMatched();
+  if (which === 'other' && coupled) decouple();
+  if (setThumbValue(which, next)) recoupleIfMatched();
 }
 
 /**
- * @param {string} which - 'top' or 'bot': the thumb that receives the key presses.
+ * @param {string} which - 'top' or 'other': the thumb that receives the key presses.
  * @returns {function(KeyboardEvent): void} The thumb's keydown handler.
  */
 function thumbKeyHandler(which) {
@@ -501,7 +501,7 @@ function thumbKeyHandler(which) {
   };
 }
 
-for (const [which, thumb] of [['top', topThumb], ['bot', botThumb]]) {
+for (const [which, thumb] of [['top', topThumb], ['other', otherThumb]]) {
   thumb.addEventListener('pointerdown', startDrag(which));
   thumb.addEventListener('keydown', thumbKeyHandler(which));
 }
@@ -529,7 +529,7 @@ function currentSettings() {
     dateGranularity: controls.dateGranularity,
     timeGranularity: controls.timeGranularity,
     offsetTop: topVal,
-    offsetOther: botVal,
+    offsetOther: otherVal,
     numTop: 1,
     rangeExpr: controls.rangeExpr,
   });
@@ -607,7 +607,7 @@ boundTab.subscribe('state:tableActivated', () => {
 });
 
 // An echo of the sidebar's own write would overwrite a newer keystroke or
-// slider step.
+// lens control step.
 boundTab.subscribe('state:settingsChanged', ({ source, settings }) => {
   if (source !== 'sidebar') applySettingsToUI(settings);
   fetchPreviewSamples();
@@ -660,9 +660,9 @@ function applySettingsToUI(settings) {
   if (s.dateGranularity) dateGranularityEl.value = s.dateGranularity;
   if (s.timeGranularity) timeGranularityEl.value = s.timeGranularity;
   topVal = snap(typeof s.offsetTop === 'number' ? s.offsetTop : DR_DEFAULTS.offsetTop);
-  botVal = snap(typeof s.offsetOther === 'number' ? s.offsetOther : topVal);
-  linked = (topVal === botVal);
-  renderSliders();
+  otherVal = snap(typeof s.offsetOther === 'number' ? s.offsetOther : topVal);
+  coupled = (topVal === otherVal);
+  renderLensControl();
   rangeExprEl.value = typeof s.rangeExpr === 'string' ? s.rangeExpr : '';
 }
 
@@ -676,7 +676,7 @@ function applySettingsToUI(settings) {
 // never in parallel with it: fetchPreviewSamples's own setTableBound call is
 // what forces enabledEl back off when no table is bound, and that must stay
 // the last word — racing it against this pull could let a pulled "enabled:
-// true" win the UI over an actual no-table state.
+// true" win the UI over an actual unbound state.
 function pullSettingsAndApplyToUI() {
   DR_BUS.request('request:settings', {}, (answer) => {
     applySettingsToUI(answer ? answer.settings : null);
@@ -782,13 +782,13 @@ function collectSidebarView() {
   return Object.assign(readControls(), {
     stops: STOPS.slice(),
     topVal: topVal,
-    botVal: botVal,
-    coupled: linked,
+    botVal: otherVal,
+    coupled: coupled,
     status: statusEl.textContent,
-    noTable: document.body.classList.contains(NO_TABLE_CLASS),
+    noTable: document.body.classList.contains(UNBOUND_CLASS),
     lensPreview: {
-      top: Array.from(topBandEl.children).map((n) => n.textContent),
-      bottom: Array.from(botBandEl.children).map((n) => n.textContent),
+      top: Array.from(topPreviewEl.children).map((n) => n.textContent),
+      bottom: Array.from(otherPreviewEl.children).map((n) => n.textContent),
     },
   });
 }
@@ -946,7 +946,7 @@ rangeExprEl.value = '';
 
 // The opening read pulls live settings, then the preview samples for the
 // active table. With no active table, content.js returns nulls and the
-// sidebar shows the no-table prompt.
+// sidebar shows the unbound prompt.
 boundTab.resolve(() => {
   pullSettingsAndApplyToUI();
   // Registered after the tab lookup, for the reason resolve() states. The

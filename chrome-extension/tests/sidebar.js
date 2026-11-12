@@ -287,20 +287,20 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Sidebar no-table state
+// Sidebar unbound state
 // Tests for the "no table bound" state in sidebar.js.
 //
 // sidebar.js cannot be eval'd wholesale without a full browser DOM, but we
 // can read sidebar.js / sidebar.html source for static assertions.
 //
-// AC1 – init state: body gets no-table class, #status reads the prompt message.
-// AC2 – bound state: setTableBound(true) removes no-table; also check that
+// AC1 – init state: body gets the unbound class, #status reads the prompt message.
+// AC2 – bound state: setTableBound(true) removes the unbound class; also check that
 //        state:previewSamplesChanged triggers the settings pull whose chain ends
 //        in fetchPreviewSamples (the only live-rebind path) — note this means
 //        the sidebar does NOT listen for a separate SET_TABLE_BOUND message;
 //        see gap note below.
 // AC3 – old error string is gone from sidebar.js.
-// AC4 – sidebar.html CSS disables optionsSection/advancedSection when no-table.
+// AC4 – sidebar.html CSS disables optionsSection/advancedSection under the unbound class.
 // ---------------------------------------------------------------------------
 
 (function sprintSidebarNoTableState() {
@@ -312,22 +312,22 @@
   // -------------------------------------------------------------------------
 
   // AC3: old error string must be gone.
-  eq('no-table AC3: old error string absent from sidebar.js',
+  eq('unbound AC3: old error string absent from sidebar.js',
     sidebarSrc.includes('Right-click a table first, then reopen the sidebar.'), false);
 
-  // AC1 (static): NO_TABLE_CLASS and NO_TABLE_STATUS_MSG are defined.
-  eq('no-table AC1: NO_TABLE_CLASS constant defined in sidebar.js',
-    /const NO_TABLE_CLASS\s*=\s*['"]no-table['"]/.test(sidebarSrc), true);
+  // AC1 (static): UNBOUND_CLASS and UNBOUND_STATUS_MSG are defined.
+  eq('unbound AC1: UNBOUND_CLASS constant defined in sidebar.js',
+    /const UNBOUND_CLASS\s*=\s*['"]unbound['"]/.test(sidebarSrc), true);
 
-  eq('no-table AC1: NO_TABLE_STATUS_MSG constant defined in sidebar.js',
-    /const NO_TABLE_STATUS_MSG\s*=\s*['"]Right-click a table to connect it here\.['"]/.test(sidebarSrc), true);
+  eq('unbound AC1: UNBOUND_STATUS_MSG constant defined in sidebar.js',
+    /const UNBOUND_STATUS_MSG\s*=\s*['"]Right-click a table to connect it here\.['"]/.test(sidebarSrc), true);
 
   // AC1 (static): setTableBound(false) is called on init.
-  eq('no-table AC1: setTableBound(false) called at module level (init)',
+  eq('unbound AC1: setTableBound(false) called at module level (init)',
     /setTableBound\(false\)/.test(sidebarSrc), true);
 
   // AC2 (static): setTableBound(true) path exists (an answer holding samples).
-  eq('no-table AC2: setTableBound called with whether the answer holds samples',
+  eq('unbound AC2: setTableBound called with whether the answer holds samples',
     /setTableBound\(cachedSamples\s*!==\s*null\)/.test(sidebarSrc), true);
 
   // AC2 gap check: the sidebar handles state:previewSamplesChanged by calling
@@ -339,7 +339,7 @@
   // The sidebar has no push-style binding message. We assert the handler
   // exists and starts the pull chain, then flag the architectural gap as a
   // note.
-  eq('no-table AC2: state:previewSamplesChanged handler calls pullSettingsAndApplyToUI',
+  eq('unbound AC2: state:previewSamplesChanged handler calls pullSettingsAndApplyToUI',
     /state:previewSamplesChanged[\s\S]{0,300}pullSettingsAndApplyToUI\(\)/.test(sidebarSrc), true);
 
   // GAP NOTE: The sidebar does not handle a dedicated "TABLE_BOUND" push message.
@@ -350,21 +350,21 @@
   // This gap is architectural and cannot be covered by a unit test without a
   // full browser environment; flagged here for reviewer awareness.
 
-  // AC4 (static): the no-table state must NOT dim/disable the sidebar sections.
+  // AC4 (static): the unbound state must NOT dim/disable the sidebar sections.
   // Instead of greying the whole sidebar, the sidebar pillbox is flipped off
   // (covered by the behavioural tests below). Guard against dimming rules
   // being reintroduced.
-  eq('no-table AC4: sidebar.html does NOT dim #optionsSection under body.no-table',
-    /body\.no-table\s+#optionsSection/.test(sidebarHtml), false);
+  eq('unbound AC4: sidebar.html does NOT dim #optionsSection under body.unbound',
+    /body\.unbound\s+#optionsSection/.test(sidebarHtml), false);
 
-  eq('no-table AC4: sidebar.html does NOT dim #advancedSection under body.no-table',
-    /body\.no-table\s+#advancedSection/.test(sidebarHtml), false);
+  eq('unbound AC4: sidebar.html does NOT dim #advancedSection under body.unbound',
+    /body\.unbound\s+#advancedSection/.test(sidebarHtml), false);
 
-  eq('no-table AC4: sidebar.html does NOT disable the sidebar pillbox under body.no-table',
-    /body\.no-table\s+\.title-row\s+\.switch/.test(sidebarHtml), false);
+  eq('unbound AC4: sidebar.html does NOT disable the sidebar pillbox under body.unbound',
+    /body\.unbound\s+\.title-row\s+\.switch/.test(sidebarHtml), false);
 
-  // AC1 (static): sidebar.html default #status text is the no-table message.
-  eq('no-table AC1: sidebar.html default #status text is the no-table message',
+  // AC1 (static): sidebar.html default #status text is the unbound message.
+  eq('unbound AC1: sidebar.html default #status text is the unbound message',
     /id="status"[^>]*>Right-click a table to connect it here\./.test(sidebarHtml), true);
 
   (function setTableBoundBehavioural() {
@@ -377,16 +377,16 @@
     // for the wrong reason.
     const setTableBoundFnMatch = sidebarSrc.match(/function setTableBound\([\s\S]*?\n}/);
     const setTableBoundFnBody = setTableBoundFnMatch ? setTableBoundFnMatch[0] : '';
-    eq('no-table sidebar pillbox: sidebar.js setTableBound function body was isolated (sanity check on the scan itself)',
+    eq('unbound sidebar pillbox: sidebar.js setTableBound function body was isolated (sanity check on the scan itself)',
       setTableBoundFnBody.length > 0, true);
-    eq('no-table sidebar pillbox: sidebar.js setTableBound sets enabledEl.checked = false when unbound',
+    eq('unbound sidebar pillbox: sidebar.js setTableBound sets enabledEl.checked = false when unbound',
       /enabledEl\.checked\s*=\s*false/.test(setTableBoundFnBody), true);
-    eq('no-table sidebar pillbox: sidebar.js setTableBound calls updateDisabledState',
+    eq('unbound sidebar pillbox: sidebar.js setTableBound calls updateDisabledState',
       /updateDisabledState\(\)/.test(setTableBoundFnBody), true);
     // The bound branch must not reset the switch to the shipped
     // default — the model (or the pull's explicit defaults fallback) is the
     // switch's only source once a table is bound.
-    eq('no-table sidebar pillbox: sidebar.js setTableBound no longer references DR_DEFAULTS anywhere (issue #251)',
+    eq('unbound sidebar pillbox: sidebar.js setTableBound no longer references DR_DEFAULTS anywhere (issue #251)',
       /DR_DEFAULTS/.test(setTableBoundFnBody), false);
   })();
 })();
@@ -494,7 +494,7 @@
   // Use a negative lookbehind to exclude the function definition itself.
   const pctCallSites = sidebarJsSrc.match(/(?<!function )stopPosition\([^)]+\)/g) || [];
   // Every call site should appear only inside thumb left-position assignments.
-  // We check there are exactly 2 call sites (topThumb and botThumb style.left).
+  // We check there are exactly 2 call sites (topThumb and otherThumb style.left).
   eq('dots-tick: stopPosition() is called exactly twice in sidebar.js (both thumb style.left)',
     pctCallSites.length, 2);
 
@@ -737,7 +737,7 @@
     if (typeof enabledChangeHandler !== 'function') return;
 
     // --- Failure: chrome.runtime.lastError set -> setTableBound(false) ran. ---
-    bodyClasses.delete('no-table');
+    bodyClasses.delete('unbound');
     enabledEl.checked = true;
     statusEl.textContent = '';
     queuedLastError = { message: 'Could not establish connection.' };
@@ -746,15 +746,15 @@
 
     eq('settings publish delivery: one request:applySettings message sent for the change',
       sentTabMessages.length, 1);
-    eq('settings publish delivery: failed delivery adds the no-table class (setTableBound(false) ran)',
-      bodyClasses.has('no-table'), true);
+    eq('settings publish delivery: failed delivery adds the unbound class (setTableBound(false) ran)',
+      bodyClasses.has('unbound'), true);
     eq('settings publish delivery: failed delivery flips the enabled checkbox off (setTableBound(false) ran)',
       enabledEl.checked, false);
-    eq('settings publish delivery: failed delivery sets #status to the no-table message (setTableBound(false) ran)',
+    eq('settings publish delivery: failed delivery sets #status to the unbound message (setTableBound(false) ran)',
       statusEl.textContent, 'Right-click a table to connect it here.');
 
     // --- Success: no lastError -> #status is cleared. ---
-    bodyClasses.delete('no-table');
+    bodyClasses.delete('unbound');
     statusEl.textContent = 'a stale status message';
     queuedLastError = null;
     enabledChangeHandler();
@@ -1059,8 +1059,8 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
   const advancedClose = at('</details>');
 
   eq('section order: the lens control precedes the Advanced section',
-    at('id="lensSection"') !== -1 && at('id="sliderBlock"') > at('id="lensSection"') &&
-      at('id="sliderBlock"') < advancedOpen,
+    at('id="lensSection"') !== -1 && at('id="lensControl"') > at('id="lensSection"') &&
+      at('id="lensControl"') < advancedOpen,
     true);
   eq('section order: the switches sit inside the Advanced section',
     at('id="optionsSection"') > advancedOpen && at('id="simplifyFirstColumn"') < advancedClose,
