@@ -582,15 +582,6 @@ timeGranularityEl.addEventListener('change', applyNow);
 
 rangeExprEl.addEventListener('input', applyNow);
 
-document.body.addEventListener('click', (e) => {
-  if (e.target.matches('input, select, option, summary')) return;
-  if (e.target.closest && e.target.closest('.dual-wrap')) return;
-  // Capture interactions are not settings changes: a mark press, a keystroke
-  // in the remarks, or the finish button must not send a settings apply.
-  if (e.target.closest && e.target.closest('#captureSection')) return;
-  applyNow();
-});
-
 const SIDEBAR_FLASH_CLASS = 'dr-sidebar-flash';
 
 function flashSidebarContainer() {

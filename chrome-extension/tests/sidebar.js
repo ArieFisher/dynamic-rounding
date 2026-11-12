@@ -1554,3 +1554,83 @@ const SINGLE_READ_SAMPLES = {
     h.restore();
   }
 })();
+
+// ---------------------------------------------------------------------------
+// A click on the sidebar sends a settings write only through a control's own
+// change or input handler. Chrome dispatches a click on a switch's label to
+// the body with the label as its target, then dispatches a second click on
+// the input and fires the input's change; the change alone carries the write.
+// ---------------------------------------------------------------------------
+const SIDEBAR_UNBOUND_PROMPT = 'Right-click a table to connect it here.';
+
+(function sidebarBodyClickSendsNoSettingsWrite() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('body click: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('body click: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    h.tabMessages.length = 0;
+    h.fireBody('click', { target: sidebarEventTarget('SPAN') });
+    eq('body click: a click on the sidebar outside any control sends no settings write',
+      h.tabMessages.filter((m) => m.action === 'request:applySettings').length, 0);
+  } finally {
+    h.restore();
+  }
+})();
+
+(function sidebarSwitchLabelClickSendsOneSettingsWrite() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('label click: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('label click: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    const input = sidebarEventTarget('INPUT', h.el('simplifyDates'));
+    h.tabMessages.length = 0;
+    h.fireBody('click', { target: sidebarEventTarget('LABEL') });
+    input.checked = !input.checked;
+    h.fireBody('click', { target: input });
+    input.fire('change');
+    eq('label click: a click on a switch\'s label sends one settings write, from the change',
+      h.tabMessages.filter((m) => m.action === 'request:applySettings').length, 1);
+  } finally {
+    h.restore();
+  }
+})();
+
+(function sidebarBodyClickKeepsTheUnboundPrompt() {
+  const h = makeIssue251SidebarHarness();
+  if (!h) {
+    eq('unbound body click: source files (defaults/rounding/core/messaging) present in manifest', false, true);
+    return;
+  }
+  try {
+    eq('unbound body click: sidebar.js loaded with no stub gaps', h.evalError, null);
+    if (h.evalError !== null) return;
+
+    // A content script with no active table answers every read with the
+    // shipped defaults and null samples, and answers a settings write.
+    const answerWrite = h.chromeMock.tabs.sendMessage;
+    h.chromeMock.tabs.sendMessage = (tabId, msg, cb) => {
+      if (msg.action === 'request:applySettings') return answerWrite(tabId, msg, cb);
+      h.tabMessages.push(msg);
+      cb({ settings: DR_DEFAULTS, samples: null, maxMag: null });
+    };
+    h.dispatch({ action: 'state:tableSwitched' });
+    eq('unbound body click: precondition — the status line shows the unbound prompt',
+      h.statusEl.textContent, SIDEBAR_UNBOUND_PROMPT);
+
+    h.fireBody('click', { target: sidebarEventTarget('SPAN') });
+    eq('unbound body click: a click on the body leaves the unbound prompt on the status line',
+      h.statusEl.textContent, SIDEBAR_UNBOUND_PROMPT);
+  } finally {
+    h.restore();
+  }
+})();

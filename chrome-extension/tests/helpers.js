@@ -2343,6 +2343,7 @@ function makeIssue251SidebarHarness(opts) {
   const rangeExprEl = makeEl();
 
   const bodyClasses = new Set();
+  const bodyListeners = {};
   const captureBody = {
     classList: {
       add(cls) { bodyClasses.add(cls); },
@@ -2354,7 +2355,10 @@ function makeIssue251SidebarHarness(opts) {
         } else if (force) bodyClasses.add(cls); else bodyClasses.delete(cls);
       },
     },
-    addEventListener() {},
+    addEventListener(type, fn) {
+      if (!bodyListeners[type]) bodyListeners[type] = [];
+      bodyListeners[type].push(fn);
+    },
     get offsetWidth() { return 0; },
   };
 
@@ -2436,12 +2440,37 @@ function makeIssue251SidebarHarness(opts) {
     el(id) { return elsById[id]; },
     dispatch(msg) { onMessageHandler(msg, FROM_SIDEBAR_TAB, () => {}); },
     hasHandler() { return typeof onMessageHandler === 'function'; },
+    /**
+     * Run every listener the sidebar registered on the page body for one
+     * event type, as an event that bubbled up from a page element would.
+     * @param {string} type - The event type, e.g. 'click'.
+     * @param {object} evt - The event object the listeners receive.
+     */
+    fireBody(type, evt) { (bodyListeners[type] || []).forEach((fn) => fn(evt)); },
     restore() {
       global.document = savedDoc;
       global.chrome = savedChrome;
       global.window = savedWindow;
     },
   };
+}
+
+/**
+ * Give an event target the tag a selector test reads. The sidebar harness's
+ * elements match no selector, and a listener that sorts clicks by selector
+ * needs a target that answers as its tag would. Only tag-name selectors
+ * match; closest() finds no ancestor.
+ * @param {string} tagName - The element's tag name in upper case, e.g. 'LABEL'.
+ * @param {object} [el] - An existing harness element to give the tag to; omitted for a new bare target.
+ * @returns {object} The target.
+ */
+function sidebarEventTarget(tagName, el) {
+  const target = el || {};
+  target.tagName = tagName;
+  target.matches = (selector) => selector.split(',')
+    .some((part) => part.trim().toUpperCase() === tagName);
+  target.closest = () => null;
+  return target;
 }
 
 // Register one element the way the page does — through the pillbox view's
