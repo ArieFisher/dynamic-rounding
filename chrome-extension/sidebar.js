@@ -33,10 +33,8 @@ function createBoundTab(tabsApi, bus) {
 
   // A message belongs to the bound tab only when the two numbers match. A
   // message carrying no tab came from an extension page rather than a content
-  // script, and belongs to no tab at all. Before the lookup answers there is
-  // nothing to compare against, so a message arriving in that window is
-  // dropped; resolve() runs the sidebar's opening read afterwards, and that
-  // read carries the current truth.
+  // script, and belongs to no tab at all. A message arriving before resolve()
+  // records the tab is dropped.
   function ownsReport(meta) {
     return boundTabId !== null && !!meta && meta.tabId === boundTabId;
   }
@@ -78,7 +76,7 @@ function createBoundTab(tabsApi, bus) {
 
     // Subscribe to one of the content script's topics. Every such message
     // passes through here, so the comparison lives in one place rather than
-    // at each of the eight subscriptions.
+    // at each subscription.
     subscribe(topic, handler) {
       return bus.subscribe(topic, (payload, meta) => {
         if (!ownsReport(meta)) return;
@@ -122,7 +120,6 @@ function createBoundTab(tabsApi, bus) {
   };
 }
 
-// The unit above, wired to the real tabs interface and the real bus.
 const boundTab = createBoundTab(chrome.tabs, DR_BUS);
 
 function setTableBound(isBound) {
@@ -169,18 +166,15 @@ const rangeExprEl = document.getElementById('rangeExpr');
 //    0:1M   0.25:2.5M  0.5:5M    1:10M
 // Hence -0.25 precedes -0.5, and -1 sits right after -1.5.
 const STOPS = [-2, -1.5, -1, -0.25, -0.5, 0, 0.25, 0.5, 1];
-const DEFAULT_OFFSET = -0.5;
 
 const sliderBlockEl = document.getElementById('sliderBlock');
 const dualWrap = document.getElementById('dualWrap');
 const topThumb = document.getElementById('topThumb');
 const botThumb = document.getElementById('botThumb');
 const trackEl = dualWrap ? dualWrap.querySelector('.dual-track') : null;
-const topLabelEl = document.getElementById('topLabel');
-const botLabelEl = document.getElementById('botLabel');
 
-let topVal = DEFAULT_OFFSET;
-let botVal = DEFAULT_OFFSET;
+let topVal = DR_DEFAULTS.offsetTop;
+let botVal = DR_DEFAULTS.offsetTop;
 let linked = true;
 
 function snap(v) {
@@ -208,10 +202,8 @@ function renderSliders() {
   botThumb.style.left = pct(botVal) + '%';
   botThumb.classList.toggle('linked', linked);
   if (sliderBlockEl) sliderBlockEl.classList.toggle('linked', linked);
-  if (topLabelEl) topLabelEl.textContent = 'largest numbers';
-  if (botLabelEl) botLabelEl.textContent = 'all other numbers';
-  if (topThumb) topThumb.setAttribute('aria-valuenow', String(topVal));
-  if (botThumb) botThumb.setAttribute('aria-valuenow', String(botVal));
+  topThumb.setAttribute('aria-valuenow', String(topVal));
+  botThumb.setAttribute('aria-valuenow', String(botVal));
   renderPreviewBands();
 }
 
@@ -249,7 +241,6 @@ function formatOriginal(numOrStr) {
   const sign = parsed < 0 ? '-' : '';
   const abs = Math.abs(parsed);
   if (abs >= PREVIEW_DECIMAL_THRESHOLD) {
-    // Integer-only display: reuse formatNumberWithCommas on the truncated integer.
     return formatNumberWithCommas(Math.trunc(parsed));
   }
   // For |n| < 100: use abs.toString() which gives the shortest faithful
@@ -269,13 +260,10 @@ function formatOriginal(numOrStr) {
       fracStr = '';
     } else {
       intPart = s.slice(0, dotIdx);
-      // Pure string truncation — no rounding.
       fracStr = s.slice(dotIdx + 1, dotIdx + 1 + PREVIEW_MAX_DECIMALS);
     }
   }
-  // Strip trailing zeros so "1.5000" -> "1.5", "1.0000" -> "" (no dot).
   fracStr = fracStr.replace(/0+$/, '');
-  // Apply thousands commas to the integer part.
   const intStr = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   if (fracStr === '') {
     // Guard against "-0": sign is only emitted when there is a non-zero result.
@@ -285,7 +273,6 @@ function formatOriginal(numOrStr) {
   return sign + intStr + '.' + fracStr;
 }
 
-// CSS class name constants for band colouring.
 const OOM_LABEL_CLASS = 'oom-label';
 const STEP_LABEL_CLASS = 'step-label';
 const STRATEGY_CLASS = 'strategy';
@@ -312,8 +299,7 @@ function formatOomLabel(mag) {
 
 /**
  * Build the strategy header string for the top band, e.g.
- * "1M+ → nearest 500k". The descriptive "(i.e. a half of 1M)" clause was
- * removed per issue #1 — the OoM label and step alone convey the strategy.
+ * "1M+ → nearest 500k".
  */
 function formatStrategyHeader(maxMag, offset) {
   const step = stepForOffset(Math.pow(10, maxMag), offset);
@@ -325,15 +311,13 @@ function formatStrategyHeader(maxMag, offset) {
  * first line and a single worked example ("e.g. <original> → <rounded>", black)
  * on the second. Both lines are laid out as from|arrow|num pairs in the shared
  * 3-column grid so their "→" arrows line up vertically. The example carries no
- * step annotation and shows the bare original number (text stripped per #3).
+ * step annotation and shows the bare original number.
  */
 function renderTopBand(el, rows, offset) {
   if (!el) return;
   el.innerHTML = '';
   if (!rows || rows.length === 0) return;
 
-  // Strategy line, e.g. "1M+ → nearest 250k", split into the same
-  // from | arrow | num columns as the example so the arrows align.
   if (cachedMaxMag !== null && cachedMaxMag !== undefined) {
     const step = stepForOffset(Math.pow(10, cachedMaxMag), offset);
     const strat = document.createElement('div');
@@ -357,14 +341,12 @@ function renderTopBand(el, rows, offset) {
     el.appendChild(strat);
   }
 
-  // Single example on its own line below the strategy.
   const row = rows[0];
   const example = document.createElement('div');
   example.className = 'pair example';
 
   const from = document.createElement('span');
   from.className = 'from';
-  // Bare original number, prefixed "e.g.".
   from.textContent = 'e.g. ' + formatOriginal(row.num);
   example.appendChild(from);
 
@@ -383,17 +365,15 @@ function renderTopBand(el, rows, offset) {
 
 /**
  * Render the lens preview's sample rows: rows sorted DESCENDING by magnitude, each
- * showing the bare original number with its OoM label (kept per the issue #3
- * decision — strip the largest band, keep the tag for the other numbers). A
- * brown trailing step annotation — "(5k)" — follows the rounded number to show
- * what each example rounds to the nearest of.
+ * showing the bare original number with its OoM label. A brown trailing step
+ * annotation — "(5k)" — follows the rounded number to show what each example
+ * rounds to the nearest of.
  */
-function renderBotBand(el, rows, offset, maxMag) {
+function renderBotBand(el, rows, offset) {
   if (!el) return;
   el.innerHTML = '';
   if (!rows || rows.length === 0) return;
 
-  // Sort descending by OoM magnitude so higher-magnitude rows appear first.
   const sorted = rows.slice().sort((a, b) => {
     const magA = a.num !== 0 ? Math.floor(Math.log10(Math.abs(a.num))) : -Infinity;
     const magB = b.num !== 0 ? Math.floor(Math.log10(Math.abs(b.num))) : -Infinity;
@@ -426,7 +406,6 @@ function renderBotBand(el, rows, offset, maxMag) {
     const numEl = document.createElement('span');
     numEl.className = 'num';
     numEl.textContent = formatOriginal(roundWithOffset(row.num, offset));
-    // "(5k)" brown step label: the value this example rounds to the nearest of.
     if (row.num !== 0) {
       const stepEl = document.createElement('span');
       stepEl.className = STEP_LABEL_CLASS;
@@ -447,7 +426,7 @@ function renderPreviewBands() {
     return;
   }
   renderTopBand(topBandEl, cachedSamples.top, topVal);
-  renderBotBand(botBandEl, cachedSamples.bottom, botVal, cachedMaxMag);
+  renderBotBand(botBandEl, cachedSamples.bottom, botVal);
 }
 
 // Refreshes the lens preview from the active table; the bound/unbound
@@ -630,7 +609,6 @@ for (const id in CHECKBOX_TO_SETTING) {
 if (dateGranularityEl) dateGranularityEl.addEventListener('change', applyNow);
 if (timeGranularityEl) timeGranularityEl.addEventListener('change', applyNow);
 
-// Apply on any range-expression keystroke.
 if (rangeExprEl) rangeExprEl.addEventListener('input', applyNow);
 
 document.body.addEventListener('click', (e) => {
@@ -664,8 +642,7 @@ boundTab.subscribe('state:tableActivated', () => {
 // An echo of the sidebar's own write would overwrite a newer keystroke or
 // slider step.
 boundTab.subscribe('state:settingsChanged', ({ source, settings }) => {
-  if (source === 'sidebar') { fetchPreviewSamples(); return; }
-  applySettingsToUI(settings);
+  if (source !== 'sidebar') applySettingsToUI(settings);
   fetchPreviewSamples();
 });
 
@@ -726,7 +703,7 @@ function applySettingsToUI(settings) {
   if (timeGranularityEl && s.timeGranularity) {
     timeGranularityEl.value = s.timeGranularity;
   }
-  topVal = snap(typeof s.offsetTop === 'number' ? s.offsetTop : DEFAULT_OFFSET);
+  topVal = snap(typeof s.offsetTop === 'number' ? s.offsetTop : DR_DEFAULTS.offsetTop);
   botVal = snap(typeof s.offsetOther === 'number' ? s.offsetOther : topVal);
   linked = (topVal === botVal);
   renderSliders();
@@ -740,9 +717,8 @@ function applyDefaultsToUI() {
   applySettingsToUI(DR_DEFAULTS);
 }
 
-// Reconnect, table switch, right-click activation, or stale-view
-// refresh: pull the active table's settings from content.js (the one holder
-// of settings) rather than resetting to shipped defaults — neither a
+// Pull the active table's settings from content.js (the one holder of
+// settings) rather than resetting to shipped defaults: neither a
 // close/reopen nor a switch may lose what the user configured.
 // No active tab, no content script yet, or no response at all falls back to
 // defaults.
@@ -1033,7 +1009,6 @@ function saveCapture() {
 if (captureSaveEl) captureSaveEl.addEventListener('click', saveCapture);
 renderCaptureMarks();
 
-// Default to unbound until fetchPreviewSamples resolves.
 setTableBound(false);
 
 // Defensively clear rangeExpr so browser autofill can never leak a stale
@@ -1041,20 +1016,14 @@ setTableBound(false);
 // from the model) resolves.
 if (rangeExprEl) rangeExprEl.value = '';
 
-// Record the tab this sidebar was opened for, then make the opening read.
-// The order is load-bearing: the read reaches the page, the page publishes
-// back, and a message arriving before the tab number exists has nothing to
-// be compared against and is dropped.
-//
-// Pulls live settings, then (see above) pulls preview samples for the active
-// table. With no active table, content.js returns nulls and the sidebar
-// shows the no-table prompt.
+// The opening read pulls live settings, then the preview samples for the
+// active table. With no active table, content.js returns nulls and the
+// sidebar shows the no-table prompt.
 boundTab.resolve(() => {
   pullSettingsAndApplyToUI();
-  // Registered here for the same reason the read runs here: an activation
-  // arriving before the tab number exists would have nothing to compare
-  // against. The service worker closes the sidebar on most tab switches; this
-  // covers the switches it misses, so every switch ends the same way.
+  // Registered after the tab lookup, for the reason resolve() states. The
+  // service worker closes the sidebar on most tab switches; this covers the
+  // switches it misses, so every switch ends the same way.
   boundTab.onSwitchAway(() => { window.close(); });
 });
 
