@@ -1000,22 +1000,23 @@ function isSplitDateOrTime({ entry, patches }) {
  * @param {{frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none',
  *          cellCap?: number}} pass
  * @returns {{cells: Array<{entry: object, patches: object[]}>,
- *            maxMag: number|null, landedCells: number, cellCount: number,
- *            overCap: boolean, ms?: number,
+ *            maxMag: number|null, landedCells: number, missedCells: number,
+ *            cellCount: number, overCap: boolean, ms?: number,
  *            leftAsWritten?: {splitNumber: number, splitDateOrTime: number, textMismatch: number}}}
  *   cells holds every cell in page order with its patches (empty means the
  *   cell's target text is its original). landedCells counts the written
- *   cells with a landed patch. cellCount counts the cells the pass read.
- *   leftAsWritten counts, by reason, the cells the pass left as written, and
- *   ms holds the pass's duration. An invalid range expression or a table
- *   with no rows returns no cells, no counts, and writes nothing; so does a
- *   table above pass.cellCap, with overCap true.
+ *   cells with a landed patch, missedCells the written cells with none.
+ *   cellCount counts the cells the pass read. leftAsWritten counts, by
+ *   reason, the cells the pass left as written; its textMismatch is
+ *   missedCells. ms holds the pass's duration. An invalid range expression
+ *   or a table with no rows returns no cells, no counts, and writes nothing;
+ *   so does a table above pass.cellCap, with overCap true.
  */
 function simplifyTableCells(table, adapterRows, opts, pass) {
   const startedAt = Date.now();
   const { writes } = pass;
   const rangeParse = parseRangeExpr(opts.rangeExpr);
-  const none = { cells: [], maxMag: null, landedCells: 0, cellCount: 0, overCap: false };
+  const none = { cells: [], maxMag: null, landedCells: 0, missedCells: 0, cellCount: 0, overCap: false };
   if (rangeParse.error || adapterRows.length === 0) return none;
   const dataCells = tableDataCells(adapterRows);
   if (pass.cellCap !== undefined && dataCells.length > pass.cellCap) {
@@ -1028,13 +1029,13 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   const { maxMag, cells: stepCells } = tablePatches(classified, settings, pass.frozenMaxMag);
   if (writes === 'first') DR_MODEL.setTableMaxMagnitude(table, maxMag);
 
-  const { cells, landedCells, splitDateOrTime, textMismatch } = writeTableCells(table, stepCells, writes);
+  const { cells, landedCells, missedCells, splitDateOrTime } = writeTableCells(table, stepCells, writes);
   return {
-    cells, landedCells, maxMag, cellCount: dataCells.length, overCap: false,
+    cells, landedCells, missedCells, maxMag, cellCount: dataCells.length, overCap: false,
     leftAsWritten: {
       splitNumber: classified.filter((entry) => entry.split).length,
       splitDateOrTime,
-      textMismatch,
+      textMismatch: missedCells,
     },
     ms: Date.now() - startedAt,
   };
@@ -1047,8 +1048,8 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
 function writeTableCells(table, stepCells, writes) {
   const cells = [];
   let landedCells = 0;
+  let missedCells = 0;
   let splitDateOrTime = 0;
-  let textMismatch = 0;
   for (const stepCell of stepCells) {
     const { entry } = stepCell;
     if (isSplitDateOrTime(stepCell)) splitDateOrTime++;
@@ -1058,10 +1059,10 @@ function writeTableCells(table, stepCells, writes) {
     const held = DR_MODEL.hasTableOriginal(table, entry.cellObj.el);
     const landed = flat.length > 0 ? writeCell(entry, flat) : 0;
     if (flat.length > 0 && landed > 0) landedCells++;
-    else if (flat.length > 0) textMismatch++;
+    else if (flat.length > 0) missedCells++;
     if (landed === 0 && held) releaseCell(table, entry.cellObj.el);
   }
-  return { cells, landedCells, splitDateOrTime, textMismatch };
+  return { cells, landedCells, missedCells, splitDateOrTime };
 }
 
 // A table's adapter, reading and writing each cell's record through the
@@ -1138,9 +1139,7 @@ function scheduleReapply(table) {
 
 // The debug row for a table above the cell cap. A debug row raises no toast.
 function logAboveCellCap(cellCount) {
-  DR_LOG.debug('Dynamic Rounding: this table holds ' + cellCount.toLocaleString('en-US') +
-    ' cells, more than the ' + DR_DETECTION_SETTINGS.reapplyCellCap.toLocaleString('en-US') +
-    ' the extension follows, so it no longer rounds the page\'s updates.');
+  DR_LOG.debug(DR_LOG.formatRow('above cell cap', { cells: cellCount }));
 }
 
 /**
@@ -1188,6 +1187,8 @@ function runReapplyPass(table) {
   if (result.overCap) {
     unwatchTable(table);
     logAboveCellCap(result.cellCount);
+  } else if (result.ms > DR_DETECTION_SETTINGS.passTargetMs) {
+    DR_LOG.debug(DR_LOG.formatRow('re-apply pass', { ms: result.ms }));
   }
 }
 

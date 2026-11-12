@@ -80,12 +80,16 @@ const DR_DETECTION_SETTINGS = {
   reapplyMaxWaitMs: 1000,
   // The most cells a pass reads: a native table's cells, a grid's visible
   // cells. Ten times the data test's cell budget, e.g. 1,000 rows of 10
-  // columns. The value holds a pass under 200 ms: in Chrome on the test page
-  // a pass over 10,000 cells took 44 to 57 ms. Above it the pass writes
-  // nothing, the table's re-apply observer stops, and one debug row records
-  // the stop; a table above it at its first simplification never attaches
-  // the observer.
+  // columns. In Chrome on the test page a pass over 10,000 cells took 44 to
+  // 57 ms. Above it the pass writes nothing, the table's re-apply observer
+  // stops, and one debug row records the stop; a table above it at its first
+  // simplification never attaches the observer.
   reapplyCellCap: 10000,
+  // The longest a re-apply pass runs before it writes a debug row with its
+  // duration. A pass this long stalls the page enough for a person to see,
+  // and it is more than three times the slowest pass measured at the cell
+  // cap, so a row marks a slow page rather than a large table.
+  passTargetMs: 200,
   // --- Pending tables (content.js) ---
   // Failed re-tests a pending table takes before its subtree observer drops.
   // A re-test runs only after a subtree change and the redraw delay above, so

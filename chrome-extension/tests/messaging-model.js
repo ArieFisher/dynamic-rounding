@@ -4689,6 +4689,13 @@ const SETTINGS_CHANGE_ROWS = [[['6,7', { tag: 'b', text: '18,245' }],
     eq(`settings change (${kind}): an invalid range expression writes one row with no count`,
       rowsOf(t.table, Object.assign({}, RW_OPTS, { enabled: true, rangeExpr: 'not a range' })),
       ['Dynamic Rounding: settings change · on/off: on']);
+    const words = build([['Revenue grew to 1,234 units', 'Costs fell 5,678 dollars'],
+      ['Margin of 2,468 points', ['Ref 3,5', { tag: 'b', text: '79' }, ' total']]]);
+    const wordRows = rowsOf(words.table, Object.assign({}, RW_OPTS, { enabled: true }));
+    eq(`settings change (${kind}): a table whose cells hold words writes one row holding no page text`,
+      wordRows.length === 1 &&
+        /^Dynamic Rounding: settings change · on\/off: on( · left as written: [a-z ,0-9]+)?$/.test(wordRows[0]),
+      true);
   });
 })();
 

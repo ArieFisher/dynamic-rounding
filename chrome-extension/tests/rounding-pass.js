@@ -4164,7 +4164,7 @@ DR_LOG.onRow((row) => rwLogged.push(row));
 const rwRows = (level, pattern) => rwLogged
   .filter((row) => row.level === level && pattern.test(row.text)).length;
 
-const RW_CAP_ROW = /more than the .* the extension follows/;
+const RW_CAP_ROW = /^Dynamic Rounding: above cell cap · cells: [\d,]+$/;
 
 // --- Test 1: a cell the extension holds, unchanged: the pass writes nothing. ---
 (function rewrite01_aHeldCellTakesNoWrite() {
@@ -4708,10 +4708,13 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
 // --- Test 14: the cell cap. A table one cell over the cap writes nothing,
 // its watcher stops, and one warning row records it. A table at the cap runs
 // its pass. A table over the cap at its first simplification never attaches
-// a watcher. ---
+// a watcher. The pass target is below every duration, so a re-apply pass
+// row beside the stop's row would show. ---
 (function rewrite14_theCellCap() {
   const savedCap = DR_DETECTION_SETTINGS.reapplyCellCap;
+  const savedTarget = DR_DETECTION_SETTINGS.passTargetMs;
   DR_DETECTION_SETTINGS.reapplyCellCap = 4;
+  DR_DETECTION_SETTINGS.passTargetMs = -1;
   try {
     eachRewriteKind(RW_KINDS, (kind, page, build) => {
       const t = build(RW_ROWS);
@@ -4720,13 +4723,14 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       page.settle();
       eq(`#421 cell cap (${kind}): a table at the cap runs its pass`, t.text(0, 0), '4,300');
 
-      const rowsBefore = rwRows('debug', RW_CAP_ROW);
+      const rowsBefore = rwLogged.length;
       t.addRow(['8,765']);
       t.write(0, 1, '6,543');
       page.settle();
       eq(`#421 cell cap (${kind}): a pass over the cap writes nothing`,
         [t.text(0, 1), t.rowTexts()[2][0]], ['6,543', '8,765']);
-      eq(`#421 cell cap (${kind}): one debug row records the stop`, rwRows('debug', RW_CAP_ROW) - rowsBefore, 1);
+      eq(`#421 cell cap (${kind}): the stop writes one row and no re-apply pass row`,
+        rwLogged.slice(rowsBefore).map((row) => row.text), ['Dynamic Rounding: above cell cap · cells: 5']);
       t.write(1, 0, '7,654');
       page.settle();
       eq(`#421 cell cap (${kind}): the stopped watcher runs no later pass`, t.text(1, 0), '7,654');
@@ -4747,6 +4751,35 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
     });
   } finally {
     DR_DETECTION_SETTINGS.reapplyCellCap = savedCap;
+    DR_DETECTION_SETTINGS.passTargetMs = savedTarget;
+  }
+})();
+
+// --- The pass target. A re-apply pass writes a row only when it runs longer
+// than the pass target; one that leaves a split number as written still
+// writes none. ---
+(function rewrite_aReapplyPassWritesARowOnlyOverThePassTarget() {
+  const savedTarget = DR_DETECTION_SETTINGS.passTargetMs;
+  try {
+    eachRewriteKind(RW_KINDS, (kind, page, build) => {
+      DR_DETECTION_SETTINGS.passTargetMs = savedTarget;
+      const t = build([[['6,7', { tag: 'b', text: '18,245' }], '1,234'], ['2,468', '3,579']]);
+      roundTableUnder(t.table, RW_OPTS);
+      let before = rwLogged.length;
+      t.write(1, 0, '4,321');
+      page.settle();
+      eq(`pass target (${kind}): a re-apply pass under the target writes no row`,
+        rwLogged.slice(before).map((row) => row.text), []);
+      DR_DETECTION_SETTINGS.passTargetMs = -1;
+      before = rwLogged.length;
+      t.write(1, 0, '4,322');
+      page.settle();
+      const rows = rwLogged.slice(before).map((row) => row.text);
+      eq(`pass target (${kind}): a re-apply pass over the target writes one row with its duration`,
+        rows.length === 1 && /^Dynamic Rounding: re-apply pass · ms: [\d,]+$/.test(rows[0]), true);
+    });
+  } finally {
+    DR_DETECTION_SETTINGS.passTargetMs = savedTarget;
   }
 })();
 
