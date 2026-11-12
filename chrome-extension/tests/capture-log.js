@@ -1118,3 +1118,28 @@
   eq('capture-trace: a line outside the frame shape prints as it is',
     passThrough.map(f), passThrough);
 })();
+
+// --- lib/dr-log: the row format ---
+//
+// Every row reads "Dynamic Rounding: <event> · <label>: <value> · …". One
+// function in the log module joins the parts, so the prefix and the
+// separator sit in one place for the page, the sidebar, and the service
+// worker.
+(function logRowFormat() {
+  if (typeof DR_LOG.formatRow !== 'function' || typeof DR_LOG.errorType !== 'function') {
+    eq('log format: the log module exposes formatRow and errorType',
+      [typeof DR_LOG.formatRow, typeof DR_LOG.errorType], ['function', 'function']);
+    return;
+  }
+  eq('log format: an event with no labels is the prefix and the event',
+    DR_LOG.formatRow('activate'), 'Dynamic Rounding: activate');
+  eq('log format: a number value carries thousands separators',
+    DR_LOG.formatRow('above cell cap', { cells: 10010 }),
+    'Dynamic Rounding: above cell cap · cells: 10,010');
+  eq('log format: a label with nothing to report is left out',
+    DR_LOG.formatRow('settings change', { 'on/off': 'off', 'left as written': null }),
+    'Dynamic Rounding: settings change · on/off: off');
+  eq('log format: errorType holds the type name of an Error and null for any other thrown value',
+    [DR_LOG.errorType(new TypeError('x')), DR_LOG.errorType('boom'), DR_LOG.errorType(undefined)],
+    ['TypeError', null, null]);
+})();
