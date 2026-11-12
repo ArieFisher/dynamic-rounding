@@ -262,16 +262,32 @@ function applySidebarRounding(table) {
   if (opts.enabled !== false) {
     const result = roundTable(table, opts);
     sendRangeStatusMessage(result);
-    DR_LOG.debug("Dynamic Rounding: apply ran (applied=" + result.applied + ", rangeStatus=" + result.rangeStatus + ").");
+    DR_LOG.debug(DR_LOG.formatRow('settings change',
+      { 'on/off': 'on', 'left as written': leftAsWrittenValue(result.leftAsWritten) }));
     if (table.querySelector('.dr-ext-rounded')) {
       DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle table' });
     }
   } else {
-    DR_LOG.debug("Dynamic Rounding: apply ran with rounding off; table reset.");
+    DR_LOG.debug(DR_LOG.formatRow('settings change', { 'on/off': 'off' }));
     DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle table' });
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   flashRangePulse(table, rangeParse.error ? null : rangeParse.ranges);
+}
+
+/**
+ * The settings change row's "left as written" value: each reason with a
+ * non-zero count, e.g. "split number 2, text mismatch 1".
+ * @param {{splitNumber: number, splitDateOrTime: number, textMismatch: number}} [counts]
+ *   The pass's counts; absent when the pass did not run.
+ * @returns {string} The value, empty when nothing was left as written.
+ */
+function leftAsWrittenValue(counts = {}) {
+  return [['split number', counts.splitNumber], ['split date or time', counts.splitDateOrTime],
+    ['text mismatch', counts.textMismatch]]
+    .filter(([, count]) => count > 0)
+    .map(([reason, count]) => reason + ' ' + count.toLocaleString('en-US'))
+    .join(', ');
 }
 
 // The one consumer of the nomination step's per-nest outcomes. Both live
@@ -872,50 +888,36 @@ function buildCaptureStateResponse() {
 // The adapters (lib/dr-table/adapters.js, cells.js) build one cell object for
 // both kinds, so the pass sees no difference between them before it starts.
 //
-// The pass writes a debug row for a split number (entry.split) after
-// classification, so the lens preview, which runs the classification step
-// alone, writes none. It writes a second row for a changed date or time whose
-// text crosses a piece boundary.
+// The pass writes no log row. It counts, by reason, the cells it left as
+// written: a split number (entry.split, after classification), a changed
+// date or time whose text crosses a piece boundary, and a cell whose patch
+// landed nothing because the text it shows differs from the text its pieces
+// hold. It returns the counts and its duration; the apply writes the counts
+// in its one settings change row, and the re-apply observer writes the
+// duration when a pass runs over the pass target.
 //
 // The pass settings:
 //   frozenMaxMag  the max magnitude to use instead of computing it from the
 //                 cells; null or undefined computes it. A re-apply pass,
 //                 on either table kind, passes the table's magnitude
 //                 freeze.
-//   writes        'first' writes every changed cell, stores the max
-//                 magnitude as the table's magnitude freeze, and writes the debug
-//                 row for the cells left unrounded (unroundedCellsRow). 'reapply' writes every changed cell and
-//                 nothing else. 'none' sorts no cell, writes nothing, and
-//                 returns each cell's patches; only the test suite passes
-//                 it, to read a table's planned patches with the page left
-//                 unchanged.
+//   writes        'first' writes every changed cell and stores the max
+//                 magnitude as the table's magnitude freeze. 'reapply'
+//                 writes every changed cell and nothing else. 'none' sorts
+//                 no cell, writes nothing, and returns each cell's patches;
+//                 only the test suite passes it, to read a table's planned
+//                 patches with the page left unchanged.
 //   cellCap       the most cells the pass reads; above it the pass writes
 //                 nothing and returns overCap. The re-apply observer passes
 //                 the detection settings' reapplyCellCap; the first
 //                 simplification passes none.
 //
-// A cell's piece-boundary check and its writes run in the same loop, so a
-// native table's debug rows keep their page order. The table step reads only
-// what classification captured, never the page, so a write to one cell
-// leaves the patches of the cells after it unchanged.
-
-const SPLIT_NUMBER_ROW = 'Dynamic Rounding: a number split across text pieces stays unchanged.';
-const SPLIT_DATE_ROW = 'Dynamic Rounding: a date or time split across text pieces stays unchanged.';
+// The table step reads only what classification captured, never the page,
+// so a write to one cell leaves the patches of the cells after it unchanged.
 
 // Returns how many patches landed (see makeCellObj in lib/dr-table).
 function writeCell(entry, patches) {
   return entry.cellObj.applyPatches(patches, { value: entry.text });
-}
-
-// The debug row the first simplification writes when a cell with a change
-// to make took none of it: the text the cell shows differs from the text
-// its pieces hold, so no number sat where the pass expected it. One wording
-// for both table kinds, and a debug row, so it raises no toast. The first
-// simplification alone writes it, so a table the page keeps changing writes
-// no row on every pass.
-function unroundedCellsRow(missed, total) {
-  return 'Dynamic Rounding: ' + missed + ' of ' + total + ' cells were left unrounded because ' +
-    'the text they show did not match the text they hold.';
 }
 
 // The offsets and the top-band count, resolved once for the whole table.
@@ -977,16 +979,16 @@ function watchedElement(adapter) {
 // (tablePatches, lib/dr-simplify/table.js), less a changed date or time that
 // does not sit in one text piece. A date or time cell's one patch covers its
 // trimmed text; when no single text piece holds that span, the cell stays as
-// written and the pass writes the debug row.
+// written.
 function cellPatches(stepCell) {
-  const { entry, patches } = stepCell;
+  return isSplitDateOrTime(stepCell) ? [] : stepCell.patches;
+}
+
+// A changed date or time whose one patch no single text piece holds.
+function isSplitDateOrTime({ entry, patches }) {
   const isDateOrTime = entry.info.mode === 'date' || entry.info.mode === 'time';
-  if (isDateOrTime && patches.length > 0 &&
-      !layoutPieceHolding(entry.layout, patches[0].index, patches[0].numStr.length)) {
-    DR_LOG.debug(SPLIT_DATE_ROW);
-    return [];
-  }
-  return patches;
+  return isDateOrTime && patches.length > 0 &&
+    !layoutPieceHolding(entry.layout, patches[0].index, patches[0].numStr.length);
 }
 
 /**
@@ -998,20 +1000,22 @@ function cellPatches(stepCell) {
  * @param {{frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none',
  *          cellCap?: number}} pass
  * @returns {{cells: Array<{entry: object, patches: object[]}>,
- *            maxMag: number|null, landedCells: number, missedCells: number,
- *            cellCount: number, overCap: boolean}}
+ *            maxMag: number|null, landedCells: number, cellCount: number,
+ *            overCap: boolean, ms?: number,
+ *            leftAsWritten?: {splitNumber: number, splitDateOrTime: number, textMismatch: number}}}
  *   cells holds every cell in page order with its patches (empty means the
  *   cell's target text is its original). landedCells counts the written
- *   cells with a landed patch, missedCells the written cells with none.
- *   cellCount counts the cells the pass read. An invalid range
- *   expression or a table with no rows returns no cells and writes nothing;
- *   so does a table above pass.cellCap, with overCap true.
+ *   cells with a landed patch. cellCount counts the cells the pass read.
+ *   leftAsWritten counts, by reason, the cells the pass left as written, and
+ *   ms holds the pass's duration. An invalid range expression or a table
+ *   with no rows returns no cells, no counts, and writes nothing; so does a
+ *   table above pass.cellCap, with overCap true.
  */
 function simplifyTableCells(table, adapterRows, opts, pass) {
   const startedAt = Date.now();
   const { writes } = pass;
   const rangeParse = parseRangeExpr(opts.rangeExpr);
-  const none = { cells: [], maxMag: null, landedCells: 0, missedCells: 0, cellCount: 0, overCap: false };
+  const none = { cells: [], maxMag: null, landedCells: 0, cellCount: 0, overCap: false };
   if (rangeParse.error || adapterRows.length === 0) return none;
   const dataCells = tableDataCells(adapterRows);
   if (pass.cellCap !== undefined && dataCells.length > pass.cellCap) {
@@ -1019,21 +1023,21 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   }
   if (writes !== 'none') releaseRewrittenCells(table, dataCells);
   const classified = classifyTableCells(dataCells, opts, rangeParse.ranges);
-  for (const entry of classified) {
-    if (entry.split) DR_LOG.debug(SPLIT_NUMBER_ROW);
-  }
   const settings = Object.assign(resolveRoundingSettings(opts),
     { dateGranularity: opts.dateGranularity, timeGranularity: opts.timeGranularity });
   const { maxMag, cells: stepCells } = tablePatches(classified, settings, pass.frozenMaxMag);
   if (writes === 'first') DR_MODEL.setTableMaxMagnitude(table, maxMag);
 
-  const written = writeTableCells(table, stepCells, writes);
-  if (writes === 'first' && written.missedCells > 0) {
-    DR_LOG.debug(unroundedCellsRow(written.missedCells, written.landedCells + written.missedCells));
-  }
-  DR_LOG.debug('Dynamic Rounding: a pass read ' + dataCells.length + ' cells in ' +
-    (Date.now() - startedAt) + ' ms.');
-  return Object.assign(written, { maxMag, cellCount: dataCells.length, overCap: false });
+  const { cells, landedCells, splitDateOrTime, textMismatch } = writeTableCells(table, stepCells, writes);
+  return {
+    cells, landedCells, maxMag, cellCount: dataCells.length, overCap: false,
+    leftAsWritten: {
+      splitNumber: classified.filter((entry) => entry.split).length,
+      splitDateOrTime,
+      textMismatch,
+    },
+    ms: Date.now() - startedAt,
+  };
 }
 
 // The pass's write loop over the table step's cells, cell by cell in page
@@ -1043,19 +1047,21 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
 function writeTableCells(table, stepCells, writes) {
   const cells = [];
   let landedCells = 0;
-  let missedCells = 0;
+  let splitDateOrTime = 0;
+  let textMismatch = 0;
   for (const stepCell of stepCells) {
     const { entry } = stepCell;
+    if (isSplitDateOrTime(stepCell)) splitDateOrTime++;
     const flat = flatPatches(cellPatches(stepCell), entry.layout);
     cells.push({ entry, patches: flat });
     if (writes === 'none') continue;
     const held = DR_MODEL.hasTableOriginal(table, entry.cellObj.el);
     const landed = flat.length > 0 ? writeCell(entry, flat) : 0;
     if (flat.length > 0 && landed > 0) landedCells++;
-    else if (flat.length > 0) missedCells++;
+    else if (flat.length > 0) textMismatch++;
     if (landed === 0 && held) releaseCell(table, entry.cellObj.el);
   }
-  return { cells, landedCells, missedCells };
+  return { cells, landedCells, splitDateOrTime, textMismatch };
 }
 
 // A table's adapter, reading and writing each cell's record through the
@@ -1196,7 +1202,7 @@ function roundTable(table, options) {
   // A table with no rows returns early without throwing.
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
   // A re-apply reuses the freeze, so a scroll or page write keeps the basis.
-  const { landedCells, cellCount } = simplifyTableCells(table, adapterRows, opts, {
+  const { landedCells, cellCount, leftAsWritten } = simplifyTableCells(table, adapterRows, opts, {
     frozenMaxMag: null,
     writes: 'first',
   });
@@ -1205,7 +1211,7 @@ function roundTable(table, options) {
   // The re-apply observer attaches AFTER the first simplification, so the
   // writes above run no pass.
   watchTable(table, adapter, cellCount);
-  return { applied: true, rangeStatus: 'ok' };
+  return { applied: true, rangeStatus: 'ok', leftAsWritten };
 }
 
 // findMaxMagnitude lives in core.js, loaded by manifest content_scripts ahead

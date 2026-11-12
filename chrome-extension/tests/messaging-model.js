@@ -17,7 +17,7 @@
     { tag: 'td', text: 'Cost: 123,456 per month' },
   ]]);
   try {
-    roundTable(table, EXTRACTED_PATCH_OPTS);
+    const result = roundTable(table, EXTRACTED_PATCH_OPTS);
     const cell = table.rows[0].cells[0];
     eq('patch-honesty: a cell whose patches all skip gets no marker',
       cell.classList.contains('dr-ext-rounded'), false);
@@ -27,10 +27,8 @@
       DR_MODEL.getTableOriginalText(table, cell), undefined);
     eq('patch-honesty: a table whose only change failed keeps form original',
       DR_MODEL.getTableAppliedFlag(table), 'original');
-    eq('patch-honesty: the failure leaves a debug row, which raises no toast',
-      DR_LOG.snapshot().entries.some(
-        (row) => row.level === 'debug' && /cells were left unrounded/.test(row.text)),
-      true);
+    eq('patch-honesty: the pass counts the cell as left as written for a text mismatch',
+      result.leftAsWritten.textMismatch, 1);
   } finally {
     delete global.document.createTreeWalker;
     DR_MODEL.unregisterTable(table);
@@ -169,10 +167,10 @@
     ];
     const cell = makeReactiveCell(segments);
     const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
-    const warnRowsBefore = DR_LOG.snapshot().entries
-      .filter((row) => /cells were left unrounded/.test(row.text)).length;
     try {
-      roundTableUnder(table, opts);
+      const result = roundTableUnder(table, opts);
+      eq('table 8 linked reference: no patch is left unlanded',
+        result.leftAsWritten.textMismatch, 0);
       eq('table 8 linked reference: the linked 12 holds',
         segments[1].text, 'ref 12');
       eq('table 8 linked reference: the plain 9,850 rounds',
@@ -187,10 +185,6 @@
         segments[1].text, 'ref 12');
       eq('table 8 linked reference: the plain number stays rounded after a re-apply',
         segments[2].text, ', total 10,000');
-      const warnRowsAfter = DR_LOG.snapshot().entries
-        .filter((row) => /cells were left unrounded/.test(row.text)).length;
-      eq('table 8 linked reference: no patch is left unlanded',
-        warnRowsAfter, warnRowsBefore);
     } finally {
       DR_MODEL.unregisterTable(table);
     }
@@ -208,20 +202,16 @@
     const segments = [{ text: '\n            Grew 9,850 units\n          ', inSup: false, inAnchor: false }];
     const cell = makePrettyPrintedCell(segments);
     const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
-    const warnRowsBefore = DR_LOG.snapshot().entries
-      .filter((row) => /cells were left unrounded/.test(row.text)).length;
     try {
-      roundTable(table, opts);
+      const result = roundTable(table, opts);
+      eq('table 21 line breaks: no patch is left unlanded',
+        result.leftAsWritten.textMismatch, 0);
       eq('table 21 line breaks: the number inside words rounds, and the line breaks stay',
         segments[0].text, '\n            Grew 10,000 units\n          ');
       eq('table 21 line breaks: the cell records as simplified',
         cell.classList.contains('dr-ext-rounded'), true);
       eq('table 21 line breaks: the stored original is the rendered text',
         (DR_MODEL.getTableOriginal(table, cell) || {}).value, 'Grew 9,850 units');
-      const warnRowsAfter = DR_LOG.snapshot().entries
-        .filter((row) => /cells were left unrounded/.test(row.text)).length;
-      eq('table 21 line breaks: no patch is left unlanded',
-        warnRowsAfter, warnRowsBefore);
     } finally {
       DR_MODEL.unregisterTable(table);
     }
@@ -287,7 +277,7 @@
     const cell = makeReactiveCell(segments);
     const table = { rows: [{ cells: [cell] }], querySelector: () => null, dataset: {} };
     try {
-      roundTable(table, nativeOnePieceOpts());
+      const result = roundTable(table, nativeOnePieceOpts());
       eq('native pure cell across pieces: the first piece keeps its text',
         segments[0].text, '4,523,');
       eq('native pure cell across pieces: the second piece keeps its text',
@@ -296,9 +286,8 @@
         cell.classList.contains('dr-ext-rounded'), false);
       eq('native pure cell across pieces: the cell stores no original',
         DR_MODEL.getTableOriginal(table, cell), undefined);
-      eq('native pure cell across pieces: a debug row records the skip',
-        DR_LOG.snapshot().entries.some((row) => row.level === 'debug' &&
-          /number split across text pieces/.test(row.text)), true);
+      eq('native pure cell across pieces: the pass counts the cell as a split number',
+        result.leftAsWritten.splitNumber, 1);
     } finally {
       DR_MODEL.unregisterTable(table);
     }
@@ -562,15 +551,13 @@
   };
   try {
     const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: true, simplifyFirstColumn: true });
-    roundTable(grid.wrapperEl, opts);
+    const result = roundTable(grid.wrapperEl, opts);
     eq('grid-honesty: a write that lands nothing adds no marker through roundTable',
       grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
     eq('grid-honesty: a grid whose every write skipped keeps form original',
       DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'original');
-    eq('grid-honesty: the skipped writes leave a debug row, which raises no toast',
-      DR_LOG.snapshot().entries.some(
-        (row) => row.level === 'debug' && /cells were left unrounded/.test(row.text)),
-      true);
+    eq('grid-honesty: the pass counts the skipped writes as left as written for a text mismatch',
+      result.leftAsWritten.textMismatch > 0, true);
   } finally {
     DR_MODEL.setTableMaxMagnitude = setMaxMagnitude;
     DR_MODEL.unregisterTable(grid.wrapperEl);
@@ -4587,8 +4574,6 @@ function issue328SettingsOf(table) {
   }
 })();
 
-const RW_UNROUNDED_ROW = /cells were left unrounded/;
-
 // --- Test 10: a shape change during a pass. The table re-detects as a new
 // table and shows raw under the shipped defaults; the active table changes
 // only when the changed table was the active one. ---
@@ -4641,13 +4626,12 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
   });
 })();
 
-// A cell left unrounded writes one debug row at the first simplification
-// alone, on both table kinds, so a table the page keeps changing writes no
-// row on every pass, and no row raises a toast. The native cell's rendered
-// text differs from its one piece in more than whitespace; the grid cell's
-// text changes between classification and the write. Either way no number
-// sits where the pass expects it.
-(function rewriteUnroundedCellsRowBelongsToTheFirstSimplification() {
+// A cell whose patch lands nothing counts as left as written for a text
+// mismatch, on both table kinds. The native cell's rendered text differs
+// from its one piece in more than whitespace; the grid cell's text changes
+// between classification and the write. Either way no number sits where the
+// pass expects it.
+(function rewriteTextMismatchCountsTheCell() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
     const t = build(RW_ROWS);
     let restoreMagnitude = null;
@@ -4662,22 +4646,49 @@ const RW_UNROUNDED_ROW = /cells were left unrounded/;
       };
       restoreMagnitude = () => { DR_MODEL.setTableMaxMagnitude = setMaxMagnitude; };
     }
-    const before = rwRows('debug', RW_UNROUNDED_ROW);
+    let result = null;
     try {
-      roundTableUnder(t.table, RW_OPTS);
+      result = roundTableUnder(t.table, RW_OPTS);
     } finally {
       if (restoreMagnitude) restoreMagnitude();
     }
-    eq(`#421 unrounded cells (${kind}): the first simplification writes one debug row with the counts`,
-      rwLogged.filter((row) => row.level === 'debug' && RW_UNROUNDED_ROW.test(row.text)).slice(before)
-        .map((row) => row.text),
-      ['Dynamic Rounding: 1 of 4 cells were left unrounded because the text they show did not match the text they hold.']);
-    t.write(0, 0, '4,321');
-    page.settle();
-    eq(`#421 unrounded cells (${kind}): a later pass writes no further row, and no row is a warn row`,
-      { rows: rwRows('debug', RW_UNROUNDED_ROW) - before, warns: rwRows('warn', RW_UNROUNDED_ROW),
-        simplified: t.text(0, 0) },
-      { rows: 1, warns: 0, simplified: '4,300' });
+    eq(`#421 text mismatch (${kind}): the pass counts one cell as left as written`,
+      result.leftAsWritten.textMismatch, 1);
+  });
+})();
+
+// --- The settings change row ---
+//
+// One apply writes one row: on/off, and the count of numbers the pass left as
+// written, by reason. The cells are test page section 25's: a number that
+// inline styling splits, alone and beside a number that rounds. The exact
+// row proves no page text reaches it.
+const SETTINGS_CHANGE_ROWS = [[['6,7', { tag: 'b', text: '18,245' }],
+  ['6,7', { tag: 'b', text: '18,245' }, ' beside 4,523']]];
+
+(function settingsChange_oneRowPerApply() {
+  eachRewriteKind(RW_KINDS, (kind, page, build) => {
+    const rowsOf = (table, opts) => {
+      const rows = [];
+      const offRow = DR_LOG.onRow((row) => rows.push(row.text));
+      try {
+        DR_MODEL.setTableSettings(table, opts, 'page');
+        withPillboxDocumentMock(() => applySidebarRounding(table));
+      } finally {
+        offRow();
+      }
+      return rows;
+    };
+    const t = build(SETTINGS_CHANGE_ROWS);
+    eq(`settings change (${kind}): turning a table on writes one row with the split numbers counted`,
+      rowsOf(t.table, Object.assign({}, RW_OPTS, { enabled: true })),
+      ['Dynamic Rounding: settings change · on/off: on · left as written: split number 2']);
+    eq(`settings change (${kind}): turning a table off writes one row`,
+      rowsOf(t.table, Object.assign({}, RW_OPTS, { enabled: false })),
+      ['Dynamic Rounding: settings change · on/off: off']);
+    eq(`settings change (${kind}): an invalid range expression writes one row with no count`,
+      rowsOf(t.table, Object.assign({}, RW_OPTS, { enabled: true, rangeExpr: 'not a range' })),
+      ['Dynamic Rounding: settings change · on/off: on']);
   });
 })();
 

@@ -226,25 +226,22 @@ function applyTableStepPatches(text, patches) {
 //
 // The table step returns a date or time cell's patch over its trimmed text;
 // the pass drops the patch when no single text piece holds that span, and
-// writes the debug row. A date that sits in one piece beside a
-// whitespace piece rounds.
-
-const TABLE_STEP_DATE_SPLIT_ROW = /date or time split across text pieces stays unchanged/;
+// counts the cell as a split date or time. A date that sits in one piece
+// beside a whitespace piece rounds.
 
 (function tableStep_dateAcrossTwoPiecesStaysUnchanged() {
   const passOpts = Object.assign({}, TABLE_STEP_LADDER_OPTS, TABLE_STEP_SETTINGS);
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
-    const rowsBefore = rwRows('debug', TABLE_STEP_DATE_SPLIT_ROW);
     const t = build([
       [[{ tag: 'b', text: '2024-' }, { tag: 'b', text: '03-15' }], '1,234'],
       ['2024-04-20', '5,678'],
       [[{ tag: 'b', text: '2024-05-10' }, ' '], '2,468'],
     ]);
-    roundTableUnder(t.table, passOpts);
+    const result = roundTableUnder(t.table, passOpts);
     eq(`table step, date across two pieces (${kind}): each piece keeps its text`,
       t.pieces(0, 0).map((p) => p.nodeValue), ['2024-', '03-15']);
-    eq(`table step, date across two pieces (${kind}): one debug row records the date left unchanged`,
-      rwRows('debug', TABLE_STEP_DATE_SPLIT_ROW) - rowsBefore, 1);
+    eq(`table step, date across two pieces (${kind}): the pass counts one split date or time`,
+      result.leftAsWritten.splitDateOrTime, 1);
     eq(`table step, date across two pieces (${kind}): a date in one piece rounds`,
       t.text(1, 0), '2024-04');
     eq(`table step, date across two pieces (${kind}): a date in one piece beside a whitespace piece rounds`,
