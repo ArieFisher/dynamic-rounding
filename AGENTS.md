@@ -14,8 +14,8 @@ Rules group by reader. The contributor guide holds the rules every contributor n
 
 `docs/vocabulary.md` is the term canon: one term per concept, across every platform and every document.
 
-- Read it in full when starting a branch. Use the vocabulary when writing any prose (e.g. code comments, test names, the commit message, issue and pull request text, etc.). Never vary word choice for style.
-- **At every commit**, sweep the change's **new** prose and:
+- Read it in full when starting a branch. Use the vocabulary when writing (e.g. code, code comments, test names, the commit message, issue and pull request text, etc.). Never vary word choice for style.
+- **At every commit**, sweep the change's **new** lines and:
   - *retired synonyms*: Replace a retired synonym with its canonical term.
   - *new concepts*: Define new concepts in `docs/vocabulary.md` on the same branch, as its own `docs:` commit.
 
