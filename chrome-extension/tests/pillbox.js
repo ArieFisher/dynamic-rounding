@@ -2648,10 +2648,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     // grid, and the press path, which reads nothing about the sidebar, makes a
     // toggle on the connected table take the settings path with the sidebar
     // closed too: the table's settings notice from the write, then
-    // state:rangeOk from the round. No intent:updateMenuLabel here only
-    // because this minimal grid's querySelector always returns null, so the
-    // enabled branch's conditional send is skipped — a fixture artifact, not
-    // contract.
+    // state:rangeOk from the round.
     eq('double-invocation: a sidebar-closed intent:menuClicked on the connected grid takes the settings path',
       sentMessages.slice(beforeMenuClick).map((m) => m.topic),
       ['state:settingsChanged', 'state:rangeOk']);

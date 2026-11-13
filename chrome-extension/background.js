@@ -12,21 +12,27 @@ importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
 
 let sidebarTabId = null;
 
+// One fixed label serves every table on the page, so nothing updates it.
+// Chrome's documentation does not state whether an earlier version's menu
+// items survive an update, so the worker removes every item before it
+// creates its own: an item under a former id would otherwise stay in the menu.
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "dr-action",
-    title: "Toggle table",
-    contexts: ["all"]
-  });
-  chrome.contextMenus.create({
-    id: "dr-action-sidebar",
-    title: "Toggle and open sidebar",
-    contexts: ["all"]
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "dr-menu-toggle",
+      title: "Simplify",
+      contexts: ["all"]
+    });
+    chrome.contextMenus.create({
+      id: "dr-menu-toggle-sidebar",
+      title: "Simplify and open sidebar",
+      contexts: ["all"]
+    });
   });
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId === "dr-action") {
+  if (info.menuItemId === "dr-menu-toggle") {
     // The user right-clicked in this tab. Without a tab number the bus sends
     // to the tab in front of the current window, which can be a different
     // tab, so the publish passes this tab's number.
@@ -34,7 +40,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     return;
   }
 
-  if (info.menuItemId === "dr-action-sidebar") {
+  if (info.menuItemId === "dr-menu-toggle-sidebar") {
     try {
       if (chrome.sidePanel && chrome.sidePanel.open) {
         await chrome.sidePanel.open({ tabId: tab.id });
@@ -43,9 +49,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       console.warn(DR_LOG.formatRow('error', { step: 'open sidebar', error: DR_LOG.errorType(e) }));
     }
     sidebarTabId = tab.id;
-    // The item does both things its title states: the same toggle "Toggle
-    // table" publishes, then the sidebar-opened topic. The toggle goes first,
-    // so the sidebar's re-read on open reads the toggled settings.
+    // The menu toggle with sidebar does both things its title states: the
+    // same toggle the menu toggle publishes, then the sidebar-opened topic.
+    // The toggle goes first, so the sidebar's re-read on open reads the
+    // toggled settings.
     DR_BUS.publish('intent:menuClicked', {}, { tabId: tab.id });
     DR_BUS.publish('state:sidebarOpened', {}, { tabId: tab.id });
   }
@@ -74,10 +81,6 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
   if (sidebarTabId !== null && activeInfo.tabId !== sidebarTabId) {
     closeSidebarIfOpen();
   }
-});
-
-DR_BUS.subscribe('intent:updateMenuLabel', ({ title }) => {
-  chrome.contextMenus.update("dr-action", { title });
 });
 
 // meta.tabId is the tab the content script sent from. The worker acts only

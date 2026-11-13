@@ -264,12 +264,8 @@ function applySidebarRounding(table) {
     sendRangeStatusMessage(result);
     DR_LOG.debug(DR_LOG.formatRow('settings change',
       { 'on/off': 'on', 'left as written': leftAsWrittenValue(result.leftAsWritten) }));
-    if (table.querySelector('.dr-ext-rounded')) {
-      DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle table' });
-    }
   } else {
     DR_LOG.debug(DR_LOG.formatRow('settings change', { 'on/off': 'off' }));
-    DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle table' });
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   flashRangePulse(table, rangeParse.error ? null : rangeParse.ranges);

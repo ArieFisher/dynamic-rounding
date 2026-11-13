@@ -905,7 +905,7 @@
       // The handler runs to completion synchronously with chrome.sidePanel
       // absent.
       sentTabMessages.length = 0;
-      capturedClickHandler({ menuItemId: 'dr-action-sidebar' }, { id: PANEL_TAB });
+      capturedClickHandler({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
       result.sentOpenedReport = sentTabMessages.some(m => m.tabId === PANEL_TAB &&
         m.msg && m.msg.topic === 'state:sidebarOpened');
 
@@ -1165,17 +1165,55 @@
   const PANEL_TAB = 7;
 
   function openPanel(ctx) {
-    ctx.listeners.menuClicked({ menuItemId: 'dr-action-sidebar' }, { id: PANEL_TAB });
+    ctx.listeners.menuClicked({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
   }
 
-  // --- "Toggle and open sidebar" does both: the same toggle "Toggle table"
+  // --- The menu toggle with sidebar does both: the same toggle the menu toggle
   // sends, then the sidebar-opened report, to the tab the right-click
   // happened in and in that order, so the sidebar's re-read on open reads
   // the toggled settings. ---
+  // --- The menu holds two fixed labels, created after every former item is
+  // removed. ---
+  (function menuItemsCarryFixedLabels() {
+    const created = [];
+    let installed = null;
+    let removedBeforeCreate = false;
+    const chromeStub = {
+      runtime: {
+        lastError: null,
+        onInstalled: { addListener: (fn) => { installed = fn; } },
+        onMessage: { addListener: () => {} },
+        sendMessage: (msg, cb) => { if (cb) cb(undefined); },
+      },
+      contextMenus: {
+        removeAll: (cb) => { removedBeforeCreate = created.length === 0; cb(); },
+        create: (item) => { created.push({ id: item.id, title: item.title }); },
+        onClicked: { addListener: () => {} },
+      },
+      tabs: {
+        query: (q, cb) => { cb([]); },
+        sendMessage: (tabId, msg, cb) => { if (cb) cb(undefined); },
+        onUpdated:   { addListener: () => {} },
+        onRemoved:   { addListener: () => {} },
+        onActivated: { addListener: () => {} },
+      },
+    };
+    new Function('chrome', 'console', messagingCode + '\n' + bgSrc)(
+      chromeStub, { warn: () => {}, debug: () => {}, log: () => {} });
+    if (installed) installed();
+    eq('menu items: the worker removes every former item before it creates its own',
+      removedBeforeCreate, true);
+    eq('menu items: the menu toggle and the menu toggle with sidebar carry fixed labels',
+      created, [
+        { id: 'dr-menu-toggle', title: 'Simplify' },
+        { id: 'dr-menu-toggle-sidebar', title: 'Simplify and open sidebar' },
+      ]);
+  })();
+
   (function toggleAndOpenSidebarTogglesThenOpens() {
     const ctx = loadBackground();
     openPanel(ctx);
-    eq('bg routing: "Toggle and open sidebar" sends the toggle, then the sidebar-opened report, to that tab',
+    eq('bg routing: the menu toggle with sidebar sends the toggle, then the sidebar-opened report, to that tab',
       ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
       ['intent:menuClicked', 'state:sidebarOpened']);
   })();
@@ -1915,8 +1953,7 @@
 // sendRangeStatusMessage -> chrome.runtime.sendMessage).
 //
 // The apply is the one path to roundTable, so it drives the flow here. It
-// sends the state:rangeOk/state:rangeError and intent:updateMenuLabel
-// messages.
+// sends the state:rangeOk/state:rangeError messages.
 //
 // The engine returns { applied, rangeStatus, error } and the controller
 // sends the message. The two expected sequences below (one per
@@ -1993,10 +2030,9 @@
     ]);
     // The apply ends with flashRangePulse, which flashes the whole-table
     // outline via table.classList — a real <table> element has this; the bare
-    // mock from makeMockTable does not. It also opens with a reset and closes
-    // by checking for a simplified cell, both through the marker-class
-    // selector, so the mock needs a live scan rather than a fixed answer — an
-    // empty list would hide the closing intent:updateMenuLabel.
+    // mock from makeMockTable does not. It also opens with a reset through the
+    // marker-class selector, so the mock answers that selector with a live
+    // scan.
     table.classList = { add() {}, remove() {} };
     table.querySelectorAll = (sel) => {
       if (sel !== '.dr-ext-rounded') return [];
@@ -2033,7 +2069,6 @@
     okRun.sentMessages,
     [
       { topic: 'state:rangeOk' },
-      { topic: 'intent:updateMenuLabel', title: 'Toggle table' },
     ]);
   eq('range-status sequence (valid range): the cell was actually rounded',
     okRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), true);
@@ -2520,7 +2555,7 @@
   for (const topic of ['state:tableActivated', 'state:tableSwitched',
       'state:rangeError', 'state:rangeOk',
       'state:previewSamplesChanged',
-      'state:pageUnloaded', 'intent:updateMenuLabel']) {
+      'state:pageUnloaded']) {
     eq('content on bus: publishes ' + topic,
       contentSrc.includes("publish('" + topic + "'"), true);
   }

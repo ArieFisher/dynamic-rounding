@@ -833,7 +833,7 @@
 // The context-menu toggle must go through the same controller branch a
 // pillbox press uses. The right-click that opens the menu already activates
 // the table (the contextmenu handler calls setActiveTable), so with the
-// sidebar open, "Toggle table" on that table must write the table's settings
+// sidebar open, the menu toggle on that table must write the table's settings
 // and send them (the settings notice). A menu path that simplified the table
 // directly would leave the settings and the sidebar stale, and the next
 // reopen or switch would re-impose the stale settings. Fresh-eval fixture modeled on the

@@ -1367,7 +1367,7 @@ const PENDING_FILL_ROWS = [
      'request:applySettings', 'request:activeTable', 'request:captureState',
      // The service worker's four, plus the two it receives.
      'intent:menuClicked', 'state:sidebarOpened', 'intent:closeSidebar',
-     'state:sidebarClosed', 'state:pageUnloaded', 'intent:updateMenuLabel',
+     'state:sidebarClosed', 'state:pageUnloaded',
      // The content script's six reports to the sidebar, the settings
      // notice among them.
      'state:settingsChanged', 'state:tableActivated', 'state:tableSwitched',
@@ -1383,7 +1383,6 @@ const PENDING_FILL_ROWS = [
     'intent:closeSidebar': ['intent', 'extension-pages'],
     'state:sidebarClosed': ['state-change', 'extension-pages'],
     'state:pageUnloaded': ['state-change', 'extension-pages'],
-    'intent:updateMenuLabel': ['intent', 'extension-pages'],
     // The content script's six reports. Every one broadcasts: the content
     // script holds no tabs interface, and the sidebar is an extension page.
     'state:settingsChanged': ['state-change', 'extension-pages'],
@@ -1663,7 +1662,6 @@ const PENDING_FILL_ROWS = [
       { topic: 'state:settingsChanged', source: 'page',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
       { topic: 'state:rangeOk' },
-      { topic: 'intent:updateMenuLabel', title: 'Toggle table' },
     ],
     // A press on a table that is NOT the active one applies the pressed
     // table's own settings to it, whatever the sidebar is doing.
@@ -1677,7 +1675,6 @@ const PENDING_FILL_ROWS = [
       { topic: 'state:settingsChanged', source: 'page',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
       { topic: 'state:rangeOk' },
-      { topic: 'intent:updateMenuLabel', title: 'Toggle table' },
     ],
   };
 
@@ -3046,7 +3043,7 @@ function issue328SettingsOf(table) {
     sent.length = 0;
     withCreateTreeWalker(() => askContentScript({ topic: 'state:sidebarOpened' }));
     eq('sidebar open: no apply runs on the simplified table',
-      sent.filter((m) => ['state:rangeOk', 'state:rangeError', 'intent:updateMenuLabel'].includes(m.topic)).length, 0);
+      sent.filter((m) => ['state:rangeOk', 'state:rangeError'].includes(m.topic)).length, 0);
     eq('sidebar open: the simplified cells stay as the toggle left them',
       [showsSimplified(table), table._cells[3].innerText], [true, simplified]);
     eq('sidebar open: the sidebar is told to re-read the active table',

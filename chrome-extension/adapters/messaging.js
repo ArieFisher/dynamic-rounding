@@ -152,7 +152,6 @@ const DR_BUS = (function () {
     'state:sidebarClosed': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     // The worker reads meta.tabId on this one, to act only for the bound tab.
     'state:pageUnloaded': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
-    'intent:updateMenuLabel': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
     // The content script's topics for the sidebar. Every one takes the
     // extension-pages route: the content script holds no tabs interface, and
     // the sidebar is an extension page.
