@@ -61,7 +61,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 function closeSidebarIfOpen() {
   // The broadcast reaches every extension page, and the sidebar closes itself
   // on it. The content script has no subscriber for this topic.
-  DR_BUS.publish('intent:closeSidebar', {});
+  DR_BUS.publish('state:boundTabLeft', {});
   boundTabId = null;
 }
 

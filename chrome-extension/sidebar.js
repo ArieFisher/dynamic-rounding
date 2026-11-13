@@ -603,7 +603,7 @@ boundTab.subscribe('state:settingsChanged', ({ source }) => {
   redrawFromActiveTable(source === 'sidebar');
 });
 
-DR_BUS.subscribe('intent:closeSidebar', () => {
+DR_BUS.subscribe('state:boundTabLeft', () => {
   window.close();
 });
 

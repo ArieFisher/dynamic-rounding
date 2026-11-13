@@ -1366,7 +1366,7 @@ const PENDING_FILL_ROWS = [
      // The sidebar's three requests, each answered by the tab's content script.
      'request:applySettings', 'request:activeTable', 'request:captureState',
      // The service worker's four, plus the two it receives.
-     'intent:menuClicked', 'state:sidebarOpened', 'intent:closeSidebar',
+     'intent:menuClicked', 'state:sidebarOpened', 'state:boundTabLeft',
      'state:sidebarClosed', 'state:pageUnloaded',
      // The content script's six reports to the sidebar, the settings
      // notice among them.
@@ -1380,7 +1380,7 @@ const PENDING_FILL_ROWS = [
   const WORKER_TOPICS = {
     'intent:menuClicked': ['intent', 'tab'],
     'state:sidebarOpened': ['state-change', 'tab'],
-    'intent:closeSidebar': ['intent', 'extension-pages'],
+    'state:boundTabLeft': ['state-change', 'extension-pages'],
     'state:sidebarClosed': ['state-change', 'extension-pages'],
     'state:pageUnloaded': ['state-change', 'extension-pages'],
     // The content script's six reports. Every one broadcasts: the content
@@ -3862,7 +3862,7 @@ function issue328SettingsOf(table) {
 // The sidebar asks for the whole page-side half of a capture in one request.
 // The answer is composed by buildCaptureStateResponse() — a named function
 // the suite drives directly, because the bus's own listener is a no-op stub
-// here (the established equivalent-path pattern, see the intent:closeSidebar
+// here (the established equivalent-path pattern, see the state:boundTabLeft
 // note above). A source assertion pins that the responder exists and routes
 // through it.
 
@@ -4144,12 +4144,12 @@ function issue328SettingsOf(table) {
   // reaches the service worker and the open sidebar, and never a content
   // script. It needs no tab number, so it runs no active-tab lookup.
   const f = makeBusSandbox();
-  f.bus.publish('intent:closeSidebar', {});
+  f.bus.publish('state:boundTabLeft', {});
   eq('bus route: an extension-pages topic broadcasts once', f.sent.pages.length, 1);
   eq('bus route: and sends into no tab', f.sent.tabs.length, 0);
   eq('bus route: and runs no active-tab lookup', f.sent.queries, 0);
   eq('bus route: the broadcast carries the topic name on the wire',
-    f.sent.pages.length === 1 ? f.sent.pages[0].topic : null, 'intent:closeSidebar');
+    f.sent.pages.length === 1 ? f.sent.pages[0].topic : null, 'state:boundTabLeft');
 
   // An extension-pages publish from a context with no chrome.tabs reaches its
   // audience: that carrier needs none. An absent interface is no reason to

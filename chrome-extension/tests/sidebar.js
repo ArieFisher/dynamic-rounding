@@ -56,7 +56,7 @@
   // The topic moved onto the bus, so the needle is its bus name: a
   // reintroduced subscription in the content script is what this catches.
   eq('sidebar-state removal: content.js registers no branch for the close message',
-    /intent:closeSidebar/.test(sourceByName('content.js') || ''), false);
+    /state:boundTabLeft/.test(sourceByName('content.js') || ''), false);
 
   // The merged press path: one settings write, and no read of any sidebar
   // value. The behavioral pins live in the part-one block further down; this
@@ -1543,7 +1543,7 @@ const SINGLE_READ_SAMPLES = {
 
     // The service worker's close carries no tab, so gating it would drop it.
     eq('bound tab: the close message stays off the gate',
-      ungated(sidebarSrc, 'intent:closeSidebar'), true);
+      ungated(sidebarSrc, 'state:boundTabLeft'), true);
   })();
 })();
 

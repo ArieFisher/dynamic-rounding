@@ -1132,7 +1132,7 @@
         sendMessage: (msg, cb) => {
           runtimeSends.push(msg);
           chromeStub.runtime.lastError =
-            closeSidebarUnreceived && msg.topic === 'intent:closeSidebar'
+            closeSidebarUnreceived && msg.topic === 'state:boundTabLeft'
               ? { message: 'Could not establish connection. Receiving end does not exist.' }
               : null;
           if (cb) cb(undefined);
@@ -1233,9 +1233,9 @@
     ctx.listeners.activated({ tabId: 99 });
 
     eq('bg routing: close topic broadcast reaches the sidebar page',
-      ctx.runtimeSends.some(m => m.topic === 'intent:closeSidebar'), true);
+      ctx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
     eq('bg routing: close topic is not sent into the tab — the content script has no handler for it',
-      ctx.tabSends.some(s => s.msg.topic === 'intent:closeSidebar'),
+      ctx.tabSends.some(s => s.msg.topic === 'state:boundTabLeft'),
       false);
   })();
 
@@ -1247,9 +1247,9 @@
     navCtx.tabSends.length = 0;
     navCtx.listeners.updated(PANEL_TAB, { status: 'loading' });
     eq('bg routing: navigating away broadcasts the close topic to the sidebar page',
-      navCtx.runtimeSends.some(m => m.topic === 'intent:closeSidebar'), true);
+      navCtx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
     eq('bg routing: navigating away sends nothing into the tab',
-      navCtx.tabSends.some(s => s.msg.topic === 'intent:closeSidebar'), false);
+      navCtx.tabSends.some(s => s.msg.topic === 'state:boundTabLeft'), false);
 
     // A removed tab: the close must not surface an error. The broadcast is
     // all that goes out, and the stub rejects it, so this pins the
@@ -1274,7 +1274,7 @@
   // match either, including when the worker holds no tab number at all.
   (function pageUnloadClosesOnlyItsOwnTab() {
     const ctx = loadBackground();
-    const closes = () => ctx.runtimeSends.filter(m => m.topic === 'intent:closeSidebar').length;
+    const closes = () => ctx.runtimeSends.filter(m => m.topic === 'state:boundTabLeft').length;
     const unload = (sender) => ctx.listeners.message(
       { topic: 'state:pageUnloaded' }, sender, () => {});
 
@@ -2577,7 +2577,7 @@
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   eq('sidebar on bus: no chrome.runtime.onMessage listener of its own',
     sidebarSrc.includes('chrome.runtime.onMessage.addListener'), false);
-  for (const topic of ['state:tableActivated', 'intent:closeSidebar', 'state:rangeError',
+  for (const topic of ['state:tableActivated', 'state:boundTabLeft', 'state:rangeError',
       'state:rangeOk',
       'state:previewSamplesChanged', 'state:tableSwitched', 'state:settingsChanged']) {
     eq('sidebar on bus: subscribes to ' + topic,

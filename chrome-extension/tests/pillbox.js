@@ -1927,7 +1927,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   // deliver here — the content script registers no branch for it. That
   // absence is asserted at the source, next to the other retirements.
   eq('rebind AC4: the content script registers no branch for the close message',
-    /intent:closeSidebar/.test(sourceByName('content.js') || ''), false);
+    /state:boundTabLeft/.test(sourceByName('content.js') || ''), false);
 })();
 
 // ---------------------------------------------------------------------------

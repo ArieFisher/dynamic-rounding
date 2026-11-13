@@ -16,10 +16,11 @@
  *                     determines what changes. Published by a view, such as
  *                     the table pillbox view in ui-pillbox.js, and never carrying
  *                     authority of its own.
- *   - 'state-change' A fact: a field of the application model changed.
- *                     Published by app/model.js after the write. A subscriber
- *                     redraws on it, or reads the model's getters directly
- *                     when it only needs the current value.
+ *   - 'state-change' A fact: a field of the application model, a tab, or the
+ *                     sidebar changed. app/model.js publishes a model change
+ *                     after the write. A subscriber redraws on it, or reads
+ *                     the model's getters directly when it only needs the
+ *                     current value.
  *   - 'request'      A question: the topic's one responder returns an answer
  *                     to the publisher. See the request rules below.
  *
@@ -148,7 +149,7 @@ const DR_BUS = (function () {
     // is guaranteed to be the tab in front at the moment of the send.
     'intent:menuClicked': { family: INTENT, route: ROUTE_TAB },
     'state:sidebarOpened': { family: STATE_CHANGE, route: ROUTE_TAB },
-    'intent:closeSidebar': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
+    'state:boundTabLeft': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:sidebarClosed': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     // The worker reads meta.tabId on this one, to act only for the bound tab.
     'state:pageUnloaded': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
