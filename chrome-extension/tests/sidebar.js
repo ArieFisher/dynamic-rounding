@@ -56,7 +56,7 @@
   // The topic moved onto the bus, so the needle is its bus name: a
   // reintroduced subscription in the content script is what this catches.
   eq('sidebar-state removal: content.js registers no branch for the close message',
-    /intent:closeSidebar/.test(sourceByName('content.js') || ''), false);
+    /state:boundTabLeft/.test(sourceByName('content.js') || ''), false);
 
   // The merged press path: one settings write, and no read of any sidebar
   // value. The behavioral pins live in the part-one block further down; this
@@ -554,7 +554,7 @@
 
 // ---------------------------------------------------------------------------
 // Adversarial: wire-payload shape of the settings apply. The message body is
-// {action, settings}, same field names, same nesting, no extra bus-envelope
+// {topic, settings}, same field names, same nesting, no extra bus-envelope
 // fields, and chrome.tabs.sendMessage receives a THIRD argument, a response
 // callback, which the sidebar uses to react to delivery: clear statusEl on
 // success, setTableBound(false) when nothing answers (no content script on
@@ -592,11 +592,11 @@
   if (sentCalls.length !== 1) return;
 
   const [tabId, msg, callback] = sentCalls[0];
-  // The topic name itself travels on the wire, in the action field.
-  eq('wire payload: message action is the topic name',
-    msg.action, 'request:applySettings');
-  eq('wire payload: message field names are exactly {action, settings} — no extra bus-envelope fields',
-    Object.keys(msg).sort(), ['action', 'settings'].sort());
+  // The topic name itself travels on the wire, in the topic field.
+  eq('wire payload: the message topic field holds the topic name',
+    msg.topic, 'request:applySettings');
+  eq('wire payload: message field names are exactly {topic, settings} — no extra bus-envelope fields',
+    Object.keys(msg).sort(), ['topic', 'settings'].sort());
   eq('wire payload: settings payload is nested exactly as sendToActiveTab sent it, unchanged',
     JSON.stringify(msg.settings), JSON.stringify({ offsetTop: -2, rangeExpr: 'A1:B2' }));
 
@@ -786,8 +786,8 @@
     h.rangeExprEl.value = '';
 
     // The switch message: re-read the model.
-    h.dispatch({ action: 'state:tableSwitched' });
-    eq('switch-pull: the main toggle mirrors the model\'s enabled:false after a switch',
+    h.dispatch({ topic: 'state:tableSwitched' });
+    eq('switch-pull: the sidebar pillbox mirrors the model\'s enabled:false after a switch',
       h.enabledEl.checked, false);
     // The claim here is that the sidebar MIRRORS the application model. A
     // press that moves the active table sends state:tableSwitched and then clears
@@ -821,8 +821,8 @@
     // preview fetch would end in setTableBound(true) and reset the switch to
     // the shipped default (on) — the model says off.
     h.enabledEl.checked = true;
-    h.dispatch({ action: 'state:previewSamplesChanged' });
-    eq('refresh-pull: the main toggle mirrors the model\'s enabled:false after a preview refresh',
+    h.dispatch({ topic: 'state:previewSamplesChanged' });
+    eq('refresh-pull: the sidebar pillbox mirrors the model\'s enabled:false after a preview refresh',
       h.enabledEl.checked, false);
   } finally {
     h.restore();
@@ -831,9 +831,9 @@
 
 // ---------------------------------------------------------------------------
 // The context-menu toggle must go through the same controller branch a
-// pillbox press uses. The right-click that opens the menu already activates
+// table pillbox press uses. The right-click that opens the menu already activates
 // the table (the contextmenu handler calls setActiveTable), so with the
-// sidebar open, "Toggle table" on that table must write the table's settings
+// sidebar open, the menu toggle on that table must write the table's settings
 // and send them (the settings notice). A menu path that simplified the table
 // directly would leave the settings and the sidebar stale, and the next
 // reopen or switch would re-impose the stale settings. Fresh-eval fixture modeled on the
@@ -929,11 +929,11 @@
       model.getTableSettings(gridEl).enabled, true);
 
     sentMessages.length = 0;
-    fireMessage({ action: 'intent:menuClicked' });
+    fireMessage({ topic: 'intent:menuClicked' });
 
     eq('menu-toggle record: the menu toggle on the connected table writes the table\'s off',
       model.getTableSettings(gridEl).enabled, false);
-    const notices = sentMessages.filter((m) => m.action === 'state:settingsChanged');
+    const notices = sentMessages.filter((m) => m.topic === 'state:settingsChanged');
     eq('menu-toggle record: the menu toggle sends the table\'s settings to the sidebar — off, from a page-side writer',
       notices.map((m) => [m.settings.enabled, m.source]), [[false, 'page']]);
   } finally {
@@ -970,16 +970,16 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     // notice's settings by the time the sidebar reads.
     Object.assign(h.modelSettings, ISSUE328_PAGE_SETTINGS);
     h.tabMessages.length = 0;
-    h.dispatch({ action: 'state:settingsChanged', source: 'page',
+    h.dispatch({ topic: 'state:settingsChanged', source: 'page',
       settings: ISSUE328_PAGE_SETTINGS });
     eq('settings notice: the range expression redraws from the model', h.rangeExprEl.value, 'C3');
     eq('settings notice: the switch redraws from the model', h.enabledEl.checked, true);
     eq('settings notice: the lens preview refreshes from the same read',
-      h.tabMessages.map((m) => m.action), ['request:activeTable']);
+      h.tabMessages.map((m) => m.topic), ['request:activeTable']);
 
     h.tabMessages.length = 0;
     h.el('dateGranularity').fire('change');
-    const applyMsg = h.tabMessages.find((m) => m.action === 'request:applySettings');
+    const applyMsg = h.tabMessages.find((m) => m.topic === 'request:applySettings');
     eq('settings notice: the next save carries the redrawn lens control',
       applyMsg && [applyMsg.settings.offsetTop, applyMsg.settings.offsetOther], [1, 1]);
   } finally {
@@ -999,11 +999,11 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
 
     Object.assign(h.modelSettings, ISSUE328_PAGE_SETTINGS);
     h.tabMessages.length = 0;
-    h.dispatch({ action: 'state:settingsChanged', source: 'sidebar',
+    h.dispatch({ topic: 'state:settingsChanged', source: 'sidebar',
       settings: ISSUE328_PAGE_SETTINGS });
     eq('settings notice skip: the sidebar\'s own write redraws no control', h.rangeExprEl.value, 'B2:E8');
     eq('settings notice skip: the sidebar\'s own write refreshes the lens preview',
-      h.tabMessages.map((m) => m.action), ['request:activeTable']);
+      h.tabMessages.map((m) => m.topic), ['request:activeTable']);
   } finally {
     h.restore();
   }
@@ -1024,9 +1024,9 @@ const ISSUE328_PAGE_SETTINGS = Object.assign({}, DR_DEFAULTS,
     h.rangeExprEl.value = '';
     h.enabledEl.checked = true;
     h.tabMessages.length = 0;
-    h.dispatch({ action: 'state:tableActivated' });
+    h.dispatch({ topic: 'state:tableActivated' });
     eq('activation pull: a right-click activation sends one read of the active table',
-      h.tabMessages.map((m) => m.action), ['request:activeTable']);
+      h.tabMessages.map((m) => m.topic), ['request:activeTable']);
     eq('activation pull: the controls describe the newly active table',
       [h.rangeExprEl.value, h.enabledEl.checked], ['B2:E8', false]);
   } finally {
@@ -1060,9 +1060,9 @@ const SINGLE_READ_SAMPLES = {
     });
     const otherRows = recordAppendedChildren(h.el('otherPreview'));
     h.tabMessages.length = 0;
-    h.dispatch({ action: 'state:tableSwitched' });
+    h.dispatch({ topic: 'state:tableSwitched' });
     eq('single read: a redraw sends exactly one request, the read of the active table',
-      h.tabMessages.map((m) => m.action), ['request:activeTable']);
+      h.tabMessages.map((m) => m.topic), ['request:activeTable']);
     eq('single read: the controls come from the answer\'s settings',
       [h.rangeExprEl.value, h.enabledEl.checked], ['C3', true]);
     eq('single read: the bound state comes from the answer\'s samples',
@@ -1072,7 +1072,7 @@ const SINGLE_READ_SAMPLES = {
 
     answerActiveTableRead(h, { settings: DR_DEFAULTS, samples: null, maxMag: null });
     h.tabMessages.length = 0;
-    h.dispatch({ action: 'state:tableSwitched' });
+    h.dispatch({ topic: 'state:tableSwitched' });
     eq('single read: an answer with null samples redraws the sidebar unbound',
       [h.bodyClasses.has('unbound'), h.enabledEl.checked], [true, false]);
   } finally {
@@ -1103,12 +1103,12 @@ const SINGLE_READ_SAMPLES = {
     h.rangeExprEl.value = 'C3:D9';
     const otherRows = recordAppendedChildren(h.el('otherPreview'));
     h.tabMessages.length = 0;
-    h.dispatch({ action: 'state:settingsChanged', source: 'sidebar',
+    h.dispatch({ topic: 'state:settingsChanged', source: 'sidebar',
       settings: Object.assign({}, DR_DEFAULTS, { rangeExpr: 'C3' }) });
     eq('echo keeps control: the sidebar\'s own notice leaves the newer range expression',
       h.rangeExprEl.value, 'C3:D9');
     eq('echo keeps control: the sidebar\'s own notice still reads the active table',
-      h.tabMessages.map((m) => m.action), ['request:activeTable']);
+      h.tabMessages.map((m) => m.topic), ['request:activeTable']);
     eq('echo keeps control: the lens preview redraws from the read',
       otherRows.length, SINGLE_READ_SAMPLES.bottom.length);
   } finally {
@@ -1146,7 +1146,7 @@ const SINGLE_READ_SAMPLES = {
     eq('capture rows: sidebar.js loaded with no stub gaps', h.evalError, null);
     if (h.evalError !== null) return;
     eq('capture rows: a table switch writes one row',
-      logRowsDuring(() => h.dispatch({ action: 'state:tableSwitched' })),
+      logRowsDuring(() => h.dispatch({ topic: 'state:tableSwitched' })),
       ['Dynamic Rounding: table switch']);
     eq('capture rows: opening the form writes no row',
       logRowsDuring(() => h.captureMarkEls[0].fire('click')), []);
@@ -1165,7 +1165,7 @@ const SINGLE_READ_SAMPLES = {
     h.captureMarkEls[0].fire('click');
     const answerTab = h.chromeMock.tabs.sendMessage;
     h.chromeMock.tabs.sendMessage = (tabId, msg, cb) =>
-      (msg.action === 'request:captureState' ? cb(undefined) : answerTab(tabId, msg, cb));
+      (msg.topic === 'request:captureState' ? cb(undefined) : answerTab(tabId, msg, cb));
     eq('capture rows: an unanswered state pull writes one warn row naming the step',
       [logRowsDuring(() => h.el('captureSave').fire('click')), lastLevel()],
       [['Dynamic Rounding: error · step: state pull'], 'warn']);
@@ -1543,7 +1543,7 @@ const SINGLE_READ_SAMPLES = {
 
     // The service worker's close carries no tab, so gating it would drop it.
     eq('bound tab: the close message stays off the gate',
-      ungated(sidebarSrc, 'intent:closeSidebar'), true);
+      ungated(sidebarSrc, 'state:boundTabLeft'), true);
   })();
 })();
 
@@ -1567,7 +1567,7 @@ const SINGLE_READ_SAMPLES = {
     if (h.evalError !== null) return;
 
     h.enabledEl.fire('change');
-    const applies = h.tabMessages.filter((msg) => msg.action === 'request:applySettings');
+    const applies = h.tabMessages.filter((msg) => msg.topic === 'request:applySettings');
     eq('settings keys: a sidebar pillbox change sends one settings request', applies.length, 1);
     if (applies.length !== 1) return;
     eq('settings keys: the sent settings hold exactly the settings contract\'s keys',
@@ -1626,7 +1626,7 @@ const SIDEBAR_UNBOUND_PROMPT = 'Right-click a table to connect it here.';
     h.tabMessages.length = 0;
     h.fireBody('click', { target: sidebarEventTarget('SPAN') });
     eq('body click: a click on the sidebar outside any control sends no settings write',
-      h.tabMessages.filter((m) => m.action === 'request:applySettings').length, 0);
+      h.tabMessages.filter((m) => m.topic === 'request:applySettings').length, 0);
   } finally {
     h.restore();
   }
@@ -1649,7 +1649,7 @@ const SIDEBAR_UNBOUND_PROMPT = 'Right-click a table to connect it here.';
     h.fireBody('click', { target: input });
     input.fire('change');
     eq('label click: a click on a switch\'s label sends one settings write, from the change',
-      h.tabMessages.filter((m) => m.action === 'request:applySettings').length, 1);
+      h.tabMessages.filter((m) => m.topic === 'request:applySettings').length, 1);
   } finally {
     h.restore();
   }
@@ -1669,11 +1669,11 @@ const SIDEBAR_UNBOUND_PROMPT = 'Right-click a table to connect it here.';
     // shipped defaults and null samples, and answers a settings write.
     const answerWrite = h.chromeMock.tabs.sendMessage;
     h.chromeMock.tabs.sendMessage = (tabId, msg, cb) => {
-      if (msg.action === 'request:applySettings') return answerWrite(tabId, msg, cb);
+      if (msg.topic === 'request:applySettings') return answerWrite(tabId, msg, cb);
       h.tabMessages.push(msg);
       cb({ settings: DR_DEFAULTS, samples: null, maxMag: null });
     };
-    h.dispatch({ action: 'state:tableSwitched' });
+    h.dispatch({ topic: 'state:tableSwitched' });
     eq('unbound body click: precondition — the status line shows the unbound prompt',
       h.statusEl.textContent, SIDEBAR_UNBOUND_PROMPT);
 

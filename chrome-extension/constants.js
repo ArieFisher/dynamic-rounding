@@ -9,15 +9,15 @@
  *
  * DR_DEFAULTS is the settings contract: every option's name and its default.
  * Editing a value here changes both the sidebar's initial control state and the
- * right-click toggle's default behavior, so the two stay in lockstep.
+ * menu toggle's default behavior, so the two stay in lockstep.
  *
  * DR_DETECTION_SETTINGS holds the detection settings: every value and
  * lookup list that shapes what detection finds.
  */
 const DR_DEFAULTS = {
-  // Off: a table no one has turned on shows raw, so its settings read off.
-  // A toggle (the pillbox, either menu item) or the sidebar's switch turns a
-  // table on.
+  // Off: a table no one has turned on shows the original, so its settings
+  // read off. The table pillbox, the menu toggle, the menu toggle with
+  // sidebar, or the sidebar pillbox turns a table on.
   enabled: false,
   simplifyMixedCurrency: true,
   simplifyMixedPercent: true,
@@ -29,7 +29,7 @@ const DR_DEFAULTS = {
   timeGranularity: 'hour',
   // Concrete numbers, never null or blank: the sidebar always sends numbers.
   // numTop has no sidebar control; it stays here as the contract with
-  // content.js and the right-click toggle.
+  // content.js and the menu toggle.
   offsetTop: -0.5,
   offsetOther: -0.5,
   numTop: 1,
@@ -40,7 +40,7 @@ const DR_DEFAULTS = {
  * DR_DETECTION_SETTINGS holds the detection settings: every value that
  * shapes whether an element counts as a table or a grid, plus the two lookup
  * lists detection reads (the display values that mark a grid/flex layout,
- * and the known vendor grid profiles). The table package and the controller
+ * and the known vendor grid profiles). The detection layer and the controller
  * (content.js) read it as a bare global, with no fallback copy.
  */
 const DR_DETECTION_SETTINGS = {
@@ -49,8 +49,8 @@ const DR_DETECTION_SETTINGS = {
   // --- Grid geometry probe (lib/dr-table/detect.js: looksLikeGrid) ---
   gridMinChildren: 5,
   gridWalkDepthCap: 15,
-  gridColumnWidthSample: 10,
-  gridColumnWidthAgreement: 0.8,
+  gridSampleSize: 10,
+  gridAlignmentAgreement: 0.8,
   gridRepetitionShare: 0.5,
   gridDisplayValues: ['grid', 'flex', 'inline-grid', 'inline-flex'],
   // --- Data test (lib/dr-table/detect.js: isDataTable) ---
@@ -73,9 +73,9 @@ const DR_DETECTION_SETTINGS = {
   // --- Re-apply observer (content.js) ---
   // A burst of page edits inside a simplified table runs one pass once the
   // edits stop for this long. The pending-table re-test below waits the same.
-  gridRedrawDelayMs: 100,
+  settleDelayMs: 100,
   // The longest a burst waits for its pass. A table the page updates more
-  // often than the redraw delay never goes quiet, so a pass runs once the
+  // often than the settle delay never goes quiet, so a pass runs once the
   // burst has lasted this long: at most one pass a second.
   reapplyMaxWaitMs: 1000,
   // The most cells a pass reads: a native table's cells, a grid's visible
@@ -92,7 +92,7 @@ const DR_DETECTION_SETTINGS = {
   passTargetMs: 200,
   // --- Pending tables (content.js) ---
   // Failed re-tests a pending table takes before its subtree observer drops.
-  // A re-test runs only after a subtree change and the redraw delay above, so
+  // A re-test runs only after a subtree change and the settle delay above, so
   // the count grows under sustained churn alone.
   pendingRetestCap: 100,
   // --- Accessibility artifact check (lib/dr-table/detect.js: isAccessibilityArtifact) ---

@@ -11,7 +11,7 @@
 
 // DR_DEFAULTS is loaded from constants.js (declared first in manifest content_scripts).
 // It is shared with sidebar.js so the sidebar UI's initial state and the
-// right-click toggle's fallback options come from a single source.
+// menu toggle's fallback options come from a single source.
 
 // The capture marker: a saved capture (lib/dr-capture/render.js) stamps
 // data-dr-capture on its document element, because the capture is itself a
@@ -39,7 +39,7 @@ DR_BUS.subscribe('intent:activateTable', ({ table }) => {
 // The controller's one write of a table's settings, followed by the apply
 // that puts them on the screen. The patch merges onto the table's settings:
 // the keys the patch holds replace, and every other key keeps the table's
-// value. The sidebar's apply and the pillbox press both write through it;
+// value. The sidebar's apply and the table pillbox press both write through it;
 // source holds which ('sidebar' or 'page') for the settings notice. Each
 // caller runs the shape check first and passes the table it returns, so a
 // write to a table the page refilled lands on the fresh registration.
@@ -154,12 +154,12 @@ const pendingRoots = new Set();
 
 
 // findTargetTable() only returns what it found; it never writes the
-// dr-ext-grid marker or builds the pillbox. When it finds a grid root for the
+// dr-ext-grid marker or builds the table pillbox. When it finds a grid root for the
 // first time (found.isNew), this caller does both.
-function markAndAddPillboxIfNewGrid(found) {
+function markAndAddTablePillboxIfNewGrid(found) {
   if (found.isNew) {
     found.handle.classList.add('dr-ext-grid');
-    createPillboxForTable(found.handle);
+    createTablePillbox(found.handle);
   }
   return found.handle;
 }
@@ -172,10 +172,10 @@ document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
   const found = findTargetTable(event.target, { isRegistered: DR_MODEL.hasTable });
   if (found) {
-    const table = markAndAddPillboxIfNewGrid(found);
+    const table = markAndAddTablePillboxIfNewGrid(found);
     DR_MODEL.setActiveTable(table);
     DR_LOG.debug(DR_LOG.formatRow('activate'));
-    flashTargetedTable(table);
+    flashActiveTable(table);
     DR_BUS.publish('state:tableActivated', {});
   }
 }, true);
@@ -191,7 +191,7 @@ function sendRangeStatusMessage(result) {
   }
 }
 
-// The menu item publishes the same intent a pillbox press publishes, so both
+// The menu item publishes the same intent a table pillbox press publishes, so both
 // run the one controller path above. The right-click that opened the
 // menu already made the table active (the contextmenu handler's
 // setActiveTable), so the press lands as an unmoved one: it flips the
@@ -203,7 +203,7 @@ DR_BUS.subscribe('intent:menuClicked', () => {
     DR_LOG.debug(DR_LOG.formatRow('no table found'));
     return;
   }
-  DR_BUS.publish('intent:toggleTable', { table: markAndAddPillboxIfNewGrid(found) });
+  DR_BUS.publish('intent:toggleTable', { table: markAndAddTablePillboxIfNewGrid(found) });
 });
 
 // Reconnect: the sidebar reads the active table's settings itself, and the
@@ -264,12 +264,8 @@ function applySidebarRounding(table) {
     sendRangeStatusMessage(result);
     DR_LOG.debug(DR_LOG.formatRow('settings change',
       { 'on/off': 'on', 'left as written': leftAsWrittenValue(result.leftAsWritten) }));
-    if (table.querySelector('.dr-ext-rounded')) {
-      DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle table' });
-    }
   } else {
     DR_LOG.debug(DR_LOG.formatRow('settings change', { 'on/off': 'off' }));
-    DR_BUS.publish('intent:updateMenuLabel', { title: 'Toggle table' });
   }
   const rangeParse = parseRangeExpr(opts.rangeExpr);
   flashRangePulse(table, rangeParse.error ? null : rangeParse.ranges);
@@ -292,7 +288,7 @@ function leftAsWrittenValue(counts = {}) {
 
 // The one consumer of the nomination step's per-nest outcomes. Both live
 // scanners route their grid pass through here — the load-time scan in the
-// pillbox view (injectTablePillboxes) and the added-node pass below — so the
+// table pillbox view (injectTablePillboxes) and the added-node pass below — so the
 // pending record and its clearing sit behind the step's outcome and never in
 // a caller. The step returns outcomes; this is where an outcome becomes a
 // registration or a watch.
@@ -313,7 +309,7 @@ function consumeNominations(results) {
 //                depth holds exactly one; the product decision in issue #373
 //                registers nothing for such a nest, so no watch holds it.
 //   'registered' the nest already holds a registered element, so a second
-//                registration would put a second pillbox on one grid.
+//                registration would put a second table pillbox on one grid.
 //   'artifact'   the chain root is an accessibility artifact; the nest
 //                registers nothing and no watch holds it.
 // A registration through another path (a right-click) leaves the pending
@@ -323,7 +319,7 @@ function consumeNomination({ chainRoot, selected, outcome }) {
   if (outcome === 'selected') {
     dropPendingTable(chainRoot);
     selected.classList.add('dr-ext-grid');
-    createPillboxForTable(selected);
+    createTablePillbox(selected);
     return;
   }
   if (outcome === 'empty') {
@@ -365,7 +361,7 @@ function holdPendingTable(chainRoot) {
     const timerId = setTimeout(() => {
       pendingRetestTimers.delete(chainRoot);
       retestPendingTable(chainRoot);
-    }, DR_DETECTION_SETTINGS.gridRedrawDelayMs);
+    }, DR_DETECTION_SETTINGS.settleDelayMs);
     pendingRetestTimers.set(chainRoot, timerId);
   });
   observer.observe(chainRoot, { childList: true, characterData: true, subtree: true });
@@ -404,17 +400,17 @@ function dropPendingTable(chainRoot) {
 // arrive.
 // Extracted as a named function so the detection is unit-testable
 // independently of the live MutationObserver wiring below.
-function injectPillboxesForAddedNode(node) {
+function injectTablePillboxesForAddedNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
   const { tables, nominations } = scanTables(node, { isRegistered: DR_MODEL.hasTable });
   tables.forEach(table => {
-    if (!DR_MODEL.hasTable(table)) createPillboxForTable(table);
+    if (!DR_MODEL.hasTable(table)) createTablePillbox(table);
   });
   consumeNominations(nominations);
 }
 
 // The shape fingerprint's read options for one table: the registry's stored
-// pre-simplification text per cell. The recording site (createPillboxForTable)
+// pre-simplification text per cell. The recording site (createTablePillbox)
 // passes the same thing, so a header cell the extension itself simplified
 // still reads as the text the registry recorded, and the extension's own
 // writes never read as a page change.
@@ -442,16 +438,16 @@ function fingerprintReadOpts(table) {
 // the sidebar.
 //
 // The switch publishes even where the fresh registration lands on the same
-// element: the entry is new either way, with no originals and a raw form, and
+// element: the entry is new either way, with no originals and the form original, and
 // the sidebar re-reads the active table's settings on that topic.
 //
 // The fresh table is a new table: it holds no settings, so it reads the
-// shipped defaults, and it shows the page's values raw, the same as a table
+// shipped defaults, and it shows the page's original values, the same as a table
 // found on page load. Nothing from the replaced table's settings reaches it.
 //
 // A table with no recorded fingerprint compares against nothing and returns
 // as a match. Only a first write through the registry's setters creates such
-// an entry, never createPillboxForTable, and discarding an entry over a
+// an entry, never createTablePillbox, and discarding an entry over a
 // reading that never happened would throw away originals for no finding.
 //
 // Nothing registering — the whole nest fails the data test — returns null,
@@ -484,8 +480,8 @@ function revalidateTableShape(table, opts = {}) {
   // drop the originals behind that text: the fresh registration would read
   // the simplified values as the cells' own, and every one of them would be
   // unrestorable, with no route back to its original. Restoring first puts
-  // raw text in every surviving cell, so the fresh registration records its
-  // fingerprint over raw text and starts raw.
+  // the originals back in every surviving cell, so the fresh registration
+  // records its fingerprint over the original text and starts unsimplified.
   // A cell whose original is gone stays as it is, the same as any other
   // restore. The originals go back into the cells and nowhere else, so none
   // of them reaches the fresh entry.
@@ -499,8 +495,8 @@ function revalidateTableShape(table, opts = {}) {
   for (const { handle, isNew } of findTables(root, { isRegistered: DR_MODEL.hasTable })) {
     if (!isNew) continue;
     if (handle.tagName !== 'TABLE') handle.classList.add('dr-ext-grid');
-    createPillboxForTable(handle);
-    // createPillboxForTable registers only what passes the data test, so the
+    createTablePillbox(handle);
+    // createTablePillbox registers only what passes the data test, so the
     // registry records whether this element registered.
     if (!fresh && DR_MODEL.hasTable(handle)) fresh = handle;
   }
@@ -516,8 +512,8 @@ function revalidateTableShape(table, opts = {}) {
 }
 
 // Discard one table's registration and every per-table resource the
-// extension holds beside it: the pillbox, the resize observer that keeps the
-// pillbox positioned, the table's re-apply observer and its pending timer,
+// extension holds beside it: the table pillbox, the resize observer that keeps the
+// table pillbox positioned, the table's re-apply observer and its pending timer,
 // the view's tracked-table list, and the registry entry with the cell
 // originals and the form inside it. Two callers reach this: the removal
 // observer, for a table the page took out; and the shape-fingerprint
@@ -563,7 +559,7 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        injectPillboxesForAddedNode(node);
+        injectTablePillboxesForAddedNode(node);
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
@@ -934,7 +930,7 @@ function resolveRoundingSettings(opts) {
 // Every cell of every row, in page order, with its row index. A header
 // cell is a cell like any other: the first-row and first-column exclusions
 // govern it by position, whatever tag the page gave it, so a header row of
-// prices rounds when the first-row switch is on and stays raw when it is
+// prices rounds when the first-row switch is on and shows the original when it is
 // off. The column index is the column the browser lays the cell out in (the
 // adapter's reading, see assignGridColumns): a <th scope="row"> IS the
 // table's first column as rendered, so in such a table the leading <td> is
@@ -1082,7 +1078,7 @@ function registryAdapter(table) {
 // The observer is off during the extension's own writes, the restore
 // included: a pass disconnects it before it writes and reconnects it after,
 // and a reset stops it before the restore writes. A burst of page edits
-// collapses into one pass: each change restarts the redraw delay, and a
+// collapses into one pass: each change restarts the settle delay, and a
 // burst that never goes quiet runs its pass once it has lasted the longest
 // wait (reapplyMaxWaitMs in the detection settings). A table above the cell
 // cap (reapplyCellCap) takes no observer, and a pass that finds its table
@@ -1133,7 +1129,7 @@ function scheduleReapply(table) {
   const pending = reapplyTimers.get(table);
   if (pending !== undefined) clearTimeout(pending);
   const untilLongest = reapplyBursts.get(table) + DR_DETECTION_SETTINGS.reapplyMaxWaitMs - now;
-  const wait = Math.max(0, Math.min(DR_DETECTION_SETTINGS.gridRedrawDelayMs, untilLongest));
+  const wait = Math.max(0, Math.min(DR_DETECTION_SETTINGS.settleDelayMs, untilLongest));
   reapplyTimers.set(table, setTimeout(() => reapplyRounding(table), wait));
 }
 
@@ -1166,7 +1162,7 @@ function reapplyRounding(table) {
 // observer, and the reset that turns a table off stops it. A table turned on
 // with nothing to simplify therefore simplifies a number the page adds later.
 // The shape check runs before any cell is sorted: a table the page refilled
-// with a different shape re-detects as a new table, raw and under the
+// with a different shape re-detects as a new table, showing the original under the
 // shipped defaults, and the pass stops there. Otherwise the pass runs the
 // one simplification pass under the table's own settings and its magnitude
 // freeze, if it holds one, so neither a grid's scroll nor a value the page

@@ -406,7 +406,7 @@ function renderLensPreview() {
  * Redraw the sidebar from one read of the active table. With no answer, which
  * means no content script on the tab, the sidebar shows the shipped defaults,
  * unbound. The bound state follows the samples alone, and it is set after the
- * controls, because an unbound sidebar shows its pillbox off whatever the
+ * controls, because an unbound sidebar shows its sidebar pillbox off whatever the
  * settings hold.
  * @param {boolean} [keepControls] - true to leave the controls as they stand, for an echo of the sidebar's own write, whose settings are older than a keystroke or lens control step made after that write.
  */
@@ -603,7 +603,7 @@ boundTab.subscribe('state:settingsChanged', ({ source }) => {
   redrawFromActiveTable(source === 'sidebar');
 });
 
-DR_BUS.subscribe('intent:closeSidebar', () => {
+DR_BUS.subscribe('state:boundTabLeft', () => {
   window.close();
 });
 

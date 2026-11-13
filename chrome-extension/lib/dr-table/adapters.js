@@ -111,7 +111,7 @@ function childCountCandidates(children) {
  */
 function isColumnFirst(children, styleProbe) {
   if (!styleProbe || typeof styleProbe.getBox !== 'function') return false;
-  const sample = children.slice(0, DR_DETECTION_SETTINGS.gridColumnWidthSample);
+  const sample = children.slice(0, DR_DETECTION_SETTINGS.gridSampleSize);
   const boxes = [];
   for (const child of sample) {
     const box = styleProbe.getBox(child);

@@ -96,7 +96,7 @@ function carriesGridMark(el, vendorProfiles) {
  * @returns {boolean}
  */
 function firstCellsAlign(children, candidateRows, styleProbe) {
-  const sample = candidateRows.slice(0, DR_DETECTION_SETTINGS.gridColumnWidthSample);
+  const sample = candidateRows.slice(0, DR_DETECTION_SETTINGS.gridSampleSize);
   const extentOf = isColumnFirst(children, styleProbe)
     ? (cell) => { const box = styleProbe.getBox(cell); return box ? box.height : -1; }
     : (cell) => styleProbe.getOffsetWidth(cell);
@@ -105,7 +105,7 @@ function firstCellsAlign(children, candidateRows, styleProbe) {
   if (extents.length < 2) return true;
   const firstExtent = extents[0];
   const matchCount = extents.filter(w => w === firstExtent).length;
-  return matchCount / extents.length >= DR_DETECTION_SETTINGS.gridColumnWidthAgreement;
+  return matchCount / extents.length >= DR_DETECTION_SETTINGS.gridAlignmentAgreement;
 }
 
 /**

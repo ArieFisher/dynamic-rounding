@@ -14,12 +14,13 @@
  *
  *   - 'intent'       A gesture: someone did a thing, and a controller
  *                     determines what changes. Published by a view, such as
- *                     the pillbox in ui-pillbox.js, and never carrying
+ *                     the table pillbox view in ui-pillbox.js, and never carrying
  *                     authority of its own.
- *   - 'state-change' A fact: a field of the application model changed.
- *                     Published by app/model.js after the write. A subscriber
- *                     redraws on it, or reads the model's getters directly
- *                     when it only needs the current value.
+ *   - 'state-change' A fact: a field of the application model, a tab, or the
+ *                     sidebar changed. app/model.js publishes a model change
+ *                     after the write. A subscriber redraws on it, or reads
+ *                     the model's getters directly when it only needs the
+ *                     current value.
  *   - 'request'      A question: the topic's one responder returns an answer
  *                     to the publisher. See the request rules below.
  *
@@ -33,10 +34,10 @@
  *   - 'tab'             chrome.tabs.sendMessage, reaching one tab's content
  *                        script. The tab number comes from opts.tabId when the
  *                        caller passes one, and otherwise from a query for the
- *                        active tab. A caller passes one where it holds a tab
- *                        number that is not the active tab's — the service
- *                        worker does, for the menu-click tab and the
- *                        sidebar's tab.
+ *                        tab in front of the current window. A caller passes
+ *                        one where it holds a tab number that may not be that
+ *                        tab's — the service worker does, for the
+ *                        right-clicked tab and the bound tab.
  *
  * The route replaced a capability sniff: publish() used to test which Chrome
  * interface existed in the publishing context and infer the carrier from that,
@@ -56,10 +57,10 @@
  *     it was gone.
  *   - Same-context delivery is synchronous: publish() calls every matching
  *     handler directly, in subscription order, before returning. A
- *     controller that calls a store setter in response to a subscribed
+ *     controller that calls a model setter in response to a subscribed
  *     intent sees the application model already updated by the time publish() returns.
  *     Because delivery is synchronous, a handler that itself publishes
- *     (directly, or by way of a store setter) can re-enter publish() before
+ *     (directly, or by way of a model setter) can re-enter publish() before
  *     the original call returns; see the depth guard below.
  *   - publish() delivers to same-context subscribers first, then sends over
  *     the topic's route. A subscriber receives the payload and, beside it, a
@@ -68,7 +69,7 @@
  *     same-context publish and for a message from an extension page, neither
  *     of which has a tab. It travels beside the payload, never inside it, so
  *     no handler can mistake it for data the publisher supplied.
- *   - An arriving message whose action names a known topic is redelivered here
+ *   - An arriving message whose topic field holds a known topic is redelivered here
  *     as a same-context publish, without sending it back out, so a topic that
  *     crossed contexts behaves the same as one that did not from a
  *     subscriber's point of view. The topic name itself is the name on the
@@ -127,7 +128,7 @@ const DR_BUS = (function () {
     'intent:activateTable': { family: INTENT, route: null },
     'intent:toggleTable': { family: INTENT, route: null },
     'state:activeTableChanged': { family: STATE_CHANGE, route: null },
-    // Published by the model after every error row it records. The toast view
+    // Published by the model after every extension error it records. The toast view
     // (ui-toast.js) subscribes to draw the row on the page. Same context
     // only: the sidebar reads the error state through the capture state pull.
     'state:errorRecorded': { family: STATE_CHANGE, route: null },
@@ -143,26 +144,24 @@ const DR_BUS = (function () {
     'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
     'request:activeTable': { family: REQUEST, route: ROUTE_TAB },
     'request:captureState': { family: REQUEST, route: ROUTE_TAB },
-    // The service worker's four topics. The two it publishes to a tab carry
-    // an explicit tab number: neither the menu-click tab nor the sidebar's tab
-    // is guaranteed to be the active tab at the moment of the send.
+    // The service worker's topics. The two it publishes to a tab carry
+    // an explicit tab number: neither the right-clicked tab nor the bound tab
+    // is guaranteed to be the tab in front at the moment of the send.
     'intent:menuClicked': { family: INTENT, route: ROUTE_TAB },
     'state:sidebarOpened': { family: STATE_CHANGE, route: ROUTE_TAB },
-    'intent:closeSidebar': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
+    'state:boundTabLeft': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:sidebarClosed': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
-    // The worker reads meta.tabId on this one, to act only for the tab the
-    // sidebar was opened for.
+    // The worker reads meta.tabId on this one, to act only for the bound tab.
     'state:pageUnloaded': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
-    'intent:updateMenuLabel': { family: INTENT, route: ROUTE_EXTENSION_PAGES },
     // The content script's topics for the sidebar. Every one takes the
-    // broadcast carrier: the content script holds no tabs interface, and the
-    // sidebar is an extension page.
+    // extension-pages route: the content script holds no tabs interface, and
+    // the sidebar is an extension page.
     //
     // The settings notice: the model (app/model.js) publishes it after every
     // write of a table's settings, whatever the writer. Every write targets
     // the active table. It states which side wrote it and carries the table's
     // whole settings; the sidebar redraws from it, and the table pillbox view in
-    // the same content script redraws the active table's pillbox from it.
+    // the same content script redraws the active table's table pillbox from it.
     'state:settingsChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableActivated': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableSwitched': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
@@ -191,7 +190,7 @@ const DR_BUS = (function () {
 
   // Chrome attaches a sender record to every arriving message. One fact off it
   // is load-bearing: which tab a content script sent from, which the service
-  // worker checks against the tab the sidebar was opened for. The bus passes
+  // worker checks against the bound tab. The bus passes
   // that one number and keeps Chrome's record out of its own contract. A
   // same-context publish carries null, and so does a message from an extension
   // page — neither has a tab.
@@ -200,7 +199,7 @@ const DR_BUS = (function () {
   }
 
   // Deliver to same-context subscribers only. Used both by publish() below
-  // and by the onMessage relay, so a redelivered incoming wire message never
+  // and by the onMessage listener, so a redelivered incoming wire message never
   // triggers another outbound send.
   //
   // A handler receives the payload and, beside it, the facts the carrier
@@ -217,7 +216,7 @@ const DR_BUS = (function () {
   }
 
   // A handler invoked by deliverLocally() may itself publish (directly, or
-  // through a store setter) before returning — same-context delivery is
+  // through a model setter) before returning — same-context delivery is
   // synchronous (see the header), so that nested publish() runs on top of
   // this one's still-live stack frame. A cycle with no caller-side guard
   // would recurse until the real call stack overflows. This
@@ -230,7 +229,7 @@ const DR_BUS = (function () {
   let publishDepth = 0;
 
   function relay(topic, payload, route, opts) {
-    const message = Object.assign({ action: topic }, payload);
+    const message = Object.assign({ topic }, payload);
     if (route === ROUTE_EXTENSION_PAGES) {
       sendToExtensionPages(message);
       return;
@@ -254,8 +253,8 @@ const DR_BUS = (function () {
 
   // A tab-routed send needs a tab number. The caller supplies one through
   // opts.tabId where it holds one — only the service worker does, for the
-  // menu-click tab and the sidebar's tab, neither guaranteed to be active.
-  // Otherwise the bus queries the active tab.
+  // right-clicked tab and the bound tab, neither guaranteed to be the tab in
+  // front. Otherwise the bus queries the tab in front of the current window.
   //
   // onReply, when given, receives the responder's answer, or undefined when
   // nothing answered: no tab, no content script on it, or no responder
@@ -266,7 +265,7 @@ const DR_BUS = (function () {
       // A tab-routed topic published from a context with no chrome.tabs (a
       // content script) cannot reach its audience. Returning quietly here
       // would reproduce the silent miss the topic table exists to remove.
-      throw new Error('DR_BUS: tab-routed topic "' + message.action +
+      throw new Error('DR_BUS: tab-routed topic "' + message.topic +
         '" published from a context with no chrome.tabs');
     }
     const deliver = (tabId) => {
@@ -376,17 +375,17 @@ const DR_BUS = (function () {
       callback(undefined);
       return;
     }
-    sendToTab(Object.assign({ action: topic }, payload), null, callback);
+    sendToTab(Object.assign({ topic }, payload), null, callback);
   }
 
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage &&
       typeof chrome.runtime.onMessage.addListener === 'function') {
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      if (!request || typeof request.action !== 'string') return;
-      const topic = request.action;
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (!message || typeof message.topic !== 'string') return;
+      const topic = message.topic;
       if (!Object.prototype.hasOwnProperty.call(TOPICS, topic)) return;
-      const payload = Object.assign({}, request);
-      delete payload.action;
+      const payload = Object.assign({}, message);
+      delete payload.topic;
       const tabId = senderTabId(sender);
       if (TOPICS[topic].family !== REQUEST) {
         deliverLocally(topic, payload, tabId);

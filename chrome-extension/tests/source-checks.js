@@ -159,54 +159,54 @@
 
 // --- Static analysis: all new functions are defined ---
 
-(function atToggle_staticAnalysis() {
-  eq('auto-table-toggle: isTableOn is defined',
+(function tablePillbox_staticAnalysis() {
+  eq('table-pillbox: isTableOn is defined',
     typeof isTableOn, 'function');
-  eq('auto-table-toggle: syncPillboxForTable is defined',
-    typeof syncPillboxForTable, 'function');
-  eq('auto-table-toggle: positionPillbox is defined',
-    typeof positionPillbox, 'function');
-  eq('auto-table-toggle: createPillboxForTable is defined',
-    typeof createPillboxForTable, 'function');
-  eq('auto-table-toggle: resetTable is defined',
+  eq('table-pillbox: syncTablePillbox is defined',
+    typeof syncTablePillbox, 'function');
+  eq('table-pillbox: positionTablePillbox is defined',
+    typeof positionTablePillbox, 'function');
+  eq('table-pillbox: createTablePillbox is defined',
+    typeof createTablePillbox, 'function');
+  eq('table-pillbox: resetTable is defined',
     typeof resetTable, 'function');
-  eq('auto-table-toggle: tablePillboxes WeakMap is defined',
+  eq('table-pillbox: tablePillboxes WeakMap is defined',
     tablePillboxes instanceof WeakMap, true);
-  eq('auto-table-toggle: trackedTables Set is defined',
+  eq('table-pillbox: trackedTables Set is defined',
     trackedTables instanceof Set, true);
 })();
 
 // --- Regression guard: content.js declares the new infrastructure ---
 
-(function atToggle_contentJsDeclarations() {
-  // Pillbox infrastructure lives in ui-pillbox.js;
+(function tablePillbox_contentJsDeclarations() {
+  // Table pillbox infrastructure lives in ui-pillbox.js;
   // scan the combined content-script source so the contract is location-agnostic.
   const src = allContentSrc;
-  eq('auto-table-toggle: declares tablePillboxes WeakMap',
+  eq('table-pillbox: declares tablePillboxes WeakMap',
     /const\s+tablePillboxes\s*=\s*new\s+WeakMap/.test(src), true);
-  eq('auto-table-toggle: declares trackedTables Set',
+  eq('table-pillbox: declares trackedTables Set',
     /const\s+trackedTables\s*=\s*new\s+Set/.test(src), true);
-  eq('auto-table-toggle: defines isTableOn',
+  eq('table-pillbox: defines isTableOn',
     /function\s+isTableOn\b/.test(src), true);
-  eq('auto-table-toggle: defines syncPillboxForTable',
-    /function\s+syncPillboxForTable\b/.test(src), true);
-  eq('auto-table-toggle: defines positionPillbox',
-    /function\s+positionPillbox\b/.test(src), true);
-  eq('auto-table-toggle: defines createPillboxForTable',
-    /function\s+createPillboxForTable\b/.test(src), true);
-  eq('auto-table-toggle: defines injectTablePillboxes',
+  eq('table-pillbox: defines syncTablePillbox',
+    /function\s+syncTablePillbox\b/.test(src), true);
+  eq('table-pillbox: defines positionTablePillbox',
+    /function\s+positionTablePillbox\b/.test(src), true);
+  eq('table-pillbox: defines createTablePillbox',
+    /function\s+createTablePillbox\b/.test(src), true);
+  eq('table-pillbox: defines injectTablePillboxes',
     /function\s+injectTablePillboxes\b/.test(src), true);
-  // The table pillbox must use the new dr-ext-morph CSS class
-  eq('auto-table-toggle: the table pillbox uses dr-ext-morph CSS class',
-    src.includes('dr-ext-morph'), true);
+  // The table pillbox must use the new dr-ext-table-pillbox CSS class
+  eq('table-pillbox: the table pillbox uses dr-ext-table-pillbox CSS class',
+    src.includes('dr-ext-table-pillbox'), true);
 })();
 
 // --- accessibility AC2: CSS contains :focus-visible with outline and !important ---
-// Spec: the CSS string injected by ensurePillboxStyleInjected contains a
+// Spec: the CSS string injected by ensureTablePillboxStyleInjected contains a
 //       :focus-visible rule with `outline` and `!important`.
 
 (function accessibilityAC2_focusVisibleCSS() {
-  const src = allContentSrc; // pillbox CSS lives in ui-pillbox.js
+  const src = allContentSrc; // table pillbox CSS lives in ui-pillbox.js
 
   eq('accessibility AC2: content.js CSS contains :focus-visible selector',
     src.includes(':focus-visible'), true);
@@ -230,43 +230,43 @@
 
 // --- Constants vs literals check ---
 // Spec (AC §3.5 + last AC bullet): geometry literals must only appear as constant declarations.
-// Soft check: the constant names TOGGLE_DOT_PX etc. appear in the CSS template block.
+// Soft check: the constant names TABLE_PILLBOX_DOT_PX etc. appear in the CSS template block.
 
-(function morphAC_constantsUsedInCSS() {
-  const src = allContentSrc; // pillbox geometry lives in ui-pillbox.js
+(function tablePillboxAC_constantsUsedInCSS() {
+  const src = allContentSrc; // table pillbox geometry lives in ui-pillbox.js
 
   // The CSS function body should contain interpolations of the constants, not bare literals.
-  // We extract the ensurePillboxStyleInjected function body as a rough string.
-  const fnStart = src.indexOf('function ensurePillboxStyleInjected');
+  // We extract the ensureTablePillboxStyleInjected function body as a rough string.
+  const fnStart = src.indexOf('function ensureTablePillboxStyleInjected');
   const fnEnd = src.indexOf('\nfunction ', fnStart + 1);
   const fnBody = fnStart !== -1 ? src.slice(fnStart, fnEnd !== -1 ? fnEnd : fnStart + 3000) : '';
 
-  eq('expanding-toggle: TOGGLE_HIT_PAD_PX referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_HIT_PAD_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_PX referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_DOT_PX'), true);
-  eq('expanding-toggle: TOGGLE_PILL_WIDTH_PX referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_PILL_WIDTH_PX'), true);
-  eq('expanding-toggle: TOGGLE_PILL_HEIGHT_PX referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_PILL_HEIGHT_PX'), true);
-  eq('expanding-toggle: TOGGLE_KNOB_PX referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_KNOB_PX'), true);
-  eq('expanding-toggle: TOGGLE_COLOR_ON referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_COLOR_ON'), true);
+  eq('expanding-table-pillbox: TABLE_PILLBOX_HIT_PAD_PX referenced in ensureTablePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_HIT_PAD_PX'), true);
+  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_PX referenced in ensureTablePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_DOT_PX'), true);
+  eq('expanding-table-pillbox: TABLE_PILLBOX_PILL_WIDTH_PX referenced in ensureTablePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_PILL_WIDTH_PX'), true);
+  eq('expanding-table-pillbox: TABLE_PILLBOX_PILL_HEIGHT_PX referenced in ensureTablePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_PILL_HEIGHT_PX'), true);
+  eq('expanding-table-pillbox: TABLE_PILLBOX_KNOB_PX referenced in ensureTablePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_KNOB_PX'), true);
+  eq('expanding-table-pillbox: TABLE_PILLBOX_COLOR_ON referenced in ensureTablePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_COLOR_ON'), true);
 
-  // positionPillbox body should reference the geometry constants
-  const ptStart = src.indexOf('function positionPillbox');
+  // positionTablePillbox body should reference the geometry constants
+  const ptStart = src.indexOf('function positionTablePillbox');
   const ptEnd = src.indexOf('\nfunction ', ptStart + 1);
   const ptBody = ptStart !== -1 ? src.slice(ptStart, ptEnd !== -1 ? ptEnd : ptStart + 1000) : '';
 
-  eq('expanding-toggle: TOGGLE_HIT_PAD_PX referenced in positionPillbox',
-    ptBody.includes('TOGGLE_HIT_PAD_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_PX referenced in positionPillbox',
-    ptBody.includes('TOGGLE_DOT_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_OVERLAP_PX referenced in positionPillbox',
-    ptBody.includes('TOGGLE_DOT_OVERLAP_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_OVERHANG_PX referenced in positionPillbox',
-    ptBody.includes('TOGGLE_DOT_OVERHANG_PX'), true);
+  eq('expanding-table-pillbox: TABLE_PILLBOX_HIT_PAD_PX referenced in positionTablePillbox',
+    ptBody.includes('TABLE_PILLBOX_HIT_PAD_PX'), true);
+  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_PX referenced in positionTablePillbox',
+    ptBody.includes('TABLE_PILLBOX_DOT_PX'), true);
+  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_OVERLAP_PX referenced in positionTablePillbox',
+    ptBody.includes('TABLE_PILLBOX_DOT_OVERLAP_PX'), true);
+  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_OVERHANG_PX referenced in positionTablePillbox',
+    ptBody.includes('TABLE_PILLBOX_DOT_OVERHANG_PX'), true);
 })();
 
 (function layerLoadOrderAcrossEntryPoints() {
@@ -292,13 +292,13 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Flat toggle list, new defaults, switch wrappers
+// Flat switch list, new defaults, switch wrappers
 // ---------------------------------------------------------------------------
 
 (function sprintSidebarTidyup() {
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
 
-  // ── AC1: options section has exactly seven toggle rows in the canonical order ──
+  // ── AC1: options section has exactly seven switch rows in the canonical order ──
   // Parse all switch-label texts inside #optionsSection.
   // Strategy: extract the optionsSection fragment, then collect every
   // class="switch-label" span's text content via a simple regex.
@@ -331,10 +331,10 @@
 
   const expectedOrder = ['currencies', 'percentages', 'dates', 'times', 'first row', 'first column'];
 
-  eq('sidebar-tidyup AC1: options section has exactly 6 toggle rows',
+  eq('sidebar-tidyup AC1: options section has exactly 6 switch rows',
     labelTexts.length, 6);
 
-  eq('sidebar-tidyup AC1: toggle rows are in canonical order',
+  eq('sidebar-tidyup AC1: switch rows are in canonical order',
     labelTexts, expectedOrder);
 
   // ── AC2: forbidden phrases do not appear anywhere in the options section ──
@@ -409,7 +409,7 @@
 })();
 
 // =============================================================================
-// Toggle switch appears left of label in every row
+// The switch appears left of its label in every row
 // =============================================================================
 //
 // Acceptance criteria:
@@ -500,19 +500,19 @@
 
   // --- AC4: .switch-row CSS block does not use justify-content: space-between ---
   // Find the .switch-row block by locating ".switch-row {" and scanning to the closing "}".
-  const toggleRowBlockStart = sidebarHtml.indexOf('.switch-row {');
+  const switchRowBlockStart = sidebarHtml.indexOf('.switch-row {');
   eq('sidebar switch-left AC4: .switch-row CSS block is present in sidebar.html',
-    toggleRowBlockStart !== -1, true);
-  if (toggleRowBlockStart !== -1) {
-    const fromBlock = sidebarHtml.slice(toggleRowBlockStart);
+    switchRowBlockStart !== -1, true);
+  if (switchRowBlockStart !== -1) {
+    const fromBlock = sidebarHtml.slice(switchRowBlockStart);
     const blockClose = fromBlock.indexOf('}');
-    const toggleRowBlock = blockClose !== -1 ? fromBlock.slice(0, blockClose + 1) : fromBlock.slice(0, 200);
+    const switchRowBlock = blockClose !== -1 ? fromBlock.slice(0, blockClose + 1) : fromBlock.slice(0, 200);
     eq('sidebar switch-left AC4: .switch-row CSS block does not contain "justify-content: space-between"',
-      toggleRowBlock.includes('justify-content: space-between'), false);
+      switchRowBlock.includes('justify-content: space-between'), false);
   }
 })();
 
-// --- AC5: sidebar.js updateDisabledState wires granularity dropdowns to toggles ---
+// --- AC5: sidebar.js updateDisabledState wires granularity dropdowns to switches ---
 // The harness has no live sidebar DOM, so we verify via static source analysis.
 // We assert:
 //   (a) updateDisabledState references dateGranularity.disabled and !simplifyDates
@@ -625,7 +625,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: background.js does NOT relay the settings notice when sidebarTabId is null.
+// AC4: background.js does NOT relay the settings notice when boundTabId is null.
 //
 // background.js runs in a service-worker context without the DOM and module
 // system our harness uses, so we cannot eval() it directly alongside the content
@@ -651,7 +651,7 @@
 // Static purity scan.
 // Detection functions (findTargetTable, findTables, looksLikeGrid, isDataTable,
 // isAccessibilityArtifact) must never write to the page — no classList.add,
-// createElement, appendChild, or createPillboxForTable inside their bodies.
+// createElement, appendChild, or createTablePillbox inside their bodies.
 // Write-layer helpers (writePatches,
 // restoreTextPieces, GridAdapter's applyPatches) legitimately create/mutate nodes and are correctly
 // excluded from this scan — they are reachable only from explicit write calls
@@ -663,7 +663,7 @@
     eq('purity scan: source file lib/dr-table/detect.js present in manifest', false, true);
     return;
   }
-  const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createPillboxForTable'];
+  const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createTablePillbox'];
   const DETECTION_FNS = ['findTargetTable', 'findTables', 'looksLikeGrid', 'isDataTable', 'isAccessibilityArtifact'];
 
   // Extract a top-level `function name(` body by brace-matching from the
@@ -831,7 +831,7 @@
 
   if (typeof capturedOnMessageHandler === 'function') {
     // Invoke the state:tableActivated message and verify the flash class is applied.
-    capturedOnMessageHandler({ action: 'state:tableActivated' }, FROM_SIDEBAR_TAB, () => {});
+    capturedOnMessageHandler({ topic: 'state:tableActivated' }, FROM_SIDEBAR_TAB, () => {});
 
     eq('table-activation AC2 live: state:tableActivated message adds dr-sidebar-flash to document.body',
       bodyClasses.has('dr-sidebar-flash'),
@@ -898,19 +898,19 @@
     if (result.listenerType === 'function') {
       // Case A: no sidebar tab number (never opened).
       sentTabMessages.length = 0;
-      capturedBgHandler({ action: 'state:tableActivated' }, {}, () => {});
+      capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
       result.relaysWithNoTabNumber = sentTabMessages.length;
 
       // Case B: the sidebar was opened, so the worker holds its tab number.
       // The handler runs to completion synchronously with chrome.sidePanel
       // absent.
       sentTabMessages.length = 0;
-      capturedClickHandler({ menuItemId: 'dr-action-sidebar' }, { id: PANEL_TAB });
+      capturedClickHandler({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
       result.sentOpenedReport = sentTabMessages.some(m => m.tabId === PANEL_TAB &&
-        m.msg && m.msg.action === 'state:sidebarOpened');
+        m.msg && m.msg.topic === 'state:sidebarOpened');
 
       sentTabMessages.length = 0;
-      capturedBgHandler({ action: 'state:tableActivated' }, {}, () => {});
+      capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
       result.relaysWithTabNumber = sentTabMessages.length;
     }
   } finally {
@@ -1054,7 +1054,7 @@
   }
 
   const returnValue = capturedListener(
-    { action: 'request:applySettings', settings: {} },
+    { topic: 'request:applySettings', settings: {} },
     {},
     fakeSendResponse
   );
@@ -1097,7 +1097,7 @@
 //      would deliver to nothing.
 //   2. state:tableActivated must not be relayed into the tab. content.js already
 //      sends it with runtime.sendMessage, which the sidebar receives directly.
-//      Relaying it to sidebarTabId delivers it to a content script that has no
+//      Relaying it to boundTabId delivers it to a content script that has no
 //      handler for that action.
 // ---------------------------------------------------------------------------
 
@@ -1132,7 +1132,7 @@
         sendMessage: (msg, cb) => {
           runtimeSends.push(msg);
           chromeStub.runtime.lastError =
-            closeSidebarUnreceived && msg.action === 'intent:closeSidebar'
+            closeSidebarUnreceived && msg.topic === 'state:boundTabLeft'
               ? { message: 'Could not establish connection. Receiving end does not exist.' }
               : null;
           if (cb) cb(undefined);
@@ -1165,18 +1165,51 @@
   const PANEL_TAB = 7;
 
   function openPanel(ctx) {
-    ctx.listeners.menuClicked({ menuItemId: 'dr-action-sidebar' }, { id: PANEL_TAB });
+    ctx.listeners.menuClicked({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
   }
 
-  // --- "Toggle and open sidebar" does both: the same toggle "Toggle table"
-  // sends, then the sidebar-opened report, to the tab the right-click
+  // --- The menu holds two fixed labels. ---
+  (function menuItemsCarryFixedLabels() {
+    const created = [];
+    let installed = null;
+    const chromeStub = {
+      runtime: {
+        lastError: null,
+        onInstalled: { addListener: (fn) => { installed = fn; } },
+        onMessage: { addListener: () => {} },
+        sendMessage: (msg, cb) => { if (cb) cb(undefined); },
+      },
+      contextMenus: {
+        create: (item) => { created.push({ id: item.id, title: item.title }); },
+        onClicked: { addListener: () => {} },
+      },
+      tabs: {
+        query: (q, cb) => { cb([]); },
+        sendMessage: (tabId, msg, cb) => { if (cb) cb(undefined); },
+        onUpdated:   { addListener: () => {} },
+        onRemoved:   { addListener: () => {} },
+        onActivated: { addListener: () => {} },
+      },
+    };
+    new Function('chrome', 'console', messagingCode + '\n' + bgSrc)(
+      chromeStub, { warn: () => {}, debug: () => {}, log: () => {} });
+    if (installed) installed();
+    eq('menu items: the menu toggle and the menu toggle with sidebar carry fixed labels',
+      created, [
+        { id: 'dr-menu-toggle', title: 'Simplify' },
+        { id: 'dr-menu-toggle-sidebar', title: 'Simplify and open sidebar' },
+      ]);
+  })();
+
+  // --- The menu toggle with sidebar does both: the same toggle the menu toggle
+  // sends, then the sidebar-opened topic, to the tab the right-click
   // happened in and in that order, so the sidebar's re-read on open reads
   // the toggled settings. ---
   (function toggleAndOpenSidebarTogglesThenOpens() {
     const ctx = loadBackground();
     openPanel(ctx);
-    eq('bg routing: "Toggle and open sidebar" sends the toggle, then the sidebar-opened report, to that tab',
-      ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.action),
+    eq('bg routing: the menu toggle with sidebar sends the toggle, then the sidebar-opened topic, to that tab',
+      ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
       ['intent:menuClicked', 'state:sidebarOpened']);
   })();
 
@@ -1184,8 +1217,8 @@
   (function closeNotifiesTheSidebarOnly() {
     const ctx = loadBackground();
     openPanel(ctx);
-    eq('bg routing: opening the sidebar sends the sidebar-opened report to that tab',
-      ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.action === 'state:sidebarOpened'),
+    eq('bg routing: opening the sidebar sends the sidebar-opened topic to that tab',
+      ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.topic === 'state:sidebarOpened'),
       true);
 
     ctx.runtimeSends.length = 0;
@@ -1195,9 +1228,9 @@
     ctx.listeners.activated({ tabId: 99 });
 
     eq('bg routing: close topic broadcast reaches the sidebar page',
-      ctx.runtimeSends.some(m => m.action === 'intent:closeSidebar'), true);
+      ctx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
     eq('bg routing: close topic is not sent into the tab — the content script has no handler for it',
-      ctx.tabSends.some(s => s.msg.action === 'intent:closeSidebar'),
+      ctx.tabSends.some(s => s.msg.topic === 'state:boundTabLeft'),
       false);
   })();
 
@@ -1209,9 +1242,9 @@
     navCtx.tabSends.length = 0;
     navCtx.listeners.updated(PANEL_TAB, { status: 'loading' });
     eq('bg routing: navigating away broadcasts the close topic to the sidebar page',
-      navCtx.runtimeSends.some(m => m.action === 'intent:closeSidebar'), true);
+      navCtx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
     eq('bg routing: navigating away sends nothing into the tab',
-      navCtx.tabSends.some(s => s.msg.action === 'intent:closeSidebar'), false);
+      navCtx.tabSends.some(s => s.msg.topic === 'state:boundTabLeft'), false);
 
     // A removed tab: the close must not surface an error. The broadcast is
     // all that goes out, and the stub rejects it, so this pins the
@@ -1236,9 +1269,9 @@
   // match either, including when the worker holds no tab number at all.
   (function pageUnloadClosesOnlyItsOwnTab() {
     const ctx = loadBackground();
-    const closes = () => ctx.runtimeSends.filter(m => m.action === 'intent:closeSidebar').length;
+    const closes = () => ctx.runtimeSends.filter(m => m.topic === 'state:boundTabLeft').length;
     const unload = (sender) => ctx.listeners.message(
-      { action: 'state:pageUnloaded' }, sender, () => {});
+      { topic: 'state:pageUnloaded' }, sender, () => {});
 
     // No sidebar open yet: the worker holds no tab number.
     unload({ tab: { id: 42 } });
@@ -1272,10 +1305,10 @@
     openPanel(ctx);
     ctx.tabSends.length = 0;
 
-    ctx.listeners.message({ action: 'state:tableActivated' }, {});
+    ctx.listeners.message({ topic: 'state:tableActivated' }, {});
 
     eq('bg routing: the activation report is not relayed to the content script',
-      ctx.tabSends.filter(s => s.msg.action === 'state:tableActivated').length, 0);
+      ctx.tabSends.filter(s => s.msg.topic === 'state:tableActivated').length, 0);
   })();
 })();
 
@@ -1529,7 +1562,7 @@
 // Every detection setting and both lookup
 // lists have one home, the detection settings (DR_DETECTION_SETTINGS, in
 // the configuration file constants.js). The
-// pillbox auto-collapse delay lives in the pillbox view
+// table pillbox auto-collapse delay lives in the table pillbox view
 // (ui-pillbox.js) as its own constant: the view alone reads it. Four groups
 // of tests:
 //   1. Source scan: none of the eight retired names carries a second
@@ -1539,7 +1572,7 @@
 //      the detection layer (lib/dr-table/detect.js).
 //   2. Source scan: the detection layer and the controller (content.js)
 //      read DR_DETECTION_SETTINGS as a bare global — no typeof guard, no
-//      OR-fallback, no reassignment — and the pillbox view reads none of it.
+//      OR-fallback, no reassignment — and the table pillbox view reads none of it.
 //   3. Behavior: a sandbox that evaluates the configuration file and then
 //      the detection layer carries the nine pre-move values unchanged, and
 //      looksLikeGrid, findTargetTable, isAccessibilityArtifact, and isDataTable
@@ -1610,17 +1643,17 @@
   }
 })();
 
-// The pillbox view holds no detection setting: its touch auto-collapse
+// The table pillbox view holds no detection setting: its touch auto-collapse
 // delay is its own constant, so the view reads the detection settings
 // nowhere and the settings carry no delay the view alone reads.
 (function detectionSettings_pillboxViewHoldsItsOwnDelay() {
   const src = uiPillboxCode || '';
-  eq('detection settings: ui-pillbox.js defines PILLBOX_AUTO_COLLAPSE_MS as its own constant',
-    /^const PILLBOX_AUTO_COLLAPSE_MS = 3000;/m.test(src), true);
+  eq('detection settings: ui-pillbox.js defines TABLE_PILLBOX_AUTO_COLLAPSE_MS as its own constant',
+    /^const TABLE_PILLBOX_AUTO_COLLAPSE_MS = 3000;/m.test(src), true);
   eq('detection settings: ui-pillbox.js reads DR_DETECTION_SETTINGS nowhere',
     /DR_DETECTION_SETTINGS/.test(src), false);
   eq('detection settings: the auto-collapse timer takes the view\'s own constant',
-    /},\s*PILLBOX_AUTO_COLLAPSE_MS\);/.test(src), true);
+    /},\s*TABLE_PILLBOX_AUTO_COLLAPSE_MS\);/.test(src), true);
   eq('detection settings: the settings carry no pillboxAutoCollapseMs key',
     Object.prototype.hasOwnProperty.call(DR_DETECTION_SETTINGS, 'pillboxAutoCollapseMs'), false);
 })();
@@ -1675,7 +1708,7 @@
   const loadTimeScanSrc = sourceByName('ui-pillbox.js');
   const addedNodePassSrc = sourceByName('content.js');
 
-  eq('nesting AC6: the pillbox view is listed in the manifest', loadTimeScanSrc !== null, true);
+  eq('nesting AC6: the table pillbox view is listed in the manifest', loadTimeScanSrc !== null, true);
   eq('nesting AC6: the controller is listed in the manifest', addedNodePassSrc !== null, true);
   eq('nesting AC6: the load-time scan names no grid or table role selector',
     loadTimeScanSrc !== null &&
@@ -1727,10 +1760,10 @@
   eq('nesting AC7: that section holds an expectation paragraph', expectText !== '', true);
   eq('nesting AC7: the expectation names the scrolling pane',
     /scrolling pane/i.test(expectText), true);
-  eq('nesting AC7: the expectation states no pillbox on the wrapper',
+  eq('nesting AC7: the expectation states no table pillbox on the wrapper',
     /pillbox[^.]*wrapper/i.test(expectText), false);
-  eq('nesting AC7: the section states no second pillbox',
-    /second pillbox/i.test(section), false);
+  eq('nesting AC7: the section states no second table pillbox',
+    /second (table )?pillbox/i.test(section), false);
 })();
 
 // --- The living documents state the field ---
@@ -1915,8 +1948,7 @@
 // sendRangeStatusMessage -> chrome.runtime.sendMessage).
 //
 // The apply is the one path to roundTable, so it drives the flow here. It
-// sends the state:rangeOk/state:rangeError and intent:updateMenuLabel
-// messages.
+// sends the state:rangeOk/state:rangeError messages.
 //
 // The engine returns { applied, rangeStatus, error } and the controller
 // sends the message. The two expected sequences below (one per
@@ -1993,10 +2025,9 @@
     ]);
     // The apply ends with flashRangePulse, which flashes the whole-table
     // outline via table.classList — a real <table> element has this; the bare
-    // mock from makeMockTable does not. It also opens with a reset and closes
-    // by checking for a simplified cell, both through the marker-class
-    // selector, so the mock needs a live scan rather than a fixed answer — an
-    // empty list would hide the closing intent:updateMenuLabel.
+    // mock from makeMockTable does not. It also opens with a reset through the
+    // marker-class selector, so the mock answers that selector with a live
+    // scan.
     table.classList = { add() {}, remove() {} };
     table.querySelectorAll = (sel) => {
       if (sel !== '.dr-ext-rounded') return [];
@@ -2032,8 +2063,7 @@
   eq('range-status sequence (valid range): exact message sequence matches parent-branch capture',
     okRun.sentMessages,
     [
-      { action: 'state:rangeOk' },
-      { action: 'intent:updateMenuLabel', title: 'Toggle table' },
+      { topic: 'state:rangeOk' },
     ]);
   eq('range-status sequence (valid range): the cell was actually rounded',
     okRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), true);
@@ -2046,14 +2076,14 @@
   eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture',
     errorRun.sentMessages,
     [
-      { action: 'state:rangeError', error: 'Invalid range: "1a"' },
+      { topic: 'state:rangeError', error: 'Invalid range: "1a"' },
     ]);
   eq('range-status sequence (invalid range): the cell was NOT rounded',
     errorRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), false);
 })();
 
 // ---------------------------------------------------------------------------
-// Ui-toggle.js splits into drawing (render from state,
+// ui-pillbox.js splits into drawing (render from state,
 // hold only view-transient state) and publishing (intents on DR_BUS in place
 // of calls into the controller).
 //
@@ -2061,10 +2091,10 @@
 // names the controller entry points that DO exist: a view calling any of these reaches
 // past the intent and around the one press path.
 // ---------------------------------------------------------------------------
-(function toggleSplit_viewCallsNoControllerFunctionDirectly() {
+(function tablePillboxSplit_viewCallsNoControllerFunctionDirectly() {
   const uiPillboxSrc = sourceByName('ui-pillbox.js');
   if (uiPillboxSrc === null) {
-    eq('toggle-split: ui-pillbox.js is present in the manifest', false, true);
+    eq('table-pillbox-split: ui-pillbox.js is present in the manifest', false, true);
     return;
   }
   const FORBIDDEN_CONTROLLER_CALLS = ['applySidebarRounding', 'resetTable', 'roundTable'];
@@ -2072,18 +2102,18 @@
   // in the content-script stack, so the filter below tests something.
   const missingFromController = FORBIDDEN_CONTROLLER_CALLS.filter(
     (name) => !new RegExp('function\\s+' + name + '\\s*\\(').test(allContentSrc));
-  eq('toggle-split: every forbidden name is a real controller function (sanity check on the scan itself)',
+  eq('table-pillbox-split: every forbidden name is a real controller function (sanity check on the scan itself)',
     missingFromController, []);
 
   const foundCalls = FORBIDDEN_CONTROLLER_CALLS.filter((name) => {
     const callRe = new RegExp('\\b' + name + '\\s*\\(');
     return callRe.test(uiPillboxSrc);
   });
-  eq('toggle-split: ui-pillbox.js calls no controller function directly',
+  eq('table-pillbox-split: ui-pillbox.js calls no controller function directly',
     foundCalls, []);
 
   // The click handler publishes the press as an intent instead.
-  eq('toggle-split: ui-pillbox.js publishes intent:toggleTable from the click handler',
+  eq('table-pillbox-split: ui-pillbox.js publishes intent:toggleTable from the click handler',
     /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiPillboxSrc), true);
 })();
 
@@ -2210,7 +2240,7 @@
 // content script runs on it like on any page. The renderer stamps
 // data-dr-capture on the document element, and the controller gates its two
 // entry points on that marker — the contextmenu handler (selection and the
-// menu path) and the load-time scan with its added-node observer (pillboxes
+// menu path) and the load-time scan with its added-node observer (table pillboxes
 // and registration). With neither, no table on a capture page is ever
 // selected, registered, or rounded. Source-text assertions, matching the
 // suite's style for load-time wiring the harness cannot re-run.
@@ -2520,13 +2550,13 @@
   for (const topic of ['state:tableActivated', 'state:tableSwitched',
       'state:rangeError', 'state:rangeOk',
       'state:previewSamplesChanged',
-      'state:pageUnloaded', 'intent:updateMenuLabel']) {
+      'state:pageUnloaded']) {
     eq('content on bus: publishes ' + topic,
       contentSrc.includes("publish('" + topic + "'"), true);
   }
   eq('content on bus: the menu click arrives as a subscription',
     /DR_BUS\.subscribe\(\s*'intent:menuClicked'/.test(contentSrc), true);
-  eq('content on bus: the sidebar-opened report arrives as a subscription',
+  eq('content on bus: the sidebar-opened topic arrives as a subscription',
     /DR_BUS\.subscribe\(\s*'state:sidebarOpened'/.test(contentSrc), true);
   // The application model publishes the settings notice from its one setter; the
   // controller publishes none of its own.
@@ -2542,7 +2572,7 @@
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   eq('sidebar on bus: no chrome.runtime.onMessage listener of its own',
     sidebarSrc.includes('chrome.runtime.onMessage.addListener'), false);
-  for (const topic of ['state:tableActivated', 'intent:closeSidebar', 'state:rangeError',
+  for (const topic of ['state:tableActivated', 'state:boundTabLeft', 'state:rangeError',
       'state:rangeOk',
       'state:previewSamplesChanged', 'state:tableSwitched', 'state:settingsChanged']) {
     eq('sidebar on bus: subscribes to ' + topic,
@@ -2633,7 +2663,7 @@
         cb([{ id: BOUND_TAB, windowId: BOUND_WINDOW }]);
       },
       sendMessage(tabId, msg, cb) {
-        if (msg.action === 'request:activeTable') {
+        if (msg.topic === 'request:activeTable') {
           settingsReads.push(tabId);
           cb({ settings: Object.assign({}, DR_DEFAULTS), samples: null, maxMag: null });
           return;
@@ -2697,12 +2727,12 @@
     // A range error reported from another tab must not reach the controls.
     // The report writes the status line.
     statusEl.textContent = '';
-    messageListener({ action: 'state:rangeError', error: 'from another tab' }, { tab: { id: OTHER_TAB } }, () => {});
+    messageListener({ topic: 'state:rangeError', error: 'from another tab' }, { tab: { id: OTHER_TAB } }, () => {});
     eq('bound tab wiring: a range error reported by another tab leaves the status line alone',
       statusEl.textContent, '');
 
     // The same report from the bound tab does reach them.
-    messageListener({ action: 'state:rangeError', error: 'from the bound tab' }, { tab: { id: BOUND_TAB } }, () => {});
+    messageListener({ topic: 'state:rangeError', error: 'from the bound tab' }, { tab: { id: BOUND_TAB } }, () => {});
     eq('bound tab wiring: a range error reported by the bound tab writes the status line',
       statusEl.textContent, 'from the bound tab');
 

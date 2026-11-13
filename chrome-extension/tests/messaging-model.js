@@ -303,7 +303,7 @@
 // ---------------------------------------------------------------------------
 
 (function issue251_switchAppliesModelToNewTable() {
-  const tableA = makeToggleTable([
+  const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -312,7 +312,7 @@
   // column: the shipped defaults leave the first column alone, and 286 at
   // offset -2 rounds to itself, so a first-column 8,584,629 would let a
   // defaults-run pass hide.
-  const tableB = makeToggleTable([
+  const tableB = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '286' }, { tag: 'td', text: '8,584,629' }],
   ]);
@@ -324,7 +324,7 @@
 
   lastRightClickedTable = tableA;
 
-  const buttonB = createPillboxWithSpies(tableB);
+  const buttonB = createTablePillboxWithSpies(tableB);
   fireMouseClick(buttonB);
 
   const rounded = tableB._cells.some(c => c.classList.contains('dr-ext-rounded'));
@@ -340,7 +340,7 @@
 })();
 
 (function issue251_switchRespectsModelEnabledOff() {
-  const tableA = makeToggleTable([
+  const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -348,7 +348,7 @@
   // Values that visibly change under the shipped default offset (see the
   // wire-message test's note: 1,000,000-style values round to themselves
   // and would let a wrongly-run rounding pass hide).
-  const tableB = makeToggleTable([
+  const tableB = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -360,7 +360,7 @@
 
   lastRightClickedTable = tableA;
 
-  const buttonB = createPillboxWithSpies(tableB);
+  const buttonB = createTablePillboxWithSpies(tableB);
   fireMouseClick(buttonB);
 
   const rounded = tableB._cells.some(c => c.classList.contains('dr-ext-rounded'));
@@ -960,7 +960,7 @@ const PENDING_FILL_ROWS = [
 
 // --- Criterion 1: a container inserted empty and then filled registers ---
 
-(function pendingRetest_AC1_aLoneContainerFilledLaterRegistersAndGainsAPillbox() {
+(function pendingRetest_AC1_aLoneContainerFilledLaterRegistersAndGainsATablePillbox() {
   const lone = makeDgNode('DIV', 'lone-pending-grid', 'grid', []);
   const before = DR_MODEL.getRegisteredTables().length;
 
@@ -968,13 +968,13 @@ const PENDING_FILL_ROWS = [
     pendingRoots.size, 0);
 
   withPendingHarness(function ({ observers, timers }) {
-    withPillboxDocumentMock(function () {
-      injectPillboxesForAddedNode(lone);
+    withTablePillboxDocumentMock(function () {
+      injectTablePillboxesForAddedNode(lone);
     });
 
     eq('pending AC1: an empty container registers nothing',
       DR_MODEL.hasTable(lone), false);
-    eq('pending AC1: an empty container gains no pillbox', tablePillboxes.has(lone), false);
+    eq('pending AC1: an empty container gains no table pillbox', tablePillboxes.has(lone), false);
     eq('pending AC1: an empty container is held as a pending table',
       pendingRoots.has(lone), true);
     eq('pending AC1: the empty container carries one observer', observers.length, 1);
@@ -983,13 +983,13 @@ const PENDING_FILL_ROWS = [
     PENDING_FILL_ROWS.forEach((cellTexts, i) => appendDgChild(lone, makeDgRow(i, cellTexts)));
     eq('pending AC1: the filled container passes the data test', isDataTable(lone), true);
 
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       if (observers[0]) observers[0].trigger();
       eq('pending AC1: one mutation schedules one re-test', runPendingRetestTimers(timers), 1);
     });
 
     eq('pending AC1: the filled container registers', DR_MODEL.hasTable(lone), true);
-    eq('pending AC1: the filled container gains a pillbox', tablePillboxes.has(lone), true);
+    eq('pending AC1: the filled container gains a table pillbox', tablePillboxes.has(lone), true);
     eq('pending AC1: the registration drops the pending record',
       pendingRoots.has(lone), false);
     eq('pending AC1: the registration disconnects the observer',
@@ -1006,8 +1006,8 @@ const PENDING_FILL_ROWS = [
   const before = DR_MODEL.getRegisteredTables().length;
 
   withPendingHarness(function ({ observers, timers }) {
-    withPillboxDocumentMock(function () {
-      injectPillboxesForAddedNode(grid.wrapperEl);
+    withTablePillboxDocumentMock(function () {
+      injectTablePillboxesForAddedNode(grid.wrapperEl);
     });
 
     eq('pending AC1: an empty database query grid registers nothing',
@@ -1019,7 +1019,7 @@ const PENDING_FILL_ROWS = [
 
     fillDatabaseQueryGrid(grid);
 
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       if (observers[0]) observers[0].trigger();
       eq('pending AC1: one fill schedules one re-test', runPendingRetestTimers(timers), 1);
     });
@@ -1027,10 +1027,10 @@ const PENDING_FILL_ROWS = [
     eq('pending AC1: the filled grid registers the scrolling pane alone',
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, true]);
-    eq('pending AC1: the scrolling pane gains a pillbox',
+    eq('pending AC1: the scrolling pane gains a table pillbox',
       tablePillboxes.has(grid.scrollPaneEl), true);
-    eq('pending AC1: the wrapper gains no pillbox', tablePillboxes.has(grid.wrapperEl), false);
-    eq('pending AC1: the pinned pane gains no pillbox',
+    eq('pending AC1: the wrapper gains no table pillbox', tablePillboxes.has(grid.wrapperEl), false);
+    eq('pending AC1: the pinned pane gains no table pillbox',
       tablePillboxes.has(grid.pinnedPaneEl), false);
     eq('pending AC1: the registration drops the wrapper\'s pending record',
       pendingRoots.has(grid.wrapperEl), false);
@@ -1058,8 +1058,8 @@ const PENDING_FILL_ROWS = [
     [false, false, false, false]);
 
   withPendingHarness(function ({ observers }) {
-    withPillboxDocumentMock(function () {
-      injectPillboxesForAddedNode(grid.wrapperEl);
+    withTablePillboxDocumentMock(function () {
+      injectTablePillboxesForAddedNode(grid.wrapperEl);
     });
 
     eq('pending AC2: a nest of four qualifying elements carries one observer',
@@ -1073,8 +1073,8 @@ const PENDING_FILL_ROWS = [
 
     // A second pass over the same empty wrapper holds the record it already
     // has rather than starting a second one.
-    withPillboxDocumentMock(function () {
-      injectPillboxesForAddedNode(grid.wrapperEl);
+    withTablePillboxDocumentMock(function () {
+      injectTablePillboxesForAddedNode(grid.wrapperEl);
     });
     eq('pending AC2: a second pass over the same empty wrapper adds no second observer',
       observers.length, 1);
@@ -1113,8 +1113,8 @@ const PENDING_FILL_ROWS = [
   const logRowsBefore = recordedRows();
 
   withPendingHarness(function ({ observers, timers }) {
-    withPillboxDocumentMock(function () {
-      injectPillboxesForAddedNode(neverEl);
+    withTablePillboxDocumentMock(function () {
+      injectTablePillboxesForAddedNode(neverEl);
     });
 
     eq('pending AC3: the container is held as a pending table',
@@ -1171,7 +1171,7 @@ const PENDING_FILL_ROWS = [
 //
 // The vocabulary row states the rule: a re-test that finds the nest already
 // registered ends the pending table, as does one that finds its configured
-// depth crowded. The registration here goes through the pillbox builder
+// depth crowded. The registration here goes through the table pillbox builder
 // directly, which is the route a right-click takes today — the pending record
 // stands until the next re-test, and that re-test is what drops it. Without
 // this the record outlives the registration: a live observer on a subtree the
@@ -1182,8 +1182,8 @@ const PENDING_FILL_ROWS = [
   const before = DR_MODEL.getRegisteredTables().length;
 
   withPendingHarness(function ({ observers, timers }) {
-    withPillboxDocumentMock(function () {
-      injectPillboxesForAddedNode(grid.wrapperEl);
+    withTablePillboxDocumentMock(function () {
+      injectTablePillboxesForAddedNode(grid.wrapperEl);
     });
 
     eq('pending registered: the empty wrapper is held as a pending table',
@@ -1193,15 +1193,15 @@ const PENDING_FILL_ROWS = [
     // The rows arrive, and another route registers the scrolling pane before
     // the re-test runs.
     fillDatabaseQueryGrid(grid);
-    withPillboxDocumentMock(function () {
-      createPillboxForTable(grid.scrollPaneEl);
+    withTablePillboxDocumentMock(function () {
+      createTablePillbox(grid.scrollPaneEl);
     });
     eq('pending registered: the other route registered the scrolling pane',
       DR_MODEL.hasTable(grid.scrollPaneEl), true);
     eq('pending registered: the pending record still stands before the re-test',
       pendingRoots.has(grid.wrapperEl), true);
 
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       if (observers[0]) observers[0].trigger();
       eq('pending registered: one mutation schedules one re-test',
         runPendingRetestTimers(timers), 1);
@@ -1219,7 +1219,7 @@ const PENDING_FILL_ROWS = [
       pendingRetestTimers.has(grid.wrapperEl), false);
     eq('pending registered: the nest holds one registry entry in all',
       DR_MODEL.getRegisteredTables().length - before, 1);
-    eq('pending registered: the re-test puts no second pillbox on the nest',
+    eq('pending registered: the re-test puts no second table pillbox on the nest',
       [tablePillboxes.has(grid.wrapperEl), tablePillboxes.has(grid.pinnedPaneEl)], [false, false]);
     eq('pending registered: no pending root remains', pendingRoots.size, 0);
   });
@@ -1240,8 +1240,8 @@ const PENDING_FILL_ROWS = [
   const before = DR_MODEL.getRegisteredTables().length;
 
   withPendingHarness(function ({ observers, timers }) {
-    withPillboxDocumentMock(function () {
-      injectPillboxesForAddedNode(rootEl);
+    withTablePillboxDocumentMock(function () {
+      injectTablePillboxesForAddedNode(rootEl);
     });
 
     eq('pending crowded: the empty root is held as a pending table',
@@ -1258,7 +1258,7 @@ const PENDING_FILL_ROWS = [
     eq('pending crowded: the filled nest reports the crowded outcome',
       nominateNest(rootEl).outcome, 'crowded');
 
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       if (observers[0]) observers[0].trigger();
       eq('pending crowded: one mutation schedules one re-test',
         runPendingRetestTimers(timers), 1);
@@ -1277,7 +1277,7 @@ const PENDING_FILL_ROWS = [
     eq('pending crowded: a crowded nest registers no element',
       [rootEl, nest.paneAEl, nest.paneBEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, false]);
-    eq('pending crowded: a crowded nest gains no pillbox',
+    eq('pending crowded: a crowded nest gains no table pillbox',
       [rootEl, nest.paneAEl, nest.paneBEl].map((el) => tablePillboxes.has(el)),
       [false, false, false]);
     eq('pending crowded: a crowded nest adds no registry entry',
@@ -1292,22 +1292,22 @@ const PENDING_FILL_ROWS = [
   const grid = makeDatabaseQueryGrid({ rows: 0 });
 
   withPendingHarness(function ({ observers, timers }) {
-    withPillboxDocumentMock(function () {
-      injectPillboxesForAddedNode(grid.wrapperEl);
+    withTablePillboxDocumentMock(function () {
+      injectTablePillboxesForAddedNode(grid.wrapperEl);
     });
 
     const observer = observers[0];
     if (observer) observer.trigger();
     if (observer) observer.trigger();
 
-    const scheduled = timers.filter((t) => t.ms === DR_DETECTION_SETTINGS.gridRedrawDelayMs);
+    const scheduled = timers.filter((t) => t.ms === DR_DETECTION_SETTINGS.settleDelayMs);
     eq('pending debounce: two mutations schedule two timers and cancel the first',
       scheduled.map((t) => t.cancelled), [true, false]);
-    eq('pending debounce: the delay is the grid redraw delay',
-      scheduled.every((t) => t.ms === DR_DETECTION_SETTINGS.gridRedrawDelayMs), true);
+    eq('pending debounce: the delay is the settle delay',
+      scheduled.every((t) => t.ms === DR_DETECTION_SETTINGS.settleDelayMs), true);
 
     fillDatabaseQueryGrid(grid);
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       eq('pending debounce: two mutations inside the delay run one re-test',
         runPendingRetestTimers(timers), 1);
     });
@@ -1366,8 +1366,8 @@ const PENDING_FILL_ROWS = [
      // The sidebar's three requests, each answered by the tab's content script.
      'request:applySettings', 'request:activeTable', 'request:captureState',
      // The service worker's four, plus the two it receives.
-     'intent:menuClicked', 'state:sidebarOpened', 'intent:closeSidebar',
-     'state:sidebarClosed', 'state:pageUnloaded', 'intent:updateMenuLabel',
+     'intent:menuClicked', 'state:sidebarOpened', 'state:boundTabLeft',
+     'state:sidebarClosed', 'state:pageUnloaded',
      // The content script's six reports to the sidebar, the settings
      // notice among them.
      'state:settingsChanged', 'state:tableActivated', 'state:tableSwitched',
@@ -1380,10 +1380,9 @@ const PENDING_FILL_ROWS = [
   const WORKER_TOPICS = {
     'intent:menuClicked': ['intent', 'tab'],
     'state:sidebarOpened': ['state-change', 'tab'],
-    'intent:closeSidebar': ['intent', 'extension-pages'],
+    'state:boundTabLeft': ['state-change', 'extension-pages'],
     'state:sidebarClosed': ['state-change', 'extension-pages'],
     'state:pageUnloaded': ['state-change', 'extension-pages'],
-    'intent:updateMenuLabel': ['intent', 'extension-pages'],
     // The content script's six reports. Every one broadcasts: the content
     // script holds no tabs interface, and the sidebar is an extension page.
     'state:settingsChanged': ['state-change', 'extension-pages'],
@@ -1402,7 +1401,7 @@ const PENDING_FILL_ROWS = [
   }
   eq('DR_BUS.TOPICS: intent:activateTable is in the intent family',
     topics['intent:activateTable'].family, 'intent');
-  // The toggle view's click handler changes no table
+  // The table pillbox view's click handler changes no table
   // itself — it publishes intent:toggleTable, and content.js (the sole
   // subscriber) determines what a committed toggle does.
   eq('DR_BUS.TOPICS: intent:toggleTable is in the intent family',
@@ -1535,14 +1534,14 @@ const PENDING_FILL_ROWS = [
 // path to running a press — prove the wiring end to end (mirrors the
 // intent:activateTable behavioral pin in the app-model-selection block above).
 // ---------------------------------------------------------------------------
-(function toggleSplit_intentToggleTableRunsThePress() {
+(function tablePillboxSplit_intentToggleTableRunsThePress() {
   // DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn) — use a
   // 2x2 table so [row1, col1] is processed.
-  const table = makeToggleTable([
+  const table = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
     [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
   ]);
-  injectPillboxEntry(table);
+  injectTablePillboxEntry(table);
 
   // The press writes the table's settings and moves the active table. The active table is shared model
   // state, so this test saves and restores it rather than leaving it for
@@ -1558,7 +1557,7 @@ const PENDING_FILL_ROWS = [
     });
     const isNowRounded = showsSimplified(table);
 
-    eq('toggle-split: publishing intent:toggleTable runs the press (table becomes simplified)',
+    eq('table-pillbox-split: publishing intent:toggleTable runs the press (table becomes simplified)',
       !wasRounded && isNowRounded, true);
 
     // A second press takes it back off, through the same path and the same
@@ -1566,7 +1565,7 @@ const PENDING_FILL_ROWS = [
     withCreateTreeWalker(function () {
       DR_BUS.publish('intent:toggleTable', { table });
     });
-    eq('toggle-split: publishing intent:toggleTable again takes the table back to its original values',
+    eq('table-pillbox-split: publishing intent:toggleTable again takes the table back to its original values',
       showsSimplified(table), false);
   } finally {
     DR_MODEL.setActiveTable(null);
@@ -1582,7 +1581,7 @@ const PENDING_FILL_ROWS = [
 // TypeError on a div-based grid and crash this suite rather than fail an
 // assertion.
 // ---------------------------------------------------------------------------
-(function toggleSplit_rangeFlashWorksOnGrids() {
+(function tablePillboxSplit_rangeFlashWorksOnGrids() {
   // 2x2 div-based grid (no ARIA roles, no vendor classes — the plain
   // fallback shape GridAdapter already supports elsewhere in this suite).
   const grid = makeGridWrapper([
@@ -1646,7 +1645,7 @@ const PENDING_FILL_ROWS = [
 // The expected sequences below are LITERALS, so the pin holds in a shallow
 // checkout or CI runner.
 // ---------------------------------------------------------------------------
-(function toggleSplit_parentEquivalence_toggleClickSequences() {
+(function tablePillboxSplit_parentEquivalence_tablePillboxClickSequences() {
   // Keyed by sameTable — mouse and touch second-tap produce the identical
   // sequence per cell, since both branches publish to the same handler. That
   // equality is itself part of what this pin proves: see the per-mode
@@ -1660,10 +1659,9 @@ const PENDING_FILL_ROWS = [
     // enabled to the sidebar, and the apply that follows sends the range
     // status.
     'true': [
-      { action: 'state:settingsChanged', source: 'page',
+      { topic: 'state:settingsChanged', source: 'page',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
-      { action: 'state:rangeOk' },
-      { action: 'intent:updateMenuLabel', title: 'Toggle table' },
+      { topic: 'state:rangeOk' },
     ],
     // A press on a table that is NOT the active one applies the pressed
     // table's own settings to it, whatever the sidebar is doing.
@@ -1673,11 +1671,10 @@ const PENDING_FILL_ROWS = [
     // state:previewSamplesChanged — the sidebar's pull chain ends in the
     // preview fetch.
     'false': [
-      { action: 'state:tableSwitched' },
-      { action: 'state:settingsChanged', source: 'page',
+      { topic: 'state:tableSwitched' },
+      { topic: 'state:settingsChanged', source: 'page',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
-      { action: 'state:rangeOk' },
-      { action: 'intent:updateMenuLabel', title: 'Toggle table' },
+      { topic: 'state:rangeOk' },
     ],
   };
 
@@ -1685,8 +1682,8 @@ const PENDING_FILL_ROWS = [
   // active" and "which table gets pressed" — the unmoved press. sameTable=
   // false makes a different table active than the one pressed — the press
   // that moves the active table, which must publish the switch.
-  function runToggleClickFixture(mode, sameTable) {
-    const clicked = makeToggleTable([
+  function runTablePillboxClickFixture(mode, sameTable) {
+    const clicked = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
       [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
     ]);
@@ -1694,7 +1691,7 @@ const PENDING_FILL_ROWS = [
 
     let selected = clicked;
     if (!sameTable) {
-      selected = makeToggleTable([
+      selected = makeTablePillboxTestTable([
         [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
         [{ tag: 'td', text: '1,000,000' }, { tag: 'td', text: '500' }],
       ]);
@@ -1707,7 +1704,7 @@ const PENDING_FILL_ROWS = [
 
     lastRightClickedTable = selected;
 
-    const buttonEl = createPillboxWithSpies(clicked);
+    const buttonEl = createTablePillboxWithSpies(clicked);
     if (mode === 'mouse') fireMouseClick(buttonEl);
     else fireTouchSecondTap(buttonEl);
 
@@ -1720,8 +1717,8 @@ const PENDING_FILL_ROWS = [
   for (const sameTable of [true, false]) {
     const expected = EXPECTED_SEQUENCES[String(sameTable)];
     for (const mode of ['mouse', 'touch']) {
-      const seq = runToggleClickFixture(mode, sameTable);
-      eq(`toggle click sequence (${mode}, sameTable=${sameTable}): sendMessage sequence matches the frozen literal`,
+      const seq = runTablePillboxClickFixture(mode, sameTable);
+      eq(`table pillbox click sequence (${mode}, sameTable=${sameTable}): sendMessage sequence matches the frozen literal`,
         seq, expected);
     }
   }
@@ -1810,7 +1807,7 @@ const PENDING_FILL_ROWS = [
 (function registrySprint_oneRestorePathForBothKinds() {
   withCreateTreeWalker(function () {
     // Native table: header row (excluded) + one data row.
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Header' }],
       [{ tag: 'td', text: '8,584,629' }],
     ]);
@@ -1888,12 +1885,12 @@ const PENDING_FILL_ROWS = [
 // sees. ---
 (function registrySprint_originalsSurviveOffAndOnCycle() {
   withCreateTreeWalker(function () {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Header' }],
       [{ tag: 'td', text: '8,584,629' }],
     ]);
     table._cells.forEach(c => { c.querySelectorAll = () => []; });
-    injectPillboxEntry(table);
+    injectTablePillboxEntry(table);
     const opts = Object.assign({}, DR_DEFAULTS, { simplifyFirstRow: false, simplifyFirstColumn: true });
     const cell = table._cells[1];
     // withCreateTreeWalker's fake tree walker writes rounded text through
@@ -2044,7 +2041,7 @@ const PENDING_FILL_ROWS = [
 
 // --- (g) settings notice sequence: showsSimplified (reading DR_MODEL's
 // appliedFlag) must report correctly to the sidebar across a full round ->
-// peek-original -> peek-back cycle, not just a single toggle. The pillbox
+// peek-original -> peek-back cycle, not just a single toggle. The table pillbox
 // AC1 test above pins one click; the guard matrix pins one
 // intent:toggleTable dispatch. Neither exercises the 3-step peek cycle. ---
 (function registrySprint_tableToggleStateAcrossPeekCycle() {
@@ -2054,14 +2051,14 @@ const PENDING_FILL_ROWS = [
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
   try {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
       [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
     ]);
-    injectPillboxEntry(table);
+    injectTablePillboxEntry(table);
     DR_MODEL.setActiveTable(table);
 
-    // makeToggleTableCell gives innerHTML/innerText/textContent as three
+    // makeTablePillboxTestCell gives innerHTML/innerText/textContent as three
     // INDEPENDENT properties. A real <td>'s innerHTML/innerText/textContent
     // all derive from the same child-node tree, so writing one (restoreTable's
     // `cell.innerHTML = original.html`) is immediately visible through the
@@ -2086,7 +2083,7 @@ const PENDING_FILL_ROWS = [
       DR_BUS.publish('intent:toggleTable', { table }); // peek back
     });
 
-    const toggleMsgs = sent.filter(m => m.action === 'state:settingsChanged').map(m => m.settings);
+    const toggleMsgs = sent.filter(m => m.topic === 'state:settingsChanged').map(m => m.settings);
     eq('toggle-state cycle: exactly one settings notice per dispatch (3 total)',
       toggleMsgs.length, 3);
     eq('toggle-state cycle: enabled sequence is true (rounded), false (peek original), true (peek back)',
@@ -2144,7 +2141,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // --- The registry's fingerprint field. The entry
-// carries the shape the table had when it registered, and the pillbox view's
+// carries the shape the table had when it registered, and the table pillbox view's
 // builder is its one writer. Spec: the shape-fingerprint block in
 // docs/sprint-plans/grid-detection-recovery-v2.md §5, and the shape
 // fingerprint row in docs/vocabulary.md. ---
@@ -2175,30 +2172,30 @@ const PENDING_FILL_ROWS = [
   DR_MODEL.unregisterTable(table);
 })();
 
-// The pillbox view's builder records the shape after it registers the table,
+// The table pillbox view's builder records the shape after it registers the table,
 // on a grid and on a native table alike.
 (function shapeFingerprint_registrationRecordsTheTablesShape() {
   const grouped = makeScrollingRowgroupGrid(['Region', 'Q1'], [
     ['North', '1,482,391'], ['South', '918,554'],
   ]);
-  withPillboxDocumentMock(function () { createPillboxForTable(grouped.wrapperEl); });
+  withTablePillboxDocumentMock(function () { createTablePillbox(grouped.wrapperEl); });
   eq('fingerprint registry: registering a grid with a row group records its header row',
     DR_MODEL.getTableFingerprint(grouped.wrapperEl),
     { columnCount: 2, headerTexts: ['Region', 'Q1'] });
   forgetRegisteredTable(grouped.wrapperEl);
 
   const grid = makeDatabaseQueryGrid();
-  withPillboxDocumentMock(function () { createPillboxForTable(grid.scrollPaneEl); });
+  withTablePillboxDocumentMock(function () { createTablePillbox(grid.scrollPaneEl); });
   eq('fingerprint registry: registering a groupless grid records its column count alone',
     DR_MODEL.getTableFingerprint(grid.scrollPaneEl),
     { columnCount: 3, headerTexts: null });
   forgetRegisteredTable(grid.scrollPaneEl);
 
-  const nativeTable = makeToggleTable([
+  const nativeTable = makeTablePillboxTestTable([
     [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
     [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
   ]);
-  withPillboxDocumentMock(function () { createPillboxForTable(nativeTable); });
+  withTablePillboxDocumentMock(function () { createTablePillbox(nativeTable); });
   eq('fingerprint registry: registering a native table records its header row',
     DR_MODEL.getTableFingerprint(nativeTable),
     { columnCount: 2, headerTexts: ['Region', 'Q1'] });
@@ -2366,13 +2363,13 @@ const PENDING_FILL_ROWS = [
     eq('removed table: removing another table leaves the active table in place',
       model.getActiveTable(), active);
     eq('removed table: removing another table sends the sidebar nothing',
-      sent.some((m) => m.action === 'state:previewSamplesChanged'), false);
+      sent.some((m) => m.topic === 'state:previewSamplesChanged'), false);
 
     tableObserver._cb([{ addedNodes: [], removedNodes: [active] }]);
     eq('removed table: removing the active table clears the active table',
       model.getActiveTable(), null);
     eq('removed table: removing the active table tells the sidebar to re-read',
-      sent.some((m) => m.action === 'state:previewSamplesChanged'), true);
+      sent.some((m) => m.topic === 'state:previewSamplesChanged'), true);
   } finally {
     delete global.__rt506_DR_MODEL;
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
@@ -2383,7 +2380,7 @@ const PENDING_FILL_ROWS = [
 
 // --- The teardown both the removal observer and the
 // mismatch path run. One function discards a table's registration and every
-// per-table resource the extension holds beside it: the pillbox, the resize
+// per-table resource the extension holds beside it: the table pillbox, the resize
 // observer, a virtualized grid's re-apply observer and its pending timer, the
 // view's tracked-table list, and the registry entry. The teardown writes no
 // row: each caller writes its own. Spec: the shape-fingerprint block in
@@ -2405,7 +2402,7 @@ const PENDING_FILL_ROWS = [
   global.clearTimeout = function (id) { clearedTimers.push(id); return savedClearTimeout(id); };
 
   try {
-    const removedPillboxes = registerFingerprintedTable(grid.scrollPaneEl);
+    const removedTablePillboxes = registerFingerprintedTable(grid.scrollPaneEl);
     reapplyObservers.set(grid.scrollPaneEl, { observer: { disconnect() { gridObserverDisconnects++; } }, target: grid.scrollPaneEl });
     const pendingTimer = setTimeout(function () {}, 10000);
     reapplyTimers.set(grid.scrollPaneEl, pendingTimer);
@@ -2416,7 +2413,7 @@ const PENDING_FILL_ROWS = [
     const rows = logRowsDuring(() => teardownTableEntry(grid.scrollPaneEl));
 
     eq('fingerprint teardown: the teardown writes no row', rows, []);
-    eq('fingerprint teardown: the pillbox comes off the page', removedPillboxes.length, 1);
+    eq('fingerprint teardown: the table pillbox comes off the page', removedTablePillboxes.length, 1);
     eq('fingerprint teardown: the resize observer disconnects',
       resizeObservers.length === 1 && resizeObservers[0].disconnected, true);
     eq('fingerprint teardown: the pending re-apply timer is cleared',
@@ -2598,8 +2595,8 @@ const PENDING_FILL_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// A pillbox press on the active table writes the table's settings (its
-// enabled), not just the table's cells and the sidebar's switch. A press
+// A table pillbox press on the active table writes the table's settings (its
+// enabled), not just the table's cells and the sidebar pillbox. A press
 // that changed the cells without writing the settings would leave any later
 // pull (a sidebar reopen or a table switch) showing a stale enabled over the
 // table's truth.
@@ -2615,11 +2612,11 @@ const PENDING_FILL_ROWS = [
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
   try {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
       [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
     ]);
-    injectPillboxEntry(table);
+    injectTablePillboxEntry(table);
     DR_MODEL.setActiveTable(table);
 
     // Same innerHTML/innerText/textContent link as the toggle-state cycle
@@ -2634,31 +2631,31 @@ const PENDING_FILL_ROWS = [
     });
 
     withCreateTreeWalker(function () {
-      DR_BUS.publish('intent:toggleTable', { table }); // pillbox: turn rounding on
+      DR_BUS.publish('intent:toggleTable', { table }); // table pillbox: turn rounding on
     });
     eq('leak-1: the first table pillbox press rounds the connected table',
       showsSimplified(table), true);
-    eq('leak-1: the table\'s settings follow the pillbox — enabled true after toggle-on',
+    eq('leak-1: the table\'s settings follow the table pillbox — enabled true after toggle-on',
       DR_MODEL.getTableSettings(table).enabled, true);
 
     withCreateTreeWalker(function () {
-      DR_BUS.publish('intent:toggleTable', { table }); // pillbox: turn rounding off
+      DR_BUS.publish('intent:toggleTable', { table }); // table pillbox: turn rounding off
     });
     eq('leak-1: the second table pillbox press restores the table to originals',
       showsSimplified(table), false);
-    eq('leak-1: the table\'s settings follow the pillbox — enabled false after toggle-off',
+    eq('leak-1: the table\'s settings follow the table pillbox — enabled false after toggle-off',
       DR_MODEL.getTableSettings(table).enabled, false);
 
     // A sidebar change runs this same apply, and it must honor the settings
-    // the pillbox just wrote — not silently re-round the table.
+    // the table pillbox just wrote — not silently re-round the table.
     withCreateTreeWalker(function () {
       applySidebarRounding(table);
     });
     eq('leak-1: a later apply honors the table\'s settings — the table stays on originals',
       showsSimplified(table), false);
 
-    const notices = sent.filter((m) => m.action === 'state:settingsChanged');
-    eq('leak-1: one settings notice per pillbox toggle, carrying the table\'s enabled — true then false',
+    const notices = sent.filter((m) => m.topic === 'state:settingsChanged');
+    eq('leak-1: one settings notice per table pillbox toggle, carrying the table\'s enabled — true then false',
       notices.map((m) => m.settings.enabled), [true, false]);
   } finally {
     global.chrome.runtime.sendMessage = origSend;
@@ -2708,14 +2705,14 @@ const PENDING_FILL_ROWS = [
     eq('part one: the pressed table\'s settings follow that press to on',
       DR_MODEL.getTableSettings(pressed).enabled, true);
     eq('part one: the press publishes the switch',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
+      sent.filter((m) => m.topic === 'state:tableSwitched').length, 1);
   });
 })();
 
 // --- Exactly one settings write per press, and the flip direction comes from
-// the table's on/off value as it stood BEFORE that write. For a raw table
-// whose settings already stand at on, the handler writes off: the table
-// pillbox shows that table as on, the same as the sidebar pillbox. ---
+// the table's on/off value as it stood BEFORE that write. For a table showing the original
+// whose settings already stand at on, the handler writes off: the
+// table pillbox shows that table as on, the same as the sidebar pillbox. ---
 (function partOne_onePressOneWriteReadingTheSettingFirst() {
   runPressFixture(({ resetWrites, writes }) => {
     const active = makePressTable('1,000,000');
@@ -2728,21 +2725,21 @@ const PENDING_FILL_ROWS = [
 
     eq('part one: a press makes exactly one settings write',
       writes(), 1);
-    eq('part one: a raw table with its settings at on ends at off after one press',
+    eq('part one: a table showing the original with its settings at on ends at off after one press',
       DR_MODEL.getTableSettings(pressed).enabled, false);
-    eq('part one: the table stays raw after that press',
+    eq('part one: the table shows the original after that press',
       showsSimplified(pressed), false);
   });
 })();
 
 // --- A table with nothing to simplify. The table pillbox and the sidebar
-// pillbox show the one on/off value, so such a table stands at on after the
+// table pillbox show the one on/off value, so such a table stands at on after the
 // first press and at off after the next, though no cell changes either way. ---
 (function partOne_pressesOnATableWithNothingToSimplifyAlternate() {
   runPressFixture(() => {
     const table = makePressTable('no digits');
     DR_MODEL.setActiveTable(table);
-    const pillbox = tablePillboxes.get(table);
+    const tablePillbox = tablePillboxes.get(table);
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
     eq('nothing to simplify: the settings stand at on after the first press',
@@ -2750,13 +2747,13 @@ const PENDING_FILL_ROWS = [
     eq('nothing to simplify: no cell changes on the first press',
       showsSimplified(table), false);
     eq('nothing to simplify: the table pillbox shows on after the first press',
-      pillbox.getAttribute('aria-pressed'), 'true');
+      tablePillbox.getAttribute('aria-pressed'), 'true');
 
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
     eq('nothing to simplify: the settings stand at off after the second press',
       DR_MODEL.getTableSettings(table).enabled, false);
     eq('nothing to simplify: the table pillbox shows off after the second press',
-      pillbox.getAttribute('aria-pressed'), 'false');
+      tablePillbox.getAttribute('aria-pressed'), 'false');
   });
 })();
 
@@ -2767,24 +2764,24 @@ const PENDING_FILL_ROWS = [
   runPressFixture(() => {
     const table = makePressTable('no digits');
     DR_BUS.publish('intent:activateTable', { table });
-    const pillbox = tablePillboxes.get(table);
+    const tablePillbox = tablePillboxes.get(table);
 
     withCreateTreeWalker(() => {
-      askContentScript({ action: 'request:applySettings',
+      askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) });
     });
     eq('settings notice: the table pillbox shows on after the sidebar writes on',
-      pillbox.getAttribute('aria-pressed'), 'true');
+      tablePillbox.getAttribute('aria-pressed'), 'true');
 
     withCreateTreeWalker(() => {
-      askContentScript({ action: 'request:applySettings',
+      askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: false }) });
     });
     eq('settings notice: the table pillbox shows off after the sidebar writes off',
-      pillbox.getAttribute('aria-pressed'), 'false');
+      tablePillbox.getAttribute('aria-pressed'), 'false');
   });
   eq('settings notice: the controller holds no direct table pillbox redraw',
-    /syncPillboxForTable\(/.test(sourceByName('content.js') || 'syncPillboxForTable('), false);
+    /syncTablePillbox\(/.test(sourceByName('content.js') || 'syncTablePillbox('), false);
 })();
 
 // --- The press applies the pressed table's own settings, and the values they
@@ -2911,15 +2908,15 @@ function issue328SettingsOf(table) {
     const tableB = makePressTable('8,584,629');
     withCreateTreeWalker(() => {
       DR_BUS.publish('intent:activateTable', { table: tableA });
-      askContentScript({ action: 'request:applySettings',
+      askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, ISSUE328_HEAVY) });
       DR_BUS.publish('intent:activateTable', { table: tableB });
-      askContentScript({ action: 'request:applySettings',
+      askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, ISSUE328_LIGHT) });
       DR_BUS.publish('intent:activateTable', { table: tableA });
     });
 
-    const answer = askContentScript({ action: 'request:activeTable' });
+    const answer = askContentScript({ topic: 'request:activeTable' });
     eq('per-table settings: the redraw read on A answers A\'s heavy rounding',
       answer && answer.settings && [answer.settings.offsetTop, answer.settings.offsetOther], [1, 1]);
     eq('per-table settings: A still shows its heavy rounding after B changed',
@@ -2928,7 +2925,7 @@ function issue328SettingsOf(table) {
       tableB._cells[3].innerText, '8,580,000');
 
     withCreateTreeWalker(() => {
-      askContentScript({ action: 'request:applySettings',
+      askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, ISSUE328_HEAVY, { simplifyFirstColumn: true }) });
     });
     eq('per-table settings: a change on A writes A\'s settings',
@@ -2946,19 +2943,19 @@ function issue328SettingsOf(table) {
 // answers, so the sidebar stays bound, and writes nothing.
 (function issue328_theSettingsRequestsReachTheActiveTable() {
   runPressFixture(() => {
-    const noneActive = askContentScript({ action: 'request:activeTable' });
+    const noneActive = askContentScript({ topic: 'request:activeTable' });
     eq('per-table settings: with no table active the redraw read answers the shipped defaults',
       noneActive && noneActive.settings, Object.assign({}, DR_DEFAULTS));
 
     const table = makePressTable('12,345');
     DR_MODEL.setTableSettings(table, { rangeExpr: 'B2' }, 'page');
     DR_MODEL.setActiveTable(table);
-    const active = askContentScript({ action: 'request:activeTable' });
+    const active = askContentScript({ topic: 'request:activeTable' });
     eq('per-table settings: the redraw read answers the active table\'s range expression',
       active && active.settings && active.settings.rangeExpr, 'B2');
 
     DR_MODEL.setActiveTable(null);
-    const applied = askContentScript({ action: 'request:applySettings',
+    const applied = askContentScript({ topic: 'request:applySettings',
       settings: Object.assign({}, DR_DEFAULTS, { rangeExpr: 'A1' }) });
     eq('per-table settings: the settings apply with no table active still answers',
       applied, { ok: true });
@@ -3008,10 +3005,10 @@ function issue328SettingsOf(table) {
     };
     try {
       const press = countChecks(() => DR_BUS.publish('intent:toggleTable', { table }));
-      const apply = countChecks(() => askContentScript({ action: 'request:applySettings',
+      const apply = countChecks(() => askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, ISSUE328_LIGHT) }));
-      const reopen = countChecks(() => askContentScript({ action: 'state:sidebarOpened' }));
-      eq('shape check: a pillbox press, a sidebar change, and a sidebar reopen each run it once',
+      const reopen = countChecks(() => askContentScript({ topic: 'state:sidebarOpened' }));
+      eq('shape check: a table pillbox press, a sidebar change, and a sidebar reopen each run it once',
         [press, apply, reopen], [1, 1, 1]);
     } finally {
       DR_MODEL.getTableFingerprint = origRead;
@@ -3020,16 +3017,16 @@ function issue328SettingsOf(table) {
 })();
 
 // A table no one has turned on reads off: the shipped on/off value is off,
-// so the sidebar's switch matches a raw table, and opening the sidebar on an
-// untouched table leaves it raw. Only a toggle or the switch turns it on.
+// so the sidebar pillbox matches a table showing the original, and opening the sidebar on an
+// untouched table leaves it showing the original. Only a toggle or the sidebar pillbox turns it on.
 (function issue328_anUntouchedTableReadsOff() {
   runPressFixture(() => {
     const table = makePressTable('8,584,629');
     DR_MODEL.setActiveTable(table);
     eq('defaults: a table with no settings reads off',
       DR_MODEL.getTableSettings(table).enabled, false);
-    withCreateTreeWalker(() => askContentScript({ action: 'state:sidebarOpened' }));
-    eq('defaults: opening the sidebar on an untouched table leaves it raw',
+    withCreateTreeWalker(() => askContentScript({ topic: 'state:sidebarOpened' }));
+    eq('defaults: opening the sidebar on an untouched table leaves it showing the original',
       [showsSimplified(table), table._cells[3].innerText], [false, '8,584,629']);
   });
 })();
@@ -3044,13 +3041,13 @@ function issue328SettingsOf(table) {
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
     const simplified = table._cells[3].innerText;
     sent.length = 0;
-    withCreateTreeWalker(() => askContentScript({ action: 'state:sidebarOpened' }));
+    withCreateTreeWalker(() => askContentScript({ topic: 'state:sidebarOpened' }));
     eq('sidebar open: no apply runs on the simplified table',
-      sent.filter((m) => ['state:rangeOk', 'state:rangeError', 'intent:updateMenuLabel'].includes(m.action)).length, 0);
+      sent.filter((m) => ['state:rangeOk', 'state:rangeError'].includes(m.topic)).length, 0);
     eq('sidebar open: the simplified cells stay as the toggle left them',
       [showsSimplified(table), table._cells[3].innerText], [true, simplified]);
     eq('sidebar open: the sidebar is told to re-read the active table',
-      sent.some((m) => m.action === 'state:previewSamplesChanged'), true);
+      sent.some((m) => m.topic === 'state:previewSamplesChanged'), true);
   });
 })();
 
@@ -3075,7 +3072,7 @@ function issue328SettingsOf(table) {
 })();
 
 // A shape change registers a new table. It holds no settings, so it reads the
-// shipped defaults, and it shows the page's values raw, the same as a table
+// shipped defaults, and it shows the page's original values, the same as a table
 // found on page load. Nothing from the replaced table's settings reaches it.
 (function issue328_aShapeChangeRegistersANewTableUnderTheDefaults() {
   runPressFixture(({ writes, resetWrites }) => {
@@ -3088,14 +3085,14 @@ function issue328SettingsOf(table) {
 
     resetWrites();
     let outcome = null;
-    withPillboxDocumentMock(function () { outcome = revalidateTableShape(grid.scrollPaneEl); });
+    withTablePillboxDocumentMock(function () { outcome = revalidateTableShape(grid.scrollPaneEl); });
     const fresh = outcome && outcome.table;
 
     eq('per-table settings: the shape change registers a fresh table (precondition)',
       outcome && outcome.switched, true);
     eq('per-table settings: the fresh table reads the shipped defaults',
       fresh && DR_MODEL.getTableSettings(fresh), Object.assign({}, DR_DEFAULTS));
-    eq('per-table settings: the fresh table shows raw',
+    eq('per-table settings: the fresh table shows the original',
       fresh && DR_MODEL.getTableAppliedFlag(fresh), 'original');
     eq('per-table settings: the shape change writes no table\'s settings',
       writes(), 0);
@@ -3115,11 +3112,11 @@ function issue328SettingsOf(table) {
     DR_MODEL.setTableSettings(active, { offsetTop: 1 }, 'page');
     DR_MODEL.setTableSettings(active, { offsetTop: -1 }, 'sidebar');
 
-    const notices = sent.filter((m) => m.action === 'state:settingsChanged');
+    const notices = sent.filter((m) => m.topic === 'state:settingsChanged');
     eq('per-table settings: each write sends one notice, marking its source',
       notices.map((n) => n.source), ['page', 'sidebar']);
     eq('per-table settings: the notice holds no field beyond the two plain values',
-      notices.length > 0 && Object.keys(notices[0]).sort(), ['action', 'settings', 'source']);
+      notices.length > 0 && Object.keys(notices[0]).sort(), ['settings', 'source', 'topic']);
     eq('per-table settings: the notice carries the table\'s whole settings, defaults filled in',
       notices.length > 0 && notices[0].settings, Object.assign({}, DR_DEFAULTS, { offsetTop: 1 }));
   });
@@ -3170,14 +3167,14 @@ function issue328SettingsOf(table) {
     g.redraw([['West', '7,314'], ['Inland', '2,905']]);
 
     sent.length = 0;
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: g.wrapperEl });
     });
 
     eq('fingerprint scroll: a redrawn row group leaves the recorded fingerprint in place',
       DR_MODEL.getTableFingerprint(g.wrapperEl) === recorded, true);
     eq('fingerprint scroll: a redrawn row group publishes no table switch',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 0);
+      sent.filter((m) => m.topic === 'state:tableSwitched').length, 0);
     eq('fingerprint scroll: a redrawn row group keeps the entry\'s originals',
       DR_MODEL.hasTableOriginal(g.wrapperEl, scrolledAwayCell), true);
 
@@ -3206,14 +3203,14 @@ function issue328SettingsOf(table) {
     ]);
 
     sent.length = 0;
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
 
     eq('fingerprint scroll: a redrawn groupless pane leaves the recorded fingerprint in place',
       DR_MODEL.getTableFingerprint(grid.scrollPaneEl) === recorded, true);
     eq('fingerprint scroll: a redrawn groupless pane publishes no table switch',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 0);
+      sent.filter((m) => m.topic === 'state:tableSwitched').length, 0);
     eq('fingerprint scroll: a redrawn groupless pane keeps the entry\'s originals',
       DR_MODEL.hasTableOriginal(grid.scrollPaneEl, scrolledAwayCell), true);
 
@@ -3230,20 +3227,20 @@ function issue328SettingsOf(table) {
     const g = makeScrollingRowgroupGrid(['Region', 'Q1'], [
       ['North', '1,482,391'], ['South', '918,554'],
     ]);
-    const removedPillboxes = registerFingerprintedTable(g.wrapperEl);
+    const removedTablePillboxes = registerFingerprintedTable(g.wrapperEl);
     DR_MODEL.setActiveTable(g.wrapperEl);
 
     g.headerRow.children[1].childNodes[0].nodeValue = 'Q2';
 
     let outcome = null;
-    withPillboxDocumentMock(function () { outcome = revalidateTableShape(g.wrapperEl); });
+    withTablePillboxDocumentMock(function () { outcome = revalidateTableShape(g.wrapperEl); });
 
     eq('fingerprint grouped header: a header text change reports a switch',
       outcome.switched, true);
     eq('fingerprint grouped header: the grid registers fresh',
       outcome.table === g.wrapperEl, true);
-    eq('fingerprint grouped header: the discard takes the old pillbox off the page',
-      removedPillboxes.length, 1);
+    eq('fingerprint grouped header: the discard takes the old table pillbox off the page',
+      removedTablePillboxes.length, 1);
     eq('fingerprint grouped header: the fresh fingerprint carries the new header text',
       DR_MODEL.getTableFingerprint(g.wrapperEl),
       { columnCount: 2, headerTexts: ['Region', 'Q2'] });
@@ -3266,7 +3263,7 @@ function issue328SettingsOf(table) {
         ['North', '1,482,391'], ['South', '918,554'],
       ] }]).table;
       const table = draw(['Region', 'Q1']);
-      const removedPillboxes = registerFingerprintedTable(table);
+      const removedTablePillboxes = registerFingerprintedTable(table);
       DR_MODEL.setActiveTable(table);
       eq(`fingerprint header cells (${label}): registration records ${groups ? 'the header texts' : 'the column count alone'} (precondition)`,
         DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: groups ? ['Region', 'Q1'] : null });
@@ -3274,10 +3271,10 @@ function issue328SettingsOf(table) {
       const headerCell = grouped ? table.children[0].children[0].children[1] : table.children[0].children[1];
       rwTextNodesOf(headerCell)[0].nodeValue = 'Q2';
       let outcome = null;
-      withPillboxDocumentMock(function () { outcome = revalidateTableShape(table); });
+      withTablePillboxDocumentMock(function () { outcome = revalidateTableShape(table); });
       eq(`fingerprint header cells (${label}): a header text change ${groups ? 'reports a switch' : 'keeps the entry'}`, outcome.switched, groups);
-      eq(`fingerprint header cells (${label}): ${groups ? 'the discard takes the old pillbox off the page' : 'no pillbox leaves the page'}`,
-        removedPillboxes.length, groups ? 1 : 0);
+      eq(`fingerprint header cells (${label}): ${groups ? 'the discard takes the old table pillbox off the page' : 'no table pillbox leaves the page'}`,
+        removedTablePillboxes.length, groups ? 1 : 0);
       if (groups) {
         eq(`fingerprint header cells (${label}): the fresh fingerprint carries the new header text`,
           DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q2'] });
@@ -3297,14 +3294,14 @@ function issue328SettingsOf(table) {
 
     dgReplaceRowCells(grid.scrollRowEls[0], ['golf', '44,190', '12.08']);
     let held = null;
-    withPillboxDocumentMock(function () { held = revalidateTableShape(grid.scrollPaneEl); });
+    withTablePillboxDocumentMock(function () { held = revalidateTableShape(grid.scrollPaneEl); });
     eq('fingerprint groupless: a first-row text change reports no switch', held.switched, false);
     eq('fingerprint groupless: the recorded fingerprint stays in place',
       DR_MODEL.getTableFingerprint(grid.scrollPaneEl) === recorded, true);
 
     grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 17)));
     let switched = null;
-    withPillboxDocumentMock(function () { switched = revalidateTableShape(grid.scrollPaneEl); });
+    withTablePillboxDocumentMock(function () { switched = revalidateTableShape(grid.scrollPaneEl); });
     eq('fingerprint groupless: a column count change reports a switch', switched.switched, true);
     eq('fingerprint groupless: the fresh fingerprint carries the new column count',
       DR_MODEL.getTableFingerprint(grid.scrollPaneEl).columnCount, 4);
@@ -3314,7 +3311,7 @@ function issue328SettingsOf(table) {
 })();
 
 // --- Criterion: changing the column set trips the fingerprint. The entry is
-// discarded, and a pillbox press afterwards simplifies from a raw state. ---
+// discarded, and a table pillbox press afterwards simplifies from the original. ---
 
 // Shape one: the page redraws its rows one column wider, so every cell of the
 // new result set is a fresh element carrying raw text.
@@ -3322,13 +3319,13 @@ function issue328SettingsOf(table) {
 (function shapeFingerprint_criterion2_aRedrawnWiderResultSetPressesFromRaw() {
   runPressFixture(({ sent }) => {
     const grid = makeDatabaseQueryGrid();
-    const removedPillboxes = registerFingerprintedTable(grid.scrollPaneEl);
+    const removedTablePillboxes = registerFingerprintedTable(grid.scrollPaneEl);
     DR_MODEL.setActiveTable(grid.scrollPaneEl);
     const countCell = grid.scrollRowEls[1].children[1];
 
     // The first press simplifies, so the entry holds originals and a
     // simplified form before the page changes anything.
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
     eq('fingerprint column change: the first press simplifies the pane (precondition)',
@@ -3346,12 +3343,12 @@ function issue328SettingsOf(table) {
     const addedCell = grid.scrollRowEls[1].children[3];
 
     sent.length = 0;
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
 
-    eq('fingerprint column change: the discard takes the old pillbox off the page',
-      removedPillboxes.length, 1);
+    eq('fingerprint column change: the discard takes the old table pillbox off the page',
+      removedTablePillboxes.length, 1);
     eq('fingerprint column change: the pane registers fresh',
       DR_MODEL.hasTable(grid.scrollPaneEl), true);
     eq('fingerprint column change: the fresh registration records the new column count',
@@ -3378,7 +3375,7 @@ function issue328SettingsOf(table) {
     DR_MODEL.setActiveTable(grid.scrollPaneEl);
     const countCell = grid.scrollRowEls[1].children[1];
 
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
     eq('fingerprint added column: the first press simplifies the pane (precondition)',
@@ -3389,7 +3386,7 @@ function issue328SettingsOf(table) {
     const addedCell = grid.scrollRowEls[1].children[3];
 
     sent.length = 0;
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
 
@@ -3405,7 +3402,7 @@ function issue328SettingsOf(table) {
 })();
 
 // The restore runs before the discard, against the old entry while it still
-// holds the originals, so a surviving cell reads raw at the moment the fresh
+// holds the originals, so a surviving cell shows the original at the moment the fresh
 // entry records.
 (function shapeFingerprint_theDiscardRestoresTheSurvivingCellsFirst() {
   runPressFixture(() => {
@@ -3413,7 +3410,7 @@ function issue328SettingsOf(table) {
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_MODEL.setActiveTable(grid.scrollPaneEl);
 
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
     const countCell = grid.scrollRowEls[1].children[1];
@@ -3424,7 +3421,7 @@ function issue328SettingsOf(table) {
     grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, added[i]));
 
     let outcome = null;
-    withPillboxDocumentMock(function () { outcome = revalidateTableShape(grid.scrollPaneEl); });
+    withTablePillboxDocumentMock(function () { outcome = revalidateTableShape(grid.scrollPaneEl); });
 
     eq('fingerprint restore: the check reports a switch', outcome.switched, true);
     eq('fingerprint restore: a surviving cell reads its raw text once the fresh entry records',
@@ -3454,7 +3451,7 @@ function issue328SettingsOf(table) {
     grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 1000)));
 
     let outcome = null;
-    withPillboxDocumentMock(function () { outcome = revalidateTableShape(grid.scrollPaneEl); });
+    withTablePillboxDocumentMock(function () { outcome = revalidateTableShape(grid.scrollPaneEl); });
 
     eq('fingerprint originals: the check reports a switch', outcome.switched, true);
     eq('fingerprint originals: the fresh registration lands on the same pane',
@@ -3465,7 +3462,7 @@ function issue328SettingsOf(table) {
       grid.scrollRowEls.some((rowEl) =>
         rowEl.children.some((cellEl) => DR_MODEL.hasTableOriginal(grid.scrollPaneEl, cellEl))),
       false);
-    eq('fingerprint originals: the fresh entry\'s form is raw',
+    eq('fingerprint originals: the fresh entry\'s form is original',
       showsSimplified(grid.scrollPaneEl), false);
 
     forgetRegisteredTable(grid.scrollPaneEl);
@@ -3474,16 +3471,16 @@ function issue328SettingsOf(table) {
 
 // --- Criterion: on a database query grid whose new result makes the pinned
 // pane pass the data test, the fresh registration lands on the wrapper, the
-// wrapper is active, and the old pane holds no pillbox. ---
+// wrapper is active, and the old pane holds no table pillbox. ---
 
 (function shapeFingerprint_criterion4_aNewResultSetMovesTheRegistrationOutward() {
   runPressFixture(({ sent }) => {
     const grid = makeDatabaseQueryGrid();
-    withPillboxDocumentMock(function () { injectPillboxesForAddedNode(grid.wrapperEl); });
+    withTablePillboxDocumentMock(function () { injectTablePillboxesForAddedNode(grid.wrapperEl); });
     eq('fingerprint move: the page registers the scrolling pane alone (precondition)',
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, true]);
-    const removedPillboxes = trackPillboxDetach(grid.scrollPaneEl);
+    const removedTablePillboxes = trackTablePillboxDetach(grid.scrollPaneEl);
     DR_MODEL.setActiveTable(grid.scrollPaneEl);
 
     // The new result set: the pinned pane gains a second column, which makes
@@ -3497,7 +3494,7 @@ function issue328SettingsOf(table) {
     grid.scrollRowEls.forEach((rowEl, i) => dgReplaceRowCells(rowEl, [measures[i], counts[i]]));
 
     sent.length = 0;
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
 
@@ -3507,12 +3504,12 @@ function issue328SettingsOf(table) {
       DR_MODEL.getActiveTable() === grid.wrapperEl, true);
     eq('fingerprint move: the discarded pane holds no registry entry',
       DR_MODEL.hasTable(grid.scrollPaneEl), false);
-    eq('fingerprint move: the discarded pane\'s pillbox comes off the page',
-      removedPillboxes.length, 1);
-    eq('fingerprint move: the wrapper carries a pillbox',
+    eq('fingerprint move: the discarded pane\'s table pillbox comes off the page',
+      removedTablePillboxes.length, 1);
+    eq('fingerprint move: the wrapper carries a table pillbox',
       tablePillboxes.has(grid.wrapperEl), true);
     eq('fingerprint move: the move publishes one table switch',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
+      sent.filter((m) => m.topic === 'state:tableSwitched').length, 1);
 
     forgetRegisteredTable(grid.wrapperEl);
   });
@@ -3523,11 +3520,11 @@ function issue328SettingsOf(table) {
 
 (function shapeFingerprint_criterion5_aNativeTablesHeaderTextTripsTheFingerprint() {
   runPressFixture(() => {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
       [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
     ]);
-    const removedPillboxes = registerFingerprintedTable(table);
+    const removedTablePillboxes = registerFingerprintedTable(table);
     DR_MODEL.setActiveTable(table);
     eq('fingerprint native: registration records the header row (precondition)',
       DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q1'] });
@@ -3536,22 +3533,22 @@ function issue328SettingsOf(table) {
     table.rows[1].cells[1].innerText = '918,554';
     table.rows[1].cells[1].textContent = '918,554';
     let held = null;
-    withPillboxDocumentMock(function () { held = revalidateTableShape(table); });
+    withTablePillboxDocumentMock(function () { held = revalidateTableShape(table); });
     eq('fingerprint native: a data cell change reports no switch', held.switched, false);
     eq('fingerprint native: a data cell change returns the same table',
       held.table === table, true);
-    eq('fingerprint native: a data cell change takes no pillbox off the page',
-      removedPillboxes.length, 0);
+    eq('fingerprint native: a data cell change takes no table pillbox off the page',
+      removedTablePillboxes.length, 0);
 
     // The header row's text changes.
     table.rows[0].cells[1].innerText = 'Q2';
     table.rows[0].cells[1].textContent = 'Q2';
     let switched = null;
-    withPillboxDocumentMock(function () { switched = revalidateTableShape(table); });
+    withTablePillboxDocumentMock(function () { switched = revalidateTableShape(table); });
     eq('fingerprint native: a header text change reports a switch', switched.switched, true);
     eq('fingerprint native: the native table registers fresh', switched.table === table, true);
-    eq('fingerprint native: the discard takes the old pillbox off the page',
-      removedPillboxes.length, 1);
+    eq('fingerprint native: the discard takes the old table pillbox off the page',
+      removedTablePillboxes.length, 1);
     eq('fingerprint native: the fresh fingerprint carries the new header text',
       DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q2'] });
 
@@ -3564,7 +3561,7 @@ function issue328SettingsOf(table) {
 
 (function shapeFingerprint_anUnrecordedFingerprintCountsAsAMatch() {
   runPressFixture(() => {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
       [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
     ]);
@@ -3597,7 +3594,7 @@ function issue328SettingsOf(table) {
 
     resetWrites();
     sent.length = 0;
-    const rows = logRowsDuring(() => withPillboxDocumentMock(function () {
+    const rows = logRowsDuring(() => withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     }));
 
@@ -3609,7 +3606,7 @@ function issue328SettingsOf(table) {
     eq('fingerprint recovery: the discarded table was active, so the active table clears',
       DR_MODEL.getActiveTable() === null, true);
     eq('fingerprint recovery: the sidebar is told to re-read, so it shows the no-table state (#506)',
-      sent.filter((m) => m.action === 'state:previewSamplesChanged').length, 1);
+      sent.filter((m) => m.topic === 'state:previewSamplesChanged').length, 1);
     eq('fingerprint recovery: the press stops, so it makes no settings write', writes(), 0);
   });
 })();
@@ -3624,18 +3621,18 @@ function issue328SettingsOf(table) {
     emptyTheDatabaseQueryGridOfNumbers(grid);
 
     sent.length = 0;
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
 
     eq('fingerprint recovery: a discarded table that was not active leaves the active table alone',
       DR_MODEL.getActiveTable() === other, true);
     eq('fingerprint recovery: a discarded table that was not active sends the sidebar no re-read',
-      sent.some((m) => m.action === 'state:previewSamplesChanged'), false);
+      sent.some((m) => m.topic === 'state:previewSamplesChanged'), false);
   });
 })();
 
-// The restore runs before the discard on this path too: the page reads raw
+// The restore runs before the discard on this path too: the page shows the original
 // after a recovery that registers nothing. The narrowing keeps each row's
 // simplified cell, so the surviving text is the extension's own until the
 // restore puts the original back, and no entry remains to restore from after.
@@ -3645,7 +3642,7 @@ function issue328SettingsOf(table) {
     registerFingerprintedTable(grid.scrollPaneEl);
     DR_MODEL.setActiveTable(grid.scrollPaneEl);
 
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
     const countCell = grid.scrollRowEls[1].children[1];
@@ -3657,7 +3654,7 @@ function issue328SettingsOf(table) {
     grid.pinnedRowEls.forEach((rowEl) => dgKeepRowCells(rowEl, []));
     grid.scrollRowEls.forEach((rowEl) => dgKeepRowCells(rowEl, [1]));
 
-    withPillboxDocumentMock(function () {
+    withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
 
@@ -3685,7 +3682,7 @@ function issue328SettingsOf(table) {
     grid.scrollRowEls.forEach((rowEl, i) => dgAppendRowCell(rowEl, String((i + 1) * 101)));
 
     sent.length = 0;
-    const rows = logRowsDuring(() => withPillboxDocumentMock(function () {
+    const rows = logRowsDuring(() => withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     }));
     const fresh = DR_MODEL.getActiveTable();
@@ -3696,10 +3693,10 @@ function issue328SettingsOf(table) {
     eq('fingerprint move: the fresh table holds the shipped defaults with the press\'s on',
       fresh && DR_MODEL.getTableSettings(fresh), Object.assign({}, DR_DEFAULTS, { enabled: true }));
     eq('fingerprint move: a shape change still runs exactly one apply',
-      sent.filter((m) => m.action === 'state:rangeOk' || m.action === 'state:rangeError').length, 1);
+      sent.filter((m) => m.topic === 'state:rangeOk' || m.topic === 'state:rangeError').length, 1);
     eq('fingerprint move: a shape change publishes the table switch once',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
-    const notices = sent.filter((m) => m.action === 'state:settingsChanged');
+      sent.filter((m) => m.topic === 'state:tableSwitched').length, 1);
+    const notices = sent.filter((m) => m.topic === 'state:settingsChanged');
     eq('fingerprint move: the press sends the one settings notice, holding its on under the defaults',
       notices.map((m) => [m.source, m.settings.enabled, m.settings.offsetTop, m.settings.rangeExpr]),
       [['page', true, DR_DEFAULTS.offsetTop, '']]);
@@ -3716,7 +3713,7 @@ function issue328SettingsOf(table) {
 
 (function issue328_aSidebarApplyOnARefilledTableSendsOnlyTheWrittenSettings() {
   runPressFixture(({ sent }) => {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
       [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
     ]);
@@ -3730,14 +3727,14 @@ function issue328SettingsOf(table) {
 
     sent.length = 0;
     withCreateTreeWalker(function () {
-      withPillboxDocumentMock(function () {
-        askContentScript({ action: 'request:applySettings', settings: written });
+      withTablePillboxDocumentMock(function () {
+        askContentScript({ topic: 'request:applySettings', settings: written });
       });
     });
 
     const sequence = sent
-      .filter((m) => m.action === 'state:settingsChanged' || m.action === 'state:tableSwitched')
-      .map((m) => (m.action === 'state:tableSwitched'
+      .filter((m) => m.topic === 'state:settingsChanged' || m.topic === 'state:tableSwitched')
+      .map((m) => (m.topic === 'state:tableSwitched'
         ? 'switched'
         : 'settings source=' + m.source + ' offsetTop=' +
           m.settings.offsetTop + ' range=' + m.settings.rangeExpr));
@@ -3865,7 +3862,7 @@ function issue328SettingsOf(table) {
 // The sidebar asks for the whole page-side half of a capture in one request.
 // The answer is composed by buildCaptureStateResponse() — a named function
 // the suite drives directly, because the bus's own listener is a no-op stub
-// here (the established equivalent-path pattern, see the intent:closeSidebar
+// here (the established equivalent-path pattern, see the state:boundTabLeft
 // note above). A source assertion pins that the responder exists and routes
 // through it.
 
@@ -3904,7 +3901,7 @@ function issue328SettingsOf(table) {
     'url' in unboundResponse.page && 'title' in unboundResponse.page, true);
 
   // With a real stub table registered and selected.
-  const table = makeToggleTable([
+  const table = makeTablePillboxTestTable([
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
   table.outerHTML = '<table><tr><td>8,584,629</td><td>286</td></tr></table>';
@@ -4073,10 +4070,10 @@ function issue328SettingsOf(table) {
     'background.js': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),
   };
 
-  // The bus is the only file that puts an action field on a message. A
+  // The bus is the only file that puts a topic field on a message. A
   // context file writing one is reaching around the topic table.
   for (const [name, src] of Object.entries(contextFiles)) {
-    const literals = (src.match(/action(?::|\s*===)\s*['"][A-Za-z][A-Za-z0-9_:]*['"]/g) || []);
+    const literals = (src.match(/topic(?::|\s*===)\s*['"][A-Za-z][A-Za-z0-9_:]*['"]/g) || []);
     eq(`one topic list: ${name} builds no wire message of its own`, literals, []);
   }
 
@@ -4122,10 +4119,10 @@ function issue328SettingsOf(table) {
   eq('bus route: aimed at the tab the query answered with',
     b.sent.tabs.length === 1 ? b.sent.tabs[0].tabId : null, 7);
   eq('bus route: the topic name itself is the name on the wire',
-    b.sent.tabs.length === 1 ? b.sent.tabs[0].msg.action : null, 'intent:menuClicked');
+    b.sent.tabs.length === 1 ? b.sent.tabs[0].msg.topic : null, 'intent:menuClicked');
   eq('bus route: the message carries the payload beside the name, nothing else',
     b.sent.tabs.length === 1 ? Object.keys(b.sent.tabs[0].msg).sort().join(',') : null,
-    'action,probe');
+    'probe,topic');
 
   // An explicit tab number skips the lookup. Only the service worker holds a
   // tab number, and it holds it for a tab that may not be the active one.
@@ -4147,12 +4144,12 @@ function issue328SettingsOf(table) {
   // reaches the service worker and the open sidebar, and never a content
   // script. It needs no tab number, so it runs no active-tab lookup.
   const f = makeBusSandbox();
-  f.bus.publish('intent:closeSidebar', {});
+  f.bus.publish('state:boundTabLeft', {});
   eq('bus route: an extension-pages topic broadcasts once', f.sent.pages.length, 1);
   eq('bus route: and sends into no tab', f.sent.tabs.length, 0);
   eq('bus route: and runs no active-tab lookup', f.sent.queries, 0);
   eq('bus route: the broadcast carries the topic name on the wire',
-    f.sent.pages.length === 1 ? f.sent.pages[0].action : null, 'intent:closeSidebar');
+    f.sent.pages.length === 1 ? f.sent.pages[0].topic : null, 'state:boundTabLeft');
 
   // An extension-pages publish from a context with no chrome.tabs reaches its
   // audience: that carrier needs none. An absent interface is no reason to
@@ -4217,14 +4214,14 @@ function issue328SettingsOf(table) {
   const b = makeBusSandbox();
   const fromTab = [];
   b.bus.subscribe('state:settingsChanged', (payload, meta) => { fromTab.push(meta); });
-  b.fire({ action: 'state:settingsChanged', settings: {} }, { tab: { id: 77 } });
+  b.fire({ topic: 'state:settingsChanged', settings: {} }, { tab: { id: 77 } });
   eq('bus meta: a wire message from a content script reports its tab number',
     fromTab.length === 1 && fromTab[0].tabId === 77, true);
 
   const c = makeBusSandbox();
   const fromPage = [];
   c.bus.subscribe('state:settingsChanged', (payload, meta) => { fromPage.push(meta); });
-  c.fire({ action: 'state:settingsChanged', settings: {} }, {});
+  c.fire({ topic: 'state:settingsChanged', settings: {} }, {});
   eq('bus meta: a wire message from an extension page reports no tab number',
     fromPage.length === 1 && fromPage[0].tabId === null, true);
 
@@ -4234,7 +4231,7 @@ function issue328SettingsOf(table) {
   const d = makeBusSandbox();
   let seenPayload = null;
   d.bus.subscribe('state:settingsChanged', (payload) => { seenPayload = payload; });
-  d.fire({ action: 'state:settingsChanged', settings: { k: 1 } }, { tab: { id: 5 } });
+  d.fire({ topic: 'state:settingsChanged', settings: { k: 1 } }, { tab: { id: 5 } });
   eq('bus meta: the tab number stays out of the payload',
     seenPayload === null ? null : Object.keys(seenPayload).sort().join(','), 'settings');
 })();
@@ -4253,7 +4250,7 @@ function issue328SettingsOf(table) {
   const b = makeBusSandbox();
   b.bus.respond('request:applySettings', (payload) => ({ echoed: payload.n }));
   let replied = 'untouched';
-  b.fire({ action: 'request:applySettings', n: 5 }, { tab: { id: 3 } }, (r) => { replied = r; });
+  b.fire({ topic: 'request:applySettings', n: 5 }, { tab: { id: 3 } }, (r) => { replied = r; });
   eq('bus request: the responder\'s return value is what the asker receives',
     replied && replied.echoed, 5);
 
@@ -4261,7 +4258,7 @@ function issue328SettingsOf(table) {
   const c = makeBusSandbox();
   let responderMeta = null;
   c.bus.respond('request:applySettings', (payload, meta) => { responderMeta = meta; return {}; });
-  c.fire({ action: 'request:applySettings' }, { tab: { id: 11 } }, () => {});
+  c.fire({ topic: 'request:applySettings' }, { tab: { id: 11 } }, () => {});
   eq('bus request: a responder receives the sending tab too',
     responderMeta ? responderMeta.tabId : null, 11);
 })();
@@ -4315,7 +4312,7 @@ function issue328SettingsOf(table) {
   // context holding no answer.
   const t = makeBusSandbox();
   let answered = false;
-  t.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => { answered = true; });
+  t.fire({ topic: 'request:applySettings' }, { tab: { id: 1 } }, () => { answered = true; });
   eq('bus request: an arriving request with no local responder sends no reply',
     answered, false);
 })();
@@ -4369,12 +4366,12 @@ function issue328SettingsOf(table) {
   // counter, and this test would stay green with the listener's guard deleted.
   const s = makeBusSandbox();
   s.bus.respond('request:applySettings', () => {
-    s.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
+    s.fire({ topic: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
     return {};
   });
   let message = null;
   try {
-    s.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
+    s.fire({ topic: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
   } catch (e) {
     message = e.message;
   }
@@ -4518,10 +4515,10 @@ function issue328SettingsOf(table) {
 
   // Nothing has been right-clicked in this isolated model.
   eq('moved responders: no active table answers the shipped defaults and a pair of nulls, not nothing',
-    fire({ action: 'request:activeTable' }),
+    fire({ topic: 'request:activeTable' }),
     { settings: Object.assign({}, DR_DEFAULTS), samples: null, maxMag: null });
 
-  const captureAnswer = fire({ action: 'request:captureState' });
+  const captureAnswer = fire({ topic: 'request:captureState' });
   eq('moved responders: the capture state answers an object',
     captureAnswer !== null && typeof captureAnswer === 'object', true);
 })();
@@ -4532,14 +4529,14 @@ function issue328SettingsOf(table) {
   runPressFixture(() => {
     DR_MODEL.setActiveTable(null);
     eq('redraw read: with no table active the answer holds the shipped defaults and null samples',
-      askContentScript({ action: 'request:activeTable' }),
+      askContentScript({ topic: 'request:activeTable' }),
       { settings: Object.assign({}, DR_DEFAULTS), samples: null, maxMag: null });
 
     const table = makePressTable('4,236,000');
     DR_MODEL.setTableSettings(table, { offsetTop: -1, simplifyFirstColumn: true }, 'page');
     DR_MODEL.setActiveTable(table);
     let answer;
-    withCreateTreeWalker(() => { answer = askContentScript({ action: 'request:activeTable' }); });
+    withCreateTreeWalker(() => { answer = askContentScript({ topic: 'request:activeTable' }); });
     eq('redraw read: the answer holds exactly the settings, the samples, and the max magnitude',
       answer && Object.keys(answer).sort(), ['maxMag', 'samples', 'settings']);
     eq('redraw read: the settings are the active table\'s',
@@ -4614,7 +4611,7 @@ function issue328SettingsOf(table) {
 })();
 
 // --- Test 10: a shape change during a pass. The table re-detects as a new
-// table and shows raw under the shipped defaults; the active table changes
+// table and shows the original under the shipped defaults; the active table changes
 // only when the changed table was the active one. ---
 (function rewrite10_aShapeChangeDuringAPassReDetects() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
@@ -4626,9 +4623,9 @@ function issue328SettingsOf(table) {
     let switches = 0;
     const unsubscribe = DR_BUS.subscribe('state:tableSwitched', () => { switches++; });
     try {
-      withPillboxDocumentMock(() => {
-        createPillboxForTable(active.table);
-        createPillboxForTable(other.table);
+      withTablePillboxDocumentMock(() => {
+        createTablePillbox(active.table);
+        createTablePillbox(other.table);
         DR_MODEL.setTableSettings(active.table,
           Object.assign({}, RW_OPTS, { simplifyFirstRow: false, enabled: true }), 'page');
         DR_MODEL.setActiveTable(active.table);
@@ -4641,7 +4638,7 @@ function issue328SettingsOf(table) {
           { selected: DR_MODEL.getActiveTable() === active.table, switches }, { selected: true, switches: 0 });
         eq(`#421 shape change (${kind}): the changed table registers fresh with the new header`,
           (DR_MODEL.getTableFingerprint(other.table) || {}).headerTexts, ['Region', 'Q1', 'Q3']);
-        eq(`#421 shape change (${kind}): the changed table shows raw, under the shipped defaults`,
+        eq(`#421 shape change (${kind}): the changed table shows the original, under the shipped defaults`,
           { rounded: showsSimplified(other.table), texts: other.rowTexts(),
             settings: DR_MODEL.getTableSettings(other.table) },
           { rounded: false, texts: [['North', '1,234', '5,678'], ['South', '2,468', '3,579']],
@@ -4651,7 +4648,7 @@ function issue328SettingsOf(table) {
         page.settle();
         eq(`#421 shape change (${kind}): a change on the active table moves the active table to the fresh entry`,
           { selected: DR_MODEL.getActiveTable() === active.table, switches }, { selected: true, switches: 1 });
-        eq(`#421 shape change (${kind}): the active table shows raw, under the shipped defaults`,
+        eq(`#421 shape change (${kind}): the active table shows the original, under the shipped defaults`,
           { rounded: showsSimplified(active.table), texts: active.rowTexts(),
             settings: DR_MODEL.getTableSettings(active.table) },
           { rounded: false, texts: [['North', '1,234', '5,678'], ['South', '2,468', '3,579']],
@@ -4712,7 +4709,7 @@ const SETTINGS_CHANGE_ROWS = [[['6,7', { tag: 'b', text: '18,245' }],
       const offRow = DR_LOG.onRow((row) => rows.push(row.text));
       try {
         DR_MODEL.setTableSettings(table, opts, 'page');
-        withPillboxDocumentMock(() => applySidebarRounding(table));
+        withTablePillboxDocumentMock(() => applySidebarRounding(table));
       } finally {
         offRow();
       }
@@ -4783,13 +4780,13 @@ function makePlainBox(child) {
       const savedStyle = global.getComputedStyle;
       global.getComputedStyle = inlineStyleProbe.getComputedStyle;
       try {
-        withPillboxDocumentMock(function () { injectPillboxesForAddedNode(added); });
+        withTablePillboxDocumentMock(function () { injectTablePillboxesForAddedNode(added); });
         eq(`pending artifact, ${form.name}: the added-node pass holds no pending table`, pendingRoots.has(grid), false);
         eq(`pending artifact, ${form.name}: the added-node pass starts no observer`, observers.length, 0);
 
         const page = makePlainBox(added);
         const savedQsa = global.document.querySelectorAll;
-        withPillboxDocumentMock(function () {
+        withTablePillboxDocumentMock(function () {
           global.document.querySelectorAll = (selector) => page.querySelectorAll(selector);
           injectTablePillboxes();
         });
@@ -4820,7 +4817,7 @@ function makePlainBox(child) {
       const before = DR_MODEL.getRegisteredTables().length;
 
       withPendingHarness(function ({ observers, timers }) {
-        withPillboxDocumentMock(function () { injectPillboxesForAddedNode(grid); });
+        withTablePillboxDocumentMock(function () { injectTablePillboxesForAddedNode(grid); });
         eq(`pending artifact turn, ${label}: the empty grid is held as a pending table`, pendingRoots.has(grid), true);
         eq(`pending artifact turn, ${label}: one observer watches it`, observers.length, 1);
 
@@ -4830,7 +4827,7 @@ function makePlainBox(child) {
         const savedStyle = global.getComputedStyle;
         global.getComputedStyle = inlineStyleProbe.getComputedStyle;
         try {
-          withPillboxDocumentMock(function () {
+          withTablePillboxDocumentMock(function () {
             observers[0].trigger();
             eq(`pending artifact turn, ${label}: one mutation schedules one re-test`, runPendingRetestTimers(timers), 1);
           });
@@ -4842,7 +4839,7 @@ function makePlainBox(child) {
         eq(`pending artifact turn, ${label}: the re-test disconnects the observer`, observers[0].disconnectCount, 1);
         eq(`pending artifact turn, ${label}: the maps hold nothing for the grid`,
           [pendingObservers.has(grid), pendingRetestCounts.has(grid), pendingRetestTimers.has(grid)], [false, false, false]);
-        eq(`pending artifact turn, ${label}: the grid registers nothing and gains no pillbox`,
+        eq(`pending artifact turn, ${label}: the grid registers nothing and gains no table pillbox`,
           [DR_MODEL.hasTable(grid), tablePillboxes.has(grid), DR_MODEL.getRegisteredTables().length - before], [false, false, 0]);
       });
     }

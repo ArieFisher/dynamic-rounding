@@ -67,7 +67,7 @@ global.Node = { ELEMENT_NODE: 1 };
 // them together here, and re-expose DR_DEFAULTS on globalThis so test
 // assertions outside the eval can read it.
 // We also expose the per-table pillbox infrastructure declared with const/let
-// inside the eval'd code so the auto-table-toggle test section can access them.
+// inside the eval'd code so the table pillbox test section can access them.
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
 const contentScriptFiles = manifest.content_scripts[0].js;
 // Map from manifest filename to its individual source text, built FROM the
@@ -128,13 +128,13 @@ globalThis.DR_CAPTURE = DR_CAPTURE;
 // Expose the renderer's glyph map so the glyph pin can compare it against
 // the sidebar's buttons.
 globalThis.CAPTURE_MARK_GLYPHS = CAPTURE_MARK_GLYPHS;
-// Expose pillbox infrastructure for tests
+// Expose table pillbox infrastructure for tests
 globalThis.tablePillboxes = tablePillboxes;
 globalThis.trackedTables = trackedTables;
-// pillboxStyleInjected is a let; expose a getter/setter so tests can reset it.
-Object.defineProperty(globalThis, 'pillboxStyleInjected', {
-  get() { return pillboxStyleInjected; },
-  set(v) { pillboxStyleInjected = v; },
+// tablePillboxStyleInjected is a let; expose a getter/setter so tests can reset it.
+Object.defineProperty(globalThis, 'tablePillboxStyleInjected', {
+  get() { return tablePillboxStyleInjected; },
+  set(v) { tablePillboxStyleInjected = v; },
   configurable: true,
 });
 // highlightStyleInjected is a let as well: the range-pulse CSS test resets it
@@ -145,11 +145,11 @@ Object.defineProperty(globalThis, 'highlightStyleInjected', {
   configurable: true,
 });
 globalThis.isTableOn = isTableOn;
-globalThis.syncPillboxForTable = syncPillboxForTable;
-globalThis.positionPillbox = positionPillbox;
-globalThis.createPillboxForTable = createPillboxForTable;
+globalThis.syncTablePillbox = syncTablePillbox;
+globalThis.positionTablePillbox = positionTablePillbox;
+globalThis.createTablePillbox = createTablePillbox;
 globalThis.injectTablePillboxes = injectTablePillboxes;
-globalThis.injectPillboxesForAddedNode = injectPillboxesForAddedNode;
+globalThis.injectTablePillboxesForAddedNode = injectTablePillboxesForAddedNode;
 globalThis.isDataTable = isDataTable;
 // The lens preview's sample pool for one table, built from the two steps
 // extractPreviewSamples runs, so a test reads the pool without the bucketing.
@@ -164,16 +164,16 @@ globalThis.eraYearDigitRanges = eraYearDigitRanges;
 globalThis.clockTimeRanges = clockTimeRanges;
 globalThis.formatStep = formatStep;
 globalThis.stepForOffset = stepForOffset;
-// Expose the pillbox geometry constants (all are const, so direct assignment works)
-globalThis.TOGGLE_DOT_PX = TOGGLE_DOT_PX;
-globalThis.TOGGLE_PILL_HEIGHT_PX = TOGGLE_PILL_HEIGHT_PX;
-globalThis.TOGGLE_KNOB_TRAVEL_PX = TOGGLE_KNOB_TRAVEL_PX;
-globalThis.TOGGLE_HIT_PAD_PX = TOGGLE_HIT_PAD_PX;
-globalThis.TOGGLE_DOT_OVERLAP_PX = TOGGLE_DOT_OVERLAP_PX;
-globalThis.TOGGLE_DOT_OVERHANG_PX = TOGGLE_DOT_OVERHANG_PX;
-globalThis.TOGGLE_COLOR_ON = TOGGLE_COLOR_ON;
-globalThis.PILLBOX_AUTO_COLLAPSE_MS = PILLBOX_AUTO_COLLAPSE_MS;
-globalThis.PILLBOX_CLIP_WALK_CAP = PILLBOX_CLIP_WALK_CAP;
+// Expose the table pillbox geometry constants (all are const, so direct assignment works)
+globalThis.TABLE_PILLBOX_DOT_PX = TABLE_PILLBOX_DOT_PX;
+globalThis.TABLE_PILLBOX_PILL_HEIGHT_PX = TABLE_PILLBOX_PILL_HEIGHT_PX;
+globalThis.TABLE_PILLBOX_KNOB_TRAVEL_PX = TABLE_PILLBOX_KNOB_TRAVEL_PX;
+globalThis.TABLE_PILLBOX_HIT_PAD_PX = TABLE_PILLBOX_HIT_PAD_PX;
+globalThis.TABLE_PILLBOX_DOT_OVERLAP_PX = TABLE_PILLBOX_DOT_OVERLAP_PX;
+globalThis.TABLE_PILLBOX_DOT_OVERHANG_PX = TABLE_PILLBOX_DOT_OVERHANG_PX;
+globalThis.TABLE_PILLBOX_COLOR_ON = TABLE_PILLBOX_COLOR_ON;
+globalThis.TABLE_PILLBOX_AUTO_COLLAPSE_MS = TABLE_PILLBOX_AUTO_COLLAPSE_MS;
+globalThis.TABLE_PILLBOX_CLIP_WALK_CAP = TABLE_PILLBOX_CLIP_WALK_CAP;
 globalThis.ensureScrollResizeListeners = ensureScrollResizeListeners;
 // _scrollResizeListenersAdded is a let; expose getter/setter so tests can reset it.
 Object.defineProperty(globalThis, '_scrollResizeListenersAdded', {
@@ -188,7 +188,7 @@ Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   configurable: true,
 });
 // lastRightClickedTable proxies the active table onto DR_MODEL's
-// getter/setter pair, exactly like the pillboxStyleInjected/
+// getter/setter pair, exactly like the tablePillboxStyleInjected/
 // _globalTapCollapseAdded shims above proxy onto their own file-level lets.
 Object.defineProperty(globalThis, 'lastRightClickedTable', {
   get() { return DR_MODEL.getActiveTable(); },
@@ -232,7 +232,7 @@ globalThis.simplifyTableCells = simplifyTableCells;
 globalThis.registryAdapter = registryAdapter;
 globalThis.reapplyObservers = reapplyObservers;
 globalThis.reapplyTimers = reapplyTimers;
-globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.gridRedrawDelayMs;
+globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.settleDelayMs;
 // Expose the nomination step (lib/dr-table/detect.js) for the nesting and
 // pending-table suites. The step returns outcomes findTables drops, so the
 // suites read them here rather than through findTables.
@@ -253,7 +253,7 @@ globalThis.pendingRetestCounts = pendingRetestCounts;
 globalThis.isAccessibilityArtifact = isAccessibilityArtifact;
 globalThis.OFFSCREEN_LEFT_PX_THRESHOLD = DR_DETECTION_SETTINGS.offscreenLeftPx;
 // Expose content.js's marker call-site wrapper for direct unit testing.
-globalThis.markAndAddPillboxIfNewGrid = markAndAddPillboxIfNewGrid;
+globalThis.markAndAddTablePillboxIfNewGrid = markAndAddTablePillboxIfNewGrid;
 // Expose the DR_MODEL-backed originals port so grid-adapter tests can build
 // an adapter the same way roundTable and collectNumericCells do in
 // production (registryAdapter) — a plain
@@ -262,7 +262,7 @@ globalThis.markAndAddPillboxIfNewGrid = markAndAddPillboxIfNewGrid;
 // silently diverge from what the real call sites do.
 globalThis.registryOriginalsPort = registryOriginalsPort;
 globalThis.restoreTable = restoreTable;
-// resetTable is the one way back to raw, so tests reach the original values
+// resetTable is the one way back to the original, so tests reach the original values
 // through it.
 globalThis.resetTable = resetTable;
 globalThis.applySidebarRounding = applySidebarRounding;
@@ -290,7 +290,7 @@ const SIDEBAR_HARNESS_TAB = 42;
 const FROM_SIDEBAR_TAB = { tab: { id: SIDEBAR_HARNESS_TAB } };
 
 // The same observer stubs as above, installed again after the eval. Every
-// test that calls createPillboxForTable, which constructs a ResizeObserver,
+// test that calls createTablePillbox, which constructs a ResizeObserver,
 // reads these.
 global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
 global.MutationObserver = class { observe() {} disconnect() {} };

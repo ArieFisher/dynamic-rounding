@@ -40,7 +40,7 @@
     roundTable(table, opts);
     const cells = table.rows[0].cells;
     // <th> Name holds no number, so it stays raw.
-    eq('first-col-is-A (row-header table): a <th> holding a name stays raw',
+    eq('first-col-is-A (row-header table): a <th> holding a name shows the original',
       cells[0].classList.contains('dr-ext-rounded'), false);
     // <td>100 is column B and <td>200 column C — both out of range A
     eq('first-col-is-A (row-header table): <td>100 at column B not rounded',
@@ -80,11 +80,11 @@
 // --- Test 3: simplifyFirstColumn gates the <th>, not the leading <td> ---
 // The <th> counts toward the column index, so "first column" means the <th>,
 // not the second rendered column. The <th> is the first column, so the leading <td> (column
-// B) is rounded regardless of the toggle, and the <th> holds a name, so it stays raw.
+// B) is rounded regardless of the first-column switch, and the <th> holds a name, so it shows the original.
 (function simplifyFirstColumn_withRowHeader() {
   for (const flag of [false, true]) {
     const rows = runRowHeaderTable({ simplifyFirstColumn: flag });
-    eq(`simplifyFirstColumn=${flag} (row-header table): a <th> holding a name stays raw`,
+    eq(`simplifyFirstColumn=${flag} (row-header table): a <th> holding a name shows the original`,
       isRounded(rows[0][0]), false);
     eq(`simplifyFirstColumn=${flag} (row-header table): leading <td> is column B, not gated`,
       isRounded(rows[0][1]), true);
@@ -145,9 +145,9 @@ const PRICE_HEADER_ROWS = [
 
 (function headerCells_theFirstRowSwitchGovernsAHeaderRow() {
   const off = roundHeaderCellTable(PRICE_HEADER_ROWS, { simplifyFirstRow: false });
-  eq('header cells: with the first-row switch off, a <th> price in row one stays raw',
+  eq('header cells: with the first-row switch off, a <th> price in row one shows the original',
     off[0][1].innerText, '$195');
-  eq('header cells: with the first-row switch off, the raw <th> carries no rounded marker',
+  eq('header cells: with the first-row switch off, the original <th> carries no rounded marker',
     isRounded(off[0][1]), false);
   const on = roundHeaderCellTable(PRICE_HEADER_ROWS, { simplifyFirstRow: true });
   eq('header cells: with the first-row switch on, a <th> price in row one rounds',
@@ -166,7 +166,7 @@ const SEAT_ROWS = [
 
 (function headerCells_theFirstColumnSwitchGovernsRowHeaders() {
   const off = roundHeaderCellTable(SEAT_ROWS, { simplifyFirstColumn: false });
-  eq('header cells: with the first-column switch off, a <th> count in column A stays raw',
+  eq('header cells: with the first-column switch off, a <th> count in column A shows the original',
     off[1][0].innerText, '1,234');
   const on = roundHeaderCellTable(SEAT_ROWS, { simplifyFirstColumn: true });
   eq('header cells: with the first-column switch on, a <th> count in column A rounds',
@@ -211,7 +211,7 @@ const SEAT_ROWS = [
     const table = makeMockTable(PRICE_HEADER_ROWS);
     const nums = (overrides) =>
       collectNumericCells(table, Object.assign({}, HEADER_CELL_OPTS, overrides)).map((c) => c.num);
-    eq('header cells: the lens preview leaves a raw header row out',
+    eq('header cells: the lens preview leaves a header row showing the original out',
       nums({ simplifyFirstRow: false }), [25, 40]);
     eq('header cells: the lens preview takes a simplified header row in',
       nums({ simplifyFirstRow: true }), [195, 550, 25, 40]);
@@ -1460,39 +1460,39 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// content.js markAndAddPillboxIfNewGrid — the marker call-site wrapper. It
-// writes the dr-ext-grid marker and builds the pillbox, but only for a
+// content.js markAndAddTablePillboxIfNewGrid — the marker call-site wrapper. It
+// writes the dr-ext-grid marker and builds the table pillbox, but only for a
 // first-time (isNew) discovery.
 // ---------------------------------------------------------------------------
-(function markAndAddPillboxIfNewGrid_newGridGetsMarkedAndWidget() {
+(function markAndAddTablePillboxIfNewGrid_newGridGetsMarkedAndWidget() {
   withFindTargetEnv([], function() {
-    const savedPillboxStyleInjected = pillboxStyleInjected;
+    const savedTablePillboxStyleInjected = tablePillboxStyleInjected;
     const table = makePass1DataTable();
     table.parentElement = { tagName: 'DIV', getAttribute: () => null, style: {}, parentElement: null, parentNode: null };
 
-    const handleReturned = markAndAddPillboxIfNewGrid({ handle: table, isNew: true });
+    const handleReturned = markAndAddTablePillboxIfNewGrid({ handle: table, isNew: true });
 
-    eq('markAndAddPillboxIfNewGrid: returns found.handle',
+    eq('markAndAddTablePillboxIfNewGrid: returns found.handle',
       handleReturned, table);
-    eq('markAndAddPillboxIfNewGrid: adds dr-ext-grid to a newly discovered grid',
+    eq('markAndAddTablePillboxIfNewGrid: adds dr-ext-grid to a newly discovered grid',
       table.classList.contains('dr-ext-grid'), true);
-    eq('markAndAddPillboxIfNewGrid: builds the table pillbox for a newly discovered grid',
+    eq('markAndAddTablePillboxIfNewGrid: builds the table pillbox for a newly discovered grid',
       tablePillboxes.has(table), true);
 
     cleanupPass1Tables([table]);
-    pillboxStyleInjected = savedPillboxStyleInjected;
+    tablePillboxStyleInjected = savedTablePillboxStyleInjected;
   });
 })();
 
-(function markAndAddPillboxIfNewGrid_alreadySeenHandleSkipsMarkAndWidget() {
+(function markAndAddTablePillboxIfNewGrid_alreadySeenHandleSkipsMarkAndWidget() {
   withFindTargetEnv([], function() {
     const table = makePass1DataTable();
 
-    markAndAddPillboxIfNewGrid({ handle: table, isNew: false });
+    markAndAddTablePillboxIfNewGrid({ handle: table, isNew: false });
 
-    eq('markAndAddPillboxIfNewGrid: does not mark an already-seen handle',
+    eq('markAndAddTablePillboxIfNewGrid: does not mark an already-seen handle',
       table.classList.contains('dr-ext-grid'), false);
-    eq('markAndAddPillboxIfNewGrid: does not build a widget for an already-seen handle',
+    eq('markAndAddTablePillboxIfNewGrid: does not build a widget for an already-seen handle',
       tablePillboxes.has(table), false);
   });
 })();
@@ -1517,7 +1517,7 @@ const SEAT_ROWS = [
 // the repository's regression-fixture convention: a role="table" wrapper
 // holding a pinned pane of leading columns beside a scrolling pane of data,
 // all under dg-- classes, with rows paired across the panes by data-row. The
-// nomination step, the two adapters, and the pillbox builder all read these
+// nomination step, the two adapters, and the table pillbox builder all read these
 // nodes, so each one answers the selector queries, the role read, the class
 // list, the parent link, and the text reads those three make.
 // ---------------------------------------------------------------------------
@@ -1615,7 +1615,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
 
 (function reapply_onTableThatGainsANumberSimplifiesIt_native() {
   withCreateTreeWalker(function() {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'north' }, { tag: 'td', text: 'south' }],
       [{ tag: 'td', text: 'east' }, { tag: 'td', text: 'pending' }],
     ]);
@@ -2511,7 +2511,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     eq('GV5b (pre): cell[0] is rounded after roundTable',
       grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
 
-    // The user presses the grid's pillbox to turn simplification off.
+    // The user presses the grid's table pillbox to turn simplification off.
     resetTable(grid.wrapperEl);
 
     // Flag must be set and originals restored.
@@ -2665,48 +2665,48 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 //
 // Kaggle is a React single-page application that renders its Data Explorer
 // grid AFTER load, so detection runs through the
-// MutationObserver added-node handler — extracted here as injectPillboxesForAddedNode().
+// MutationObserver added-node handler — extracted here as injectTablePillboxesForAddedNode().
 // These tests drive that function directly with element-node stubs.
 // ---------------------------------------------------------------------------
 
 // AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
-// <table>s are chart accessibility artifacts → gets dr-ext-grid + a pillbox.
-(function observer_AC1_addedGridOnlyArtifactTables_getsPillbox() {
+// <table>s are chart accessibility artifacts → gets dr-ext-grid + a table pillbox.
+(function observer_AC1_addedGridOnlyArtifactTables_getsTablePillbox() {
   const artifact1 = makeArtifactEmbeddedTable();
   const artifact2 = makeArtifactEmbeddedTable();
   const grid = asAddedGridNode(makeAriaGrid([artifact1, artifact2]));
 
-  withPillboxDocumentMock(function() {
-    injectPillboxesForAddedNode(grid);
+  withTablePillboxDocumentMock(function() {
+    injectTablePillboxesForAddedNode(grid);
   });
 
   eq('observer: added grid with only accessibility artifacts gets dr-ext-grid class',
     grid.classList.contains('dr-ext-grid'), true);
-  eq('observer: added grid with only accessibility artifacts gets a toggle',
+  eq('observer: added grid with only accessibility artifacts gets a table pillbox',
     tablePillboxes.has(grid), true);
 })();
 
-// AC2: an added grid wrapping a REAL table → observer bows out (no class/toggle
+// AC2: an added grid wrapping a REAL table → observer bows out (no class or table pillbox
 // on the grid itself; the real embedded table is owned by Pass 1).
 (function observer_AC2_addedGridRealTable_bowsOut() {
   const realTbl = makePass1DataTable(); // not an artifact, has .rows for isDataTable
   const grid = asAddedGridNode(makeAriaGrid([realTbl]));
 
-  withPillboxDocumentMock(function() {
-    injectPillboxesForAddedNode(grid);
+  withTablePillboxDocumentMock(function() {
+    injectTablePillboxesForAddedNode(grid);
   });
 
   eq('observer: added grid wrapping a real table does NOT get dr-ext-grid',
     grid.classList.contains('dr-ext-grid'), false);
-  eq('observer: added grid wrapping a real table does NOT get a toggle',
+  eq('observer: added grid wrapping a real table does NOT get a table pillbox',
     tablePillboxes.has(grid), false);
 
   cleanupPass1Tables([realTbl]);
 })();
 
 // AC3: an accessibility artifact <table> reached via querySelectorAll on the
-// added node gets NO pillbox (Pass 1 artifact skip in the observer path).
-(function observer_AC3_addedSubtreeArtifactTable_noPillbox() {
+// added node gets NO table pillbox (Pass 1 artifact skip in the observer path).
+(function observer_AC3_addedSubtreeArtifactTable_noTablePillbox() {
   const artifact = makeArtifactEmbeddedTable();
   const container = {
     nodeType: global.Node.ELEMENT_NODE,
@@ -2716,17 +2716,17 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     querySelectorAll(sel) { return sel === 'table' ? [artifact] : []; },
   };
 
-  withPillboxDocumentMock(function() {
-    injectPillboxesForAddedNode(container);
+  withTablePillboxDocumentMock(function() {
+    injectTablePillboxesForAddedNode(container);
   });
 
-  eq('observer: accessibility artifact <table> in added subtree gets NO toggle',
+  eq('observer: accessibility artifact <table> in added subtree gets NO table pillbox',
     tablePillboxes.has(artifact), false);
 })();
 
 // AC4: a real native <table> reached via querySelectorAll on the added node
-// DOES get a toggle (Pass 1 survivor in the observer path).
-(function observer_AC4_addedSubtreeRealTable_getsPillbox() {
+// DOES get a table pillbox (Pass 1 survivor in the observer path).
+(function observer_AC4_addedSubtreeRealTable_getsTablePillbox() {
   const realTbl = makePass1DataTable();
   const container = {
     nodeType: global.Node.ELEMENT_NODE,
@@ -2736,11 +2736,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     querySelectorAll(sel) { return sel === 'table' ? [realTbl] : []; },
   };
 
-  withPillboxDocumentMock(function() {
-    injectPillboxesForAddedNode(container);
+  withTablePillboxDocumentMock(function() {
+    injectTablePillboxesForAddedNode(container);
   });
 
-  eq('observer: real <table> in added subtree gets a toggle',
+  eq('observer: real <table> in added subtree gets a table pillbox',
     tablePillboxes.has(realTbl), true);
 
   cleanupPass1Tables([realTbl]);
@@ -3820,7 +3820,7 @@ function everyRowRead(kind, largeIn) {
 // it again, and records that text as the original. ---
 (function registrySprint_reinjectionUnrestorableResetStaysTruthful() {
   function makeReinjectionFixtureTable(dataText) {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
       [{ tag: 'td', text: 'Row' },   { tag: 'td', text: dataText }],
     ]);
@@ -3835,7 +3835,7 @@ function everyRowRead(kind, largeIn) {
       innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
       textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
     });
-    // A real removeAttribute('title') clears the title. makeToggleTableCell's
+    // A real removeAttribute('title') clears the title. makeTablePillboxTestCell's
     // default stub is a no-op, which would hide exactly the bug this test
     // exists to catch — an implementation that unconditionally strips the
     // title would otherwise leave dataCell.title looking untouched.
@@ -3935,7 +3935,7 @@ function everyRowRead(kind, largeIn) {
       globalThis.__ri2_resetTable = resetTable;
       globalThis.__ri2_DR_MODEL = DR_MODEL;
       globalThis.__ri2_roundTable = roundTable;
-      globalThis.__ri2_syncPillboxForTable = syncPillboxForTable;
+      globalThis.__ri2_syncTablePillbox = syncTablePillbox;
       globalThis.__ri2_tablePillboxes = tablePillboxes;
     `);
 
@@ -3972,7 +3972,7 @@ function everyRowRead(kind, largeIn) {
     const sentMessages = [];
     global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
     global.__ri2_DR_MODEL.setActiveTable(table3);
-    ri2Listener({ action: 'request:applySettings', settings: Object.assign({}, DR_DEFAULTS, { enabled: true, offsetTop: 1 }) },
+    ri2Listener({ topic: 'request:applySettings', settings: Object.assign({}, DR_DEFAULTS, { enabled: true, offsetTop: 1 }) },
       {}, () => {});
 
     eq('re-injection sidebar apply: the apply simplifies the unrestorable cell\'s displayed text again',
@@ -3986,18 +3986,18 @@ function everyRowRead(kind, largeIn) {
     eq('re-injection sidebar apply: appliedFlag reads \'simplified\'',
       global.__ri2_DR_MODEL.getTableAppliedFlag(table3), 'simplified');
     eq('re-injection sidebar apply: the apply runs the simplification pass, which sends the range status',
-      sentMessages.some((m) => m.action === 'state:rangeOk' || m.action === 'state:rangeError'), true);
+      sentMessages.some((m) => m.topic === 'state:rangeOk' || m.topic === 'state:rangeError'), true);
 
-    // --- Scenario C: the pillbox sync on fresh and simplified tables. ---
+    // --- Scenario C: the table pillbox sync on fresh and simplified tables. ---
     const stub6 = makeMockButton();
     global.__ri2_tablePillboxes.set(table6, stub6);
-    global.__ri2_syncPillboxForTable(table6);
+    global.__ri2_syncTablePillbox(table6);
     eq('re-injection table pillbox: an unrounded table renders off',
       stub6.getAttribute('aria-pressed'), 'false');
 
     global.__ri2_DR_MODEL.setTableSettings(table6, { enabled: true }, 'page');
     global.__ri2_roundTable(table6, DR_DEFAULTS);
-    global.__ri2_syncPillboxForTable(table6);
+    global.__ri2_syncTablePillbox(table6);
     eq('re-injection table pillbox: a table THIS instance rounded renders on',
       stub6.getAttribute('aria-pressed'), 'true');
     } finally {
@@ -4077,7 +4077,7 @@ function everyRowRead(kind, largeIn) {
   const bracketed = grid.cellEls[1];
   setGridCellPieces(bracketed, [makeTextNode('('), makeTextNode('5,432.1'), makeTextNode(')')]);
   try {
-    eq('bracketed: the lens preview pool reads the raw cell as a negative',
+    eq('bracketed: the lens preview pool reads the original of the cell as a negative',
       collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((cell) => cell.num), [4.91, -5432.1]);
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('bracketed: the lens preview pool still reads it as a negative once rounded',
@@ -4700,7 +4700,7 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       t.text(1, 1), '9,999');
     eq(`#421 early restore (${kind}): the cells the extension held show their originals`,
       [t.text(0, 1), t.text(1, 0)], ['2,468', '3,579']);
-    eq(`#421 early restore (${kind}): every cell restores, so the form is raw`,
+    eq(`#421 early restore (${kind}): every cell restores, so the form is original`,
       DR_MODEL.getTableAppliedFlag(t.table), 'original');
   });
 })();
@@ -4783,7 +4783,7 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
   }
 })();
 
-// --- Test 15: page edits arriving faster than the redraw delay. A pass runs
+// --- Test 15: page edits arriving faster than the settle delay. A pass runs
 // once the burst reaches the longest wait. ---
 (function rewrite15_aBurstThatNeverGoesQuietStillRunsAPass() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
