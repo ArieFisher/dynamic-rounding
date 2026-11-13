@@ -1180,7 +1180,7 @@
         sendMessage: (msg, cb) => { if (cb) cb(undefined); },
       },
       contextMenus: {
-        create: (item) => { created.push({ id: item.id, title: item.title }); },
+        create: (item) => { created.push({ id: item.id, title: item.title, contexts: item.contexts }); },
         onClicked: { addListener: () => {} },
       },
       tabs: {
@@ -1195,10 +1195,16 @@
       chromeStub, { warn: () => {}, debug: () => {}, log: () => {} });
     if (installed) installed();
     eq('menu items: the menu toggle and the menu toggle with sidebar carry fixed labels',
-      created, [
+      created.map(({ id, title }) => ({ id, title })), [
         { id: 'dr-menu-toggle', title: 'Simplify' },
         { id: 'dr-menu-toggle-sidebar', title: 'Simplify and open sidebar' },
       ]);
+    // In the toolbar icon's menu no table sits under the pointer, and Chrome
+    // already offers its own item there that opens the sidebar.
+    eq('menu items: neither item appears in the toolbar icon menu',
+      created.filter((item) => !Array.isArray(item.contexts) ||
+        item.contexts.includes('all') || item.contexts.includes('action')).map((item) => item.id),
+      []);
   })();
 
   // --- The menu toggle with sidebar does both: the same toggle the menu toggle
