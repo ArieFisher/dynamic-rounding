@@ -2334,7 +2334,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // AC1: Right-clicking a table causes flashTargetedTable to run on that table.
 // AC2: state:tableActivated onMessage in sidebar.js calls flashSidebarContainer.
 // AC3: Right-clicking a non-table element produces NO flash and NO state:tableActivated send.
-// AC4: background.js does NOT relay state:tableActivated when sidebarTabId is null.
+// AC4: background.js does NOT relay state:tableActivated when boundTabId is null.
 // ---------------------------------------------------------------------------
 //
 // Runtime note: the main eval() above registered document.addEventListener with

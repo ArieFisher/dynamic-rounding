@@ -10,7 +10,7 @@
 // console, so its log buffer stays empty.
 importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
 
-let sidebarTabId = null;
+let boundTabId = null;
 
 // One fixed label serves every table on the page, so nothing updates it.
 // Chrome's documentation does not state whether an earlier version's menu
@@ -48,7 +48,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     } catch (e) {
       console.warn(DR_LOG.formatRow('error', { step: 'open sidebar', error: DR_LOG.errorType(e) }));
     }
-    sidebarTabId = tab.id;
+    boundTabId = tab.id;
     // The menu toggle with sidebar does both things its title states: the
     // same toggle the menu toggle publishes, then the sidebar-opened topic.
     // The toggle goes first, so the sidebar's re-read on open reads the
@@ -62,38 +62,38 @@ function closeSidebarIfOpen() {
   // The broadcast reaches every extension page, and the sidebar closes itself
   // on it. The content script has no subscriber for this topic.
   DR_BUS.publish('intent:closeSidebar', {});
-  sidebarTabId = null;
+  boundTabId = null;
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (tabId === sidebarTabId && changeInfo.status === "loading") {
+  if (tabId === boundTabId && changeInfo.status === "loading") {
     closeSidebarIfOpen();
   }
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (tabId === sidebarTabId) {
+  if (tabId === boundTabId) {
     closeSidebarIfOpen();
   }
 });
 
 chrome.tabs.onActivated.addListener((activeInfo) => {
-  if (sidebarTabId !== null && activeInfo.tabId !== sidebarTabId) {
+  if (boundTabId !== null && activeInfo.tabId !== boundTabId) {
     closeSidebarIfOpen();
   }
 });
 
 // meta.tabId is the tab the content script sent from. The worker acts only
-// when that tab is the one the sidebar was opened for; without the number,
+// when that tab is the bound tab; without the number,
 // any page unload in any tab would close the sidebar.
 DR_BUS.subscribe('state:pageUnloaded', (payload, meta) => {
-  if (meta.tabId !== null && meta.tabId === sidebarTabId) {
+  if (meta.tabId !== null && meta.tabId === boundTabId) {
     closeSidebarIfOpen();
   }
 });
 
 DR_BUS.subscribe('state:sidebarClosed', () => {
-  sidebarTabId = null;
+  boundTabId = null;
 });
 
 // The settings notice and the table-activation topic need no relay here. The

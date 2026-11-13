@@ -625,7 +625,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: background.js does NOT relay the settings notice when sidebarTabId is null.
+// AC4: background.js does NOT relay the settings notice when boundTabId is null.
 //
 // background.js runs in a service-worker context without the DOM and module
 // system our harness uses, so we cannot eval() it directly alongside the content
@@ -1097,7 +1097,7 @@
 //      would deliver to nothing.
 //   2. state:tableActivated must not be relayed into the tab. content.js already
 //      sends it with runtime.sendMessage, which the sidebar receives directly.
-//      Relaying it to sidebarTabId delivers it to a content script that has no
+//      Relaying it to boundTabId delivers it to a content script that has no
 //      handler for that action.
 // ---------------------------------------------------------------------------
 
