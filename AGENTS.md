@@ -140,7 +140,7 @@ Write them as human-authored. No "Generated with" footer, no `Co-Authored-By` ag
 - Things that are not typically visible in a diff can be included, e.g. intent, reason, cost, a constraint that shaped the code, a rejected alternative, etc.
 - Things that can be understood by reading the diff should be excluded, e.g. an edit list, a before-and-after value, a description of what a file now contains.
 - Never make a file path the subject of a sentence. Name files where the reviewer needs the pointer.
-- One exception to conclusions-only: record a rejected alternative in one line when the record stops a retry.
+- Record a rejected alternative in one line when the record stops a retry.
 
 Split the test plan into two named sections. `## Tested` lists what the session ran, with results inline and no checkboxes. `## Manual tests` lists what a human must still do, as unchecked boxes. Never one mixed checklist.
 
@@ -211,18 +211,14 @@ I am the product manager and do not write the code. Lead with the mechanism in p
 
 These rules govern all prose: **chat**, **documents**, and **GitHub** (pull request titles and bodies, issues, commit messages, logs).
 
-- **Form:** plain declarative sentences in active voice. Not epigrammatic, not aphoristic.
-- **Structure:** no antithesis. Present each point on its own, without a contrasting counterpart.
+- **Form:** plain declarative sentences in active voice, in plain words, kept short. Not epigrammatic, not aphoristic.
 - **Imagery:** no personification. Two tests.
   - *The verb.* A part's verb names an operation the part performs, never a stance it takes. Operations pass: holds, determines, skips, detects, flags, stands for, contains, parses, publishes. Verbs of intent, awareness, or choice fail: own, know, decide, refuse, notice, warn, name, pick — examples, not the whole list; "rides", "waits", and "speaks" fail the same test. Boundary: "the script reads the file" passes because reading is the operation; "the check refuses" fails because refusal is a stance.
   - *The subject.* An action verb (runs, reads, writes, checks, sends) takes as its subject the part that performs the action. A measure, a score, a result, a document, a label, a term, or an event such as a press performs nothing — examples, not the whole list; the script, the build, the hook, the content script, or the person does. A state verb (holds, contains, stands for) may take any subject. Boundary: "a press reads the setting" fails because a press is an event; "the press handler reads the setting" passes.
 
   Similes are fine. State the plain meaning in place of a metaphor: write "the press handler reads the table's on/off value and writes the opposite value", never "a press picks its direction".
-- **Diction:** plain English, Saxon words, technical terms preserved. No contractions and no abbreviations, except i.e., e.g., etc., FYI, and TL;DR. Write "application", not "app".
-- **Tone:** laconic. Cut qualifiers, hedging, and introductory fluff.
-- **Voice:** high information density. Facts in active voice, no passive voice, no filler sentences.
-- **Concision:** cut filler, hedging, qualifiers, and repetition. Keep mechanisms, scopes, and reasons: say what a rule does, what it covers, and why it exists, even when a shorter sentence could imply it. The test is one pass — a first-time reader never re-reads a sentence or asks what a term covers. When in doubt, spend the extra sentence.
-- **Conclusions only:** report findings, not the process that produced them. No dead ends, no counts of discarded items, no self-audit narrative.
+- **Full words:** no contractions and no abbreviations, except i.e., e.g., etc., FYI, and TL;DR. Write "application", not "app".
+- **Checked claims:** state for each claim whether it was checked and how. Mark a guess as a guess or an estimate. Stating uncertainty is allowed.
 
 ### Chat
 
