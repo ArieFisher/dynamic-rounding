@@ -80,7 +80,7 @@
 // --- Test 3: simplifyFirstColumn gates the <th>, not the leading <td> ---
 // The <th> counts toward the column index, so "first column" means the <th>,
 // not the second rendered column. The <th> is the first column, so the leading <td> (column
-// B) is rounded regardless of the toggle, and the <th> holds a name, so it stays raw.
+// B) is rounded regardless of the first-column switch, and the <th> holds a name, so it shows the original.
 (function simplifyFirstColumn_withRowHeader() {
   for (const flag of [false, true]) {
     const rows = runRowHeaderTable({ simplifyFirstColumn: flag });
@@ -1461,7 +1461,7 @@ const SEAT_ROWS = [
 
 // ---------------------------------------------------------------------------
 // content.js markAndAddTablePillboxIfNewGrid — the marker call-site wrapper. It
-// writes the dr-ext-grid marker and builds the pillbox, but only for a
+// writes the dr-ext-grid marker and builds the table pillbox, but only for a
 // first-time (isNew) discovery.
 // ---------------------------------------------------------------------------
 (function markAndAddTablePillboxIfNewGrid_newGridGetsMarkedAndWidget() {
@@ -1517,7 +1517,7 @@ const SEAT_ROWS = [
 // the repository's regression-fixture convention: a role="table" wrapper
 // holding a pinned pane of leading columns beside a scrolling pane of data,
 // all under dg-- classes, with rows paired across the panes by data-row. The
-// nomination step, the two adapters, and the pillbox builder all read these
+// nomination step, the two adapters, and the table pillbox builder all read these
 // nodes, so each one answers the selector queries, the role read, the class
 // list, the parent link, and the text reads those three make.
 // ---------------------------------------------------------------------------
@@ -2511,7 +2511,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     eq('GV5b (pre): cell[0] is rounded after roundTable',
       grid.cellEls[0].classList.contains('dr-ext-rounded'), true);
 
-    // The user presses the grid's pillbox to turn simplification off.
+    // The user presses the grid's table pillbox to turn simplification off.
     resetTable(grid.wrapperEl);
 
     // Flag must be set and originals restored.
@@ -2670,7 +2670,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 // ---------------------------------------------------------------------------
 
 // AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
-// <table>s are chart accessibility artifacts → gets dr-ext-grid + a pillbox.
+// <table>s are chart accessibility artifacts → gets dr-ext-grid + a table pillbox.
 (function observer_AC1_addedGridOnlyArtifactTables_getsTablePillbox() {
   const artifact1 = makeArtifactEmbeddedTable();
   const artifact2 = makeArtifactEmbeddedTable();
@@ -2682,11 +2682,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
   eq('observer: added grid with only accessibility artifacts gets dr-ext-grid class',
     grid.classList.contains('dr-ext-grid'), true);
-  eq('observer: added grid with only accessibility artifacts gets a toggle',
+  eq('observer: added grid with only accessibility artifacts gets a table pillbox',
     tablePillboxes.has(grid), true);
 })();
 
-// AC2: an added grid wrapping a REAL table → observer bows out (no class/toggle
+// AC2: an added grid wrapping a REAL table → observer bows out (no class or table pillbox
 // on the grid itself; the real embedded table is owned by Pass 1).
 (function observer_AC2_addedGridRealTable_bowsOut() {
   const realTbl = makePass1DataTable(); // not an artifact, has .rows for isDataTable
@@ -2698,14 +2698,14 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
   eq('observer: added grid wrapping a real table does NOT get dr-ext-grid',
     grid.classList.contains('dr-ext-grid'), false);
-  eq('observer: added grid wrapping a real table does NOT get a toggle',
+  eq('observer: added grid wrapping a real table does NOT get a table pillbox',
     tablePillboxes.has(grid), false);
 
   cleanupPass1Tables([realTbl]);
 })();
 
 // AC3: an accessibility artifact <table> reached via querySelectorAll on the
-// added node gets NO pillbox (Pass 1 artifact skip in the observer path).
+// added node gets NO table pillbox (Pass 1 artifact skip in the observer path).
 (function observer_AC3_addedSubtreeArtifactTable_noTablePillbox() {
   const artifact = makeArtifactEmbeddedTable();
   const container = {
@@ -2720,12 +2720,12 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     injectTablePillboxesForAddedNode(container);
   });
 
-  eq('observer: accessibility artifact <table> in added subtree gets NO toggle',
+  eq('observer: accessibility artifact <table> in added subtree gets NO table pillbox',
     tablePillboxes.has(artifact), false);
 })();
 
 // AC4: a real native <table> reached via querySelectorAll on the added node
-// DOES get a toggle (Pass 1 survivor in the observer path).
+// DOES get a table pillbox (Pass 1 survivor in the observer path).
 (function observer_AC4_addedSubtreeRealTable_getsTablePillbox() {
   const realTbl = makePass1DataTable();
   const container = {
@@ -2740,7 +2740,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     injectTablePillboxesForAddedNode(container);
   });
 
-  eq('observer: real <table> in added subtree gets a toggle',
+  eq('observer: real <table> in added subtree gets a table pillbox',
     tablePillboxes.has(realTbl), true);
 
   cleanupPass1Tables([realTbl]);
@@ -3988,7 +3988,7 @@ function everyRowRead(kind, largeIn) {
     eq('re-injection sidebar apply: the apply runs the simplification pass, which sends the range status',
       sentMessages.some((m) => m.topic === 'state:rangeOk' || m.topic === 'state:rangeError'), true);
 
-    // --- Scenario C: the pillbox sync on fresh and simplified tables. ---
+    // --- Scenario C: the table pillbox sync on fresh and simplified tables. ---
     const stub6 = makeMockButton();
     global.__ri2_tablePillboxes.set(table6, stub6);
     global.__ri2_syncTablePillbox(table6);

@@ -47,7 +47,7 @@
  * tokens to looks-right, not-sure, and looks-wrong. Format 5 adds the
  * screenshot field: the take's record (taken, format, chars), never the image.
  * Format 6 renames the tuning field to detectionSettings and drops the
- * pillbox auto-collapse delay from it; the pillbox view holds that delay.
+ * table pillbox auto-collapse delay from it; the table pillbox view holds that delay.
  * Format 7 drops the page-wide settings field and renames each table's
  * lastRoundOptions to settings: each table carries its own settings.
  * Format 8 drops each cell's isOutside field: every row joins the dataset,

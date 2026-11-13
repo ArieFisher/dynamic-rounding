@@ -787,7 +787,7 @@
 
     // The switch message: re-read the model.
     h.dispatch({ topic: 'state:tableSwitched' });
-    eq('switch-pull: the main toggle mirrors the model\'s enabled:false after a switch',
+    eq('switch-pull: the sidebar pillbox mirrors the model\'s enabled:false after a switch',
       h.enabledEl.checked, false);
     // The claim here is that the sidebar MIRRORS the application model. A
     // press that moves the active table sends state:tableSwitched and then clears
@@ -822,7 +822,7 @@
     // the shipped default (on) — the model says off.
     h.enabledEl.checked = true;
     h.dispatch({ topic: 'state:previewSamplesChanged' });
-    eq('refresh-pull: the main toggle mirrors the model\'s enabled:false after a preview refresh',
+    eq('refresh-pull: the sidebar pillbox mirrors the model\'s enabled:false after a preview refresh',
       h.enabledEl.checked, false);
   } finally {
     h.restore();
@@ -831,7 +831,7 @@
 
 // ---------------------------------------------------------------------------
 // The context-menu toggle must go through the same controller branch a
-// pillbox press uses. The right-click that opens the menu already activates
+// table pillbox press uses. The right-click that opens the menu already activates
 // the table (the contextmenu handler calls setActiveTable), so with the
 // sidebar open, the menu toggle on that table must write the table's settings
 // and send them (the settings notice). A menu path that simplified the table

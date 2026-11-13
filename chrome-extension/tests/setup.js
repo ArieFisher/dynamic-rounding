@@ -67,7 +67,7 @@ global.Node = { ELEMENT_NODE: 1 };
 // them together here, and re-expose DR_DEFAULTS on globalThis so test
 // assertions outside the eval can read it.
 // We also expose the per-table pillbox infrastructure declared with const/let
-// inside the eval'd code so the auto-table-toggle test section can access them.
+// inside the eval'd code so the table pillbox test section can access them.
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'manifest.json'), 'utf8'));
 const contentScriptFiles = manifest.content_scripts[0].js;
 // Map from manifest filename to its individual source text, built FROM the
@@ -128,7 +128,7 @@ globalThis.DR_CAPTURE = DR_CAPTURE;
 // Expose the renderer's glyph map so the glyph pin can compare it against
 // the sidebar's buttons.
 globalThis.CAPTURE_MARK_GLYPHS = CAPTURE_MARK_GLYPHS;
-// Expose pillbox infrastructure for tests
+// Expose table pillbox infrastructure for tests
 globalThis.tablePillboxes = tablePillboxes;
 globalThis.trackedTables = trackedTables;
 // tablePillboxStyleInjected is a let; expose a getter/setter so tests can reset it.
@@ -164,7 +164,7 @@ globalThis.eraYearDigitRanges = eraYearDigitRanges;
 globalThis.clockTimeRanges = clockTimeRanges;
 globalThis.formatStep = formatStep;
 globalThis.stepForOffset = stepForOffset;
-// Expose the pillbox geometry constants (all are const, so direct assignment works)
+// Expose the table pillbox geometry constants (all are const, so direct assignment works)
 globalThis.TABLE_PILLBOX_DOT_PX = TABLE_PILLBOX_DOT_PX;
 globalThis.TABLE_PILLBOX_PILL_HEIGHT_PX = TABLE_PILLBOX_PILL_HEIGHT_PX;
 globalThis.TABLE_PILLBOX_KNOB_TRAVEL_PX = TABLE_PILLBOX_KNOB_TRAVEL_PX;

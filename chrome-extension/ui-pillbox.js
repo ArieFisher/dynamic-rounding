@@ -50,7 +50,7 @@ const TABLE_PILLBOX_AUTO_COLLAPSE_MS = 3000;
 // bounds that cost per table. Real pages nest a table well under 100 ancestors
 // deep, so the cap holds the cost down without cutting the walk short.
 // Ancestors past it count as cutting off nothing: a deeper table's table
-// pillbox still moves with every scroll, and shows wherever its table's corner
+// table pillbox still moves with every scroll, and shows wherever its table's corner
 // sits.
 const TABLE_PILLBOX_CLIP_WALK_CAP = 100;
 // Overflow values that cut off an element's content at its box.

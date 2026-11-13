@@ -159,45 +159,45 @@
 
 // --- Static analysis: all new functions are defined ---
 
-(function atToggle_staticAnalysis() {
-  eq('auto-table-toggle: isTableOn is defined',
+(function tablePillbox_staticAnalysis() {
+  eq('table-pillbox: isTableOn is defined',
     typeof isTableOn, 'function');
-  eq('auto-table-toggle: syncTablePillbox is defined',
+  eq('table-pillbox: syncTablePillbox is defined',
     typeof syncTablePillbox, 'function');
-  eq('auto-table-toggle: positionTablePillbox is defined',
+  eq('table-pillbox: positionTablePillbox is defined',
     typeof positionTablePillbox, 'function');
-  eq('auto-table-toggle: createTablePillbox is defined',
+  eq('table-pillbox: createTablePillbox is defined',
     typeof createTablePillbox, 'function');
-  eq('auto-table-toggle: resetTable is defined',
+  eq('table-pillbox: resetTable is defined',
     typeof resetTable, 'function');
-  eq('auto-table-toggle: tablePillboxes WeakMap is defined',
+  eq('table-pillbox: tablePillboxes WeakMap is defined',
     tablePillboxes instanceof WeakMap, true);
-  eq('auto-table-toggle: trackedTables Set is defined',
+  eq('table-pillbox: trackedTables Set is defined',
     trackedTables instanceof Set, true);
 })();
 
 // --- Regression guard: content.js declares the new infrastructure ---
 
-(function atToggle_contentJsDeclarations() {
-  // Pillbox infrastructure lives in ui-pillbox.js;
+(function tablePillbox_contentJsDeclarations() {
+  // Table pillbox infrastructure lives in ui-pillbox.js;
   // scan the combined content-script source so the contract is location-agnostic.
   const src = allContentSrc;
-  eq('auto-table-toggle: declares tablePillboxes WeakMap',
+  eq('table-pillbox: declares tablePillboxes WeakMap',
     /const\s+tablePillboxes\s*=\s*new\s+WeakMap/.test(src), true);
-  eq('auto-table-toggle: declares trackedTables Set',
+  eq('table-pillbox: declares trackedTables Set',
     /const\s+trackedTables\s*=\s*new\s+Set/.test(src), true);
-  eq('auto-table-toggle: defines isTableOn',
+  eq('table-pillbox: defines isTableOn',
     /function\s+isTableOn\b/.test(src), true);
-  eq('auto-table-toggle: defines syncTablePillbox',
+  eq('table-pillbox: defines syncTablePillbox',
     /function\s+syncTablePillbox\b/.test(src), true);
-  eq('auto-table-toggle: defines positionTablePillbox',
+  eq('table-pillbox: defines positionTablePillbox',
     /function\s+positionTablePillbox\b/.test(src), true);
-  eq('auto-table-toggle: defines createTablePillbox',
+  eq('table-pillbox: defines createTablePillbox',
     /function\s+createTablePillbox\b/.test(src), true);
-  eq('auto-table-toggle: defines injectTablePillboxes',
+  eq('table-pillbox: defines injectTablePillboxes',
     /function\s+injectTablePillboxes\b/.test(src), true);
   // The table pillbox must use the new dr-ext-table-pillbox CSS class
-  eq('auto-table-toggle: the table pillbox uses dr-ext-table-pillbox CSS class',
+  eq('table-pillbox: the table pillbox uses dr-ext-table-pillbox CSS class',
     src.includes('dr-ext-table-pillbox'), true);
 })();
 
@@ -206,7 +206,7 @@
 //       :focus-visible rule with `outline` and `!important`.
 
 (function accessibilityAC2_focusVisibleCSS() {
-  const src = allContentSrc; // pillbox CSS lives in ui-pillbox.js
+  const src = allContentSrc; // table pillbox CSS lives in ui-pillbox.js
 
   eq('accessibility AC2: content.js CSS contains :focus-visible selector',
     src.includes(':focus-visible'), true);
@@ -233,7 +233,7 @@
 // Soft check: the constant names TABLE_PILLBOX_DOT_PX etc. appear in the CSS template block.
 
 (function tablePillboxAC_constantsUsedInCSS() {
-  const src = allContentSrc; // pillbox geometry lives in ui-pillbox.js
+  const src = allContentSrc; // table pillbox geometry lives in ui-pillbox.js
 
   // The CSS function body should contain interpolations of the constants, not bare literals.
   // We extract the ensureTablePillboxStyleInjected function body as a rough string.
@@ -241,17 +241,17 @@
   const fnEnd = src.indexOf('\nfunction ', fnStart + 1);
   const fnBody = fnStart !== -1 ? src.slice(fnStart, fnEnd !== -1 ? fnEnd : fnStart + 3000) : '';
 
-  eq('expanding-toggle: TABLE_PILLBOX_HIT_PAD_PX referenced in ensureTablePillboxStyleInjected',
+  eq('expanding-table-pillbox: TABLE_PILLBOX_HIT_PAD_PX referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_HIT_PAD_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_DOT_PX referenced in ensureTablePillboxStyleInjected',
+  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_PX referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_DOT_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_PILL_WIDTH_PX referenced in ensureTablePillboxStyleInjected',
+  eq('expanding-table-pillbox: TABLE_PILLBOX_PILL_WIDTH_PX referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_PILL_WIDTH_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_PILL_HEIGHT_PX referenced in ensureTablePillboxStyleInjected',
+  eq('expanding-table-pillbox: TABLE_PILLBOX_PILL_HEIGHT_PX referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_PILL_HEIGHT_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_KNOB_PX referenced in ensureTablePillboxStyleInjected',
+  eq('expanding-table-pillbox: TABLE_PILLBOX_KNOB_PX referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_KNOB_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_COLOR_ON referenced in ensureTablePillboxStyleInjected',
+  eq('expanding-table-pillbox: TABLE_PILLBOX_COLOR_ON referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_COLOR_ON'), true);
 
   // positionTablePillbox body should reference the geometry constants
@@ -259,13 +259,13 @@
   const ptEnd = src.indexOf('\nfunction ', ptStart + 1);
   const ptBody = ptStart !== -1 ? src.slice(ptStart, ptEnd !== -1 ? ptEnd : ptStart + 1000) : '';
 
-  eq('expanding-toggle: TABLE_PILLBOX_HIT_PAD_PX referenced in positionTablePillbox',
+  eq('expanding-table-pillbox: TABLE_PILLBOX_HIT_PAD_PX referenced in positionTablePillbox',
     ptBody.includes('TABLE_PILLBOX_HIT_PAD_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_DOT_PX referenced in positionTablePillbox',
+  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_PX referenced in positionTablePillbox',
     ptBody.includes('TABLE_PILLBOX_DOT_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_DOT_OVERLAP_PX referenced in positionTablePillbox',
+  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_OVERLAP_PX referenced in positionTablePillbox',
     ptBody.includes('TABLE_PILLBOX_DOT_OVERLAP_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_DOT_OVERHANG_PX referenced in positionTablePillbox',
+  eq('expanding-table-pillbox: TABLE_PILLBOX_DOT_OVERHANG_PX referenced in positionTablePillbox',
     ptBody.includes('TABLE_PILLBOX_DOT_OVERHANG_PX'), true);
 })();
 
@@ -292,13 +292,13 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Flat toggle list, new defaults, switch wrappers
+// Flat switch list, new defaults, switch wrappers
 // ---------------------------------------------------------------------------
 
 (function sprintSidebarTidyup() {
   const sidebarHtml = fs.readFileSync(path.join(__dirname, 'sidebar.html'), 'utf8');
 
-  // ── AC1: options section has exactly seven toggle rows in the canonical order ──
+  // ── AC1: options section has exactly seven switch rows in the canonical order ──
   // Parse all switch-label texts inside #optionsSection.
   // Strategy: extract the optionsSection fragment, then collect every
   // class="switch-label" span's text content via a simple regex.
@@ -331,10 +331,10 @@
 
   const expectedOrder = ['currencies', 'percentages', 'dates', 'times', 'first row', 'first column'];
 
-  eq('sidebar-tidyup AC1: options section has exactly 6 toggle rows',
+  eq('sidebar-tidyup AC1: options section has exactly 6 switch rows',
     labelTexts.length, 6);
 
-  eq('sidebar-tidyup AC1: toggle rows are in canonical order',
+  eq('sidebar-tidyup AC1: switch rows are in canonical order',
     labelTexts, expectedOrder);
 
   // ── AC2: forbidden phrases do not appear anywhere in the options section ──
@@ -409,7 +409,7 @@
 })();
 
 // =============================================================================
-// Toggle switch appears left of label in every row
+// The switch appears left of its label in every row
 // =============================================================================
 //
 // Acceptance criteria:
@@ -512,7 +512,7 @@
   }
 })();
 
-// --- AC5: sidebar.js updateDisabledState wires granularity dropdowns to toggles ---
+// --- AC5: sidebar.js updateDisabledState wires granularity dropdowns to switches ---
 // The harness has no live sidebar DOM, so we verify via static source analysis.
 // We assert:
 //   (a) updateDisabledState references dateGranularity.disabled and !simplifyDates
@@ -1562,7 +1562,7 @@
 // Every detection setting and both lookup
 // lists have one home, the detection settings (DR_DETECTION_SETTINGS, in
 // the configuration file constants.js). The
-// pillbox auto-collapse delay lives in the pillbox view
+// table pillbox auto-collapse delay lives in the table pillbox view
 // (ui-pillbox.js) as its own constant: the view alone reads it. Four groups
 // of tests:
 //   1. Source scan: none of the eight retired names carries a second
@@ -1572,7 +1572,7 @@
 //      the detection layer (lib/dr-table/detect.js).
 //   2. Source scan: the detection layer and the controller (content.js)
 //      read DR_DETECTION_SETTINGS as a bare global — no typeof guard, no
-//      OR-fallback, no reassignment — and the pillbox view reads none of it.
+//      OR-fallback, no reassignment — and the table pillbox view reads none of it.
 //   3. Behavior: a sandbox that evaluates the configuration file and then
 //      the detection layer carries the nine pre-move values unchanged, and
 //      looksLikeGrid, findTargetTable, isAccessibilityArtifact, and isDataTable
@@ -1643,7 +1643,7 @@
   }
 })();
 
-// The pillbox view holds no detection setting: its touch auto-collapse
+// The table pillbox view holds no detection setting: its touch auto-collapse
 // delay is its own constant, so the view reads the detection settings
 // nowhere and the settings carry no delay the view alone reads.
 (function detectionSettings_pillboxViewHoldsItsOwnDelay() {
@@ -1708,7 +1708,7 @@
   const loadTimeScanSrc = sourceByName('ui-pillbox.js');
   const addedNodePassSrc = sourceByName('content.js');
 
-  eq('nesting AC6: the pillbox view is listed in the manifest', loadTimeScanSrc !== null, true);
+  eq('nesting AC6: the table pillbox view is listed in the manifest', loadTimeScanSrc !== null, true);
   eq('nesting AC6: the controller is listed in the manifest', addedNodePassSrc !== null, true);
   eq('nesting AC6: the load-time scan names no grid or table role selector',
     loadTimeScanSrc !== null &&
@@ -1760,10 +1760,10 @@
   eq('nesting AC7: that section holds an expectation paragraph', expectText !== '', true);
   eq('nesting AC7: the expectation names the scrolling pane',
     /scrolling pane/i.test(expectText), true);
-  eq('nesting AC7: the expectation states no pillbox on the wrapper',
+  eq('nesting AC7: the expectation states no table pillbox on the wrapper',
     /pillbox[^.]*wrapper/i.test(expectText), false);
-  eq('nesting AC7: the section states no second pillbox',
-    /second pillbox/i.test(section), false);
+  eq('nesting AC7: the section states no second table pillbox',
+    /second (table )?pillbox/i.test(section), false);
 })();
 
 // --- The living documents state the field ---
@@ -2083,7 +2083,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// Ui-toggle.js splits into drawing (render from state,
+// ui-pillbox.js splits into drawing (render from state,
 // hold only view-transient state) and publishing (intents on DR_BUS in place
 // of calls into the controller).
 //
@@ -2094,7 +2094,7 @@
 (function toggleSplit_viewCallsNoControllerFunctionDirectly() {
   const uiPillboxSrc = sourceByName('ui-pillbox.js');
   if (uiPillboxSrc === null) {
-    eq('toggle-split: ui-pillbox.js is present in the manifest', false, true);
+    eq('table-pillbox-split: ui-pillbox.js is present in the manifest', false, true);
     return;
   }
   const FORBIDDEN_CONTROLLER_CALLS = ['applySidebarRounding', 'resetTable', 'roundTable'];
@@ -2102,18 +2102,18 @@
   // in the content-script stack, so the filter below tests something.
   const missingFromController = FORBIDDEN_CONTROLLER_CALLS.filter(
     (name) => !new RegExp('function\\s+' + name + '\\s*\\(').test(allContentSrc));
-  eq('toggle-split: every forbidden name is a real controller function (sanity check on the scan itself)',
+  eq('table-pillbox-split: every forbidden name is a real controller function (sanity check on the scan itself)',
     missingFromController, []);
 
   const foundCalls = FORBIDDEN_CONTROLLER_CALLS.filter((name) => {
     const callRe = new RegExp('\\b' + name + '\\s*\\(');
     return callRe.test(uiPillboxSrc);
   });
-  eq('toggle-split: ui-pillbox.js calls no controller function directly',
+  eq('table-pillbox-split: ui-pillbox.js calls no controller function directly',
     foundCalls, []);
 
   // The click handler publishes the press as an intent instead.
-  eq('toggle-split: ui-pillbox.js publishes intent:toggleTable from the click handler',
+  eq('table-pillbox-split: ui-pillbox.js publishes intent:toggleTable from the click handler',
     /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiPillboxSrc), true);
 })();
 
@@ -2240,7 +2240,7 @@
 // content script runs on it like on any page. The renderer stamps
 // data-dr-capture on the document element, and the controller gates its two
 // entry points on that marker — the contextmenu handler (selection and the
-// menu path) and the load-time scan with its added-node observer (pillboxes
+// menu path) and the load-time scan with its added-node observer (table pillboxes
 // and registration). With neither, no table on a capture page is ever
 // selected, registered, or rounded. Source-text assertions, matching the
 // suite's style for load-time wiring the harness cannot re-run.

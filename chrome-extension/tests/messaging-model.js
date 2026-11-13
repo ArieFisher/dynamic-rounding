@@ -974,7 +974,7 @@ const PENDING_FILL_ROWS = [
 
     eq('pending AC1: an empty container registers nothing',
       DR_MODEL.hasTable(lone), false);
-    eq('pending AC1: an empty container gains no pillbox', tablePillboxes.has(lone), false);
+    eq('pending AC1: an empty container gains no table pillbox', tablePillboxes.has(lone), false);
     eq('pending AC1: an empty container is held as a pending table',
       pendingRoots.has(lone), true);
     eq('pending AC1: the empty container carries one observer', observers.length, 1);
@@ -989,7 +989,7 @@ const PENDING_FILL_ROWS = [
     });
 
     eq('pending AC1: the filled container registers', DR_MODEL.hasTable(lone), true);
-    eq('pending AC1: the filled container gains a pillbox', tablePillboxes.has(lone), true);
+    eq('pending AC1: the filled container gains a table pillbox', tablePillboxes.has(lone), true);
     eq('pending AC1: the registration drops the pending record',
       pendingRoots.has(lone), false);
     eq('pending AC1: the registration disconnects the observer',
@@ -1027,10 +1027,10 @@ const PENDING_FILL_ROWS = [
     eq('pending AC1: the filled grid registers the scrolling pane alone',
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, true]);
-    eq('pending AC1: the scrolling pane gains a pillbox',
+    eq('pending AC1: the scrolling pane gains a table pillbox',
       tablePillboxes.has(grid.scrollPaneEl), true);
-    eq('pending AC1: the wrapper gains no pillbox', tablePillboxes.has(grid.wrapperEl), false);
-    eq('pending AC1: the pinned pane gains no pillbox',
+    eq('pending AC1: the wrapper gains no table pillbox', tablePillboxes.has(grid.wrapperEl), false);
+    eq('pending AC1: the pinned pane gains no table pillbox',
       tablePillboxes.has(grid.pinnedPaneEl), false);
     eq('pending AC1: the registration drops the wrapper\'s pending record',
       pendingRoots.has(grid.wrapperEl), false);
@@ -1171,7 +1171,7 @@ const PENDING_FILL_ROWS = [
 //
 // The vocabulary row states the rule: a re-test that finds the nest already
 // registered ends the pending table, as does one that finds its configured
-// depth crowded. The registration here goes through the pillbox builder
+// depth crowded. The registration here goes through the table pillbox builder
 // directly, which is the route a right-click takes today — the pending record
 // stands until the next re-test, and that re-test is what drops it. Without
 // this the record outlives the registration: a live observer on a subtree the
@@ -1219,7 +1219,7 @@ const PENDING_FILL_ROWS = [
       pendingRetestTimers.has(grid.wrapperEl), false);
     eq('pending registered: the nest holds one registry entry in all',
       DR_MODEL.getRegisteredTables().length - before, 1);
-    eq('pending registered: the re-test puts no second pillbox on the nest',
+    eq('pending registered: the re-test puts no second table pillbox on the nest',
       [tablePillboxes.has(grid.wrapperEl), tablePillboxes.has(grid.pinnedPaneEl)], [false, false]);
     eq('pending registered: no pending root remains', pendingRoots.size, 0);
   });
@@ -1277,7 +1277,7 @@ const PENDING_FILL_ROWS = [
     eq('pending crowded: a crowded nest registers no element',
       [rootEl, nest.paneAEl, nest.paneBEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, false]);
-    eq('pending crowded: a crowded nest gains no pillbox',
+    eq('pending crowded: a crowded nest gains no table pillbox',
       [rootEl, nest.paneAEl, nest.paneBEl].map((el) => tablePillboxes.has(el)),
       [false, false, false]);
     eq('pending crowded: a crowded nest adds no registry entry',
@@ -1401,7 +1401,7 @@ const PENDING_FILL_ROWS = [
   }
   eq('DR_BUS.TOPICS: intent:activateTable is in the intent family',
     topics['intent:activateTable'].family, 'intent');
-  // The toggle view's click handler changes no table
+  // The table pillbox view's click handler changes no table
   // itself — it publishes intent:toggleTable, and content.js (the sole
   // subscriber) determines what a committed toggle does.
   eq('DR_BUS.TOPICS: intent:toggleTable is in the intent family',
@@ -1557,7 +1557,7 @@ const PENDING_FILL_ROWS = [
     });
     const isNowRounded = showsSimplified(table);
 
-    eq('toggle-split: publishing intent:toggleTable runs the press (table becomes simplified)',
+    eq('table-pillbox-split: publishing intent:toggleTable runs the press (table becomes simplified)',
       !wasRounded && isNowRounded, true);
 
     // A second press takes it back off, through the same path and the same
@@ -1565,7 +1565,7 @@ const PENDING_FILL_ROWS = [
     withCreateTreeWalker(function () {
       DR_BUS.publish('intent:toggleTable', { table });
     });
-    eq('toggle-split: publishing intent:toggleTable again takes the table back to its original values',
+    eq('table-pillbox-split: publishing intent:toggleTable again takes the table back to its original values',
       showsSimplified(table), false);
   } finally {
     DR_MODEL.setActiveTable(null);
@@ -1718,7 +1718,7 @@ const PENDING_FILL_ROWS = [
     const expected = EXPECTED_SEQUENCES[String(sameTable)];
     for (const mode of ['mouse', 'touch']) {
       const seq = runToggleClickFixture(mode, sameTable);
-      eq(`toggle click sequence (${mode}, sameTable=${sameTable}): sendMessage sequence matches the frozen literal`,
+      eq(`table pillbox click sequence (${mode}, sameTable=${sameTable}): sendMessage sequence matches the frozen literal`,
         seq, expected);
     }
   }
@@ -2041,7 +2041,7 @@ const PENDING_FILL_ROWS = [
 
 // --- (g) settings notice sequence: showsSimplified (reading DR_MODEL's
 // appliedFlag) must report correctly to the sidebar across a full round ->
-// peek-original -> peek-back cycle, not just a single toggle. The pillbox
+// peek-original -> peek-back cycle, not just a single toggle. The table pillbox
 // AC1 test above pins one click; the guard matrix pins one
 // intent:toggleTable dispatch. Neither exercises the 3-step peek cycle. ---
 (function registrySprint_tableToggleStateAcrossPeekCycle() {
@@ -2141,7 +2141,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // --- The registry's fingerprint field. The entry
-// carries the shape the table had when it registered, and the pillbox view's
+// carries the shape the table had when it registered, and the table pillbox view's
 // builder is its one writer. Spec: the shape-fingerprint block in
 // docs/sprint-plans/grid-detection-recovery-v2.md §5, and the shape
 // fingerprint row in docs/vocabulary.md. ---
@@ -2172,7 +2172,7 @@ const PENDING_FILL_ROWS = [
   DR_MODEL.unregisterTable(table);
 })();
 
-// The pillbox view's builder records the shape after it registers the table,
+// The table pillbox view's builder records the shape after it registers the table,
 // on a grid and on a native table alike.
 (function shapeFingerprint_registrationRecordsTheTablesShape() {
   const grouped = makeScrollingRowgroupGrid(['Region', 'Q1'], [
@@ -2380,7 +2380,7 @@ const PENDING_FILL_ROWS = [
 
 // --- The teardown both the removal observer and the
 // mismatch path run. One function discards a table's registration and every
-// per-table resource the extension holds beside it: the pillbox, the resize
+// per-table resource the extension holds beside it: the table pillbox, the resize
 // observer, a virtualized grid's re-apply observer and its pending timer, the
 // view's tracked-table list, and the registry entry. The teardown writes no
 // row: each caller writes its own. Spec: the shape-fingerprint block in
@@ -2413,7 +2413,7 @@ const PENDING_FILL_ROWS = [
     const rows = logRowsDuring(() => teardownTableEntry(grid.scrollPaneEl));
 
     eq('fingerprint teardown: the teardown writes no row', rows, []);
-    eq('fingerprint teardown: the pillbox comes off the page', removedTablePillboxes.length, 1);
+    eq('fingerprint teardown: the table pillbox comes off the page', removedTablePillboxes.length, 1);
     eq('fingerprint teardown: the resize observer disconnects',
       resizeObservers.length === 1 && resizeObservers[0].disconnected, true);
     eq('fingerprint teardown: the pending re-apply timer is cleared',
@@ -2595,7 +2595,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// A pillbox press on the active table writes the table's settings (its
+// A table pillbox press on the active table writes the table's settings (its
 // enabled), not just the table's cells and the sidebar pillbox. A press
 // that changed the cells without writing the settings would leave any later
 // pull (a sidebar reopen or a table switch) showing a stale enabled over the
@@ -2631,23 +2631,23 @@ const PENDING_FILL_ROWS = [
     });
 
     withCreateTreeWalker(function () {
-      DR_BUS.publish('intent:toggleTable', { table }); // pillbox: turn rounding on
+      DR_BUS.publish('intent:toggleTable', { table }); // table pillbox: turn rounding on
     });
     eq('leak-1: the first table pillbox press rounds the connected table',
       showsSimplified(table), true);
-    eq('leak-1: the table\'s settings follow the pillbox — enabled true after toggle-on',
+    eq('leak-1: the table\'s settings follow the table pillbox — enabled true after toggle-on',
       DR_MODEL.getTableSettings(table).enabled, true);
 
     withCreateTreeWalker(function () {
-      DR_BUS.publish('intent:toggleTable', { table }); // pillbox: turn rounding off
+      DR_BUS.publish('intent:toggleTable', { table }); // table pillbox: turn rounding off
     });
     eq('leak-1: the second table pillbox press restores the table to originals',
       showsSimplified(table), false);
-    eq('leak-1: the table\'s settings follow the pillbox — enabled false after toggle-off',
+    eq('leak-1: the table\'s settings follow the table pillbox — enabled false after toggle-off',
       DR_MODEL.getTableSettings(table).enabled, false);
 
     // A sidebar change runs this same apply, and it must honor the settings
-    // the pillbox just wrote — not silently re-round the table.
+    // the table pillbox just wrote — not silently re-round the table.
     withCreateTreeWalker(function () {
       applySidebarRounding(table);
     });
@@ -2655,7 +2655,7 @@ const PENDING_FILL_ROWS = [
       showsSimplified(table), false);
 
     const notices = sent.filter((m) => m.topic === 'state:settingsChanged');
-    eq('leak-1: one settings notice per pillbox toggle, carrying the table\'s enabled — true then false',
+    eq('leak-1: one settings notice per table pillbox toggle, carrying the table\'s enabled — true then false',
       notices.map((m) => m.settings.enabled), [true, false]);
   } finally {
     global.chrome.runtime.sendMessage = origSend;
@@ -2712,7 +2712,7 @@ const PENDING_FILL_ROWS = [
 // --- Exactly one settings write per press, and the flip direction comes from
 // the table's on/off value as it stood BEFORE that write. For a table showing the original
 // whose settings already stand at on, the handler writes off: the table
-// pillbox shows that table as on, the same as the sidebar pillbox. ---
+// table pillbox shows that table as on, the same as the sidebar pillbox. ---
 (function partOne_onePressOneWriteReadingTheSettingFirst() {
   runPressFixture(({ resetWrites, writes }) => {
     const active = makePressTable('1,000,000');
@@ -2733,7 +2733,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // --- A table with nothing to simplify. The table pillbox and the sidebar
-// pillbox show the one on/off value, so such a table stands at on after the
+// table pillbox show the one on/off value, so such a table stands at on after the
 // first press and at off after the next, though no cell changes either way. ---
 (function partOne_pressesOnATableWithNothingToSimplifyAlternate() {
   runPressFixture(() => {
@@ -3008,7 +3008,7 @@ function issue328SettingsOf(table) {
       const apply = countChecks(() => askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, ISSUE328_LIGHT) }));
       const reopen = countChecks(() => askContentScript({ topic: 'state:sidebarOpened' }));
-      eq('shape check: a pillbox press, a sidebar change, and a sidebar reopen each run it once',
+      eq('shape check: a table pillbox press, a sidebar change, and a sidebar reopen each run it once',
         [press, apply, reopen], [1, 1, 1]);
     } finally {
       DR_MODEL.getTableFingerprint = origRead;
@@ -3018,7 +3018,7 @@ function issue328SettingsOf(table) {
 
 // A table no one has turned on reads off: the shipped on/off value is off,
 // so the sidebar pillbox matches a table showing the original, and opening the sidebar on an
-// untouched table leaves it raw. Only a toggle or the switch turns it on.
+// untouched table leaves it showing the original. Only a toggle or the sidebar pillbox turns it on.
 (function issue328_anUntouchedTableReadsOff() {
   runPressFixture(() => {
     const table = makePressTable('8,584,629');
@@ -3239,7 +3239,7 @@ function issue328SettingsOf(table) {
       outcome.switched, true);
     eq('fingerprint grouped header: the grid registers fresh',
       outcome.table === g.wrapperEl, true);
-    eq('fingerprint grouped header: the discard takes the old pillbox off the page',
+    eq('fingerprint grouped header: the discard takes the old table pillbox off the page',
       removedTablePillboxes.length, 1);
     eq('fingerprint grouped header: the fresh fingerprint carries the new header text',
       DR_MODEL.getTableFingerprint(g.wrapperEl),
@@ -3273,7 +3273,7 @@ function issue328SettingsOf(table) {
       let outcome = null;
       withTablePillboxDocumentMock(function () { outcome = revalidateTableShape(table); });
       eq(`fingerprint header cells (${label}): a header text change ${groups ? 'reports a switch' : 'keeps the entry'}`, outcome.switched, groups);
-      eq(`fingerprint header cells (${label}): ${groups ? 'the discard takes the old pillbox off the page' : 'no pillbox leaves the page'}`,
+      eq(`fingerprint header cells (${label}): ${groups ? 'the discard takes the old table pillbox off the page' : 'no table pillbox leaves the page'}`,
         removedTablePillboxes.length, groups ? 1 : 0);
       if (groups) {
         eq(`fingerprint header cells (${label}): the fresh fingerprint carries the new header text`,
@@ -3311,7 +3311,7 @@ function issue328SettingsOf(table) {
 })();
 
 // --- Criterion: changing the column set trips the fingerprint. The entry is
-// discarded, and a pillbox press afterwards simplifies from the original. ---
+// discarded, and a table pillbox press afterwards simplifies from the original. ---
 
 // Shape one: the page redraws its rows one column wider, so every cell of the
 // new result set is a fresh element carrying raw text.
@@ -3347,7 +3347,7 @@ function issue328SettingsOf(table) {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
 
-    eq('fingerprint column change: the discard takes the old pillbox off the page',
+    eq('fingerprint column change: the discard takes the old table pillbox off the page',
       removedTablePillboxes.length, 1);
     eq('fingerprint column change: the pane registers fresh',
       DR_MODEL.hasTable(grid.scrollPaneEl), true);
@@ -3471,7 +3471,7 @@ function issue328SettingsOf(table) {
 
 // --- Criterion: on a database query grid whose new result makes the pinned
 // pane pass the data test, the fresh registration lands on the wrapper, the
-// wrapper is active, and the old pane holds no pillbox. ---
+// wrapper is active, and the old pane holds no table pillbox. ---
 
 (function shapeFingerprint_criterion4_aNewResultSetMovesTheRegistrationOutward() {
   runPressFixture(({ sent }) => {
@@ -3504,9 +3504,9 @@ function issue328SettingsOf(table) {
       DR_MODEL.getActiveTable() === grid.wrapperEl, true);
     eq('fingerprint move: the discarded pane holds no registry entry',
       DR_MODEL.hasTable(grid.scrollPaneEl), false);
-    eq('fingerprint move: the discarded pane\'s pillbox comes off the page',
+    eq('fingerprint move: the discarded pane\'s table pillbox comes off the page',
       removedTablePillboxes.length, 1);
-    eq('fingerprint move: the wrapper carries a pillbox',
+    eq('fingerprint move: the wrapper carries a table pillbox',
       tablePillboxes.has(grid.wrapperEl), true);
     eq('fingerprint move: the move publishes one table switch',
       sent.filter((m) => m.topic === 'state:tableSwitched').length, 1);
@@ -3537,7 +3537,7 @@ function issue328SettingsOf(table) {
     eq('fingerprint native: a data cell change reports no switch', held.switched, false);
     eq('fingerprint native: a data cell change returns the same table',
       held.table === table, true);
-    eq('fingerprint native: a data cell change takes no pillbox off the page',
+    eq('fingerprint native: a data cell change takes no table pillbox off the page',
       removedTablePillboxes.length, 0);
 
     // The header row's text changes.
@@ -3547,7 +3547,7 @@ function issue328SettingsOf(table) {
     withTablePillboxDocumentMock(function () { switched = revalidateTableShape(table); });
     eq('fingerprint native: a header text change reports a switch', switched.switched, true);
     eq('fingerprint native: the native table registers fresh', switched.table === table, true);
-    eq('fingerprint native: the discard takes the old pillbox off the page',
+    eq('fingerprint native: the discard takes the old table pillbox off the page',
       removedTablePillboxes.length, 1);
     eq('fingerprint native: the fresh fingerprint carries the new header text',
       DR_MODEL.getTableFingerprint(table), { columnCount: 2, headerTexts: ['Region', 'Q2'] });
@@ -4839,7 +4839,7 @@ function makePlainBox(child) {
         eq(`pending artifact turn, ${label}: the re-test disconnects the observer`, observers[0].disconnectCount, 1);
         eq(`pending artifact turn, ${label}: the maps hold nothing for the grid`,
           [pendingObservers.has(grid), pendingRetestCounts.has(grid), pendingRetestTimers.has(grid)], [false, false, false]);
-        eq(`pending artifact turn, ${label}: the grid registers nothing and gains no pillbox`,
+        eq(`pending artifact turn, ${label}: the grid registers nothing and gains no table pillbox`,
           [DR_MODEL.hasTable(grid), tablePillboxes.has(grid), DR_MODEL.getRegisteredTables().length - before], [false, false, 0]);
       });
     }

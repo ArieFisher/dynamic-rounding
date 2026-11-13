@@ -39,7 +39,7 @@ DR_BUS.subscribe('intent:activateTable', ({ table }) => {
 // The controller's one write of a table's settings, followed by the apply
 // that puts them on the screen. The patch merges onto the table's settings:
 // the keys the patch holds replace, and every other key keeps the table's
-// value. The sidebar's apply and the pillbox press both write through it;
+// value. The sidebar's apply and the table pillbox press both write through it;
 // source holds which ('sidebar' or 'page') for the settings notice. Each
 // caller runs the shape check first and passes the table it returns, so a
 // write to a table the page refilled lands on the fresh registration.
@@ -154,7 +154,7 @@ const pendingRoots = new Set();
 
 
 // findTargetTable() only returns what it found; it never writes the
-// dr-ext-grid marker or builds the pillbox. When it finds a grid root for the
+// dr-ext-grid marker or builds the table pillbox. When it finds a grid root for the
 // first time (found.isNew), this caller does both.
 function markAndAddTablePillboxIfNewGrid(found) {
   if (found.isNew) {
@@ -191,7 +191,7 @@ function sendRangeStatusMessage(result) {
   }
 }
 
-// The menu item publishes the same intent a pillbox press publishes, so both
+// The menu item publishes the same intent a table pillbox press publishes, so both
 // run the one controller path above. The right-click that opened the
 // menu already made the table active (the contextmenu handler's
 // setActiveTable), so the press lands as an unmoved one: it flips the
@@ -288,7 +288,7 @@ function leftAsWrittenValue(counts = {}) {
 
 // The one consumer of the nomination step's per-nest outcomes. Both live
 // scanners route their grid pass through here — the load-time scan in the
-// pillbox view (injectTablePillboxes) and the added-node pass below — so the
+// table pillbox view (injectTablePillboxes) and the added-node pass below — so the
 // pending record and its clearing sit behind the step's outcome and never in
 // a caller. The step returns outcomes; this is where an outcome becomes a
 // registration or a watch.
@@ -309,7 +309,7 @@ function consumeNominations(results) {
 //                depth holds exactly one; the product decision in issue #373
 //                registers nothing for such a nest, so no watch holds it.
 //   'registered' the nest already holds a registered element, so a second
-//                registration would put a second pillbox on one grid.
+//                registration would put a second table pillbox on one grid.
 //   'artifact'   the chain root is an accessibility artifact; the nest
 //                registers nothing and no watch holds it.
 // A registration through another path (a right-click) leaves the pending
@@ -512,8 +512,8 @@ function revalidateTableShape(table, opts = {}) {
 }
 
 // Discard one table's registration and every per-table resource the
-// extension holds beside it: the pillbox, the resize observer that keeps the
-// pillbox positioned, the table's re-apply observer and its pending timer,
+// extension holds beside it: the table pillbox, the resize observer that keeps the
+// table pillbox positioned, the table's re-apply observer and its pending timer,
 // the view's tracked-table list, and the registry entry with the cell
 // originals and the form inside it. Two callers reach this: the removal
 // observer, for a table the page took out; and the shape-fingerprint

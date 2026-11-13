@@ -1431,7 +1431,7 @@ function makePositionedAncestor(styleOverrides) {
 // any table for which isAccessibilityArtifact(table) is true, then calls
 // createTablePillbox(table) only for the survivors.
 //
-// A pillbox was created iff tablePillboxes.has(table) becomes true afterwards.
+// A table pillbox was created iff tablePillboxes.has(table) becomes true afterwards.
 //
 // For each test we:
 //   1. Temporarily replace global.document.querySelectorAll so Pass 1 sees our
@@ -1590,7 +1590,7 @@ function cleanupPass1Tables(tables) {
 // Pass 2 (the nomination step) skips an ARIA grid ONLY when it contains at
 // least one REAL <table>, one that is not an accessibility artifact. A grid
 // that contains only accessibility artifacts (aria-hidden, offscreen, or
-// svg-chart-wrapped) must be picked up by Pass 2 and get a pillbox.
+// svg-chart-wrapped) must be picked up by Pass 2 and get a table pillbox.
 //
 // Helper: build a minimal ARIA grid element (div with role="grid" or role="table")
 // with a proper classList and the querySelectorAll('table') that returns a given
@@ -1723,7 +1723,7 @@ function withTablePillboxDocumentMock(fn) {
 
   global.document.body = {
     appendChild(child) { child.parentElement = global.document.body; },
-    // The registry teardown detaches a pillbox through its parent, so the
+    // The registry teardown detaches a table pillbox through its parent, so the
     // body stub answers the other half of the pair.
     removeChild(child) { child.parentElement = null; },
   };
@@ -1793,7 +1793,7 @@ function withPendingHarness(fn) {
 }
 
 // Run the debounce timers a pending observer scheduled, and only those: the
-// pillbox builder schedules its own positioning timer at another delay, and
+// table pillbox builder schedules its own positioning timer at another delay, and
 // running that one here would test nothing about the re-test. Returns how many
 // ran.
 function runPendingRetestTimers(timers) {
@@ -2088,7 +2088,7 @@ function withRightClickSandbox(run) {
   global.NodeFilter = { SHOW_TEXT: 4 };
   // The geometry probe reads layout through the bare getComputedStyle global.
   global.getComputedStyle = () => ({ display: 'flex', visibility: 'visible' });
-  // A collecting stub keeps the pillbox's deferred positioning out of the
+  // A collecting stub keeps the table pillbox's deferred positioning out of the
   // globals a later section runs under.
   global.setTimeout = function (fn, ms) { pendingTimers.push({ fn, ms }); return pendingTimers.length - 1; };
 
@@ -2145,7 +2145,7 @@ function dgColumnTexts(rowEls, columnIndex) {
   return rowEls.map((rowEl) => rowEl.children[columnIndex].childNodes[0].nodeValue);
 }
 
-// Drop a registration and the pillbox bookkeeping that goes with it, so a
+// Drop a registration and the table pillbox bookkeeping that goes with it, so a
 // later case counts its own registrations alone.
 function forgetRegisteredTable(table) {
   DR_MODEL.unregisterTable(table);
@@ -2482,10 +2482,10 @@ function sidebarEventTarget(tagName, el) {
   return target;
 }
 
-// Register one element the way the page does — through the pillbox view's
+// Register one element the way the page does — through the table pillbox view's
 // builder, the one writer of the shape fingerprint — and hand back the list a
-// later teardown records its pillbox removal in. The document mock's body stub
-// carries no removeChild, so the pillbox gets a parent stub of its own.
+// later teardown records its table pillbox removal in. The document mock's body stub
+// carries no removeChild, so the table pillbox gets a parent stub of its own.
 function registerFingerprintedTable(table) {
   withTablePillboxDocumentMock(function () { createTablePillbox(table); });
   return trackTablePillboxDetach(table);
@@ -2520,7 +2520,7 @@ function logRowsDuring(fn, log = DR_LOG) {
 }
 
 // ===========================================================================
-// One meaning for a pillbox press
+// One meaning for a table pillbox press
 // ===========================================================================
 //
 // The rule: a press makes the pressed table active and flips its form from
@@ -3057,7 +3057,7 @@ function withRewritePage(fn) {
     createElement: global.document.createElement,
   };
   // No element factory, so the toast view draws nothing for the cap's
-  // warning rows; the shape-change case supplies its own for the pillbox.
+  // warning rows; the shape-change case supplies its own for the table pillbox.
   delete global.document.createElement;
   const clock = { now: 5000000 };
   const timers = [];

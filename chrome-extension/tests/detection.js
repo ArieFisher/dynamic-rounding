@@ -1145,7 +1145,7 @@ const supTestOpts = {
 
 // FT6: findTargetTable — returns a new grid via { handle, isNew: true } and
 // does not mark it itself; the caller — content.js's markAndAddTablePillboxIfNewGrid —
-// writes dr-ext-grid and builds the pillbox. findTargetTable must resolve the
+// writes dr-ext-grid and builds the table pillbox. findTargetTable must resolve the
 // new grid AND must leave it unmarked.
 (function findTargetTable_reportsNewGridWithoutMarking() {
   withFindTargetEnv([], function() {
@@ -2017,7 +2017,7 @@ const supTestOpts = {
     isAccessibilityArtifact({}), false);
 })();
 
-// --- pass1-filter AC1: accessibility artifacts (aria-hidden ancestor) get NO pillbox ---
+// --- pass1-filter AC1: accessibility artifacts (aria-hidden ancestor) get NO table pillbox ---
 // Build N=3 accessibility artifacts (aria-hidden parent), all valid data tables.
 // After Pass 1 none of them should be in tablePillboxes.
 
@@ -2049,13 +2049,13 @@ const supTestOpts = {
   runPass1WithTables(artifacts);
 
   const togglesCreated = artifacts.filter(t => tablePillboxes.has(t)).length;
-  eq('pass1-filter: 3 aria-hidden accessibility artifacts → ZERO toggles created',
+  eq('pass1-filter: 3 aria-hidden accessibility artifacts → ZERO table pillboxes created',
     togglesCreated, 0);
 
   cleanupPass1Tables(artifacts);
 })();
 
-// --- pass1-filter AC1: accessibility artifacts (off-screen left) get NO pillbox ---
+// --- pass1-filter AC1: accessibility artifacts (off-screen left) get NO table pillbox ---
 // Build N=2 accessibility artifacts with positioned ancestor left=-10000px.
 
 (function pass1Filter_offscreenLeftArtifacts_zeroTablePillboxes() {
@@ -2087,13 +2087,13 @@ const supTestOpts = {
   runPass1WithTables(artifacts);
 
   const togglesCreated = artifacts.filter(t => tablePillboxes.has(t)).length;
-  eq('pass1-filter: 2 off-screen accessibility artifacts → ZERO toggles created',
+  eq('pass1-filter: 2 off-screen accessibility artifacts → ZERO table pillboxes created',
     togglesCreated, 0);
 
   cleanupPass1Tables(artifacts);
 })();
 
-// --- pass1-filter AC2: a normal on-screen table still gets exactly ONE toggle ---
+// --- pass1-filter AC2: a normal on-screen table still gets exactly ONE table pillbox ---
 
 (function pass1Filter_realTable_getsOneTablePillbox() {
   const realTable = makePass1DataTable();
@@ -2116,14 +2116,14 @@ const supTestOpts = {
 
   runPass1WithTables([realTable]);
 
-  eq('pass1-filter: normal on-screen table → exactly ONE toggle created',
+  eq('pass1-filter: normal on-screen table → exactly ONE table pillbox created',
     tablePillboxes.has(realTable), true);
 
   cleanupPass1Tables([realTable]);
 })();
 
 // --- pass1-filter adversarial: mix of artifacts + real tables in one Pass 1 run ---
-// Only the real tables should get toggles; count equals exactly the number of real tables.
+// Only the real tables should get table pillboxes; count equals exactly the number of real tables.
 
 (function pass1Filter_mixedFixture_onlyRealTablesGetTablePillboxes() {
   // Two accessibility artifacts (aria-hidden ancestor)
@@ -2190,11 +2190,11 @@ const supTestOpts = {
   const artifactTablePillboxes = artifacts.filter(t => tablePillboxes.has(t)).length;
   const realTablePillboxes    = reals.filter(t => tablePillboxes.has(t)).length;
 
-  eq('pass1-filter (mix): accessibility artifacts get ZERO toggles',
+  eq('pass1-filter (mix): accessibility artifacts get ZERO table pillboxes',
     artifactTablePillboxes, 0);
-  eq('pass1-filter (mix): real tables each get a toggle — count equals 2',
+  eq('pass1-filter (mix): real tables each get a table pillbox — count equals 2',
     realTablePillboxes, 2);
-  eq('pass1-filter (mix): total toggles created equals number of real tables',
+  eq('pass1-filter (mix): total table pillboxes created equals number of real tables',
     tablePillboxes.has(real1) && tablePillboxes.has(real2) && !tablePillboxes.has(artifact1) &&
     !tablePillboxes.has(artifact2) && !tablePillboxes.has(artifact3), true);
 
@@ -2202,7 +2202,7 @@ const supTestOpts = {
 })();
 
 // --- pass1-filter: Pass 1 skips artifacts but does NOT skip a non-data real table ---
-// (edge: if a real table fails isDataTable, no toggle either — confirm the skip
+// (edge: if a real table fails isDataTable, no table pillbox either — confirm the skip
 // here is from isDataTable, not from isAccessibilityArtifact)
 (function pass1Filter_nonDataRealTable_noTablePillbox() {
   // 1-row table: fails isDataTable (< 2 rows)
@@ -2239,13 +2239,13 @@ const supTestOpts = {
 
   runPass1WithTables([nonDataTable]);
 
-  eq('pass1-filter: non-data real table gets no toggle (isDataTable gate)',
+  eq('pass1-filter: non-data real table gets no table pillbox (isDataTable gate)',
     tablePillboxes.has(nonDataTable), false);
 
   cleanupPass1Tables([nonDataTable]);
 })();
 
-// --- pass1-filter: duplicate Pass 1 call does NOT create a second toggle for a real table ---
+// --- pass1-filter: duplicate Pass 1 call does NOT create a second table pillbox for a real table ---
 // (regression guard: tablePillboxes.has check prevents double-insertion)
 (function pass1Filter_duplicateRun_noDoubleTablePillbox() {
   const realTable = makePass1DataTable();
@@ -2270,9 +2270,9 @@ const supTestOpts = {
   runPass1WithTables([realTable]);
   const buttonAfterSecond = tablePillboxes.get(realTable);
 
-  eq('pass1-filter: first Pass 1 run creates toggle for real table',
+  eq('pass1-filter: first Pass 1 run creates a table pillbox for the real table',
     afterFirst, true);
-  eq('pass1-filter: second Pass 1 run does not replace the existing toggle (same object)',
+  eq('pass1-filter: second Pass 1 run does not replace the existing table pillbox (same object)',
     buttonAfterFirst === buttonAfterSecond, true);
 
   cleanupPass1Tables([realTable]);
@@ -2457,7 +2457,7 @@ const supTestOpts = {
 // Detection: the row universe starts at the header row, and a wide header
 // of text labels must not exhaust the data-test budget before the scan
 // reaches a data row (a six-column sales grid whose data rows lead with four
-// text cells keeps its pillbox).
+// text cells keeps its table pillbox).
 (function gridRowUniverse_isDataTable_wideHeader() {
   const g = makeRowgroupRoleGrid(
     ['Region', 'Country', 'Segment', 'Channel', 'Units', 'Revenue'],
@@ -3084,10 +3084,10 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nesting AC6: the load-time scan on the fixture adds one registry entry', added.length, 1);
   eq('nesting AC6: the registered element is the scrolling pane',
     added.length === 1 && added[0] === grid.scrollPaneEl, true);
-  eq('nesting AC6: the scrolling pane carries one pillbox',
+  eq('nesting AC6: the scrolling pane carries one table pillbox',
     tablePillboxes.has(grid.scrollPaneEl), true);
-  eq('nesting AC6: the wrapper carries no pillbox', tablePillboxes.has(grid.wrapperEl), false);
-  eq('nesting AC6: the pinned pane carries no pillbox', tablePillboxes.has(grid.pinnedPaneEl), false);
+  eq('nesting AC6: the wrapper carries no table pillbox', tablePillboxes.has(grid.wrapperEl), false);
+  eq('nesting AC6: the pinned pane carries no table pillbox', tablePillboxes.has(grid.pinnedPaneEl), false);
 
   forgetRegisteredTable(grid.scrollPaneEl);
 })();
@@ -3104,11 +3104,11 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('nesting AC6: the added-node pass on the fixture adds one registry entry', added.length, 1);
   eq('nesting AC6: the added-node pass registers the scrolling pane',
     added.length === 1 && added[0] === grid.scrollPaneEl, true);
-  eq('nesting AC6: the added-node pass puts one pillbox on the scrolling pane',
+  eq('nesting AC6: the added-node pass puts one table pillbox on the scrolling pane',
     tablePillboxes.has(grid.scrollPaneEl), true);
-  eq('nesting AC6: the added-node pass puts no pillbox on the wrapper',
+  eq('nesting AC6: the added-node pass puts no table pillbox on the wrapper',
     tablePillboxes.has(grid.wrapperEl), false);
-  eq('nesting AC6: the added-node pass puts no pillbox on the pinned pane',
+  eq('nesting AC6: the added-node pass puts no table pillbox on the pinned pane',
     tablePillboxes.has(grid.pinnedPaneEl), false);
 
   // A node added inside a nest that already holds a registered element adds
@@ -3820,7 +3820,7 @@ function cnAdapterCellEls(tableEl) {
     eq('cell nest: the load-time scan adds two registry entries', added.length, 2);
     eq('cell nest: the load-time scan registers the outer grid and the inner grid',
       [added.includes(page.outer), added.includes(page.inner)], [true, true]);
-    eq('cell nest: each grid carries a pillbox',
+    eq('cell nest: each grid carries a table pillbox',
       [tablePillboxes.has(page.outer), tablePillboxes.has(page.inner)], [true, true]);
 
     const afterFirst = DR_MODEL.getRegisteredTables().length;
@@ -4431,9 +4431,9 @@ function withElementDisplays(fn) {
       ctx.model.getActiveTable() === plan.gridEl, true);
     eq('column-first right-click: the registry holds the grid alone',
       ctx.model.getRegisteredTables().map((el) => el === plan.gridEl), [true]);
-    eq('column-first right-click: the grid carries a pillbox',
+    eq('column-first right-click: the grid carries a table pillbox',
       ctx.tablePillboxes.has(plan.gridEl), true);
-    eq('column-first right-click: no column carries a pillbox',
+    eq('column-first right-click: no column carries a table pillbox',
       plan.columnEls.some((column) => ctx.tablePillboxes.has(column)), false);
   });
 })();
@@ -4839,7 +4839,7 @@ function makeSparselyBoxedGrid(boxed) {
       const page = afPage([form.place(grid)]);
       const probe = makeArtifactStyleProbe();
       afScan(page);
-      eq(`artifact filter, ${role} role, ${form.name}: the load-time scan registers nothing and draws no pillbox`,
+      eq(`artifact filter, ${role} role, ${form.name}: the load-time scan registers nothing and draws no table pillbox`,
         afRegistered(page).length, 0);
       afForget(page);
       eq(`artifact filter, ${role} role, ${form.name}: findTables lists nothing`,
@@ -5026,7 +5026,7 @@ function makeSparselyBoxedGrid(boxed) {
   afAddNode(outer);
   eq('native added node: a table holding a nested data table registers both, outer first',
     afSame(afCandidates(addedPage).filter((el) => DR_MODEL.hasTable(el)), [outer, inner]), true);
-  eq('native added node: both gain a pillbox', [outer, inner].map((el) => tablePillboxes.has(el)), [true, true]);
+  eq('native added node: both gain a table pillbox', [outer, inner].map((el) => tablePillboxes.has(el)), [true, true]);
   afForget(addedPage);
 
   const first = afTable('native');

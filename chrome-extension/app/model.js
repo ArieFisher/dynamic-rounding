@@ -253,12 +253,12 @@ const DR_MODEL = (function () {
 
   // Store a table's whole settings, with the shipped defaults filled in, then
   // publish the settings notice. Every writer writes the active table: the
-  // sidebar's apply, and a pillbox press, which makes its table active first.
+  // sidebar's apply, and a table pillbox press, which makes its table active first.
   // The notice crosses to the sidebar, so it carries plain values alone: the
   // source ('sidebar' for the sidebar's apply, 'page' for every other writer)
   // and a copy of the stored settings. The sidebar redraws from a notice
   // whose source is not its own, and the table pillbox view redraws the active
-  // table's pillbox from every notice.
+  // table's table pillbox from every notice.
   function setTableSettings(table, settings, source) {
     const stored = Object.assign({}, DR_DEFAULTS, settings || {});
     _ensureEntry(table).settings = stored;
