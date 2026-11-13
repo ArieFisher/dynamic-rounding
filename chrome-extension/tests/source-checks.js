@@ -162,12 +162,12 @@
 (function atToggle_staticAnalysis() {
   eq('auto-table-toggle: isTableOn is defined',
     typeof isTableOn, 'function');
-  eq('auto-table-toggle: syncPillboxForTable is defined',
-    typeof syncPillboxForTable, 'function');
-  eq('auto-table-toggle: positionPillbox is defined',
-    typeof positionPillbox, 'function');
-  eq('auto-table-toggle: createPillboxForTable is defined',
-    typeof createPillboxForTable, 'function');
+  eq('auto-table-toggle: syncTablePillbox is defined',
+    typeof syncTablePillbox, 'function');
+  eq('auto-table-toggle: positionTablePillbox is defined',
+    typeof positionTablePillbox, 'function');
+  eq('auto-table-toggle: createTablePillbox is defined',
+    typeof createTablePillbox, 'function');
   eq('auto-table-toggle: resetTable is defined',
     typeof resetTable, 'function');
   eq('auto-table-toggle: tablePillboxes WeakMap is defined',
@@ -188,12 +188,12 @@
     /const\s+trackedTables\s*=\s*new\s+Set/.test(src), true);
   eq('auto-table-toggle: defines isTableOn',
     /function\s+isTableOn\b/.test(src), true);
-  eq('auto-table-toggle: defines syncPillboxForTable',
-    /function\s+syncPillboxForTable\b/.test(src), true);
-  eq('auto-table-toggle: defines positionPillbox',
-    /function\s+positionPillbox\b/.test(src), true);
-  eq('auto-table-toggle: defines createPillboxForTable',
-    /function\s+createPillboxForTable\b/.test(src), true);
+  eq('auto-table-toggle: defines syncTablePillbox',
+    /function\s+syncTablePillbox\b/.test(src), true);
+  eq('auto-table-toggle: defines positionTablePillbox',
+    /function\s+positionTablePillbox\b/.test(src), true);
+  eq('auto-table-toggle: defines createTablePillbox',
+    /function\s+createTablePillbox\b/.test(src), true);
   eq('auto-table-toggle: defines injectTablePillboxes',
     /function\s+injectTablePillboxes\b/.test(src), true);
   // The table pillbox must use the new dr-ext-table-pillbox CSS class
@@ -202,7 +202,7 @@
 })();
 
 // --- accessibility AC2: CSS contains :focus-visible with outline and !important ---
-// Spec: the CSS string injected by ensurePillboxStyleInjected contains a
+// Spec: the CSS string injected by ensureTablePillboxStyleInjected contains a
 //       :focus-visible rule with `outline` and `!important`.
 
 (function accessibilityAC2_focusVisibleCSS() {
@@ -236,36 +236,36 @@
   const src = allContentSrc; // pillbox geometry lives in ui-pillbox.js
 
   // The CSS function body should contain interpolations of the constants, not bare literals.
-  // We extract the ensurePillboxStyleInjected function body as a rough string.
-  const fnStart = src.indexOf('function ensurePillboxStyleInjected');
+  // We extract the ensureTablePillboxStyleInjected function body as a rough string.
+  const fnStart = src.indexOf('function ensureTablePillboxStyleInjected');
   const fnEnd = src.indexOf('\nfunction ', fnStart + 1);
   const fnBody = fnStart !== -1 ? src.slice(fnStart, fnEnd !== -1 ? fnEnd : fnStart + 3000) : '';
 
-  eq('expanding-toggle: TABLE_PILLBOX_HIT_PAD_PX referenced in ensurePillboxStyleInjected',
+  eq('expanding-toggle: TABLE_PILLBOX_HIT_PAD_PX referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_HIT_PAD_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_DOT_PX referenced in ensurePillboxStyleInjected',
+  eq('expanding-toggle: TABLE_PILLBOX_DOT_PX referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_DOT_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_PILL_WIDTH_PX referenced in ensurePillboxStyleInjected',
+  eq('expanding-toggle: TABLE_PILLBOX_PILL_WIDTH_PX referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_PILL_WIDTH_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_PILL_HEIGHT_PX referenced in ensurePillboxStyleInjected',
+  eq('expanding-toggle: TABLE_PILLBOX_PILL_HEIGHT_PX referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_PILL_HEIGHT_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_KNOB_PX referenced in ensurePillboxStyleInjected',
+  eq('expanding-toggle: TABLE_PILLBOX_KNOB_PX referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_KNOB_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_COLOR_ON referenced in ensurePillboxStyleInjected',
+  eq('expanding-toggle: TABLE_PILLBOX_COLOR_ON referenced in ensureTablePillboxStyleInjected',
     fnBody.includes('TABLE_PILLBOX_COLOR_ON'), true);
 
-  // positionPillbox body should reference the geometry constants
-  const ptStart = src.indexOf('function positionPillbox');
+  // positionTablePillbox body should reference the geometry constants
+  const ptStart = src.indexOf('function positionTablePillbox');
   const ptEnd = src.indexOf('\nfunction ', ptStart + 1);
   const ptBody = ptStart !== -1 ? src.slice(ptStart, ptEnd !== -1 ? ptEnd : ptStart + 1000) : '';
 
-  eq('expanding-toggle: TABLE_PILLBOX_HIT_PAD_PX referenced in positionPillbox',
+  eq('expanding-toggle: TABLE_PILLBOX_HIT_PAD_PX referenced in positionTablePillbox',
     ptBody.includes('TABLE_PILLBOX_HIT_PAD_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_DOT_PX referenced in positionPillbox',
+  eq('expanding-toggle: TABLE_PILLBOX_DOT_PX referenced in positionTablePillbox',
     ptBody.includes('TABLE_PILLBOX_DOT_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_DOT_OVERLAP_PX referenced in positionPillbox',
+  eq('expanding-toggle: TABLE_PILLBOX_DOT_OVERLAP_PX referenced in positionTablePillbox',
     ptBody.includes('TABLE_PILLBOX_DOT_OVERLAP_PX'), true);
-  eq('expanding-toggle: TABLE_PILLBOX_DOT_OVERHANG_PX referenced in positionPillbox',
+  eq('expanding-toggle: TABLE_PILLBOX_DOT_OVERHANG_PX referenced in positionTablePillbox',
     ptBody.includes('TABLE_PILLBOX_DOT_OVERHANG_PX'), true);
 })();
 
@@ -651,7 +651,7 @@
 // Static purity scan.
 // Detection functions (findTargetTable, findTables, looksLikeGrid, isDataTable,
 // isAccessibilityArtifact) must never write to the page — no classList.add,
-// createElement, appendChild, or createPillboxForTable inside their bodies.
+// createElement, appendChild, or createTablePillbox inside their bodies.
 // Write-layer helpers (writePatches,
 // restoreTextPieces, GridAdapter's applyPatches) legitimately create/mutate nodes and are correctly
 // excluded from this scan — they are reachable only from explicit write calls
@@ -663,7 +663,7 @@
     eq('purity scan: source file lib/dr-table/detect.js present in manifest', false, true);
     return;
   }
-  const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createPillboxForTable'];
+  const FORBIDDEN = ['classList.add', 'createElement', 'appendChild', 'createTablePillbox'];
   const DETECTION_FNS = ['findTargetTable', 'findTables', 'looksLikeGrid', 'isDataTable', 'isAccessibilityArtifact'];
 
   // Extract a top-level `function name(` body by brace-matching from the
@@ -1653,12 +1653,12 @@
 // nowhere and the settings carry no delay the view alone reads.
 (function detectionSettings_pillboxViewHoldsItsOwnDelay() {
   const src = uiPillboxCode || '';
-  eq('detection settings: ui-pillbox.js defines PILLBOX_AUTO_COLLAPSE_MS as its own constant',
-    /^const PILLBOX_AUTO_COLLAPSE_MS = 3000;/m.test(src), true);
+  eq('detection settings: ui-pillbox.js defines TABLE_PILLBOX_AUTO_COLLAPSE_MS as its own constant',
+    /^const TABLE_PILLBOX_AUTO_COLLAPSE_MS = 3000;/m.test(src), true);
   eq('detection settings: ui-pillbox.js reads DR_DETECTION_SETTINGS nowhere',
     /DR_DETECTION_SETTINGS/.test(src), false);
   eq('detection settings: the auto-collapse timer takes the view\'s own constant',
-    /},\s*PILLBOX_AUTO_COLLAPSE_MS\);/.test(src), true);
+    /},\s*TABLE_PILLBOX_AUTO_COLLAPSE_MS\);/.test(src), true);
   eq('detection settings: the settings carry no pillboxAutoCollapseMs key',
     Object.prototype.hasOwnProperty.call(DR_DETECTION_SETTINGS, 'pillboxAutoCollapseMs'), false);
 })();

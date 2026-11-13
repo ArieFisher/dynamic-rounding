@@ -104,7 +104,7 @@ const DR_MODEL = (function () {
         maxMagnitude: null,
         // The shape fingerprint: { columnCount, headerTexts } as read by
         // lib/dr-table's readTableFingerprint at registration.
-        // createPillboxForTable (ui-pillbox.js) is the one writer. The
+        // createTablePillbox (ui-pillbox.js) is the one writer. The
         // controller compares the table's current shape against it before
         // every action, and discards the whole entry on a mismatch — the
         // page replaced the table's content, so the originals and the form
@@ -179,8 +179,8 @@ const DR_MODEL = (function () {
   // not application-level state a view redraws itself from.
 
   // registerTable: the "registered" moment as far as the table pillbox view is concerned —
-  // called once, from ui-pillbox.js's createPillboxForTable, idempotent so a
-  // rediscovery (e.g. injectPillboxesForAddedNode revisiting a node) is a
+  // called once, from ui-pillbox.js's createTablePillbox, idempotent so a
+  // rediscovery (e.g. injectTablePillboxesForAddedNode revisiting a node) is a
   // no-op. It is NOT the only path to a table having a registry entry:
   // setTableOriginal, setTableAppliedFlag, setTableSettings, and
   // setTableMaxMagnitude below all call the same _ensureEntry and will

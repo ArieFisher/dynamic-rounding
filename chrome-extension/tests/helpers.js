@@ -276,7 +276,7 @@ function makeToggleTable(rowsOrCells, extra) {
 
 /**
  * Inject a fake entry into the module-level tablePillboxes WeakMap so that
- * syncPillboxForTable can find the button for this table.
+ * syncTablePillbox can find the button for this table.
  *
  * Returns a minimal button stub that supports setAttribute/getAttribute/classList
  * and addEventListener, matching the new dr-ext-table-pillbox button shape.
@@ -284,7 +284,7 @@ function makeToggleTable(rowsOrCells, extra) {
  * @param {object} table — the table stub
  * @returns {object} the mock button element
  */
-function injectPillboxEntry(table) {
+function injectTablePillboxEntry(table) {
   const button = makeMockButton();
   tablePillboxes.set(table, button);
   return button;
@@ -292,7 +292,7 @@ function injectPillboxEntry(table) {
 
 /**
  * Build a minimal button stub that supports the interface used by
- * syncPillboxForTable, createPillboxForTable, and test event dispatch.
+ * syncTablePillbox, createTablePillbox, and test event dispatch.
  */
 function makeMockButton() {
   const attrs = {};
@@ -458,7 +458,7 @@ function makeSortKeyCell(segments, rendered) {
   return cell;
 }
 
-function createPillboxWithSpies(table) {
+function createTablePillboxWithSpies(table) {
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
@@ -493,21 +493,21 @@ function createPillboxWithSpies(table) {
     appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
   };
   global.document.documentElement = { appendChild() {} };
-  pillboxStyleInjected = false;
+  tablePillboxStyleInjected = false;
 
   const origScrollX = global.window.scrollX;
   const origScrollY = global.window.scrollY;
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  createPillboxForTable(table);
+  createTablePillbox(table);
 
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
   global.document.documentElement = origDocEl;
   global.window.scrollX = origScrollX;
   global.window.scrollY = origScrollY;
-  pillboxStyleInjected = true;
+  tablePillboxStyleInjected = true;
 
   const buttonEl = appendedToBody.find(e => e._tag === 'button');
   return buttonEl;
@@ -752,7 +752,7 @@ function makeWalkEl(opts) {
     nodeType: 1,
     parentElement: null,
     parentNode: null,
-    // getBoundingClientRect — needed by positionPillbox when createPillboxForTable
+    // getBoundingClientRect — needed by positionTablePillbox when createTablePillbox
     // fires its deferred setTimeout; return a zero-area rect so the table pillbox hides.
     getBoundingClientRect: function() { return { width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }; },
     // closest() stub: only handles 'table' and '.dr-ext-grid'
@@ -777,7 +777,7 @@ function makeWalkEl(opts) {
 /**
  * Run findTargetTable with a controlled getComputedStyle that returns the
  * stored _display for each element in the `elements` array, and a patched
- * document.createElement / document.body so createPillboxForTable doesn't throw.
+ * document.createElement / document.body so createTablePillbox doesn't throw.
  */
 function withFindTargetEnv(elements, fn) {
   const origGetCS = global.window.getComputedStyle;
@@ -786,14 +786,14 @@ function withFindTargetEnv(elements, fn) {
 
   // Patch the bare getComputedStyle global (used by looksLikeGrid) to use each
   // element's _display property. Also patch window.getComputedStyle (used by
-  // positionPillbox) as a courtesy, though it is not exercised in walk-up tests.
+  // positionTablePillbox) as a courtesy, though it is not exercised in walk-up tests.
   global.getComputedStyle = function(el) {
     if (el && el._display !== undefined) return { display: el._display };
     return { display: 'block', visibility: 'visible' };
   };
   global.window.getComputedStyle = global.getComputedStyle;
 
-  // Patch document to support createElement (needed by createPillboxForTable)
+  // Patch document to support createElement (needed by createTablePillbox)
   const mockButtonEl = {
     type: '',
     className: '',
@@ -1286,7 +1286,7 @@ function makeE2EGridWrapper(rowData) {
     return [];
   };
 
-  // Override wrapper querySelector so showsSimplified / syncPillboxForTable do not throw.
+  // Override wrapper querySelector so showsSimplified / syncTablePillbox do not throw.
   grid.wrapperEl.querySelector = function(sel) {
     if (sel === '.dr-ext-rounded') {
       return allCells.find(function(c) { return c.classList.contains('dr-ext-rounded'); }) || null;
@@ -1429,7 +1429,7 @@ function makePositionedAncestor(styleOverrides) {
 //
 // injectTablePillboxes() Pass 1 calls document.querySelectorAll('table') and skips
 // any table for which isAccessibilityArtifact(table) is true, then calls
-// createPillboxForTable(table) only for the survivors.
+// createTablePillbox(table) only for the survivors.
 //
 // A pillbox was created iff tablePillboxes.has(table) becomes true afterwards.
 //
@@ -1437,7 +1437,7 @@ function makePositionedAncestor(styleOverrides) {
 //   1. Temporarily replace global.document.querySelectorAll so Pass 1 sees our
 //      fixture tables and Pass 2 (GRID_ARIA_SELECTOR) sees an empty list.
 //   2. Temporarily stub document.createElement + document.body.appendChild so
-//      createPillboxForTable can run without errors.
+//      createTablePillbox can run without errors.
 //   3. Reset tablePillboxes / trackedTables for each run by deleting entries we
 //      added (WeakMap does not expose a clear(), so we track which table objects
 //      we inserted and delete them by re-using the objects).
@@ -1497,7 +1497,7 @@ function makePass1DataTable(opts) {
 
 // Run injectTablePillboxes() with a controlled list of tables returned by
 // document.querySelectorAll('table'). Stubs away document.createElement and
-// document.body.appendChild so createPillboxForTable does not throw in Node.
+// document.body.appendChild so createTablePillbox does not throw in Node.
 // Restores all globals afterwards. Returns { tables } (same array for inspection).
 function runPass1WithTables(tables) {
   const origQSA      = global.document.querySelectorAll;
@@ -1511,7 +1511,7 @@ function runPass1WithTables(tables) {
     return [];
   };
 
-  // Stub createElement so createPillboxForTable can build its button tree
+  // Stub createElement so createTablePillbox can build its button tree
   global.document.createElement = function(tag) {
     const attrs = {};
     const listeners = {};
@@ -1554,9 +1554,9 @@ function runPass1WithTables(tables) {
   const origComputedStyle = global.getComputedStyle;
   global.getComputedStyle = inlineStyleProbe.getComputedStyle;
 
-  // Reset pillboxStyleInjected so ensurePillboxStyleInjected does not try document.head
-  const origPillboxStyleInjected = pillboxStyleInjected;
-  pillboxStyleInjected = true; // skip style injection (would need document.head)
+  // Reset tablePillboxStyleInjected so ensureTablePillboxStyleInjected does not try document.head
+  const origTablePillboxStyleInjected = tablePillboxStyleInjected;
+  tablePillboxStyleInjected = true; // skip style injection (would need document.head)
 
   try {
     injectTablePillboxes();
@@ -1565,7 +1565,7 @@ function runPass1WithTables(tables) {
     global.document.createElement     = origCreateEl;
     global.document.body              = origBody;
     global.document.documentElement   = origDocEl;
-    pillboxStyleInjected               = origPillboxStyleInjected;
+    tablePillboxStyleInjected               = origTablePillboxStyleInjected;
     global.getComputedStyle            = origComputedStyle;
   }
 
@@ -1596,7 +1596,7 @@ function cleanupPass1Tables(tables) {
 // with a proper classList and the querySelectorAll('table') that returns a given
 // list of embedded table stubs.  Also provides a real row/cell structure so that
 // isDataTable() → GridAdapter.getRows() returns numeric data rows, making
-// createPillboxForTable() proceed past the isDataTable guard.
+// createTablePillbox() proceed past the isDataTable guard.
 //
 function makeAriaGrid(embeddedTables) {
   const classes = new Set();
@@ -1661,8 +1661,8 @@ function makeRealEmbeddedTable() {
 }
 
 // Shared mock factory for the document.createElement / document.body rig
-// that createPillboxForTable requires.  Returns { restore } to undo.
-function withPillboxDocumentMock(fn) {
+// that createTablePillbox requires.  Returns { restore } to undo.
+function withTablePillboxDocumentMock(fn) {
   const origCreateEl = global.document.createElement;
   const origBody     = global.document.body;
   const origDocEl    = global.document.documentElement;
@@ -1737,7 +1737,7 @@ function withPillboxDocumentMock(fn) {
     global.document.querySelectorAll = origQSA;
     global.window.scrollX            = origScrollX;
     global.window.scrollY            = origScrollY;
-    pillboxStyleInjected = true; // prevent style re-injection leaking across tests
+    tablePillboxStyleInjected = true; // prevent style re-injection leaking across tests
   }
 }
 
@@ -1939,11 +1939,11 @@ function buildBudgetTableRowsSpec(rows, cols, numberPosition) {
 }
 
 // ---------------------------------------------------------------------------
-// Shared helper: create a real button via createPillboxForTable with full DOM
+// Shared helper: create a real button via createTablePillbox with full DOM
 // stubs so its click-handler closure captures the real module-level variables.
 // Returns { table, buttonEl }.
 // ---------------------------------------------------------------------------
-function makeRealPillbox(tableSpec, docMock) {
+function makeRealTablePillbox(tableSpec, docMock) {
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
@@ -1994,14 +1994,14 @@ function makeRealPillbox(tableSpec, docMock) {
     appendChild(child) { appendedToBody.push(child); child.parentElement = global.document.body; }
   };
   global.document.documentElement = { appendChild() {} };
-  pillboxStyleInjected = false;
+  tablePillboxStyleInjected = false;
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
   const table = makeToggleTable(tableSpec);
   table._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  createPillboxForTable(table);
+  createTablePillbox(table);
 
   // Restore globals
   global.document.createElement   = origCreateEl;
@@ -2009,7 +2009,7 @@ function makeRealPillbox(tableSpec, docMock) {
   global.document.documentElement  = origDocEl;
   global.window.scrollX            = origScrollX;
   global.window.scrollY            = origScrollY;
-  pillboxStyleInjected = true;
+  tablePillboxStyleInjected = true;
 
   const buttonEl = appendedToBody.find(e => e._tag === 'button');
   return { table, buttonEl };
@@ -2487,19 +2487,19 @@ function sidebarEventTarget(tagName, el) {
 // later teardown records its pillbox removal in. The document mock's body stub
 // carries no removeChild, so the pillbox gets a parent stub of its own.
 function registerFingerprintedTable(table) {
-  withPillboxDocumentMock(function () { createPillboxForTable(table); });
-  return trackPillboxDetach(table);
+  withTablePillboxDocumentMock(function () { createTablePillbox(table); });
+  return trackTablePillboxDetach(table);
 }
 
-function trackPillboxDetach(table) {
-  const removedPillboxes = [];
+function trackTablePillboxDetach(table) {
+  const removedTablePillboxes = [];
   const button = tablePillboxes.get(table);
   if (button) {
     button.parentElement = {
-      removeChild(child) { removedPillboxes.push(child); child.parentElement = null; },
+      removeChild(child) { removedTablePillboxes.push(child); child.parentElement = null; },
     };
   }
-  return removedPillboxes;
+  return removedTablePillboxes;
 }
 
 /**
@@ -2575,7 +2575,7 @@ function makePressTable(text) {
     // measures each cell in the range; the toggle-table mock has no layout.
     c.getBoundingClientRect = () => ({ top: 0, left: 0, width: 0, height: 0, bottom: 0, right: 0 });
   });
-  injectPillboxEntry(table);
+  injectTablePillboxEntry(table);
   return table;
 }
 
@@ -3490,7 +3490,7 @@ function afForget(page) {
 
 // The load-time scan over the page.
 function afScan(page) {
-  withPillboxDocumentMock(function () {
+  withTablePillboxDocumentMock(function () {
     const saved = global.getComputedStyle;
     global.document.querySelectorAll = (selector) => page.querySelectorAll(selector);
     global.getComputedStyle = inlineStyleProbe.getComputedStyle;
@@ -3500,10 +3500,10 @@ function afScan(page) {
 
 // The added-node pass over one node.
 function afAddNode(node) {
-  withPillboxDocumentMock(function () {
+  withTablePillboxDocumentMock(function () {
     const saved = global.getComputedStyle;
     global.getComputedStyle = inlineStyleProbe.getComputedStyle;
-    try { injectPillboxesForAddedNode(node); } finally { global.getComputedStyle = saved; }
+    try { injectTablePillboxesForAddedNode(node); } finally { global.getComputedStyle = saved; }
   });
 }
 

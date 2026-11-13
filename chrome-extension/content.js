@@ -156,10 +156,10 @@ const pendingRoots = new Set();
 // findTargetTable() only returns what it found; it never writes the
 // dr-ext-grid marker or builds the pillbox. When it finds a grid root for the
 // first time (found.isNew), this caller does both.
-function markAndAddPillboxIfNewGrid(found) {
+function markAndAddTablePillboxIfNewGrid(found) {
   if (found.isNew) {
     found.handle.classList.add('dr-ext-grid');
-    createPillboxForTable(found.handle);
+    createTablePillbox(found.handle);
   }
   return found.handle;
 }
@@ -172,7 +172,7 @@ document.addEventListener('contextmenu', (event) => {
   lastRightClickedElement = event.target;
   const found = findTargetTable(event.target, { isRegistered: DR_MODEL.hasTable });
   if (found) {
-    const table = markAndAddPillboxIfNewGrid(found);
+    const table = markAndAddTablePillboxIfNewGrid(found);
     DR_MODEL.setActiveTable(table);
     DR_LOG.debug(DR_LOG.formatRow('activate'));
     flashActiveTable(table);
@@ -203,7 +203,7 @@ DR_BUS.subscribe('intent:menuClicked', () => {
     DR_LOG.debug(DR_LOG.formatRow('no table found'));
     return;
   }
-  DR_BUS.publish('intent:toggleTable', { table: markAndAddPillboxIfNewGrid(found) });
+  DR_BUS.publish('intent:toggleTable', { table: markAndAddTablePillboxIfNewGrid(found) });
 });
 
 // Reconnect: the sidebar reads the active table's settings itself, and the
@@ -319,7 +319,7 @@ function consumeNomination({ chainRoot, selected, outcome }) {
   if (outcome === 'selected') {
     dropPendingTable(chainRoot);
     selected.classList.add('dr-ext-grid');
-    createPillboxForTable(selected);
+    createTablePillbox(selected);
     return;
   }
   if (outcome === 'empty') {
@@ -400,17 +400,17 @@ function dropPendingTable(chainRoot) {
 // arrive.
 // Extracted as a named function so the detection is unit-testable
 // independently of the live MutationObserver wiring below.
-function injectPillboxesForAddedNode(node) {
+function injectTablePillboxesForAddedNode(node) {
   if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
   const { tables, nominations } = scanTables(node, { isRegistered: DR_MODEL.hasTable });
   tables.forEach(table => {
-    if (!DR_MODEL.hasTable(table)) createPillboxForTable(table);
+    if (!DR_MODEL.hasTable(table)) createTablePillbox(table);
   });
   consumeNominations(nominations);
 }
 
 // The shape fingerprint's read options for one table: the registry's stored
-// pre-simplification text per cell. The recording site (createPillboxForTable)
+// pre-simplification text per cell. The recording site (createTablePillbox)
 // passes the same thing, so a header cell the extension itself simplified
 // still reads as the text the registry recorded, and the extension's own
 // writes never read as a page change.
@@ -447,7 +447,7 @@ function fingerprintReadOpts(table) {
 //
 // A table with no recorded fingerprint compares against nothing and returns
 // as a match. Only a first write through the registry's setters creates such
-// an entry, never createPillboxForTable, and discarding an entry over a
+// an entry, never createTablePillbox, and discarding an entry over a
 // reading that never happened would throw away originals for no finding.
 //
 // Nothing registering — the whole nest fails the data test — returns null,
@@ -495,8 +495,8 @@ function revalidateTableShape(table, opts = {}) {
   for (const { handle, isNew } of findTables(root, { isRegistered: DR_MODEL.hasTable })) {
     if (!isNew) continue;
     if (handle.tagName !== 'TABLE') handle.classList.add('dr-ext-grid');
-    createPillboxForTable(handle);
-    // createPillboxForTable registers only what passes the data test, so the
+    createTablePillbox(handle);
+    // createTablePillbox registers only what passes the data test, so the
     // registry records whether this element registered.
     if (!fresh && DR_MODEL.hasTable(handle)) fresh = handle;
   }
@@ -559,7 +559,7 @@ if (typeof MutationObserver !== 'undefined' && !IS_CAPTURE_PAGE) {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        injectPillboxesForAddedNode(node);
+        injectTablePillboxesForAddedNode(node);
       }
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;

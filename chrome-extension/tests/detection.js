@@ -1144,7 +1144,7 @@ const supTestOpts = {
 })();
 
 // FT6: findTargetTable — returns a new grid via { handle, isNew: true } and
-// does not mark it itself; the caller — content.js's markAndAddPillboxIfNewGrid —
+// does not mark it itself; the caller — content.js's markAndAddTablePillboxIfNewGrid —
 // writes dr-ext-grid and builds the pillbox. findTargetTable must resolve the
 // new grid AND must leave it unmarked.
 (function findTargetTable_reportsNewGridWithoutMarking() {
@@ -2021,7 +2021,7 @@ const supTestOpts = {
 // Build N=3 accessibility artifacts (aria-hidden parent), all valid data tables.
 // After Pass 1 none of them should be in tablePillboxes.
 
-(function pass1Filter_ariaHiddenArtifacts_zeroPillboxes() {
+(function pass1Filter_ariaHiddenArtifacts_zeroTablePillboxes() {
   function makeAriaHiddenArtifact() {
     const t = makePass1DataTable();
     // aria-hidden="true" on the immediate parent (Signal 1)
@@ -2058,7 +2058,7 @@ const supTestOpts = {
 // --- pass1-filter AC1: accessibility artifacts (off-screen left) get NO pillbox ---
 // Build N=2 accessibility artifacts with positioned ancestor left=-10000px.
 
-(function pass1Filter_offscreenLeftArtifacts_zeroPillboxes() {
+(function pass1Filter_offscreenLeftArtifacts_zeroTablePillboxes() {
   function makeOffscreenArtifact() {
     const t = makePass1DataTable();
     // Positioned ancestor with extreme left (Signal 2)
@@ -2095,7 +2095,7 @@ const supTestOpts = {
 
 // --- pass1-filter AC2: a normal on-screen table still gets exactly ONE toggle ---
 
-(function pass1Filter_realTable_getsOnePillbox() {
+(function pass1Filter_realTable_getsOneTablePillbox() {
   const realTable = makePass1DataTable();
   // No aria-hidden, no positioned ancestor → isAccessibilityArtifact returns false
   const wrapper = {
@@ -2125,7 +2125,7 @@ const supTestOpts = {
 // --- pass1-filter adversarial: mix of artifacts + real tables in one Pass 1 run ---
 // Only the real tables should get toggles; count equals exactly the number of real tables.
 
-(function pass1Filter_mixedFixture_onlyRealTablesGetPillboxes() {
+(function pass1Filter_mixedFixture_onlyRealTablesGetTablePillboxes() {
   // Two accessibility artifacts (aria-hidden ancestor)
   function makeAriaHiddenArtifact() {
     const t = makePass1DataTable();
@@ -2187,13 +2187,13 @@ const supTestOpts = {
   const artifacts = [artifact1, artifact2, artifact3];
   const reals    = [real1, real2];
 
-  const artifactPillboxes = artifacts.filter(t => tablePillboxes.has(t)).length;
-  const realPillboxes    = reals.filter(t => tablePillboxes.has(t)).length;
+  const artifactTablePillboxes = artifacts.filter(t => tablePillboxes.has(t)).length;
+  const realTablePillboxes    = reals.filter(t => tablePillboxes.has(t)).length;
 
   eq('pass1-filter (mix): accessibility artifacts get ZERO toggles',
-    artifactPillboxes, 0);
+    artifactTablePillboxes, 0);
   eq('pass1-filter (mix): real tables each get a toggle — count equals 2',
-    realPillboxes, 2);
+    realTablePillboxes, 2);
   eq('pass1-filter (mix): total toggles created equals number of real tables',
     tablePillboxes.has(real1) && tablePillboxes.has(real2) && !tablePillboxes.has(artifact1) &&
     !tablePillboxes.has(artifact2) && !tablePillboxes.has(artifact3), true);
@@ -2204,7 +2204,7 @@ const supTestOpts = {
 // --- pass1-filter: Pass 1 skips artifacts but does NOT skip a non-data real table ---
 // (edge: if a real table fails isDataTable, no toggle either — confirm the skip
 // here is from isDataTable, not from isAccessibilityArtifact)
-(function pass1Filter_nonDataRealTable_noPillbox() {
+(function pass1Filter_nonDataRealTable_noTablePillbox() {
   // 1-row table: fails isDataTable (< 2 rows)
   const nonDataTable = {
     tagName: 'TABLE',
@@ -2247,7 +2247,7 @@ const supTestOpts = {
 
 // --- pass1-filter: duplicate Pass 1 call does NOT create a second toggle for a real table ---
 // (regression guard: tablePillboxes.has check prevents double-insertion)
-(function pass1Filter_duplicateRun_noDoublePillbox() {
+(function pass1Filter_duplicateRun_noDoubleTablePillbox() {
   const realTable = makePass1DataTable();
   const wrapper = {
     tagName: 'DIV',
@@ -3063,11 +3063,11 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
     results.length === 2 && results[0].handle !== results[1].handle, true);
 })();
 
-(function gridNesting_AC6_loadTimeScanBuildsOnePillbox() {
+(function gridNesting_AC6_loadTimeScanBuildsOneTablePillbox() {
   const grid = makeDatabaseQueryGrid();
   const before = DR_MODEL.getRegisteredTables().length;
 
-  withPillboxDocumentMock(function () {
+  withTablePillboxDocumentMock(function () {
     // What a page holding the fixture hands the two passes: no native table,
     // and the three role-bearing elements in document order.
     global.document.querySelectorAll = function (sel) {
@@ -3092,12 +3092,12 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   forgetRegisteredTable(grid.scrollPaneEl);
 })();
 
-(function gridNesting_AC6_addedNodePassBuildsOnePillbox() {
+(function gridNesting_AC6_addedNodePassBuildsOneTablePillbox() {
   const grid = makeDatabaseQueryGrid();
   const before = DR_MODEL.getRegisteredTables().length;
 
-  withPillboxDocumentMock(function () {
-    injectPillboxesForAddedNode(grid.wrapperEl);
+  withTablePillboxDocumentMock(function () {
+    injectTablePillboxesForAddedNode(grid.wrapperEl);
   });
 
   const added = DR_MODEL.getRegisteredTables().slice(before);
@@ -3114,8 +3114,8 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   // A node added inside a nest that already holds a registered element adds
   // no second registration.
   const beforeRediscovery = DR_MODEL.getRegisteredTables().length;
-  withPillboxDocumentMock(function () {
-    injectPillboxesForAddedNode(grid.scrollPaneEl);
+  withTablePillboxDocumentMock(function () {
+    injectTablePillboxesForAddedNode(grid.scrollPaneEl);
   });
   eq('nesting AC6: a node added inside a registered nest adds no registry entry',
     DR_MODEL.getRegisteredTables().length, beforeRediscovery);
@@ -3806,7 +3806,7 @@ function cnAdapterCellEls(tableEl) {
 (function cellNest_theLoadTimeScanRegistersBothGridsOnce() {
   const page = cnGridInCell();
   const before = DR_MODEL.getRegisteredTables().length;
-  const runScan = () => withPillboxDocumentMock(function () {
+  const runScan = () => withTablePillboxDocumentMock(function () {
     global.document.querySelectorAll = function (sel) {
       if (sel === GRID_ARIA_SELECTOR_TEXT) return page.host.querySelectorAll(sel);
       return [];
@@ -5036,9 +5036,9 @@ function makeSparselyBoxedGrid(boxed) {
   const third = afBox([afTable('native')], { 'aria-hidden': 'false' });
   const page = afPage([first, hiddenOne, second, offscreenOne, third]);
   const order = [];
-  const savedCreate = createPillboxForTable;
-  createPillboxForTable = function (table) { order.push(table); return savedCreate.apply(this, arguments); };
-  try { afScan(page); } finally { createPillboxForTable = savedCreate; }
+  const savedCreate = createTablePillbox;
+  createTablePillbox = function (table) { order.push(table); return savedCreate.apply(this, arguments); };
+  try { afScan(page); } finally { createTablePillbox = savedCreate; }
   eq('native load-time scan: the data tables register in document order and the artifacts stay out',
     afSame(order, [first, second, third.querySelectorAll('table')[0]]), true);
   eq('native load-time scan: findTables lists the same tables in the same order',

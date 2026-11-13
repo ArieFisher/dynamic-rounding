@@ -1460,39 +1460,39 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// content.js markAndAddPillboxIfNewGrid — the marker call-site wrapper. It
+// content.js markAndAddTablePillboxIfNewGrid — the marker call-site wrapper. It
 // writes the dr-ext-grid marker and builds the pillbox, but only for a
 // first-time (isNew) discovery.
 // ---------------------------------------------------------------------------
-(function markAndAddPillboxIfNewGrid_newGridGetsMarkedAndWidget() {
+(function markAndAddTablePillboxIfNewGrid_newGridGetsMarkedAndWidget() {
   withFindTargetEnv([], function() {
-    const savedPillboxStyleInjected = pillboxStyleInjected;
+    const savedTablePillboxStyleInjected = tablePillboxStyleInjected;
     const table = makePass1DataTable();
     table.parentElement = { tagName: 'DIV', getAttribute: () => null, style: {}, parentElement: null, parentNode: null };
 
-    const handleReturned = markAndAddPillboxIfNewGrid({ handle: table, isNew: true });
+    const handleReturned = markAndAddTablePillboxIfNewGrid({ handle: table, isNew: true });
 
-    eq('markAndAddPillboxIfNewGrid: returns found.handle',
+    eq('markAndAddTablePillboxIfNewGrid: returns found.handle',
       handleReturned, table);
-    eq('markAndAddPillboxIfNewGrid: adds dr-ext-grid to a newly discovered grid',
+    eq('markAndAddTablePillboxIfNewGrid: adds dr-ext-grid to a newly discovered grid',
       table.classList.contains('dr-ext-grid'), true);
-    eq('markAndAddPillboxIfNewGrid: builds the table pillbox for a newly discovered grid',
+    eq('markAndAddTablePillboxIfNewGrid: builds the table pillbox for a newly discovered grid',
       tablePillboxes.has(table), true);
 
     cleanupPass1Tables([table]);
-    pillboxStyleInjected = savedPillboxStyleInjected;
+    tablePillboxStyleInjected = savedTablePillboxStyleInjected;
   });
 })();
 
-(function markAndAddPillboxIfNewGrid_alreadySeenHandleSkipsMarkAndWidget() {
+(function markAndAddTablePillboxIfNewGrid_alreadySeenHandleSkipsMarkAndWidget() {
   withFindTargetEnv([], function() {
     const table = makePass1DataTable();
 
-    markAndAddPillboxIfNewGrid({ handle: table, isNew: false });
+    markAndAddTablePillboxIfNewGrid({ handle: table, isNew: false });
 
-    eq('markAndAddPillboxIfNewGrid: does not mark an already-seen handle',
+    eq('markAndAddTablePillboxIfNewGrid: does not mark an already-seen handle',
       table.classList.contains('dr-ext-grid'), false);
-    eq('markAndAddPillboxIfNewGrid: does not build a widget for an already-seen handle',
+    eq('markAndAddTablePillboxIfNewGrid: does not build a widget for an already-seen handle',
       tablePillboxes.has(table), false);
   });
 })();
@@ -2665,19 +2665,19 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 //
 // Kaggle is a React single-page application that renders its Data Explorer
 // grid AFTER load, so detection runs through the
-// MutationObserver added-node handler — extracted here as injectPillboxesForAddedNode().
+// MutationObserver added-node handler — extracted here as injectTablePillboxesForAddedNode().
 // These tests drive that function directly with element-node stubs.
 // ---------------------------------------------------------------------------
 
 // AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
 // <table>s are chart accessibility artifacts → gets dr-ext-grid + a pillbox.
-(function observer_AC1_addedGridOnlyArtifactTables_getsPillbox() {
+(function observer_AC1_addedGridOnlyArtifactTables_getsTablePillbox() {
   const artifact1 = makeArtifactEmbeddedTable();
   const artifact2 = makeArtifactEmbeddedTable();
   const grid = asAddedGridNode(makeAriaGrid([artifact1, artifact2]));
 
-  withPillboxDocumentMock(function() {
-    injectPillboxesForAddedNode(grid);
+  withTablePillboxDocumentMock(function() {
+    injectTablePillboxesForAddedNode(grid);
   });
 
   eq('observer: added grid with only accessibility artifacts gets dr-ext-grid class',
@@ -2692,8 +2692,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const realTbl = makePass1DataTable(); // not an artifact, has .rows for isDataTable
   const grid = asAddedGridNode(makeAriaGrid([realTbl]));
 
-  withPillboxDocumentMock(function() {
-    injectPillboxesForAddedNode(grid);
+  withTablePillboxDocumentMock(function() {
+    injectTablePillboxesForAddedNode(grid);
   });
 
   eq('observer: added grid wrapping a real table does NOT get dr-ext-grid',
@@ -2706,7 +2706,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 // AC3: an accessibility artifact <table> reached via querySelectorAll on the
 // added node gets NO pillbox (Pass 1 artifact skip in the observer path).
-(function observer_AC3_addedSubtreeArtifactTable_noPillbox() {
+(function observer_AC3_addedSubtreeArtifactTable_noTablePillbox() {
   const artifact = makeArtifactEmbeddedTable();
   const container = {
     nodeType: global.Node.ELEMENT_NODE,
@@ -2716,8 +2716,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     querySelectorAll(sel) { return sel === 'table' ? [artifact] : []; },
   };
 
-  withPillboxDocumentMock(function() {
-    injectPillboxesForAddedNode(container);
+  withTablePillboxDocumentMock(function() {
+    injectTablePillboxesForAddedNode(container);
   });
 
   eq('observer: accessibility artifact <table> in added subtree gets NO toggle',
@@ -2726,7 +2726,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 // AC4: a real native <table> reached via querySelectorAll on the added node
 // DOES get a toggle (Pass 1 survivor in the observer path).
-(function observer_AC4_addedSubtreeRealTable_getsPillbox() {
+(function observer_AC4_addedSubtreeRealTable_getsTablePillbox() {
   const realTbl = makePass1DataTable();
   const container = {
     nodeType: global.Node.ELEMENT_NODE,
@@ -2736,8 +2736,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     querySelectorAll(sel) { return sel === 'table' ? [realTbl] : []; },
   };
 
-  withPillboxDocumentMock(function() {
-    injectPillboxesForAddedNode(container);
+  withTablePillboxDocumentMock(function() {
+    injectTablePillboxesForAddedNode(container);
   });
 
   eq('observer: real <table> in added subtree gets a toggle',
@@ -3935,7 +3935,7 @@ function everyRowRead(kind, largeIn) {
       globalThis.__ri2_resetTable = resetTable;
       globalThis.__ri2_DR_MODEL = DR_MODEL;
       globalThis.__ri2_roundTable = roundTable;
-      globalThis.__ri2_syncPillboxForTable = syncPillboxForTable;
+      globalThis.__ri2_syncTablePillbox = syncTablePillbox;
       globalThis.__ri2_tablePillboxes = tablePillboxes;
     `);
 
@@ -3991,13 +3991,13 @@ function everyRowRead(kind, largeIn) {
     // --- Scenario C: the pillbox sync on fresh and simplified tables. ---
     const stub6 = makeMockButton();
     global.__ri2_tablePillboxes.set(table6, stub6);
-    global.__ri2_syncPillboxForTable(table6);
+    global.__ri2_syncTablePillbox(table6);
     eq('re-injection table pillbox: an unrounded table renders off',
       stub6.getAttribute('aria-pressed'), 'false');
 
     global.__ri2_DR_MODEL.setTableSettings(table6, { enabled: true }, 'page');
     global.__ri2_roundTable(table6, DR_DEFAULTS);
-    global.__ri2_syncPillboxForTable(table6);
+    global.__ri2_syncTablePillbox(table6);
     eq('re-injection table pillbox: a table THIS instance rounded renders on',
       stub6.getAttribute('aria-pressed'), 'true');
     } finally {

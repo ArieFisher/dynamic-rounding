@@ -18,7 +18,7 @@
  * "have I found this table" state, which live in DR_MODEL (app/model.js).
  * Before the app-model-registry sprint, tablePillboxes/trackedTables and the
  * dr-ext-grid marker class doubled as three separate "tables found" stores;
- * createPillboxForTable now also registers the table with DR_MODEL, and
+ * createTablePillbox now also registers the table with DR_MODEL, and
  * every "have I already handled this element" check reads DR_MODEL.hasTable
  * instead. tablePillboxes/trackedTables keep their narrower remaining job: a
  * DOM reference to each table's button, for aria-pressed updates and
@@ -44,15 +44,15 @@ const TABLE_PILLBOX_COLOR_OFF = '#cccccc';
 // Touch and pen: an expanded table pillbox collapses on its own after this
 // delay. This view alone reads it, so it lives here and not in the detection
 // settings.
-const PILLBOX_AUTO_COLLAPSE_MS = 3000;
-// isPillboxSpotClipped reads at most this many ancestors on its walk from a
+const TABLE_PILLBOX_AUTO_COLLAPSE_MS = 3000;
+// isTablePillboxSpotClipped reads at most this many ancestors on its walk from a
 // table up to the page body, one style read each, on every reposition. The cap
 // bounds that cost per table. Real pages nest a table well under 100 ancestors
 // deep, so the cap holds the cost down without cutting the walk short.
 // Ancestors past it count as cutting off nothing: a deeper table's table
 // pillbox still moves with every scroll, and shows wherever its table's corner
 // sits.
-const PILLBOX_CLIP_WALK_CAP = 100;
+const TABLE_PILLBOX_CLIP_WALK_CAP = 100;
 // Overflow values that cut off an element's content at its box.
 const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 
@@ -75,7 +75,7 @@ function isTableOn(table) {
   return DR_MODEL.getTableSettings(table).enabled === true;
 }
 
-function syncPillboxForTable(table) {
+function syncTablePillbox(table) {
   const button = tablePillboxes.get(table);
   if (!button) return;
   button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
@@ -88,12 +88,12 @@ function syncPillboxForTable(table) {
 // context, before the controller applies the written settings.
 DR_BUS.subscribe('state:settingsChanged', () => {
   const active = DR_MODEL.getActiveTable();
-  if (active) syncPillboxForTable(active);
+  if (active) syncTablePillbox(active);
 });
 
-let pillboxStyleInjected = false;
-function ensurePillboxStyleInjected() {
-  if (pillboxStyleInjected) return;
+let tablePillboxStyleInjected = false;
+function ensureTablePillboxStyleInjected() {
+  if (tablePillboxStyleInjected) return;
   const style = document.createElement('style');
   style.textContent = `
     .dr-ext-table-pillbox {
@@ -164,18 +164,18 @@ function ensurePillboxStyleInjected() {
     .dr-ext-table-pillbox:focus-visible { outline: 2px solid ${TABLE_PILLBOX_COLOR_ON}!important; outline-offset: 2px; }
   `;
   (document.head || document.documentElement).appendChild(style);
-  pillboxStyleInjected = true;
+  tablePillboxStyleInjected = true;
 }
 
 // The table pillbox sits in the page body, outside every page area, so the
 // positioning hides it while its spot is out of a page area's view.
-// isPillboxSpotClipped returns true when the point (x, y), in
+// isTablePillboxSpotClipped returns true when the point (x, y), in
 // window coordinates, sits outside the box of an ancestor that cuts off its
 // content on that axis. The walk stops at the page body, whose overflow the
-// window scroll covers, and at PILLBOX_CLIP_WALK_CAP ancestors.
-function isPillboxSpotClipped(table, x, y) {
+// window scroll covers, and at TABLE_PILLBOX_CLIP_WALK_CAP ancestors.
+function isTablePillboxSpotClipped(table, x, y) {
   let el = table.parentElement;
-  for (let i = 0; el && el !== document.body && i < PILLBOX_CLIP_WALK_CAP; i++) {
+  for (let i = 0; el && el !== document.body && i < TABLE_PILLBOX_CLIP_WALK_CAP; i++) {
     const style = window.getComputedStyle(el);
     const clipsX = CLIPPING_OVERFLOW.has(style.overflowX);
     const clipsY = CLIPPING_OVERFLOW.has(style.overflowY);
@@ -189,7 +189,7 @@ function isPillboxSpotClipped(table, x, y) {
   return false;
 }
 
-function positionPillbox(table, button) {
+function positionTablePillbox(table, button) {
   const rect = table.getBoundingClientRect();
   const computedStyle = window.getComputedStyle(table);
   // The centre of the dot, which sits over the table's top-right corner.
@@ -199,7 +199,7 @@ function positionPillbox(table, button) {
     (rect.width === 0 && rect.height === 0) ||
     computedStyle.display === 'none' ||
     computedStyle.visibility === 'hidden' ||
-    isPillboxSpotClipped(table, spotX, spotY)
+    isTablePillboxSpotClipped(table, spotX, spotY)
   ) {
     button.style.display = 'none';
     return;
@@ -223,11 +223,11 @@ function positionPillbox(table, button) {
 /** Guard so the global tap-outside collapse listener is added only once */
 let _globalTapCollapseAdded = false;
 
-function createPillboxForTable(table) {
+function createTablePillbox(table) {
   // isDataTable() reads native tables through NativeTableAdapter and grids
   // through GridAdapter.
   if (!isDataTable(table)) return;
-  ensurePillboxStyleInjected();
+  ensureTablePillboxStyleInjected();
 
   const button = document.createElement('button');
   button.type = 'button';
@@ -247,7 +247,7 @@ function createPillboxForTable(table) {
   (document.body || document.documentElement).appendChild(button);
 
   setTimeout(() => {
-    positionPillbox(table, button);
+    positionTablePillbox(table, button);
   }, 150);
 
   // Record the pointer type at pointerdown for use in the click handler
@@ -263,7 +263,7 @@ function createPillboxForTable(table) {
     _touchPenCollapseTimer = setTimeout(() => {
       button.classList.remove('expanded');
       _touchPenCollapseTimer = null;
-    }, PILLBOX_AUTO_COLLAPSE_MS);
+    }, TABLE_PILLBOX_AUTO_COLLAPSE_MS);
   }
 
   // Click handler: mouse/keyboard → immediate press; touch/pen → two-tap
@@ -320,7 +320,7 @@ function createPillboxForTable(table) {
 
   // Set up ResizeObserver for repositioning
   const ro = new ResizeObserver(() => {
-    positionPillbox(table, button);
+    positionTablePillbox(table, button);
   });
   ro.observe(table);
   tableResizeObservers.set(table, ro);
@@ -356,20 +356,20 @@ function injectTablePillboxes() {
   const { tables, nominations } = scanTables(document, { isRegistered: DR_MODEL.hasTable });
   tables.forEach(table => {
     if (!DR_MODEL.hasTable(table)) {
-      createPillboxForTable(table);
+      createTablePillbox(table);
     }
   });
-  // createPillboxForTable re-runs the data test the step already ran; this view
+  // createTablePillbox re-runs the data test the step already ran; this view
   // accepts the second read so the detection layer only nominates and this view
   // alone registers.
   consumeNominations(nominations);
 }
 
-function repositionAllPillboxes() {
+function repositionAllTablePillboxes() {
   for (const table of trackedTables) {
     const button = tablePillboxes.get(table);
     if (button) {
-      positionPillbox(table, button);
+      positionTablePillbox(table, button);
     }
   }
 }
@@ -382,8 +382,8 @@ let _scrollResizeListenersAdded = false;
 function ensureScrollResizeListeners() {
   if (_scrollResizeListenersAdded) return;
   _scrollResizeListenersAdded = true;
-  window.addEventListener('scroll', repositionAllPillboxes, { capture: true, passive: true });
-  window.addEventListener('resize', repositionAllPillboxes, { passive: true });
+  window.addEventListener('scroll', repositionAllTablePillboxes, { capture: true, passive: true });
+  window.addEventListener('resize', repositionAllTablePillboxes, { passive: true });
 }
 
 let highlightStyleInjected = false;
