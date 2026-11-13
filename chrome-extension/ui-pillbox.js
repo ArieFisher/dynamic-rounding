@@ -233,7 +233,7 @@ function createTablePillbox(table) {
   button.type = 'button';
   button.className = 'dr-ext-table-pillbox';
   button.setAttribute('aria-pressed', 'false');
-  button.setAttribute('aria-label', 'Toggle rounding for table');
+  button.setAttribute('aria-label', 'Simplify table');
 
   const dot = document.createElement('span');
   dot.className = 'dr-ext-table-pillbox-dot';

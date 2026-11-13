@@ -340,9 +340,9 @@
   eq('auto-table-toggle: createTablePillbox button has non-empty aria-label',
     typeof ariaLabel === 'string' && ariaLabel.length > 0, true);
 
-  // aria-label must mention rounding (case-insensitive)
-  eq('auto-table-toggle: createTablePillbox aria-label mentions rounding',
-    ariaLabel ? ariaLabel.toLowerCase().includes('round') : false, true);
+  // The accessible label names the action the press takes.
+  eq('auto-table-toggle: createTablePillbox aria-label reads "Simplify table"',
+    ariaLabel, 'Simplify table');
 
   // First child of button must be span.dr-ext-table-pillbox-dot
   const dotEl = buttonEl ? buttonEl._children[0] : null;
