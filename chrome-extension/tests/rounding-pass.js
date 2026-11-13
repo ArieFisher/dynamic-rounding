@@ -2524,8 +2524,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     obs.trigger([{ type: 'characterData' }]);
     flushTimers(pendingTimers);
 
-    // The cell must STILL show the original value — the re-apply guard bails
-    // because drShowingOriginal === 'true'.
+    // The cell must STILL show the original value — the re-apply bails
+    // because the reset removed the table's watcher.
     eq('GV5b: cell[0] still original after observer fires (no re-round)',
       grid.cellEls[0].childNodes[0].nodeValue, '8584629');
     eq('GV5b: cell[1] still original after observer fires (no re-round)',
@@ -3899,7 +3899,7 @@ function everyRowRead(kind, largeIn) {
     // path's fresh round. ---
     eval(contentScriptBundle + `
       globalThis.__ri1_roundTable = roundTable;
-          `);
+    `);
     global.__ri1_roundTable(table1, DR_DEFAULTS);
     global.__ri1_roundTable(table3, DR_DEFAULTS);
     const roundedText1 = dataCell1.innerText;
@@ -3929,7 +3929,7 @@ function everyRowRead(kind, largeIn) {
     let ri2Listener = null;
     global.chrome.runtime.onMessage.addListener = (fn) => { ri2Listener = fn; };
     eval(contentScriptBundle + `
-            globalThis.__ri2_resetTable = resetTable;
+      globalThis.__ri2_resetTable = resetTable;
       globalThis.__ri2_DR_MODEL = DR_MODEL;
       globalThis.__ri2_roundTable = roundTable;
       globalThis.__ri2_syncTablePillbox = syncTablePillbox;

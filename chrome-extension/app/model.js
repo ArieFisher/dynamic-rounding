@@ -103,10 +103,10 @@ const DR_MODEL = (function () {
         // controller compares the table's current shape against it before
         // every action, and discards the whole entry on a mismatch — the
         // page replaced the table's content, so the originals describe data
-        // no longer on the screen. null until that one
-        // writer runs: an entry a first write created (see the note on
-        // registerTable below) carries no fingerprint, and the controller's
-        // comparison reads that as nothing to compare against.
+        // no longer on the screen. null until that one writer runs: an entry
+        // a first write created (see the note on registerTable below) carries
+        // no fingerprint, and the controller's comparison reads that as
+        // nothing to compare against.
         fingerprint: null,
       };
       tableRegistry.set(table, entry);
