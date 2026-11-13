@@ -2596,7 +2596,7 @@ const PENDING_FILL_ROWS = [
 
 // ---------------------------------------------------------------------------
 // A pillbox press on the active table writes the table's settings (its
-// enabled), not just the table's cells and the sidebar's switch. A press
+// enabled), not just the table's cells and the sidebar pillbox. A press
 // that changed the cells without writing the settings would leave any later
 // pull (a sidebar reopen or a table switch) showing a stale enabled over the
 // table's truth.
@@ -3017,7 +3017,7 @@ function issue328SettingsOf(table) {
 })();
 
 // A table no one has turned on reads off: the shipped on/off value is off,
-// so the sidebar's switch matches a table showing the original, and opening the sidebar on an
+// so the sidebar pillbox matches a table showing the original, and opening the sidebar on an
 // untouched table leaves it raw. Only a toggle or the switch turns it on.
 (function issue328_anUntouchedTableReadsOff() {
   runPressFixture(() => {

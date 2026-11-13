@@ -2401,7 +2401,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   // AC4 (source): the worker neither publishes nor subscribes to the activation
   // topic. The sidebar receives it straight from the content script over the
-  // broadcast carrier. Runtime coverage lives in backgroundMessageRouting.
+  // extension-pages route. Runtime coverage lives in backgroundMessageRouting.
   eq('table-activation AC4 source: the worker does not publish the activation report',
     /publish\(\s*'state:tableActivated'/.test(bgSrc), false);
   eq('table-activation AC4 source: the worker does not subscribe to it either',
