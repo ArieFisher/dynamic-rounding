@@ -102,7 +102,7 @@
 // --- AC5: showsSimplified returns false for a fresh table ---
 
 (function tablePillbox_showsSimplified_freshTable() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   eq('table-pillbox: showsSimplified(fresh table) is false',
     showsSimplified(table), false);
 })();
@@ -115,7 +115,7 @@
   // requires tree walkers etc.) — showsSimplified reads DR_MODEL's appliedFlag,
   // not the class, so both are set here the way
   // roundTable itself would leave them.
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
   DR_MODEL.setTableAppliedFlag(table, 'simplified');
   eq('table-pillbox: showsSimplified(table with .dr-ext-rounded cell) is true',
@@ -126,7 +126,7 @@
 // (the restore path sets this before it rewrites cells)
 
 (function tablePillbox_showsSimplified_showingOriginal() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
   DR_MODEL.setTableAppliedFlag(table, 'original');
   eq('table-pillbox: showsSimplified is false when appliedFlag is "original"',
@@ -139,7 +139,7 @@
 // the reset clears.
 
 (function tablePillbox_showsSimplified_afterReset() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   // Simulate a post-roundTable state: cell has rounded class + a registry
   // original record, and the registry's appliedFlag is 'simplified'.
   const cell = table._cells[0];
@@ -172,7 +172,7 @@
 // --- AC6: syncTablePillbox sets aria-pressed on the button to match isTableOn ---
 
 (function tablePillbox_syncTablePillbox_ariaFalseWhenNotRounded() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   const button = injectTablePillboxEntry(table);
   button.setAttribute('aria-pressed', 'true'); // pre-set to true to confirm it gets corrected
 
@@ -182,7 +182,7 @@
 })();
 
 (function tablePillbox_syncTablePillbox_ariaTrueWhenRounded() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   const button = injectTablePillboxEntry(table);
   button.setAttribute('aria-pressed', 'false'); // pre-set to false to confirm it gets corrected
 
@@ -202,7 +202,7 @@
 })();
 
 (function tablePillbox_syncTablePillbox_ariaFalseWhenShowingOriginal() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   const button = injectTablePillboxEntry(table);
   table._cells[0].classList.add('dr-ext-rounded');
   // Registry record present — see tablePillbox_syncTablePillbox_ariaTrueWhenRounded.
@@ -218,7 +218,7 @@
 // --- AC6: syncTablePillbox is a no-op when no table pillbox is registered ---
 
 (function tablePillbox_syncTablePillbox_noEntryIsNoop() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   // No injectTablePillboxEntry call — tablePillboxes has no entry for this table.
   // Should not throw.
   let threw = false;
@@ -303,7 +303,7 @@
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  const table = makeToggleTable([
+  const table = makeTablePillboxTestTable([
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
     [{ tag: 'td', text: '200' },  { tag: 'td', text: '300' }],
   ]);
@@ -449,7 +449,7 @@
   withCreateTreeWalker(function() {
     // Two-row table: row 0 is the header (excluded by default: DR_DEFAULTS.simplifyFirstRow=false),
     // row 1 has large numbers that WILL be rounded.
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Header' }],
       [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
     ]);
@@ -480,7 +480,7 @@
 
 (function tablePillbox_press_offRestoresOriginal() {
   // Simulate a table that is already rounded: has .dr-ext-rounded cells.
-  const table = makeToggleTable([{ tag: 'td', text: '8,500,000' }]);
+  const table = makeTablePillboxTestTable([{ tag: 'td', text: '8,500,000' }]);
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
   DR_MODEL.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }] });
@@ -521,7 +521,7 @@
   withCreateTreeWalker(function() {
     // Two-row table: row 0 is excluded by default (DR_DEFAULTS.simplifyFirstRow=false), row 1 has
     // large numbers that WILL be rounded so the test exercises the true → false transition.
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Header' }],
       [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
     ]);
@@ -613,7 +613,7 @@
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  const table = makeToggleTable([
+  const table = makeTablePillboxTestTable([
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
@@ -702,7 +702,7 @@
   const published = [];
   const unsubscribe = DR_BUS.subscribe('intent:toggleTable', ({ table: pressed }) => { published.push(pressed); });
   try {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: '50,000' }, { tag: 'td', text: '100' }],
       [{ tag: 'td', text: '200' },    { tag: 'td', text: '300' }],
     ]);
@@ -1088,7 +1088,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.window.scrollY = 0;
 
   // Fresh (not rounded) table — a mouse click publishes intent:toggleTable → rounds it
-  const table = makeToggleTable([
+  const table = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -1128,7 +1128,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // Spec (AC): pointerType 'touch' first tap → adds .expanded, aria-pressed unchanged
 
 (function tablePillboxAC_touchFirstTap_expandsOnly() {
-  const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
+  const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
@@ -1168,7 +1168,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  const t = makeToggleTable([
+  const t = makeTablePillboxTestTable([
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
@@ -1253,7 +1253,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  const t = makeToggleTable([
+  const t = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -1343,7 +1343,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  const t = makeToggleTable([
+  const t = makeTablePillboxTestTable([
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
@@ -1422,7 +1422,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  const t = makeToggleTable([
+  const t = makeTablePillboxTestTable([
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
@@ -1526,7 +1526,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  const t = makeToggleTable([
+  const t = makeTablePillboxTestTable([
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
@@ -1627,7 +1627,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  const t = makeToggleTable([
+  const t = makeTablePillboxTestTable([
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
@@ -1687,13 +1687,13 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_AC1_mouse_differentTable() {
-  const tableA = makeToggleTable([
+  const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
   tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  const tableB = makeToggleTable([
+  const tableB = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -1746,13 +1746,13 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_AC1_touch_differentTable() {
-  const tableA = makeToggleTable([
+  const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
   tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  const tableB = makeToggleTable([
+  const tableB = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -1794,7 +1794,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_AC2_mouse_sameTable() {
-  const tableA = makeToggleTable([
+  const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -1823,7 +1823,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_AC2_touch_sameTable() {
-  const tableA = makeToggleTable([
+  const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '5,000,000' }, { tag: 'td', text: '100' }],
   ]);
@@ -1851,13 +1851,13 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_AC3_mouse_sidebarClosed() {
-  const tableA = makeToggleTable([
+  const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
   tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  const tableB = makeToggleTable([
+  const tableB = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '1,000,000' }, { tag: 'td', text: '500' }],
   ]);
@@ -1886,13 +1886,13 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // ---------------------------------------------------------------------------
 
 (function sidebarRebind_AC3_touch_sidebarClosed() {
-  const tableA = makeToggleTable([
+  const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '5,000,000' }, { tag: 'td', text: '100' }],
   ]);
   tableA._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  const tableB = makeToggleTable([
+  const tableB = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'H2' }],
     [{ tag: 'td', text: '2,000,000' }, { tag: 'td', text: '400' }],
   ]);
@@ -2204,7 +2204,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   // Dynamic guard: a press still takes a table on and back off; the intent
   // drives it. DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn),
   // so only [row1, col1] is processed. Use 12,345, which rounds to 10,000.
-  const table = makeToggleTable([
+  const table = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
     [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
   ]);

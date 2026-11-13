@@ -205,7 +205,7 @@ function withLinkCreateTreeWalker(fn) {
  * @param {Array<{tag:string, text:string}>} cellSpecs  — cells for a single row
  * @param {Object} [extra] — additional properties to merge onto the table stub
  */
-function makeToggleTableCell(s) {
+function makeTablePillboxTestCell(s) {
   const cell = {
     tagName: s.tag.toUpperCase(),
     innerText: s.text,
@@ -232,10 +232,10 @@ function makeToggleTableCell(s) {
  *   Either a flat array of cell specs (one row) or an array of row arrays.
  * @param {Object} [extra] — additional properties to merge onto the table stub
  */
-function makeToggleTable(rowsOrCells, extra) {
+function makeTablePillboxTestTable(rowsOrCells, extra) {
   // Detect whether caller passed flat [{tag,text}] or nested [[{tag,text}]].
   const rowSpecs = Array.isArray(rowsOrCells[0]) ? rowsOrCells : [rowsOrCells];
-  const rows = rowSpecs.map(rowSpec => ({ cells: rowSpec.map(makeToggleTableCell) }));
+  const rows = rowSpecs.map(rowSpec => ({ cells: rowSpec.map(makeTablePillboxTestCell) }));
   const cells = rows.flatMap(r => r.cells);  // all cells, for querySelector helpers
 
   const table = Object.assign({
@@ -1998,7 +1998,7 @@ function makeRealTablePillbox(tableSpec, docMock) {
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  const table = makeToggleTable(tableSpec);
+  const table = makeTablePillboxTestTable(tableSpec);
   table._cells.forEach(c => { c.querySelectorAll = () => []; });
 
   createTablePillbox(table);
@@ -2232,7 +2232,7 @@ function makeScrollingRowgroupGrid(headerTexts, dataRows) {
 // A native table whose first row sits in a head section. The adapter reads
 // the row's parent, so the section is a parent stub carrying the tag name.
 function makeHeadSectionTable(headerTexts, dataRows) {
-  const table = makeToggleTable(
+  const table = makeTablePillboxTestTable(
     [headerTexts.map((text) => ({ tag: 'td', text }))].concat(
       dataRows.map((rowTexts) => rowTexts.map((text) => ({ tag: 'td', text })))));
   table.rows[0].parentElement = { tagName: 'THEAD' };
@@ -2565,7 +2565,7 @@ function runPressFixture(setup) {
 }
 
 function makePressTable(text) {
-  const table = makeToggleTable([
+  const table = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H' }, { tag: 'td', text: 'V' }],
     [{ tag: 'td', text: 'R' }, { tag: 'td', text: text }],
   ]);

@@ -2048,9 +2048,9 @@ const supTestOpts = {
 
   runPass1WithTables(artifacts);
 
-  const togglesCreated = artifacts.filter(t => tablePillboxes.has(t)).length;
+  const tablePillboxesCreated = artifacts.filter(t => tablePillboxes.has(t)).length;
   eq('pass1-filter: 3 aria-hidden accessibility artifacts → ZERO table pillboxes created',
-    togglesCreated, 0);
+    tablePillboxesCreated, 0);
 
   cleanupPass1Tables(artifacts);
 })();
@@ -2086,9 +2086,9 @@ const supTestOpts = {
 
   runPass1WithTables(artifacts);
 
-  const togglesCreated = artifacts.filter(t => tablePillboxes.has(t)).length;
+  const tablePillboxesCreated = artifacts.filter(t => tablePillboxes.has(t)).length;
   eq('pass1-filter: 2 off-screen accessibility artifacts → ZERO table pillboxes created',
-    togglesCreated, 0);
+    tablePillboxesCreated, 0);
 
   cleanupPass1Tables(artifacts);
 })();
@@ -3283,14 +3283,14 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('fingerprint reader: a native table whose first row sits in a head section carries header texts',
     readTableFingerprint(headSection).headerTexts, ['Region', 'Q1']);
 
-  const headerCells = makeToggleTable([
+  const headerCells = makeTablePillboxTestTable([
     [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
     [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
   ]);
   eq('fingerprint reader: a native table whose first row holds header cells alone carries header texts',
     readTableFingerprint(headerCells).headerTexts, ['Region', 'Q1']);
 
-  const dataFirst = makeToggleTable([
+  const dataFirst = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
     [{ tag: 'td', text: 'South' }, { tag: 'td', text: '918,554' }],
   ]);
@@ -3300,7 +3300,7 @@ const GRID_ARIA_SELECTOR_TEXT = '[role="grid"], [role="table"]';
   eq('fingerprint reader: that table still carries its column count',
     dataFirstReading.columnCount, 2);
 
-  const mixedFirstRow = makeToggleTable([
+  const mixedFirstRow = makeTablePillboxTestTable([
     [{ tag: 'th', text: 'Region' }, { tag: 'td', text: 'Q1' }],
     [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
   ]);

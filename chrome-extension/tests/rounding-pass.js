@@ -1615,7 +1615,7 @@ const pieceTextsOf = (cell) => gridCellTextPieces(cell).map((node) => node.nodeV
 
 (function reapply_onTableThatGainsANumberSimplifiesIt_native() {
   withCreateTreeWalker(function() {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'north' }, { tag: 'td', text: 'south' }],
       [{ tag: 'td', text: 'east' }, { tag: 'td', text: 'pending' }],
     ]);
@@ -3820,7 +3820,7 @@ function everyRowRead(kind, largeIn) {
 // it again, and records that text as the original. ---
 (function registrySprint_reinjectionUnrestorableResetStaysTruthful() {
   function makeReinjectionFixtureTable(dataText) {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
       [{ tag: 'td', text: 'Row' },   { tag: 'td', text: dataText }],
     ]);
@@ -3835,7 +3835,7 @@ function everyRowRead(kind, largeIn) {
       innerText: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
       textContent: { get() { return _text; }, set(v) { _text = v; }, configurable: true },
     });
-    // A real removeAttribute('title') clears the title. makeToggleTableCell's
+    // A real removeAttribute('title') clears the title. makeTablePillboxTestCell's
     // default stub is a no-op, which would hide exactly the bug this test
     // exists to catch — an implementation that unconditionally strips the
     // title would otherwise leave dataCell.title looking untouched.

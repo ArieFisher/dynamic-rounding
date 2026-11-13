@@ -303,7 +303,7 @@
 // ---------------------------------------------------------------------------
 
 (function issue251_switchAppliesModelToNewTable() {
-  const tableA = makeToggleTable([
+  const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -312,7 +312,7 @@
   // column: the shipped defaults leave the first column alone, and 286 at
   // offset -2 rounds to itself, so a first-column 8,584,629 would let a
   // defaults-run pass hide.
-  const tableB = makeToggleTable([
+  const tableB = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '286' }, { tag: 'td', text: '8,584,629' }],
   ]);
@@ -340,7 +340,7 @@
 })();
 
 (function issue251_switchRespectsModelEnabledOff() {
-  const tableA = makeToggleTable([
+  const tableA = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -348,7 +348,7 @@
   // Values that visibly change under the shipped default offset (see the
   // wire-message test's note: 1,000,000-style values round to themselves
   // and would let a wrongly-run rounding pass hide).
-  const tableB = makeToggleTable([
+  const tableB = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
@@ -1534,10 +1534,10 @@ const PENDING_FILL_ROWS = [
 // path to running a press — prove the wiring end to end (mirrors the
 // intent:activateTable behavioral pin in the app-model-selection block above).
 // ---------------------------------------------------------------------------
-(function toggleSplit_intentToggleTableRunsThePress() {
+(function tablePillboxSplit_intentToggleTableRunsThePress() {
   // DR_DEFAULTS excludes row 0 (firstRow) and col 0 (firstColumn) — use a
   // 2x2 table so [row1, col1] is processed.
-  const table = makeToggleTable([
+  const table = makeTablePillboxTestTable([
     [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
     [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
   ]);
@@ -1581,7 +1581,7 @@ const PENDING_FILL_ROWS = [
 // TypeError on a div-based grid and crash this suite rather than fail an
 // assertion.
 // ---------------------------------------------------------------------------
-(function toggleSplit_rangeFlashWorksOnGrids() {
+(function tablePillboxSplit_rangeFlashWorksOnGrids() {
   // 2x2 div-based grid (no ARIA roles, no vendor classes — the plain
   // fallback shape GridAdapter already supports elsewhere in this suite).
   const grid = makeGridWrapper([
@@ -1645,7 +1645,7 @@ const PENDING_FILL_ROWS = [
 // The expected sequences below are LITERALS, so the pin holds in a shallow
 // checkout or CI runner.
 // ---------------------------------------------------------------------------
-(function toggleSplit_parentEquivalence_toggleClickSequences() {
+(function tablePillboxSplit_parentEquivalence_tablePillboxClickSequences() {
   // Keyed by sameTable — mouse and touch second-tap produce the identical
   // sequence per cell, since both branches publish to the same handler. That
   // equality is itself part of what this pin proves: see the per-mode
@@ -1682,8 +1682,8 @@ const PENDING_FILL_ROWS = [
   // active" and "which table gets pressed" — the unmoved press. sameTable=
   // false makes a different table active than the one pressed — the press
   // that moves the active table, which must publish the switch.
-  function runToggleClickFixture(mode, sameTable) {
-    const clicked = makeToggleTable([
+  function runTablePillboxClickFixture(mode, sameTable) {
+    const clicked = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
       [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
     ]);
@@ -1691,7 +1691,7 @@ const PENDING_FILL_ROWS = [
 
     let selected = clicked;
     if (!sameTable) {
-      selected = makeToggleTable([
+      selected = makeTablePillboxTestTable([
         [{ tag: 'td', text: 'H1' }, { tag: 'td', text: 'Col2' }],
         [{ tag: 'td', text: '1,000,000' }, { tag: 'td', text: '500' }],
       ]);
@@ -1717,7 +1717,7 @@ const PENDING_FILL_ROWS = [
   for (const sameTable of [true, false]) {
     const expected = EXPECTED_SEQUENCES[String(sameTable)];
     for (const mode of ['mouse', 'touch']) {
-      const seq = runToggleClickFixture(mode, sameTable);
+      const seq = runTablePillboxClickFixture(mode, sameTable);
       eq(`table pillbox click sequence (${mode}, sameTable=${sameTable}): sendMessage sequence matches the frozen literal`,
         seq, expected);
     }
@@ -1807,7 +1807,7 @@ const PENDING_FILL_ROWS = [
 (function registrySprint_oneRestorePathForBothKinds() {
   withCreateTreeWalker(function () {
     // Native table: header row (excluded) + one data row.
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Header' }],
       [{ tag: 'td', text: '8,584,629' }],
     ]);
@@ -1885,7 +1885,7 @@ const PENDING_FILL_ROWS = [
 // sees. ---
 (function registrySprint_originalsSurviveOffAndOnCycle() {
   withCreateTreeWalker(function () {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Header' }],
       [{ tag: 'td', text: '8,584,629' }],
     ]);
@@ -2051,14 +2051,14 @@ const PENDING_FILL_ROWS = [
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
   try {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
       [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
     ]);
     injectTablePillboxEntry(table);
     DR_MODEL.setActiveTable(table);
 
-    // makeToggleTableCell gives innerHTML/innerText/textContent as three
+    // makeTablePillboxTestCell gives innerHTML/innerText/textContent as three
     // INDEPENDENT properties. A real <td>'s innerHTML/innerText/textContent
     // all derive from the same child-node tree, so writing one (restoreTable's
     // `cell.innerHTML = original.html`) is immediately visible through the
@@ -2191,7 +2191,7 @@ const PENDING_FILL_ROWS = [
     { columnCount: 3, headerTexts: null });
   forgetRegisteredTable(grid.scrollPaneEl);
 
-  const nativeTable = makeToggleTable([
+  const nativeTable = makeTablePillboxTestTable([
     [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
     [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
   ]);
@@ -2612,7 +2612,7 @@ const PENDING_FILL_ROWS = [
   global.chrome.runtime.sendMessage = (msg) => { sent.push(msg); };
 
   try {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'td', text: 'Label' }, { tag: 'td', text: 'Values' }],
       [{ tag: 'td', text: 'Row' },   { tag: 'td', text: '12,345' }],
     ]);
@@ -3520,7 +3520,7 @@ function issue328SettingsOf(table) {
 
 (function shapeFingerprint_criterion5_aNativeTablesHeaderTextTripsTheFingerprint() {
   runPressFixture(() => {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
       [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
     ]);
@@ -3561,7 +3561,7 @@ function issue328SettingsOf(table) {
 
 (function shapeFingerprint_anUnrecordedFingerprintCountsAsAMatch() {
   runPressFixture(() => {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
       [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
     ]);
@@ -3713,7 +3713,7 @@ function issue328SettingsOf(table) {
 
 (function issue328_aSidebarApplyOnARefilledTableSendsOnlyTheWrittenSettings() {
   runPressFixture(({ sent }) => {
-    const table = makeToggleTable([
+    const table = makeTablePillboxTestTable([
       [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
       [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
     ]);
@@ -3901,7 +3901,7 @@ function issue328SettingsOf(table) {
     'url' in unboundResponse.page && 'title' in unboundResponse.page, true);
 
   // With a real stub table registered and selected.
-  const table = makeToggleTable([
+  const table = makeTablePillboxTestTable([
     [{ tag: 'td', text: '8,584,629' }, { tag: 'td', text: '286' }],
   ]);
   table.outerHTML = '<table><tr><td>8,584,629</td><td>286</td></tr></table>';

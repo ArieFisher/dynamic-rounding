@@ -500,15 +500,15 @@
 
   // --- AC4: .switch-row CSS block does not use justify-content: space-between ---
   // Find the .switch-row block by locating ".switch-row {" and scanning to the closing "}".
-  const toggleRowBlockStart = sidebarHtml.indexOf('.switch-row {');
+  const switchRowBlockStart = sidebarHtml.indexOf('.switch-row {');
   eq('sidebar switch-left AC4: .switch-row CSS block is present in sidebar.html',
-    toggleRowBlockStart !== -1, true);
-  if (toggleRowBlockStart !== -1) {
-    const fromBlock = sidebarHtml.slice(toggleRowBlockStart);
+    switchRowBlockStart !== -1, true);
+  if (switchRowBlockStart !== -1) {
+    const fromBlock = sidebarHtml.slice(switchRowBlockStart);
     const blockClose = fromBlock.indexOf('}');
-    const toggleRowBlock = blockClose !== -1 ? fromBlock.slice(0, blockClose + 1) : fromBlock.slice(0, 200);
+    const switchRowBlock = blockClose !== -1 ? fromBlock.slice(0, blockClose + 1) : fromBlock.slice(0, 200);
     eq('sidebar switch-left AC4: .switch-row CSS block does not contain "justify-content: space-between"',
-      toggleRowBlock.includes('justify-content: space-between'), false);
+      switchRowBlock.includes('justify-content: space-between'), false);
   }
 })();
 
@@ -2091,7 +2091,7 @@
 // names the controller entry points that DO exist: a view calling any of these reaches
 // past the intent and around the one press path.
 // ---------------------------------------------------------------------------
-(function toggleSplit_viewCallsNoControllerFunctionDirectly() {
+(function tablePillboxSplit_viewCallsNoControllerFunctionDirectly() {
   const uiPillboxSrc = sourceByName('ui-pillbox.js');
   if (uiPillboxSrc === null) {
     eq('table-pillbox-split: ui-pillbox.js is present in the manifest', false, true);
