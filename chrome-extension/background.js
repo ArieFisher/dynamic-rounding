@@ -12,17 +12,22 @@ importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
 
 let boundTabId = null;
 
+// Every context "all" covers except "action", the toolbar icon's menu: no
+// table sits under the pointer there, and Chrome's own item there opens the
+// sidebar.
+const PAGE_MENU_CONTEXTS = ["page", "frame", "selection", "link", "editable", "image", "video", "audio"];
+
 // One fixed label serves every table on the page, so nothing updates it.
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "dr-menu-toggle",
     title: "Simplify",
-    contexts: ["all"]
+    contexts: PAGE_MENU_CONTEXTS
   });
   chrome.contextMenus.create({
     id: "dr-menu-toggle-sidebar",
     title: "Simplify and open sidebar",
-    contexts: ["all"]
+    contexts: PAGE_MENU_CONTEXTS
   });
 });
 
