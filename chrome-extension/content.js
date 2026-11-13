@@ -11,7 +11,7 @@
 
 // DR_DEFAULTS is loaded from constants.js (declared first in manifest content_scripts).
 // It is shared with sidebar.js so the sidebar UI's initial state and the
-// right-click toggle's fallback options come from a single source.
+// menu toggle's fallback options come from a single source.
 
 // The capture marker: a saved capture (lib/dr-capture/render.js) stamps
 // data-dr-capture on its document element, because the capture is itself a

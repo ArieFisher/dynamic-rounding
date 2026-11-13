@@ -27,8 +27,9 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "dr-action") {
-    // The right-click happened in the menu-click tab. The bus's active-tab
-    // lookup can return a different tab, so the publish passes the tab number.
+    // The user right-clicked in this tab. Without a tab number the bus sends
+    // to the tab in front of the current window, which can be a different
+    // tab, so the publish passes this tab's number.
     DR_BUS.publish('intent:menuClicked', {}, { tabId: tab.id });
     return;
   }
@@ -92,6 +93,6 @@ DR_BUS.subscribe('state:sidebarClosed', () => {
   sidebarTabId = null;
 });
 
-// The on/off topic and the table-activation topic need no relay here. The
+// The settings notice and the table-activation topic need no relay here. The
 // content script broadcasts each to every extension page, so its one publish
 // reaches the sidebar.

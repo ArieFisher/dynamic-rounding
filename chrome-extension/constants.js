@@ -9,15 +9,15 @@
  *
  * DR_DEFAULTS is the settings contract: every option's name and its default.
  * Editing a value here changes both the sidebar's initial control state and the
- * right-click toggle's default behavior, so the two stay in lockstep.
+ * menu toggle's default behavior, so the two stay in lockstep.
  *
  * DR_DETECTION_SETTINGS holds the detection settings: every value and
  * lookup list that shapes what detection finds.
  */
 const DR_DEFAULTS = {
-  // Off: a table no one has turned on shows raw, so its settings read off.
-  // A toggle (the pillbox, either menu item) or the sidebar's switch turns a
-  // table on.
+  // Off: a table no one has turned on shows the original, so its settings
+  // read off. The table pillbox, the menu toggle, the menu toggle with
+  // sidebar, or the sidebar pillbox turns a table on.
   enabled: false,
   simplifyMixedCurrency: true,
   simplifyMixedPercent: true,
@@ -29,7 +29,7 @@ const DR_DEFAULTS = {
   timeGranularity: 'hour',
   // Concrete numbers, never null or blank: the sidebar always sends numbers.
   // numTop has no sidebar control; it stays here as the contract with
-  // content.js and the right-click toggle.
+  // content.js and the menu toggle.
   offsetTop: -0.5,
   offsetOther: -0.5,
   numTop: 1,
@@ -40,7 +40,7 @@ const DR_DEFAULTS = {
  * DR_DETECTION_SETTINGS holds the detection settings: every value that
  * shapes whether an element counts as a table or a grid, plus the two lookup
  * lists detection reads (the display values that mark a grid/flex layout,
- * and the known vendor grid profiles). The table package and the controller
+ * and the known vendor grid profiles). The detection layer and the controller
  * (content.js) read it as a bare global, with no fallback copy.
  */
 const DR_DETECTION_SETTINGS = {

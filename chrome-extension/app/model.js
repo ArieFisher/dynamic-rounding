@@ -15,8 +15,8 @@
  * settings sprint that replaced it):
  *
  *   - activeTable     The table the user last targeted — by right-click, or
- *                      by pressing a different table's table pillbox while
- *                      the sidebar is open. content.js called this
+ *                      by pressing a different table's table pillbox.
+ *                      content.js called this
  *                      lastRightClickedTable; sidebar.js's "bound" language
  *                      (setTableBound) names the same idea from the
  *                      sidebar's side. One field, one name: activeTable.
@@ -80,14 +80,14 @@ const DR_MODEL = (function () {
     let entry = tableRegistry.get(table);
     if (!entry) {
       entry = {
-        // Per-cell pre-round original, keyed by cell element, one record
+        // Each cell's originals, keyed by cell element, one record
         // shape for both kinds (CellRecord in lib/dr-table/cells.js). A WeakMap with no companion Set: nothing enumerates a
         // table's originals, and a cell the host recycles out of the page
         // (grid virtualization, a framework re-render) lets its entry go
         // instead of accumulating for the life of the table's registration.
         originals: new WeakMap(),
         // The table's form: 'original' | 'simplified'. 'original' covers both
-        // "never rounded" and "rounded, currently showing originals". It
+        // "never simplified" and "simplified, currently showing originals". It
         // records what the screen shows; the table pillbox shows the on/off
         // value instead (isTableOn in ui-pillbox.js).
         appliedFlag: 'original',
@@ -173,12 +173,12 @@ const DR_MODEL = (function () {
   // One bus publish here, from setTableSettings: the sidebar draws a table's
   // settings. Nothing in the application subscribes to "a table was found" or "a
   // cell's original changed" as an event — the DOM itself is the view for a
-  // table's contents, and the view already redraws it directly
+  // table's contents, and the controller already writes it directly
   // (roundTable/restoreTable write the cells they change). The rest of the
   // registry is per-table storage consulted synchronously by the controller,
   // not application-level state a view redraws itself from.
 
-  // registerTable: the "found" moment as far as the table pillbox view is concerned —
+  // registerTable: the "registered" moment as far as the table pillbox view is concerned —
   // called once, from ui-pillbox.js's createPillboxForTable, idempotent so a
   // rediscovery (e.g. injectPillboxesForAddedNode revisiting a node) is a
   // no-op. It is NOT the only path to a table having a registry entry:
@@ -195,7 +195,7 @@ const DR_MODEL = (function () {
     registeredTables.delete(table);
   }
 
-  // hasTable: the one check for "has the extension already handled this
+  // hasTable: the one check for "has the extension already registered this
   // element".
   function hasTable(table) {
     return tableRegistry.has(table);
@@ -203,41 +203,41 @@ const DR_MODEL = (function () {
 
   // getRegisteredTables: the enumerable companion's one reader —
   // content.js's removed-subtree cleanup, which needs to iterate every
-  // found table. (ui-pillbox.js's scroll/resize repositioning iterates its
+  // registered table. (ui-pillbox.js's scroll/resize repositioning iterates its
   // own trackedTables Set instead; it does not read this.)
   function getRegisteredTables() {
     return Array.from(registeredTables);
   }
 
-  function setTableOriginal(table, cellRef, value) {
-    _ensureEntry(table).originals.set(cellRef, value);
+  function setTableOriginal(table, cellEl, value) {
+    _ensureEntry(table).originals.set(cellEl, value);
   }
 
-  function getTableOriginal(table, cellRef) {
+  function getTableOriginal(table, cellEl) {
     const entry = tableRegistry.get(table);
-    return entry ? entry.originals.get(cellRef) : undefined;
+    return entry ? entry.originals.get(cellEl) : undefined;
   }
 
-  function hasTableOriginal(table, cellRef) {
+  function hasTableOriginal(table, cellEl) {
     const entry = tableRegistry.get(table);
-    return !!entry && entry.originals.has(cellRef);
+    return !!entry && entry.originals.has(cellEl);
   }
 
   // The registry stores a cell's original as the record documented in
-  // _ensureEntry, which carries the pre-round text as value. This read
+  // _ensureEntry, which carries the original text as value. This read
   // returns that text, or undefined when no original is stored. A plain
   // string reads back as itself. The capture's state serializer and the
   // shape fingerprint's read are the callers; the cell objects and the
   // controller (content.js) read the record whole.
-  function getTableOriginalText(table, cellRef) {
-    const original = getTableOriginal(table, cellRef);
+  function getTableOriginalText(table, cellEl) {
+    const original = getTableOriginal(table, cellEl);
     if (original === undefined || original === null) return undefined;
     return typeof original === 'object' ? original.value : original;
   }
 
-  function deleteTableOriginal(table, cellRef) {
+  function deleteTableOriginal(table, cellEl) {
     const entry = tableRegistry.get(table);
-    if (entry) entry.originals.delete(cellRef);
+    if (entry) entry.originals.delete(cellEl);
   }
 
   function setTableAppliedFlag(table, flag) {
@@ -245,7 +245,7 @@ const DR_MODEL = (function () {
   }
 
   // Defaults to 'original' with no entry: a table never registered has never
-  // been rounded.
+  // been simplified.
   function getTableAppliedFlag(table) {
     const entry = tableRegistry.get(table);
     return entry ? entry.appliedFlag : 'original';
@@ -273,8 +273,8 @@ const DR_MODEL = (function () {
     return Object.assign({}, entry && entry.settings ? entry.settings : DR_DEFAULTS);
   }
 
-  function setTableMaxMagnitude(table, mag) {
-    _ensureEntry(table).maxMagnitude = mag;
+  function setTableMaxMagnitude(table, maxMagnitude) {
+    _ensureEntry(table).maxMagnitude = maxMagnitude;
   }
 
   function getTableMaxMagnitude(table) {
@@ -283,7 +283,7 @@ const DR_MODEL = (function () {
   }
 
   // The shape fingerprint a table carried when it registered. Plain values
-  // only, so the entry stays serializable.
+  // only, so the fingerprint stays serializable.
   function setTableFingerprint(table, fingerprint) {
     _ensureEntry(table).fingerprint = fingerprint;
   }
