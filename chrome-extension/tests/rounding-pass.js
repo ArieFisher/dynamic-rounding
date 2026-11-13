@@ -1702,7 +1702,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
       DR_MODEL.getTableOriginal(grid.wrapperEl, dollar).pieces,
       [{ text: '$', written: '$' }, { text: '337.91', written: '350' }]);
     resetTable(grid.wrapperEl);
-    eq('grid separate pieces: reset restores every cell', DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'original');
+    eq('grid separate pieces: reset restores every cell', showsSimplified(grid.wrapperEl), false);
     eq('grid separate pieces: reset puts every piece back', grid.cellEls.map(pieceTextsOf), originalPieces);
     eq('grid separate pieces: reset clears every record',
       grid.cellEls.some((cell) => DR_MODEL.hasTableOriginal(grid.wrapperEl, cell)), false);
@@ -1984,7 +1984,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
       collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((c) => c.num), [125]);
     resetTable(grid.wrapperEl);
     eq('grid separate pieces: reset leaves nothing unrestorable after a cell lost a piece',
-      DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'original');
+      showsSimplified(grid.wrapperEl), false);
     eq('grid separate pieces: reset puts the matched original back', pieceTextsOf(cell), ['125']);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
@@ -2218,11 +2218,11 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 })();
 
 // ---------------------------------------------------------------------------
-// Grid form honesty: the per-cell write reports whether it landed,
-// and the table's form counts confirmed writes — the same rule as the
+// Grid write honesty: the per-cell write reports whether it landed,
+// and only a confirmed write marks the cell — the same rule as the
 // extracted-cell fix. A grid cell can classify as roundable through
 // the whole-text fallback yet hold no text piece for the nodeValue write to
-// patch; such a write skips, and a skipped write must not flip the form.
+// patch; such a write skips, and a skipped write must not mark the cell.
 // ---------------------------------------------------------------------------
 
 (function gridApplyPatchesReturnsLanded() {
@@ -2489,10 +2489,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 // pristine values; a grid re-apply observer must NOT re-round them. An
 // observer that saw the restore writes' characterData mutations would
 // re-round the cells ~100ms later, making them flash original then snap back
-// to simplified and leaving the recorded form disconnected from the DOM.
+// to simplified while the table is off.
 //
-// Off is a reset, which disconnects the observer and clears the stored
-// options, and the appliedFlag guard inside the re-apply also bails. This
+// Off is a reset, which disconnects the observer. This
 // test drives a mutation through anyway — the stub calls the callback whether
 // or not the observer was disconnected, so the re-apply's own bail is still
 // what the assertions read.
@@ -2514,9 +2513,9 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     // The user presses the grid's table pillbox to turn simplification off.
     resetTable(grid.wrapperEl);
 
-    // Flag must be set and originals restored.
-    eq('GV5b: appliedFlag is "original" after the press turns simplification off',
-      DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'original');
+    // Originals restored.
+    eq('GV5b: the grid shows its originals after the press turns simplification off',
+      showsSimplified(grid.wrapperEl), false);
     eq('GV5b: cell[0] text node restored to original',
       grid.cellEls[0].childNodes[0].nodeValue, '8584629');
 
@@ -2539,8 +2538,8 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
     DR_MODEL.setTableSettings(grid.wrapperEl,
       { simplifyFirstRow: true, simplifyFirstColumn: true, enabled: true }, 'page');
     applySidebarRounding(grid.wrapperEl);
-    eq('GV5b: appliedFlag is "simplified" after the press turns simplification back on',
-      DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'simplified');
+    eq('GV5b: the grid shows simplified values after the press turns simplification back on',
+      showsSimplified(grid.wrapperEl), true);
     eq('GV5b: cell[0] re-simplified after the press turns simplification back on',
       grid.cellEls[0].childNodes[0].nodeValue !== '8584629', true);
 
@@ -3900,8 +3899,7 @@ function everyRowRead(kind, largeIn) {
     // path's fresh round. ---
     eval(contentScriptBundle + `
       globalThis.__ri1_roundTable = roundTable;
-      globalThis.__ri1_showsSimplified = (t) => DR_MODEL.getTableAppliedFlag(t) === 'simplified';
-    `);
+          `);
     global.__ri1_roundTable(table1, DR_DEFAULTS);
     global.__ri1_roundTable(table3, DR_DEFAULTS);
     const roundedText1 = dataCell1.innerText;
@@ -3917,7 +3915,7 @@ function everyRowRead(kind, largeIn) {
     eq('re-injection (pre): instance 1 actually rounded the cell away from the true original',
       roundedText1 !== trueOriginal1, true);
     eq('re-injection (pre): instance 1 reports the table as rounded',
-      global.__ri1_showsSimplified(table1), true);
+      showsSimplified(table1), true);
     eq('re-injection (pre): the title attribute holds the true original',
       roundedTitle1, `Original: ${trueOriginal1}`);
 
@@ -3931,16 +3929,13 @@ function everyRowRead(kind, largeIn) {
     let ri2Listener = null;
     global.chrome.runtime.onMessage.addListener = (fn) => { ri2Listener = fn; };
     eval(contentScriptBundle + `
-      globalThis.__ri2_showsSimplified = (t) => DR_MODEL.getTableAppliedFlag(t) === 'simplified';
-      globalThis.__ri2_resetTable = resetTable;
+            globalThis.__ri2_resetTable = resetTable;
       globalThis.__ri2_DR_MODEL = DR_MODEL;
       globalThis.__ri2_roundTable = roundTable;
       globalThis.__ri2_syncTablePillbox = syncTablePillbox;
       globalThis.__ri2_tablePillboxes = tablePillboxes;
     `);
 
-    eq('re-injection: a fresh instance reports the table as NOT rounded, despite the DOM still showing rounded text — a state/display mismatch the moment re-injection happens',
-      global.__ri2_showsSimplified(table1), false);
 
     // --- Scenario A: the user's most natural recovery action is "reset"
     // (or an equivalent toggle-to-original click). Drive the SAME
@@ -3954,8 +3949,6 @@ function everyRowRead(kind, largeIn) {
       dataCell1.title, roundedTitle1);
     eq('re-injection reset: the displayed text is unchanged — not falsely "restored"',
       dataCell1.innerText, roundedText1);
-    eq('re-injection reset: appliedFlag stays \'simplified\' — the truthful state, since the screen still shows rounded text',
-      global.__ri2_DR_MODEL.getTableAppliedFlag(table1), 'simplified');
 
     // --- Scenario B: the sidebar apply with the table on, on a table holding
     // an unrestorable cell. Drives the real wiring end to end: a sidebar
@@ -3983,8 +3976,6 @@ function everyRowRead(kind, largeIn) {
       dataCell3.title, `Original: ${roundedText3}`);
     eq('re-injection sidebar apply: the cell keeps the simplified marker',
       dataCell3.classList.contains('dr-ext-rounded'), true);
-    eq('re-injection sidebar apply: appliedFlag reads \'simplified\'',
-      global.__ri2_DR_MODEL.getTableAppliedFlag(table3), 'simplified');
     eq('re-injection sidebar apply: the apply runs the simplification pass, which sends the range status',
       sentMessages.some((m) => m.topic === 'state:rangeOk' || m.topic === 'state:rangeError'), true);
 
@@ -4700,8 +4691,8 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       t.text(1, 1), '9,999');
     eq(`#421 early restore (${kind}): the cells the extension held show their originals`,
       [t.text(0, 1), t.text(1, 0)], ['2,468', '3,579']);
-    eq(`#421 early restore (${kind}): every cell restores, so the form is original`,
-      DR_MODEL.getTableAppliedFlag(t.table), 'original');
+    eq(`#421 early restore (${kind}): every cell restores, so the table shows its originals`,
+      showsSimplified(t.table), false);
   });
 })();
 
@@ -4872,8 +4863,8 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       DR_MODEL.getTableOriginalText(t.table, t.cell(0, 0)), '8,765');
     resetTable(t.table);
     eq(`#423 fewer pieces (${kind}): the restore leaves no cell unrestorable and puts back the redrawn value`,
-      { text: t.text(0, 0), form: DR_MODEL.getTableAppliedFlag(t.table) },
-      { text: '8,765', form: 'original' });
+      { text: t.text(0, 0), simplified: showsSimplified(t.table) },
+      { text: '8,765', simplified: false });
   });
 })();
 
@@ -4917,8 +4908,8 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       { tag: 'i', text: ' est.' }]);
     resetTable(t.table);
     eq(`#421 duplicate written text (${kind}): a restore before any pass puts each original back in order`,
-      { form: DR_MODEL.getTableAppliedFlag(t.table), text: t.text(0, 0) },
-      { form: 'original', text: '1,613,245 to 1,587,002 est.' });
+      { simplified: showsSimplified(t.table), text: t.text(0, 0) },
+      { simplified: false, text: '1,613,245 to 1,587,002 est.' });
   });
 })();
 
@@ -4934,8 +4925,8 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
     t.redraw(0, 0, '8,765');
     resetTable(t.table);
     eq(`#423 fewer pieces, early restore (${kind}): the page's text stays and no cell is unrestorable`,
-      { form: DR_MODEL.getTableAppliedFlag(t.table), text: t.text(0, 0), marked: t.cell(0, 0).classList.contains('dr-ext-rounded') },
-      { form: 'original', text: '8,765', marked: false });
+      { simplified: showsSimplified(t.table), text: t.text(0, 0), marked: t.cell(0, 0).classList.contains('dr-ext-rounded') },
+      { simplified: false, text: '8,765', marked: false });
   });
 })();
 
