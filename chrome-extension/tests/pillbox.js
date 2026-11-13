@@ -440,7 +440,7 @@
 })();
 
 // --- AC3 / AC4: the two directions of a press ---
-// A press on a raw table simplifies it; a press on a simplified table resets
+// A press on a table showing the original simplifies it; a press on a simplified table resets
 // it. Each direction is driven here through the call the press path makes.
 // We verify the outcome on the table rather than inspecting private calls.
 
@@ -470,7 +470,7 @@
 
     // After a press turning simplification on, at least one cell is simplified
     const hasRounded = table._cells.some(c => c.classList.contains('dr-ext-rounded'));
-    eq('auto-table-toggle: a press on a raw table simplifies its cells (AC3)',
+    eq('auto-table-toggle: a press on a table showing the original simplifies its cells (AC3)',
       hasRounded, true);
     // aria-pressed should now reflect the simplified state
     eq('auto-table-toggle: aria-pressed="true" after a press turns simplification on',
@@ -2221,7 +2221,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     withCreateTreeWalker(function() { DR_BUS.publish('intent:toggleTable', { table }); });
     const isNowRounded = showsSimplified(table);
 
-    eq('AC2 regression: a press takes a raw table to simplified',
+    eq('AC2 regression: a press takes a table showing the original to simplified',
       !wasRounded && isNowRounded, true);
 
     withCreateTreeWalker(function() { DR_BUS.publish('intent:toggleTable', { table }); });

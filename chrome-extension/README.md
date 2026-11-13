@@ -10,7 +10,7 @@ Two consequences follow. Turning simplification on uses the table's own settings
 
 Each table holds its own settings, the range expression included. A press changes the table's on/off value alone, so moving the active table leaves every table's range expression in place, and the sidebar shows the settings of whichever table is active.
 
-A table no one has turned on reads off, so the sidebar pillbox shows off over a raw table, and opening the sidebar on its own changes nothing on the page. The right-click menu holds two items. "Simplify" makes the same press on the table right-clicked. "Simplify and open sidebar" makes that press, then opens the sidebar. Both labels stay the same whatever the table's on/off value.
+A table no one has turned on reads off, so the sidebar pillbox shows off over a table showing the original, and opening the sidebar on its own changes nothing on the page. The right-click menu holds two items. "Simplify" makes the same press on the table right-clicked. "Simplify and open sidebar" makes that press, then opens the sidebar. Both labels stay the same whatever the table's on/off value.
 
 A table loses its original values when a content script re-injection empties the registry while the table shows simplified values. The extension then reads the simplified values on the screen as the originals: turning the table on simplifies them again, and the hover text shows a simplified value as the original. A page reload clears it.
 
@@ -28,7 +28,7 @@ A tab switch closes the sidebar. The service worker closes it whenever the user 
 
 ## Header cells follow the switches
 
-A header cell rounds like any other cell. The first-row and first-column switches govern by position: with both off, the top row and the leading column stay raw, whatever tag the page gave their cells, and a header cell outside that row and column rounds under the defaults. A pricing comparison that marks its prices as column headers rounds them when the first-row switch is on, and a volume table that marks its seat counts as row headers rounds them when the first-column switch is on. A grid reads an element with the cell role, the grid-cell role, the row-header role, or the column-header role as a cell, in document order, so a row label with the row-header role is the first column, and both table kinds follow this one rule.
+A header cell rounds like any other cell. The first-row and first-column switches govern by position: with both off, the top row and the leading column show the original, whatever tag the page gave their cells, and a header cell outside that row and column rounds under the defaults. A pricing comparison that marks its prices as column headers rounds them when the first-row switch is on, and a volume table that marks its seat counts as row headers rounds them when the first-column switch is on. A grid reads an element with the cell role, the grid-cell role, the row-header role, or the column-header role as a cell, in document order, so a row label with the row-header role is the first column, and both table kinds follow this one rule.
 
 ## Offset semantics
 

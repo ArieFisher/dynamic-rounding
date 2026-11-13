@@ -438,11 +438,11 @@ function fingerprintReadOpts(table) {
 // the sidebar.
 //
 // The switch publishes even where the fresh registration lands on the same
-// element: the entry is new either way, with no originals and a raw form, and
+// element: the entry is new either way, with no originals and the form original, and
 // the sidebar re-reads the active table's settings on that topic.
 //
 // The fresh table is a new table: it holds no settings, so it reads the
-// shipped defaults, and it shows the page's values raw, the same as a table
+// shipped defaults, and it shows the page's original values, the same as a table
 // found on page load. Nothing from the replaced table's settings reaches it.
 //
 // A table with no recorded fingerprint compares against nothing and returns
@@ -930,7 +930,7 @@ function resolveRoundingSettings(opts) {
 // Every cell of every row, in page order, with its row index. A header
 // cell is a cell like any other: the first-row and first-column exclusions
 // govern it by position, whatever tag the page gave it, so a header row of
-// prices rounds when the first-row switch is on and stays raw when it is
+// prices rounds when the first-row switch is on and shows the original when it is
 // off. The column index is the column the browser lays the cell out in (the
 // adapter's reading, see assignGridColumns): a <th scope="row"> IS the
 // table's first column as rendered, so in such a table the leading <td> is
@@ -1162,7 +1162,7 @@ function reapplyRounding(table) {
 // observer, and the reset that turns a table off stops it. A table turned on
 // with nothing to simplify therefore simplifies a number the page adds later.
 // The shape check runs before any cell is sorted: a table the page refilled
-// with a different shape re-detects as a new table, raw and under the
+// with a different shape re-detects as a new table, showing the original under the
 // shipped defaults, and the pass stops there. Otherwise the pass runs the
 // one simplification pass under the table's own settings and its magnitude
 // freeze, if it holds one, so neither a grid's scroll nor a value the page

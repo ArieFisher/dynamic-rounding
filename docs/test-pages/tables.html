@@ -1672,7 +1672,7 @@ TSLA,75,"248.09","18,606.75"
       1,250,000 sets the max magnitude for the whole table.</p>
 
     <!--
-      West / East      -> merged down over two rows each; first column, stays raw
+      West / East      -> merged down over two rows each; first column, shows the original
       1,250,000        -> rounds; sets the top band for the whole table
       every other cell -> rounds against that band
     -->
@@ -1715,7 +1715,7 @@ TSLA,75,"248.09","18,606.75"
     </ol>
 
     <!--
-      2026        -> a header merged across two columns; the first row, so it stays raw
+      2026        -> a header merged across two columns; the first row, so it shows the original
       Total       -> merged across the first two columns
       1,140,043   -> the total's own cell, column C
     -->
@@ -1794,8 +1794,8 @@ TSLA,75,"248.09","18,606.75"
         value arrives.</li>
       <li><b>Swap the column set</b> replaces the headers and the first five rows,
         as a page that loads a different query result into the same table.
-        Expect: the extension detects a new table. It shows the new values
-        raw with the pillbox off, and the sidebar shows the default settings
+        Expect: the extension detects a new table. It shows the original of
+        the new values with the table pillbox off, and the sidebar shows the default settings
         for it, so a press simplifies it under the defaults. The sidebar's
         active table moves to the new table only when this table was the
         active one.</li>
@@ -2138,7 +2138,7 @@ TSLA,75,"248.09","18,606.75"
       <li><b>Press the 1,001-row table's pillbox on.</b> Expect: it simplifies
         with no toast, and the log holds one row,
         <code>above cell cap · cells: 10,010</code>.</li>
-      <li><b>Press Rewrite a cell.</b> Expect: the cell shows 777,777 raw.</li>
+      <li><b>Press Rewrite a cell.</b> Expect: the cell shows 777,777, the original.</li>
       <li><b>Press the pillbox off.</b> Expect: the cell keeps 777,777, and
         every other cell shows its original.</li>
     </ol>
@@ -2741,7 +2741,7 @@ TSLA,75,"248.09","18,606.75"
     <p class="expect">Expect: a pillbox at load on all three tables.</p>
     <ol class="expect">
       <li><b>Under the defaults.</b> Expect: the header row and the first
-        column stay raw on each table, and the "Annual total" row rounds on
+        column show the original on each table, and the "Annual total" row rounds on
         both pricing tables.</li>
       <li><b>Turn on the first-row switch.</b> Expect: the price headers round
         on both pricing tables.</li>
@@ -2841,7 +2841,7 @@ TSLA,75,"248.09","18,606.75"
     <p class="expect">Expect: a pillbox at load.</p>
     <ol class="expect">
       <li><b>Under the defaults.</b> Expect: the header row and the labels
-        stay raw, and every amount rounds. A failure leaves
+        show the original, and every amount rounds. A failure leaves
         every amount as written, with no visible reason.</li>
       <li><b>Open the sidebar and set the range expression to B2:B6.</b>
         Expect: the same five amounts round. A failure rounds nothing,
@@ -3549,7 +3549,7 @@ TSLA,75,"248.09","18,606.75"
     </div>
 
     <h3>30m. Cell merged down rows <code>merged-down</code></h3>
-    <p class="expect">A failure leaves 2,734 raw on one table, read as a first-column
+    <p class="expect">A failure leaves the original 2,734 on one table, read as a first-column
       cell.</p>
     <div class="pair">
       <figure>
@@ -3876,7 +3876,7 @@ TSLA,75,"248.09","18,606.75"
     <ol class="expect">
       <li><b>Turn on both tables.</b> Expect: the visible 2,734 rounds like
         the other values of its column and the hidden text keeps its
-        characters, on both tables. A failure shows 2,734 raw or a different
+        characters, on both tables. A failure shows the original 2,734 or a different
         value on one table.</li>
     </ol>
     <div class="pair">
@@ -3941,7 +3941,7 @@ TSLA,75,"248.09","18,606.75"
       <li><b>Right-click any value.</b> Expect: a pillbox appears on the whole
         grid. A failure shows no pillbox.</li>
       <li><b>Turn the grid on under the defaults.</b> Expect: the plan names
-        and the feature labels stay raw, and the large values round:
+        and the feature labels show the original, and the large values round:
         1,962,800 shows 2,000,000.</li>
       <li><b>Open the sidebar and set the range expression to B2:B5.</b>
         Expect: the Free column's values round, so 12,500 changes, and every

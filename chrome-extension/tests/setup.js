@@ -262,7 +262,7 @@ globalThis.markAndAddTablePillboxIfNewGrid = markAndAddTablePillboxIfNewGrid;
 // silently diverge from what the real call sites do.
 globalThis.registryOriginalsPort = registryOriginalsPort;
 globalThis.restoreTable = restoreTable;
-// resetTable is the one way back to raw, so tests reach the original values
+// resetTable is the one way back to the original, so tests reach the original values
 // through it.
 globalThis.resetTable = resetTable;
 globalThis.applySidebarRounding = applySidebarRounding;

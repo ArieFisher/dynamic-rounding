@@ -40,7 +40,7 @@
     roundTable(table, opts);
     const cells = table.rows[0].cells;
     // <th> Name holds no number, so it stays raw.
-    eq('first-col-is-A (row-header table): a <th> holding a name stays raw',
+    eq('first-col-is-A (row-header table): a <th> holding a name shows the original',
       cells[0].classList.contains('dr-ext-rounded'), false);
     // <td>100 is column B and <td>200 column C — both out of range A
     eq('first-col-is-A (row-header table): <td>100 at column B not rounded',
@@ -84,7 +84,7 @@
 (function simplifyFirstColumn_withRowHeader() {
   for (const flag of [false, true]) {
     const rows = runRowHeaderTable({ simplifyFirstColumn: flag });
-    eq(`simplifyFirstColumn=${flag} (row-header table): a <th> holding a name stays raw`,
+    eq(`simplifyFirstColumn=${flag} (row-header table): a <th> holding a name shows the original`,
       isRounded(rows[0][0]), false);
     eq(`simplifyFirstColumn=${flag} (row-header table): leading <td> is column B, not gated`,
       isRounded(rows[0][1]), true);
@@ -145,9 +145,9 @@ const PRICE_HEADER_ROWS = [
 
 (function headerCells_theFirstRowSwitchGovernsAHeaderRow() {
   const off = roundHeaderCellTable(PRICE_HEADER_ROWS, { simplifyFirstRow: false });
-  eq('header cells: with the first-row switch off, a <th> price in row one stays raw',
+  eq('header cells: with the first-row switch off, a <th> price in row one shows the original',
     off[0][1].innerText, '$195');
-  eq('header cells: with the first-row switch off, the raw <th> carries no rounded marker',
+  eq('header cells: with the first-row switch off, the original <th> carries no rounded marker',
     isRounded(off[0][1]), false);
   const on = roundHeaderCellTable(PRICE_HEADER_ROWS, { simplifyFirstRow: true });
   eq('header cells: with the first-row switch on, a <th> price in row one rounds',
@@ -166,7 +166,7 @@ const SEAT_ROWS = [
 
 (function headerCells_theFirstColumnSwitchGovernsRowHeaders() {
   const off = roundHeaderCellTable(SEAT_ROWS, { simplifyFirstColumn: false });
-  eq('header cells: with the first-column switch off, a <th> count in column A stays raw',
+  eq('header cells: with the first-column switch off, a <th> count in column A shows the original',
     off[1][0].innerText, '1,234');
   const on = roundHeaderCellTable(SEAT_ROWS, { simplifyFirstColumn: true });
   eq('header cells: with the first-column switch on, a <th> count in column A rounds',
@@ -211,7 +211,7 @@ const SEAT_ROWS = [
     const table = makeMockTable(PRICE_HEADER_ROWS);
     const nums = (overrides) =>
       collectNumericCells(table, Object.assign({}, HEADER_CELL_OPTS, overrides)).map((c) => c.num);
-    eq('header cells: the lens preview leaves a raw header row out',
+    eq('header cells: the lens preview leaves a header row showing the original out',
       nums({ simplifyFirstRow: false }), [25, 40]);
     eq('header cells: the lens preview takes a simplified header row in',
       nums({ simplifyFirstRow: true }), [195, 550, 25, 40]);
@@ -4077,7 +4077,7 @@ function everyRowRead(kind, largeIn) {
   const bracketed = grid.cellEls[1];
   setGridCellPieces(bracketed, [makeTextNode('('), makeTextNode('5,432.1'), makeTextNode(')')]);
   try {
-    eq('bracketed: the lens preview pool reads the raw cell as a negative',
+    eq('bracketed: the lens preview pool reads the original of the cell as a negative',
       collectNumericCells(grid.wrapperEl, PATCH_GRID_OPTS).map((cell) => cell.num), [4.91, -5432.1]);
     roundTable(grid.wrapperEl, PATCH_GRID_OPTS);
     eq('bracketed: the lens preview pool still reads it as a negative once rounded',
@@ -4700,7 +4700,7 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
       t.text(1, 1), '9,999');
     eq(`#421 early restore (${kind}): the cells the extension held show their originals`,
       [t.text(0, 1), t.text(1, 0)], ['2,468', '3,579']);
-    eq(`#421 early restore (${kind}): every cell restores, so the form is raw`,
+    eq(`#421 early restore (${kind}): every cell restores, so the form is original`,
       DR_MODEL.getTableAppliedFlag(t.table), 'original');
   });
 })();

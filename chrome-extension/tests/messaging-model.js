@@ -2710,7 +2710,7 @@ const PENDING_FILL_ROWS = [
 })();
 
 // --- Exactly one settings write per press, and the flip direction comes from
-// the table's on/off value as it stood BEFORE that write. For a raw table
+// the table's on/off value as it stood BEFORE that write. For a table showing the original
 // whose settings already stand at on, the handler writes off: the table
 // pillbox shows that table as on, the same as the sidebar pillbox. ---
 (function partOne_onePressOneWriteReadingTheSettingFirst() {
@@ -2725,9 +2725,9 @@ const PENDING_FILL_ROWS = [
 
     eq('part one: a press makes exactly one settings write',
       writes(), 1);
-    eq('part one: a raw table with its settings at on ends at off after one press',
+    eq('part one: a table showing the original with its settings at on ends at off after one press',
       DR_MODEL.getTableSettings(pressed).enabled, false);
-    eq('part one: the table stays raw after that press',
+    eq('part one: the table shows the original after that press',
       showsSimplified(pressed), false);
   });
 })();
@@ -3017,7 +3017,7 @@ function issue328SettingsOf(table) {
 })();
 
 // A table no one has turned on reads off: the shipped on/off value is off,
-// so the sidebar's switch matches a raw table, and opening the sidebar on an
+// so the sidebar's switch matches a table showing the original, and opening the sidebar on an
 // untouched table leaves it raw. Only a toggle or the switch turns it on.
 (function issue328_anUntouchedTableReadsOff() {
   runPressFixture(() => {
@@ -3026,7 +3026,7 @@ function issue328SettingsOf(table) {
     eq('defaults: a table with no settings reads off',
       DR_MODEL.getTableSettings(table).enabled, false);
     withCreateTreeWalker(() => askContentScript({ topic: 'state:sidebarOpened' }));
-    eq('defaults: opening the sidebar on an untouched table leaves it raw',
+    eq('defaults: opening the sidebar on an untouched table leaves it showing the original',
       [showsSimplified(table), table._cells[3].innerText], [false, '8,584,629']);
   });
 })();
@@ -3072,7 +3072,7 @@ function issue328SettingsOf(table) {
 })();
 
 // A shape change registers a new table. It holds no settings, so it reads the
-// shipped defaults, and it shows the page's values raw, the same as a table
+// shipped defaults, and it shows the page's original values, the same as a table
 // found on page load. Nothing from the replaced table's settings reaches it.
 (function issue328_aShapeChangeRegistersANewTableUnderTheDefaults() {
   runPressFixture(({ writes, resetWrites }) => {
@@ -3092,7 +3092,7 @@ function issue328SettingsOf(table) {
       outcome && outcome.switched, true);
     eq('per-table settings: the fresh table reads the shipped defaults',
       fresh && DR_MODEL.getTableSettings(fresh), Object.assign({}, DR_DEFAULTS));
-    eq('per-table settings: the fresh table shows raw',
+    eq('per-table settings: the fresh table shows the original',
       fresh && DR_MODEL.getTableAppliedFlag(fresh), 'original');
     eq('per-table settings: the shape change writes no table\'s settings',
       writes(), 0);
@@ -3311,7 +3311,7 @@ function issue328SettingsOf(table) {
 })();
 
 // --- Criterion: changing the column set trips the fingerprint. The entry is
-// discarded, and a pillbox press afterwards simplifies from a raw state. ---
+// discarded, and a pillbox press afterwards simplifies from the original. ---
 
 // Shape one: the page redraws its rows one column wider, so every cell of the
 // new result set is a fresh element carrying raw text.
@@ -3402,7 +3402,7 @@ function issue328SettingsOf(table) {
 })();
 
 // The restore runs before the discard, against the old entry while it still
-// holds the originals, so a surviving cell reads raw at the moment the fresh
+// holds the originals, so a surviving cell shows the original at the moment the fresh
 // entry records.
 (function shapeFingerprint_theDiscardRestoresTheSurvivingCellsFirst() {
   runPressFixture(() => {
@@ -3462,7 +3462,7 @@ function issue328SettingsOf(table) {
       grid.scrollRowEls.some((rowEl) =>
         rowEl.children.some((cellEl) => DR_MODEL.hasTableOriginal(grid.scrollPaneEl, cellEl))),
       false);
-    eq('fingerprint originals: the fresh entry\'s form is raw',
+    eq('fingerprint originals: the fresh entry\'s form is original',
       showsSimplified(grid.scrollPaneEl), false);
 
     forgetRegisteredTable(grid.scrollPaneEl);
@@ -3632,7 +3632,7 @@ function issue328SettingsOf(table) {
   });
 })();
 
-// The restore runs before the discard on this path too: the page reads raw
+// The restore runs before the discard on this path too: the page shows the original
 // after a recovery that registers nothing. The narrowing keeps each row's
 // simplified cell, so the surviving text is the extension's own until the
 // restore puts the original back, and no entry remains to restore from after.
@@ -4611,7 +4611,7 @@ function issue328SettingsOf(table) {
 })();
 
 // --- Test 10: a shape change during a pass. The table re-detects as a new
-// table and shows raw under the shipped defaults; the active table changes
+// table and shows the original under the shipped defaults; the active table changes
 // only when the changed table was the active one. ---
 (function rewrite10_aShapeChangeDuringAPassReDetects() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {
@@ -4638,7 +4638,7 @@ function issue328SettingsOf(table) {
           { selected: DR_MODEL.getActiveTable() === active.table, switches }, { selected: true, switches: 0 });
         eq(`#421 shape change (${kind}): the changed table registers fresh with the new header`,
           (DR_MODEL.getTableFingerprint(other.table) || {}).headerTexts, ['Region', 'Q1', 'Q3']);
-        eq(`#421 shape change (${kind}): the changed table shows raw, under the shipped defaults`,
+        eq(`#421 shape change (${kind}): the changed table shows the original, under the shipped defaults`,
           { rounded: showsSimplified(other.table), texts: other.rowTexts(),
             settings: DR_MODEL.getTableSettings(other.table) },
           { rounded: false, texts: [['North', '1,234', '5,678'], ['South', '2,468', '3,579']],
@@ -4648,7 +4648,7 @@ function issue328SettingsOf(table) {
         page.settle();
         eq(`#421 shape change (${kind}): a change on the active table moves the active table to the fresh entry`,
           { selected: DR_MODEL.getActiveTable() === active.table, switches }, { selected: true, switches: 1 });
-        eq(`#421 shape change (${kind}): the active table shows raw, under the shipped defaults`,
+        eq(`#421 shape change (${kind}): the active table shows the original, under the shipped defaults`,
           { rounded: showsSimplified(active.table), texts: active.rowTexts(),
             settings: DR_MODEL.getTableSettings(active.table) },
           { rounded: false, texts: [['North', '1,234', '5,678'], ['South', '2,468', '3,579']],
