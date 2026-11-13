@@ -2616,8 +2616,8 @@ const PRE_MOVE_DETECTION_SETTINGS = {
   nestingDepth: 1,
   gridMinChildren: 5,
   gridWalkDepthCap: 15,
-  gridColumnWidthSample: 10,
-  gridColumnWidthAgreement: 0.8,
+  gridSampleSize: 10,
+  gridAlignmentAgreement: 0.8,
   gridRepetitionShare: 0.5,
   gridDisplayValues: ['grid', 'flex', 'inline-grid', 'inline-flex'],
   dataTestCellBudget: 1000,
@@ -2635,7 +2635,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
       pinnedPaneSelectors: ['.ag-pinned-left-cols-container'],
     },
   ],
-  gridRedrawDelayMs: 100,
+  settleDelayMs: 100,
   reapplyMaxWaitMs: 1000,
   reapplyCellCap: 10000,
   passTargetMs: 200,
@@ -2699,7 +2699,7 @@ const PRE_MOVE_DETECTION_SETTINGS = {
         .concat([0, 1, 2, 3, 4].map(() => makeRow('row-b', [makeCell('1', 50), makeCell('2', 50), makeCell('3', 50)])));
       outcomes.repetitionAtFloorPasses = looksLikeGrid(makeEl(atFloorRows), { styleProbe: gridStyleProbe });
 
-      // --- gridColumnWidthSample + gridColumnWidthAgreement (alignment step): the
+      // --- gridSampleSize + gridAlignmentAgreement (alignment step): the
       // sample is bounded to the first 10 of 12 uniform rows; 8-of-10
       // matching widths (exactly 0.8) passes, 7-of-10 (0.7) fails ---
       const widthRow = (w) => makeRow('row', [makeCell('1', w)]);
@@ -2780,9 +2780,9 @@ const PRE_MOVE_DETECTION_SETTINGS = {
     sandbox.outcomes.repetitionBelowFloorFails, false);
   eq('detection settings: looksLikeGrid accepts a 5-of-10 share (at gridRepetitionShare)',
     sandbox.outcomes.repetitionAtFloorPasses, true);
-  eq('detection settings: looksLikeGrid accepts an 8-of-10 sampled-width agreement (at gridColumnWidthAgreement, within gridColumnWidthSample)',
+  eq('detection settings: looksLikeGrid accepts an 8-of-10 sampled-width agreement (at gridAlignmentAgreement, within gridSampleSize)',
     sandbox.outcomes.widthAgreementAtThresholdPasses, true);
-  eq('detection settings: looksLikeGrid rejects a 7-of-10 sampled-width agreement (below gridColumnWidthAgreement)',
+  eq('detection settings: looksLikeGrid rejects a 7-of-10 sampled-width agreement (below gridAlignmentAgreement)',
     sandbox.outcomes.widthAgreementBelowThresholdFails, false);
   eq('detection settings: looksLikeGrid accepts display:grid (in gridDisplayValues)',
     sandbox.outcomes.displayGridPasses, true);
@@ -4381,7 +4381,7 @@ function cnAdapterCellEls(tableEl) {
 // sprint. A column-first grid's children are columns drawn side by side; a
 // row-first grid's children are rows drawn one below another. The direction
 // read takes the boxes of the first two children that draw a box, among at
-// most gridColumnWidthSample children: the same top with a larger left reads
+// most gridSampleSize children: the same top with a larger left reads
 // column-first, and anything else reads row-first.
 // =============================================================================
 
@@ -4680,11 +4680,11 @@ function makeSparselyBoxedGrid(boxed) {
 }
 
 (function directionReader_inspectsAtMostTheSampleCap() {
-  const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
+  const cap = DR_DETECTION_SETTINGS.gridSampleSize;
   const gridEl = makeSparselyBoxedGrid([cap, cap + 1]);
   const probe = makeCountingBoxProbe();
   const rows = makeAdapter(gridEl, { styleProbe: probe }).getRows();
-  eq('direction reader cap: the read inspects at most gridColumnWidthSample children',
+  eq('direction reader cap: the read inspects at most gridSampleSize children',
     probe.boxReads.length <= cap, true);
   eq('direction reader cap: the read inspects no child past the cap',
     probe.boxReads.some((el) => gridEl.children.indexOf(el) >= cap), false);
@@ -4693,14 +4693,14 @@ function makeSparselyBoxedGrid(boxed) {
 })();
 
 (function directionReader_oneBoxInsideTheCapReadsRowFirst() {
-  const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
+  const cap = DR_DETECTION_SETTINGS.gridSampleSize;
   const gridEl = makeSparselyBoxedGrid([cap - 1, cap]);
   eq('direction reader cap: one box inside the cap answers row-first',
     makeAdapter(gridEl, { styleProbe: makeCountingBoxProbe() }).getRows().length, 12);
 })();
 
 (function directionReader_twoBoxesInsideTheCapReadColumnFirst() {
-  const cap = DR_DETECTION_SETTINGS.gridColumnWidthSample;
+  const cap = DR_DETECTION_SETTINGS.gridSampleSize;
   const gridEl = makeSparselyBoxedGrid([cap - 2, cap - 1]);
   const probe = makeCountingBoxProbe();
   const rows = makeAdapter(gridEl, { styleProbe: probe }).getRows();

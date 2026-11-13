@@ -1800,7 +1800,7 @@ function runPendingRetestTimers(timers) {
   let ran = 0;
   for (const timer of timers) {
     if (timer.cancelled || timer.ran) continue;
-    if (timer.ms !== DR_DETECTION_SETTINGS.gridRedrawDelayMs) continue;
+    if (timer.ms !== DR_DETECTION_SETTINGS.settleDelayMs) continue;
     timer.ran = true;
     ran++;
     timer.callback();

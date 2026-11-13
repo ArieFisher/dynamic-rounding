@@ -232,7 +232,7 @@ globalThis.simplifyTableCells = simplifyTableCells;
 globalThis.registryAdapter = registryAdapter;
 globalThis.reapplyObservers = reapplyObservers;
 globalThis.reapplyTimers = reapplyTimers;
-globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.gridRedrawDelayMs;
+globalThis.GRID_REAPPLY_DEBOUNCE_MS = DR_DETECTION_SETTINGS.settleDelayMs;
 // Expose the nomination step (lib/dr-table/detect.js) for the nesting and
 // pending-table suites. The step returns outcomes findTables drops, so the
 // suites read them here rather than through findTables.

@@ -361,7 +361,7 @@ function holdPendingTable(chainRoot) {
     const timerId = setTimeout(() => {
       pendingRetestTimers.delete(chainRoot);
       retestPendingTable(chainRoot);
-    }, DR_DETECTION_SETTINGS.gridRedrawDelayMs);
+    }, DR_DETECTION_SETTINGS.settleDelayMs);
     pendingRetestTimers.set(chainRoot, timerId);
   });
   observer.observe(chainRoot, { childList: true, characterData: true, subtree: true });
@@ -1078,7 +1078,7 @@ function registryAdapter(table) {
 // The observer is off during the extension's own writes, the restore
 // included: a pass disconnects it before it writes and reconnects it after,
 // and a reset stops it before the restore writes. A burst of page edits
-// collapses into one pass: each change restarts the redraw delay, and a
+// collapses into one pass: each change restarts the settle delay, and a
 // burst that never goes quiet runs its pass once it has lasted the longest
 // wait (reapplyMaxWaitMs in the detection settings). A table above the cell
 // cap (reapplyCellCap) takes no observer, and a pass that finds its table
@@ -1129,7 +1129,7 @@ function scheduleReapply(table) {
   const pending = reapplyTimers.get(table);
   if (pending !== undefined) clearTimeout(pending);
   const untilLongest = reapplyBursts.get(table) + DR_DETECTION_SETTINGS.reapplyMaxWaitMs - now;
-  const wait = Math.max(0, Math.min(DR_DETECTION_SETTINGS.gridRedrawDelayMs, untilLongest));
+  const wait = Math.max(0, Math.min(DR_DETECTION_SETTINGS.settleDelayMs, untilLongest));
   reapplyTimers.set(table, setTimeout(() => reapplyRounding(table), wait));
 }
 

@@ -4783,7 +4783,7 @@ const lfPieces = (t, r, c) => t.pieces(r, c).map((piece) => piece.nodeValue);
   }
 })();
 
-// --- Test 15: page edits arriving faster than the redraw delay. A pass runs
+// --- Test 15: page edits arriving faster than the settle delay. A pass runs
 // once the burst reaches the longest wait. ---
 (function rewrite15_aBurstThatNeverGoesQuietStillRunsAPass() {
   eachRewriteKind(RW_KINDS, (kind, page, build) => {

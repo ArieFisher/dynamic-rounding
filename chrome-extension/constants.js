@@ -49,8 +49,8 @@ const DR_DETECTION_SETTINGS = {
   // --- Grid geometry probe (lib/dr-table/detect.js: looksLikeGrid) ---
   gridMinChildren: 5,
   gridWalkDepthCap: 15,
-  gridColumnWidthSample: 10,
-  gridColumnWidthAgreement: 0.8,
+  gridSampleSize: 10,
+  gridAlignmentAgreement: 0.8,
   gridRepetitionShare: 0.5,
   gridDisplayValues: ['grid', 'flex', 'inline-grid', 'inline-flex'],
   // --- Data test (lib/dr-table/detect.js: isDataTable) ---
@@ -73,9 +73,9 @@ const DR_DETECTION_SETTINGS = {
   // --- Re-apply observer (content.js) ---
   // A burst of page edits inside a simplified table runs one pass once the
   // edits stop for this long. The pending-table re-test below waits the same.
-  gridRedrawDelayMs: 100,
+  settleDelayMs: 100,
   // The longest a burst waits for its pass. A table the page updates more
-  // often than the redraw delay never goes quiet, so a pass runs once the
+  // often than the settle delay never goes quiet, so a pass runs once the
   // burst has lasted this long: at most one pass a second.
   reapplyMaxWaitMs: 1000,
   // The most cells a pass reads: a native table's cells, a grid's visible
@@ -92,7 +92,7 @@ const DR_DETECTION_SETTINGS = {
   passTargetMs: 200,
   // --- Pending tables (content.js) ---
   // Failed re-tests a pending table takes before its subtree observer drops.
-  // A re-test runs only after a subtree change and the redraw delay above, so
+  // A re-test runs only after a subtree change and the settle delay above, so
   // the count grows under sustained churn alone.
   pendingRetestCap: 100,
   // --- Accessibility artifact check (lib/dr-table/detect.js: isAccessibilityArtifact) ---

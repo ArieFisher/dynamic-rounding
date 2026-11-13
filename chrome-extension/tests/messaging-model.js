@@ -1300,11 +1300,11 @@ const PENDING_FILL_ROWS = [
     if (observer) observer.trigger();
     if (observer) observer.trigger();
 
-    const scheduled = timers.filter((t) => t.ms === DR_DETECTION_SETTINGS.gridRedrawDelayMs);
+    const scheduled = timers.filter((t) => t.ms === DR_DETECTION_SETTINGS.settleDelayMs);
     eq('pending debounce: two mutations schedule two timers and cancel the first',
       scheduled.map((t) => t.cancelled), [true, false]);
-    eq('pending debounce: the delay is the grid redraw delay',
-      scheduled.every((t) => t.ms === DR_DETECTION_SETTINGS.gridRedrawDelayMs), true);
+    eq('pending debounce: the delay is the settle delay',
+      scheduled.every((t) => t.ms === DR_DETECTION_SETTINGS.settleDelayMs), true);
 
     fillDatabaseQueryGrid(grid);
     withPillboxDocumentMock(function () {
