@@ -480,8 +480,8 @@ function revalidateTableShape(table, opts = {}) {
   // drop the originals behind that text: the fresh registration would read
   // the simplified values as the cells' own, and every one of them would be
   // unrestorable, with no route back to its original. Restoring first puts
-  // raw text in every surviving cell, so the fresh registration records its
-  // fingerprint over raw text and starts raw.
+  // the originals back in every surviving cell, so the fresh registration
+  // records its fingerprint over the original text and starts unsimplified.
   // A cell whose original is gone stays as it is, the same as any other
   // restore. The originals go back into the cells and nowhere else, so none
   // of them reaches the fresh entry.

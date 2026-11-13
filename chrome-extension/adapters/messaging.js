@@ -144,7 +144,7 @@ const DR_BUS = (function () {
     'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
     'request:activeTable': { family: REQUEST, route: ROUTE_TAB },
     'request:captureState': { family: REQUEST, route: ROUTE_TAB },
-    // The service worker's four topics. The two it publishes to a tab carry
+    // The service worker's topics. The two it publishes to a tab carry
     // an explicit tab number: neither the right-clicked tab nor the bound tab
     // is guaranteed to be the tab in front at the moment of the send.
     'intent:menuClicked': { family: INTENT, route: ROUTE_TAB },
