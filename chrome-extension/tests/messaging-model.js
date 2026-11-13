@@ -1660,10 +1660,10 @@ const PENDING_FILL_ROWS = [
     // enabled to the sidebar, and the apply that follows sends the range
     // status.
     'true': [
-      { action: 'state:settingsChanged', source: 'page',
+      { topic: 'state:settingsChanged', source: 'page',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
-      { action: 'state:rangeOk' },
-      { action: 'intent:updateMenuLabel', title: 'Toggle table' },
+      { topic: 'state:rangeOk' },
+      { topic: 'intent:updateMenuLabel', title: 'Toggle table' },
     ],
     // A press on a table that is NOT the active one applies the pressed
     // table's own settings to it, whatever the sidebar is doing.
@@ -1673,11 +1673,11 @@ const PENDING_FILL_ROWS = [
     // state:previewSamplesChanged — the sidebar's pull chain ends in the
     // preview fetch.
     'false': [
-      { action: 'state:tableSwitched' },
-      { action: 'state:settingsChanged', source: 'page',
+      { topic: 'state:tableSwitched' },
+      { topic: 'state:settingsChanged', source: 'page',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) },
-      { action: 'state:rangeOk' },
-      { action: 'intent:updateMenuLabel', title: 'Toggle table' },
+      { topic: 'state:rangeOk' },
+      { topic: 'intent:updateMenuLabel', title: 'Toggle table' },
     ],
   };
 
@@ -2086,7 +2086,7 @@ const PENDING_FILL_ROWS = [
       DR_BUS.publish('intent:toggleTable', { table }); // peek back
     });
 
-    const toggleMsgs = sent.filter(m => m.action === 'state:settingsChanged').map(m => m.settings);
+    const toggleMsgs = sent.filter(m => m.topic === 'state:settingsChanged').map(m => m.settings);
     eq('toggle-state cycle: exactly one settings notice per dispatch (3 total)',
       toggleMsgs.length, 3);
     eq('toggle-state cycle: enabled sequence is true (rounded), false (peek original), true (peek back)',
@@ -2366,13 +2366,13 @@ const PENDING_FILL_ROWS = [
     eq('removed table: removing another table leaves the active table in place',
       model.getActiveTable(), active);
     eq('removed table: removing another table sends the sidebar nothing',
-      sent.some((m) => m.action === 'state:previewSamplesChanged'), false);
+      sent.some((m) => m.topic === 'state:previewSamplesChanged'), false);
 
     tableObserver._cb([{ addedNodes: [], removedNodes: [active] }]);
     eq('removed table: removing the active table clears the active table',
       model.getActiveTable(), null);
     eq('removed table: removing the active table tells the sidebar to re-read',
-      sent.some((m) => m.action === 'state:previewSamplesChanged'), true);
+      sent.some((m) => m.topic === 'state:previewSamplesChanged'), true);
   } finally {
     delete global.__rt506_DR_MODEL;
     global.document = saved.document; global.chrome = saved.chrome; global.window = saved.window;
@@ -2657,7 +2657,7 @@ const PENDING_FILL_ROWS = [
     eq('leak-1: a later apply honors the table\'s settings — the table stays on originals',
       showsSimplified(table), false);
 
-    const notices = sent.filter((m) => m.action === 'state:settingsChanged');
+    const notices = sent.filter((m) => m.topic === 'state:settingsChanged');
     eq('leak-1: one settings notice per pillbox toggle, carrying the table\'s enabled — true then false',
       notices.map((m) => m.settings.enabled), [true, false]);
   } finally {
@@ -2708,7 +2708,7 @@ const PENDING_FILL_ROWS = [
     eq('part one: the pressed table\'s settings follow that press to on',
       DR_MODEL.getTableSettings(pressed).enabled, true);
     eq('part one: the press publishes the switch',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
+      sent.filter((m) => m.topic === 'state:tableSwitched').length, 1);
   });
 })();
 
@@ -2770,14 +2770,14 @@ const PENDING_FILL_ROWS = [
     const pillbox = tablePillboxes.get(table);
 
     withCreateTreeWalker(() => {
-      askContentScript({ action: 'request:applySettings',
+      askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: true }) });
     });
     eq('settings notice: the table pillbox shows on after the sidebar writes on',
       pillbox.getAttribute('aria-pressed'), 'true');
 
     withCreateTreeWalker(() => {
-      askContentScript({ action: 'request:applySettings',
+      askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, { enabled: false }) });
     });
     eq('settings notice: the table pillbox shows off after the sidebar writes off',
@@ -2911,15 +2911,15 @@ function issue328SettingsOf(table) {
     const tableB = makePressTable('8,584,629');
     withCreateTreeWalker(() => {
       DR_BUS.publish('intent:activateTable', { table: tableA });
-      askContentScript({ action: 'request:applySettings',
+      askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, ISSUE328_HEAVY) });
       DR_BUS.publish('intent:activateTable', { table: tableB });
-      askContentScript({ action: 'request:applySettings',
+      askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, ISSUE328_LIGHT) });
       DR_BUS.publish('intent:activateTable', { table: tableA });
     });
 
-    const answer = askContentScript({ action: 'request:activeTable' });
+    const answer = askContentScript({ topic: 'request:activeTable' });
     eq('per-table settings: the redraw read on A answers A\'s heavy rounding',
       answer && answer.settings && [answer.settings.offsetTop, answer.settings.offsetOther], [1, 1]);
     eq('per-table settings: A still shows its heavy rounding after B changed',
@@ -2928,7 +2928,7 @@ function issue328SettingsOf(table) {
       tableB._cells[3].innerText, '8,580,000');
 
     withCreateTreeWalker(() => {
-      askContentScript({ action: 'request:applySettings',
+      askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, ISSUE328_HEAVY, { simplifyFirstColumn: true }) });
     });
     eq('per-table settings: a change on A writes A\'s settings',
@@ -2946,19 +2946,19 @@ function issue328SettingsOf(table) {
 // answers, so the sidebar stays bound, and writes nothing.
 (function issue328_theSettingsRequestsReachTheActiveTable() {
   runPressFixture(() => {
-    const noneActive = askContentScript({ action: 'request:activeTable' });
+    const noneActive = askContentScript({ topic: 'request:activeTable' });
     eq('per-table settings: with no table active the redraw read answers the shipped defaults',
       noneActive && noneActive.settings, Object.assign({}, DR_DEFAULTS));
 
     const table = makePressTable('12,345');
     DR_MODEL.setTableSettings(table, { rangeExpr: 'B2' }, 'page');
     DR_MODEL.setActiveTable(table);
-    const active = askContentScript({ action: 'request:activeTable' });
+    const active = askContentScript({ topic: 'request:activeTable' });
     eq('per-table settings: the redraw read answers the active table\'s range expression',
       active && active.settings && active.settings.rangeExpr, 'B2');
 
     DR_MODEL.setActiveTable(null);
-    const applied = askContentScript({ action: 'request:applySettings',
+    const applied = askContentScript({ topic: 'request:applySettings',
       settings: Object.assign({}, DR_DEFAULTS, { rangeExpr: 'A1' }) });
     eq('per-table settings: the settings apply with no table active still answers',
       applied, { ok: true });
@@ -3008,9 +3008,9 @@ function issue328SettingsOf(table) {
     };
     try {
       const press = countChecks(() => DR_BUS.publish('intent:toggleTable', { table }));
-      const apply = countChecks(() => askContentScript({ action: 'request:applySettings',
+      const apply = countChecks(() => askContentScript({ topic: 'request:applySettings',
         settings: Object.assign({}, DR_DEFAULTS, ISSUE328_LIGHT) }));
-      const reopen = countChecks(() => askContentScript({ action: 'state:sidebarOpened' }));
+      const reopen = countChecks(() => askContentScript({ topic: 'state:sidebarOpened' }));
       eq('shape check: a pillbox press, a sidebar change, and a sidebar reopen each run it once',
         [press, apply, reopen], [1, 1, 1]);
     } finally {
@@ -3028,7 +3028,7 @@ function issue328SettingsOf(table) {
     DR_MODEL.setActiveTable(table);
     eq('defaults: a table with no settings reads off',
       DR_MODEL.getTableSettings(table).enabled, false);
-    withCreateTreeWalker(() => askContentScript({ action: 'state:sidebarOpened' }));
+    withCreateTreeWalker(() => askContentScript({ topic: 'state:sidebarOpened' }));
     eq('defaults: opening the sidebar on an untouched table leaves it raw',
       [showsSimplified(table), table._cells[3].innerText], [false, '8,584,629']);
   });
@@ -3044,13 +3044,13 @@ function issue328SettingsOf(table) {
     withCreateTreeWalker(() => { DR_BUS.publish('intent:toggleTable', { table }); });
     const simplified = table._cells[3].innerText;
     sent.length = 0;
-    withCreateTreeWalker(() => askContentScript({ action: 'state:sidebarOpened' }));
+    withCreateTreeWalker(() => askContentScript({ topic: 'state:sidebarOpened' }));
     eq('sidebar open: no apply runs on the simplified table',
-      sent.filter((m) => ['state:rangeOk', 'state:rangeError', 'intent:updateMenuLabel'].includes(m.action)).length, 0);
+      sent.filter((m) => ['state:rangeOk', 'state:rangeError', 'intent:updateMenuLabel'].includes(m.topic)).length, 0);
     eq('sidebar open: the simplified cells stay as the toggle left them',
       [showsSimplified(table), table._cells[3].innerText], [true, simplified]);
     eq('sidebar open: the sidebar is told to re-read the active table',
-      sent.some((m) => m.action === 'state:previewSamplesChanged'), true);
+      sent.some((m) => m.topic === 'state:previewSamplesChanged'), true);
   });
 })();
 
@@ -3115,11 +3115,11 @@ function issue328SettingsOf(table) {
     DR_MODEL.setTableSettings(active, { offsetTop: 1 }, 'page');
     DR_MODEL.setTableSettings(active, { offsetTop: -1 }, 'sidebar');
 
-    const notices = sent.filter((m) => m.action === 'state:settingsChanged');
+    const notices = sent.filter((m) => m.topic === 'state:settingsChanged');
     eq('per-table settings: each write sends one notice, marking its source',
       notices.map((n) => n.source), ['page', 'sidebar']);
     eq('per-table settings: the notice holds no field beyond the two plain values',
-      notices.length > 0 && Object.keys(notices[0]).sort(), ['action', 'settings', 'source']);
+      notices.length > 0 && Object.keys(notices[0]).sort(), ['settings', 'source', 'topic']);
     eq('per-table settings: the notice carries the table\'s whole settings, defaults filled in',
       notices.length > 0 && notices[0].settings, Object.assign({}, DR_DEFAULTS, { offsetTop: 1 }));
   });
@@ -3177,7 +3177,7 @@ function issue328SettingsOf(table) {
     eq('fingerprint scroll: a redrawn row group leaves the recorded fingerprint in place',
       DR_MODEL.getTableFingerprint(g.wrapperEl) === recorded, true);
     eq('fingerprint scroll: a redrawn row group publishes no table switch',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 0);
+      sent.filter((m) => m.topic === 'state:tableSwitched').length, 0);
     eq('fingerprint scroll: a redrawn row group keeps the entry\'s originals',
       DR_MODEL.hasTableOriginal(g.wrapperEl, scrolledAwayCell), true);
 
@@ -3213,7 +3213,7 @@ function issue328SettingsOf(table) {
     eq('fingerprint scroll: a redrawn groupless pane leaves the recorded fingerprint in place',
       DR_MODEL.getTableFingerprint(grid.scrollPaneEl) === recorded, true);
     eq('fingerprint scroll: a redrawn groupless pane publishes no table switch',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 0);
+      sent.filter((m) => m.topic === 'state:tableSwitched').length, 0);
     eq('fingerprint scroll: a redrawn groupless pane keeps the entry\'s originals',
       DR_MODEL.hasTableOriginal(grid.scrollPaneEl, scrolledAwayCell), true);
 
@@ -3512,7 +3512,7 @@ function issue328SettingsOf(table) {
     eq('fingerprint move: the wrapper carries a pillbox',
       tablePillboxes.has(grid.wrapperEl), true);
     eq('fingerprint move: the move publishes one table switch',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
+      sent.filter((m) => m.topic === 'state:tableSwitched').length, 1);
 
     forgetRegisteredTable(grid.wrapperEl);
   });
@@ -3609,7 +3609,7 @@ function issue328SettingsOf(table) {
     eq('fingerprint recovery: the discarded table was active, so the active table clears',
       DR_MODEL.getActiveTable() === null, true);
     eq('fingerprint recovery: the sidebar is told to re-read, so it shows the no-table state (#506)',
-      sent.filter((m) => m.action === 'state:previewSamplesChanged').length, 1);
+      sent.filter((m) => m.topic === 'state:previewSamplesChanged').length, 1);
     eq('fingerprint recovery: the press stops, so it makes no settings write', writes(), 0);
   });
 })();
@@ -3631,7 +3631,7 @@ function issue328SettingsOf(table) {
     eq('fingerprint recovery: a discarded table that was not active leaves the active table alone',
       DR_MODEL.getActiveTable() === other, true);
     eq('fingerprint recovery: a discarded table that was not active sends the sidebar no re-read',
-      sent.some((m) => m.action === 'state:previewSamplesChanged'), false);
+      sent.some((m) => m.topic === 'state:previewSamplesChanged'), false);
   });
 })();
 
@@ -3696,10 +3696,10 @@ function issue328SettingsOf(table) {
     eq('fingerprint move: the fresh table holds the shipped defaults with the press\'s on',
       fresh && DR_MODEL.getTableSettings(fresh), Object.assign({}, DR_DEFAULTS, { enabled: true }));
     eq('fingerprint move: a shape change still runs exactly one apply',
-      sent.filter((m) => m.action === 'state:rangeOk' || m.action === 'state:rangeError').length, 1);
+      sent.filter((m) => m.topic === 'state:rangeOk' || m.topic === 'state:rangeError').length, 1);
     eq('fingerprint move: a shape change publishes the table switch once',
-      sent.filter((m) => m.action === 'state:tableSwitched').length, 1);
-    const notices = sent.filter((m) => m.action === 'state:settingsChanged');
+      sent.filter((m) => m.topic === 'state:tableSwitched').length, 1);
+    const notices = sent.filter((m) => m.topic === 'state:settingsChanged');
     eq('fingerprint move: the press sends the one settings notice, holding its on under the defaults',
       notices.map((m) => [m.source, m.settings.enabled, m.settings.offsetTop, m.settings.rangeExpr]),
       [['page', true, DR_DEFAULTS.offsetTop, '']]);
@@ -3731,13 +3731,13 @@ function issue328SettingsOf(table) {
     sent.length = 0;
     withCreateTreeWalker(function () {
       withPillboxDocumentMock(function () {
-        askContentScript({ action: 'request:applySettings', settings: written });
+        askContentScript({ topic: 'request:applySettings', settings: written });
       });
     });
 
     const sequence = sent
-      .filter((m) => m.action === 'state:settingsChanged' || m.action === 'state:tableSwitched')
-      .map((m) => (m.action === 'state:tableSwitched'
+      .filter((m) => m.topic === 'state:settingsChanged' || m.topic === 'state:tableSwitched')
+      .map((m) => (m.topic === 'state:tableSwitched'
         ? 'switched'
         : 'settings source=' + m.source + ' offsetTop=' +
           m.settings.offsetTop + ' range=' + m.settings.rangeExpr));
@@ -4073,10 +4073,10 @@ function issue328SettingsOf(table) {
     'background.js': fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'),
   };
 
-  // The bus is the only file that puts an action field on a message. A
+  // The bus is the only file that puts a topic field on a message. A
   // context file writing one is reaching around the topic table.
   for (const [name, src] of Object.entries(contextFiles)) {
-    const literals = (src.match(/action(?::|\s*===)\s*['"][A-Za-z][A-Za-z0-9_:]*['"]/g) || []);
+    const literals = (src.match(/topic(?::|\s*===)\s*['"][A-Za-z][A-Za-z0-9_:]*['"]/g) || []);
     eq(`one topic list: ${name} builds no wire message of its own`, literals, []);
   }
 
@@ -4122,10 +4122,10 @@ function issue328SettingsOf(table) {
   eq('bus route: aimed at the tab the query answered with',
     b.sent.tabs.length === 1 ? b.sent.tabs[0].tabId : null, 7);
   eq('bus route: the topic name itself is the name on the wire',
-    b.sent.tabs.length === 1 ? b.sent.tabs[0].msg.action : null, 'intent:menuClicked');
+    b.sent.tabs.length === 1 ? b.sent.tabs[0].msg.topic : null, 'intent:menuClicked');
   eq('bus route: the message carries the payload beside the name, nothing else',
     b.sent.tabs.length === 1 ? Object.keys(b.sent.tabs[0].msg).sort().join(',') : null,
-    'action,probe');
+    'probe,topic');
 
   // An explicit tab number skips the lookup. Only the service worker holds a
   // tab number, and it holds it for a tab that may not be the active one.
@@ -4152,7 +4152,7 @@ function issue328SettingsOf(table) {
   eq('bus route: and sends into no tab', f.sent.tabs.length, 0);
   eq('bus route: and runs no active-tab lookup', f.sent.queries, 0);
   eq('bus route: the broadcast carries the topic name on the wire',
-    f.sent.pages.length === 1 ? f.sent.pages[0].action : null, 'intent:closeSidebar');
+    f.sent.pages.length === 1 ? f.sent.pages[0].topic : null, 'intent:closeSidebar');
 
   // An extension-pages publish from a context with no chrome.tabs reaches its
   // audience: that carrier needs none. An absent interface is no reason to
@@ -4217,14 +4217,14 @@ function issue328SettingsOf(table) {
   const b = makeBusSandbox();
   const fromTab = [];
   b.bus.subscribe('state:settingsChanged', (payload, meta) => { fromTab.push(meta); });
-  b.fire({ action: 'state:settingsChanged', settings: {} }, { tab: { id: 77 } });
+  b.fire({ topic: 'state:settingsChanged', settings: {} }, { tab: { id: 77 } });
   eq('bus meta: a wire message from a content script reports its tab number',
     fromTab.length === 1 && fromTab[0].tabId === 77, true);
 
   const c = makeBusSandbox();
   const fromPage = [];
   c.bus.subscribe('state:settingsChanged', (payload, meta) => { fromPage.push(meta); });
-  c.fire({ action: 'state:settingsChanged', settings: {} }, {});
+  c.fire({ topic: 'state:settingsChanged', settings: {} }, {});
   eq('bus meta: a wire message from an extension page reports no tab number',
     fromPage.length === 1 && fromPage[0].tabId === null, true);
 
@@ -4234,7 +4234,7 @@ function issue328SettingsOf(table) {
   const d = makeBusSandbox();
   let seenPayload = null;
   d.bus.subscribe('state:settingsChanged', (payload) => { seenPayload = payload; });
-  d.fire({ action: 'state:settingsChanged', settings: { k: 1 } }, { tab: { id: 5 } });
+  d.fire({ topic: 'state:settingsChanged', settings: { k: 1 } }, { tab: { id: 5 } });
   eq('bus meta: the tab number stays out of the payload',
     seenPayload === null ? null : Object.keys(seenPayload).sort().join(','), 'settings');
 })();
@@ -4253,7 +4253,7 @@ function issue328SettingsOf(table) {
   const b = makeBusSandbox();
   b.bus.respond('request:applySettings', (payload) => ({ echoed: payload.n }));
   let replied = 'untouched';
-  b.fire({ action: 'request:applySettings', n: 5 }, { tab: { id: 3 } }, (r) => { replied = r; });
+  b.fire({ topic: 'request:applySettings', n: 5 }, { tab: { id: 3 } }, (r) => { replied = r; });
   eq('bus request: the responder\'s return value is what the asker receives',
     replied && replied.echoed, 5);
 
@@ -4261,7 +4261,7 @@ function issue328SettingsOf(table) {
   const c = makeBusSandbox();
   let responderMeta = null;
   c.bus.respond('request:applySettings', (payload, meta) => { responderMeta = meta; return {}; });
-  c.fire({ action: 'request:applySettings' }, { tab: { id: 11 } }, () => {});
+  c.fire({ topic: 'request:applySettings' }, { tab: { id: 11 } }, () => {});
   eq('bus request: a responder receives the sending tab too',
     responderMeta ? responderMeta.tabId : null, 11);
 })();
@@ -4315,7 +4315,7 @@ function issue328SettingsOf(table) {
   // context holding no answer.
   const t = makeBusSandbox();
   let answered = false;
-  t.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => { answered = true; });
+  t.fire({ topic: 'request:applySettings' }, { tab: { id: 1 } }, () => { answered = true; });
   eq('bus request: an arriving request with no local responder sends no reply',
     answered, false);
 })();
@@ -4369,12 +4369,12 @@ function issue328SettingsOf(table) {
   // counter, and this test would stay green with the listener's guard deleted.
   const s = makeBusSandbox();
   s.bus.respond('request:applySettings', () => {
-    s.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
+    s.fire({ topic: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
     return {};
   });
   let message = null;
   try {
-    s.fire({ action: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
+    s.fire({ topic: 'request:applySettings' }, { tab: { id: 1 } }, () => {});
   } catch (e) {
     message = e.message;
   }
@@ -4518,10 +4518,10 @@ function issue328SettingsOf(table) {
 
   // Nothing has been right-clicked in this isolated model.
   eq('moved responders: no active table answers the shipped defaults and a pair of nulls, not nothing',
-    fire({ action: 'request:activeTable' }),
+    fire({ topic: 'request:activeTable' }),
     { settings: Object.assign({}, DR_DEFAULTS), samples: null, maxMag: null });
 
-  const captureAnswer = fire({ action: 'request:captureState' });
+  const captureAnswer = fire({ topic: 'request:captureState' });
   eq('moved responders: the capture state answers an object',
     captureAnswer !== null && typeof captureAnswer === 'object', true);
 })();
@@ -4532,14 +4532,14 @@ function issue328SettingsOf(table) {
   runPressFixture(() => {
     DR_MODEL.setActiveTable(null);
     eq('redraw read: with no table active the answer holds the shipped defaults and null samples',
-      askContentScript({ action: 'request:activeTable' }),
+      askContentScript({ topic: 'request:activeTable' }),
       { settings: Object.assign({}, DR_DEFAULTS), samples: null, maxMag: null });
 
     const table = makePressTable('4,236,000');
     DR_MODEL.setTableSettings(table, { offsetTop: -1, simplifyFirstColumn: true }, 'page');
     DR_MODEL.setActiveTable(table);
     let answer;
-    withCreateTreeWalker(() => { answer = askContentScript({ action: 'request:activeTable' }); });
+    withCreateTreeWalker(() => { answer = askContentScript({ topic: 'request:activeTable' }); });
     eq('redraw read: the answer holds exactly the settings, the samples, and the max magnitude',
       answer && Object.keys(answer).sort(), ['maxMag', 'samples', 'settings']);
     eq('redraw read: the settings are the active table\'s',

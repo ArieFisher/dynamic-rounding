@@ -2189,13 +2189,13 @@ const LADDER_OPTS = {
     };
     let applyResponse = null;
     withCreateTreeWalker(() => {
-      applyResponse = askContentScript({ action: 'request:applySettings', settings: customSettings });
+      applyResponse = askContentScript({ topic: 'request:applySettings', settings: customSettings });
     });
     eq('reconnect: request:applySettings was acknowledged before the (simulated) close',
       applyResponse && applyResponse.ok, true);
 
     // Reopen: exactly what redrawFromActiveTable's request:activeTable does.
-    const getResponse = askContentScript({ action: 'request:activeTable' });
+    const getResponse = askContentScript({ topic: 'request:activeTable' });
     const pulled = (getResponse && getResponse.settings) || {};
 
     eq('reconnect: request:activeTable returns a settings object',
@@ -2290,7 +2290,7 @@ const LADDER_OPTS = {
     tabs: {
       query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
       sendMessage(tabId, msg, cb) {
-        if (msg.action === 'request:activeTable') {
+        if (msg.topic === 'request:activeTable') {
           cb({ settings: pulledSettings, samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
           // The settings apply. Chrome hands back the responder's value on
@@ -2453,7 +2453,7 @@ const LADDER_OPTS = {
       // listener — not DR_MODEL.setTableSettings() called directly from the
       // test.
       capturedListener(
-        { action: 'request:applySettings', settings: customSettings },
+        { topic: 'request:applySettings', settings: customSettings },
         {},
         (r) => { ackResponse = r; }
       );

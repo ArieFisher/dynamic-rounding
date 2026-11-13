@@ -3972,7 +3972,7 @@ function everyRowRead(kind, largeIn) {
     const sentMessages = [];
     global.chrome.runtime.sendMessage = (msg) => { sentMessages.push(msg); };
     global.__ri2_DR_MODEL.setActiveTable(table3);
-    ri2Listener({ action: 'request:applySettings', settings: Object.assign({}, DR_DEFAULTS, { enabled: true, offsetTop: 1 }) },
+    ri2Listener({ topic: 'request:applySettings', settings: Object.assign({}, DR_DEFAULTS, { enabled: true, offsetTop: 1 }) },
       {}, () => {});
 
     eq('re-injection sidebar apply: the apply simplifies the unrestorable cell\'s displayed text again',
@@ -3986,7 +3986,7 @@ function everyRowRead(kind, largeIn) {
     eq('re-injection sidebar apply: appliedFlag reads \'simplified\'',
       global.__ri2_DR_MODEL.getTableAppliedFlag(table3), 'simplified');
     eq('re-injection sidebar apply: the apply runs the simplification pass, which sends the range status',
-      sentMessages.some((m) => m.action === 'state:rangeOk' || m.action === 'state:rangeError'), true);
+      sentMessages.some((m) => m.topic === 'state:rangeOk' || m.topic === 'state:rangeError'), true);
 
     // --- Scenario C: the pillbox sync on fresh and simplified tables. ---
     const stub6 = makeMockButton();

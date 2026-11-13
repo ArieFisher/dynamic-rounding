@@ -831,7 +831,7 @@
 
   if (typeof capturedOnMessageHandler === 'function') {
     // Invoke the state:tableActivated message and verify the flash class is applied.
-    capturedOnMessageHandler({ action: 'state:tableActivated' }, FROM_SIDEBAR_TAB, () => {});
+    capturedOnMessageHandler({ topic: 'state:tableActivated' }, FROM_SIDEBAR_TAB, () => {});
 
     eq('table-activation AC2 live: state:tableActivated message adds dr-sidebar-flash to document.body',
       bodyClasses.has('dr-sidebar-flash'),
@@ -898,7 +898,7 @@
     if (result.listenerType === 'function') {
       // Case A: no sidebar tab number (never opened).
       sentTabMessages.length = 0;
-      capturedBgHandler({ action: 'state:tableActivated' }, {}, () => {});
+      capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
       result.relaysWithNoTabNumber = sentTabMessages.length;
 
       // Case B: the sidebar was opened, so the worker holds its tab number.
@@ -907,10 +907,10 @@
       sentTabMessages.length = 0;
       capturedClickHandler({ menuItemId: 'dr-action-sidebar' }, { id: PANEL_TAB });
       result.sentOpenedReport = sentTabMessages.some(m => m.tabId === PANEL_TAB &&
-        m.msg && m.msg.action === 'state:sidebarOpened');
+        m.msg && m.msg.topic === 'state:sidebarOpened');
 
       sentTabMessages.length = 0;
-      capturedBgHandler({ action: 'state:tableActivated' }, {}, () => {});
+      capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
       result.relaysWithTabNumber = sentTabMessages.length;
     }
   } finally {
@@ -1054,7 +1054,7 @@
   }
 
   const returnValue = capturedListener(
-    { action: 'request:applySettings', settings: {} },
+    { topic: 'request:applySettings', settings: {} },
     {},
     fakeSendResponse
   );
@@ -1132,7 +1132,7 @@
         sendMessage: (msg, cb) => {
           runtimeSends.push(msg);
           chromeStub.runtime.lastError =
-            closeSidebarUnreceived && msg.action === 'intent:closeSidebar'
+            closeSidebarUnreceived && msg.topic === 'intent:closeSidebar'
               ? { message: 'Could not establish connection. Receiving end does not exist.' }
               : null;
           if (cb) cb(undefined);
@@ -1176,7 +1176,7 @@
     const ctx = loadBackground();
     openPanel(ctx);
     eq('bg routing: "Toggle and open sidebar" sends the toggle, then the sidebar-opened report, to that tab',
-      ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.action),
+      ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
       ['intent:menuClicked', 'state:sidebarOpened']);
   })();
 
@@ -1185,7 +1185,7 @@
     const ctx = loadBackground();
     openPanel(ctx);
     eq('bg routing: opening the sidebar sends the sidebar-opened report to that tab',
-      ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.action === 'state:sidebarOpened'),
+      ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.topic === 'state:sidebarOpened'),
       true);
 
     ctx.runtimeSends.length = 0;
@@ -1195,9 +1195,9 @@
     ctx.listeners.activated({ tabId: 99 });
 
     eq('bg routing: close topic broadcast reaches the sidebar page',
-      ctx.runtimeSends.some(m => m.action === 'intent:closeSidebar'), true);
+      ctx.runtimeSends.some(m => m.topic === 'intent:closeSidebar'), true);
     eq('bg routing: close topic is not sent into the tab — the content script has no handler for it',
-      ctx.tabSends.some(s => s.msg.action === 'intent:closeSidebar'),
+      ctx.tabSends.some(s => s.msg.topic === 'intent:closeSidebar'),
       false);
   })();
 
@@ -1209,9 +1209,9 @@
     navCtx.tabSends.length = 0;
     navCtx.listeners.updated(PANEL_TAB, { status: 'loading' });
     eq('bg routing: navigating away broadcasts the close topic to the sidebar page',
-      navCtx.runtimeSends.some(m => m.action === 'intent:closeSidebar'), true);
+      navCtx.runtimeSends.some(m => m.topic === 'intent:closeSidebar'), true);
     eq('bg routing: navigating away sends nothing into the tab',
-      navCtx.tabSends.some(s => s.msg.action === 'intent:closeSidebar'), false);
+      navCtx.tabSends.some(s => s.msg.topic === 'intent:closeSidebar'), false);
 
     // A removed tab: the close must not surface an error. The broadcast is
     // all that goes out, and the stub rejects it, so this pins the
@@ -1236,9 +1236,9 @@
   // match either, including when the worker holds no tab number at all.
   (function pageUnloadClosesOnlyItsOwnTab() {
     const ctx = loadBackground();
-    const closes = () => ctx.runtimeSends.filter(m => m.action === 'intent:closeSidebar').length;
+    const closes = () => ctx.runtimeSends.filter(m => m.topic === 'intent:closeSidebar').length;
     const unload = (sender) => ctx.listeners.message(
-      { action: 'state:pageUnloaded' }, sender, () => {});
+      { topic: 'state:pageUnloaded' }, sender, () => {});
 
     // No sidebar open yet: the worker holds no tab number.
     unload({ tab: { id: 42 } });
@@ -1272,10 +1272,10 @@
     openPanel(ctx);
     ctx.tabSends.length = 0;
 
-    ctx.listeners.message({ action: 'state:tableActivated' }, {});
+    ctx.listeners.message({ topic: 'state:tableActivated' }, {});
 
     eq('bg routing: the activation report is not relayed to the content script',
-      ctx.tabSends.filter(s => s.msg.action === 'state:tableActivated').length, 0);
+      ctx.tabSends.filter(s => s.msg.topic === 'state:tableActivated').length, 0);
   })();
 })();
 
@@ -2032,8 +2032,8 @@
   eq('range-status sequence (valid range): exact message sequence matches parent-branch capture',
     okRun.sentMessages,
     [
-      { action: 'state:rangeOk' },
-      { action: 'intent:updateMenuLabel', title: 'Toggle table' },
+      { topic: 'state:rangeOk' },
+      { topic: 'intent:updateMenuLabel', title: 'Toggle table' },
     ]);
   eq('range-status sequence (valid range): the cell was actually rounded',
     okRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), true);
@@ -2046,7 +2046,7 @@
   eq('range-status sequence (invalid range): exact message sequence matches parent-branch capture',
     errorRun.sentMessages,
     [
-      { action: 'state:rangeError', error: 'Invalid range: "1a"' },
+      { topic: 'state:rangeError', error: 'Invalid range: "1a"' },
     ]);
   eq('range-status sequence (invalid range): the cell was NOT rounded',
     errorRun.table.rows[1].cells[1].classList.contains('dr-ext-rounded'), false);
@@ -2633,7 +2633,7 @@
         cb([{ id: BOUND_TAB, windowId: BOUND_WINDOW }]);
       },
       sendMessage(tabId, msg, cb) {
-        if (msg.action === 'request:activeTable') {
+        if (msg.topic === 'request:activeTable') {
           settingsReads.push(tabId);
           cb({ settings: Object.assign({}, DR_DEFAULTS), samples: null, maxMag: null });
           return;
@@ -2697,12 +2697,12 @@
     // A range error reported from another tab must not reach the controls.
     // The report writes the status line.
     statusEl.textContent = '';
-    messageListener({ action: 'state:rangeError', error: 'from another tab' }, { tab: { id: OTHER_TAB } }, () => {});
+    messageListener({ topic: 'state:rangeError', error: 'from another tab' }, { tab: { id: OTHER_TAB } }, () => {});
     eq('bound tab wiring: a range error reported by another tab leaves the status line alone',
       statusEl.textContent, '');
 
     // The same report from the bound tab does reach them.
-    messageListener({ action: 'state:rangeError', error: 'from the bound tab' }, { tab: { id: BOUND_TAB } }, () => {});
+    messageListener({ topic: 'state:rangeError', error: 'from the bound tab' }, { tab: { id: BOUND_TAB } }, () => {});
     eq('bound tab wiring: a range error reported by the bound tab writes the status line',
       statusEl.textContent, 'from the bound tab');
 

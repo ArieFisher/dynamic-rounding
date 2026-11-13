@@ -4057,7 +4057,7 @@ function cnAdapterCellEls(tableEl) {
 // ---------------------------------------------------------------------------
 (function appModelSelection_parentEquivalence_contextmenuSelectionFlow() {
   // One sequence: the contextmenu handler reads nothing about the sidebar.
-  const PARENT_EXPECTED_SEQUENCE = [{ action: 'state:tableActivated' }];
+  const PARENT_EXPECTED_SEQUENCE = [{ topic: 'state:tableActivated' }];
 
   // Minimal fixture the contextmenu handler's findTargetTable() walk-up
   // recognizes immediately as a table (closest('table') returns itself) —

@@ -2283,7 +2283,7 @@ function answerActiveTableRead(h, answer) {
   const harnessAnswer = tabs.harnessSendMessage || tabs.sendMessage;
   tabs.harnessSendMessage = harnessAnswer;
   tabs.sendMessage = (tabId, msg, cb) => {
-    if (msg.action !== 'request:activeTable') return harnessAnswer(tabId, msg, cb);
+    if (msg.topic !== 'request:activeTable') return harnessAnswer(tabId, msg, cb);
     h.tabMessages.push(msg);
     cb(answer);
   };
@@ -2408,7 +2408,7 @@ function makeIssue251SidebarHarness(opts) {
       query(q, cb) { cb([{ id: SIDEBAR_HARNESS_TAB }]); },
       sendMessage(tabId, msg, cb) {
         tabMessages.push(msg);
-        if (msg.action === 'request:activeTable') {
+        if (msg.topic === 'request:activeTable') {
           cb({ settings: modelSettings, samples: { top: [], bottom: [] }, maxMag: 0 });
         } else {
           // The settings apply. Chrome hands back the responder's value on

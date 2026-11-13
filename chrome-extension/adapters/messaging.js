@@ -68,7 +68,7 @@
  *     same-context publish and for a message from an extension page, neither
  *     of which has a tab. It travels beside the payload, never inside it, so
  *     no handler can mistake it for data the publisher supplied.
- *   - An arriving message whose action names a known topic is redelivered here
+ *   - An arriving message whose topic field holds a known topic is redelivered here
  *     as a same-context publish, without sending it back out, so a topic that
  *     crossed contexts behaves the same as one that did not from a
  *     subscriber's point of view. The topic name itself is the name on the
@@ -229,7 +229,7 @@ const DR_BUS = (function () {
   let publishDepth = 0;
 
   function relay(topic, payload, route, opts) {
-    const message = Object.assign({ action: topic }, payload);
+    const message = Object.assign({ topic }, payload);
     if (route === ROUTE_EXTENSION_PAGES) {
       sendToExtensionPages(message);
       return;
@@ -265,7 +265,7 @@ const DR_BUS = (function () {
       // A tab-routed topic published from a context with no chrome.tabs (a
       // content script) cannot reach its audience. Returning quietly here
       // would reproduce the silent miss the topic table exists to remove.
-      throw new Error('DR_BUS: tab-routed topic "' + message.action +
+      throw new Error('DR_BUS: tab-routed topic "' + message.topic +
         '" published from a context with no chrome.tabs');
     }
     const deliver = (tabId) => {
@@ -375,17 +375,17 @@ const DR_BUS = (function () {
       callback(undefined);
       return;
     }
-    sendToTab(Object.assign({ action: topic }, payload), null, callback);
+    sendToTab(Object.assign({ topic }, payload), null, callback);
   }
 
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage &&
       typeof chrome.runtime.onMessage.addListener === 'function') {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (!message || typeof message.action !== 'string') return;
-      const topic = message.action;
+      if (!message || typeof message.topic !== 'string') return;
+      const topic = message.topic;
       if (!Object.prototype.hasOwnProperty.call(TOPICS, topic)) return;
       const payload = Object.assign({}, message);
-      delete payload.action;
+      delete payload.topic;
       const tabId = senderTabId(sender);
       if (TOPICS[topic].family !== REQUEST) {
         deliverLocally(topic, payload, tabId);

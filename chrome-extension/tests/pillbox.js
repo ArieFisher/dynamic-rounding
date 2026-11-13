@@ -1725,14 +1725,14 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   // 1b. state:tableSwitched dispatched exactly once. The sidebar's handler
   // pulls the model's settings.
-  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
+  const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
   eq('rebind AC1 mouse: state:tableSwitched dispatched exactly once',
     switchCalls.length, 1);
 
   // 1c. state:previewSamplesChanged NOT dispatched — the state:tableSwitched pull
   // chain already ends in the preview fetch; a second trigger would be a
   // duplicate round-trip.
-  const previewCalls = sentMessages.filter(m => m.action === 'state:previewSamplesChanged');
+  const previewCalls = sentMessages.filter(m => m.topic === 'state:previewSamplesChanged');
   eq('rebind AC1 mouse: state:previewSamplesChanged not dispatched on a switch',
     previewCalls.length, 0);
 
@@ -1777,11 +1777,11 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   eq('rebind AC1 touch: lastRightClickedTable rebound to tableB',
     reboundToB_touch, true);
 
-  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
+  const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
   eq('rebind AC1 touch: state:tableSwitched dispatched exactly once',
     switchCalls.length, 1);
 
-  const previewCalls = sentMessages.filter(m => m.action === 'state:previewSamplesChanged');
+  const previewCalls = sentMessages.filter(m => m.topic === 'state:previewSamplesChanged');
   eq('rebind AC1 touch: state:previewSamplesChanged not dispatched on a switch',
     previewCalls.length, 0);
 
@@ -1813,7 +1813,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   lastRightClickedTable = null;
 
   // Same-table guard: the switch message must NOT be dispatched
-  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
+  const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
   eq('rebind AC2 mouse: state:tableSwitched NOT dispatched for same-table click',
     switchCalls.length, 0);
 })();
@@ -1841,7 +1841,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
+  const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
   eq('rebind AC2 touch: state:tableSwitched NOT dispatched for same-table click',
     switchCalls.length, 0);
 })();
@@ -1876,7 +1876,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
+  const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
   eq('press on a different table reports the switch with the sidebar closed (part one: nothing reads that state)',
     switchCalls.length, 1);
 })();
@@ -1910,7 +1910,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
-  const switchCalls = sentMessages.filter(m => m.action === 'state:tableSwitched');
+  const switchCalls = sentMessages.filter(m => m.topic === 'state:tableSwitched');
   eq('second tap on a different table reports the switch with the sidebar closed (part one: nothing reads that state)',
     switchCalls.length, 1);
 })();
@@ -2156,7 +2156,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   // Reset global state
   lastRightClickedTable = null;
 
-  const notice = sent.find(m => m.action === 'state:settingsChanged');
+  const notice = sent.find(m => m.topic === 'state:settingsChanged');
   eq('AC1 part-A: the settings notice is sent when the pressed table is the active one',
     notice !== undefined, true);
   eq('AC1 part-A: the notice marks a page-side writer',
@@ -2261,8 +2261,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   fireMouseClick(buttonA);
 
-  const actions = sent.map(m => m.action);
-  const notices = sent.filter(m => m.action === 'state:settingsChanged');
+  const actions = sent.map(m => m.topic);
+  const notices = sent.filter(m => m.topic === 'state:settingsChanged');
   const lrc = lastRightClickedTable;
 
   global.chrome.runtime.sendMessage = origSend;
@@ -2297,7 +2297,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.chrome.runtime.sendMessage = origSend;
   lastRightClickedTable = null;
 
-  const notices = sent.filter(m => m.action === 'state:settingsChanged');
+  const notices = sent.filter(m => m.topic === 'state:settingsChanged');
   eq('AC3 null active table: the press sends one settings notice, from a page-side writer',
     notices.map(n => n.source), ['page']);
 })();
@@ -2320,7 +2320,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   global.chrome.runtime.sendMessage = origSend;
   lastRightClickedTable = null;
 
-  const notices = sent.filter(m => m.action === 'state:settingsChanged');
+  const notices = sent.filter(m => m.topic === 'state:settingsChanged');
   // A press on the active table writes its settings and publishes them even
   // with the sidebar closed — the controller reads no sidebar visibility.
   // "No spurious sidebar update" still holds because a closed sidebar has no
@@ -2490,7 +2490,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       true);
 
     eq('table-activation AC1 runtime: state:tableActivated sent when right-clicking a table',
-      sentMessages.some(m => m.action === 'state:tableActivated'),
+      sentMessages.some(m => m.topic === 'state:tableActivated'),
       true);
 
     // --- AC3: right-clicking a non-table element — no flash, no state:tableActivated ---
@@ -2505,7 +2505,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     capturedHandler({ target: nonTableTarget });
 
     eq('table-activation AC3 runtime: no state:tableActivated sent when right-clicking non-table',
-      sentMessages.some(m => m.action === 'state:tableActivated'),
+      sentMessages.some(m => m.topic === 'state:tableActivated'),
       false);
 
   } finally {
@@ -2640,7 +2640,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     // --- intent:menuClicked dispatch against the same last-right-clicked element:
     // must reuse the existing widget too, not build another. ---
     const beforeMenuClick = sentMessages.length;
-    fireMessage({ action: 'intent:menuClicked' });
+    fireMessage({ topic: 'intent:menuClicked' });
 
     eq('double-invocation: intent:menuClicked on an already-marked grid builds NO widget',
       buttonCreateCount, 1);
@@ -2653,7 +2653,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     // enabled branch's conditional send is skipped — a fixture artifact, not
     // contract.
     eq('double-invocation: a sidebar-closed intent:menuClicked on the connected grid takes the settings path',
-      sentMessages.slice(beforeMenuClick).map((m) => m.action),
+      sentMessages.slice(beforeMenuClick).map((m) => m.topic),
       ['state:settingsChanged', 'state:rangeOk']);
   } finally {
     global.document = savedDoc;
@@ -2711,7 +2711,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl]
         .map((el) => el.classList.contains('dr-ext-grid')), [false, false, true]);
     eq('right-click AC1 runtime: the click reports the table as activated',
-      ctx.sentMessages.some((m) => m.action === 'state:tableActivated'), true);
+      ctx.sentMessages.some((m) => m.topic === 'state:tableActivated'), true);
   });
 })();
 
@@ -2799,7 +2799,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     eq('right-click AC3 runtime: the two-rows-no-number element gets no pillbox',
       ctx.tablePillboxes.has(noNumber), false);
     eq('right-click AC3 runtime: neither click reports a table as activated',
-      ctx.sentMessages.some((m) => m.action === 'state:tableActivated'), false);
+      ctx.sentMessages.some((m) => m.topic === 'state:tableActivated'), false);
   });
 })();
 
