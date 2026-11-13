@@ -1202,13 +1202,13 @@
   })();
 
   // --- The menu toggle with sidebar does both: the same toggle the menu toggle
-  // sends, then the sidebar-opened report, to the tab the right-click
+  // sends, then the sidebar-opened topic, to the tab the right-click
   // happened in and in that order, so the sidebar's re-read on open reads
   // the toggled settings. ---
   (function toggleAndOpenSidebarTogglesThenOpens() {
     const ctx = loadBackground();
     openPanel(ctx);
-    eq('bg routing: the menu toggle with sidebar sends the toggle, then the sidebar-opened report, to that tab',
+    eq('bg routing: the menu toggle with sidebar sends the toggle, then the sidebar-opened topic, to that tab',
       ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
       ['intent:menuClicked', 'state:sidebarOpened']);
   })();
@@ -1217,7 +1217,7 @@
   (function closeNotifiesTheSidebarOnly() {
     const ctx = loadBackground();
     openPanel(ctx);
-    eq('bg routing: opening the sidebar sends the sidebar-opened report to that tab',
+    eq('bg routing: opening the sidebar sends the sidebar-opened topic to that tab',
       ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.topic === 'state:sidebarOpened'),
       true);
 
@@ -2556,7 +2556,7 @@
   }
   eq('content on bus: the menu click arrives as a subscription',
     /DR_BUS\.subscribe\(\s*'intent:menuClicked'/.test(contentSrc), true);
-  eq('content on bus: the sidebar-opened report arrives as a subscription',
+  eq('content on bus: the sidebar-opened topic arrives as a subscription',
     /DR_BUS\.subscribe\(\s*'state:sidebarOpened'/.test(contentSrc), true);
   // The application model publishes the settings notice from its one setter; the
   // controller publishes none of its own.

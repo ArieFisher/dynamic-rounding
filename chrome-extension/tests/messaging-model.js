@@ -2711,7 +2711,7 @@ const PENDING_FILL_ROWS = [
 
 // --- Exactly one settings write per press, and the flip direction comes from
 // the table's on/off value as it stood BEFORE that write. For a table showing the original
-// whose settings already stand at on, the handler writes off: the table
+// whose settings already stand at on, the handler writes off: the
 // table pillbox shows that table as on, the same as the sidebar pillbox. ---
 (function partOne_onePressOneWriteReadingTheSettingFirst() {
   runPressFixture(({ resetWrites, writes }) => {
