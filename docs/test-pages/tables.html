@@ -1933,7 +1933,7 @@ TSLA,75,"248.09","18,606.75"
         // click listener, so the rewrite lands first and the restore that
         // the press starts reads it.
         document.addEventListener('click', function (event) {
-          var pillbox = event.target.closest && event.target.closest('.dr-ext-morph');
+          var pillbox = event.target.closest && event.target.closest('.dr-ext-table-pillbox');
           if (!armed || !pillbox) return;
           armed = false;
           var cell = nearestTable(pillbox) === native ? nativeCell(1, 1) : gridCell(1, 1);

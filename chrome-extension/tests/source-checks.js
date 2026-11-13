@@ -196,9 +196,9 @@
     /function\s+createPillboxForTable\b/.test(src), true);
   eq('auto-table-toggle: defines injectTablePillboxes',
     /function\s+injectTablePillboxes\b/.test(src), true);
-  // The table pillbox must use the new dr-ext-morph CSS class
-  eq('auto-table-toggle: the table pillbox uses dr-ext-morph CSS class',
-    src.includes('dr-ext-morph'), true);
+  // The table pillbox must use the new dr-ext-table-pillbox CSS class
+  eq('auto-table-toggle: the table pillbox uses dr-ext-table-pillbox CSS class',
+    src.includes('dr-ext-table-pillbox'), true);
 })();
 
 // --- accessibility AC2: CSS contains :focus-visible with outline and !important ---
@@ -230,9 +230,9 @@
 
 // --- Constants vs literals check ---
 // Spec (AC §3.5 + last AC bullet): geometry literals must only appear as constant declarations.
-// Soft check: the constant names TOGGLE_DOT_PX etc. appear in the CSS template block.
+// Soft check: the constant names TABLE_PILLBOX_DOT_PX etc. appear in the CSS template block.
 
-(function morphAC_constantsUsedInCSS() {
+(function tablePillboxAC_constantsUsedInCSS() {
   const src = allContentSrc; // pillbox geometry lives in ui-pillbox.js
 
   // The CSS function body should contain interpolations of the constants, not bare literals.
@@ -241,32 +241,32 @@
   const fnEnd = src.indexOf('\nfunction ', fnStart + 1);
   const fnBody = fnStart !== -1 ? src.slice(fnStart, fnEnd !== -1 ? fnEnd : fnStart + 3000) : '';
 
-  eq('expanding-toggle: TOGGLE_HIT_PAD_PX referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_HIT_PAD_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_PX referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_DOT_PX'), true);
-  eq('expanding-toggle: TOGGLE_PILL_WIDTH_PX referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_PILL_WIDTH_PX'), true);
-  eq('expanding-toggle: TOGGLE_PILL_HEIGHT_PX referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_PILL_HEIGHT_PX'), true);
-  eq('expanding-toggle: TOGGLE_KNOB_PX referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_KNOB_PX'), true);
-  eq('expanding-toggle: TOGGLE_COLOR_ON referenced in ensurePillboxStyleInjected',
-    fnBody.includes('TOGGLE_COLOR_ON'), true);
+  eq('expanding-toggle: TABLE_PILLBOX_HIT_PAD_PX referenced in ensurePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_HIT_PAD_PX'), true);
+  eq('expanding-toggle: TABLE_PILLBOX_DOT_PX referenced in ensurePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_DOT_PX'), true);
+  eq('expanding-toggle: TABLE_PILLBOX_PILL_WIDTH_PX referenced in ensurePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_PILL_WIDTH_PX'), true);
+  eq('expanding-toggle: TABLE_PILLBOX_PILL_HEIGHT_PX referenced in ensurePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_PILL_HEIGHT_PX'), true);
+  eq('expanding-toggle: TABLE_PILLBOX_KNOB_PX referenced in ensurePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_KNOB_PX'), true);
+  eq('expanding-toggle: TABLE_PILLBOX_COLOR_ON referenced in ensurePillboxStyleInjected',
+    fnBody.includes('TABLE_PILLBOX_COLOR_ON'), true);
 
   // positionPillbox body should reference the geometry constants
   const ptStart = src.indexOf('function positionPillbox');
   const ptEnd = src.indexOf('\nfunction ', ptStart + 1);
   const ptBody = ptStart !== -1 ? src.slice(ptStart, ptEnd !== -1 ? ptEnd : ptStart + 1000) : '';
 
-  eq('expanding-toggle: TOGGLE_HIT_PAD_PX referenced in positionPillbox',
-    ptBody.includes('TOGGLE_HIT_PAD_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_PX referenced in positionPillbox',
-    ptBody.includes('TOGGLE_DOT_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_OVERLAP_PX referenced in positionPillbox',
-    ptBody.includes('TOGGLE_DOT_OVERLAP_PX'), true);
-  eq('expanding-toggle: TOGGLE_DOT_OVERHANG_PX referenced in positionPillbox',
-    ptBody.includes('TOGGLE_DOT_OVERHANG_PX'), true);
+  eq('expanding-toggle: TABLE_PILLBOX_HIT_PAD_PX referenced in positionPillbox',
+    ptBody.includes('TABLE_PILLBOX_HIT_PAD_PX'), true);
+  eq('expanding-toggle: TABLE_PILLBOX_DOT_PX referenced in positionPillbox',
+    ptBody.includes('TABLE_PILLBOX_DOT_PX'), true);
+  eq('expanding-toggle: TABLE_PILLBOX_DOT_OVERLAP_PX referenced in positionPillbox',
+    ptBody.includes('TABLE_PILLBOX_DOT_OVERLAP_PX'), true);
+  eq('expanding-toggle: TABLE_PILLBOX_DOT_OVERHANG_PX referenced in positionPillbox',
+    ptBody.includes('TABLE_PILLBOX_DOT_OVERHANG_PX'), true);
 })();
 
 (function layerLoadOrderAcrossEntryPoints() {

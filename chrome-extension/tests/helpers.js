@@ -243,14 +243,14 @@ function makeToggleTable(rowsOrCells, extra) {
     rows,
     dataset: {},
     _cells: cells,
-    // classList on the table itself — used by flashTargetedTable
+    // classList on the table itself — used by flashActiveTable
     classList: {
       _c: [],
       add(c)      { this._c.push(c); },
       remove(c)   { this._c = this._c.filter(x => x !== c); },
       contains(c) { return this._c.includes(c); },
     },
-    // offsetWidth access in flashTargetedTable triggers reflow; just ignore it
+    // offsetWidth access in flashActiveTable triggers reflow; just ignore it
     get offsetWidth() { return 0; },
     // querySelector('.dr-ext-rounded') — used by applySidebarRounding's menu-label check
     querySelector(sel) {
@@ -279,7 +279,7 @@ function makeToggleTable(rowsOrCells, extra) {
  * syncPillboxForTable can find the button for this table.
  *
  * Returns a minimal button stub that supports setAttribute/getAttribute/classList
- * and addEventListener, matching the new dr-ext-morph button shape.
+ * and addEventListener, matching the new dr-ext-table-pillbox button shape.
  *
  * @param {object} table — the table stub
  * @returns {object} the mock button element
@@ -311,7 +311,7 @@ function makeMockButton() {
   const button = {
     _tag: 'button',
     type: 'button',
-    className: 'dr-ext-morph',
+    className: 'dr-ext-table-pillbox',
     style: {},
     _children: [],
     dataset: {},

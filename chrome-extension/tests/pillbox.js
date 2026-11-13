@@ -41,15 +41,15 @@
   eq('rangePulse CSS: iteration count is 2 (two cycles = ~1.2s total)',
     !!(animLine && /\s2\s*;$/.test(animLine.trim())), true);
 
-  eq('rangePulse CSS: .dr-ext-target-flash class still present (no regression)',
-    capturedCss !== null && capturedCss.includes('dr-ext-target-flash'), true);
+  eq('rangePulse CSS: .dr-ext-active-flash class still present (no regression)',
+    capturedCss !== null && capturedCss.includes('dr-ext-active-flash'), true);
 
   // The whole-table pulse draws its outline inside the table's edge, so a box
   // around the table that cuts off its content at the table's edge never cuts
   // the outline off. Every outline offset in the whole-table keyframes is
   // negative.
   const flashKeyframes = capturedCss &&
-    (capturedCss.match(/@keyframes drExtTargetFlash\s*\{[\s\S]*?\n\s*\}/) || [])[0];
+    (capturedCss.match(/@keyframes drExtActiveFlash\s*\{[\s\S]*?\n\s*\}/) || [])[0];
   const flashOffsets = flashKeyframes
     ? Array.from(flashKeyframes.matchAll(/outline-offset:\s*(-?\d+)px/g), (m) => Number(m[1]))
     : [];
@@ -57,8 +57,8 @@
     flashOffsets.length > 0 && flashOffsets.every((px) => px < 0), true);
 })();
 
-// Dispatch: flashRangePulse(table, null) must delegate to flashTargetedTable,
-// which adds 'dr-ext-target-flash' to table.classList.
+// Dispatch: flashRangePulse(table, null) must delegate to flashActiveTable,
+// which adds 'dr-ext-active-flash' to table.classList.
 (function rangePulseNullRangesDispatch() {
   const classes = new Set();
   const mockTable = {
@@ -66,18 +66,18 @@
       remove(cls) { classes.delete(cls); },
       add(cls) { classes.add(cls); }
     },
-    offsetWidth: 0,   // accessed via void table.offsetWidth in flashTargetedTable
+    offsetWidth: 0,   // accessed via void table.offsetWidth in flashActiveTable
     rows: []
   };
 
   flashRangePulse(mockTable, null);
 
-  eq('rangePulse dispatch: null ranges adds dr-ext-target-flash (whole-table path)',
-    classes.has('dr-ext-target-flash'), true);
+  eq('rangePulse dispatch: null ranges adds dr-ext-active-flash (whole-table path)',
+    classes.has('dr-ext-active-flash'), true);
 })();
 
 // Dispatch: flashRangePulse(table, ranges) with zero matching cells falls back
-// to flashTargetedTable (same class added).
+// to flashActiveTable (same class added).
 (function rangePulseEmptyCellsFallback() {
   const classes = new Set();
   const mockTable = {
@@ -94,7 +94,7 @@
   flashRangePulse(mockTable, ranges);
 
   eq('rangePulse dispatch: non-null ranges with no matching cells falls back to whole-table flash',
-    classes.has('dr-ext-target-flash'), true);
+    classes.has('dr-ext-active-flash'), true);
 })();
 
 // --- Helpers ---
@@ -227,8 +227,8 @@
     threw, false);
 })();
 
-// --- DOM shape: createPillboxForTable creates the new morph button structure ---
-// Spec (§3.6 + AC): button.dr-ext-morph > span.dr-ext-morph-visible > span.dr-ext-morph-knob
+// --- DOM shape: createPillboxForTable creates the table pillbox button structure ---
+// Spec (§3.6 + AC): button.dr-ext-table-pillbox > span.dr-ext-table-pillbox-dot > span.dr-ext-table-pillbox-knob
 // The button must have type="button", aria-pressed="false", and an aria-label.
 
 (function atToggle_createPillbox_domShape() {
@@ -323,9 +323,9 @@
   eq('auto-table-toggle: createPillboxForTable appends a <button> to document.body',
     buttonEl !== undefined, true);
 
-  // Must have class dr-ext-morph
-  eq('auto-table-toggle: createPillboxForTable creates a <button class="dr-ext-morph">',
-    buttonEl ? buttonEl.className === 'dr-ext-morph' : false, true);
+  // Must have class dr-ext-table-pillbox
+  eq('auto-table-toggle: createPillboxForTable creates a <button class="dr-ext-table-pillbox">',
+    buttonEl ? buttonEl.className === 'dr-ext-table-pillbox' : false, true);
 
   // Must have type="button"
   eq('auto-table-toggle: createPillboxForTable button has type="button"',
@@ -344,15 +344,15 @@
   eq('auto-table-toggle: createPillboxForTable aria-label mentions rounding',
     ariaLabel ? ariaLabel.toLowerCase().includes('round') : false, true);
 
-  // First child of button must be span.dr-ext-morph-visible
-  const visibleEl = buttonEl ? buttonEl._children[0] : null;
-  eq('auto-table-toggle: button first child is <span class="dr-ext-morph-visible">',
-    visibleEl ? (visibleEl._tag === 'span' && visibleEl.className === 'dr-ext-morph-visible') : false, true);
+  // First child of button must be span.dr-ext-table-pillbox-dot
+  const dotEl = buttonEl ? buttonEl._children[0] : null;
+  eq('auto-table-toggle: button first child is <span class="dr-ext-table-pillbox-dot">',
+    dotEl ? (dotEl._tag === 'span' && dotEl.className === 'dr-ext-table-pillbox-dot') : false, true);
 
-  // First child of visible must be span.dr-ext-morph-knob
-  const knobEl = visibleEl ? visibleEl._children[0] : null;
-  eq('auto-table-toggle: visible first child is <span class="dr-ext-morph-knob">',
-    knobEl ? (knobEl._tag === 'span' && knobEl.className === 'dr-ext-morph-knob') : false, true);
+  // First child of the dot must be span.dr-ext-table-pillbox-knob
+  const knobEl = dotEl ? dotEl._children[0] : null;
+  eq('auto-table-toggle: dot first child is <span class="dr-ext-table-pillbox-knob">',
+    knobEl ? (knobEl._tag === 'span' && knobEl.className === 'dr-ext-table-pillbox-knob') : false, true);
 
   // tablePillboxes must now contain this table
   eq('auto-table-toggle: createPillboxForTable registers table in tablePillboxes',
@@ -360,14 +360,14 @@
 })();
 
 // --- Anchor geometry (rest state, scroll=0) ---
-// Spec (§3.2): wrapper left/top place the visible's bottom-right at
-//   visible.bottom = rect.top  + scrollY + TOGGLE_DOT_OVERLAP_PX
-//   visible.right  = rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX
-// With justify-content: flex-end + padding: TOGGLE_HIT_PAD_PX, the visible sits
-// inside the wrapper's content box on both axes, so its right edge is
-// wrapper.right - padding (not wrapper.right). The wrapper offsets are therefore:
-//   wrapperLeft = (rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX) - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX
-//   wrapperTop  = (rect.top   + scrollY + TOGGLE_DOT_OVERLAP_PX)  - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX
+// Spec (§3.2): button left/top place the dot's bottom-right at
+//   dot.bottom = rect.top  + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX
+//   dot.right  = rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX
+// With justify-content: flex-end + padding: TABLE_PILLBOX_HIT_PAD_PX, the dot sits
+// inside the button's content box on both axes, so its right edge is
+// button.right - padding (not button.right). The button offsets are therefore:
+//   buttonLeft = (rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX
+//   buttonTop  = (rect.top   + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX
 // One padding term per axis, not two.
 // All arithmetic is done in terms of the exposed globalThis constants.
 
@@ -389,24 +389,24 @@
   const left = parseFloat(buttonEl.style.left);
   const top  = parseFloat(buttonEl.style.top);
 
-  const expectedLeft = (tableRect.right + 0 + TOGGLE_DOT_OVERHANG_PX) - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
-  const expectedTop  = (tableRect.top   + 0 + TOGGLE_DOT_OVERLAP_PX)  - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
+  const expectedLeft = (tableRect.right + 0 + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
+  const expectedTop  = (tableRect.top   + 0 + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
 
-  eq('positionPillbox: wrapper left matches anchor formula (scroll=0)',
+  eq('positionPillbox: button left matches anchor formula (scroll=0)',
     left, expectedLeft);
-  eq('positionPillbox: wrapper top matches anchor formula (scroll=0)',
+  eq('positionPillbox: button top matches anchor formula (scroll=0)',
     top, expectedTop);
 
-  // Cross-check: derive the visible's bottom-right edges from the wrapper offset
-  // and assert they sit at the spec-defined anchor. visible.right (document) =
-  // wrapper.left + (wrapper width) - padding-right = wrapper.left + DOT + PAD.
-  // visible.bottom (document) = wrapper.top + padding-top + DOT.
-  const visibleRight  = left + TOGGLE_DOT_PX + TOGGLE_HIT_PAD_PX;
-  const visibleBottom = top  + TOGGLE_HIT_PAD_PX + TOGGLE_DOT_PX;
-  eq('positionPillbox: visible.right sits TOGGLE_DOT_OVERHANG_PX past table right edge',
-    visibleRight, tableRect.right + TOGGLE_DOT_OVERHANG_PX);
-  eq('positionPillbox: visible.bottom sits TOGGLE_DOT_OVERLAP_PX below table top edge',
-    visibleBottom, tableRect.top + TOGGLE_DOT_OVERLAP_PX);
+  // Cross-check: derive the dot's bottom-right edges from the button offset
+  // and assert they sit at the spec-defined anchor. dot.right (document) =
+  // button.left + (button width) - padding-right = button.left + DOT + PAD.
+  // dot.bottom (document) = button.top + padding-top + DOT.
+  const dotRight  = left + TABLE_PILLBOX_DOT_PX + TABLE_PILLBOX_HIT_PAD_PX;
+  const dotBottom = top  + TABLE_PILLBOX_HIT_PAD_PX + TABLE_PILLBOX_DOT_PX;
+  eq('positionPillbox: dot.right sits TABLE_PILLBOX_DOT_OVERHANG_PX past table right edge',
+    dotRight, tableRect.right + TABLE_PILLBOX_DOT_OVERHANG_PX);
+  eq('positionPillbox: dot.bottom sits TABLE_PILLBOX_DOT_OVERLAP_PX below table top edge',
+    dotBottom, tableRect.top + TABLE_PILLBOX_DOT_OVERLAP_PX);
 })();
 
 // --- Anchor geometry with non-zero scroll ---
@@ -430,12 +430,12 @@
   const left = parseFloat(buttonEl.style.left);
   const top  = parseFloat(buttonEl.style.top);
 
-  const expectedLeft = (tableRect.right + 200 + TOGGLE_DOT_OVERHANG_PX) - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
-  const expectedTop  = (tableRect.top   + 300 + TOGGLE_DOT_OVERLAP_PX)  - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX;
+  const expectedLeft = (tableRect.right + 200 + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
+  const expectedTop  = (tableRect.top   + 300 + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX;
 
-  eq('positionPillbox: wrapper left includes scrollX offset',
+  eq('positionPillbox: button left includes scrollX offset',
     left, expectedLeft);
-  eq('positionPillbox: wrapper top includes scrollY offset',
+  eq('positionPillbox: button top includes scrollY offset',
     top, expectedTop);
 })();
 
@@ -816,7 +816,7 @@
 // The pillbox sits in the page body, so the area's edges never cut it off.
 // positionPillbox hides the pillbox while the dot's centre sits outside the box
 // of any ancestor whose overflow cuts off its content, on the axis that
-// ancestor cuts. The dot's centre sits TOGGLE_DOT_PX / 2 inside the table's
+// ancestor cuts. The dot's centre sits TABLE_PILLBOX_DOT_PX / 2 inside the table's
 // top-right corner, less the overhang and overlap.
 
 // Builds table → ancestors[0] → ancestors[1] → … → body. Each ancestor spec
@@ -901,8 +901,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
         buttonEl.style.display, '');
       eq('clipGate: that pillbox sits at the table\'s top-right corner',
         [parseFloat(buttonEl.style.left), parseFloat(buttonEl.style.top)],
-        [tableRect.right + TOGGLE_DOT_OVERHANG_PX - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX,
-         tableRect.top + TOGGLE_DOT_OVERLAP_PX - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX]);
+        [tableRect.right + TABLE_PILLBOX_DOT_OVERHANG_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX,
+         tableRect.top + TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX]);
     });
 })();
 
@@ -1019,7 +1019,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     if (scroll) scroll.handler({ type: 'scroll', target: { _name: 'chat column' } });
     eq('scrollWiring: a scroll inside a page area repositions the pillbox',
       parseFloat(buttonEl.style.top),
-      tableRect.top + TOGGLE_DOT_OVERLAP_PX - TOGGLE_DOT_PX - TOGGLE_HIT_PAD_PX);
+      tableRect.top + TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX - TABLE_PILLBOX_HIT_PAD_PX);
   } finally {
     global.window.addEventListener = origAdd;
     _scrollResizeListenersAdded = origFlag;
@@ -1036,18 +1036,18 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // =============================================================================
 
 // --- Knob travel derivation ---
-// Spec (§3.5): TOGGLE_KNOB_TRAVEL_PX === TOGGLE_PILL_WIDTH_PX - TOGGLE_KNOB_PX - 2*TOGGLE_KNOB_INSET_PX === 12
+// Spec (§3.5): TABLE_PILLBOX_KNOB_TRAVEL_PX === TABLE_PILLBOX_PILL_WIDTH_PX - TABLE_PILLBOX_KNOB_PX - 2*TABLE_PILLBOX_KNOB_INSET_PX === 12
 
-(function morphAC_knobTravelDerivation() {
-  eq('expanding-toggle: TOGGLE_KNOB_TRAVEL_PX equals 12 (default geometry)',
-    TOGGLE_KNOB_TRAVEL_PX, 12);
+(function tablePillboxAC_knobTravelDerivation() {
+  eq('expanding-toggle: TABLE_PILLBOX_KNOB_TRAVEL_PX equals 12 (default geometry)',
+    TABLE_PILLBOX_KNOB_TRAVEL_PX, 12);
 })();
 
 // --- Mouse click toggles state ---
 // Spec (§3.4 + AC): pointerType 'mouse'/'': intent:toggleTable published, aria-pressed updates.
 // We create a real button via createPillboxForTable (with DOM stubs).
 
-(function morphAC_mouseClick_togglesState() {
+(function tablePillboxAC_mouseClick_togglesState() {
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
@@ -1127,7 +1127,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // --- Touch first tap expands, does NOT toggle ---
 // Spec (AC): pointerType 'touch' first tap → adds .expanded, aria-pressed unchanged
 
-(function morphAC_touchFirstTap_expandsOnly() {
+(function tablePillboxAC_touchFirstTap_expandsOnly() {
   const table = makeToggleTable([{ tag: 'td', text: '1,000' }]);
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
@@ -1213,7 +1213,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // --- Touch second tap toggles and refreshes expansion ---
 // Spec (AC): second tap on already-expanded → publishes intent:toggleTable, updates aria-pressed
 
-(function morphAC_touchSecondTap_togglesState() {
+(function tablePillboxAC_touchSecondTap_togglesState() {
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
@@ -1303,7 +1303,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // --- Pen pointer behaves like touch (two-tap flow) ---
 // Spec (AC): pointerType 'pen' uses same expand-then-toggle path as 'touch'
 
-(function morphAC_penPointer_behavesLikeTouch() {
+(function tablePillboxAC_penPointer_behavesLikeTouch() {
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
@@ -1382,7 +1382,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // Spec (AC): after .expanded is added, PILLBOX_AUTO_COLLAPSE_MS ms later .expanded is removed.
 // We fake setTimeout to capture and drain the queued callback synchronously.
 
-(function morphAC_autoCollapse_timer() {
+(function tablePillboxAC_autoCollapse_timer() {
   const appendedToBody = [];
   const origCreateEl = global.document.createElement;
   const origDocBody = global.document.body;
@@ -1474,7 +1474,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 //            pointerdown inside preserves .expanded.
 // We test via the global document pointerdown listener that createPillboxForTable registers.
 
-(function morphAC_tapOutside_collapses() {
+(function tablePillboxAC_tapOutside_collapses() {
   // We need to capture the global 'pointerdown' listener added to document.
   // Reset _globalTapCollapseAdded so createPillboxForTable re-registers it on our stub.
   const origTapCollapseAdded = _globalTapCollapseAdded;
@@ -1546,11 +1546,11 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   // Manually mark as expanded
   buttonEl.classList.add('expanded');
 
-  // The global listener relies on document.querySelectorAll('.dr-ext-morph.expanded').
+  // The global listener relies on document.querySelectorAll('.dr-ext-table-pillbox.expanded').
   // We need to stub that for this test.
   const origQSA = global.document.querySelectorAll;
   global.document.querySelectorAll = (sel) => {
-    if (sel === '.dr-ext-morph.expanded' && buttonEl.classList.contains('expanded')) {
+    if (sel === '.dr-ext-table-pillbox.expanded' && buttonEl.classList.contains('expanded')) {
       return [buttonEl];
     }
     return [];
@@ -1576,7 +1576,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     buttonEl.classList.contains('expanded'), false);
 })();
 
-(function morphAC_tapInside_preservesExpanded() {
+(function tablePillboxAC_tapInside_preservesExpanded() {
   // Reset so the listener gets re-registered on our stubbed document.addEventListener
   const origTapCollapseAdded2 = _globalTapCollapseAdded;
   _globalTapCollapseAdded = false;
@@ -1647,7 +1647,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
   const origQSA = global.document.querySelectorAll;
   global.document.querySelectorAll = (sel) => {
-    if (sel === '.dr-ext-morph.expanded' && buttonEl.classList.contains('expanded')) {
+    if (sel === '.dr-ext-table-pillbox.expanded' && buttonEl.classList.contains('expanded')) {
       return [buttonEl];
     }
     return [];
@@ -2331,7 +2331,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 
 // Right-click activation
 // ---------------------------------------------------------------------------
-// AC1: Right-clicking a table causes flashTargetedTable to run on that table.
+// AC1: Right-clicking a table causes flashActiveTable to run on that table.
 // AC2: state:tableActivated onMessage in sidebar.js calls flashSidebarContainer.
 // AC3: Right-clicking a non-table element produces NO flash and NO state:tableActivated send.
 // AC4: background.js does NOT relay state:tableActivated when boundTabId is null.
@@ -2340,11 +2340,11 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
 // Runtime note: the main eval() above registered document.addEventListener with
 // the no-op stub, so the contextmenu handler is not capturable from the
 // already-evaluated code.  ACs 1 and 3 are therefore verified in two layers:
-//   (a) live runtime: call flashTargetedTable() directly and assert its effect
+//   (a) live runtime: call flashActiveTable() directly and assert its effect
 //       (it is in global scope after the eval), confirming that the mechanism
 //       the handler uses actually works.
 //   (b) source-level: regex-assert that the contextmenu handler in content.js
-//       correctly calls flashTargetedTable(table) inside the `if (table)` guard
+//       correctly calls flashActiveTable(table) inside the `if (table)` guard
 //       and does NOT call it when there is no table.
 // ACs 2 and 4 are pure source-level (sidebar.js / background.js have no eval
 // path in this harness).
@@ -2362,23 +2362,23 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   const bgSrc      = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
 
-  // AC1 (source): contextmenu handler calls flashTargetedTable(table) inside
+  // AC1 (source): contextmenu handler calls flashActiveTable(table) inside
   // the `if (found)` guard. findTargetTable returns { handle, isNew }, so the handler
   // guards on `found` and derives `table` from markAndAddPillboxIfNewGrid(found)
   // before flashing it.
-  // Pattern: `if (found) { ... flashTargetedTable(table) ...` within the handler.
-  eq('table-activation AC1 source: contextmenu handler calls flashTargetedTable(table)',
-    /if\s*\(\s*found\s*\)[\s\S]{0,300}flashTargetedTable\(\s*table\s*\)/.test(contentSrc),
+  // Pattern: `if (found) { ... flashActiveTable(table) ...` within the handler.
+  eq('table-activation AC1 source: contextmenu handler calls flashActiveTable(table)',
+    /if\s*\(\s*found\s*\)[\s\S]{0,300}flashActiveTable\(\s*table\s*\)/.test(contentSrc),
     true);
 
-  // AC1 (source): the call to flashTargetedTable is inside the `if (found)` block
+  // AC1 (source): the call to flashActiveTable is inside the `if (found)` block
   // — it cannot appear BEFORE the guard.
-  // We verify that flashTargetedTable does NOT appear before the first `if (found)`.
+  // We verify that flashActiveTable does NOT appear before the first `if (found)`.
   const contextmenuMatch = contentSrc.match(/document\.addEventListener\s*\(\s*['"]contextmenu['"][\s\S]*?\}\s*,\s*true\s*\)/);
   const handlerSrc = contextmenuMatch ? contextmenuMatch[0] : '';
-  const flashIndex = handlerSrc.indexOf('flashTargetedTable');
+  const flashIndex = handlerSrc.indexOf('flashActiveTable');
   const guardIndex = handlerSrc.indexOf('if (found)');
-  eq('table-activation AC1 source: flashTargetedTable appears after if(found) guard in handler',
+  eq('table-activation AC1 source: flashActiveTable appears after if(found) guard in handler',
     flashIndex !== -1 && guardIndex !== -1 && flashIndex > guardIndex,
     true);
 
@@ -2485,8 +2485,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     sentMessages.length = 0;
     capturedHandler({ target: mockTable });
 
-    eq('table-activation AC1 runtime: flashTargetedTable adds dr-ext-target-flash to the table',
-      flashedClasses.includes('dr-ext-target-flash'),
+    eq('table-activation AC1 runtime: flashActiveTable adds dr-ext-active-flash to the table',
+      flashedClasses.includes('dr-ext-active-flash'),
       true);
 
     eq('table-activation AC1 runtime: state:tableActivated sent when right-clicking a table',
@@ -2854,8 +2854,8 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   });
 })();
 
-// AC1 (live): flashTargetedTable (already in global scope from the main eval)
-// adds 'dr-ext-target-flash' to the passed table's classList.
+// AC1 (live): flashActiveTable (already in global scope from the main eval)
+// adds 'dr-ext-active-flash' to the passed table's classList.
 (function tableContextmenuActivation_flashFn() {
   const addedClasses = [];
   const mockTable = {
@@ -2866,10 +2866,10 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     get offsetWidth() { return 0; },
   };
 
-  flashTargetedTable(mockTable);
+  flashActiveTable(mockTable);
 
-  eq('table-activation AC1 live: flashTargetedTable adds dr-ext-target-flash class',
-    addedClasses.includes('dr-ext-target-flash'),
+  eq('table-activation AC1 live: flashActiveTable adds dr-ext-active-flash class',
+    addedClasses.includes('dr-ext-active-flash'),
     true);
 })();
 

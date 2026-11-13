@@ -30,17 +30,17 @@
  */
 
 // Table pillbox geometry constants
-const TOGGLE_DOT_PX = 10;
-const TOGGLE_PILL_WIDTH_PX = 28;
-const TOGGLE_PILL_HEIGHT_PX = 16;
-const TOGGLE_KNOB_PX = 12;
-const TOGGLE_KNOB_INSET_PX = 2;
-const TOGGLE_KNOB_TRAVEL_PX = TOGGLE_PILL_WIDTH_PX - TOGGLE_KNOB_PX - 2 * TOGGLE_KNOB_INSET_PX;
-const TOGGLE_HIT_PAD_PX = 7;
-const TOGGLE_DOT_OVERLAP_PX = 8;
-const TOGGLE_DOT_OVERHANG_PX = 2;
-const TOGGLE_COLOR_ON = '#3d85c6';
-const TOGGLE_COLOR_OFF = '#cccccc';
+const TABLE_PILLBOX_DOT_PX = 10;
+const TABLE_PILLBOX_PILL_WIDTH_PX = 28;
+const TABLE_PILLBOX_PILL_HEIGHT_PX = 16;
+const TABLE_PILLBOX_KNOB_PX = 12;
+const TABLE_PILLBOX_KNOB_INSET_PX = 2;
+const TABLE_PILLBOX_KNOB_TRAVEL_PX = TABLE_PILLBOX_PILL_WIDTH_PX - TABLE_PILLBOX_KNOB_PX - 2 * TABLE_PILLBOX_KNOB_INSET_PX;
+const TABLE_PILLBOX_HIT_PAD_PX = 7;
+const TABLE_PILLBOX_DOT_OVERLAP_PX = 8;
+const TABLE_PILLBOX_DOT_OVERHANG_PX = 2;
+const TABLE_PILLBOX_COLOR_ON = '#3d85c6';
+const TABLE_PILLBOX_COLOR_OFF = '#cccccc';
 // Touch and pen: an expanded table pillbox collapses on its own after this
 // delay. This view alone reads it, so it lives here and not in the detection
 // settings.
@@ -58,7 +58,7 @@ const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 
 // --- Per-table pillbox infrastructure ---
 
-/** WeakMap from HTMLTableElement → HTMLButtonElement (the morph button) */
+/** WeakMap from HTMLTableElement → HTMLButtonElement (the table pillbox's button) */
 const tablePillboxes = new WeakMap();
 
 /** Parallel Set of tracked tables so we can iterate for repositioning */
@@ -96,72 +96,72 @@ function ensurePillboxStyleInjected() {
   if (pillboxStyleInjected) return;
   const style = document.createElement('style');
   style.textContent = `
-    .dr-ext-morph {
+    .dr-ext-table-pillbox {
       position: absolute;
       z-index: 2147483646;
       display: inline-flex;
       justify-content: flex-end;
       align-items: flex-start;
-      padding: ${TOGGLE_HIT_PAD_PX}px;
+      padding: ${TABLE_PILLBOX_HIT_PAD_PX}px;
       background: transparent;
       border: 0;
       cursor: pointer;
       vertical-align: top;
       -webkit-tap-highlight-color: transparent;
     }
-    .dr-ext-morph-visible {
+    .dr-ext-table-pillbox-dot {
       position: relative;
       display: block;
-      width: ${TOGGLE_DOT_PX}px;
-      height: ${TOGGLE_DOT_PX}px;
+      width: ${TABLE_PILLBOX_DOT_PX}px;
+      height: ${TABLE_PILLBOX_DOT_PX}px;
       border-radius: 50%;
-      background: ${TOGGLE_COLOR_OFF};
+      background: ${TABLE_PILLBOX_COLOR_OFF};
       transition: width .18s ease, height .18s ease, border-radius .18s ease, background .2s ease;
     }
-    .dr-ext-morph[aria-pressed="true"] .dr-ext-morph-visible {
-      background: ${TOGGLE_COLOR_ON};
+    .dr-ext-table-pillbox[aria-pressed="true"] .dr-ext-table-pillbox-dot {
+      background: ${TABLE_PILLBOX_COLOR_ON};
     }
-    .dr-ext-morph-knob {
+    .dr-ext-table-pillbox-knob {
       position: absolute;
       top: 50%;
-      left: ${TOGGLE_KNOB_INSET_PX}px;
+      left: ${TABLE_PILLBOX_KNOB_INSET_PX}px;
       transform: translateY(-50%);
-      width: ${TOGGLE_KNOB_PX}px;
-      height: ${TOGGLE_KNOB_PX}px;
+      width: ${TABLE_PILLBOX_KNOB_PX}px;
+      height: ${TABLE_PILLBOX_KNOB_PX}px;
       border-radius: 50%;
       background: #fff;
       box-shadow: 0 1px 2px rgba(0,0,0,.35);
       opacity: 0;
       transition: opacity .12s ease, left .2s ease;
     }
-    .dr-ext-morph.expanded .dr-ext-morph-visible,
-    .dr-ext-morph:focus-visible .dr-ext-morph-visible {
-      width: ${TOGGLE_PILL_WIDTH_PX}px;
-      height: ${TOGGLE_PILL_HEIGHT_PX}px;
+    .dr-ext-table-pillbox.expanded .dr-ext-table-pillbox-dot,
+    .dr-ext-table-pillbox:focus-visible .dr-ext-table-pillbox-dot {
+      width: ${TABLE_PILLBOX_PILL_WIDTH_PX}px;
+      height: ${TABLE_PILLBOX_PILL_HEIGHT_PX}px;
       border-radius: 999px;
     }
-    .dr-ext-morph.expanded .dr-ext-morph-knob,
-    .dr-ext-morph:focus-visible .dr-ext-morph-knob {
+    .dr-ext-table-pillbox.expanded .dr-ext-table-pillbox-knob,
+    .dr-ext-table-pillbox:focus-visible .dr-ext-table-pillbox-knob {
       opacity: 1;
     }
-    .dr-ext-morph.expanded[aria-pressed="true"] .dr-ext-morph-knob,
-    .dr-ext-morph:focus-visible[aria-pressed="true"] .dr-ext-morph-knob {
-      left: ${TOGGLE_KNOB_INSET_PX + TOGGLE_KNOB_TRAVEL_PX}px;
+    .dr-ext-table-pillbox.expanded[aria-pressed="true"] .dr-ext-table-pillbox-knob,
+    .dr-ext-table-pillbox:focus-visible[aria-pressed="true"] .dr-ext-table-pillbox-knob {
+      left: ${TABLE_PILLBOX_KNOB_INSET_PX + TABLE_PILLBOX_KNOB_TRAVEL_PX}px;
     }
     @media (hover: hover) and (pointer: fine) {
-      .dr-ext-morph:hover .dr-ext-morph-visible {
-        width: ${TOGGLE_PILL_WIDTH_PX}px;
-        height: ${TOGGLE_PILL_HEIGHT_PX}px;
+      .dr-ext-table-pillbox:hover .dr-ext-table-pillbox-dot {
+        width: ${TABLE_PILLBOX_PILL_WIDTH_PX}px;
+        height: ${TABLE_PILLBOX_PILL_HEIGHT_PX}px;
         border-radius: 999px;
       }
-      .dr-ext-morph:hover .dr-ext-morph-knob {
+      .dr-ext-table-pillbox:hover .dr-ext-table-pillbox-knob {
         opacity: 1;
       }
-      .dr-ext-morph:hover[aria-pressed="true"] .dr-ext-morph-knob {
-        left: ${TOGGLE_KNOB_INSET_PX + TOGGLE_KNOB_TRAVEL_PX}px;
+      .dr-ext-table-pillbox:hover[aria-pressed="true"] .dr-ext-table-pillbox-knob {
+        left: ${TABLE_PILLBOX_KNOB_INSET_PX + TABLE_PILLBOX_KNOB_TRAVEL_PX}px;
       }
     }
-    .dr-ext-morph:focus-visible { outline: 2px solid ${TOGGLE_COLOR_ON}!important; outline-offset: 2px; }
+    .dr-ext-table-pillbox:focus-visible { outline: 2px solid ${TABLE_PILLBOX_COLOR_ON}!important; outline-offset: 2px; }
   `;
   (document.head || document.documentElement).appendChild(style);
   pillboxStyleInjected = true;
@@ -189,35 +189,35 @@ function isPillboxSpotClipped(table, x, y) {
   return false;
 }
 
-function positionPillbox(table, buttonEl) {
+function positionPillbox(table, button) {
   const rect = table.getBoundingClientRect();
   const computedStyle = window.getComputedStyle(table);
   // The centre of the dot, which sits over the table's top-right corner.
-  const spotX = rect.right + TOGGLE_DOT_OVERHANG_PX - TOGGLE_DOT_PX / 2;
-  const spotY = rect.top + TOGGLE_DOT_OVERLAP_PX - TOGGLE_DOT_PX / 2;
+  const spotX = rect.right + TABLE_PILLBOX_DOT_OVERHANG_PX - TABLE_PILLBOX_DOT_PX / 2;
+  const spotY = rect.top + TABLE_PILLBOX_DOT_OVERLAP_PX - TABLE_PILLBOX_DOT_PX / 2;
   if (
     (rect.width === 0 && rect.height === 0) ||
     computedStyle.display === 'none' ||
     computedStyle.visibility === 'hidden' ||
     isPillboxSpotClipped(table, spotX, spotY)
   ) {
-    buttonEl.style.display = 'none';
+    button.style.display = 'none';
     return;
   }
-  buttonEl.style.display = '';
+  button.style.display = '';
   const scrollX = window.scrollX || window.pageXOffset || 0;
   const scrollY = window.scrollY || window.pageYOffset || 0;
-  // Position so the visible's bottom = rect.top + scrollY + TOGGLE_DOT_OVERLAP_PX
-  // and the visible's right = rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX.
-  // The wrapper has TOGGLE_HIT_PAD_PX padding on every side; with flex-end /
-  // flex-start the visible sits inside the wrapper's content box, so its right
-  // edge is wrapper.right - padding (not wrapper.right). One padding subtracts
+  // Position so the dot's bottom = rect.top + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX
+  // and the dot's right = rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX.
+  // The button has TABLE_PILLBOX_HIT_PAD_PX padding on every side; with flex-end /
+  // flex-start the dot sits inside the button's content box, so its right
+  // edge is button.right - padding (not button.right). One padding subtracts
   // from each axis — there is no double-padding term.
-  const padding = TOGGLE_HIT_PAD_PX;
-  const wrapperLeft = (rect.right + scrollX + TOGGLE_DOT_OVERHANG_PX) - TOGGLE_DOT_PX - padding;
-  const wrapperTop  = (rect.top   + scrollY + TOGGLE_DOT_OVERLAP_PX)  - TOGGLE_DOT_PX - padding;
-  buttonEl.style.left = wrapperLeft + 'px';
-  buttonEl.style.top  = wrapperTop  + 'px';
+  const padding = TABLE_PILLBOX_HIT_PAD_PX;
+  const buttonLeft = (rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX) - TABLE_PILLBOX_DOT_PX - padding;
+  const buttonTop  = (rect.top   + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX)  - TABLE_PILLBOX_DOT_PX - padding;
+  button.style.left = buttonLeft + 'px';
+  button.style.top  = buttonTop  + 'px';
 }
 
 /** Guard so the global tap-outside collapse listener is added only once */
@@ -231,18 +231,18 @@ function createPillboxForTable(table) {
 
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'dr-ext-morph';
+  button.className = 'dr-ext-table-pillbox';
   button.setAttribute('aria-pressed', 'false');
   button.setAttribute('aria-label', 'Toggle rounding for table');
 
-  const visible = document.createElement('span');
-  visible.className = 'dr-ext-morph-visible';
+  const dot = document.createElement('span');
+  dot.className = 'dr-ext-table-pillbox-dot';
 
   const knob = document.createElement('span');
-  knob.className = 'dr-ext-morph-knob';
+  knob.className = 'dr-ext-table-pillbox-knob';
 
-  visible.appendChild(knob);
-  button.appendChild(visible);
+  dot.appendChild(knob);
+  button.appendChild(dot);
 
   (document.body || document.documentElement).appendChild(button);
 
@@ -329,7 +329,7 @@ function createPillboxForTable(table) {
   if (!_globalTapCollapseAdded) {
     _globalTapCollapseAdded = true;
     document.addEventListener('pointerdown', (e) => {
-      document.querySelectorAll('.dr-ext-morph.expanded').forEach((btn) => {
+      document.querySelectorAll('.dr-ext-table-pillbox.expanded').forEach((btn) => {
         if (!btn.contains(e.target)) {
           btn.classList.remove('expanded');
         }
@@ -394,12 +394,12 @@ function ensureHighlightStyleInjected() {
   // cuts off its content at the table's edge, such as a chat page's table
   // card, would cut off an outline drawn outside it.
   style.textContent = `
-    @keyframes drExtTargetFlash {
+    @keyframes drExtActiveFlash {
       0%   { outline: 2px solid rgba(66, 133, 244, 0.95); outline-offset: -2px; }
       100% { outline: 2px solid rgba(66, 133, 244, 0);    outline-offset: -2px; }
     }
-    .dr-ext-target-flash {
-      animation: drExtTargetFlash 1s ease-out;
+    .dr-ext-active-flash {
+      animation: drExtActiveFlash 1s ease-out;
     }
     @keyframes drExtRangePulse {
       0%   { border-color: rgba(255,255,255,0.0);  box-shadow: 0 0 0 2px rgba(66,133,244,0.0); }
@@ -422,18 +422,18 @@ function ensureHighlightStyleInjected() {
   highlightStyleInjected = true;
 }
 
-function flashTargetedTable(table) {
-  table.classList.remove('dr-ext-target-flash');
+function flashActiveTable(table) {
+  table.classList.remove('dr-ext-active-flash');
   // Force reflow so the animation restarts when re-added.
   void table.offsetWidth;
-  table.classList.add('dr-ext-target-flash');
+  table.classList.add('dr-ext-active-flash');
 }
 
 /**
- * Pulse a faint blue-and-white border around the operated-on region.
+ * Pulse a faint blue-and-white border around the range expression's cells.
  * - If ranges is null (a blank or invalid range expression), delegates to the existing table outline flash.
  * - If ranges is an array, overlays an absolutely-positioned div sized to the bounding
- *   rect of all targeted cells, then removes itself after the animation ends (~1.2s).
+ *   rect of the range expression's cells, then removes itself after the animation ends (~1.2s).
  *   The div is appended to document.body so it never wraps or alters td elements.
  *
  * Cell enumeration goes through the same TableAdapter (lib/dr-table, makeAdapter)
@@ -445,7 +445,7 @@ function flashTargetedTable(table) {
 function flashRangePulse(table, ranges) {
   if (!ranges) {
     // A blank or invalid range expression: reuse the existing outline flash.
-    flashTargetedTable(table);
+    flashActiveTable(table);
     return;
   }
 
@@ -466,7 +466,7 @@ function flashRangePulse(table, ranges) {
 
   if (matchedCells.length === 0) {
     // No cells matched (e.g. range outside table bounds) — fall back to whole-table flash.
-    flashTargetedTable(table);
+    flashActiveTable(table);
     return;
   }
 

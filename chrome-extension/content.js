@@ -175,7 +175,7 @@ document.addEventListener('contextmenu', (event) => {
     const table = markAndAddPillboxIfNewGrid(found);
     DR_MODEL.setActiveTable(table);
     DR_LOG.debug(DR_LOG.formatRow('activate'));
-    flashTargetedTable(table);
+    flashActiveTable(table);
     DR_BUS.publish('state:tableActivated', {});
   }
 }, true);
