@@ -1168,16 +1168,10 @@
     ctx.listeners.menuClicked({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
   }
 
-  // --- The menu toggle with sidebar does both: the same toggle the menu toggle
-  // sends, then the sidebar-opened report, to the tab the right-click
-  // happened in and in that order, so the sidebar's re-read on open reads
-  // the toggled settings. ---
-  // --- The menu holds two fixed labels, created after every former item is
-  // removed. ---
+  // --- The menu holds two fixed labels. ---
   (function menuItemsCarryFixedLabels() {
     const created = [];
     let installed = null;
-    let removedBeforeCreate = false;
     const chromeStub = {
       runtime: {
         lastError: null,
@@ -1186,7 +1180,6 @@
         sendMessage: (msg, cb) => { if (cb) cb(undefined); },
       },
       contextMenus: {
-        removeAll: (cb) => { removedBeforeCreate = created.length === 0; cb(); },
         create: (item) => { created.push({ id: item.id, title: item.title }); },
         onClicked: { addListener: () => {} },
       },
@@ -1201,8 +1194,6 @@
     new Function('chrome', 'console', messagingCode + '\n' + bgSrc)(
       chromeStub, { warn: () => {}, debug: () => {}, log: () => {} });
     if (installed) installed();
-    eq('menu items: the worker removes every former item before it creates its own',
-      removedBeforeCreate, true);
     eq('menu items: the menu toggle and the menu toggle with sidebar carry fixed labels',
       created, [
         { id: 'dr-menu-toggle', title: 'Simplify' },
@@ -1210,6 +1201,10 @@
       ]);
   })();
 
+  // --- The menu toggle with sidebar does both: the same toggle the menu toggle
+  // sends, then the sidebar-opened report, to the tab the right-click
+  // happened in and in that order, so the sidebar's re-read on open reads
+  // the toggled settings. ---
   (function toggleAndOpenSidebarTogglesThenOpens() {
     const ctx = loadBackground();
     openPanel(ctx);

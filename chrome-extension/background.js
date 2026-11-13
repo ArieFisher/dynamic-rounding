@@ -13,21 +13,16 @@ importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
 let boundTabId = null;
 
 // One fixed label serves every table on the page, so nothing updates it.
-// Chrome's documentation does not state whether an earlier version's menu
-// items survive an update, so the worker removes every item before it
-// creates its own: an item under a former id would otherwise stay in the menu.
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: "dr-menu-toggle",
-      title: "Simplify",
-      contexts: ["all"]
-    });
-    chrome.contextMenus.create({
-      id: "dr-menu-toggle-sidebar",
-      title: "Simplify and open sidebar",
-      contexts: ["all"]
-    });
+  chrome.contextMenus.create({
+    id: "dr-menu-toggle",
+    title: "Simplify",
+    contexts: ["all"]
+  });
+  chrome.contextMenus.create({
+    id: "dr-menu-toggle-sidebar",
+    title: "Simplify and open sidebar",
+    contexts: ["all"]
   });
 });
 
