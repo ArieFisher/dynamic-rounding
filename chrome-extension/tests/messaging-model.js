@@ -1478,15 +1478,7 @@ const PENDING_FILL_ROWS = [
 
     // No message is replayed here on purpose — a reconnecting view pulls,
     // it does not listen for what it missed. What a reopen pulls is the
-    // active table. The settings live on each table, so the
-    // snapshot carries no page-wide settings.
-    const snapshot = DR_MODEL.getSnapshot();
-    eq('reconnect: getSnapshot returns the selection to a reconnecting view',
-      snapshot.activeTable, reconnectTable);
-    eq('reconnect: the snapshot carries no page-wide settings',
-      Object.prototype.hasOwnProperty.call(snapshot, 'settings'), false);
-    eq('reconnect: the snapshot carries no sidebar-open field — the model holds none',
-      Object.prototype.hasOwnProperty.call(snapshot, 'sidebarOpen'), false);
+    // active table.
     eq('reconnect: the model exposes no reader for a sidebar-open value',
       typeof DR_MODEL.isSidebarOpen, 'undefined');
     eq('reconnect: the model exposes no writer for a sidebar-open value',
@@ -1536,10 +1528,10 @@ const PENDING_FILL_ROWS = [
   const modelFieldNames = Array.from(modelSrc.matchAll(/^ {2}(?:let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm))
     .map((m) => m[1])
     .filter((name) => name !== 'DR_MODEL');
-  eq('static scan: app/model.js declares its six private fields (sanity check on the scan itself)',
+  eq('static scan: app/model.js declares its five private fields (sanity check on the scan itself)',
     modelFieldNames.slice().sort(),
     ['ERROR_ROW_LIMIT', 'errorCount', 'errorRows',
-     'registeredTables', 'activeTable', 'tableRegistry'].sort());
+     'activeTable', 'tableRegistry'].sort());
   const modelFieldWrites = modelFieldNames.filter((name) => {
     const assignRe = new RegExp('\\b' + name + '\\s*=[^=]');
     return assignRe.test(uiPillboxSrcForScan) || assignRe.test(contentSrcForScan);
@@ -2107,11 +2099,11 @@ const PENDING_FILL_ROWS = [
   }
 })();
 
-// --- (h) WeakMap/Set lockstep, part 1: a table re-added after removal (the
+// --- (h) Registry, part 1: a table re-added after removal (the
 // SAME element reference, as a virtualized-DOM library recycling a detached
 // node back into the tree would do) must come back with a FRESH registry
 // entry, not the previous round's leftover state. unregisterTable deletes
-// the WeakMap entry outright, so a later registerTable (via _ensureEntry)
+// the registry entry outright, so a later registerTable (via _ensureEntry)
 // can only build a brand-new entry — this pins that no per-cell original,
 // round options, or frozen magnitude survives the round trip. ---
 (function registrySprint_reregisterAfterUnregisterGetsFreshEntry() {
@@ -2210,7 +2202,7 @@ const PENDING_FILL_ROWS = [
   forgetRegisteredTable(nativeTable);
 })();
 
-// --- (h) WeakMap/Set lockstep, part 2: the removed-node MutationObserver
+// --- (h) Registry, part 2: the removed-node MutationObserver
 // callback must find and unregister a table when the removedNodes entry is
 // an ANCESTOR of the table, not the table itself — the real production
 // callback (content.js's `_tableObserver`), not GV7's manual re-
@@ -3984,8 +3976,6 @@ function issue328SettingsOf(table) {
   const { model, bus } = makeIsolatedModel();
   const empty = { hasError: false, count: 0, rows: [] };
   eq('error state: a fresh model holds no error', model.getErrorState(), empty);
-  eq('error state: the snapshot a reconnecting view pulls carries the error state',
-    model.getSnapshot().errorState, empty);
 
   const published = [];
   bus.subscribe('state:errorRecorded', (payload) => { published.push(payload); });

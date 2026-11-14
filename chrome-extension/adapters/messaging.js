@@ -285,9 +285,6 @@ const DR_BUS = (function () {
       throw new Error('DR_BUS: topic "' + topic + '" already has a responder');
     }
     responders.set(topic, handler);
-    return function unrespond() {
-      if (responders.get(topic) === handler) responders.delete(topic);
-    };
   }
 
   // A request addresses exactly one context, the tab's, so it never delivers

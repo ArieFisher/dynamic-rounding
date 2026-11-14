@@ -44,9 +44,7 @@ chrome.runtime.onInstalled.addListener(() => {
  */
 async function openSidebarOnTab(tabId) {
   try {
-    if (chrome.sidePanel && chrome.sidePanel.open) {
-      await chrome.sidePanel.open({ tabId });
-    }
+    await chrome.sidePanel.open({ tabId });
   } catch (e) {
     DR_LOG.warn(DR_LOG.formatRow('error', { step: 'open sidebar', error: DR_LOG.errorType(e) }));
   }

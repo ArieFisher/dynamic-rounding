@@ -23,26 +23,21 @@ const DR_MODEL = (function () {
 
   // --- Table registry ---
   //
-  // A WeakMap cannot be enumerated, and the content script's removal
-  // observer, the capture's state serializer, and the table pillbox
-  // repositioning each list every registered table, so a Set holds the same
-  // tables. _ensureEntry adds a table to both,
-  // and unregisterTable removes it from both. The Set holds a strong
-  // reference to each table, so an entry stays until unregisterTable runs,
-  // even after the page removes the table. The content script calls
-  // unregisterTable from its removal observer.
-  const tableRegistry = new WeakMap();
-  const registeredTables = new Set();
+  // The Map holds a strong reference to each table, so an entry stays until
+  // unregisterTable runs, even after the page removes the table. The content
+  // script calls unregisterTable from its removal observer.
+  const tableRegistry = new Map();
 
   function _ensureEntry(table) {
     let entry = tableRegistry.get(table);
     if (!entry) {
       entry = {
-        // Each cell's originals, keyed by cell element, one record
-        // shape for both kinds (CellRecord in lib/dr-table/cells.js). A WeakMap with no companion Set: nothing enumerates a
-        // table's originals, and a cell the host recycles out of the page
-        // (grid virtualization, a framework re-render) lets its entry go
-        // instead of accumulating for the life of the table's registration.
+        // Each cell's originals, keyed by cell element, one record shape for
+        // both kinds (CellRecord in lib/dr-table/cells.js). A WeakMap, because
+        // nothing enumerates a table's originals, and a cell the host recycles
+        // out of the page (grid virtualization, a framework re-render) lets
+        // its entry go instead of accumulating for the life of the table's
+        // registration.
         originals: new WeakMap(),
         // The table's settings: its on/off value and every simplification
         // option, with the shipped defaults filled in. null until the first
@@ -63,19 +58,12 @@ const DR_MODEL = (function () {
         fingerprint: null,
       };
       tableRegistry.set(table, entry);
-      registeredTables.add(table);
     }
     return entry;
   }
 
   function getActiveTable() {
     return activeTable;
-  }
-
-  // Only the tests call getSnapshot. The sidebar runs in another context and
-  // redraws through request:activeTable instead.
-  function getSnapshot() {
-    return { activeTable, errorState: getErrorState() };
   }
 
   function setActiveTable(table) {
@@ -126,7 +114,6 @@ const DR_MODEL = (function () {
 
   function unregisterTable(table) {
     tableRegistry.delete(table);
-    registeredTables.delete(table);
   }
 
   function hasTable(table) {
@@ -134,7 +121,7 @@ const DR_MODEL = (function () {
   }
 
   function getRegisteredTables() {
-    return Array.from(registeredTables);
+    return Array.from(tableRegistry.keys());
   }
 
   function setTableOriginal(table, cellEl, value) {
@@ -212,7 +199,6 @@ const DR_MODEL = (function () {
 
   return {
     getActiveTable,
-    getSnapshot,
     setActiveTable,
     getErrorState,
     recordError,

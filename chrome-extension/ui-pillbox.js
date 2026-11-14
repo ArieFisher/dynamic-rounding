@@ -37,6 +37,12 @@ const TABLE_PILLBOX_AUTO_COLLAPSE_MS = 3000;
 // so this cap bounds that cost per table. Real pages nest a table well under
 // 100 ancestors deep. Ancestors past the cap count as cutting off nothing.
 const TABLE_PILLBOX_CLIP_WALK_CAP = 100;
+// The view places the table pillbox after this wait, so the page's entrance
+// animations and centering have run before it measures the table's box.
+const TABLE_PILLBOX_POSITION_DELAY_MS = 150;
+// Must stay longer than the pulse animation (0.6 s, run twice), so the
+// animation ends first.
+const PULSE_CLEANUP_MS = 1500;
 // Overflow values that cut off an element's content at its box.
 const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 
@@ -247,10 +253,11 @@ function createTablePillbox(table) {
 
   setTimeout(() => {
     positionTablePillbox(table, button);
-  }, 150);
+  }, TABLE_PILLBOX_POSITION_DELAY_MS);
 
+  let pointerType = '';
   button.addEventListener('pointerdown', (e) => {
-    button.dataset.pointerType = e.pointerType || '';
+    pointerType = e.pointerType || '';
   });
 
   let _touchPenCollapseTimer = null;
@@ -269,8 +276,7 @@ function createTablePillbox(table) {
   // and then the press. This view holds only the expand and collapse state.
   button.addEventListener('click', (e) => {
     e.stopPropagation();
-    const pType = button.dataset.pointerType;
-    if (pType === 'touch' || pType === 'pen') {
+    if (pointerType === 'touch' || pointerType === 'pen') {
       if (!button.classList.contains('expanded')) {
         button.classList.add('expanded');
       } else {
@@ -462,7 +468,7 @@ function flashRangePulse(table, ranges) {
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
   };
   overlay.addEventListener('animationend', cleanup);
-  setTimeout(cleanup, 1500);
+  setTimeout(cleanup, PULSE_CLEANUP_MS);
 
   (document.body || document.documentElement).appendChild(overlay);
 }
