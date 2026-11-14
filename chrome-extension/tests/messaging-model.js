@@ -1349,7 +1349,7 @@ const PENDING_FILL_ROWS = [
     topicNames.every((t) => KNOWN_FAMILIES.includes(topics[t].family)), true);
   eq('DR_BUS.TOPICS: enumerates exactly the expected topics',
     topicNames.slice().sort(),
-    ['intent:activateTable', 'intent:toggleTable', 'state:activeTableChanged',
+    ['intent:activateTable', 'intent:toggleTable',
      // The model's error state, published to the toast view in the same context.
      'state:errorRecorded',
      // The sidebar's three requests, each answered by the tab's content script.
@@ -1394,8 +1394,6 @@ const PENDING_FILL_ROWS = [
   // subscriber) determines what a committed toggle does.
   eq('DR_BUS.TOPICS: intent:toggleTable is in the intent family',
     topics['intent:toggleTable'].family, 'intent');
-  eq('DR_BUS.TOPICS: state:activeTableChanged is in the state-change family',
-    topics['state:activeTableChanged'].family, 'state-change');
   // The sidebar's settings apply. The content script answers it, and the
   // sidebar reads whether anyone answered to determine bound versus unbound,
   // so it is a request.
@@ -1415,24 +1413,13 @@ const PENDING_FILL_ROWS = [
   eq('DR_BUS.publish: an unregistered topic throws instead of publishing silently',
     typeof unknownTopicThrew, 'string');
 
-  // --- (b) publishing the intent changes the model and emits the
-  // resulting state-change with the whole new value. ---
+  // --- (b) publishing the intent changes the model. ---
   const originalActive = DR_MODEL.getActiveTable();
   try {
     const fakeTable = { __fake: 'table-A' };
-    let stateChangePayload = 'NOT_CALLED';
-    const unsubscribe = DR_BUS.subscribe('state:activeTableChanged', (payload) => {
-      stateChangePayload = payload;
-    });
-    try {
-      DR_BUS.publish('intent:activateTable', { table: fakeTable });
-    } finally {
-      unsubscribe();
-    }
+    DR_BUS.publish('intent:activateTable', { table: fakeTable });
     eq('intent:activateTable: publishing the intent updates DR_MODEL.getActiveTable()',
       DR_MODEL.getActiveTable(), fakeTable);
-    eq('intent:activateTable: the resulting state-change fires exactly once, carrying the whole new value',
-      stateChangePayload, { table: fakeTable });
   } finally {
     DR_MODEL.setActiveTable(originalActive);
   }
@@ -1719,23 +1706,18 @@ const PENDING_FILL_ROWS = [
 // publish, unlike an EventEmitter with replay or a BehaviorSubject.
 // ---------------------------------------------------------------------------
 (function appModelSelection_busIsStateless_lateSubscriberMissesPastPublish() {
-  const topic = 'state:activeTableChanged';
-  const fakeTable = { __fake: 'stateless-check' };
-  const savedActive = DR_MODEL.getActiveTable();
-  try {
-    // Publish BEFORE any subscriber attaches — nothing is listening yet.
-    DR_BUS.publish(topic, { table: fakeTable });
+  const topic = 'state:errorRecorded';
+  // Publish BEFORE any subscriber of this test attaches — nothing is listening
+  // yet. The toast view's own handler returns early on a payload with no rows.
+  DR_BUS.publish(topic, { errorState: null });
 
-    let received = 'NOT_CALLED';
-    const unsubscribe = DR_BUS.subscribe(topic, (payload) => { received = payload; });
-    try {
-      eq('DR_BUS statelessness: a subscriber that attaches after a publish never receives that publish',
-        received, 'NOT_CALLED');
-    } finally {
-      unsubscribe();
-    }
+  let received = 'NOT_CALLED';
+  const unsubscribe = DR_BUS.subscribe(topic, (payload) => { received = payload; });
+  try {
+    eq('DR_BUS statelessness: a subscriber that attaches after a publish never receives that publish',
+      received, 'NOT_CALLED');
   } finally {
-    DR_MODEL.setActiveTable(savedActive);
+    unsubscribe();
   }
 })();
 
@@ -1751,10 +1733,10 @@ const PENDING_FILL_ROWS = [
   // The second topic is state:settingsChanged: the content script holds no
   // subscriber of its own for it, so only the fixture's handlers run here.
   // The test measures the bus's own delivery under a nested publish.
-  const TOPIC_A = 'state:activeTableChanged';
+  // Topic A is state:errorRecorded: the toast view's handler returns early on
+  // a payload with no rows.
+  const TOPIC_A = 'state:errorRecorded';
   const TOPIC_B = 'state:settingsChanged';
-  const savedActive = DR_MODEL.getActiveTable();
-  DR_MODEL.setActiveTable(null);
   let counter = 0;
 
   const unsubA = DR_BUS.subscribe(TOPIC_A, () => {
@@ -1763,19 +1745,18 @@ const PENDING_FILL_ROWS = [
   const unsubB = DR_BUS.subscribe(TOPIC_B, () => {
     counter++;
     if (counter === 1) {
-      DR_BUS.publish(TOPIC_A, { table: null }); // guarded to bounce back to A only once
+      DR_BUS.publish(TOPIC_A, { errorState: null }); // guarded to bounce back to A only once
     }
   });
 
   let threw = null;
   try {
-    DR_BUS.publish(TOPIC_A, { table: null }); // kick off the cycle
+    DR_BUS.publish(TOPIC_A, { errorState: null }); // kick off the cycle
   } catch (e) {
     threw = e.message;
   } finally {
     unsubA();
     unsubB();
-    DR_MODEL.setActiveTable(savedActive);
   }
 
   eq('DR_BUS reentrancy: a guarded two-topic publish cycle completes without throwing (no infinite loop/stack overflow)',

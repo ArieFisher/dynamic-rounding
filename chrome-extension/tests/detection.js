@@ -4051,8 +4051,8 @@ function cnAdapterCellEls(tableEl) {
 })();
 
 // ---------------------------------------------------------------------------
-// Contextmenu activation pin. The contextmenu handler in content.js calls
-// DR_MODEL.setActiveTable(table). The expected message sequence below is a
+// Contextmenu activation pin. The contextmenu handler in content.js publishes
+// intent:activateTable. The expected message sequence below is a
 // literal, so the pin holds on main and in shallow CI checkouts.
 // ---------------------------------------------------------------------------
 (function appModelSelection_parentEquivalence_contextmenuSelectionFlow() {

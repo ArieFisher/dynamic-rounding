@@ -52,7 +52,6 @@ const DR_BUS = (function () {
   const TOPICS = {
     'intent:activateTable': { family: INTENT, route: null },
     'intent:toggleTable': { family: INTENT, route: null },
-    'state:activeTableChanged': { family: STATE_CHANGE, route: null },
     // Same context only: the sidebar reads the error state through
     // request:captureState.
     'state:errorRecorded': { family: STATE_CHANGE, route: null },

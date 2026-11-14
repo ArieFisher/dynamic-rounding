@@ -42,8 +42,7 @@ DR_BUS.subscribe('intent:activateTable', ({ table }) => {
 // caller runs the shape check first and passes the table it returns, so a
 // write to a table the page refilled lands on the fresh registration.
 function writeTableSettings(table, patch, source) {
-  DR_MODEL.setTableSettings(table,
-    Object.assign({}, DR_MODEL.getTableSettings(table), patch), source);
+  DR_MODEL.setTableSettings(table, patch, source);
   applySidebarRounding(table);
 }
 
@@ -170,7 +169,7 @@ document.addEventListener('contextmenu', (event) => {
   const found = findTargetTable(event.target, { isRegistered: DR_MODEL.hasTable });
   if (found) {
     const table = markAndAddTablePillboxIfNewGrid(found);
-    DR_MODEL.setActiveTable(table);
+    DR_BUS.publish('intent:activateTable', { table });
     DR_LOG.debug(DR_LOG.formatRow('activate'));
     flashActiveTable(table);
     DR_BUS.publish('state:tableActivated', {});
@@ -191,7 +190,7 @@ function sendRangeStatusMessage(result) {
 // The menu item publishes the same intent a table pillbox press publishes, so both
 // run the one controller path above. The right-click that opened the
 // menu already made the table active (the contextmenu handler's
-// setActiveTable), so the press lands as an unmoved one: it flips the
+// activate intent), so the press lands as an unmoved one: it flips the
 // table's on/off value.
 DR_BUS.subscribe('intent:menuClicked', () => {
   if (!lastRightClickedElement) return;
@@ -732,9 +731,8 @@ function extractPreviewSamples(table) {
   }
   const frozenMaxMag = DR_MODEL.getTableMaxMagnitude(table);
   const maxMag = frozenMaxMag != null ? frozenMaxMag : datasetMaxMagnitude(entries);
-  const numTop = liveSettings.numTop || 1;
-  const topOffset = typeof liveSettings.offsetTop === 'number' ? liveSettings.offsetTop : -0.5;
-  const otherOffset = typeof liveSettings.offsetOther === 'number' ? liveSettings.offsetOther : -0.5;
+  const { offsetTop: topOffset, offsetOther: otherOffset, numTop } =
+    resolveRoundingSettings(liveSettings);
 
   // Reorder a magnitude bucket so cells that visibly *change* under the band's
   // offset come first. Picking the raw document-order cell can land on

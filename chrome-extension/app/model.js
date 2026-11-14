@@ -80,12 +80,8 @@ const DR_MODEL = (function () {
     return { activeTable, errorState: getErrorState() };
   }
 
-  // No production code subscribes to state:activeTableChanged. The sidebar
-  // redraws from state:tableActivated and state:tableSwitched, which the
-  // content script publishes.
   function setActiveTable(table) {
     activeTable = table;
-    DR_BUS.publish('state:activeTableChanged', { table: activeTable });
   }
 
   // --- Error state ---
@@ -181,8 +177,15 @@ const DR_MODEL = (function () {
   // copy of the stored settings. The sidebar redraws from a notice whose
   // source is not its own, and the table pillbox view redraws the active
   // table's table pillbox from every notice.
+  //
+  // The one place the shipped defaults fill in on a write.
+  /**
+   * @param {Element} table The table to write.
+   * @param {Object} settings A patch: the keys to change; every other key keeps its stored value.
+   * @param {string} source 'sidebar' or 'page'.
+   */
   function setTableSettings(table, settings, source) {
-    const stored = Object.assign({}, DR_DEFAULTS, settings || {});
+    const stored = Object.assign({}, getTableSettings(table), settings || {});
     _ensureEntry(table).settings = stored;
     DR_BUS.publish('state:settingsChanged', { source, settings: Object.assign({}, stored) });
   }
