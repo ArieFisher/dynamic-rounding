@@ -23,11 +23,9 @@ const DR_MODEL = (function () {
 
   // --- Table registry ---
   //
-  // A WeakMap cannot be enumerated, and the content script's removal
-  // observer, the capture's state serializer, and the table pillbox
-  // repositioning each list every registered table, so a Set holds the same
-  // tables. _ensureEntry adds a table to both,
-  // and unregisterTable removes it from both. The Set holds a strong
+  // A WeakMap cannot be enumerated, and several callers list every
+  // registered table, so a Set holds the same tables. _ensureEntry adds a
+  // table to both, and unregisterTable removes it from both. The Set holds a strong
   // reference to each table, so an entry stays until unregisterTable runs,
   // even after the page removes the table. The content script calls
   // unregisterTable from its removal observer.
@@ -56,10 +54,10 @@ const DR_MODEL = (function () {
         // resetTable clears it back to null.
         maxMagnitude: null,
         // The shape fingerprint: { columnCount, headerTexts }, from
-        // lib/dr-table's readTableFingerprint. createTablePillbox
-        // (ui-pillbox.js) is the one writer. An entry that a first write
-        // created holds null until that writer runs, and the controller
-        // reads null as nothing to compare against.
+        // lib/dr-table's readTableFingerprint. The controller writes it once,
+        // when it registers the table. An entry that a first write created
+        // holds null, and the controller reads null as nothing to compare
+        // against.
         fingerprint: null,
       };
       tableRegistry.set(table, entry);
@@ -116,7 +114,7 @@ const DR_MODEL = (function () {
   // Only setTableSettings publishes. The rest of the registry is per-table
   // storage that the controller reads synchronously.
 
-  // createTablePillbox (ui-pillbox.js) calls this once per table, and a
+  // The controller calls this once per table it registers, and a
   // rediscovery calls it again with no effect. Every setter below also calls
   // _ensureEntry, so a table can have an entry without registerTable ever
   // running for it.
@@ -171,9 +169,7 @@ const DR_MODEL = (function () {
   // pillbox press, which makes its table active first. The settings notice
   // crosses to the sidebar, so it carries plain values alone: the source
   // ('sidebar' for the sidebar's apply, 'page' for every other writer) and a
-  // copy of the stored settings. The sidebar redraws from a notice whose
-  // source is not its own, and the table pillbox view redraws the active
-  // table's table pillbox from every notice.
+  // copy of the stored settings.
   //
   // The one place the shipped defaults fill in on a write. settings is a
   // patch: a key it leaves out keeps its stored value.
@@ -188,6 +184,13 @@ const DR_MODEL = (function () {
   function getTableSettings(table) {
     const entry = tableRegistry.get(table);
     return Object.assign({}, entry && entry.settings ? entry.settings : DR_DEFAULTS);
+  }
+
+  // The on/off value the table pillbox and the sidebar pillbox both show, so
+  // the two always agree. A table that is on with no cell to simplify is on.
+  /** @param {Element} table The table whose on/off value this reads. */
+  function isTableOn(table) {
+    return getTableSettings(table).enabled === true;
   }
 
   function setTableMaxMagnitude(table, maxMagnitude) {
@@ -227,6 +230,7 @@ const DR_MODEL = (function () {
     deleteTableOriginal,
     setTableSettings,
     getTableSettings,
+    isTableOn,
     setTableMaxMagnitude,
     getTableMaxMagnitude,
     setTableFingerprint,

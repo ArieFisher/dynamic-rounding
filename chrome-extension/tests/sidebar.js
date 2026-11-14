@@ -66,7 +66,7 @@
   // the freshly registered element on a mismatch, and the flip direction
   // comes from whichever one the press continues on.
   eq('sidebar-state removal: the intent:toggleTable handler reads the on/off value for its flip direction',
-    /intent:toggleTable'[\s\S]{0,1200}!isTableOn\(target\)/.test(contentSrc), true);
+    /intent:toggleTable'[\s\S]{0,1200}!DR_MODEL\.isTableOn\(target\)/.test(contentSrc), true);
 
   // content.js: the mouse and touch click branches share one
   // intent:toggleTable subscriber in content.js, so the literal appears once,

@@ -7,11 +7,10 @@
 
 /**
  * The detection layer of the lib/dr-table package. Detection reads the page
- * and returns findings. It writes no marker class, builds no table pillbox,
- * and keeps no registry: "is this element registered" is the injected
- * opts.isRegistered check. The callers (ui-pillbox.js, content.js) check the
- * registry in DR_MODEL and, for a first match, write the marker class and
- * build the table pillbox.
+ * and returns findings. It builds no table pillbox and keeps no registry:
+ * "is this element registered" is the injected opts.isRegistered check. The
+ * caller (content.js) checks the registry in DR_MODEL and, for a first match,
+ * registers the table and builds the table pillbox.
  *
  * The style probe is the port for every computed style and box read, so
  * detection runs in a plain Node context with no Chrome globals. `document`
@@ -640,8 +639,8 @@ function nominateNest(chainRoot, opts = {}) {
  * (an added node inside a wrapper already in the page), so a second run over
  * the same nest evaluates the whole nest again.
  *
- * Both live scanners (ui-pillbox.js's load-time scan and content.js's
- * added-node pass) reach the grids on a page through this function, and the
+ * Both live scanners (the load-time scan and the added-node pass, both in
+ * content.js) reach the grids on a page through this function, and the
  * controller turns each outcome into a registration or a pending table.
  *
  * @param {Element|Document} root

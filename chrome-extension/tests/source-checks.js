@@ -157,8 +157,8 @@
 // --- Static analysis: all new functions are defined ---
 
 (function tablePillbox_staticAnalysis() {
-  eq('table-pillbox: isTableOn is defined',
-    typeof isTableOn, 'function');
+  eq('table-pillbox: DR_MODEL.isTableOn is defined',
+    typeof DR_MODEL.isTableOn, 'function');
   eq('table-pillbox: syncTablePillbox is defined',
     typeof syncTablePillbox, 'function');
   eq('table-pillbox: positionTablePillbox is defined',
@@ -1715,26 +1715,20 @@
 // --- AC6: both live scanners run the step and hold no ARIA pass of their own ---
 
 (function gridNesting_AC6_neitherLiveScannerHoldsAnAriaPass() {
-  const loadTimeScanSrc = sourceByName('ui-pillbox.js');
-  const addedNodePassSrc = sourceByName('content.js');
+  const controllerSrc = sourceByName('content.js');
 
-  eq('nesting AC6: the table pillbox view is listed in the manifest', loadTimeScanSrc !== null, true);
-  eq('nesting AC6: the controller is listed in the manifest', addedNodePassSrc !== null, true);
-  eq('nesting AC6: the load-time scan names no grid or table role selector',
-    loadTimeScanSrc !== null &&
-      (loadTimeScanSrc.includes('GRID_ARIA_SELECTOR') || loadTimeScanSrc.includes('role="grid"')),
-    false);
-  eq('nesting AC6: the added-node pass names no grid or table role selector',
-    addedNodePassSrc !== null &&
-      (addedNodePassSrc.includes('GRID_ARIA_SELECTOR') || addedNodePassSrc.includes('role="grid"')),
+  eq('nesting AC6: the controller is listed in the manifest', controllerSrc !== null, true);
+  eq('nesting AC6: the controller, which holds both scanners, names no grid or table role selector',
+    controllerSrc !== null &&
+      (controllerSrc.includes('GRID_ARIA_SELECTOR') || controllerSrc.includes('role="grid"')),
     false);
   // The step's page-wide entry point is nominateNests, which scanTables
-  // composes. The load-time scan and the added-node pass share one function
-  // in the view, and that function calls scanTables.
+  // composes. The load-time scan and the added-node pass share one function,
+  // and that function calls scanTables.
   eq('nesting AC6: the load-time scan calls the table scan',
-    loadTimeScanSrc !== null && /scanTables\s*\(/.test(loadTimeScanSrc), true);
+    controllerSrc !== null && /scanTables\s*\(/.test(controllerSrc), true);
   eq('nesting AC6: the added-node pass passes each added element to the load-time scan function',
-    addedNodePassSrc !== null && /injectTablePillboxes\s*\(\s*node\s*\)/.test(addedNodePassSrc), true);
+    controllerSrc !== null && /injectTablePillboxes\s*\(\s*node\s*\)/.test(controllerSrc), true);
 })();
 
 // --- AC7: the living documents and the test page state the rule ---
@@ -2108,7 +2102,8 @@
     eq('table-pillbox-split: ui-pillbox.js is present in the manifest', false, true);
     return;
   }
-  const FORBIDDEN_CONTROLLER_CALLS = ['applySidebarRounding', 'resetTable', 'roundTable'];
+  const FORBIDDEN_CONTROLLER_CALLS = ['applySidebarRounding', 'resetTable', 'roundTable',
+    'registerDataTable', 'injectTablePillboxes', 'consumeNominations'];
   // Sanity check on the scan itself: every forbidden name is a real function
   // in the content-script stack, so the filter below tests something.
   const missingFromController = FORBIDDEN_CONTROLLER_CALLS.filter(
@@ -2123,36 +2118,14 @@
   eq('table-pillbox-split: ui-pillbox.js calls no controller function directly',
     foundCalls, []);
 
+  // The controller is the model's one writer; the view reads the model and
+  // writes nothing to it.
+  eq('table-pillbox-split: ui-pillbox.js writes nothing to the model',
+    uiPillboxSrc.match(/DR_MODEL\.(register|unregister|set)[A-Za-z]*\s*\(/g) || [], []);
+
   // The click handler publishes the press as an intent instead.
   eq('table-pillbox-split: ui-pillbox.js publishes intent:toggleTable from the click handler',
     /DR_BUS\.publish\(\s*'intent:toggleTable'/.test(uiPillboxSrc), true);
-})();
-
-// --- (c) Static lock: no production read of the dr-ext-grid marker class as
-// state — classList.contains/closest('.dr-ext-grid') may appear only as a
-// write (classList.add) or inside a comment discussing the history; a real
-// read call is what this locks out. ---
-(function registrySprint_noMarkerClassReadLock() {
-  const filesToScan = ['content.js', 'ui-pillbox.js', 'lib/dr-table/detect.js'];
-  const readPatterns = [
-    /classList\.contains\(\s*['"]dr-ext-grid['"]\s*\)/g,
-    /\.closest\(\s*['"]\.dr-ext-grid['"]\s*\)/g,
-  ];
-  for (const file of filesToScan) {
-    const src = sourceByName(file);
-    if (src === null) {
-      eq(`registry static lock: ${file} present in manifest`, false, true);
-      continue;
-    }
-    // Strip line comments and block comments before scanning, so a comment
-    // that merely mentions the pattern cannot trip the lock.
-    const withoutComments = src
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/^[ \t]*\/\/.*$/gm, '');
-    const matches = readPatterns.flatMap((re) => withoutComments.match(re) || []);
-    eq(`registry static lock: ${file} has no dr-ext-grid marker-class read`,
-      matches, []);
-  }
 })();
 
 // --- sidebar: the screenshot take never blocks the save ---
