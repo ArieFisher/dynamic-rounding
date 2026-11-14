@@ -84,6 +84,12 @@ function createBoundTab(tabsApi, bus) {
       });
     },
 
+    // The bound tab's number: null before the lookup answers, and null when
+    // there was no tab to bind to. The sidebar's requests address this tab.
+    tabId() {
+      return boundTabId;
+    },
+
     // The window the bound tab sits in: null before the lookup answers, and
     // null when the tabs interface reports no window. The screenshot take
     // passes this window, whose front tab is the bound tab by construction —
@@ -417,7 +423,7 @@ function redrawFromActiveTable(keepControls) {
     cachedMaxMag = answer ? answer.maxMag : null;
     setTableBound(cachedSamples !== null);
     renderLensPreview();
-  });
+  }, { tabId: boundTab.tabId() });
 }
 
 function decouple() {
@@ -562,7 +568,7 @@ function applyNow() {
     } else {
       writeStatus('');
     }
-  });
+  }, { tabId: boundTab.tabId() });
 }
 
 enabledEl.addEventListener('change', () => {
@@ -703,7 +709,7 @@ function refreshCaptureSizeNote() {
       captureSizeNoteEl.textContent = warning;
       captureSizeNoteEl.hidden = false;
     }
-  });
+  }, { tabId: boundTab.tabId() });
 }
 
 for (const el of captureMarkEls) {
@@ -883,7 +889,7 @@ function saveCapture() {
     if (!answer) DR_LOG.warn(DR_LOG.formatRow('error', { step: 'state pull' }));
     pageAnswer = answer || null;
     settle();
-  });
+  }, { tabId: boundTab.tabId() });
   takeCaptureScreenshot(chrome.tabs, boundTab.windowId(), (result) => {
     shot = result;
     settle();

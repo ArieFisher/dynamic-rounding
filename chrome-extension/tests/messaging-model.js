@@ -4299,6 +4299,26 @@ function issue328SettingsOf(table) {
     answered, false);
 })();
 
+(function busRequestExplicitTab() {
+  // The sidebar passes its bound tab's number, so the bus sends its request
+  // to that tab and runs no query for the tab in front.
+  const s = makeBusSandbox({ reply: { ok: true } });
+  let answer = null;
+  s.bus.request('request:activeTable', {}, (x) => { answer = x; }, { tabId: 42 });
+  eq('bus request: an explicit tab number skips the active-tab lookup', s.sent.queries, 0);
+  eq('bus request: and addresses the tab the caller named',
+    s.sent.tabs.length === 1 ? s.sent.tabs[0].tabId : null, 42);
+  eq('bus request: and hands the callback that tab\'s answer',
+    answer ? answer.ok : null, true);
+
+  // A null tab number, as the sidebar holds before its tab lookup answers,
+  // falls back to the lookup.
+  const t = makeBusSandbox();
+  t.bus.request('request:activeTable', {}, () => {}, { tabId: null });
+  eq('bus request: a null tab number falls back to the active-tab lookup',
+    [t.sent.queries, t.sent.tabs.length === 1 ? t.sent.tabs[0].tabId : null], [1, 7]);
+})();
+
 (function busOneResponderPerTopic() {
   const s = makeBusSandbox();
   s.bus.respond('request:applySettings', () => 1);
