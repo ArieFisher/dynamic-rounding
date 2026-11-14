@@ -178,9 +178,7 @@ const DR_MODEL = (function () {
   // source is not its own, and the table pillbox view redraws the active
   // table's table pillbox from every notice.
   //
-  // The one place the shipped defaults fill in on a write: the patch merges
-  // onto the stored settings, or onto the shipped defaults when the table has
-  // none stored, so a key the patch leaves out keeps its value.
+  // The one place the shipped defaults fill in on a write.
   /**
    * @param {Element} table The table to write.
    * @param {Object} settings A patch: the keys to change; every other key keeps its stored value.
