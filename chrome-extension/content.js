@@ -127,18 +127,18 @@ DR_BUS.subscribe('intent:toggleTable', ({ table: pressedTable }) => {
 // reapplyObservers: table → { observer, target }: the MutationObserver and
 //                   the element it watches, a native table itself or a grid's
 //                   scroll container.
-// reapplyTimers:    table → pending setTimeout id for the next pass.
-// reapplyBursts:    table → the clock time the current burst of page edits
-//                   began, which bounds the burst's wait for its pass.
+// reapplyTimers:    table → { id, burstStartMs }: the pending setTimeout id
+//                   for the next pass, and the clock time the current burst
+//                   of page edits began, which bounds the burst's wait.
 const reapplyObservers = new WeakMap();
 const reapplyTimers = new WeakMap();
-const reapplyBursts = new WeakMap();
 
 // Pending table state, keyed by chain root. A chain root whose chain is empty
 // — no element of its nest passes the data test — becomes a pending table:
 // the grid arrived before its rows, and the rows may still arrive.
 // pendingObservers:   chainRootEl → MutationObserver watching the whole subtree.
-// pendingRetestTimers: chainRootEl → pending setTimeout id for the debounced re-test.
+// pendingRetestTimers: chainRootEl → { id, burstStartMs }: the pending setTimeout
+//                      id for the debounced re-test, and its burst's start.
 // pendingRetestCounts: chainRootEl → failed re-tests so far, against
 //                      DR_DETECTION_SETTINGS.pendingRetestCap.
 // pendingRoots is the enumerable companion to the three WeakMaps, the way
@@ -158,37 +158,34 @@ const OBSERVED_CHANGES = { childList: true, characterData: true, subtree: true }
  * has been quiet for the settle delay. With a longest wait, the action also
  * runs once a burst has lasted that long from its first change.
  * @param {Element} key - The element whose changes the wait covers.
- * @param {WeakMap} timers - key → pending setTimeout id.
+ * @param {WeakMap} waits - key → { id, burstStartMs }: the pending setTimeout id and the clock time of the burst's first change.
  * @param {function(Element): void} action - Runs with the key after the wait.
- * @param {{bursts: WeakMap, maxWaitMs: number}} [longest] - Longest wait: bursts maps key → clock time of the burst's first change; maxWaitMs is its length.
+ * @param {number} [maxWaitMs] - The longest wait in milliseconds; absent means no longest wait.
  */
-function restartSettleWait(key, timers, action, longest) {
+function restartSettleWait(key, waits, action, maxWaitMs) {
   const now = Date.now();
-  if (longest && !longest.bursts.has(key)) longest.bursts.set(key, now);
-  const pending = timers.get(key);
-  if (pending !== undefined) clearTimeout(pending);
-  const untilLongest = longest ? longest.bursts.get(key) + longest.maxWaitMs - now : Infinity;
+  const previous = waits.get(key);
+  if (previous) clearTimeout(previous.id);
+  const burstStartMs = previous ? previous.burstStartMs : now;
+  const untilLongest = maxWaitMs === undefined ? Infinity : burstStartMs + maxWaitMs - now;
   const wait = Math.max(0, Math.min(DR_DETECTION_SETTINGS.settleDelayMs, untilLongest));
-  timers.set(key, setTimeout(() => {
-    timers.delete(key);
-    if (longest) longest.bursts.delete(key);
+  const id = setTimeout(() => {
+    waits.delete(key);
     action(key);
-  }, wait));
+  }, wait);
+  waits.set(key, { id, burstStartMs });
 }
 
 /**
- * Cancel a key's timer and burst record. Safe on a key that holds none.
+ * Cancel a key's wait. Safe on a key that holds none.
  * @param {Element} key - The element whose wait to cancel.
- * @param {WeakMap} timers - key → pending setTimeout id.
- * @param {WeakMap} [bursts] - key → clock time of the burst's first change.
+ * @param {WeakMap} waits - key → { id, burstStartMs }, as restartSettleWait holds it.
  */
-function cancelSettleWait(key, timers, bursts) {
-  const pending = timers.get(key);
-  if (pending !== undefined) clearTimeout(pending);
-  timers.delete(key);
-  if (bursts) bursts.delete(key);
+function cancelSettleWait(key, waits) {
+  const previous = waits.get(key);
+  if (previous) clearTimeout(previous.id);
+  waits.delete(key);
 }
-
 
 // findTargetTable() only returns what it found; it never writes the
 // dr-ext-grid marker or builds the table pillbox. When it finds a grid root for the
@@ -1113,7 +1110,7 @@ function observeTable(table) {
 // Stop watching a table: its pending timer, its burst, and its observer.
 // Safe on a table that holds none.
 function unwatchTable(table) {
-  cancelSettleWait(table, reapplyTimers, reapplyBursts);
+  cancelSettleWait(table, reapplyTimers);
   const watcher = reapplyObservers.get(table);
   if (watcher) {
     watcher.observer.disconnect();
@@ -1123,8 +1120,7 @@ function unwatchTable(table) {
 
 // One page change: restart the wait for the pass, bounded by the longest wait.
 function scheduleReapply(table) {
-  restartSettleWait(table, reapplyTimers, reapplyRounding,
-    { bursts: reapplyBursts, maxWaitMs: DR_DETECTION_SETTINGS.reapplyMaxWaitMs });
+  restartSettleWait(table, reapplyTimers, reapplyRounding, DR_DETECTION_SETTINGS.reapplyMaxWaitMs);
 }
 
 // The debug row for a table above the cell cap. A debug row raises no toast.

@@ -2439,7 +2439,7 @@ const PENDING_FILL_ROWS = [
     const removedTablePillboxes = registerFingerprintedTable(grid.scrollPaneEl);
     reapplyObservers.set(grid.scrollPaneEl, { observer: { disconnect() { gridObserverDisconnects++; } }, target: grid.scrollPaneEl });
     const pendingTimer = setTimeout(function () {}, 10000);
-    reapplyTimers.set(grid.scrollPaneEl, pendingTimer);
+    reapplyTimers.set(grid.scrollPaneEl, { id: pendingTimer, burstStartMs: Date.now() });
 
     eq('fingerprint teardown: the grid registers and tracks before the teardown (precondition)',
       DR_MODEL.hasTable(grid.scrollPaneEl) && trackedTables.has(grid.scrollPaneEl), true);
