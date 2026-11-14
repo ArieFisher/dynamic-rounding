@@ -2576,9 +2576,14 @@
     /importScripts\([^)]*adapters\/messaging\.js/.test(bgSrc), true);
   eq('worker log row: importScripts loads the log module',
     /importScripts\([^)]*lib\/dr-log\/index\.js/.test(bgSrc), true);
-  eq('worker log row: the open-sidebar failure writes the one row format to the console',
-    /console\.warn\(DR_LOG\.formatRow\('error', \{ step: 'open sidebar', error: DR_LOG\.errorType\(e\) \}\)\)/
+  eq('worker log row: the open-sidebar failure records the one row format in the log buffer',
+    /DR_LOG\.warn\(DR_LOG\.formatRow\('error', \{ step: 'open sidebar', error: DR_LOG\.errorType\(e\) \}\)\)/
       .test(bgSrc), true);
+  eq('worker log row: the icon click setting failure records the one row format in the log buffer',
+    /DR_LOG\.warn\(DR_LOG\.formatRow\('error', \{ step: 'icon click setting', error: DR_LOG\.errorType\(e\) \}\)\)/
+      .test(bgSrc), true);
+  eq('worker log row: the worker writes no row to the console directly',
+    /console\.(warn|error|log|debug|info)\(/.test(bgSrc), false);
   eq('worker on bus: no raw chrome.tabs.sendMessage call',
     bgSrc.includes('chrome.tabs.sendMessage'), false);
   eq('worker on bus: the menu click publishes with an explicit tab number',
