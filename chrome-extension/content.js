@@ -279,7 +279,6 @@ DR_BUS.respond('request:captureState', () => buildCaptureStateResponse());
 // original. The cost is accepted; a page reload clears it.
 function applySidebarRounding(table) {
   const opts = DR_MODEL.getTableSettings(table);
-  ensureHighlightStyleInjected();
   resetTable(table);
   if (opts.enabled !== false) {
     const result = roundTable(table, opts);

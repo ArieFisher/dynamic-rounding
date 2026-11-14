@@ -283,7 +283,8 @@ function createTablePillbox(table) {
   });
 
   button.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.stopPropagation(); button.click(); }
+    // The browser fires a click on the button on Enter, so a click call here would press twice.
+    if (e.key === 'Enter') e.stopPropagation();
   });
 
   button.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -389,6 +390,7 @@ function ensureHighlightStyleInjected() {
 }
 
 function flashActiveTable(table) {
+  ensureHighlightStyleInjected();
   table.classList.remove('dr-ext-active-flash');
   // Force reflow so the animation restarts when re-added.
   void table.offsetWidth;
@@ -406,6 +408,7 @@ function flashActiveTable(table) {
  * row.cells exist only on native tables.
  */
 function flashRangePulse(table, ranges) {
+  ensureHighlightStyleInjected();
   if (!ranges) {
     flashActiveTable(table);
     return;
