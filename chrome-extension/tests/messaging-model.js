@@ -1478,15 +1478,7 @@ const PENDING_FILL_ROWS = [
 
     // No message is replayed here on purpose — a reconnecting view pulls,
     // it does not listen for what it missed. What a reopen pulls is the
-    // active table. The settings live on each table, so the
-    // snapshot carries no page-wide settings.
-    const snapshot = DR_MODEL.getSnapshot();
-    eq('reconnect: getSnapshot returns the selection to a reconnecting view',
-      snapshot.activeTable, reconnectTable);
-    eq('reconnect: the snapshot carries no page-wide settings',
-      Object.prototype.hasOwnProperty.call(snapshot, 'settings'), false);
-    eq('reconnect: the snapshot carries no sidebar-open field — the model holds none',
-      Object.prototype.hasOwnProperty.call(snapshot, 'sidebarOpen'), false);
+    // active table.
     eq('reconnect: the model exposes no reader for a sidebar-open value',
       typeof DR_MODEL.isSidebarOpen, 'undefined');
     eq('reconnect: the model exposes no writer for a sidebar-open value',
@@ -3984,8 +3976,6 @@ function issue328SettingsOf(table) {
   const { model, bus } = makeIsolatedModel();
   const empty = { hasError: false, count: 0, rows: [] };
   eq('error state: a fresh model holds no error', model.getErrorState(), empty);
-  eq('error state: the snapshot a reconnecting view pulls carries the error state',
-    model.getSnapshot().errorState, empty);
 
   const published = [];
   bus.subscribe('state:errorRecorded', (payload) => { published.push(payload); });

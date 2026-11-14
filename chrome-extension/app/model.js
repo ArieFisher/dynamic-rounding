@@ -72,12 +72,6 @@ const DR_MODEL = (function () {
     return activeTable;
   }
 
-  // Only the tests call getSnapshot. The sidebar runs in another context and
-  // redraws through request:activeTable instead.
-  function getSnapshot() {
-    return { activeTable, errorState: getErrorState() };
-  }
-
   function setActiveTable(table) {
     activeTable = table;
   }
@@ -212,7 +206,6 @@ const DR_MODEL = (function () {
 
   return {
     getActiveTable,
-    getSnapshot,
     setActiveTable,
     getErrorState,
     recordError,
