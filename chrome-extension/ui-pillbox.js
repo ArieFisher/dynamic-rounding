@@ -184,6 +184,18 @@ function isTablePillboxSpotClipped(table, x, y) {
   return false;
 }
 
+// The window's scroll offset in pixels, read to turn a window-relative box
+// into page coordinates for an element placed in the page body.
+/**
+ * @returns {{x: number, y: number}}
+ */
+function windowScrollOffset() {
+  return {
+    x: window.scrollX || window.pageXOffset || 0,
+    y: window.scrollY || window.pageYOffset || 0,
+  };
+}
+
 function positionTablePillbox(table, button) {
   const rect = table.getBoundingClientRect();
   const computedStyle = window.getComputedStyle(table);
@@ -200,8 +212,7 @@ function positionTablePillbox(table, button) {
     return;
   }
   button.style.display = '';
-  const scrollX = window.scrollX || window.pageXOffset || 0;
-  const scrollY = window.scrollY || window.pageYOffset || 0;
+  const { x: scrollX, y: scrollY } = windowScrollOffset();
   // Position so the dot's bottom = rect.top + scrollY + TABLE_PILLBOX_DOT_OVERLAP_PX
   // and the dot's right = rect.right + scrollX + TABLE_PILLBOX_DOT_OVERHANG_PX.
   // The button has TABLE_PILLBOX_HIT_PAD_PX padding on every side; with flex-end /
@@ -459,8 +470,7 @@ function flashRangePulse(table, ranges) {
   }
 
   // Convert to absolute page coordinates so the overlay stays put on scrollable pages.
-  const scrollX = window.scrollX || window.pageXOffset || 0;
-  const scrollY = window.scrollY || window.pageYOffset || 0;
+  const { x: scrollX, y: scrollY } = windowScrollOffset();
   const absTop    = top    + scrollY;
   const absLeft   = left   + scrollX;
   const absWidth  = right  - left;
