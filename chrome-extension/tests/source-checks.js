@@ -1,20 +1,21 @@
 // Checks that read source files, the manifest, bundles, or the living documents as text.
 
 // --- Manifest + background invariants ---
-// NOTE: These are static-analysis proxies only. Whether the toolbar icon
-// actually disappears in Chrome, and whether the context menu visually works,
-// cannot be verified in this Node harness — those require a live browser.
+// NOTE: These are static-analysis proxies only. Whether Chrome grants the tab
+// permission on a toolbar icon click, and whether the context menu visually
+// works, cannot be verified in this Node harness — those require a live browser.
 
-(function sprintIconNoSidebar() {
+(function toolbarIconOpensSidebar() {
   const manifestPath = path.join(__dirname, 'manifest.json');
   const bgPath = path.join(__dirname, 'background.js');
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   const bgSource = fs.readFileSync(bgPath, 'utf8');
 
-  // 1. "action" key must be absent — its presence would register a toolbar icon.
-  eq('manifest: no "action" key (toolbar icon suppressed)',
-    Object.prototype.hasOwnProperty.call(manifest, 'action'), false);
+  // 1. "action" key must be present — without it Chrome sends no toolbar icon
+  // click to the service worker.
+  eq('manifest: "action" key present (the toolbar icon click reaches the service worker)',
+    Object.prototype.hasOwnProperty.call(manifest, 'action'), true);
 
   // 2. "side_panel" must still be present — the sidebar itself must remain registered.
   eq('manifest: "side_panel" key still present',
@@ -24,11 +25,7 @@
   eq('manifest: "contextMenus" still in permissions',
     Array.isArray(manifest.permissions) && manifest.permissions.includes('contextMenus'), true);
 
-  // 4. background.js must NOT reference chrome.action — no remnant action API usage.
-  eq('background.js: no chrome.action.* references',
-    /chrome\.action\b/.test(bgSource), false);
-
-  // 5. background.js must still wire up contextMenus.create and sidePanel.open.
+  // 4. background.js must still wire up contextMenus.create and sidePanel.open.
   eq('background.js: contextMenus.create still present',
     bgSource.includes('contextMenus.create'), true);
 
@@ -872,6 +869,7 @@
       update: () => {},
       onClicked: { addListener: (fn) => { capturedClickHandler = fn; } },
     },
+    action: { onClicked: { addListener: () => {} } },
     tabs: {
       query(q, cb) { cb([{ id: 1 }]); },
       sendMessage(tabId, msg, cb) { sentTabMessages.push({ tabId, msg }); if (cb) cb(undefined); },
@@ -1120,7 +1118,9 @@
   // the time the close topic goes out, which is exactly the onRemoved case.
   // Chrome reports that through chrome.runtime.lastError on the callback, and
   // the bus consumes it.
-  function loadBackground({ closeSidebarUnreceived = false } = {}) {
+  //
+  // sidePanel, when given, stands in for chrome.sidePanel.
+  function loadBackground({ closeSidebarUnreceived = false, sidePanel } = {}) {
     const runtimeSends = [];
     const tabSends = [];
     const listeners = {};
@@ -1144,6 +1144,8 @@
         update: () => {},
         onClicked: { addListener: (fn) => { listeners.menuClicked = fn; } },
       },
+      action: { onClicked: { addListener: (fn) => { listeners.iconClicked = fn; } } },
+      sidePanel,
       tabs: {
         query: (q, cb) => { cb([{ id: PANEL_TAB }]); },
         sendMessage: (tabId, msg, cb) => {
@@ -1171,6 +1173,7 @@
   // --- The menu holds two fixed labels. ---
   (function menuItemsCarryFixedLabels() {
     const created = [];
+    const panelBehaviors = [];
     let installed = null;
     const chromeStub = {
       runtime: {
@@ -1182,6 +1185,10 @@
       contextMenus: {
         create: (item) => { created.push({ id: item.id, title: item.title, contexts: item.contexts }); },
         onClicked: { addListener: () => {} },
+      },
+      action: { onClicked: { addListener: () => {} } },
+      sidePanel: {
+        setPanelBehavior: (behavior) => { panelBehaviors.push(behavior); return Promise.resolve(); },
       },
       tabs: {
         query: (q, cb) => { cb([]); },
@@ -1199,12 +1206,46 @@
         { id: 'dr-menu-toggle', title: 'Simplify' },
         { id: 'dr-menu-toggle-sidebar', title: 'Simplify and open sidebar' },
       ]);
-    // In the toolbar icon's menu no table sits under the pointer, and Chrome
-    // already offers its own item there that opens the sidebar.
+    // In the toolbar icon's menu no table sits under the pointer, and a click
+    // on the icon opens the sidebar.
     eq('menu items: neither item appears in the toolbar icon menu',
       created.filter((item) => !Array.isArray(item.contexts) ||
         item.contexts.includes('all') || item.contexts.includes('action')).map((item) => item.id),
       []);
+    eq('toolbar icon: install leaves the icon click to the service worker, not to Chrome',
+      panelBehaviors, [{ openPanelOnActionClick: false }]);
+  })();
+
+  // --- The toolbar icon click opens the sidebar on the clicked tab and binds
+  // it there, with no toggle. ---
+  (function iconClickOpensWithoutToggle() {
+    const ctx = loadBackground();
+    ctx.listeners.iconClicked({ id: PANEL_TAB });
+    eq('toolbar icon: the click sends only the sidebar-opened topic to that tab',
+      ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
+      ['state:sidebarOpened']);
+
+    ctx.runtimeSends.length = 0;
+    ctx.listeners.activated({ tabId: 99 });
+    eq('toolbar icon: the sidebar it opens closes when another tab comes to the front',
+      ctx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
+  })();
+
+  // Chrome accepts the open only as a direct response to the click, so each
+  // handler must call it before the first await.
+  (function clicksOpenBeforeAwaiting() {
+    function opensFor(click) {
+      const opens = [];
+      const ctx = loadBackground({
+        sidePanel: { open: (options) => { opens.push(options); return new Promise(() => {}); } },
+      });
+      click(ctx);
+      return opens;
+    }
+    eq('toolbar icon: the click opens the sidebar for that tab before any await',
+      opensFor((ctx) => ctx.listeners.iconClicked({ id: PANEL_TAB })), [{ tabId: PANEL_TAB }]);
+    eq('bg routing: the menu toggle with sidebar opens the sidebar for that tab before any await',
+      opensFor(openPanel), [{ tabId: PANEL_TAB }]);
   })();
 
   // --- The menu toggle with sidebar does both: the same toggle the menu toggle

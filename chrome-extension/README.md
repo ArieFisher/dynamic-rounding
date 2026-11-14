@@ -10,7 +10,7 @@ Two consequences follow. Turning simplification on uses the table's own settings
 
 Each table holds its own settings, the range expression included. A press changes the table's on/off value alone, so moving the active table leaves every table's range expression in place, and the sidebar shows the settings of whichever table is active.
 
-A table no one has turned on reads off, so the sidebar pillbox shows off over a table showing the original, and opening the sidebar on its own changes nothing on the page. The right-click menu holds two items. "Simplify" makes the same press on the table right-clicked. "Simplify and open sidebar" makes that press, then opens the sidebar. Both labels stay the same whatever the table's on/off value.
+A table no one has turned on reads off, so the sidebar pillbox shows off over a table showing the original, and opening the sidebar on its own changes nothing on the page. The right-click menu holds two items. "Simplify" makes the same press on the table right-clicked. "Simplify and open sidebar" makes that press, then opens the sidebar. Both labels stay the same whatever the table's on/off value. A click on the extension's toolbar icon opens the sidebar with no press.
 
 A table loses its original values when a content script re-injection empties the registry while the table shows simplified values. The extension then reads the simplified values on the screen as the originals: turning the table on simplifies them again, and the hover text shows a simplified value as the original. A page reload clears it.
 
