@@ -10,8 +10,6 @@
 // separately via a script tag in sidebar.html.
 
 // DR_DEFAULTS is loaded from constants.js (declared first in manifest content_scripts).
-// It is shared with sidebar.js so the sidebar UI's initial state and the
-// menu toggle's fallback options come from a single source.
 
 // The capture marker: a saved capture (lib/dr-capture/render.js) stamps
 // data-dr-capture on its document element, because the capture is itself a
@@ -55,8 +53,7 @@ function writeTableSettings(table, patch, source) {
 // rows stay out. The level list lives in the log module, which uses the same
 // list to determine which rows carry a stack trace. The listener lives here and
 // not in the log module because the log module loads before the model and
-// the bus and reaches neither. A row recorded inside a bus handler publishes
-// one level deeper; the toast view never logs, so the chain ends there.
+// the bus and reaches neither.
 DR_LOG.onRow((row) => {
   if (DR_LOG.ERROR_LEVELS.includes(row.level)) DR_MODEL.recordError(row);
 });

@@ -6,57 +6,16 @@
  */
 
 /**
- * The application model.
+ * The application model: the active table, the error state, and the
+ * registry. docs/vocabulary.md defines each.
  *
- * Owns the fields that used to live as file-level `let` bindings in
- * content.js (written into directly from ui-pillbox.js) or, for settings,
- * nowhere at all — content.js used to pull them from the sidebar's live DOM
- * on every sidebar open, via a ten-retry polling loop (see the app-model-
- * settings sprint that replaced it):
+ * The fields are closed over, so a caller reads them through the getters and
+ * changes them only through the setters below. A publishing setter updates
+ * its field, then publishes the whole new value through DR_BUS. The model
+ * holds no DOM logic and calls no chrome API.
  *
- *   - activeTable     The table the user last targeted — by right-click, or
- *                      by pressing a different table's table pillbox.
- *                      content.js called this
- *                      lastRightClickedTable; sidebar.js's "bound" language
- *                      (setTableBound) names the same idea from the
- *                      sidebar's side. One field, one name: activeTable.
- *
- *   - errorState      The tab's error state: whether an extension error has
- *                      been recorded on this page, how many, and the last
- *                      rows with their stack traces. The controller writes
- *                      it from the log buffer's row listener (every warn or
- *                      error row counts), the toast view redraws from its
- *                      state change, and the capture carries it. It never
- *                      clears within a page's life; a reload starts clean.
- *
- * A field, "whether the sidebar is open", lived here until the
- * 2026-09-14 sidebar-state-removal design retired it. Only the service
- * worker could correct it, and the correction needed a tab number the
- * service worker lost on an idle restart and on an ordinary sidebar close,
- * so the value went stale and stayed stale for the rest of the page's life
- * (#241). No part of the extension reads such a value now.
- *
- * A page-wide set of settings lived here beside each table's settings until
- * issue #328 retired it. The sidebar read and wrote that set, so it could
- * describe settings that did not produce the table on the screen, and going
- * back to a table could not bring back its settings. Each table's settings,
- * in its registry entry below, are now the only settings the model holds.
- *
- * Reads go through the getters below. The only way to change activeTable
- * is its setter, which does exactly two things: update the field, then
- * DR_BUS.publish() the field's whole new value as a state-change. No caller
- * can assign these fields directly — there is nothing to assign; the fields
- * are closed over, not exposed.
- *
- * The table registry (app-model-registry sprint) is a further field with a
- * different shape and a different update contract — see the section below.
- * Its one publishing setter is setTableSettings.
- *
- * The application model holds no DOM logic and calls no chrome API itself; the one side
- * effect a publishing setter has, beyond updating its own field, is a
- * publish through DR_BUS.
- *
- * Loaded after adapters/messaging.js (DR_BUS) and before ui-pillbox.js.
+ * Loaded after constants.js (DR_DEFAULTS) and adapters/messaging.js
+ * (DR_BUS), and before ui-pillbox.js.
  */
 
 const DR_MODEL = (function () {
@@ -64,15 +23,16 @@ const DR_MODEL = (function () {
 
   // --- Table registry ---
   //
-  // Shape: WeakMap<table, entry>. A table removed from the page without an
-  // unregisterTable() call (a host page that detaches a node some other way)
-  // still lets its entry go instead of leaking for the life of the tab. A
-  // WeakMap cannot be enumerated, and content.js's removal observer walks a
-  // removed subtree for registered tables, so a plain Set holds the same
-  // tables. registerTable and unregisterTable write both, at the call sites
-  // that tear down the table's other per-table resources (the re-apply
-  // observer and its timer, tableResizeObservers). ui-pillbox.js's scroll and
-  // resize repositioning iterates its own trackedTables Set, not this one.
+  // A WeakMap cannot be enumerated, and the content script's removal
+  // observer and the capture's state serializer both list every registered
+  // table, so a Set holds the same tables. _ensureEntry adds a table to both,
+  // and unregisterTable removes it from both. The Set holds a strong
+  // reference to each table, so an entry stays until unregisterTable runs,
+  // even after the page removes the table. The content script calls
+  // unregisterTable from its removal observer.
+  //
+  // ui-pillbox.js keeps a separate trackedTables Set for repositioning table
+  // pillboxes, and does not read this one.
   const tableRegistry = new WeakMap();
   const registeredTables = new Set();
 
@@ -97,16 +57,11 @@ const DR_MODEL = (function () {
         // pass (a grid's scroll, a value the page writes) cannot shift it.
         // resetTable clears it back to null.
         maxMagnitude: null,
-        // The shape fingerprint: { columnCount, headerTexts } as read by
-        // lib/dr-table's readTableFingerprint at registration.
-        // createTablePillbox (ui-pillbox.js) is the one writer. The
-        // controller compares the table's current shape against it before
-        // every action, and discards the whole entry on a mismatch — the
-        // page replaced the table's content, so the originals describe data
-        // no longer on the screen. null until that one writer runs: an entry
-        // a first write created (see the note on registerTable below) carries
-        // no fingerprint, and the controller's comparison reads that as
-        // nothing to compare against.
+        // The shape fingerprint: { columnCount, headerTexts }, from
+        // lib/dr-table's readTableFingerprint. createTablePillbox
+        // (ui-pillbox.js) is the one writer. An entry that a first write
+        // created holds null until that writer runs, and the controller
+        // reads null as nothing to compare against.
         fingerprint: null,
       };
       tableRegistry.set(table, entry);
@@ -119,14 +74,15 @@ const DR_MODEL = (function () {
     return activeTable;
   }
 
-  // A view that opens or reconnects (the sidebar re-opening, most notably)
-  // pulls this instead of trusting a state-change message it may have
-  // missed while it was gone — the bus keeps no history, so a missed
-  // publish is gone for good from the bus's point of view.
+  // Only the tests call getSnapshot. The sidebar runs in another context and
+  // redraws through request:activeTable instead.
   function getSnapshot() {
     return { activeTable, errorState: getErrorState() };
   }
 
+  // No production code subscribes to state:activeTableChanged. The sidebar
+  // redraws from state:tableActivated and state:tableSwitched, which the
+  // content script publishes.
   function setActiveTable(table) {
     activeTable = table;
     DR_BUS.publish('state:activeTableChanged', { table: activeTable });
@@ -154,8 +110,6 @@ const DR_MODEL = (function () {
     };
   }
 
-  // The one writer. Like the setter above: update the field, then publish
-  // the field's whole new value.
   function recordError(row) {
     errorRows.push(copyErrorRow(row));
     if (errorRows.length > ERROR_ROW_LIMIT) errorRows.shift();
@@ -165,22 +119,13 @@ const DR_MODEL = (function () {
 
   // --- Table registry API ---
   //
-  // One bus publish here, from setTableSettings: the sidebar draws a table's
-  // settings. Nothing in the application subscribes to "a table was found" or "a
-  // cell's original changed" as an event — the DOM itself is the view for a
-  // table's contents, and the controller already writes it directly
-  // (roundTable/restoreTable write the cells they change). The rest of the
-  // registry is per-table storage consulted synchronously by the controller,
-  // not application-level state a view redraws itself from.
+  // Only setTableSettings publishes. The rest of the registry is per-table
+  // storage that the controller reads synchronously.
 
-  // registerTable: the "registered" moment as far as the table pillbox view is concerned —
-  // called once, from ui-pillbox.js's createTablePillbox, idempotent so a
-  // rediscovery (e.g. injectTablePillboxesForAddedNode revisiting a node) is a
-  // no-op. It is NOT the only path to a table having a registry entry:
-  // setTableOriginal, setTableSettings, and
-  // setTableMaxMagnitude below all call the same _ensureEntry and will
-  // silently create one on first write if registerTable never ran for that
-  // table.
+  // createTablePillbox (ui-pillbox.js) calls this once per table, and a
+  // rediscovery calls it again with no effect. Every setter below also calls
+  // _ensureEntry, so a table can have an entry without registerTable ever
+  // running for it.
   function registerTable(table) {
     _ensureEntry(table);
   }
@@ -190,16 +135,10 @@ const DR_MODEL = (function () {
     registeredTables.delete(table);
   }
 
-  // hasTable: the one check for "has the extension already registered this
-  // element".
   function hasTable(table) {
     return tableRegistry.has(table);
   }
 
-  // getRegisteredTables: the enumerable companion's one reader —
-  // content.js's removed-subtree cleanup, which needs to iterate every
-  // registered table. (ui-pillbox.js's scroll/resize repositioning iterates its
-  // own trackedTables Set instead; it does not read this.)
   function getRegisteredTables() {
     return Array.from(registeredTables);
   }
@@ -235,13 +174,12 @@ const DR_MODEL = (function () {
     if (entry) entry.originals.delete(cellEl);
   }
 
-  // Store a table's whole settings, with the shipped defaults filled in, then
-  // publish the settings notice. Every writer writes the active table: the
-  // sidebar's apply, and a table pillbox press, which makes its table active first.
-  // The notice crosses to the sidebar, so it carries plain values alone: the
-  // source ('sidebar' for the sidebar's apply, 'page' for every other writer)
-  // and a copy of the stored settings. The sidebar redraws from a notice
-  // whose source is not its own, and the table pillbox view redraws the active
+  // Every writer writes the active table: the sidebar's apply, and a table
+  // pillbox press, which makes its table active first. The settings notice
+  // crosses to the sidebar, so it carries plain values alone: the source
+  // ('sidebar' for the sidebar's apply, 'page' for every other writer) and a
+  // copy of the stored settings. The sidebar redraws from a notice whose
+  // source is not its own, and the table pillbox view redraws the active
   // table's table pillbox from every notice.
   function setTableSettings(table, settings, source) {
     const stored = Object.assign({}, DR_DEFAULTS, settings || {});
@@ -250,8 +188,7 @@ const DR_MODEL = (function () {
   }
 
   // A copy, so a caller cannot change the stored settings by changing what
-  // it read. A table with no settings yet, or no entry, answers the shipped
-  // defaults.
+  // it read.
   function getTableSettings(table) {
     const entry = tableRegistry.get(table);
     return Object.assign({}, entry && entry.settings ? entry.settings : DR_DEFAULTS);
@@ -272,9 +209,6 @@ const DR_MODEL = (function () {
     _ensureEntry(table).fingerprint = fingerprint;
   }
 
-  // null with no entry and null with an entry that never recorded one are
-  // the same answer, and the controller's comparison reads both the same
-  // way: nothing recorded, so nothing to compare against.
   function getTableFingerprint(table) {
     const entry = tableRegistry.get(table);
     return entry ? entry.fingerprint : null;
