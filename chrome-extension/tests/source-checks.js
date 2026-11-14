@@ -620,7 +620,7 @@
 })();
 
 // ---------------------------------------------------------------------------
-// AC4: background.js does NOT relay the settings notice when boundTabId is null.
+// AC4: background.js does NOT relay the settings notice.
 //
 // background.js runs in a service-worker context without the DOM and module
 // system our harness uses, so we cannot eval() it directly alongside the content
@@ -871,12 +871,10 @@
     tabs: {
       query(q, cb) { cb([{ id: 1 }]); },
       sendMessage(tabId, msg, cb) { sentTabMessages.push({ tabId, msg }); if (cb) cb(undefined); },
-      onUpdated:   { addListener: () => {} },
-      onRemoved:   { addListener: () => {} },
     },
     // Omitted deliberately: background.js guards on chrome.sidePanel, so with
-    // it absent the sidebar-open handler never awaits and the tab number is
-    // set by the time the call returns.
+    // it absent the sidebar-open handler never awaits and has sent its topic
+    // by the time the call returns.
   };
 
   // Every handler call runs while the stub is the global chrome. The bus reads
@@ -891,14 +889,13 @@
       fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8'));
     result.listenerType = typeof capturedBgHandler;
     if (result.listenerType === 'function') {
-      // Case A: no sidebar tab number (never opened).
+      // Case A: before the sidebar opens.
       sentTabMessages.length = 0;
       capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
-      result.relaysWithNoTabNumber = sentTabMessages.length;
+      result.relaysBeforeOpen = sentTabMessages.length;
 
-      // Case B: the sidebar was opened, so the worker holds its tab number.
-      // The handler runs to completion synchronously with chrome.sidePanel
-      // absent.
+      // Case B: after the sidebar opens. The handler runs to completion
+      // synchronously with chrome.sidePanel absent.
       sentTabMessages.length = 0;
       capturedClickHandler({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
       result.sentOpenedReport = sentTabMessages.some(m => m.tabId === PANEL_TAB &&
@@ -906,7 +903,7 @@
 
       sentTabMessages.length = 0;
       capturedBgHandler({ topic: 'state:tableActivated' }, {}, () => {});
-      result.relaysWithTabNumber = sentTabMessages.length;
+      result.relaysAfterOpen = sentTabMessages.length;
     }
   } finally {
     global.chrome = savedChrome;
@@ -914,12 +911,12 @@
 
   eq('table-activation AC4 runtime: the bus listener is the worker\'s only message listener',
     result.listenerType, 'function');
-  eq('table-activation AC4 runtime: no relay when the worker holds no sidebar tab number',
-    result.relaysWithNoTabNumber, 0);
+  eq('table-activation AC4 runtime: no relay before the sidebar opens',
+    result.relaysBeforeOpen, 0);
   eq('table-activation AC4 runtime: opening the sidebar sends its report to that tab',
     result.sentOpenedReport, true);
-  eq('table-activation AC4 runtime: still no relay once the worker holds one',
-    result.relaysWithTabNumber, 0);
+  eq('table-activation AC4 runtime: still no relay after the sidebar opens',
+    result.relaysAfterOpen, 0);
 })();
 
 // ---------------------------------------------------------------------------
@@ -1084,16 +1081,12 @@
 //
 // chrome.runtime.sendMessage from the service worker reaches extension pages
 // such as the side panel, and never reaches content scripts. A content script
-// is reachable only through chrome.tabs.sendMessage(tabId, ...). Two rules
-// follow, and both are asserted at runtime rather than by source regex:
-//
-//   1. Closing the sidebar notifies the sidebar page alone. The content
-//      script registers no branch for this message, so a tab-directed send
-//      would deliver to nothing.
-//   2. state:tableActivated must not be relayed into the tab. content.js already
-//      sends it with runtime.sendMessage, which the sidebar receives directly.
-//      Relaying it to boundTabId delivers it to a content script that has no
-//      handler for that action.
+// is reachable only through chrome.tabs.sendMessage(tabId, ...). One rule
+// follows, asserted at runtime rather than by source regex:
+// state:tableActivated must not be relayed into the tab. content.js already
+// sends it with runtime.sendMessage, which the sidebar receives directly.
+// Relaying it into the tab delivers it to a content script that has no
+// handler for that action.
 // ---------------------------------------------------------------------------
 
 (function backgroundMessageRouting() {
@@ -1111,14 +1104,8 @@
   // publish here names its tab, because a tab-routed send with no query
   // interface throws.
   //
-  // closeSidebarUnreceived simulates a receiving end that is already gone by
-  // the time the close topic goes out, which is exactly the onRemoved case.
-  // Chrome reports that through chrome.runtime.lastError on the callback, and
-  // the bus consumes it.
-  //
   // sidePanel, when given, stands in for chrome.sidePanel.
-  function loadBackground({ closeSidebarUnreceived = false, sidePanel } = {}) {
-    const runtimeSends = [];
+  function loadBackground({ sidePanel } = {}) {
     const tabSends = [];
     const listeners = {};
     const chromeStub = {
@@ -1126,15 +1113,7 @@
         lastError: null,
         onInstalled: { addListener: () => {} },
         onMessage: { addListener: (fn) => { listeners.message = fn; } },
-        sendMessage: (msg, cb) => {
-          runtimeSends.push(msg);
-          chromeStub.runtime.lastError =
-            closeSidebarUnreceived && msg.topic === 'state:boundTabLeft'
-              ? { message: 'Could not establish connection. Receiving end does not exist.' }
-              : null;
-          if (cb) cb(undefined);
-          chromeStub.runtime.lastError = null;
-        },
+        sendMessage: (msg, cb) => { if (cb) cb(undefined); },
       },
       contextMenus: {
         create: () => {},
@@ -1158,7 +1137,7 @@
       chromeStub,
       { warn: () => {}, debug: () => {}, log: () => {} }
     );
-    return { runtimeSends, tabSends, listeners };
+    return { tabSends, listeners };
   }
 
   const PANEL_TAB = 7;
@@ -1190,8 +1169,6 @@
       tabs: {
         query: (q, cb) => { cb([]); },
         sendMessage: (tabId, msg, cb) => { if (cb) cb(undefined); },
-        onUpdated:   { addListener: () => {} },
-        onRemoved:   { addListener: () => {} },
       },
     };
     new Function('chrome', 'console', messagingCode + '\n' + bgSrc)(
@@ -1212,19 +1189,14 @@
       panelBehaviors, [{ openPanelOnActionClick: false }]);
   })();
 
-  // --- The toolbar icon click opens the sidebar on the clicked tab and binds
-  // it there, with no toggle. ---
+  // --- The toolbar icon click opens the sidebar on the clicked tab, with no
+  // toggle. ---
   (function iconClickOpensWithoutToggle() {
     const ctx = loadBackground();
     ctx.listeners.iconClicked({ id: PANEL_TAB });
     eq('toolbar icon: the click sends only the sidebar-opened topic to that tab',
       ctx.tabSends.filter((s) => s.tabId === PANEL_TAB).map((s) => s.msg.topic),
       ['state:sidebarOpened']);
-
-    ctx.runtimeSends.length = 0;
-    ctx.listeners.updated(PANEL_TAB, { status: 'loading' });
-    eq('toolbar icon: the sidebar it opens closes when that tab navigates',
-      ctx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
   })();
 
   // Chrome accepts the open only as a direct response to the click, so each
@@ -1256,51 +1228,15 @@
       ['intent:menuClicked', 'state:sidebarOpened']);
   })();
 
-  // --- Rule 1: closing notifies the sidebar page, and nothing else ---
-  (function closeNotifiesTheSidebarOnly() {
-    const ctx = loadBackground();
-    openPanel(ctx);
-    eq('bg routing: opening the sidebar sends the sidebar-opened topic to that tab',
-      ctx.tabSends.some(s => s.tabId === PANEL_TAB && s.msg.topic === 'state:sidebarOpened'),
-      true);
-
-    ctx.runtimeSends.length = 0;
-    ctx.tabSends.length = 0;
-
-    // Navigating the bound tab closes the sidebar.
-    ctx.listeners.updated(PANEL_TAB, { status: 'loading' });
-
-    eq('bg routing: close topic broadcast reaches the sidebar page',
-      ctx.runtimeSends.some(m => m.topic === 'state:boundTabLeft'), true);
-    eq('bg routing: close topic is not sent into the tab — the content script has no handler for it',
-      ctx.tabSends.some(s => s.msg.topic === 'state:boundTabLeft'),
-      false);
-  })();
-
-  // The same must hold for the removal trigger.
-  (function closeOnRemoval() {
-    // A removed tab: the close must not surface an error. The broadcast is
-    // all that goes out, and the stub rejects it, so this pins the
-    // service worker's own catch.
-    const goneCtx = loadBackground({ closeSidebarUnreceived: true });
-    openPanel(goneCtx);
-    let threw = false;
-    try {
-      goneCtx.listeners.removed(PANEL_TAB);
-    } catch (e) {
-      threw = true;
-    }
-    eq('bg routing: closing a removed tab does not throw', threw, false);
-  })();
-
-  // --- A tab switch and a page unload close the sidebar through one path
-  // each: the sidebar's switch listener, and the worker's navigation listener. ---
+  // --- A tab switch, a reload, and a tab close each close the sidebar through
+  // one path: the sidebar's own listeners on its bound tab. ---
   (function noSecondClosePath() {
     const ctx = loadBackground();
-    eq('bg routing: the worker registers no tab-activation listener',
-      ctx.listeners.activated, undefined);
-    eq('bg routing: the worker source names no tab-activation listener',
-      bgSrc.includes('onActivated'), false);
+    eq('bg routing: the worker registers no tab listener',
+      [ctx.listeners.activated, ctx.listeners.updated, ctx.listeners.removed],
+      [undefined, undefined, undefined]);
+    eq('bg routing: the worker source names no tab listener',
+      /onActivated|onUpdated|onRemoved/.test(bgSrc), false);
     const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
     for (const [name, src] of [['worker', bgSrc], ['sidebar', sidebarSrc],
         ['content script bundle', contentScriptBundle]]) {
@@ -1309,7 +1245,7 @@
     }
   })();
 
-  // --- Rule 2: the activation report is not relayed into the tab ---
+  // --- The activation report is not relayed into the tab ---
   (function activatedNotRelayedToTab() {
     const ctx = loadBackground();
     openPanel(ctx);
@@ -2585,14 +2521,12 @@
   const sidebarSrc = fs.readFileSync(path.join(__dirname, 'sidebar.js'), 'utf8');
   eq('sidebar on bus: no chrome.runtime.onMessage listener of its own',
     sidebarSrc.includes('chrome.runtime.onMessage.addListener'), false);
-  for (const topic of ['state:tableActivated', 'state:boundTabLeft', 'state:rangeError',
+  for (const topic of ['state:tableActivated', 'state:rangeError',
       'state:rangeOk',
       'state:previewSamplesChanged', 'state:tableSwitched', 'state:settingsChanged']) {
     eq('sidebar on bus: subscribes to ' + topic,
       sidebarSrc.includes("subscribe('" + topic + "'"), true);
   }
-  eq('sidebar on bus: the unload report publishes through the bus',
-    /DR_BUS\.publish\(\s*'state:sidebarClosed'/.test(sidebarSrc), true);
 })();
 
 // --- The sidebar's one-tab rule, driven end to end -------------
@@ -2651,6 +2585,8 @@
   };
 
   let activationListener = null;
+  let updateListener = null;
+  let removeListener = null;
   let messageListener = null;
   let pendingLookup = null;
   let queryCalls = 0;
@@ -2684,6 +2620,8 @@
         cb(undefined);
       },
       onActivated: { addListener(fn) { activationListener = fn; } },
+      onUpdated: { addListener(fn) { updateListener = fn; } },
+      onRemoved: { addListener(fn) { removeListener = fn; } },
     },
   };
 
@@ -2753,6 +2691,17 @@
     eq('bound tab wiring: the sidebar is open before any switch', closes, 0);
     activationListener({ tabId: OTHER_TAB, windowId: BOUND_WINDOW });
     eq('bound tab wiring: switching to another tab closes the sidebar', closes, 1);
+
+    eq('bound tab wiring: the sidebar registered a tab update listener and a tab removal listener',
+      [typeof updateListener, typeof removeListener], ['function', 'function']);
+    if (typeof updateListener !== 'function' || typeof removeListener !== 'function') return;
+    updateListener(OTHER_TAB, { status: 'loading' });
+    removeListener(OTHER_TAB, { windowId: BOUND_WINDOW, isWindowClosing: false });
+    eq('bound tab wiring: another tab loading or closing leaves the sidebar open', closes, 1);
+    updateListener(BOUND_TAB, { status: 'loading' });
+    eq('bound tab wiring: the bound tab reloading closes the sidebar', closes, 2);
+    removeListener(BOUND_TAB, { windowId: BOUND_WINDOW, isWindowClosing: false });
+    eq('bound tab wiring: the bound tab closing closes the sidebar', closes, 3);
   } finally {
     global.document = savedDoc;
     global.chrome = savedChrome;

@@ -7,8 +7,6 @@
 
 importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
 
-let boundTabId = null;
-
 // Every context "all" covers except "action", the toolbar icon's menu: no
 // table sits under the pointer there, and a click on the icon opens the
 // sidebar.
@@ -36,7 +34,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 /**
- * Opens the sidebar on a tab, binds it there, and tells the tab. Chrome
+ * Opens the sidebar on a tab and tells the tab. Chrome
  * grants the tab permission the screenshot needs, and accepts the open, only
  * as a direct response to the user's click, so a caller runs this before
  * any await of its own.
@@ -50,7 +48,6 @@ async function openSidebarOnTab(tabId) {
   } catch (e) {
     DR_LOG.warn(DR_LOG.formatRow('error', { step: 'open sidebar', error: DR_LOG.errorType(e) }));
   }
-  boundTabId = tabId;
   DR_BUS.publish('state:sidebarOpened', {}, { tabId });
 }
 
@@ -71,27 +68,4 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // the sidebar with no toggle.
 chrome.action.onClicked.addListener((tab) => {
   openSidebarOnTab(tab.id);
-});
-
-/**
- * @param {number} tabId The tab that reloaded or closed. The function publishes the close only when this is the bound tab.
- */
-function closeSidebarIfOpen(tabId) {
-  if (tabId !== boundTabId) return;
-  // The broadcast reaches every extension page, and the sidebar closes itself
-  // on it.
-  DR_BUS.publish('state:boundTabLeft', {});
-  boundTabId = null;
-}
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === "loading") closeSidebarIfOpen(tabId);
-});
-
-chrome.tabs.onRemoved.addListener((tabId) => {
-  closeSidebarIfOpen(tabId);
-});
-
-DR_BUS.subscribe('state:sidebarClosed', () => {
-  boundTabId = null;
 });

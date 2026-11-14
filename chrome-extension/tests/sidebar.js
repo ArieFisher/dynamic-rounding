@@ -49,14 +49,8 @@
 
   // state:sidebarOpened survives — it still runs the shape check and tells the
   // sidebar to re-read — but it records nothing about the sidebar.
-  // CLOSE_SIDEBAR goes to the sidebar page alone, so the content script
-  // carries no branch for it at all.
   eq('sidebar-state removal: state:sidebarOpened still tells the sidebar to re-read',
     /state:sidebarOpened[\s\S]{0,700}state:previewSamplesChanged/.test(contentSrc), true);
-  // The topic moved onto the bus, so the needle is its bus name: a
-  // reintroduced subscription in the content script is what this catches.
-  eq('sidebar-state removal: content.js registers no branch for the close message',
-    /state:boundTabLeft/.test(sourceByName('content.js') || ''), false);
 
   // The merged press path: one settings write, and no read of any sidebar
   // value. The behavioral pins live in the part-one block further down; this
@@ -1328,13 +1322,23 @@ const SINGLE_READ_SAMPLES = {
   // in, so a test that names none is switching tabs inside that window.
   function makeTabs(queryResult) {
     const listeners = [];
+    const updateListeners = [];
+    const removeListeners = [];
     const homeWindow = queryResult && queryResult[0] ? queryResult[0].windowId : undefined;
     return {
       query(q, cb) { cb(queryResult); },
       onActivated: { addListener: (fn) => { listeners.push(fn); } },
+      onUpdated: { addListener: (fn) => { updateListeners.push(fn); } },
+      onRemoved: { addListener: (fn) => { removeListeners.push(fn); } },
       activate(tabId, windowId) {
         const inWindow = windowId === undefined ? homeWindow : windowId;
         for (const fn of listeners) fn({ tabId, windowId: inWindow });
+      },
+      update(tabId, status) {
+        for (const fn of updateListeners) fn(tabId, { status });
+      },
+      remove(tabId) {
+        for (const fn of removeListeners) fn(tabId, { windowId: homeWindow, isWindowClosing: false });
       },
       listenerCount() { return listeners.length; },
     };
@@ -1462,15 +1466,15 @@ const SINGLE_READ_SAMPLES = {
 
   // --- Leaving the bound tab ---
   //
-  // The sidebar's own listener is the one close path on a tab switch: the
-  // service worker holds no switch listener.
+  // The sidebar's own listeners are the one close path on a tab switch, a
+  // reload, and a tab close: the service worker holds no tab listener.
   (function closesOnSwitchAway() {
     const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
     const boundTab = createBoundTab(tabs, makeBus());
     boundTab.resolve(() => {});
 
     let closes = 0;
-    boundTab.onSwitchAway(() => { closes++; });
+    boundTab.onLeave(() => { closes++; });
 
     tabs.activate(OWN_TAB);
     eq('bound tab: staying on the bound tab does not close the sidebar', closes, 0);
@@ -1489,13 +1493,48 @@ const SINGLE_READ_SAMPLES = {
     boundTab.resolve(() => {});
 
     let closes = 0;
-    boundTab.onSwitchAway(() => { closes++; });
+    boundTab.onLeave(() => { closes++; });
 
     tabs.activate(OTHER_TAB, OTHER_WINDOW);
     eq('bound tab: an activation in another window does not close the sidebar', closes, 0);
 
     tabs.activate(OTHER_TAB, OWN_WINDOW);
     eq('bound tab: an activation in the bound tab\'s own window closes it', closes, 1);
+  })();
+
+  // Each sidebar listens for its own bound tab's events, so a reload in one
+  // window never closes a sidebar in another.
+  (function closesOnReload() {
+    const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
+    const boundTab = createBoundTab(tabs, makeBus());
+    boundTab.resolve(() => {});
+
+    let closes = 0;
+    boundTab.onLeave(() => { closes++; });
+
+    tabs.update(OTHER_TAB, 'loading');
+    eq('bound tab: another tab starting to load does not close the sidebar', closes, 0);
+
+    tabs.update(OWN_TAB, 'complete');
+    eq('bound tab: the bound tab finishing a load does not close the sidebar', closes, 0);
+
+    tabs.update(OWN_TAB, 'loading');
+    eq('bound tab: the bound tab starting to load closes the sidebar', closes, 1);
+  })();
+
+  (function closesOnRemoval() {
+    const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
+    const boundTab = createBoundTab(tabs, makeBus());
+    boundTab.resolve(() => {});
+
+    let closes = 0;
+    boundTab.onLeave(() => { closes++; });
+
+    tabs.remove(OTHER_TAB);
+    eq('bound tab: removing another tab does not close the sidebar', closes, 0);
+
+    tabs.remove(OWN_TAB);
+    eq('bound tab: removing the bound tab closes the sidebar', closes, 1);
   })();
 
   // With no tab recorded there is nothing to have left, and closing on the
@@ -1506,7 +1545,7 @@ const SINGLE_READ_SAMPLES = {
     boundTab.resolve(() => {});
 
     let closes = 0;
-    boundTab.onSwitchAway(() => { closes++; });
+    boundTab.onLeave(() => { closes++; });
 
     tabs.activate(OTHER_TAB);
     eq('bound tab: with no tab recorded a switch does not close the sidebar', closes, 0);
@@ -1520,7 +1559,7 @@ const SINGLE_READ_SAMPLES = {
     boundTab.resolve(() => {});
 
     let threw = false;
-    try { boundTab.onSwitchAway(() => {}); } catch (e) { threw = true; }
+    try { boundTab.onLeave(() => {}); } catch (e) { threw = true; }
     eq('bound tab: a tabs interface with no activation event does not throw', threw, false);
 
     // Reports still reach the sidebar; only the self-close is missing.
@@ -1554,10 +1593,6 @@ const SINGLE_READ_SAMPLES = {
       contentReports.length > 0, true);
     eq('bound tab: every content-script report the sidebar subscribes goes through the bound-tab gate',
       contentReports.filter((topic) => ungated(sidebarSrc, topic)), []);
-
-    // The service worker's close carries no tab, so gating it would drop it.
-    eq('bound tab: the close message stays off the gate',
-      ungated(sidebarSrc, 'state:boundTabLeft'), true);
   })();
 })();
 
