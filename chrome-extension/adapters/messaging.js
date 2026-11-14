@@ -8,103 +8,35 @@
 /**
  * Typed event bus over Chrome messaging.
  *
- * Every topic in DR_BUS.TOPICS carries a family and a route. The family marks
- * what kind of message it is. The route states which carrier reaches its
- * audience. Three families:
+ * Every topic in DR_BUS.TOPICS carries a family and a route. The family
+ * records the kind of message. The route records which carrier reaches the
+ * topic's audience. Three families:
  *
- *   - 'intent'       A gesture: someone did a thing, and a controller
- *                     determines what changes. Published by a view, such as
- *                     the table pillbox view in ui-pillbox.js, and never carrying
- *                     authority of its own.
- *   - 'state-change' A fact: a field of the application model, a tab, or the
- *                     sidebar changed. app/model.js publishes a model change
- *                     after the write. A subscriber redraws on it, or reads
- *                     the model's getters directly when it only needs the
- *                     current value.
+ *   - 'intent'       A gesture: the user did something. The publisher only
+ *                     reports it. The controller, the one subscriber to
+ *                     intent topics, determines what changes.
+ *   - 'state-change' A fact: the application model, a tab, or the sidebar
+ *                     changed. The component that made or detected the
+ *                     change publishes it after the change.
  *   - 'request'      A question: the topic's one responder returns an answer
- *                     to the publisher. See the request rules below.
+ *                     to the publisher.
  *
  * Three routes:
  *
  *   - null              Same context only. publish() sends nothing on the wire.
  *   - 'extension-pages' chrome.runtime.sendMessage, reaching the service
- *                        worker and the open sidebar. It cannot reach a
- *                        content script — that is chrome.runtime.sendMessage's
- *                        own contract.
+ *                        worker and the open sidebar. Chrome never delivers
+ *                        that call to a content script.
  *   - 'tab'             chrome.tabs.sendMessage, reaching one tab's content
- *                        script. The tab number comes from opts.tabId when the
- *                        caller passes one, and otherwise from a query for the
- *                        tab in front of the current window. A caller passes
- *                        one where it holds a tab number that may not be that
- *                        tab's — the service worker does, for the
- *                        right-clicked tab and the bound tab.
+ *                        script.
  *
- * The route replaced a capability sniff: publish() used to test which Chrome
- * interface existed in the publishing context and infer the carrier from that,
- * and a topic whose audience did not match the inference had no way to record
- * the mismatch. A tab-routed publish from a context with no chrome.tabs now
- * throws, rather than reaching the wrong audience in silence.
+ * The bus keeps no state: no last-value cache, no history. A subscriber that
+ * attaches after a publish never receives it, so a view that opens or
+ * reconnects reads the current value from the application model.
  *
- * Delivery rules:
- *   - A state-change publish always carries the field's whole new value,
- *     never a delta — a subscriber never has to reconstruct state from a
- *     sequence of partial updates.
- *   - The bus keeps no state of its own: no last-value cache, no history.
- *     A subscriber that attaches after a publish never sees that publish.
- *     A view that opens or reconnects (the sidebar re-opening, most
- *     notably) must pull the current value from the model instead (see
- *     app/model.js) rather than rely on a message it may have missed while
- *     it was gone.
- *   - Same-context delivery is synchronous: publish() calls every matching
- *     handler directly, in subscription order, before returning. A
- *     controller that calls a model setter in response to a subscribed
- *     intent sees the application model already updated by the time publish() returns.
- *     Because delivery is synchronous, a handler that itself publishes
- *     (directly, or by way of a model setter) can re-enter publish() before
- *     the original call returns; see the depth guard below.
- *   - publish() delivers to same-context subscribers first, then sends over
- *     the topic's route. A subscriber receives the payload and, beside it, a
- *     second argument holding what the carrier supplied rather than the
- *     publisher: meta.tabId, the sending tab's number. It is null for a
- *     same-context publish and for a message from an extension page, neither
- *     of which has a tab. It travels beside the payload, never inside it, so
- *     no handler can mistake it for data the publisher supplied.
- *   - An arriving message whose topic field holds a known topic is redelivered here
- *     as a same-context publish, without sending it back out, so a topic that
- *     crossed contexts behaves the same as one that did not from a
- *     subscriber's point of view. The topic name itself is the name on the
- *     wire; there is no second naming style.
- *
- * Request rules:
- *   - request(topic, payload, callback) asks, and respond(topic, handler)
- *     answers. A request addresses exactly one context, the tab's, so it never
- *     delivers to same-context subscribers the way publish() does. The asking
- *     side is the publisher, the same term a one-way topic uses.
- *   - The callback receives the responder's answer, or undefined when nothing
- *     answered: no tab, no content script on it, or no responder registered
- *     there. The absence arrives immediately, with no waiting period. The
- *     sidebar's fallback to shipped defaults and to the unbound state rests on
- *     that, so the bus consumes chrome.runtime.lastError itself and Chrome
- *     logs no "Unchecked runtime.lastError" warning.
- *   - A responder returns its answer synchronously. Every responder in the
- *     extension is synchronous, and the contract covers only that; an
- *     asynchronous one needs a design that does not exist yet.
- *   - One responder per topic. A second registration throws where it is made,
- *     rather than later when two answers race.
- *   - Each verb refuses a topic of the wrong family, at the call. publish()
- *     refuses a request topic, because it has nowhere to put an answer and
- *     would drop one in silence; request() and respond() each refuse a
- *     one-way topic, which has no responder to answer them.
- *   - An arriving request with no responder in this context sends no reply.
- *     Answering undefined would close the publisher's callback on behalf of a
- *     context holding no answer.
- *
- * This file registers the one Chrome message listener each context has. No
- * context registers a second one of its own.
- *
- * All three contexts load it. In the content script it comes after the lib/
- * packages and before app/model.js — the application model publishes through this bus, so
- * the bus must exist first. The service worker imports it at the top of
+ * All three contexts load this file. In the content script it loads after the
+ * lib/ packages and before app/model.js, because the application model
+ * publishes through the bus. The service worker imports it at the top of
  * background.js, and the sidebar page loads it before sidebar.js.
  */
 
@@ -114,54 +46,32 @@ const DR_BUS = (function () {
 
   const REQUEST = 'request';
 
-  // A topic's route states which carrier reaches its audience. It names no
-  // subscriber, so publishers and subscribers stay unreferenced to each other.
-  //   null              same-context only; publish sends nothing on the wire
-  //   'extension-pages' chrome.runtime.sendMessage — the service worker and
-  //                     the open sidebar
-  //   'tab'             chrome.tabs.sendMessage — one tab's content script
   const ROUTE_EXTENSION_PAGES = 'extension-pages';
   const ROUTE_TAB = 'tab';
 
-  // The one place every topic name is enumerated.
   const TOPICS = {
     'intent:activateTable': { family: INTENT, route: null },
     'intent:toggleTable': { family: INTENT, route: null },
     'state:activeTableChanged': { family: STATE_CHANGE, route: null },
-    // Published by the model after every extension error it records. The toast view
-    // (ui-toast.js) subscribes to draw the row on the page. Same context
-    // only: the sidebar reads the error state through the capture state pull.
+    // Same context only: the sidebar reads the error state through
+    // request:captureState.
     'state:errorRecorded': { family: STATE_CHANGE, route: null },
-    // The sidebar's three requests. Each addresses the tab's content script,
-    // which holds the model.
-    //
-    // The settings apply is a request rather than a one-way publish: the
-    // content script writes the active table's settings and answers, and the
-    // sidebar reads whether anyone answered at all to determine bound versus
-    // unbound. The answer's value is never read. The other two read the
-    // model: the active table's settings with its preview samples, and the
-    // capture state.
+    // The sidebar's requests. Each addresses the tab's content script, which
+    // holds the application model.
     'request:applySettings': { family: REQUEST, route: ROUTE_TAB },
     'request:activeTable': { family: REQUEST, route: ROUTE_TAB },
     'request:captureState': { family: REQUEST, route: ROUTE_TAB },
-    // The service worker's topics. The two it publishes to a tab carry
-    // an explicit tab number: neither the right-clicked tab nor the bound tab
-    // is guaranteed to be the tab in front at the moment of the send.
+    // Topics between the service worker and the other two contexts.
     'intent:menuClicked': { family: INTENT, route: ROUTE_TAB },
     'state:sidebarOpened': { family: STATE_CHANGE, route: ROUTE_TAB },
     'state:boundTabLeft': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:sidebarClosed': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
-    // The worker reads meta.tabId on this one, to act only for the bound tab.
     'state:pageUnloaded': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
-    // The content script's topics for the sidebar. Every one takes the
-    // extension-pages route: the content script holds no tabs interface, and
-    // the sidebar is an extension page.
+    // The content script's topics for the sidebar. Each takes the
+    // extension-pages route: the content script has no chrome.tabs, and the
+    // sidebar is an extension page.
     //
-    // The settings notice: the model (app/model.js) publishes it after every
-    // write of a table's settings, whatever the writer. Every write targets
-    // the active table. It states which side wrote it and carries the table's
-    // whole settings; the sidebar redraws from it, and the table pillbox view in
-    // the same content script redraws the active table's table pillbox from it.
+    // The settings notice.
     'state:settingsChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableActivated': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableSwitched': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
@@ -188,24 +98,26 @@ const DR_BUS = (function () {
     };
   }
 
-  // Chrome attaches a sender record to every arriving message. One fact off it
-  // is load-bearing: which tab a content script sent from, which the service
-  // worker checks against the bound tab. The bus passes
-  // that one number and keeps Chrome's record out of its own contract. A
-  // same-context publish carries null, and so does a message from an extension
-  // page — neither has a tab.
+  // Chrome attaches a sender record to every arriving message. The bus passes
+  // on one fact from it, the number of the tab a content script sent from,
+  // and keeps the rest of Chrome's record out of its own contract.
+  // The service worker and the sidebar compare that number against the bound
+  // tab. A message from an
+  // extension page has no tab, so it carries null.
   function senderTabId(sender) {
     return sender && sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : null;
   }
 
-  // Deliver to same-context subscribers only. Used both by publish() below
-  // and by the onMessage listener, so a redelivered incoming wire message never
-  // triggers another outbound send.
+  // Same-context subscribers only, so the onMessage listener can redeliver an
+  // arriving message without sending it out again.
   //
-  // A handler receives the payload and, beside it, the facts the carrier
-  // supplied rather than the publisher: meta.tabId. It travels beside the
-  // payload, never inside it, so no handler can mistake it for data the
-  // publisher supplied.
+  // Delivery is synchronous: every handler runs, in subscription order,
+  // before publish() returns. A controller that calls a model setter from a
+  // handler has updated the application model by the time publish() returns.
+  //
+  // meta.tabId travels beside the payload, never inside it, so no handler can
+  // mistake it for data the publisher supplied. It is null for a same-context
+  // publish.
   function deliverLocally(topic, payload, tabId) {
     const set = subscribers.get(topic);
     if (!set) return;
@@ -216,15 +128,11 @@ const DR_BUS = (function () {
   }
 
   // A handler invoked by deliverLocally() may itself publish (directly, or
-  // through a model setter) before returning — same-context delivery is
-  // synchronous (see the header), so that nested publish() runs on top of
-  // this one's still-live stack frame. A cycle with no caller-side guard
-  // would recurse until the real call stack overflows. This
-  // cap allows any legitimate shallow chain (the deepest in production, the
-  // intent:activateTable -> state:activeTableChanged hop, reaches 2; a
-  // guarded two-topic bounce-back reaches 4, but only in the reentrancy
-  // test) while turning an unguarded cycle into a clear, catchable error
-  // instead of a crash.
+  // through a model setter) before returning, so the nested publish() runs on
+  // top of the outer call's stack frame. A cycle with no caller-side guard
+  // would recurse until the real call stack overflows. The cap sits far above
+  // any chain the extension publishes today, and turns an unguarded cycle into
+  // a clear, catchable error instead of a crash.
   const MAX_PUBLISH_DEPTH = 20;
   let publishDepth = 0;
 
@@ -241,7 +149,7 @@ const DR_BUS = (function () {
     if (typeof chrome.runtime.sendMessage !== 'function') return;
     try {
       chrome.runtime.sendMessage(message, () => {
-        // Touch lastError purely to consume it: with no extension page open
+        // Read lastError only to consume it: with no extension page open
         // there is no receiver, and an unread lastError logs Chrome's
         // "Unchecked runtime.lastError" warning.
         void chrome.runtime.lastError;
@@ -251,14 +159,13 @@ const DR_BUS = (function () {
     }
   }
 
-  // A tab-routed send needs a tab number. The caller supplies one through
-  // opts.tabId where it holds one — only the service worker does, for the
-  // right-clicked tab and the bound tab, neither guaranteed to be the tab in
-  // front. Otherwise the bus queries the tab in front of the current window.
+  // A tab-routed send needs a tab number. A caller holding a tab number that
+  // may not be the tab in front passes it as opts.tabId: the service worker
+  // does, for the right-clicked tab and the bound tab. Otherwise the bus
+  // queries the tab in front of the current window.
   //
-  // onReply, when given, receives the responder's answer, or undefined when
-  // nothing answered: no tab, no content script on it, or no responder
-  // registered there. The absence arrives immediately, with no waiting period.
+  // onReply, when given, receives the responder's answer, or undefined on
+  // every failure path after the chrome.tabs check.
   function sendToTab(message, opts, onReply) {
     if (!chrome.tabs || typeof chrome.tabs.sendMessage !== 'function' ||
         typeof chrome.tabs.query !== 'function') {
@@ -271,10 +178,10 @@ const DR_BUS = (function () {
     const deliver = (tabId) => {
       try {
         chrome.tabs.sendMessage(tabId, message, (response) => {
-          // Always touch lastError, even on a one-way publish nobody is
-          // waiting on: otherwise a failed delivery logs Chrome's "Unchecked
-          // runtime.lastError" warning. The bus reads it to consume it, and a
-          // failed delivery reaches a publisher as an answer of undefined.
+          // Read lastError on every send, one-way publishes included: an
+          // unread lastError on a failed delivery logs Chrome's "Unchecked
+          // runtime.lastError" warning. A failed delivery reaches the
+          // publisher as an answer of undefined.
           void chrome.runtime.lastError;
           if (onReply) onReply(response);
         });
@@ -304,11 +211,6 @@ const DR_BUS = (function () {
 
   function publish(topic, payload, opts) {
     assertKnownTopic(topic);
-    // A request topic's responder returns an answer, and publish() has nowhere
-    // to put one: it would send the message, the responder would answer, and
-    // the answer would go nowhere, with nothing logged and nothing failed.
-    // request() and respond() each reject a topic of the wrong family; this
-    // check covers publish().
     if (TOPICS[topic].family === REQUEST) {
       throw new Error('DR_BUS: publish() cannot carry a request-family topic; "' +
         topic + '" is answered, and publish() discards the answer — use request()');
@@ -331,8 +233,12 @@ const DR_BUS = (function () {
   }
 
   // A request topic has exactly one responder, in exactly one context. A
-  // second registration is a mistake at the moment it is made, not later when
-  // two answers race, so it throws here.
+  // second registration throws where it is made, rather than later when two
+  // answers race.
+  //
+  // A responder returns its answer synchronously. Every responder in the
+  // extension does, and an asynchronous one needs a design that does not
+  // exist yet.
   const responders = new Map();
 
   function assertRequestFamily(topic, verb) {
@@ -359,13 +265,14 @@ const DR_BUS = (function () {
   //
   // The callback receives the responder's answer, or undefined when nothing
   // answered: no tab, no content script on it, or no responder registered
-  // there. The absence arrives immediately, with no waiting period, which is
-  // what drives the sidebar's fallback to shipped defaults and to the unbound
-  // state.
+  // there. The absence arrives immediately, with no waiting period. The
+  // sidebar falls back to the shipped defaults and to the unbound state on
+  // that absence.
   //
-  // A context with no chrome.tabs answers undefined rather than throwing the
-  // way a tab-routed publish does. A lost one-way publish is a silent miss;
-  // an unanswered request is a case every publisher already handles.
+  // In a context with no chrome.tabs, request() passes undefined to the
+  // callback rather than throwing the way a tab-routed publish does. A lost
+  // one-way publish is a silent miss; an unanswered request is a case every
+  // publisher already handles.
   function request(topic, payload, callback) {
     assertKnownTopic(topic);
     assertRequestFamily(topic, 'request');
@@ -378,6 +285,8 @@ const DR_BUS = (function () {
     sendToTab(Object.assign({ topic }, payload), null, callback);
   }
 
+  // The one Chrome message listener in each context. No other file registers
+  // one.
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage &&
       typeof chrome.runtime.onMessage.addListener === 'function') {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -396,8 +305,9 @@ const DR_BUS = (function () {
       // close the publisher's callback on behalf of a context holding no
       // answer.
       if (!responder) return;
-      // A responder runs on the same depth counter a subscriber does, so a
-      // publish nested under one cannot slip past the guard.
+      // The responder counts as one level of the publish depth, so a publish
+      // nested under it counts from there. The one-way branch above counts no
+      // level: a publish from a subscriber it reaches starts at depth 1.
       publishDepth++;
       try {
         if (publishDepth > MAX_PUBLISH_DEPTH) {

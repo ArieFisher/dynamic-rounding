@@ -8,19 +8,18 @@
 /**
  * The toast view.
  *
- * Draws the newest extension error on the page: one fixed element at the
- * bottom right holding the log row's text, removed by a click or after the
- * hide delay. It subscribes to the error state's state-change topic
- * (state:errorRecorded, published by app/model.js after every log row the
- * controller records) and holds no application state of its own. The element
- * and its timer are drawing state, like the table pillbox view's own map of
- * buttons.
+ * Draws the newest extension error on the page. It subscribes to the error
+ * state's state-change topic (state:errorRecorded, which the application
+ * model publishes after every log row the controller records) and holds no
+ * application state of its own. The element and its timer are drawing state,
+ * like the table pillbox view's own map of buttons.
  *
- * One toast: a second log row replaces the text and restarts the delay, so a
- * warning that repeats on every scroll shows one toast.
+ * One element at a time, so a warning that repeats on every scroll shows one
+ * toast.
  *
- * The view never logs. A log row it recorded would land in the error state
- * and publish back to this view, one level deeper on every turn.
+ * The view never logs. A log row it recorded would land in the error state,
+ * and the application model would publish it back to this view, one level
+ * deeper on every turn.
  *
  * Loaded after ui-pillbox.js and before content.js, so the subscription
  * exists before the controller registers the row listener that feeds it.
@@ -75,7 +74,8 @@ const DR_TOAST = (function () {
       toastEl = document.createElement('div');
       toastEl.className = TOAST_CLASS;
       // A status region: assistive technology announces the text without
-      // moving focus. textContent, never markup, so a log row's text is text.
+      // moving focus. The text goes in through textContent, so the page never
+      // parses a log row's text as markup.
       toastEl.setAttribute('role', 'status');
       toastEl.addEventListener('click', hide);
       (document.body || document.documentElement).appendChild(toastEl);
