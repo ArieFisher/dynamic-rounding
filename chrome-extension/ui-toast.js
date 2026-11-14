@@ -66,9 +66,6 @@ const DR_TOAST = (function () {
   }
 
   function show(text) {
-    // No element factory means no page to draw on: a context evaluated
-    // without a document, as the test suite's default stub is.
-    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return;
     ensureStyleInjected();
     if (!toastEl) {
       toastEl = document.createElement('div');
@@ -86,9 +83,7 @@ const DR_TOAST = (function () {
   }
 
   DR_BUS.subscribe('state:errorRecorded', ({ errorState }) => {
-    const rows = errorState && Array.isArray(errorState.rows) ? errorState.rows : [];
-    if (rows.length === 0) return;
-    show(rows[rows.length - 1].text);
+    show(errorState.rows[errorState.rows.length - 1].text);
   });
 
   return { show, hide, TOAST_CLASS, TOAST_HIDE_MS };

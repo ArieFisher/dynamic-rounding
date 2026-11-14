@@ -32,7 +32,8 @@ const DR_DEFAULTS = {
 
 /**
  * DR_DETECTION_SETTINGS holds the detection settings: every value that
- * shapes whether an element counts as a table or a grid, plus the two lookup
+ * shapes whether an element counts as a table or a grid, every timing value
+ * (the settle delay, the cell cap, the pass target), plus the two lookup
  * lists detection reads (the display values that mark a grid/flex layout,
  * and the known vendor grid profiles). The detection layer and the controller
  * (content.js) read it as a bare global, with no fallback copy.

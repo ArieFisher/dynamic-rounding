@@ -34,6 +34,9 @@ global.document = {
   querySelectorAll: () => [],   // injectTablePillboxes calls this; return empty list
   readyState: 'complete',       // prevents DOMContentLoaded deferral
   body: { appendChild: () => {}, observe: () => {} },
+  head: { appendChild: () => {} },
+  // The toast view draws on the page for every warn row the suite records.
+  createElement: () => ({ setAttribute: () => {}, addEventListener: () => {} }),
 };
 global.window = {
   addEventListener: () => {},
