@@ -284,7 +284,8 @@ function createTablePillbox(table) {
   });
 
   button.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.stopPropagation(); button.click(); }
+    // The browser fires a click on the button on Enter, so a click call here would press twice.
+    if (e.key === 'Enter') e.stopPropagation();
   });
 
   button.addEventListener('mousedown', (e) => e.stopPropagation());
