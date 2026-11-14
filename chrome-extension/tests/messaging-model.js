@@ -2099,11 +2099,11 @@ const PENDING_FILL_ROWS = [
   }
 })();
 
-// --- (h) WeakMap/Set lockstep, part 1: a table re-added after removal (the
+// --- (h) Registry, part 1: a table re-added after removal (the
 // SAME element reference, as a virtualized-DOM library recycling a detached
 // node back into the tree would do) must come back with a FRESH registry
 // entry, not the previous round's leftover state. unregisterTable deletes
-// the WeakMap entry outright, so a later registerTable (via _ensureEntry)
+// the registry entry outright, so a later registerTable (via _ensureEntry)
 // can only build a brand-new entry — this pins that no per-cell original,
 // round options, or frozen magnitude survives the round trip. ---
 (function registrySprint_reregisterAfterUnregisterGetsFreshEntry() {
@@ -2202,7 +2202,7 @@ const PENDING_FILL_ROWS = [
   forgetRegisteredTable(nativeTable);
 })();
 
-// --- (h) WeakMap/Set lockstep, part 2: the removed-node MutationObserver
+// --- (h) Registry, part 2: the removed-node MutationObserver
 // callback must find and unregister a table when the removedNodes entry is
 // an ANCESTOR of the table, not the table itself — the real production
 // callback (content.js's `_tableObserver`), not GV7's manual re-

@@ -37,9 +37,11 @@ const TABLE_PILLBOX_AUTO_COLLAPSE_MS = 3000;
 // so this cap bounds that cost per table. Real pages nest a table well under
 // 100 ancestors deep. Ancestors past the cap count as cutting off nothing.
 const TABLE_PILLBOX_CLIP_WALK_CAP = 100;
-// Lets the page finish its entrance animations and centering before the table's box is measured.
+// The view places the table pillbox after this wait, so the page's entrance
+// animations and centering have run before it measures the table's box.
 const TABLE_PILLBOX_POSITION_DELAY_MS = 150;
-// Must stay longer than the pulse animation (0.6 s, run twice), so the animation ends first.
+// Must stay longer than the pulse animation (0.6 s, run twice), so the
+// animation ends first.
 const PULSE_CLEANUP_MS = 1500;
 // Overflow values that cut off an element's content at its box.
 const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
