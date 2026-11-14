@@ -514,7 +514,7 @@ function createTablePillboxWithSpies(table) {
   global.window.scrollX = 0;
   global.window.scrollY = 0;
 
-  createTablePillbox(table);
+  registerDataTable(table);
 
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
@@ -1443,7 +1443,7 @@ function makePositionedAncestor(styleOverrides) {
 //
 // injectTablePillboxes() Pass 1 calls document.querySelectorAll('table') and skips
 // any table for which isAccessibilityArtifact(table) is true, then calls
-// createTablePillbox(table) only for the survivors.
+// registerDataTable(table) only for the survivors.
 //
 // A table pillbox was created iff tablePillboxes.has(table) becomes true afterwards.
 //
@@ -1609,7 +1609,7 @@ function cleanupPass1Tables(tables) {
 // with a proper classList and the querySelectorAll('table') that returns a given
 // list of embedded table stubs.  Also provides a real row/cell structure so that
 // isDataTable() → GridAdapter.getRows() returns numeric data rows, making
-// createTablePillbox() proceed past the isDataTable guard.
+// registerDataTable() proceed past the isDataTable guard.
 //
 function makeAriaGrid(embeddedTables) {
   const classes = new Set();
@@ -2014,7 +2014,7 @@ function makeRealTablePillbox(tableSpec, docMock) {
   const table = makeTablePillboxTestTable(tableSpec);
   table._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  createTablePillbox(table);
+  registerDataTable(table);
 
   // Restore globals
   global.document.createElement   = origCreateEl;
@@ -2499,7 +2499,7 @@ function sidebarEventTarget(tagName, el) {
 // later teardown records its table pillbox removal in. The document mock's body stub
 // carries no removeChild, so the table pillbox gets a parent stub of its own.
 function registerFingerprintedTable(table) {
-  withTablePillboxDocumentMock(function () { createTablePillbox(table); });
+  withTablePillboxDocumentMock(function () { registerDataTable(table); });
   return trackTablePillboxDetach(table);
 }
 

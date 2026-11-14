@@ -1507,8 +1507,8 @@ const SEAT_ROWS = [
     const nativeTable = makePass1DataTable();
     nativeTable.parentElement = { tagName: 'DIV', getAttribute: () => null, style: {}, parentElement: null, parentNode: null };
 
-    createTablePillbox(emptyGrid);
-    createTablePillbox(nativeTable);
+    registerDataTable(emptyGrid);
+    registerDataTable(nativeTable);
 
     eq('createTablePillbox: a grid that fails the data test gets no grid marker',
       emptyGrid.classList.contains('dr-ext-grid'), false);

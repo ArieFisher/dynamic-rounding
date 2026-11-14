@@ -288,7 +288,7 @@
     [{ tag: 'td', text: '200' },  { tag: 'td', text: '300' }],
   ]);
 
-  createTablePillbox(table);
+  registerDataTable(table);
 
   // Restore
   global.document.createElement = origCreateEl;
@@ -598,7 +598,7 @@
   ]);
   table._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  createTablePillbox(table);
+  registerDataTable(table);
 
   // Restore
   global.document.createElement = origCreateEl;
@@ -688,7 +688,7 @@
     // The marker with no stored original: the unrestorable pairing.
     table._cells[0].classList.add('dr-ext-rounded');
 
-    createTablePillbox(table);
+    registerDataTable(table);
     const buttonEl = appendedToBody.find((e) => e._tag === 'button');
     buttonEl.dispatchEvent({ type: 'pointerdown', pointerType: 'mouse', stopPropagation() {} });
     (buttonEl._listeners.click || []).forEach((fn) => fn({ stopPropagation() {}, type: 'click' }));
@@ -1068,7 +1068,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   ]);
   table._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  createTablePillbox(table);
+  registerDataTable(table);
 
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
@@ -1146,7 +1146,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     [{ tag: 'td', text: '50000' }, { tag: 'td', text: '100' }],
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
-  createTablePillbox(t);
+  registerDataTable(t);
 
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
@@ -1233,7 +1233,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
   ]);
   t._cells.forEach(c => { c.querySelectorAll = () => []; });
 
-  createTablePillbox(t);
+  registerDataTable(t);
 
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
@@ -1322,7 +1322,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
 
-  createTablePillbox(t);
+  registerDataTable(t);
 
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
@@ -1401,7 +1401,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
 
-  createTablePillbox(t);
+  registerDataTable(t);
 
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
@@ -1505,7 +1505,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
 
-  createTablePillbox(t);
+  registerDataTable(t);
 
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;
@@ -1606,7 +1606,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
     [{ tag: 'td', text: '200' },   { tag: 'td', text: '300' }],
   ]);
 
-  createTablePillbox(t);
+  registerDataTable(t);
 
   global.document.createElement = origCreateEl;
   global.document.body = origDocBody;

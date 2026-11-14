@@ -184,9 +184,9 @@ function cancelSettleWait(key, waits) {
 
 // findTargetTable() only returns what it found; it never writes the
 // dr-ext-grid marker or builds the table pillbox. When it finds a grid root for the
-// first time (found.isNew), this caller has createTablePillbox do both.
+// first time (found.isNew), this caller registers it, which does both.
 function markAndAddTablePillboxIfNewGrid(found) {
-  if (found.isNew) createTablePillbox(found.handle);
+  if (found.isNew) registerDataTable(found.handle);
   return found.handle;
 }
 
@@ -308,12 +308,34 @@ function leftAsWrittenValue(counts = {}) {
     .join(', ');
 }
 
+/**
+ * @param {Element} table The table to register when it passes the data test.
+ * @param {boolean} [hasPassedDataTest] True when the nomination step already ran the data test on the table.
+ */
+function registerDataTable(table, hasPassedDataTest = false) {
+  if (!hasPassedDataTest && !isDataTable(table)) return;
+  DR_MODEL.registerTable(table);
+  // A new registry entry holds no originals, so this read takes the cells as
+  // they stand.
+  DR_MODEL.setTableFingerprint(table, readTableFingerprint(table, fingerprintReadOpts(table)));
+  createTablePillbox(table);
+}
+
+// The load-time scan, and the added-node pass for each added element.
+/** @param {Document|Element} [root] The node whose subtree the scan reads. */
+function injectTablePillboxes(root = document) {
+  const { tables, nominations } = scanTables(root, { isRegistered: DR_MODEL.hasTable });
+  tables.forEach(table => {
+    if (!DR_MODEL.hasTable(table)) registerDataTable(table);
+  });
+  consumeNominations(nominations);
+}
+
 // The one consumer of the nomination step's per-nest outcomes. The table
-// scan in the table pillbox view (injectTablePillboxes) routes its grid pass
-// through here, for the load-time scan and the added-node pass alike, so the
-// pending record and its clearing sit behind the step's outcome and never in
-// a caller. The step returns outcomes; this is where an outcome becomes a
-// registration or a watch.
+// scan above routes its grid pass through here, for the load-time scan and
+// the added-node pass alike, so the pending record and its clearing sit
+// behind the step's outcome and never in a caller. The step returns
+// outcomes; this is where an outcome becomes a registration or a watch.
 //
 // The step's results hold grids alone: each scanner's own pass 1 covers native
 // <table> elements, and the nomination step's two guards keep a native table
@@ -340,7 +362,7 @@ function consumeNominations(results) {
 function consumeNomination({ chainRoot, selected, outcome }) {
   if (outcome === 'selected') {
     dropPendingTable(chainRoot);
-    createTablePillbox(selected);
+    registerDataTable(selected, true);
     return;
   }
   if (outcome === 'empty') {
@@ -431,7 +453,7 @@ function dropPendingTable(chainRoot) {
 //
 // A table with no recorded fingerprint compares against nothing and returns
 // as a match. Only a first write through the registry's setters creates such
-// an entry, never createTablePillbox, and discarding an entry over a
+// an entry, never registerDataTable, and discarding an entry over a
 // reading that never happened would throw away originals for no finding.
 //
 // Nothing registering — the whole nest fails the data test — returns null,
@@ -478,8 +500,8 @@ function revalidateTableShape(table, opts = {}) {
   let fresh = null;
   for (const { handle, isNew } of findTables(root, { isRegistered: DR_MODEL.hasTable })) {
     if (!isNew) continue;
-    createTablePillbox(handle);
-    // createTablePillbox registers only what passes the data test, so the
+    registerDataTable(handle);
+    // registerDataTable registers only what passes the data test, so the
     // registry records whether this element registered.
     if (!fresh && DR_MODEL.hasTable(handle)) fresh = handle;
   }
@@ -595,6 +617,13 @@ function registryOriginalsPort(table) {
     get(cellEl) { return DR_MODEL.getTableOriginal(table, cellEl); },
     set(cellEl, record) { DR_MODEL.setTableOriginal(table, cellEl, record); },
   };
+}
+
+// The recorded and the compared fingerprint both read the stored originals, so
+// the extension's own writes never read as a page change.
+/** @param {Element} table The registered table whose stored originals the reader returns. */
+function fingerprintReadOpts(table) {
+  return { originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl) };
 }
 
 // Restore a table's simplified cells to their originals, reading from

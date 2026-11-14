@@ -149,6 +149,7 @@ Object.defineProperty(globalThis, 'highlightStyleInjected', {
 globalThis.syncTablePillbox = syncTablePillbox;
 globalThis.positionTablePillbox = positionTablePillbox;
 globalThis.createTablePillbox = createTablePillbox;
+globalThis.registerDataTable = registerDataTable;
 globalThis.injectTablePillboxes = injectTablePillboxes;
 globalThis.isDataTable = isDataTable;
 // The lens preview's sample pool for one table, built from the two steps

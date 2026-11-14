@@ -1227,7 +1227,7 @@ const PENDING_FILL_ROWS = [
     // the re-test runs.
     fillDatabaseQueryGrid(grid);
     withTablePillboxDocumentMock(function () {
-      createTablePillbox(grid.scrollPaneEl);
+      registerDataTable(grid.scrollPaneEl);
     });
     eq('pending registered: the other route registered the scrolling pane',
       DR_MODEL.hasTable(grid.scrollPaneEl), true);
@@ -2186,14 +2186,14 @@ const PENDING_FILL_ROWS = [
   const grouped = makeScrollingRowgroupGrid(['Region', 'Q1'], [
     ['North', '1,482,391'], ['South', '918,554'],
   ]);
-  withTablePillboxDocumentMock(function () { createTablePillbox(grouped.wrapperEl); });
+  withTablePillboxDocumentMock(function () { registerDataTable(grouped.wrapperEl); });
   eq('fingerprint registry: registering a grid with a row group records its header row',
     DR_MODEL.getTableFingerprint(grouped.wrapperEl),
     { columnCount: 2, headerTexts: ['Region', 'Q1'] });
   forgetRegisteredTable(grouped.wrapperEl);
 
   const grid = makeDatabaseQueryGrid();
-  withTablePillboxDocumentMock(function () { createTablePillbox(grid.scrollPaneEl); });
+  withTablePillboxDocumentMock(function () { registerDataTable(grid.scrollPaneEl); });
   eq('fingerprint registry: registering a groupless grid records its column count alone',
     DR_MODEL.getTableFingerprint(grid.scrollPaneEl),
     { columnCount: 3, headerTexts: null });
@@ -2203,7 +2203,7 @@ const PENDING_FILL_ROWS = [
     [{ tag: 'th', text: 'Region' }, { tag: 'th', text: 'Q1' }],
     [{ tag: 'td', text: 'North' }, { tag: 'td', text: '1,482,391' }],
   ]);
-  withTablePillboxDocumentMock(function () { createTablePillbox(nativeTable); });
+  withTablePillboxDocumentMock(function () { registerDataTable(nativeTable); });
   eq('fingerprint registry: registering a native table records its header row',
     DR_MODEL.getTableFingerprint(nativeTable),
     { columnCount: 2, headerTexts: ['Region', 'Q1'] });
@@ -4642,8 +4642,8 @@ function issue328SettingsOf(table) {
     const unsubscribe = DR_BUS.subscribe('state:tableSwitched', () => { switches++; });
     try {
       withTablePillboxDocumentMock(() => {
-        createTablePillbox(active.table);
-        createTablePillbox(other.table);
+        registerDataTable(active.table);
+        registerDataTable(other.table);
         DR_MODEL.setTableSettings(active.table,
           Object.assign({}, RW_OPTS, { simplifyFirstRow: false, enabled: true }), 'page');
         DR_MODEL.setActiveTable(active.table);
