@@ -171,7 +171,8 @@ const DR_BUS = (function () {
 
   /**
    * Run one delivery a level deeper on the publish depth.
-   * @param {string} action - The words the error text puts before the topic name, e.g. 'publishing'.
+   * @param {string} action - The words the error text puts before the topic
+   *   name, e.g. 'publishing'.
    * @param {string} topic - The topic being delivered, for the error text.
    * @param {Function} deliver - The delivery to run at the deeper level.
    */
@@ -322,7 +323,8 @@ const DR_BUS = (function () {
    * @param {string} topic - A request-family topic name.
    * @param {Object} payload - The plain-value fields sent beside the name.
    * @param {Function} callback - Receives the responder's answer, or undefined.
-   * @param {{tabId: ?number}} [opts] - The tab to send to; without a tab number the bus queries the tab in front of the current window.
+   * @param {{tabId: ?number}} [opts] - The tab to send to; without a tab
+   *   number the bus queries the tab in front of the current window.
    */
   function request(topic, payload, callback, opts) {
     assertKnownTopic(topic);
