@@ -24,7 +24,7 @@ The table pillbox sits in the page body, outside the page's own markup, because 
 
 The sidebar opens beside one tab and serves that tab for as long as it is open. It acts on what that tab's page reports and drops what any other tab reports, so a table changing in a background tab never moves the sidebar's controls for a page the user cannot see.
 
-A tab switch closes the sidebar. The service worker closes it whenever the user leaves the tab it was opened for, and the sidebar closes itself on the switches the worker misses: an idle restart empties the tab number the worker compares against, and a sidebar opened from Chrome's own side-panel control never sets it. Those switches used to leave the sidebar open, showing controls for a page the user had left.
+A tab switch closes the sidebar. The sidebar closes itself when the tab it was opened for stops being the tab in front of its own window, whichever way the user opened it. A tab switch in another window leaves it open. A reload or navigation of its tab closes it too, through the service worker.
 
 ## Header cells follow the switches
 

@@ -1354,9 +1354,9 @@ const PENDING_FILL_ROWS = [
      'state:errorRecorded',
      // The sidebar's three requests, each answered by the tab's content script.
      'request:applySettings', 'request:activeTable', 'request:captureState',
-     // The service worker's four, plus the two it receives.
+     // The service worker's three, plus the one it receives.
      'intent:menuClicked', 'state:sidebarOpened', 'state:boundTabLeft',
-     'state:sidebarClosed', 'state:pageUnloaded',
+     'state:sidebarClosed',
      // The content script's six reports to the sidebar, the settings
      // notice among them.
      'state:settingsChanged', 'state:tableActivated', 'state:tableSwitched',
@@ -1371,7 +1371,6 @@ const PENDING_FILL_ROWS = [
     'state:sidebarOpened': ['state-change', 'tab'],
     'state:boundTabLeft': ['state-change', 'extension-pages'],
     'state:sidebarClosed': ['state-change', 'extension-pages'],
-    'state:pageUnloaded': ['state-change', 'extension-pages'],
     // The content script's six reports. Every one broadcasts: the content
     // script holds no tabs interface, and the sidebar is an extension page.
     'state:settingsChanged': ['state-change', 'extension-pages'],
@@ -4137,7 +4136,7 @@ function issue328SettingsOf(table) {
   // audience: that carrier needs none. An absent interface is no reason to
   // pick the other carrier.
   const g = makeBusSandbox({ noTabs: true });
-  g.bus.publish('state:pageUnloaded', {});
+  g.bus.publish('state:boundTabLeft', {});
   eq('bus route: an extension-pages topic sends from a context with no chrome.tabs',
     g.sent.pages.length, 1);
 
@@ -4180,11 +4179,9 @@ function issue328SettingsOf(table) {
 
 // --- A subscriber learns the sending tab ---
 //
-// The service worker's page-unload handler reads the sending tab's number off
-// Chrome's sender record and acts only when that tab is the one the sidebar
-// was opened for. A payload cannot carry the number — a content script does
-// not hold its own. Without this argument, the bus would close the sidebar
-// on a page unload in any tab.
+// The sidebar reads the sending tab's number off Chrome's sender record and
+// acts only on a message from the tab it was opened for. A payload cannot
+// carry the number — a content script does not hold its own.
 (function busSubscriberReceivesSenderTab() {
   const a = makeBusSandbox();
   const sameContext = [];
