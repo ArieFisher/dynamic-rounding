@@ -5,7 +5,6 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
-// The worker's one row goes to the console, so its log buffer stays empty.
 importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
 
 let boundTabId = null;
@@ -22,7 +21,7 @@ chrome.runtime.onInstalled.addListener(() => {
   // no tab permission, so the screenshot fails.
   if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch((e) => {
-      console.warn(DR_LOG.formatRow('error', { step: 'icon click setting', error: DR_LOG.errorType(e) }));
+      DR_LOG.warn(DR_LOG.formatRow('error', { step: 'icon click setting', error: DR_LOG.errorType(e) }));
     });
   }
   chrome.contextMenus.create({
@@ -43,36 +42,30 @@ chrome.runtime.onInstalled.addListener(() => {
  * as a direct response to the user's click, so a caller runs this before
  * any await of its own.
  * @param {number} tabId The tab the user clicked in.
- * @param {boolean} [toggleFirst=false] Whether to publish the menu toggle's
- *   intent before the sidebar-opened topic.
  */
-async function openSidebarOnTab(tabId, toggleFirst = false) {
+async function openSidebarOnTab(tabId) {
   try {
     if (chrome.sidePanel && chrome.sidePanel.open) {
       await chrome.sidePanel.open({ tabId });
     }
   } catch (e) {
-    console.warn(DR_LOG.formatRow('error', { step: 'open sidebar', error: DR_LOG.errorType(e) }));
+    DR_LOG.warn(DR_LOG.formatRow('error', { step: 'open sidebar', error: DR_LOG.errorType(e) }));
   }
   boundTabId = tabId;
-  // The toggle goes first, so the sidebar's redraw read on opening returns
-  // the toggled settings.
-  if (toggleFirst) DR_BUS.publish('intent:menuClicked', {}, { tabId });
   DR_BUS.publish('state:sidebarOpened', {}, { tabId });
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "dr-menu-toggle") {
-    // The user right-clicked in this tab. Without a tab number the bus sends
-    // to the tab in front of the current window, which can be a different
-    // tab, so the publish passes this tab's number.
-    DR_BUS.publish('intent:menuClicked', {}, { tabId: tab.id });
-    return;
-  }
+  const isToggleWithSidebar = info.menuItemId === "dr-menu-toggle-sidebar";
+  if (info.menuItemId !== "dr-menu-toggle" && !isToggleWithSidebar) return;
 
-  if (info.menuItemId === "dr-menu-toggle-sidebar") {
-    openSidebarOnTab(tab.id, true);
-  }
+  // The user right-clicked in this tab. Without a tab number the bus sends
+  // to the tab in front of the current window, which can be a different
+  // tab, so the publish passes this tab's number. The toggle goes before the
+  // sidebar-opened topic, so the sidebar's redraw read on opening returns the
+  // toggled settings.
+  DR_BUS.publish('intent:menuClicked', {}, { tabId: tab.id });
+  if (isToggleWithSidebar) openSidebarOnTab(tab.id);
 });
 
 // No table sits under the pointer on the toolbar icon, so its click opens
@@ -96,19 +89,6 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (tabId === boundTabId) {
-    closeSidebarIfOpen();
-  }
-});
-
-chrome.tabs.onActivated.addListener((activeInfo) => {
-  if (boundTabId !== null && activeInfo.tabId !== boundTabId) {
-    closeSidebarIfOpen();
-  }
-});
-
-// Without the tab check, a page unload in any tab would close the sidebar.
-DR_BUS.subscribe('state:pageUnloaded', (payload, meta) => {
-  if (meta.tabId !== null && meta.tabId === boundTabId) {
     closeSidebarIfOpen();
   }
 });

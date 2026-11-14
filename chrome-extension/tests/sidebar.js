@@ -1380,6 +1380,27 @@ const SINGLE_READ_SAMPLES = {
       noWindow.windowId(), null);
   })();
 
+  // --- The tab number the sidebar's requests address ---
+  (function tabIdAccessor() {
+    const boundTab = createBoundTab(makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]), makeBus());
+    const before = boundTab.tabId();
+    boundTab.resolve(() => {});
+    eq('bound tab: tabId() answers null before the lookup and the bound tab after it',
+      [before, boundTab.tabId()], [null, OWN_TAB]);
+    const noTab = createBoundTab(makeTabs([]), makeBus());
+    noTab.resolve(() => {});
+    eq('bound tab: tabId() stays null when there is no tab to bind to',
+      noTab.tabId(), null);
+
+    // Every request the sidebar sends addresses the bound tab.
+    const calls = sidebarSrc.match(/DR_BUS\.request\('[^']+'[\s\S]*?\n  \}[^\n]*\);/g) || [];
+    eq('bound tab: the sidebar sends at least one request (fails closed on a lost match)',
+      calls.length > 0, true);
+    eq('bound tab: every sidebar request passes the bound tab\'s number',
+      calls.length === (sidebarSrc.match(/DR_BUS\.request\(/g) || []).length &&
+        calls.every((call) => call.endsWith('}, { tabId: boundTab.tabId() });')), true);
+  })();
+
   // No tab to bind to: the sidebar still runs its opening read, which falls
   // to the unbound state on its own when nothing answers.
   (function resolveWithNoActiveTab() {
@@ -1441,11 +1462,8 @@ const SINGLE_READ_SAMPLES = {
 
   // --- Leaving the bound tab ---
   //
-  // The service worker closes the sidebar when the tab it was opened for
-  // stops being the front tab, and misses two routes: an idle restart empties
-  // the tab number it compares against, and a sidebar opened from Chrome's
-  // own side-panel control never sets it. On those routes the sidebar closes
-  // itself, so a tab switch has one outcome.
+  // The sidebar's own listener is the one close path on a tab switch: the
+  // service worker holds no switch listener.
   (function closesOnSwitchAway() {
     const tabs = makeTabs([{ id: OWN_TAB, windowId: OWN_WINDOW }]);
     const boundTab = createBoundTab(tabs, makeBus());
