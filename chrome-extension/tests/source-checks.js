@@ -874,9 +874,9 @@
       onUpdated:   { addListener: () => {} },
       onRemoved:   { addListener: () => {} },
     },
-    // Omitted deliberately: background.js guards on chrome.sidePanel, so with
-    // it absent the sidebar-open handler never awaits and the tab number is
-    // set by the time the call returns.
+    // Omitted deliberately: with it absent the open call throws before any
+    // await, so the sidebar-open handler's catch runs at once and the tab
+    // number is set by the time the call returns.
   };
 
   // Every handler call runs while the stub is the global chrome. The bus reads
@@ -898,7 +898,7 @@
 
       // Case B: the sidebar was opened, so the worker holds its tab number.
       // The handler runs to completion synchronously with chrome.sidePanel
-      // absent.
+      // absent: the open call throws and the catch writes a warn row.
       sentTabMessages.length = 0;
       capturedClickHandler({ menuItemId: 'dr-menu-toggle-sidebar' }, { id: PANEL_TAB });
       result.sentOpenedReport = sentTabMessages.some(m => m.tabId === PANEL_TAB &&
@@ -1100,9 +1100,9 @@
   const bgSrc = fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8');
 
   // Evaluate background.js against a capturing stub. sidePanel is deliberately
-  // omitted: background.js guards on `chrome.sidePanel && chrome.sidePanel.open`,
-  // so with it absent the menu handler never awaits and runs to completion
-  // synchronously, letting us assert without async plumbing.
+  // omitted: the open call then throws before any await and the catch runs
+  // at once, so the menu handler runs to completion synchronously, letting us
+  // assert without async plumbing.
   //
   // The worker runs on the bus, so the bus source goes into the same
   // function scope ahead of it, standing in for the importScripts the browser
