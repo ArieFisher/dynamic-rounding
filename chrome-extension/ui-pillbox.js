@@ -253,8 +253,9 @@ function createTablePillbox(table) {
     positionTablePillbox(table, button);
   }, TABLE_PILLBOX_POSITION_DELAY_MS);
 
+  let pointerType = '';
   button.addEventListener('pointerdown', (e) => {
-    button.dataset.pointerType = e.pointerType || '';
+    pointerType = e.pointerType || '';
   });
 
   let _touchPenCollapseTimer = null;
@@ -273,8 +274,7 @@ function createTablePillbox(table) {
   // and then the press. This view holds only the expand and collapse state.
   button.addEventListener('click', (e) => {
     e.stopPropagation();
-    const pType = button.dataset.pointerType;
-    if (pType === 'touch' || pType === 'pen') {
+    if (pointerType === 'touch' || pointerType === 'pen') {
       if (!button.classList.contains('expanded')) {
         button.classList.add('expanded');
       } else {
