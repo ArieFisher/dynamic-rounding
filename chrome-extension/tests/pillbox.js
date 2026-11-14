@@ -97,8 +97,8 @@
     classes.has('dr-ext-active-flash'), true);
 })();
 
-// A flash draws from the highlight stylesheet, so each flash function adds it
-// itself: a right-click before any apply on the page still draws the flash.
+// Before the first apply on a page nothing else has added the highlight
+// stylesheet, so each flash function adds it itself.
 (function flashAddsHighlightStyleBeforeAnyApply() {
   function stylesAddedBy(flash) {
     const saved = {
@@ -128,14 +128,14 @@
     offsetWidth: 0,
     rows: [],
   };
-  eq('flash style: the whole-table flash adds the highlight stylesheet on a page with no apply',
+  eq('flash style: flashActiveTable adds the highlight stylesheet on a page with no apply',
     stylesAddedBy(() => flashActiveTable(wholeTable)), 1);
 
   const table = makeMergedSpanTable();
   const shifted = table.rows[2].cells;
   shifted[0].getBoundingClientRect = () => ({ top: 40, left: 100, right: 200, bottom: 60 });
   shifted[1].getBoundingClientRect = () => ({ top: 40, left: 200, right: 300, bottom: 60 });
-  eq('flash style: the range pulse adds the highlight stylesheet on a page with no apply',
+  eq('flash style: flashRangePulse adds the highlight stylesheet on a page with no apply',
     stylesAddedBy(() => flashRangePulse(table, [{ rowMin: 2, rowMax: 2, colMin: 1, colMax: 1 }])), 1);
 })();
 
@@ -2509,7 +2509,7 @@ const CLIP_PANEL_BOX = { top: 100, bottom: 700, left: 0, right: 1000, width: 100
       flashedClasses.includes('dr-ext-active-flash'),
       true);
 
-    eq('table-activation AC1 runtime: the first right-click on a page adds the highlight stylesheet',
+    eq('table-activation AC1 runtime: flashActiveTable adds the highlight stylesheet on the first right-click on a page',
       addedToHead.some((node) => String(node.textContent).includes('drExtActiveFlash')),
       true);
 
