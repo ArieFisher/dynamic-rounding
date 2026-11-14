@@ -42,8 +42,7 @@ DR_BUS.subscribe('intent:activateTable', ({ table }) => {
 // caller runs the shape check first and passes the table it returns, so a
 // write to a table the page refilled lands on the fresh registration.
 function writeTableSettings(table, patch, source) {
-  DR_MODEL.setTableSettings(table,
-    Object.assign({}, DR_MODEL.getTableSettings(table), patch), source);
+  DR_MODEL.setTableSettings(table, patch, source);
   applySidebarRounding(table);
 }
 

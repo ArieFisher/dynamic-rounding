@@ -2070,8 +2070,9 @@ const LADDER_OPTS = {
 
 // ---------------------------------------------------------------------------
 // Settings live in DR_MODEL, one set per table: a table with none
-// reads as the shipped defaults, setTableSettings stores the whole settings
-// with the defaults filled in and publishes the whole new value, and
+// reads as the shipped defaults, setTableSettings merges its patch onto the
+// stored settings (the defaults when none are stored) and publishes the whole
+// new value, and
 // getTableSettings reads back a copy.
 // ---------------------------------------------------------------------------
 (function appModelSettings_storeTableSettings() {
@@ -2102,6 +2103,19 @@ const LADDER_OPTS = {
   read.offsetTop = 999;
   eq('DR_MODEL.getTableSettings: returns a copy, not a live reference — mutating it does not affect the application model',
     DR_MODEL.getTableSettings(table).offsetTop, 0.25);
+  DR_MODEL.unregisterTable(table);
+})();
+
+(function appModelSettings_secondPartialWriteKeepsFirst() {
+  const table = { tagName: 'TABLE' };
+  DR_MODEL.setTableSettings(table, { offsetTop: 0.25 }, 'page');
+  DR_MODEL.setTableSettings(table, { rangeExpr: 'A1:C9' }, 'page');
+  eq('DR_MODEL.setTableSettings: a second partial write keeps the first write\'s key',
+    DR_MODEL.getTableSettings(table).offsetTop, 0.25);
+  eq('DR_MODEL.setTableSettings: a second partial write stores its own key',
+    DR_MODEL.getTableSettings(table).rangeExpr, 'A1:C9');
+  eq('DR_MODEL.setTableSettings: a key neither write holds keeps the shipped default',
+    DR_MODEL.getTableSettings(table).simplifyDates, DR_DEFAULTS.simplifyDates);
   DR_MODEL.unregisterTable(table);
 })();
 
