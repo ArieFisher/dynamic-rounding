@@ -202,6 +202,20 @@ function positionTablePillbox(table, button) {
   button.style.top  = buttonTop  + 'px';
 }
 
+// The shape fingerprint's read options: the registry's stored
+// pre-simplification text per cell. The recording in createTablePillbox and
+// the comparison in content.js's revalidateTableShape both read through it,
+// so a header cell the extension itself simplified still reads as the text
+// the registry recorded, and the extension's own writes never read as a page
+// change.
+/**
+ * @param {Element} table The registered table whose stored originals the reader returns.
+ * @returns {{originalText: function(Element): (string|undefined)}}
+ */
+function fingerprintReadOpts(table) {
+  return { originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl) };
+}
+
 /** Guard so the global tap-outside collapse listener is added only once */
 let _globalTapCollapseAdded = false;
 
@@ -277,11 +291,7 @@ function createTablePillbox(table) {
   DR_MODEL.registerTable(table);
   // The shape fingerprint, recorded once per registration. A new registry
   // entry holds no originals, so this read takes the cells as they stand.
-  // revalidateTableShape in content.js compares against it through the same
-  // originalText reader.
-  DR_MODEL.setTableFingerprint(table, readTableFingerprint(table, {
-    originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl),
-  }));
+  DR_MODEL.setTableFingerprint(table, readTableFingerprint(table, fingerprintReadOpts(table)));
 
   const ro = new ResizeObserver(() => {
     positionTablePillbox(table, button);

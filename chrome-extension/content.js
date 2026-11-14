@@ -392,15 +392,6 @@ function dropPendingTable(chainRoot) {
   pendingRoots.delete(chainRoot);
 }
 
-// The shape fingerprint's read options for one table: the registry's stored
-// pre-simplification text per cell. The recording site (createTablePillbox)
-// passes the same thing, so a header cell the extension itself simplified
-// still reads as the text the registry recorded, and the extension's own
-// writes never read as a page change.
-function fingerprintReadOpts(table) {
-  return { originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl) };
-}
-
 // Check a registered table's shape against the fingerprint the registry
 // recorded, and recover when the two differ. Every action on a registered
 // table runs this first, and acts on the element it returns.
