@@ -703,10 +703,10 @@
   }
 })();
 
-// --- Enter on the table pillbox leaves the one click to the button ---
-// A native button clicks itself on Enter, and that click publishes the toggle.
-// The stubs cannot simulate the native click, so the test checks that the key
-// handler adds none.
+// --- Enter on the table pillbox presses once ---
+// The browser fires a click on a native button on Enter, and the click handler
+// publishes the toggle intent. The stubs do not run that native click, so the
+// test checks that the key handler publishes nothing and calls no click.
 (function tablePillboxEnterKeyAddsNoSecondPress() {
   const table = makeTablePillboxTestTable([
     [{ tag: 'td', text: '50,000' }, { tag: 'td', text: '100' }],
