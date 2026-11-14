@@ -14,7 +14,6 @@ let boundTabId = null;
 // sidebar.
 const PAGE_MENU_CONTEXTS = ["page", "frame", "selection", "link", "editable", "image", "video", "audio"];
 
-// One fixed label serves every table on the page, so nothing updates it.
 chrome.runtime.onInstalled.addListener(() => {
   // Versions before 1.7.1 stored true here, and Chrome may still hold it.
   // With true, Chrome opens the sidebar itself on an icon click, which grants
@@ -74,7 +73,11 @@ chrome.action.onClicked.addListener((tab) => {
   openSidebarOnTab(tab.id);
 });
 
-function closeSidebarIfOpen() {
+/**
+ * @param {number} tabId The tab that reloaded or closed. The function publishes the close only when this is the bound tab.
+ */
+function closeSidebarIfOpen(tabId) {
+  if (tabId !== boundTabId) return;
   // The broadcast reaches every extension page, and the sidebar closes itself
   // on it.
   DR_BUS.publish('state:boundTabLeft', {});
@@ -82,15 +85,11 @@ function closeSidebarIfOpen() {
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (tabId === boundTabId && changeInfo.status === "loading") {
-    closeSidebarIfOpen();
-  }
+  if (changeInfo.status === "loading") closeSidebarIfOpen(tabId);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (tabId === boundTabId) {
-    closeSidebarIfOpen();
-  }
+  closeSidebarIfOpen(tabId);
 });
 
 DR_BUS.subscribe('state:sidebarClosed', () => {

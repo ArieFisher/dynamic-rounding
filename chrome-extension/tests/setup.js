@@ -34,6 +34,9 @@ global.document = {
   querySelectorAll: () => [],   // injectTablePillboxes calls this; return empty list
   readyState: 'complete',       // prevents DOMContentLoaded deferral
   body: { appendChild: () => {}, observe: () => {} },
+  head: { appendChild: () => {} },
+  // The toast view draws on the page for every warn row the suite records.
+  createElement: () => ({ setAttribute: () => {}, addEventListener: () => {} }),
 };
 global.window = {
   addEventListener: () => {},
@@ -173,12 +176,6 @@ globalThis.TABLE_PILLBOX_COLOR_ON = TABLE_PILLBOX_COLOR_ON;
 globalThis.TABLE_PILLBOX_AUTO_COLLAPSE_MS = TABLE_PILLBOX_AUTO_COLLAPSE_MS;
 globalThis.TABLE_PILLBOX_CLIP_WALK_CAP = TABLE_PILLBOX_CLIP_WALK_CAP;
 globalThis.ensureScrollResizeListeners = ensureScrollResizeListeners;
-// _scrollResizeListenersAdded is a let; expose getter/setter so tests can reset it.
-Object.defineProperty(globalThis, '_scrollResizeListenersAdded', {
-  get() { return _scrollResizeListenersAdded; },
-  set(v) { _scrollResizeListenersAdded = v; },
-  configurable: true,
-});
 // _globalTapCollapseAdded is a let; expose getter/setter so tests can reset it.
 Object.defineProperty(globalThis, '_globalTapCollapseAdded', {
   get() { return _globalTapCollapseAdded; },

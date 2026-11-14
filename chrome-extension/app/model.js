@@ -153,14 +153,13 @@ const DR_MODEL = (function () {
 
   // The registry stores a cell's original as the record documented in
   // _ensureEntry, which carries the original text as value. This read
-  // returns that text, or undefined when no original is stored. A plain
-  // string reads back as itself. The capture's state serializer and the
-  // shape fingerprint's read are the callers; the cell objects and the
-  // controller (content.js) read the record whole.
+  // returns that text, or undefined when no original is stored. The
+  // capture's state serializer and the shape fingerprint's read are the
+  // callers; the cell objects and the controller (content.js) read the record
+  // whole.
   function getTableOriginalText(table, cellEl) {
     const original = getTableOriginal(table, cellEl);
-    if (original === undefined || original === null) return undefined;
-    return typeof original === 'object' ? original.value : original;
+    return original === undefined ? undefined : original.value;
   }
 
   function deleteTableOriginal(table, cellEl) {
@@ -179,7 +178,7 @@ const DR_MODEL = (function () {
   // The one place the shipped defaults fill in on a write. settings is a
   // patch: a key it leaves out keeps its stored value.
   function setTableSettings(table, settings, source) {
-    const stored = Object.assign({}, getTableSettings(table), settings || {});
+    const stored = Object.assign({}, getTableSettings(table), settings);
     _ensureEntry(table).settings = stored;
     DR_BUS.publish('state:settingsChanged', { source, settings: Object.assign({}, stored) });
   }
