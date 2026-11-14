@@ -167,10 +167,10 @@
     typeof createTablePillbox, 'function');
   eq('table-pillbox: resetTable is defined',
     typeof resetTable, 'function');
-  eq('table-pillbox: tablePillboxes WeakMap is defined',
-    tablePillboxes instanceof WeakMap, true);
-  eq('table-pillbox: trackedTables Set is defined',
-    trackedTables instanceof Set, true);
+  eq('table-pillbox: tablePillboxViews WeakMap is defined',
+    tablePillboxViews instanceof WeakMap, true);
+  eq('table-pillbox: removeTablePillbox is defined',
+    typeof removeTablePillbox, 'function');
 })();
 
 // --- Regression guard: content.js declares the new infrastructure ---
@@ -179,10 +179,8 @@
   // Table pillbox infrastructure lives in ui-pillbox.js;
   // scan the combined content-script source so the contract is location-agnostic.
   const src = allContentSrc;
-  eq('table-pillbox: declares tablePillboxes WeakMap',
-    /const\s+tablePillboxes\s*=\s*new\s+WeakMap/.test(src), true);
-  eq('table-pillbox: declares trackedTables Set',
-    /const\s+trackedTables\s*=\s*new\s+Set/.test(src), true);
+  eq('table-pillbox: declares tablePillboxViews WeakMap',
+    /const\s+tablePillboxViews\s*=\s*new\s+WeakMap/.test(src), true);
   eq('table-pillbox: defines isTableOn',
     /function\s+isTableOn\b/.test(src), true);
   eq('table-pillbox: defines syncTablePillbox',
@@ -1733,11 +1731,12 @@
       (addedNodePassSrc.includes('GRID_ARIA_SELECTOR') || addedNodePassSrc.includes('role="grid"')),
     false);
   // The step's page-wide entry point is nominateNests, which scanTables
-  // composes. Both scanners act on every outcome, so both call scanTables.
+  // composes. The load-time scan and the added-node pass share one function
+  // in the view, and that function calls scanTables.
   eq('nesting AC6: the load-time scan calls the table scan',
     loadTimeScanSrc !== null && /scanTables\s*\(/.test(loadTimeScanSrc), true);
-  eq('nesting AC6: the added-node pass calls the table scan',
-    addedNodePassSrc !== null && /scanTables\s*\(/.test(addedNodePassSrc), true);
+  eq('nesting AC6: the added-node pass passes each added element to the load-time scan function',
+    addedNodePassSrc !== null && /injectTablePillboxes\s*\(\s*node\s*\)/.test(addedNodePassSrc), true);
 })();
 
 // --- AC7: the living documents and the test page state the rule ---

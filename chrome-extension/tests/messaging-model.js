@@ -958,7 +958,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(lone);
+      injectTablePillboxes(lone);
     });
 
     eq('pending AC1: an empty container registers nothing',
@@ -996,7 +996,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(grid.wrapperEl);
+      injectTablePillboxes(grid.wrapperEl);
     });
 
     eq('pending AC1: an empty database query grid registers nothing',
@@ -1048,7 +1048,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(grid.wrapperEl);
+      injectTablePillboxes(grid.wrapperEl);
     });
 
     eq('pending AC2: a nest of four qualifying elements carries one observer',
@@ -1063,7 +1063,7 @@ const PENDING_FILL_ROWS = [
     // A second pass over the same empty wrapper holds the record it already
     // has rather than starting a second one.
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(grid.wrapperEl);
+      injectTablePillboxes(grid.wrapperEl);
     });
     eq('pending AC2: a second pass over the same empty wrapper adds no second observer',
       observers.length, 1);
@@ -1103,7 +1103,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(neverEl);
+      injectTablePillboxes(neverEl);
     });
 
     eq('pending AC3: the container is held as a pending table',
@@ -1176,7 +1176,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(neverEl);
+      injectTablePillboxes(neverEl);
     });
     const observer = observers[0];
     const timersBefore = timers.length;
@@ -1220,7 +1220,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(grid.wrapperEl);
+      injectTablePillboxes(grid.wrapperEl);
     });
 
     eq('pending registered: the empty wrapper is held as a pending table',
@@ -1278,7 +1278,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(rootEl);
+      injectTablePillboxes(rootEl);
     });
 
     eq('pending crowded: the empty root is held as a pending table',
@@ -1330,7 +1330,7 @@ const PENDING_FILL_ROWS = [
 
   withPendingHarness(function ({ observers, timers }) {
     withTablePillboxDocumentMock(function () {
-      injectTablePillboxesForAddedNode(grid.wrapperEl);
+      injectTablePillboxes(grid.wrapperEl);
     });
 
     const observer = observers[0];
@@ -2256,14 +2256,13 @@ const PENDING_FILL_ROWS = [
   global.NodeFilter = { SHOW_TEXT: 4 };
 
   try {
-    // Expose this eval's own DR_MODEL/tablePillboxes/trackedTables bindings
+    // Expose this eval's own DR_MODEL/tablePillboxes bindings
     // (distinct instances from the file-level ones the rest of the suite
     // uses) onto globalThis so this function can drive and inspect them
     // after eval() returns — same trick the top-of-file eval already uses.
     eval(contentScriptBundle + `
       globalThis.__rt_DR_MODEL = DR_MODEL;
-      globalThis.__rt_tablePillboxes = tablePillboxes;
-      globalThis.__rt_trackedTables = trackedTables;
+      globalThis.__rt_tablePillboxes = tablePillboxButtons(tablePillboxViews);
     `);
 
     eq('ancestor removal: exactly one MutationObserver constructed (the _tableObserver watching document.body)',
@@ -2274,7 +2273,6 @@ const PENDING_FILL_ROWS = [
 
     const freshDR_MODEL = global.__rt_DR_MODEL;
     const freshTablePillboxes = global.__rt_tablePillboxes;
-    const freshTrackedTables = global.__rt_trackedTables;
 
     // A table nested under a container — the removedNodes record will carry
     // the CONTAINER, never the table directly (e.g. a host page detaching a
@@ -2283,7 +2281,6 @@ const PENDING_FILL_ROWS = [
     const removedButtons = [];
     const button = { parentElement: { removeChild(b) { removedButtons.push(b); } } };
     freshTablePillboxes.set(table, button);
-    freshTrackedTables.add(table);
     freshDR_MODEL.registerTable(table);
 
     eq('ancestor removal (pre): table is registered before the removal fires',
@@ -2303,8 +2300,6 @@ const PENDING_FILL_ROWS = [
 
     eq('ancestor removal: DR_MODEL.hasTable is false after the ancestor-only removal record',
       freshDR_MODEL.hasTable(table), false);
-    eq('ancestor removal: trackedTables no longer has the table',
-      freshTrackedTables.has(table), false);
     eq('ancestor removal: the table\'s table pillbox was removed from its parent',
       removedButtons.includes(button), true);
 
@@ -2312,7 +2307,6 @@ const PENDING_FILL_ROWS = [
     // also still work — the `table === node` half of the containment check.
     const table2 = { tagName: 'TABLE', nodeType: 1 };
     freshTablePillboxes.set(table2, { parentElement: { removeChild() {} } });
-    freshTrackedTables.add(table2);
     freshDR_MODEL.registerTable(table2);
     tableObserver._cb([{ addedNodes: [], removedNodes: [table2] }]);
     eq('direct removal: DR_MODEL.hasTable is false when the table itself is the removedNodes entry',
@@ -2395,8 +2389,8 @@ const PENDING_FILL_ROWS = [
 // --- The teardown both the removal observer and the
 // mismatch path run. One function discards a table's registration and every
 // per-table resource the extension holds beside it: the table pillbox, the resize
-// observer, a virtualized grid's re-apply observer and its pending timer, the
-// view's tracked-table list, and the registry entry. The teardown writes no
+// observer, a virtualized grid's re-apply observer and its pending timer, and
+// the registry entry. The teardown writes no
 // row: each caller writes its own. Spec: the shape-fingerprint block in
 // docs/sprint-plans/grid-detection-recovery-v2.md §5. ---
 
@@ -2421,8 +2415,8 @@ const PENDING_FILL_ROWS = [
     const pendingTimer = setTimeout(function () {}, 10000);
     reapplyTimers.set(grid.scrollPaneEl, { id: pendingTimer, burstStartMs: Date.now() });
 
-    eq('fingerprint teardown: the grid registers and tracks before the teardown (precondition)',
-      DR_MODEL.hasTable(grid.scrollPaneEl) && trackedTables.has(grid.scrollPaneEl), true);
+    eq('fingerprint teardown: the grid registers and gets a table pillbox before the teardown (precondition)',
+      DR_MODEL.hasTable(grid.scrollPaneEl) && tablePillboxes.has(grid.scrollPaneEl), true);
 
     const rows = logRowsDuring(() => teardownTableEntry(grid.scrollPaneEl));
 
@@ -2437,8 +2431,8 @@ const PENDING_FILL_ROWS = [
     eq('fingerprint teardown: the re-apply observer disconnects', gridObserverDisconnects, 1);
     eq('fingerprint teardown: the re-apply observer record goes with it',
       reapplyObservers.has(grid.scrollPaneEl), false);
-    eq('fingerprint teardown: the view stops tracking the table',
-      trackedTables.has(grid.scrollPaneEl), false);
+    eq('fingerprint teardown: the table pillbox view record goes with it',
+      tablePillboxes.has(grid.scrollPaneEl), false);
     eq('fingerprint teardown: the registry entry is gone',
       DR_MODEL.hasTable(grid.scrollPaneEl), false);
     eq('fingerprint teardown: the fingerprint goes with the entry',
@@ -3486,7 +3480,7 @@ function issue328SettingsOf(table) {
 (function shapeFingerprint_criterion4_aNewResultSetMovesTheRegistrationOutward() {
   runPressFixture(({ sent }) => {
     const grid = makeDatabaseQueryGrid();
-    withTablePillboxDocumentMock(function () { injectTablePillboxesForAddedNode(grid.wrapperEl); });
+    withTablePillboxDocumentMock(function () { injectTablePillboxes(grid.wrapperEl); });
     eq('fingerprint move: the page registers the scrolling pane alone (precondition)',
       [grid.wrapperEl, grid.pinnedPaneEl, grid.scrollPaneEl].map((el) => DR_MODEL.hasTable(el)),
       [false, false, true]);
@@ -4808,7 +4802,7 @@ function makePlainBox(child) {
       const savedStyle = global.getComputedStyle;
       global.getComputedStyle = inlineStyleProbe.getComputedStyle;
       try {
-        withTablePillboxDocumentMock(function () { injectTablePillboxesForAddedNode(added); });
+        withTablePillboxDocumentMock(function () { injectTablePillboxes(added); });
         eq(`pending artifact, ${form.name}: the added-node pass holds no pending table`, pendingRoots.has(grid), false);
         eq(`pending artifact, ${form.name}: the added-node pass starts no observer`, observers.length, 0);
 
@@ -4845,7 +4839,7 @@ function makePlainBox(child) {
       const before = DR_MODEL.getRegisteredTables().length;
 
       withPendingHarness(function ({ observers, timers }) {
-        withTablePillboxDocumentMock(function () { injectTablePillboxesForAddedNode(grid); });
+        withTablePillboxDocumentMock(function () { injectTablePillboxes(grid); });
         eq(`pending artifact turn, ${label}: the empty grid is held as a pending table`, pendingRoots.has(grid), true);
         eq(`pending artifact turn, ${label}: one observer watches it`, observers.length, 1);
 

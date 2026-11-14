@@ -1460,15 +1460,14 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// content.js markAndAddTablePillboxIfNewGrid — the marker call-site wrapper. It
-// writes the dr-ext-grid marker and builds the table pillbox, but only for a
-// first-time (isNew) discovery.
+// content.js markAndAddTablePillboxIfNewGrid — the right-click call-site
+// wrapper. Its createTablePillbox call writes the dr-ext-grid marker and
+// builds the table pillbox, but only for a first-time (isNew) discovery.
 // ---------------------------------------------------------------------------
 (function markAndAddTablePillboxIfNewGrid_newGridGetsMarkedAndWidget() {
   withFindTargetEnv([], function() {
     const savedTablePillboxStyleInjected = tablePillboxStyleInjected;
-    const table = makePass1DataTable();
-    table.parentElement = { tagName: 'DIV', getAttribute: () => null, style: {}, parentElement: null, parentNode: null };
+    const table = makeAriaGrid([makeArtifactEmbeddedTable(), makeArtifactEmbeddedTable()]);
 
     const handleReturned = markAndAddTablePillboxIfNewGrid({ handle: table, isNew: true });
 
@@ -1494,6 +1493,34 @@ const SEAT_ROWS = [
       table.classList.contains('dr-ext-grid'), false);
     eq('markAndAddTablePillboxIfNewGrid: does not build a widget for an already-seen handle',
       tablePillboxes.has(table), false);
+  });
+})();
+
+// createTablePillbox writes the grid marker itself, after the data test
+// passes: a grid that fails the test stays unmarked, and a native table that
+// passes it never carries the grid marker.
+(function createTablePillbox_marksOnlyAGridThatPassesTheDataTest() {
+  withFindTargetEnv([], function() {
+    const savedTablePillboxStyleInjected = tablePillboxStyleInjected;
+    const emptyGrid = makeAriaGrid([]);
+    emptyGrid.children = [];
+    const nativeTable = makePass1DataTable();
+    nativeTable.parentElement = { tagName: 'DIV', getAttribute: () => null, style: {}, parentElement: null, parentNode: null };
+
+    createTablePillbox(emptyGrid);
+    createTablePillbox(nativeTable);
+
+    eq('createTablePillbox: a grid that fails the data test gets no grid marker',
+      emptyGrid.classList.contains('dr-ext-grid'), false);
+    eq('createTablePillbox: a grid that fails the data test gets no table pillbox',
+      tablePillboxes.has(emptyGrid), false);
+    eq('createTablePillbox: a native table gets a table pillbox',
+      tablePillboxes.has(nativeTable), true);
+    eq('createTablePillbox: a native table gets no grid marker',
+      nativeTable.classList.contains('dr-ext-grid'), false);
+
+    cleanupPass1Tables([emptyGrid, nativeTable]);
+    tablePillboxStyleInjected = savedTablePillboxStyleInjected;
   });
 })();
 
@@ -2660,12 +2687,12 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
 
 // ---------------------------------------------------------------------------
 // MutationObserver added-node path
-// applies the SAME accessibility artifact filter as injectTablePillboxes.
+// applies the SAME accessibility artifact filter as the load-time scan.
 //
 // Kaggle is a React single-page application that renders its Data Explorer
 // grid AFTER load, so detection runs through the
-// MutationObserver added-node handler — extracted here as injectTablePillboxesForAddedNode().
-// These tests drive that function directly with element-node stubs.
+// MutationObserver added-node handler, which passes each added element to
+// injectTablePillboxes. These tests call it directly with element-node stubs.
 // ---------------------------------------------------------------------------
 
 // AC1 (the Kaggle case): an added [role="table"] grid whose ONLY embedded
@@ -2676,7 +2703,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const grid = asAddedGridNode(makeAriaGrid([artifact1, artifact2]));
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxesForAddedNode(grid);
+    injectTablePillboxes(grid);
   });
 
   eq('observer: added grid with only accessibility artifacts gets dr-ext-grid class',
@@ -2692,7 +2719,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   const grid = asAddedGridNode(makeAriaGrid([realTbl]));
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxesForAddedNode(grid);
+    injectTablePillboxes(grid);
   });
 
   eq('observer: added grid wrapping a real table does NOT get dr-ext-grid',
@@ -2716,7 +2743,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   };
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxesForAddedNode(container);
+    injectTablePillboxes(container);
   });
 
   eq('observer: accessibility artifact <table> in added subtree gets NO table pillbox',
@@ -2736,7 +2763,7 @@ const KEY_STATS_OPTS = Object.assign({}, PATCH_GRID_OPTS, { simplifyDates: true 
   };
 
   withTablePillboxDocumentMock(function() {
-    injectTablePillboxesForAddedNode(container);
+    injectTablePillboxes(container);
   });
 
   eq('observer: real <table> in added subtree gets a table pillbox',
@@ -3933,7 +3960,7 @@ function everyRowRead(kind, largeIn) {
       globalThis.__ri2_DR_MODEL = DR_MODEL;
       globalThis.__ri2_roundTable = roundTable;
       globalThis.__ri2_syncTablePillbox = syncTablePillbox;
-      globalThis.__ri2_tablePillboxes = tablePillboxes;
+      globalThis.__ri2_tablePillboxes = tablePillboxButtons(tablePillboxViews);
     `);
 
 
