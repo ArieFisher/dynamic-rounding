@@ -81,8 +81,6 @@ const DR_DETECTION_SETTINGS = {
   passTargetMs: 200,
   // --- Pending tables ---
   // Failed re-tests a pending table takes before its subtree observer drops.
-  // A re-test runs only after a subtree change and the settle delay above, so
-  // the count grows under sustained churn alone.
   pendingRetestCap: 100,
   // --- Accessibility artifact check ---
   offscreenLeftPx: -9999,
