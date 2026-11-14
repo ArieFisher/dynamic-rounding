@@ -1,23 +1,19 @@
 /**
  * Every shared constant in the extension.
  *
- * All three contexts load this file: the content script via manifest
- * content_scripts, the sidebar page via <script src>, and the service worker
- * via importScripts at the top of background.js. A constant that more than one
- * component reads belongs here, whatever kind of constant it is — a reader
- * looks in one place.
+ * The content script loads this file through the manifest's content_scripts,
+ * and the sidebar page through a script tag. The service worker does not load
+ * it. A constant that more than one component reads belongs here, whatever
+ * kind of constant it is — a reader looks in one place.
  *
  * DR_DEFAULTS is the settings contract: every option's name and its default.
- * Editing a value here changes both the sidebar's initial control state and the
- * menu toggle's default behavior, so the two stay in lockstep.
- *
- * DR_DETECTION_SETTINGS holds the detection settings: every value and
- * lookup list that shapes what detection finds.
+ * The application model fills a table's missing settings from it, and the
+ * sidebar draws its initial controls from it.
  */
 const DR_DEFAULTS = {
-  // Off: a table no one has turned on shows the original, so its settings
-  // read off. The table pillbox, the menu toggle, the menu toggle with
-  // sidebar, or the sidebar pillbox turns a table on.
+  // Off: a table no one has turned on shows the original. The table pillbox,
+  // the menu toggle, the menu toggle with sidebar, or the sidebar pillbox
+  // turns a table on.
   enabled: false,
   simplifyMixedCurrency: true,
   simplifyMixedPercent: true,
@@ -27,9 +23,7 @@ const DR_DEFAULTS = {
   simplifyTimes: false,
   dateGranularity: 'year',
   timeGranularity: 'hour',
-  // Concrete numbers, never null or blank: the sidebar always sends numbers.
-  // numTop has no sidebar control; it stays here as the contract with
-  // content.js and the menu toggle.
+  // Concrete numbers, never null or blank. numTop has no sidebar control.
   offsetTop: -0.5,
   offsetOther: -0.5,
   numTop: 1,
@@ -44,18 +38,19 @@ const DR_DEFAULTS = {
  * (content.js) read it as a bare global, with no fallback copy.
  */
 const DR_DETECTION_SETTINGS = {
-  // --- Nomination step (lib/dr-table/detect.js: findTables) ---
+  // --- Nomination step ---
   nestingDepth: 1,
-  // --- Grid geometry probe (lib/dr-table/detect.js: looksLikeGrid) ---
+  // --- Grid detection ---
   gridMinChildren: 5,
+  // The most ancestors any detection walk climbs.
   gridWalkDepthCap: 15,
   gridSampleSize: 10,
   gridAlignmentAgreement: 0.8,
   gridRepetitionShare: 0.5,
   gridDisplayValues: ['grid', 'flex', 'inline-grid', 'inline-flex'],
-  // --- Data test (lib/dr-table/detect.js: isDataTable) ---
+  // --- Data test ---
   dataTestCellBudget: 1000,
-  // --- Vendor grids (lib/dr-table/adapters.js: GridAdapter) ---
+  // --- Vendor grids ---
   vendorProfiles: [
     {
       name: 'databricks',
@@ -70,31 +65,25 @@ const DR_DETECTION_SETTINGS = {
       pinnedPaneSelectors: ['.ag-pinned-left-cols-container'],
     },
   ],
-  // --- Re-apply observer (content.js) ---
-  // A burst of page edits inside a simplified table runs one pass once the
-  // edits stop for this long. The pending-table re-test below waits the same.
+  // --- Re-apply observer ---
+  // The observer runs one pass for a burst of page edits inside a simplified
+  // table once the edits stop for this long. The content script waits the
+  // same before it re-tests a pending table.
   settleDelayMs: 100,
-  // The longest a burst waits for its pass. A table the page updates more
-  // often than the settle delay never goes quiet, so a pass runs once the
-  // burst has lasted this long: at most one pass a second.
+  // A table the page updates more often than the settle delay never goes
+  // quiet, so the observer runs a pass once a burst has lasted this long.
   reapplyMaxWaitMs: 1000,
-  // The most cells a pass reads: a native table's cells, a grid's visible
-  // cells. Ten times the data test's cell budget, e.g. 1,000 rows of 10
-  // columns. In Chrome on the test page a pass over 10,000 cells took 44 to
-  // 57 ms. Above it the pass writes nothing, the table's re-apply observer
-  // stops, and one debug row records the stop; a table above it at its first
-  // simplification never attaches the observer.
+  // In Chrome on the test page, a pass over 10,000 cells took 44 to 57 ms.
   reapplyCellCap: 10000,
-  // The longest a re-apply pass runs before it writes a debug row with its
-  // duration. The cell cap's value was chosen to hold a pass under 200 ms,
-  // and the slowest pass measured at the cap took 57 ms, so a row marks a
-  // pass more than three times slower than any measured.
+  // A pass that runs longer than this writes a debug row with its duration.
+  // Such a pass is more than three times slower than the slowest pass
+  // measured at the cell cap.
   passTargetMs: 200,
-  // --- Pending tables (content.js) ---
+  // --- Pending tables ---
   // Failed re-tests a pending table takes before its subtree observer drops.
   // A re-test runs only after a subtree change and the settle delay above, so
   // the count grows under sustained churn alone.
   pendingRetestCap: 100,
-  // --- Accessibility artifact check (lib/dr-table/detect.js: isAccessibilityArtifact) ---
+  // --- Accessibility artifact check ---
   offscreenLeftPx: -9999,
 };

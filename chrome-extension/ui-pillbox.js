@@ -6,27 +6,15 @@
  */
 
 /**
- * Table pillbox view and table/grid detection (presentation layer).
+ * The table pillbox view: the table pillbox's geometry, styles, creation and
+ * positioning, and the flash and pulse highlights.
  *
- * Table pillbox geometry, style injection, button creation/positioning, the
- * highlight/flash affordances, and the detection predicates (looksLikeGrid,
- * findTargetTable, isDataTable) that decide what counts as a roundable table.
- * Module-level state here is view-transient only — DOM/timer bookkeeping
- * (tablePillboxes: table → its button element; trackedTables: the
- * reposition-on-scroll list; the resize-observer map; the style-injected
- * flags; the per-button auto-collapse timer) — never the active table, sidebar, or
- * "have I found this table" state, which live in DR_MODEL (app/model.js).
- * Before the app-model-registry sprint, tablePillboxes/trackedTables and the
- * dr-ext-grid marker class doubled as three separate "tables found" stores;
- * createTablePillbox now also registers the table with DR_MODEL, and
- * every "have I already handled this element" check reads DR_MODEL.hasTable
- * instead. tablePillboxes/trackedTables keep their narrower remaining job: a
- * DOM reference to each table's button, for aria-pressed updates and
- * scroll/resize repositioning. A user action (click/tap) publishes an intent
- * on DR_BUS instead of calling a content.js function directly; content.js
- * is the sole subscriber and owns what happens next. This view redraws the
- * table pillbox from the model's settings notice; every other load-time-executing wiring
- * (observers, listeners) stays in content.js. Loaded before content.js.
+ * Module-level state here is drawing state only: button elements, resize
+ * observers, and once-only flags. The registry and the active table are held
+ * in DR_MODEL (app/model.js). On a press, this view publishes an intent topic
+ * on DR_BUS for the controller in content.js. Apart from the settings notice
+ * subscription below, every other load-time listener this view needs is
+ * wired in content.js, which loads after this file.
  */
 
 // Table pillbox geometry constants
@@ -45,13 +33,9 @@ const TABLE_PILLBOX_COLOR_OFF = '#cccccc';
 // delay. This view alone reads it, so it lives here and not in the detection
 // settings.
 const TABLE_PILLBOX_AUTO_COLLAPSE_MS = 3000;
-// isTablePillboxSpotClipped reads at most this many ancestors on its walk from a
-// table up to the page body, one style read each, on every reposition. The cap
-// bounds that cost per table. Real pages nest a table well under 100 ancestors
-// deep, so the cap holds the cost down without cutting the walk short.
-// Ancestors past it count as cutting off nothing: a deeper table's
-// table pillbox still moves with every scroll, and shows wherever its table's corner
-// sits.
+// isTablePillboxSpotClipped reads one style per ancestor on every reposition,
+// so this cap bounds that cost per table. Real pages nest a table well under
+// 100 ancestors deep. Ancestors past the cap count as cutting off nothing.
 const TABLE_PILLBOX_CLIP_WALK_CAP = 100;
 // Overflow values that cut off an element's content at its box.
 const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
@@ -61,7 +45,7 @@ const CLIPPING_OVERFLOW = new Set(['hidden', 'scroll', 'auto', 'clip']);
 /** WeakMap from HTMLTableElement → HTMLButtonElement (the table pillbox's button) */
 const tablePillboxes = new WeakMap();
 
-/** Parallel Set of tracked tables so we can iterate for repositioning */
+/** A WeakMap cannot be iterated, so repositioning walks this Set. */
 const trackedTables = new Set();
 
 /** WeakMap from HTMLTableElement → ResizeObserver for the table pillbox */
@@ -81,11 +65,9 @@ function syncTablePillbox(table) {
   button.setAttribute('aria-pressed', isTableOn(table) ? 'true' : 'false');
 }
 
-// The table pillbox view redraws the table pillbox from the model's settings notice,
-// as the sidebar redraws the sidebar pillbox. The model publishes the notice on every settings write, and
-// every write targets the active table, so this subscriber redraws the active
-// table's table pillbox. The bus delivers the notice to this subscriber in the same
-// context, before the controller applies the written settings.
+// Every settings write targets the active table, so on each settings notice
+// this subscriber redraws the active table's table pillbox. It runs before the
+// controller applies the written settings.
 DR_BUS.subscribe('state:settingsChanged', () => {
   const active = DR_MODEL.getActiveTable();
   if (active) syncTablePillbox(active);
@@ -224,8 +206,6 @@ function positionTablePillbox(table, button) {
 let _globalTapCollapseAdded = false;
 
 function createTablePillbox(table) {
-  // isDataTable() reads native tables through NativeTableAdapter and grids
-  // through GridAdapter.
   if (!isDataTable(table)) return;
   ensureTablePillboxStyleInjected();
 
@@ -250,12 +230,10 @@ function createTablePillbox(table) {
     positionTablePillbox(table, button);
   }, 150);
 
-  // Record the pointer type at pointerdown for use in the click handler
   button.addEventListener('pointerdown', (e) => {
     button.dataset.pointerType = e.pointerType || '';
   });
 
-  // Touch and pen alone schedule this timer.
   let _touchPenCollapseTimer = null;
 
   function scheduleAutoCollapse() {
@@ -266,39 +244,30 @@ function createTablePillbox(table) {
     }, TABLE_PILLBOX_AUTO_COLLAPSE_MS);
   }
 
-  // Click handler: mouse/keyboard → immediate press; touch/pen → two-tap
-  // expand-then-press. Once a tap or click commits to a press, this view
-  // publishes the intent and stops. It calls no content.js function itself.
-  // The controller (content.js) is the sole subscriber to intent:toggleTable,
-  // and it runs the one press path: make the pressed table active, flip its
-  // on/off value, write the table's settings, and send whatever sidebar messaging
-  // that implies. This view keeps only the expand/collapse interaction state
-  // (view-transient), never the press logic.
+  // Mouse and keyboard press at once; touch and pen expand on the first tap and
+  // press on the second. On a press this handler publishes intent:toggleTable
+  // and calls nothing else. The controller in content.js runs the shape check
+  // and then the press. This view holds only the expand and collapse state.
   button.addEventListener('click', (e) => {
     e.stopPropagation();
     const pType = button.dataset.pointerType;
     if (pType === 'touch' || pType === 'pen') {
       if (!button.classList.contains('expanded')) {
-        // First tap: expand without toggling
         button.classList.add('expanded');
         scheduleAutoCollapse();
       } else {
-        // Second tap: publish the toggle intent, refresh collapse timer
         DR_BUS.publish('intent:toggleTable', { table });
         scheduleAutoCollapse();
       }
     } else {
-      // Mouse / keyboard (Space is handled natively by <button>; Enter via keydown below)
       DR_BUS.publish('intent:toggleTable', { table });
     }
   });
 
-  // Enter keydown bridge (Space is already handled natively by <button>)
   button.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.stopPropagation(); button.click(); }
   });
 
-  // Stop mousedown propagation to avoid triggering host-page handlers
   button.addEventListener('mousedown', (e) => e.stopPropagation());
 
   // View-only bookkeeping: the button element, and the reposition-on-scroll
@@ -306,19 +275,14 @@ function createTablePillbox(table) {
   tablePillboxes.set(table, button);
   trackedTables.add(table);
   DR_MODEL.registerTable(table);
-  // The shape fingerprint, recorded once per registration. Every later
-  // action on this table compares the table's shape against this reading
-  // first, and a mismatch discards the entry and registers the table fresh
-  // (see the controller). The originals port reads a cell's
-  // originals; a table registering holds none, so the read
-  // takes the cells as they stand, and the two comparison sites pass the
-  // same port so a simplified header cell still compares against this
-  // reading.
+  // The shape fingerprint, recorded once per registration. A new registry
+  // entry holds no originals, so this read takes the cells as they stand.
+  // revalidateTableShape in content.js compares against it through the same
+  // originalText reader.
   DR_MODEL.setTableFingerprint(table, readTableFingerprint(table, {
     originalText: (cellEl) => DR_MODEL.getTableOriginalText(table, cellEl),
   }));
 
-  // Set up ResizeObserver for repositioning
   const ro = new ResizeObserver(() => {
     positionTablePillbox(table, button);
   });
@@ -340,18 +304,11 @@ function createTablePillbox(table) {
   return button;
 }
 
-// The load-time scan: the table scan (scanTables in the detection layer) over
-// the document, the same scan the added-node pass in content.js runs, so one
-// page and one added subtree register the same element. This view holds no
-// scan of its own.
-//
-// The nomination outcomes go to the controller (consumeNominations in
-// content.js), which registers what the step selected and holds a chain root
-// whose chain is empty as a pending table. A pending record is page-held state
-// with a live observer in it, and this view holds no such state; routing the
-// outcomes through the controller keeps both scanners on one copy of that
-// rule. The two files share one scope, and this call runs at DOMContentLoaded,
-// after every content script has loaded.
+// The load-time scan runs the same table scan as the added-node pass in
+// content.js. The nomination outcomes go to consumeNominations in content.js,
+// which holds each pending table. A pending table holds a live observer, and
+// this view holds no state of that kind. content.js calls this function once
+// the document has loaded, after it defines consumeNominations.
 function injectTablePillboxes() {
   const { tables, nominations } = scanTables(document, { isRegistered: DR_MODEL.hasTable });
   tables.forEach(table => {
@@ -359,9 +316,8 @@ function injectTablePillboxes() {
       createTablePillbox(table);
     }
   });
-  // createTablePillbox re-runs the data test the step already ran; this view
-  // accepts the second read so the detection layer only nominates and this view
-  // alone registers.
+  // For a grid the nomination step selected, createTablePillbox runs the data
+  // test a second time. The repeat keeps registration in this view alone.
   consumeNominations(nominations);
 }
 
@@ -431,25 +387,20 @@ function flashActiveTable(table) {
 
 /**
  * Pulse a faint blue-and-white border around the range expression's cells.
- * - If ranges is null (a blank or invalid range expression), delegates to the existing table outline flash.
- * - If ranges is an array, overlays an absolutely-positioned div sized to the bounding
- *   rect of the range expression's cells, then removes itself after the animation ends (~1.2s).
- *   The div is appended to document.body so it never wraps or alters td elements.
+ * - If ranges is null (a blank or invalid range expression), shows the whole-table outline flash.
+ * - If ranges is an array, overlays an absolutely positioned div sized to the bounding
+ *   rectangle of the range expression's cells, and removes it after the animation ends (about 1.2 seconds).
+ *   The div goes in document.body so it never wraps or alters td elements.
  *
- * Cell enumeration goes through the same TableAdapter (lib/dr-table, makeAdapter)
- * the simplification pass and the lens preview use, not table.rows/row.cells directly — those
- * only exist on native <table> elements, so reading them here used to throw
- * a TypeError on div-based grids and abort the caller mid-flow. The adapter
- * gives a uniform row/cell view over both native tables and grids.
+ * Cells come from the TableAdapter (makeAdapter), because table.rows and
+ * row.cells exist only on native tables.
  */
 function flashRangePulse(table, ranges) {
   if (!ranges) {
-    // A blank or invalid range expression: reuse the existing outline flash.
     flashActiveTable(table);
     return;
   }
 
-  // Collect all cells that fall within any of the provided ranges.
   const adapterRows = makeAdapter(table).getRows();
   const matchedCells = [];
   for (let r = 0; r < adapterRows.length; r++) {
@@ -470,7 +421,6 @@ function flashRangePulse(table, ranges) {
     return;
   }
 
-  // Compute the union bounding rect of all matched cells relative to the viewport.
   let top = Infinity, left = Infinity, bottom = -Infinity, right = -Infinity;
   for (const cell of matchedCells) {
     const rect = cell.getBoundingClientRect();
@@ -495,7 +445,7 @@ function flashRangePulse(table, ranges) {
   overlay.style.width  = absWidth  + 'px';
   overlay.style.height = absHeight + 'px';
 
-  // Self-cleanup: remove after animation ends or after max 1.5s safety timeout.
+  // The timeout removes the overlay when animationend never fires.
   const cleanup = () => {
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
   };

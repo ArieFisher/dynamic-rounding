@@ -5,9 +5,7 @@
  * Copyright (c) 2026 Arie Fisher
  */
 
-// The bus and the log module, for its row format: no constant in
-// constants.js reaches this context. The worker's one row goes to the
-// console, so its log buffer stays empty.
+// The worker's one row goes to the console, so its log buffer stays empty.
 importScripts('lib/dr-log/index.js', 'adapters/messaging.js');
 
 let boundTabId = null;
@@ -57,8 +55,8 @@ async function openSidebarOnTab(tabId, toggleFirst = false) {
     console.warn(DR_LOG.formatRow('error', { step: 'open sidebar', error: DR_LOG.errorType(e) }));
   }
   boundTabId = tabId;
-  // The toggle goes first, so the sidebar's re-read on open reads the
-  // toggled settings.
+  // The toggle goes first, so the sidebar's redraw read on opening returns
+  // the toggled settings.
   if (toggleFirst) DR_BUS.publish('intent:menuClicked', {}, { tabId });
   DR_BUS.publish('state:sidebarOpened', {}, { tabId });
 }
@@ -73,8 +71,6 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 
   if (info.menuItemId === "dr-menu-toggle-sidebar") {
-    // The menu toggle with sidebar does both things its title states: the
-    // same toggle the menu toggle publishes, then the sidebar open.
     openSidebarOnTab(tab.id, true);
   }
 });
@@ -87,7 +83,7 @@ chrome.action.onClicked.addListener((tab) => {
 
 function closeSidebarIfOpen() {
   // The broadcast reaches every extension page, and the sidebar closes itself
-  // on it. The content script has no subscriber for this topic.
+  // on it.
   DR_BUS.publish('state:boundTabLeft', {});
   boundTabId = null;
 }
@@ -110,9 +106,7 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
   }
 });
 
-// meta.tabId is the tab the content script sent from. The worker acts only
-// when that tab is the bound tab; without the number,
-// any page unload in any tab would close the sidebar.
+// Without the tab check, a page unload in any tab would close the sidebar.
 DR_BUS.subscribe('state:pageUnloaded', (payload, meta) => {
   if (meta.tabId !== null && meta.tabId === boundTabId) {
     closeSidebarIfOpen();
@@ -122,7 +116,3 @@ DR_BUS.subscribe('state:pageUnloaded', (payload, meta) => {
 DR_BUS.subscribe('state:sidebarClosed', () => {
   boundTabId = null;
 });
-
-// The settings notice and the table-activation topic need no relay here. The
-// content script broadcasts each to every extension page, so its one publish
-// reaches the sidebar.
