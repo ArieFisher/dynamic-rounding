@@ -68,8 +68,6 @@ const DR_BUS = (function () {
     // The content script's topics for the sidebar. Each takes the
     // extension-pages route: the content script has no chrome.tabs, and the
     // sidebar is an extension page.
-    //
-    // The settings notice.
     'state:settingsChanged': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableActivated': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
     'state:tableSwitched': { family: STATE_CHANGE, route: ROUTE_EXTENSION_PAGES },
@@ -123,8 +121,7 @@ const DR_BUS = (function () {
   // on one fact from it, the number of the tab a content script sent from,
   // and keeps the rest of Chrome's record out of its own contract.
   // The service worker and the sidebar compare that number against the bound
-  // tab. A message from an
-  // extension page has no tab, so it carries null.
+  // tab. A message from an extension page has no tab, so it carries null.
   function senderTabId(sender) {
     return sender && sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : null;
   }
@@ -142,7 +139,7 @@ const DR_BUS = (function () {
   function deliverLocally(topic, payload, tabId) {
     const set = subscribers.get(topic);
     if (!set) return;
-    const meta = { tabId: typeof tabId === 'number' ? tabId : null };
+    const meta = { tabId };
     for (const handler of Array.from(set)) {
       handler(payload, meta);
     }
