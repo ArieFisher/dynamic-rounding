@@ -234,6 +234,7 @@ let _globalTapCollapseAdded = false;
 
 function createTablePillbox(table) {
   if (!isDataTable(table)) return;
+  if (table.tagName !== 'TABLE') table.classList.add('dr-ext-grid');
   ensureTablePillboxStyleInjected();
 
   const button = document.createElement('button');

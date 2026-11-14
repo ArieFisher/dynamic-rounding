@@ -1460,15 +1460,14 @@ const SEAT_ROWS = [
 })();
 
 // ---------------------------------------------------------------------------
-// content.js markAndAddTablePillboxIfNewGrid — the marker call-site wrapper. It
-// writes the dr-ext-grid marker and builds the table pillbox, but only for a
-// first-time (isNew) discovery.
+// content.js markAndAddTablePillboxIfNewGrid — the right-click call-site
+// wrapper. Its createTablePillbox call writes the dr-ext-grid marker and
+// builds the table pillbox, but only for a first-time (isNew) discovery.
 // ---------------------------------------------------------------------------
 (function markAndAddTablePillboxIfNewGrid_newGridGetsMarkedAndWidget() {
   withFindTargetEnv([], function() {
     const savedTablePillboxStyleInjected = tablePillboxStyleInjected;
-    const table = makePass1DataTable();
-    table.parentElement = { tagName: 'DIV', getAttribute: () => null, style: {}, parentElement: null, parentNode: null };
+    const table = makeAriaGrid([makeArtifactEmbeddedTable(), makeArtifactEmbeddedTable()]);
 
     const handleReturned = markAndAddTablePillboxIfNewGrid({ handle: table, isNew: true });
 
@@ -1494,6 +1493,34 @@ const SEAT_ROWS = [
       table.classList.contains('dr-ext-grid'), false);
     eq('markAndAddTablePillboxIfNewGrid: does not build a widget for an already-seen handle',
       tablePillboxes.has(table), false);
+  });
+})();
+
+// createTablePillbox writes the grid marker itself, after the data test
+// passes: a grid that fails the test stays unmarked, and a native table that
+// passes it never carries the grid marker.
+(function createTablePillbox_marksOnlyAGridThatPassesTheDataTest() {
+  withFindTargetEnv([], function() {
+    const savedTablePillboxStyleInjected = tablePillboxStyleInjected;
+    const emptyGrid = makeAriaGrid([]);
+    emptyGrid.children = [];
+    const nativeTable = makePass1DataTable();
+    nativeTable.parentElement = { tagName: 'DIV', getAttribute: () => null, style: {}, parentElement: null, parentNode: null };
+
+    createTablePillbox(emptyGrid);
+    createTablePillbox(nativeTable);
+
+    eq('createTablePillbox: a grid that fails the data test gets no grid marker',
+      emptyGrid.classList.contains('dr-ext-grid'), false);
+    eq('createTablePillbox: a grid that fails the data test gets no table pillbox',
+      tablePillboxes.has(emptyGrid), false);
+    eq('createTablePillbox: a native table gets a table pillbox',
+      tablePillboxes.has(nativeTable), true);
+    eq('createTablePillbox: a native table gets no grid marker',
+      nativeTable.classList.contains('dr-ext-grid'), false);
+
+    cleanupPass1Tables([emptyGrid, nativeTable]);
+    tablePillboxStyleInjected = savedTablePillboxStyleInjected;
   });
 })();
 

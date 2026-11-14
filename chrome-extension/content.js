@@ -152,12 +152,9 @@ const pendingRoots = new Set();
 
 // findTargetTable() only returns what it found; it never writes the
 // dr-ext-grid marker or builds the table pillbox. When it finds a grid root for the
-// first time (found.isNew), this caller does both.
+// first time (found.isNew), this caller has createTablePillbox do both.
 function markAndAddTablePillboxIfNewGrid(found) {
-  if (found.isNew) {
-    found.handle.classList.add('dr-ext-grid');
-    createTablePillbox(found.handle);
-  }
+  if (found.isNew) createTablePillbox(found.handle);
   return found.handle;
 }
 
@@ -315,7 +312,6 @@ function consumeNominations(results) {
 function consumeNomination({ chainRoot, selected, outcome }) {
   if (outcome === 'selected') {
     dropPendingTable(chainRoot);
-    selected.classList.add('dr-ext-grid');
     createTablePillbox(selected);
     return;
   }
@@ -467,7 +463,6 @@ function revalidateTableShape(table, opts = {}) {
   let fresh = null;
   for (const { handle, isNew } of findTables(root, { isRegistered: DR_MODEL.hasTable })) {
     if (!isNew) continue;
-    if (handle.tagName !== 'TABLE') handle.classList.add('dr-ext-grid');
     createTablePillbox(handle);
     // createTablePillbox registers only what passes the data test, so the
     // registry records whether this element registered.
