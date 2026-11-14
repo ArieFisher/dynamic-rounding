@@ -9,8 +9,8 @@
  * DynamicRounding lib/dr-capture package: the capture state serializer.
  *
  * collectCaptureState() turns the application model's registry into the
- * plain-value capture state: for every registered table, its kind, applied
- * flag, settings, frozen magnitude, row and column counts, and every present cell's position, role, displayed text,
+ * plain-value capture state: for every registered table, its kind,
+ * settings, frozen magnitude, row and column counts, and every present cell's position, role, displayed text,
  * and original. The bound table also contributes its markup as it stood at
  * capture time, verbatim — the fixture seed, the one piece of markup a
  * capture carries.
@@ -54,9 +54,11 @@
  * so no reader of the field remains.
  * Format 9 drops each table's locked field and the sidebar view's locked
  * field: the extension no longer locks a table.
+ * Format 10 drops each table's appliedFlag field: a table shows simplified
+ * values when one of its cells carries the marker class, and each cell records that.
  */
 
-const CAPTURE_FORMAT = 9;
+const CAPTURE_FORMAT = 10;
 
 function collectCaptureState(deps) {
   const model = (deps && deps.model) || DR_MODEL;
@@ -99,7 +101,6 @@ function collectCaptureState(deps) {
     }
     return {
       kind: adapter.isGrid() ? 'grid' : 'native',
-      appliedFlag: model.getTableAppliedFlag(table),
       settings: model.getTableSettings(table),
       maxMagnitude: model.getTableMaxMagnitude(table),
       rowCount: rows.length,
@@ -117,7 +118,6 @@ function collectCaptureState(deps) {
       // the whole capture down. The failure itself is evidence — record it.
       return {
         kind: 'unknown',
-        appliedFlag: null,
         settings: null,
         maxMagnitude: null,
         rowCount: null,

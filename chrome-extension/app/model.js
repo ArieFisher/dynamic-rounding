@@ -86,11 +86,6 @@ const DR_MODEL = (function () {
         // (grid virtualization, a framework re-render) lets its entry go
         // instead of accumulating for the life of the table's registration.
         originals: new WeakMap(),
-        // The table's form: 'original' | 'simplified'. 'original' covers both
-        // "never simplified" and "simplified, currently showing originals". It
-        // records what the screen shows; the table pillbox shows the on/off
-        // value instead (isTableOn in ui-pillbox.js).
-        appliedFlag: 'original',
         // The table's settings: its on/off value and every simplification
         // option, with the shipped defaults filled in. null until the first
         // write, and getTableSettings answers the shipped defaults for null.
@@ -107,11 +102,11 @@ const DR_MODEL = (function () {
         // createTablePillbox (ui-pillbox.js) is the one writer. The
         // controller compares the table's current shape against it before
         // every action, and discards the whole entry on a mismatch — the
-        // page replaced the table's content, so the originals and the form
-        // below describe data no longer on the screen. null until that one
-        // writer runs: an entry a first write created (see the note on
-        // registerTable below) carries no fingerprint, and the controller's
-        // comparison reads that as nothing to compare against.
+        // page replaced the table's content, so the originals describe data
+        // no longer on the screen. null until that one writer runs: an entry
+        // a first write created (see the note on registerTable below) carries
+        // no fingerprint, and the controller's comparison reads that as
+        // nothing to compare against.
         fingerprint: null,
       };
       tableRegistry.set(table, entry);
@@ -182,7 +177,7 @@ const DR_MODEL = (function () {
   // called once, from ui-pillbox.js's createTablePillbox, idempotent so a
   // rediscovery (e.g. injectTablePillboxesForAddedNode revisiting a node) is a
   // no-op. It is NOT the only path to a table having a registry entry:
-  // setTableOriginal, setTableAppliedFlag, setTableSettings, and
+  // setTableOriginal, setTableSettings, and
   // setTableMaxMagnitude below all call the same _ensureEntry and will
   // silently create one on first write if registerTable never ran for that
   // table.
@@ -238,17 +233,6 @@ const DR_MODEL = (function () {
   function deleteTableOriginal(table, cellEl) {
     const entry = tableRegistry.get(table);
     if (entry) entry.originals.delete(cellEl);
-  }
-
-  function setTableAppliedFlag(table, flag) {
-    _ensureEntry(table).appliedFlag = flag;
-  }
-
-  // Defaults to 'original' with no entry: a table never registered has never
-  // been simplified.
-  function getTableAppliedFlag(table) {
-    const entry = tableRegistry.get(table);
-    return entry ? entry.appliedFlag : 'original';
   }
 
   // Store a table's whole settings, with the shipped defaults filled in, then
@@ -311,8 +295,6 @@ const DR_MODEL = (function () {
     getTableOriginalText,
     hasTableOriginal,
     deleteTableOriginal,
-    setTableAppliedFlag,
-    getTableAppliedFlag,
     setTableSettings,
     getTableSettings,
     setTableMaxMagnitude,

@@ -110,27 +110,12 @@
 // --- AC5: showsSimplified returns true after roundTable marks cells ---
 
 (function tablePillbox_showsSimplified_afterRound() {
-  // Directly inject the rounded class AND set the registry's appliedFlag to
-  // simulate a rounded table (do not run the full roundTable pipeline which
-  // requires tree walkers etc.) — showsSimplified reads DR_MODEL's appliedFlag,
-  // not the class, so both are set here the way
-  // roundTable itself would leave them.
+  // The marker is set directly, the way roundTable leaves it, without the
+  // full roundTable pipeline, which needs tree walkers.
   const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   table._cells[0].classList.add('dr-ext-rounded');
-  DR_MODEL.setTableAppliedFlag(table, 'simplified');
   eq('table-pillbox: showsSimplified(table with .dr-ext-rounded cell) is true',
     showsSimplified(table), true);
-})();
-
-// --- AC5: showsSimplified returns false when appliedFlag !== 'simplified' ---
-// (the restore path sets this before it rewrites cells)
-
-(function tablePillbox_showsSimplified_showingOriginal() {
-  const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
-  table._cells[0].classList.add('dr-ext-rounded');
-  DR_MODEL.setTableAppliedFlag(table, 'original');
-  eq('table-pillbox: showsSimplified is false when appliedFlag is "original"',
-    showsSimplified(table), false);
 })();
 
 // --- AC5: showsSimplified after the reset restores originals ---
@@ -141,11 +126,10 @@
 (function tablePillbox_showsSimplified_afterReset() {
   const table = makeTablePillboxTestTable([{ tag: 'td', text: '1,000' }]);
   // Simulate a post-roundTable state: cell has rounded class + a registry
-  // original record, and the registry's appliedFlag is 'simplified'.
+  // original record.
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
   DR_MODEL.setTableOriginal(table, cell, { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }] });
-  DR_MODEL.setTableAppliedFlag(table, 'simplified');
   cell.innerHTML = '1,000';
   // Also need to stub the innerHTML setter so the restore can write it
   Object.defineProperty(cell, 'innerHTML', {
@@ -161,11 +145,9 @@
 
   eq('table-pillbox: after the reset, showsSimplified is false',
     showsSimplified(table), false);
-  eq('table-pillbox: after the reset, appliedFlag is "original"',
-    DR_MODEL.getTableAppliedFlag(table), 'original');
-  eq('table-pillbox: the reset clears the simplified marker, where the form flip kept it',
+  eq('table-pillbox: the reset clears the simplified marker',
     cell.classList.contains('dr-ext-rounded'), false);
-  eq('table-pillbox: the reset clears the stored original, where the form flip kept it',
+  eq('table-pillbox: the reset clears the stored original',
     DR_MODEL.hasTableOriginal(table, cell), false);
 })();
 
@@ -193,7 +175,6 @@
   // re-injection suite.
   table._cells[0].classList.add('dr-ext-rounded');
   DR_MODEL.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }] });
-  DR_MODEL.setTableAppliedFlag(table, 'simplified');
   DR_MODEL.setTableSettings(table, { enabled: true }, 'page');
 
   syncTablePillbox(table);
@@ -207,11 +188,10 @@
   table._cells[0].classList.add('dr-ext-rounded');
   // Registry record present — see tablePillbox_syncTablePillbox_ariaTrueWhenRounded.
   DR_MODEL.setTableOriginal(table, table._cells[0], { value: '1,000', pieces: [{ text: '1,000', written: '1,000' }] });
-  DR_MODEL.setTableAppliedFlag(table, 'original');
   button.setAttribute('aria-pressed', 'true');
 
   syncTablePillbox(table);
-  eq('table-pillbox: syncTablePillbox sets aria-pressed="false" when showingOriginal=true',
+  eq('table-pillbox: syncTablePillbox sets aria-pressed="false" on a marked table that is off',
     button.getAttribute('aria-pressed'), 'false');
 })();
 
@@ -484,7 +464,6 @@
   const cell = table._cells[0];
   cell.classList.add('dr-ext-rounded');
   DR_MODEL.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }] });
-  DR_MODEL.setTableAppliedFlag(table, 'simplified');
 
   // The cell's innerHTML property needs to be writable
   let htmlVal = cell.innerHTML;
@@ -507,9 +486,9 @@
     DR_MODEL.setActiveTable(savedActive);
   }
 
-  // After turning simplification off: appliedFlag must be 'original' (AC4)
-  eq('table-pillbox: a press on a simplified table sets appliedFlag=original (AC4)',
-    DR_MODEL.getTableAppliedFlag(table), 'original');
+  // After turning simplification off: the table shows its originals (AC4)
+  eq('table-pillbox: a press on a simplified table shows the originals (AC4)',
+    showsSimplified(table), false);
   // aria-pressed should be "false" — the table shows its original values
   eq('table-pillbox: aria-pressed="false" after a press turns simplification off',
     input.getAttribute('aria-pressed'), 'false');
@@ -649,14 +628,13 @@
   // (see the content-script re-injection tests), which is a different
   // scenario than the one this test means to exercise.
   DR_MODEL.setTableOriginal(table, cell, { value: '50000', pieces: [{ text: '50000', written: '50000' }] });
-  DR_MODEL.setTableAppliedFlag(table, 'simplified');
   DR_MODEL.setTableSettings(table, { enabled: true }, 'page');
 
   // Fire click via handlers
   const clickHandlers = buttonEl._listeners['click'] || [];
   clickHandlers.forEach(fn => fn({ stopPropagation() {}, type: 'click' }));
 
-  // After click: table shows originals (appliedFlag 'original' in DR_MODEL), aria-pressed='false'
+  // After click: table shows originals, aria-pressed='false'
   eq('accessibility AC3: button click (mouse, was-rounded) sets aria-pressed="false"',
     buttonEl.getAttribute('aria-pressed'), 'false');
 })();

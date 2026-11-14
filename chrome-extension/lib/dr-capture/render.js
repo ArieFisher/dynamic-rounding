@@ -336,8 +336,7 @@ function renderBoundTable(state) {
   }
   const caption = escapeHtml(table.kind) + ' table, ' +
     escapeHtml(String(table.rowCount)) + ' row(s) × ' +
-    escapeHtml(String(table.columnCount)) + ' column(s), showing ' +
-    escapeHtml(table.appliedFlag === 'simplified' ? 'simplified values' : 'original values');
+    escapeHtml(String(table.columnCount)) + ' column(s), ' + shownValues(table);
   return '<h3>' + caption + '</h3>' +
     renderCapTable(table, 'displayed') +
     renderNote('Hover a dotted cell to see its original.') +
@@ -351,6 +350,12 @@ function renderBoundTable(state) {
       'and in the state below.');
 }
 
+// A table shows simplified values when one of its cells carries the marker class.
+function shownValues(table) {
+  const simplified = (table.cells || []).some(function (cell) { return cell.wearsMarker; });
+  return simplified ? 'showing simplified values' : 'showing original values';
+}
+
 // Every table the registry held, one line each, the bound one marked. The
 // full per-cell detail sits in the JSON island; this list shows at a glance
 // what was found.
@@ -360,7 +365,7 @@ function renderRegistrySection(state) {
     const label = table.kind === 'unknown'
       ? 'serialization failed: ' + (table.error || '')
       : table.kind + ', ' + table.rowCount + ' row(s) × ' + table.columnCount +
-        ' column(s), form: ' + (table.appliedFlag === 'simplified' ? 'simplified' : 'raw');
+        ' column(s), ' + shownValues(table);
     return '<div class="cap-switch"><span>#' + (index + 1) + ' — ' + escapeHtml(label) +
       '</span><b>' + (bound ? 'bound' : '') + '</b></div>';
   }).join('');

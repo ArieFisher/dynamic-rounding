@@ -25,8 +25,6 @@
       cell.title, '');
     eq('patch-honesty: a cell whose patches all skip stores no original',
       DR_MODEL.getTableOriginalText(table, cell), undefined);
-    eq('patch-honesty: a table whose only change failed keeps form original',
-      DR_MODEL.getTableAppliedFlag(table), 'original');
     eq('patch-honesty: the pass counts the cell as left as written for a text mismatch',
       result.leftAsWritten.textMismatch, 1);
   } finally {
@@ -54,8 +52,6 @@
       true);
     eq('patch-honesty: a landed patch stores the original',
       DR_MODEL.getTableOriginalText(table, cell), 'Cost: 123,456 per month');
-    eq('patch-honesty: a landed patch flips the form',
-      DR_MODEL.getTableAppliedFlag(table), 'simplified');
   } finally {
     DR_MODEL.unregisterTable(table);
   }
@@ -364,15 +360,12 @@
   fireMouseClick(buttonB);
 
   const rounded = tableB._cells.some(c => c.classList.contains('dr-ext-rounded'));
-  const flag = DR_MODEL.getTableAppliedFlag(tableB);
 
   global.chrome.runtime.sendMessage = origSendMessage;
   lastRightClickedTable = null;
 
   eq('press on a different table simplifies it even where its settings stand at off (part one: the flip reads the screen)',
     rounded, true);
-  eq('press on a different table sets its form to simplified where its settings stood at off (part one: the flip reads the screen)',
-    flag, 'simplified');
 })();
 
 (function gridPatch_roundWritesEachChangeIntoItsPiece() {
@@ -397,8 +390,6 @@
       }), true);
     eq('grid patch: every rounded cell carries the marker class',
       grid.cellEls.every((cell) => cell.classList.contains('dr-ext-rounded')), true);
-    eq('grid patch: the landed writes set the form to simplified',
-      DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'simplified');
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -451,8 +442,6 @@
       [false, false, false, false]);
     eq('grid patch reset: the marker classes are removed',
       grid.cellEls.some((cell) => cell.classList.contains('dr-ext-rounded')), false);
-    eq('grid patch reset: the form is original',
-      DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'original');
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -477,8 +466,8 @@
       { marked: false, record: false });
     eq('grid patch reset: the other cells restore',
       pieceTextsOf(b), [' 7,318,204 ']);
-    eq('grid patch reset: with every cell restored, the form is original',
-      DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'original');
+    eq('grid patch reset: with every cell restored, the grid shows its originals',
+      showsSimplified(grid.wrapperEl), false);
   } finally {
     DR_MODEL.unregisterTable(grid.wrapperEl);
   }
@@ -536,7 +525,7 @@
     grid.cellEls[0].childNodes[0].nodeValue, '12000');
 })();
 
-(function e2e_gridFormCountsConfirmedWrites() {
+(function e2e_gridMarksOnlyConfirmedWrites() {
   const grid = makeE2EGridWrapper([
     ['8584629', '286'],
   ]);
@@ -554,8 +543,8 @@
     const result = roundTable(grid.wrapperEl, opts);
     eq('grid-honesty: a write that lands nothing adds no marker through roundTable',
       grid.cellEls[0].classList.contains('dr-ext-rounded'), false);
-    eq('grid-honesty: a grid whose every write skipped keeps form original',
-      DR_MODEL.getTableAppliedFlag(grid.wrapperEl), 'original');
+    eq('grid-honesty: a grid whose every write skipped shows its originals',
+      showsSimplified(grid.wrapperEl), false);
     eq('grid-honesty: the pass counts the skipped writes as left as written for a text mismatch',
       result.leftAsWritten.textMismatch > 0, true);
   } finally {
@@ -1917,7 +1906,7 @@ const PENDING_FILL_ROWS = [
       cell.textContent, '8,584,629');
     eq('registry cycle: showsSimplified is false while the original text shows',
       showsSimplified(table), false);
-    eq('registry cycle: the off press clears the stored original, where the form flip kept it',
+    eq('registry cycle: the off press clears the stored original',
       DR_MODEL.hasTableOriginal(table, cell), false);
 
     roundTable(table, opts); // the press that turns it back on
@@ -2039,8 +2028,8 @@ const PENDING_FILL_ROWS = [
   }
 })();
 
-// --- (g) settings notice sequence: showsSimplified (reading DR_MODEL's
-// appliedFlag) must report correctly to the sidebar across a full round ->
+// --- (g) settings notice sequence: showsSimplified (reading the cell
+// markers) must report correctly to the sidebar across a full round ->
 // peek-original -> peek-back cycle, not just a single toggle. The table pillbox
 // AC1 test above pins one click; the guard matrix pins one
 // intent:toggleTable dispatch. Neither exercises the 3-step peek cycle. ---
@@ -2102,19 +2091,18 @@ const PENDING_FILL_ROWS = [
 // entry, not the previous round's leftover state. unregisterTable deletes
 // the WeakMap entry outright, so a later registerTable (via _ensureEntry)
 // can only build a brand-new entry — this pins that no per-cell original,
-// appliedFlag, round options, or frozen magnitude survives the round trip. ---
+// round options, or frozen magnitude survives the round trip. ---
 (function registrySprint_reregisterAfterUnregisterGetsFreshEntry() {
   const table = { tagName: 'TABLE' }; // identity is all that matters here
   const cell = { tagName: 'TD' };
 
   DR_MODEL.registerTable(table);
   DR_MODEL.setTableOriginal(table, cell, { value: '8,584,629', pieces: [{ text: '8,584,629', written: '8,584,629' }] });
-  DR_MODEL.setTableAppliedFlag(table, 'simplified');
   DR_MODEL.setTableSettings(table, { offsetTop: -1 }, 'page');
   DR_MODEL.setTableMaxMagnitude(table, 7);
 
-  eq('re-register: table is rounded with state before removal (pre-condition)',
-    DR_MODEL.getTableAppliedFlag(table), 'simplified');
+  eq('re-register: table holds an original before removal (pre-condition)',
+    DR_MODEL.hasTableOriginal(table, cell), true);
 
   // Simulate the removed-node observer's cleanup: unregisterTable is the
   // ONLY registry call it makes (content.js's removedNodes loop).
@@ -2128,8 +2116,6 @@ const PENDING_FILL_ROWS = [
   // "found again" — it must not resurrect the old entry.
   DR_MODEL.registerTable(table);
 
-  eq('re-register: appliedFlag resets to "original" (not the leftover "simplified")',
-    DR_MODEL.getTableAppliedFlag(table), 'original');
   eq('re-register: the old per-cell original does NOT leak through (hasTableOriginal is false)',
     DR_MODEL.hasTableOriginal(table, cell), false);
   eq('re-register: getTableOriginal for the old cell reference is undefined, not the stale record',
@@ -2801,9 +2787,8 @@ const PENDING_FILL_ROWS = [
   });
 })();
 
-// --- Turning off resets. The form flip this replaced kept the simplified
-// markers and the stored originals, which left the settings at off while the
-// table kept its simplified bookkeeping. ---
+// --- Turning off resets: the press clears the simplified markers and the
+// stored originals along with turning the settings off. ---
 (function partOne_pressOffResetsTheTable() {
   runPressFixture(() => {
     const table = makePressTable('12,345');
@@ -3093,7 +3078,7 @@ function issue328SettingsOf(table) {
     eq('per-table settings: the fresh table reads the shipped defaults',
       fresh && DR_MODEL.getTableSettings(fresh), Object.assign({}, DR_DEFAULTS));
     eq('per-table settings: the fresh table shows the original',
-      fresh && DR_MODEL.getTableAppliedFlag(fresh), 'original');
+      fresh && showsSimplified(fresh), false);
     eq('per-table settings: the shape change writes no table\'s settings',
       writes(), 0);
 
@@ -3323,8 +3308,8 @@ function issue328SettingsOf(table) {
     DR_MODEL.setActiveTable(grid.scrollPaneEl);
     const countCell = grid.scrollRowEls[1].children[1];
 
-    // The first press simplifies, so the entry holds originals and a
-    // simplified form before the page changes anything.
+    // The first press simplifies, so the entry holds originals and the
+    // cells wear the marker before the page changes anything.
     withTablePillboxDocumentMock(function () {
       DR_BUS.publish('intent:toggleTable', { table: grid.scrollPaneEl });
     });
@@ -3355,7 +3340,7 @@ function issue328SettingsOf(table) {
       DR_MODEL.getTableFingerprint(grid.scrollPaneEl).columnCount, 4);
     eq('fingerprint column change: the press after the change turns simplification on',
       DR_MODEL.getTableSettings(grid.scrollPaneEl).enabled, true);
-    eq('fingerprint column change: the fresh entry\'s form is simplified',
+    eq('fingerprint column change: the pane shows simplified values',
       showsSimplified(grid.scrollPaneEl), true);
     eq('fingerprint column change: the fresh entry\'s originals carry the new column\'s text',
       DR_MODEL.getTableOriginalText(grid.scrollPaneEl, addedCell), '412,905');
@@ -3444,7 +3429,6 @@ function issue328SettingsOf(table) {
     DR_MODEL.setActiveTable(grid.scrollPaneEl);
     const sentinelCell = grid.scrollRowEls[2].children[1];
     DR_MODEL.setTableOriginal(grid.scrollPaneEl, sentinelCell, '2,140,663');
-    DR_MODEL.setTableAppliedFlag(grid.scrollPaneEl, 'simplified');
     eq('fingerprint originals: the entry holds the sentinel original (precondition)',
       DR_MODEL.hasTableOriginal(grid.scrollPaneEl, sentinelCell), true);
 
@@ -3462,8 +3446,6 @@ function issue328SettingsOf(table) {
       grid.scrollRowEls.some((rowEl) =>
         rowEl.children.some((cellEl) => DR_MODEL.hasTableOriginal(grid.scrollPaneEl, cellEl))),
       false);
-    eq('fingerprint originals: the fresh entry\'s form is original',
-      showsSimplified(grid.scrollPaneEl), false);
 
     forgetRegisteredTable(grid.scrollPaneEl);
   });
@@ -3893,7 +3875,7 @@ function issue328SettingsOf(table) {
       lensPreview: unboundResponse.lensPreview,
       tablesIsArray: Array.isArray(unboundResponse.tables),
     },
-    { captureFormat: 9, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
+    { captureFormat: 10, activeTableIndex: null, fixtureSeed: null, lensPreview: null, tablesIsArray: true });
   eq('capture-wire: the response carries this context\'s log snapshot',
     Array.isArray(unboundResponse.log.entries) && unboundResponse.log.limit, 50);
   eq('capture-wire: collecting the capture state writes no row', collectRows, []);

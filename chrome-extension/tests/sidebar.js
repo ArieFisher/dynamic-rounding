@@ -922,9 +922,8 @@
     eq('menu-toggle record: the right-click connected the grid',
       model.getActiveTable(), gridEl);
 
-    // The table's settings start at on, the table showing simplified values.
+    // The table's settings start at on.
     model.setTableSettings(gridEl, { enabled: true }, 'page');
-    model.setTableAppliedFlag(gridEl, 'simplified');
     eq('menu-toggle record: precondition — the table\'s settings start enabled',
       model.getTableSettings(gridEl).enabled, true);
 

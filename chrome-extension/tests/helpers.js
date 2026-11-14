@@ -18,11 +18,11 @@ function withTextPiece(cell) {
   return cell;
 }
 
-// True when the screen shows simplified values: a pass changed a cell and the
-// table is not showing originals. The table pillbox shows the on/off value
-// instead (isTableOn), so a test of what a pass did to the screen reads this.
+// True when the screen shows simplified values: a cell of the table carries
+// the marker class. The table pillbox shows the on/off value instead
+// (isTableOn), so a test of what a pass did to the screen reads this.
 function showsSimplified(table) {
-  return DR_MODEL.getTableAppliedFlag(table) === 'simplified';
+  return table.querySelectorAll('.dr-ext-rounded').length > 0;
 }
 
 function makeMockCell(tag, text) {

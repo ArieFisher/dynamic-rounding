@@ -426,8 +426,7 @@ function fingerprintReadOpts(table) {
 //
 // A mismatch means the page put different content in this element — a new
 // result set, a different column set — so the entry describes data no longer
-// on the screen: its cell originals belong to cells that are gone, and its
-// form records a simplification of values no longer on the screen. The entry is
+// on the screen: its cell originals belong to cells that are gone. The entry is
 // discarded whole, and the nomination step re-runs from the nest's chain
 // root, because a new result set can change which element of the nest passes
 // the data test: a pinned pane that now holds two columns puts two elements
@@ -438,7 +437,7 @@ function fingerprintReadOpts(table) {
 // the sidebar.
 //
 // The switch publishes even where the fresh registration lands on the same
-// element: the entry is new either way, with no originals and the form original, and
+// element: the entry is new either way, with no originals, and
 // the sidebar re-reads the active table's settings on that topic.
 //
 // The fresh table is a new table: it holds no settings, so it reads the
@@ -515,7 +514,7 @@ function revalidateTableShape(table, opts = {}) {
 // extension holds beside it: the table pillbox, the resize observer that keeps the
 // table pillbox positioned, the table's re-apply observer and its pending timer,
 // the view's tracked-table list, and the registry entry with the cell
-// originals and the form inside it. Two callers reach this: the removal
+// originals inside it. Two callers reach this: the removal
 // observer, for a table the page took out; and the shape-fingerprint
 // mismatch path, for a table whose shape no longer matches the one the
 // registry recorded. Each caller writes its own row.
@@ -650,20 +649,11 @@ function registryOriginalsPort(table) {
 // of those for a cell that was NOT actually restored would claim a recovery
 // that did not happen and destroy data that was still recoverable by eye
 // even though the registry could no longer recover it programmatically.
-// Returns the count of cells left unrestored; the reset sets the applied
-// flag from it.
 function restoreTable(table) {
-  const roundedCells = table.querySelectorAll('.dr-ext-rounded');
-  if (roundedCells.length === 0) return 0;
-  let unrestorableCount = 0;
-  for (const cell of roundedCells) {
-    if (isUnrestorableCell(table, cell)) {
-      unrestorableCount++;
-      continue;
-    }
+  for (const cell of table.querySelectorAll('.dr-ext-rounded')) {
+    if (isUnrestorableCell(table, cell)) continue;
     releaseCell(table, cell);
   }
-  return unrestorableCount;
 }
 
 // A cell showing the simplified marker with no original in the registry.
@@ -680,10 +670,6 @@ function releaseCell(table, cell) {
   DR_MODEL.deleteTableOriginal(table, cell);
 }
 
-// When restoreTable leaves a cell unrestored (see its doc), the screen still
-// shows rounded text for that cell, so appliedFlag is left at 'simplified' —
-// the truthful state — instead of 'original', which would claim a clean
-// reset that did not happen for every cell.
 function resetTable(table) {
   // The re-apply observer stops BEFORE the cell restore, so the restore's
   // own writes run no pass and a queued pass cannot fire after the reset.
@@ -693,8 +679,7 @@ function resetTable(table) {
   // never what the table is set to.
   DR_MODEL.setTableMaxMagnitude(table, null);
 
-  const unrestorableCount = restoreTable(table);
-  DR_MODEL.setTableAppliedFlag(table, unrestorableCount > 0 ? 'simplified' : 'original');
+  restoreTable(table);
 }
 
 // --- Lens preview sample extraction (read by the sidebar over request:activeTable) ---
@@ -996,12 +981,12 @@ function isSplitDateOrTime({ entry, patches }) {
  * @param {{frozenMaxMag?: number|null, writes: 'first'|'reapply'|'none',
  *          cellCap?: number}} pass
  * @returns {{cells: Array<{entry: object, patches: object[]}>,
- *            maxMag: number|null, landedCells: number, missedCells: number,
+ *            maxMag: number|null, missedCells: number,
  *            cellCount: number, overCap: boolean, ms?: number,
  *            leftAsWritten?: {splitNumber: number, splitDateOrTime: number, textMismatch: number}}}
  *   cells holds every cell in page order with its patches (empty means the
- *   cell's target text is its original). landedCells counts the written
- *   cells with a landed patch, missedCells the written cells with none.
+ *   cell's target text is its original). missedCells counts the written
+ *   cells with patches of which none landed.
  *   cellCount counts the cells the pass read. leftAsWritten counts, by
  *   reason, the cells the pass left as written; its textMismatch is
  *   missedCells. ms holds the pass's duration. An invalid range expression
@@ -1012,7 +997,7 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   const startedAt = Date.now();
   const { writes } = pass;
   const rangeParse = parseRangeExpr(opts.rangeExpr);
-  const none = { cells: [], maxMag: null, landedCells: 0, missedCells: 0, cellCount: 0, overCap: false };
+  const none = { cells: [], maxMag: null, missedCells: 0, cellCount: 0, overCap: false };
   if (rangeParse.error || adapterRows.length === 0) return none;
   const dataCells = tableDataCells(adapterRows);
   if (pass.cellCap !== undefined && dataCells.length > pass.cellCap) {
@@ -1025,9 +1010,9 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
   const { maxMag, cells: stepCells } = tablePatches(classified, settings, pass.frozenMaxMag);
   if (writes === 'first') DR_MODEL.setTableMaxMagnitude(table, maxMag);
 
-  const { cells, landedCells, missedCells, splitDateOrTime } = writeTableCells(table, stepCells, writes);
+  const { cells, missedCells, splitDateOrTime } = writeTableCells(table, stepCells, writes);
   return {
-    cells, landedCells, missedCells, maxMag, cellCount: dataCells.length, overCap: false,
+    cells, missedCells, maxMag, cellCount: dataCells.length, overCap: false,
     leftAsWritten: {
       splitNumber: classified.filter((entry) => entry.split).length,
       splitDateOrTime,
@@ -1043,7 +1028,6 @@ function simplifyTableCells(table, adapterRows, opts, pass) {
 // hover text go.
 function writeTableCells(table, stepCells, writes) {
   const cells = [];
-  let landedCells = 0;
   let missedCells = 0;
   let splitDateOrTime = 0;
   for (const stepCell of stepCells) {
@@ -1054,11 +1038,10 @@ function writeTableCells(table, stepCells, writes) {
     if (writes === 'none') continue;
     const held = DR_MODEL.hasTableOriginal(table, entry.cellObj.el);
     const landed = flat.length > 0 ? writeCell(entry, flat) : 0;
-    if (flat.length > 0 && landed > 0) landedCells++;
-    else if (flat.length > 0) missedCells++;
+    if (flat.length > 0 && landed === 0) missedCells++;
     if (landed === 0 && held) releaseCell(table, entry.cellObj.el);
   }
-  return { cells, landedCells, missedCells, splitDateOrTime };
+  return { cells, missedCells, splitDateOrTime };
 }
 
 // A table's adapter, reading and writing each cell's record through the
@@ -1166,8 +1149,7 @@ function reapplyRounding(table) {
 // shipped defaults, and the pass stops there. Otherwise the pass runs the
 // one simplification pass under the table's own settings and its magnitude
 // freeze, if it holds one, so neither a grid's scroll nor a value the page
-// writes shifts the table's rounding basis. A
-// pass that simplifies a cell records the table as simplified.
+// writes shifts the table's rounding basis.
 function runReapplyPass(table) {
   const wasActive = DR_MODEL.getActiveTable() === table;
   const revalidated = revalidateTableShape(table, { activates: wasActive });
@@ -1179,7 +1161,6 @@ function runReapplyPass(table) {
     writes: 'reapply',
     cellCap: DR_DETECTION_SETTINGS.reapplyCellCap,
   });
-  if (result.landedCells > 0) DR_MODEL.setTableAppliedFlag(table, 'simplified');
   if (result.overCap) {
     unwatchTable(table);
     logAboveCellCap(result.cellCount);
@@ -1199,11 +1180,10 @@ function roundTable(table, options) {
   // A table with no rows returns early without throwing.
   if (adapterRows.length === 0) return { applied: false, rangeStatus: 'ok' };
   // A re-apply reuses the freeze, so a scroll or page write keeps the basis.
-  const { landedCells, cellCount, leftAsWritten } = simplifyTableCells(table, adapterRows, opts, {
+  const { cellCount, leftAsWritten } = simplifyTableCells(table, adapterRows, opts, {
     frozenMaxMag: null,
     writes: 'first',
   });
-  DR_MODEL.setTableAppliedFlag(table, landedCells > 0 ? 'simplified' : 'original');
 
   // The re-apply observer attaches AFTER the first simplification, so the
   // writes above run no pass.
